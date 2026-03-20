@@ -1,19 +1,34 @@
 # Lunaris top-level task runner
 # Requires: just, cargo, qemu, mkosi
 
-# Start Event Bus and Graph Daemon in the current session
-dev:
-    echo "TODO: start event-bus and graph-daemon"
+REPOS := "../event-bus ../sdk ../knowledge"
 
-# Run unit tests across all repos in dependency order
-test:
+# Build all components in dependency order
+build:
+    cargo build --manifest-path ../event-bus/Cargo.toml
+    cargo build --manifest-path ../sdk/Cargo.toml
+    cargo build --manifest-path ../knowledge/Cargo.toml
+
+# Run all tests across all repos in dependency order
+test: build
     cargo test --manifest-path ../event-bus/Cargo.toml
     cargo test --manifest-path ../sdk/Cargo.toml
     cargo test --manifest-path ../knowledge/Cargo.toml
+    cargo test --manifest-path ../knowledge/Cargo.toml --test event_pipeline
 
-# Verify all repos are on the pinned dependency versions
+# Run clippy across all repos
+lint:
+    cargo clippy --manifest-path ../event-bus/Cargo.toml --all-targets --all-features -- -D warnings
+    cargo clippy --manifest-path ../sdk/Cargo.toml --all-targets --all-features -- -D warnings
+    cargo clippy --manifest-path ../knowledge/Cargo.toml --all-targets --all-features -- -D warnings
+
+# Check dependency versions are in sync with workspace-deps.toml
 check-deps:
     echo "TODO: implement dependency drift check against workspace-deps.toml"
+
+# Start Event Bus and Graph Daemon in the current session
+dev:
+    echo "TODO: start event-bus and knowledge daemons"
 
 # Build production ISO via mkosi
 build-iso:
