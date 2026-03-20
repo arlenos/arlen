@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "os-sdk",
+    "module-sdk",
+]
+resolver = "2"
