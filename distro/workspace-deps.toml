@@ -1,0 +1,14 @@
+# Shared dependency versions for all Lunaris repos.
+# All Cargo.toml files must use these versions for common crates.
+# Update here first, then run `just check-deps` to verify all repos are in sync.
+# Dependabot runs only on this file and opens follow-up PRs in affected repos.
+
+[dependencies]
+tokio       = "1"
+serde       = "1"
+serde_json  = "1"
+anyhow      = "1"
+thiserror   = "2"
+tracing     = "0.1"
+prost       = "0.13"    # protobuf
+uuid        = "1"
