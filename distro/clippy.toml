@@ -1,0 +1,11 @@
+# Clippy lint configuration for all Lunaris Rust crates.
+# Applied via #![warn(clippy::pedantic)] in each crate root,
+# with the exceptions listed below.
+
+# Allowed: these are too noisy or conflict with the project style.
+# Add to each crate's lib.rs or main.rs:
+#
+# #![warn(clippy::pedantic)]
+# #![allow(clippy::module_name_repetitions)]
+# #![allow(clippy::must_use_candidate)]
+# #![allow(clippy::missing_errors_doc)]  // remove once API is stable
