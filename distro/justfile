@@ -28,7 +28,7 @@ check-deps:
 
 # Start Event Bus and Graph Daemon in the current session
 dev:
-    echo "TODO: start event-bus and knowledge daemons"
+    vm/dev.sh run
 
 # Build production ISO via mkosi
 build-iso:
