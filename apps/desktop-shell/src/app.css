@@ -1,0 +1,131 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/inter";
+
+/* ============================================================
+   Lunaris Surface Tokens - Panda Theme (default)
+   Dark shell, light apps. Injected by the theme loader at
+   runtime from ~/.config/lunaris/theme.toml.
+   These values are the built-in fallbacks.
+   ============================================================ */
+:root {
+  /* Surface tokens */
+  --color-bg-shell:   #09090b;
+  --color-bg-app:     #ffffff;
+  --color-bg-card:    #f5f5f7;
+  --color-bg-overlay: #00000080;
+  --color-bg-input:   #f0f0f0;
+
+  /* Foreground tokens */
+  --color-fg-shell:   #fafafa;
+  --color-fg-app:     #1a1a2e;
+
+  /* Accent and border */
+  --color-accent:     #0f0f0f;
+  --color-border:     #e2e2e8;
+
+  /* Radius */
+  --radius: 0.5rem;
+
+  /* ============================================================
+     Shadcn/ui variable mapping (app surface context)
+     Components default to app-surface colors unless inside
+     a .shell-surface context.
+     ============================================================ */
+  --background:       var(--color-bg-app);
+  --foreground:       var(--color-fg-app);
+  --card:             var(--color-bg-card);
+  --card-foreground:  var(--color-fg-app);
+  --popover:          var(--color-bg-overlay);
+  --popover-foreground: var(--color-fg-app);
+  --primary:          var(--color-accent);
+  --primary-foreground: #ffffff;
+  --secondary:        var(--color-bg-card);
+  --secondary-foreground: var(--color-fg-app);
+  --muted:            var(--color-bg-card);
+  --muted-foreground: #6b7280;
+  --accent:           var(--color-accent);
+  --accent-foreground: #ffffff;
+  --destructive:      #ef4444;
+  --border:           var(--color-border);
+  --input:            var(--color-bg-input);
+  --ring:             var(--color-accent);
+}
+
+/* Shell surface context - components inside .shell-surface
+   use shell colors instead of app colors. Used for the panel,
+   launcher, and other shell chrome. */
+.shell-surface {
+  --background:      var(--color-bg-shell);
+  --foreground:      var(--color-fg-shell);
+  --card:            color-mix(in srgb, var(--color-bg-shell) 80%, white 20%);
+  --card-foreground: var(--color-fg-shell);
+  --border:          color-mix(in srgb, var(--color-bg-shell) 60%, white 40%);
+  --input:           color-mix(in srgb, var(--color-bg-shell) 70%, white 30%);
+  --muted:           color-mix(in srgb, var(--color-bg-shell) 80%, white 20%);
+  --muted-foreground: color-mix(in srgb, var(--color-fg-shell) 70%, transparent 30%);
+}
+
+
+/* Register Lunaris tokens as Tailwind v4 theme variables */
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius: var(--radius);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+		user-select: none;
+		-webkit-user-select: none;
+  }
+  body {
+    @apply text-foreground;
+		background: var(--color-bg-shell);
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@custom-variant data-open {
+  &:where([data-state="open"]), &:where([data-open]:not([data-open="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-closed {
+  &:where([data-state="closed"]), &:where([data-closed]:not([data-closed="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-checked {
+  &:where([data-state="checked"]), &:where([data-checked]:not([data-checked="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-disabled {
+  &:where([data-disabled]:not([data-disabled="false"])) {
+    @slot;
+  }
+}
