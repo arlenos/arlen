@@ -38,7 +38,7 @@ impl SurfaceTokens {
             bg_input:   "#f0f0f0".into(),
             fg_shell:   "#e8e8f0".into(),
             fg_app:     "#1a1a2e".into(),
-            accent:     "#7c6af7".into(),
+            accent:     "#0f0f0f".into(),
             border:     "#e2e2e8".into(),
             radius:     "0.5rem".into(),
         }

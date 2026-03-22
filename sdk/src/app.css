@@ -1,3 +1,4 @@
+@import "tailwindcss";
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
 
@@ -20,7 +21,7 @@
   --color-fg-app:     #1a1a2e;
 
   /* Accent and border */
-  --color-accent:     #7c6af7;
+  --color-accent:     #0f0f0f;
   --color-border:     #e2e2e8;
 
   /* Radius */

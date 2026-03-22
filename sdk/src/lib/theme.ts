@@ -65,7 +65,7 @@ export const PANDA_TOKENS: SurfaceTokens = {
   bgInput:   "#f0f0f0",
   fgShell:   "#e8e8f0",
   fgApp:     "#1a1a2e",
-  accent:    "#7c6af7",
+  accent:    "#0f0f0f",
   border:    "#e2e2e8",
   radius:    "0.5rem",
 };
