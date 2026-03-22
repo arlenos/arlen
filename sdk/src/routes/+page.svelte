@@ -1,156 +1,89 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
-
-  let name = $state("");
-  let greetMsg = $state("");
-
-  async function greet(event: Event) {
-    event.preventDefault();
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsg = await invoke("greet", { name });
-  }
+  import { Button } from "$lib/components/ui/button/index.js";
+  import { Badge } from "$lib/components/ui/badge/index.js";
+  import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "$lib/components/ui/card/index.js";
+  import { Separator } from "$lib/components/ui/separator/index.js";
 </script>
 
-<main class="container">
-  <h1>Welcome to Tauri + Svelte</h1>
+<div class="p-8 max-w-2xl mx-auto space-y-8">
 
-  <div class="row">
-    <a href="https://vite.dev" target="_blank">
-      <img src="/vite.svg" class="logo vite" alt="Vite Logo" />
-    </a>
-    <a href="https://tauri.app" target="_blank">
-      <img src="/tauri.svg" class="logo tauri" alt="Tauri Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank">
-      <img src="/svelte.svg" class="logo svelte-kit" alt="SvelteKit Logo" />
-    </a>
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">Lunaris ui-kit</h1>
+    <p class="text-muted-foreground mt-1">
+      Shared component library for Lunaris first-party apps.
+      Built with shadcn-svelte, Tailwind v4, and Lunaris Surface Tokens.
+    </p>
   </div>
-  <p>Click on the Tauri, Vite, and SvelteKit logos to learn more.</p>
 
-  <form class="row" onsubmit={greet}>
-    <input id="greet-input" placeholder="Enter a name..." bind:value={name} />
-    <button type="submit">Greet</button>
-  </form>
-  <p>{greetMsg}</p>
-</main>
+  <Separator />
 
-<style>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
+  <!-- Buttons -->
+  <div class="space-y-3">
+    <h2 class="text-sm font-medium text-muted-foreground uppercase tracking-wider">Buttons</h2>
+    <div class="flex flex-wrap gap-3">
+      <Button>Default</Button>
+      <Button variant="secondary">Secondary</Button>
+      <Button variant="outline">Outline</Button>
+      <Button variant="ghost">Ghost</Button>
+      <Button variant="destructive">Destructive</Button>
+    </div>
+  </div>
 
-.logo.svelte-kit:hover {
-  filter: drop-shadow(0 0 2em #ff3e00);
-}
+  <Separator />
 
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
+  <!-- Badges -->
+  <div class="space-y-3">
+    <h2 class="text-sm font-medium text-muted-foreground uppercase tracking-wider">Badges</h2>
+    <div class="flex flex-wrap gap-3">
+      <Badge>Default</Badge>
+      <Badge variant="secondary">Secondary</Badge>
+      <Badge variant="outline">Outline</Badge>
+      <Badge variant="destructive">Destructive</Badge>
+    </div>
+  </div>
 
-  color: #0f0f0f;
-  background-color: #f6f6f6;
+  <Separator />
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
+  <!-- Cards -->
+  <div class="space-y-3">
+    <h2 class="text-sm font-medium text-muted-foreground uppercase tracking-wider">Cards</h2>
+    <div class="grid grid-cols-2 gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Surface Tokens</CardTitle>
+          <CardDescription>
+            All colors come from theme.toml via CSS custom properties.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div class="grid grid-cols-3 gap-2">
+            <div class="h-8 rounded" style="background: var(--color-bg-shell)"></div>
+            <div class="h-8 rounded border" style="background: var(--color-bg-app)"></div>
+            <div class="h-8 rounded" style="background: var(--color-bg-card)"></div>
+            <div class="h-8 rounded" style="background: var(--color-accent)"></div>
+            <div class="h-8 rounded" style="background: var(--color-border)"></div>
+            <div class="h-8 rounded" style="background: var(--color-bg-input)"></div>
+          </div>
+        </CardContent>
+      </Card>
 
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
+      <Card>
+        <CardHeader>
+          <CardTitle>Panda Theme</CardTitle>
+          <CardDescription>
+            Dark shell, light apps. The default Lunaris theme.
+          </CardDescription>
+        </CardHeader>
+        <CardContent class="space-y-2">
+          <div class="shell-surface rounded p-3 text-sm">
+            Shell surface
+          </div>
+          <div class="rounded border p-3 text-sm">
+            App surface
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  </div>
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
-  display: flex;
-  justify-content: center;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-#greet-input {
-  margin-right: 5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
-
-  a:hover {
-    color: #24c8db;
-  }
-
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
-}
-
-</style>
+</div>
