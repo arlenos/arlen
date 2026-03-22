@@ -11,3 +11,4 @@ pub(crate) mod proto {
 
 pub use event::{EmitError, EventEmitter, UnixEventEmitter};
 pub use graph::{GraphClient, QueryError, UnixGraphClient};
+pub mod shell_types;
