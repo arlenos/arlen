@@ -1,75 +1,26 @@
 <script lang="ts">
-  import { applyTokens, PANDA_TOKENS } from "$lib/theme";
-  import { windows } from "$lib/stores/windows";
-  import "../app.css";
   import { onMount } from "svelte";
+  import { loadTheme, applyTokens, PANDA_TOKENS, type SurfaceTokens } from "$lib/theme";
+  import "../app.css";
   import { listen } from "@tauri-apps/api/event";
 
-  // Apply tokens immediately before render
+  // Apply Panda tokens immediately before first render
   applyTokens(PANDA_TOKENS);
 
-  interface WindowPayload {
-    event_type: string;
-    app_id: string;
-    title: string;
-  }
-
   onMount(async () => {
-    // Subscribe to window events from the Event Bus via Rust backend
-    const unlistenFocused = await listen<WindowPayload>(
-      "lunaris://window-focused",
-      ({ payload }) => {
-        windows.update((ws) => {
-          // Mark all unfocused, then mark the new focused one
-          const updated = ws.map((w) => ({ ...w, focused: false }));
-          const existing = updated.find((w) => w.app_id === payload.app_id);
-          if (existing) {
-            existing.focused = true;
-            existing.title = payload.title;
-          } else {
-            updated.push({
-              id: payload.app_id,
-              app_id: payload.app_id,
-              title: payload.title,
-              focused: true,
-            });
-          }
-          return updated;
-        });
-      }
-    );
+    // Load tokens from backend (reads theme.toml)
+    try {
+      await loadTheme();
+    } catch {
+      // No Tauri backend (e.g. browser dev mode), Panda already applied
+    }
 
-    const unlistenOpened = await listen<WindowPayload>(
-      "lunaris://window-opened",
-      ({ payload }) => {
-        windows.update((ws) => {
-          if (!ws.find((w) => w.app_id === payload.app_id)) {
-            ws.push({
-              id: payload.app_id,
-              app_id: payload.app_id,
-              title: payload.title,
-              focused: false,
-            });
-          }
-          return ws;
-        });
-      }
-    );
+    // Subscribe to live theme changes
+    const unlisten = await listen<SurfaceTokens>("lunaris://theme-changed", ({ payload }) => {
+      applyTokens(payload);
+    });
 
-    const unlistenClosed = await listen<WindowPayload>(
-      "lunaris://window-closed",
-      ({ payload }) => {
-        windows.update((ws) =>
-          ws.filter((w) => w.app_id !== payload.app_id)
-        );
-      }
-    );
-
-    return () => {
-      unlistenFocused();
-      unlistenOpened();
-      unlistenClosed();
-    };
+    return unlisten;
   });
 </script>
 
