@@ -1,0 +1,47 @@
+# Lunaris Panda Theme
+# Default theme: dark shell, light apps.
+#
+# This is the source of truth for the Panda built-in theme.
+# All other built-in themes (Light, Dark, High Contrast) are defined
+# in separate files in this directory.
+
+[color.bg]
+shell   = "#09090b"   # Shell chrome: panel, launcher, titlebar
+app     = "#ffffff"   # App window backgrounds
+card    = "#f5f5f7"   # Cards, secondary surfaces, sidebars
+overlay = "#00000080" # Modals, popovers, dropdowns
+input   = "#f0f0f0"   # Input fields, text areas
+
+[color.fg]
+shell = "#fafafa"     # Text and icons on shell surfaces
+app   = "#09090b"     # Text on app surfaces
+
+[color]
+accent = "#09090b"    # Buttons, focus rings, active state
+border = "#e2e2e8"    # Separators, input outlines, card borders
+
+radius = "0.5rem"
+
+[motion]
+duration.short  = "120ms"
+duration.medium = "200ms"
+duration.long   = "350ms"
+easing.default  = "cubic-bezier(0.4, 0, 0.2, 1)"
+easing.enter    = "cubic-bezier(0.0, 0.0, 0.2, 1)"
+easing.exit     = "cubic-bezier(0.4, 0.0, 1.0, 1)"
+
+[depth]
+shadow.active   = "0 8px 32px rgba(0,0,0,0.4)"
+shadow.inactive = "0 2px 8px rgba(0,0,0,0.15)"
+shadow.popup    = "0 4px 16px rgba(0,0,0,0.3)"
+blur.panels     = "12px"
+blur.popups     = "8px"
+blur.enabled    = true
+
+[typography]
+font.sans    = "Inter Variable"
+font.mono    = "JetBrains Mono"
+font.size    = "14px"
+font.weight.regular = 400
+font.weight.bold    = 600
+font.lineheight     = 1.5
