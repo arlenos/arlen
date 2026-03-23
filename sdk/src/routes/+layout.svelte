@@ -1,16 +1,26 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { loadTheme, PANDA_TOKENS, applyTokens } from "$lib/theme";
+  import { loadTheme, applyTokens, PANDA_TOKENS, type SurfaceTokens } from "$lib/theme";
   import "../app.css";
+  import { listen } from "@tauri-apps/api/event";
+
+  // Apply Panda tokens immediately before first render
+  applyTokens(PANDA_TOKENS);
 
   onMount(async () => {
+    // Load tokens from backend (reads theme.toml)
     try {
       await loadTheme();
     } catch {
-      // Not running inside Tauri (e.g. browser dev mode without backend).
-      // Apply built-in Panda tokens as fallback.
-      applyTokens(PANDA_TOKENS);
+      // No Tauri backend (e.g. browser dev mode), Panda already applied
     }
+
+    // Subscribe to live theme changes
+    const unlisten = await listen<SurfaceTokens>("lunaris://theme-changed", ({ payload }) => {
+      applyTokens(payload);
+    });
+
+    return unlisten;
   });
 </script>
 
