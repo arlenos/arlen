@@ -15,11 +15,15 @@ name = "lunaris_desktop_shell_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
+prost-build = "0.13"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+prost = "0.13"
+serde_json = "1"
+log = "0.4"
+env_logger = "0.11"
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 
