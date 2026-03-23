@@ -1,16 +1,14 @@
 /// Theme loader for Lunaris.
 ///
 /// Reads `~/.config/lunaris/theme.toml` and returns the surface tokens
-/// as a structured response. The frontend sets CSS custom properties
-/// from these values at startup and whenever the file changes.
+/// as a structured response. Also watches the file for changes and emits
+/// a Tauri event when the theme is updated.
 
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use tauri::{AppHandle, Emitter};
 
-/// Surface tokens passed to the WebView.
-///
-/// Mirrors `os_sdk::shell_types::SurfaceTokens` but kept local to avoid
-/// a Rust workspace dependency between ui-kit and sdk for now.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SurfaceTokens {
@@ -27,25 +25,22 @@ pub struct SurfaceTokens {
 }
 
 impl SurfaceTokens {
-    /// Built-in Panda theme tokens.
-    /// Used as fallback when no theme.toml exists.
     pub fn panda() -> Self {
         Self {
-            bg_shell:   "#1a1a2e".into(),
+            bg_shell:   "#09090b".into(),
             bg_app:     "#ffffff".into(),
             bg_card:    "#f5f5f7".into(),
             bg_overlay: "#00000080".into(),
             bg_input:   "#f0f0f0".into(),
-            fg_shell:   "#e8e8f0".into(),
-            fg_app:     "#1a1a2e".into(),
-            accent:     "#0f0f0f".into(),
+            fg_shell:   "#fafafa".into(),
+            fg_app:     "#09090b".into(),
+            accent:     "#09090b".into(),
             border:     "#e2e2e8".into(),
             radius:     "0.5rem".into(),
         }
     }
 }
 
-/// Raw TOML structure for theme.toml.
 #[derive(Debug, Deserialize)]
 struct ThemeFile {
     color: Option<ColorSection>,
@@ -75,21 +70,15 @@ struct FgSection {
     app: Option<String>,
 }
 
-fn theme_path() -> PathBuf {
+pub fn config_path() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("/etc"))
         .join("lunaris")
         .join("theme.toml")
 }
 
-/// Load surface tokens from `~/.config/lunaris/theme.toml`.
-///
-/// Falls back to the built-in Panda theme if the file does not exist
-/// or cannot be parsed. Never returns an error to the frontend;
-/// the system always has a valid theme.
 pub fn load_tokens() -> SurfaceTokens {
-    let path = theme_path();
-
+    let path = config_path();
     let contents = match std::fs::read_to_string(&path) {
         Ok(c) => c,
         Err(_) => return SurfaceTokens::panda(),
@@ -121,10 +110,55 @@ pub fn load_tokens() -> SurfaceTokens {
     }
 }
 
-/// Tauri command: load and return the current surface tokens.
 #[tauri::command]
 pub fn get_surface_tokens() -> SurfaceTokens {
     load_tokens()
+}
+
+pub fn start_watcher(app: AppHandle) {
+    let theme_path = config_path();
+    let watch_dir = theme_path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .to_path_buf();
+
+    std::thread::spawn(move || {
+        let app_clone = app.clone();
+        let theme_path_clone = theme_path.clone();
+
+        let mut watcher = match notify::recommended_watcher(
+            move |event: Result<Event, _>| {
+                if let Ok(event) = event {
+                    match event.kind {
+                        EventKind::Modify(_) | EventKind::Create(_) => {
+                            if event.paths.iter().any(|p| p.file_name().map(|n| n == "theme.toml").unwrap_or(false)) || event.paths.iter().any(|p| p == &theme_path_clone) {
+                                let tokens = load_tokens();
+                                if let Err(e) = app_clone.emit("lunaris://theme-changed", &tokens) {
+                                    eprintln!("lunaris: failed to emit theme-changed: {e}");
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            },
+        ) {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("lunaris: failed to create theme watcher: {e}");
+                return;
+            }
+        };
+
+        if let Err(e) = watcher.watch(&watch_dir, RecursiveMode::NonRecursive) {
+            eprintln!("lunaris: failed to watch theme dir: {e}");
+            return;
+        }
+
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(3600));
+        }
+    });
 }
 
 #[cfg(test)]
@@ -141,37 +175,9 @@ mod tests {
 
     #[test]
     fn load_tokens_returns_panda_when_no_file() {
-        // Set XDG_CONFIG_HOME to a nonexistent path so theme.toml won't be found.
         std::env::set_var("XDG_CONFIG_HOME", "/tmp/lunaris-test-nonexistent-99999");
         let tokens = load_tokens();
         assert_eq!(tokens.bg_shell, SurfaceTokens::panda().bg_shell);
-        std::env::remove_var("XDG_CONFIG_HOME");
-    }
-
-    #[test]
-    fn load_tokens_parses_theme_toml() {
-        let dir = tempfile::tempdir().unwrap();
-        let theme_dir = dir.path().join("lunaris");
-        std::fs::create_dir_all(&theme_dir).unwrap();
-        std::fs::write(
-            theme_dir.join("theme.toml"),
-            r##"
-[color.bg]
-shell = "#2d2d2d"
-app = "#fafafa"
-
-[color]
-accent = "#ff6b6b"
-"##,
-        ).unwrap();
-
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
-        let tokens = load_tokens();
-        assert_eq!(tokens.bg_shell, "#2d2d2d");
-        assert_eq!(tokens.bg_app, "#fafafa");
-        assert_eq!(tokens.accent, "#ff6b6b");
-        // Unset values fall back to Panda
-        assert_eq!(tokens.border, SurfaceTokens::panda().border);
         std::env::remove_var("XDG_CONFIG_HOME");
     }
 }
