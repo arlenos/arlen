@@ -2290,8 +2290,10 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-opener",
  "toml 0.8.2",
+ "wayland-backend",
  "wayland-client",
  "wayland-protocols",
+ "wayland-scanner",
 ]
 
 [[package]]
