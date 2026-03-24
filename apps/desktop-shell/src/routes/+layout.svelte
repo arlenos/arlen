@@ -3,6 +3,8 @@
   import { loadTheme, applyTokens, PANDA_TOKENS, type SurfaceTokens } from "$lib/theme";
   import "../app.css";
   import { initWindowListeners } from "$lib/stores/windows";
+  import { initContextMenuListeners } from "$lib/stores/contextMenu.js";
+  import ContextMenu from "$lib/components/ContextMenu.svelte";
   import { listen } from "@tauri-apps/api/event";
 
   // Apply Panda tokens immediately before first render
@@ -10,6 +12,7 @@
 
   onMount(async () => {
     initWindowListeners();
+    initContextMenuListeners();
     // Load tokens from backend (reads theme.toml)
     try {
       await loadTheme();
@@ -27,3 +30,4 @@
 </script>
 
 <slot />
+<ContextMenu />
