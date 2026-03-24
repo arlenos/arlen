@@ -28,6 +28,37 @@
   --radius: 0.5rem;
 
   /* ============================================================
+     Interaction Design System - Animation Timing Tokens
+     Blueprint Section 6.13 (Motion tokens), Listing 31.
+
+     Every transition in Lunaris must use one of these durations.
+     No ad-hoc ms values anywhere.
+
+     State rules for every interactive element:
+       Default    — base appearance
+       Hover      — subtle brightness shift, duration-fast ease-default
+       Active     — scale(0.97) or brightness decrease, duration-instant
+       Focus      — visible focus ring (accessibility, never remove)
+       Disabled   — opacity-50, cursor-not-allowed, no hover/active
+       Loading    — skeleton or spinner, never block interaction silently
+
+     Tooltip standard:
+       - Appears after 400ms hover delay (prevents tooltip spam)
+       - Disappears immediately on mouse leave
+       - Never on touch/mobile
+       - Use Shadcn Tooltip component exclusively
+     ============================================================ */
+  --duration-instant:  80ms;   /* pressed states, immediate feedback */
+  --duration-fast:    150ms;   /* hover transitions, tooltips */
+  --duration-medium:  200ms;   /* expand/collapse, panel open */
+  --duration-slow:    350ms;   /* page transitions, large layout shifts */
+
+  --easing-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-enter:   cubic-bezier(0.0, 0.0, 0.2, 1);
+  --easing-exit:    cubic-bezier(0.4, 0.0, 1.0, 1);
+  --easing-spring:  cubic-bezier(0.34, 1.56, 0.64, 1); /* snap/bounce feedback */
+
+  /* ============================================================
      Shadcn/ui variable mapping (app surface context)
      Components default to app-surface colors unless inside
      a .shell-surface context.
@@ -70,6 +101,19 @@
 /* Register Lunaris tokens as Tailwind v4 theme variables */
 @theme inline {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+
+  /* Animation timing - enables duration-fast, duration-medium, etc. utilities */
+  --duration-instant: var(--duration-instant);
+  --duration-fast:    var(--duration-fast);
+  --duration-medium:  var(--duration-medium);
+  --duration-slow:    var(--duration-slow);
+
+  /* Easing - enables ease-default, ease-enter, ease-exit, ease-spring utilities */
+  --ease-default: var(--easing-default);
+  --ease-enter:   var(--easing-enter);
+  --ease-exit:    var(--easing-exit);
+  --ease-spring:  var(--easing-spring);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -100,6 +144,18 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* Reduce motion: override all duration tokens to 0ms.
+   Applies when the OS setting is active OR when Settings disables animations.
+   No component may suppress this - it is a global invariant. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant: 0ms;
+    --duration-fast:    0ms;
+    --duration-medium:  0ms;
+    --duration-slow:    0ms;
   }
 }
 
