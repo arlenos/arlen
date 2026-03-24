@@ -119,6 +119,9 @@ impl Dispatch<OverlayProxy, ()> for AppData {
     ) {
         match event {
             overlay::Event::ContextMenuBegin { menu_id, x, y } => {
+                log::info!(
+                    "shell_overlay_client: context_menu_begin menu_id={menu_id} x={x} y={y}"
+                );
                 state.pending_menus.insert(
                     menu_id,
                     PendingMenu {
@@ -176,7 +179,14 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                         y: menu.y,
                         items: menu.items,
                     };
-                    let _ = state.app_handle.emit("lunaris://context-menu-show", payload);
+                    log::info!(
+                        "shell_overlay_client: emitting context-menu-show \
+                         menu_id={menu_id} items={}",
+                        payload.items.len()
+                    );
+                    if let Err(e) = state.app_handle.emit("lunaris://context-menu-show", payload) {
+                        log::error!("shell_overlay_client: emit context-menu-show failed: {e}");
+                    }
                 }
             }
 
@@ -299,6 +309,8 @@ pub fn start(app_handle: AppHandle, sender: Arc<ShellOverlaySender>) {
                 return;
             }
         };
+
+        log::info!("shell_overlay_client: lunaris_shell_overlay_v1 global bound successfully");
 
         // Share the proxy and connection so Tauri commands can send requests.
         *sender.proxy.lock().unwrap() = Some(overlay_proxy);

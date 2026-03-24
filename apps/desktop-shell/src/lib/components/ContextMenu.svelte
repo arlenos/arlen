@@ -1,49 +1,60 @@
 <script lang="ts">
     import { contextMenu, activateItem, dismissMenu } from "$lib/stores/contextMenu.js";
-    import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
 </script>
 
+<!--
+    No click-outside overlay: the compositor's MenuGrab owns pointer events while active.
+    The menu closes via context_menu_closed (Escape / compositor-initiated close) which
+    emits lunaris://context-menu-hide → contextMenu.set(HIDDEN).
+
+    Coordinates are clamped to the viewport because in Phase 2C desktop-shell is a normal
+    800x600 window and the compositor sends global coordinates. In Phase 3 (layer-shell,
+    full-screen), the coordinates will map directly to the viewport.
+-->
 {#if $contextMenu.visible}
 <div
-    style="position: fixed; left: {$contextMenu.x}px; top: {$contextMenu.y}px; width: 0; height: 0;"
+    role="menu"
+    style="
+        position: fixed;
+        left: {Math.min($contextMenu.x, window.innerWidth - 200)}px;
+        top: {Math.min($contextMenu.y, window.innerHeight - 100)}px;
+        z-index: 9999;
+        background: white;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        padding: 4px 0;
+        min-width: 160px;
+    "
 >
-    <DropdownMenu.Root
-        open={true}
-        onOpenChange={(open) => {
-            if (!open && $contextMenu.menu_id !== 0) {
-                dismissMenu($contextMenu.menu_id);
-            }
-        }}
-    >
-        <DropdownMenu.Trigger class="size-0 opacity-0 pointer-events-none" />
-        <DropdownMenu.Content class="shell-surface min-w-48">
-            {#each $contextMenu.items as item (item.index)}
-                {#if item.kind === "separator"}
-                    <DropdownMenu.Separator />
-                {:else if item.toggled}
-                    <DropdownMenu.CheckboxItem
-                        checked={item.toggled ?? false}
-                        disabled={item.disabled ?? false}
-                        onclick={() => activateItem($contextMenu.menu_id, item.index)}
-                    >
-                        {item.label}
-                        {#if item.shortcut}
-                            <DropdownMenu.Shortcut>{item.shortcut}</DropdownMenu.Shortcut>
-                        {/if}
-                    </DropdownMenu.CheckboxItem>
-                {:else}
-                    <DropdownMenu.Item
-                        disabled={item.disabled ?? false}
-                        onclick={() => activateItem($contextMenu.menu_id, item.index)}
-                    >
-                        {item.label}
-                        {#if item.shortcut}
-                            <DropdownMenu.Shortcut>{item.shortcut}</DropdownMenu.Shortcut>
-                        {/if}
-                    </DropdownMenu.Item>
+    {#each $contextMenu.items as item (item.index)}
+        {#if item.kind === "separator"}
+            <hr style="margin: 4px 0; border: none; border-top: 1px solid #e5e5e5;" />
+        {:else}
+            <button
+                role="menuitem"
+                disabled={item.disabled ?? false}
+                onclick={() => activateItem($contextMenu.menu_id, item.index)}
+                style="
+                    display: flex;
+                    width: 100%;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 6px 12px;
+                    background: none;
+                    border: none;
+                    cursor: {item.disabled ? 'default' : 'pointer'};
+                    font-size: 14px;
+                    text-align: left;
+                    color: {item.disabled ? '#aaa' : '#111'};
+                "
+            >
+                <span>{item.label}</span>
+                {#if item.shortcut}
+                    <span style="font-size: 12px; color: #888; margin-left: 24px;">{item.shortcut}</span>
                 {/if}
-            {/each}
-        </DropdownMenu.Content>
-    </DropdownMenu.Root>
+            </button>
+        {/if}
+    {/each}
 </div>
 {/if}
