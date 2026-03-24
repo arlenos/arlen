@@ -1,20 +1,36 @@
+import { listen } from "@tauri-apps/api/event";
 import { writable, derived } from "svelte/store";
 
 export interface WindowInfo {
-  id: string;
-  app_id: string;
-  title: string;
-  focused: boolean;
+    id: string;
+    app_id: string;
+    title: string;
+    active: boolean;
 }
 
 export const windows = writable<WindowInfo[]>([]);
 
-export const focusedWindow = derived(windows, ($windows) =>
-  $windows.find((w) => w.focused) ?? null
+export const activeWindow = derived(windows, ($windows) =>
+    $windows.find((w) => w.active) ?? null
 );
 
-export const activeAppName = derived(focusedWindow, ($focused) => {
-  if (!$focused) return "";
-  // Use app_id as fallback if title is empty
-  return $focused.app_id || $focused.title || "";
+export const activeAppName = derived(activeWindow, ($active) => {
+    if (!$active) return "";
+    return $active.title || $active.app_id || "";
 });
+
+export function initWindowListeners() {
+    listen<WindowInfo>("lunaris://toplevel-added", (event) => {
+        windows.update((ws) => [...ws, event.payload]);
+    });
+
+    listen<WindowInfo>("lunaris://toplevel-changed", (event) => {
+        windows.update((ws) =>
+            ws.map((w) => (w.id === event.payload.id ? event.payload : w))
+        );
+    });
+
+    listen<{ id: string }>("lunaris://toplevel-removed", (event) => {
+        windows.update((ws) => ws.filter((w) => w.id !== event.payload.id));
+    });
+}
