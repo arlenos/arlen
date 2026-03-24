@@ -1,5 +1,6 @@
 mod event_bus;
 mod theme;
+mod wayland_client;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -9,6 +10,7 @@ pub fn run() {
         .setup(|app| {
             theme::start_watcher(app.handle().clone());
             event_bus::start(app.handle().clone());
+            wayland_client::start(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

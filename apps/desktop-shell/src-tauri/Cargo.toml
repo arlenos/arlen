@@ -29,4 +29,7 @@ env_logger = "0.11"
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
-
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+cosmic-client-toolkit = { git = "https://github.com/pop-os/cosmic-protocols", branch = "main" }
+smithay-client-toolkit = "0.20"
