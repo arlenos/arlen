@@ -35,3 +35,6 @@ wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 wayland-scanner = "0.31"
 cosmic-client-toolkit = { git = "https://github.com/pop-os/cosmic-protocols", branch = "main" }
 smithay-client-toolkit = "0.20"
+gtk = "0.18"
+gtk-layer-shell = { version = "0.8", features = ["v0_5"] }
+glib = "0.18"

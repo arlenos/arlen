@@ -13,8 +13,10 @@
     "windows": [
       {
         "title": "lunaris-desktop-shell",
-        "width": 800,
-        "height": 600,
+        "width": 1,
+        "height": 28,
+"visible": false,
+        "decorations": false,
         "devtools": true
       }
     ],

@@ -1,4 +1,7 @@
 @import "tailwindcss";
+
+/* DIAGNOSTIC - remove after layer-shell rendering is confirmed */
+body { background: red !important; }
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
 
