@@ -1,9 +1,11 @@
 mod event_bus;
+mod layer_shell;
 mod shell_overlay_client;
 mod theme;
 mod wayland_client;
 
 use std::sync::Arc;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -20,6 +22,17 @@ pub fn run() {
             event_bus::start(app.handle().clone());
             wayland_client::start(app.handle().clone());
             shell_overlay_client::start(app.handle().clone(), overlay_sender);
+
+            #[cfg(target_os = "linux")]
+            {
+                let window_clone = app.get_webview_window("main").unwrap();
+                glib::idle_add_once(move || {
+                    if let Err(e) = layer_shell::init(window_clone) {
+                        log::error!("layer_shell: init failed: {e}");
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
