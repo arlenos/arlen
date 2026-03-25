@@ -53,10 +53,10 @@ pub fn init(window: tauri::WebviewWindow) -> Result<(), tauri::Error> {
         gtk_window.set_anchor(Edge::Top, true);
         gtk_window.set_anchor(Edge::Left, true);
         gtk_window.set_anchor(Edge::Right, true);
-        gtk_window.set_exclusive_zone(28);
+        gtk_window.set_exclusive_zone(36);
         // Width is stretched automatically by left+right anchors; 1 is the minimum
         // value GTK accepts (gtk_window_resize asserts width > 0).
-        gtk_window.set_default_size(1, 28);
+        gtk_window.set_default_size(1, 36);
     })?;
 
     // present() flushes all pending GTK/GDK Wayland requests synchronously so
@@ -68,7 +68,7 @@ pub fn init(window: tauri::WebviewWindow) -> Result<(), tauri::Error> {
             if let Ok(gtk_window) = toplevel.downcast::<gtk::Window>() {
                 // Remove width constraint so the compositor can set the full output
                 // width via the layer-shell configure event. Height is fixed at 28px.
-                gtk_window.set_size_request(-1, 28);
+                gtk_window.set_size_request(-1, 36);
                 // show_all() recursively shows all child widgets (including the WebView)
                 // and triggers GTK to commit actual buffer content to the surface.
                 gtk_window.show_all();

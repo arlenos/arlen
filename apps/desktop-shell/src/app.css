@@ -1,7 +1,4 @@
 @import "tailwindcss";
-
-/* DIAGNOSTIC - remove after layer-shell rendering is confirmed */
-body { background: red !important; }
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
 
@@ -99,6 +96,7 @@ body { background: red !important; }
     @apply border-border outline-ring/50;
 		user-select: none;
 		-webkit-user-select: none;
+		-webkit-font-smoothing: antialiased;
   }
   body {
     @apply text-foreground;
@@ -106,6 +104,7 @@ body { background: red !important; }
   }
   html {
     @apply font-sans;
+    font-family: "Inter Variable", "Inter", system-ui, sans-serif;
   }
 }
 
