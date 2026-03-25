@@ -113,7 +113,7 @@
   }
   body {
     @apply text-foreground;
-		background: var(--color-bg-shell);
+    background: transparent;
   }
   html {
     @apply font-sans;
