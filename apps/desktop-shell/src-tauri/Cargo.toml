@@ -38,3 +38,4 @@ smithay-client-toolkit = "0.20"
 gtk = "0.18"
 gtk-layer-shell = { version = "0.8", features = ["v0_5"] }
 glib = "0.18"
+zbus = { version = "5", default-features = false, features = ["tokio"] }

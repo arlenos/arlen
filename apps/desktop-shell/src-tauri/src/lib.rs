@@ -1,5 +1,6 @@
 mod event_bus;
 mod layer_shell;
+mod notifications;
 mod shell_overlay_client;
 mod theme;
 mod wayland_client;
@@ -22,6 +23,7 @@ pub fn run() {
             event_bus::start(app.handle().clone());
             wayland_client::start(app.handle().clone());
             shell_overlay_client::start(app.handle().clone(), overlay_sender);
+            notifications::start(app.handle().clone());
 
             #[cfg(target_os = "linux")]
             {
