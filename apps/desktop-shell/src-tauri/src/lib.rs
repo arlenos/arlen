@@ -12,16 +12,18 @@ use tauri::Manager;
 pub fn run() {
     env_logger::init();
 
-    // Created before Builder so it can be both managed and moved into start().
+    // Created before Builder so they can be both managed and moved into start().
     let overlay_sender = Arc::new(shell_overlay_client::ShellOverlaySender::new());
+    let workspace_sender = Arc::new(wayland_client::WorkspaceSender::new());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::clone(&overlay_sender))
+        .manage(Arc::clone(&workspace_sender))
         .setup(|app| {
             theme::start_watcher(app.handle().clone());
             event_bus::start(app.handle().clone());
-            wayland_client::start(app.handle().clone());
+            wayland_client::start(app.handle().clone(), workspace_sender);
             shell_overlay_client::start(app.handle().clone(), overlay_sender);
             notifications::start(app.handle().clone());
 
@@ -41,6 +43,7 @@ pub fn run() {
             theme::get_surface_tokens,
             shell_overlay_client::context_menu_activate,
             shell_overlay_client::context_menu_dismiss,
+            wayland_client::workspace_activate,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -14,6 +14,7 @@
     BatteryCharging, BatteryFull, BatteryMedium, BatteryLow, BatteryWarning,
     Bell,
   } from "lucide-svelte";
+  import WorkspaceIndicator from "$lib/components/WorkspaceIndicator.svelte";
 
   // ── Dynamic icon selection ────────────────────────────────────────────────
 
@@ -122,8 +123,10 @@
     </span>
   </div>
 
-  <!-- Center: Focus Mode placeholder (Phase 4A) -->
-  <div class="topbar-center" data-tauri-drag-region></div>
+  <!-- Center: Workspace indicator -->
+  <div class="topbar-center" data-tauri-drag-region>
+    <WorkspaceIndicator />
+  </div>
 
   <!-- Right: Collapsed applets + clock + settings -->
   <div class="topbar-right">
