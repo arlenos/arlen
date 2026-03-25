@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-/// Initialises the Tauri window as a wlr-layer-shell surface anchored to the
-/// top edge of the active output with a 28px exclusive zone.
+/// Initialises the Tauri window as a full-screen wlr-layer-shell surface on the
+/// Overlay layer with a 36px exclusive zone at the top.
+///
+/// All four anchors are active (top + left + right + bottom) so the surface
+/// covers the entire output. The compositor controls both dimensions.
+/// Only the top 36px receives pointer input; everything below is transparent
+/// and click-through (`input_shape_combine_region`).
 ///
 /// Must be called in Tauri's `setup` callback after the window is realised but
 /// before it is shown (`"visible": false` in tauri.conf.json guarantees this).
@@ -53,10 +58,8 @@ pub fn init(window: tauri::WebviewWindow) -> Result<(), tauri::Error> {
         gtk_window.set_anchor(Edge::Top, true);
         gtk_window.set_anchor(Edge::Left, true);
         gtk_window.set_anchor(Edge::Right, true);
+        gtk_window.set_anchor(Edge::Bottom, true);
         gtk_window.set_exclusive_zone(36);
-        // Width is stretched automatically by left+right anchors; 1 is the minimum
-        // value GTK accepts (gtk_window_resize asserts width > 0).
-        gtk_window.set_default_size(1, 36);
     })?;
 
     // present() flushes all pending GTK/GDK Wayland requests synchronously so
@@ -66,12 +69,18 @@ pub fn init(window: tauri::WebviewWindow) -> Result<(), tauri::Error> {
         use gtk::prelude::{Cast, GtkWindowExt, WidgetExt};
         if let Some(toplevel) = webview.inner().toplevel() {
             if let Ok(gtk_window) = toplevel.downcast::<gtk::Window>() {
-                // Remove width constraint so the compositor can set the full output
-                // width via the layer-shell configure event. Height is fixed at 28px.
-                gtk_window.set_size_request(-1, 36);
+                // Compositor controls both dimensions via all-four-anchor configure.
+                gtk_window.set_size_request(-1, -1);
                 // show_all() recursively shows all child widgets (including the WebView)
                 // and triggers GTK to commit actual buffer content to the surface.
                 gtk_window.show_all();
+                // Restrict pointer input to the top 36px bar. Everything below is
+                // transparent and click-through.
+                {
+                    use gtk::cairo::{RectangleInt, Region};
+                    let bar = Region::create_rectangle(&RectangleInt::new(0, 0, 32767, 36));
+                    gtk_window.input_shape_combine_region(Some(&bar));
+                }
                 log::info!("layer_shell: window shown via gtk show_all");
                 gtk_window.queue_draw();
                 if let Some(display) = gtk::gdk::Display::default() {

@@ -32,7 +32,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use wayland_client::{
     Connection, Dispatch, QueueHandle,
     globals::{GlobalListContents, registry_queue_init},
@@ -187,6 +187,12 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                     if let Err(e) = state.app_handle.emit("lunaris://context-menu-show", payload) {
                         log::error!("shell_overlay_client: emit context-menu-show failed: {e}");
                     }
+                    // Open the full window to input so menu items can receive clicks.
+                    if let Some(w) = state.app_handle.get_webview_window("main") {
+                        if let Err(e) = w.set_ignore_cursor_events(false) {
+                            log::warn!("shell_overlay_client: set_ignore_cursor_events(false) failed: {e}");
+                        }
+                    }
                 }
             }
 
@@ -195,6 +201,12 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                 let _ = state
                     .app_handle
                     .emit("lunaris://context-menu-hide", ContextMenuHidePayload { menu_id });
+                // Restore click-through below the top bar.
+                if let Some(w) = state.app_handle.get_webview_window("main") {
+                    if let Err(e) = w.set_ignore_cursor_events(true) {
+                        log::warn!("shell_overlay_client: set_ignore_cursor_events(true) failed: {e}");
+                    }
+                }
             }
 
             _ => {}

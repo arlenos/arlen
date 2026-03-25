@@ -17,6 +17,7 @@
         "height": 36,
 "visible": false,
         "decorations": false,
+        "transparent": true,
         "devtools": true
       }
     ],
