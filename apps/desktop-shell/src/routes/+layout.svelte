@@ -4,7 +4,9 @@
   import "../app.css";
   import { initWindowListeners } from "$lib/stores/windows";
   import { initContextMenuListeners } from "$lib/stores/contextMenu.js";
+  import { initNotificationListener } from "$lib/stores/notifications.js";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
+  import { Toaster } from "svelte-sonner";
   import { listen } from "@tauri-apps/api/event";
 
   // Apply Panda tokens immediately before first render
@@ -13,6 +15,7 @@
   onMount(async () => {
     initWindowListeners();
     initContextMenuListeners();
+    initNotificationListener();
     // Load tokens from backend (reads theme.toml)
     try {
       await loadTheme();
@@ -31,3 +34,11 @@
 
 <slot />
 <ContextMenu />
+<Toaster
+  position="top-right"
+  richColors
+  expand={false}
+  closeButton
+  theme="dark"
+  offset={44}
+/>
