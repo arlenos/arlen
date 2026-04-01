@@ -6,7 +6,11 @@
   import { initContextMenuListeners } from "$lib/stores/contextMenu.js";
   import { initNotificationListener } from "$lib/stores/notifications.js";
   import { initWorkspaceListeners } from "$lib/stores/workspaces.js";
+  import { initTabBarListeners } from "$lib/stores/tabBars";
+  import { initIndicatorListeners } from "$lib/stores/indicators";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
+  import TabBar from "$lib/components/TabBar.svelte";
+  import Indicator from "$lib/components/Indicator.svelte";
   import { Toaster } from "svelte-sonner";
   import { listen } from "@tauri-apps/api/event";
 
@@ -18,6 +22,8 @@
     initContextMenuListeners();
     initNotificationListener();
     initWorkspaceListeners();
+    initTabBarListeners();
+    initIndicatorListeners();
     // Load tokens from backend (reads theme.toml)
     try {
       await loadTheme();
@@ -36,6 +42,8 @@
 
 <slot />
 <ContextMenu />
+<TabBar />
+<Indicator />
 <Toaster
   position="top-right"
   richColors

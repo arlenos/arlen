@@ -64,6 +64,68 @@ pub struct MenuItemPayload {
     pub shortcut: Option<String>,
 }
 
+// ===== Tab bar payload types =====
+
+#[derive(Clone, Serialize)]
+struct TabBarShowPayload {
+    stack_id: u32,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+}
+
+#[derive(Clone, Serialize)]
+struct TabBarHidePayload {
+    stack_id: u32,
+}
+
+#[derive(Clone, Serialize)]
+struct TabAddedPayload {
+    stack_id: u32,
+    index: u32,
+    title: String,
+    app_id: String,
+    active: bool,
+}
+
+#[derive(Clone, Serialize)]
+struct TabRemovedPayload {
+    stack_id: u32,
+    index: u32,
+}
+
+#[derive(Clone, Serialize)]
+struct TabActivatedPayload {
+    stack_id: u32,
+    index: u32,
+}
+
+#[derive(Clone, Serialize)]
+struct TabTitleChangedPayload {
+    stack_id: u32,
+    index: u32,
+    title: String,
+}
+
+// ===== Indicator payload types =====
+
+#[derive(Clone, Serialize)]
+struct IndicatorShowPayload {
+    kind: u32,
+    edges: u32,
+    direction: u32,
+    shortcut1: String,
+    shortcut2: String,
+}
+
+#[derive(Clone, Serialize)]
+struct IndicatorHidePayload {
+    kind: u32,
+}
+
+// ===== Context menu payload types =====
+
 #[derive(Clone, Serialize)]
 struct ContextMenuShowPayload {
     menu_id: u32,
@@ -209,6 +271,70 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                 }
             }
 
+            overlay::Event::TabBarShow { stack_id, x, y, width, height } => {
+                let _ = state.app_handle.emit(
+                    "lunaris://tab-bar-show",
+                    TabBarShowPayload { stack_id, x, y, width, height },
+                );
+            }
+
+            overlay::Event::TabBarHide { stack_id } => {
+                let _ = state.app_handle.emit(
+                    "lunaris://tab-bar-hide",
+                    TabBarHidePayload { stack_id },
+                );
+            }
+
+            overlay::Event::TabAdded { stack_id, index, title, app_id, active } => {
+                let _ = state.app_handle.emit(
+                    "lunaris://tab-added",
+                    TabAddedPayload { stack_id, index, title, app_id, active: active != 0 },
+                );
+            }
+
+            overlay::Event::TabRemoved { stack_id, index } => {
+                let _ = state.app_handle.emit(
+                    "lunaris://tab-removed",
+                    TabRemovedPayload { stack_id, index },
+                );
+            }
+
+            overlay::Event::TabActivated { stack_id, index } => {
+                let _ = state.app_handle.emit(
+                    "lunaris://tab-activated",
+                    TabActivatedPayload { stack_id, index },
+                );
+            }
+
+            overlay::Event::TabTitleChanged { stack_id, index, title } => {
+                let _ = state.app_handle.emit(
+                    "lunaris://tab-title-changed",
+                    TabTitleChangedPayload { stack_id, index, title },
+                );
+            }
+
+            overlay::Event::IndicatorShow { kind, edges, direction, shortcut1, shortcut2 } => {
+                let kind_u32 = match kind {
+                    wayland_client::WEnum::Value(v) => v as u32,
+                    wayland_client::WEnum::Unknown(v) => v,
+                };
+                let _ = state.app_handle.emit(
+                    "lunaris://indicator-show",
+                    IndicatorShowPayload { kind: kind_u32, edges, direction, shortcut1, shortcut2 },
+                );
+            }
+
+            overlay::Event::IndicatorHide { kind } => {
+                let kind_u32 = match kind {
+                    wayland_client::WEnum::Value(v) => v as u32,
+                    wayland_client::WEnum::Unknown(v) => v,
+                };
+                let _ = state.app_handle.emit(
+                    "lunaris://indicator-hide",
+                    IndicatorHidePayload { kind: kind_u32 },
+                );
+            }
+
             _ => {}
         }
     }
@@ -271,6 +397,14 @@ impl ShellOverlaySender {
     pub fn dismiss(&self, menu_id: u32) {
         if let Some(p) = self.proxy.lock().unwrap().as_ref() {
             p.dismiss(menu_id);
+            self.flush();
+        }
+    }
+
+    /// Sends a `tab_activate` request and flushes the connection immediately.
+    pub fn tab_activate(&self, stack_id: u32, index: u32) {
+        if let Some(p) = self.proxy.lock().unwrap().as_ref() {
+            p.tab_activate(stack_id, index);
             self.flush();
         }
     }
@@ -358,4 +492,14 @@ pub fn context_menu_activate(
 #[tauri::command]
 pub fn context_menu_dismiss(state: tauri::State<Arc<ShellOverlaySender>>, menu_id: u32) {
     state.dismiss(menu_id);
+}
+
+/// Called by Svelte when the user clicks a tab in a tab bar.
+#[tauri::command]
+pub fn tab_activate(
+    state: tauri::State<Arc<ShellOverlaySender>>,
+    stack_id: u32,
+    index: u32,
+) {
+    state.tab_activate(stack_id, index);
 }

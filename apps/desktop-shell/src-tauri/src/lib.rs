@@ -43,6 +43,7 @@ pub fn run() {
             theme::get_surface_tokens,
             shell_overlay_client::context_menu_activate,
             shell_overlay_client::context_menu_dismiss,
+            shell_overlay_client::tab_activate,
             wayland_client::workspace_activate,
         ])
         .run(tauri::generate_context!())

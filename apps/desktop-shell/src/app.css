@@ -30,7 +30,7 @@
   /* Animation timing */
   --duration-fast: 150ms;
   --duration-medium: 300ms;
-  --easing-default: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --easing-default: cubic-bezier(0.4, 0, 0.2, 1);
   --easing-enter: cubic-bezier(0.0, 0.0, 0.2, 1);
   --easing-exit: cubic-bezier(0.4, 0.0, 1.0, 1);
 
@@ -97,11 +97,18 @@
   --color-ring: var(--ring);
   --radius: var(--radius);
   /* Animation timing utilities */
-  --ease-default: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-enter: cubic-bezier(0.0, 0.0, 0.2, 1);
   --ease-exit: cubic-bezier(0.4, 0.0, 1.0, 1);
   --duration-fast: 150ms;
   --duration-medium: 300ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast:   0ms;
+    --duration-medium: 0ms;
+  }
 }
 
 @layer base {
