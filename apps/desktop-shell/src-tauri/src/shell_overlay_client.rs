@@ -108,6 +108,22 @@ struct TabTitleChangedPayload {
     title: String,
 }
 
+// ===== Indicator payload types =====
+
+#[derive(Clone, Serialize)]
+struct IndicatorShowPayload {
+    kind: u32,
+    edges: u32,
+    direction: u32,
+    shortcut1: String,
+    shortcut2: String,
+}
+
+#[derive(Clone, Serialize)]
+struct IndicatorHidePayload {
+    kind: u32,
+}
+
 // ===== Context menu payload types =====
 
 #[derive(Clone, Serialize)]
@@ -294,6 +310,28 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                 let _ = state.app_handle.emit(
                     "lunaris://tab-title-changed",
                     TabTitleChangedPayload { stack_id, index, title },
+                );
+            }
+
+            overlay::Event::IndicatorShow { kind, edges, direction, shortcut1, shortcut2 } => {
+                let kind_u32 = match kind {
+                    wayland_client::WEnum::Value(v) => v as u32,
+                    wayland_client::WEnum::Unknown(v) => v,
+                };
+                let _ = state.app_handle.emit(
+                    "lunaris://indicator-show",
+                    IndicatorShowPayload { kind: kind_u32, edges, direction, shortcut1, shortcut2 },
+                );
+            }
+
+            overlay::Event::IndicatorHide { kind } => {
+                let kind_u32 = match kind {
+                    wayland_client::WEnum::Value(v) => v as u32,
+                    wayland_client::WEnum::Unknown(v) => v,
+                };
+                let _ = state.app_handle.emit(
+                    "lunaris://indicator-hide",
+                    IndicatorHidePayload { kind: kind_u32 },
                 );
             }
 
