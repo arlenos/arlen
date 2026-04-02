@@ -108,6 +108,37 @@ struct TabTitleChangedPayload {
     title: String,
 }
 
+// ===== Window header payload types =====
+
+#[derive(Clone, Serialize)]
+struct WindowHeaderShowPayload {
+    surface_id: u32,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    title: String,
+    activated: bool,
+    has_minimize: bool,
+    has_maximize: bool,
+}
+
+#[derive(Clone, Serialize)]
+struct WindowHeaderUpdatePayload {
+    surface_id: u32,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    title: String,
+    activated: bool,
+}
+
+#[derive(Clone, Serialize)]
+struct WindowHeaderHidePayload {
+    surface_id: u32,
+}
+
 // ===== Zoom toolbar payload types =====
 
 #[derive(Clone, Serialize)]
@@ -375,6 +406,39 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                 let _ = state.app_handle.emit("lunaris://zoom-toolbar-hide", ());
             }
 
+            overlay::Event::WindowHeaderShow {
+                surface_id, x, y, width, height, title, activated, has_minimize, has_maximize,
+            } => {
+                let _ = state.app_handle.emit(
+                    "lunaris://window-header-show",
+                    WindowHeaderShowPayload {
+                        surface_id, x, y, width, height, title,
+                        activated: activated != 0,
+                        has_minimize: has_minimize != 0,
+                        has_maximize: has_maximize != 0,
+                    },
+                );
+            }
+
+            overlay::Event::WindowHeaderUpdate {
+                surface_id, x, y, width, height, title, activated,
+            } => {
+                let _ = state.app_handle.emit(
+                    "lunaris://window-header-update",
+                    WindowHeaderUpdatePayload {
+                        surface_id, x, y, width, height, title,
+                        activated: activated != 0,
+                    },
+                );
+            }
+
+            overlay::Event::WindowHeaderHide { surface_id } => {
+                let _ = state.app_handle.emit(
+                    "lunaris://window-header-hide",
+                    WindowHeaderHidePayload { surface_id },
+                );
+            }
+
             _ => {}
         }
     }
@@ -474,6 +538,15 @@ impl ShellOverlaySender {
         if let Some(p) = self.proxy.lock().unwrap().as_ref() {
             p.zoom_set_increment(value);
             self.flush();
+        }
+    }
+
+    pub fn window_header_action(&self, surface_id: u32, action: u32) {
+        if let Some(p) = self.proxy.lock().unwrap().as_ref() {
+            if let Ok(a) = overlay::WindowHeaderActionType::try_from(action) {
+                p.window_header_action(surface_id, a);
+                self.flush();
+            }
         }
     }
 
@@ -604,4 +677,13 @@ pub fn zoom_set_increment(state: tauri::State<Arc<ShellOverlaySender>>, value: u
 #[tauri::command]
 pub fn zoom_set_movement(state: tauri::State<Arc<ShellOverlaySender>>, mode: u32) {
     state.zoom_set_movement(mode);
+}
+
+#[tauri::command]
+pub fn window_header_action(
+    state: tauri::State<Arc<ShellOverlaySender>>,
+    surface_id: u32,
+    action: u32,
+) {
+    state.window_header_action(surface_id, action);
 }

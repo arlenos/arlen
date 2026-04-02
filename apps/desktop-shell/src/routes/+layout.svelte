@@ -9,10 +9,12 @@
   import { initTabBarListeners } from "$lib/stores/tabBars";
   import { initIndicatorListeners } from "$lib/stores/indicators";
   import { initZoomListeners } from "$lib/stores/zoom";
+  import { initWindowHeaderListeners } from "$lib/stores/windowHeaders";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import TabBar from "$lib/components/TabBar.svelte";
   import Indicator from "$lib/components/Indicator.svelte";
   import ZoomToolbar from "$lib/components/ZoomToolbar.svelte";
+  import WindowHeader from "$lib/components/WindowHeader.svelte";
   import { Toaster } from "svelte-sonner";
   import { listen } from "@tauri-apps/api/event";
 
@@ -27,6 +29,7 @@
     initTabBarListeners();
     initIndicatorListeners();
     initZoomListeners();
+    initWindowHeaderListeners();
     // Load tokens from backend (reads theme.toml)
     try {
       await loadTheme();
@@ -48,6 +51,7 @@
 <TabBar />
 <Indicator />
 <ZoomToolbar />
+<WindowHeader />
 <Toaster
   position="top-right"
   richColors

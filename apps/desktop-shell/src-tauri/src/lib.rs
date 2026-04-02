@@ -49,6 +49,7 @@ pub fn run() {
             shell_overlay_client::zoom_close,
             shell_overlay_client::zoom_set_increment,
             shell_overlay_client::zoom_set_movement,
+            shell_overlay_client::window_header_action,
             wayland_client::workspace_activate,
         ])
         .run(tauri::generate_context!())
