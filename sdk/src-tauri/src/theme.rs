@@ -1,14 +1,14 @@
 /// Theme loader for Lunaris.
 ///
-/// Reads `~/.config/lunaris/theme.toml` and returns the surface tokens
-/// as a structured response. Also watches the file for changes and emits
-/// a Tauri event when the theme is updated.
+/// Uses the `lunaris-theme` SDK crate to load and watch `~/.config/lunaris/theme.toml`.
+/// Converts the resolved `LunarisTheme` into `SurfaceTokens` for the Tauri frontend.
 
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use lunaris_theme::LunarisTheme;
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter};
 
+/// Surface tokens serialized to the TypeScript frontend.
+/// Colors are hex strings so CSS can consume them directly.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SurfaceTokens {
@@ -19,146 +19,84 @@ pub struct SurfaceTokens {
     pub bg_input: String,
     pub fg_shell: String,
     pub fg_app: String,
+    pub fg_secondary: String,
+    pub fg_disabled: String,
     pub accent: String,
     pub border: String,
     pub radius: String,
 }
 
+/// Convert an RGBA [f32; 4] to a CSS hex string.
+fn rgba_to_hex(c: [f32; 4]) -> String {
+    let r = (c[0] * 255.0).round() as u8;
+    let g = (c[1] * 255.0).round() as u8;
+    let b = (c[2] * 255.0).round() as u8;
+    let a = (c[3] * 255.0).round() as u8;
+    if a == 255 {
+        format!("#{r:02x}{g:02x}{b:02x}")
+    } else {
+        format!("#{r:02x}{g:02x}{b:02x}{a:02x}")
+    }
+}
+
 impl SurfaceTokens {
-    pub fn panda() -> Self {
+    /// Derive surface tokens from a resolved LunarisTheme.
+    pub fn from_theme(theme: &LunarisTheme) -> Self {
         Self {
-            bg_shell:   "#09090b".into(),
-            bg_app:     "#ffffff".into(),
-            bg_card:    "#f5f5f7".into(),
-            bg_overlay: "#00000080".into(),
-            bg_input:   "#f0f0f0".into(),
-            fg_shell:   "#fafafa".into(),
-            fg_app:     "#09090b".into(),
-            accent:     "#09090b".into(),
-            border:     "#e2e2e8".into(),
-            radius:     "0.5rem".into(),
+            bg_shell:     rgba_to_hex(theme.bg_shell),
+            bg_app:       rgba_to_hex(theme.bg_app),
+            bg_card:      rgba_to_hex(theme.bg_card),
+            bg_overlay:   rgba_to_hex(theme.bg_overlay),
+            bg_input:     rgba_to_hex(theme.bg_input),
+            // Shell foreground: derive from bg_shell brightness.
+            // Panda shell is dark, so shell fg is light.
+            fg_shell:     if theme.is_dark { rgba_to_hex(theme.fg_primary) } else { "#fafafa".into() },
+            fg_app:       rgba_to_hex(theme.fg_primary),
+            fg_secondary: rgba_to_hex(theme.fg_secondary),
+            fg_disabled:  rgba_to_hex(theme.fg_disabled),
+            accent:       rgba_to_hex(theme.accent),
+            border:       rgba_to_hex(theme.border),
+            radius:       format!("{}rem", theme.radius_s[0] / 16.0),
         }
+    }
+
+    /// Panda defaults for backward compatibility.
+    pub fn panda() -> Self {
+        Self::from_theme(&LunarisTheme::panda())
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct ThemeFile {
-    color: Option<ColorSection>,
-    radius: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ColorSection {
-    bg: Option<BgSection>,
-    fg: Option<FgSection>,
-    accent: Option<String>,
-    border: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct BgSection {
-    shell: Option<String>,
-    app: Option<String>,
-    card: Option<String>,
-    overlay: Option<String>,
-    input: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct FgSection {
-    shell: Option<String>,
-    app: Option<String>,
-}
-
-pub fn config_path() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("/etc"))
-        .join("lunaris")
-        .join("theme.toml")
-}
-
+/// Load surface tokens from `~/.config/lunaris/theme.toml`.
 pub fn load_tokens() -> SurfaceTokens {
-    let path = config_path();
-    let contents = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => return SurfaceTokens::panda(),
-    };
-
-    let file: ThemeFile = match toml::from_str(&contents) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("lunaris: failed to parse theme.toml: {e}, using Panda defaults");
-            return SurfaceTokens::panda();
-        }
-    };
-
-    let panda = SurfaceTokens::panda();
-    let bg = file.color.as_ref().and_then(|c| c.bg.as_ref());
-    let fg = file.color.as_ref().and_then(|c| c.fg.as_ref());
-
-    SurfaceTokens {
-        bg_shell:   bg.and_then(|b| b.shell.clone()).unwrap_or(panda.bg_shell),
-        bg_app:     bg.and_then(|b| b.app.clone()).unwrap_or(panda.bg_app),
-        bg_card:    bg.and_then(|b| b.card.clone()).unwrap_or(panda.bg_card),
-        bg_overlay: bg.and_then(|b| b.overlay.clone()).unwrap_or(panda.bg_overlay),
-        bg_input:   bg.and_then(|b| b.input.clone()).unwrap_or(panda.bg_input),
-        fg_shell:   fg.and_then(|f| f.shell.clone()).unwrap_or(panda.fg_shell),
-        fg_app:     fg.and_then(|f| f.app.clone()).unwrap_or(panda.fg_app),
-        accent:     file.color.as_ref().and_then(|c| c.accent.clone()).unwrap_or(panda.accent),
-        border:     file.color.as_ref().and_then(|c| c.border.clone()).unwrap_or(panda.border),
-        radius:     file.radius.unwrap_or(panda.radius),
-    }
+    SurfaceTokens::from_theme(&LunarisTheme::load())
 }
 
+/// Tauri command: return current surface tokens.
 #[tauri::command]
 pub fn get_surface_tokens() -> SurfaceTokens {
     load_tokens()
 }
 
+/// Start watching theme.toml for changes and emit Tauri events.
 pub fn start_watcher(app: AppHandle) {
-    let theme_path = config_path();
-    let watch_dir = theme_path
-        .parent()
-        .unwrap_or(Path::new("."))
-        .to_path_buf();
-
-    std::thread::spawn(move || {
-        let app_clone = app.clone();
-        let theme_path_clone = theme_path.clone();
-
-        let mut watcher = match notify::recommended_watcher(
-            move |event: Result<Event, _>| {
-                if let Ok(event) = event {
-                    match event.kind {
-                        EventKind::Modify(_) | EventKind::Create(_) => {
-                            if event.paths.iter().any(|p| p.file_name().map(|n| n == "theme.toml").unwrap_or(false)) || event.paths.iter().any(|p| p == &theme_path_clone) {
-                                let tokens = load_tokens();
-                                if let Err(e) = app_clone.emit("lunaris://theme-changed", &tokens) {
-                                    eprintln!("lunaris: failed to emit theme-changed: {e}");
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            },
-        ) {
-            Ok(w) => w,
-            Err(e) => {
-                eprintln!("lunaris: failed to create theme watcher: {e}");
-                return;
-            }
-        };
-
-        if let Err(e) = watcher.watch(&watch_dir, RecursiveMode::NonRecursive) {
-            eprintln!("lunaris: failed to watch theme dir: {e}");
-            return;
-        }
-
-        loop {
-            std::thread::sleep(std::time::Duration::from_secs(3600));
+    let app_clone = app.clone();
+    // ThemeWatcher runs on a background thread internally.
+    let watcher = lunaris_theme::ThemeWatcher::start(move |theme| {
+        let tokens = SurfaceTokens::from_theme(&theme);
+        if let Err(e) = app_clone.emit("lunaris://theme-changed", &tokens) {
+            eprintln!("lunaris: failed to emit theme-changed: {e}");
         }
     });
+
+    match watcher {
+        Ok(w) => {
+            // Keep the watcher alive for the process lifetime.
+            std::mem::forget(w);
+        }
+        Err(e) => {
+            eprintln!("lunaris: failed to start theme watcher: {e}");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -168,16 +106,29 @@ mod tests {
     #[test]
     fn panda_tokens_are_valid_hex() {
         let t = SurfaceTokens::panda();
-        for color in [&t.bg_shell, &t.bg_app, &t.bg_card, &t.fg_shell, &t.fg_app, &t.accent, &t.border] {
+        for color in [
+            &t.bg_shell, &t.bg_app, &t.bg_card, &t.fg_shell, &t.fg_app,
+            &t.fg_secondary, &t.fg_disabled, &t.accent, &t.border,
+        ] {
             assert!(color.starts_with('#'), "expected hex: {color}");
         }
     }
 
     #[test]
-    fn load_tokens_returns_panda_when_no_file() {
-        std::env::set_var("XDG_CONFIG_HOME", "/tmp/lunaris-test-nonexistent-99999");
-        let tokens = load_tokens();
-        assert_eq!(tokens.bg_shell, SurfaceTokens::panda().bg_shell);
-        std::env::remove_var("XDG_CONFIG_HOME");
+    fn rgba_to_hex_opaque() {
+        assert_eq!(rgba_to_hex([1.0, 0.0, 0.0, 1.0]), "#ff0000");
+    }
+
+    #[test]
+    fn rgba_to_hex_with_alpha() {
+        assert_eq!(rgba_to_hex([0.0, 0.0, 0.0, 0.502]), "#00000080");
+    }
+
+    #[test]
+    fn from_theme_roundtrips_panda_colors() {
+        let t = SurfaceTokens::from_theme(&LunarisTheme::panda());
+        assert_eq!(t.bg_shell, "#09090b");
+        assert_eq!(t.bg_app, "#ffffff");
+        assert_eq!(t.accent, "#09090b");
     }
 }
