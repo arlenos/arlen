@@ -184,6 +184,114 @@
       <arg name="kind" type="uint" enum="indicator_kind" summary="indicator type to hide"/>
     </event>
 
+    <!-- ===== Zoom Toolbar ===== -->
+
+    <enum name="zoom_movement">
+      <description summary="zoom viewport movement mode"/>
+      <entry name="continuously" value="1" summary="viewport follows cursor continuously"/>
+      <entry name="on_edge"      value="2" summary="viewport pans when cursor reaches edge"/>
+      <entry name="centered"     value="3" summary="viewport centers on cursor"/>
+    </enum>
+
+    <event name="zoom_toolbar_show">
+      <description summary="show the zoom toolbar">
+        Sent when accessibility zoom is activated. The shell should render
+        a toolbar showing the current zoom level and controls.
+      </description>
+      <arg name="level" type="fixed" summary="current zoom level (1.0 = no zoom)"/>
+      <arg name="increment" type="uint" summary="zoom step percentage (e.g. 25 = 25%)"/>
+      <arg name="movement" type="uint" enum="zoom_movement" summary="viewport movement mode"/>
+    </event>
+
+    <event name="zoom_toolbar_update">
+      <description summary="update the zoom level display">
+        Sent when the zoom level changes while the toolbar is visible.
+      </description>
+      <arg name="level" type="fixed" summary="new zoom level"/>
+    </event>
+
+    <event name="zoom_toolbar_hide">
+      <description summary="hide the zoom toolbar">
+        Sent when zoom is deactivated (level returns to 1.0).
+      </description>
+    </event>
+
+    <request name="zoom_increase">
+      <description summary="user pressed zoom in"/>
+    </request>
+
+    <request name="zoom_decrease">
+      <description summary="user pressed zoom out"/>
+    </request>
+
+    <request name="zoom_close">
+      <description summary="user pressed close on zoom toolbar"/>
+    </request>
+
+    <request name="zoom_set_increment">
+      <description summary="user selected a zoom increment"/>
+      <arg name="value" type="uint" summary="increment percentage"/>
+    </request>
+
+    <request name="zoom_set_movement">
+      <description summary="user selected a viewport movement mode"/>
+      <arg name="mode" type="uint" enum="zoom_movement" summary="new movement mode"/>
+    </request>
+
+    <!-- ===== Window Header ===== -->
+
+    <enum name="window_header_action_type">
+      <description summary="actions available on a window header bar"/>
+      <entry name="minimize" value="1" summary="minimize the window"/>
+      <entry name="maximize" value="2" summary="toggle maximize"/>
+      <entry name="close"    value="3" summary="close the window"/>
+      <entry name="move"     value="4" summary="start interactive move"/>
+    </enum>
+
+    <event name="window_header_show">
+      <description summary="show a window header bar">
+        Sent when a window with server-side decorations becomes visible.
+        The shell should render a header bar at the given position.
+      </description>
+      <arg name="surface_id" type="uint" summary="unique surface identifier"/>
+      <arg name="x" type="int" summary="x position in compositor global coordinates"/>
+      <arg name="y" type="int" summary="y position in compositor global coordinates"/>
+      <arg name="width" type="int" summary="header width in logical pixels"/>
+      <arg name="height" type="int" summary="header height in logical pixels"/>
+      <arg name="title" type="string" summary="window title"/>
+      <arg name="activated" type="uint" summary="1 if the window is focused"/>
+      <arg name="has_minimize" type="uint" summary="1 if minimize button should be shown"/>
+      <arg name="has_maximize" type="uint" summary="1 if maximize button should be shown"/>
+    </event>
+
+    <event name="window_header_update">
+      <description summary="update a window header bar">
+        Sent when a header bar's geometry, title, or activation state changes.
+      </description>
+      <arg name="surface_id" type="uint" summary="surface identifier"/>
+      <arg name="x" type="int" summary="x position"/>
+      <arg name="y" type="int" summary="y position"/>
+      <arg name="width" type="int" summary="header width"/>
+      <arg name="height" type="int" summary="header height"/>
+      <arg name="title" type="string" summary="window title"/>
+      <arg name="activated" type="uint" summary="1 if focused"/>
+    </event>
+
+    <event name="window_header_hide">
+      <description summary="hide a window header bar">
+        Sent when the window is unmapped or switches to client-side decorations.
+      </description>
+      <arg name="surface_id" type="uint" summary="surface identifier"/>
+    </event>
+
+    <request name="window_header_action">
+      <description summary="user interacted with a header bar button">
+        Sent by the shell when the user clicks a header bar button.
+      </description>
+      <arg name="surface_id" type="uint" summary="surface identifier"/>
+      <arg name="action" type="uint" enum="window_header_action_type" summary="which button was pressed"/>
+    </request>
+
     <!-- ===== Window Actions Enum ===== -->
 
     <enum name="window_action">
