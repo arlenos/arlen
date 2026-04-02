@@ -42,6 +42,64 @@ use wayland_client::{
 /// Type alias for the generated proxy type.
 type OverlayProxy = overlay::LunarisShellOverlayV1;
 
+/// Set the input region on the GTK layer-shell window and flush immediately.
+///
+/// Calls `input_shape_combine_region` directly on the `gtk::Window`
+/// obtained via `webview.inner().toplevel()` -- the same surface that
+/// `layer_shell.rs` configures. This bypasses tao's async
+/// `set_ignore_cursor_events` which operates on a different `wl_surface`.
+///
+/// When `menu_active` is true, the input region covers the full screen
+/// so the overlay can receive clicks on menu items. When false, it
+/// shrinks back to the top 36px bar.
+fn set_input_region_and_flush(app: &tauri::AppHandle, menu_active: bool) {
+    let Some(w) = app.get_webview_window("main") else {
+        log::warn!("set_input_region_and_flush: could not get webview window 'main'");
+        return;
+    };
+    let _ = w.with_webview(move |webview| {
+        use gtk::prelude::{Cast, WidgetExt};
+        use gtk::cairo::{RectangleInt, Region};
+
+        let Some(toplevel) = webview.inner().toplevel() else {
+            log::warn!("set_input_region_and_flush: toplevel is None");
+            return;
+        };
+        let Ok(gtk_window) = toplevel.downcast::<gtk::Window>() else {
+            log::warn!("set_input_region_and_flush: downcast to gtk::Window failed");
+            return;
+        };
+
+        log::info!(
+            "set_input_region_and_flush: got gtk::Window type={}, menu_active={}",
+            glib::prelude::ObjectExt::type_(&gtk_window).name(),
+            menu_active
+        );
+
+        if menu_active {
+            let full = Region::create_rectangle(&RectangleInt::new(0, 0, 32767, 32767));
+            gtk_window.input_shape_combine_region(Some(&full));
+            log::info!("set_input_region_and_flush: input_shape_combine_region(32767x32767) called");
+        } else {
+            let bar = Region::create_rectangle(&RectangleInt::new(0, 0, 32767, 36));
+            gtk_window.input_shape_combine_region(Some(&bar));
+            log::info!("set_input_region_and_flush: input_shape_combine_region(32767x36) called");
+        }
+
+        // queue_draw forces GTK to produce a wl_surface.commit that carries
+        // the updated input region to the compositor. Without this, GDK may
+        // defer the commit until the next visual frame redraw.
+        gtk_window.queue_draw();
+
+        if let Some(display) = gtk::gdk::Display::default() {
+            display.flush();
+            log::info!("set_input_region_and_flush: queue_draw + GDK display flushed");
+        } else {
+            log::warn!("set_input_region_and_flush: no GDK display available for flush");
+        }
+    });
+}
+
 // ===== Payload types emitted as Tauri events =====
 
 /// A single entry in a context menu. Both regular items and separators are
@@ -295,25 +353,18 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                         log::error!("shell_overlay_client: emit context-menu-show failed: {e}");
                     }
                     // Open the full window to input so menu items can receive clicks.
-                    if let Some(w) = state.app_handle.get_webview_window("main") {
-                        if let Err(e) = w.set_ignore_cursor_events(false) {
-                            log::warn!("shell_overlay_client: set_ignore_cursor_events(false) failed: {e}");
-                        }
-                    }
+                    set_input_region_and_flush(&state.app_handle, true);
                 }
             }
 
             overlay::Event::ContextMenuClosed { menu_id } => {
+                log::info!("shell_overlay_client: ContextMenuClosed received menu_id={menu_id}");
                 state.pending_menus.remove(&menu_id);
                 let _ = state
                     .app_handle
                     .emit("lunaris://context-menu-hide", ContextMenuHidePayload { menu_id });
-                // Restore click-through below the top bar.
-                if let Some(w) = state.app_handle.get_webview_window("main") {
-                    if let Err(e) = w.set_ignore_cursor_events(true) {
-                        log::warn!("shell_overlay_client: set_ignore_cursor_events(true) failed: {e}");
-                    }
-                }
+                // Restore click-through below the top bar with immediate flush.
+                set_input_region_and_flush(&state.app_handle, false);
             }
 
             overlay::Event::TabBarShow { stack_id, x, y, width, height } => {
