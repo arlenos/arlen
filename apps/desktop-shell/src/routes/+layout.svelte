@@ -8,9 +8,11 @@
   import { initWorkspaceListeners } from "$lib/stores/workspaces.js";
   import { initTabBarListeners } from "$lib/stores/tabBars";
   import { initIndicatorListeners } from "$lib/stores/indicators";
+  import { initZoomListeners } from "$lib/stores/zoom";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import TabBar from "$lib/components/TabBar.svelte";
   import Indicator from "$lib/components/Indicator.svelte";
+  import ZoomToolbar from "$lib/components/ZoomToolbar.svelte";
   import { Toaster } from "svelte-sonner";
   import { listen } from "@tauri-apps/api/event";
 
@@ -24,6 +26,7 @@
     initWorkspaceListeners();
     initTabBarListeners();
     initIndicatorListeners();
+    initZoomListeners();
     // Load tokens from backend (reads theme.toml)
     try {
       await loadTheme();
@@ -44,6 +47,7 @@
 <ContextMenu />
 <TabBar />
 <Indicator />
+<ZoomToolbar />
 <Toaster
   position="top-right"
   richColors

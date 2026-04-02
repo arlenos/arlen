@@ -108,6 +108,20 @@ struct TabTitleChangedPayload {
     title: String,
 }
 
+// ===== Zoom toolbar payload types =====
+
+#[derive(Clone, Serialize)]
+struct ZoomToolbarShowPayload {
+    level: f64,
+    increment: u32,
+    movement: u32,
+}
+
+#[derive(Clone, Serialize)]
+struct ZoomToolbarUpdatePayload {
+    level: f64,
+}
+
 // ===== Indicator payload types =====
 
 #[derive(Clone, Serialize)]
@@ -335,6 +349,32 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                 );
             }
 
+            overlay::Event::ZoomToolbarShow { level, increment, movement } => {
+                let movement_u32 = match movement {
+                    wayland_client::WEnum::Value(v) => v as u32,
+                    wayland_client::WEnum::Unknown(v) => v,
+                };
+                let _ = state.app_handle.emit(
+                    "lunaris://zoom-toolbar-show",
+                    ZoomToolbarShowPayload {
+                        level,
+                        increment,
+                        movement: movement_u32,
+                    },
+                );
+            }
+
+            overlay::Event::ZoomToolbarUpdate { level } => {
+                let _ = state.app_handle.emit(
+                    "lunaris://zoom-toolbar-update",
+                    ZoomToolbarUpdatePayload { level },
+                );
+            }
+
+            overlay::Event::ZoomToolbarHide => {
+                let _ = state.app_handle.emit("lunaris://zoom-toolbar-hide", ());
+            }
+
             _ => {}
         }
     }
@@ -406,6 +446,43 @@ impl ShellOverlaySender {
         if let Some(p) = self.proxy.lock().unwrap().as_ref() {
             p.tab_activate(stack_id, index);
             self.flush();
+        }
+    }
+
+    pub fn zoom_increase(&self) {
+        if let Some(p) = self.proxy.lock().unwrap().as_ref() {
+            p.zoom_increase();
+            self.flush();
+        }
+    }
+
+    pub fn zoom_decrease(&self) {
+        if let Some(p) = self.proxy.lock().unwrap().as_ref() {
+            p.zoom_decrease();
+            self.flush();
+        }
+    }
+
+    pub fn zoom_close(&self) {
+        if let Some(p) = self.proxy.lock().unwrap().as_ref() {
+            p.zoom_close();
+            self.flush();
+        }
+    }
+
+    pub fn zoom_set_increment(&self, value: u32) {
+        if let Some(p) = self.proxy.lock().unwrap().as_ref() {
+            p.zoom_set_increment(value);
+            self.flush();
+        }
+    }
+
+    pub fn zoom_set_movement(&self, mode: u32) {
+        if let Some(p) = self.proxy.lock().unwrap().as_ref() {
+            if let Ok(m) = overlay::ZoomMovement::try_from(mode) {
+                p.zoom_set_movement(m);
+                self.flush();
+            }
         }
     }
 
@@ -502,4 +579,29 @@ pub fn tab_activate(
     index: u32,
 ) {
     state.tab_activate(stack_id, index);
+}
+
+#[tauri::command]
+pub fn zoom_increase(state: tauri::State<Arc<ShellOverlaySender>>) {
+    state.zoom_increase();
+}
+
+#[tauri::command]
+pub fn zoom_decrease(state: tauri::State<Arc<ShellOverlaySender>>) {
+    state.zoom_decrease();
+}
+
+#[tauri::command]
+pub fn zoom_close(state: tauri::State<Arc<ShellOverlaySender>>) {
+    state.zoom_close();
+}
+
+#[tauri::command]
+pub fn zoom_set_increment(state: tauri::State<Arc<ShellOverlaySender>>, value: u32) {
+    state.zoom_set_increment(value);
+}
+
+#[tauri::command]
+pub fn zoom_set_movement(state: tauri::State<Arc<ShellOverlaySender>>, mode: u32) {
+    state.zoom_set_movement(mode);
 }
