@@ -121,10 +121,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 18px;
-    min-width: 24px;
-    padding: 0 8px;
-    border-radius: 9px;
+    height: 24px;
+    min-width: 32px;
+    padding: 0 10px;
+    border-radius: 12px;
     border: none;
     font-size: 0.6875rem;
     font-weight: 500;
@@ -171,8 +171,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
+    width: 24px;
+    height: 24px;
     padding: 0;
     border: none;
     background: transparent;
