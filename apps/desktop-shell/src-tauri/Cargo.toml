@@ -37,6 +37,6 @@ wayland-scanner = "0.31"
 cosmic-client-toolkit = { git = "https://github.com/pop-os/cosmic-protocols", branch = "main" }
 smithay-client-toolkit = "0.20"
 gtk = "0.18"
-gtk-layer-shell = { version = "0.8", features = ["v0_5"] }
+gtk-layer-shell = { version = "0.8", features = ["v0_6"] }
 glib = "0.18"
 zbus = { version = "5", default-features = false, features = ["tokio"] }
