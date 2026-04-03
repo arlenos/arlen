@@ -53,6 +53,7 @@ pub fn run() {
             shell_overlay_client::set_notification_input_region,
             shell_overlay_client::set_popover_input_region,
             shell_overlay_client::resolve_app_icon,
+            shell_overlay_client::debug_workspace_update,
             wayland_client::workspace_activate,
         ])
         .run(tauri::generate_context!())

@@ -46,9 +46,11 @@ struct ToplevelRemovedPayload {
 pub struct WorkspaceInfo {
     /// Stable string ID derived from the Wayland object ID.
     pub id: String,
+    /// ID of the workspace group this workspace belongs to.
+    pub group_id: String,
     /// Human-readable name as set by the compositor.
     pub name: String,
-    /// Whether this workspace is currently active (visible on any output).
+    /// Whether this workspace is currently active on its output.
     pub active: bool,
 }
 
@@ -195,29 +197,39 @@ impl WorkspaceHandler for AppData {
     }
 
     /// Called after all pending workspace updates have been committed. Emits a
-    /// full `lunaris://workspace-list` snapshot sorted by coordinates.
+    /// full `lunaris://workspace-list` snapshot sorted by coordinates, with
+    /// group IDs so the shell can distinguish workspaces per output.
     fn done(&mut self) {
-        let mut workspaces: Vec<_> = self.workspace_state.workspaces().collect();
-        // Sort by coordinates so the order matches the compositor's layout
-        // (first coordinate is the linear workspace index for 1-D workspaces).
-        workspaces.sort_by(|a, b| a.coordinates.cmp(&b.coordinates));
+        let mut infos: Vec<WorkspaceInfo> = Vec::new();
+        let mut handle_map: HashMap<String, ext_workspace_handle_v1::ExtWorkspaceHandleV1> =
+            HashMap::new();
 
-        let infos: Vec<WorkspaceInfo> = workspaces
-            .iter()
-            .map(|w| WorkspaceInfo {
-                id: w.handle.id().to_string(),
-                name: w.name.clone(),
-                active: w.state.contains(ext_workspace_handle_v1::State::Active),
-            })
-            .collect();
+        for group in self.workspace_state.workspace_groups() {
+            let group_id = group.handle.id().to_string();
 
-        // Refresh the handle map used by workspace_activate.
-        *self.workspace_sender.handles.lock().unwrap() = workspaces
-            .iter()
-            .map(|w| (w.handle.id().to_string(), w.handle.clone()))
-            .collect();
+            // Collect workspaces belonging to this group.
+            let mut group_ws: Vec<_> = group
+                .workspaces
+                .iter()
+                .filter_map(|wh| self.workspace_state.workspace_info(wh))
+                .collect();
+            group_ws.sort_by(|a, b| a.coordinates.cmp(&b.coordinates));
 
-        // Keep the manager reference up to date.
+            for w in &group_ws {
+                let ws_id = w.handle.id().to_string();
+                let active = w.state.contains(ext_workspace_handle_v1::State::Active);
+                handle_map.insert(ws_id.clone(), w.handle.clone());
+                infos.push(WorkspaceInfo {
+                    id: ws_id,
+                    group_id: group_id.clone(),
+                    name: w.name.clone(),
+                    active,
+                });
+            }
+        }
+
+        *self.workspace_sender.handles.lock().unwrap() = handle_map;
+
         if let Ok(m) = self.workspace_state.workspace_manager().get() {
             *self.workspace_sender.manager.lock().unwrap() = Some(m.clone());
         }

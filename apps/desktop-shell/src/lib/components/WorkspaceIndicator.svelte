@@ -1,16 +1,16 @@
 <script lang="ts">
-  import { workspaces, activateWorkspace, type WorkspaceInfo } from "$lib/stores/workspaces.js";
+  import { primaryWorkspaces, activateWorkspace, type WorkspaceInfo } from "$lib/stores/workspaces.js";
   import { windows, type WindowInfo } from "$lib/stores/windows.js";
   import { resolveAppIcon } from "$lib/stores/appIcons.js";
   import { invoke } from "@tauri-apps/api/core";
   import { AppWindow } from "lucide-svelte";
 
   const mode = $derived(
-    $workspaces.length <= 5 ? "pills" as const :
-    $workspaces.length <= 9 ? "dots" as const : "text" as const
+    $primaryWorkspaces.length <= 5 ? "pills" as const :
+    $primaryWorkspaces.length <= 9 ? "dots" as const : "text" as const
   );
 
-  const activeIndex = $derived($workspaces.findIndex((w) => w.active));
+  const activeIndex = $derived($primaryWorkspaces.findIndex((w) => w.active));
 
   // Hover overlay state.
   let overlayVisible = $state(false);
@@ -84,7 +84,7 @@
   });
 </script>
 
-{#if $workspaces.length > 0}
+{#if $primaryWorkspaces.length > 0}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="ws-root"
@@ -93,7 +93,7 @@
   >
     {#if mode === "pills"}
       <div class="indicator" role="group" aria-label="Workspaces">
-        {#each $workspaces as ws, i}
+        {#each $primaryWorkspaces as ws, i}
           <button
             class="pill"
             class:pill-active={ws.active}
@@ -108,7 +108,7 @@
 
     {:else if mode === "dots"}
       <div class="indicator" role="group" aria-label="Workspaces">
-        {#each $workspaces as ws, i}
+        {#each $primaryWorkspaces as ws, i}
           <button
             class="dot-btn"
             onclick={() => handleClick(ws.id)}
@@ -123,7 +123,7 @@
     {:else}
       <div class="indicator" role="group" aria-label="Workspaces">
         <span class="ws-text">
-          {activeIndex >= 0 ? activeIndex + 1 : 1} / {$workspaces.length}
+          {activeIndex >= 0 ? activeIndex + 1 : 1} / {$primaryWorkspaces.length}
         </span>
       </div>
     {/if}
@@ -137,7 +137,7 @@
       onmouseleave={onOverlayLeave}
     >
       <div class="ws-cards">
-        {#each $workspaces as ws, i}
+        {#each $primaryWorkspaces as ws, i}
           {@const wsWindows = getWindowsForWorkspace(ws.id)}
           <button
             class="ws-card"
@@ -310,12 +310,12 @@
       background-color 150ms ease,
       color 150ms ease,
       transform 100ms ease;
-    background: color-mix(in srgb, var(--foreground) 10%, transparent);
+    background: transparent;
     color: var(--foreground);
   }
 
   .pill:hover {
-    background: color-mix(in srgb, var(--foreground) 18%, transparent);
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
   }
 
   .pill:active {
@@ -324,13 +324,13 @@
   }
 
   .pill-active {
-    background: var(--accent);
-    color: var(--accent-foreground);
+    background: color-mix(in srgb, var(--foreground) 10%, transparent);
+    color: var(--foreground);
     animation: pill-activate 100ms ease forwards;
   }
 
   .pill-active:hover {
-    background: color-mix(in srgb, var(--accent) 85%, var(--foreground) 15%);
+    background: color-mix(in srgb, var(--foreground) 15%, transparent);
   }
 
   @keyframes pill-activate {

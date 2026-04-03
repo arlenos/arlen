@@ -890,3 +890,9 @@ fn read_as_data_url(path: &str, mime: &str) -> Option<String> {
     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
     Some(format!("data:{mime};base64,{b64}"))
 }
+
+/// Diagnostic command: logs workspace data received from the Svelte store.
+#[tauri::command]
+pub fn debug_workspace_update(data: String) {
+    log::info!("debug_workspace_update: {data}");
+}

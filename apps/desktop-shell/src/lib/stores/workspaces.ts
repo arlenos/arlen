@@ -5,23 +5,39 @@ import { windows, type WindowInfo } from "./windows.js";
 
 export interface WorkspaceInfo {
     id: string;
+    /** ID of the workspace group (one group per output/monitor). */
+    group_id: string;
     name: string;
     active: boolean;
 }
 
-/// Full workspace list, sorted by compositor coordinates.
+/// Full workspace list across all outputs, sorted by compositor coordinates.
 export const workspaces = writable<WorkspaceInfo[]>([]);
 
-/// The currently active workspace, or null before first update.
-export const activeWorkspace = derived(workspaces, ($ws) =>
+/// Workspaces belonging to the first (primary) group only.
+/// On single-monitor setups this is all workspaces. On multi-monitor
+/// setups this filters to the primary output's group.
+export const primaryWorkspaces = derived(workspaces, ($ws) => {
+    if ($ws.length === 0) return [];
+    const primaryGroup = $ws[0].group_id;
+    return $ws.filter((w) => w.group_id === primaryGroup);
+});
+
+/// The currently active workspace on the primary output, or null.
+export const activeWorkspace = derived(primaryWorkspaces, ($ws) =>
     $ws.find((w) => w.active) ?? null
 );
 
 /// Registers the Tauri event listener for `lunaris://workspace-list`.
 /// Must be called once from +layout.svelte onMount.
+/// Counter incremented on every workspace-list event, exposed so components
+/// can verify the store is updating.
+export const wsUpdateCount = writable(0);
+
 export function initWorkspaceListeners() {
     listen<WorkspaceInfo[]>("lunaris://workspace-list", ({ payload }) => {
         workspaces.set(payload);
+        wsUpdateCount.update((n) => n + 1);
     });
 }
 
