@@ -1,3 +1,4 @@
+mod app_index;
 mod event_bus;
 mod gtk_menu_bridge;
 mod layer_shell;
@@ -22,12 +23,14 @@ pub fn run() {
     let menu_store: menu_store::AppMenuStore =
         Arc::new(std::sync::Mutex::new(HashMap::new()));
     let menu_store_for_bridge = Arc::clone(&menu_store);
+    let app_idx: app_index::AppIndex = Arc::new(std::sync::Mutex::new(app_index::build_index()));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::clone(&overlay_sender))
         .manage(Arc::clone(&workspace_sender))
         .manage(Arc::clone(&menu_store))
+        .manage(app_idx)
         .setup(|app| {
             theme::start_watcher(app.handle().clone());
             event_bus::start(app.handle().clone());
@@ -77,6 +80,8 @@ pub fn run() {
             menu_store::dispatch_menu_action,
             menu_store::get_menu,
             waypointer::toggle_waypointer,
+            app_index::get_apps,
+            app_index::launch_app,
             wayland_client::workspace_activate,
         ])
         .run(tauri::generate_context!())

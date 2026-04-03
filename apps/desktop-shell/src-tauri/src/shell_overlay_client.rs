@@ -843,11 +843,35 @@ pub fn set_popover_input_region(app: tauri::AppHandle, expanded: bool) {
 pub fn resolve_app_icon(app_id: String) -> Option<String> {
     use base64::Engine;
 
-    log::info!("resolve_app_icon: looking up app_id=\"{app_id}\"");
+    // If the icon_name is an absolute path, read it directly.
+    if app_id.starts_with('/') {
+        let path = std::path::Path::new(&app_id);
+        if path.exists() {
+            let mime = match path.extension().and_then(|e| e.to_str()) {
+                Some("png") => "image/png",
+                Some("svg") => "image/svg+xml",
+                Some("xpm") => "image/x-xpixmap",
+                _ => "image/png",
+            };
+            if let Some(url) = read_as_data_url(&app_id, mime) {
+                return Some(url);
+            }
+        }
+        return None;
+    }
 
     let png_sizes = ["48x48", "64x64", "32x32", "128x128", "256x256"];
     let themes = ["hicolor", "Adwaita"];
-    let base_dirs = ["/usr/share/icons", "/usr/local/share/icons"];
+    let mut base_dirs = vec![
+        "/usr/share/icons".to_string(),
+        "/usr/local/share/icons".to_string(),
+    ];
+    // User icon dirs (Steam, Flatpak, etc.)
+    if let Some(home) = std::env::var("HOME").ok() {
+        base_dirs.push(format!("{home}/.local/share/icons"));
+        base_dirs.push(format!("{home}/.local/share/flatpak/exports/share/icons"));
+    }
+    base_dirs.push("/var/lib/flatpak/exports/share/icons".to_string());
 
     // Pass 1: PNG in raster sizes.
     for base in &base_dirs {
