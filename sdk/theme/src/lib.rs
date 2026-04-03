@@ -114,7 +114,7 @@ impl LunarisTheme {
             success:      parse_hex("#22c55e").unwrap(),
 
             radius_s:     [8.0, 8.0, 8.0, 8.0],
-            active_hint:  2,
+            active_hint:  0,
             gaps:         (4, 4),
             is_dark:      false, // Panda app surface is light
             window_hint:  None,
