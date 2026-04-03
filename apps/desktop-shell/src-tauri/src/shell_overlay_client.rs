@@ -29,6 +29,7 @@ mod protocol {
 use protocol::lunaris_shell_overlay_v1 as overlay;
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
@@ -41,6 +42,102 @@ use wayland_client::{
 
 /// Type alias for the generated proxy type.
 type OverlayProxy = overlay::LunarisShellOverlayV1;
+
+/// Describes which parts of the layer-shell surface accept pointer input.
+#[derive(Debug, Clone, Copy)]
+enum InputRegionMode {
+    /// Only the top 36px bar.
+    BarOnly,
+    /// Full screen (context menu active).
+    FullScreen,
+    /// Top bar plus a notification area in the top-right corner.
+    WithNotifications,
+}
+
+/// Set the input region on the GTK layer-shell window and flush immediately.
+///
+/// Calls `input_shape_combine_region` directly on the `gtk::Window`
+/// obtained via `webview.inner().toplevel()` -- the same surface that
+/// `layer_shell.rs` configures.
+fn set_input_region(app: &tauri::AppHandle, mode: InputRegionMode) {
+    let Some(w) = app.get_webview_window("main") else {
+        return;
+    };
+    let _ = w.with_webview(move |webview| {
+        use gtk::prelude::{Cast, WidgetExt};
+        use gtk::cairo::{RectangleInt, Region};
+
+        let Some(toplevel) = webview.inner().toplevel() else { return };
+        let Ok(gtk_window) = toplevel.downcast::<gtk::Window>() else { return };
+
+        let region = match mode {
+            InputRegionMode::FullScreen => {
+                log::info!("set_input_region: FullScreen (0,0 32767x32767)");
+                Region::create_rectangle(&RectangleInt::new(0, 0, 32767, 32767))
+            }
+            InputRegionMode::BarOnly => {
+                log::info!("set_input_region: BarOnly (0,0 32767x36)");
+                Region::create_rectangle(&RectangleInt::new(0, 0, 32767, 36))
+            }
+            InputRegionMode::WithNotifications => {
+                // Top bar: full width, 36px tall.
+                let r = Region::create_rectangle(&RectangleInt::new(0, 0, 32767, 36));
+                // Notification area: rightmost 420px, below bar, 300px tall.
+                // Use allocated_width directly -- it reflects the compositor-assigned size.
+                let alloc_w = gtk_window.allocated_width();
+                let notif_w = 380;
+                let notif_x = if alloc_w > notif_w { alloc_w - notif_w } else { 0 };
+                log::info!(
+                    "set_input_region: WithNotifications allocated_width={} \
+                     notif_rect=({}, 36, {}, 300)",
+                    alloc_w, notif_x, notif_w,
+                );
+                let notif = Region::create_rectangle(&RectangleInt::new(
+                    notif_x, 36, notif_w, 300,
+                ));
+                r.union(&notif);
+                r
+            }
+        };
+
+        gtk_window.input_shape_combine_region(Some(&region));
+        gtk_window.queue_draw();
+
+        if let Some(display) = gtk::gdk::Display::default() {
+            display.flush();
+        }
+    });
+}
+
+/// Tracks whether a context menu or notifications are currently active.
+/// Both may be true simultaneously; the correct input region is computed
+/// from the combination.
+static MENU_ACTIVE: AtomicBool = AtomicBool::new(false);
+static NOTIFICATIONS_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Recomputes and applies the correct input region from current state.
+fn update_input_region(app: &tauri::AppHandle) {
+    let menu = MENU_ACTIVE.load(Ordering::SeqCst);
+    let notif = NOTIFICATIONS_ACTIVE.load(Ordering::SeqCst);
+    let mode = if menu {
+        InputRegionMode::FullScreen
+    } else if notif {
+        InputRegionMode::WithNotifications
+    } else {
+        InputRegionMode::BarOnly
+    };
+    log::info!(
+        "update_input_region: menu_active={} notifications_active={} -> {:?}",
+        menu, notif, mode,
+    );
+    set_input_region(app, mode);
+}
+
+/// Called when a context menu opens or closes.
+fn set_menu_active(app: &tauri::AppHandle, active: bool) {
+    MENU_ACTIVE.store(active, Ordering::SeqCst);
+    update_input_region(app);
+}
 
 // ===== Payload types emitted as Tauri events =====
 
@@ -295,25 +392,18 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                         log::error!("shell_overlay_client: emit context-menu-show failed: {e}");
                     }
                     // Open the full window to input so menu items can receive clicks.
-                    if let Some(w) = state.app_handle.get_webview_window("main") {
-                        if let Err(e) = w.set_ignore_cursor_events(false) {
-                            log::warn!("shell_overlay_client: set_ignore_cursor_events(false) failed: {e}");
-                        }
-                    }
+                    set_menu_active(&state.app_handle, true);
                 }
             }
 
             overlay::Event::ContextMenuClosed { menu_id } => {
+                log::info!("shell_overlay_client: ContextMenuClosed received menu_id={menu_id}");
                 state.pending_menus.remove(&menu_id);
                 let _ = state
                     .app_handle
                     .emit("lunaris://context-menu-hide", ContextMenuHidePayload { menu_id });
-                // Restore click-through below the top bar.
-                if let Some(w) = state.app_handle.get_webview_window("main") {
-                    if let Err(e) = w.set_ignore_cursor_events(true) {
-                        log::warn!("shell_overlay_client: set_ignore_cursor_events(true) failed: {e}");
-                    }
-                }
+                // Restore click-through below the top bar with immediate flush.
+                set_menu_active(&state.app_handle, false);
             }
 
             overlay::Event::TabBarShow { stack_id, x, y, width, height } => {
@@ -686,4 +776,19 @@ pub fn window_header_action(
     action: u32,
 ) {
     state.window_header_action(surface_id, action);
+}
+
+/// Expand or restore the input region for toast notifications.
+///
+/// When `expanded` is true, the input region includes a 420x300 rectangle
+/// in the top-right corner (below the 36px bar) so toasts are clickable.
+/// When false, it reverts to the bar-only region (unless a context menu is active).
+#[tauri::command]
+pub fn set_notification_input_region(app: tauri::AppHandle, expanded: bool) {
+    log::info!(
+        "set_notification_input_region: expanded={} (was {})",
+        expanded, NOTIFICATIONS_ACTIVE.load(Ordering::SeqCst),
+    );
+    NOTIFICATIONS_ACTIVE.store(expanded, Ordering::SeqCst);
+    update_input_region(&app);
 }

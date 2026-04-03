@@ -151,3 +151,8 @@
     @slot;
   }
 }
+
+/* Pull Sonner toasts closer to the right edge of the screen. */
+[data-sonner-toaster][data-x-position="right"] {
+  right: 8px !important;
+}

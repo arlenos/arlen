@@ -10,8 +10,12 @@
 
   const activeIndex = $derived($workspaces.findIndex((w) => w.active));
 
+  // Shell-surface colors used explicitly because the Portal renders into
+  // document.body (outside the .shell-surface CSS context). Using bg-popover
+  // + text-popover-foreground gives dark-on-dark which is unreadable.
   const tooltipClass =
-    "border-border bg-popover text-popover-foreground rounded-md border px-2 py-0.5 text-xs shadow-md select-none";
+    "rounded-md border px-2 py-0.5 text-xs shadow-md select-none"
+    + " bg-[var(--color-bg-shell)] text-[var(--color-fg-shell)] border-[color-mix(in_srgb,var(--color-bg-shell)_60%,white_40%)]";
 
   /// Display label for a pill: the workspace name (truncated) or its 1-based number.
   function pillLabel(ws: WorkspaceInfo, i: number): string {
@@ -38,7 +42,7 @@
     -->
     <div class="indicator" role="group" aria-label="Workspaces">
       {#each $workspaces as ws, i}
-        <Tooltip.Root>
+        <Tooltip.Root instant>
           <Tooltip.Trigger>
             {#snippet child({ props })}
               <button
@@ -69,7 +73,7 @@
     -->
     <div class="indicator" role="group" aria-label="Workspaces">
       {#each $workspaces as ws, i}
-        <Tooltip.Root>
+        <Tooltip.Root instant>
           <Tooltip.Trigger>
             {#snippet child({ props })}
               <button
@@ -117,10 +121,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 18px;
-    min-width: 24px;
-    padding: 0 8px;
-    border-radius: 9px;
+    height: 24px;
+    min-width: 32px;
+    padding: 0 10px;
+    border-radius: 12px;
     border: none;
     font-size: 0.6875rem;
     font-weight: 500;
@@ -167,8 +171,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
+    width: 24px;
+    height: 24px;
     padding: 0;
     border: none;
     background: transparent;
