@@ -22,7 +22,10 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "scope": ["/usr/share/icons/**", "/usr/share/pixmaps/**", "/usr/local/share/icons/**"]
+      }
     }
   },
   "bundle": {

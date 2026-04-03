@@ -6,6 +6,8 @@ export interface WindowInfo {
     app_id: string;
     title: string;
     active: boolean;
+    /** Workspace handle IDs this window belongs to (usually one). */
+    workspace_ids: string[];
 }
 
 export const windows = writable<WindowInfo[]>([]);
