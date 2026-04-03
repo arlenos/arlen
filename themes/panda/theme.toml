@@ -74,7 +74,7 @@ blur_enabled    = true      # false for High Contrast theme
 
 [wm]
 radius      = 8.0       # corner radius in logical pixels
-active_hint = 2          # focus indicator thickness (0 to disable)
+active_hint = 0          # focus indicator thickness (0 to disable)
 gaps        = 4          # tiling gap size in logical pixels
 is_dark     = false      # app surface is light in Panda
 # window_hint = "#ff0000" # optional custom hint color, omit for accent
