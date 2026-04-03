@@ -1,10 +1,12 @@
 mod event_bus;
 mod layer_shell;
+mod menu_store;
 mod notifications;
 mod shell_overlay_client;
 mod theme;
 mod wayland_client;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::Manager;
 
@@ -15,11 +17,14 @@ pub fn run() {
     // Created before Builder so they can be both managed and moved into start().
     let overlay_sender = Arc::new(shell_overlay_client::ShellOverlaySender::new());
     let workspace_sender = Arc::new(wayland_client::WorkspaceSender::new());
+    let menu_store: menu_store::AppMenuStore =
+        Arc::new(std::sync::Mutex::new(HashMap::new()));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::clone(&overlay_sender))
         .manage(Arc::clone(&workspace_sender))
+        .manage(menu_store)
         .setup(|app| {
             theme::start_watcher(app.handle().clone());
             event_bus::start(app.handle().clone());
@@ -54,6 +59,10 @@ pub fn run() {
             shell_overlay_client::set_popover_input_region,
             shell_overlay_client::resolve_app_icon,
             shell_overlay_client::debug_workspace_update,
+            menu_store::register_menu,
+            menu_store::unregister_menu,
+            menu_store::dispatch_menu_action,
+            menu_store::get_menu,
             wayland_client::workspace_activate,
         ])
         .run(tauri::generate_context!())
