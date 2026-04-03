@@ -554,6 +554,11 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                 );
             }
 
+            overlay::Event::WaypointerOpen => {
+                log::info!("shell_overlay_client: WaypointerOpen received");
+                crate::waypointer::toggle(&state.app_handle);
+            }
+
             _ => {}
         }
     }
