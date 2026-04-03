@@ -1,115 +1,59 @@
-# ui-kit
+# sdk
 
-The Lunaris component library. Built with Tauri, SvelteKit, Tailwind v4, and shadcn-svelte. All first-party Lunaris apps import from here to get consistent UI, theming, and window decorations.
+The Lunaris SDK is the library that first-party applications and system components use to interact with the Lunaris platform. It provides a stable interface over the underlying Unix socket protocols so that application code does not need to speak raw protobuf.
 
-This is not a standalone app. It is the shared foundation that desktop-shell, Waypointer, Settings, and other Lunaris apps build on top of.
+## Crates
 
-## What's here
+### `os-sdk`
 
-```
-ui-kit/
-├── src/
-│   ├── lib/
-│   │   ├── components/ui/    shadcn-svelte components
-│   │   ├── theme.ts          theme loader (fetches tokens from Tauri backend)
-│   │   └── utils.ts          shadcn utilities (cn, etc.)
-│   ├── routes/
-│   │   └── +layout.svelte    loads theme on startup
-│   └── app.css               surface token definitions + Tailwind setup
-└── src-tauri/
-    └── src/
-        └── theme.rs          reads ~/.config/lunaris/theme.toml
-```
+The system-facing SDK. Applications import this to emit events and query the knowledge graph.
 
-## Surface Token System
+```rust
+use os_sdk::{UnixEventEmitter, EventEmitter, UnixGraphClient, GraphClient};
+use std::collections::HashMap;
 
-Lunaris uses a two-level token system. The first level is defined in `~/.config/lunaris/theme.toml` and loaded at runtime. The second level maps those tokens to shadcn-svelte CSS variables so Shadcn components automatically use Lunaris colors.
+let emitter = UnixEventEmitter::new("/run/lunaris/event-bus-producer.sock");
+emitter.emit("app.action", payload_bytes).await?;
 
-**theme.toml format:**
-
-```toml
-[color.bg]
-shell   = "#1a1a2e"   # shell chrome (panel, launcher)
-app     = "#ffffff"   # app window backgrounds
-card    = "#f5f5f7"   # cards, secondary surfaces
-overlay = "#00000080" # modals, popovers
-input   = "#f0f0f0"   # input fields
-
-[color.fg]
-shell = "#e8e8f0"     # text on shell surfaces
-app   = "#1a1a2e"     # text on app surfaces
-
-[color]
-accent = "#7c6af7"    # buttons, focus rings, highlights
-border = "#e2e2e8"    # separators, input outlines
-
-radius = "0.5rem"
+let client = UnixGraphClient::new("/run/lunaris/knowledge.sock");
+let rows = client.query(
+    "MATCH (f:File) WHERE f.app_id = $app RETURN f.path LIMIT 10",
+    HashMap::new(),
+).await?;
 ```
 
-If `theme.toml` does not exist or cannot be parsed, the built-in **Panda** theme is used (dark shell, light apps).
+Both `UnixEventEmitter` and `UnixGraphClient` reconnect automatically if the daemon restarts.
 
-**CSS Custom Properties:**
+**For testing**, use the mock implementations:
 
-All tokens are available as CSS custom properties: `--color-bg-shell`, `--color-bg-app`, `--color-accent`, etc. They are set by the theme loader at startup and can be updated at runtime without a page reload.
+```rust
+use os_sdk::mock::{MockEventEmitter, MockGraphClient};
 
-**Shell surface context:**
-
-Components inside a `.shell-surface` element automatically get shell colors instead of app colors. Use this for panel, launcher, and other shell chrome:
-
-```svelte
-<div class="shell-surface">
-  <!-- These components will use --color-bg-shell, --color-fg-shell etc. -->
-  <Button>Launch</Button>
-</div>
+let emitter = MockEventEmitter::new();
+my_function(&emitter).await;
+assert_eq!(emitter.emitted().await[0].event_type, "file.opened");
 ```
 
-## Using in another app
+### `module-sdk`
 
-Add ui-kit as a local npm dependency:
+Stub crate for module-specific APIs. Will be expanded in Phase 2.
 
-```json
-{
-  "dependencies": {
-    "@lunaris/ui-kit": "file:../ui-kit"
-  }
-}
-```
+## Environment variables
 
-Then import components and the theme loader:
+`os-sdk` reads the following at runtime:
 
-```svelte
-<script>
-  import { Button } from "@lunaris/ui-kit/components/ui/button";
-  import { loadTheme } from "@lunaris/ui-kit/theme";
-  import { onMount } from "svelte";
+| Variable | Used for |
+|---|---|
+| `LUNARIS_APP_ID` | Identifies the emitting app in events |
+| `LUNARIS_SESSION_ID` | Session identifier attached to all events |
 
-  onMount(() => loadTheme());
-</script>
-```
-
-## Development
+## Testing
 
 ```bash
-npm install
-npm run dev       # starts Vite dev server at localhost:1420
-cargo tauri dev   # starts full Tauri app (reads theme.toml, renders shell)
+cargo test -p os-sdk                              # unit and mock tests
+cargo test -p os-sdk --test unix_implementations  # real socket integration tests
+cargo clippy --all-targets --all-features -- -D warnings
 ```
-
-**Rust tests** (theme loader):
-
-```bash
-cd src-tauri
-cargo test --lib
-```
-
-## Adding a component
-
-```bash
-npx shadcn-svelte@latest add button
-npx shadcn-svelte@latest add dialog
-```
-
-Components are copied into `src/lib/components/ui/` and can be modified freely. They are not updated automatically after installation.
 
 ## Part of
 
