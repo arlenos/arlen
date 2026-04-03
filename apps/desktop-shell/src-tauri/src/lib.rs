@@ -1,4 +1,5 @@
 mod event_bus;
+mod gtk_menu_bridge;
 mod layer_shell;
 mod menu_store;
 mod notifications;
@@ -19,18 +20,20 @@ pub fn run() {
     let workspace_sender = Arc::new(wayland_client::WorkspaceSender::new());
     let menu_store: menu_store::AppMenuStore =
         Arc::new(std::sync::Mutex::new(HashMap::new()));
+    let menu_store_for_bridge = Arc::clone(&menu_store);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::clone(&overlay_sender))
         .manage(Arc::clone(&workspace_sender))
-        .manage(menu_store)
+        .manage(Arc::clone(&menu_store))
         .setup(|app| {
             theme::start_watcher(app.handle().clone());
             event_bus::start(app.handle().clone());
             wayland_client::start(app.handle().clone(), workspace_sender);
             shell_overlay_client::start(app.handle().clone(), overlay_sender);
             notifications::start(app.handle().clone());
+            gtk_menu_bridge::start(app.handle().clone(), menu_store_for_bridge);
 
             #[cfg(target_os = "linux")]
             {
