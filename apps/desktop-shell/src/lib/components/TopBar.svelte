@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { activeAppName } from "$lib/stores/windows.js";
+  import GlobalMenuBar from "$lib/components/GlobalMenuBar.svelte";
   import { timeString } from "$lib/stores/status.js";
   import {
     networkState, volumeState, batteryState, notificationCount,
@@ -120,11 +120,9 @@
 -->
 <div class="topbar shell-surface" data-tauri-drag-region>
 
-  <!-- Left: App name -->
+  <!-- Left: App name + global menu bar -->
   <div class="topbar-left" data-tauri-drag-region>
-    <span class="app-name">
-      {$activeAppName || "Lunaris"}
-    </span>
+    <GlobalMenuBar />
   </div>
 
   <!-- Center: Workspace indicator -->
@@ -283,15 +281,6 @@
     min-width: 0;
   }
 
-  .app-name {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--foreground);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    padding-left: 8px;
-  }
 
   .topbar-center {
     flex: 1;

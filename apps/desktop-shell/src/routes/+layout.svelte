@@ -6,6 +6,7 @@
   import { initContextMenuListeners } from "$lib/stores/contextMenu.js";
   import { initNotificationListener } from "$lib/stores/notifications.js";
   import { initWorkspaceListeners } from "$lib/stores/workspaces.js";
+  import { initMenuListeners } from "$lib/stores/menus.js";
   import { initTabBarListeners } from "$lib/stores/tabBars";
   import { initIndicatorListeners } from "$lib/stores/indicators";
   import { initZoomListeners } from "$lib/stores/zoom";
@@ -26,6 +27,7 @@
     initContextMenuListeners();
     initNotificationListener();
     initWorkspaceListeners();
+    initMenuListeners();
     initTabBarListeners();
     initIndicatorListeners();
     initZoomListeners();
