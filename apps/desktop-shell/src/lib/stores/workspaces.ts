@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { writable, derived } from "svelte/store";
+import { writable, derived, type Readable } from "svelte/store";
+import { windows, type WindowInfo } from "./windows.js";
 
 export interface WorkspaceInfo {
     id: string;
@@ -22,6 +23,13 @@ export function initWorkspaceListeners() {
     listen<WorkspaceInfo[]>("lunaris://workspace-list", ({ payload }) => {
         workspaces.set(payload);
     });
+}
+
+/// Returns a derived store of all windows assigned to the given workspace.
+export function windowsOnWorkspace(workspaceId: string): Readable<WindowInfo[]> {
+    return derived(windows, ($windows) =>
+        $windows.filter((w) => w.workspace_ids.includes(workspaceId))
+    );
 }
 
 /// Sends a workspace activation request to the compositor.

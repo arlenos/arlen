@@ -30,6 +30,8 @@ struct ToplevelPayload {
     title: String,
     app_id: String,
     active: bool,
+    /// Workspace handle IDs this toplevel belongs to (usually one).
+    workspace_ids: Vec<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -145,6 +147,7 @@ impl ToplevelInfoHandler for AppData {
                 active: info
                     .state
                     .contains(&zcosmic_toplevel_handle_v1::State::Activated),
+                workspace_ids: info.workspace.iter().map(|h| h.id().to_string()).collect(),
             };
             let _ = self.app_handle.emit("lunaris://toplevel-added", payload);
         }
@@ -164,6 +167,7 @@ impl ToplevelInfoHandler for AppData {
                 active: info
                     .state
                     .contains(&zcosmic_toplevel_handle_v1::State::Activated),
+                workspace_ids: info.workspace.iter().map(|h| h.id().to_string()).collect(),
             };
             let _ = self.app_handle.emit("lunaris://toplevel-changed", payload);
         }

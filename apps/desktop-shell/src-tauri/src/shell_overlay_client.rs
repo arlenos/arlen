@@ -52,6 +52,8 @@ enum InputRegionMode {
     FullScreen,
     /// Top bar plus a notification area in the top-right corner.
     WithNotifications,
+    /// Top bar plus a centered popover area below the bar.
+    WithPopover,
 }
 
 /// Set the input region on the GTK layer-shell window and flush immediately.
@@ -98,6 +100,25 @@ fn set_input_region(app: &tauri::AppHandle, mode: InputRegionMode) {
                 r.union(&notif);
                 r
             }
+            InputRegionMode::WithPopover => {
+                // Top bar + centered popover below bar.
+                let r = Region::create_rectangle(&RectangleInt::new(0, 0, 32767, 36));
+                let alloc_w = gtk_window.allocated_width();
+                // Popover: 600px wide, 200px tall, centered horizontally.
+                let pop_w = 600;
+                let pop_h = 200;
+                let pop_x = if alloc_w > pop_w { (alloc_w - pop_w) / 2 } else { 0 };
+                log::info!(
+                    "set_input_region: WithPopover allocated_width={} \
+                     popover_rect=({}, 36, {}, {})",
+                    alloc_w, pop_x, pop_w, pop_h,
+                );
+                let popover = Region::create_rectangle(&RectangleInt::new(
+                    pop_x, 36, pop_w, pop_h,
+                ));
+                r.union(&popover);
+                r
+            }
         };
 
         gtk_window.input_shape_combine_region(Some(&region));
@@ -114,21 +135,25 @@ fn set_input_region(app: &tauri::AppHandle, mode: InputRegionMode) {
 /// from the combination.
 static MENU_ACTIVE: AtomicBool = AtomicBool::new(false);
 static NOTIFICATIONS_ACTIVE: AtomicBool = AtomicBool::new(false);
+static POPOVER_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// Recomputes and applies the correct input region from current state.
 fn update_input_region(app: &tauri::AppHandle) {
     let menu = MENU_ACTIVE.load(Ordering::SeqCst);
     let notif = NOTIFICATIONS_ACTIVE.load(Ordering::SeqCst);
+    let popover = POPOVER_ACTIVE.load(Ordering::SeqCst);
     let mode = if menu {
         InputRegionMode::FullScreen
+    } else if popover {
+        InputRegionMode::WithPopover
     } else if notif {
         InputRegionMode::WithNotifications
     } else {
         InputRegionMode::BarOnly
     };
     log::info!(
-        "update_input_region: menu_active={} notifications_active={} -> {:?}",
-        menu, notif, mode,
+        "update_input_region: menu={} popover={} notif={} -> {:?}",
+        menu, popover, notif, mode,
     );
     set_input_region(app, mode);
 }
@@ -791,4 +816,77 @@ pub fn set_notification_input_region(app: tauri::AppHandle, expanded: bool) {
     );
     NOTIFICATIONS_ACTIVE.store(expanded, Ordering::SeqCst);
     update_input_region(&app);
+}
+
+/// Expand or restore the input region for the workspace popover.
+#[tauri::command]
+pub fn set_popover_input_region(app: tauri::AppHandle, expanded: bool) {
+    log::info!(
+        "set_popover_input_region: expanded={} (was {})",
+        expanded, POPOVER_ACTIVE.load(Ordering::SeqCst),
+    );
+    POPOVER_ACTIVE.store(expanded, Ordering::SeqCst);
+    update_input_region(&app);
+}
+
+/// Resolves a freedesktop app icon path for the given `app_id`.
+///
+/// Searches standard icon theme directories for a matching `.png` or `.svg`.
+/// Returns `None` if no icon is found.
+/// Resolves a freedesktop app icon and returns it as a base64 data URL.
+#[tauri::command]
+pub fn resolve_app_icon(app_id: String) -> Option<String> {
+    use base64::Engine;
+
+    log::info!("resolve_app_icon: looking up app_id=\"{app_id}\"");
+
+    let png_sizes = ["48x48", "64x64", "32x32", "128x128", "256x256"];
+    let themes = ["hicolor", "Adwaita"];
+    let base_dirs = ["/usr/share/icons", "/usr/local/share/icons"];
+
+    // Pass 1: PNG in raster sizes.
+    for base in &base_dirs {
+        for theme in &themes {
+            for size in &png_sizes {
+                let path = format!("{base}/{theme}/{size}/apps/{app_id}.png");
+                if let Some(url) = read_as_data_url(&path, "image/png") {
+                    log::info!("resolve_app_icon: FOUND \"{path}\"");
+                    return Some(url);
+                }
+            }
+        }
+    }
+
+    // Pass 2: scalable SVG.
+    for base in &base_dirs {
+        for theme in &themes {
+            let path = format!("{base}/{theme}/scalable/apps/{app_id}.svg");
+            if let Some(url) = read_as_data_url(&path, "image/svg+xml") {
+                log::info!("resolve_app_icon: FOUND (svg) \"{path}\"");
+                return Some(url);
+            }
+        }
+    }
+
+    // Pass 3: pixmaps.
+    let pixmap_exts: &[(&str, &str)] = &[("png", "image/png"), ("svg", "image/svg+xml")];
+    for (ext, mime) in pixmap_exts {
+        let path = format!("/usr/share/pixmaps/{app_id}.{ext}");
+        if let Some(url) = read_as_data_url(&path, mime) {
+            log::info!("resolve_app_icon: FOUND (pixmaps) \"{path}\"");
+            return Some(url);
+        }
+    }
+
+    log::info!("resolve_app_icon: NOT FOUND for \"{app_id}\"");
+    None
+}
+
+/// Reads a file and encodes it as a `data:` URL. Returns `None` if the
+/// file does not exist or cannot be read.
+fn read_as_data_url(path: &str, mime: &str) -> Option<String> {
+    use base64::Engine;
+    let bytes = std::fs::read(path).ok()?;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Some(format!("data:{mime};base64,{b64}"))
 }

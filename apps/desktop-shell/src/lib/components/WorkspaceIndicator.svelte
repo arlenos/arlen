@@ -1,30 +1,53 @@
 <script lang="ts">
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { workspaces, activateWorkspace, type WorkspaceInfo } from "$lib/stores/workspaces.js";
+  import { windows, type WindowInfo } from "$lib/stores/windows.js";
+  import { resolveAppIcon } from "$lib/stores/appIcons.js";
+  import { invoke } from "@tauri-apps/api/core";
+  import { AppWindow } from "lucide-svelte";
 
-  /// Adaptive display mode derived from workspace count.
   const mode = $derived(
-    $workspaces.length <= 5 ? "pills" :
-    $workspaces.length <= 9 ? "dots"  : "text"
+    $workspaces.length <= 5 ? "pills" as const :
+    $workspaces.length <= 9 ? "dots" as const : "text" as const
   );
 
   const activeIndex = $derived($workspaces.findIndex((w) => w.active));
 
-  // Shell-surface colors used explicitly because the Portal renders into
-  // document.body (outside the .shell-surface CSS context). Using bg-popover
-  // + text-popover-foreground gives dark-on-dark which is unreadable.
-  const tooltipClass =
-    "rounded-md border px-2 py-0.5 text-xs shadow-md select-none"
-    + " bg-[var(--color-bg-shell)] text-[var(--color-fg-shell)] border-[color-mix(in_srgb,var(--color-bg-shell)_60%,white_40%)]";
+  // Hover overlay state.
+  let overlayVisible = $state(false);
+  let hoverTimer: ReturnType<typeof setTimeout> | null = null;
 
-  /// Display label for a pill: the workspace name (truncated) or its 1-based number.
+  function onEnter() {
+    if (hoverTimer) clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(() => {
+      overlayVisible = true;
+      invoke("set_popover_input_region", { expanded: true }).catch(() => {});
+    }, 600);
+  }
+
+  function onLeave() {
+    if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+    // Short delay so the user can move to the overlay.
+    hoverTimer = setTimeout(() => {
+      overlayVisible = false;
+      invoke("set_popover_input_region", { expanded: false }).catch(() => {});
+    }, 300);
+  }
+
+  function onOverlayEnter() {
+    if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+  }
+
+  function onOverlayLeave() {
+    overlayVisible = false;
+    invoke("set_popover_input_region", { expanded: false }).catch(() => {});
+  }
+
   function pillLabel(ws: WorkspaceInfo, i: number): string {
     const name = ws.name.trim();
     if (!name) return String(i + 1);
-    return name.length > 12 ? name.slice(0, 12) + "…" : name;
+    return name.length > 12 ? name.slice(0, 12) + "\u2026" : name;
   }
 
-  /// Full name for tooltip / aria-label.
   function fullLabel(ws: WorkspaceInfo, i: number): string {
     return ws.name.trim() || `Workspace ${i + 1}`;
   }
@@ -32,87 +55,239 @@
   function handleClick(id: string) {
     activateWorkspace(id);
   }
+
+  function handleCardClick(id: string) {
+    activateWorkspace(id);
+    overlayVisible = false;
+    invoke("set_popover_input_region", { expanded: false }).catch(() => {});
+  }
+
+  function getWindowsForWorkspace(wsId: string): WindowInfo[] {
+    return $windows.filter((w) => w.workspace_ids.includes(wsId));
+  }
+
+  // Icon resolution cache.
+  let iconUrls = $state<Record<string, string | null>>({});
+
+  const allAppIds = $derived(
+    [...new Set($windows.map((w) => w.app_id).filter(Boolean))]
+  );
+
+  $effect(() => {
+    for (const appId of allAppIds) {
+      if (!(appId in iconUrls)) {
+        resolveAppIcon(appId).then((url) => {
+          iconUrls = { ...iconUrls, [appId]: url };
+        });
+      }
+    }
+  });
 </script>
 
 {#if $workspaces.length > 0}
-  {#if mode === "pills"}
-    <!--
-      Pills mode (1-5 workspaces): each workspace is a rounded button.
-      Active pill uses var(--accent) fill. Inactive pills are ghost-style.
-    -->
-    <div class="indicator" role="group" aria-label="Workspaces">
-      {#each $workspaces as ws, i}
-        <Tooltip.Root instant>
-          <Tooltip.Trigger>
-            {#snippet child({ props })}
-              <button
-                class="pill"
-                class:pill-active={ws.active}
-                onclick={() => handleClick(ws.id)}
-                aria-label={fullLabel(ws, i)}
-                aria-pressed={ws.active}
-                {...props}
-              >
-                {pillLabel(ws, i)}
-              </button>
-            {/snippet}
-          </Tooltip.Trigger>
-          <Tooltip.Portal>
-            <Tooltip.Content side="bottom" class={tooltipClass}>
-              {fullLabel(ws, i)}
-            </Tooltip.Content>
-          </Tooltip.Portal>
-        </Tooltip.Root>
-      {/each}
-    </div>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="ws-root"
+    onmouseenter={onEnter}
+    onmouseleave={onLeave}
+  >
+    {#if mode === "pills"}
+      <div class="indicator" role="group" aria-label="Workspaces">
+        {#each $workspaces as ws, i}
+          <button
+            class="pill"
+            class:pill-active={ws.active}
+            onclick={() => handleClick(ws.id)}
+            aria-label={fullLabel(ws, i)}
+            aria-pressed={ws.active}
+          >
+            {pillLabel(ws, i)}
+          </button>
+        {/each}
+      </div>
 
-  {:else if mode === "dots"}
-    <!--
-      Dots mode (6-9 workspaces): compact dots, active dot is larger.
-      Tooltip on hover shows workspace name.
-    -->
-    <div class="indicator" role="group" aria-label="Workspaces">
-      {#each $workspaces as ws, i}
-        <Tooltip.Root instant>
-          <Tooltip.Trigger>
-            {#snippet child({ props })}
-              <button
-                class="dot-btn"
-                onclick={() => handleClick(ws.id)}
-                aria-label={fullLabel(ws, i)}
-                aria-pressed={ws.active}
-                {...props}
-              >
-                <span class="dot" class:dot-active={ws.active}></span>
-              </button>
-            {/snippet}
-          </Tooltip.Trigger>
-          <Tooltip.Portal>
-            <Tooltip.Content side="bottom" class={tooltipClass}>
-              {fullLabel(ws, i)}
-            </Tooltip.Content>
-          </Tooltip.Portal>
-        </Tooltip.Root>
-      {/each}
-    </div>
+    {:else if mode === "dots"}
+      <div class="indicator" role="group" aria-label="Workspaces">
+        {#each $workspaces as ws, i}
+          <button
+            class="dot-btn"
+            onclick={() => handleClick(ws.id)}
+            aria-label={fullLabel(ws, i)}
+            aria-pressed={ws.active}
+          >
+            <span class="dot" class:dot-active={ws.active}></span>
+          </button>
+        {/each}
+      </div>
 
-  {:else}
-    <!--
-      Text mode (10+ workspaces): compact "current / total".
-    -->
-    <div class="indicator" role="group" aria-label="Workspaces">
-      <span class="ws-text" aria-label="Workspace {activeIndex >= 0 ? activeIndex + 1 : 1} of {$workspaces.length}">
-        {activeIndex >= 0 ? activeIndex + 1 : 1} / {$workspaces.length}
-      </span>
+    {:else}
+      <div class="indicator" role="group" aria-label="Workspaces">
+        <span class="ws-text">
+          {activeIndex >= 0 ? activeIndex + 1 : 1} / {$workspaces.length}
+        </span>
+      </div>
+    {/if}
+
+    <!-- Hover overlay: workspace cards -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="overlay"
+      class:overlay-visible={overlayVisible}
+      onmouseenter={onOverlayEnter}
+      onmouseleave={onOverlayLeave}
+    >
+      <div class="ws-cards">
+        {#each $workspaces as ws, i}
+          {@const wsWindows = getWindowsForWorkspace(ws.id)}
+          <button
+            class="ws-card"
+            class:ws-card-active={ws.active}
+            onclick={() => handleCardClick(ws.id)}
+            aria-label={fullLabel(ws, i)}
+          >
+            <span class="ws-card-name">
+              {fullLabel(ws, i)}
+            </span>
+            {#if wsWindows.length > 0}
+              <div class="ws-card-icons">
+                {#each wsWindows.slice(0, 5) as win}
+                  {#if iconUrls[win.app_id]}
+                    <img
+                      class="ws-app-icon"
+                      src={iconUrls[win.app_id]}
+                      alt={win.app_id}
+                      width="24"
+                      height="24"
+                      style="border: 1px solid rgba(255,255,255,0.3);"
+                    />
+                  {:else}
+                    <AppWindow size={16} strokeWidth={1.5} class="ws-app-icon-fallback" />
+                  {/if}
+                {/each}
+                {#if wsWindows.length > 5}
+                  <span class="ws-overflow">+{wsWindows.length - 5}</span>
+                {/if}
+              </div>
+            {:else}
+              <span class="ws-empty">Empty</span>
+            {/if}
+          </button>
+        {/each}
+      </div>
     </div>
-  {/if}
+  </div>
 {/if}
 
 <style>
+  .ws-root {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
   .indicator {
     display: flex;
     align-items: center;
     gap: 4px;
+  }
+
+  /* ── Overlay ────────────────────────────────────────���───────────────── */
+
+  .overlay {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    z-index: 50;
+    padding: 8px;
+    border-radius: 10px;
+    background: var(--color-bg-shell);
+    border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    pointer-events: none;
+    opacity: 0;
+    transition:
+      opacity 100ms ease,
+      transform 100ms ease;
+    transform-origin: top center;
+  }
+
+  .overlay-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .ws-cards {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+  }
+
+  .ws-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    min-width: 80px;
+    max-width: 100px;
+    padding: 8px 6px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    transition:
+      background-color 100ms ease,
+      border-color 100ms ease;
+    color: var(--color-fg-shell);
+  }
+
+  .ws-card:hover {
+    background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
+  }
+
+  .ws-card-active {
+    border-color: color-mix(in srgb, var(--color-fg-shell) 30%, transparent);
+    background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
+  }
+
+  .ws-card-name {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  .ws-card-icons {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .ws-app-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 2px;
+    object-fit: contain;
+  }
+
+  :global(.ws-app-icon-fallback) {
+    width: 16px;
+    height: 16px;
+    opacity: 0.5;
+  }
+
+  .ws-overflow {
+    font-size: 0.625rem;
+    opacity: 0.5;
+  }
+
+  .ws-empty {
+    font-size: 0.625rem;
+    opacity: 0.35;
   }
 
   /* ── Pills ──────────────────────────────────────────────────────────── */
@@ -131,7 +306,6 @@
     line-height: 1;
     cursor: pointer;
     white-space: nowrap;
-    /* Crossfade on switch: 150ms */
     transition:
       background-color 150ms ease,
       color 150ms ease,
@@ -152,7 +326,6 @@
   .pill-active {
     background: var(--accent);
     color: var(--accent-foreground);
-    /* Scale-in animation when workspace becomes active */
     animation: pill-activate 100ms ease forwards;
   }
 
@@ -224,6 +397,5 @@
     font-weight: 500;
     color: var(--foreground);
     letter-spacing: 0.02em;
-    pointer-events: none;
   }
 </style>
