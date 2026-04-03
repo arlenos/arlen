@@ -50,6 +50,7 @@ pub fn run() {
             shell_overlay_client::zoom_set_increment,
             shell_overlay_client::zoom_set_movement,
             shell_overlay_client::window_header_action,
+            shell_overlay_client::set_notification_input_region,
             wayland_client::workspace_activate,
         ])
         .run(tauri::generate_context!())
