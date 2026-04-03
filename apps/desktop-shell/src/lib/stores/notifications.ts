@@ -55,9 +55,9 @@ export function initNotificationListener() {
 
         const description = payload.body || undefined;
 
-        onToastVisible();
-
         if (payload.priority === "critical") {
+            // Critical: show immediately.
+            onToastVisible();
             toast.error(payload.summary, {
                 description,
                 duration: Infinity,
@@ -65,15 +65,21 @@ export function initNotificationListener() {
                 onDismiss: onToastGone,
                 onAutoClose: onToastGone,
             });
+            setTimeout(logToastRects, 100);
         } else {
-            toast(payload.summary, {
-                description,
-                duration: payload.priority === "high" ? 8000 : 4000,
-                closeButton: true,
-                onDismiss: onToastGone,
-                onAutoClose: onToastGone,
-            });
+            // Normal/high: 500ms delay so rapid/accidental notifications
+            // do not flash immediately.
+            setTimeout(() => {
+                onToastVisible();
+                toast(payload.summary, {
+                    description,
+                    duration: payload.priority === "high" ? 8000 : 4000,
+                    closeButton: true,
+                    onDismiss: onToastGone,
+                    onAutoClose: onToastGone,
+                });
+                setTimeout(logToastRects, 100);
+            }, 500);
         }
-        setTimeout(logToastRects, 100);
     });
 }

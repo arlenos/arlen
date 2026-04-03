@@ -42,7 +42,7 @@
     -->
     <div class="indicator" role="group" aria-label="Workspaces">
       {#each $workspaces as ws, i}
-        <Tooltip.Root>
+        <Tooltip.Root instant>
           <Tooltip.Trigger>
             {#snippet child({ props })}
               <button
@@ -73,7 +73,7 @@
     -->
     <div class="indicator" role="group" aria-label="Workspaces">
       {#each $workspaces as ws, i}
-        <Tooltip.Root>
+        <Tooltip.Root instant>
           <Tooltip.Trigger>
             {#snippet child({ props })}
               <button

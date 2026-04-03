@@ -333,24 +333,29 @@
       opacity var(--duration-fast) var(--easing-default);
   }
 
-  /* Applet button size: same as former .status-btn */
+  /* Applet button hitbox: visual icon stays 14px, but the clickable area
+     is at least 24x24 to meet minimum touch/click target guidelines. */
   .topbar-right :global(.applet-btn) {
-    width: 26px;
-    height: 22px;
+    min-width: 24px;
+    min-height: 24px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     color: var(--foreground);
   }
 
-  /* Clock button */
+  /* Clock button: min 24x24 hitbox, padding gives horizontal reach. */
   .clock {
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 0 6px;
+    padding: 0 8px;
     background: transparent;
     border: none;
     cursor: pointer;
     border-radius: 4px;
+    min-width: 24px;
+    min-height: 24px;
     height: 28px;
     justify-content: center;
   }
