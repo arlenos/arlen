@@ -10,8 +10,12 @@
 
   const activeIndex = $derived($workspaces.findIndex((w) => w.active));
 
+  // Shell-surface colors used explicitly because the Portal renders into
+  // document.body (outside the .shell-surface CSS context). Using bg-popover
+  // + text-popover-foreground gives dark-on-dark which is unreadable.
   const tooltipClass =
-    "border-border bg-popover text-popover-foreground rounded-md border px-2 py-0.5 text-xs shadow-md select-none";
+    "rounded-md border px-2 py-0.5 text-xs shadow-md select-none"
+    + " bg-[var(--color-bg-shell)] text-[var(--color-fg-shell)] border-[color-mix(in_srgb,var(--color-bg-shell)_60%,white_40%)]";
 
   /// Display label for a pill: the workspace name (truncated) or its 1-based number.
   function pillLabel(ws: WorkspaceInfo, i: number): string {

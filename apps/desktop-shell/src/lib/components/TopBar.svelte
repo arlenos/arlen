@@ -104,7 +104,11 @@
 
   // ── Tooltip content class (shared) ────────────────────────────────────────
 
-  const tooltipClass = "border-border bg-popover text-popover-foreground rounded-md border px-2 py-0.5 text-xs shadow-md select-none";
+  // Shell-surface colors used explicitly because the Portal renders into
+  // document.body (outside the .shell-surface CSS context).
+  const tooltipClass =
+    "rounded-md border px-2 py-0.5 text-xs shadow-md select-none"
+    + " bg-[var(--color-bg-shell)] text-[var(--color-fg-shell)] border-[color-mix(in_srgb,var(--color-bg-shell)_60%,white_40%)]";
 </script>
 
 <!--
