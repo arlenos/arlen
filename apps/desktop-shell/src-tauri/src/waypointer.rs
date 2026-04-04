@@ -54,7 +54,7 @@ pub fn init_layer_shell(window: tauri::WebviewWindow) {
         gtk_window.set_anchor(Edge::Right, true);
         // No exclusive zone: don't push other surfaces.
         gtk_window.set_exclusive_zone(-1);
-        gtk_window.set_keyboard_mode(KeyboardMode::OnDemand);
+        gtk_window.set_keyboard_mode(KeyboardMode::Exclusive);
         // Start with zero input region (hidden = no input).
         {
             use gtk::cairo::{RectangleInt, Region};
@@ -163,7 +163,7 @@ pub fn hide(app: &AppHandle) {
             // Zero input region + release keyboard.
             let empty = Region::create_rectangle(&RectangleInt::new(0, 0, 0, 0));
             gtk_window.input_shape_combine_region(Some(&empty));
-            gtk_window.set_keyboard_mode(KeyboardMode::OnDemand);
+            gtk_window.set_keyboard_mode(KeyboardMode::Exclusive);
             gtk_window.queue_draw();
             if let Some(display) = gtk::gdk::Display::default() {
                 display.flush();

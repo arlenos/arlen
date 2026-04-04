@@ -1,18 +1,19 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import { writable } from "svelte/store";
   import { waypointerVisible, initWaypointerListeners, closeWaypointer } from "$lib/stores/waypointer.js";
-  import { resolveAppIcon } from "$lib/stores/appIcons.js";
   import { invoke as tauriInvoke } from "@tauri-apps/api/core";
   import {
     Command, CommandInput, CommandList, CommandEmpty,
     CommandGroup, CommandItem, CommandSeparator, CommandShortcut,
   } from "$lib/components/ui/command/index.js";
-  import { Search, AppWindow } from "lucide-svelte";
+  import { Search, AppWindow, Calculator, ArrowRightLeft } from "lucide-svelte";
 
   interface AppEntry {
     name: string;
     exec: string;
     icon_name: string;
+    icon_data: string | null;
     description: string;
     categories: string[];
   }
@@ -22,36 +23,45 @@
   let listRef = $state<HTMLElement | null>(null);
   let commandValue = $state("");
 
-  let apps = $state<AppEntry[]>([]);
-  let icons = $state<Record<string, string | null>>({});
-  let loading = $state(true);
+  // App search results from Rust (max 20, pre-filtered, icons included).
+  const searchResults = writable<AppEntry[]>([]);
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  // Full app list cached for the calculator fallback.
+  let allApps: AppEntry[] = [];
 
-  // Fetch apps once on mount.
   onMount(async () => {
     initWaypointerListeners();
     try {
-      apps = await tauriInvoke<AppEntry[]>("get_apps");
-      loading = false;
-      // Resolve icons in the background.
-      for (const app of apps) {
-        if (app.icon_name && !(app.icon_name in icons)) {
-          resolveAppIcon(app.icon_name).then((url) => {
-            if (url) icons = { ...icons, [app.icon_name]: url };
-          });
-        }
-      }
-    } catch {
-      loading = false;
-    }
+      allApps = await tauriInvoke<AppEntry[]>("get_apps");
+    } catch { /* ignore */ }
+    searchResults.set(allApps);
   });
+
+  function doSearch(q: string) {
+    if (!q.trim()) {
+      searchResults.set(allApps);
+      return;
+    }
+    tauriInvoke<AppEntry[]>("search_apps", { query: q })
+      .then((r) => { searchResults.set(r); })
+      .catch(() => { searchResults.set([]); });
+  }
+
+  function debouncedSearch(q: string) {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => doSearch(q), 100);
+  }
 
   function open() {
     query = "";
     commandValue = "";
+    inlineResult.set(null);
+    searchResults.set(allApps);
 
     setTimeout(() => {
       query = "";
       commandValue = "";
+      inlineResult.set(null);
       if (inputRef) {
         inputRef.value = "";
         inputRef.dispatchEvent(new Event("input", { bubbles: true }));
@@ -82,6 +92,15 @@
       close();
       return;
     }
+    if (e.key === "Enter") {
+      let r: WaypointerResult | null = null;
+      inlineResult.subscribe((v) => { r = v; })();
+      if (r) {
+        e.preventDefault();
+        handleInlineAction(r);
+        return;
+      }
+    }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       kbActive = true;
     }
@@ -99,6 +118,72 @@
     }
   }
 
+  interface WaypointerResult {
+    result_type: string;
+    display: string;
+    copy_value: string;
+  }
+
+  const inlineResult = writable<WaypointerResult | null>(null);
+
+  // Poll for query changes and trigger search + evaluation.
+  onMount(() => {
+    const unsub2 = (() => {
+      let prev = "";
+      return setInterval(() => {
+        const q = inputRef?.value ?? query;
+        if (q === prev) return;
+        prev = q;
+        // Search apps in Rust.
+        debouncedSearch(q);
+        // Evaluate math/units.
+        if (q.trim().length < 2) {
+          inlineResult.set(null);
+          return;
+        }
+        tauriInvoke<WaypointerResult | null>("evaluate_waypointer_input", { input: q })
+          .then((r) => {
+            inlineResult.set(r);
+            // DOM fallback: bypass Svelte reactivity.
+            const el = document.getElementById("wp-inline-result");
+            const wrap = document.getElementById("wp-inline-wrap");
+            const list = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
+            if (r) {
+              if (el) el.textContent = r.display;
+              const hint = document.getElementById("wp-inline-hint");
+              if (hint) hint.textContent = r.result_type === "error" ? "Open Calculator" : "Copy";
+              if (wrap) wrap.style.display = "";
+            } else {
+              if (wrap) { wrap.style.display = "none"; }
+            }
+          })
+          .catch(() => {
+            inlineResult.set(null);
+            const wrap = document.getElementById("wp-inline-wrap");
+            if (wrap) wrap.style.display = "none";
+          });
+      }, 150);
+    })();
+    return () => clearInterval(unsub2);
+  });
+
+  function handleInlineAction(result: WaypointerResult) {
+    if (result.result_type === "error") {
+      // Launch a calculator app from the index.
+      const calc = allApps.find((a) =>
+        a.name.toLowerCase().includes("calculator") ||
+        a.name.toLowerCase().includes("rechner")
+      );
+      if (calc) {
+        tauriInvoke("launch_app", { exec: calc.exec });
+      }
+      close();
+    } else {
+      navigator.clipboard.writeText(result.copy_value).catch(() => {});
+      close();
+    }
+  }
+
   function launchApp(app: AppEntry) {
     tauriInvoke("launch_app", { exec: app.exec });
     close();
@@ -113,35 +198,43 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="wp-card shell-surface" onclick={(e) => e.stopPropagation()}>
-    <Command class="wp-root" shouldFilter={true} bind:value={commandValue}>
+    <Command class="wp-root" shouldFilter={false} bind:value={commandValue}>
       <CommandInput
         placeholder="Search apps..."
         bind:value={query}
         bind:ref={inputRef}
         autofocus
       />
+
+      <!-- Inline result: above the scrollable list, always in DOM -->
+      <div id="wp-inline-wrap" style="display: none; padding: 6px 6px 2px;">
+        <div class="wp-inline-card" onclick={() => { const r = $inlineResult; if (r) handleInlineAction(r); }}>
+          <Calculator size={18} strokeWidth={1.5} />
+          <span id="wp-inline-result" class="wp-inline-result"></span>
+          <span id="wp-inline-hint" class="wp-inline-hint">Copy</span>
+        </div>
+      </div>
+
       <CommandList
         class="wp-list {kbActive ? 'wp-kb-active' : ''}"
         bind:ref={listRef}
       >
         <CommandEmpty>
-          {#if loading}
-            Loading apps...
-          {:else}
+          {#if !$inlineResult}
             No results found.
           {/if}
         </CommandEmpty>
 
-        {#if !loading && apps.length > 0}
+        {#if $searchResults.length > 0}
           <CommandGroup heading="Applications">
-            {#each apps as app}
+            {#each $searchResults as app}
               <CommandItem
-                value="{app.name} {app.description} {app.categories.join(' ')}"
+                value={app.name}
                 onSelect={() => launchApp(app)}
               >
-                {#if icons[app.icon_name]}
+                {#if app.icon_data}
                   <img
-                    src={icons[app.icon_name]}
+                    src={app.icon_data}
                     alt=""
                     class="wp-app-icon"
                   />
@@ -166,6 +259,8 @@
 <style>
   :global(html), :global(body) {
     background: transparent !important;
+    overflow: hidden !important;
+    height: 100% !important;
   }
 
   .wp-backdrop {
@@ -177,6 +272,7 @@
     align-items: flex-start;
     padding-top: 25vh;
     background: rgba(0, 0, 0, 0.4);
+    overflow: hidden;
     animation: wp-backdrop-fade 150ms ease-out both;
   }
 
@@ -199,6 +295,35 @@
 
   :global(.wp-list) {
     max-height: 400px;
+    overflow-y: auto;
+    scrollbar-width: none;
+    transition: opacity 80ms ease;
+  }
+
+  :global(.wp-list::-webkit-scrollbar) {
+    display: none;
+  }
+
+  .wp-inline-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--color-fg-shell, #fafafa) 8%, transparent);
+    color: var(--color-fg-shell, #fafafa);
+  }
+
+  .wp-inline-result {
+    font-size: 1.125rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .wp-inline-hint {
+    margin-left: auto;
+    font-size: 0.6875rem;
+    opacity: 0.35;
   }
 
   .wp-app-icon {

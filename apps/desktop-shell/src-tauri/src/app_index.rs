@@ -1,7 +1,7 @@
 /// .desktop file parser and app index.
 ///
 /// Scans standard freedesktop application directories on startup, parses
-/// `.desktop` files, and exposes the results via Tauri commands.
+/// `.desktop` files, resolves icons, and exposes the results via Tauri commands.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -16,8 +16,10 @@ pub struct AppEntry {
     pub name: String,
     /// Command to execute (Exec= key, placeholders stripped).
     pub exec: String,
-    /// Icon name or path (Icon= key, not yet resolved to data URL).
+    /// Icon name or path (Icon= key).
     pub icon_name: String,
+    /// Base64 data URL for the icon, or None if not resolved.
+    pub icon_data: Option<String>,
     /// Short description (Comment= key).
     pub description: String,
     /// Semicolon-separated categories (Categories= key).
@@ -32,10 +34,8 @@ fn app_dirs() -> Vec<PathBuf> {
     let mut dirs = vec![PathBuf::from("/usr/share/applications")];
     if let Some(home) = dirs::home_dir() {
         dirs.push(home.join(".local/share/applications"));
-        // Flatpak (user)
         dirs.push(home.join(".local/share/flatpak/exports/share/applications"));
     }
-    // System paths
     let extra = [
         "/usr/local/share/applications",
         "/var/lib/flatpak/exports/share/applications",
@@ -48,7 +48,7 @@ fn app_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-/// Builds the app index by scanning all directories.
+/// Builds the app index by scanning all directories and resolving icons.
 pub fn build_index() -> Vec<AppEntry> {
     let mut entries = Vec::new();
     let mut seen_names: HashMap<String, usize> = HashMap::new();
@@ -63,8 +63,6 @@ pub fn build_index() -> Vec<AppEntry> {
                 continue;
             }
             if let Some(app) = parse_desktop_file(&path) {
-                // Deduplicate: later directories override earlier ones
-                // (user apps override system apps).
                 if let Some(&idx) = seen_names.get(&app.name) {
                     entries[idx] = app.clone();
                 } else {
@@ -75,13 +73,20 @@ pub fn build_index() -> Vec<AppEntry> {
         }
     }
 
+    // Resolve icons for all entries.
+    for entry in &mut entries {
+        if !entry.icon_name.is_empty() {
+            entry.icon_data =
+                crate::shell_overlay_client::resolve_app_icon(entry.icon_name.clone());
+        }
+    }
+
     entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    log::info!("app_index: indexed {} applications", entries.len());
+    log::info!("app_index: indexed {} applications with icons", entries.len());
     entries
 }
 
 /// Parses a single `.desktop` file into an `AppEntry`.
-/// Returns `None` if the file should be hidden or is invalid.
 fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
     let content = std::fs::read_to_string(path).ok()?;
 
@@ -102,13 +107,9 @@ fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
         }
     }
 
-    // Must be an Application type.
-    let entry_type = fields.get("Type").map(|s| s.as_str()).unwrap_or("");
-    if entry_type != "Application" {
+    if fields.get("Type").map(|s| s.as_str()) != Some("Application") {
         return None;
     }
-
-    // Skip hidden or NoDisplay entries.
     if fields.get("NoDisplay").map(|s| s.as_str()) == Some("true") {
         return None;
     }
@@ -121,22 +122,28 @@ fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
         return None;
     }
 
-    // Skip entries without an Exec command.
-    let exec = fields.get("Exec").map(|s| s.trim().to_string()).unwrap_or_default();
+    let exec = fields
+        .get("Exec")
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
     if exec.is_empty() {
         return None;
     }
 
-    // Skip entries marked as not shown in the current desktop.
     if let Some(only_show) = fields.get("OnlyShowIn") {
-        // We are not GNOME, KDE, etc. -- skip entries restricted to other desktops.
-        // Unless they list "Lunaris" (future-proofing).
         if !only_show.contains("Lunaris") {
             return None;
         }
     }
-    let icon_name = fields.get("Icon").unwrap_or(&String::new()).to_string();
-    let description = fields.get("Comment").unwrap_or(&String::new()).to_string();
+
+    let icon_name = fields
+        .get("Icon")
+        .unwrap_or(&String::new())
+        .to_string();
+    let description = fields
+        .get("Comment")
+        .unwrap_or(&String::new())
+        .to_string();
     let categories = fields
         .get("Categories")
         .map(|s| {
@@ -151,6 +158,7 @@ fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
         name,
         exec: strip_exec_placeholders(&exec),
         icon_name,
+        icon_data: None,
         description,
         categories,
     })
@@ -162,7 +170,6 @@ fn strip_exec_placeholders(exec: &str) -> String {
     let mut chars = exec.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '%' {
-            // Skip the placeholder character.
             chars.next();
         } else {
             result.push(c);
@@ -171,10 +178,57 @@ fn strip_exec_placeholders(exec: &str) -> String {
     result.trim().to_string()
 }
 
-/// Returns the full app index.
+/// Returns the full app index (with icons pre-resolved).
 #[tauri::command]
 pub fn get_apps(index: tauri::State<AppIndex>) -> Vec<AppEntry> {
     index.lock().unwrap().clone()
+}
+
+/// Searches the app index by query string. Returns max 20 results.
+///
+/// Case-insensitive substring matching on name and description.
+/// Empty query returns the first 20 apps alphabetically.
+#[tauri::command]
+pub fn search_apps(index: tauri::State<AppIndex>, query: String) -> Vec<AppEntry> {
+    let index = index.lock().unwrap();
+    let query = query.trim().to_lowercase();
+
+    if query.is_empty() {
+        return index.iter().take(8).cloned().collect();
+    }
+
+    let mut scored: Vec<(usize, &AppEntry)> = index
+        .iter()
+        .filter_map(|app| {
+            let name_lower = app.name.to_lowercase();
+            let desc_lower = app.description.to_lowercase();
+
+            // Exact name prefix gets highest score.
+            if name_lower.starts_with(&query) {
+                return Some((0, app));
+            }
+            // Name contains query.
+            if name_lower.contains(&query) {
+                return Some((1, app));
+            }
+            // Word boundary match in name.
+            if name_lower.split_whitespace().any(|w| w.starts_with(&query)) {
+                return Some((2, app));
+            }
+            // Description contains query.
+            if desc_lower.contains(&query) {
+                return Some((3, app));
+            }
+            // Category match.
+            if app.categories.iter().any(|c| c.to_lowercase().contains(&query)) {
+                return Some((4, app));
+            }
+            None
+        })
+        .collect();
+
+    scored.sort_by_key(|(score, _)| *score);
+    scored.into_iter().take(8).map(|(_, app)| app.clone()).collect()
 }
 
 /// Launches an application by running its Exec command via `sh -c`.

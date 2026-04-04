@@ -12,6 +12,6 @@
 <CommandPrimitive.List
 	bind:ref
 	data-slot="command-list"
-	class={cn("max-h-[300px] overflow-x-hidden overflow-y-auto", className)}
+	class={cn("overflow-x-hidden overflow-y-auto", className)}
 	{...restProps}
 />
