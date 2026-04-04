@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import { writable } from "svelte/store";
   import { waypointerVisible, initWaypointerListeners, closeWaypointer } from "$lib/stores/waypointer.js";
   import { resolveAppIcon } from "$lib/stores/appIcons.js";
   import { invoke as tauriInvoke } from "@tauri-apps/api/core";
@@ -7,7 +8,7 @@
     Command, CommandInput, CommandList, CommandEmpty,
     CommandGroup, CommandItem, CommandSeparator, CommandShortcut,
   } from "$lib/components/ui/command/index.js";
-  import { Search, AppWindow } from "lucide-svelte";
+  import { Search, AppWindow, Calculator, ArrowRightLeft } from "lucide-svelte";
 
   interface AppEntry {
     name: string;
@@ -48,10 +49,12 @@
   function open() {
     query = "";
     commandValue = "";
+    inlineResult.set(null);
 
     setTimeout(() => {
       query = "";
       commandValue = "";
+      inlineResult.set(null);
       if (inputRef) {
         inputRef.value = "";
         inputRef.dispatchEvent(new Event("input", { bubbles: true }));
@@ -82,6 +85,15 @@
       close();
       return;
     }
+    if (e.key === "Enter") {
+      let r: WaypointerResult | null = null;
+      inlineResult.subscribe((v) => { r = v; })();
+      if (r) {
+        e.preventDefault();
+        copyResult(r);
+        return;
+      }
+    }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       kbActive = true;
     }
@@ -97,6 +109,70 @@
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
       kbActive = false;
     }
+  }
+
+  interface WaypointerResult {
+    result_type: string;
+    display: string;
+    copy_value: string;
+  }
+
+  const inlineResult = writable<WaypointerResult | null>(null);
+
+  // Debounced evaluation on query change.
+  onMount(() => {
+    const unsub2 = (() => {
+      let prev = "";
+      return setInterval(() => {
+        const q = inputRef?.value ?? query;
+        if (q === prev) return;
+        console.error("[wp-eval] query changed:", JSON.stringify(q));
+        prev = q;
+        if (q.trim().length < 2) {
+          inlineResult.set(null);
+          return;
+        }
+        tauriInvoke<WaypointerResult | null>("evaluate_waypointer_input", { input: q })
+          .then((r) => {
+            inlineResult.set(r);
+            // DOM fallback: bypass Svelte reactivity.
+            const el = document.getElementById("wp-inline-result");
+            const wrap = document.getElementById("wp-inline-wrap");
+            const list = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
+            if (r) {
+              if (el) el.textContent = r.display;
+              if (wrap) wrap.style.display = "";
+              // Hide the app list if it has no visible (non-hidden) items.
+              if (list) {
+                const hasVisible = list.querySelector("[data-slot='command-item']:not([hidden])");
+                if (!hasVisible) {
+                  list.style.display = "none";
+                  if (wrap) wrap.style.paddingBottom = "8px";
+                } else {
+                  list.style.display = "";
+                  if (wrap) wrap.style.paddingBottom = "";
+                }
+              }
+            } else {
+              if (wrap) { wrap.style.display = "none"; wrap.style.paddingBottom = ""; }
+              if (list) list.style.display = "";
+            }
+          })
+          .catch(() => {
+            inlineResult.set(null);
+            const wrap = document.getElementById("wp-inline-wrap");
+            const list = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
+            if (wrap) wrap.style.display = "none";
+            if (list) list.style.display = "";
+          });
+      }, 150);
+    })();
+    return () => clearInterval(unsub2);
+  });
+
+  function copyResult(result: WaypointerResult) {
+    navigator.clipboard.writeText(result.copy_value).catch(() => {});
+    close();
   }
 
   function launchApp(app: AppEntry) {
@@ -120,6 +196,16 @@
         bind:ref={inputRef}
         autofocus
       />
+
+      <!-- Inline result: above the scrollable list, always in DOM -->
+      <div id="wp-inline-wrap" style="display: none; padding: 6px 6px 2px;">
+        <div class="wp-inline-card" onclick={() => { const r = $inlineResult; if (r) copyResult(r); }}>
+          <Calculator size={18} strokeWidth={1.5} />
+          <span id="wp-inline-result" class="wp-inline-result"></span>
+          <span class="wp-inline-hint">Copy</span>
+        </div>
+      </div>
+
       <CommandList
         class="wp-list {kbActive ? 'wp-kb-active' : ''}"
         bind:ref={listRef}
@@ -127,7 +213,7 @@
         <CommandEmpty>
           {#if loading}
             Loading apps...
-          {:else}
+          {:else if !$inlineResult}
             No results found.
           {/if}
         </CommandEmpty>
@@ -199,6 +285,28 @@
 
   :global(.wp-list) {
     max-height: 400px;
+  }
+
+  .wp-inline-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--color-fg-shell, #fafafa) 8%, transparent);
+    color: var(--color-fg-shell, #fafafa);
+  }
+
+  .wp-inline-result {
+    font-size: 1.125rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .wp-inline-hint {
+    margin-left: auto;
+    font-size: 0.6875rem;
+    opacity: 0.35;
   }
 
   .wp-app-icon {
