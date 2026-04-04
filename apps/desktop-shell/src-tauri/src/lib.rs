@@ -82,6 +82,7 @@ pub fn run() {
             menu_store::get_menu,
             waypointer::toggle_waypointer,
             app_index::get_apps,
+            app_index::search_apps,
             app_index::launch_app,
             waypointer_plugins::evaluate_waypointer_input,
             wayland_client::workspace_activate,
