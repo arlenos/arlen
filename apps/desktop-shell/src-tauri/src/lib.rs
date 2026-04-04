@@ -5,6 +5,7 @@ mod layer_shell;
 mod menu_store;
 mod notifications;
 mod shell_overlay_client;
+mod shell_runner;
 mod theme;
 mod wayland_client;
 mod waypointer;
@@ -81,6 +82,7 @@ pub fn run() {
             menu_store::dispatch_menu_action,
             menu_store::get_menu,
             waypointer::toggle_waypointer,
+            shell_runner::execute_shell_command,
             app_index::get_apps,
             app_index::search_apps,
             app_index::launch_app,
