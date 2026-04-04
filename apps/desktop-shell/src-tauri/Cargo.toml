@@ -21,6 +21,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 base64 = "0.22"
 evalexpr = "11"
+meval = "0.2"
 notify = "6"
 dirs = "5"
 toml = "0.8"

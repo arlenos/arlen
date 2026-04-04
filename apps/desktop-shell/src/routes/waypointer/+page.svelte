@@ -90,7 +90,7 @@
       inlineResult.subscribe((v) => { r = v; })();
       if (r) {
         e.preventDefault();
-        copyResult(r);
+        handleInlineAction(r);
         return;
       }
     }
@@ -141,6 +141,8 @@
             const list = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
             if (r) {
               if (el) el.textContent = r.display;
+              const hint = document.getElementById("wp-inline-hint");
+              if (hint) hint.textContent = r.result_type === "error" ? "Open Calculator" : "Copy";
               if (wrap) wrap.style.display = "";
               // Hide the app list if it has no visible (non-hidden) items.
               if (list) {
@@ -170,9 +172,21 @@
     return () => clearInterval(unsub2);
   });
 
-  function copyResult(result: WaypointerResult) {
-    navigator.clipboard.writeText(result.copy_value).catch(() => {});
-    close();
+  function handleInlineAction(result: WaypointerResult) {
+    if (result.result_type === "error") {
+      // Launch a calculator app from the index.
+      const calc = apps.find((a) =>
+        a.name.toLowerCase().includes("calculator") ||
+        a.name.toLowerCase().includes("rechner")
+      );
+      if (calc) {
+        tauriInvoke("launch_app", { exec: calc.exec });
+      }
+      close();
+    } else {
+      navigator.clipboard.writeText(result.copy_value).catch(() => {});
+      close();
+    }
   }
 
   function launchApp(app: AppEntry) {
@@ -199,10 +213,10 @@
 
       <!-- Inline result: above the scrollable list, always in DOM -->
       <div id="wp-inline-wrap" style="display: none; padding: 6px 6px 2px;">
-        <div class="wp-inline-card" onclick={() => { const r = $inlineResult; if (r) copyResult(r); }}>
+        <div class="wp-inline-card" onclick={() => { const r = $inlineResult; if (r) handleInlineAction(r); }}>
           <Calculator size={18} strokeWidth={1.5} />
           <span id="wp-inline-result" class="wp-inline-result"></span>
-          <span class="wp-inline-hint">Copy</span>
+          <span id="wp-inline-hint" class="wp-inline-hint">Copy</span>
         </div>
       </div>
 
