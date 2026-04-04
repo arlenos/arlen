@@ -7,7 +7,7 @@
     Command, CommandInput, CommandList, CommandEmpty,
     CommandGroup, CommandItem, CommandSeparator, CommandShortcut,
   } from "$lib/components/ui/command/index.js";
-  import { Search, AppWindow, Calculator, ArrowRightLeft } from "lucide-svelte";
+  import { Search, AppWindow, Calculator, ArrowRightLeft, TerminalSquare, BookOpen } from "lucide-svelte";
 
   interface AppEntry {
     name: string;
@@ -93,6 +93,26 @@
       return;
     }
     if (e.key === "Enter") {
+      // Check special modes first.
+      let mode: SpecialMode = null;
+      let arg = "";
+      specialMode.subscribe((v) => { mode = v; })();
+      specialArg.subscribe((v) => { arg = v; })();
+
+      if (mode === "shell" && arg) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.error(`[wp] shell: cmd="${arg}" shift=${e.shiftKey} inTerminal=${e.shiftKey}`);
+        runShellCommand(arg, e.shiftKey);
+        return;
+      }
+      if (mode === "man" && arg) {
+        e.preventDefault();
+        openManPage(arg);
+        return;
+      }
+
+      // Check inline math/unit result.
       let r: WaypointerResult | null = null;
       inlineResult.subscribe((v) => { r = v; })();
       if (r) {
@@ -126,6 +146,23 @@
 
   const inlineResult = writable<WaypointerResult | null>(null);
 
+  // Special mode: '>' = shell command, '#' = man page.
+  type SpecialMode = "shell" | "man" | null;
+  const specialMode = writable<SpecialMode>(null);
+  const specialArg = writable<string>("");
+
+  function runShellCommand(cmd: string, inTerminal: boolean) {
+    console.error(`[wp] runShellCommand: cmd="${cmd}" inTerminal=${inTerminal}`);
+    tauriInvoke("execute_shell_command", { command: cmd, inTerminal })
+      .catch((err) => console.error("[wp] execute_shell_command error:", err));
+    close();
+  }
+
+  function openManPage(topic: string) {
+    tauriInvoke("execute_shell_command", { command: `man ${topic}`, inTerminal: true });
+    close();
+  }
+
   // Poll for query changes and trigger search + evaluation.
   onMount(() => {
     const unsub2 = (() => {
@@ -134,10 +171,47 @@
         const q = inputRef?.value ?? query;
         if (q === prev) return;
         prev = q;
+        const trimmed = q.trim();
+
+        // Detect special prefixes.
+        if (trimmed.startsWith(">")) {
+          const cmd = trimmed.slice(1).trim();
+          specialMode.set("shell");
+          specialArg.set(cmd);
+          searchResults.set([]);
+          inlineResult.set(null);
+          // DOM: show shell result.
+          const wrap = document.getElementById("wp-inline-wrap");
+          const el = document.getElementById("wp-inline-result");
+          const hint = document.getElementById("wp-inline-hint");
+          if (wrap) wrap.style.display = cmd ? "" : "none";
+          if (el) el.textContent = cmd || "Type a command...";
+          if (hint) hint.textContent = "Enter: Run / Shift+Enter: Terminal";
+          return;
+        }
+        if (trimmed.startsWith("#")) {
+          const topic = trimmed.slice(1).trim();
+          specialMode.set("man");
+          specialArg.set(topic);
+          searchResults.set([]);
+          inlineResult.set(null);
+          const wrap = document.getElementById("wp-inline-wrap");
+          const el = document.getElementById("wp-inline-result");
+          const hint = document.getElementById("wp-inline-hint");
+          if (wrap) wrap.style.display = topic ? "" : "none";
+          if (el) el.textContent = topic ? `man ${topic}` : "Type a topic...";
+          if (hint) hint.textContent = "Open man page";
+          return;
+        }
+
+        // Normal mode: clear special state.
+        specialMode.set(null);
+        specialArg.set("");
+
         // Search apps in Rust.
         debouncedSearch(q);
         // Evaluate math/units.
-        if (q.trim().length < 2) {
+        if (trimmed.length < 2) {
           inlineResult.set(null);
           return;
         }
@@ -208,8 +282,25 @@
 
       <!-- Inline result: above the scrollable list, always in DOM -->
       <div id="wp-inline-wrap" style="display: none; padding: 6px 6px 2px;">
-        <div class="wp-inline-card" onclick={() => { const r = $inlineResult; if (r) handleInlineAction(r); }}>
-          <Calculator size={18} strokeWidth={1.5} />
+        <div class="wp-inline-card" onclick={() => {
+          let mode: SpecialMode = null;
+          let arg = "";
+          specialMode.subscribe((v) => { mode = v; })();
+          specialArg.subscribe((v) => { arg = v; })();
+          if (mode === "shell" && arg) { runShellCommand(arg, false); return; }
+          if (mode === "man" && arg) { openManPage(arg); return; }
+          const r = $inlineResult;
+          if (r) handleInlineAction(r);
+        }}>
+          <span id="wp-inline-icon" class="wp-inline-icon">
+            {#if $specialMode === "shell"}
+              <TerminalSquare size={18} strokeWidth={1.5} />
+            {:else if $specialMode === "man"}
+              <BookOpen size={18} strokeWidth={1.5} />
+            {:else}
+              <Calculator size={18} strokeWidth={1.5} />
+            {/if}
+          </span>
           <span id="wp-inline-result" class="wp-inline-result"></span>
           <span id="wp-inline-hint" class="wp-inline-hint">Copy</span>
         </div>
