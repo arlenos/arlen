@@ -7,7 +7,7 @@
     Command, CommandInput, CommandList, CommandEmpty,
     CommandGroup, CommandItem, CommandSeparator, CommandShortcut,
   } from "$lib/components/ui/command/index.js";
-  import { Search, AppWindow, Calculator, ArrowRightLeft, TerminalSquare, BookOpen } from "lucide-svelte";
+  import { Search, AppWindow, Calculator, ArrowRightLeft, TerminalSquare, BookOpen, Clock } from "lucide-svelte";
 
   interface AppEntry {
     name: string;
@@ -184,9 +184,12 @@
           const wrap = document.getElementById("wp-inline-wrap");
           const el = document.getElementById("wp-inline-result");
           const hint = document.getElementById("wp-inline-hint");
-          if (wrap) wrap.style.display = cmd ? "" : "none";
+          if (wrap) { wrap.style.display = cmd ? "" : "none"; wrap.style.paddingBottom = "8px"; }
           if (el) el.textContent = cmd || "Type a command...";
           if (hint) hint.textContent = "Enter: Run / Shift+Enter: Terminal";
+          // Hide the empty list.
+          const list = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
+          if (list) list.style.display = "none";
           return;
         }
         if (trimmed.startsWith("#")) {
@@ -198,15 +201,20 @@
           const wrap = document.getElementById("wp-inline-wrap");
           const el = document.getElementById("wp-inline-result");
           const hint = document.getElementById("wp-inline-hint");
-          if (wrap) wrap.style.display = topic ? "" : "none";
+          if (wrap) { wrap.style.display = topic ? "" : "none"; wrap.style.paddingBottom = "8px"; }
           if (el) el.textContent = topic ? `man ${topic}` : "Type a topic...";
           if (hint) hint.textContent = "Open man page";
+          const list2 = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
+          if (list2) list2.style.display = "none";
           return;
         }
 
         // Normal mode: clear special state.
         specialMode.set(null);
         specialArg.set("");
+        // Restore list visibility.
+        const listEl = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
+        if (listEl) listEl.style.display = "";
 
         // Search apps in Rust.
         debouncedSearch(q);
@@ -227,8 +235,13 @@
               const hint = document.getElementById("wp-inline-hint");
               if (hint) hint.textContent = r.result_type === "error" ? "Open Calculator" : "Copy";
               if (wrap) wrap.style.display = "";
+              // Hide list and add padding when no app results visible.
+              const hasItems = list?.querySelector("[data-slot='command-item']");
+              if (wrap) wrap.style.paddingBottom = hasItems ? "2px" : "8px";
+              if (list) list.style.display = hasItems ? "" : "none";
             } else {
-              if (wrap) { wrap.style.display = "none"; }
+              if (wrap) { wrap.style.display = "none"; wrap.style.paddingBottom = ""; }
+              if (list) list.style.display = "";
             }
           })
           .catch(() => {
@@ -297,6 +310,10 @@
               <TerminalSquare size={18} strokeWidth={1.5} />
             {:else if $specialMode === "man"}
               <BookOpen size={18} strokeWidth={1.5} />
+            {:else if $inlineResult?.result_type === "datetime"}
+              <Clock size={18} strokeWidth={1.5} />
+            {:else if $inlineResult?.result_type === "unit"}
+              <ArrowRightLeft size={18} strokeWidth={1.5} />
             {:else}
               <Calculator size={18} strokeWidth={1.5} />
             {/if}
