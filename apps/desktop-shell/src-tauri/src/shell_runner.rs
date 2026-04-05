@@ -155,6 +155,23 @@ fn find_terminal(index: &AppIndex) -> String {
     "xterm".into()
 }
 
+/// Opens a URL with xdg-open.
+#[tauri::command]
+pub fn open_url(url: String) {
+    if url.is_empty() {
+        return;
+    }
+    log::info!("shell_runner: xdg-open {:?}", url);
+    std::thread::spawn(move || {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(&url)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    });
+}
+
 /// Checks if a binary exists in PATH.
 fn which(name: &str) -> bool {
     // Handle absolute paths.

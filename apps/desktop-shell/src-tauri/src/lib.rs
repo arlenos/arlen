@@ -22,6 +22,8 @@ pub fn run() {
     // Created before Builder so they can be both managed and moved into start().
     let overlay_sender = Arc::new(shell_overlay_client::ShellOverlaySender::new());
     let workspace_sender = Arc::new(wayland_client::WorkspaceSender::new());
+    let toplevel_sender = Arc::new(wayland_client::ToplevelSender::new());
+    let window_list: wayland_client::WindowList = Arc::new(std::sync::Mutex::new(Vec::new()));
     let menu_store: menu_store::AppMenuStore =
         Arc::new(std::sync::Mutex::new(HashMap::new()));
     let menu_store_for_bridge = Arc::clone(&menu_store);
@@ -31,12 +33,14 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::clone(&overlay_sender))
         .manage(Arc::clone(&workspace_sender))
+        .manage(Arc::clone(&toplevel_sender))
+        .manage(Arc::clone(&window_list))
         .manage(Arc::clone(&menu_store))
         .manage(app_idx)
         .setup(|app| {
             theme::start_watcher(app.handle().clone());
             event_bus::start(app.handle().clone());
-            wayland_client::start(app.handle().clone(), workspace_sender);
+            wayland_client::start(app.handle().clone(), workspace_sender, toplevel_sender, window_list);
             shell_overlay_client::start(app.handle().clone(), overlay_sender);
             notifications::start(app.handle().clone());
             gtk_menu_bridge::start(app.handle().clone(), menu_store_for_bridge);
@@ -83,11 +87,14 @@ pub fn run() {
             menu_store::get_menu,
             waypointer::toggle_waypointer,
             shell_runner::execute_shell_command,
+            shell_runner::open_url,
             app_index::get_apps,
             app_index::search_apps,
             app_index::launch_app,
             waypointer_plugins::evaluate_waypointer_input,
             wayland_client::workspace_activate,
+            wayland_client::activate_window,
+            wayland_client::get_windows,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
