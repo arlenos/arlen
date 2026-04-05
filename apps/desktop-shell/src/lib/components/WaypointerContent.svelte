@@ -10,10 +10,14 @@
     activateWindow, type WindowInfo,
   } from "$lib/stores/waypointerWindows.js";
   import {
+    processResults, updateProcessResults, clearProcessResults,
+    killProcess, formatBytes, type ProcessInfo,
+  } from "$lib/stores/waypointerProcesses.js";
+  import {
     Command, CommandInput, CommandList, CommandEmpty,
     CommandGroup, CommandItem, CommandSeparator, CommandShortcut,
   } from "$lib/components/ui/command/index.js";
-  import { Search, AppWindow, Calculator, ArrowRightLeft, TerminalSquare, BookOpen, Clock, Globe, Link } from "lucide-svelte";
+  import { Search, AppWindow, Calculator, ArrowRightLeft, TerminalSquare, BookOpen, Clock, Globe, Link, Skull } from "lucide-svelte";
 
   let query = $state("");
   let inputRef = $state<HTMLInputElement | null>(null);
@@ -59,7 +63,10 @@
     query = "";
     commandValue = "";
     inlineResult.set(null);
+    specialMode.set(null);
+    specialArg.set("");
     clearWindowResults();
+    clearProcessResults();
     searchResults.set(allApps);
     // Scroll list to top. Focus is handled by Rust eval() immediately
     // after show() -- no setTimeout needed here.
@@ -117,6 +124,23 @@
         webSearchAction(arg);
         return;
       }
+      if (mode === "kill" && e.shiftKey) {
+        // Shift+Enter in kill mode: SIGKILL the selected process.
+        e.preventDefault();
+        e.stopPropagation();
+        let procs: ProcessInfo[] = [];
+        processResults.subscribe((v) => { procs = v; })();
+        // The selected process is whichever has data-selected in the DOM.
+        const selected = document.querySelector("[data-slot='command-item'][data-selected]");
+        const selectedValue = selected?.getAttribute("data-value") ?? "";
+        if (selectedValue.startsWith("proc-")) {
+          const pid = parseInt(selectedValue.slice(5), 10);
+          const proc = procs.find((p) => p.pid === pid);
+          if (proc) { killProcessAction(proc, true); return; }
+        }
+        // Fallback: kill first match.
+        if (procs.length > 0) { killProcessAction(procs[0], true); return; }
+      }
 
       // Check inline math/unit result.
       let r: WaypointerResult | null = null;
@@ -153,7 +177,7 @@
   const inlineResult = writable<WaypointerResult | null>(null);
 
   // Special mode: '>' = shell command, '#' = man page.
-  type SpecialMode = "shell" | "man" | "url" | "search" | null;
+  type SpecialMode = "shell" | "man" | "url" | "search" | "kill" | null;
   const specialMode = writable<SpecialMode>(null);
   const specialArg = writable<string>("");
 
@@ -174,6 +198,11 @@
 
   function webSearchAction(query: string) {
     webSearch(query);
+    close();
+  }
+
+  function killProcessAction(proc: ProcessInfo, force: boolean) {
+    killProcess(proc.pid, force).catch(() => {});
     close();
   }
 
@@ -250,6 +279,22 @@
           return;
         }
 
+        // "kill" keyword: process list.
+        if (trimmed.toLowerCase().startsWith("kill")) {
+          const filter = trimmed.slice(4).trim();
+          specialMode.set("kill");
+          specialArg.set(filter);
+          searchResults.set([]);
+          inlineResult.set(null);
+          updateProcessResults(filter);
+          // Hide inline wrap, show list.
+          const wrap = document.getElementById("wp-inline-wrap");
+          if (wrap) wrap.style.display = "none";
+          const listK = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
+          if (listK) listK.style.display = "";
+          return;
+        }
+
         // URL detection: if it looks like a URL, show "Open URL".
         if (looksLikeUrl(trimmed)) {
           specialMode.set("url");
@@ -270,6 +315,7 @@
         // Normal mode: clear special state.
         specialMode.set(null);
         specialArg.set("");
+        clearProcessResults();
         // Restore list visibility.
         const listEl = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
         if (listEl) listEl.style.display = "";
@@ -338,9 +384,9 @@
     close();
   }
 
-  /// Looks up the app icon (base64 data URL) for a window's app_id.
-  function windowIcon(appId: string): string | null {
-    const lower = appId.toLowerCase();
+  /// Looks up the app icon (base64 data URL) by app_id or exec name.
+  function appIconFor(name: string): string | null {
+    const lower = name.toLowerCase();
     const app = allApps.find((a) =>
       a.icon_name.toLowerCase() === lower ||
       a.exec.toLowerCase().split(/\s/)[0].endsWith(lower)
@@ -388,6 +434,8 @@
               <Globe size={18} strokeWidth={1.5} />
             {:else if $specialMode === "search"}
               <Search size={18} strokeWidth={1.5} />
+            {:else if $specialMode === "kill"}
+              <Skull size={18} strokeWidth={1.5} />
             {:else if $inlineResult?.result_type === "datetime"}
               <Clock size={18} strokeWidth={1.5} />
             {:else if $inlineResult?.result_type === "unit"}
@@ -414,9 +462,9 @@
         {#if $windowResults.length > 0}
           <CommandGroup heading="Windows">
             {#each $windowResults as win}
-              {@const icon = windowIcon(win.app_id)}
+              {@const icon = appIconFor(win.app_id)}
               <CommandItem
-                value={win.title}
+                value={`window-${win.id}`}
                 onSelect={() => switchToWindow(win)}
               >
                 {#if icon}
@@ -439,6 +487,33 @@
           {#if $searchResults.length > 0}
             <CommandSeparator />
           {/if}
+        {/if}
+
+        {#if $processResults.length > 0}
+          <CommandGroup heading="Processes (Enter: SIGTERM / Shift+Enter: SIGKILL)">
+            {#each $processResults as proc}
+              {@const procIcon = appIconFor(proc.name)}
+              <CommandItem
+                value={`proc-${proc.pid}`}
+                onSelect={() => killProcessAction(proc, false)}
+              >
+                {#if procIcon}
+                  <span class="wp-win-icon-wrap">
+                    <img src={procIcon} alt="" class="wp-app-icon" />
+                    <span class="wp-win-badge wp-kill-badge">
+                      <Skull size={8} strokeWidth={2} />
+                    </span>
+                  </span>
+                {:else}
+                  <Skull size={16} strokeWidth={1.5} />
+                {/if}
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{proc.name}</span>
+                  <span class="wp-app-desc">PID: {proc.pid} · {formatBytes(proc.memory_bytes)}</span>
+                </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
         {/if}
 
         {#if $searchResults.length > 0}
@@ -562,6 +637,11 @@
     border-radius: 2px;
     color: var(--color-fg-shell, #fafafa);
     opacity: 0.7;
+  }
+
+  :global(.wp-kill-badge) {
+    color: #ef4444;
+    opacity: 0.9;
   }
 
   .wp-app-icon {

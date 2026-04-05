@@ -2354,6 +2354,7 @@ dependencies = [
  "glib",
  "gtk",
  "gtk-layer-shell",
+ "libc",
  "log",
  "meval",
  "notify",

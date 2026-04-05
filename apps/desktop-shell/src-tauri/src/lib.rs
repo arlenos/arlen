@@ -10,6 +10,7 @@ mod theme;
 mod wayland_client;
 mod waypointer;
 mod waypointer_plugins;
+mod waypointer_processes;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -95,6 +96,8 @@ pub fn run() {
             wayland_client::workspace_activate,
             wayland_client::activate_window,
             wayland_client::get_windows,
+            waypointer_processes::get_processes,
+            waypointer_processes::kill_process,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
