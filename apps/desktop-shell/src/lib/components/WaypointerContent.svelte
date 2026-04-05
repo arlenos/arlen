@@ -14,6 +14,10 @@
     killProcess, formatBytes, type ProcessInfo,
   } from "$lib/stores/waypointerProcesses.js";
   import {
+    unicodeResults, updateUnicodeResults, clearUnicodeResults,
+    type UnicodeChar,
+  } from "$lib/stores/waypointerUnicode.js";
+  import {
     Command, CommandInput, CommandList, CommandEmpty,
     CommandGroup, CommandItem, CommandSeparator, CommandShortcut,
   } from "$lib/components/ui/command/index.js";
@@ -67,6 +71,7 @@
     specialArg.set("");
     clearWindowResults();
     clearProcessResults();
+    clearUnicodeResults();
     searchResults.set(allApps);
     // Scroll list to top. Focus is handled by Rust eval() immediately
     // after show() -- no setTimeout needed here.
@@ -177,7 +182,7 @@
   const inlineResult = writable<WaypointerResult | null>(null);
 
   // Special mode: '>' = shell command, '#' = man page.
-  type SpecialMode = "shell" | "man" | "url" | "search" | "kill" | null;
+  type SpecialMode = "shell" | "man" | "url" | "search" | "kill" | "unicode" | null;
   const specialMode = writable<SpecialMode>(null);
   const specialArg = writable<string>("");
 
@@ -198,6 +203,11 @@
 
   function webSearchAction(query: string) {
     webSearch(query);
+    close();
+  }
+
+  function copyUnicodeChar(uc: UnicodeChar) {
+    navigator.clipboard.writeText(uc.char_str).catch(() => {});
     close();
   }
 
@@ -295,6 +305,25 @@
           return;
         }
 
+        // "unicode" keyword: character search.
+        if (trimmed.toLowerCase().startsWith("unicode")) {
+          const filter = trimmed.slice(7).trim();
+          specialMode.set("unicode");
+          specialArg.set(filter);
+          searchResults.set([]);
+          inlineResult.set(null);
+          if (filter) {
+            updateUnicodeResults(filter);
+          } else {
+            clearUnicodeResults();
+          }
+          const wrap = document.getElementById("wp-inline-wrap");
+          if (wrap) wrap.style.display = "none";
+          const listUni = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
+          if (listUni) listUni.style.display = "";
+          return;
+        }
+
         // URL detection: if it looks like a URL, show "Open URL".
         if (looksLikeUrl(trimmed)) {
           specialMode.set("url");
@@ -316,6 +345,7 @@
         specialMode.set(null);
         specialArg.set("");
         clearProcessResults();
+        clearUnicodeResults();
         // Restore list visibility.
         const listEl = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
         if (listEl) listEl.style.display = "";
@@ -516,6 +546,23 @@
           </CommandGroup>
         {/if}
 
+        {#if $unicodeResults.length > 0}
+          <CommandGroup heading="Unicode">
+            {#each $unicodeResults as uc}
+              <CommandItem
+                value={`unicode-${uc.codepoint}`}
+                onSelect={() => copyUnicodeChar(uc)}
+              >
+                <span class="wp-unicode-char">{uc.char_str}</span>
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{uc.name}</span>
+                  <span class="wp-app-desc">{uc.codepoint_hex}</span>
+                </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+        {/if}
+
         {#if $searchResults.length > 0}
           <CommandGroup heading="Applications">
             {#each $searchResults as app}
@@ -642,6 +689,14 @@
   :global(.wp-kill-badge) {
     color: #ef4444;
     opacity: 0.9;
+  }
+
+  .wp-unicode-char {
+    font-size: 1.25rem;
+    line-height: 1;
+    width: 24px;
+    text-align: center;
+    flex-shrink: 0;
   }
 
   .wp-app-icon {

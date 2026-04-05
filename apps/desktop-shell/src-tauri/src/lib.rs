@@ -11,6 +11,7 @@ mod wayland_client;
 mod waypointer;
 mod waypointer_plugins;
 mod waypointer_processes;
+mod waypointer_unicode;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -98,6 +99,7 @@ pub fn run() {
             wayland_client::get_windows,
             waypointer_processes::get_processes,
             waypointer_processes::kill_process,
+            waypointer_unicode::search_unicode,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
