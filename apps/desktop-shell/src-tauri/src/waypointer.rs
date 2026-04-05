@@ -116,16 +116,22 @@ pub fn show(app: &AppHandle) {
         });
         let _ = app.emit("lunaris://waypointer-show", ());
 
-        // Reset the input after the window is visible. The JS runs inside
-        // the WebView and clears the input + focuses it, bypassing any
-        // Svelte binding issues.
+        // Focus the input immediately -- no delay. The DOM element persists
+        // across show/hide cycles so it is always available.
+        let _ = w.eval(
+            "document.querySelector('[data-slot=\"command-input\"]')?.focus()"
+        );
+
+        // Clear the input value after a short delay (DOM needs one
+        // frame after show_all to accept mutations). Focus is already
+        // set above so keystrokes land in the input immediately.
         let w2 = w.clone();
         std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(200));
+            std::thread::sleep(std::time::Duration::from_millis(30));
             let _ = w2.eval(
                 "(() => { \
                    const i = document.querySelector('[data-slot=\"command-input\"]'); \
-                   if (i) { i.value = ''; i.dispatchEvent(new Event('input', {bubbles:true})); i.focus(); } \
+                   if (i) { i.value = ''; i.dispatchEvent(new Event('input', {bubbles:true})); } \
                  })()"
             );
         });
