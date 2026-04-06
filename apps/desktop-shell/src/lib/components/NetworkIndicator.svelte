@@ -7,7 +7,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { togglePopover } from "$lib/stores/activePopover.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { Wifi, WifiOff, Cable, Shield } from "lucide-svelte";
+  import { Wifi, WifiOff, Cable, Shield, Plane } from "lucide-svelte";
 
   interface NetworkStatus {
     connection_type: string;
@@ -18,6 +18,7 @@
   }
 
   let status = $state<NetworkStatus | null>(null);
+  let airplaneMode = $state(false);
 
   const tooltipClass =
     "rounded-md border px-2 py-0.5 text-xs shadow-md select-none"
@@ -25,9 +26,16 @@
 
   async function poll() {
     try {
-      status = await invoke<NetworkStatus>("get_network_status");
+      airplaneMode = await invoke<boolean>("get_airplane_mode");
     } catch {
-      status = null;
+      airplaneMode = false;
+    }
+    if (!airplaneMode) {
+      try {
+        status = await invoke<NetworkStatus>("get_network_status");
+      } catch {
+        status = null;
+      }
     }
   }
 
@@ -40,6 +48,7 @@
   });
 
   const Icon = $derived(
+    airplaneMode ? Plane :
     !status || !status.connected ? WifiOff :
     status.connection_type === "ethernet" ? Cable :
     Wifi
@@ -53,6 +62,7 @@
   );
 
   const label = $derived(() => {
+    if (airplaneMode) return "Airplane Mode";
     if (!status || !status.connected) return "Disconnected";
     if (status.connection_type === "ethernet") {
       return `Ethernet: ${status.name ?? "Connected"}`;

@@ -4,7 +4,7 @@
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
   import { Separator } from "$lib/components/ui/separator/index.js";
-  import { Wifi, WifiOff, Cable, Settings, Lock, Check, RefreshCw } from "lucide-svelte";
+  import { Wifi, WifiOff, Cable, Plane, Settings, Lock, Check, RefreshCw } from "lucide-svelte";
   import SignalBars from "$lib/components/SignalBars.svelte";
 
   interface NetworkStatus {
@@ -30,9 +30,11 @@
   let connectingTo = $state<string | null>(null);
   let showPasswordFor = $state<string | null>(null);
   let passwordInput = $state("");
+  let airplaneMode = $state(false);
 
   $effect(() => {
     if ($activePopover === "network") {
+      checkAirplaneMode();
       pollStatus();
       loadNetworks();
     } else {
@@ -41,6 +43,10 @@
       error = null;
     }
   });
+
+  async function checkAirplaneMode() {
+    try { airplaneMode = await invoke<boolean>("get_airplane_mode"); } catch {}
+  }
 
   async function pollStatus() {
     try { status = await invoke<NetworkStatus>("get_network_status"); } catch {}
@@ -105,6 +111,13 @@
     </div>
 
     <div class="pop-body">
+      {#if airplaneMode}
+        <div class="airplane-msg">
+          <Plane size={32} strokeWidth={1} />
+          <span class="airplane-title">Airplane Mode is on</span>
+          <span class="airplane-hint">Wireless connections are disabled</span>
+        </div>
+      {:else}
       <!-- Current Status -->
       <div class="net-status">
         {#if status?.connected}
@@ -185,6 +198,7 @@
           {/each}
         </div>
       {/if}
+      {/if}
     </div>
   </div>
 {/if}
@@ -215,6 +229,10 @@
   .net-status-info { display: flex; flex-direction: column; gap: 1px; }
   .net-status-name { font-size: 0.8125rem; font-weight: 500; }
   .net-status-detail { font-size: 0.6875rem; opacity: 0.5; }
+
+  .airplane-msg { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 12px; color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); text-align: center; }
+  .airplane-title { font-size: 0.8125rem; color: var(--color-fg-shell); }
+  .airplane-hint { font-size: 0.6875rem; }
 
   .net-error { padding: 6px 10px; background: rgba(239, 68, 68, 0.15); border-radius: 6px; color: #ef4444; font-size: 0.6875rem; }
   .net-loading { padding: 20px; text-align: center; opacity: 0.4; font-size: 0.75rem; }
