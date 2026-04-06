@@ -4,7 +4,7 @@
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
   import {
-    Moon, Sun, Plane, Settings, Lock, Power, ChevronDown,
+    Moon, Sun, Plane, Bluetooth, Settings, Lock, Power, ChevronDown,
     LayoutTemplate, LayoutGrid, Bell, LogOut, RotateCcw,
   } from "lucide-svelte";
 
@@ -14,9 +14,15 @@
   let layoutMode = $state<"float" | "tile">("float");
   let powerMenuOpen = $state(false);
 
+  let bluetoothPowered = $state(false);
+  let bluetoothAvailable = $state(false);
+
   $effect(() => {
     if ($activePopover === "quick-settings") {
       invoke<boolean>("get_airplane_mode").then((v) => { airplaneMode = v; }).catch(() => {});
+      invoke<{ available: boolean; powered: boolean }>("get_bluetooth_state")
+        .then((s) => { bluetoothAvailable = s.available; bluetoothPowered = s.powered; })
+        .catch(() => {});
     }
   });
 
@@ -24,6 +30,14 @@
     try {
       await invoke("set_airplane_mode", { enabled: !airplaneMode });
       airplaneMode = !airplaneMode;
+    } catch {}
+  }
+
+  async function toggleBluetooth() {
+    if (airplaneMode) return;
+    try {
+      await invoke("set_bluetooth_powered", { enabled: !bluetoothPowered });
+      bluetoothPowered = !bluetoothPowered;
     } catch {}
   }
 
@@ -92,6 +106,22 @@
         <Plane size={14} strokeWidth={1.5} />
       </button>
     </div>
+
+    <!-- Bluetooth -->
+    {#if bluetoothAvailable}
+      <div class="qs-row">
+        <span class="qs-label">Bluetooth</span>
+        <button
+          class="qs-pill"
+          class:active={bluetoothPowered}
+          disabled={airplaneMode}
+          onclick={(e) => { e.stopPropagation(); toggleBluetooth(); }}
+          title={airplaneMode ? "Disabled in Airplane Mode" : bluetoothPowered ? "Disable Bluetooth" : "Enable Bluetooth"}
+        >
+          <Bluetooth size={14} strokeWidth={1.5} />
+        </button>
+      </div>
+    {/if}
 
     <!-- Brightness -->
     <div class="qs-brightness-row">

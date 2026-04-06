@@ -1,0 +1,118 @@
+<script lang="ts">
+  /// Bluetooth indicator for the top bar.
+  ///
+  /// Only visible when at least one device is connected. Shows the icon
+  /// of the highest-priority connected device (audio > input > other).
+
+  import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
+  import { onMount } from "svelte";
+  import { togglePopover } from "$lib/stores/activePopover.js";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { Bluetooth, Headphones, Keyboard, Mouse, Gamepad2, Smartphone, Speaker } from "lucide-svelte";
+
+  interface BluetoothDevice {
+    path: string;
+    address: string;
+    name: string;
+    icon: string;
+    paired: boolean;
+    connected: boolean;
+    trusted: boolean;
+    battery_percentage: number | null;
+  }
+
+  interface BluetoothState {
+    available: boolean;
+    powered: boolean;
+    discovering: boolean;
+    devices: BluetoothDevice[];
+  }
+
+  let btState = $state<BluetoothState | null>(null);
+
+  async function load() {
+    try {
+      btState = await invoke<BluetoothState>("get_bluetooth_state");
+    } catch {
+      btState = null;
+    }
+  }
+
+  onMount(() => {
+    load();
+    const unlisten = listen("bluetooth-changed", () => load());
+    return () => { unlisten.then((fn) => fn()); };
+  });
+
+  const connectedDevices = $derived(
+    btState?.devices.filter((d: BluetoothDevice) => d.connected) ?? []
+  );
+
+  const visible = $derived(connectedDevices.length > 0);
+
+  const iconMap: Record<string, typeof Bluetooth> = {
+    "audio-headphones": Headphones,
+    "audio-headset": Headphones,
+    "audio-speakers": Speaker,
+    "input-keyboard": Keyboard,
+    "input-mouse": Mouse,
+    "input-gaming": Gamepad2,
+    "phone": Smartphone,
+  };
+
+  const primaryDevice = $derived(
+    connectedDevices.find((d: BluetoothDevice) => d.icon.includes("audio") || d.icon.includes("headset")) ??
+    connectedDevices.find((d: BluetoothDevice) => d.icon.includes("input")) ??
+    connectedDevices[0] ??
+    null
+  );
+
+  const IndicatorIcon = $derived(
+    primaryDevice ? (iconMap[primaryDevice.icon] ?? Bluetooth) : Bluetooth
+  );
+
+  const label = $derived(
+    primaryDevice
+      ? primaryDevice.name + (primaryDevice.battery_percentage != null ? ` (${primaryDevice.battery_percentage}%)` : "")
+      : "Bluetooth"
+  );
+</script>
+
+{#if visible}
+  <Tooltip.Root>
+    <Tooltip.Trigger>
+      {#snippet child({ props })}
+        <button
+          {...props}
+          class="bt-btn"
+          aria-label={label}
+          onclick={() => togglePopover("bluetooth")}
+        >
+          <svelte:component this={IndicatorIcon} size={14} strokeWidth={1.5} />
+        </button>
+      {/snippet}
+    </Tooltip.Trigger>
+    <Tooltip.Content>{label}</Tooltip.Content>
+  </Tooltip.Root>
+{/if}
+
+<style>
+  .bt-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--foreground);
+    transition: background-color 150ms ease;
+  }
+  .bt-btn:hover {
+    background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  }
+</style>
