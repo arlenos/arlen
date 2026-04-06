@@ -8,6 +8,7 @@ mod menu_store;
 mod network;
 mod power;
 mod notifications;
+mod sni;
 mod shell_overlay_client;
 mod shell_runner;
 mod theme;
@@ -34,6 +35,7 @@ pub fn run() {
         Arc::new(std::sync::Mutex::new(HashMap::new()));
     let menu_store_for_bridge = Arc::clone(&menu_store);
     let app_idx: app_index::AppIndex = Arc::new(std::sync::Mutex::new(app_index::build_index()));
+    let sni_items: sni::SniItems = Arc::new(std::sync::Mutex::new(HashMap::new()));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -43,12 +45,14 @@ pub fn run() {
         .manage(Arc::clone(&window_list))
         .manage(Arc::clone(&menu_store))
         .manage(app_idx)
+        .manage(Arc::clone(&sni_items))
         .setup(|app| {
             theme::start_watcher(app.handle().clone());
             event_bus::start(app.handle().clone());
             wayland_client::start(app.handle().clone(), workspace_sender, toplevel_sender, window_list);
             shell_overlay_client::start(app.handle().clone(), overlay_sender);
             notifications::start(app.handle().clone());
+            sni::start(app.handle().clone(), sni_items);
             gtk_menu_bridge::start(app.handle().clone(), menu_store_for_bridge);
 
             // Create the Waypointer overlay window (hidden).
@@ -107,6 +111,8 @@ pub fn run() {
             network::connect_wifi,
             network::connect_wifi_password,
             network::disconnect_wifi,
+            sni::get_sni_items,
+            sni::activate_sni_item,
             shell_runner::execute_shell_command,
             shell_runner::open_url,
             app_index::get_apps,
