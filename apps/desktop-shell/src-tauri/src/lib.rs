@@ -1,8 +1,12 @@
 mod app_index;
+mod audio;
+mod battery;
 mod event_bus;
 mod gtk_menu_bridge;
 mod layer_shell;
 mod menu_store;
+mod network;
+mod power;
 mod notifications;
 mod shell_overlay_client;
 mod shell_runner;
@@ -88,6 +92,17 @@ pub fn run() {
             menu_store::dispatch_menu_action,
             menu_store::get_menu,
             waypointer::toggle_waypointer,
+            audio::get_audio_status,
+            audio::set_audio_volume,
+            audio::toggle_audio_mute,
+            audio::get_audio_outputs,
+            audio::set_audio_output,
+            audio::get_audio_inputs,
+            audio::set_audio_input,
+            battery::get_battery_status,
+            power::get_power_profile,
+            power::set_power_profile,
+            network::get_network_status,
             shell_runner::execute_shell_command,
             shell_runner::open_url,
             app_index::get_apps,

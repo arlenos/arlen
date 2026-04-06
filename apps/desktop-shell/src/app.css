@@ -73,6 +73,27 @@
   --muted-foreground: color-mix(in srgb, var(--color-fg-shell) 70%, transparent 30%);
 }
 
+/* Shell popover context - for fixed-position popovers and panels
+   that render outside the .shell-surface DOM tree but need shell
+   colors for shadcn components (Switch, Select, Separator, etc.). */
+.shell-popover {
+  --background:          var(--color-bg-shell);
+  --foreground:          var(--color-fg-shell);
+  --popover:             var(--color-bg-shell);
+  --popover-foreground:  var(--color-fg-shell);
+  --primary:             var(--color-fg-shell);
+  --primary-foreground:  var(--color-bg-shell);
+  --secondary:           color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
+  --secondary-foreground: var(--color-fg-shell);
+  --muted:               color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
+  --muted-foreground:    color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
+  --accent:              color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
+  --accent-foreground:   var(--color-fg-shell);
+  --border:              color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
+  --input:               color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
+  --ring:                var(--color-fg-shell);
+}
+
 
 /* Register Lunaris tokens as Tailwind v4 theme variables */
 @theme inline {
