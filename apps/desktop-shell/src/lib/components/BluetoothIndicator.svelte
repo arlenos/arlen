@@ -1,8 +1,8 @@
 <script lang="ts">
   /// Bluetooth indicator for the top bar.
   ///
-  /// Only visible when at least one device is connected. Shows the icon
-  /// of the highest-priority connected device (audio > input > other).
+  /// Always visible when an adapter exists and is powered. Shows the icon
+  /// of the highest-priority connected device, or generic Bluetooth icon.
 
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -58,7 +58,7 @@
     btState?.devices.filter((d: BluetoothDevice) => d.connected) ?? []
   );
 
-  const visible = $derived(connectedDevices.length > 0);
+  const visible = $derived(btState?.available && btState?.powered);
 
   const primaryDevice = $derived(
     connectedDevices.find((d: BluetoothDevice) => d.icon.includes("audio") || d.icon.includes("headset")) ??

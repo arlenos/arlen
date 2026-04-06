@@ -158,7 +158,7 @@
                       alt={win.app_id}
                       width="24"
                       height="24"
-                      style="border: 1px solid rgba(255,255,255,0.3);"
+                      style="border: 1px solid color-mix(in srgb, var(--color-fg-primary) 30%, transparent);"
                     />
                   {:else}
                     <AppWindow size={16} strokeWidth={1.5} class="ws-app-icon-fallback" />
@@ -203,7 +203,7 @@
     border-radius: 10px;
     background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow-lg);
     pointer-events: none;
     opacity: 0;
     transition:

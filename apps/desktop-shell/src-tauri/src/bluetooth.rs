@@ -98,6 +98,65 @@ fn unwrap_variant<'a>(v: &'a Value<'a>) -> &'a Value<'a> {
     }
 }
 
+/// Filter out BLE noise (nameless devices, MAC-only names).
+///
+/// Many BLE peripherals (beacons, fitness trackers, etc.) broadcast without
+/// a human-readable name. These flood the device list and are useless in
+/// the UI.
+fn should_show_device(device: &BluetoothDevice) -> bool {
+    let name = &device.name;
+    if name.is_empty() {
+        return false;
+    }
+    // MAC address pattern: XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX
+    if name.len() == 17
+        && name.chars().enumerate().all(|(i, c)| {
+            if i % 3 == 2 {
+                c == '-' || c == ':'
+            } else {
+                c.is_ascii_hexdigit()
+            }
+        })
+    {
+        return false;
+    }
+    true
+}
+
+/// Guess a Lucide-compatible icon name from the device name when BlueZ does
+/// not provide an Icon property.
+fn guess_icon_from_name(name: &str) -> String {
+    let lower = name.to_lowercase();
+    if ["pods", "buds", "headphone", "headset", "earphone", "earbuds", "wh-", "wf-"]
+        .iter()
+        .any(|k| lower.contains(k))
+    {
+        return "audio-headphones".into();
+    }
+    if lower.contains("keyboard") || lower.contains("keychron") {
+        return "input-keyboard".into();
+    }
+    if lower.contains("mouse") || lower.contains("mx master") || lower.contains("trackpad") {
+        return "input-mouse".into();
+    }
+    if ["controller", "gamepad", "dualsense", "dualshock", "xbox", "joycon"]
+        .iter()
+        .any(|k| lower.contains(k))
+    {
+        return "input-gaming".into();
+    }
+    if lower.contains("speaker") || lower.contains("soundbar") || lower.contains("boom") {
+        return "audio-speakers".into();
+    }
+    if lower.contains("phone") || lower.contains("galaxy") || lower.contains("iphone") {
+        return "phone".into();
+    }
+    if lower.contains("watch") || lower.contains("band") {
+        return "watch".into();
+    }
+    "bluetooth".into()
+}
+
 /// Type alias for the ObjectManager return value:
 /// `Dict<ObjectPath, Dict<InterfaceName, Dict<PropertyName, Variant>>>`
 type ManagedObjects = HashMap<OwnedObjectPath, HashMap<String, HashMap<String, OwnedValue>>>;
@@ -134,11 +193,18 @@ fn parse_device(
 
     let battery_percentage = bat_props.and_then(|bp| prop_u8(bp, "Percentage"));
 
+    let raw_icon = prop_str(dev_props, "Icon");
+    let icon = if raw_icon.is_empty() {
+        guess_icon_from_name(&name)
+    } else {
+        raw_icon
+    };
+
     BluetoothDevice {
         path: path.to_string(),
         address: prop_str(dev_props, "Address"),
         name,
-        icon: prop_str(dev_props, "Icon"),
+        icon,
         paired: prop_bool(dev_props, "Paired"),
         connected: prop_bool(dev_props, "Connected"),
         trusted: prop_bool(dev_props, "Trusted"),
@@ -173,14 +239,13 @@ pub async fn get_bluetooth_state() -> Result<BluetoothState, String> {
         }
     }
 
-    // Collect all Device1 objects.
+    // Collect all Device1 objects, filtering out BLE noise.
     let mut devices = Vec::new();
     for (path, ifaces) in &objects {
         if let Some(dev_props) = ifaces.get("org.bluez.Device1") {
             let bat_props = ifaces.get("org.bluez.Battery1");
             let device = parse_device(path.as_str(), dev_props, bat_props);
-            // Skip devices with no name (transient scan results).
-            if !device.name.is_empty() {
+            if should_show_device(&device) {
                 devices.push(device);
             }
         }

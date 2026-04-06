@@ -1,0 +1,64 @@
+[meta]
+id = "light"
+name = "Lunaris Light"
+variant = "light"
+
+[colors.background]
+shell   = "#f5f5f5"
+app     = "#ffffff"
+card    = "#fafafa"
+overlay = "#00000040"
+input   = "#f0f0f0"
+
+[colors.foreground]
+primary   = "#171717"
+secondary = "#525252"
+disabled  = "#a3a3a3"
+inverse   = "#fafafa"
+
+[colors.semantic]
+accent         = "#4f46e5"
+accent_hover   = "#6366f1"
+accent_pressed = "#4338ca"
+success        = "#16a34a"
+warning        = "#ca8a04"
+error          = "#dc2626"
+info           = "#2563eb"
+
+[colors.border]
+default = "#e5e5e5"
+strong  = "#d4d4d4"
+
+[radius]
+sm   = "4px"
+md   = "8px"
+lg   = "12px"
+full = "9999px"
+
+[spacing]
+xs = "4px"
+sm = "8px"
+md = "16px"
+lg = "24px"
+xl = "32px"
+
+[typography]
+font_sans     = "\"Inter Variable\", ui-sans-serif, system-ui, sans-serif"
+font_mono     = "\"JetBrains Mono\", ui-monospace, monospace"
+size_base     = "14px"
+line_height   = "1.5"
+weight_normal = "400"
+weight_medium = "500"
+weight_bold   = "600"
+
+[motion]
+duration_fast    = "100ms"
+duration_normal  = "200ms"
+duration_slow    = "400ms"
+easing_default   = "cubic-bezier(0.4, 0, 0.2, 1)"
+easing_spring    = "cubic-bezier(0.34, 1.56, 0.64, 1)"
+
+[depth]
+shadow_sm = "0 1px 2px rgba(0, 0, 0, 0.06)"
+shadow_md = "0 4px 12px rgba(0, 0, 0, 0.1)"
+shadow_lg = "0 8px 24px rgba(0, 0, 0, 0.15)"

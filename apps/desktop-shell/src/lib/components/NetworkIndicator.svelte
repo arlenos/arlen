@@ -147,8 +147,8 @@
     justify-content: center;
     width: 10px;
     height: 10px;
-    background: var(--color-bg-shell, #09090b);
+    background: var(--color-bg-shell);
     border-radius: 2px;
-    color: #22c55e;
+    color: var(--color-success);
   }
 </style>

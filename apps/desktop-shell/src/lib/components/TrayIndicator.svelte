@@ -90,7 +90,7 @@
     right: 4px;
     width: 6px;
     height: 6px;
-    background: #ef4444;
+    background: var(--color-error);
     border-radius: 50%;
   }
 </style>

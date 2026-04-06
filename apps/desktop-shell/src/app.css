@@ -3,60 +3,96 @@
 @import "@fontsource-variable/inter";
 
 /* ============================================================
-   Lunaris Surface Tokens - Panda Theme (default)
-   Dark shell, light apps. Injected by the theme loader at
-   runtime from ~/.config/lunaris/theme.toml.
-   These values are the built-in fallbacks.
+   Lunaris Dark Theme - CSS variable defaults.
+   Overridden at runtime by initTheme() from appearance.toml.
+   Values here match themes/dark.toml so the shell renders
+   correctly before the Tauri backend is ready.
    ============================================================ */
 :root {
-  /* Surface tokens */
-  --color-bg-shell:   #09090b;
-  --color-bg-app:     #ffffff;
-  --color-bg-card:    #f5f5f7;
+  /* Background */
+  --color-bg-shell:   #0a0a0a;
+  --color-bg-app:     #0f0f0f;
+  --color-bg-card:    #171717;
   --color-bg-overlay: #00000080;
-  --color-bg-input:   #f0f0f0;
+  --color-bg-input:   #1a1a1a;
 
-  /* Foreground tokens */
-  --color-fg-shell:   #fafafa;
-  --color-fg-app:     #1a1a2e;
+  /* Foreground */
+  --color-fg-primary:   #fafafa;
+  --color-fg-secondary: #a1a1aa;
+  --color-fg-disabled:  #52525b;
+  --color-fg-inverse:   #0a0a0a;
+  /* Legacy aliases (consumed by shell-surface / shell-popover contexts) */
+  --color-fg-shell:     var(--color-fg-primary);
+  --color-fg-app:       var(--color-fg-primary);
 
-  /* Accent and border */
-  --color-accent:     #0f0f0f;
-  --color-border:     #e2e2e8;
+  /* Semantic */
+  --color-accent:         #6366f1;
+  --color-accent-hover:   #818cf8;
+  --color-accent-pressed: #4f46e5;
+  --color-success:        #22c55e;
+  --color-warning:        #eab308;
+  --color-error:          #ef4444;
+  --color-info:           #3b82f6;
+
+  /* Border */
+  --color-border-default: #27272a;
+  --color-border-strong:  #3f3f46;
+  --color-border:         var(--color-border-default);
 
   /* Radius */
-  --radius: 0.5rem;
+  --radius-sm:   4px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-full: 9999px;
+  --radius:      var(--radius-md);
 
-  /* Animation timing */
-  --duration-fast: 150ms;
-  --duration-medium: 300ms;
-  --easing-default: cubic-bezier(0.4, 0, 0.2, 1);
-  --easing-enter: cubic-bezier(0.0, 0.0, 0.2, 1);
-  --easing-exit: cubic-bezier(0.4, 0.0, 1.0, 1);
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+
+  /* Motion */
+  --duration-fast:    100ms;
+  --duration-normal:  200ms;
+  --duration-slow:    400ms;
+  --easing-default:   cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-spring:    cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Legacy aliases */
+  --duration-medium:  var(--duration-normal);
+  --easing-enter:     var(--easing-default);
+  --easing-exit:      var(--easing-default);
+
+  /* Depth */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
 
   /* ============================================================
-     Shadcn/ui variable mapping (app surface context)
-     Components default to app-surface colors unless inside
-     a .shell-surface context.
+     Shadcn/ui variable mapping (app surface context).
+     Shadcn components read these; we derive them from our tokens.
      ============================================================ */
-  --background:       var(--color-bg-app);
-  --foreground:       var(--color-fg-app);
-  --card:             var(--color-bg-card);
-  --card-foreground:  var(--color-fg-app);
-  --popover:          var(--color-bg-overlay);
-  --popover-foreground: var(--color-fg-app);
-  --primary:          var(--color-accent);
-  --primary-foreground: #ffffff;
-  --secondary:        var(--color-bg-card);
-  --secondary-foreground: var(--color-fg-app);
-  --muted:            var(--color-bg-card);
-  --muted-foreground: #6b7280;
-  --accent:           var(--color-accent);
-  --accent-foreground: #ffffff;
-  --destructive:      #ef4444;
-  --border:           var(--color-border);
-  --input:            var(--color-bg-input);
-  --ring:             var(--color-accent);
+  --background:          var(--color-bg-app);
+  --foreground:          var(--color-fg-primary);
+  --card:                var(--color-bg-card);
+  --card-foreground:     var(--color-fg-primary);
+  --popover:             var(--color-bg-card);
+  --popover-foreground:  var(--color-fg-primary);
+  --primary:             var(--color-accent);
+  --primary-foreground:  var(--color-fg-inverse);
+  --secondary:           var(--color-bg-card);
+  --secondary-foreground: var(--color-fg-primary);
+  --muted:               var(--color-bg-card);
+  --muted-foreground:    var(--color-fg-secondary);
+  --accent:              var(--color-accent);
+  --accent-foreground:   var(--color-fg-inverse);
+  --destructive:         var(--color-error);
+  --border:              var(--color-border-default);
+  --input:               var(--color-bg-input);
+  --ring:                var(--color-accent);
+
+  color-scheme: dark;
 }
 
 /* Shell surface context - components inside .shell-surface
@@ -106,34 +142,38 @@
 }
 
 
-/* Register Lunaris tokens as Tailwind v4 theme variables */
+/* Register Lunaris tokens as Tailwind v4 theme variables.
+   Tailwind v4 resolves @theme at build time, so we must use concrete values
+   here -- var() references fall back to Tailwind defaults (purple!).
+   These values match dark.toml. Runtime overrides happen via :root. */
 @theme inline {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --radius: var(--radius);
-  /* Animation timing utilities */
+  /* Colors (dark theme defaults) */
+  --color-background: #0f0f0f;
+  --color-foreground: #fafafa;
+  --color-card: #171717;
+  --color-card-foreground: #fafafa;
+  --color-popover: #171717;
+  --color-popover-foreground: #fafafa;
+  --color-primary: #6366f1;
+  --color-primary-foreground: #0a0a0a;
+  --color-secondary: #171717;
+  --color-secondary-foreground: #fafafa;
+  --color-muted: #171717;
+  --color-muted-foreground: #a1a1aa;
+  --color-accent: #6366f1;
+  --color-accent-foreground: #0a0a0a;
+  --color-destructive: #ef4444;
+  --color-border: #27272a;
+  --color-input: #1a1a1a;
+  --color-ring: #6366f1;
+  --radius: 8px;
+  /* Animation timing */
   --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-enter: cubic-bezier(0.0, 0.0, 0.2, 1);
-  --ease-exit: cubic-bezier(0.4, 0.0, 1.0, 1);
-  --duration-fast: 150ms;
-  --duration-medium: 300ms;
+  --ease-enter: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 100ms;
+  --duration-medium: 200ms;
 }
 
 @media (prefers-reduced-motion: reduce) {

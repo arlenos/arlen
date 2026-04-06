@@ -98,7 +98,7 @@
     position: fixed; top: 40px; z-index: 100; border-radius: 10px;
     background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow-lg);
     color: var(--color-fg-shell); padding: 12px;
     display: flex; flex-direction: column; gap: 8px;
     animation: pop-open 100ms ease-out both;

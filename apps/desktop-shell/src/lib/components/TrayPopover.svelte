@@ -112,7 +112,7 @@
     position: fixed; top: 40px; z-index: 100; border-radius: 10px;
     background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow-lg);
     color: var(--color-fg-shell);
     display: flex; flex-direction: column;
     animation: pop-open 100ms ease-out both;
@@ -143,5 +143,5 @@
   .tray-item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .tray-item-title { font-size: 0.8125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
   .tray-item-subtitle { font-size: 0.6875rem; color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-  .tray-item-badge { width: 8px; height: 8px; background: #ef4444; border-radius: 50%; flex-shrink: 0; }
+  .tray-item-badge { width: 8px; height: 8px; background: var(--color-error); border-radius: 50%; flex-shrink: 0; }
 </style>
