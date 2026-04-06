@@ -5,7 +5,9 @@ mod event_bus;
 mod gtk_menu_bridge;
 mod layer_shell;
 mod menu_store;
+mod bluetooth;
 mod network;
+mod shell_config;
 mod power;
 mod notifications;
 mod sni;
@@ -59,6 +61,7 @@ pub fn run() {
             shell_overlay_client::start(app.handle().clone(), overlay_sender);
             notifications::start(app.handle().clone());
             sni::start(app.handle().clone(), sni_items);
+            bluetooth::start_monitor(app.handle().clone());
             gtk_menu_bridge::start(app.handle().clone(), menu_store_for_bridge);
 
             // Create the Waypointer overlay window (hidden).
@@ -120,6 +123,17 @@ pub fn run() {
             network::disconnect_wifi,
             network::get_airplane_mode,
             network::set_airplane_mode,
+            bluetooth::get_bluetooth_state,
+            bluetooth::set_bluetooth_powered,
+            bluetooth::connect_bluetooth_device,
+            bluetooth::disconnect_bluetooth_device,
+            bluetooth::remove_bluetooth_device,
+            bluetooth::set_device_trusted,
+            bluetooth::start_bluetooth_scan,
+            bluetooth::stop_bluetooth_scan,
+            bluetooth::pair_bluetooth_device,
+            shell_config::get_shell_config,
+            shell_config::save_shell_config,
             sni::get_sni_items,
             sni::activate_sni_item,
             sni::get_sni_menu,

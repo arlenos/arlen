@@ -4,6 +4,8 @@
   import NetworkIndicator from "$lib/components/NetworkIndicator.svelte";
   import AudioIndicator from "$lib/components/AudioIndicator.svelte";
   import BatteryIndicator from "$lib/components/BatteryIndicator.svelte";
+  import BluetoothIndicator from "$lib/components/BluetoothIndicator.svelte";
+  import BluetoothPopover from "$lib/components/BluetoothPopover.svelte";
   import TrayIndicator from "$lib/components/TrayIndicator.svelte";
   import TrayPopover from "$lib/components/TrayPopover.svelte";
   import PanelTrigger from "$lib/components/PanelTrigger.svelte";
@@ -40,6 +42,7 @@
 
     <div class="slot-system-icons">
       <NetworkIndicator />
+      <BluetoothIndicator />
       <AudioIndicator />
       <BatteryIndicator />
       <div class="system-separator"></div>
@@ -52,6 +55,7 @@
 <NetworkPopover />
 <AudioPopover />
 <BatteryPopover />
+<BluetoothPopover />
 <TrayPopover />
 <QuickSettingsPanel />
 

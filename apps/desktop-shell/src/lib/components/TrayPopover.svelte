@@ -3,7 +3,8 @@
 
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
-  import { Layers, Settings } from "lucide-svelte";
+  import { Layers } from "lucide-svelte";
+  import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import SniContextMenuContent from "$lib/components/SniContextMenuContent.svelte";
 
@@ -56,13 +57,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="pop-panel pop-tray shell-popover" onclick={(e) => e.stopPropagation()}>
-    <div class="pop-header">
-      <Layers size={16} strokeWidth={1.5} />
-      <span class="pop-title">Background Apps</span>
-      <button class="pop-settings-btn" onclick={(e) => { e.stopPropagation(); closePopover(); }}>
-        <Settings size={14} strokeWidth={1.5} />
-      </button>
-    </div>
+    <PopoverHeader icon={Layers} title="Background Apps" />
     <div class="pop-body">
       {#if loading}
         <div class="tray-empty">Loading...</div>
@@ -123,10 +118,6 @@
     animation: pop-open 100ms ease-out both;
   }
   .pop-tray { right: 140px; width: 260px; }
-  .pop-header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
-  .pop-title { flex: 1; font-size: 0.8125rem; font-weight: 500; }
-  .pop-settings-btn { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: 4px; color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent); cursor: pointer; padding: 0; }
-  .pop-settings-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); color: var(--color-fg-shell); }
   .pop-body { padding: 8px; display: flex; flex-direction: column; gap: 2px; }
   @keyframes pop-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 

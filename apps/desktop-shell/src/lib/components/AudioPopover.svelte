@@ -5,7 +5,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { Separator } from "$lib/components/ui/separator/index.js";
   import { Switch } from "$lib/components/ui/switch/index.js";
-  import { Volume2, Settings, ChevronDown, Check } from "lucide-svelte";
+  import { Volume2, ChevronDown, Check } from "lucide-svelte";
+  import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
 
   interface AudioDevice { id: string; name: string; is_default: boolean; }
 
@@ -62,13 +63,7 @@
     outputDropdownOpen = false;
     inputDropdownOpen = false;
   }}>
-    <div class="pop-header">
-      <Volume2 size={16} strokeWidth={1.5} />
-      <span class="pop-title">Sound</span>
-      <button class="pop-settings-btn" onclick={(e) => { e.stopPropagation(); closePopover(); }}>
-        <Settings size={14} strokeWidth={1.5} />
-      </button>
-    </div>
+    <PopoverHeader icon={Volume2} title="Sound" />
     <div class="pop-body">
 
       <!-- Volume -->
@@ -157,10 +152,6 @@
     animation: pop-open 100ms ease-out both;
   }
   .pop-audio { right: 80px; width: 280px; }
-  .pop-header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
-  .pop-title { flex: 1; font-size: 0.8125rem; font-weight: 500; }
-  .pop-settings-btn { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: 4px; color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent); cursor: pointer; padding: 0; }
-  .pop-settings-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); color: var(--color-fg-shell); }
   .pop-body { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
   @keyframes pop-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -203,5 +194,5 @@
   .pop-slider-track { position: absolute; left: 0; right: 0; height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: 2px; }
   .pop-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); border-radius: 2px; }
   .pop-slider-thumb { position: absolute; left: var(--value); width: 14px; height: 14px; background: var(--color-fg-shell); border-radius: 50%; transform: translateX(-50%); box-shadow: 0 1px 4px rgba(0,0,0,0.3); pointer-events: none; }
-  .pop-slider input[type="range"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; -webkit-appearance: none; }
+  .pop-slider input[type="range"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; appearance: none; -webkit-appearance: none; }
 </style>
