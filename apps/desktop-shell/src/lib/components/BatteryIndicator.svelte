@@ -137,18 +137,18 @@
   }
 
   .battery-warning {
-    color: #f59e0b;
+    color: var(--color-warning);
   }
 
   .battery-warning .battery-badge {
-    color: #f59e0b;
+    color: var(--color-warning);
   }
 
   .battery-critical {
-    color: #ef4444;
+    color: var(--color-error);
   }
 
   .battery-critical .battery-badge {
-    color: #ef4444;
+    color: var(--color-error);
   }
 </style>

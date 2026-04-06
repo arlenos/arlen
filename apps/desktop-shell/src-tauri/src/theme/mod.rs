@@ -1,8 +1,20 @@
-/// Theme loader for Lunaris.
+/// Theme system for Lunaris.
 ///
-/// Reads `~/.config/lunaris/theme.toml` and returns the surface tokens
-/// as a structured response. Also watches the file for changes and emits
-/// a Tauri event when the theme is updated.
+/// `schema` defines the full token hierarchy. `loader` handles resolution
+/// from built-in TOML files, user overrides, and accessibility settings.
+///
+/// The legacy `SurfaceTokens` / `load_tokens` / `start_watcher` API remains
+/// here for backward compatibility with the existing frontend. New code should
+/// use `schema::ThemeTokens` and `loader::ThemeLoader`.
+
+pub mod commands;
+pub mod css;
+pub mod loader;
+pub mod schema;
+
+// ---------------------------------------------------------------------------
+// Legacy API (reads ~/.config/lunaris/theme.toml, emits surface tokens)
+// ---------------------------------------------------------------------------
 
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};

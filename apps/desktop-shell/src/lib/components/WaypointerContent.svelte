@@ -609,7 +609,7 @@
     justify-content: center;
     align-items: flex-start;
     padding-top: 25vh;
-    background: rgba(0, 0, 0, 0.4);
+    background: var(--color-bg-overlay);
     overflow: hidden;
     animation: wp-backdrop-fade 150ms ease-out both;
   }
@@ -620,15 +620,15 @@
     width: 100%;
     max-width: 600px;
     border-radius: 12px;
-    border: 1px solid color-mix(in srgb, var(--color-fg-shell, #fafafa) 15%, transparent);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
+    box-shadow: var(--shadow-lg);
     overflow: hidden;
     animation: wp-fade-in 150ms ease-out both;
   }
 
   :global(.wp-root) {
-    background: var(--color-bg-shell, #09090b) !important;
-    color: var(--color-fg-shell, #fafafa) !important;
+    background: var(--color-bg-shell) !important;
+    color: var(--color-fg-shell) !important;
   }
 
   :global(.wp-list) {
@@ -648,8 +648,8 @@
     gap: 10px;
     padding: 8px 12px;
     border-radius: 6px;
-    background: color-mix(in srgb, var(--color-fg-shell, #fafafa) 8%, transparent);
-    color: var(--color-fg-shell, #fafafa);
+    background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
+    color: var(--color-fg-shell);
   }
 
   .wp-inline-result {
@@ -680,14 +680,14 @@
     justify-content: center;
     width: 12px;
     height: 12px;
-    background: var(--color-bg-shell, #09090b);
+    background: var(--color-bg-shell);
     border-radius: 2px;
-    color: var(--color-fg-shell, #fafafa);
+    color: var(--color-fg-shell);
     opacity: 0.7;
   }
 
   :global(.wp-kill-badge) {
-    color: #ef4444;
+    color: var(--color-error);
     opacity: 0.9;
   }
 

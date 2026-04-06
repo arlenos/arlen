@@ -55,6 +55,25 @@ pub fn run() {
         .manage(app_idx)
         .manage(Arc::clone(&sni_items))
         .setup(|app| {
+            // Initialize the new theme system (v2).
+            let config_dir = dirs::config_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+                .join("lunaris");
+            let data_dir = dirs::data_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+                .join("lunaris");
+            match theme::commands::ThemeState::new(config_dir, data_dir) {
+                Ok(ts) => { app.manage(ts); }
+                Err(e) => {
+                    log::warn!("theme: state init failed ({e}), using in-memory defaults");
+                    let fallback = theme::commands::ThemeState::new(
+                        std::path::PathBuf::from("/tmp/lunaris-fallback"),
+                        std::path::PathBuf::from("/tmp/lunaris-fallback"),
+                    ).unwrap();
+                    app.manage(fallback);
+                }
+            }
+
             theme::start_watcher(app.handle().clone());
             event_bus::start(app.handle().clone());
             wayland_client::start(app.handle().clone(), workspace_sender, toplevel_sender, window_list);
@@ -121,6 +140,8 @@ pub fn run() {
             network::connect_wifi,
             network::connect_wifi_password,
             network::disconnect_wifi,
+            network::get_wifi_enabled,
+            network::set_wifi_enabled,
             network::get_airplane_mode,
             network::set_airplane_mode,
             bluetooth::get_bluetooth_state,
@@ -134,6 +155,16 @@ pub fn run() {
             bluetooth::pair_bluetooth_device,
             shell_config::get_shell_config,
             shell_config::save_shell_config,
+            theme::commands::get_theme,
+            theme::commands::get_theme_css,
+            theme::commands::set_theme,
+            theme::commands::get_available_themes,
+            theme::commands::get_active_theme_id,
+            theme::commands::set_accent_color,
+            theme::commands::set_font_scale,
+            theme::commands::set_reduce_motion,
+            theme::commands::get_appearance_config,
+            theme::commands::reset_theme,
             sni::get_sni_items,
             sni::activate_sni_item,
             sni::get_sni_menu,

@@ -128,8 +128,8 @@
     }
 
     .header-btn.close:hover {
-        background: color-mix(in srgb, #ef4444 80%, transparent);
-        color: white;
+        background: color-mix(in srgb, var(--color-error) 80%, transparent);
+        color: var(--color-fg-primary);
     }
 
     .btn-icon {

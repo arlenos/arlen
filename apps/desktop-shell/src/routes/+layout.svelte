@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { loadTheme, applyTokens, PANDA_TOKENS, type SurfaceTokens } from "$lib/theme";
+  import { initTheme } from "$lib/theme";
   import "../app.css";
   import { initWindowListeners } from "$lib/stores/windows";
   import { initContextMenuListeners } from "$lib/stores/contextMenu.js";
@@ -17,10 +17,6 @@
   import ZoomToolbar from "$lib/components/ZoomToolbar.svelte";
   import WindowHeader from "$lib/components/WindowHeader.svelte";
   import { Toaster } from "svelte-sonner";
-  import { listen } from "@tauri-apps/api/event";
-
-  // Apply Panda tokens immediately before first render
-  applyTokens(PANDA_TOKENS);
 
   onMount(() => {
     initWindowListeners();
@@ -33,19 +29,9 @@
     initZoomListeners();
     initWindowHeaderListeners();
 
-    // Load tokens from backend (reads theme.toml)
-    loadTheme().catch(() => {
-      // No Tauri backend (e.g. browser dev mode), Panda already applied
-    });
-
-    // Subscribe to live theme changes
-    const unlistenPromise = listen<SurfaceTokens>("lunaris://theme-changed", ({ payload }) => {
-      applyTokens(payload);
-    });
-
-    return () => {
-      unlistenPromise.then((fn) => fn());
-    };
+    // Initialize theme system (loads appearance.toml, injects CSS vars,
+    // subscribes to live theme-changed events from Rust).
+    initTheme().catch(() => {});
   });
 </script>
 

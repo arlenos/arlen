@@ -240,6 +240,31 @@ pub fn disconnect_wifi() -> Result<(), String> {
     Err("No connected wifi device found".into())
 }
 
+/// Returns whether WiFi radio is enabled.
+#[tauri::command]
+pub fn get_wifi_enabled() -> Result<bool, String> {
+    let output = std::process::Command::new("nmcli")
+        .args(["radio", "wifi"])
+        .output()
+        .map_err(|e| format!("nmcli radio wifi: {e}"))?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    Ok(text.trim() == "enabled")
+}
+
+/// Enable or disable the WiFi radio via NetworkManager.
+#[tauri::command]
+pub fn set_wifi_enabled(enabled: bool) -> Result<(), String> {
+    let val = if enabled { "on" } else { "off" };
+    let status = std::process::Command::new("nmcli")
+        .args(["radio", "wifi", val])
+        .status()
+        .map_err(|e| format!("nmcli radio wifi {val}: {e}"))?;
+    if !status.success() {
+        return Err(format!("nmcli radio wifi {val} returned non-zero"));
+    }
+    Ok(())
+}
+
 /// Returns whether airplane mode is active (all WiFi radios soft-blocked).
 #[tauri::command]
 pub fn get_airplane_mode() -> Result<bool, String> {
