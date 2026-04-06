@@ -118,6 +118,8 @@ pub fn run() {
             network::connect_wifi,
             network::connect_wifi_password,
             network::disconnect_wifi,
+            network::get_airplane_mode,
+            network::set_airplane_mode,
             sni::get_sni_items,
             sni::activate_sni_item,
             sni::get_sni_menu,

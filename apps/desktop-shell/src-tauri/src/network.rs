@@ -240,6 +240,31 @@ pub fn disconnect_wifi() -> Result<(), String> {
     Err("No connected wifi device found".into())
 }
 
+/// Returns whether airplane mode is active (all WiFi radios soft-blocked).
+#[tauri::command]
+pub fn get_airplane_mode() -> Result<bool, String> {
+    let output = std::process::Command::new("rfkill")
+        .args(["list", "wifi"])
+        .output()
+        .map_err(|e| format!("rfkill not found: {e}"))?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    Ok(text.contains("Soft blocked: yes"))
+}
+
+/// Toggles airplane mode by blocking or unblocking all wireless radios.
+#[tauri::command]
+pub fn set_airplane_mode(enabled: bool) -> Result<(), String> {
+    let action = if enabled { "block" } else { "unblock" };
+    let status = std::process::Command::new("rfkill")
+        .args([action, "all"])
+        .status()
+        .map_err(|e| format!("rfkill {action} failed: {e}"))?;
+    if !status.success() {
+        return Err(format!("rfkill {action} all returned non-zero"));
+    }
+    Ok(())
+}
+
 /// Checks if any VPN connection is active.
 fn check_vpn() -> bool {
     let output = match std::process::Command::new("nmcli")

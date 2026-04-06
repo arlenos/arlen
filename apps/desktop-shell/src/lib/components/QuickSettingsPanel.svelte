@@ -2,15 +2,30 @@
   /// Quick Settings Panel (#52).
 
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
+  import { invoke } from "@tauri-apps/api/core";
   import {
-    Moon, Sun, Settings, Lock, Power, ChevronDown,
+    Moon, Sun, Plane, Settings, Lock, Power, ChevronDown,
     LayoutTemplate, LayoutGrid, Bell, LogOut, RotateCcw,
   } from "lucide-svelte";
 
   let nightLightEnabled = $state(false);
+  let airplaneMode = $state(false);
   let brightness = $state(75);
   let layoutMode = $state<"float" | "tile">("float");
   let powerMenuOpen = $state(false);
+
+  $effect(() => {
+    if ($activePopover === "quick-settings") {
+      invoke<boolean>("get_airplane_mode").then((v) => { airplaneMode = v; }).catch(() => {});
+    }
+  });
+
+  async function toggleAirplaneMode() {
+    try {
+      await invoke("set_airplane_mode", { enabled: !airplaneMode });
+      airplaneMode = !airplaneMode;
+    } catch {}
+  }
 
   function handleKeydown(e: KeyboardEvent) {
     let current: string | null = null;
@@ -62,6 +77,19 @@
         {:else}
           <Sun size={14} strokeWidth={1.5} />
         {/if}
+      </button>
+    </div>
+
+    <!-- Airplane Mode -->
+    <div class="qs-row">
+      <span class="qs-label">Airplane Mode</span>
+      <button
+        class="qs-pill"
+        class:active={airplaneMode}
+        onclick={(e) => { e.stopPropagation(); toggleAirplaneMode(); }}
+        title={airplaneMode ? "Disable Airplane Mode" : "Enable Airplane Mode"}
+      >
+        <Plane size={14} strokeWidth={1.5} />
       </button>
     </div>
 
