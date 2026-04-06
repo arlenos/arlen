@@ -7,6 +7,7 @@ mod layer_shell;
 mod menu_store;
 mod bluetooth;
 mod network;
+mod shell_config;
 mod power;
 mod notifications;
 mod sni;
@@ -131,6 +132,8 @@ pub fn run() {
             bluetooth::start_bluetooth_scan,
             bluetooth::stop_bluetooth_scan,
             bluetooth::pair_bluetooth_device,
+            shell_config::get_shell_config,
+            shell_config::save_shell_config,
             sni::get_sni_items,
             sni::activate_sni_item,
             sni::get_sni_menu,
