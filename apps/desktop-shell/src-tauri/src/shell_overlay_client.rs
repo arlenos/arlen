@@ -101,20 +101,12 @@ fn set_input_region(app: &tauri::AppHandle, mode: InputRegionMode) {
                 r
             }
             InputRegionMode::WithPopover => {
-                // Top bar + centered popover below bar.
+                // Top bar + full-width popover area below bar.
+                // Covers workspace hover overlay (centered) and quick
+                // settings panel (right-aligned). Full width, 500px tall.
                 let r = Region::create_rectangle(&RectangleInt::new(0, 0, 32767, 36));
-                let alloc_w = gtk_window.allocated_width();
-                // Popover: 600px wide, 200px tall, centered horizontally.
-                let pop_w = 600;
-                let pop_h = 200;
-                let pop_x = if alloc_w > pop_w { (alloc_w - pop_w) / 2 } else { 0 };
-                log::info!(
-                    "set_input_region: WithPopover allocated_width={} \
-                     popover_rect=({}, 36, {}, {})",
-                    alloc_w, pop_x, pop_w, pop_h,
-                );
                 let popover = Region::create_rectangle(&RectangleInt::new(
-                    pop_x, 36, pop_w, pop_h,
+                    0, 36, 32767, 500,
                 ));
                 r.union(&popover);
                 r
