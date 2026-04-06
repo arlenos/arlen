@@ -380,6 +380,7 @@
     opacity: 0;
     cursor: pointer;
     margin: 0;
+    appearance: none;
     -webkit-appearance: none;
   }
 

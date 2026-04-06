@@ -7,8 +7,9 @@
   import { onMount } from "svelte";
   import { Separator } from "$lib/components/ui/separator/index.js";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
+  import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
   import {
-    Bluetooth, BluetoothOff, Settings, RefreshCw,
+    Bluetooth, BluetoothOff, RefreshCw,
     Headphones, Keyboard, Mouse, Gamepad2, Smartphone, Speaker,
     Plug, Unplug, Trash2, ShieldOff, ShieldCheck,
   } from "lucide-svelte";
@@ -154,6 +155,24 @@
   );
 </script>
 
+{#snippet devIcon(iconName: string)}
+  {#if iconName === "audio-headphones" || iconName === "audio-headset"}
+    <Headphones size={16} strokeWidth={1.5} />
+  {:else if iconName === "audio-speakers"}
+    <Speaker size={16} strokeWidth={1.5} />
+  {:else if iconName === "input-keyboard"}
+    <Keyboard size={16} strokeWidth={1.5} />
+  {:else if iconName === "input-mouse"}
+    <Mouse size={16} strokeWidth={1.5} />
+  {:else if iconName === "input-gaming"}
+    <Gamepad2 size={16} strokeWidth={1.5} />
+  {:else if iconName === "phone"}
+    <Smartphone size={16} strokeWidth={1.5} />
+  {:else}
+    <Bluetooth size={16} strokeWidth={1.5} />
+  {/if}
+{/snippet}
+
 {#snippet deviceItem(dev: BluetoothDevice)}
   <ContextMenu.Root>
     <ContextMenu.Trigger>
@@ -165,7 +184,7 @@
           class:connecting={connectingTo === dev.path}
           onclick={(e) => { e.stopPropagation(); handleClick(dev); }}
         >
-          <svelte:component this={deviceIcon(dev.icon)} size={16} strokeWidth={1.5} />
+          {@render devIcon(dev.icon)}
           <div class="bt-device-info">
             <span class="bt-device-name">{dev.name}</span>
             {#if dev.battery_percentage != null}
@@ -216,13 +235,7 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="pop-panel pop-bt shell-popover" onclick={(e) => e.stopPropagation()}>
 
-    <div class="pop-header">
-      <Bluetooth size={16} strokeWidth={1.5} />
-      <span class="pop-title">Bluetooth</span>
-      <button class="pop-settings-btn" onclick={(e) => { e.stopPropagation(); closePopover(); }}>
-        <Settings size={14} strokeWidth={1.5} />
-      </button>
-    </div>
+    <PopoverHeader icon={Bluetooth} title="Bluetooth" />
 
     <div class="pop-body">
       {#if !btState?.available}
@@ -286,10 +299,6 @@
     animation: pop-open 100ms ease-out both;
   }
   .pop-bt { right: 80px; width: 280px; }
-  .pop-header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
-  .pop-title { flex: 1; font-size: 0.8125rem; font-weight: 500; }
-  .pop-settings-btn { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: 4px; color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent); cursor: pointer; padding: 0; }
-  .pop-settings-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); color: var(--color-fg-shell); }
   .pop-body { padding: 12px; display: flex; flex-direction: column; gap: 6px; }
   @keyframes pop-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 

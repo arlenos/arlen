@@ -4,7 +4,8 @@
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
   import { Separator } from "$lib/components/ui/separator/index.js";
-  import { Zap, Battery, Settings, Leaf, Scale } from "lucide-svelte";
+  import { Zap, Battery, Leaf, Scale } from "lucide-svelte";
+  import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
 
   interface BatteryStatus {
     percentage: number;
@@ -44,13 +45,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="pop-panel pop-battery shell-popover" onclick={(e) => e.stopPropagation()}>
-    <div class="pop-header">
-      <Battery size={16} strokeWidth={1.5} />
-      <span class="pop-title">Power</span>
-      <button class="pop-settings-btn" onclick={(e) => { e.stopPropagation(); closePopover(); }}>
-        <Settings size={14} strokeWidth={1.5} />
-      </button>
-    </div>
+    <PopoverHeader icon={Battery} title="Power" />
     <div class="pop-body">
     {#if status}
       <div class="bat-status">
@@ -109,10 +104,6 @@
     animation: pop-open 100ms ease-out both;
   }
   .pop-battery { right: 50px; width: 240px; padding: 0; }
-  .pop-header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
-  .pop-title { flex: 1; font-size: 0.8125rem; font-weight: 500; }
-  .pop-settings-btn { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: 4px; color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent); cursor: pointer; }
-  .pop-settings-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); color: var(--color-fg-shell); }
   .pop-body { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
   @keyframes pop-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 

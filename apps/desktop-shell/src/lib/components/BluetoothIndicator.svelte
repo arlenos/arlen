@@ -11,6 +11,15 @@
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { Bluetooth, Headphones, Keyboard, Mouse, Gamepad2, Smartphone, Speaker } from "lucide-svelte";
 
+  function renderIcon(iconName: string): typeof Bluetooth {
+    const map: Record<string, typeof Bluetooth> = {
+      "audio-headphones": Headphones, "audio-headset": Headphones,
+      "audio-speakers": Speaker, "input-keyboard": Keyboard,
+      "input-mouse": Mouse, "input-gaming": Gamepad2, "phone": Smartphone,
+    };
+    return map[iconName] ?? Bluetooth;
+  }
+
   interface BluetoothDevice {
     path: string;
     address: string;
@@ -51,16 +60,6 @@
 
   const visible = $derived(connectedDevices.length > 0);
 
-  const iconMap: Record<string, typeof Bluetooth> = {
-    "audio-headphones": Headphones,
-    "audio-headset": Headphones,
-    "audio-speakers": Speaker,
-    "input-keyboard": Keyboard,
-    "input-mouse": Mouse,
-    "input-gaming": Gamepad2,
-    "phone": Smartphone,
-  };
-
   const primaryDevice = $derived(
     connectedDevices.find((d: BluetoothDevice) => d.icon.includes("audio") || d.icon.includes("headset")) ??
     connectedDevices.find((d: BluetoothDevice) => d.icon.includes("input")) ??
@@ -68,9 +67,7 @@
     null
   );
 
-  const IndicatorIcon = $derived(
-    primaryDevice ? (iconMap[primaryDevice.icon] ?? Bluetooth) : Bluetooth
-  );
+  const primaryIcon = $derived(primaryDevice?.icon ?? "");
 
   const label = $derived(
     primaryDevice
@@ -89,7 +86,21 @@
           aria-label={label}
           onclick={() => togglePopover("bluetooth")}
         >
-          <svelte:component this={IndicatorIcon} size={14} strokeWidth={1.5} />
+          {#if primaryIcon.includes("audio") || primaryIcon.includes("headset")}
+            <Headphones size={14} strokeWidth={1.5} />
+          {:else if primaryIcon.includes("keyboard")}
+            <Keyboard size={14} strokeWidth={1.5} />
+          {:else if primaryIcon.includes("mouse")}
+            <Mouse size={14} strokeWidth={1.5} />
+          {:else if primaryIcon.includes("gaming")}
+            <Gamepad2 size={14} strokeWidth={1.5} />
+          {:else if primaryIcon === "phone"}
+            <Smartphone size={14} strokeWidth={1.5} />
+          {:else if primaryIcon.includes("speaker")}
+            <Speaker size={14} strokeWidth={1.5} />
+          {:else}
+            <Bluetooth size={14} strokeWidth={1.5} />
+          {/if}
         </button>
       {/snippet}
     </Tooltip.Trigger>
