@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { writable } from "svelte/store";
 
-export type PopoverType = "quick-settings" | "network" | "audio" | "battery" | null;
+export type PopoverType = "quick-settings" | "network" | "audio" | "battery" | "tray" | null;
 
 /// Which popover is currently open. Only one at a time.
 export const activePopover = writable<PopoverType>(null);

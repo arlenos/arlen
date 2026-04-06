@@ -94,6 +94,17 @@
   --ring:                var(--color-fg-shell);
 }
 
+/* Context menus (portaled) must sit above popovers (z-100). */
+[data-context-menu-content] { z-index: 300 !important; }
+[data-context-menu-sub-content] { z-index: 310 !important; }
+
+/* bits-ui uses focus (not hover) for menu highlight, but pointer-enter
+   focus can be unreliable in WebKitGTK. Add explicit hover fallback. */
+[data-context-menu-item]:not([data-disabled]):hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
 
 /* Register Lunaris tokens as Tailwind v4 theme variables */
 @theme inline {

@@ -4,6 +4,8 @@
   import NetworkIndicator from "$lib/components/NetworkIndicator.svelte";
   import AudioIndicator from "$lib/components/AudioIndicator.svelte";
   import BatteryIndicator from "$lib/components/BatteryIndicator.svelte";
+  import TrayIndicator from "$lib/components/TrayIndicator.svelte";
+  import TrayPopover from "$lib/components/TrayPopover.svelte";
   import PanelTrigger from "$lib/components/PanelTrigger.svelte";
   import QuickSettingsPanel from "$lib/components/QuickSettingsPanel.svelte";
   import NetworkPopover from "$lib/components/NetworkPopover.svelte";
@@ -29,7 +31,9 @@
   </div>
 
   <div class="region region-right">
-    <div class="slot-sni"></div>
+    <div class="slot-sni">
+      <TrayIndicator />
+    </div>
     <div class="slot-project"></div>
     <div class="region-separator"></div>
     <div class="slot-temp"></div>
@@ -48,6 +52,7 @@
 <NetworkPopover />
 <AudioPopover />
 <BatteryPopover />
+<TrayPopover />
 <QuickSettingsPanel />
 
 <style>
