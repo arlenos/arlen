@@ -1,9 +1,11 @@
 <script lang="ts">
-  /// System tray popover: lists registered SNI items.
+  /// System tray popover: lists registered SNI items with context menu support.
 
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
   import { Layers, Settings } from "lucide-svelte";
+  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
+  import SniContextMenuContent from "$lib/components/SniContextMenuContent.svelte";
 
   interface SniItem {
     service: string;
@@ -12,6 +14,10 @@
     status: string;
     title: string;
     icon_name: string;
+    icon_pixmap: string | null;
+    tooltip_title: string | null;
+    tooltip_description: string | null;
+    menu_path: string | null;
   }
 
   let items = $state<SniItem[]>([]);
@@ -65,19 +71,39 @@
       {:else}
         <div class="tray-list">
           {#each items as item}
-            <button
-              class="tray-item"
-              class:attention={item.status === "NeedsAttention"}
-              onclick={(e) => { e.stopPropagation(); handleActivate(item.service); }}
-            >
-              <div class="tray-item-icon">{getInitials(item.id)}</div>
-              <div class="tray-item-info">
-                <span class="tray-item-title">{item.title}</span>
-              </div>
-              {#if item.status === "NeedsAttention"}
-                <span class="tray-item-badge"></span>
+            <ContextMenu.Root>
+              <ContextMenu.Trigger>
+                {#snippet child({ props })}
+                  <button
+                    {...props}
+                    class="tray-item"
+                    class:attention={item.status === "NeedsAttention"}
+                    onclick={(e) => { e.stopPropagation(); handleActivate(item.service); }}
+                    title={item.tooltip_description || item.tooltip_title || item.title}
+                  >
+                    <div class="tray-item-icon">
+                      {#if item.icon_pixmap}
+                        <img src={item.icon_pixmap} alt={item.id} />
+                      {:else}
+                        {getInitials(item.id)}
+                      {/if}
+                    </div>
+                    <div class="tray-item-info">
+                      <span class="tray-item-title">{item.title || item.id || "Unknown"}</span>
+                      {#if item.tooltip_description && item.tooltip_description !== item.title}
+                        <span class="tray-item-subtitle">{item.tooltip_description}</span>
+                      {/if}
+                    </div>
+                    {#if item.status === "NeedsAttention"}
+                      <span class="tray-item-badge"></span>
+                    {/if}
+                  </button>
+                {/snippet}
+              </ContextMenu.Trigger>
+              {#if item.menu_path}
+                <SniContextMenuContent service={item.service} menuPath={item.menu_path} />
               {/if}
-            </button>
+            </ContextMenu.Root>
           {/each}
         </div>
       {/if}
@@ -122,7 +148,9 @@
     background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     border-radius: 4px; font-size: 0.625rem; font-weight: 600; flex-shrink: 0;
   }
-  .tray-item-info { flex: 1; min-width: 0; }
+  .tray-item-icon img { width: 18px; height: 18px; object-fit: contain; }
+  .tray-item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .tray-item-title { font-size: 0.8125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .tray-item-subtitle { font-size: 0.6875rem; color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
   .tray-item-badge { width: 8px; height: 8px; background: #ef4444; border-radius: 50%; flex-shrink: 0; }
 </style>

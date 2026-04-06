@@ -15,6 +15,10 @@
     status: string;
     title: string;
     icon_name: string;
+    icon_pixmap: string | null;
+    tooltip_title: string | null;
+    tooltip_description: string | null;
+    menu_path: string | null;
   }
 
   let items = $state<SniItem[]>([]);
@@ -30,10 +34,8 @@
   onMount(() => {
     loadItems();
     const unlisten = listen("sni-items-changed", () => loadItems());
-    const interval = setInterval(loadItems, 5000);
     return () => {
       unlisten.then((fn) => fn());
-      clearInterval(interval);
     };
   });
 

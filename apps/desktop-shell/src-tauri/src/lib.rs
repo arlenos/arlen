@@ -22,6 +22,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::Manager;
 
+/// Relay a log message from the frontend to the terminal.
+#[tauri::command]
+fn log_frontend(message: String) {
+    println!("[FRONTEND] {message}");
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::init();
@@ -77,6 +83,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            log_frontend,
             theme::get_surface_tokens,
             shell_overlay_client::context_menu_activate,
             shell_overlay_client::context_menu_dismiss,
@@ -113,6 +120,8 @@ pub fn run() {
             network::disconnect_wifi,
             sni::get_sni_items,
             sni::activate_sni_item,
+            sni::get_sni_menu,
+            sni::click_sni_menu_item,
             shell_runner::execute_shell_command,
             shell_runner::open_url,
             app_index::get_apps,
