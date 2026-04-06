@@ -119,6 +119,127 @@ fn get_wifi_signal(ssid: &str) -> Option<u8> {
     None
 }
 
+/// A WiFi network visible in the area.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct WifiNetwork {
+    pub ssid: String,
+    pub signal: u8,
+    pub security: String,
+    pub is_connected: bool,
+    pub is_known: bool,
+}
+
+/// Returns visible WiFi networks, sorted by connected first then signal.
+#[tauri::command]
+pub fn get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
+    // Trigger rescan (best-effort, non-blocking).
+    let _ = std::process::Command::new("nmcli")
+        .args(["dev", "wifi", "rescan"])
+        .output();
+
+    let output = std::process::Command::new("nmcli")
+        .args(["-t", "-f", "SSID,SIGNAL,SECURITY,IN-USE", "dev", "wifi", "list"])
+        .output()
+        .map_err(|e| format!("nmcli not found: {e}"))?;
+
+    if !output.status.success() {
+        return Err("nmcli wifi list failed".into());
+    }
+
+    // Collect known connection names.
+    let known: std::collections::HashSet<String> = std::process::Command::new("nmcli")
+        .args(["-t", "-f", "NAME", "connection", "show"])
+        .output()
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(|s| s.to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut networks = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.split(':').collect();
+        if parts.len() < 4 {
+            continue;
+        }
+        let ssid = parts[0].to_string();
+        if ssid.is_empty() || seen.contains(&ssid) {
+            continue;
+        }
+        seen.insert(ssid.clone());
+
+        networks.push(WifiNetwork {
+            signal: parts[1].parse().unwrap_or(0),
+            security: parts[2].to_string(),
+            is_connected: parts[3] == "*",
+            is_known: known.contains(&ssid),
+            ssid,
+        });
+    }
+
+    networks.sort_by(|a, b| {
+        b.is_connected
+            .cmp(&a.is_connected)
+            .then(b.signal.cmp(&a.signal))
+    });
+    Ok(networks)
+}
+
+/// Connects to a known WiFi network by SSID.
+#[tauri::command]
+pub fn connect_wifi(ssid: String) -> Result<(), String> {
+    let output = std::process::Command::new("nmcli")
+        .args(["dev", "wifi", "connect", &ssid])
+        .output()
+        .map_err(|e| format!("nmcli connect failed: {e}"))?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    Ok(())
+}
+
+/// Connects to a WiFi network with a password.
+#[tauri::command]
+pub fn connect_wifi_password(ssid: String, password: String) -> Result<(), String> {
+    let output = std::process::Command::new("nmcli")
+        .args(["dev", "wifi", "connect", &ssid, "password", &password])
+        .output()
+        .map_err(|e| format!("nmcli connect failed: {e}"))?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    Ok(())
+}
+
+/// Disconnects WiFi by finding the active wifi device.
+#[tauri::command]
+pub fn disconnect_wifi() -> Result<(), String> {
+    // Find the wifi device name.
+    let output = std::process::Command::new("nmcli")
+        .args(["-t", "-f", "DEVICE,TYPE,STATE", "device"])
+        .output()
+        .map_err(|e| format!("nmcli failed: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.split(':').collect();
+        if parts.len() >= 3 && parts[1] == "wifi" && parts[2] == "connected" {
+            let _ = std::process::Command::new("nmcli")
+                .args(["dev", "disconnect", parts[0]])
+                .output();
+            return Ok(());
+        }
+    }
+    Err("No connected wifi device found".into())
+}
+
 /// Checks if any VPN connection is active.
 fn check_vpn() -> bool {
     let output = match std::process::Command::new("nmcli")
