@@ -3,6 +3,7 @@ members = [
     "config",
     "os-sdk",
     "module-sdk",
+    "modules",
     "permissions",
     "theme",
 ]
