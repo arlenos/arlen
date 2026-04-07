@@ -5,6 +5,7 @@ mod event_bus;
 mod gtk_menu_bridge;
 mod layer_shell;
 mod menu_store;
+mod modules;
 mod bluetooth;
 mod network;
 mod shell_config;
@@ -45,6 +46,7 @@ pub fn run() {
     let menu_store_for_bridge = Arc::clone(&menu_store);
     let app_idx: app_index::AppIndex = Arc::new(std::sync::Mutex::new(app_index::build_index()));
     let sni_items: sni::SniItems = Arc::new(std::sync::Mutex::new(HashMap::new()));
+    let module_loader: modules::ModuleLoaderState = std::sync::Mutex::new(modules::ModuleLoader::new());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -55,6 +57,7 @@ pub fn run() {
         .manage(Arc::clone(&menu_store))
         .manage(app_idx)
         .manage(Arc::clone(&sni_items))
+        .manage(module_loader)
         .setup(|app| {
             // Initialize the new theme system (v2).
             let config_dir = dirs::config_dir()
@@ -158,6 +161,8 @@ pub fn run() {
             shell_config::save_shell_config,
             permissions::get_app_permissions,
             permissions::get_app_permission_detail,
+            modules::list_modules,
+            modules::set_module_enabled,
             theme::commands::get_theme,
             theme::commands::get_theme_css,
             theme::commands::set_theme,
