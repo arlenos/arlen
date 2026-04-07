@@ -1,7 +1,7 @@
 /// Event Bus consumer for the Lunaris desktop shell.
 ///
-/// Subscribes to window events from the Event Bus and forwards them
-/// to the TypeScript frontend via Tauri events.
+/// Subscribes to window and config events from the Event Bus and forwards
+/// them to the TypeScript frontend via Tauri events.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -10,7 +10,8 @@ use tauri::{AppHandle, Emitter};
 
 const DEFAULT_CONSUMER_SOCKET: &str = "/run/lunaris/event-bus-consumer.sock";
 const CONSUMER_ID: &str = "desktop-shell";
-const SUBSCRIPTIONS: &str = "window.";
+/// Subscribe to window events and config change events.
+const SUBSCRIPTIONS: &str = "window.,config.";
 
 /// Window event payload forwarded to the TypeScript frontend.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -18,6 +19,13 @@ pub struct WindowEventPayload {
     pub event_type: String,
     pub app_id: String,
     pub title: String,
+}
+
+/// Config change event payload forwarded to the TypeScript frontend.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ConfigChangedPayload {
+    pub component: String,
+    pub path: String,
 }
 
 /// Start the Event Bus consumer in a background thread.
@@ -44,18 +52,17 @@ fn run_consumer(app: &AppHandle, socket_path: &str) -> Result<(), Box<dyn std::e
 
     let stream = UnixStream::connect(socket_path)?;
     let mut writer = stream.try_clone()?;
-    let reader = BufReader::new(stream);
 
-    // Register: send consumer ID and subscriptions
-    writer.write_all(format!("{CONSUMER_ID}\n{SUBSCRIPTIONS}\n").as_bytes())?;
+    // Phase 3.1: 3-line registration (ID, patterns, UID).
+    let uid = unsafe { libc::getuid() };
+    writer.write_all(format!("{CONSUMER_ID}\n{SUBSCRIPTIONS}\n{uid}\n").as_bytes())?;
     writer.flush()?;
 
     log::info!("registered as consumer, subscribed to {SUBSCRIPTIONS}");
 
-    // Read length-prefixed protobuf events
-    let mut reader = reader;
+    let mut reader = BufReader::new(stream);
     loop {
-        // Read 4-byte length prefix
+        // Read 4-byte length prefix.
         let mut len_buf = [0u8; 4];
         use std::io::Read;
         reader.get_mut().read_exact(&mut len_buf)?;
@@ -68,7 +75,7 @@ fn run_consumer(app: &AppHandle, socket_path: &str) -> Result<(), Box<dyn std::e
         let mut buf = vec![0u8; len];
         reader.get_mut().read_exact(&mut buf)?;
 
-        // Decode protobuf Event
+        // Decode protobuf Event.
         if let Ok(event) = decode_event(&buf) {
             forward_to_frontend(app, event);
         }
@@ -76,6 +83,8 @@ fn run_consumer(app: &AppHandle, socket_path: &str) -> Result<(), Box<dyn std::e
 }
 
 mod proto {
+    #![allow(dead_code)]
+    #![allow(clippy::doc_markdown)]
     include!(concat!(env!("OUT_DIR"), "/lunaris.eventbus.rs"));
 }
 
@@ -85,39 +94,53 @@ fn decode_event(buf: &[u8]) -> Result<proto::Event, prost::DecodeError> {
 }
 
 fn forward_to_frontend(app: &AppHandle, event: proto::Event) {
-    let payload = WindowEventPayload {
-        event_type: event.r#type.clone(),
-        app_id: extract_app_id(&event),
-        title: extract_title(&event),
-    };
+    let event_type = event.r#type.as_str();
 
-    log::debug!("forwarding {} for {}", event.r#type, payload.app_id);
+    // Window events.
+    if event_type.starts_with("window.") {
+        let payload = WindowEventPayload {
+            event_type: event.r#type.clone(),
+            app_id: extract_payload_field(&event, "app_id")
+                .unwrap_or_else(|| event.source.clone()),
+            title: extract_payload_field(&event, "title").unwrap_or_default(),
+        };
 
-    // Emit to TypeScript frontend
-    let tauri_event = match event.r#type.as_str() {
-        "window.focused" => "lunaris://window-focused",
-        "window.opened"  => "lunaris://window-opened",
-        "window.closed"  => "lunaris://window-closed",
-        _ => return,
-    };
+        let tauri_event = match event_type {
+            "window.focused" => "lunaris://window-focused",
+            "window.opened" => "lunaris://window-opened",
+            "window.closed" => "lunaris://window-closed",
+            _ => return,
+        };
 
-    if let Err(e) = app.emit(tauri_event, &payload) {
-        log::warn!("failed to emit Tauri event: {e}");
+        if let Err(e) = app.emit(tauri_event, &payload) {
+            log::warn!("failed to emit Tauri event: {e}");
+        }
+        return;
+    }
+
+    // Config events.
+    if event_type.starts_with("config.") {
+        let payload = ConfigChangedPayload {
+            component: extract_payload_field(&event, "component").unwrap_or_default(),
+            path: extract_payload_field(&event, "path").unwrap_or_default(),
+        };
+
+        let tauri_event = match event_type {
+            "config.changed" => "lunaris://config-changed",
+            "config.reload_requested" => "lunaris://config-reload",
+            _ => return,
+        };
+
+        log::debug!("config event: {event_type} component={}", payload.component);
+
+        if let Err(e) = app.emit(tauri_event, &payload) {
+            log::warn!("failed to emit config Tauri event: {e}");
+        }
     }
 }
 
-/// Extract app_id from event payload.
-/// The compositor encodes app_id in the payload as UTF-8 JSON.
-fn extract_app_id(event: &proto::Event) -> String {
-    parse_payload_field(event, "app_id")
-        .unwrap_or_else(|| event.source.clone())
-}
-
-fn extract_title(event: &proto::Event) -> String {
-    parse_payload_field(event, "title").unwrap_or_default()
-}
-
-fn parse_payload_field(event: &proto::Event, field: &str) -> Option<String> {
+/// Extract a string field from the JSON-encoded event payload.
+fn extract_payload_field(event: &proto::Event, field: &str) -> Option<String> {
     let json: serde_json::Value = serde_json::from_slice(&event.payload).ok()?;
     json.get(field)?.as_str().map(|s| s.to_string())
 }
