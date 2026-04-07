@@ -61,6 +61,9 @@ pub fn run() {
     );
     let plugin_mgr_state: waypointer_system::PluginManagerState = std::sync::Mutex::new(plugin_mgr);
 
+    let ext_registry: extension_registry::ExtensionRegistryState =
+        std::sync::Mutex::new(extension_registry::ExtensionRegistry::new());
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::clone(&overlay_sender))
@@ -73,6 +76,7 @@ pub fn run() {
         .manage(module_loader)
         .manage(error_tracker)
         .manage(plugin_mgr_state)
+        .manage(ext_registry)
         .setup(|app| {
             // Initialize the new theme system (v2).
             let config_dir = dirs::config_dir()
@@ -100,6 +104,9 @@ pub fn run() {
             notifications::start(app.handle().clone());
             sni::start(app.handle().clone(), sni_items);
             bluetooth::start_monitor(app.handle().clone());
+            network::start_monitor(app.handle().clone());
+            battery::start_monitor(app.handle().clone());
+            audio::start_monitor(app.handle().clone());
             gtk_menu_bridge::start(app.handle().clone(), menu_store_for_bridge);
 
             // Create the Waypointer overlay window (hidden).
@@ -183,6 +190,7 @@ pub fn run() {
             module_errors::reset_module_errors,
             waypointer_system::waypointer_search,
             waypointer_system::waypointer_execute,
+            extension_registry::get_topbar_indicators,
             theme::commands::get_theme,
             theme::commands::get_theme_css,
             theme::commands::set_theme,

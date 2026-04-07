@@ -101,3 +101,43 @@ fn get_property_i64(conn: &Connection, path: &str, iface: &str, prop: &str) -> O
         _ => None,
     }
 }
+
+// ---------------------------------------------------------------------------
+// D-Bus signal monitor
+// ---------------------------------------------------------------------------
+
+/// Start monitoring UPower D-Bus signals for battery state changes.
+///
+/// Emits `battery-changed` Tauri events on PropertiesChanged signals.
+pub fn start_monitor(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = run_battery_monitor(app).await {
+            log::warn!("battery: monitor failed: {e}");
+        }
+    });
+}
+
+async fn run_battery_monitor(app: tauri::AppHandle) -> Result<(), zbus::Error> {
+    use futures_util::StreamExt;
+    use tauri::Emitter;
+
+    let conn = zbus::Connection::system().await?;
+
+    let proxy = zbus::Proxy::new(
+        &conn,
+        "org.freedesktop.UPower",
+        "/org/freedesktop/UPower/devices/DisplayDevice",
+        "org.freedesktop.DBus.Properties",
+    )
+    .await?;
+
+    let mut stream = proxy.receive_all_signals().await?;
+
+    log::info!("battery: signal monitor started");
+
+    while let Some(_signal) = stream.next().await {
+        let _ = app.emit("battery-changed", ());
+    }
+
+    Ok(())
+}

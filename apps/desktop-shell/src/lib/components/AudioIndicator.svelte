@@ -5,6 +5,8 @@
   /// scroll wheel adjusts volume in 5% steps.
 
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
+  import { onMount } from "svelte";
   import { togglePopover } from "$lib/stores/activePopover.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { VolumeX, Volume, Volume1, Volume2 } from "lucide-svelte";
@@ -29,11 +31,13 @@
   }
 
   poll();
-  let _interval: ReturnType<typeof setInterval> | null = null;
-  $effect(() => {
-    if (_interval) return;
-    _interval = setInterval(poll, 2_000);
-    return () => { if (_interval) { clearInterval(_interval); _interval = null; } };
+  onMount(() => {
+    const unlisten = listen("audio-changed", () => poll());
+    const fallback = setInterval(poll, 30_000);
+    return () => {
+      unlisten.then((fn) => fn());
+      clearInterval(fallback);
+    };
   });
 
   const Icon = $derived(

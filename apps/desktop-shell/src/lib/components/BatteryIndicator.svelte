@@ -5,6 +5,8 @@
   /// is present (desktop PCs).
 
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
+  import { onMount } from "svelte";
   import { togglePopover } from "$lib/stores/activePopover.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import {
@@ -34,13 +36,15 @@
     }
   }
 
-  // Initial poll + 30s interval.
   poll();
-  let _interval: ReturnType<typeof setInterval> | null = null;
-  $effect(() => {
-    if (_interval) return;
-    _interval = setInterval(poll, 30_000);
-    return () => { if (_interval) { clearInterval(_interval); _interval = null; } };
+  onMount(() => {
+    const unlisten = listen("battery-changed", () => poll());
+    // Fallback poll every 60s in case D-Bus monitor is not running.
+    const fallback = setInterval(poll, 60_000);
+    return () => {
+      unlisten.then((fn) => fn());
+      clearInterval(fallback);
+    };
   });
 
   const Icon = $derived(

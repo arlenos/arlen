@@ -310,3 +310,44 @@ fn check_vpn() -> bool {
         parts.len() >= 2 && parts[0].contains("vpn") && parts[1] == "activated"
     })
 }
+
+// ---------------------------------------------------------------------------
+// D-Bus signal monitor
+// ---------------------------------------------------------------------------
+
+/// Start monitoring NetworkManager D-Bus signals for live state updates.
+///
+/// Emits `network-changed` Tauri events when connectivity state changes.
+pub fn start_monitor(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = run_network_monitor(app).await {
+            log::warn!("network: monitor failed: {e}");
+        }
+    });
+}
+
+async fn run_network_monitor(app: tauri::AppHandle) -> Result<(), zbus::Error> {
+    use futures_util::StreamExt;
+    use tauri::Emitter;
+
+    let conn = zbus::Connection::system().await?;
+
+    // Monitor PropertiesChanged on org.freedesktop.NetworkManager.
+    let proxy = zbus::Proxy::new(
+        &conn,
+        "org.freedesktop.NetworkManager",
+        "/org/freedesktop/NetworkManager",
+        "org.freedesktop.DBus.Properties",
+    )
+    .await?;
+
+    let mut stream = proxy.receive_all_signals().await?;
+
+    log::info!("network: signal monitor started");
+
+    while let Some(_signal) = stream.next().await {
+        let _ = app.emit("network-changed", ());
+    }
+
+    Ok(())
+}
