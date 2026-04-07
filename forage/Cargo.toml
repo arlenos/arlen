@@ -14,3 +14,7 @@ lunaris-modules = { path = "../sdk/modules" }
 colored = "2"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+futures-util = "0.3"
+dirs = "6"

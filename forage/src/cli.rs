@@ -12,11 +12,51 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    /// Install a package, URL, or Flatpak app.
+    Install {
+        /// Package path (.lunpkg), URL, or flatpak:{app_id}.
+        target: String,
+    },
+    /// Remove an installed app (staged deletion with 30-day grace period).
+    Remove {
+        /// App ID (e.g. com.example.app).
+        app_id: String,
+    },
+    /// List all installed apps (lunpkg + flatpak).
+    List,
+    /// Show details for an installed app.
+    Info {
+        /// App ID.
+        app_id: String,
+    },
+    /// Show the install path of an app.
+    Which {
+        /// App ID.
+        app_id: String,
+    },
+    /// Manage the 30-day trash.
+    Trash {
+        #[command(subcommand)]
+        action: TrashAction,
+    },
     /// Manage Lunaris modules.
     Module {
         #[command(subcommand)]
         action: ModuleAction,
     },
+}
+
+#[derive(Subcommand)]
+pub enum TrashAction {
+    /// List apps in the 30-day trash.
+    List,
+    /// Restore an app from trash.
+    Restore {
+        /// App ID.
+        app_id: String,
+    },
+    /// Permanently delete expired trash entries.
+    Cleanup,
 }
 
 #[derive(Subcommand)]
