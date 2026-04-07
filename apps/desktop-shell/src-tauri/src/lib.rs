@@ -10,6 +10,7 @@ mod network;
 mod shell_config;
 mod power;
 mod notifications;
+mod permissions;
 mod sni;
 mod shell_overlay_client;
 mod shell_runner;
@@ -155,6 +156,8 @@ pub fn run() {
             bluetooth::pair_bluetooth_device,
             shell_config::get_shell_config,
             shell_config::save_shell_config,
+            permissions::get_app_permissions,
+            permissions::get_app_permission_detail,
             theme::commands::get_theme,
             theme::commands::get_theme_css,
             theme::commands::set_theme,
