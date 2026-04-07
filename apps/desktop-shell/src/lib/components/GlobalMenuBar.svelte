@@ -3,6 +3,7 @@
   import { activeAppName } from "$lib/stores/windows.js";
   import {
     Root, Trigger, Content, Item, Separator, CheckboxItem, Shortcut,
+    Sub, SubTrigger, SubContent,
   } from "$lib/components/ui/dropdown-menu/index.js";
   const shellColors =
     "bg-[var(--color-bg-shell)] text-[var(--color-fg-shell)] border-[color-mix(in_srgb,var(--color-bg-shell)_60%,white_40%)]";
@@ -13,6 +14,33 @@
   }
 
 </script>
+
+{#snippet menuItems(items: MenuItem[])}
+  {#each items as item}
+    {#if item.type === "separator"}
+      <Separator />
+    {:else if item.type === "submenu" && item.children?.length}
+      <Sub>
+        <SubTrigger>
+          {item.label}
+        </SubTrigger>
+        <SubContent class="menubar-content {shellColors}">
+          {@render menuItems(item.children)}
+        </SubContent>
+      </Sub>
+    {:else if item.type === "item"}
+      <Item
+        disabled={item.disabled}
+        onSelect={() => handleAction(item.action)}
+      >
+        {item.label}
+        {#if item.shortcut}
+          <Shortcut>{item.shortcut}</Shortcut>
+        {/if}
+      </Item>
+    {/if}
+  {/each}
+{/snippet}
 
 <div class="menubar">
   <span class="menubar-appname">
@@ -30,29 +58,7 @@
           {/snippet}
         </Trigger>
         <Content sideOffset={4} class="menubar-content {shellColors}">
-          {#each group.items as item}
-            {#if item.type === "separator"}
-              <Separator />
-            {:else if item.type === "item"}
-              <Item
-                disabled={item.disabled}
-                onSelect={() => handleAction(item.action)}
-              >
-                {item.label}
-                {#if item.shortcut}
-                  <Shortcut>{item.shortcut}</Shortcut>
-                {/if}
-              </Item>
-            {:else if item.type === "submenu"}
-              <!-- Submenus rendered as flat items for now -->
-              <Item
-                disabled={item.disabled}
-                onSelect={() => handleAction(item.action)}
-              >
-                {item.label} &rsaquo;
-              </Item>
-            {/if}
-          {/each}
+          {@render menuItems(group.items)}
         </Content>
       </Root>
     {/each}

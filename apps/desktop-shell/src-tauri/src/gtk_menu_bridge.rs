@@ -192,6 +192,52 @@ struct ActionInfo {
     checked: Option<bool>,
 }
 
+/// Activate a GTK action on the app via D-Bus.
+///
+/// `action` is the full action name from the menu (e.g. `app.new-window`
+/// or `win.close`). The `app.` or `win.` prefix is stripped before calling
+/// D-Bus because `org.gtk.Actions.Activate` expects the bare action name.
+///
+/// This is called from `dispatch_menu_action` when the app_id looks like
+/// a reverse-domain GTK application.
+pub fn activate_gtk_action(
+    app_id: &str,
+    action: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let conn = Connection::session()?;
+
+    let dbus = zbus::blocking::fdo::DBusProxy::new(&conn)?;
+    if !dbus.name_has_owner(app_id.try_into()?)? {
+        return Err(format!("{app_id} not on session bus").into());
+    }
+
+    let obj_path: zbus::zvariant::ObjectPath =
+        format!("/{}", app_id.replace('.', "/")).try_into()?;
+    let bus_name: zbus::names::BusName = app_id.try_into()?;
+    let iface: zbus::names::InterfaceName = "org.gtk.Actions".try_into()?;
+
+    // Strip namespace prefix.
+    let bare_action = action
+        .strip_prefix("app.")
+        .or_else(|| action.strip_prefix("win."))
+        .unwrap_or(action);
+
+    // org.gtk.Actions.Activate(action_name: s, parameter: av, platform_data: a{sv})
+    let parameter: Vec<OwnedValue> = vec![];
+    let platform_data: HashMap<String, OwnedValue> = HashMap::new();
+
+    conn.call_method(
+        Some(&bus_name),
+        &obj_path,
+        Some(&iface),
+        "Activate",
+        &(bare_action, &parameter, &platform_data),
+    )?;
+
+    log::debug!("gtk_menu_bridge: activated {bare_action} on {app_id}");
+    Ok(())
+}
+
 /// Collects all subscription group IDs referenced by :submenu and :section.
 fn collect_submenu_refs(groups: &[(u32, u32, Vec<HashMap<String, OwnedValue>>)]) -> Vec<u32> {
     let mut refs = Vec::new();
