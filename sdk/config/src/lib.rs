@@ -8,6 +8,7 @@
 ///
 /// See `docs/architecture/config-system.md`.
 
+pub mod events;
 pub mod keybindings;
 pub mod watcher;
 

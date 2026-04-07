@@ -3,6 +3,7 @@ members = [
     "config",
     "os-sdk",
     "module-sdk",
+    "permissions",
     "theme",
 ]
 resolver = "2"

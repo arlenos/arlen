@@ -348,6 +348,17 @@ version = "0.1.0"
 dependencies = [
  "notify 7.0.0",
  "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "toml",
+]
+
+[[package]]
+name = "lunaris-permissions"
+version = "0.1.0"
+dependencies = [
+ "serde",
  "tempfile",
  "thiserror 2.0.18",
  "toml",
