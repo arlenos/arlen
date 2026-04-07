@@ -1,0 +1,13 @@
+[package]
+name = "lunaris-permissions"
+version = "0.1.0"
+edition = "2021"
+description = "Permission profile types and loading for Lunaris OS"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"

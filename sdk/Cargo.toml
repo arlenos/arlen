@@ -1,7 +1,10 @@
 [workspace]
 members = [
+    "config",
     "os-sdk",
     "module-sdk",
+    "modules",
+    "permissions",
     "theme",
 ]
 resolver = "2"
