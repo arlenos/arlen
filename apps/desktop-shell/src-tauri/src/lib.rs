@@ -6,6 +6,7 @@ mod gtk_menu_bridge;
 mod layer_shell;
 mod menu_store;
 mod modules;
+mod module_errors;
 mod extension_registry;
 mod bluetooth;
 mod network;
@@ -21,6 +22,7 @@ mod wayland_client;
 mod waypointer;
 mod waypointer_plugins;
 mod waypointer_processes;
+mod waypointer_system;
 mod waypointer_unicode;
 
 use std::collections::HashMap;
@@ -48,6 +50,16 @@ pub fn run() {
     let app_idx: app_index::AppIndex = Arc::new(std::sync::Mutex::new(app_index::build_index()));
     let sni_items: sni::SniItems = Arc::new(std::sync::Mutex::new(HashMap::new()));
     let module_loader: modules::ModuleLoaderState = std::sync::Mutex::new(modules::ModuleLoader::new());
+    let error_tracker: module_errors::ErrorTrackerState = std::sync::Mutex::new(module_errors::ModuleErrorTracker::new());
+
+    // PluginManager needs Arc clones of AppIndex and WindowList.
+    let mut plugin_mgr = waypointer_system::PluginManager::new();
+    waypointer_system::plugins::register_builtins(
+        &mut plugin_mgr,
+        Arc::clone(&app_idx),
+        Arc::clone(&window_list),
+    );
+    let plugin_mgr_state: waypointer_system::PluginManagerState = std::sync::Mutex::new(plugin_mgr);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -59,6 +71,8 @@ pub fn run() {
         .manage(app_idx)
         .manage(Arc::clone(&sni_items))
         .manage(module_loader)
+        .manage(error_tracker)
+        .manage(plugin_mgr_state)
         .setup(|app| {
             // Initialize the new theme system (v2).
             let config_dir = dirs::config_dir()
@@ -164,6 +178,11 @@ pub fn run() {
             permissions::get_app_permission_detail,
             modules::list_modules,
             modules::set_module_enabled,
+            module_errors::record_module_error,
+            module_errors::get_module_errors,
+            module_errors::reset_module_errors,
+            waypointer_system::waypointer_search,
+            waypointer_system::waypointer_execute,
             theme::commands::get_theme,
             theme::commands::get_theme_css,
             theme::commands::set_theme,
