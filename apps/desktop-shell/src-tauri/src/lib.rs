@@ -22,6 +22,7 @@ mod wayland_client;
 mod waypointer;
 mod waypointer_plugins;
 mod waypointer_processes;
+mod waypointer_system;
 mod waypointer_unicode;
 
 use std::collections::HashMap;
