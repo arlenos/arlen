@@ -7,6 +7,7 @@
 
 mod plugin;
 mod manager;
+pub mod plugins;
 
 pub use plugin::*;
 pub use manager::*;
