@@ -14,44 +14,66 @@
   import AudioPopover from "$lib/components/AudioPopover.svelte";
   import BatteryPopover from "$lib/components/BatteryPopover.svelte";
   import WorkspaceIndicator from "$lib/components/WorkspaceIndicator.svelte";
+  import ModuleIndicatorSlot from "$lib/components/ModuleIndicatorSlot.svelte";
+  import { Separator } from "$lib/components/ui/separator/index.js";
 </script>
 
 <!--
-  Top Bar Layout (Issue #46):
-  [App Menu + Toolbar] -- [Workspaces] -- [Network] [Audio] [Battery] [Panel] [Clock]
-       LEFT                  CENTER                        RIGHT
--->
-<div class="topbar shell-surface" data-tauri-drag-region>
+  Top Bar Layout:
+  [GlobalMenuBar][slot-toolbar]  |  [WorkspaceIndicator]  |  [SNI][slot-project]|[slot-temp][Net BT Audio Bat | Clock Panel]
+       region-left                      region-center                           region-right
 
-  <div class="region region-left" data-tauri-drag-region>
+  Slots: slot-toolbar, slot-sni, slot-project, slot-temp, slot-system-icons
+  Empty slots collapse via :empty pseudo-class.
+-->
+<div
+  class="flex items-center justify-between h-9 w-full px-2 gap-4 relative select-none shrink-0 z-50 shell-surface"
+  style="background: var(--background)"
+  data-tauri-drag-region
+>
+  <!-- LEFT: App menu + toolbar -->
+  <div class="flex items-center gap-2 flex-1 min-w-0" data-tauri-drag-region>
     <GlobalMenuBar />
-    <div class="slot-toolbar"></div>
+    <div class="slot-toolbar flex items-center gap-2"></div>
   </div>
 
-  <div class="region region-center" data-tauri-drag-region>
+  <!-- CENTER: Workspace indicator -->
+  <div class="flex-none flex items-center justify-center" data-tauri-drag-region>
     <WorkspaceIndicator />
   </div>
 
-  <div class="region region-right">
-    <div class="slot-sni">
+  <!-- RIGHT: Tray + indicators + clock + panel -->
+  <div class="flex items-center gap-2 flex-1 justify-end">
+    <!-- SNI system tray -->
+    <div class="slot-sni flex items-center gap-2">
       <TrayIndicator />
     </div>
-    <div class="slot-project"></div>
-    <div class="region-separator"></div>
-    <div class="slot-temp"></div>
 
-    <div class="slot-system-icons">
+    <!-- Focus mode project name (future) -->
+    <div class="slot-project flex items-center gap-2"></div>
+
+    <!-- Region separator (hidden when slot-project is empty) -->
+    <div class="region-sep"></div>
+
+    <!-- Third-party module indicators -->
+    <div class="slot-temp flex items-center gap-0.5">
+      <ModuleIndicatorSlot />
+    </div>
+
+    <!-- System indicators -->
+    <div class="flex items-center gap-0.5">
       <NetworkIndicator />
       <BluetoothIndicator />
       <AudioIndicator />
       <BatteryIndicator />
-      <div class="system-separator"></div>
+      <Separator orientation="vertical" class="mx-1 h-3.5 opacity-15" />
       <ClockIndicator />
       <PanelTrigger />
     </div>
   </div>
 </div>
 
+<!-- Popovers (rendered outside the bar, positioned fixed) -->
 <NetworkPopover />
 <AudioPopover />
 <BatteryPopover />
@@ -60,62 +82,23 @@
 <QuickSettingsPanel />
 
 <style>
-  .topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 36px;
-    width: 100%;
-    padding: 0 8px;
-    gap: 16px;
-    position: relative;
-    user-select: none;
-    flex-shrink: 0;
-    background: var(--background);
-  }
-
-  .region {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-  }
-
-  .region-left { flex: 1; }
-  .region-center { flex: 0 0 auto; justify-content: center; }
-  .region-right { flex: 1; justify-content: flex-end; }
-
-  .slot-toolbar, .slot-sni, .slot-project, .slot-temp {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .slot-toolbar:empty, .slot-sni:empty, .slot-project:empty, .slot-temp:empty {
+  /* Empty slots collapse */
+  .slot-toolbar:empty,
+  .slot-sni:empty,
+  .slot-project:empty,
+  .slot-temp:empty {
     display: none;
   }
 
-  .slot-system-icons {
-    display: flex;
-    align-items: center;
-    gap: 2px;
+  /* Region separator hides when adjacent slot-project is empty */
+  .slot-project:empty + .region-sep {
+    display: none;
   }
 
-  .system-separator {
-    width: 1px;
-    height: 14px;
-    background: color-mix(in srgb, var(--foreground) 15%, transparent);
-    margin: 0 4px;
-    align-self: center;
-    flex-shrink: 0;
-  }
-
-  .region-separator {
+  .region-sep {
     width: 1px;
     height: 14px;
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
     flex-shrink: 0;
   }
-
-  .slot-project:empty + .region-separator { display: none; }
 </style>

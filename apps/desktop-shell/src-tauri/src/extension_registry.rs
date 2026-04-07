@@ -339,12 +339,76 @@ impl ExtensionRegistry {
         self.extensions.values().map(|v| v.len()).sum()
     }
 
+    /// Get topbar indicator extensions, sorted by order field.
+    pub fn topbar_indicators(&self) -> Vec<&RegisteredExtension> {
+        let mut exts = self.get_extensions(ExtensionPoint::TopbarIndicator);
+        exts.sort_by_key(|e| {
+            if let ExtensionConfig::TopbarIndicator { order, .. } = &e.config {
+                *order
+            } else {
+                u32::MAX
+            }
+        });
+        exts
+    }
+
     fn insert(&mut self, ext: RegisteredExtension) {
         self.extensions
             .entry(ext.extension_point)
             .or_default()
             .push(ext);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Tauri state + commands
+// ---------------------------------------------------------------------------
+
+use std::sync::Mutex;
+
+/// Shared extension registry state.
+pub type ExtensionRegistryState = Mutex<ExtensionRegistry>;
+
+/// Serializable indicator info for the frontend.
+#[derive(Debug, Clone, Serialize)]
+pub struct TopbarIndicatorInfo {
+    pub module_id: String,
+    pub module_name: String,
+    pub slot: String,
+    pub order: u32,
+    pub polling_interval: u32,
+    pub priority: u32,
+}
+
+/// Get all registered topbar indicator extensions.
+#[tauri::command]
+pub fn get_topbar_indicators(
+    state: tauri::State<'_, ExtensionRegistryState>,
+) -> Vec<TopbarIndicatorInfo> {
+    let registry = state.lock().unwrap();
+    registry
+        .topbar_indicators()
+        .into_iter()
+        .filter_map(|ext| {
+            if let ExtensionConfig::TopbarIndicator {
+                slot,
+                order,
+                polling_interval,
+            } = &ext.config
+            {
+                Some(TopbarIndicatorInfo {
+                    module_id: ext.module_id.clone(),
+                    module_name: ext.module_name.clone(),
+                    slot: slot.clone(),
+                    order: *order,
+                    polling_interval: *polling_interval,
+                    priority: ext.priority,
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------

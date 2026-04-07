@@ -218,3 +218,59 @@ pub fn toggle_audio_mute() -> Result<(), String> {
     }
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Signal monitor via pactl subscribe
+// ---------------------------------------------------------------------------
+
+/// Start monitoring PulseAudio/PipeWire events for audio state changes.
+///
+/// Uses `pactl subscribe` which outputs a line on every sink/source change.
+/// Emits `audio-changed` Tauri events.
+pub fn start_monitor(app: tauri::AppHandle) {
+    std::thread::Builder::new()
+        .name("audio-monitor".into())
+        .spawn(move || {
+            run_audio_monitor(app);
+        })
+        .expect("failed to spawn audio monitor thread");
+}
+
+fn run_audio_monitor(app: tauri::AppHandle) {
+    use std::io::BufRead;
+    use tauri::Emitter;
+
+    loop {
+        let child = match std::process::Command::new("pactl")
+            .args(["subscribe"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("audio: pactl subscribe failed: {e}, retrying in 5s");
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                continue;
+            }
+        };
+
+        log::info!("audio: pactl subscribe monitor started");
+
+        let stdout = child.stdout.unwrap();
+        let reader = std::io::BufReader::new(stdout);
+
+        for line in reader.lines() {
+            let Ok(line) = line else { break };
+            // pactl subscribe outputs lines like:
+            // Event 'change' on sink #123
+            // Event 'change' on source #456
+            if line.contains("sink") || line.contains("source") || line.contains("server") {
+                let _ = app.emit("audio-changed", ());
+            }
+        }
+
+        log::warn!("audio: pactl subscribe ended, reconnecting in 2s");
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+}

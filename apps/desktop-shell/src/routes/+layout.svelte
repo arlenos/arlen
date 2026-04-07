@@ -1,7 +1,15 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { initTheme } from "$lib/theme";
+  import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import "../app.css";
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape" && $activePopover !== null) {
+      e.preventDefault();
+      closePopover();
+    }
+  }
   import { initWindowListeners } from "$lib/stores/windows";
   import { initContextMenuListeners } from "$lib/stores/contextMenu.js";
   import { initNotificationListener } from "$lib/stores/notifications.js";
@@ -34,6 +42,8 @@
     initTheme().catch(() => {});
   });
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <slot />
 <ContextMenu />
