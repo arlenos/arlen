@@ -6,6 +6,7 @@ mod gtk_menu_bridge;
 mod layer_shell;
 mod menu_store;
 mod modules;
+mod extension_registry;
 mod bluetooth;
 mod network;
 mod shell_config;
