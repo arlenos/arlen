@@ -52,6 +52,15 @@ pub fn run() {
     let module_loader: modules::ModuleLoaderState = std::sync::Mutex::new(modules::ModuleLoader::new());
     let error_tracker: module_errors::ErrorTrackerState = std::sync::Mutex::new(module_errors::ModuleErrorTracker::new());
 
+    // PluginManager needs Arc clones of AppIndex and WindowList.
+    let mut plugin_mgr = waypointer_system::PluginManager::new();
+    waypointer_system::plugins::register_builtins(
+        &mut plugin_mgr,
+        Arc::clone(&app_idx),
+        Arc::clone(&window_list),
+    );
+    let plugin_mgr_state: waypointer_system::PluginManagerState = std::sync::Mutex::new(plugin_mgr);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::clone(&overlay_sender))
@@ -63,6 +72,7 @@ pub fn run() {
         .manage(Arc::clone(&sni_items))
         .manage(module_loader)
         .manage(error_tracker)
+        .manage(plugin_mgr_state)
         .setup(|app| {
             // Initialize the new theme system (v2).
             let config_dir = dirs::config_dir()
@@ -171,6 +181,8 @@ pub fn run() {
             module_errors::record_module_error,
             module_errors::get_module_errors,
             module_errors::reset_module_errors,
+            waypointer_system::waypointer_search,
+            waypointer_system::waypointer_execute,
             theme::commands::get_theme,
             theme::commands::get_theme_css,
             theme::commands::set_theme,
