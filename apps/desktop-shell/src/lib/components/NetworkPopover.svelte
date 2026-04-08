@@ -204,7 +204,7 @@
     position: fixed; top: 40px; z-index: 100; border-radius: 10px;
     background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow-lg);
     color: var(--color-fg-shell);
     display: flex; flex-direction: column;
     animation: pop-open 100ms ease-out both;
@@ -241,7 +241,7 @@
     text-align: left; width: 100%; transition: background-color 0.1s ease;
   }
   .net-item:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
-  .net-item.connected { background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent); }
+  .net-item.connected { background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent); border: 1px solid color-mix(in srgb, var(--color-fg-shell) 30%, transparent); }
   .net-item.connecting { opacity: 0.5; pointer-events: none; }
   .net-item-info { display: flex; align-items: center; gap: 8px; }
   :global(.net-check) { color: #22c55e; }

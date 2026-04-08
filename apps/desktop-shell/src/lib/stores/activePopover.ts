@@ -10,6 +10,7 @@ export type PopoverType =
   | "battery"
   | "bluetooth"
   | "tray"
+  | "layout"
   | `module:${string}`
   | null;
 

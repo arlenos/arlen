@@ -1,6 +1,6 @@
 <script lang="ts">
   import { togglePopover } from "$lib/stores/activePopover.js";
-  import { LayoutGrid } from "lucide-svelte";
+  import { Square } from "lucide-svelte";
 </script>
 
 <button
@@ -8,7 +8,7 @@
   aria-label="Quick Settings"
   onclick={() => togglePopover("quick-settings")}
 >
-  <LayoutGrid size={14} strokeWidth={1.5} />
+  <Square size={14} strokeWidth={1.5} />
 </button>
 
 <style>

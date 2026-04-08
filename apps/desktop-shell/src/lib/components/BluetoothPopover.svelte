@@ -293,7 +293,7 @@
     position: fixed; top: 40px; z-index: 100; border-radius: 10px;
     background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow-lg);
     color: var(--color-fg-shell);
     display: flex; flex-direction: column;
     animation: pop-open 100ms ease-out both;
@@ -316,8 +316,8 @@
     color: var(--color-fg-shell); font-size: 0.8125rem; cursor: pointer;
     text-align: left; width: 100%; transition: background-color 0.1s ease;
   }
-  .bt-device:hover { background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent); }
-  .bt-device.connected { background: color-mix(in srgb, var(--color-fg-shell) 6%, transparent); }
+  .bt-device:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
+  .bt-device.connected { background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent); border: 1px solid color-mix(in srgb, var(--color-fg-shell) 30%, transparent); }
   .bt-device.connecting { opacity: 0.5; pointer-events: none; }
   .bt-device-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .bt-device-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; font-size: 0.8125rem; }

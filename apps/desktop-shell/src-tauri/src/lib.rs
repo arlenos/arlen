@@ -4,6 +4,7 @@ mod battery;
 mod event_bus;
 mod gtk_menu_bridge;
 mod layer_shell;
+mod layout;
 mod menu_store;
 mod modules;
 mod module_errors;
@@ -181,6 +182,10 @@ pub fn run() {
             bluetooth::pair_bluetooth_device,
             shell_config::get_shell_config,
             shell_config::save_shell_config,
+            layout::get_layout_state,
+            layout::set_layout_mode,
+            layout::set_layout_gaps,
+            layout::set_layout_smart_gaps,
             permissions::get_app_permissions,
             permissions::get_app_permission_detail,
             modules::list_modules,

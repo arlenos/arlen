@@ -4,7 +4,6 @@
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
   import { Separator } from "$lib/components/ui/separator/index.js";
-  import { Switch } from "$lib/components/ui/switch/index.js";
   import { Volume2, ChevronDown, Check } from "lucide-svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
 
@@ -134,7 +133,16 @@
       <Separator class="opacity-10" />
       <div class="pop-row">
         <span class="pop-label">Do Not Disturb</span>
-        <Switch bind:checked={dndEnabled} />
+        <button
+          class="dnd-toggle"
+          class:active={dndEnabled}
+          onclick={(e) => { e.stopPropagation(); dndEnabled = !dndEnabled; }}
+          role="switch"
+          aria-checked={dndEnabled}
+          aria-label="Do Not Disturb"
+        >
+          <span class="dnd-toggle-thumb"></span>
+        </button>
       </div>
     </div>
   </div>
@@ -187,7 +195,7 @@
     transition: background-color 0.1s ease;
   }
   .cs-item:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
-  .cs-item.selected { background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent); }
+  .cs-item.selected { background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent); }
 
   /* ── Slider ── */
   .pop-slider { position: relative; flex: 1; height: 20px; display: flex; align-items: center; }
@@ -195,4 +203,21 @@
   .pop-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); border-radius: 2px; }
   .pop-slider-thumb { position: absolute; left: var(--value); width: 14px; height: 14px; background: var(--color-fg-shell); border-radius: 50%; transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
   .pop-slider input[type="range"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; appearance: none; -webkit-appearance: none; }
+
+  /* DND toggle - matches shell design system, no shadcn */
+  .dnd-toggle {
+    position: relative; width: 36px; height: 20px; border-radius: 10px;
+    background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
+    border: none; cursor: pointer; padding: 0; flex-shrink: 0;
+    transition: background-color 150ms ease;
+  }
+  .dnd-toggle:hover { background: color-mix(in srgb, var(--color-fg-shell) 30%, transparent); }
+  .dnd-toggle.active { background: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); }
+  .dnd-toggle-thumb {
+    position: absolute; top: 2px; left: 2px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--color-fg-shell);
+    transition: transform 150ms ease;
+  }
+  .dnd-toggle.active .dnd-toggle-thumb { transform: translateX(16px); }
 </style>
