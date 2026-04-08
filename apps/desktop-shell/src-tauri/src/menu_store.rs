@@ -55,9 +55,24 @@ pub fn unregister_menu(
     let _ = app.emit("lunaris://menu-unregistered", MenuUnregisteredPayload { app_id });
 }
 
-/// Dispatch a menu action back to the frontend (or to the app via IPC).
+/// Dispatch a menu action.
+///
+/// For GTK apps (reverse-domain app_id containing `.`), the action is
+/// sent via D-Bus `org.gtk.Actions.Activate`. For other apps (Tauri,
+/// Electron), a Tauri event is emitted for the frontend to handle.
 #[tauri::command]
 pub fn dispatch_menu_action(app: AppHandle, app_id: String, action: String) {
+    if app_id.contains('.') {
+        // GTK app: activate via D-Bus on a background thread.
+        let aid = app_id.clone();
+        let act = action.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = crate::gtk_menu_bridge::activate_gtk_action(&aid, &act) {
+                log::warn!("dispatch_menu_action: D-Bus activate failed: {e}");
+            }
+        });
+    }
+    // Always emit the event (frontend may want to track it).
     let _ = app.emit("lunaris://menu-action", MenuActionPayload { app_id, action });
 }
 

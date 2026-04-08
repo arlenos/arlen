@@ -1,0 +1,116 @@
+/// Tauri commands for layout applet communication.
+///
+/// Reads layout state and writes changes to the compositor TOML config.
+/// The current mode is tracked in a shared AtomicU8 that gets updated
+/// by the shell_overlay_client when `layout_mode_changed` events arrive.
+
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU8, Ordering};
+
+/// Shared layout mode state. Updated by shell_overlay_client events.
+///
+/// 0 = floating, 1 = tiling, 2 = monocle.
+pub static CURRENT_MODE: AtomicU8 = AtomicU8::new(0);
+
+/// Current layout state.
+#[derive(Clone, Serialize)]
+pub struct LayoutState {
+    pub mode: String,
+    pub inner_gap: i32,
+    pub outer_gap: i32,
+    pub smart_gaps: bool,
+}
+
+/// Get the layout config path.
+fn config_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    PathBuf::from(home).join(".config/lunaris/compositor.toml")
+}
+
+/// Read the current layout state from compositor.toml.
+#[tauri::command]
+pub fn get_layout_state() -> LayoutState {
+    let path = config_path();
+    let content = std::fs::read_to_string(&path).unwrap_or_default();
+    let table: toml::Table = toml::from_str(&content).unwrap_or_default();
+
+    let layout = table.get("layout").and_then(|v| v.as_table());
+    let mode = match CURRENT_MODE.load(Ordering::Relaxed) {
+        1 => "tiling",
+        2 => "monocle",
+        _ => "floating",
+    };
+    LayoutState {
+        mode: mode.into(),
+        inner_gap: layout
+            .and_then(|l| l.get("inner_gap"))
+            .and_then(|v| v.as_integer())
+            .unwrap_or(8) as i32,
+        outer_gap: layout
+            .and_then(|l| l.get("outer_gap"))
+            .and_then(|v| v.as_integer())
+            .unwrap_or(8) as i32,
+        smart_gaps: layout
+            .and_then(|l| l.get("smart_gaps"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true),
+    }
+}
+
+/// Update the [layout] section in compositor.toml.
+///
+/// Reads the existing file, updates only layout fields, writes back.
+fn update_layout_field(key: &str, value: toml::Value) {
+    let path = config_path();
+    let content = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut table: toml::Table = toml::from_str(&content).unwrap_or_default();
+
+    let layout = table
+        .entry("layout".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    if let toml::Value::Table(ref mut t) = layout {
+        t.insert(key.to_string(), value);
+    }
+
+    if let Ok(out) = toml::to_string_pretty(&table) {
+        let _ = std::fs::write(&path, out);
+    }
+}
+
+/// Set the gaps.
+#[tauri::command]
+pub fn set_layout_gaps(inner: i32, outer: i32) {
+    update_layout_field("inner_gap", toml::Value::Integer(inner as i64));
+    update_layout_field("outer_gap", toml::Value::Integer(outer as i64));
+    log::info!("layout: gaps set to inner={inner} outer={outer}");
+}
+
+/// Set the layout mode for the active workspace.
+///
+/// Sends a `set_layout_mode` request to the compositor via the
+/// shell-overlay protocol.
+#[tauri::command]
+pub fn set_layout_mode(
+    state: tauri::State<std::sync::Arc<crate::shell_overlay_client::ShellOverlaySender>>,
+    mode: String,
+) {
+    let mode_u32 = match mode.as_str() {
+        "floating" => 0,
+        "tiling" => 1,
+        "monocle" => 2,
+        _ => {
+            log::warn!("set_layout_mode: unknown mode {mode}");
+            return;
+        }
+    };
+    state.set_layout_mode(mode_u32);
+    log::info!("layout: mode set to {mode}");
+}
+
+/// Set smart gaps.
+#[tauri::command]
+pub fn set_layout_smart_gaps(enabled: bool) {
+    update_layout_field("smart_gaps", toml::Value::Boolean(enabled));
+    log::info!("layout: smart_gaps={enabled}");
+}

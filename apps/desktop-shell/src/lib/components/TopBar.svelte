@@ -15,6 +15,8 @@
   import BatteryPopover from "$lib/components/BatteryPopover.svelte";
   import WorkspaceIndicator from "$lib/components/WorkspaceIndicator.svelte";
   import ModuleIndicatorSlot from "$lib/components/ModuleIndicatorSlot.svelte";
+  import LayoutIndicator from "$lib/components/LayoutIndicator.svelte";
+  import LayoutPopover from "$lib/components/LayoutPopover.svelte";
   import { Separator } from "$lib/components/ui/separator/index.js";
 </script>
 
@@ -62,6 +64,7 @@
 
     <!-- System indicators -->
     <div class="flex items-center gap-0.5">
+      <LayoutIndicator />
       <NetworkIndicator />
       <BluetoothIndicator />
       <AudioIndicator />
@@ -74,6 +77,7 @@
 </div>
 
 <!-- Popovers (rendered outside the bar, positioned fixed) -->
+<LayoutPopover />
 <NetworkPopover />
 <AudioPopover />
 <BatteryPopover />

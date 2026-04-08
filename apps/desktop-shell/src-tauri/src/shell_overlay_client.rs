@@ -551,6 +551,21 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                 crate::waypointer::toggle(&state.app_handle);
             }
 
+            overlay::Event::LayoutModeChanged { mode } => {
+                let (mode_str, mode_u8) = match mode {
+                    wayland_client::WEnum::Value(overlay::LayoutModeType::Tiling) => ("tiling", 1u8),
+                    wayland_client::WEnum::Value(overlay::LayoutModeType::Monocle) => ("monocle", 2u8),
+                    _ => ("floating", 0u8),
+                };
+                // Update shared state for get_layout_state() command.
+                crate::layout::CURRENT_MODE.store(mode_u8, std::sync::atomic::Ordering::Relaxed);
+                log::info!("shell_overlay_client: layout mode changed to {mode_str}");
+                let _ = state.app_handle.emit(
+                    "lunaris://layout-mode-changed",
+                    serde_json::json!({ "mode": mode_str }),
+                );
+            }
+
             _ => {}
         }
     }
@@ -657,6 +672,15 @@ impl ShellOverlaySender {
         if let Some(p) = self.proxy.lock().unwrap().as_ref() {
             if let Ok(a) = overlay::WindowHeaderActionType::try_from(action) {
                 p.window_header_action(surface_id, a);
+                self.flush();
+            }
+        }
+    }
+
+    pub fn set_layout_mode(&self, mode: u32) {
+        if let Some(p) = self.proxy.lock().unwrap().as_ref() {
+            if let Ok(m) = overlay::LayoutModeType::try_from(mode) {
+                p.set_layout_mode(m);
                 self.flush();
             }
         }
