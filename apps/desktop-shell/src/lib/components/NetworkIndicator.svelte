@@ -5,7 +5,7 @@
   /// Ethernet, or disconnected state. VPN shown as shield badge.
 
   import { invoke } from "@tauri-apps/api/core";
-  import { togglePopover } from "$lib/stores/activePopover.js";
+  import { togglePopover, hoverPopover } from "$lib/stores/activePopover.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { Wifi, WifiOff, Cable, Shield, Plane } from "lucide-svelte";
   import { listen } from "@tauri-apps/api/event";
@@ -98,6 +98,7 @@
         aria-label={label()}
         {...props}
         onclick={() => togglePopover("network")}
+        onmouseenter={() => hoverPopover("network")}
         oncontextmenu={handleContextMenu}
       >
         <span style:opacity={signalOpacity}>

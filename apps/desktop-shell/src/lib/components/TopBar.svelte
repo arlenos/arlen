@@ -31,8 +31,8 @@
   Empty slots collapse via :empty pseudo-class.
 -->
 <div
-  class="flex items-center justify-between h-9 w-full px-2 gap-4 relative select-none shrink-0 z-50 shell-surface"
-  style="background: var(--background)"
+  class="flex items-center justify-between h-9 w-full px-2 gap-4 relative select-none shrink-0 shell-surface"
+  style="background: var(--background); z-index: 95"
   data-tauri-drag-region
 >
   <!-- LEFT: App menu + toolbar -->
