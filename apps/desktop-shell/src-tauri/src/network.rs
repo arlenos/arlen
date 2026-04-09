@@ -290,6 +290,187 @@ pub fn set_airplane_mode(enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Connection details for a known network.
+#[derive(Clone, Serialize)]
+pub struct ConnectionDetails {
+    pub ip: String,
+    pub gateway: String,
+    pub dns: String,
+    pub mac: String,
+}
+
+/// VPN connection info.
+#[derive(Clone, Serialize)]
+pub struct VpnConnection {
+    pub name: String,
+    pub active: bool,
+}
+
+/// Get detailed connection info for a connected/known network.
+#[tauri::command]
+pub fn get_connection_details(ssid: String) -> Result<ConnectionDetails, String> {
+    let output = std::process::Command::new("nmcli")
+        .args(["-t", "-f", "IP4.ADDRESS,IP4.GATEWAY,IP4.DNS,GENERAL.HWADDR", "connection", "show", &ssid])
+        .output()
+        .map_err(|e| format!("nmcli: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut ip = String::new();
+    let mut gateway = String::new();
+    let mut dns = String::new();
+    let mut mac = String::new();
+
+    for line in stdout.lines() {
+        let line = line.trim();
+        if let Some(val) = line.strip_prefix("IP4.ADDRESS[1]:") {
+            ip = val.trim().to_string();
+        } else if let Some(val) = line.strip_prefix("IP4.GATEWAY:") {
+            gateway = val.trim().to_string();
+        } else if let Some(val) = line.strip_prefix("IP4.DNS[1]:") {
+            dns = val.trim().to_string();
+        } else if let Some(val) = line.strip_prefix("GENERAL.HWADDR:") {
+            mac = val.trim().to_string();
+        }
+    }
+
+    Ok(ConnectionDetails { ip, gateway, dns, mac })
+}
+
+/// Get the saved PSK password for a known WiFi network.
+#[tauri::command]
+pub fn get_saved_password(ssid: String) -> Result<Option<String>, String> {
+    let output = std::process::Command::new("nmcli")
+        .args(["-s", "-t", "-f", "802-11-wireless-security.psk", "connection", "show", &ssid])
+        .output()
+        .map_err(|e| format!("nmcli: {e}"))?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        if let Some(val) = line.strip_prefix("802-11-wireless-security.psk:") {
+            let psk = val.trim().to_string();
+            if !psk.is_empty() {
+                return Ok(Some(psk));
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// Delete a saved network connection.
+#[tauri::command]
+pub fn forget_network(ssid: String) -> Result<(), String> {
+    let status = std::process::Command::new("nmcli")
+        .args(["connection", "delete", &ssid])
+        .status()
+        .map_err(|e| format!("nmcli: {e}"))?;
+    if !status.success() {
+        return Err(format!("Failed to forget {ssid}"));
+    }
+    Ok(())
+}
+
+/// Connect to a hidden WiFi network with SSID and password.
+#[tauri::command]
+pub fn connect_hidden_network(ssid: String, password: String) -> Result<(), String> {
+    let output = std::process::Command::new("nmcli")
+        .args([
+            "dev", "wifi", "connect", &ssid,
+            "password", &password,
+            "hidden", "yes",
+        ])
+        .output()
+        .map_err(|e| format!("nmcli: {e}"))?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    Ok(())
+}
+
+/// List all VPN connections (active and inactive).
+#[tauri::command]
+pub fn get_vpn_connections() -> Result<Vec<VpnConnection>, String> {
+    // Get all VPN connections.
+    let output = std::process::Command::new("nmcli")
+        .args(["-t", "-f", "NAME,TYPE", "connection", "show"])
+        .output()
+        .map_err(|e| format!("nmcli: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let all_vpns: Vec<String> = stdout
+        .lines()
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split(':').collect();
+            if parts.len() >= 2 && parts[1].contains("vpn") {
+                Some(parts[0].to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Get active VPN connections.
+    let active_output = std::process::Command::new("nmcli")
+        .args(["-t", "-f", "NAME,TYPE,STATE", "connection", "show", "--active"])
+        .output()
+        .unwrap_or_else(|_| std::process::Output {
+            status: std::process::ExitStatus::default(),
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+        });
+
+    let active_stdout = String::from_utf8_lossy(&active_output.stdout);
+    let active_vpns: std::collections::HashSet<String> = active_stdout
+        .lines()
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split(':').collect();
+            if parts.len() >= 3 && parts[1].contains("vpn") && parts[2] == "activated" {
+                Some(parts[0].to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    Ok(all_vpns
+        .into_iter()
+        .map(|name| VpnConnection {
+            active: active_vpns.contains(&name),
+            name,
+        })
+        .collect())
+}
+
+/// Connect a VPN by name.
+#[tauri::command]
+pub fn connect_vpn(name: String) -> Result<(), String> {
+    let status = std::process::Command::new("nmcli")
+        .args(["connection", "up", &name])
+        .status()
+        .map_err(|e| format!("nmcli: {e}"))?;
+    if !status.success() {
+        return Err(format!("Failed to connect VPN {name}"));
+    }
+    Ok(())
+}
+
+/// Disconnect a VPN by name.
+#[tauri::command]
+pub fn disconnect_vpn(name: String) -> Result<(), String> {
+    let status = std::process::Command::new("nmcli")
+        .args(["connection", "down", &name])
+        .status()
+        .map_err(|e| format!("nmcli: {e}"))?;
+    if !status.success() {
+        return Err(format!("Failed to disconnect VPN {name}"));
+    }
+    Ok(())
+}
+
 /// Checks if any VPN connection is active.
 fn check_vpn() -> bool {
     let output = match std::process::Command::new("nmcli")

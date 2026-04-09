@@ -102,7 +102,8 @@ pub fn run() {
             event_bus::start(app.handle().clone());
             wayland_client::start(app.handle().clone(), workspace_sender, toplevel_sender, window_list);
             shell_overlay_client::start(app.handle().clone(), overlay_sender);
-            notifications::start(app.handle().clone());
+            let notif_writer = notifications::start(app.handle().clone());
+            app.manage(notif_writer);
             sni::start(app.handle().clone(), sni_items);
             bluetooth::start_monitor(app.handle().clone());
             network::start_monitor(app.handle().clone());
@@ -159,6 +160,12 @@ pub fn run() {
             audio::set_audio_output,
             audio::get_audio_inputs,
             audio::set_audio_input,
+            audio::get_input_volume,
+            audio::set_input_volume,
+            audio::toggle_input_mute,
+            audio::get_app_volumes,
+            audio::set_app_volume,
+            audio::set_dnd_enabled,
             battery::get_battery_status,
             power::get_power_profile,
             power::set_power_profile,
@@ -171,6 +178,13 @@ pub fn run() {
             network::set_wifi_enabled,
             network::get_airplane_mode,
             network::set_airplane_mode,
+            network::get_connection_details,
+            network::get_saved_password,
+            network::forget_network,
+            network::connect_hidden_network,
+            network::get_vpn_connections,
+            network::connect_vpn,
+            network::disconnect_vpn,
             bluetooth::get_bluetooth_state,
             bluetooth::set_bluetooth_powered,
             bluetooth::connect_bluetooth_device,
@@ -222,6 +236,12 @@ pub fn run() {
             waypointer_processes::get_processes,
             waypointer_processes::kill_process,
             waypointer_unicode::search_unicode,
+            notifications::notification_dismiss,
+            notifications::notification_invoke_action,
+            notifications::notification_mark_read,
+            notifications::notification_clear_all,
+            notifications::notification_set_dnd,
+            notifications::notification_get_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

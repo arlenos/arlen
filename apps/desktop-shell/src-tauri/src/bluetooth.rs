@@ -90,6 +90,16 @@ fn prop_u8(props: &HashMap<String, OwnedValue>, key: &str) -> Option<u8> {
     })
 }
 
+fn prop_u32(props: &HashMap<String, OwnedValue>, key: &str) -> Option<u32> {
+    props.get(key).and_then(|v| {
+        let val = Value::try_from(v.clone()).ok()?;
+        match unwrap_variant(&val) {
+            Value::U32(n) => Some(*n),
+            _ => None,
+        }
+    })
+}
+
 /// Unwrap nested D-Bus variant wrappers.
 fn unwrap_variant<'a>(v: &'a Value<'a>) -> &'a Value<'a> {
     match v {
@@ -121,6 +131,54 @@ fn should_show_device(device: &BluetoothDevice) -> bool {
         return false;
     }
     true
+}
+
+/// Map a BlueZ Device Class uint32 to an icon name.
+///
+/// Bluetooth Device Class format (bits 12-8 = Major Device Class):
+///   0x01 = Computer, 0x02 = Phone, 0x03 = Network,
+///   0x04 = Audio/Video, 0x05 = Peripheral, 0x06 = Imaging.
+/// Minor Device Class (bits 7-2) disambiguates within major classes.
+fn icon_from_device_class(class: u32) -> Option<String> {
+    let major = (class >> 8) & 0x1F;
+    let minor = (class >> 2) & 0x3F;
+
+    Some(match major {
+        0x01 => "computer".into(),
+        0x02 => "phone".into(),
+        0x03 => "network".into(),
+        0x04 => {
+            // Audio/Video: minor disambiguates.
+            match minor {
+                0x01 => "audio-headset".into(),       // Wearable Headset
+                0x02 => "audio-headset".into(),       // Hands-free
+                0x04 => "audio-headphones".into(),    // Microphone
+                0x05 => "audio-speakers".into(),      // Loudspeaker
+                0x06 => "audio-headphones".into(),    // Headphones
+                _ => "audio-headphones".into(),
+            }
+        }
+        0x05 => {
+            // Peripheral: minor bits 5-4 = device type.
+            let periph_type = (minor >> 4) & 0x03;
+            match periph_type {
+                0x01 => "input-keyboard".into(),
+                0x02 => "input-mouse".into(),
+                0x03 => "input-keyboard".into(),      // Combo keyboard/mouse
+                _ => {
+                    // Bits 3-0 may indicate gamepad.
+                    let sub = minor & 0x0F;
+                    if sub == 0x01 || sub == 0x02 {
+                        "input-gaming".into()
+                    } else {
+                        return None;
+                    }
+                }
+            }
+        }
+        0x06 => "camera".into(),
+        _ => return None,
+    })
 }
 
 /// Guess a Lucide-compatible icon name from the device name when BlueZ does
@@ -194,10 +252,12 @@ fn parse_device(
     let battery_percentage = bat_props.and_then(|bp| prop_u8(bp, "Percentage"));
 
     let raw_icon = prop_str(dev_props, "Icon");
-    let icon = if raw_icon.is_empty() {
-        guess_icon_from_name(&name)
-    } else {
+    let icon = if !raw_icon.is_empty() {
         raw_icon
+    } else {
+        // Fallback: parse Device Class uint32 for Major Device Class.
+        let class_icon = prop_u32(dev_props, "Class").and_then(|c| icon_from_device_class(c));
+        class_icon.unwrap_or_else(|| guess_icon_from_name(&name))
     };
 
     BluetoothDevice {

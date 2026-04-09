@@ -1,8 +1,7 @@
 <script lang="ts">
-  /// Shared popover header with icon, title, optional switch, and settings button.
+  /// Shared popover header with icon, title, optional toggle, and settings button.
 
   import { Settings } from "lucide-svelte";
-  import { Switch } from "$lib/components/ui/switch/index.js";
   import { closePopover } from "$lib/stores/activePopover.js";
 
   interface Props {
@@ -20,11 +19,16 @@
   <Icon size={16} strokeWidth={1.5} />
   <span class="pop-title">{title}</span>
   {#if onToggle !== undefined}
-    <Switch
-      checked={toggled ?? false}
-      onCheckedChange={() => onToggle?.()}
-      class="data-checked:bg-[#6366f1]"
-    />
+    <button
+      class="header-toggle"
+      class:active={toggled ?? false}
+      onclick={(e) => { e.stopPropagation(); onToggle?.(); }}
+      role="switch"
+      aria-checked={toggled ?? false}
+      aria-label="{title} toggle"
+    >
+      <span class="header-toggle-thumb"></span>
+    </button>
   {/if}
   <button
     class="pop-settings-btn"
@@ -54,4 +58,21 @@
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
     color: var(--color-fg-shell);
   }
+
+  /* Custom toggle - matches shell design system, no shadcn */
+  .header-toggle {
+    position: relative; width: 36px; height: 20px; border-radius: 10px;
+    background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
+    border: none; cursor: pointer; padding: 0; flex-shrink: 0;
+    transition: background-color 150ms ease;
+  }
+  .header-toggle:hover { background: color-mix(in srgb, var(--color-fg-shell) 30%, transparent); }
+  .header-toggle.active { background: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); }
+  .header-toggle-thumb {
+    position: absolute; top: 2px; left: 2px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--color-fg-shell);
+    transition: transform 150ms ease;
+  }
+  .header-toggle.active .header-toggle-thumb { transform: translateX(16px); }
 </style>

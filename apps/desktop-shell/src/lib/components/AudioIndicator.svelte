@@ -9,11 +9,12 @@
   import { onMount } from "svelte";
   import { togglePopover } from "$lib/stores/activePopover.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { VolumeX, Volume, Volume1, Volume2 } from "lucide-svelte";
+  import { VolumeX, Volume, Volume1, Volume2, Headphones, Speaker, Monitor } from "lucide-svelte";
 
   interface AudioStatus {
     volume: number;
     muted: boolean;
+    output_type: string;
   }
 
   let status = $state<AudioStatus | null>(null);
@@ -40,8 +41,13 @@
     };
   });
 
+  const outputType = $derived(status?.output_type ?? "speakers");
+
   const Icon = $derived(
     !status || status.muted || status.volume === 0 ? VolumeX :
+    outputType === "bluetooth_headphones" ? Headphones :
+    outputType === "bluetooth_speaker" ? Speaker :
+    outputType === "hdmi" ? Monitor :
     status.volume <= 33 ? Volume :
     status.volume <= 66 ? Volume1 :
     Volume2

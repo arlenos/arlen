@@ -2364,6 +2364,7 @@ name = "lunaris-desktop-shell"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "bytes",
  "chrono",
  "chrono-tz",
  "cosmic-client-toolkit",
@@ -2378,6 +2379,7 @@ dependencies = [
  "libc",
  "log",
  "meval",
+ "notification-proto",
  "notify",
  "prost",
  "prost-build",
@@ -2389,6 +2391,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tempfile",
  "thiserror 2.0.18",
+ "tokio",
  "toml 0.8.2",
  "unicode_names2",
  "wayland-backend",
@@ -2603,6 +2606,14 @@ name = "nom"
 version = "1.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a5b8c256fd9471521bcb84c3cdba98921497f1a331cbc15b8030fc63b82050ce"
+
+[[package]]
+name = "notification-proto"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "prost-build",
+]
 
 [[package]]
 name = "notify"
