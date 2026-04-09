@@ -30,12 +30,21 @@
   let commandValue = $state("");
 
   // Projects sorted by recent access, limited to 3 without query.
+  // In "p:" prefix mode, show all matching with no limit.
   const filteredProjects = $derived((() => {
     const sorted = [...$activeProjects].sort(
       (a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0)
     );
+    const trimmed = query.trim().toLowerCase();
+    if (trimmed.startsWith("p:")) {
+      const filter = trimmed.slice(2).trim();
+      if (!filter) return sorted;
+      return sorted.filter(
+        (p) => p.name.toLowerCase().includes(filter) || p.rootPath.toLowerCase().includes(filter)
+      );
+    }
     if (!query) return sorted.slice(0, 3);
-    const q = query.toLowerCase();
+    const q = trimmed;
     return sorted.filter(
       (p) => p.name.toLowerCase().includes(q) || p.rootPath.toLowerCase().includes(q)
     );
@@ -196,7 +205,7 @@
   const inlineResult = writable<WaypointerResult | null>(null);
 
   // Special mode: '>' = shell command, '#' = man page.
-  type SpecialMode = "shell" | "man" | "url" | "search" | "kill" | "unicode" | null;
+  type SpecialMode = "shell" | "man" | "url" | "search" | "kill" | "unicode" | "projects" | null;
   const specialMode = writable<SpecialMode>(null);
   const specialArg = writable<string>("");
 
@@ -352,6 +361,22 @@
           if (hint) hint.textContent = "Open URL";
           const listU = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
           if (listU) listU.style.display = "none";
+          return;
+        }
+
+        // "p:" prefix: project search.
+        if (trimmed.toLowerCase().startsWith("p:")) {
+          const filter = trimmed.slice(2).trim();
+          specialMode.set("projects");
+          specialArg.set(filter);
+          searchResults.set([]);
+          inlineResult.set(null);
+          clearProcessResults();
+          clearUnicodeResults();
+          const wrap = document.getElementById("wp-inline-wrap");
+          if (wrap) wrap.style.display = "none";
+          const listP = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
+          if (listP) listP.style.display = "";
           return;
         }
 
