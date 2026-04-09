@@ -21,12 +21,34 @@
     Command, CommandInput, CommandList, CommandEmpty,
     CommandGroup, CommandItem, CommandSeparator, CommandShortcut,
   } from "$lib/components/ui/command/index.js";
-  import { Search, AppWindow, Calculator, ArrowRightLeft, TerminalSquare, BookOpen, Clock, Globe, Link, Skull } from "lucide-svelte";
+  import { Search, AppWindow, Calculator, ArrowRightLeft, TerminalSquare, BookOpen, Clock, Globe, Link, Skull, FolderKanban, X } from "lucide-svelte";
+  import { activeProjects, activateFocus, deactivateFocus, isFocused, focusState } from "$lib/stores/projects.js";
 
   let query = $state("");
   let inputRef = $state<HTMLInputElement | null>(null);
   let listRef = $state<HTMLElement | null>(null);
   let commandValue = $state("");
+
+  // Projects sorted by recent access, limited to 3 without query.
+  // In "p:" prefix mode, show all matching with no limit.
+  const filteredProjects = $derived((() => {
+    const sorted = [...$activeProjects].sort(
+      (a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0)
+    );
+    const trimmed = query.trim().toLowerCase();
+    if (trimmed.startsWith("p:")) {
+      const filter = trimmed.slice(2).trim();
+      if (!filter) return sorted;
+      return sorted.filter(
+        (p) => p.name.toLowerCase().includes(filter) || p.rootPath.toLowerCase().includes(filter)
+      );
+    }
+    if (!query) return sorted.slice(0, 3);
+    const q = trimmed;
+    return sorted.filter(
+      (p) => p.name.toLowerCase().includes(q) || p.rootPath.toLowerCase().includes(q)
+    );
+  })());
 
   // App search results from Rust (max 20, pre-filtered, icons included).
   const searchResults = writable<AppEntry[]>([]);
@@ -64,6 +86,7 @@
   }
 
   function open() {
+    console.log("[waypointer] open, isFocused:", $isFocused, "focusState:", $focusState, "projects:", $activeProjects.length, "filtered:", filteredProjects.length);
     query = "";
     commandValue = "";
     inlineResult.set(null);
@@ -182,7 +205,7 @@
   const inlineResult = writable<WaypointerResult | null>(null);
 
   // Special mode: '>' = shell command, '#' = man page.
-  type SpecialMode = "shell" | "man" | "url" | "search" | "kill" | "unicode" | null;
+  type SpecialMode = "shell" | "man" | "url" | "search" | "kill" | "unicode" | "projects" | null;
   const specialMode = writable<SpecialMode>(null);
   const specialArg = writable<string>("");
 
@@ -338,6 +361,22 @@
           if (hint) hint.textContent = "Open URL";
           const listU = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
           if (listU) listU.style.display = "none";
+          return;
+        }
+
+        // "p:" prefix: project search.
+        if (trimmed.toLowerCase().startsWith("p:")) {
+          const filter = trimmed.slice(2).trim();
+          specialMode.set("projects");
+          specialArg.set(filter);
+          searchResults.set([]);
+          inlineResult.set(null);
+          clearProcessResults();
+          clearUnicodeResults();
+          const wrap = document.getElementById("wp-inline-wrap");
+          if (wrap) wrap.style.display = "none";
+          const listP = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
+          if (listP) listP.style.display = "";
           return;
         }
 
@@ -561,6 +600,29 @@
               </CommandItem>
             {/each}
           </CommandGroup>
+        {/if}
+
+        {#if filteredProjects.length > 0 || $isFocused}
+          <CommandGroup heading="Projects">
+            {#if $isFocused}
+              <CommandItem value="focus-exit" onSelect={() => { deactivateFocus(); close(); }}>
+                <X size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">Exit Focus: {$focusState.projectName}</span>
+                </div>
+              </CommandItem>
+            {/if}
+            {#each filteredProjects as project (project.id)}
+              <CommandItem value={`focus-${project.id}`} onSelect={() => { activateFocus(project); close(); }}>
+                <FolderKanban size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{project.name}</span>
+                  <span class="wp-app-desc">{project.rootPath}</span>
+                </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+          <CommandSeparator />
         {/if}
 
         {#if $searchResults.length > 0}

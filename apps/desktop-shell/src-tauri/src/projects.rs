@@ -96,32 +96,68 @@ fn graph_query(cypher: &str) -> Result<String, String> {
     String::from_utf8(buf).map_err(|e| format!("graph utf8: {e}"))
 }
 
-/// Parse pipe-delimited rows from a Kuzu/Ladybug text result.
+/// Parse pipe-delimited rows from a Ladybug text result.
 ///
-/// The daemon returns results as text lines like:
+/// Format:
 /// ```text
-/// {p.id: abc, p.name: Test, ...}
+/// p.id|p.name|p.description|p.root_path|...\n
+/// uuid|name|desc|/path|...\n
 /// ```
-/// We parse simple property returns instead.
 fn parse_projects_result(raw: &str) -> Vec<Project> {
-    // The Knowledge Daemon returns Cypher results as Ladybug's .to_string().
-    // For structured queries we use individual property returns.
-    // The result is a table-like text. We parse it line by line.
-    //
-    // Fallback: if the graph is empty or unreachable, return [].
-    if raw.trim().is_empty() || raw.contains("error") {
+    if raw.trim().is_empty() || raw.starts_with("ERROR") {
         return Vec::new();
     }
 
-    // Result format from Ladybug query_rows (via daemon string representation):
-    // Each row is printed on its own line. The exact format depends on the
-    // Ladybug version. For now, we return an empty list and rely on
-    // event-driven updates (project:created events) to populate the store.
-    //
-    // Full structured parsing requires the daemon to support JSON output
-    // (Phase 5 enhancement).
-    log::debug!("graph raw result ({} bytes): {:?}", raw.len(), &raw[..raw.len().min(200)]);
-    Vec::new()
+    let mut lines = raw.lines();
+
+    // First line is the header -- skip it.
+    let Some(_header) = lines.next() else {
+        return Vec::new();
+    };
+
+    let mut projects = Vec::new();
+    for line in lines {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let cols: Vec<&str> = line.split('|').collect();
+        if cols.len() < 12 {
+            continue;
+        }
+
+        let opt = |i: usize| -> Option<String> {
+            let s = cols[i].trim();
+            if s.is_empty() { None } else { Some(s.to_string()) }
+        };
+        let i64_or = |i: usize, default: i64| -> i64 {
+            cols[i].trim().parse().unwrap_or(default)
+        };
+        let bool_col = |i: usize| -> bool {
+            matches!(cols[i].trim(), "True" | "true" | "1")
+        };
+
+        projects.push(Project {
+            id: cols[0].trim().to_string(),
+            name: cols[1].trim().to_string(),
+            description: opt(2),
+            root_path: cols[3].trim().to_string(),
+            accent_color: opt(4),
+            icon: opt(5),
+            status: cols[6].trim().to_string(),
+            created_at: i64_or(7, 0),
+            last_accessed: {
+                let v = i64_or(8, 0);
+                if v == 0 { None } else { Some(v) }
+            },
+            inferred: bool_col(9),
+            confidence: cols[10].trim().parse().unwrap_or(0),
+            promoted: bool_col(11),
+        });
+    }
+
+    log::info!("parsed {} projects from graph", projects.len());
+    projects
 }
 
 // ── Tauri Commands ──────────────────────────────────────────────────────
@@ -148,11 +184,20 @@ pub async fn list_projects() -> Result<Vec<Project>, String> {
 /// Get a single project by ID.
 #[tauri::command]
 pub async fn get_project(project_id: String) -> Result<Option<Project>, String> {
-    // For now, search from cached event-driven list.
-    // Direct graph query returns text that is hard to parse without
-    // structured JSON output from the daemon.
-    let _ = project_id;
-    Ok(None)
+    let id_esc = project_id.replace('\'', "\\'");
+    let result = match graph_query(&format!(
+        "MATCH (p:Project {{id: '{id_esc}'}}) \
+         RETURN p.id, p.name, p.description, p.root_path, \
+         p.accent_color, p.icon, p.status, p.created_at, \
+         p.last_accessed, p.inferred, p.confidence, p.promoted"
+    )) {
+        Ok(r) => r,
+        Err(e) => {
+            log::debug!("get_project: graph query failed: {e}");
+            return Ok(None);
+        }
+    };
+    Ok(parse_projects_result(&result).into_iter().next())
 }
 
 /// Enter Focus Mode for a project.

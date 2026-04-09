@@ -10,8 +10,8 @@ use tauri::{AppHandle, Emitter};
 
 const DEFAULT_CONSUMER_SOCKET: &str = "/run/lunaris/event-bus-consumer.sock";
 const CONSUMER_ID: &str = "desktop-shell";
-/// Subscribe to window events and config change events.
-const SUBSCRIPTIONS: &str = "window.,config.";
+/// Subscribe to window, config, and project events.
+const SUBSCRIPTIONS: &str = "window.,config.,project.";
 
 /// Window event payload forwarded to the TypeScript frontend.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -118,6 +118,12 @@ fn forward_to_frontend(app: &AppHandle, event: proto::Event) {
         return;
     }
 
+    // Project events (protobuf payloads).
+    if event_type.starts_with("project.") {
+        forward_project_event(app, event_type, &event.payload);
+        return;
+    }
+
     // Config events.
     if event_type.starts_with("config.") {
         let payload = ConfigChangedPayload {
@@ -136,6 +142,50 @@ fn forward_to_frontend(app: &AppHandle, event: proto::Event) {
         if let Err(e) = app.emit(tauri_event, &payload) {
             log::warn!("failed to emit config Tauri event: {e}");
         }
+    }
+}
+
+/// Forward project lifecycle events to the frontend.
+fn forward_project_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
+    use prost::Message;
+
+    match event_type {
+        "project.created" => {
+            if let Ok(p) = proto::ProjectCreatedPayload::decode(payload) {
+                let project = crate::projects::Project {
+                    id: p.project_id,
+                    name: p.name,
+                    description: None,
+                    root_path: p.root_path,
+                    accent_color: None,
+                    icon: None,
+                    status: "active".into(),
+                    created_at: 0,
+                    last_accessed: None,
+                    inferred: p.inferred,
+                    confidence: p.confidence as u8,
+                    promoted: !p.inferred, // explicit projects are promoted
+                };
+                log::info!("project.created: {} (inferred={})", project.name, project.inferred);
+                let _ = app.emit("project:created", &project);
+            }
+        }
+        "project.updated" => {
+            if let Ok(p) = proto::ProjectUpdatedPayload::decode(payload) {
+                let _ = app.emit("project:updated", serde_json::json!({
+                    "projectId": p.project_id,
+                    "name": p.name,
+                }));
+            }
+        }
+        "project.archived" => {
+            if let Ok(p) = proto::ProjectArchivedPayload::decode(payload) {
+                let _ = app.emit("project:archived", serde_json::json!({
+                    "projectId": p.project_id,
+                }));
+            }
+        }
+        _ => {}
     }
 }
 
