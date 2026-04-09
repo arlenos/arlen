@@ -83,9 +83,14 @@ export async function loadProjects(): Promise<void> {
   }
 }
 
-export async function activateFocus(projectId: string): Promise<boolean> {
+export async function activateFocus(project: Project): Promise<boolean> {
   try {
-    await invoke("activate_focus", { projectId });
+    await invoke("activate_focus", {
+      projectId: project.id,
+      projectName: project.name,
+      rootPath: project.rootPath,
+      accentColor: project.accentColor,
+    });
     return true;
   } catch (e) {
     console.error("[projects] activate focus failed:", e);
