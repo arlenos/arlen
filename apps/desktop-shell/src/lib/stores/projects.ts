@@ -77,6 +77,7 @@ export const focusedProject = derived(
 export async function loadProjects(): Promise<void> {
   try {
     const list = await invoke<Project[]>("list_projects");
+    console.log("[projects] loaded:", list.length, "projects", list.map(p => `${p.name}(promoted=${p.promoted})`));
     projects.set(list);
   } catch (e) {
     console.error("[projects] load failed:", e);
@@ -84,21 +85,35 @@ export async function loadProjects(): Promise<void> {
 }
 
 export async function activateFocus(project: Project): Promise<boolean> {
+  // Optimistic: set state immediately so UI reacts before invoke returns.
+  focusState.set({
+    projectId: project.id,
+    projectName: project.name,
+    rootPath: project.rootPath,
+    accentColor: project.accentColor ?? null,
+    activatedAt: Date.now(),
+  });
+  applyFocusAccent(project.accentColor ?? null);
   try {
     await invoke("activate_focus", {
       projectId: project.id,
       projectName: project.name,
       rootPath: project.rootPath,
-      accentColor: project.accentColor,
+      accentColor: project.accentColor ?? null,
     });
     return true;
   } catch (e) {
+    // Rollback on failure.
+    focusState.set({ ...EMPTY_FOCUS });
+    removeFocusAccent();
     console.error("[projects] activate focus failed:", e);
     return false;
   }
 }
 
 export async function deactivateFocus(): Promise<boolean> {
+  focusState.set({ ...EMPTY_FOCUS });
+  removeFocusAccent();
   try {
     await invoke("deactivate_focus");
     return true;
@@ -137,6 +152,7 @@ export function initProjects(): void {
 
   // Project lifecycle events.
   listen<Project>("project:created", ({ payload }) => {
+    console.log("[projects] created event:", payload.name, "promoted:", payload.promoted);
     projects.update((list) => [...list, payload]);
   });
 
@@ -158,6 +174,7 @@ export function initProjects(): void {
 
   // Focus Mode events.
   listen<FocusState>("focus:activated", ({ payload }) => {
+    console.log("[projects] focus:activated event:", payload);
     focusState.set(payload);
     applyFocusAccent(payload.accentColor);
   });

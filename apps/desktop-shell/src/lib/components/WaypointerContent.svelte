@@ -21,12 +21,25 @@
     Command, CommandInput, CommandList, CommandEmpty,
     CommandGroup, CommandItem, CommandSeparator, CommandShortcut,
   } from "$lib/components/ui/command/index.js";
-  import { Search, AppWindow, Calculator, ArrowRightLeft, TerminalSquare, BookOpen, Clock, Globe, Link, Skull } from "lucide-svelte";
+  import { Search, AppWindow, Calculator, ArrowRightLeft, TerminalSquare, BookOpen, Clock, Globe, Link, Skull, FolderKanban, X } from "lucide-svelte";
+  import { activeProjects, activateFocus, deactivateFocus, isFocused, focusState } from "$lib/stores/projects.js";
 
   let query = $state("");
   let inputRef = $state<HTMLInputElement | null>(null);
   let listRef = $state<HTMLElement | null>(null);
   let commandValue = $state("");
+
+  // Projects sorted by recent access, limited to 3 without query.
+  const filteredProjects = $derived((() => {
+    const sorted = [...$activeProjects].sort(
+      (a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0)
+    );
+    if (!query) return sorted.slice(0, 3);
+    const q = query.toLowerCase();
+    return sorted.filter(
+      (p) => p.name.toLowerCase().includes(q) || p.rootPath.toLowerCase().includes(q)
+    );
+  })());
 
   // App search results from Rust (max 20, pre-filtered, icons included).
   const searchResults = writable<AppEntry[]>([]);
@@ -64,6 +77,7 @@
   }
 
   function open() {
+    console.log("[waypointer] open, isFocused:", $isFocused, "focusState:", $focusState, "projects:", $activeProjects.length, "filtered:", filteredProjects.length);
     query = "";
     commandValue = "";
     inlineResult.set(null);
@@ -561,6 +575,29 @@
               </CommandItem>
             {/each}
           </CommandGroup>
+        {/if}
+
+        {#if filteredProjects.length > 0 || $isFocused}
+          <CommandGroup heading="Projects">
+            {#if $isFocused}
+              <CommandItem value="focus-exit" onSelect={() => { deactivateFocus(); close(); }}>
+                <X size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">Exit Focus: {$focusState.projectName}</span>
+                </div>
+              </CommandItem>
+            {/if}
+            {#each filteredProjects as project (project.id)}
+              <CommandItem value={`focus-${project.id}`} onSelect={() => { activateFocus(project); close(); }}>
+                <FolderKanban size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{project.name}</span>
+                  <span class="wp-app-desc">{project.rootPath}</span>
+                </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+          <CommandSeparator />
         {/if}
 
         {#if $searchResults.length > 0}
