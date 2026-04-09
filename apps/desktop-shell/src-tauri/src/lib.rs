@@ -15,6 +15,7 @@ mod shell_config;
 mod power;
 mod notifications;
 mod permissions;
+mod projects;
 mod sni;
 mod shell_overlay_client;
 mod shell_runner;
@@ -78,6 +79,7 @@ pub fn run() {
         .manage(error_tracker)
         .manage(plugin_mgr_state)
         .manage(ext_registry)
+        .manage(Arc::new(projects::ProjectsState::new()))
         .setup(|app| {
             // Initialize the new theme system (v2).
             let config_dir = dirs::config_dir()
@@ -236,6 +238,11 @@ pub fn run() {
             waypointer_processes::get_processes,
             waypointer_processes::kill_process,
             waypointer_unicode::search_unicode,
+            projects::list_projects,
+            projects::get_project,
+            projects::activate_focus,
+            projects::deactivate_focus,
+            projects::get_focus_state,
             notifications::notification_dismiss,
             notifications::notification_invoke_action,
             notifications::notification_mark_read,

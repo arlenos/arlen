@@ -19,6 +19,7 @@
   import { initIndicatorListeners } from "$lib/stores/indicators";
   import { initZoomListeners } from "$lib/stores/zoom";
   import { initWindowHeaderListeners } from "$lib/stores/windowHeaders";
+  import { initProjects } from "$lib/stores/projects.js";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import TabBar from "$lib/components/TabBar.svelte";
   import Indicator from "$lib/components/Indicator.svelte";
@@ -36,6 +37,7 @@
     initIndicatorListeners();
     initZoomListeners();
     initWindowHeaderListeners();
+    initProjects();
 
     // Initialize theme system (loads appearance.toml, injects CSS vars,
     // subscribes to live theme-changed events from Rust).
