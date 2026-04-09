@@ -1,6 +1,11 @@
 <script lang="ts">
   import { togglePopover } from "$lib/stores/activePopover.js";
+  import { unreadCount } from "$lib/stores/notifications.js";
   import { Square } from "lucide-svelte";
+
+  const badgeText = $derived(
+    $unreadCount > 99 ? "99+" : $unreadCount > 0 ? String($unreadCount) : ""
+  );
 </script>
 
 <button
@@ -9,10 +14,14 @@
   onclick={() => togglePopover("quick-settings")}
 >
   <Square size={14} strokeWidth={1.5} />
+  {#if badgeText}
+    <span class="panel-badge">{badgeText}</span>
+  {/if}
 </button>
 
 <style>
   .panel-trigger {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -31,5 +40,22 @@
 
   .panel-trigger:hover {
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  }
+
+  .panel-badge {
+    position: absolute;
+    top: 1px;
+    right: 0px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 7px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 0.5625rem;
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
+    pointer-events: none;
   }
 </style>

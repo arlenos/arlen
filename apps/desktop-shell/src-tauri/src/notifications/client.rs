@@ -15,6 +15,76 @@ use tokio::sync::Mutex;
 use super::protocol::{read_message, write_message};
 use super::types::{DndState, Notification, SyncPayload};
 
+/// Resolve icon name to base64 data URL via the shared icon resolver.
+///
+/// Searches freedesktop icon theme directories for the icon name and
+/// returns a base64 data URL. Falls back to checking the app index
+/// for .desktop file icons.
+fn resolve_icon(notification: &mut Notification) {
+    log::info!(
+        "resolve_icon: id={} app_icon='{}' app_name='{}'",
+        notification.id,
+        notification.app_icon,
+        notification.app_name
+    );
+    if notification.app_icon.is_empty() {
+        // No icon name from D-Bus, try lowercase app_name.
+        let app_lower = notification.app_name.to_lowercase();
+        if !app_lower.is_empty() {
+            if let Some(data_url) =
+                crate::shell_overlay_client::resolve_app_icon(app_lower.clone())
+            {
+                log::info!("resolve_icon: resolved via app_name '{app_lower}'");
+                notification.app_icon = data_url;
+                return;
+            }
+        }
+        return;
+    }
+    // Already a data URL -- keep as-is.
+    if notification.app_icon.starts_with("data:") {
+        return;
+    }
+    // Absolute path: read directly.
+    if notification.app_icon.starts_with('/') {
+        if let Some(data_url) =
+            crate::shell_overlay_client::resolve_app_icon(notification.app_icon.clone())
+        {
+            log::info!("resolve_icon: resolved absolute path");
+            notification.app_icon = data_url;
+        } else {
+            log::info!("resolve_icon: absolute path not found, clearing");
+            notification.app_icon.clear();
+        }
+        return;
+    }
+    // Try resolving as icon name (e.g. "firefox" -> hicolor theme lookup).
+    if let Some(data_url) =
+        crate::shell_overlay_client::resolve_app_icon(notification.app_icon.clone())
+    {
+        log::info!("resolve_icon: resolved '{}'", notification.app_icon);
+        notification.app_icon = data_url;
+        return;
+    }
+    // Try resolving with lowercase app_name as fallback.
+    let app_lower = notification.app_name.to_lowercase();
+    if app_lower != notification.app_icon {
+        if let Some(data_url) =
+            crate::shell_overlay_client::resolve_app_icon(app_lower.clone())
+        {
+            log::info!("resolve_icon: resolved via fallback '{app_lower}'");
+            notification.app_icon = data_url;
+            return;
+        }
+    }
+    log::info!(
+        "resolve_icon: NOT FOUND '{}' (app: '{}')",
+        notification.app_icon,
+        notification.app_name
+    );
+    notification.app_icon.clear();
+}
+
 /// Shared write-half of the socket connection.
 pub type SocketWriter = Arc<Mutex<Option<WriteHalf<UnixStream>>>>;
 
@@ -85,7 +155,8 @@ async fn try_connect(app: &AppHandle, writer: &SocketWriter) -> Result<(), Strin
         match inner {
             proto::server_message::Msg::Added(added) => {
                 if let Some(n) = added.notification {
-                    let notification = Notification::from(n);
+                    let mut notification = Notification::from(n);
+                    resolve_icon(&mut notification);
                     let _ = app.emit("notification:new", &notification);
                 }
             }
@@ -120,15 +191,21 @@ async fn try_connect(app: &AppHandle, writer: &SocketWriter) -> Result<(), Strin
                 });
             }
             proto::server_message::Msg::Sync(sync) => {
-                let payload = SyncPayload::from(sync);
+                let mut payload = SyncPayload::from(sync);
+                for n in &mut payload.pending {
+                    resolve_icon(n);
+                }
                 let _ = app.emit("notification:sync", &payload);
             }
             proto::server_message::Msg::History(hist) => {
-                let notifications: Vec<Notification> = hist
+                let mut notifications: Vec<Notification> = hist
                     .notifications
                     .into_iter()
                     .map(Notification::from)
                     .collect();
+                for n in &mut notifications {
+                    resolve_icon(n);
+                }
                 let _ = app.emit("notification:history", serde_json::json!({
                     "notifications": notifications,
                     "has_more": hist.has_more,

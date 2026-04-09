@@ -228,3 +228,22 @@
 [data-sonner-toaster][data-x-position="right"] {
   right: 8px !important;
 }
+
+/* Toast action/cancel button alignment. */
+[data-sonner-toast][data-styled="true"] {
+  align-items: center !important;
+}
+[data-sonner-toast][data-styled="true"] [data-content] {
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+[data-sonner-toast][data-styled="true"] [data-button] {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+/* Stack buttons vertically when both present. */
+[data-sonner-toast][data-styled="true"] [data-cancel] + [data-button] {
+  margin-left: 0 !important;
+}
