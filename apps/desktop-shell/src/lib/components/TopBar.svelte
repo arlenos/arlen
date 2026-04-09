@@ -18,6 +18,8 @@
   import LayoutIndicator from "$lib/components/LayoutIndicator.svelte";
   import LayoutPopover from "$lib/components/LayoutPopover.svelte";
   import { Separator } from "$lib/components/ui/separator/index.js";
+  import { isFocused, focusState, deactivateFocus } from "$lib/stores/projects.js";
+  import { X } from "lucide-svelte";
 </script>
 
 <!--
@@ -51,8 +53,20 @@
       <TrayIndicator />
     </div>
 
-    <!-- Focus mode project name (future) -->
-    <div class="slot-project flex items-center gap-2"></div>
+    <!-- Focus mode project name -->
+    <div class="slot-project flex items-center gap-1.5">
+      {#if $isFocused}
+        <div class="focus-indicator">
+          {#if $focusState.accentColor}
+            <span class="focus-dot" style="background:{$focusState.accentColor}"></span>
+          {/if}
+          <span class="focus-name">{$focusState.projectName}</span>
+        </div>
+        <button class="focus-exit" onclick={() => deactivateFocus()} title="Exit Focus Mode">
+          <X size={12} strokeWidth={2} />
+        </button>
+      {/if}
+    </div>
 
     <!-- Region separator (hidden when slot-project is empty) -->
     <div class="region-sep"></div>
@@ -104,5 +118,48 @@
     height: 14px;
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
     flex-shrink: 0;
+  }
+
+  .focus-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  }
+  .focus-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .focus-name {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--foreground);
+    opacity: 0.85;
+    white-space: nowrap;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .focus-exit {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    border-radius: 3px;
+    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+    cursor: pointer;
+    transition: all 100ms ease;
+  }
+  .focus-exit:hover {
+    background: color-mix(in srgb, var(--foreground) 15%, transparent);
+    color: var(--foreground);
   }
 </style>
