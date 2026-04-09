@@ -17,7 +17,6 @@
   import ModuleIndicatorSlot from "$lib/components/ModuleIndicatorSlot.svelte";
   import LayoutIndicator from "$lib/components/LayoutIndicator.svelte";
   import LayoutPopover from "$lib/components/LayoutPopover.svelte";
-  import { Separator } from "$lib/components/ui/separator/index.js";
   import { isFocused, focusState, deactivateFocus } from "$lib/stores/projects.js";
   import { X } from "lucide-svelte";
 </script>
@@ -78,12 +77,12 @@
 
     <!-- System indicators -->
     <div class="flex items-center gap-0.5">
-      <LayoutIndicator />
       <NetworkIndicator />
       <BluetoothIndicator />
       <AudioIndicator />
       <BatteryIndicator />
-      <Separator orientation="vertical" class="mx-1 h-3.5 opacity-15" />
+      <LayoutIndicator />
+      <div class="topbar-sep"></div>
       <ClockIndicator />
       <PanelTrigger />
     </div>
@@ -118,6 +117,15 @@
     height: 14px;
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
     flex-shrink: 0;
+  }
+
+  .topbar-sep {
+    width: 1px;
+    height: 14px;
+    background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
+    margin: 0 4px;
+    flex-shrink: 0;
+    align-self: center;
   }
 
   .focus-indicator {
