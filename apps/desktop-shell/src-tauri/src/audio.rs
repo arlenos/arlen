@@ -11,9 +11,13 @@ pub struct AudioStatus {
     pub volume: u8,
     /// Whether the sink is muted.
     pub muted: bool,
+    /// Output device type: "speakers", "headphones", "bluetooth_headphones",
+    /// "bluetooth_speaker", "hdmi", or "unknown".
+    #[serde(default)]
+    pub output_type: String,
 }
 
-/// Returns the current volume and mute state of the default audio sink.
+/// Returns the current volume, mute state, and output device type.
 #[tauri::command]
 pub fn get_audio_status() -> Result<AudioStatus, String> {
     let output = std::process::Command::new("wpctl")
@@ -25,7 +29,6 @@ pub fn get_audio_status() -> Result<AudioStatus, String> {
         return Err("wpctl get-volume failed".into());
     }
 
-    // Output format: "Volume: 0.75" or "Volume: 0.75 [MUTED]"
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stdout = stdout.trim();
 
@@ -40,7 +43,88 @@ pub fn get_audio_status() -> Result<AudioStatus, String> {
     let volume_f: f64 = volume_str.parse().unwrap_or(0.0);
     let volume = (volume_f * 100.0).round().clamp(0.0, 100.0) as u8;
 
-    Ok(AudioStatus { volume, muted })
+    let output_type = detect_output_type();
+
+    Ok(AudioStatus {
+        volume,
+        muted,
+        output_type,
+    })
+}
+
+/// Detect the type of the default audio output device.
+///
+/// Checks the default sink's name and properties to determine if it's
+/// Bluetooth headphones, Bluetooth speaker, HDMI, or regular speakers.
+fn detect_output_type() -> String {
+    let default_sink = std::process::Command::new("pactl")
+        .args(["get-default-sink"])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+
+    if default_sink.is_empty() {
+        return "speakers".into();
+    }
+
+    let lower = default_sink.to_lowercase();
+
+    // Bluetooth devices have "bluez" in the sink name.
+    if lower.contains("bluez") {
+        // Try to determine headphones vs speaker from sink properties.
+        let props = get_sink_form_factor(&default_sink);
+        return match props.as_str() {
+            "headphone" | "headset" | "headphones" => "bluetooth_headphones".into(),
+            "speaker" => "bluetooth_speaker".into(),
+            _ => {
+                // Fallback: guess from name.
+                if lower.contains("speaker") || lower.contains("boom") {
+                    "bluetooth_speaker".into()
+                } else {
+                    "bluetooth_headphones".into()
+                }
+            }
+        };
+    }
+
+    if lower.contains("hdmi") {
+        return "hdmi".into();
+    }
+
+    "speakers".into()
+}
+
+/// Get the form_factor property of a PulseAudio sink.
+fn get_sink_form_factor(sink_name: &str) -> String {
+    let output = match std::process::Command::new("pactl")
+        .args(["list", "sinks"])
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        _ => return String::new(),
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut in_target_sink = false;
+
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if let Some(name) = trimmed.strip_prefix("Name: ") {
+            in_target_sink = name == sink_name;
+        }
+        if in_target_sink {
+            if let Some(val) = trimmed.strip_prefix("device.form_factor = ") {
+                return val.trim_matches('"').to_string();
+            }
+        }
+        // Stop at next sink.
+        if trimmed.starts_with("Sink #") && in_target_sink {
+            break;
+        }
+    }
+
+    String::new()
 }
 
 /// Sets the volume of the default audio sink (0-100).
@@ -202,6 +286,250 @@ pub fn set_audio_input(id: String) -> Result<(), String> {
     if !status.success() {
         return Err(format!("pactl set-default-source {id} failed"));
     }
+    Ok(())
+}
+
+/// Returns the current input (microphone) volume and mute state.
+#[tauri::command]
+pub fn get_input_volume() -> Result<AudioStatus, String> {
+    let output = std::process::Command::new("wpctl")
+        .args(["get-volume", "@DEFAULT_AUDIO_SOURCE@"])
+        .output()
+        .map_err(|e| format!("wpctl: {e}"))?;
+
+    if !output.status.success() {
+        return Err("wpctl get-volume source failed".into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = stdout.trim();
+    let muted = stdout.contains("[MUTED]");
+    let volume_str = stdout
+        .strip_prefix("Volume: ")
+        .unwrap_or("0")
+        .split_whitespace()
+        .next()
+        .unwrap_or("0");
+    let volume_f: f64 = volume_str.parse().unwrap_or(0.0);
+    let volume = (volume_f * 100.0).round().clamp(0.0, 100.0) as u8;
+
+    Ok(AudioStatus {
+        volume,
+        muted,
+        output_type: String::new(),
+    })
+}
+
+/// Sets the input (microphone) volume (0-100).
+#[tauri::command]
+pub fn set_input_volume(volume: u8) -> Result<(), String> {
+    let value = format!("{:.2}", volume as f64 / 100.0);
+    let status = std::process::Command::new("wpctl")
+        .args(["set-volume", "@DEFAULT_AUDIO_SOURCE@", &value])
+        .status()
+        .map_err(|e| format!("wpctl: {e}"))?;
+    if !status.success() {
+        return Err("wpctl set-volume source failed".into());
+    }
+    Ok(())
+}
+
+/// Toggles mute on the default audio source (microphone).
+#[tauri::command]
+pub fn toggle_input_mute() -> Result<(), String> {
+    let status = std::process::Command::new("wpctl")
+        .args(["set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"])
+        .status()
+        .map_err(|e| format!("wpctl: {e}"))?;
+    if !status.success() {
+        return Err("wpctl set-mute source failed".into());
+    }
+    Ok(())
+}
+
+/// A running application with audio output.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct AppVolume {
+    /// PulseAudio sink-input index.
+    pub id: u32,
+    /// Application name.
+    pub name: String,
+    /// Volume level 0-100.
+    pub volume: u8,
+    /// Resolved icon as base64 data URL (from Freedesktop icon theme).
+    pub icon_data: Option<String>,
+}
+
+/// Returns all running applications that are playing audio.
+#[tauri::command]
+pub fn get_app_volumes() -> Result<Vec<AppVolume>, String> {
+    let output = std::process::Command::new("pactl")
+        .args(["-f", "json", "list", "sink-inputs"])
+        .output()
+        .map_err(|e| format!("pactl: {e}"))?;
+
+    if !output.status.success() {
+        // Fallback: pactl without JSON (older versions).
+        return get_app_volumes_legacy();
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let entries: Vec<serde_json::Value> =
+        serde_json::from_str(&stdout).unwrap_or_default();
+
+    let mut apps = Vec::new();
+    for entry in entries {
+        let index = entry.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+        let name = entry
+            .get("properties")
+            .and_then(|p| p.get("application.name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown")
+            .to_string();
+        let vol_pct = entry
+            .get("volume")
+            .and_then(|v| v.as_object())
+            .and_then(|obj| obj.values().next())
+            .and_then(|ch| ch.get("value_percent"))
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.trim_end_matches('%').parse::<u8>().ok())
+            .unwrap_or(100);
+
+        let props = entry.get("properties");
+        let icon_name = props
+            .and_then(|p| p.get("application.icon_name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let binary = props
+            .and_then(|p| p.get("application.process.binary"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        // Try icon_name, then binary name, then app name as icon lookup.
+        let icon_data = [icon_name, binary, &name.to_lowercase()]
+            .iter()
+            .filter(|s| !s.is_empty())
+            .find_map(|s| crate::shell_overlay_client::resolve_app_icon(s.to_string()));
+
+        if !name.is_empty() {
+            apps.push(AppVolume {
+                id: index,
+                name,
+                volume: vol_pct,
+                icon_data,
+            });
+        }
+    }
+
+    Ok(apps)
+}
+
+/// Legacy fallback for pactl without JSON support.
+fn get_app_volumes_legacy() -> Result<Vec<AppVolume>, String> {
+    let output = std::process::Command::new("pactl")
+        .args(["list", "sink-inputs"])
+        .output()
+        .map_err(|e| format!("pactl: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut apps = Vec::new();
+    let mut current_id: Option<u32> = None;
+    let mut current_name = String::new();
+    let mut current_vol: u8 = 100;
+    let mut current_icon: Option<String> = None;
+    let mut current_binary: Option<String> = None;
+
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("Sink Input #") {
+            if let Some(id) = current_id {
+                if !current_name.is_empty() {
+                    let icon_data = [
+                        current_icon.as_deref(),
+                        current_binary.as_deref(),
+                        Some(current_name.to_lowercase().as_str()),
+                    ]
+                    .iter()
+                    .copied()
+                    .flatten()
+                    .find_map(|s| {
+                        crate::shell_overlay_client::resolve_app_icon(s.to_string())
+                    });
+                    apps.push(AppVolume {
+                        id,
+                        name: current_name.clone(),
+                        volume: current_vol,
+                        icon_data,
+                    });
+                }
+            }
+            current_id = rest.parse().ok();
+            current_name.clear();
+            current_vol = 100;
+            current_icon = None;
+            current_binary = None;
+        } else if let Some(val) = trimmed.strip_prefix("application.name = ") {
+            current_name = val.trim_matches('"').to_string();
+        } else if let Some(val) = trimmed.strip_prefix("application.icon_name = ") {
+            current_icon = Some(val.trim_matches('"').to_string());
+        } else if let Some(val) = trimmed.strip_prefix("application.process.binary = ") {
+            current_binary = Some(val.trim_matches('"').to_string());
+        } else if trimmed.starts_with("Volume:") {
+            if let Some(pct_start) = trimmed.find("/ ") {
+                let rest = &trimmed[pct_start + 2..];
+                if let Some(pct_end) = rest.find('%') {
+                    current_vol = rest[..pct_end].trim().parse().unwrap_or(100);
+                }
+            }
+        }
+    }
+    // Last entry.
+    if let Some(id) = current_id {
+        if !current_name.is_empty() {
+            let icon_data = [
+                current_icon.as_deref(),
+                current_binary.as_deref(),
+                Some(current_name.to_lowercase().as_str()),
+            ]
+            .iter()
+            .copied()
+            .flatten()
+            .find_map(|s| crate::shell_overlay_client::resolve_app_icon(s.to_string()));
+            apps.push(AppVolume {
+                id,
+                name: current_name,
+                volume: current_vol,
+                icon_data,
+            });
+        }
+    }
+
+    Ok(apps)
+}
+
+/// Sets the volume for a specific application (sink-input).
+#[tauri::command]
+pub fn set_app_volume(id: u32, volume: u8) -> Result<(), String> {
+    let status = std::process::Command::new("pactl")
+        .args([
+            "set-sink-input-volume",
+            &id.to_string(),
+            &format!("{volume}%"),
+        ])
+        .status()
+        .map_err(|e| format!("pactl: {e}"))?;
+    if !status.success() {
+        return Err(format!("pactl set-sink-input-volume {id} failed"));
+    }
+    Ok(())
+}
+
+/// Set Do Not Disturb state. Emits `dnd-changed` Tauri event.
+#[tauri::command]
+pub fn set_dnd_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri::Emitter;
+    let _ = app.emit("dnd-changed", enabled);
+    log::info!("DND set to {enabled}");
     Ok(())
 }
 

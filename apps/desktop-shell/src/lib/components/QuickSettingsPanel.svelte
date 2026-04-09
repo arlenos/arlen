@@ -6,8 +6,9 @@
   import { onMount } from "svelte";
   import {
     Moon, Sun, Plane, Settings, Lock, Power,
-    Bell, LogOut, RotateCcw,
+    LogOut, RotateCcw,
   } from "lucide-svelte";
+  import NotificationPanel from "$lib/components/NotificationPanel.svelte";
 
   interface ShellConfig {
     night_light: { enabled: boolean; temperature: number };
@@ -170,11 +171,7 @@
 
     <!-- 4. Notifications -->
     <div class="qs-section">
-      <span class="qs-heading">Notifications</span>
-      <div class="qs-empty">
-        <Bell size={28} strokeWidth={1} />
-        <span>No notifications</span>
-      </div>
+      <NotificationPanel />
     </div>
   </div>
 {/if}
@@ -232,6 +229,4 @@
 
   /* Notifications */
   .qs-section { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
-  .qs-heading { font-size: 0.6875rem; font-weight: 600; opacity: 0.5; }
-  .qs-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 20px 0; opacity: 0.25; font-size: 0.6875rem; }
 </style>

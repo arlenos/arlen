@@ -9,9 +9,9 @@
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
   import {
-    Bluetooth, BluetoothOff, RefreshCw,
+    Bluetooth, BluetoothOff, RefreshCw, BatteryMedium,
     Headphones, Keyboard, Mouse, Gamepad2, Smartphone, Speaker,
-    Plug, Unplug, Trash2, ShieldOff, ShieldCheck,
+    Plug, Unplug, Trash2, ShieldOff, ShieldCheck, Loader2,
   } from "lucide-svelte";
 
   interface BluetoothDevice {
@@ -62,6 +62,8 @@
     loading = false;
   }
 
+  let scanTimer: ReturnType<typeof setTimeout> | null = null;
+
   $effect(() => {
     if ($activePopover === "bluetooth") {
       load();
@@ -69,6 +71,7 @@
       if (btState?.discovering) {
         invoke("stop_bluetooth_scan").catch(() => {});
       }
+      if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
       error = null;
       connectingTo = null;
     }
@@ -96,8 +99,15 @@
     try {
       if (btState.discovering) {
         await invoke("stop_bluetooth_scan");
+        if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
       } else {
         await invoke("start_bluetooth_scan");
+        // Auto-stop after 10 seconds.
+        scanTimer = setTimeout(async () => {
+          try { await invoke("stop_bluetooth_scan"); } catch {}
+          scanTimer = null;
+          await load();
+        }, 10_000);
       }
       await load();
     } catch {}
@@ -184,16 +194,32 @@
           class:connecting={connectingTo === dev.path}
           onclick={(e) => { e.stopPropagation(); handleClick(dev); }}
         >
-          {@render devIcon(dev.icon)}
-          <div class="bt-device-info">
-            <span class="bt-device-name">{dev.name}</span>
-            {#if dev.battery_percentage != null}
-              <span class="bt-device-detail">{dev.battery_percentage}%</span>
+          <div class="bt-device-icon">
+            {#if connectingTo === dev.path}
+              <Loader2 size={16} strokeWidth={1.5} class="spinning" />
+            {:else}
+              {@render devIcon(dev.icon)}
             {/if}
           </div>
-          {#if dev.connected}
-            <span class="bt-device-status">Connected</span>
-          {/if}
+          <div class="bt-device-info">
+            <span class="bt-device-name">{dev.name}</span>
+            <span class="bt-device-detail">
+              {#if connectingTo === dev.path}
+                Connecting...
+              {:else if dev.connected}
+                Connected
+              {:else if dev.paired}
+                Paired
+              {/if}
+              {#if dev.battery_percentage != null}
+                {#if dev.connected || dev.paired}
+                  &middot;
+                {/if}
+                <BatteryMedium size={12} strokeWidth={1.5} class="bt-battery-icon" />
+                {dev.battery_percentage}%
+              {/if}
+            </span>
+          </div>
         </button>
       {/snippet}
     </ContextMenu.Trigger>
@@ -235,7 +261,12 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="pop-panel pop-bt shell-popover" onclick={(e) => e.stopPropagation()}>
 
-    <PopoverHeader icon={Bluetooth} title="Bluetooth" />
+    <PopoverHeader
+      icon={Bluetooth}
+      title="Bluetooth"
+      toggled={btState?.powered ?? false}
+      onToggle={togglePower}
+    />
 
     <div class="pop-body">
       {#if !btState?.available}
@@ -247,7 +278,7 @@
         <div class="bt-msg">
           <BluetoothOff size={32} strokeWidth={1} />
           <span>Bluetooth is off</span>
-          <button class="bt-enable-btn" onclick={togglePower}>Enable</button>
+          <span class="bt-hint">Toggle the switch above to enable</span>
         </div>
       {:else}
         {#if error}
@@ -303,8 +334,7 @@
   @keyframes pop-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 
   .bt-msg { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 12px; color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); text-align: center; font-size: 0.8125rem; }
-  .bt-enable-btn { padding: 5px 14px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; background: var(--color-fg-shell); color: var(--color-bg-shell); border: none; font-weight: 500; }
-  .bt-enable-btn:hover { opacity: 0.9; }
+  .bt-hint { font-size: 0.6875rem; opacity: 0.5; }
 
   .bt-error { padding: 6px 10px; background: rgba(239, 68, 68, 0.15); border-radius: 6px; color: #ef4444; font-size: 0.6875rem; }
 
@@ -318,11 +348,12 @@
   }
   .bt-device:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
   .bt-device.connected { background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent); border: 1px solid color-mix(in srgb, var(--color-fg-shell) 30%, transparent); }
-  .bt-device.connecting { opacity: 0.5; pointer-events: none; }
+  .bt-device.connecting { opacity: 0.7; }
+  .bt-device-icon { flex-shrink: 0; opacity: 0.7; }
   .bt-device-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .bt-device-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; font-size: 0.8125rem; }
-  .bt-device-detail { font-size: 0.6875rem; opacity: 0.5; }
-  .bt-device-status { font-size: 0.6875rem; opacity: 0.5; flex-shrink: 0; }
+  .bt-device-detail { font-size: 0.6875rem; opacity: 0.5; display: flex; align-items: center; gap: 3px; }
+  :global(.bt-battery-icon) { display: inline; vertical-align: middle; }
 
   .bt-scan-btn {
     display: flex; align-items: center; justify-content: center; gap: 6px;

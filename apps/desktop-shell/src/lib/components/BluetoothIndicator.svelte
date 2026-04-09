@@ -9,16 +9,7 @@
   import { onMount } from "svelte";
   import { togglePopover } from "$lib/stores/activePopover.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { Bluetooth, Headphones, Keyboard, Mouse, Gamepad2, Smartphone, Speaker } from "lucide-svelte";
-
-  function renderIcon(iconName: string): typeof Bluetooth {
-    const map: Record<string, typeof Bluetooth> = {
-      "audio-headphones": Headphones, "audio-headset": Headphones,
-      "audio-speakers": Speaker, "input-keyboard": Keyboard,
-      "input-mouse": Mouse, "input-gaming": Gamepad2, "phone": Smartphone,
-    };
-    return map[iconName] ?? Bluetooth;
-  }
+  import { Bluetooth, BluetoothOff } from "lucide-svelte";
 
   interface BluetoothDevice {
     path: string;
@@ -58,7 +49,11 @@
     btState?.devices.filter((d: BluetoothDevice) => d.connected) ?? []
   );
 
-  const visible = $derived(btState?.available && btState?.powered);
+  // Visible whenever hardware exists (even if powered off or errored).
+  // Only hidden when no adapter is detected at all.
+  const visible = $derived(btState === null || btState.available);
+
+  const powered = $derived(btState?.powered ?? false);
 
   const primaryDevice = $derived(
     connectedDevices.find((d: BluetoothDevice) => d.icon.includes("audio") || d.icon.includes("headset")) ??
@@ -67,9 +62,8 @@
     null
   );
 
-  const primaryIcon = $derived(primaryDevice?.icon ?? "");
-
   const label = $derived(
+    !powered ? "Bluetooth: Off" :
     primaryDevice
       ? primaryDevice.name + (primaryDevice.battery_percentage != null ? ` (${primaryDevice.battery_percentage}%)` : "")
       : "Bluetooth"
@@ -83,21 +77,12 @@
         <button
           {...props}
           class="bt-btn"
+          class:off={!powered}
           aria-label={label}
           onclick={() => togglePopover("bluetooth")}
         >
-          {#if primaryIcon.includes("audio") || primaryIcon.includes("headset")}
-            <Headphones size={14} strokeWidth={1.5} />
-          {:else if primaryIcon.includes("keyboard")}
-            <Keyboard size={14} strokeWidth={1.5} />
-          {:else if primaryIcon.includes("mouse")}
-            <Mouse size={14} strokeWidth={1.5} />
-          {:else if primaryIcon.includes("gaming")}
-            <Gamepad2 size={14} strokeWidth={1.5} />
-          {:else if primaryIcon === "phone"}
-            <Smartphone size={14} strokeWidth={1.5} />
-          {:else if primaryIcon.includes("speaker")}
-            <Speaker size={14} strokeWidth={1.5} />
+          {#if !powered}
+            <BluetoothOff size={14} strokeWidth={1.5} />
           {:else}
             <Bluetooth size={14} strokeWidth={1.5} />
           {/if}
@@ -125,5 +110,8 @@
   }
   .bt-btn:hover {
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  }
+  .bt-btn.off {
+    opacity: 0.4;
   }
 </style>

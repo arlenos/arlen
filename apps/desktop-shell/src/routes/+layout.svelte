@@ -12,7 +12,7 @@
   }
   import { initWindowListeners } from "$lib/stores/windows";
   import { initContextMenuListeners } from "$lib/stores/contextMenu.js";
-  import { initNotificationListener } from "$lib/stores/notifications.js";
+  import { initNotifications } from "$lib/stores/notifications.js";
   import { initWorkspaceListeners } from "$lib/stores/workspaces.js";
   import { initMenuListeners } from "$lib/stores/menus.js";
   import { initTabBarListeners } from "$lib/stores/tabBars";
@@ -29,7 +29,7 @@
   onMount(() => {
     initWindowListeners();
     initContextMenuListeners();
-    initNotificationListener();
+    initNotifications();
     initWorkspaceListeners();
     initMenuListeners();
     initTabBarListeners();

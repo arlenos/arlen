@@ -12,4 +12,5 @@ export interface BatteryState {
 export const networkState = writable<NetworkState>("wifi");
 export const volumeState = writable<VolumeState>("medium");
 export const batteryState = writable<BatteryState>({ charging: false, level: 72 });
-export const notificationCount = writable<number>(0);
+
+// notificationCount removed - use unreadCount from notifications.ts instead.
