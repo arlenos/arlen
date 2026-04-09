@@ -1,7 +1,7 @@
 <script lang="ts">
   /// System tray indicator: shows a chevron when SNI items are registered.
 
-  import { togglePopover } from "$lib/stores/activePopover.js";
+  import { togglePopover, hoverPopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
@@ -51,6 +51,7 @@
           class="tray-btn"
           class:has-attention={hasAttention}
           onclick={() => togglePopover("tray")}
+          onmouseenter={() => hoverPopover("tray")}
         >
           <ChevronDown size={14} strokeWidth={1.5} />
           {#if hasAttention}

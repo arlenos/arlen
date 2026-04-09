@@ -7,7 +7,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
-  import { togglePopover } from "$lib/stores/activePopover.js";
+  import { togglePopover, hoverPopover } from "$lib/stores/activePopover.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { Layers, LayoutPanelLeft, Maximize } from "lucide-svelte";
 
@@ -57,6 +57,7 @@
         aria-label={label}
         {...props}
         onclick={handleClick}
+        onmouseenter={() => hoverPopover("layout")}
       >
         <Icon size={14} strokeWidth={1.5} />
       </button>

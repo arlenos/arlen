@@ -7,7 +7,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
-  import { togglePopover } from "$lib/stores/activePopover.js";
+  import { togglePopover, hoverPopover } from "$lib/stores/activePopover.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import {
     BatteryCharging, BatteryFull, BatteryMedium, BatteryLow, BatteryWarning,
@@ -94,6 +94,7 @@
           aria-label={tooltipText()}
           {...props}
           onclick={() => togglePopover("battery")}
+          onmouseenter={() => hoverPopover("battery")}
         >
           <Icon size={14} strokeWidth={1.5} />
           {#if showBadge && status}

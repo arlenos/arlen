@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { togglePopover } from "$lib/stores/activePopover.js";
+  import { togglePopover, hoverPopover } from "$lib/stores/activePopover.js";
   import { unreadCount } from "$lib/stores/notifications.js";
   import { Square } from "lucide-svelte";
 
@@ -12,6 +12,7 @@
   class="panel-trigger"
   aria-label="Quick Settings"
   onclick={() => togglePopover("quick-settings")}
+  onmouseenter={() => hoverPopover("quick-settings")}
 >
   <Square size={14} strokeWidth={1.5} />
   {#if badgeText}

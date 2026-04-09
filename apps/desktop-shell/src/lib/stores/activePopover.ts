@@ -38,3 +38,12 @@ export function togglePopover(type: PopoverType) {
     return next;
   });
 }
+
+/// Switch to a different popover on hover (only when one is already open).
+export function hoverPopover(type: PopoverType) {
+  activePopover.update((current) => {
+    if (current === null || current === type) return current;
+    invoke("set_popover_input_region", { expanded: true }).catch(() => {});
+    return type;
+  });
+}
