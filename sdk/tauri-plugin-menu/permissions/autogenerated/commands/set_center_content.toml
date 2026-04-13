@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-set-center-content"
+description = "Enables the set_center_content command without any pre-configured scope."
+commands.allow = ["set_center_content"]
+
+[[permission]]
+identifier = "deny-set-center-content"
+description = "Denies the set_center_content command without any pre-configured scope."
+commands.deny = ["set_center_content"]
