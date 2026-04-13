@@ -5,6 +5,7 @@ members = [
     "module-sdk",
     "modules",
     "permissions",
+    "tauri-plugin-menu",
     "theme",
 ]
 resolver = "2"
