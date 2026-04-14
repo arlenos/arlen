@@ -77,7 +77,7 @@
     min-height: 24px;
     background: transparent;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     transition: background-color var(--duration-fast, 150ms) ease;
   }

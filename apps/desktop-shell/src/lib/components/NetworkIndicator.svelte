@@ -130,7 +130,7 @@
     padding: 0;
     border: none;
     background: transparent;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     color: var(--foreground);
     transition: background-color var(--duration-fast, 150ms) ease;
@@ -154,7 +154,7 @@
     width: 10px;
     height: 10px;
     background: var(--color-bg-shell);
-    border-radius: 2px;
+    border-radius: var(--radius-sm);
     color: var(--color-success);
   }
 </style>

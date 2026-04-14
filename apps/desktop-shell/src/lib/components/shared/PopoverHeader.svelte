@@ -50,7 +50,7 @@
   .pop-title { flex: 1; font-size: 0.8125rem; font-weight: 500; }
   .pop-settings-btn {
     width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
-    background: transparent; border: none; border-radius: var(--radius-sm, 4px);
+    background: transparent; border: none; border-radius: var(--radius-sm);
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
     cursor: pointer; padding: 0;
   }
@@ -61,7 +61,7 @@
 
   /* Custom toggle - matches shell design system, no shadcn */
   .header-toggle {
-    position: relative; width: 36px; height: 20px; border-radius: 10px;
+    position: relative; width: 36px; height: 20px; border-radius: var(--radius-lg);
     background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     border: none; cursor: pointer; padding: 0; flex-shrink: 0;
     transition: background-color 150ms ease;
@@ -70,7 +70,7 @@
   .header-toggle.active { background: color-mix(in srgb, var(--color-accent) 60%, transparent); }
   .header-toggle-thumb {
     position: absolute; top: 2px; left: 2px;
-    width: 16px; height: 16px; border-radius: 50%;
+    width: 16px; height: 16px; border-radius: var(--radius-md);
     background: var(--color-fg-shell);
     transition: transform 150ms ease;
   }

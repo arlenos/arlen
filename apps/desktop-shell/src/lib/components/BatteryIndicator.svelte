@@ -123,7 +123,7 @@
     padding: 0 4px;
     border: none;
     background: transparent;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     color: var(--foreground);
     transition: background-color var(--duration-fast, 150ms) ease;

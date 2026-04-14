@@ -144,7 +144,7 @@
 <style>
   .pop-backdrop { position: fixed; inset: 0; z-index: 90; }
   .pop-panel {
-    position: fixed; top: 40px; z-index: 100; border-radius: 10px;
+    position: fixed; top: 40px; z-index: 100; border-radius: var(--radius-lg);
     background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     box-shadow: var(--shadow-lg);
@@ -161,7 +161,7 @@
   .mode-pills { display: flex; gap: 4px; }
   .mode-pill {
     flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
-    padding: 8px 4px; border-radius: 6px;
+    padding: 8px 4px; border-radius: var(--radius-md);
     background: transparent;
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
@@ -183,16 +183,16 @@
   .gap-label { font-size: 0.75rem; flex-shrink: 0; }
   .gap-value { font-size: 0.6875rem; opacity: 0.5; min-width: 28px; text-align: right; }
   .gap-slider { position: relative; flex: 1; height: 20px; display: flex; align-items: center; }
-  .gap-slider-track { position: absolute; left: 0; right: 0; height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: 2px; }
-  .gap-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: var(--color-accent); border-radius: 2px; }
-  .gap-slider-thumb { position: absolute; left: var(--value); width: 14px; height: 14px; background: var(--color-fg-shell); border-radius: 50%; transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
+  .gap-slider-track { position: absolute; left: 0; right: 0; height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: var(--radius-sm); }
+  .gap-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: var(--color-accent); border-radius: var(--radius-sm); }
+  .gap-slider-thumb { position: absolute; left: var(--value); width: 14px; height: 14px; background: var(--color-fg-shell); border-radius: var(--radius-md); transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
   .gap-slider input[type="range"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; appearance: none; -webkit-appearance: none; }
 
   /* Smart gaps toggle */
   .toggle-row { display: flex; align-items: center; justify-content: space-between; }
   .toggle-label { font-size: 0.75rem; }
   .smart-toggle {
-    position: relative; width: 36px; height: 20px; border-radius: 10px;
+    position: relative; width: 36px; height: 20px; border-radius: var(--radius-lg);
     background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     border: none; cursor: pointer; padding: 0; flex-shrink: 0;
     transition: background-color 150ms ease;
@@ -201,7 +201,7 @@
   .smart-toggle.active { background: color-mix(in srgb, var(--color-accent) 60%, transparent); }
   .smart-toggle-thumb {
     position: absolute; top: 2px; left: 2px;
-    width: 16px; height: 16px; border-radius: 50%;
+    width: 16px; height: 16px; border-radius: var(--radius-md);
     background: var(--color-fg-shell);
     transition: transform 150ms ease;
   }

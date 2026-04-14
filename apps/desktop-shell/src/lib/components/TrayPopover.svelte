@@ -109,7 +109,7 @@
 <style>
   .pop-backdrop { position: fixed; inset: 0; z-index: 90; }
   .pop-panel {
-    position: fixed; top: 40px; z-index: 100; border-radius: 10px;
+    position: fixed; top: 40px; z-index: 100; border-radius: var(--radius-lg);
     background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     box-shadow: var(--shadow-lg);
@@ -127,7 +127,7 @@
 
   .tray-item {
     display: flex; align-items: center; gap: 10px;
-    padding: 8px 10px; background: transparent; border: none; border-radius: 6px;
+    padding: 8px 10px; background: transparent; border: none; border-radius: var(--radius-md);
     color: var(--color-fg-shell); cursor: pointer; text-align: left; width: 100%;
     transition: background-color 0.1s ease;
   }
@@ -137,11 +137,11 @@
   .tray-item-icon {
     width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
     background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
-    border-radius: 4px; font-size: 0.625rem; font-weight: 600; flex-shrink: 0;
+    border-radius: var(--radius-sm); font-size: 0.625rem; font-weight: 600; flex-shrink: 0;
   }
   .tray-item-icon img { width: 18px; height: 18px; object-fit: contain; }
   .tray-item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .tray-item-title { font-size: 0.8125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
   .tray-item-subtitle { font-size: 0.6875rem; color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-  .tray-item-badge { width: 8px; height: 8px; background: var(--color-error); border-radius: 50%; flex-shrink: 0; }
+  .tray-item-badge { width: 8px; height: 8px; background: var(--color-error); border-radius: var(--radius-full); flex-shrink: 0; }
 </style>

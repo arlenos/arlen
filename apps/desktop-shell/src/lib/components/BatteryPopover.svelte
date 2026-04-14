@@ -95,7 +95,7 @@
 <style>
   .pop-backdrop { position: fixed; inset: 0; z-index: 90; }
   .pop-panel {
-    position: fixed; top: 40px; z-index: 100; border-radius: 10px;
+    position: fixed; top: 40px; z-index: 100; border-radius: var(--radius-lg);
     background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     box-shadow: var(--shadow-lg);
@@ -119,7 +119,7 @@
     flex: 1; height: 32px;
     display: flex; align-items: center; justify-content: center;
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
-    border-radius: 6px; background: transparent;
+    border-radius: var(--radius-md); background: transparent;
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
     cursor: pointer; padding: 0;
     transition: all 0.15s ease;

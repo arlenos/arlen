@@ -167,7 +167,19 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --radius: 8px;
+  /* Register the full radius scale so Tailwind utilities like `rounded-md`
+     emit `border-radius: var(--radius-md)` instead of a hardcoded literal.
+     Runtime reloads from appearance.toml then propagate into every utility
+     class without touching components. `--radius` (singular) is kept as an
+     alias so shadcn primitives that read it continue to work. */
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: calc(var(--radius-md) + 8px);
+  --radius-2xl: calc(var(--radius-md) + 16px);
+  --radius-3xl: calc(var(--radius-md) + 24px);
+  --radius-full: var(--radius-full);
+  --radius: var(--radius-md);
   /* Animation timing */
   --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-enter: cubic-bezier(0.4, 0, 0.2, 1);

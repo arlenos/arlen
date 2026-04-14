@@ -200,7 +200,7 @@
     transform: translateX(-50%) translateY(4px);
     z-index: 50;
     padding: 8px;
-    border-radius: 10px;
+    border-radius: var(--radius-lg);
     background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     box-shadow: var(--shadow-lg);
@@ -231,7 +231,7 @@
     min-width: 80px;
     max-width: 100px;
     padding: 8px 6px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     border: 1px solid transparent;
     background: transparent;
     cursor: pointer;
@@ -270,7 +270,7 @@
   .ws-app-icon {
     width: 24px;
     height: 24px;
-    border-radius: 2px;
+    border-radius: var(--radius-sm);
     object-fit: contain;
   }
 
@@ -299,7 +299,7 @@
     height: 24px;
     min-width: 32px;
     padding: 0 10px;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     border: none;
     font-size: 0.6875rem;
     font-weight: 500;
@@ -350,7 +350,7 @@
     border: none;
     background: transparent;
     cursor: pointer;
-    border-radius: 50%;
+    border-radius: var(--radius-full);
     transition: transform 100ms ease;
   }
 
@@ -362,7 +362,7 @@
     display: block;
     width: 5px;
     height: 5px;
-    border-radius: 50%;
+    border-radius: var(--radius-full);
     background: color-mix(in srgb, var(--foreground) 45%, transparent);
     transition:
       width 100ms ease,

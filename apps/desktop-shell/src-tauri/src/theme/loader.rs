@@ -223,8 +223,30 @@ pub fn resolve_theme(
 
     let tokens = apply_overrides(tokens, &config.overrides);
     let tokens = apply_accessibility(tokens, &config.accessibility);
+    let tokens = apply_window_overrides(tokens, &config.window);
 
     Ok(tokens)
+}
+
+/// Apply `[window]` overrides from appearance.toml. Today only
+/// `corner_radius` is honoured — it overrides `radius.md` and derives
+/// sm/lg from it so all three tiers stay consistent.
+pub fn apply_window_overrides(
+    mut tokens: ThemeTokens,
+    window: &crate::theme::schema::WindowSection,
+) -> ThemeTokens {
+    if let Some(radius) = window.corner_radius {
+        let md = radius;
+        // Derive sm and lg so the whole scale shifts with the slider.
+        // Minimum sm = 2px, maximum lg = 2x md (matches the built-in
+        // dark.toml ratio of 4/8/12).
+        let sm = md.saturating_sub(4).max(2);
+        let lg = md.saturating_add(4);
+        tokens.radius.sm = format!("{sm}px");
+        tokens.radius.md = format!("{md}px");
+        tokens.radius.lg = format!("{lg}px");
+    }
+    tokens
 }
 
 /// Resolve the `extends` chain by inheriting missing values from the parent.

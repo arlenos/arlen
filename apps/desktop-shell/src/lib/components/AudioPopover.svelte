@@ -222,7 +222,7 @@
 <style>
   .pop-backdrop { position: fixed; inset: 0; z-index: 90; }
   .pop-panel {
-    position: fixed; top: 40px; z-index: 100; border-radius: 10px;
+    position: fixed; top: 40px; z-index: 100; border-radius: var(--radius-lg);
     background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     box-shadow: var(--shadow-lg); color: var(--color-fg-shell);
@@ -239,7 +239,7 @@
   .vol-row { display: flex; align-items: center; gap: 8px; }
   .vol-icon-btn {
     width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
-    background: transparent; border: none; border-radius: 4px;
+    background: transparent; border: none; border-radius: var(--radius-sm);
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
     cursor: pointer; padding: 0; flex-shrink: 0;
     transition: all 100ms ease;
@@ -249,9 +249,9 @@
 
   /* Slider */
   .vol-slider { position: relative; flex: 1; height: 20px; display: flex; align-items: center; }
-  .vol-slider-track { position: absolute; left: 0; right: 0; height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: 2px; }
-  .vol-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: var(--color-accent); border-radius: 2px; }
-  .vol-slider-thumb { position: absolute; left: var(--value); width: 14px; height: 14px; background: var(--color-fg-shell); border-radius: 50%; transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
+  .vol-slider-track { position: absolute; left: 0; right: 0; height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: var(--radius-sm); }
+  .vol-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: var(--color-accent); border-radius: var(--radius-sm); }
+  .vol-slider-thumb { position: absolute; left: var(--value); width: 14px; height: 14px; background: var(--color-fg-shell); border-radius: var(--radius-md); transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
   .vol-slider input[type="range"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; appearance: none; -webkit-appearance: none; }
   .app-slider { width: 100px; flex: none; }
   .app-slider .vol-slider-thumb { width: 12px; height: 12px; }
@@ -260,7 +260,7 @@
   .cs-wrap { position: relative; }
   .cs-trigger {
     width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 6px;
-    padding: 5px 8px; border-radius: 6px;
+    padding: 5px 8px; border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     color: var(--color-fg-shell); font-size: 0.6875rem; cursor: pointer; text-align: left;
@@ -272,13 +272,13 @@
     position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px;
     background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
-    border-radius: 6px; padding: 4px;
+    border-radius: var(--radius-md); padding: 4px;
     box-shadow: var(--shadow-md);
     z-index: 10; max-height: 160px; overflow-y: auto;
   }
   .cs-item {
     width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    padding: 6px 8px; background: transparent; border: none; border-radius: 4px;
+    padding: 6px 8px; background: transparent; border: none; border-radius: var(--radius-sm);
     color: var(--color-fg-shell); font-size: 0.6875rem; cursor: pointer; text-align: left;
     transition: background-color 0.1s ease;
   }
@@ -300,10 +300,10 @@
   .app-icon {
     width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
-    border-radius: 4px; flex-shrink: 0;
+    border-radius: var(--radius-sm); flex-shrink: 0;
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
   }
-  .app-icon-img { width: 16px; height: 16px; object-fit: contain; border-radius: 2px; }
+  .app-icon-img { width: 16px; height: 16px; object-fit: contain; border-radius: var(--radius-sm); }
   .app-icon-letter { font-size: 0.6875rem; font-weight: 600; color: var(--color-fg-shell); }
   .app-name { font-size: 0.6875rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

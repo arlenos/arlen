@@ -243,7 +243,7 @@
 
   .qs-panel {
     position: fixed; top: 40px; right: 8px; z-index: 100; width: 340px;
-    border-radius: 12px; background: var(--color-bg-shell);
+    border-radius: var(--radius-lg); background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     box-shadow: var(--shadow-lg); color: var(--color-fg-shell);
     overflow: visible; animation: qs-open 100ms ease-out both;
@@ -254,16 +254,16 @@
 
   /* User row */
   .qs-user-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; position: relative; }
-  .qs-user-trigger { display: flex; align-items: center; gap: 10px; flex: 1; cursor: pointer; border-radius: 8px; padding: 2px; margin: -2px; transition: background-color 100ms ease; }
+  .qs-user-trigger { display: flex; align-items: center; gap: 10px; flex: 1; cursor: pointer; border-radius: var(--radius-md); padding: 2px; margin: -2px; transition: background-color 100ms ease; }
   .qs-user-trigger:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
-  .qs-avatar { width: 32px; height: 32px; border-radius: 9999px; background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent); display: flex; align-items: center; justify-content: center; font-size: 0.6875rem; font-weight: 600; flex-shrink: 0; user-select: none; }
+  .qs-avatar { width: 32px; height: 32px; border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent); display: flex; align-items: center; justify-content: center; font-size: 0.6875rem; font-weight: 600; flex-shrink: 0; user-select: none; }
   .qs-user-name { flex: 1; font-size: 0.8125rem; }
-  .qs-icon-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: 8px; color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent); cursor: pointer; transition: all 100ms ease; padding: 0; }
+  .qs-icon-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-md); color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent); cursor: pointer; transition: all 100ms ease; padding: 0; }
   .qs-icon-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); color: var(--color-fg-shell); }
 
   /* Power menu */
-  .qs-power-menu { position: absolute; top: 100%; left: 12px; margin-top: 4px; min-width: 160px; background: var(--color-bg-shell); border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: 8px; padding: 4px; box-shadow: var(--shadow-md); z-index: 110; }
-  .qs-power-menu button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: transparent; border: none; border-radius: 6px; color: var(--color-fg-shell); font-size: 0.75rem; cursor: pointer; text-align: left; transition: background-color 100ms ease; }
+  .qs-power-menu { position: absolute; top: 100%; left: 12px; margin-top: 4px; min-width: 160px; background: var(--color-bg-shell); border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: var(--radius-md); padding: 4px; box-shadow: var(--shadow-md); z-index: 110; }
+  .qs-power-menu button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: transparent; border: none; border-radius: var(--radius-md); color: var(--color-fg-shell); font-size: 0.75rem; cursor: pointer; text-align: left; transition: background-color 100ms ease; }
   .qs-power-menu button:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
   .qs-power-danger { color: var(--color-error) !important; }
   .qs-power-danger:hover { background: color-mix(in srgb, var(--color-error) 15%, transparent) !important; }
@@ -273,7 +273,7 @@
   .qs-toggle-btn {
     width: 40px; height: 36px; display: flex; align-items: center; justify-content: center;
     background: transparent; border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
-    border-radius: 6px; color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
+    border-radius: var(--radius-md); color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
     cursor: pointer; padding: 0; transition: all 100ms ease;
   }
   .qs-toggle-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); color: var(--color-fg-shell); }
@@ -285,9 +285,9 @@
   .qs-brightness-row { display: flex; align-items: center; gap: 12px; padding: 8px 12px; }
   :global(.qs-brightness-icon) { color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent); flex-shrink: 0; }
   .qs-slider { position: relative; flex: 1; height: 20px; display: flex; align-items: center; }
-  .qs-slider-track { position: absolute; left: 0; right: 0; height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: 2px; }
-  .qs-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: var(--color-accent); border-radius: 2px; }
-  .qs-slider-thumb { position: absolute; left: var(--value); width: 14px; height: 14px; background: var(--color-fg-shell); border-radius: 9999px; transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
+  .qs-slider-track { position: absolute; left: 0; right: 0; height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: var(--radius-sm); }
+  .qs-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: var(--color-accent); border-radius: var(--radius-sm); }
+  .qs-slider-thumb { position: absolute; left: var(--value); width: 14px; height: 14px; background: var(--color-fg-shell); border-radius: var(--radius-md); transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
   .qs-slider input[type="range"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; appearance: none; -webkit-appearance: none; }
 
 

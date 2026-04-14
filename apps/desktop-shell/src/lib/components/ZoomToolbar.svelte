@@ -114,7 +114,7 @@
         align-items: center;
         gap: 4px;
         padding: 6px 10px;
-        border-radius: 12px;
+        border-radius: var(--radius-lg);
         border: 1px solid var(--border);
     }
 
@@ -125,7 +125,7 @@
         width: 28px;
         height: 28px;
         border: none;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         cursor: pointer;
         background: transparent;
         color: var(--foreground);
@@ -175,7 +175,7 @@
         transform: translateX(-50%);
         background: var(--background);
         border: 1px solid var(--border);
-        border-radius: 8px;
+        border-radius: var(--radius-md);
         padding: 4px 0;
         min-width: 140px;
         z-index: 9600;

@@ -60,7 +60,7 @@
     padding: 0;
     border: none;
     background: transparent;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     color: var(--foreground);
     transition: background-color 150ms ease;
@@ -78,7 +78,7 @@
     min-width: 14px;
     height: 14px;
     padding: 0 3px;
-    border-radius: 7px;
+    border-radius: var(--radius-md);
     background: #ef4444;
     color: #fff;
     font-size: 0.5625rem;
