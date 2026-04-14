@@ -44,11 +44,11 @@ const initial: NavigationState = {
 
 export const navigation = writable<NavigationState>(initial);
 
-/// Breadcrumb segments for the current route. Always starts with "Settings".
+/// Breadcrumb segments for the current route. Panel title first,
+/// optional sub-panel segments appended by pages themselves.
 export const breadcrumbs = derived(navigation, ($nav) => {
   const panel = PANELS.find((p) => p.id === $nav.currentPanel);
-  if (!panel) return ["Settings"];
-  return ["Settings", panel.title];
+  return panel ? [panel.title] : [];
 });
 
 /// Navigate to a panel. Updates both the store and the router.

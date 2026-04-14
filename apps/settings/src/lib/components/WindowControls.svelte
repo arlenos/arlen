@@ -1,9 +1,13 @@
 <script lang="ts">
   /// Client-side window decorations: minimize / maximize / close.
   /// Rendered in the SiteHeader when the app runs without native decorations.
+  ///
+  /// Minimize is hidden when the compositor reports the window as tiled --
+  /// minimizing a tiled surface breaks the layout in Lunaris' tiling WM.
 
   import { Minus, Square, X } from "lucide-svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { windowMode } from "@lunaris/tauri-plugin-menu";
 
   async function minimize() {
     await getCurrentWindow().minimize();
@@ -23,15 +27,17 @@
 </script>
 
 <div class="flex items-center gap-0.5">
-  <button
-    type="button"
-    class="wc-btn"
-    onclick={minimize}
-    aria-label="Minimize"
-    title="Minimize"
-  >
-    <Minus size={12} strokeWidth={2} />
-  </button>
+  {#if $windowMode !== "tiled"}
+    <button
+      type="button"
+      class="wc-btn"
+      onclick={minimize}
+      aria-label="Minimize"
+      title="Minimize"
+    >
+      <Minus size={12} strokeWidth={2} />
+    </button>
+  {/if}
   <button
     type="button"
     class="wc-btn"

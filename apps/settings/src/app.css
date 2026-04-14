@@ -24,8 +24,9 @@
   --color-fg-app:       var(--color-fg-primary);
 
   /* Semantic */
-  --color-accent:         #6366f1;
-  --color-accent-hover:   #818cf8;
+  --color-accent:            #6366f1;
+  --color-accent-hover:      #818cf8;
+  --color-accent-foreground: #ffffff;
   --color-border:         #262626;
   --color-border-strong:  #3f3f46;
   --color-error:          #ef4444;
@@ -51,13 +52,13 @@
   --popover:          var(--color-bg-card);
   --popover-foreground: var(--color-fg-app);
   --primary:          var(--color-accent);
-  --primary-foreground: #ffffff;
+  --primary-foreground: var(--color-accent-foreground);
   --secondary:        var(--color-bg-card);
   --secondary-foreground: var(--color-fg-app);
   --muted:            var(--color-bg-card);
   --muted-foreground: var(--color-fg-secondary);
   --accent:           var(--color-accent);
-  --accent-foreground: #ffffff;
+  --accent-foreground: var(--color-accent-foreground);
   --destructive:      var(--color-error);
   --border:           var(--color-border);
   --input:            var(--color-bg-input);
@@ -66,7 +67,7 @@
   --sidebar:                    var(--color-bg-shell);
   --sidebar-foreground:         var(--color-fg-shell);
   --sidebar-primary:            var(--color-accent);
-  --sidebar-primary-foreground: #ffffff;
+  --sidebar-primary-foreground: var(--color-accent-foreground);
   --sidebar-accent:             color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
   --sidebar-accent-foreground:  var(--color-fg-shell);
   --sidebar-border:             color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
@@ -131,4 +132,27 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Interactive controls should not have selectable labels -- selecting the
+   text of a button on mouse-drag feels like a bug. Inputs, textareas and
+   anything with [data-selectable] opt back in. */
+button,
+[role="button"],
+[role="radio"],
+[role="tab"],
+[role="option"],
+[role="menuitem"],
+label,
+.select-none {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"],
+[data-selectable] {
+  -webkit-user-select: auto;
+  user-select: auto;
 }

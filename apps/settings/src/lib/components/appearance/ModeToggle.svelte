@@ -1,6 +1,6 @@
 <script lang="ts">
   /// Compact segmented control for theme mode. Fits in a Row.
-  import { Sun, Moon, SunMoon } from "lucide-svelte";
+  import { Sun, Moon } from "lucide-svelte";
   import type { ThemeMode } from "$lib/stores/theme";
 
   let {
@@ -20,7 +20,6 @@
   const OPTIONS: Option[] = [
     { id: "light", label: "Light", icon: Sun },
     { id: "dark", label: "Dark", icon: Moon },
-    { id: "auto", label: "Auto", icon: SunMoon },
   ];
 
   const activeIndex = $derived(
@@ -55,7 +54,7 @@
   .segmented {
     position: relative;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     height: 26px;
     padding: 2px;
     width: 200px;
@@ -69,8 +68,8 @@
     position: absolute;
     top: 2px;
     bottom: 2px;
-    width: calc((100% - 4px) / 3);
-    left: calc(2px + (100% - 4px) / 3 * var(--active-index));
+    width: calc((100% - 4px) / 2);
+    left: calc(2px + (100% - 4px) / 2 * var(--active-index));
     background: color-mix(in srgb, var(--foreground) 11%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
     border-radius: 5px;

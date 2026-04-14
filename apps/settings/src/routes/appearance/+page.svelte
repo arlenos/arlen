@@ -32,6 +32,7 @@
   });
 
   const currentAccent = $derived(resolveAccent($theme.data));
+  const accentOverride = $derived($theme.data?.overrides?.accent);
   const cornerRadius = $derived($theme.data?.window?.corner_radius ?? 8);
   const borderWidth = $derived($theme.data?.window?.border_width ?? 1);
   const gapSize = $derived($theme.data?.window?.gap_size ?? 8);
@@ -47,8 +48,7 @@
 
   async function setMode(mode: ThemeMode) {
     await theme.setValue("theme.mode", mode);
-    const active = mode === "auto" ? "dark" : mode;
-    await theme.setValue("theme.active", active);
+    await theme.setValue("theme.active", mode);
   }
 
   async function setAccent(hex: string) {
@@ -85,7 +85,11 @@
         </Row>
         <Row label="Accent">
           {#snippet control()}
-            <AccentPicker value={currentAccent} onchange={setAccent} />
+            <AccentPicker
+              value={currentAccent}
+              rawOverride={accentOverride}
+              onchange={setAccent}
+            />
           {/snippet}
         </Row>
       </Group>

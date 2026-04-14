@@ -48,11 +48,11 @@
   });
 </script>
 
-<SidebarProvider>
+<SidebarProvider class="h-screen min-h-0 overflow-hidden">
   <AppSidebar />
-  <SidebarInset>
+  <SidebarInset class="h-screen min-h-0 overflow-hidden">
     <SiteHeader />
-    <div class="flex-1 overflow-y-auto">
+    <div class="min-h-0 flex-1 overflow-y-auto">
       {@render children()}
     </div>
   </SidebarInset>

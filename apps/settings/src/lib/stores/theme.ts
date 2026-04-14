@@ -12,12 +12,12 @@
 
 import { createConfigStore, type ConfigStore } from "./config";
 
-export type ThemeMode = "light" | "dark" | "auto";
+export type ThemeMode = "light" | "dark";
 
 export interface ThemeSection {
   /// Active theme id. Shell reads this for the built-in dark/light themes.
   active: string;
-  /// High-level mode. "auto" follows the system (falls back to dark).
+  /// High-level mode mirroring `active`.
   mode?: ThemeMode;
 }
 
@@ -70,19 +70,59 @@ export const DARK_ACCENT = "#6366f1";
 /// Matches `desktop-shell/src-tauri/themes/light.toml`.
 export const LIGHT_ACCENT = "#4f46e5";
 
+/// Monochrome foreground values per mode. When the user picks the
+/// "Monochrome" swatch we store `MONO_SENTINEL` so the effective colour
+/// follows the active theme mode instead of freezing a single hex.
+export const MONO_DARK = "#fafafa";
+export const MONO_LIGHT = "#171717";
+export const MONO_SENTINEL = "$foreground";
+
 /// Resolve the built-in default accent color for a theme mode.
 /// This is what the shell renders when no override is set.
 export function getThemeDefaultAccent(mode: string | undefined): string {
   return mode === "light" ? LIGHT_ACCENT : DARK_ACCENT;
 }
 
+export function getMonochromeAccent(mode: string | undefined): string {
+  return mode === "light" ? MONO_LIGHT : MONO_DARK;
+}
+
 /// Resolve the current effective accent from a loaded config.
 ///   1. `overrides.accent` (user override, highest priority)
+///      - `$foreground` sentinel -> mode-dependent monochrome
 ///   2. Theme default based on `theme.active`
 export function resolveAccent(config: AppearanceConfig | null): string {
   if (!config) return DARK_ACCENT;
-  if (config.overrides?.accent) return config.overrides.accent;
+  const override = config.overrides?.accent;
+  if (override === MONO_SENTINEL) return getMonochromeAccent(config.theme?.active);
+  if (override) return override;
   return getThemeDefaultAccent(config.theme?.active);
+}
+
+/// Parse a `#rrggbb` string into its RGB components (0-255).
+function parseHex(hex: string): [number, number, number] | null {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+}
+
+/// WCAG relative luminance in [0, 1].
+function luminance(hex: string): number {
+  const rgb = parseHex(hex);
+  if (!rgb) return 0.5;
+  const [r, g, b] = rgb.map((c) => {
+    const x = c / 255;
+    return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/// Return a contrasting foreground colour for the given accent hex.
+/// Used for `--color-accent-foreground` so icons/text on the accent
+/// surface stay legible regardless of which swatch the user picks.
+export function accentForeground(hex: string): string {
+  return luminance(hex) > 0.55 ? "#0a0a0a" : "#ffffff";
 }
 
 // ── CSS variable application ────────────────────────────────────────────
@@ -104,6 +144,7 @@ export function applyAppearance(config: AppearanceConfig | null): void {
 
   const accent = resolveAccent(config);
   root.style.setProperty("--color-accent", accent);
+  root.style.setProperty("--color-accent-foreground", accentForeground(accent));
 
   const radius = config?.window?.corner_radius ?? DEFAULT_RADIUS;
   root.style.setProperty("--radius", `${radius / 16}rem`);

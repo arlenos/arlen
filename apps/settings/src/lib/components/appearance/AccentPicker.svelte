@@ -2,25 +2,33 @@
   /// Compact accent color picker. Nine swatches in a single row
   /// (8 presets + custom). The active preset is clearly marked with
   /// an outer ring and an inset check icon.
-  import { Check, Pipette } from "lucide-svelte";
-  import { ACCENT_PRESETS } from "$lib/stores/theme";
+  import { Check, Pipette, Contrast } from "lucide-svelte";
+  import { ACCENT_PRESETS, MONO_SENTINEL } from "$lib/stores/theme";
 
   let {
     value,
+    rawOverride,
     onchange,
   }: {
+    /// Effective accent hex (already resolved, for rendering the swatch fill).
     value: string;
-    onchange: (hex: string) => void;
+    /// Raw override string from the config, used to detect the monochrome
+    /// sentinel. Undefined when no override is set.
+    rawOverride?: string;
+    onchange: (value: string) => void;
   } = $props();
 
   let customInput = $state<HTMLInputElement | null>(null);
 
+  const isMono = $derived(rawOverride === MONO_SENTINEL);
   const activePreset = $derived(
-    ACCENT_PRESETS.find(
-      (p) => p.value.toLowerCase() === value.toLowerCase()
-    )
+    isMono
+      ? undefined
+      : ACCENT_PRESETS.find(
+          (p) => p.value.toLowerCase() === value.toLowerCase()
+        )
   );
-  const isCustom = $derived(!activePreset);
+  const isCustom = $derived(!isMono && !activePreset);
 
   function openPicker(): void {
     customInput?.click();
@@ -34,7 +42,7 @@
 <div class="swatches">
   {#each ACCENT_PRESETS as preset}
     {@const selected =
-      value.toLowerCase() === preset.value.toLowerCase()}
+      !isMono && value.toLowerCase() === preset.value.toLowerCase()}
     <button
       type="button"
       class="swatch"
@@ -50,6 +58,22 @@
       {/if}
     </button>
   {/each}
+
+  <button
+    type="button"
+    class="swatch swatch-mono"
+    class:selected={isMono}
+    aria-label="Monochrome"
+    aria-pressed={isMono}
+    title="Monochrome"
+    onclick={() => onchange(MONO_SENTINEL)}
+  >
+    {#if isMono}
+      <Check size={12} strokeWidth={3} class="swatch-check-mono" />
+    {:else}
+      <Contrast size={12} strokeWidth={2.25} class="swatch-mono-icon" />
+    {/if}
+  </button>
 
   <button
     type="button"
@@ -115,6 +139,26 @@
       0 0 0 2px var(--background),
       0 0 0 3.5px var(--foreground),
       0 2px 6px rgba(0, 0, 0, 0.5);
+  }
+
+  .swatch-mono {
+    background: linear-gradient(
+      135deg,
+      var(--color-fg-primary) 0% 50%,
+      var(--color-bg-app) 50% 100%
+    );
+  }
+
+  :global(.swatch-mono-icon) {
+    color: var(--color-fg-primary);
+    mix-blend-mode: difference;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
+  }
+
+  :global(.swatch-check-mono) {
+    color: var(--color-fg-primary);
+    mix-blend-mode: difference;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
   }
 
   .swatch-custom:not(.selected) {
