@@ -59,7 +59,7 @@
     left: 1px;
     width: 14px;
     height: 14px;
-    border-radius: 999px;
+    border-radius: var(--radius-md);
     background: var(--foreground);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
     transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1);

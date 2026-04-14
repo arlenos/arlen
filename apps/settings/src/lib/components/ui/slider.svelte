@@ -38,7 +38,7 @@
     style="width: var(--value)"
   ></div>
   <div
-    class="absolute size-4 rounded-full border-2 border-primary bg-background shadow-sm"
+    class="absolute size-4 rounded-md border-2 border-primary bg-background shadow-sm"
     style="left: var(--value); transform: translateX(-50%)"
   ></div>
   <input

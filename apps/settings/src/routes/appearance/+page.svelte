@@ -298,7 +298,7 @@
 
   .error {
     padding: 0.75rem 1rem;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     border: 1px solid
       color-mix(in srgb, var(--color-error) 40%, transparent);
     background: color-mix(in srgb, var(--color-error) 10%, transparent);
@@ -319,7 +319,7 @@
   .border-preview {
     width: 22px;
     height: 22px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     border-style: solid;
     border-color: color-mix(in srgb, var(--foreground) 35%, transparent);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
@@ -336,7 +336,7 @@
     display: block;
     width: 9px;
     height: 22px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     background: color-mix(in srgb, var(--foreground) 15%, transparent);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 20%, transparent);

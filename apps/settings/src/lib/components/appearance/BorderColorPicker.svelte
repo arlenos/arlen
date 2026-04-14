@@ -94,7 +94,7 @@
     gap: 6px;
     height: 22px;
     padding: 0 0.5rem 0 0.4rem;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 10%, transparent);
@@ -141,7 +141,7 @@
     justify-content: center;
     width: 22px;
     height: 22px;
-    border-radius: 7px;
+    border-radius: var(--radius-md);
     border: none;
     padding: 0;
     cursor: pointer;

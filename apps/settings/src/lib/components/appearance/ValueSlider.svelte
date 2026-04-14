@@ -88,7 +88,7 @@
     width: 12px;
     height: 12px;
     margin-left: -6px;
-    border-radius: 9999px;
+    border-radius: var(--radius-md);
     background: var(--foreground);
     box-shadow:
       0 1px 2px rgba(0, 0, 0, 0.4),

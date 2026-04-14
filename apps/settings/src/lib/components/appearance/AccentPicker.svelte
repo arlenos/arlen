@@ -117,7 +117,7 @@
     justify-content: center;
     width: 22px;
     height: 22px;
-    border-radius: 7px;
+    border-radius: var(--radius-md);
     border: none;
     padding: 0;
     cursor: pointer;

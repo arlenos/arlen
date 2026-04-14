@@ -61,7 +61,7 @@
     background: color-mix(in srgb, var(--foreground) 6%, transparent);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 9%, transparent);
-    border-radius: 7px;
+    border-radius: var(--radius-md);
   }
 
   .indicator {
@@ -72,7 +72,7 @@
     left: calc(2px + (100% - 4px) / 2 * var(--active-index));
     background: color-mix(in srgb, var(--foreground) 11%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
-    border-radius: 5px;
+    border-radius: var(--radius-md);
     box-shadow:
       0 1px 0 color-mix(in srgb, var(--foreground) 6%, transparent) inset,
       0 1px 2px rgba(0, 0, 0, 0.25);

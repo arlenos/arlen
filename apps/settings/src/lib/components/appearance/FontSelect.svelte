@@ -135,7 +135,7 @@
     width: 100%;
     height: 28px;
     padding: 0 0.625rem 0 0.75rem;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 10%, transparent);
@@ -187,7 +187,7 @@
     right: 0;
     z-index: 50;
     padding: 4px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--background) 94%, var(--foreground) 8%);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 15%, transparent);
@@ -217,7 +217,7 @@
     padding: 0 0.625rem 0 0.75rem;
     border: none;
     background: transparent;
-    border-radius: 5px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     font-family: inherit;
     transition: background-color 100ms ease;
