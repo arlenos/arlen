@@ -1,0 +1,134 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/inter";
+
+/* ============================================================
+   Lunaris Settings App - Dark Theme Defaults
+   Overridden at runtime by theme store from appearance.toml.
+   Mirrors desktop-shell dark.toml.
+   ============================================================ */
+:root {
+  /* Background */
+  --color-bg-shell:   #0a0a0a;
+  --color-bg-app:     #0f0f0f;
+  --color-bg-card:    #171717;
+  --color-bg-overlay: #00000080;
+  --color-bg-input:   #1a1a1a;
+
+  /* Foreground */
+  --color-fg-primary:   #fafafa;
+  --color-fg-secondary: #a1a1aa;
+  --color-fg-disabled:  #52525b;
+  --color-fg-inverse:   #0a0a0a;
+  --color-fg-shell:     var(--color-fg-primary);
+  --color-fg-app:       var(--color-fg-primary);
+
+  /* Semantic */
+  --color-accent:         #6366f1;
+  --color-accent-hover:   #818cf8;
+  --color-border:         #262626;
+  --color-border-strong:  #3f3f46;
+  --color-error:          #ef4444;
+  --color-warning:        #f59e0b;
+  --color-success:        #10b981;
+
+  --radius: 0.5rem;
+
+  /* Motion tokens */
+  --duration-instant:  80ms;
+  --duration-fast:    150ms;
+  --duration-medium:  200ms;
+  --duration-slow:    350ms;
+  --easing-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-enter:   cubic-bezier(0.0, 0.0, 0.2, 1);
+  --easing-exit:    cubic-bezier(0.4, 0.0, 1.0, 1);
+
+  /* Shadcn variable mapping */
+  --background:       var(--color-bg-app);
+  --foreground:       var(--color-fg-app);
+  --card:             var(--color-bg-card);
+  --card-foreground:  var(--color-fg-app);
+  --popover:          var(--color-bg-card);
+  --popover-foreground: var(--color-fg-app);
+  --primary:          var(--color-accent);
+  --primary-foreground: #ffffff;
+  --secondary:        var(--color-bg-card);
+  --secondary-foreground: var(--color-fg-app);
+  --muted:            var(--color-bg-card);
+  --muted-foreground: var(--color-fg-secondary);
+  --accent:           var(--color-accent);
+  --accent-foreground: #ffffff;
+  --destructive:      var(--color-error);
+  --border:           var(--color-border);
+  --input:            var(--color-bg-input);
+  --ring:             var(--color-accent);
+
+  --sidebar:                    var(--color-bg-shell);
+  --sidebar-foreground:         var(--color-fg-shell);
+  --sidebar-primary:            var(--color-accent);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent:             color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
+  --sidebar-accent-foreground:  var(--color-fg-shell);
+  --sidebar-border:             color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
+  --sidebar-ring:               var(--color-accent);
+}
+
+/* ============================================================
+   @theme inline block.
+
+   `@theme inline` makes Tailwind utilities emit `var(--token)`
+   references instead of resolving to literals at build time.
+   This is what we want: Tailwind classes like `bg-primary`
+   compile to `background-color: var(--primary)` and the actual
+   color comes from `:root` at runtime. Changing a CSS variable
+   via JavaScript then immediately re-colors all matching utilities.
+
+   The token names on the LEFT (`--color-primary`) are what
+   Tailwind maps to utility classes (`bg-primary`, `text-primary`).
+   The `var(--...)` on the RIGHT is the shadcn variable.
+   ============================================================ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", monospace;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
