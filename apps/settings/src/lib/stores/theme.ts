@@ -28,11 +28,22 @@ export interface OverridesSection {
   font_scale?: number;
 }
 
+export interface WindowBorderSection {
+  /// Hex `#rrggbb[aa]` or the sentinel `"$accent"`.
+  focused?: string;
+  /// Hex `#rrggbb[aa]` or the sentinel `"$border"`.
+  unfocused?: string;
+}
+
 export interface WindowSection {
   corner_radius?: number;
   border_width?: number;
-  gap_size?: number;
+  border?: WindowBorderSection;
 }
+
+/// Sentinel values understood by the compositor (and this app's UI).
+export const BORDER_ACCENT_SENTINEL = "$accent";
+export const BORDER_SUBTLE_SENTINEL = "$border";
 
 export interface FontsSection {
   interface?: string;
@@ -141,6 +152,15 @@ const DEFAULT_RADIUS = 8;
 export function applyAppearance(config: AppearanceConfig | null): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
+
+  // Apply theme mode first so the accent resolution that follows picks
+  // up the right --color-fg-primary for the monochrome sentinel.
+  const mode = config?.theme?.mode ?? config?.theme?.active ?? "dark";
+  if (mode === "light") {
+    root.dataset.theme = "light";
+  } else {
+    delete root.dataset.theme;
+  }
 
   const accent = resolveAccent(config);
   root.style.setProperty("--color-accent", accent);

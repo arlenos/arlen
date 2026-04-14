@@ -8,8 +8,11 @@
     FONT_OPTIONS,
     MONO_FONT_OPTIONS,
     resolveAccent,
+    BORDER_ACCENT_SENTINEL,
+    BORDER_SUBTLE_SENTINEL,
     type ThemeMode,
   } from "$lib/stores/theme";
+  import { compositor } from "$lib/stores/compositor";
 
   import Group from "$lib/components/appearance/Group.svelte";
   import Row from "$lib/components/appearance/Row.svelte";
@@ -17,9 +20,12 @@
   import AccentPicker from "$lib/components/appearance/AccentPicker.svelte";
   import ValueSlider from "$lib/components/appearance/ValueSlider.svelte";
   import FontSelect from "$lib/components/appearance/FontSelect.svelte";
+  import Switch from "$lib/components/appearance/Switch.svelte";
+  import BorderColorPicker from "$lib/components/appearance/BorderColorPicker.svelte";
 
   onMount(() => {
     theme.load();
+    compositor.load();
   });
 
   // ── Derived values ────────────────────────────────────────────────────
@@ -34,8 +40,18 @@
   const currentAccent = $derived(resolveAccent($theme.data));
   const accentOverride = $derived($theme.data?.overrides?.accent);
   const cornerRadius = $derived($theme.data?.window?.corner_radius ?? 8);
-  const borderWidth = $derived($theme.data?.window?.border_width ?? 1);
-  const gapSize = $derived($theme.data?.window?.gap_size ?? 8);
+  const borderWidth = $derived($theme.data?.window?.border_width ?? 2);
+  // Gaps live in compositor.toml [layout], not appearance.toml.
+  // Same path the desktop-shell LayoutPopover writes to, so the
+  // existing compositor watcher picks them up automatically.
+  const gaps = $derived($compositor.data?.layout?.inner_gap ?? 8);
+  const gapSmart = $derived($compositor.data?.layout?.smart_gaps ?? true);
+  const borderFocused = $derived(
+    $theme.data?.window?.border?.focused ?? BORDER_ACCENT_SENTINEL
+  );
+  const borderUnfocused = $derived(
+    $theme.data?.window?.border?.unfocused ?? BORDER_SUBTLE_SENTINEL
+  );
   const interfaceFont = $derived(
     $theme.data?.fonts?.interface ?? "Inter Variable"
   );
@@ -55,8 +71,22 @@
     await theme.setValue("overrides.accent", hex);
   }
 
-  async function setWindow(key: string, value: number) {
+  async function setWindow(key: string, value: number | boolean) {
     await theme.setValue(`window.${key}`, value);
+  }
+
+  async function setBorderColor(side: "focused" | "unfocused", value: string) {
+    await theme.setValue(`window.border.${side}`, value);
+  }
+
+  /// Single slider: inner == outer, same pattern as the shell LayoutPopover.
+  async function setGaps(value: number) {
+    await compositor.setValue("layout.inner_gap", value);
+    await compositor.setValue("layout.outer_gap", value);
+  }
+
+  async function setSmartGaps(enabled: boolean) {
+    await compositor.setValue("layout.smart_gaps", enabled);
   }
 
   async function setFont(key: string, value: string | number) {
@@ -125,7 +155,7 @@
             <ValueSlider
               value={borderWidth}
               min={0}
-              max={2}
+              max={4}
               step={1}
               unit="px"
               ariaLabel="Border Width"
@@ -133,22 +163,56 @@
             />
           {/snippet}
         </Row>
-        <Row label="Gap Size">
+        <Row label="Gaps">
           {#snippet preview()}
-            <div class="gap-preview" style="gap: {Math.min(gapSize, 6)}px;">
+            <div class="gap-preview" style="gap: {Math.min(gaps, 6)}px;">
               <span></span>
               <span></span>
             </div>
           {/snippet}
           {#snippet control()}
             <ValueSlider
-              value={gapSize}
+              value={gaps}
               min={0}
-              max={16}
+              max={24}
               step={1}
               unit="px"
-              ariaLabel="Gap Size"
-              onchange={(v) => setWindow("gap_size", v)}
+              ariaLabel="Gaps"
+              onchange={setGaps}
+            />
+          {/snippet}
+        </Row>
+        <Row label="Smart Gaps">
+          {#snippet control()}
+            <Switch
+              value={gapSmart}
+              ariaLabel="Smart gaps"
+              onchange={setSmartGaps}
+            />
+          {/snippet}
+        </Row>
+      </Group>
+
+      <Group label="Window Borders">
+        <Row label="Focused">
+          {#snippet control()}
+            <BorderColorPicker
+              value={borderFocused}
+              sentinel={BORDER_ACCENT_SENTINEL}
+              sentinelLabel="Accent"
+              sentinelSwatch={currentAccent}
+              onchange={(v) => setBorderColor("focused", v)}
+            />
+          {/snippet}
+        </Row>
+        <Row label="Unfocused">
+          {#snippet control()}
+            <BorderColorPicker
+              value={borderUnfocused}
+              sentinel={BORDER_SUBTLE_SENTINEL}
+              sentinelLabel="Subtle"
+              sentinelSwatch="color-mix(in srgb, var(--foreground) 15%, transparent)"
+              onchange={(v) => setBorderColor("unfocused", v)}
             />
           {/snippet}
         </Row>
