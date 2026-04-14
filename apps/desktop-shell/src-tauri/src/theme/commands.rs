@@ -5,11 +5,13 @@
 /// appearance emit a `lunaris://theme-v2-changed` event with the resolved
 /// `CssVariables` so the frontend can update in real time.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
+use notify::{Event, EventKind, RecursiveMode, Watcher};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use super::css::{to_css_string, to_css_variables, CssVariables};
 use super::loader::{resolve_theme, ThemeError, ThemeLoader};
@@ -79,6 +81,116 @@ impl ThemeState {
         let _ = app.emit("lunaris://theme-v2-changed", &css);
         Ok(css)
     }
+
+    /// Re-read `appearance.toml` from disk, replacing the in-memory config.
+    /// Silent no-op if the file was removed (keeps current config).
+    pub fn reload_from_disk(&self) -> Result<(), ThemeError> {
+        if !self.config_path.exists() {
+            return Ok(());
+        }
+        let content = std::fs::read_to_string(&self.config_path)?;
+        let new_config: AppearanceConfig = toml::from_str(&content).map_err(|e| {
+            ThemeError::Parse {
+                path: self.config_path.display().to_string(),
+                source: e,
+            }
+        })?;
+        *self.config.lock().unwrap() = new_config;
+        Ok(())
+    }
+
+    /// Path watched by `start_appearance_watcher`.
+    pub fn config_path(&self) -> &Path {
+        &self.config_path
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Live-reload watcher
+// ---------------------------------------------------------------------------
+
+/// Watch `~/.config/lunaris/appearance.toml` for external writes (e.g. from
+/// the Settings app) and re-emit `theme-v2-changed` so the shell UI picks
+/// up the new accent / radius / fonts without needing a restart.
+///
+/// Editors typically write atomically (tmp + rename), so we watch the
+/// parent directory and filter on the target filename. A short debounce
+/// collapses the rename/create/modify burst into one reload.
+pub fn start_appearance_watcher(app: AppHandle) {
+    let state = app.state::<ThemeState>();
+    let target = state.config_path().to_path_buf();
+    let watch_dir = match target.parent() {
+        Some(p) => p.to_path_buf(),
+        None => {
+            log::warn!("theme: appearance.toml has no parent dir");
+            return;
+        }
+    };
+    let _ = std::fs::create_dir_all(&watch_dir);
+
+    std::thread::spawn(move || {
+        let app_clone = app.clone();
+        let target_clone = target.clone();
+        let last_fire = Mutex::new(Instant::now() - Duration::from_secs(1));
+
+        let mut watcher = match notify::recommended_watcher(
+            move |event: Result<Event, _>| {
+                let Ok(event) = event else { return };
+                if !matches!(
+                    event.kind,
+                    EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
+                ) {
+                    return;
+                }
+                let touches_target = event.paths.iter().any(|p| {
+                    p == &target_clone
+                        || p.file_name()
+                            .map(|n| n == "appearance.toml")
+                            .unwrap_or(false)
+                });
+                if !touches_target {
+                    return;
+                }
+
+                // Debounce: collapse bursts from atomic renames.
+                {
+                    let mut lf = last_fire.lock().unwrap();
+                    if lf.elapsed() < Duration::from_millis(100) {
+                        return;
+                    }
+                    *lf = Instant::now();
+                }
+
+                // Small sleep to let the rename settle before we read.
+                std::thread::sleep(Duration::from_millis(30));
+
+                let state = app_clone.state::<ThemeState>();
+                if let Err(e) = state.reload_from_disk() {
+                    log::warn!("theme: reload_from_disk failed: {e}");
+                    return;
+                }
+                if let Err(e) = state.resolve_and_emit(&app_clone) {
+                    log::warn!("theme: resolve_and_emit failed: {e}");
+                }
+            },
+        ) {
+            Ok(w) => w,
+            Err(e) => {
+                log::warn!("theme: failed to create appearance watcher: {e}");
+                return;
+            }
+        };
+
+        if let Err(e) = watcher.watch(&watch_dir, RecursiveMode::NonRecursive) {
+            log::warn!("theme: failed to watch {}: {e}", watch_dir.display());
+            return;
+        }
+
+        // Keep the watcher alive.
+        loop {
+            std::thread::sleep(Duration::from_secs(3600));
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------

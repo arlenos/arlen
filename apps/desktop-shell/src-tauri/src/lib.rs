@@ -103,6 +103,7 @@ pub fn run() {
             }
 
             theme::start_watcher(app.handle().clone());
+            theme::commands::start_appearance_watcher(app.handle().clone());
             event_bus::start(app.handle().clone());
             wayland_client::start(app.handle().clone(), workspace_sender, toplevel_sender, window_list);
             shell_overlay_client::start(app.handle().clone(), overlay_sender);

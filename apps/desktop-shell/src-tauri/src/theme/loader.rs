@@ -155,15 +155,31 @@ impl ThemeLoader {
 // Override / accessibility application
 // ---------------------------------------------------------------------------
 
+/// Sentinel value in `[overrides].accent` that binds the accent to the
+/// active theme's primary foreground. Lets users pick a "monochrome"
+/// accent that automatically flips with dark/light mode instead of
+/// freezing a single hex value.
+pub const ACCENT_FOREGROUND_SENTINEL: &str = "$foreground";
+
 /// Apply user overrides (accent color, font scale) to a set of tokens.
 pub fn apply_overrides(mut tokens: ThemeTokens, overrides: &UserOverrides) -> ThemeTokens {
     if let Some(ref accent) = overrides.accent {
-        if is_valid_hex_color(accent) {
-            tokens.colors.semantic.accent = accent.clone();
+        // Resolve the sentinel before the hex check so users can opt into
+        // a theme-bound monochrome accent from the Settings app.
+        let resolved = if accent == ACCENT_FOREGROUND_SENTINEL {
+            Some(tokens.colors.foreground.primary.clone())
+        } else if is_valid_hex_color(accent) {
+            Some(accent.clone())
+        } else {
+            None
+        };
+
+        if let Some(hex) = resolved {
             tokens.colors.semantic.accent_hover =
-                lighten_color(accent, 0.15).unwrap_or_else(|| accent.clone());
+                lighten_color(&hex, 0.15).unwrap_or_else(|| hex.clone());
             tokens.colors.semantic.accent_pressed =
-                darken_color(accent, 0.15).unwrap_or_else(|| accent.clone());
+                darken_color(&hex, 0.15).unwrap_or_else(|| hex.clone());
+            tokens.colors.semantic.accent = hex;
         }
     }
 
