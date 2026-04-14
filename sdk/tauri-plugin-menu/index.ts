@@ -265,3 +265,59 @@ export function onKeyboardAction(
     }
   );
 }
+
+// ── Reactive stores ──────────────────────────────────────────────────────────
+
+/**
+ * Minimal Svelte-compatible readable store for `WindowMode`.
+ *
+ * Subscribes to `lunaris-titlebar://mode-changed` on first consumer and
+ * tears down when the last unsubscribes. Initial value is `"floating"`
+ * so non-Lunaris compositors (GNOME, KDE, etc.) get sensible defaults.
+ *
+ * Svelte usage:
+ *   import { windowMode } from "@lunaris/tauri-plugin-menu";
+ *   {#if $windowMode !== "tiled"} ... {/if}
+ */
+type Subscriber<T> = (value: T) => void;
+type Unsubscriber = () => void;
+
+function createWindowModeStore() {
+  let value: WindowMode = "floating";
+  const subs = new Set<Subscriber<WindowMode>>();
+  let unlisten: UnlistenFn | null = null;
+  let starting: Promise<void> | null = null;
+
+  async function start() {
+    if (unlisten || starting) return;
+    starting = onModeChanged((mode) => {
+      value = mode;
+      for (const s of subs) s(value);
+    }).then((fn) => {
+      unlisten = fn;
+      starting = null;
+    });
+    await starting;
+  }
+
+  function stop() {
+    if (unlisten) {
+      unlisten();
+      unlisten = null;
+    }
+  }
+
+  return {
+    subscribe(run: Subscriber<WindowMode>): Unsubscriber {
+      subs.add(run);
+      run(value);
+      if (subs.size === 1) void start();
+      return () => {
+        subs.delete(run);
+        if (subs.size === 0) stop();
+      };
+    },
+  };
+}
+
+export const windowMode = createWindowModeStore();
