@@ -6,9 +6,39 @@
   import { onMount } from "svelte";
   import {
     Moon, Sun, Plane, Settings, Lock, Power,
-    LogOut, RotateCcw,
+    LogOut, RotateCcw, Coffee, Circle, Sunset,
   } from "lucide-svelte";
   import NotificationPanel from "$lib/components/NotificationPanel.svelte";
+
+  let isDark = $state(true);
+  let caffeineActive = $state(false);
+  let recordingActive = $state(false);
+
+  async function toggleTheme() {
+    const next = isDark ? "light" : "dark";
+    try {
+      await invoke("set_theme", { id: next });
+      isDark = !isDark;
+    } catch (e) {
+      console.error("theme toggle failed:", e);
+    }
+  }
+
+  async function toggleCaffeine() {
+    try {
+      caffeineActive = await invoke<boolean>("toggle_caffeine");
+    } catch (e) {
+      console.error("caffeine toggle failed:", e);
+    }
+  }
+
+  async function toggleRecording() {
+    try {
+      recordingActive = await invoke<boolean>("toggle_recording");
+    } catch (e) {
+      console.error("recording toggle failed:", e);
+    }
+  }
 
   interface ShellConfig {
     night_light: { enabled: boolean; temperature: number };
@@ -37,6 +67,10 @@
   $effect(() => {
     if ($activePopover === "quick-settings") {
       invoke<boolean>("get_airplane_mode").then((v) => { airplaneMode = v; }).catch(() => {});
+      invoke<string>("get_active_theme_id").then((id) => { isDark = id !== "light"; }).catch(() => {});
+      invoke<{ caffeineActive: boolean; recordingActive: boolean }>("get_toggle_status")
+        .then((s) => { caffeineActive = s.caffeineActive; recordingActive = s.recordingActive; })
+        .catch(() => {});
     }
   });
 
@@ -131,15 +165,24 @@
     <div class="qs-toggles">
       <button
         class="qs-toggle-btn"
+        class:active={!isDark}
+        onclick={(e) => { e.stopPropagation(); toggleTheme(); }}
+        title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+      >
+        {#if isDark}
+          <Sun size={16} strokeWidth={1.5} />
+        {:else}
+          <Moon size={16} strokeWidth={1.5} />
+        {/if}
+      </button>
+
+      <button
+        class="qs-toggle-btn"
         class:active={config.night_light.enabled}
         onclick={(e) => { e.stopPropagation(); toggleNightLight(); }}
         title={config.night_light.enabled ? "Disable Night Light" : "Enable Night Light"}
       >
-        {#if config.night_light.enabled}
-          <Moon size={16} strokeWidth={1.5} />
-        {:else}
-          <Sun size={16} strokeWidth={1.5} />
-        {/if}
+        <Sunset size={16} strokeWidth={1.5} />
       </button>
 
       <button
@@ -149,6 +192,25 @@
         title={airplaneMode ? "Disable Airplane Mode" : "Enable Airplane Mode"}
       >
         <Plane size={16} strokeWidth={1.5} />
+      </button>
+
+      <button
+        class="qs-toggle-btn"
+        class:active={caffeineActive}
+        onclick={(e) => { e.stopPropagation(); toggleCaffeine(); }}
+        title={caffeineActive ? "Disable Caffeine" : "Enable Caffeine"}
+      >
+        <Coffee size={16} strokeWidth={1.5} />
+      </button>
+
+      <button
+        class="qs-toggle-btn"
+        class:active={recordingActive}
+        class:recording={recordingActive}
+        onclick={(e) => { e.stopPropagation(); toggleRecording(); }}
+        title={recordingActive ? "Stop Recording" : "Start Recording"}
+      >
+        <Circle size={16} strokeWidth={1.5} />
       </button>
     </div>
 
@@ -215,14 +277,16 @@
     cursor: pointer; padding: 0; transition: all 100ms ease;
   }
   .qs-toggle-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); color: var(--color-fg-shell); }
-  .qs-toggle-btn.active { background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent); border-color: color-mix(in srgb, var(--color-fg-shell) 30%, transparent); color: var(--color-fg-shell); }
+  .qs-toggle-btn.active { background: color-mix(in srgb, var(--color-accent) 15%, transparent); border-color: color-mix(in srgb, var(--color-accent) 30%, transparent); color: var(--color-fg-shell); }
+  .qs-toggle-btn.recording { color: #ef4444; border-color: color-mix(in srgb, #ef4444 40%, transparent); animation: qs-pulse 1.5s ease-in-out infinite; }
+  @keyframes qs-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
   /* Brightness slider - same pattern as pop-slider in AudioPopover */
   .qs-brightness-row { display: flex; align-items: center; gap: 12px; padding: 8px 12px; }
   :global(.qs-brightness-icon) { color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent); flex-shrink: 0; }
   .qs-slider { position: relative; flex: 1; height: 20px; display: flex; align-items: center; }
   .qs-slider-track { position: absolute; left: 0; right: 0; height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: 2px; }
-  .qs-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); border-radius: 2px; }
+  .qs-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: var(--color-accent); border-radius: 2px; }
   .qs-slider-thumb { position: absolute; left: var(--value); width: 14px; height: 14px; background: var(--color-fg-shell); border-radius: 9999px; transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
   .qs-slider input[type="range"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; appearance: none; -webkit-appearance: none; }
 

@@ -173,8 +173,8 @@
     color: var(--color-fg-shell);
   }
   .mode-pill.active {
-    background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
-    border-color: color-mix(in srgb, var(--color-fg-shell) 30%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+    border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
     color: var(--color-fg-shell);
   }
 
@@ -184,7 +184,7 @@
   .gap-value { font-size: 0.6875rem; opacity: 0.5; min-width: 28px; text-align: right; }
   .gap-slider { position: relative; flex: 1; height: 20px; display: flex; align-items: center; }
   .gap-slider-track { position: absolute; left: 0; right: 0; height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: 2px; }
-  .gap-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); border-radius: 2px; }
+  .gap-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: var(--color-accent); border-radius: 2px; }
   .gap-slider-thumb { position: absolute; left: var(--value); width: 14px; height: 14px; background: var(--color-fg-shell); border-radius: 50%; transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
   .gap-slider input[type="range"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; appearance: none; -webkit-appearance: none; }
 
@@ -198,7 +198,7 @@
     transition: background-color 150ms ease;
   }
   .smart-toggle:hover { background: color-mix(in srgb, var(--color-fg-shell) 30%, transparent); }
-  .smart-toggle.active { background: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); }
+  .smart-toggle.active { background: color-mix(in srgb, var(--color-accent) 60%, transparent); }
   .smart-toggle-thumb {
     position: absolute; top: 2px; left: 2px;
     width: 16px; height: 16px; border-radius: 50%;

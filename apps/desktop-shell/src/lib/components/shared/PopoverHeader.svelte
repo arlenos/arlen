@@ -67,7 +67,7 @@
     transition: background-color 150ms ease;
   }
   .header-toggle:hover { background: color-mix(in srgb, var(--color-fg-shell) 30%, transparent); }
-  .header-toggle.active { background: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); }
+  .header-toggle.active { background: color-mix(in srgb, var(--color-accent) 60%, transparent); }
   .header-toggle-thumb {
     position: absolute; top: 2px; left: 2px;
     width: 16px; height: 16px; border-radius: 50%;

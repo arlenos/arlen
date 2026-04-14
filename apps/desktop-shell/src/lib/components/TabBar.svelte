@@ -60,6 +60,7 @@
         background: var(--background);
         color: var(--foreground);
         font-weight: 600;
+        box-shadow: inset 0 -2px 0 0 var(--color-accent);
     }
 
     .tab-title {

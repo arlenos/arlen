@@ -250,7 +250,7 @@
   /* Slider */
   .vol-slider { position: relative; flex: 1; height: 20px; display: flex; align-items: center; }
   .vol-slider-track { position: absolute; left: 0; right: 0; height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: 2px; }
-  .vol-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); border-radius: 2px; }
+  .vol-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: var(--color-accent); border-radius: 2px; }
   .vol-slider-thumb { position: absolute; left: var(--value); width: 14px; height: 14px; background: var(--color-fg-shell); border-radius: 50%; transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
   .vol-slider input[type="range"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; appearance: none; -webkit-appearance: none; }
   .app-slider { width: 100px; flex: none; }
@@ -283,7 +283,7 @@
     transition: background-color 0.1s ease;
   }
   .cs-item:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
-  .cs-item.selected { background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent); }
+  .cs-item.selected { background: color-mix(in srgb, var(--color-accent) 15%, transparent); }
 
   /* Apps section */
   .apps-header {

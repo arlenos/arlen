@@ -347,7 +347,7 @@
     text-align: left; width: 100%; transition: background-color 0.1s ease;
   }
   .bt-device:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
-  .bt-device.connected { background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent); border: 1px solid color-mix(in srgb, var(--color-fg-shell) 30%, transparent); }
+  .bt-device.connected { background: color-mix(in srgb, var(--color-accent) 15%, transparent); border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent); }
   .bt-device.connecting { opacity: 0.7; }
   .bt-device-icon { flex-shrink: 0; opacity: 0.7; }
   .bt-device-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }

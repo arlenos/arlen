@@ -129,8 +129,8 @@
     color: var(--color-fg-shell);
   }
   .bat-pill.active {
-    background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
-    border-color: color-mix(in srgb, var(--color-fg-shell) 30%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+    border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
     color: var(--color-fg-shell);
   }
 </style>

@@ -88,7 +88,7 @@
 
   .clock-indicator:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--foreground) 30%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 50%, transparent);
   }
 
   .clock-weekday {

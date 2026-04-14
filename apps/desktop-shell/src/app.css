@@ -117,17 +117,17 @@
   --foreground:          var(--color-fg-shell);
   --popover:             var(--color-bg-shell);
   --popover-foreground:  var(--color-fg-shell);
-  --primary:             var(--color-fg-shell);
+  --primary:             var(--color-accent);
   --primary-foreground:  var(--color-bg-shell);
   --secondary:           color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
   --secondary-foreground: var(--color-fg-shell);
   --muted:               color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
   --muted-foreground:    color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
-  --accent:              color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
+  --accent:              color-mix(in srgb, var(--color-accent) 15%, transparent);
   --accent-foreground:   var(--color-fg-shell);
   --border:              color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
   --input:               color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
-  --ring:                var(--color-fg-shell);
+  --ring:                var(--color-accent);
 }
 
 /* Context menus (portaled) must sit above popovers (z-100). */
@@ -143,30 +143,30 @@
 
 
 /* Register Lunaris tokens as Tailwind v4 theme variables.
-   Tailwind v4 resolves @theme at build time, so we must use concrete values
-   here -- var() references fall back to Tailwind defaults (purple!).
-   These values match dark.toml. Runtime overrides happen via :root. */
+   `@theme inline` with var() references makes Tailwind emit
+   `var(--token)` in utility classes instead of resolving to literals
+   at build time. This lets :root overrides (and shell-surface /
+   shell-popover scopes) re-colour all shadcn components at runtime. */
 @theme inline {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
-  /* Colors (dark theme defaults) */
-  --color-background: #0f0f0f;
-  --color-foreground: #fafafa;
-  --color-card: #171717;
-  --color-card-foreground: #fafafa;
-  --color-popover: #171717;
-  --color-popover-foreground: #fafafa;
-  --color-primary: #6366f1;
-  --color-primary-foreground: #0a0a0a;
-  --color-secondary: #171717;
-  --color-secondary-foreground: #fafafa;
-  --color-muted: #171717;
-  --color-muted-foreground: #a1a1aa;
-  --color-accent: #6366f1;
-  --color-accent-foreground: #0a0a0a;
-  --color-destructive: #ef4444;
-  --color-border: #27272a;
-  --color-input: #1a1a1a;
-  --color-ring: #6366f1;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
   --radius: 8px;
   /* Animation timing */
   --ease-default: cubic-bezier(0.4, 0, 0.2, 1);

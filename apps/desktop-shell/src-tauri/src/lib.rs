@@ -19,6 +19,7 @@ mod projects;
 mod sni;
 mod shell_overlay_client;
 mod shell_runner;
+mod system_toggles;
 mod theme;
 mod wayland_client;
 mod waypointer;
@@ -80,6 +81,7 @@ pub fn run() {
         .manage(plugin_mgr_state)
         .manage(ext_registry)
         .manage(Arc::new(projects::ProjectsState::new()))
+        .manage(system_toggles::ToggleState::new())
         .setup(|app| {
             // Initialize the new theme system (v2).
             let config_dir = dirs::config_dir()
@@ -243,6 +245,9 @@ pub fn run() {
             projects::activate_focus,
             projects::deactivate_focus,
             projects::get_focus_state,
+            system_toggles::get_toggle_status,
+            system_toggles::toggle_caffeine,
+            system_toggles::toggle_recording,
             notifications::notification_dismiss,
             notifications::notification_invoke_action,
             notifications::notification_mark_read,

@@ -27,7 +27,7 @@
 		background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
 	}
 	:global(.command-item-shell[data-selected]) {
-		background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent) !important;
+		background: color-mix(in srgb, var(--color-accent) 15%, transparent) !important;
 		color: var(--color-fg-shell);
 	}
 </style>

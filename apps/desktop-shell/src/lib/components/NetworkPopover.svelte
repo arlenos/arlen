@@ -354,7 +354,7 @@
     text-align: left; width: 100%; transition: background-color 0.1s ease;
   }
   .net-item:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
-  .net-item.connected { background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent); border: 1px solid color-mix(in srgb, var(--color-fg-shell) 30%, transparent); }
+  .net-item.connected { background: color-mix(in srgb, var(--color-accent) 15%, transparent); border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent); }
   .net-item.connecting { opacity: 0.5; pointer-events: none; }
   .net-item-info { display: flex; align-items: center; gap: 8px; }
   :global(.net-check) { color: #22c55e; }
@@ -396,6 +396,6 @@
     color: var(--color-fg-shell);
   }
   .pw-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
-  .pw-btn-primary { background: var(--color-fg-shell); color: var(--color-bg-shell); border: none; font-weight: 500; }
+  .pw-btn-primary { background: var(--color-accent); color: var(--color-accent-fg, var(--color-bg-shell)); border: none; font-weight: 500; }
   .pw-btn-primary:hover { opacity: 0.9; }
 </style>

@@ -246,8 +246,8 @@
   }
 
   .ws-card-active {
-    border-color: color-mix(in srgb, var(--color-fg-shell) 30%, transparent);
-    background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
+    border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
   }
 
   .ws-card-name {
@@ -324,13 +324,13 @@
   }
 
   .pill-active {
-    background: color-mix(in srgb, var(--foreground) 10%, transparent);
-    color: var(--foreground);
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+    color: var(--color-accent);
     animation: pill-activate 100ms ease forwards;
   }
 
   .pill-active:hover {
-    background: color-mix(in srgb, var(--foreground) 15%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 26%, transparent);
   }
 
   @keyframes pill-activate {
@@ -377,12 +377,12 @@
   .dot-active {
     width: 7px;
     height: 7px;
-    background: var(--accent);
+    background: var(--color-accent);
     animation: dot-activate 100ms ease forwards;
   }
 
   .dot-btn:hover .dot-active {
-    background: color-mix(in srgb, var(--accent) 85%, var(--foreground) 15%);
+    background: color-mix(in srgb, var(--color-accent) 85%, var(--color-fg-shell) 15%);
   }
 
   @keyframes dot-activate {

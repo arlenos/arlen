@@ -205,6 +205,6 @@
 
     .check {
         font-size: 12px;
-        color: var(--foreground);
+        color: var(--color-accent);
     }
 </style>
