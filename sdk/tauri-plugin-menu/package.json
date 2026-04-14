@@ -10,5 +10,9 @@
   ],
   "peerDependencies": {
     "@tauri-apps/api": "^2"
+  },
+  "devDependencies": {
+    "@tauri-apps/api": "^2.10.1",
+    "typescript": "^6.0.2"
   }
 }
