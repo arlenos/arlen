@@ -68,7 +68,7 @@
     display: flex;
     gap: 8px;
     padding: 6px 10px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     transition: background-color 100ms ease;
   }
   .notif-item:hover {
@@ -82,7 +82,7 @@
     align-items: center;
     justify-content: center;
     background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     flex-shrink: 0;
     margin-top: 1px;
   }
@@ -142,7 +142,7 @@
     justify-content: center;
     background: transparent;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     color: color-mix(in srgb, var(--color-fg-shell) 40%, transparent);
     cursor: pointer;
     padding: 0;
@@ -164,7 +164,7 @@
   }
   .notif-action-btn {
     padding: 3px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 0.625rem;
     font-weight: 500;
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);

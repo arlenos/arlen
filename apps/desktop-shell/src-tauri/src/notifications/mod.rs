@@ -75,7 +75,9 @@ pub async fn notification_set_dnd(
     mode: String,
 ) -> Result<(), String> {
     let dnd_mode = match mode.as_str() {
-        "on" => proto::DndMode::DndOn as i32,
+        "priority" | "on" => proto::DndMode::DndPriority as i32,
+        "alarms" => proto::DndMode::DndAlarms as i32,
+        "total" => proto::DndMode::DndTotal as i32,
         "scheduled" => proto::DndMode::DndScheduled as i32,
         _ => proto::DndMode::DndOff as i32,
     };
@@ -100,6 +102,21 @@ pub async fn notification_get_history(
             before_timestamp,
             app_name,
         })),
+    };
+    client::send_command(&writer, msg).await
+}
+
+/// Request the list of distinct app names known to the daemon. The
+/// response is delivered asynchronously via the `notification:known_apps`
+/// Tauri event (see client.rs).
+#[tauri::command]
+pub async fn notification_get_known_apps(
+    writer: State<'_, SocketWriter>,
+) -> Result<(), String> {
+    let msg = proto::ClientMessage {
+        msg: Some(proto::client_message::Msg::GetKnownApps(
+            proto::GetKnownApps {},
+        )),
     };
     client::send_command(&writer, msg).await
 }

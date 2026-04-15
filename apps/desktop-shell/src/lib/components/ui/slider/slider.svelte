@@ -38,6 +38,6 @@
 	</span>
 	<SliderPrimitive.Thumb
 		index={0}
-		class="border-foreground/50 bg-foreground block size-3 rounded-full border shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 disabled:pointer-events-none disabled:opacity-50"
+		class="border-foreground/50 bg-foreground block size-3 rounded-md border shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 disabled:pointer-events-none disabled:opacity-50"
 	/>
 </SliderPrimitive.Root>

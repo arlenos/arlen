@@ -104,7 +104,7 @@
     justify-content: center;
     background: transparent;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     color: color-mix(in srgb, var(--color-fg-shell) 40%, transparent);
     cursor: pointer;
     padding: 0;
@@ -144,7 +144,7 @@
   }
   .notif-group-header.collapsible {
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     transition: background-color 100ms ease;
   }
   .notif-group-header.collapsible:hover {
@@ -164,7 +164,7 @@
   .notif-group-count {
     background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent);
     padding: 0 5px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     font-size: 0.5625rem;
     line-height: 15px;
     opacity: 0.5;

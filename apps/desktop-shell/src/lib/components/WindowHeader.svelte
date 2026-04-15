@@ -68,7 +68,7 @@
         background: var(--background);
         color: var(--muted-foreground);
         border-bottom: 1px solid var(--border);
-        border-radius: 8px 8px 0 0;
+        border-radius: var(--radius-md) var(--radius-md) 0 0;
         overflow: hidden;
         pointer-events: auto;
     }
@@ -115,7 +115,7 @@
         width: 28px;
         height: 28px;
         border: none;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         background: transparent;
         color: inherit;
         cursor: pointer;

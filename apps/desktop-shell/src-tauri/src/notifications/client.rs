@@ -181,13 +181,8 @@ async fn try_connect(app: &AppHandle, writer: &SocketWriter) -> Result<(), Strin
                 let _ = app.emit("notification:cleared", ());
             }
             proto::server_message::Msg::DndChanged(dc) => {
-                let mode = match dc.mode {
-                    x if x == proto::DndMode::DndOn as i32 => "on",
-                    x if x == proto::DndMode::DndScheduled as i32 => "scheduled",
-                    _ => "off",
-                };
                 let _ = app.emit("notification:dnd_changed", DndState {
-                    mode: mode.into(),
+                    mode: super::types::dnd_mode_str(dc.mode),
                 });
             }
             proto::server_message::Msg::Sync(sync) => {
@@ -215,6 +210,11 @@ async fn try_connect(app: &AppHandle, writer: &SocketWriter) -> Result<(), Strin
                 let _ = app.emit("notification:count", serde_json::json!({
                     "pending": cu.pending_count,
                     "unread": cu.unread_count,
+                }));
+            }
+            proto::server_message::Msg::KnownApps(ka) => {
+                let _ = app.emit("notification:known_apps", serde_json::json!({
+                    "app_names": ka.app_names,
                 }));
             }
         }

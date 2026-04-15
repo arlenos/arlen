@@ -133,13 +133,13 @@
     align-items: center;
     gap: 6px;
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
   }
   .focus-dot {
     width: 6px;
     height: 6px;
-    border-radius: 50%;
+    border-radius: var(--radius-full);
     flex-shrink: 0;
   }
   .focus-name {
@@ -161,7 +161,7 @@
     padding: 0;
     border: none;
     background: transparent;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     color: color-mix(in srgb, var(--foreground) 40%, transparent);
     cursor: pointer;
     transition: all 100ms ease;

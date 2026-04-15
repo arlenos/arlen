@@ -76,7 +76,7 @@
     height: 28px;
     background: transparent;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
     cursor: pointer;
     transition: all 0.15s ease;
@@ -92,6 +92,6 @@
     width: 6px;
     height: 6px;
     background: var(--color-error);
-    border-radius: 50%;
+    border-radius: var(--radius-full);
   }
 </style>

@@ -155,15 +155,31 @@ impl ThemeLoader {
 // Override / accessibility application
 // ---------------------------------------------------------------------------
 
+/// Sentinel value in `[overrides].accent` that binds the accent to the
+/// active theme's primary foreground. Lets users pick a "monochrome"
+/// accent that automatically flips with dark/light mode instead of
+/// freezing a single hex value.
+pub const ACCENT_FOREGROUND_SENTINEL: &str = "$foreground";
+
 /// Apply user overrides (accent color, font scale) to a set of tokens.
 pub fn apply_overrides(mut tokens: ThemeTokens, overrides: &UserOverrides) -> ThemeTokens {
     if let Some(ref accent) = overrides.accent {
-        if is_valid_hex_color(accent) {
-            tokens.colors.semantic.accent = accent.clone();
+        // Resolve the sentinel before the hex check so users can opt into
+        // a theme-bound monochrome accent from the Settings app.
+        let resolved = if accent == ACCENT_FOREGROUND_SENTINEL {
+            Some(tokens.colors.foreground.primary.clone())
+        } else if is_valid_hex_color(accent) {
+            Some(accent.clone())
+        } else {
+            None
+        };
+
+        if let Some(hex) = resolved {
             tokens.colors.semantic.accent_hover =
-                lighten_color(accent, 0.15).unwrap_or_else(|| accent.clone());
+                lighten_color(&hex, 0.15).unwrap_or_else(|| hex.clone());
             tokens.colors.semantic.accent_pressed =
-                darken_color(accent, 0.15).unwrap_or_else(|| accent.clone());
+                darken_color(&hex, 0.15).unwrap_or_else(|| hex.clone());
+            tokens.colors.semantic.accent = hex;
         }
     }
 
@@ -207,8 +223,30 @@ pub fn resolve_theme(
 
     let tokens = apply_overrides(tokens, &config.overrides);
     let tokens = apply_accessibility(tokens, &config.accessibility);
+    let tokens = apply_window_overrides(tokens, &config.window);
 
     Ok(tokens)
+}
+
+/// Apply `[window]` overrides from appearance.toml. Today only
+/// `corner_radius` is honoured — it overrides `radius.md` and derives
+/// sm/lg from it so all three tiers stay consistent.
+pub fn apply_window_overrides(
+    mut tokens: ThemeTokens,
+    window: &crate::theme::schema::WindowSection,
+) -> ThemeTokens {
+    if let Some(radius) = window.corner_radius {
+        let md = radius;
+        // Derive sm and lg so the whole scale shifts with the slider.
+        // Minimum sm = 2px, maximum lg = 2x md (matches the built-in
+        // dark.toml ratio of 4/8/12).
+        let sm = md.saturating_sub(4).max(2);
+        let lg = md.saturating_add(4);
+        tokens.radius.sm = format!("{sm}px");
+        tokens.radius.md = format!("{md}px");
+        tokens.radius.lg = format!("{lg}px");
+    }
+    tokens
 }
 
 /// Resolve the `extends` chain by inheriting missing values from the parent.

@@ -26,6 +26,7 @@
   import ZoomToolbar from "$lib/components/ZoomToolbar.svelte";
   import WindowHeader from "$lib/components/WindowHeader.svelte";
   import { Toaster } from "svelte-sonner";
+  import { toastConfig, initToastConfig } from "$lib/stores/toastConfig.js";
 
   onMount(() => {
     initWindowListeners();
@@ -38,6 +39,7 @@
     initZoomListeners();
     initWindowHeaderListeners();
     initProjects();
+    initToastConfig();
 
     // Initialize theme system (loads appearance.toml, injects CSS vars,
     // subscribes to live theme-changed events from Rust).
@@ -54,10 +56,14 @@
 <ZoomToolbar />
 <WindowHeader />
 <Toaster
-  position="top-right"
+  position={$toastConfig.position}
   richColors
   expand={false}
   closeButton
   theme="dark"
   offset={44}
+  toastOptions={{
+    style: `width: ${$toastConfig.width}px;`,
+    class: `lunaris-toast lunaris-toast-anim-${$toastConfig.animation}`,
+  }}
 />

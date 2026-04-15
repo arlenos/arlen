@@ -218,6 +218,17 @@ impl Default for AccessibilitySettings {
     }
 }
 
+/// `[window]` section of appearance.toml. The shell only reads the
+/// visual fields that map to CSS variables (`--radius-*`). Border
+/// width and colour are compositor-only and are ignored here.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct WindowSection {
+    /// Corner radius in pixels. Integer — matches the Settings app
+    /// slider. Overrides `theme.radius.md` (and derives sm/lg).
+    #[serde(default)]
+    pub corner_radius: Option<u32>,
+}
+
 /// Top-level appearance config file (`~/.config/lunaris/appearance.toml`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppearanceConfig {
@@ -229,6 +240,9 @@ pub struct AppearanceConfig {
     /// Accessibility settings.
     #[serde(default)]
     pub accessibility: AccessibilitySettings,
+    /// Window decoration overrides (corner radius, ...).
+    #[serde(default)]
+    pub window: WindowSection,
 }
 
 /// Theme selection within the appearance config.
@@ -246,6 +260,7 @@ impl Default for AppearanceConfig {
             },
             overrides: UserOverrides::default(),
             accessibility: AccessibilitySettings::default(),
+            window: WindowSection::default(),
         }
     }
 }
