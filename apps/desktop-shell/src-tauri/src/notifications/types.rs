@@ -73,10 +73,16 @@ impl From<proto::Notification> for Notification {
     }
 }
 
-fn dnd_mode_str(mode: i32) -> String {
+/// Convert a wire `DndMode` value into the lowercase string the
+/// frontend stores. Legacy `DndOn` from older builds is normalised
+/// to `"priority"`, matching the daemon's serde alias.
+pub(crate) fn dnd_mode_str(mode: i32) -> String {
     match mode {
-        x if x == proto::DndMode::DndOn as i32 => "on",
+        x if x == proto::DndMode::DndPriority as i32 => "priority",
+        x if x == proto::DndMode::DndAlarms as i32 => "alarms",
+        x if x == proto::DndMode::DndTotal as i32 => "total",
         x if x == proto::DndMode::DndScheduled as i32 => "scheduled",
+        x if x == proto::DndMode::DndOn as i32 => "priority",
         _ => "off",
     }
     .into()
@@ -122,7 +128,11 @@ mod tests {
     #[test]
     fn test_dnd_mode_str() {
         assert_eq!(dnd_mode_str(proto::DndMode::DndOff as i32), "off");
-        assert_eq!(dnd_mode_str(proto::DndMode::DndOn as i32), "on");
+        assert_eq!(dnd_mode_str(proto::DndMode::DndPriority as i32), "priority");
+        assert_eq!(dnd_mode_str(proto::DndMode::DndAlarms as i32), "alarms");
+        assert_eq!(dnd_mode_str(proto::DndMode::DndTotal as i32), "total");
         assert_eq!(dnd_mode_str(proto::DndMode::DndScheduled as i32), "scheduled");
+        // Legacy alias
+        assert_eq!(dnd_mode_str(proto::DndMode::DndOn as i32), "priority");
     }
 }

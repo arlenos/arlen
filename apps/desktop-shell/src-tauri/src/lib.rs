@@ -104,6 +104,7 @@ pub fn run() {
 
             theme::start_watcher(app.handle().clone());
             theme::commands::start_appearance_watcher(app.handle().clone());
+            shell_config::start_shell_config_watcher(app.handle().clone());
             event_bus::start(app.handle().clone());
             wayland_client::start(app.handle().clone(), workspace_sender, toplevel_sender, window_list);
             shell_overlay_client::start(app.handle().clone(), overlay_sender);
@@ -255,6 +256,7 @@ pub fn run() {
             notifications::notification_clear_all,
             notifications::notification_set_dnd,
             notifications::notification_get_history,
+            notifications::notification_get_known_apps,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

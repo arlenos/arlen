@@ -218,6 +218,25 @@
   }
 }
 
+/* Toast renderer overrides — driven by `shell.toml [toast]` via the
+   toastConfig store. The width comes through inline style; here we
+   only define the optional animation flavours. */
+.lunaris-toast-anim-fade {
+  /* Fade in/out instead of svelte-sonner's default slide. */
+  animation-name: lunaris-toast-fade !important;
+  transform: none !important;
+}
+.lunaris-toast-anim-none {
+  /* Skip animation entirely. */
+  animation: none !important;
+  transform: none !important;
+  transition: none !important;
+}
+@keyframes lunaris-toast-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 @custom-variant data-closed {
   &:where([data-state="closed"]), &:where([data-closed]:not([data-closed="false"])) {
     @slot;
@@ -244,6 +263,24 @@
 /* Toast action/cancel button alignment. */
 [data-sonner-toast][data-styled="true"] {
   align-items: center !important;
+  /* Follow the runtime corner radius. svelte-sonner ships with a fixed
+     8px border-radius; we override it here so toasts rescale alongside
+     the rest of the shell when appearance.toml [window].corner_radius
+     changes. --radius-lg keeps toasts visibly more rounded than
+     in-shell chrome at the default theme. */
+  border-radius: var(--radius-lg) !important;
+}
+/* Action / cancel buttons inside the toast follow the smaller token. */
+[data-sonner-toast][data-styled="true"] [data-button],
+[data-sonner-toast][data-styled="true"] [data-cancel] {
+  border-radius: var(--radius-md) !important;
+}
+/* Close (X) button on the toast — svelte-sonner ships a hardcoded
+   round dismiss button. Use the small token so it scales with the
+   rest of the shell instead of staying a fixed circle. */
+[data-sonner-toast] [data-close-button],
+[data-sonner-toast][data-styled="true"] [data-close-button] {
+  border-radius: var(--radius-sm) !important;
 }
 [data-sonner-toast][data-styled="true"] [data-content] {
   flex: 1 !important;
