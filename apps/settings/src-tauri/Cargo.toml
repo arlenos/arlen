@@ -35,6 +35,10 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # fallback means the Settings app still works on plain wlroots/GNOME.
 tauri-plugin-lunaris-menu = { path = "../../sdk/tauri-plugin-menu" }
 
+# Shared manifest parser / validator for module.toml files. The
+# Settings app and the shell use the same schema via this crate.
+lunaris-modules = { path = "../../sdk/modules" }
+
 # SDK crates (git deps once the settings repo is detached):
 # os-sdk         = { git = "https://github.com/lunaris-sys/sdk", path = "os-sdk" }
 # lunaris-theme  = { git = "https://github.com/lunaris-sys/sdk", path = "theme" }
