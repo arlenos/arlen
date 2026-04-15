@@ -33,7 +33,9 @@
     position: relative;
     width: 32px;
     height: 18px;
-    border-radius: 999px;
+    /* Track follows the theme radius. At default md (8px) the 18px
+       track still reads as a pill; at radius 0 it becomes a square. */
+    border-radius: var(--radius-md);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 14%, transparent);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);

@@ -23,6 +23,12 @@ anyhow = "1"
 thiserror = "2"
 log = "0.4"
 env_logger = "0.11"
+chrono = { version = "0.4", features = ["serde"] }
+# Direct SQLite read/write of the notification daemon's history DB
+# (`~/.local/share/lunaris/notifications.db`) for the per-app picker
+# and the "clear history" action. SQLite handles concurrent access with
+# the daemon transparently via its file locking.
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 # Lunaris titlebar plugin: binds lunaris-titlebar-v1 Wayland protocol when
 # running under the Lunaris compositor, no-op otherwise. The graceful

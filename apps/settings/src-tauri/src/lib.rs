@@ -27,6 +27,11 @@ pub fn run() {
             commands::theme::theme_get,
             commands::theme::theme_set_mode,
             commands::theme::theme_set_accent,
+            commands::notifications::notifications_get_known_apps,
+            commands::notifications::notifications_clear_history,
+            commands::notifications::notifications_test_notification,
+            commands::notifications::notifications_dnd_expiry_in,
+            commands::notifications::notifications_dnd_expiry_until_morning,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

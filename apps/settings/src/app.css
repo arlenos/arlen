@@ -170,19 +170,10 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
-}
-
-/* Interactive controls should not have selectable labels -- selecting the
-   text of a button on mouse-drag feels like a bug. Inputs, textareas and
-   anything with [data-selectable] opt back in. */
-button,
-[role="button"],
-[role="radio"],
-[role="tab"],
-[role="option"],
-[role="menuitem"],
-label,
-.select-none {
+  /* App-wide default: nothing is selectable, except real text-entry
+     controls (and anything that opts back in via [data-selectable]).
+     Selecting the label of a button or pill on mouse-drag feels like
+     a bug in a settings UI. */
   -webkit-user-select: none;
   user-select: none;
 }
@@ -193,4 +184,24 @@ textarea,
 [data-selectable] {
   -webkit-user-select: auto;
   user-select: auto;
+}
+
+/* Scrollbar styling — thumb follows the runtime corner radius so it
+   visually matches every other rounded surface in the app. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--foreground) 18%, transparent);
+  border-radius: var(--radius-md);
+  border: 2px solid var(--background);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--foreground) 30%, transparent);
+  background-clip: padding-box;
 }
