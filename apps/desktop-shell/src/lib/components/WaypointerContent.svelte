@@ -21,8 +21,15 @@
     Command, CommandInput, CommandList, CommandEmpty,
     CommandGroup, CommandItem, CommandSeparator, CommandShortcut,
   } from "$lib/components/ui/command/index.js";
-  import { Search, AppWindow, Calculator, ArrowRightLeft, TerminalSquare, BookOpen, Clock, Globe, Link, Skull, FolderKanban, X } from "lucide-svelte";
+  import { Search, AppWindow, Calculator, ArrowRightLeft, TerminalSquare, BookOpen, Clock, Globe, Link, Skull, FolderKanban, X, Settings2 } from "lucide-svelte";
   import { activeProjects, activateFocus, deactivateFocus, isFocused, focusState } from "$lib/stores/projects.js";
+  import {
+    settingsResults, searchSettings, clearSettingsResults,
+    reloadSettingsIndex, setSettingValue, openSettingsDeepLink,
+    type SettingsResult,
+  } from "$lib/stores/settingsSearch.js";
+  import WaypointerInlineToggle from "./WaypointerInlineToggle.svelte";
+  import WaypointerInlinePills from "./WaypointerInlinePills.svelte";
 
   let query = $state("");
   let inputRef = $state<HTMLInputElement | null>(null);
@@ -82,6 +89,7 @@
     searchTimer = setTimeout(() => {
       doSearch(q);
       updateWindowResults(q);
+      searchSettings(q);
     }, 100);
   }
 
@@ -95,7 +103,9 @@
     clearWindowResults();
     clearProcessResults();
     clearUnicodeResults();
+    clearSettingsResults();
     searchResults.set(allApps);
+    reloadSettingsIndex();
     // Scroll list to top. Focus is handled by Rust eval() immediately
     // after show() -- no setTimeout needed here.
     if (listRef) listRef.scrollTop = 0;
@@ -619,6 +629,47 @@
                   <span class="wp-app-name">{project.name}</span>
                   <span class="wp-app-desc">{project.rootPath}</span>
                 </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+          <CommandSeparator />
+        {/if}
+
+        {#if $settingsResults.length > 0}
+          <CommandGroup heading="Settings">
+            {#each $settingsResults as sr (sr.setting.id)}
+              <CommandItem
+                value={`setting-${sr.setting.id}`}
+                onSelect={() => {
+                  openSettingsDeepLink(sr.setting.panel, sr.setting.deepLink.split('#')[1]);
+                  close();
+                }}
+              >
+                <Settings2 size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
+                <div class="wp-app-info" style="flex: 1; min-width: 0;">
+                  <span class="wp-app-name">{sr.setting.title}</span>
+                  <span class="wp-app-desc">{sr.setting.section}</span>
+                </div>
+                {#if sr.setting.inlineAction?.actionType === "toggle"}
+                  {@const ia = sr.setting.inlineAction}
+                  <WaypointerInlineToggle
+                    checked={sr.currentValue === true}
+                    onchange={async (v) => {
+                      await setSettingValue(ia.configFile, ia.configKey, v);
+                      searchSettings(query);
+                    }}
+                  />
+                {:else if sr.setting.inlineAction?.actionType === "select" && sr.setting.inlineAction?.options}
+                  {@const ia = sr.setting.inlineAction}
+                  <WaypointerInlinePills
+                    value={String(sr.currentValue ?? "")}
+                    options={ia.options ?? []}
+                    onchange={async (v) => {
+                      await setSettingValue(ia.configFile, ia.configKey, v);
+                      searchSettings(query);
+                    }}
+                  />
+                {/if}
               </CommandItem>
             {/each}
           </CommandGroup>

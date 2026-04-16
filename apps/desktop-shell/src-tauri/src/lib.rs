@@ -18,6 +18,7 @@ mod permissions;
 mod projects;
 mod sni;
 mod shell_overlay_client;
+mod settings_provider;
 mod shell_runner;
 mod system_toggles;
 mod theme;
@@ -257,6 +258,10 @@ pub fn run() {
             notifications::notification_set_dnd,
             notifications::notification_get_history,
             notifications::notification_get_known_apps,
+            settings_provider::settings_reload_index,
+            settings_provider::settings_search,
+            settings_provider::settings_set_value,
+            settings_provider::settings_open_deep_link,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
