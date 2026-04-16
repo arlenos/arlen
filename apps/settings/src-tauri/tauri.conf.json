@@ -21,6 +21,7 @@
         "resizable": true,
         "decorations": false,
         "transparent": false,
+        "visible": false,
         "devtools": true
       }
     ],

@@ -6,7 +6,7 @@
   /// the attribute-based path is unreliable on Wayland in Tauri v2.
   import { breadcrumbs } from "$lib/stores/navigation";
   import { SidebarTrigger } from "$lib/components/ui/sidebar";
-  import Separator from "$lib/components/ui/separator.svelte";
+  import { Separator } from "$lib/components/ui/separator";
   import WindowControls from "./WindowControls.svelte";
   import { ChevronRight } from "lucide-svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
