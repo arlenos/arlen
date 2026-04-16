@@ -585,8 +585,18 @@ fn run_audio_monitor(app: tauri::AppHandle) {
 
         log::info!("audio: pactl subscribe monitor started");
 
-        let stdout = child.stdout.unwrap();
+        let Some(stdout) = child.stdout else {
+            log::error!("audio: pactl stdout not piped");
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            continue;
+        };
         let reader = std::io::BufReader::new(stdout);
+
+        // Debounce: PulseAudio fires bursts of events for a single
+        // user action (e.g. a volume change emits 3-5 events in <50ms).
+        // Coalesce into one frontend event per 150ms window.
+        let mut last_emit = std::time::Instant::now()
+            - std::time::Duration::from_secs(1);
 
         for line in reader.lines() {
             let Ok(line) = line else { break };
@@ -594,7 +604,11 @@ fn run_audio_monitor(app: tauri::AppHandle) {
             // Event 'change' on sink #123
             // Event 'change' on source #456
             if line.contains("sink") || line.contains("source") || line.contains("server") {
-                let _ = app.emit("audio-changed", ());
+                let now = std::time::Instant::now();
+                if now.duration_since(last_emit) >= std::time::Duration::from_millis(150) {
+                    let _ = app.emit("audio-changed", ());
+                    last_emit = now;
+                }
             }
         }
 

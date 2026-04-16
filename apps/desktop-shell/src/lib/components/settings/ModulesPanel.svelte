@@ -4,7 +4,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
-  import { Switch } from "$lib/components/ui/switch/index.js";
+  import Switch from "$lib/components/ui/switch/switch.svelte";
   import {
     Puzzle, AlertTriangle, RefreshCw,
     ChevronDown, ChevronUp,
@@ -123,8 +123,8 @@
                 </button>
               {:else}
                 <Switch
-                  checked={mod_item.enabled}
-                  onCheckedChange={() => toggleModule(mod_item.id, !mod_item.enabled)}
+                  value={mod_item.enabled}
+                  onchange={() => toggleModule(mod_item.id, !mod_item.enabled)}
                 />
               {/if}
 

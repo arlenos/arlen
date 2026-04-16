@@ -237,11 +237,14 @@ pub fn apply_window_overrides(
 ) -> ThemeTokens {
     if let Some(radius) = window.corner_radius {
         let md = radius;
-        // Derive sm and lg so the whole scale shifts with the slider.
-        // Minimum sm = 2px, maximum lg = 2x md (matches the built-in
-        // dark.toml ratio of 4/8/12).
-        let sm = md.saturating_sub(4).max(2);
-        let lg = md.saturating_add(4);
+        // When md = 0 the user explicitly wants sharp corners everywhere,
+        // so sm and lg must also be 0. Otherwise derive the scale with
+        // the same 4px step as the built-in dark.toml (4/8/12).
+        let (sm, lg) = if md == 0 {
+            (0u32, 0u32)
+        } else {
+            (md.saturating_sub(4).max(2), md.saturating_add(4))
+        };
         tokens.radius.sm = format!("{sm}px");
         tokens.radius.md = format!("{md}px");
         tokens.radius.lg = format!("{lg}px");

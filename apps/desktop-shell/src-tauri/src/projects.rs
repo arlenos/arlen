@@ -174,7 +174,7 @@ pub async fn list_projects() -> Result<Vec<Project>, String> {
     ) {
         Ok(r) => r,
         Err(e) => {
-            log::debug!("list_projects: graph query failed: {e}");
+            log::info!("list_projects: graph query failed (is knowledge daemon running?): {e}");
             return Ok(Vec::new());
         }
     };

@@ -82,6 +82,14 @@
       }
     }
   });
+
+  // Clean up hover timer on component destroy to prevent stale
+  // invoke() calls after unmount.
+  $effect(() => {
+    return () => {
+      if (hoverTimer) clearTimeout(hoverTimer);
+    };
+  });
 </script>
 
 {#if $primaryWorkspaces.length > 0}

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { writable } from "svelte/store";
+  import { writable } from "$lib/stores/svelteRe.js";
   import { waypointerVisible, initWaypointerListeners, closeWaypointer } from "$lib/stores/waypointer.js";
   import {
     fetchAllApps, searchApps, launchApp as launchAppCmd, evaluateInput, executeShellCommand,
@@ -22,7 +22,7 @@
     CommandGroup, CommandItem, CommandSeparator, CommandShortcut,
   } from "$lib/components/ui/command/index.js";
   import { Search, AppWindow, Calculator, ArrowRightLeft, TerminalSquare, BookOpen, Clock, Globe, Link, Skull, FolderKanban, X, Settings2 } from "lucide-svelte";
-  import { activeProjects, activateFocus, deactivateFocus, isFocused, focusState } from "$lib/stores/projects.js";
+  import { activeProjects, activateFocus, deactivateFocus, isFocused, focusState, loadProjects } from "$lib/stores/projects.js";
   import {
     settingsResults, searchSettings, clearSettingsResults,
     reloadSettingsIndex, openSettingsDeepLink,
@@ -112,6 +112,10 @@
 
   function open() {
     console.time("wp-open");
+    // Re-load projects on every Waypointer open. If the Knowledge
+    // daemon wasn't running at shell startup, this is the retry that
+    // picks up newly-available data without a shell restart.
+    loadProjects();
     query = "";
     commandValue = "";
     inlineResult.set(null);
@@ -567,7 +571,7 @@
 
         {#if $windowResults.length > 0}
           <CommandGroup heading="Windows">
-            {#each $windowResults as win}
+            {#each $windowResults as win (win.id)}
               {@const icon = appIconFor(win.app_id)}
               <CommandItem
                 value={`window-${win.id}`}
@@ -597,7 +601,7 @@
 
         {#if $processResults.length > 0}
           <CommandGroup heading="Processes (Enter: SIGTERM / Shift+Enter: SIGKILL)">
-            {#each $processResults as proc}
+            {#each $processResults as proc (proc.pid)}
               {@const procIcon = appIconFor(proc.name)}
               <CommandItem
                 value={`proc-${proc.pid}`}
@@ -624,7 +628,7 @@
 
         {#if $unicodeResults.length > 0}
           <CommandGroup heading="Unicode">
-            {#each $unicodeResults as uc}
+            {#each $unicodeResults as uc (uc.codepoint)}
               <CommandItem
                 value={`unicode-${uc.codepoint}`}
                 onSelect={() => copyUnicodeChar(uc)}
@@ -691,7 +695,7 @@
 
         {#if $searchResults.length > 0}
           <CommandGroup heading="Applications">
-            {#each $searchResults as app}
+            {#each $searchResults as app, i (app.name + i)}
               <CommandItem
                 value={app.name}
                 onSelect={() => launchAppAndClose(app)}

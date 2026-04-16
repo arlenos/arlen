@@ -79,8 +79,8 @@
     height: 14px;
     padding: 0 3px;
     border-radius: var(--radius-md);
-    background: #ef4444;
-    color: #fff;
+    background: var(--color-error);
+    color: var(--color-fg-inverse);
     font-size: 0.5625rem;
     font-weight: 700;
     line-height: 14px;
