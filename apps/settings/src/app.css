@@ -188,6 +188,24 @@ textarea,
 
 /* Scrollbar styling — thumb follows the runtime corner radius so it
    visually matches every other rounded surface in the app. */
+/* Deep-link highlight: the settings:navigate handler adds this class
+   to the target element. Holds a tinted background + left accent
+   border for 70% of the duration so the user has time to spot it,
+   then fades out cleanly. */
+.setting-highlight {
+  animation: setting-pulse 3s ease-out forwards !important;
+}
+@keyframes setting-pulse {
+  0%, 70% {
+    background-color: color-mix(in srgb, var(--color-accent) 20%, transparent);
+    border-left: 3px solid var(--color-accent);
+  }
+  100% {
+    background-color: transparent;
+    border-left: 3px solid transparent;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

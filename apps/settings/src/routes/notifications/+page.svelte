@@ -368,7 +368,7 @@
           </Row>
         {/if}
 
-        <Row label="Suppress when fullscreen">
+        <Row label="Suppress when fullscreen" id="suppress-fullscreen">
           {#snippet control()}
             <Switch
               value={dnd.suppress_fullscreen ?? true}
@@ -381,7 +381,7 @@
 
       <!-- ── LISTS ────────────────────────────────── -->
       <Group label="Lists">
-        <Row label="Always allow">
+        <Row label="Always allow" id="always-allow">
           {#snippet control()}
             <div class="list-control">
               <AppPicker
@@ -404,7 +404,7 @@
             </div>
           {/snippet}
         </Row>
-        <Row label="Always suppress">
+        <Row label="Always suppress" id="always-suppress">
           {#snippet control()}
             <div class="list-control">
               <AppPicker
@@ -432,7 +432,7 @@
 
       <!-- ── TOAST APPEARANCE ────────────────────────────────── -->
       <Group label="Toast Appearance">
-        <Row label="Position">
+        <Row label="Position" id="toast-position">
           {#snippet control()}
             <PositionPicker
               value={toast.position ?? "top-right"}
@@ -440,7 +440,7 @@
             />
           {/snippet}
         </Row>
-        <Row label="Width">
+        <Row label="Width" id="toast-width">
           {#snippet control()}
             <ValueSlider
               value={toast.width ?? 380}
@@ -453,7 +453,7 @@
             />
           {/snippet}
         </Row>
-        <Row label="Animation">
+        <Row label="Animation" id="toast-animation">
           {#snippet control()}
             <div class="seg">
               {#each ["slide", "fade", "none"] as a (a)}
@@ -473,7 +473,7 @@
 
       <!-- ── TIMING ────────────────────────────────── -->
       <Group label="Timing">
-        <Row label="Normal duration">
+        <Row label="Normal duration" id="toast-duration-normal">
           {#snippet control()}
             <ValueSlider
               value={general.toast_duration_normal ?? 4000}
@@ -486,7 +486,7 @@
             />
           {/snippet}
         </Row>
-        <Row label="High priority duration">
+        <Row label="High priority duration" id="toast-duration-high">
           {#snippet control()}
             <ValueSlider
               value={general.toast_duration_high ?? 8000}
@@ -499,7 +499,7 @@
             />
           {/snippet}
         </Row>
-        <Row label="Max visible">
+        <Row label="Max visible" id="max-visible">
           {#snippet control()}
             <ValueSlider
               value={general.max_visible_toasts ?? 5}
@@ -537,7 +537,7 @@
 
       <!-- ── GROUPING ────────────────────────────────── -->
       <Group label="Grouping">
-        <Row label="Group by app">
+        <Row label="Group by app" id="group-by-app">
           {#snippet control()}
             <Switch
               value={grouping.by_app ?? true}
@@ -546,7 +546,7 @@
             />
           {/snippet}
         </Row>
-        <Row label="Stack similar">
+        <Row label="Stack similar" id="stack-similar">
           {#snippet control()}
             <Switch
               value={grouping.stack_similar ?? true}
@@ -555,7 +555,7 @@
             />
           {/snippet}
         </Row>
-        <Row label="Auto-collapse after">
+        <Row label="Auto-collapse after" id="auto-collapse">
           {#snippet control()}
             <ValueSlider
               value={grouping.auto_collapse_after ?? 3}
@@ -572,7 +572,7 @@
 
       <!-- ── HISTORY ────────────────────────────────── -->
       <Group label="History">
-        <Row label="Keep history">
+        <Row label="Keep history" id="history-enabled">
           {#snippet control()}
             <Switch
               value={history.enabled ?? true}
@@ -581,7 +581,7 @@
             />
           {/snippet}
         </Row>
-        <Row label="Maximum age">
+        <Row label="Maximum age" id="history-max-age">
           {#snippet control()}
             <ValueSlider
               value={history.max_age_days ?? 30}
@@ -594,7 +594,7 @@
             />
           {/snippet}
         </Row>
-        <Row label="Maximum count">
+        <Row label="Maximum count" id="history-max-count">
           {#snippet control()}
             <ValueSlider
               value={history.max_count ?? 1000}

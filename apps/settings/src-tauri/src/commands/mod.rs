@@ -3,4 +3,5 @@
 pub mod config;
 pub mod modules;
 pub mod notifications;
+pub mod search;
 pub mod theme;

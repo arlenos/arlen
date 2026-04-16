@@ -108,12 +108,12 @@
   {:else}
     <div class="groups">
       <Group label="Theme">
-        <Row label="Mode">
+        <Row label="Mode" id="theme-mode">
           {#snippet control()}
             <ModeToggle value={currentMode} onchange={setMode} />
           {/snippet}
         </Row>
-        <Row label="Accent">
+        <Row label="Accent" id="accent-color">
           {#snippet control()}
             <AccentPicker
               value={currentAccent}
@@ -125,7 +125,7 @@
       </Group>
 
       <Group label="Window">
-        <Row label="Corner Radius">
+        <Row label="Corner Radius" id="corner-radius">
           {#snippet preview()}
             <div
               class="radius-preview"
@@ -144,7 +144,7 @@
             />
           {/snippet}
         </Row>
-        <Row label="Border Width">
+        <Row label="Border Width" id="border-width">
           {#snippet preview()}
             <div
               class="border-preview"
@@ -163,7 +163,7 @@
             />
           {/snippet}
         </Row>
-        <Row label="Gaps">
+        <Row label="Gaps" id="gaps">
           {#snippet preview()}
             <div class="gap-preview" style="gap: {Math.min(gaps, 6)}px;">
               <span></span>
@@ -182,7 +182,7 @@
             />
           {/snippet}
         </Row>
-        <Row label="Smart Gaps">
+        <Row label="Smart Gaps" id="smart-gaps">
           {#snippet control()}
             <Switch
               value={gapSmart}
@@ -194,7 +194,7 @@
       </Group>
 
       <Group label="Window Borders">
-        <Row label="Focused">
+        <Row label="Focused" id="border-focused">
           {#snippet control()}
             <BorderColorPicker
               value={borderFocused}
@@ -205,7 +205,7 @@
             />
           {/snippet}
         </Row>
-        <Row label="Unfocused">
+        <Row label="Unfocused" id="border-unfocused">
           {#snippet control()}
             <BorderColorPicker
               value={borderUnfocused}
@@ -219,7 +219,7 @@
       </Group>
 
       <Group label="Typography">
-        <Row label="Interface">
+        <Row label="Interface" id="font-interface">
           {#snippet control()}
             <FontSelect
               value={interfaceFont}
@@ -229,7 +229,7 @@
             />
           {/snippet}
         </Row>
-        <Row label="Monospace">
+        <Row label="Monospace" id="font-monospace">
           {#snippet control()}
             <FontSelect
               value={monospaceFont}
@@ -239,7 +239,7 @@
             />
           {/snippet}
         </Row>
-        <Row label="Size">
+        <Row label="Size" id="font-size">
           {#snippet preview()}
             <span
               class="size-preview"

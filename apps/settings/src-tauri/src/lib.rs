@@ -14,9 +14,16 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_lunaris_menu::init())
         .setup(|app| {
-            // Spawn the appearance.toml file watcher. It emits
-            // `config:appearance:changed` Tauri events to the frontend.
+            // Spawn the multi-file config watcher. It emits
+            // `config:{file}:changed` Tauri events to the frontend.
             config_watcher::start_appearance_watcher(app.handle().clone());
+
+            // Parse CLI arguments and stash them so the frontend can
+            // pull them via `get_launch_args()` after mount. This
+            // avoids the race where an event fires before the webview
+            // is ready.
+            commands::search::store_launch_args();
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -35,6 +42,8 @@ pub fn run() {
             commands::modules::modules_list,
             commands::modules::modules_set_enabled,
             commands::modules::modules_uninstall,
+            commands::search::export_settings_index,
+            commands::search::get_launch_args,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

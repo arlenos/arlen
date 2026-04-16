@@ -5,18 +5,21 @@
 
   let {
     label,
+    id: rowId,
     description,
     control,
     preview,
   }: {
     label: string;
+    /// Optional anchor id for deep-link scroll-to-setting.
+    id?: string;
     description?: string;
     control?: Snippet;
     preview?: Snippet;
   } = $props();
 </script>
 
-<div class="row">
+<div class="row" id={rowId}>
   <div class="label">
     <div class="label-title">{label}</div>
     {#if description}
