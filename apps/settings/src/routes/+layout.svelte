@@ -4,6 +4,7 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import AppSidebar from "$lib/components/AppSidebar.svelte";
   import SiteHeader from "$lib/components/SiteHeader.svelte";
   import {
@@ -43,6 +44,11 @@
     // Export the settings search index so Waypointer always has an
     // up-to-date copy at ~/.local/share/lunaris/settings-index.json.
     exportSettingsIndex();
+
+    // Show the window now that the DOM is rendered with the correct
+    // dark background. The window starts hidden (`"visible": false`
+    // in tauri.conf.json) to prevent a white flash while CSS loads.
+    getCurrentWindow().show().catch(() => {});
 
     // Live reload on config watcher events from the backend.
     let unlistenAppearance: UnlistenFn | undefined;

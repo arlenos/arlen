@@ -13,6 +13,7 @@
     "core:window:allow-unmaximize",
     "core:window:allow-is-maximized",
     "core:window:allow-close",
+    "core:window:allow-show",
     "lunaris-menu:allow-set-breadcrumb",
     "lunaris-menu:allow-set-title"
   ]
