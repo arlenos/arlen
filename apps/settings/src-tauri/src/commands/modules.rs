@@ -14,7 +14,7 @@
 
 use std::path::{Path, PathBuf};
 
-use lunaris_modules::{load_manifest, parse_manifest, ModuleManifest, ModuleType};
+use lunaris_modules::{load_manifest, ModuleType};
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -122,9 +122,145 @@ fn module_type_str(t: ModuleType) -> &'static str {
     }
 }
 
-/// Try every `manifest.toml` under `dir`. We use `parse_manifest` rather
-/// than `load_manifest` so a missing `entry` file is just a warning —
-/// the Settings app should show invalid modules too, not hide them.
+// ---------------------------------------------------------------------------
+// Lenient manifest parser
+// ---------------------------------------------------------------------------
+
+/// Mirror of `lunaris_modules::ModuleMeta` but with every field
+/// optional so the Settings app can show broken/incomplete manifests
+/// with warnings instead of silently hiding them. The strict SDK
+/// parser is still used for validation — this struct is only for
+/// initial deserialization.
+#[derive(Debug, Clone, Deserialize)]
+struct LenientMeta {
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(rename = "type", default)]
+    module_type: Option<String>,
+    #[serde(default)]
+    icon: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct LenientManifest {
+    #[serde(default)]
+    module: Option<LenientMeta>,
+    #[serde(default)]
+    waypointer: Option<toml::Value>,
+    #[serde(default)]
+    topbar: Option<toml::Value>,
+    #[serde(default)]
+    settings: Option<toml::Value>,
+}
+
+/// Parse a manifest leniently, returning a `ModuleSummary` even when
+/// required fields are missing. Missing fields generate warnings that
+/// the UI displays. Returns `None` only if the TOML itself is
+/// unparseable (syntax error).
+fn parse_lenient(
+    content: &str,
+    manifest_path: &Path,
+    module_dir: &Path,
+    source: ModuleSource,
+    disabled: &[String],
+) -> Option<ModuleSummary> {
+    let manifest: LenientManifest = match toml::from_str(content) {
+        Ok(m) => m,
+        Err(e) => {
+            log::warn!(
+                "modules: TOML syntax error in {}: {e}",
+                manifest_path.display()
+            );
+            return None;
+        }
+    };
+
+    let mut warnings: Vec<String> = Vec::new();
+
+    let meta = manifest.module.unwrap_or_else(|| {
+        warnings.push("[module] section is missing".into());
+        LenientMeta {
+            id: None,
+            name: None,
+            version: None,
+            description: None,
+            module_type: None,
+            icon: None,
+        }
+    });
+
+    let id = meta.id.unwrap_or_else(|| {
+        warnings.push("module.id is missing".into());
+        module_dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+            .to_string()
+    });
+
+    let name = meta.name.unwrap_or_else(|| {
+        warnings.push("module.name is missing".into());
+        id.clone()
+    });
+
+    let version = meta.version.unwrap_or_else(|| {
+        warnings.push("module.version is missing".into());
+        "0.0.0".into()
+    });
+
+    let description = meta.description.unwrap_or_default();
+    let icon = meta.icon.unwrap_or_default();
+
+    let module_type_raw = meta.module_type.unwrap_or_else(|| "third-party".into());
+    let module_type = match module_type_raw.as_str() {
+        "system" => ModuleType::System,
+        "first-party" => ModuleType::FirstParty,
+        _ => ModuleType::ThirdParty,
+    };
+
+    // Try strict SDK validation for additional warnings.
+    if let Ok(strict) = lunaris_modules::parse_manifest(content) {
+        for w in lunaris_modules::validate_manifest(&strict) {
+            warnings.push(format!("{}: {}", w.field, w.message));
+        }
+    }
+
+    // Check entry file existence as a non-fatal warning.
+    if let Err(e) = load_manifest(manifest_path) {
+        let msg = e.to_string();
+        if !warnings.iter().any(|w| w.contains(&msg)) {
+            warnings.push(format!("load: {msg}"));
+        }
+    }
+
+    let enabled = !disabled.contains(&id);
+
+    Some(ModuleSummary {
+        id,
+        name,
+        version,
+        description,
+        author: String::new(),
+        module_type: module_type_str(module_type).into(),
+        source,
+        enabled,
+        has_waypointer: manifest.waypointer.is_some(),
+        has_topbar: manifest.topbar.is_some(),
+        has_settings: manifest.settings.is_some(),
+        icon,
+        path: module_dir.to_string_lossy().into_owned(),
+        warnings,
+    })
+}
+
+/// Scan a directory for modules. Uses the lenient parser so incomplete
+/// manifests still appear in the list with warnings.
 fn scan_dir(dir: &Path, source: ModuleSource, disabled: &[String]) -> Vec<ModuleSummary> {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
@@ -155,53 +291,7 @@ fn load_one(
     disabled: &[String],
 ) -> Option<ModuleSummary> {
     let content = std::fs::read_to_string(manifest_path).ok()?;
-    let manifest: ModuleManifest = match parse_manifest(&content) {
-        Ok(m) => m,
-        Err(e) => {
-            log::warn!(
-                "modules: failed to parse {}: {e}",
-                manifest_path.display()
-            );
-            return None;
-        }
-    };
-
-    let mut warnings: Vec<String> = lunaris_modules::validate_manifest(&manifest)
-        .into_iter()
-        .map(|w| format!("{}: {}", w.field, w.message))
-        .collect();
-
-    // Fall back to a "try-load" to surface missing-entry errors as
-    // an extra warning; a missing entry file doesn't block the module
-    // from appearing in the list.
-    if let Err(e) = load_manifest(manifest_path) {
-        if !matches!(e, lunaris_modules::ManifestError::Io(_)) {
-            warnings.push(format!("load: {e}"));
-        }
-    }
-
-    let enabled = !disabled.contains(&manifest.module.id);
-
-    // We don't have an author field in the SDK struct today; fall back
-    // to empty string. The UI shows a placeholder in that case.
-    let author = String::new();
-
-    Some(ModuleSummary {
-        id: manifest.module.id.clone(),
-        name: manifest.module.name,
-        version: manifest.module.version,
-        description: manifest.module.description,
-        author,
-        module_type: module_type_str(manifest.module.module_type).into(),
-        source,
-        enabled,
-        has_waypointer: manifest.waypointer.is_some(),
-        has_topbar: manifest.topbar.is_some(),
-        has_settings: manifest.settings.is_some(),
-        icon: manifest.module.icon,
-        path: module_dir.to_string_lossy().into_owned(),
-        warnings,
-    })
+    parse_lenient(&content, manifest_path, module_dir, source, disabled)
 }
 
 // ---------------------------------------------------------------------------
@@ -213,15 +303,26 @@ fn load_one(
 #[tauri::command]
 pub fn modules_list() -> Vec<ModuleSummary> {
     let disabled = load_disabled_list();
+    let sys_dir = system_modules_dir();
+    let usr_dir = user_modules_dir();
+    log::info!(
+        "modules_list: scanning system={} user={}",
+        sys_dir.display(),
+        usr_dir.display()
+    );
+
     let mut map: std::collections::HashMap<String, ModuleSummary> =
         std::collections::HashMap::new();
 
-    for m in scan_dir(&system_modules_dir(), ModuleSource::System, &disabled) {
+    for m in scan_dir(&sys_dir, ModuleSource::System, &disabled) {
+        log::info!("modules_list: found system module '{}' ({})", m.id, m.name);
         map.insert(m.id.clone(), m);
     }
-    for m in scan_dir(&user_modules_dir(), ModuleSource::User, &disabled) {
+    for m in scan_dir(&usr_dir, ModuleSource::User, &disabled) {
+        log::info!("modules_list: found user module '{}' ({})", m.id, m.name);
         map.insert(m.id.clone(), m);
     }
+    log::info!("modules_list: total {} modules", map.len());
 
     let mut out: Vec<_> = map.into_values().collect();
     out.sort_by(|a, b| {
