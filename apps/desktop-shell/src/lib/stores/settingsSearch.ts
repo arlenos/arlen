@@ -71,6 +71,20 @@ export function clearSettingsResults(): void {
   set([]);
 }
 
+/// Read the current value of a setting's config key. Used lazily by
+/// inline action components after the result is rendered — NOT during
+/// bulk search (avoids TOML I/O per keystroke).
+export async function getSettingValue(
+  configFile: string,
+  configKey: string,
+): Promise<unknown> {
+  try {
+    return await invoke("settings_get_value", { configFile, configKey });
+  } catch {
+    return null;
+  }
+}
+
 /// Write a value via the generic config writer. The file watchers
 /// in the daemon / shell / compositor pick up the change.
 export async function setSettingValue(

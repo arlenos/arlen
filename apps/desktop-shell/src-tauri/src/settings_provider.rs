@@ -229,8 +229,12 @@ pub fn settings_reload_index() -> usize {
     idx.len()
 }
 
-/// Search the settings index. Returns up to `limit` results with
-/// their current config values pre-read for inline actions.
+/// Search the settings index. Returns up to `limit` results.
+///
+/// Current config values for inline actions are read lazily by the
+/// frontend via `settings_get_value` — NOT during the search itself.
+/// This avoids 1-5 TOML file reads per keystroke which was the main
+/// performance bottleneck.
 #[tauri::command]
 pub fn settings_search(query: String, limit: u32) -> Vec<SettingsSearchResult> {
     let settings = ensure_index();
@@ -279,21 +283,26 @@ pub fn settings_search(query: String, limit: u32) -> Vec<SettingsSearchResult> {
             }
         }
 
-        // Pre-read the current value for inline actions.
-        let current_value = setting.inline_action.as_ref().and_then(|ia| {
-            read_toml_key(&ia.config_file, &ia.config_key)
-        });
-
         results.push(SettingsSearchResult {
             setting: setting.clone(),
             score,
-            current_value,
+            current_value: None,
         });
     }
 
     results.sort_by(|a, b| b.score.cmp(&a.score));
     results.truncate(limit as usize);
     results
+}
+
+/// Read a single config value. Called by the frontend lazily when
+/// rendering an inline action, NOT during bulk search.
+#[tauri::command]
+pub fn settings_get_value(
+    config_file: String,
+    config_key: String,
+) -> Option<serde_json::Value> {
+    read_toml_key(&config_file, &config_key)
 }
 
 /// Write a config value for an inline action. The file watchers in

@@ -74,15 +74,25 @@ pub fn build_index() -> Vec<AppEntry> {
     }
 
     // Resolve icons for all entries.
+    let icon_start = std::time::Instant::now();
+    let mut icon_resolved = 0u32;
     for entry in &mut entries {
         if !entry.icon_name.is_empty() {
             entry.icon_data =
                 crate::shell_overlay_client::resolve_app_icon(entry.icon_name.clone());
+            if entry.icon_data.is_some() {
+                icon_resolved += 1;
+            }
         }
     }
+    log::info!(
+        "app_index: icon resolution took {:?} ({icon_resolved}/{} resolved)",
+        icon_start.elapsed(),
+        entries.len()
+    );
 
     entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    log::info!("app_index: indexed {} applications with icons", entries.len());
+    log::info!("app_index: indexed {} applications", entries.len());
     entries
 }
 
