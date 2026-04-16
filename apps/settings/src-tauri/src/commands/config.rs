@@ -237,14 +237,13 @@ pub fn config_get_default(
 }
 
 fn default_for(file: ConfigFile) -> toml::Value {
-    match file {
-        ConfigFile::Appearance => {
-            toml::from_str::<toml::Value>(DEFAULT_APPEARANCE).unwrap_or_else(|_| {
-                toml::Value::Table(toml::map::Map::new())
-            })
-        }
-        _ => toml::Value::Table(toml::map::Map::new()),
-    }
+    let raw = match file {
+        ConfigFile::Appearance => DEFAULT_APPEARANCE,
+        ConfigFile::Notifications => DEFAULT_NOTIFICATIONS,
+        _ => return toml::Value::Table(toml::map::Map::new()),
+    };
+    toml::from_str::<toml::Value>(raw)
+        .unwrap_or_else(|_| toml::Value::Table(toml::map::Map::new()))
 }
 
 /// Default appearance.toml shipped with the settings app. Matches the
@@ -268,4 +267,35 @@ size = 14
 
 [accessibility]
 reduce_motion = false
+"##;
+
+/// Default notifications.toml shipped with the settings app. Mirrors
+/// the daemon's `notification_daemon::config::Config::default()`.
+const DEFAULT_NOTIFICATIONS: &str = r##"
+[general]
+toast_duration_normal = 4000
+toast_duration_high = 8000
+max_visible_toasts = 5
+
+[dnd]
+mode = "off"
+suppress_fullscreen = false
+always_suppress = []
+always_allow = []
+
+[dnd.schedule]
+start = "22:00"
+end = "07:00"
+days = []
+mode = "priority"
+
+[history]
+enabled = true
+max_age_days = 30
+max_count = 1000
+
+[grouping]
+by_app = true
+stack_similar = true
+auto_collapse_after = 3
 "##;
