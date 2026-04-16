@@ -36,7 +36,7 @@
 
   import Group from "$lib/components/appearance/Group.svelte";
   import Row from "$lib/components/appearance/Row.svelte";
-  import Switch from "$lib/components/appearance/Switch.svelte";
+  import { Switch } from "$lib/components/ui/switch";
   import ValueSlider from "$lib/components/appearance/ValueSlider.svelte";
   import TimeInput from "$lib/components/appearance/TimeInput.svelte";
   import DaysPicker from "$lib/components/appearance/DaysPicker.svelte";

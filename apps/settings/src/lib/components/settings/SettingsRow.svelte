@@ -3,7 +3,7 @@
   /// optional reset button when the value differs from the default.
   import type { Snippet } from "svelte";
   import { RotateCcw } from "lucide-svelte";
-  import Button from "$lib/components/ui/button.svelte";
+  import { Button } from "$lib/components/ui/button";
 
   let {
     label,

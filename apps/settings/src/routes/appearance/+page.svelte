@@ -20,7 +20,7 @@
   import AccentPicker from "$lib/components/appearance/AccentPicker.svelte";
   import ValueSlider from "$lib/components/appearance/ValueSlider.svelte";
   import FontSelect from "$lib/components/appearance/FontSelect.svelte";
-  import Switch from "$lib/components/appearance/Switch.svelte";
+  import { Switch } from "$lib/components/ui/switch";
   import BorderColorPicker from "$lib/components/appearance/BorderColorPicker.svelte";
 
   onMount(() => {

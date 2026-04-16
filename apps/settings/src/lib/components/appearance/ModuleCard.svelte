@@ -12,7 +12,7 @@
     Settings2,
     AlertTriangle,
   } from "lucide-svelte";
-  import Switch from "./Switch.svelte";
+  import { Switch } from "$lib/components/ui/switch";
   import type { ModuleSummary } from "$lib/stores/modules";
 
   let {
