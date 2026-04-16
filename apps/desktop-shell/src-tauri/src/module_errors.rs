@@ -158,12 +158,18 @@ pub fn record_module_error(
     loader: tauri::State<'_, crate::modules::ModuleLoaderState>,
     app: tauri::AppHandle,
 ) -> bool {
-    let mut tracker = tracker.lock().unwrap();
-    let just_disabled = tracker.record_error(&module_id, &error);
+    // Acquire tracker, record the error, then DROP the lock before
+    // touching the loader. Holding both locks simultaneously is a
+    // deadlock risk if any other code path acquires them in the
+    // opposite order.
+    let just_disabled = {
+        let mut tracker = tracker.lock().unwrap();
+        tracker.record_error(&module_id, &error)
+    }; // tracker lock dropped here
 
     if just_disabled {
         log::warn!("module {module_id} auto-disabled after {} errors", ERROR_THRESHOLD);
-        // Auto-disable in the loader.
+        // Auto-disable in the loader (safe: tracker lock already dropped).
         let mut loader = loader.lock().unwrap();
         loader.set_enabled(&module_id, false);
 

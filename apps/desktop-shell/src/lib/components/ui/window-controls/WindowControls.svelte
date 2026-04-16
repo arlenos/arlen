@@ -113,7 +113,7 @@
     height: 22px;
     padding: 0;
     opacity: 0.7;
-    transition: opacity 0.1s;
+    transition: opacity var(--duration-fast) var(--easing-default);
   }
 
   .window-buttons :global(.control-btn:hover) {
@@ -121,7 +121,7 @@
   }
 
   .window-buttons :global(.close-btn:hover) {
-    background-color: #ef4444;
+    background-color: var(--destructive);
     color: #ffffff;
   }
 </style>

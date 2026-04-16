@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { writable } from "svelte/store";
+  import { writable } from "$lib/stores/svelteRe.js";
   import { waypointerVisible, initWaypointerListeners, closeWaypointer } from "$lib/stores/waypointer.js";
   import {
     fetchAllApps, searchApps, launchApp as launchAppCmd, evaluateInput, executeShellCommand,
@@ -21,8 +21,13 @@
     Command, CommandInput, CommandList, CommandEmpty,
     CommandGroup, CommandItem, CommandSeparator, CommandShortcut,
   } from "$lib/components/ui/command/index.js";
-  import { Search, AppWindow, Calculator, ArrowRightLeft, TerminalSquare, BookOpen, Clock, Globe, Link, Skull, FolderKanban, X } from "lucide-svelte";
-  import { activeProjects, activateFocus, deactivateFocus, isFocused, focusState } from "$lib/stores/projects.js";
+  import { Search, AppWindow, Calculator, ArrowRightLeft, TerminalSquare, BookOpen, Clock, Globe, Link, Skull, FolderKanban, X, Settings2 } from "lucide-svelte";
+  import { activeProjects, activateFocus, deactivateFocus, isFocused, focusState, loadProjects } from "$lib/stores/projects.js";
+  import {
+    settingsResults, searchSettings, clearSettingsResults,
+    reloadSettingsIndex, openSettingsDeepLink,
+  } from "$lib/stores/settingsSearch.js";
+  import WaypointerSettingInline from "./WaypointerSettingInline.svelte";
 
   let query = $state("");
   let inputRef = $state<HTMLInputElement | null>(null);
@@ -61,32 +66,56 @@
   $effect(() => {
     if (_initialized) return;
     _initialized = true;
+    console.time("wp-init");
     initWaypointerListeners();
+    console.timeLog("wp-init", "listeners");
+    // Pre-load data that doesn't change during the shell session.
     fetchAllApps()
-      .then((apps) => { allApps = apps; searchResults.set(apps); })
-      .catch(() => {});
+      .then((apps) => {
+        console.timeLog("wp-init", `apps loaded (${apps.length})`);
+        allApps = apps;
+        searchResults.set(apps);
+        console.timeEnd("wp-init");
+      })
+      .catch(() => { console.timeEnd("wp-init"); });
+    reloadSettingsIndex();
   });
 
   function doSearch(q: string) {
     if (!q.trim()) {
-      searchResults.set(allApps);
+      searchResults.set(allApps.slice(0, 8));
       return;
     }
+    const t0 = performance.now();
     searchApps(q)
-      .then((r) => { searchResults.set(r); })
+      .then((r) => {
+        console.log(`[wp-search] apps: ${(performance.now() - t0).toFixed(1)}ms (${r.length} results)`);
+        searchResults.set(r);
+      })
       .catch(() => { searchResults.set([]); });
   }
 
   function debouncedSearch(q: string) {
     if (searchTimer) clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => {
-      doSearch(q);
-      updateWindowResults(q);
-    }, 100);
+    console.time("wp-search-total");
+    doSearch(q);
+    const t0 = performance.now();
+    updateWindowResults(q);
+    console.log(`[wp-search] windows: ${(performance.now() - t0).toFixed(1)}ms`);
+    const t1 = performance.now();
+    searchSettings(q);
+    console.log(`[wp-search] settings: ${(performance.now() - t1).toFixed(1)}ms`);
+    requestAnimationFrame(() => {
+      console.timeEnd("wp-search-total");
+    });
   }
 
   function open() {
-    console.log("[waypointer] open, isFocused:", $isFocused, "focusState:", $focusState, "projects:", $activeProjects.length, "filtered:", filteredProjects.length);
+    console.time("wp-open");
+    // Re-load projects on every Waypointer open. If the Knowledge
+    // daemon wasn't running at shell startup, this is the retry that
+    // picks up newly-available data without a shell restart.
+    loadProjects();
     query = "";
     commandValue = "";
     inlineResult.set(null);
@@ -95,10 +124,18 @@
     clearWindowResults();
     clearProcessResults();
     clearUnicodeResults();
-    searchResults.set(allApps);
-    // Scroll list to top. Focus is handled by Rust eval() immediately
-    // after show() -- no setTimeout needed here.
+    clearSettingsResults();
+    console.timeLog("wp-open", "stores cleared");
+    // Show max 8 suggested apps on empty query instead of ALL apps.
+    // Rendering 100-200 CommandItems with base64 icons was the main
+    // bottleneck — each open created hundreds of DOM nodes.
+    searchResults.set(allApps.slice(0, 8));
+    console.timeLog("wp-open", `set ${Math.min(8, allApps.length)}/${allApps.length} apps`);
     if (listRef) listRef.scrollTop = 0;
+    // Measure when the browser actually paints.
+    requestAnimationFrame(() => {
+      console.timeEnd("wp-open");
+    });
   }
 
   // Watch visibility and call open() when shown.
@@ -396,8 +433,11 @@
           inlineResult.set(null);
           return;
         }
+        const evalT0 = performance.now();
         evaluateInput(q)
           .then((r) => {
+            console.log(`[wp-search] evaluate: ${(performance.now() - evalT0).toFixed(1)}ms`);
+
             inlineResult.set(r);
             // DOM fallback: bypass Svelte reactivity.
             const el = document.getElementById("wp-inline-result");
@@ -522,15 +562,16 @@
         class="wp-list {kbActive ? 'wp-kb-active' : ''}"
         bind:ref={listRef}
       >
-        <CommandEmpty>
-          {#if !$inlineResult}
-            No results found.
-          {/if}
-        </CommandEmpty>
+        <!-- CommandEmpty is unusable with shouldFilter={false} because
+             cmdk always reports 0 internal matches. Use our own check
+             across all provider stores instead. -->
+        {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $unicodeResults.length === 0 && filteredProjects.length === 0 && query.trim().length > 0}
+          <div class="wp-empty">No results found.</div>
+        {/if}
 
         {#if $windowResults.length > 0}
           <CommandGroup heading="Windows">
-            {#each $windowResults as win}
+            {#each $windowResults as win (win.id)}
               {@const icon = appIconFor(win.app_id)}
               <CommandItem
                 value={`window-${win.id}`}
@@ -560,7 +601,7 @@
 
         {#if $processResults.length > 0}
           <CommandGroup heading="Processes (Enter: SIGTERM / Shift+Enter: SIGKILL)">
-            {#each $processResults as proc}
+            {#each $processResults as proc (proc.pid)}
               {@const procIcon = appIconFor(proc.name)}
               <CommandItem
                 value={`proc-${proc.pid}`}
@@ -587,7 +628,7 @@
 
         {#if $unicodeResults.length > 0}
           <CommandGroup heading="Unicode">
-            {#each $unicodeResults as uc}
+            {#each $unicodeResults as uc (uc.codepoint)}
               <CommandItem
                 value={`unicode-${uc.codepoint}`}
                 onSelect={() => copyUnicodeChar(uc)}
@@ -625,9 +666,36 @@
           <CommandSeparator />
         {/if}
 
+        {#if $settingsResults.length > 0}
+          <CommandGroup heading="Settings">
+            {#each $settingsResults as sr (sr.setting.id)}
+              <CommandItem
+                value={`setting-${sr.setting.id}`}
+                onSelect={() => {
+                  openSettingsDeepLink(sr.setting.panel, sr.setting.deepLink.split('#')[1]);
+                  close();
+                }}
+              >
+                <Settings2 size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
+                <div class="wp-app-info" style="flex: 1; min-width: 0;">
+                  <span class="wp-app-name">{sr.setting.title}</span>
+                  <span class="wp-app-desc">{sr.setting.section}</span>
+                </div>
+                {#if sr.setting.inlineAction}
+                  <WaypointerSettingInline
+                    action={sr.setting.inlineAction}
+                    {query}
+                  />
+                {/if}
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+          <CommandSeparator />
+        {/if}
+
         {#if $searchResults.length > 0}
           <CommandGroup heading="Applications">
-            {#each $searchResults as app}
+            {#each $searchResults as app, i (app.name + i)}
               <CommandItem
                 value={app.name}
                 onSelect={() => launchAppAndClose(app)}
@@ -795,6 +863,13 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .wp-empty {
+    padding: 1.5rem 1rem;
+    text-align: center;
+    font-size: 0.8125rem;
+    color: color-mix(in srgb, var(--color-fg-shell) 45%, transparent);
   }
 
   /* Suppress pointer hover selection while navigating with keyboard. */

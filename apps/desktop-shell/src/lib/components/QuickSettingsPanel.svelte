@@ -62,6 +62,9 @@
     invoke<ShellConfig>("get_shell_config")
       .then((c) => { config = c; })
       .catch(() => {});
+    return () => {
+      if (saveTimeout) clearTimeout(saveTimeout);
+    };
   });
 
   $effect(() => {
@@ -278,7 +281,7 @@
   }
   .qs-toggle-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); color: var(--color-fg-shell); }
   .qs-toggle-btn.active { background: color-mix(in srgb, var(--color-accent) 15%, transparent); border-color: color-mix(in srgb, var(--color-accent) 30%, transparent); color: var(--color-fg-shell); }
-  .qs-toggle-btn.recording { color: #ef4444; border-color: color-mix(in srgb, #ef4444 40%, transparent); animation: qs-pulse 1.5s ease-in-out infinite; }
+  .qs-toggle-btn.recording { color: var(--color-error); border-color: color-mix(in srgb, var(--color-error) 40%, transparent); animation: qs-pulse 1.5s ease-in-out infinite; }
   @keyframes qs-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
   /* Brightness slider - same pattern as pop-slider in AudioPopover */

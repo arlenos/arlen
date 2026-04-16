@@ -7,6 +7,7 @@
   import { Separator } from "$lib/components/ui/separator/index.js";
   import { Layers, LayoutPanelLeft, Maximize } from "lucide-svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
+  import Switch from "$lib/components/ui/switch/switch.svelte";
 
   interface LayoutState {
     mode: string;
@@ -32,6 +33,13 @@
 
   $effect(() => {
     if ($activePopover === "layout") poll();
+  });
+
+  // Clean up debounce timer on destroy.
+  $effect(() => {
+    return () => {
+      if (saveTimeout) clearTimeout(saveTimeout);
+    };
   });
 
   function setMode(mode: string) {
@@ -125,16 +133,11 @@
       <!-- Smart Gaps -->
       <div class="toggle-row">
         <span class="toggle-label">Smart Gaps</span>
-        <button
-          class="smart-toggle"
-          class:active={state.smart_gaps}
-          onclick={toggleSmartGaps}
-          role="switch"
-          aria-checked={state.smart_gaps}
-          aria-label="Smart Gaps"
-        >
-          <span class="smart-toggle-thumb"></span>
-        </button>
+        <Switch
+          value={state.smart_gaps}
+          onchange={toggleSmartGaps}
+          ariaLabel="Smart Gaps"
+        />
       </div>
 
     </div>
@@ -191,20 +194,5 @@
   /* Smart gaps toggle */
   .toggle-row { display: flex; align-items: center; justify-content: space-between; }
   .toggle-label { font-size: 0.75rem; }
-  .smart-toggle {
-    position: relative; width: 36px; height: 20px; border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
-    border: none; cursor: pointer; padding: 0; flex-shrink: 0;
-    transition: background-color 150ms ease;
-  }
-  .smart-toggle:hover { background: color-mix(in srgb, var(--color-fg-shell) 30%, transparent); }
-  .smart-toggle.active { background: color-mix(in srgb, var(--color-accent) 60%, transparent); }
-  .smart-toggle-thumb {
-    position: absolute; top: 2px; left: 2px;
-    width: 16px; height: 16px; border-radius: var(--radius-md);
-    background: var(--color-fg-shell);
-    transition: transform 150ms ease;
-  }
-  .smart-toggle.active .smart-toggle-thumb { transform: translateX(16px); }
 
 </style>

@@ -18,6 +18,7 @@ mod permissions;
 mod projects;
 mod sni;
 mod shell_overlay_client;
+mod settings_provider;
 mod shell_runner;
 mod system_toggles;
 mod theme;
@@ -50,7 +51,9 @@ pub fn run() {
     let menu_store: menu_store::AppMenuStore =
         Arc::new(std::sync::Mutex::new(HashMap::new()));
     let menu_store_for_bridge = Arc::clone(&menu_store);
+    let t_app = std::time::Instant::now();
     let app_idx: app_index::AppIndex = Arc::new(std::sync::Mutex::new(app_index::build_index()));
+    log::info!("app_index: build took {:?}", t_app.elapsed());
     let sni_items: sni::SniItems = Arc::new(std::sync::Mutex::new(HashMap::new()));
     let module_loader: modules::ModuleLoaderState = std::sync::Mutex::new(modules::ModuleLoader::new());
     let error_tracker: module_errors::ErrorTrackerState = std::sync::Mutex::new(module_errors::ModuleErrorTracker::new());
@@ -257,6 +260,11 @@ pub fn run() {
             notifications::notification_set_dnd,
             notifications::notification_get_history,
             notifications::notification_get_known_apps,
+            settings_provider::settings_reload_index,
+            settings_provider::settings_search,
+            settings_provider::settings_get_value,
+            settings_provider::settings_set_value,
+            settings_provider::settings_open_deep_link,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

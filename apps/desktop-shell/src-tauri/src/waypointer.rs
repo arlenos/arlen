@@ -80,12 +80,16 @@ pub fn show(app: &AppHandle) {
     if WAYPOINTER_VISIBLE.load(Ordering::SeqCst) {
         return;
     }
+    let t0 = std::time::Instant::now();
     WAYPOINTER_VISIBLE.store(true, Ordering::SeqCst);
 
     if let Some(w) = app.get_webview_window("waypointer") {
         let _ = w.show();
         let _ = w.set_focus();
-        let _ = w.with_webview(|webview| {
+        log::info!("waypointer::show: tauri show+focus took {:?}", t0.elapsed());
+        let t0_gtk = t0;
+        let _ = w.with_webview(move |webview| {
+            let t0 = t0_gtk;
             use gtk::prelude::{Cast, GtkWindowExt, WidgetExt};
             use gtk::cairo::{RectangleInt, Region};
             use gtk_layer_shell::{KeyboardMode, LayerShell};
@@ -113,8 +117,10 @@ pub fn show(app: &AppHandle) {
             if let Some(display) = gtk::gdk::Display::default() {
                 display.flush();
             }
+            log::info!("waypointer::show: gtk layer-shell setup took {:?}", t0.elapsed());
         });
         let _ = app.emit("lunaris://waypointer-show", ());
+        log::info!("waypointer::show: event emitted at {:?}", t0.elapsed());
 
         // Focus the input immediately -- no delay. The DOM element persists
         // across show/hide cycles so it is always available.
