@@ -76,8 +76,13 @@
   $effect(() => {
     for (const appId of allAppIds) {
       if (!(appId in iconUrls)) {
+        // Mark as pending to avoid duplicate resolves.
+        iconUrls[appId] = null;
         resolveAppIcon(appId).then((url) => {
-          iconUrls = { ...iconUrls, [appId]: url };
+          // Mutate then reassign to trigger Svelte reactivity
+          // without O(n) object spread on every single icon.
+          iconUrls[appId] = url;
+          iconUrls = iconUrls;
         });
       }
     }
@@ -101,7 +106,7 @@
   >
     {#if mode === "pills"}
       <div class="indicator" role="group" aria-label="Workspaces">
-        {#each $primaryWorkspaces as ws, i}
+        {#each $primaryWorkspaces as ws, i (ws.id)}
           <button
             class="pill"
             class:pill-active={ws.active}
@@ -116,7 +121,7 @@
 
     {:else if mode === "dots"}
       <div class="indicator" role="group" aria-label="Workspaces">
-        {#each $primaryWorkspaces as ws, i}
+        {#each $primaryWorkspaces as ws, i (ws.id)}
           <button
             class="dot-btn"
             onclick={() => handleClick(ws.id)}
@@ -145,7 +150,7 @@
       onmouseleave={onOverlayLeave}
     >
       <div class="ws-cards">
-        {#each $primaryWorkspaces as ws, i}
+        {#each $primaryWorkspaces as ws, i (ws.id)}
           {@const wsWindows = getWindowsForWorkspace(ws.id)}
           <button
             class="ws-card"
@@ -158,7 +163,7 @@
             </span>
             {#if wsWindows.length > 0}
               <div class="ws-card-icons">
-                {#each wsWindows.slice(0, 5) as win}
+                {#each wsWindows.slice(0, 5) as win (win.id)}
                   {#if iconUrls[win.app_id]}
                     <img
                       class="ws-app-icon"

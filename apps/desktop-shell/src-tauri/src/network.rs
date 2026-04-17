@@ -129,13 +129,53 @@ pub struct WifiNetwork {
     pub is_known: bool,
 }
 
+/// Combined WiFi scan cooldown + result cache. The RF scan and the
+/// nmcli subprocess calls are both skipped when the cache is fresh.
+static WIFI_CACHE: std::sync::Mutex<Option<(std::time::Instant, Vec<WifiNetwork>)>> =
+    std::sync::Mutex::new(None);
+const WIFI_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Return the cached WiFi list if it is younger than 30 seconds.
+fn get_wifi_cache() -> Option<Vec<WifiNetwork>> {
+    let guard = WIFI_CACHE.lock().unwrap();
+    match guard.as_ref() {
+        Some((ts, list)) if ts.elapsed() < WIFI_CACHE_TTL => Some(list.clone()),
+        _ => None,
+    }
+}
+
+/// Store a fresh WiFi list in the cache.
+fn set_wifi_cache(list: &[WifiNetwork]) {
+    *WIFI_CACHE.lock().unwrap() = Some((std::time::Instant::now(), list.to_vec()));
+}
+
+/// Whether a new RF scan should be triggered. Only true when the
+/// cache has expired.
+fn should_rescan_wifi() -> bool {
+    let guard = WIFI_CACHE.lock().unwrap();
+    match guard.as_ref() {
+        None => true,
+        Some((ts, _)) if ts.elapsed() > WIFI_CACHE_TTL => true,
+        _ => false,
+    }
+}
+
 /// Returns visible WiFi networks, sorted by connected first then signal.
+/// Results are cached for 30 seconds — within that window, no RF scan
+/// and no nmcli subprocesses are spawned.
 #[tauri::command]
 pub fn get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
-    // Trigger rescan (best-effort, non-blocking).
-    let _ = std::process::Command::new("nmcli")
-        .args(["dev", "wifi", "rescan"])
-        .output();
+    // Return cached list if fresh.
+    if let Some(cached) = get_wifi_cache() {
+        return Ok(cached);
+    }
+
+    // Cache expired — trigger RF scan (best-effort, non-blocking).
+    if should_rescan_wifi() {
+        let _ = std::process::Command::new("nmcli")
+            .args(["dev", "wifi", "rescan"])
+            .output();
+    }
 
     let output = std::process::Command::new("nmcli")
         .args(["-t", "-f", "SSID,SIGNAL,SECURITY,IN-USE", "dev", "wifi", "list"])
@@ -187,6 +227,8 @@ pub fn get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
             .cmp(&a.is_connected)
             .then(b.signal.cmp(&a.signal))
     });
+
+    set_wifi_cache(&networks);
     Ok(networks)
 }
 

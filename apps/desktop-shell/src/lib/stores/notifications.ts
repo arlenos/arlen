@@ -225,7 +225,11 @@ export function initNotifications() {
   // New notification from daemon.
   listen<Notification>("notification:new", ({ payload }) => {
     console.log("[notifications] new:", payload.id, payload.app_name, payload.summary, "icon:", payload.app_icon ? "yes" : "no");
-    notifications.update(($n) => [payload, ...$n]);
+    notifications.update(($n) => {
+      const updated = [payload, ...$n];
+      // Cap at 200 to prevent unbounded memory growth in long sessions.
+      return updated.length > 200 ? updated.slice(0, 200) : updated;
+    });
     showToast(payload);
   });
 

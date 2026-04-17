@@ -267,7 +267,7 @@
             </button>
           </div>
           <div class="net-list">
-            {#each otherNets as net}
+            {#each otherNets as net (net.ssid)}
               {@render networkItem(net)}
             {:else}
               <div class="net-empty">No networks found</div>
@@ -296,7 +296,7 @@
           </button>
           {#if vpnExpanded}
             <div class="vpn-list">
-              {#each vpns as vpn}
+              {#each vpns as vpn (vpn.name)}
                 <button class="net-item" class:connected={vpn.active}
                   onclick={(e) => { e.stopPropagation(); toggleVpn(vpn); }}>
                   <div class="net-item-info">

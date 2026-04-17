@@ -287,7 +287,7 @@
 
         {#if connectedDevices.length > 0}
           <div class="bt-section-label">Connected</div>
-          {#each connectedDevices as dev}
+          {#each connectedDevices as dev (dev.address)}
             {@render deviceItem(dev)}
           {/each}
           <Separator class="opacity-10" />
@@ -295,7 +295,7 @@
 
         {#if pairedDevices.length > 0}
           <div class="bt-section-label">Paired Devices</div>
-          {#each pairedDevices as dev}
+          {#each pairedDevices as dev (dev.address)}
             {@render deviceItem(dev)}
           {/each}
           <Separator class="opacity-10" />
@@ -303,7 +303,7 @@
 
         {#if btState.discovering && availableDevices.length > 0}
           <div class="bt-section-label">Available</div>
-          {#each availableDevices as dev}
+          {#each availableDevices as dev (dev.address)}
             {@render deviceItem(dev)}
           {/each}
           <Separator class="opacity-10" />

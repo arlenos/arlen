@@ -78,10 +78,9 @@ fn bridge_thread(
             continue;
         }
 
-        // Unregister previous menu.
+        // Unregister previous menu via the store helper (emits one event).
         if let Some(prev) = last.take() {
-            store.lock().unwrap().remove(&prev);
-            let _ = app.emit("lunaris://menu-unregistered", json!({ "app_id": prev }));
+            crate::menu_store::store_unregister(&app, &store, &prev);
         }
         *last = Some(app_id.clone());
         drop(last);
@@ -94,11 +93,7 @@ fn bridge_thread(
         match query_gtk_menus(&conn, &app_id) {
             Ok(menus) if !menus.is_empty() => {
                 let items = json!(menus);
-                store.lock().unwrap().insert(app_id.clone(), items.clone());
-                let _ = app.emit(
-                    "lunaris://menu-registered",
-                    json!({ "app_id": app_id, "items": items }),
-                );
+                crate::menu_store::store_register(&app, &store, app_id.clone(), items);
                 log::info!("gtk_menu_bridge: registered {} menu groups for {app_id}", menus.len());
             }
             Ok(_) => {

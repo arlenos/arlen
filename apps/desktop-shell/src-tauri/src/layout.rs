@@ -28,12 +28,40 @@ fn config_path() -> PathBuf {
     PathBuf::from(home).join(".config/lunaris/compositor.toml")
 }
 
-/// Read the current layout state from compositor.toml.
-#[tauri::command]
-pub fn get_layout_state() -> LayoutState {
+/// Cached layout section from compositor.toml. Invalidated by TTL (5s)
+/// to avoid reading disk on every popover open and slider drag tick.
+static LAYOUT_CACHE: std::sync::Mutex<Option<(std::time::Instant, toml::Table)>> =
+    std::sync::Mutex::new(None);
+const LAYOUT_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(5);
+
+fn read_layout_table() -> toml::Table {
+    // Return cache if fresh.
+    {
+        let guard = LAYOUT_CACHE.lock().unwrap();
+        if let Some((ts, ref tbl)) = *guard {
+            if ts.elapsed() < LAYOUT_CACHE_TTL {
+                return tbl.clone();
+            }
+        }
+    }
+    // Cache miss — read from disk.
     let path = config_path();
     let content = std::fs::read_to_string(&path).unwrap_or_default();
     let table: toml::Table = toml::from_str(&content).unwrap_or_default();
+    *LAYOUT_CACHE.lock().unwrap() = Some((std::time::Instant::now(), table.clone()));
+    table
+}
+
+/// Invalidate the layout cache after a write so the next read picks
+/// up the new values immediately.
+fn invalidate_layout_cache() {
+    *LAYOUT_CACHE.lock().unwrap() = None;
+}
+
+/// Read the current layout state from compositor.toml (cached for 5s).
+#[tauri::command]
+pub fn get_layout_state() -> LayoutState {
+    let table = read_layout_table();
 
     let layout = table.get("layout").and_then(|v| v.as_table());
     let mode = match CURRENT_MODE.load(Ordering::Relaxed) {
@@ -76,6 +104,7 @@ fn update_layout_field(key: &str, value: toml::Value) {
     if let Ok(out) = toml::to_string_pretty(&table) {
         let _ = std::fs::write(&path, out);
     }
+    invalidate_layout_cache();
 }
 
 /// Set the gaps.
