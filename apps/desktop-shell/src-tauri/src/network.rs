@@ -129,38 +129,48 @@ pub struct WifiNetwork {
     pub is_known: bool,
 }
 
-/// Cooldown for WiFi RF scans. Scanning is expensive (blocks the radio
-/// for 1-3 seconds and drains battery). Only rescan when the last scan
-/// was more than 30 seconds ago.
-static LAST_WIFI_SCAN: std::sync::Mutex<Option<std::time::Instant>> =
+/// Combined WiFi scan cooldown + result cache. The RF scan and the
+/// nmcli subprocess calls are both skipped when the cache is fresh.
+static WIFI_CACHE: std::sync::Mutex<Option<(std::time::Instant, Vec<WifiNetwork>)>> =
     std::sync::Mutex::new(None);
-const WIFI_SCAN_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(30);
+const WIFI_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Return the cached WiFi list if it is younger than 30 seconds.
+fn get_wifi_cache() -> Option<Vec<WifiNetwork>> {
+    let guard = WIFI_CACHE.lock().unwrap();
+    match guard.as_ref() {
+        Some((ts, list)) if ts.elapsed() < WIFI_CACHE_TTL => Some(list.clone()),
+        _ => None,
+    }
+}
+
+/// Store a fresh WiFi list in the cache.
+fn set_wifi_cache(list: &[WifiNetwork]) {
+    *WIFI_CACHE.lock().unwrap() = Some((std::time::Instant::now(), list.to_vec()));
+}
+
+/// Whether a new RF scan should be triggered. Only true when the
+/// cache has expired.
 fn should_rescan_wifi() -> bool {
-    let mut last = LAST_WIFI_SCAN.lock().unwrap();
-    match *last {
-        None => {
-            *last = Some(std::time::Instant::now());
-            true
-        }
-        Some(t) if t.elapsed() > WIFI_SCAN_COOLDOWN => {
-            *last = Some(std::time::Instant::now());
-            true
-        }
+    let guard = WIFI_CACHE.lock().unwrap();
+    match guard.as_ref() {
+        None => true,
+        Some((ts, _)) if ts.elapsed() > WIFI_CACHE_TTL => true,
         _ => false,
     }
 }
 
-// TODO: Batch refactor — cache the WiFi network list between scans and
-// return the cached copy when the cooldown is active. Currently each
-// call still spawns 2 subprocesses (nmcli list + nmcli connections)
-// even when the rescan is skipped.
-
 /// Returns visible WiFi networks, sorted by connected first then signal.
+/// Results are cached for 30 seconds — within that window, no RF scan
+/// and no nmcli subprocesses are spawned.
 #[tauri::command]
 pub fn get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
-    // Trigger rescan only if cooldown has elapsed (30s). Avoids
-    // blocking the radio on every popover open.
+    // Return cached list if fresh.
+    if let Some(cached) = get_wifi_cache() {
+        return Ok(cached);
+    }
+
+    // Cache expired — trigger RF scan (best-effort, non-blocking).
     if should_rescan_wifi() {
         let _ = std::process::Command::new("nmcli")
             .args(["dev", "wifi", "rescan"])
@@ -217,6 +227,8 @@ pub fn get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
             .cmp(&a.is_connected)
             .then(b.signal.cmp(&a.signal))
     });
+
+    set_wifi_cache(&networks);
     Ok(networks)
 }
 

@@ -105,7 +105,9 @@ pub fn run() {
                 }
             }
 
-            theme::start_watcher(app.handle().clone());
+            // theme::start_watcher removed — legacy theme.toml pipeline is
+            // superseded by the v2 system (ThemeState + appearance.toml).
+            // The v2 appearance watcher below handles all theme reloads.
             theme::commands::start_appearance_watcher(app.handle().clone());
             shell_config::start_shell_config_watcher(app.handle().clone());
             event_bus::start(app.handle().clone());
@@ -143,7 +145,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             log_frontend,
-            theme::get_surface_tokens,
+            // theme::get_surface_tokens removed (legacy, no frontend consumers)
             shell_overlay_client::context_menu_activate,
             shell_overlay_client::context_menu_dismiss,
             shell_overlay_client::tab_activate,
@@ -173,6 +175,7 @@ pub fn run() {
             audio::set_input_volume,
             audio::toggle_input_mute,
             audio::get_app_volumes,
+            audio::get_audio_full_state,
             audio::set_app_volume,
             audio::set_dnd_enabled,
             battery::get_battery_status,

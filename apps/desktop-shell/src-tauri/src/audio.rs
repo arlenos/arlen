@@ -556,6 +556,33 @@ pub fn toggle_audio_mute() -> Result<(), String> {
 // Signal monitor via pactl subscribe
 // ---------------------------------------------------------------------------
 
+/// Everything the AudioPopover needs in a single IPC call.
+///
+/// Replaces the previous pattern of 5 parallel `invoke()` calls from
+/// the frontend (get_audio_status + get_input_volume + get_audio_outputs
+/// + get_audio_inputs + get_app_volumes), each of which spawned 2-3
+/// subprocesses. This batch command still calls the same functions
+/// internally but removes 4 IPC round-trips.
+#[derive(Clone, Serialize)]
+pub struct AudioFullState {
+    pub status: AudioStatus,
+    pub input_status: AudioStatus,
+    pub outputs: Vec<AudioOutput>,
+    pub inputs: Vec<AudioInput>,
+    pub apps: Vec<AppVolume>,
+}
+
+#[tauri::command]
+pub fn get_audio_full_state() -> Result<AudioFullState, String> {
+    Ok(AudioFullState {
+        status: get_audio_status()?,
+        input_status: get_input_volume()?,
+        outputs: get_audio_outputs()?,
+        inputs: get_audio_inputs()?,
+        apps: get_app_volumes()?,
+    })
+}
+
 /// Start monitoring PulseAudio/PipeWire events for audio state changes.
 ///
 /// Uses `pactl subscribe` which outputs a line on every sink/source change.

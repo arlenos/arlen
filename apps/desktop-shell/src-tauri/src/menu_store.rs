@@ -32,6 +32,29 @@ struct MenuActionPayload {
     action: String,
 }
 
+/// Insert a menu into the store and emit the registration event.
+/// Used by the GTK menu bridge (which holds a raw Arc, not tauri::State).
+pub fn store_register(
+    app: &AppHandle,
+    store: &AppMenuStore,
+    app_id: String,
+    items: serde_json::Value,
+) {
+    store.lock().unwrap().insert(app_id.clone(), items.clone());
+    let _ = app.emit("lunaris://menu-registered", MenuRegisteredPayload { app_id, items });
+}
+
+/// Remove a menu from the store and emit the unregistration event.
+pub fn store_unregister(app: &AppHandle, store: &AppMenuStore, app_id: &str) {
+    store.lock().unwrap().remove(app_id);
+    let _ = app.emit(
+        "lunaris://menu-unregistered",
+        MenuUnregisteredPayload {
+            app_id: app_id.to_string(),
+        },
+    );
+}
+
 /// Register or update the menu structure for an app.
 #[tauri::command]
 pub fn register_menu(

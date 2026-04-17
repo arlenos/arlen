@@ -24,27 +24,30 @@
   let inputDropdownOpen = $state(false);
   let appsExpanded = $state(false);
 
-  async function poll() {
-    try {
-      const r = await invoke<{ volume: number; muted: boolean }>("get_audio_status");
-      volume = r.volume; muted = r.muted;
-    } catch {}
-    try {
-      const r = await invoke<{ volume: number; muted: boolean }>("get_input_volume");
-      inputVolume = r.volume; inputMuted = r.muted;
-    } catch {}
-    try { outputs = await invoke<AudioDevice[]>("get_audio_outputs"); } catch {}
-    try { inputs = await invoke<AudioDevice[]>("get_audio_inputs"); } catch {}
+  interface AudioFullState {
+    status: { volume: number; muted: boolean; output_type: string };
+    input_status: { volume: number; muted: boolean };
+    outputs: AudioDevice[];
+    inputs: AudioDevice[];
+    apps: AppVol[];
   }
 
-  async function loadApps() {
-    try { apps = await invoke<AppVol[]>("get_app_volumes"); } catch {}
+  async function poll() {
+    try {
+      const r = await invoke<AudioFullState>("get_audio_full_state");
+      volume = r.status.volume;
+      muted = r.status.muted;
+      inputVolume = r.input_status.volume;
+      inputMuted = r.input_status.muted;
+      outputs = r.outputs;
+      inputs = r.inputs;
+      apps = r.apps;
+    } catch {}
   }
 
   $effect(() => {
     if ($activePopover === "audio") {
       poll();
-      loadApps();
     } else {
       outputDropdownOpen = false;
       inputDropdownOpen = false;
