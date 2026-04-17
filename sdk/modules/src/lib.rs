@@ -593,4 +593,68 @@ entry = "dist/index.js"
         assert_eq!(ModuleType::FirstParty.default_priority(), 10);
         assert_eq!(ModuleType::ThirdParty.default_priority(), 100);
     }
+
+    #[test]
+    fn test_missing_name_and_version_errors() {
+        // Only id provided — name and version are required String fields.
+        let toml = r#"
+[module]
+id = "com.test.bare"
+"#;
+        let result = parse_manifest(toml);
+        assert!(result.is_err(), "should fail without name/version");
+    }
+
+    #[test]
+    fn test_missing_module_section_errors() {
+        let result = parse_manifest("");
+        assert!(result.is_err(), "empty manifest should fail");
+    }
+
+    #[test]
+    fn test_unknown_fields_ignored() {
+        let toml = r#"
+[module]
+id = "com.test.extra"
+name = "Extra"
+version = "1.0.0"
+some_future_field = true
+
+[unknown_section]
+x = 1
+"#;
+        // Unknown fields should not cause a parse error.
+        let m = parse_manifest(toml).unwrap();
+        assert_eq!(m.module.id, "com.test.extra");
+    }
+
+    #[test]
+    fn test_validate_empty_name_warns() {
+        let toml = r#"
+[module]
+id = "com.test.app"
+name = "  "
+version = "1.0.0"
+"#;
+        let m = parse_manifest(toml).unwrap();
+        let warnings = validate_manifest(&m);
+        assert!(
+            warnings.iter().any(|w| w.field == "module.name"),
+            "whitespace-only name should warn"
+        );
+    }
+
+    #[test]
+    fn test_first_party_type() {
+        let toml = r#"
+[module]
+id = "org.lunaris.search"
+name = "Search"
+version = "1.0.0"
+type = "first-party"
+"#;
+        let m = parse_manifest(toml).unwrap();
+        assert_eq!(m.module.module_type, ModuleType::FirstParty);
+        assert_eq!(ModuleType::FirstParty.default_priority(), 10);
+    }
 }
