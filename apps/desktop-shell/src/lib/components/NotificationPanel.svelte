@@ -42,7 +42,7 @@
     </div>
   {:else}
     <div class="notif-list">
-      {#each [...$groupedNotifications.entries()] as [appName, items]}
+      {#each [...$groupedNotifications.entries()] as [appName, items] (appName)}
         <!-- Group header (always shown) -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -68,7 +68,7 @@
         {#if items.length >= 3 && !expandedGroups.has(appName)}
           <NotificationItem notification={items[0]} />
         {:else}
-          {#each items as notif}
+          {#each items as notif (notif.id)}
             <NotificationItem notification={notif} />
           {/each}
         {/if}

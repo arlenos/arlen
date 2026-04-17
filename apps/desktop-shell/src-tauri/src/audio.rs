@@ -17,6 +17,11 @@ pub struct AudioStatus {
     pub output_type: String,
 }
 
+// TODO: Batch refactor — combine get_audio_status + get_audio_outputs +
+// get_audio_inputs + get_app_volumes into a single get_audio_full_state()
+// command that runs 3-4 subprocesses instead of the current 10-15 when
+// AudioPopover opens. Each command currently spawns its own wpctl/pactl.
+
 /// Returns the current volume, mute state, and output device type.
 #[tauri::command]
 pub fn get_audio_status() -> Result<AudioStatus, String> {

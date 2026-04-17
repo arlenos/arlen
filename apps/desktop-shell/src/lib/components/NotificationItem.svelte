@@ -47,7 +47,7 @@
     {/if}
     {#if notification.actions.length > 0}
       <div class="notif-actions">
-        {#each notification.actions as action}
+        {#each notification.actions as action (action.key)}
           <button class="notif-action-btn" onclick={(e) => handleAction(e, action.key)}>
             {action.label}
           </button>

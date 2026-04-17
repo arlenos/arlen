@@ -129,13 +129,43 @@ pub struct WifiNetwork {
     pub is_known: bool,
 }
 
+/// Cooldown for WiFi RF scans. Scanning is expensive (blocks the radio
+/// for 1-3 seconds and drains battery). Only rescan when the last scan
+/// was more than 30 seconds ago.
+static LAST_WIFI_SCAN: std::sync::Mutex<Option<std::time::Instant>> =
+    std::sync::Mutex::new(None);
+const WIFI_SCAN_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(30);
+
+fn should_rescan_wifi() -> bool {
+    let mut last = LAST_WIFI_SCAN.lock().unwrap();
+    match *last {
+        None => {
+            *last = Some(std::time::Instant::now());
+            true
+        }
+        Some(t) if t.elapsed() > WIFI_SCAN_COOLDOWN => {
+            *last = Some(std::time::Instant::now());
+            true
+        }
+        _ => false,
+    }
+}
+
+// TODO: Batch refactor — cache the WiFi network list between scans and
+// return the cached copy when the cooldown is active. Currently each
+// call still spawns 2 subprocesses (nmcli list + nmcli connections)
+// even when the rescan is skipped.
+
 /// Returns visible WiFi networks, sorted by connected first then signal.
 #[tauri::command]
 pub fn get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
-    // Trigger rescan (best-effort, non-blocking).
-    let _ = std::process::Command::new("nmcli")
-        .args(["dev", "wifi", "rescan"])
-        .output();
+    // Trigger rescan only if cooldown has elapsed (30s). Avoids
+    // blocking the radio on every popover open.
+    if should_rescan_wifi() {
+        let _ = std::process::Command::new("nmcli")
+            .args(["dev", "wifi", "rescan"])
+            .output();
+    }
 
     let output = std::process::Command::new("nmcli")
         .args(["-t", "-f", "SSID,SIGNAL,SECURITY,IN-USE", "dev", "wifi", "list"])

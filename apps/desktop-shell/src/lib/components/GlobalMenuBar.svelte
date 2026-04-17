@@ -16,7 +16,7 @@
 </script>
 
 {#snippet menuItems(items: MenuItem[])}
-  {#each items as item}
+  {#each items as item, ii (ii)}
     {#if item.type === "separator"}
       <Separator />
     {:else if item.type === "submenu" && item.children?.length}
@@ -48,7 +48,7 @@
   </span>
 
   {#if $activeMenu}
-    {#each $activeMenu as group}
+    {#each $activeMenu as group, gi (gi)}
       <Root>
         <Trigger>
           {#snippet child({ props })}

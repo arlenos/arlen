@@ -128,7 +128,7 @@
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <div class="cs-dropdown" onclick={(e) => e.stopPropagation()}>
-            {#each outputs as out}
+            {#each outputs as out (out.name)}
               <button class="cs-item" class:selected={out.is_default} onclick={(e) => { e.stopPropagation(); selectOutput(out.id); }}>
                 <span>{out.name}</span>
                 {#if out.is_default}<Check size={12} strokeWidth={2} />{/if}
@@ -171,7 +171,7 @@
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <div class="cs-dropdown" onclick={(e) => e.stopPropagation()}>
-              {#each inputs as inp}
+              {#each inputs as inp (inp.name)}
                 <button class="cs-item" class:selected={inp.is_default} onclick={(e) => { e.stopPropagation(); selectInput(inp.id); }}>
                   <span>{inp.name}</span>
                   {#if inp.is_default}<Check size={12} strokeWidth={2} />{/if}
@@ -192,7 +192,7 @@
         </button>
         {#if appsExpanded}
           <div class="apps-list">
-            {#each apps as app}
+            {#each apps as app (app.name)}
               <div class="app-row">
                 <div class="app-icon">
                   {#if app.icon_data}
