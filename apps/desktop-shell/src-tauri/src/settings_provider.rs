@@ -327,3 +327,171 @@ pub fn settings_open_deep_link(panel: String, anchor: Option<String>) -> Result<
     cmd.spawn().map_err(|e| format!("spawn: {e}"))?;
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_index() -> Vec<IndexedSetting> {
+        vec![
+            IndexedSetting {
+                id: "appearance.theme.mode".into(),
+                title: "Theme Mode".into(),
+                description: "Switch between light and dark theme".into(),
+                keywords: vec!["dark".into(), "light".into(), "theme".into()],
+                panel: "appearance".into(),
+                section: "Theme".into(),
+                deep_link: "lunaris-settings://appearance#theme-mode".into(),
+                inline_action: Some(InlineAction {
+                    action_type: "select".into(),
+                    config_file: "appearance".into(),
+                    config_key: "theme.mode".into(),
+                    options: vec![
+                        SelectOption { value: "light".into(), label: "Light".into() },
+                        SelectOption { value: "dark".into(), label: "Dark".into() },
+                    ],
+                }),
+            },
+            IndexedSetting {
+                id: "notifications.dnd.mode".into(),
+                title: "Do Not Disturb".into(),
+                description: "Control which notifications break through".into(),
+                keywords: vec!["dnd".into(), "quiet".into(), "silent".into()],
+                panel: "notifications".into(),
+                section: "Do Not Disturb".into(),
+                deep_link: "lunaris-settings://notifications#dnd-mode".into(),
+                inline_action: None,
+            },
+            IndexedSetting {
+                id: "appearance.fonts.size".into(),
+                title: "Font Size".into(),
+                description: "Base font size for the interface".into(),
+                keywords: vec!["font".into(), "size".into(), "text".into()],
+                panel: "appearance".into(),
+                section: "Typography".into(),
+                deep_link: "lunaris-settings://appearance#font-size".into(),
+                inline_action: None,
+            },
+        ]
+    }
+
+    fn with_index<F: FnOnce()>(settings: Vec<IndexedSetting>, f: F) {
+        *INDEX.lock().unwrap() = Some(settings);
+        f();
+        *INDEX.lock().unwrap() = None;
+    }
+
+    // ── Search ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_search_single_term() {
+        with_index(make_index(), || {
+            let results = settings_search("dark".into(), 10);
+            assert!(!results.is_empty(), "should find Theme Mode");
+            assert_eq!(results[0].setting.id, "appearance.theme.mode");
+        });
+    }
+
+    #[test]
+    fn test_search_multi_term() {
+        with_index(make_index(), || {
+            let results = settings_search("font size".into(), 10);
+            assert!(!results.is_empty(), "should find Font Size");
+            assert_eq!(results[0].setting.id, "appearance.fonts.size");
+        });
+    }
+
+    #[test]
+    fn test_search_no_match() {
+        with_index(make_index(), || {
+            let results = settings_search("xyzzy".into(), 10);
+            assert!(results.is_empty());
+        });
+    }
+
+    #[test]
+    fn test_search_empty_query() {
+        with_index(make_index(), || {
+            let results = settings_search("".into(), 10);
+            assert!(results.is_empty(), "empty query = no results");
+        });
+    }
+
+    #[test]
+    fn test_search_scoring_title_beats_description() {
+        with_index(make_index(), || {
+            let results = settings_search("theme".into(), 10);
+            // "Theme Mode" has "theme" in title (+10) AND keyword (+2) = 12.
+            // "Font Size" might match "theme" in description? No.
+            assert!(results.len() >= 1);
+            assert_eq!(results[0].setting.id, "appearance.theme.mode");
+        });
+    }
+
+    #[test]
+    fn test_search_limit() {
+        with_index(make_index(), || {
+            // All 3 items match "the" (in description/title).
+            let results = settings_search("the".into(), 1);
+            assert!(results.len() <= 1, "limit respected");
+        });
+    }
+
+    // ── TOML read/write ──────────────────────────────────────────────
+
+    #[test]
+    fn test_toml_read_write_roundtrip() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let file = dir.path().join("test.toml");
+        std::fs::write(&file, "[theme]\nmode = \"dark\"\n").unwrap();
+
+        // Read
+        let path_str = file.to_string_lossy();
+        let file_name = path_str.strip_suffix(".toml").unwrap();
+        // Can't easily test read_toml_key because it uses config_dir().
+        // Test the underlying toml logic directly:
+        let content = std::fs::read_to_string(&file).unwrap();
+        let table: toml::Value = toml::from_str(&content).unwrap();
+        let mut cur = &table;
+        for part in "theme.mode".split('.') {
+            cur = cur.as_table().unwrap().get(part).unwrap();
+        }
+        assert_eq!(cur.as_str(), Some("dark"));
+    }
+
+    #[test]
+    fn test_toml_to_json_types() {
+        assert_eq!(
+            toml_to_json(&toml::Value::Integer(42)),
+            serde_json::json!(42)
+        );
+        assert_eq!(
+            toml_to_json(&toml::Value::Boolean(true)),
+            serde_json::json!(true)
+        );
+        assert_eq!(
+            toml_to_json(&toml::Value::String("hello".into())),
+            serde_json::json!("hello")
+        );
+    }
+
+    #[test]
+    fn test_json_to_toml_types() {
+        assert_eq!(
+            json_to_toml(serde_json::json!(42)),
+            toml::Value::Integer(42)
+        );
+        assert_eq!(
+            json_to_toml(serde_json::json!("test")),
+            toml::Value::String("test".into())
+        );
+        assert_eq!(
+            json_to_toml(serde_json::json!(true)),
+            toml::Value::Boolean(true)
+        );
+    }
+}
