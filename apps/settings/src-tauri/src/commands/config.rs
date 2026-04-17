@@ -299,3 +299,149 @@ by_app = true
 stack_similar = true
 auto_collapse_after = 3
 "##;
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── get_path / set_path / remove_path ────────────────────────────
+
+    #[test]
+    fn test_get_path_top_level() {
+        let v: toml::Value = toml::from_str("[theme]\nmode = \"dark\"").unwrap();
+        let r = get_path(&v, "theme.mode").unwrap();
+        assert_eq!(r.as_str(), Some("dark"));
+    }
+
+    #[test]
+    fn test_get_path_deeply_nested() {
+        let v: toml::Value =
+            toml::from_str("[window.border]\nfocused = \"$accent\"").unwrap();
+        let r = get_path(&v, "window.border.focused").unwrap();
+        assert_eq!(r.as_str(), Some("$accent"));
+    }
+
+    #[test]
+    fn test_get_path_missing_returns_none() {
+        let v: toml::Value = toml::from_str("[theme]\nmode = \"dark\"").unwrap();
+        assert!(get_path(&v, "theme.accent").is_none());
+        assert!(get_path(&v, "nonexistent").is_none());
+        assert!(get_path(&v, "theme.mode.sub").is_none());
+    }
+
+    #[test]
+    fn test_set_path_creates_intermediate_tables() {
+        let mut v = toml::Value::Table(toml::map::Map::new());
+        set_path(
+            &mut v,
+            "window.border.focused",
+            toml::Value::String("$accent".into()),
+        )
+        .unwrap();
+        assert_eq!(
+            get_path(&v, "window.border.focused")
+                .and_then(|v| v.as_str()),
+            Some("$accent")
+        );
+    }
+
+    #[test]
+    fn test_set_path_preserves_siblings() {
+        let mut v: toml::Value =
+            toml::from_str("[theme]\nmode = \"dark\"\naccent = \"#fff\"").unwrap();
+        set_path(
+            &mut v,
+            "theme.mode",
+            toml::Value::String("light".into()),
+        )
+        .unwrap();
+        assert_eq!(
+            get_path(&v, "theme.mode").and_then(|v| v.as_str()),
+            Some("light"),
+            "updated key"
+        );
+        assert_eq!(
+            get_path(&v, "theme.accent").and_then(|v| v.as_str()),
+            Some("#fff"),
+            "sibling preserved"
+        );
+    }
+
+    #[test]
+    fn test_remove_path_existing() {
+        let mut v: toml::Value =
+            toml::from_str("[theme]\nmode = \"dark\"\naccent = \"#fff\"").unwrap();
+        remove_path(&mut v, "theme.accent").unwrap();
+        assert!(get_path(&v, "theme.accent").is_none());
+        assert!(get_path(&v, "theme.mode").is_some(), "sibling intact");
+    }
+
+    #[test]
+    fn test_remove_path_missing_is_noop() {
+        let mut v: toml::Value = toml::from_str("[theme]\nmode = \"dark\"").unwrap();
+        remove_path(&mut v, "theme.nonexistent").unwrap();
+        assert_eq!(get_path(&v, "theme.mode").and_then(|v| v.as_str()), Some("dark"));
+    }
+
+    // ── json ↔ toml conversions ──────────────────────────────────────
+
+    #[test]
+    fn test_json_to_toml_primitives() {
+        assert_eq!(
+            json_to_toml(serde_json::json!(42)),
+            toml::Value::Integer(42)
+        );
+        assert_eq!(
+            json_to_toml(serde_json::json!(true)),
+            toml::Value::Boolean(true)
+        );
+        assert_eq!(
+            json_to_toml(serde_json::json!("hello")),
+            toml::Value::String("hello".into())
+        );
+    }
+
+    #[test]
+    fn test_toml_to_json_roundtrip() {
+        let original = toml::Value::String("test".into());
+        let json = toml_to_json(&original);
+        let back = json_to_toml(json);
+        assert_eq!(original, back);
+    }
+
+    // ── default configs ──────────────────────────────────────────────
+
+    #[test]
+    fn test_default_appearance_is_valid_toml() {
+        let v: Result<toml::Value, _> = toml::from_str(DEFAULT_APPEARANCE);
+        assert!(v.is_ok(), "DEFAULT_APPEARANCE parse error: {:?}", v.err());
+        let table = v.unwrap();
+        assert!(
+            get_path(&table, "theme.mode").is_some(),
+            "theme.mode must exist"
+        );
+    }
+
+    #[test]
+    fn test_default_notifications_is_valid_toml() {
+        let v: Result<toml::Value, _> = toml::from_str(DEFAULT_NOTIFICATIONS);
+        assert!(
+            v.is_ok(),
+            "DEFAULT_NOTIFICATIONS parse error: {:?}",
+            v.err()
+        );
+        let table = v.unwrap();
+        assert!(
+            get_path(&table, "dnd.mode").is_some(),
+            "dnd.mode must exist"
+        );
+        assert!(
+            get_path(&table, "history.enabled").is_some(),
+            "history.enabled must exist"
+        );
+    }
+}
