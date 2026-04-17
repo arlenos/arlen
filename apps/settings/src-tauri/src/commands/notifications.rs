@@ -155,6 +155,10 @@ pub fn notifications_test_notification(priority: String) -> Result<(), String> {
 
 /// Compute an ISO-8601 UTC `expires_at` `seconds` into the future.
 /// Used to back the "Enable DND for N hours" Quick Action.
+///
+/// The returned string is a full RFC-3339 timestamp that the
+/// notification daemon's `is_expired()` check can compare against
+/// `Utc::now()`.
 #[tauri::command]
 pub fn notifications_dnd_expiry_in(seconds: i64) -> Result<String, String> {
     let when = Utc::now() + Duration::seconds(seconds.max(0));
@@ -178,4 +182,62 @@ pub fn notifications_dnd_expiry_until_morning() -> Result<String, String> {
         .ok_or("ambiguous local time")?;
     let utc: DateTime<Utc> = local.with_timezone(&Utc);
     Ok(utc.to_rfc3339())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_expiry_in_positive() {
+        let result = notifications_dnd_expiry_in(3600).unwrap();
+        let parsed = DateTime::parse_from_rfc3339(&result).unwrap();
+        let diff = parsed.with_timezone(&Utc) - Utc::now();
+        // Should be ~3600s in the future (allow 5s tolerance for slow CI).
+        assert!(
+            diff.num_seconds() >= 3595 && diff.num_seconds() <= 3605,
+            "expected ~3600s, got {}s",
+            diff.num_seconds()
+        );
+    }
+
+    #[test]
+    fn test_expiry_in_zero() {
+        let result = notifications_dnd_expiry_in(0).unwrap();
+        let parsed = DateTime::parse_from_rfc3339(&result).unwrap();
+        let diff = (parsed.with_timezone(&Utc) - Utc::now()).num_seconds().abs();
+        assert!(diff <= 2, "0s expiry should be ~now, got {diff}s off");
+    }
+
+    #[test]
+    fn test_expiry_in_negative_clamped_to_zero() {
+        let result = notifications_dnd_expiry_in(-100).unwrap();
+        let parsed = DateTime::parse_from_rfc3339(&result).unwrap();
+        let diff = (parsed.with_timezone(&Utc) - Utc::now()).num_seconds().abs();
+        assert!(
+            diff <= 2,
+            "negative should clamp to 0 (now), got {diff}s off"
+        );
+    }
+
+    #[test]
+    fn test_expiry_until_morning_valid_rfc3339() {
+        let result = notifications_dnd_expiry_until_morning().unwrap();
+        assert!(
+            DateTime::parse_from_rfc3339(&result).is_ok(),
+            "should be valid RFC-3339: {result}"
+        );
+    }
+
+    #[test]
+    fn test_expiry_until_morning_is_future() {
+        let result = notifications_dnd_expiry_until_morning().unwrap();
+        let parsed = DateTime::parse_from_rfc3339(&result)
+            .unwrap()
+            .with_timezone(&Utc);
+        assert!(
+            parsed > Utc::now(),
+            "morning expiry should be in the future"
+        );
+    }
 }

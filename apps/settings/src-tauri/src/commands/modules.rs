@@ -384,3 +384,170 @@ pub fn modules_uninstall(id: String) -> Result<(), String> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn test_module_type_str() {
+        assert_eq!(module_type_str(ModuleType::System), "system");
+        assert_eq!(module_type_str(ModuleType::FirstParty), "first-party");
+        assert_eq!(module_type_str(ModuleType::ThirdParty), "third-party");
+    }
+
+    #[test]
+    fn test_parse_lenient_minimal_id_only() {
+        let content = "[module]\nid = \"com.test.bare\"\n";
+        let dir = tempfile::TempDir::new().unwrap();
+        let manifest = dir.path().join("manifest.toml");
+        std::fs::write(&manifest, content).unwrap();
+
+        let result = parse_lenient(
+            content,
+            &manifest,
+            dir.path(),
+            ModuleSource::User,
+            &[],
+        );
+        let summary = result.expect("should produce a summary even with missing fields");
+        assert_eq!(summary.id, "com.test.bare");
+        assert_eq!(summary.name, "com.test.bare", "name falls back to id");
+        assert_eq!(summary.version, "0.0.0", "version falls back to 0.0.0");
+        assert!(
+            summary.warnings.iter().any(|w| w.contains("name")),
+            "should warn about missing name"
+        );
+        assert!(
+            summary.warnings.iter().any(|w| w.contains("version")),
+            "should warn about missing version"
+        );
+    }
+
+    #[test]
+    fn test_parse_lenient_full_manifest() {
+        let content = r#"
+[module]
+id = "com.test.full"
+name = "Full Test"
+version = "1.0.0"
+description = "A test module"
+type = "third-party"
+icon = "test-icon"
+entry = "index.js"
+
+[waypointer.search]
+priority = 50
+"#;
+        let dir = tempfile::TempDir::new().unwrap();
+        let manifest = dir.path().join("manifest.toml");
+        std::fs::write(&manifest, content).unwrap();
+        // Create the entry file so load_manifest doesn't warn.
+        std::fs::write(dir.path().join("index.js"), "// module").unwrap();
+
+        let result = parse_lenient(
+            content,
+            &manifest,
+            dir.path(),
+            ModuleSource::User,
+            &[],
+        )
+        .unwrap();
+        assert_eq!(result.name, "Full Test");
+        assert_eq!(result.version, "1.0.0");
+        assert!(result.has_waypointer);
+        assert!(!result.has_topbar);
+        // No warnings for a complete manifest with valid entry.
+        let meaningful_warnings: Vec<_> = result
+            .warnings
+            .iter()
+            .filter(|w| !w.contains("load:"))
+            .collect();
+        assert!(
+            meaningful_warnings.is_empty(),
+            "unexpected warnings: {:?}",
+            meaningful_warnings
+        );
+    }
+
+    #[test]
+    fn test_parse_lenient_toml_syntax_error_returns_none() {
+        let content = "{{invalid toml";
+        let dir = tempfile::TempDir::new().unwrap();
+        let manifest = dir.path().join("manifest.toml");
+        std::fs::write(&manifest, content).unwrap();
+
+        let result = parse_lenient(
+            content,
+            &manifest,
+            dir.path(),
+            ModuleSource::User,
+            &[],
+        );
+        assert!(result.is_none(), "TOML syntax error should return None");
+    }
+
+    #[test]
+    fn test_disabled_list_roundtrip() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("lunaris").join("modules.toml");
+
+        // Temporarily override the config path by writing directly.
+        let disabled = vec!["com.test.a".to_string(), "com.test.b".to_string()];
+        let cfg = ModulesConfig {
+            disabled: DisabledSection {
+                modules: disabled.clone(),
+            },
+        };
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let toml_str = toml::to_string_pretty(&cfg).unwrap();
+        std::fs::write(&path, &toml_str).unwrap();
+
+        // Read it back.
+        let content = std::fs::read_to_string(&path).unwrap();
+        let parsed: ModulesConfig = toml::from_str(&content).unwrap();
+        assert_eq!(parsed.disabled.modules, disabled);
+    }
+
+    #[test]
+    fn test_scan_empty_dir() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let results = scan_dir(dir.path(), ModuleSource::User, &[]);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_scan_dir_with_module() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mod_dir = dir.path().join("com.test.scan");
+        std::fs::create_dir_all(&mod_dir).unwrap();
+        std::fs::write(
+            mod_dir.join("manifest.toml"),
+            "[module]\nid = \"com.test.scan\"\nname = \"Scan Test\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+
+        let results = scan_dir(dir.path(), ModuleSource::User, &[]);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "com.test.scan");
+        assert!(results[0].enabled, "not in disabled list = enabled");
+    }
+
+    #[test]
+    fn test_scan_dir_disabled_module() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mod_dir = dir.path().join("com.test.off");
+        std::fs::create_dir_all(&mod_dir).unwrap();
+        std::fs::write(
+            mod_dir.join("manifest.toml"),
+            "[module]\nid = \"com.test.off\"\nname = \"Off\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+
+        let disabled = vec!["com.test.off".to_string()];
+        let results = scan_dir(dir.path(), ModuleSource::User, &disabled);
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].enabled, "should be disabled");
+    }
+}
