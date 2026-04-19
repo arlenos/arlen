@@ -6,8 +6,11 @@
   import type { WorkspaceInfo } from "$lib/stores/workspaces.js";
   import { windows } from "$lib/stores/windows.js";
   import type { WindowInfo } from "$lib/stores/windows.js";
+  import { projectPerWorkspace } from "$lib/stores/workspaceProjects.js";
   import { resolveAppIcon } from "$lib/stores/appIcons.js";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
+  import type { UnlistenFn } from "@tauri-apps/api/event";
   import { AppWindow } from "lucide-svelte";
 
   const mode = $derived(
@@ -92,6 +95,192 @@
 
   function handlePillClick(id: string) {
     activateWorkspace(id);
+  }
+
+  // ── Keyboard navigation ─────────────────────────────────────────────────
+  //
+  // Activated by the compositor's `workspace_overlay_open` event
+  // (Super+Tab by default; see `compositor/src/config/mod.rs`). When
+  // active, a focus ring sits on `focusedWindowId` and arrow / Tab /
+  // 1-9 keys move it. The hover open path leaves `focusedWindowId`
+  // null and shows no ring — keyboard mode toggles on first nav key.
+  //
+  // FOCUS GRAB CAVEAT: the topbar layer-shell surface only receives
+  // DOM keydown events when GTK has routed keyboard focus to it.
+  // After Super+Tab the compositor consumes the keystroke and emits
+  // the open event but does not move keyboard focus to the shell, so
+  // we explicitly call `.focus()` on the overlay element below to
+  // request it from WebKitGTK. Whether the compositor actually grants
+  // it depends on the layer's `keyboard_interactivity` mode; for
+  // V1 we rely on OnDemand + focus-call. If keys still don't fire
+  // for the user, the next iteration moves the keyboard-grab into
+  // the compositor side.
+  let focusedWindowId = $state<string | null>(null);
+  // Svelte 5 wants `bind:this` targets to be `$state` so its
+  // reactivity tracker doesn't get confused. We never read this
+  // reactively, only call `.focus()` imperatively, but the warning
+  // is correct on principle.
+  let overlayEl = $state<HTMLDivElement | null>(null);
+
+  /// Flat ordering of all visible windows: workspace by workspace,
+  /// in the order their cards render. Used by Tab / Shift+Tab to
+  /// cycle across workspace boundaries.
+  const flatWindowOrder = $derived.by(() => {
+    const order: { winId: string; wsId: string }[] = [];
+    for (const ws of $primaryWorkspaces) {
+      for (const w of $windows) {
+        if (w.workspace_ids.includes(ws.id)) {
+          order.push({ winId: w.id, wsId: ws.id });
+        }
+      }
+    }
+    return order;
+  });
+
+  function pickInitialFocus(): string | null {
+    // Prefer the currently active window so the first Tab move is
+    // semantically "show me the next thing after where I am".
+    const active = $windows.find((w) => w.active);
+    if (active) return active.id;
+    const activeWs = $primaryWorkspaces.find((w) => w.active);
+    if (activeWs) {
+      const wins = $windows.filter((w) =>
+        w.workspace_ids.includes(activeWs.id),
+      );
+      if (wins.length > 0) return wins[0].id;
+    }
+    return flatWindowOrder[0]?.winId ?? null;
+  }
+
+  function cycleWindow(direction: 1 | -1) {
+    const order = flatWindowOrder;
+    if (order.length === 0) return;
+    if (focusedWindowId === null) {
+      focusedWindowId = pickInitialFocus();
+      return;
+    }
+    const idx = order.findIndex((e) => e.winId === focusedWindowId);
+    if (idx < 0) {
+      focusedWindowId = order[0].winId;
+      return;
+    }
+    const next = (idx + direction + order.length) % order.length;
+    focusedWindowId = order[next].winId;
+  }
+
+  function navigateWorkspace(direction: 1 | -1) {
+    if ($primaryWorkspaces.length === 0) return;
+    let currentWsIdx = -1;
+    if (focusedWindowId) {
+      const win = $windows.find((w) => w.id === focusedWindowId);
+      if (win) {
+        currentWsIdx = $primaryWorkspaces.findIndex((ws) =>
+          win.workspace_ids.includes(ws.id),
+        );
+      }
+    }
+    if (currentWsIdx < 0) {
+      currentWsIdx = $primaryWorkspaces.findIndex((ws) => ws.active);
+    }
+    const wsIdx =
+      (currentWsIdx + direction + $primaryWorkspaces.length) %
+      $primaryWorkspaces.length;
+    const wsId = $primaryWorkspaces[wsIdx].id;
+    const wins = $windows.filter((w) => w.workspace_ids.includes(wsId));
+    focusedWindowId = wins[0]?.id ?? null;
+  }
+
+  function navigateColumn(direction: 1 | -1) {
+    if (!focusedWindowId) {
+      focusedWindowId = pickInitialFocus();
+      return;
+    }
+    const win = $windows.find((w) => w.id === focusedWindowId);
+    if (!win) return;
+    const wsId = win.workspace_ids[0];
+    const wins = $windows.filter((w) => w.workspace_ids.includes(wsId));
+    const idx = wins.findIndex((w) => w.id === focusedWindowId);
+    if (idx < 0 || wins.length === 0) return;
+    const next = (idx + direction + wins.length) % wins.length;
+    focusedWindowId = wins[next].id;
+  }
+
+  function jumpToWorkspaceN(n: number) {
+    const ws = $primaryWorkspaces[n - 1];
+    if (!ws) return;
+    const wins = $windows.filter((w) => w.workspace_ids.includes(ws.id));
+    focusedWindowId = wins[0]?.id ?? null;
+  }
+
+  function activateFocused() {
+    const id = focusedWindowId;
+    if (!id) return;
+    invoke("activate_window", { id }).catch(() => {});
+    closeOverlayKeyboard();
+  }
+
+  function closeOverlayKeyboard() {
+    overlayVisible = false;
+    focusedWindowId = null;
+    invoke("set_popover_input_region", { expanded: false }).catch(() => {});
+  }
+
+  function onKeydown(e: KeyboardEvent) {
+    if (!overlayVisible) return;
+
+    let handled = true;
+    switch (e.key) {
+      case "Tab":
+        cycleWindow(e.shiftKey ? -1 : 1);
+        break;
+      case "ArrowLeft":
+        navigateWorkspace(-1);
+        break;
+      case "ArrowRight":
+        navigateWorkspace(1);
+        break;
+      case "ArrowUp":
+        navigateColumn(-1);
+        break;
+      case "ArrowDown":
+        navigateColumn(1);
+        break;
+      case "Enter":
+        activateFocused();
+        break;
+      case "Escape":
+        closeOverlayKeyboard();
+        break;
+      default:
+        if (e.key >= "1" && e.key <= "9") {
+          jumpToWorkspaceN(parseInt(e.key, 10));
+        } else {
+          handled = false;
+        }
+    }
+    if (handled) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+
+  /// Forwards the compositor's `workspace_overlay_open` event into
+  /// the overlay's open / cycle state. First fire opens + seeds focus
+  /// on the active window; subsequent fires while the overlay is
+  /// already open advance focus by one (Super+Tab as a true cycler,
+  /// macOS Cmd+Tab style).
+  function onWorkspaceOverlayOpenEvent() {
+    if (overlayVisible) {
+      cycleWindow(1);
+      return;
+    }
+    openOverlay();
+    focusedWindowId = pickInitialFocus();
+    // Try to grab DOM focus on the overlay so subsequent keys land
+    // here. Layer-shell focus semantics are compositor-driven, so
+    // this is best-effort — if the user's Tab still doesn't land
+    // here, the compositor needs to set keyboard focus to the layer.
+    setTimeout(() => overlayEl?.focus(), 0);
   }
 
   /// Timestamp of the last drag-drop. Used to suppress the synthesized
@@ -412,7 +601,23 @@
   });
 
   $effect(() => {
+    // Subscribe to the compositor's keyboard-triggered open event.
+    // Listen returns its unsubscribe handle async; we stash it so the
+    // unmount path can still call it cleanly.
+    let unlistenWsOverlay: UnlistenFn | null = null;
+    listen("lunaris://workspace-overlay-open", onWorkspaceOverlayOpenEvent)
+      .then((fn) => {
+        unlistenWsOverlay = fn;
+      })
+      .catch((e) =>
+        console.warn("workspace-overlay-open subscribe failed", e),
+      );
+
+    document.addEventListener("keydown", onKeydown);
+
     return () => {
+      document.removeEventListener("keydown", onKeydown);
+      if (unlistenWsOverlay) unlistenWsOverlay();
       if (hoverTimer) clearTimeout(hoverTimer);
       pointerDrag = null;
       resetDragUI();
@@ -460,11 +665,18 @@
 
     <!-- Horizontal workspace overview overlay (spec §2.2–2.4).
          No onmouseleave — see the comment on `onOverlayEnter` in the
-         script for why. -->
+         script for why. `tabindex="-1"` lets us programmatically
+         focus the div from `onWorkspaceOverlayOpenEvent` so the
+         document-level keydown handler actually fires. -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
+      bind:this={overlayEl}
       class="overlay"
       class:overlay-visible={overlayVisible}
+      role="dialog"
+      aria-label="Workspace overview"
+      aria-modal="false"
+      tabindex="-1"
       onmouseenter={onOverlayEnter}
     >
       <div class="ws-columns">
@@ -486,7 +698,18 @@
             onclick={() => handleColumnClick(ws.id)}
           >
             <div class="ws-number">{i + 1}</div>
-            <div class="ws-project"></div>
+            <!-- Project label: populated by `projectPerWorkspace` when
+                 a majority of this workspace's windows map to the
+                 same project in the knowledge graph. Empty placeholder
+                 keeps the column's vertical rhythm stable when the
+                 label is absent (no project majority / graph daemon
+                 offline / empty workspace). Guard with `?.` in case
+                 the derived store is transiently undefined during
+                 component mount — would only happen in pathological
+                 HMR states but costs nothing to be explicit. -->
+            <div class="ws-project">
+              {$projectPerWorkspace?.get(ws.id)?.name ?? ""}
+            </div>
 
             {#if shown.length === 0}
               <div class="ws-empty">Empty</div>
@@ -498,11 +721,14 @@
                     class="window-card"
                     class:window-card-dragging={dragState?.windowId ===
                       win.id}
+                    class:window-card-keyboard-focus={focusedWindowId ===
+                      win.id}
                     onpointerdown={(e) => onCardPointerDown(e, win, ws.id)}
                     onpointermove={onCardPointerMove}
                     onpointerup={onCardPointerUp}
                     onpointercancel={onCardPointerCancel}
                     title={win.title || win.app_id}
+                    aria-label={`${win.title || win.app_id} on workspace ${i + 1}`}
                   >
                     {#if iconUrls[win.app_id]}
                       <img
@@ -695,6 +921,19 @@
   .window-card-dragging:hover {
     transform: none;
     background: color-mix(in srgb, var(--color-fg-shell) 6%, transparent);
+  }
+
+  /* Keyboard-navigation focus ring. Distinct from `.ws-column-active`
+     (subtle accent tint on the whole column) — this is a saturated
+     accent outline directly on the focused card so it stands out
+     even inside the active column. */
+  .window-card-keyboard-focus {
+    border-color: var(--color-accent);
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--color-accent) 50%, transparent);
+  }
+  .window-card-keyboard-focus:hover {
+    border-color: var(--color-accent);
   }
 
   .window-card-icon {

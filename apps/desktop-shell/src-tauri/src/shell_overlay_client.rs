@@ -579,6 +579,17 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                 crate::waypointer::toggle(&state.app_handle);
             }
 
+            overlay::Event::WorkspaceOverlayOpen => {
+                // Forwarded as-is to the WorkspaceIndicator. The shell
+                // distinguishes "open fresh" from "cycle to next" based
+                // on whether the overlay is already visible — receiving
+                // the same event twice is the cycle signal.
+                log::info!("shell_overlay_client: WorkspaceOverlayOpen received");
+                let _ = state
+                    .app_handle
+                    .emit("lunaris://workspace-overlay-open", ());
+            }
+
             overlay::Event::LayoutModeChanged { mode } => {
                 let (mode_str, mode_u8) = match mode {
                     wayland_client::WEnum::Value(overlay::LayoutModeType::Tiling) => ("tiling", 1u8),

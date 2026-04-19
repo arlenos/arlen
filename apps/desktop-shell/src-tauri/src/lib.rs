@@ -261,6 +261,7 @@ pub fn run() {
             waypointer_unicode::search_unicode,
             projects::list_projects,
             projects::get_project,
+            projects::get_project_for_app,
             projects::activate_focus,
             projects::deactivate_focus,
             projects::get_focus_state,

@@ -1,7 +1,12 @@
+// Value + type imports split — inline mixed form trips Tailwind's
+// Vite plugin CSS parser and cascades into bogus "Invalid declaration"
+// errors on subsequent value-only imports in the same pipeline run.
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { writable, derived, type Readable } from "svelte/store";
-import { windows, type WindowInfo } from "./windows.js";
+import { writable, derived } from "svelte/store";
+import type { Readable } from "svelte/store";
+import { windows } from "./windows.js";
+import type { WindowInfo } from "./windows.js";
 
 export interface WorkspaceInfo {
     id: string;
