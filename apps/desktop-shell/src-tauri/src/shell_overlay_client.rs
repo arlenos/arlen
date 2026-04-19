@@ -859,22 +859,33 @@ pub fn window_header_action(
 /// When false, it reverts to the bar-only region (unless a context menu is active).
 #[tauri::command]
 pub fn set_notification_input_region(app: tauri::AppHandle, expanded: bool) {
+    // Dedup: `swap` returns the previous value. If the caller is
+    // asking for the same state we're already in, skip the GTK
+    // round-trip entirely. Redundant calls from rapid mouse events
+    // were flooding the Wayland queue and could soft-freeze the
+    // shell on sustained hover jitter.
+    let was = NOTIFICATIONS_ACTIVE.swap(expanded, Ordering::SeqCst);
+    if was == expanded {
+        return;
+    }
     log::info!(
         "set_notification_input_region: expanded={} (was {})",
-        expanded, NOTIFICATIONS_ACTIVE.load(Ordering::SeqCst),
+        expanded, was,
     );
-    NOTIFICATIONS_ACTIVE.store(expanded, Ordering::SeqCst);
     update_input_region(&app);
 }
 
 /// Expand or restore the input region for the workspace popover.
 #[tauri::command]
 pub fn set_popover_input_region(app: tauri::AppHandle, expanded: bool) {
+    let was = POPOVER_ACTIVE.swap(expanded, Ordering::SeqCst);
+    if was == expanded {
+        return;
+    }
     log::info!(
         "set_popover_input_region: expanded={} (was {})",
-        expanded, POPOVER_ACTIVE.load(Ordering::SeqCst),
+        expanded, was,
     );
-    POPOVER_ACTIVE.store(expanded, Ordering::SeqCst);
     update_input_region(&app);
 }
 

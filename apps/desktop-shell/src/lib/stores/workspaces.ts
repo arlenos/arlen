@@ -35,6 +35,24 @@ export const activeWorkspace = derived(primaryWorkspaces, ($ws) =>
 export const wsUpdateCount = writable(0);
 
 export function initWorkspaceListeners() {
+    // Prime the store synchronously with the backend's cached
+    // snapshot. Needed because the compositor only emits
+    // `lunaris://workspace-list` on state changes; after a Vite
+    // HMR full-page reload the Svelte store is reset to `[]` and
+    // no event ever re-populates it, which left the
+    // WorkspaceIndicator hidden (`{#if length > 0}` guard) until
+    // the user triggered a compositor event manually.
+    invoke<WorkspaceInfo[]>("get_workspaces")
+        .then((initial) => {
+            // Don't clobber if a live event already arrived between
+            // the invoke call and its resolution.
+            workspaces.update((current) =>
+                current.length === 0 ? initial : current,
+            );
+            if (initial.length > 0) wsUpdateCount.update((n) => n + 1);
+        })
+        .catch((e) => console.warn("get_workspaces failed", e));
+
     listen<WorkspaceInfo[]>("lunaris://workspace-list", ({ payload }) => {
         workspaces.set(payload);
         wsUpdateCount.update((n) => n + 1);

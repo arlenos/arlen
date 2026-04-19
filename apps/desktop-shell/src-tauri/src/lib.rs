@@ -48,6 +48,8 @@ pub fn run() {
     let workspace_sender = Arc::new(wayland_client::WorkspaceSender::new());
     let toplevel_sender = Arc::new(wayland_client::ToplevelSender::new());
     let window_list: wayland_client::WindowList = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let workspace_list: wayland_client::WorkspaceList =
+        Arc::new(std::sync::Mutex::new(Vec::new()));
     let menu_store: menu_store::AppMenuStore =
         Arc::new(std::sync::Mutex::new(HashMap::new()));
     let menu_store_for_bridge = Arc::clone(&menu_store);
@@ -76,6 +78,7 @@ pub fn run() {
         .manage(Arc::clone(&workspace_sender))
         .manage(Arc::clone(&toplevel_sender))
         .manage(Arc::clone(&window_list))
+        .manage(Arc::clone(&workspace_list))
         .manage(Arc::clone(&menu_store))
         .manage(app_idx)
         .manage(Arc::clone(&sni_items))
@@ -111,7 +114,13 @@ pub fn run() {
             theme::commands::start_appearance_watcher(app.handle().clone());
             shell_config::start_shell_config_watcher(app.handle().clone());
             event_bus::start(app.handle().clone());
-            wayland_client::start(app.handle().clone(), workspace_sender, toplevel_sender, window_list);
+            wayland_client::start(
+                app.handle().clone(),
+                workspace_sender,
+                toplevel_sender,
+                window_list,
+                workspace_list,
+            );
             shell_overlay_client::start(app.handle().clone(), overlay_sender);
             let notif_writer = notifications::start(app.handle().clone());
             app.manage(notif_writer);
@@ -244,7 +253,9 @@ pub fn run() {
             waypointer_plugins::evaluate_waypointer_input,
             wayland_client::workspace_activate,
             wayland_client::activate_window,
+            wayland_client::window_move_to_workspace,
             wayland_client::get_windows,
+            wayland_client::get_workspaces,
             waypointer_processes::get_processes,
             waypointer_processes::kill_process,
             waypointer_unicode::search_unicode,
