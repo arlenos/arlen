@@ -4,8 +4,9 @@
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
   import { Separator } from "$lib/components/ui/separator/index.js";
+  import { PopoverSelect } from "$lib/components/ui/popover-select";
   import {
-    Volume2, VolumeX, Mic, MicOff, ChevronDown, ChevronRight, Check,
+    Volume2, VolumeX, Mic, MicOff, ChevronRight,
   } from "lucide-svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
 
@@ -20,9 +21,18 @@
   let outputs = $state<AudioDevice[]>([]);
   let inputs = $state<AudioDevice[]>([]);
   let apps = $state<AppVol[]>([]);
-  let outputDropdownOpen = $state(false);
-  let inputDropdownOpen = $state(false);
   let appsExpanded = $state(false);
+
+  /// Projections for the device pickers. `PopoverSelect` takes a flat
+  /// `{value, label}[]`, and `value` is the currently-selected id.
+  const outputOptions = $derived(
+    outputs.map((o) => ({ value: o.id, label: o.name })),
+  );
+  const inputOptions = $derived(
+    inputs.map((i) => ({ value: i.id, label: i.name })),
+  );
+  const currentOutputId = $derived(outputs.find((o) => o.is_default)?.id ?? "");
+  const currentInputId = $derived(inputs.find((i) => i.is_default)?.id ?? "");
 
   interface AudioFullState {
     status: { volume: number; muted: boolean; output_type: string };
@@ -45,12 +55,12 @@
     } catch {}
   }
 
+  // PopoverSelect owns its open-state internally and unmounts cleanly
+  // with the surrounding `{#if $activePopover === "audio"}` guard, so
+  // the old dropdown-open flags are no longer needed.
   $effect(() => {
     if ($activePopover === "audio") {
       poll();
-    } else {
-      outputDropdownOpen = false;
-      inputDropdownOpen = false;
     }
   });
 
@@ -69,11 +79,9 @@
     invoke("toggle_input_mute").then(() => poll()).catch(() => {});
   }
   function selectOutput(id: string) {
-    outputDropdownOpen = false;
     invoke("set_audio_output", { id }).then(() => poll()).catch(() => {});
   }
   function selectInput(id: string) {
-    inputDropdownOpen = false;
     invoke("set_audio_input", { id }).then(() => poll()).catch(() => {});
   }
   function setAppVol(id: number, val: number) {
@@ -93,11 +101,7 @@
   <div class="pop-backdrop" onclick={closePopover}></div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="pop-panel pop-audio shell-popover" onclick={(e) => {
-    e.stopPropagation();
-    outputDropdownOpen = false;
-    inputDropdownOpen = false;
-  }}>
+  <div class="pop-panel pop-audio shell-popover" onclick={(e) => e.stopPropagation()}>
     <PopoverHeader icon={Volume2} title="Sound" toggled={!dndEnabled} onToggle={toggleDnd} />
     <div class="pop-body">
 
@@ -122,24 +126,13 @@
         <span class="vol-value">{volume}%</span>
       </div>
 
-      <div class="cs-wrap">
-        <button class="cs-trigger" onclick={(e) => { e.stopPropagation(); outputDropdownOpen = !outputDropdownOpen; inputDropdownOpen = false; }}>
-          <span class="cs-value">{outputs.find((o) => o.is_default)?.name ?? "Default"}</span>
-          <ChevronDown size={12} strokeWidth={2} />
-        </button>
-        {#if outputDropdownOpen}
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <div class="cs-dropdown" onclick={(e) => e.stopPropagation()}>
-            {#each outputs as out (out.name)}
-              <button class="cs-item" class:selected={out.is_default} onclick={(e) => { e.stopPropagation(); selectOutput(out.id); }}>
-                <span>{out.name}</span>
-                {#if out.is_default}<Check size={12} strokeWidth={2} />{/if}
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </div>
+      <PopoverSelect
+        value={currentOutputId}
+        options={outputOptions}
+        onchange={selectOutput}
+        ariaLabel="Audio output device"
+        width="100%"
+      />
 
       <Separator class="opacity-10" />
 
@@ -165,24 +158,13 @@
           <span class="vol-value">{inputVolume}%</span>
         </div>
 
-        <div class="cs-wrap">
-          <button class="cs-trigger" onclick={(e) => { e.stopPropagation(); inputDropdownOpen = !inputDropdownOpen; outputDropdownOpen = false; }}>
-            <span class="cs-value">{inputs.find((i) => i.is_default)?.name ?? "Default"}</span>
-            <ChevronDown size={12} strokeWidth={2} />
-          </button>
-          {#if inputDropdownOpen}
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <div class="cs-dropdown" onclick={(e) => e.stopPropagation()}>
-              {#each inputs as inp (inp.name)}
-                <button class="cs-item" class:selected={inp.is_default} onclick={(e) => { e.stopPropagation(); selectInput(inp.id); }}>
-                  <span>{inp.name}</span>
-                  {#if inp.is_default}<Check size={12} strokeWidth={2} />{/if}
-                </button>
-              {/each}
-            </div>
-          {/if}
-        </div>
+        <PopoverSelect
+          value={currentInputId}
+          options={inputOptions}
+          onchange={selectInput}
+          ariaLabel="Audio input device"
+          width="100%"
+        />
 
         <Separator class="opacity-10" />
       {/if}
@@ -259,34 +241,13 @@
   .app-slider { width: 100px; flex: none; }
   .app-slider .vol-slider-thumb { width: 12px; height: 12px; }
 
-  /* Custom Select */
-  .cs-wrap { position: relative; }
-  .cs-trigger {
-    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 6px;
-    padding: 5px 8px; border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
-    color: var(--color-fg-shell); font-size: 0.6875rem; cursor: pointer; text-align: left;
-    transition: border-color 0.1s ease;
-  }
-  .cs-trigger:hover { border-color: color-mix(in srgb, var(--color-fg-shell) 25%, transparent); }
-  .cs-value { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cs-dropdown {
-    position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px;
-    background: var(--color-bg-shell);
-    border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
-    border-radius: var(--radius-md); padding: 4px;
-    box-shadow: var(--shadow-md);
-    z-index: 10; max-height: 160px; overflow-y: auto;
-  }
-  .cs-item {
-    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    padding: 6px 8px; background: transparent; border: none; border-radius: var(--radius-sm);
-    color: var(--color-fg-shell); font-size: 0.6875rem; cursor: pointer; text-align: left;
-    transition: background-color 0.1s ease;
-  }
-  .cs-item:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
-  .cs-item.selected { background: color-mix(in srgb, var(--color-accent) 15%, transparent); }
+  /*
+   * Output/input device pickers use the shared PopoverSelect from
+   * $lib/components/ui/popover-select. Its menu portals to
+   * document.body, so styling is driven by the shell's :root theme
+   * tokens (--foreground, --background) — no shell-specific overrides
+   * live here.
+   */
 
   /* Apps section */
   .apps-header {
