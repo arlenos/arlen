@@ -2,6 +2,10 @@ import { writable } from "svelte/store";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
+/// Top-level sentinel matching `u32::MAX` sent by the compositor for items
+/// that have no parent submenu.
+export const TOP_LEVEL_PARENT = 0xffffffff;
+
 export interface MenuItem {
     index: number;
     kind: "entry" | "separator";
@@ -10,6 +14,41 @@ export interface MenuItem {
     toggled: boolean | null;
     disabled: boolean | null;
     shortcut: string | null;
+    parent_index: number;
+    has_submenu: boolean;
+}
+
+/// A menu item augmented with its rebuilt children list. Used only for
+/// rendering; the flat `MenuItem[]` stays in the store.
+export interface MenuItemNode extends MenuItem {
+    children: MenuItemNode[];
+}
+
+/// Build a tree of `MenuItemNode` from the flat DFS stream. Each item is
+/// placed under its parent (keyed by `parent_index`); top-level items
+/// (`parent_index === TOP_LEVEL_PARENT`) form the returned root array.
+export function buildMenuTree(items: MenuItem[]): MenuItemNode[] {
+    const nodes = new Map<number, MenuItemNode>();
+    for (const it of items) {
+        nodes.set(it.index, { ...it, children: [] });
+    }
+    const roots: MenuItemNode[] = [];
+    for (const it of items) {
+        const node = nodes.get(it.index)!;
+        if (it.parent_index === TOP_LEVEL_PARENT) {
+            roots.push(node);
+        } else {
+            const parent = nodes.get(it.parent_index);
+            if (parent) {
+                parent.children.push(node);
+            } else {
+                // Orphaned child — fall back to top-level so the entry
+                // stays clickable instead of vanishing silently.
+                roots.push(node);
+            }
+        }
+    }
+    return roots;
 }
 
 interface ContextMenuState {

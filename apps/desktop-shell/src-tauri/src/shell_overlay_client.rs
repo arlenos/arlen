@@ -160,15 +160,20 @@ fn set_menu_active(app: &tauri::AppHandle, active: bool) {
 
 /// A single entry in a context menu. Both regular items and separators are
 /// represented in the same flat array so Svelte can render them in order.
+///
+/// Items carry `parent_index` so the frontend can rebuild the menu tree from
+/// the DFS-flat stream. A `parent_index` of `u32::MAX` means top-level;
+/// otherwise it is the flat index of the parent submenu header. Submenu
+/// headers have `has_submenu = true` and their children follow in the stream.
 #[derive(Clone, Serialize)]
 pub struct MenuItemPayload {
     /// Position index as assigned by the compositor (stable across the menu lifetime).
     pub index: u32,
     /// `"entry"` for a clickable item, `"separator"` for a visual divider.
     pub kind: String,
-    /// WindowAction value (1-18). `None` for separators.
+    /// WindowAction value (0-18, 0 = none). `None` for separators.
     pub action: Option<u32>,
-    /// Human-readable label derived from `action`. `None` for separators.
+    /// Human-readable label. `None` for separators.
     pub label: Option<String>,
     /// Whether the item is in a toggled/checked state. `None` for separators.
     pub toggled: Option<bool>,
@@ -176,6 +181,10 @@ pub struct MenuItemPayload {
     pub disabled: Option<bool>,
     /// Keyboard shortcut label (may be an empty string). `None` for separators.
     pub shortcut: Option<String>,
+    /// Flat index of the parent submenu, or `u32::MAX` if top-level.
+    pub parent_index: u32,
+    /// `true` if this item is a submenu header (never activated directly).
+    pub has_submenu: bool,
 }
 
 // ===== Tab bar payload types =====
@@ -360,25 +369,42 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                 toggled,
                 disabled,
                 shortcut,
+                parent_index,
+                label,
+                has_submenu,
             } => {
                 if let Some(menu) = state.pending_menus.get_mut(&menu_id) {
                     let action_u32 = match action {
                         wayland_client::WEnum::Value(v) => v as u32,
                         wayland_client::WEnum::Unknown(v) => v,
                     };
+                    // Protocol label wins when non-empty; otherwise derive
+                    // a human label from the WindowAction enum so plain
+                    // entries (which send label="") still render sensibly.
+                    let resolved_label = if label.is_empty() {
+                        action_label(action_u32)
+                    } else {
+                        label
+                    };
                     menu.items.push(MenuItemPayload {
                         index,
                         kind: "entry".into(),
                         action: Some(action_u32),
-                        label: Some(action_label(action_u32)),
+                        label: Some(resolved_label),
                         toggled: Some(toggled != 0),
                         disabled: Some(disabled != 0),
                         shortcut: Some(shortcut),
+                        parent_index,
+                        has_submenu: has_submenu != 0,
                     });
                 }
             }
 
-            overlay::Event::ContextMenuSeparator { menu_id, index } => {
+            overlay::Event::ContextMenuSeparator {
+                menu_id,
+                index,
+                parent_index,
+            } => {
                 if let Some(menu) = state.pending_menus.get_mut(&menu_id) {
                     menu.items.push(MenuItemPayload {
                         index,
@@ -388,6 +414,8 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                         toggled: None,
                         disabled: None,
                         shortcut: None,
+                        parent_index,
+                        has_submenu: false,
                     });
                 }
             }
