@@ -406,6 +406,15 @@ const CATALOGUE: &[CatalogueRow] = &[
         default_binding: Some("Super+Space"),
     },
     CatalogueRow {
+        action: "shell:workspace_overlay_open",
+        category: "shell",
+        label: "Open Workspace Overview",
+        description: Some(
+            "Horizontal overlay with all workspaces; cycles focus on repeat",
+        ),
+        default_binding: Some("Super+Tab"),
+    },
+    CatalogueRow {
         action: "spawn:foot",
         category: "apps",
         label: "Open terminal (foot)",
