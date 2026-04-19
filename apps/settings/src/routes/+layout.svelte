@@ -38,8 +38,26 @@
     }).catch(() => {});
   });
 
+  /// Suppress the webview's native right-click menu globally. Lunaris
+  /// apps render their own context menus (see `WindowContextMenu` on
+  /// the titlebar, row-level ContextMenus on lists, etc.); the
+  /// browser's "Back / Forward / Reload / Inspect" menu is noise.
+  ///
+  /// Opt-out: any element with `data-allow-browser-context` set will
+  /// keep the native menu. Nothing in the tree needs it today, but
+  /// the attribute gives a clean escape hatch for debug overlays.
+  function suppressBrowserContextMenu(e: MouseEvent): void {
+    if ((e.target as HTMLElement | null)?.closest?.(
+      "[data-allow-browser-context]"
+    )) {
+      return;
+    }
+    e.preventDefault();
+  }
+
   onMount(() => {
     theme.load();
+    document.addEventListener("contextmenu", suppressBrowserContextMenu);
 
     // Export the settings search index so Waypointer always has an
     // up-to-date copy at ~/.local/share/lunaris/settings-index.json.
@@ -83,6 +101,7 @@
 
     return () => {
       unlistenAppearance?.();
+      document.removeEventListener("contextmenu", suppressBrowserContextMenu);
     };
   });
 

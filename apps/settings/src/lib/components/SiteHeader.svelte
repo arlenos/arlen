@@ -29,6 +29,13 @@
   }
 </script>
 
+<!-- Right-click on the titlebar is currently a no-op. The Lunaris
+     compositor owns the canonical window menu for native Wayland
+     toplevels; ultimately the titlebar plugin should request it via a
+     new `show_window_menu` message on `lunaris-titlebar-v1`, so CSD
+     apps get the exact same menu (Move to Workspace submenu included)
+     rather than a divergent copy. Until that lands, no menu on
+     right-click is better than two different ones. -->
 <header
   onpointerdown={startDrag}
   ondblclick={toggleMax}
