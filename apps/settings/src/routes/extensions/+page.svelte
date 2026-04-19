@@ -11,10 +11,20 @@
   /// module at runtime.
 
   import { onMount } from "svelte";
-  import { RefreshCw, Puzzle, Info } from "lucide-svelte";
+  import { RefreshCw, Puzzle, Info, ExternalLink } from "lucide-svelte";
   import Group from "$lib/components/appearance/Group.svelte";
   import ModuleCard from "$lib/components/appearance/ModuleCard.svelte";
   import { modules, moduleGroups } from "$lib/stores/modules";
+
+  /// Where installd drops bundled modules and where users can drop
+  /// their own. Shown verbatim in the empty state so the user knows
+  /// exactly where to put new modules.
+  const USER_MODULES_DIR = "~/.local/share/lunaris/modules/";
+  const SYSTEM_MODULES_DIR = "/usr/share/lunaris/modules/";
+  /// Link to the module-system spec shipped with the repo. When the
+  /// Lunaris docs site goes live this should flip to the canonical URL.
+  const MODULES_DOCS =
+    "https://github.com/lunaris-sys/docs/blob/main/architecture/module-system.md";
 
   let filter = $state("");
 
@@ -92,11 +102,21 @@
       </div>
       <h2>No modules installed</h2>
       <p>
-        Modules live in <code>~/.local/share/lunaris/modules/&lt;id&gt;/</code>
-        or are shipped with the system in
-        <code>/usr/share/lunaris/modules/</code>. Each directory must
-        contain a <code>manifest.toml</code>.
+        Modules live in <code>{USER_MODULES_DIR}&lt;id&gt;/</code> for the
+        current user, or in <code>{SYSTEM_MODULES_DIR}</code> system-wide.
+        Each directory needs a <code>manifest.toml</code>. Install them
+        with <code>forage install</code> or drop them in manually; the
+        Settings app rescans when you press refresh.
       </p>
+      <a
+        class="empty-link"
+        href={MODULES_DOCS}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Learn about modules
+        <ExternalLink size={12} strokeWidth={2} />
+      </a>
     </div>
   {:else}
     <div class="summary">
@@ -318,5 +338,19 @@
   }
   .empty strong {
     color: var(--foreground);
+  }
+  .empty-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    color: var(--color-accent);
+    text-decoration: none;
+    padding: 0.3rem 0.6rem;
+    border-radius: var(--radius-sm);
+    transition: background-color 120ms ease;
+  }
+  .empty-link:hover {
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   }
 </style>

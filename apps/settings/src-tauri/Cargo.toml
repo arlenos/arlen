@@ -29,9 +29,10 @@ chrono = { version = "0.4", features = ["serde"] }
 # and the "clear history" action. SQLite handles concurrent access with
 # the daemon transparently via its file locking.
 rusqlite = { version = "0.32", features = ["bundled"] }
-
-[dev-dependencies]
-tempfile = "3"
+# Async D-Bus client for the compositor's input services. Tauri 2 ships
+# its own async runtime so we rely on zbus' `tokio` feature and invoke
+# via `#[tauri::command] async fn`.
+lunaris-input-client = { path = "../../sdk/lunaris-input-client" }
 
 # Lunaris titlebar plugin: binds lunaris-titlebar-v1 Wayland protocol when
 # running under the Lunaris compositor, no-op otherwise. The graceful
@@ -41,6 +42,9 @@ tauri-plugin-lunaris-menu = { path = "../../sdk/tauri-plugin-menu" }
 # Shared manifest parser / validator for module.toml files. The
 # Settings app and the shell use the same schema via this crate.
 lunaris-modules = { path = "../../sdk/modules" }
+
+[dev-dependencies]
+tempfile = "3"
 
 # SDK crates (git deps once the settings repo is detached):
 # os-sdk         = { git = "https://github.com/lunaris-sys/sdk", path = "os-sdk" }

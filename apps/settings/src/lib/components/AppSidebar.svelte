@@ -16,7 +16,10 @@
     Settings2,
     Palette,
     Keyboard,
+    Command,
     Monitor,
+    Mouse,
+    SquareMousePointer,
     Bell,
     Shield,
     Puzzle,
@@ -26,7 +29,10 @@
   const ICONS: Record<string, typeof Palette> = {
     Palette,
     Keyboard,
+    Command,
     Monitor,
+    Mouse,
+    SquareMousePointer,
     Bell,
     Shield,
     Puzzle,
@@ -37,7 +43,11 @@
   const SECTIONS = [
     {
       label: "Personalization",
-      panelIds: ["appearance", "keyboard", "display"] as const,
+      panelIds: ["appearance", "display"] as const,
+    },
+    {
+      label: "Input",
+      panelIds: ["keyboard", "shortcuts", "mouse", "touchpad"] as const,
     },
     {
       label: "System",
