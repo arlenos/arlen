@@ -22,29 +22,45 @@
     $primaryWorkspaces.findIndex((w) => w.active),
   );
 
-  // Hover overlay state. Timings per spec §3.1: 600ms open, 300ms grace.
+  // Hover overlay state.
+  //
+  // Open delay is 50ms (~debounce, not a real wait) so the overlay
+  // feels instant to intentional hover without flashing open on rapid
+  // topbar traversal. Close delay is 300ms grace to tolerate brief
+  // excursions outside the overlay bounds (e.g. pointer jitter while
+  // dragging near the edge, or briefly exiting during a drop).
+  //
+  // `hoverTimer` is reused for both open and close — only one is ever
+  // pending because entering cancels pending-close and vice versa.
   let overlayVisible = $state(false);
   let hoverTimer: ReturnType<typeof setTimeout> | null = null;
 
-  function onEnter() {
-    if (hoverTimer) clearTimeout(hoverTimer);
-    hoverTimer = setTimeout(() => {
-      overlayVisible = true;
-      invoke("set_popover_input_region", { expanded: true }).catch(() => {});
-    }, 600);
+  function openOverlay() {
+    overlayVisible = true;
+    invoke("set_popover_input_region", { expanded: true }).catch(() => {});
   }
 
-  function onLeave() {
-    if (hoverTimer) {
-      clearTimeout(hoverTimer);
-      hoverTimer = null;
-    }
+  function scheduleClose() {
+    if (hoverTimer) clearTimeout(hoverTimer);
     hoverTimer = setTimeout(() => {
       overlayVisible = false;
       invoke("set_popover_input_region", { expanded: false }).catch(
         () => {},
       );
+      hoverTimer = null;
     }, 300);
+  }
+
+  function onEnter() {
+    if (hoverTimer) clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(() => {
+      openOverlay();
+      hoverTimer = null;
+    }, 50);
+  }
+
+  function onLeave() {
+    scheduleClose();
   }
 
   function onOverlayEnter() {
@@ -52,12 +68,19 @@
       clearTimeout(hoverTimer);
       hoverTimer = null;
     }
+    // If the pointer reached the overlay before the 50ms open timer
+    // fired (fast mouse), open immediately — otherwise we'd cancel
+    // the open and sit with an invisible overlay under the cursor.
+    if (!overlayVisible) openOverlay();
   }
 
-  function onOverlayLeave() {
-    overlayVisible = false;
-    invoke("set_popover_input_region", { expanded: false }).catch(() => {});
-  }
+  // NOTE: no `onOverlayLeave`. Closing is handled exclusively by the
+  // `.ws-root` mouseleave (which fires when the pointer leaves the
+  // whole indicator — pills + overlay). A dedicated overlay-leave
+  // handler would close the overlay immediately the moment the user
+  // moved from overlay → pills (both are inside `.ws-root`), and it
+  // would also snap the overlay shut the instant the user released
+  // a drag on the outside edge — neither is desired UX.
 
   function pillLabel(_ws: WorkspaceInfo, i: number): string {
     return String(i + 1);
@@ -71,7 +94,21 @@
     activateWorkspace(id);
   }
 
+  /// Timestamp of the last drag-drop. Used to suppress the synthesized
+  /// `click` that the browser fires on the element under the pointer
+  /// immediately after a pointerup — even when pointer capture was
+  /// held by a different element (the card). Without this guard,
+  /// dropping a card inside a column triggers a column-click cycle:
+  /// activateWorkspace → overlayVisible=false → overlay closes, which
+  /// contradicts the spec (overlay stays open so the user can chain
+  /// more drags).
+  let lastDropTime = 0;
+
   function handleColumnClick(id: string) {
+    // Swallow the click synthesized by the browser after a drag-drop.
+    // 300ms is generous: a real user click lands within a few ms of
+    // pointerup, a synthetic click after drag is even tighter.
+    if (performance.now() - lastDropTime < 300) return;
     activateWorkspace(id);
     overlayVisible = false;
     invoke("set_popover_input_region", { expanded: false }).catch(() => {});
@@ -117,46 +154,242 @@
   );
   let dragOverWs = $state<string | null>(null);
 
-  function onDragStart(e: DragEvent, win: WindowInfo, sourceWs: string) {
-    if (!e.dataTransfer) return;
-    dragState = { windowId: win.id, sourceWs };
-    e.dataTransfer.setData("text/plain", win.id);
-    e.dataTransfer.effectAllowed = "move";
+  // ── Pointer-based drag & drop ───────────────────────────────────────────
+  //
+  // The HTML5 drag API (dragstart/dragover/dragend + setDragImage) kept
+  // freezing WebKitGTK when combined with a custom ghost — see debug
+  // sessions 2026-04-19. Pointer events give us full control without
+  // the browser's drag abstraction interfering:
+  //   pointerdown  → capture pointer, stash start position
+  //   pointermove  → once moved past threshold, create ghost; then
+  //                  position ghost + update hover column every tick
+  //   pointerup    → if dragged: fire move_to_workspace + cleanup;
+  //                  if not dragged: treat as a click on the card
+  //   pointercancel → cleanup (browser abort)
+  //   watchdog     → 8s fallback cleanup
+  //
+  // Column hit-testing uses `document.elementFromPoint` plus a
+  // `data-ws-id` attribute on each column. The ghost is
+  // `pointer-events: none` so it never shadows the real hit-test.
+
+  const DRAG_THRESHOLD_PX = 5;
+
+  /// Non-reactive pointer-state for the in-flight gesture. Holds
+  /// enough info to distinguish a click (pointer released before
+  /// moving past `DRAG_THRESHOLD_PX`) from a drag.
+  let pointerDrag: {
+    pointerId: number;
+    startX: number;
+    startY: number;
+    windowId: string;
+    sourceWs: string;
+    card: HTMLElement;
+    dragging: boolean;
+  } | null = null;
+
+  let ghostEl: HTMLElement | null = null;
+  let ghostOffsetX = 0;
+  let ghostOffsetY = 0;
+  let dragWatchdog: ReturnType<typeof setTimeout> | null = null;
+
+  // Dynamic tilt. Maps horizontal pointer velocity (delta-X between
+  // consecutive pointermove events) to a rotation that feels like the
+  // card is swinging while carried. Smoothing is exponential so the
+  // ghost doesn't jitter on tiny jumps and doesn't flip instantly on
+  // direction changes. `ghostLastX` is reset to the current pointer
+  // X when the ghost is created (see `onCardPointerMove`) so the
+  // first frame doesn't compute a huge delta against 0.
+  const TILT_GAIN = 0.5; // degrees per pixel of delta-X
+  const TILT_CLAMP = 10; // max absolute rotation
+  const TILT_LERP = 0.25; // 0 = frozen, 1 = no smoothing
+  let ghostLastX = 0;
+  let ghostRotation = 0;
+
+  function removeGhost() {
+    if (dragWatchdog) {
+      clearTimeout(dragWatchdog);
+      dragWatchdog = null;
+    }
+    if (ghostEl) {
+      const el = ghostEl;
+      ghostEl = null;
+      // Reset tilt state so the next drag starts neutral instead of
+      // inheriting the last drag's final angle.
+      ghostLastX = 0;
+      ghostRotation = 0;
+      requestAnimationFrame(() => {
+        try {
+          el.remove();
+        } catch {
+          /* already detached */
+        }
+      });
+    }
   }
 
-  function onDragEnd() {
+  function positionGhost(clientX: number, clientY: number) {
+    if (!ghostEl) return;
+    const x = clientX - ghostOffsetX;
+    const y = clientY - ghostOffsetY;
+    const deltaX = clientX - ghostLastX;
+    ghostLastX = clientX;
+    // Target rotation from velocity. Clamp before smoothing so
+    // `ghostRotation` itself never exceeds the clamp, even if a
+    // pathological single-frame delta is huge.
+    const target = Math.max(
+      -TILT_CLAMP,
+      Math.min(TILT_CLAMP, deltaX * TILT_GAIN),
+    );
+    ghostRotation = ghostRotation + (target - ghostRotation) * TILT_LERP;
+    ghostEl.style.transform =
+      `translate3d(${x}px, ${y}px, 0) rotate(${ghostRotation.toFixed(2)}deg) scale(1.05)`;
+  }
+
+  /// Finds the workspace column under (x, y) via elementFromPoint,
+  /// returning its workspace id (from `data-ws-id`) or null if the
+  /// pointer isn't over any column. Used for live hover highlight
+  /// during the drag and for drop-target resolution.
+  function columnIdAt(clientX: number, clientY: number): string | null {
+    const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+    if (!el) return null;
+    const column = el.closest("[data-ws-id]") as HTMLElement | null;
+    return column?.dataset.wsId ?? null;
+  }
+
+  function resetDragUI() {
     dragState = null;
     dragOverWs = null;
+    removeGhost();
   }
 
-  function onDragEnter(wsId: string) {
-    if (dragState) dragOverWs = wsId;
+  function onCardPointerDown(
+    e: PointerEvent,
+    win: WindowInfo,
+    sourceWs: string,
+  ) {
+    if (e.button !== 0) return; // left mouse / primary touch only
+    const card = e.currentTarget as HTMLElement;
+    // Pointer capture: all subsequent move/up events for this
+    // pointerId route to `card`, even when the pointer leaves
+    // the card's bounds. Drops the need for document-level
+    // fallback listeners.
+    try {
+      card.setPointerCapture(e.pointerId);
+    } catch {
+      /* capture not supported → we'll still get events on the card */
+    }
+    // Capture the offset from card-top-left to pointer NOW while
+    // the card is still in its starting position. Used later to
+    // position the ghost so the pointer stays on the same point
+    // of the card.
+    const rect = card.getBoundingClientRect();
+    ghostOffsetX = e.clientX - rect.left;
+    ghostOffsetY = e.clientY - rect.top;
+
+    pointerDrag = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      windowId: win.id,
+      sourceWs,
+      card,
+      dragging: false,
+    };
   }
 
-  function onDragLeave(wsId: string) {
-    if (dragOverWs === wsId) dragOverWs = null;
+  function onCardPointerMove(e: PointerEvent) {
+    if (!pointerDrag || e.pointerId !== pointerDrag.pointerId) return;
+
+    if (!pointerDrag.dragging) {
+      const dx = e.clientX - pointerDrag.startX;
+      const dy = e.clientY - pointerDrag.startY;
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+
+      // Threshold crossed → promote to a real drag. Build the ghost
+      // now (not on pointerdown) so tiny pointer jitter during a
+      // plain click doesn't leave stray DOM behind.
+      pointerDrag.dragging = true;
+      try {
+        const rect = pointerDrag.card.getBoundingClientRect();
+        const clone = pointerDrag.card.cloneNode(true) as HTMLElement;
+        clone.removeAttribute("draggable");
+        clone.classList.add("drag-ghost");
+        clone.style.width = `${rect.width}px`;
+        clone.style.height = `${rect.height}px`;
+        document.body.appendChild(clone);
+        ghostEl = clone;
+        // Seed the tilt tracker with the current X so the very first
+        // positionGhost call sees deltaX ≈ 0 (neutral tilt) instead
+        // of an artificial jump from 0 → clientX.
+        ghostLastX = e.clientX;
+        ghostRotation = 0;
+      } catch (err) {
+        console.error("drag-ghost setup failed", err);
+        removeGhost();
+      }
+
+      dragState = {
+        windowId: pointerDrag.windowId,
+        sourceWs: pointerDrag.sourceWs,
+      };
+
+      // Backstop in case pointerup/cancel never fire (OS-level
+      // grab loss, WebKitGTK quirk). Forces cleanup after 8s.
+      dragWatchdog = setTimeout(resetDragUI, 8000);
+    }
+
+    positionGhost(e.clientX, e.clientY);
+    dragOverWs = columnIdAt(e.clientX, e.clientY);
   }
 
-  function onDragOver(e: DragEvent) {
-    if (!dragState) return;
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+  function onCardPointerUp(e: PointerEvent) {
+    if (!pointerDrag || e.pointerId !== pointerDrag.pointerId) return;
+    const captured = pointerDrag;
+    pointerDrag = null;
+    try {
+      captured.card.releasePointerCapture(e.pointerId);
+    } catch {
+      /* capture already released */
+    }
+
+    if (captured.dragging) {
+      const targetWs = columnIdAt(e.clientX, e.clientY);
+      // Mark the drop BEFORE resetDragUI so the synthetic click that
+      // follows pointerup (see `lastDropTime` comment) is inside the
+      // 300ms suppression window.
+      lastDropTime = performance.now();
+      resetDragUI();
+      if (targetWs && targetWs !== captured.sourceWs) {
+        invoke("window_move_to_workspace", {
+          windowId: captured.windowId,
+          targetWorkspaceId: targetWs,
+        }).catch((err) =>
+          console.error("window_move_to_workspace failed", err),
+        );
+      }
+    } else {
+      // Pointer never moved past the threshold — treat as a click.
+      // Unifies focus-on-click with drag so we don't need a
+      // separate `onclick` that would fire AFTER pointerup and
+      // double-trigger.
+      invoke("activate_window", { id: captured.windowId }).catch(() => {});
+      overlayVisible = false;
+      invoke("set_popover_input_region", { expanded: false }).catch(
+        () => {},
+      );
+    }
   }
 
-  function onDrop(e: DragEvent, targetWs: string) {
-    e.preventDefault();
-    const state = dragState;
-    dragState = null;
-    dragOverWs = null;
-    if (!state) return;
-    // Drop on source workspace → no-op, saves a compositor round-trip.
-    if (state.sourceWs === targetWs) return;
-    invoke("window_move_to_workspace", {
-      windowId: state.windowId,
-      targetWorkspaceId: targetWs,
-    }).catch((err) => {
-      console.error("window_move_to_workspace failed", err);
-    });
+  function onCardPointerCancel(e: PointerEvent) {
+    if (!pointerDrag || e.pointerId !== pointerDrag.pointerId) return;
+    const captured = pointerDrag;
+    pointerDrag = null;
+    try {
+      captured.card.releasePointerCapture(e.pointerId);
+    } catch {
+      /* capture already released */
+    }
+    resetDragUI();
   }
 
   // ── Icon resolution cache ────────────────────────────────────────────────
@@ -181,6 +414,8 @@
   $effect(() => {
     return () => {
       if (hoverTimer) clearTimeout(hoverTimer);
+      pointerDrag = null;
+      resetDragUI();
     };
   });
 </script>
@@ -223,13 +458,14 @@
       </div>
     {/if}
 
-    <!-- Horizontal workspace overview overlay (spec §2.2–2.4). -->
+    <!-- Horizontal workspace overview overlay (spec §2.2–2.4).
+         No onmouseleave — see the comment on `onOverlayEnter` in the
+         script for why. -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="overlay"
       class:overlay-visible={overlayVisible}
       onmouseenter={onOverlayEnter}
-      onmouseleave={onOverlayLeave}
     >
       <div class="ws-columns">
         {#each $primaryWorkspaces as ws, i (ws.id)}
@@ -246,11 +482,8 @@
             role="button"
             tabindex="0"
             aria-label={fullLabel(ws, i)}
+            data-ws-id={ws.id}
             onclick={() => handleColumnClick(ws.id)}
-            ondragenter={() => onDragEnter(ws.id)}
-            ondragleave={() => onDragLeave(ws.id)}
-            ondragover={onDragOver}
-            ondrop={(e) => onDrop(e, ws.id)}
           >
             <div class="ws-number">{i + 1}</div>
             <div class="ws-project"></div>
@@ -265,10 +498,10 @@
                     class="window-card"
                     class:window-card-dragging={dragState?.windowId ===
                       win.id}
-                    draggable="true"
-                    onclick={(e) => handleWindowClick(win, e)}
-                    ondragstart={(e) => onDragStart(e, win, ws.id)}
-                    ondragend={onDragEnd}
+                    onpointerdown={(e) => onCardPointerDown(e, win, ws.id)}
+                    onpointermove={onCardPointerMove}
+                    onpointerup={onCardPointerUp}
+                    onpointercancel={onCardPointerCancel}
                     title={win.title || win.app_id}
                   >
                     {#if iconUrls[win.app_id]}
@@ -454,8 +687,14 @@
   }
 
   .window-card-dragging {
-    opacity: 0.5;
-    transform: scale(0.98);
+    /* Source card stays as a faint placeholder — the ghost clone
+       carries the pointer-following visual. Scale override comes
+       from the `:hover` rule below which we also suppress. */
+    opacity: 0.3;
+  }
+  .window-card-dragging:hover {
+    transform: none;
+    background: color-mix(in srgb, var(--color-fg-shell) 6%, transparent);
   }
 
   .window-card-icon {
@@ -468,6 +707,34 @@
 
   :global(.window-card-icon-fallback) {
     opacity: 0.5;
+  }
+
+  /* ── Drag ghost ──────────────────────────────────────────────────────
+     The ghost is appended to `document.body`, outside the component's
+     scoped DOM subtree. Svelte's scoped `.window-card` styles still
+     apply to the clone because the clone carries the generated hash
+     class attribute; `:global(.drag-ghost)` layers in only the
+     float-effect (rotation, shadow, z-index, pointer-events none). */
+  :global(.drag-ghost) {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    z-index: 10001 !important;
+    pointer-events: none !important;
+    opacity: 0.95 !important;
+    /* Inline transform from JS drives position AND rotation via
+       translate3d() + rotate(). This static declaration is only the
+       initial value before the first positionGhost call lands, so
+       rotation=0 looks clean during the single frame between
+       `document.body.appendChild(clone)` and the first pointermove. */
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1.05);
+    box-shadow:
+      0 12px 32px rgba(0, 0, 0, 0.35),
+      0 4px 8px rgba(0, 0, 0, 0.2) !important;
+    transition: none !important;
+    cursor: grabbing !important;
+    outline: none !important;
+    will-change: transform;
   }
 
   .window-card-title {
