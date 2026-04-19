@@ -579,6 +579,17 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                 crate::waypointer::toggle(&state.app_handle);
             }
 
+            overlay::Event::WorkspaceOverlayOpen => {
+                // Forwarded as-is to the WorkspaceIndicator. The shell
+                // distinguishes "open fresh" from "cycle to next" based
+                // on whether the overlay is already visible — receiving
+                // the same event twice is the cycle signal.
+                log::info!("shell_overlay_client: WorkspaceOverlayOpen received");
+                let _ = state
+                    .app_handle
+                    .emit("lunaris://workspace-overlay-open", ());
+            }
+
             overlay::Event::LayoutModeChanged { mode } => {
                 let (mode_str, mode_u8) = match mode {
                     wayland_client::WEnum::Value(overlay::LayoutModeType::Tiling) => ("tiling", 1u8),
@@ -859,22 +870,33 @@ pub fn window_header_action(
 /// When false, it reverts to the bar-only region (unless a context menu is active).
 #[tauri::command]
 pub fn set_notification_input_region(app: tauri::AppHandle, expanded: bool) {
+    // Dedup: `swap` returns the previous value. If the caller is
+    // asking for the same state we're already in, skip the GTK
+    // round-trip entirely. Redundant calls from rapid mouse events
+    // were flooding the Wayland queue and could soft-freeze the
+    // shell on sustained hover jitter.
+    let was = NOTIFICATIONS_ACTIVE.swap(expanded, Ordering::SeqCst);
+    if was == expanded {
+        return;
+    }
     log::info!(
         "set_notification_input_region: expanded={} (was {})",
-        expanded, NOTIFICATIONS_ACTIVE.load(Ordering::SeqCst),
+        expanded, was,
     );
-    NOTIFICATIONS_ACTIVE.store(expanded, Ordering::SeqCst);
     update_input_region(&app);
 }
 
 /// Expand or restore the input region for the workspace popover.
 #[tauri::command]
 pub fn set_popover_input_region(app: tauri::AppHandle, expanded: bool) {
+    let was = POPOVER_ACTIVE.swap(expanded, Ordering::SeqCst);
+    if was == expanded {
+        return;
+    }
     log::info!(
         "set_popover_input_region: expanded={} (was {})",
-        expanded, POPOVER_ACTIVE.load(Ordering::SeqCst),
+        expanded, was,
     );
-    POPOVER_ACTIVE.store(expanded, Ordering::SeqCst);
     update_input_region(&app);
 }
 

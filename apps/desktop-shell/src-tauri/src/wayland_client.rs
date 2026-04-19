@@ -59,6 +59,15 @@ pub struct WorkspaceInfo {
     pub active: bool,
 }
 
+/// Shared snapshot of the latest workspace list. Written every time
+/// the compositor fires `WorkspaceHandler::done`; read by the
+/// `get_workspaces` Tauri command so the Svelte frontend can prime
+/// its store on mount / after a HMR full-page reload. Without this
+/// cache the WorkspaceIndicator stayed hidden after any Vite page
+/// reload because the compositor only emits `workspace-list` on
+/// actual state changes, not on request.
+pub type WorkspaceList = Arc<Mutex<Vec<WorkspaceInfo>>>;
+
 // ── Shared back-channel (WorkspaceSender) ────────────────────────────────────
 
 /// Shared state that lets Tauri commands send workspace requests back to the
@@ -104,7 +113,7 @@ impl WorkspaceSender {
 
 // ── Shared back-channel (ToplevelSender) ─────────────────────────────────────
 
-/// Shared state for activating windows from any thread.
+/// Shared state for activating / moving windows from any thread.
 pub struct ToplevelSender {
     /// Toplevel cosmic handles keyed by identifier string.
     handles: Mutex<HashMap<String, zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1>>,
@@ -114,6 +123,20 @@ pub struct ToplevelSender {
     seat: Mutex<Option<wl_seat::WlSeat>>,
     /// Connection for flushing.
     conn: Mutex<Option<Connection>>,
+    /// Workspace handles keyed by workspace id (same encoding as
+    /// `WorkspaceInfo.id`). Needed for `move_to_ext_workspace` — the
+    /// request takes the destination workspace + its output, which we
+    /// don't have access to from the Tauri command call site. The
+    /// caches are rebuilt every time the compositor fires
+    /// `WorkspaceHandler::done`, so they always reflect the live
+    /// compositor view without requiring a read lock on AppData.
+    workspace_handles:
+        Mutex<HashMap<String, ext_workspace_handle_v1::ExtWorkspaceHandleV1>>,
+    /// First output of the workspace's group, keyed by workspace id.
+    /// One output per workspace is sufficient because lunaris currently
+    /// assumes workspaces belong to exactly one output (single-output
+    /// group model). Multi-output groups would need a different policy.
+    workspace_outputs: Mutex<HashMap<String, wl_output::WlOutput>>,
 }
 
 impl ToplevelSender {
@@ -124,6 +147,8 @@ impl ToplevelSender {
             manager: Mutex::new(None),
             seat: Mutex::new(None),
             conn: Mutex::new(None),
+            workspace_handles: Mutex::new(HashMap::new()),
+            workspace_outputs: Mutex::new(HashMap::new()),
         }
     }
 
@@ -152,6 +177,54 @@ impl ToplevelSender {
         log::info!("toplevel_sender: activated window id={id}");
     }
 
+    /// Sends `move_to_ext_workspace` for the given window + destination.
+    /// No-ops with a warn log if any handle is missing — the UI should
+    /// always call this with live ids from the Svelte stores, so a miss
+    /// means the window/workspace disappeared between the drag start
+    /// and the drop (benign). Does not auto-focus the window; call
+    /// `activate` separately if follow-focus is desired.
+    pub fn move_to_workspace(&self, window_id: &str, workspace_id: &str) {
+        let handles = self.handles.lock().unwrap();
+        let Some(toplevel) = handles.get(window_id) else {
+            log::warn!(
+                "toplevel_sender: move_to_workspace: no toplevel for window id={window_id}"
+            );
+            return;
+        };
+        let manager = self.manager.lock().unwrap();
+        let Some(mgr) = manager.as_ref() else {
+            log::warn!("toplevel_sender: move_to_workspace: no manager bound");
+            return;
+        };
+        let ws_handles = self.workspace_handles.lock().unwrap();
+        let Some(workspace) = ws_handles.get(workspace_id) else {
+            log::warn!(
+                "toplevel_sender: move_to_workspace: no workspace handle for \
+                 id={workspace_id}"
+            );
+            return;
+        };
+        let outputs = self.workspace_outputs.lock().unwrap();
+        let Some(output) = outputs.get(workspace_id) else {
+            log::warn!(
+                "toplevel_sender: move_to_workspace: no output for workspace \
+                 id={workspace_id} (workspace group has no output assigned?)"
+            );
+            return;
+        };
+
+        mgr.move_to_ext_workspace(toplevel, workspace, output);
+        drop(handles);
+        drop(manager);
+        drop(ws_handles);
+        drop(outputs);
+        self.flush();
+        log::info!(
+            "toplevel_sender: move_to_workspace window={window_id} \
+             workspace={workspace_id}"
+        );
+    }
+
     fn flush(&self) {
         if let Some(c) = self.conn.lock().unwrap().as_ref() {
             if let Err(e) = c.flush() {
@@ -168,6 +241,7 @@ struct AppData {
     workspace_sender: Arc<WorkspaceSender>,
     toplevel_sender: Arc<ToplevelSender>,
     window_list: WindowList,
+    workspace_list: WorkspaceList,
     output_state: OutputState,
     registry_state: RegistryState,
     toplevel_info_state: ToplevelInfoState,
@@ -331,9 +405,18 @@ impl WorkspaceHandler for AppData {
         let mut infos: Vec<WorkspaceInfo> = Vec::new();
         let mut handle_map: HashMap<String, ext_workspace_handle_v1::ExtWorkspaceHandleV1> =
             HashMap::new();
+        // Caches for the toplevel-manager's move_to_ext_workspace call.
+        // Every workspace's entry gets a clone of its group's first
+        // output so the Tauri command can stay output-agnostic.
+        let mut toplevel_ws_handles: HashMap<
+            String,
+            ext_workspace_handle_v1::ExtWorkspaceHandleV1,
+        > = HashMap::new();
+        let mut toplevel_ws_outputs: HashMap<String, wl_output::WlOutput> = HashMap::new();
 
         for group in self.workspace_state.workspace_groups() {
             let group_id = group.handle.id().to_string();
+            let primary_output = group.outputs.first().cloned();
 
             let mut group_ws: Vec<_> = group
                 .workspaces
@@ -346,6 +429,10 @@ impl WorkspaceHandler for AppData {
                 let ws_id = w.handle.id().to_string();
                 let active = w.state.contains(ext_workspace_handle_v1::State::Active);
                 handle_map.insert(ws_id.clone(), w.handle.clone());
+                toplevel_ws_handles.insert(ws_id.clone(), w.handle.clone());
+                if let Some(output) = primary_output.as_ref() {
+                    toplevel_ws_outputs.insert(ws_id.clone(), output.clone());
+                }
                 infos.push(WorkspaceInfo {
                     id: ws_id,
                     group_id: group_id.clone(),
@@ -356,10 +443,18 @@ impl WorkspaceHandler for AppData {
         }
 
         *self.workspace_sender.handles.lock().unwrap() = handle_map;
+        *self.toplevel_sender.workspace_handles.lock().unwrap() = toplevel_ws_handles;
+        *self.toplevel_sender.workspace_outputs.lock().unwrap() = toplevel_ws_outputs;
 
         if let Ok(m) = self.workspace_state.workspace_manager().get() {
             *self.workspace_sender.manager.lock().unwrap() = Some(m.clone());
         }
+
+        // Keep the shared cache in lock-step with the event so the
+        // `get_workspaces` command always returns what the compositor
+        // most recently told us. Cloned before emit so we can hand
+        // both consumers the same snapshot.
+        *self.workspace_list.lock().unwrap() = infos.clone();
 
         if let Err(e) = self.app_handle.emit("lunaris://workspace-list", infos) {
             log::error!("wayland_client: workspace-list emit failed: {e}");
@@ -399,6 +494,7 @@ pub fn start(
     workspace_sender: Arc<WorkspaceSender>,
     toplevel_sender: Arc<ToplevelSender>,
     window_list: WindowList,
+    workspace_list: WorkspaceList,
 ) {
     std::thread::spawn(move || {
         let conn = loop {
@@ -468,6 +564,7 @@ pub fn start(
             workspace_sender,
             toplevel_sender,
             window_list,
+            workspace_list,
             output_state: OutputState::new(&globals, &qh),
             toplevel_info_state,
             toplevel_manager_state,
@@ -498,8 +595,33 @@ pub fn activate_window(state: tauri::State<Arc<ToplevelSender>>, id: String) {
     state.activate(&id);
 }
 
+/// Moves the window identified by `window_id` to the workspace
+/// identified by `target_workspace_id`. Used by the Workspace Overview
+/// overlay's drag-and-drop. Does not shift keyboard focus — the shell
+/// can call `activate_window` separately if follow-focus is desired.
+#[tauri::command]
+pub fn window_move_to_workspace(
+    state: tauri::State<Arc<ToplevelSender>>,
+    window_id: String,
+    target_workspace_id: String,
+) {
+    state.move_to_workspace(&window_id, &target_workspace_id);
+}
+
 /// Returns the current list of open windows.
 #[tauri::command]
 pub fn get_windows(state: tauri::State<WindowList>) -> Vec<ToplevelPayload> {
+    state.lock().unwrap().clone()
+}
+
+/// Returns the current list of workspaces. Called by the Svelte
+/// `initWorkspaceListeners` to prime the store on mount — the
+/// compositor only emits `lunaris://workspace-list` on state
+/// changes, so without this priming call a HMR full-page reload
+/// would leave the frontend store stuck at `[]` until the user
+/// did something that caused the compositor to re-emit (switch
+/// workspace, move a window, etc.).
+#[tauri::command]
+pub fn get_workspaces(state: tauri::State<WorkspaceList>) -> Vec<WorkspaceInfo> {
     state.lock().unwrap().clone()
 }

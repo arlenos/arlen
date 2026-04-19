@@ -181,6 +181,70 @@ pub async fn list_projects() -> Result<Vec<Project>, String> {
     Ok(parse_projects_result(&result))
 }
 
+/// Minimal project shape returned by `get_project_for_app`. The
+/// WorkspaceIndicator only needs id/name/rootPath to render the
+/// label and keep layout consistent with Waypointer's project list.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInfo {
+    pub id: String,
+    pub name: String,
+    pub root_path: String,
+}
+
+/// Resolves an app_id to its most-likely project by counting, in the
+/// Knowledge Graph, which active project holds the most files that
+/// this app has ever accessed. Returns `None` if the graph daemon is
+/// unreachable, the app has no accessed-files-in-projects edges, or
+/// the graph is empty. The shell caches the result per app_id; this
+/// command itself is stateless.
+///
+/// The Cypher here walks `App <-ACCESSED_BY- File -FILE_PART_OF-> Project`
+/// and ranks by distinct file count. App→Project isn't a direct edge
+/// in the schema (§4.6 blueprint); we derive it from the file-access
+/// trail, which is populated by the promotion pipeline.
+#[tauri::command]
+pub async fn get_project_for_app(app_id: String) -> Result<Option<ProjectInfo>, String> {
+    if app_id.trim().is_empty() {
+        return Ok(None);
+    }
+    let id_esc = app_id.replace('\'', "\\'");
+    let cypher = format!(
+        "MATCH (a:App {{id: '{id_esc}'}})<-[:ACCESSED_BY]-(f:File)-[:FILE_PART_OF]->(p:Project) \
+         WHERE p.status = 'active' \
+         RETURN p.id, p.name, p.root_path, count(DISTINCT f) AS fcount \
+         ORDER BY fcount DESC \
+         LIMIT 1"
+    );
+
+    let raw = match graph_query(&cypher) {
+        Ok(r) => r,
+        Err(e) => {
+            // Daemon not running or socket missing is expected during
+            // dev when knowledge isn't up. Don't spam error logs.
+            log::debug!("get_project_for_app: graph query failed: {e}");
+            return Ok(None);
+        }
+    };
+
+    // Header + at most one body row, pipe-delimited (same format as
+    // `parse_projects_result`). We only pull id/name/root_path.
+    let mut lines = raw.lines();
+    let _header = lines.next();
+    let Some(line) = lines.next() else {
+        return Ok(None);
+    };
+    let cols: Vec<&str> = line.split('|').collect();
+    if cols.len() < 3 {
+        return Ok(None);
+    }
+    Ok(Some(ProjectInfo {
+        id: cols[0].trim().to_string(),
+        name: cols[1].trim().to_string(),
+        root_path: cols[2].trim().to_string(),
+    }))
+}
+
 /// Get a single project by ID.
 #[tauri::command]
 pub async fn get_project(project_id: String) -> Result<Option<Project>, String> {
