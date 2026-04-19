@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 // ---------------------------------------------------------------------------
@@ -73,6 +73,15 @@ pub struct ModuleManifest {
     pub settings: Option<SettingsConfig>,
     #[serde(default)]
     pub capabilities: ModuleCapabilities,
+    /// Declared permission requests. Mirrored onto the runtime
+    /// `sdk/permissions::PermissionProfile` by the install daemon.
+    #[serde(default)]
+    pub permissions: ModulePermissions,
+    /// Static keybindings the module ships. Written to
+    /// `~/.config/lunaris/compositor.d/keybindings.d/<module-id>.toml`
+    /// at install time; removed on uninstall.
+    #[serde(default, rename = "keybinding")]
+    pub keybindings: Vec<ModuleKeybinding>,
 }
 
 /// Module metadata section.
@@ -98,6 +107,81 @@ fn default_module_type() -> ModuleType {
 
 fn default_entry() -> String {
     "index.js".into()
+}
+
+// ---------------------------------------------------------------------------
+// Permissions requested by the manifest
+// ---------------------------------------------------------------------------
+
+/// Manifest-level declaration of permission requests. Kept deliberately
+/// minimal; the runtime enforcement side lives in `sdk/permissions`.
+/// The install daemon reads this to decide whether to honour or strip
+/// entries in the shipped `[[keybinding]]` list.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ModulePermissions {
+    /// Input subsystem permissions. Recognised strings:
+    /// * `"register_focused_bindings"` — fires only while the module's
+    ///   UI is focused.
+    /// * `"register_global_bindings"` — fires regardless of focus;
+    ///   reserved for first-party modules.
+    #[serde(default)]
+    pub input: Vec<String>,
+}
+
+impl ModulePermissions {
+    /// Does the manifest declare permission for the named input category?
+    pub fn has_input(&self, name: &str) -> bool {
+        self.input.iter().any(|p| p == name)
+    }
+
+    /// Convenience for the common check at install time.
+    pub fn can_register_global_bindings(&self) -> bool {
+        self.has_input("register_global_bindings")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Keybindings
+// ---------------------------------------------------------------------------
+
+/// A single keybinding shipped by a module. Translated into a TOML
+/// fragment under `~/.config/lunaris/compositor.d/keybindings.d/` at
+/// install time.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ModuleKeybinding {
+    /// Stable identifier within the module, e.g. `"open_picker"`.
+    /// Used to build the compositor action string when `action` is
+    /// absent: `module:<module_id>:<id>`.
+    pub id: String,
+    /// Human-readable label shown in the Settings keybinding list.
+    pub label: String,
+    /// Accelerator string parsed by the compositor, e.g. `"Super+Shift+C"`.
+    pub default_binding: String,
+    /// Optional pre-composed action string. If `None`, the install
+    /// daemon synthesises `module:<module_id>:<id>`.
+    #[serde(default)]
+    pub action: Option<String>,
+    /// Optional description shown as a subtitle in Settings.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// `"global"` (fires anywhere) or `"focused"` (fires only when the
+    /// module's own window has keyboard focus). Defaults to `"global"`.
+    #[serde(default = "default_keybinding_scope")]
+    pub scope: String,
+}
+
+fn default_keybinding_scope() -> String {
+    "global".into()
+}
+
+impl ModuleKeybinding {
+    /// Compute the action string that should be written to the
+    /// compositor fragment for this binding, given the owning module id.
+    pub fn effective_action(&self, module_id: &str) -> String {
+        self.action
+            .clone()
+            .unwrap_or_else(|| format!("module:{module_id}:{}", self.id))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -311,7 +395,99 @@ pub fn validate_manifest(manifest: &ModuleManifest) -> Vec<ValidationWarning> {
         }
     }
 
+    // Input permission strings must be recognised. Unknown entries are
+    // forward-compat: we keep the manifest valid but log a warning so
+    // old installers don't silently discard new permission kinds.
+    const KNOWN_INPUT_PERMS: &[&str] = &[
+        "register_focused_bindings",
+        "register_global_bindings",
+    ];
+    for perm in &manifest.permissions.input {
+        if !KNOWN_INPUT_PERMS.contains(&perm.as_str()) {
+            warnings.push(ValidationWarning {
+                field: "permissions.input".into(),
+                message: format!("unknown input permission '{perm}'"),
+            });
+        }
+    }
+
+    // Keybindings.
+    for (i, kb) in manifest.keybindings.iter().enumerate() {
+        let prefix = format!("keybinding[{i}]");
+        if kb.id.trim().is_empty() {
+            warnings.push(ValidationWarning {
+                field: format!("{prefix}.id"),
+                message: "keybinding id must not be empty".into(),
+            });
+        }
+        if kb.label.trim().is_empty() {
+            warnings.push(ValidationWarning {
+                field: format!("{prefix}.label"),
+                message: "keybinding label must not be empty".into(),
+            });
+        }
+        if kb.default_binding.trim().is_empty() {
+            warnings.push(ValidationWarning {
+                field: format!("{prefix}.default_binding"),
+                message: "keybinding default_binding must not be empty".into(),
+            });
+        } else if !is_valid_binding_format(&kb.default_binding) {
+            warnings.push(ValidationWarning {
+                field: format!("{prefix}.default_binding"),
+                message: format!(
+                    "'{}' uses an unknown modifier; expected any of Super/Ctrl/Alt/Shift",
+                    kb.default_binding
+                ),
+            });
+        }
+        if kb.scope != "global" && kb.scope != "focused" {
+            warnings.push(ValidationWarning {
+                field: format!("{prefix}.scope"),
+                message: format!("scope must be 'global' or 'focused', got '{}'", kb.scope),
+            });
+        }
+        if kb.scope == "global"
+            && !manifest
+                .permissions
+                .can_register_global_bindings()
+        {
+            warnings.push(ValidationWarning {
+                field: format!("{prefix}"),
+                message: "global keybinding declared without \
+                     permissions.input = [\"register_global_bindings\"]"
+                    .into(),
+            });
+        }
+    }
+
     warnings
+}
+
+/// Quick syntactic check for accelerator strings like `"Super+Shift+H"`.
+///
+/// Accepted modifiers (case-insensitive): `Super`, `Logo`, `Mod4`,
+/// `Shift`, `Ctrl`, `Control`, `Alt`, `Mod1`. The final token is the
+/// key name and may be any non-empty string — the compositor does the
+/// full keysym resolution at dispatch time.
+fn is_valid_binding_format(binding: &str) -> bool {
+    const VALID_MODIFIERS: &[&str] = &[
+        "super", "logo", "mod4", "shift", "ctrl", "control", "alt", "mod1",
+    ];
+    let parts: Vec<&str> = binding.split('+').collect();
+    if parts.is_empty() {
+        return false;
+    }
+    let last = match parts.last() {
+        Some(p) if !p.is_empty() => *p,
+        _ => return false,
+    };
+    for part in &parts[..parts.len() - 1] {
+        let lower = part.to_lowercase();
+        if !VALID_MODIFIERS.contains(&lower.as_str()) {
+            return false;
+        }
+    }
+    !last.is_empty()
 }
 
 /// Check if a string looks like reverse-domain (e.g. "com.example.app").
@@ -656,5 +832,186 @@ type = "first-party"
         let m = parse_manifest(toml).unwrap();
         assert_eq!(m.module.module_type, ModuleType::FirstParty);
         assert_eq!(ModuleType::FirstParty.default_priority(), 10);
+    }
+
+    // -----------------------------------------------------------------
+    // Keybindings + module permissions
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn parses_keybinding_section() {
+        let toml = r#"
+[module]
+id = "com.example.picker"
+name = "Color Picker"
+version = "1.0.0"
+
+[permissions]
+input = ["register_global_bindings"]
+
+[[keybinding]]
+id = "open_picker"
+label = "Open Color Picker"
+default_binding = "Super+Shift+C"
+
+[[keybinding]]
+id = "pick_from_screen"
+label = "Pick Color from Screen"
+default_binding = "Super+Shift+P"
+scope = "global"
+description = "Click anywhere to read the pixel colour."
+"#;
+        let m = parse_manifest(toml).unwrap();
+        assert_eq!(m.keybindings.len(), 2);
+        assert_eq!(m.keybindings[0].id, "open_picker");
+        assert_eq!(m.keybindings[0].scope, "global");
+        assert_eq!(m.keybindings[0].default_binding, "Super+Shift+C");
+        assert!(m.permissions.can_register_global_bindings());
+    }
+
+    #[test]
+    fn keybinding_scope_defaults_to_global() {
+        let toml = r#"
+[module]
+id = "com.example.a"
+name = "A"
+version = "1.0.0"
+
+[permissions]
+input = ["register_global_bindings"]
+
+[[keybinding]]
+id = "x"
+label = "X"
+default_binding = "Super+X"
+"#;
+        let m = parse_manifest(toml).unwrap();
+        assert_eq!(m.keybindings[0].scope, "global");
+    }
+
+    #[test]
+    fn effective_action_synthesises_module_prefix() {
+        let kb = ModuleKeybinding {
+            id: "save".into(),
+            label: "Save".into(),
+            default_binding: "Ctrl+S".into(),
+            action: None,
+            description: None,
+            scope: "focused".into(),
+        };
+        assert_eq!(kb.effective_action("com.example.editor"), "module:com.example.editor:save");
+    }
+
+    #[test]
+    fn effective_action_respects_explicit_override() {
+        let kb = ModuleKeybinding {
+            id: "foo".into(),
+            label: "Foo".into(),
+            default_binding: "Super+F".into(),
+            action: Some("spawn:foot".into()),
+            description: None,
+            scope: "global".into(),
+        };
+        assert_eq!(kb.effective_action("any.module.id"), "spawn:foot");
+    }
+
+    #[test]
+    fn validate_flags_global_binding_without_permission() {
+        let toml = r#"
+[module]
+id = "com.example.bad"
+name = "Bad"
+version = "1.0.0"
+
+[[keybinding]]
+id = "x"
+label = "X"
+default_binding = "Super+X"
+scope = "global"
+"#;
+        let m = parse_manifest(toml).unwrap();
+        let warnings = validate_manifest(&m);
+        assert!(warnings
+            .iter()
+            .any(|w| w.message.contains("register_global_bindings")));
+    }
+
+    #[test]
+    fn validate_flags_empty_id_and_label() {
+        let toml = r#"
+[module]
+id = "com.example.bad"
+name = "Bad"
+version = "1.0.0"
+
+[permissions]
+input = ["register_focused_bindings"]
+
+[[keybinding]]
+id = ""
+label = ""
+default_binding = "Ctrl+S"
+scope = "focused"
+"#;
+        let m = parse_manifest(toml).unwrap();
+        let warnings = validate_manifest(&m);
+        assert!(warnings.iter().any(|w| w.field.ends_with(".id")));
+        assert!(warnings.iter().any(|w| w.field.ends_with(".label")));
+    }
+
+    #[test]
+    fn validate_flags_bad_modifier() {
+        let toml = r#"
+[module]
+id = "com.example.bad"
+name = "Bad"
+version = "1.0.0"
+
+[permissions]
+input = ["register_focused_bindings"]
+
+[[keybinding]]
+id = "x"
+label = "X"
+default_binding = "Hyper+X"
+scope = "focused"
+"#;
+        let m = parse_manifest(toml).unwrap();
+        let warnings = validate_manifest(&m);
+        assert!(warnings
+            .iter()
+            .any(|w| w.field == "keybinding[0].default_binding"));
+    }
+
+    #[test]
+    fn validate_flags_unknown_scope() {
+        let toml = r#"
+[module]
+id = "com.example.bad"
+name = "Bad"
+version = "1.0.0"
+
+[permissions]
+input = ["register_focused_bindings"]
+
+[[keybinding]]
+id = "x"
+label = "X"
+default_binding = "Ctrl+X"
+scope = "everywhere"
+"#;
+        let m = parse_manifest(toml).unwrap();
+        let warnings = validate_manifest(&m);
+        assert!(warnings.iter().any(|w| w.field == "keybinding[0].scope"));
+    }
+
+    #[test]
+    fn is_valid_binding_format_accepts_common_combos() {
+        assert!(is_valid_binding_format("Super+H"));
+        assert!(is_valid_binding_format("Ctrl+Shift+Space"));
+        assert!(is_valid_binding_format("F4"));
+        assert!(!is_valid_binding_format("Hyper+X"));
+        assert!(!is_valid_binding_format(""));
+        assert!(!is_valid_binding_format("Ctrl+"));
     }
 }

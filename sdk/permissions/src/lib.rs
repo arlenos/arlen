@@ -75,6 +75,8 @@ pub struct PermissionProfile {
     pub clipboard: ClipboardPermissions,
     #[serde(default)]
     pub system: SystemPermissions,
+    #[serde(default)]
+    pub input: InputPermissions,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,6 +208,55 @@ pub struct SystemPermissions {
     pub autostart: bool,
     #[serde(default)]
     pub background: bool,
+}
+
+// ── Input ──
+
+/// Input subsystem permissions. Module manifests request these via
+/// `[permissions].input = [...]`; the install daemon copies the
+/// matching flags into the runtime profile stored under
+/// `/var/lib/lunaris/permissions/`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InputPermissions {
+    /// Register keybindings that fire only while the module's own
+    /// window has keyboard focus.
+    #[serde(default)]
+    pub register_focused_bindings: bool,
+    /// Register keybindings that fire regardless of focus. Reserved
+    /// for system and first-party modules; third-party modules must
+    /// be granted this explicitly.
+    #[serde(default)]
+    pub register_global_bindings: bool,
+}
+
+impl InputPermissions {
+    /// Default input permissions for a given trust tier. Third-party
+    /// modules get only focused bindings; global bindings need an
+    /// explicit grant.
+    pub fn defaults_for_tier(tier: AppTier) -> Self {
+        match tier {
+            AppTier::System | AppTier::FirstParty => Self {
+                register_focused_bindings: true,
+                register_global_bindings: true,
+            },
+            AppTier::ThirdParty => Self {
+                register_focused_bindings: true,
+                register_global_bindings: false,
+            },
+        }
+    }
+
+    /// Apply a manifest-declared list of input permission strings on
+    /// top of `self`. Unknown strings are ignored (forward-compat).
+    pub fn apply_manifest_requests(&mut self, requests: &[String]) {
+        for r in requests {
+            match r.as_str() {
+                "register_focused_bindings" => self.register_focused_bindings = true,
+                "register_global_bindings" => self.register_global_bindings = true,
+                _ => {}
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -494,5 +545,59 @@ app_id = "com.test"
         assert!(!pattern_matches(&["com.app.*".into()], "com.app"));
         assert!(!pattern_matches(&["com.app.*".into()], "com.other.Note"));
         assert!(!pattern_matches(&[], "anything"));
+    }
+
+    // ── Input permissions ──
+
+    #[test]
+    fn input_permissions_parse() {
+        let toml = r#"
+[info]
+app_id = "com.example"
+[input]
+register_global_bindings = true
+register_focused_bindings = true
+"#;
+        let profile: PermissionProfile = toml::from_str(toml).unwrap();
+        assert!(profile.input.register_global_bindings);
+        assert!(profile.input.register_focused_bindings);
+    }
+
+    #[test]
+    fn input_defaults_by_tier() {
+        let third = InputPermissions::defaults_for_tier(AppTier::ThirdParty);
+        assert!(third.register_focused_bindings);
+        assert!(!third.register_global_bindings);
+
+        let first = InputPermissions::defaults_for_tier(AppTier::FirstParty);
+        assert!(first.register_focused_bindings);
+        assert!(first.register_global_bindings);
+
+        let system = InputPermissions::defaults_for_tier(AppTier::System);
+        assert!(system.register_global_bindings);
+    }
+
+    #[test]
+    fn input_apply_manifest_requests() {
+        let mut p = InputPermissions::default();
+        p.apply_manifest_requests(&[
+            "register_focused_bindings".into(),
+            "register_global_bindings".into(),
+            "unknown_future_flag".into(),
+        ]);
+        assert!(p.register_focused_bindings);
+        assert!(p.register_global_bindings);
+    }
+
+    #[test]
+    fn input_section_optional() {
+        // Profiles that predate the input section must still parse.
+        let toml = r#"
+[info]
+app_id = "com.legacy"
+"#;
+        let profile: PermissionProfile = toml::from_str(toml).unwrap();
+        assert!(!profile.input.register_focused_bindings);
+        assert!(!profile.input.register_global_bindings);
     }
 }

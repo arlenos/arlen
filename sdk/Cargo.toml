@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "config",
+    "lunaris-input-client",
     "os-sdk",
     "module-sdk",
     "modules",
