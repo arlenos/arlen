@@ -7,6 +7,7 @@ pub struct UnicodePlugin;
 impl WaypointerPlugin for UnicodePlugin {
     fn id(&self) -> &str { "core.unicode" }
     fn name(&self) -> &str { "Unicode" }
+    fn description(&self) -> &str { "Find characters by name or codepoint (e.g. U+2764 or HEART)." }
     fn prefix(&self) -> Option<&str> { Some("u:") }
     fn priority(&self) -> u32 { 0 }
     fn max_results(&self) -> usize { 20 }

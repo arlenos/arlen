@@ -7,6 +7,7 @@ pub struct ManPlugin;
 impl WaypointerPlugin for ManPlugin {
     fn id(&self) -> &str { "core.man" }
     fn name(&self) -> &str { "Man Pages" }
+    fn description(&self) -> &str { "Open Linux manual pages in the default terminal." }
     fn prefix(&self) -> Option<&str> { Some("#") }
     fn priority(&self) -> u32 { 0 }
 

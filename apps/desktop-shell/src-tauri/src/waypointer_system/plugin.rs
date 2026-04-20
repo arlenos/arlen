@@ -46,6 +46,20 @@ pub enum Action {
     },
 }
 
+/// Serialisable view of a registered plugin's metadata. Used by the
+/// shell to write the `waypointer-plugins.toml` registry on startup and
+/// by the Settings app to render the Extensions list.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginDescriptor {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub priority: u32,
+    pub prefix: Option<String>,
+    pub pattern: Option<String>,
+}
+
 /// Plugin errors.
 #[derive(Debug, Error)]
 pub enum PluginError {
@@ -67,6 +81,12 @@ pub trait WaypointerPlugin: Send + Sync {
 
     /// Human-readable name.
     fn name(&self) -> &str;
+
+    /// One-line description shown in Settings → Extensions so users
+    /// know what a plugin does before they toggle it off.
+    fn description(&self) -> &str {
+        ""
+    }
 
     /// Optional query prefix that activates this plugin exclusively.
     /// `None` means the plugin is always active (no prefix needed).

@@ -8,6 +8,7 @@
 mod plugin;
 mod manager;
 pub mod plugins;
+pub mod registry;
 
 pub use plugin::*;
 pub use manager::*;
@@ -35,4 +36,16 @@ pub fn waypointer_execute(
 ) -> Result<(), String> {
     let mgr = state.lock().unwrap();
     mgr.execute(&result).map_err(|e| e.to_string())
+}
+
+/// List all currently-registered built-in plugins with their metadata.
+/// The same data is written to the on-disk registry file at startup
+/// (see `registry::write_registry`); this command is the in-process
+/// equivalent used by the shell's own UI.
+#[tauri::command]
+pub fn waypointer_list_plugins(
+    state: tauri::State<'_, PluginManagerState>,
+) -> Vec<PluginDescriptor> {
+    let mgr = state.lock().unwrap();
+    mgr.plugin_descriptors()
 }

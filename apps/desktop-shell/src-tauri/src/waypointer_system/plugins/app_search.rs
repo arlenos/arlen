@@ -19,6 +19,7 @@ impl AppSearchPlugin {
 impl WaypointerPlugin for AppSearchPlugin {
     fn id(&self) -> &str { "core.app-search" }
     fn name(&self) -> &str { "Applications" }
+    fn description(&self) -> &str { "Search installed applications by name, description, or category." }
     fn priority(&self) -> u32 { 0 }
     fn max_results(&self) -> usize { 8 }
 
