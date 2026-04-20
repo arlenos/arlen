@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
+/* Canonical motion tokens + shared interaction classes.
+   Single source of truth for both desktop-shell and app-settings. */
+@import "../../sdk/ui-kit/src/lib/motion.css";
 
 /* ============================================================
    Lunaris Settings App - Dark Theme Defaults
@@ -35,14 +38,7 @@
 
   --radius: 0.5rem;
 
-  /* Motion tokens */
-  --duration-instant:  80ms;
-  --duration-fast:    150ms;
-  --duration-medium:  200ms;
-  --duration-slow:    350ms;
-  --easing-default: cubic-bezier(0.4, 0, 0.2, 1);
-  --easing-enter:   cubic-bezier(0.0, 0.0, 0.2, 1);
-  --easing-exit:    cubic-bezier(0.4, 0.0, 1.0, 1);
+  /* Motion tokens live in sdk/ui-kit/src/lib/motion.css (imported above). */
 
   /* Shadcn variable mapping */
   --background:       var(--color-bg-app);
@@ -161,6 +157,19 @@
 
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "JetBrains Mono", monospace;
+
+  /* Motion tokens registered as Tailwind utilities. Values come from
+     sdk/ui-kit/src/lib/motion.css; this block only exposes them to
+     utility classes like `duration-fast`, `ease-out`. */
+  --transition-duration-micro:   var(--duration-micro);
+  --transition-duration-fast:    var(--duration-fast);
+  --transition-duration-medium:  var(--duration-medium);
+  --transition-duration-slow:    var(--duration-slow);
+  --transition-duration-instant: var(--duration-micro);
+  --ease-out:    var(--ease-out);
+  --ease-in-out: var(--ease-in-out);
+  --ease-bounce: var(--ease-bounce);
+  --ease-default: var(--ease-in-out);
 }
 
 html,
