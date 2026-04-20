@@ -7,6 +7,7 @@ pub struct UrlPlugin;
 impl WaypointerPlugin for UrlPlugin {
     fn id(&self) -> &str { "core.url" }
     fn name(&self) -> &str { "URL" }
+    fn description(&self) -> &str { "Detect URLs and bare domains and open them in the default browser." }
     fn priority(&self) -> u32 { 5 }
 
     fn search(&self, query: &str) -> Vec<SearchResult> {

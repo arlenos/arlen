@@ -1,6 +1,6 @@
 /// Plugin manager: aggregates search results from all registered plugins.
 
-use super::plugin::{PluginError, SearchResult, WaypointerPlugin};
+use super::plugin::{PluginDescriptor, PluginError, SearchResult, WaypointerPlugin};
 
 /// Manages registered Waypointer plugins and aggregates their results.
 pub struct PluginManager {
@@ -113,6 +113,22 @@ impl PluginManager {
     /// List registered plugin IDs.
     pub fn plugin_ids(&self) -> Vec<&str> {
         self.plugins.iter().map(|p| p.id()).collect()
+    }
+
+    /// Snapshot all registered plugins' metadata. Used by the registry
+    /// writer and the `waypointer_list_plugins` Tauri command.
+    pub fn plugin_descriptors(&self) -> Vec<PluginDescriptor> {
+        self.plugins
+            .iter()
+            .map(|p| PluginDescriptor {
+                id: p.id().to_string(),
+                name: p.name().to_string(),
+                description: p.description().to_string(),
+                priority: p.priority(),
+                prefix: p.prefix().map(String::from),
+                pattern: p.detect_pattern().map(String::from),
+            })
+            .collect()
     }
 
     fn plugin_priority(&self, plugin_id: &str) -> u32 {

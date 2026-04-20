@@ -7,6 +7,7 @@ pub struct ShellPlugin;
 impl WaypointerPlugin for ShellPlugin {
     fn id(&self) -> &str { "core.shell" }
     fn name(&self) -> &str { "Shell Command" }
+    fn description(&self) -> &str { "Execute shell commands. Shift+Enter runs inside the default terminal." }
     fn prefix(&self) -> Option<&str> { Some(">") }
     fn priority(&self) -> u32 { 0 }
 

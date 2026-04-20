@@ -63,7 +63,7 @@ impl ProjectsState {
 const KNOWLEDGE_SOCKET: &str = "/run/lunaris/knowledge.sock";
 
 /// Send a Cypher query to the Knowledge Daemon and return the raw result.
-fn graph_query(cypher: &str) -> Result<String, String> {
+pub(crate) fn graph_query(cypher: &str) -> Result<String, String> {
     let socket = std::env::var("LUNARIS_DAEMON_SOCKET")
         .unwrap_or_else(|_| KNOWLEDGE_SOCKET.to_string());
 
@@ -103,7 +103,7 @@ fn graph_query(cypher: &str) -> Result<String, String> {
 /// p.id|p.name|p.description|p.root_path|...\n
 /// uuid|name|desc|/path|...\n
 /// ```
-fn parse_projects_result(raw: &str) -> Vec<Project> {
+pub(crate) fn parse_projects_result(raw: &str) -> Vec<Project> {
     if raw.trim().is_empty() || raw.starts_with("ERROR") {
         return Vec::new();
     }

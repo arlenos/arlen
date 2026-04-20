@@ -17,6 +17,7 @@ impl WindowSwitcherPlugin {
 impl WaypointerPlugin for WindowSwitcherPlugin {
     fn id(&self) -> &str { "core.window-switcher" }
     fn name(&self) -> &str { "Windows" }
+    fn description(&self) -> &str { "Find and focus an open window by its title or application id." }
     fn priority(&self) -> u32 { 10 }
     fn max_results(&self) -> usize { 8 }
 

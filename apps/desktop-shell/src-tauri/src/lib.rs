@@ -230,6 +230,7 @@ pub fn run() {
             module_errors::reset_module_errors,
             waypointer_system::waypointer_search,
             waypointer_system::waypointer_execute,
+            waypointer_system::waypointer_list_plugins,
             extension_registry::get_topbar_indicators,
             theme::commands::get_theme,
             theme::commands::get_theme_css,

@@ -7,6 +7,7 @@ pub struct ProcessKillPlugin;
 impl WaypointerPlugin for ProcessKillPlugin {
     fn id(&self) -> &str { "core.process-kill" }
     fn name(&self) -> &str { "Kill Process" }
+    fn description(&self) -> &str { "List your processes and send SIGTERM (Enter) or SIGKILL (Shift+Enter)." }
     fn prefix(&self) -> Option<&str> { Some("kill ") }
     fn priority(&self) -> u32 { 0 }
     fn max_results(&self) -> usize { 20 }
