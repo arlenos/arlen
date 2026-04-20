@@ -249,9 +249,11 @@
     border-radius: var(--radius-lg); background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     box-shadow: var(--shadow-lg); color: var(--color-fg-shell);
-    overflow: visible; animation: qs-open 100ms ease-out both;
+    overflow: visible;
+    animation: lunaris-popover-in var(--duration-medium) var(--ease-out) both;
+    transform-origin: top center;
   }
-  @keyframes qs-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+  /* Entry keyframes defined in sdk/ui-kit/src/lib/motion.css. */
 
   .qs-sep { height: 1px; background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
 

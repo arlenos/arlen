@@ -36,11 +36,17 @@
     border-radius: var(--radius-sm);
     cursor: pointer;
     color: var(--foreground);
-    transition: background-color var(--duration-fast, 150ms) ease;
+    transition:
+      transform var(--duration-micro) var(--ease-out),
+      background-color var(--duration-fast) var(--ease-out);
   }
 
   .panel-trigger:hover {
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  }
+
+  .panel-trigger:active {
+    transform: scale(0.96);
   }
 
   .panel-badge {
@@ -58,5 +64,6 @@
     line-height: 14px;
     text-align: center;
     pointer-events: none;
+    animation: lunaris-badge-in var(--duration-fast) var(--ease-bounce);
   }
 </style>

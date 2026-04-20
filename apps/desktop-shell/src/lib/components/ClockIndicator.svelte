@@ -79,11 +79,17 @@
     border: none;
     border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: background-color var(--duration-fast, 150ms) ease;
+    transition:
+      transform var(--duration-micro) var(--ease-out),
+      background-color var(--duration-fast) var(--ease-out);
   }
 
   .clock-indicator:hover {
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  }
+
+  .clock-indicator:active {
+    transform: scale(0.96);
   }
 
   .clock-indicator:focus-visible {

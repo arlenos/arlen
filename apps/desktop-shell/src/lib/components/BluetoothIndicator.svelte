@@ -107,10 +107,15 @@
     border-radius: var(--radius-sm);
     cursor: pointer;
     color: var(--foreground);
-    transition: background-color 150ms ease;
+    transition:
+      transform var(--duration-micro) var(--ease-out),
+      background-color var(--duration-fast) var(--ease-out);
   }
   .bt-btn:hover {
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  }
+  .bt-btn:active {
+    transform: scale(0.96);
   }
   .bt-btn.off {
     opacity: 0.4;

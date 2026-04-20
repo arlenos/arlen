@@ -116,10 +116,16 @@
     border-radius: var(--radius-sm);
     cursor: pointer;
     color: var(--foreground);
-    transition: background-color var(--duration-fast, 150ms) ease;
+    transition:
+      transform var(--duration-micro) var(--ease-out),
+      background-color var(--duration-fast) var(--ease-out);
   }
 
   .audio-btn:hover {
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  }
+
+  .audio-btn:active {
+    transform: scale(0.96);
   }
 </style>

@@ -115,11 +115,12 @@
     box-shadow: var(--shadow-lg);
     color: var(--color-fg-shell);
     display: flex; flex-direction: column;
-    animation: pop-open 100ms ease-out both;
+    animation: lunaris-popover-in var(--duration-medium) var(--ease-out) both;
+    transform-origin: top center;
   }
   .pop-tray { right: 140px; width: 260px; }
   .pop-body { padding: 8px; display: flex; flex-direction: column; gap: 2px; }
-  @keyframes pop-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+  /* Entry keyframes defined in sdk/ui-kit/src/lib/motion.css. */
 
   .tray-empty { padding: 20px; text-align: center; color: color-mix(in srgb, var(--color-fg-shell) 40%, transparent); font-size: 0.75rem; }
 

@@ -153,11 +153,12 @@
     box-shadow: var(--shadow-lg);
     color: var(--color-fg-shell);
     display: flex; flex-direction: column;
-    animation: pop-open 100ms ease-out both;
+    animation: lunaris-popover-in var(--duration-medium) var(--ease-out) both;
+    transform-origin: top center;
   }
   .pop-layout { right: 50px; width: 260px; }
   .pop-body { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-  @keyframes pop-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+  /* Entry keyframes defined in sdk/ui-kit/src/lib/motion.css. */
 
   /* Mode pills */
   .mode-section { display: flex; flex-direction: column; gap: 6px; }
