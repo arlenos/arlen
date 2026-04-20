@@ -6,3 +6,4 @@ pub mod modules;
 pub mod notifications;
 pub mod search;
 pub mod theme;
+pub mod waypointer_plugins;
