@@ -54,8 +54,12 @@
       <div class="titles">
         <span class="name">{module.name || module.id}</span>
         <span class="meta">
-          <span class="version">v{module.version || "?"}</span>
-          {#if module.source === "system"}
+          {#if module.version}
+            <span class="version">v{module.version}</span>
+          {/if}
+          {#if module.source === "builtin"}
+            <span class="badge builtin">Built-in</span>
+          {:else if module.source === "system"}
             <span class="badge system">System</span>
           {:else}
             <span class="badge">User</span>
@@ -99,7 +103,9 @@
           <span class="row-value">{module.moduleType}</span>
         </div>
         <div class="row">
-          <span class="row-label">Install path</span>
+          <span class="row-label">
+            {module.source === "builtin" ? "Source" : "Install path"}
+          </span>
           <span class="row-value mono path" title={module.path}>{module.path}</span>
         </div>
       </div>
@@ -238,6 +244,10 @@
   .badge.system {
     background: color-mix(in srgb, var(--color-accent) 18%, transparent);
     color: var(--color-accent);
+  }
+  .badge.builtin {
+    background: color-mix(in srgb, var(--color-success, #10b981) 18%, transparent);
+    color: var(--color-success, #10b981);
   }
   .badge.ext {
     background: color-mix(in srgb, var(--foreground) 6%, transparent);

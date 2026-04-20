@@ -42,6 +42,8 @@ pub fn run() {
             commands::modules::modules_list,
             commands::modules::modules_set_enabled,
             commands::modules::modules_uninstall,
+            commands::waypointer_plugins::waypointer_list_plugins,
+            commands::waypointer_plugins::waypointer_set_plugin_enabled,
             commands::search::export_settings_index,
             commands::search::get_launch_args,
             commands::input::keybindings_get_all,
