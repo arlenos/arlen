@@ -79,11 +79,17 @@
     border-radius: var(--radius-md);
     color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition:
+      transform var(--duration-micro) var(--ease-out),
+      background-color var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out);
   }
   .tray-btn:hover {
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
     color: var(--color-fg-shell);
+  }
+  .tray-btn:active {
+    transform: scale(0.96);
   }
   .attention-dot {
     position: absolute;

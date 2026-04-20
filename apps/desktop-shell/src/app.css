@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
+/* Canonical motion tokens + shared interaction classes.
+   Single source of truth for both desktop-shell and app-settings. */
+@import "../../sdk/ui-kit/src/lib/motion.css";
 
 /* ============================================================
    Lunaris Dark Theme - CSS variable defaults.
@@ -53,16 +56,7 @@
   --spacing-lg: 24px;
   --spacing-xl: 32px;
 
-  /* Motion */
-  --duration-fast:    100ms;
-  --duration-normal:  200ms;
-  --duration-slow:    400ms;
-  --easing-default:   cubic-bezier(0.4, 0, 0.2, 1);
-  --easing-spring:    cubic-bezier(0.34, 1.56, 0.64, 1);
-  /* Legacy aliases */
-  --duration-medium:  var(--duration-normal);
-  --easing-enter:     var(--easing-default);
-  --easing-exit:      var(--easing-default);
+  /* Motion tokens live in sdk/ui-kit/src/lib/motion.css (imported above). */
 
   /* Depth */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -180,19 +174,19 @@
   --radius-3xl: calc(var(--radius-md) + 24px);
   --radius-full: var(--radius-full);
   --radius: var(--radius-md);
-  /* Animation timing */
-  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-enter: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-exit: cubic-bezier(0.4, 0, 0.2, 1);
-  --duration-fast: 100ms;
-  --duration-medium: 200ms;
-}
 
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --duration-fast:   0ms;
-    --duration-medium: 0ms;
-  }
+  /* Motion tokens registered as Tailwind utilities. Values come from
+     sdk/ui-kit/src/lib/motion.css; this block only exposes them to
+     utility classes like `duration-fast`, `ease-out`. */
+  --transition-duration-micro:   var(--duration-micro);
+  --transition-duration-fast:    var(--duration-fast);
+  --transition-duration-medium:  var(--duration-medium);
+  --transition-duration-slow:    var(--duration-slow);
+  --transition-duration-instant: var(--duration-micro);
+  --ease-out:    var(--ease-out);
+  --ease-in-out: var(--ease-in-out);
+  --ease-bounce: var(--ease-bounce);
+  --ease-default: var(--ease-in-out);
 }
 
 @layer base {

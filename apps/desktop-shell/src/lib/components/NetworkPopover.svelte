@@ -322,11 +322,12 @@
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     box-shadow: var(--shadow-lg); color: var(--color-fg-shell);
     display: flex; flex-direction: column;
-    animation: pop-open 100ms ease-out both;
+    animation: lunaris-popover-in var(--duration-medium) var(--ease-out) both;
+    transform-origin: top center;
   }
   .pop-network { right: 110px; width: 280px; }
   .pop-body { padding: 12px; display: flex; flex-direction: column; gap: 6px; }
-  @keyframes pop-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+  /* Entry keyframes defined in sdk/ui-kit/src/lib/motion.css. */
 
   .net-msg { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 12px; color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); text-align: center; font-size: 0.8125rem; }
   .net-msg-title { color: var(--color-fg-shell); }

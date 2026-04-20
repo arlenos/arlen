@@ -126,11 +126,17 @@
     border-radius: var(--radius-sm);
     cursor: pointer;
     color: var(--foreground);
-    transition: background-color var(--duration-fast, 150ms) ease;
+    transition:
+      transform var(--duration-micro) var(--ease-out),
+      background-color var(--duration-fast) var(--ease-out);
   }
 
   .battery-btn:hover {
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  }
+
+  .battery-btn:active {
+    transform: scale(0.96);
   }
 
   .battery-badge {
