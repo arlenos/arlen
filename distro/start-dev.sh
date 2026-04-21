@@ -35,13 +35,19 @@ EVENT_BUS_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/lunaris"
 mkdir -p "$EVENT_BUS_DIR"
 export LUNARIS_PRODUCER_SOCKET="$EVENT_BUS_DIR/event-bus-producer.sock"
 export LUNARIS_CONSUMER_SOCKET="$EVENT_BUS_DIR/event-bus-consumer.sock"
+# Knowledge-daemon socket: also in XDG so no sudo needed. Without
+# this, the daemon falls back to /run/lunaris/knowledge.sock where
+# the bind() fails with EACCES and the daemon terminates.
+export LUNARIS_DAEMON_SOCKET="$EVENT_BUS_DIR/knowledge.sock"
+
+TIMELINE_MOUNT="$HOME/.timeline"
 
 # Default log filter. Silences `zbus` INFO-level handshake/dispatch
 # chatter (~300 lines per shell session — see notes in logs/).
 # Override from the calling shell if deeper tracing is needed.
 RUST_LOG_FILTER="${RUST_LOG:-info,zbus=warn,tracing=warn}"
 
-echo "[1/4] Killing existing processes..."
+echo "[1/6] Killing existing processes..."
 
 # Kill Lunaris processes
 pkill -9 -f cosmic-comp 2>/dev/null || true
@@ -56,24 +62,54 @@ pkill -9 -f mako 2>/dev/null || true
 pkill -9 -f swaync 2>/dev/null || true
 pkill -9 -f xfce4-notifyd 2>/dev/null || true
 
-echo "[2/4] Cleaning up sockets..."
+echo "[2/6] Cleaning up stale FUSE mount at $TIMELINE_MOUNT..."
+
+# The Knowledge daemon FUSE-mounts ~/.timeline. A hard-kill (pkill -9
+# above) doesn't trigger the FUSE exit handler — the kernel keeps the
+# mount registered but the userspace process is gone, so any access
+# returns ENOTCONN ("Transport endpoint is not connected"). The next
+# daemon start then fails with `File exists (os error 17)` when it
+# tries to re-mount, and the zombie mount stays. Cleanup: three
+# fallback levels, fail fast if none work.
+if mountpoint -q "$TIMELINE_MOUNT" 2>/dev/null \
+   || findmnt -M "$TIMELINE_MOUNT" >/dev/null 2>&1; then
+    echo "  found mount — attempting unmount"
+    if fusermount -u "$TIMELINE_MOUNT" 2>/dev/null; then
+        echo "  unmounted cleanly"
+    elif fusermount -uz "$TIMELINE_MOUNT" 2>/dev/null; then
+        echo "  unmounted lazily (will finalise when last ref released)"
+    elif sudo umount -l "$TIMELINE_MOUNT" 2>/dev/null; then
+        echo "  unmounted via sudo umount -l"
+    else
+        echo "ERROR: could not unmount $TIMELINE_MOUNT" >&2
+        echo "  Dev session cannot start with a stale FUSE mount." >&2
+        echo "  Fix manually:  sudo umount -l $TIMELINE_MOUNT" >&2
+        exit 1
+    fi
+else
+    echo "  no stale mount"
+fi
+
+echo "[3/6] Cleaning up sockets..."
 
 # Stale user sockets from previous run
-rm -f "$EVENT_BUS_DIR"/event-bus-*.sock 2>/dev/null || true
+rm -f "$EVENT_BUS_DIR"/event-bus-*.sock \
+      "$EVENT_BUS_DIR"/knowledge.sock \
+      2>/dev/null || true
 # Legacy /run/lunaris/ leftovers — only touch if we previously created
 # them. Silent-skip if the dir doesn't exist so we don't need sudo just
 # for the cleanup pass.
 if [ -d /run/lunaris ]; then
-    sudo rm -f /run/lunaris/event-bus-*.sock 2>/dev/null || true
+    sudo rm -f /run/lunaris/event-bus-*.sock /run/lunaris/knowledge.sock 2>/dev/null || true
 fi
 
 sleep 1
 
-echo "[3/4] Killing existing tmux session..."
+echo "[4/6] Killing existing tmux session..."
 
 tmux kill-session -t lunaris 2>/dev/null || true
 
-echo "[4/4] Starting tmux session..."
+echo "[5/6] Starting tmux session..."
 
 # Each component runs with RUST_LOG=info and tees combined stdout+stderr
 # into a dedicated file under $LOG_DIR, so `tail -f ~/Repositories/lunaris-sys/logs/compositor.log`
@@ -86,7 +122,7 @@ echo "[4/4] Starting tmux session..."
 # interactive shell's rc-file (bashrc, zshrc) cannot silently strip
 # them. Quote once with single-quotes so the shell inside tmux expands
 # `$RUST_LOG_FILTER` from the final command line, not from the parent.
-ENV_PREFIX="RUST_LOG='$RUST_LOG_FILTER' LUNARIS_PRODUCER_SOCKET='$LUNARIS_PRODUCER_SOCKET' LUNARIS_CONSUMER_SOCKET='$LUNARIS_CONSUMER_SOCKET'"
+ENV_PREFIX="RUST_LOG='$RUST_LOG_FILTER' LUNARIS_PRODUCER_SOCKET='$LUNARIS_PRODUCER_SOCKET' LUNARIS_CONSUMER_SOCKET='$LUNARIS_CONSUMER_SOCKET' LUNARIS_DAEMON_SOCKET='$LUNARIS_DAEMON_SOCKET'"
 
 # Window 0: Compositor
 tmux new-session -d -s lunaris -n compositor
@@ -111,6 +147,36 @@ tmux send-keys -t lunaris:shell "sleep 10 && cd $LUNARIS_PATH/desktop-shell && $
 
 # Select shell window
 tmux select-window -t lunaris:shell
+
+echo "[6/6] Waiting for daemons to come up..."
+
+# Give every component long enough to build (first run) and bind its
+# socket. The Shell (Tauri) is the slowest — we don't wait for it, the
+# health check below only covers the backend processes.
+sleep 15
+
+MISSING=()
+pgrep -f cosmic-comp            >/dev/null || MISSING+=(compositor)
+pgrep -f "event-bus/target"     >/dev/null \
+    || pgrep -f "target/debug/event-bus" >/dev/null \
+    || MISSING+=(event-bus)
+pgrep -f "target/debug/knowledge" >/dev/null || MISSING+=(knowledge)
+pgrep -f lunaris-notifyd        >/dev/null || MISSING+=(notification-daemon)
+
+if [ ${#MISSING[@]} -eq 0 ]; then
+    echo "  all backend daemons are running"
+else
+    echo "WARNING: the following daemons are NOT running: ${MISSING[*]}" >&2
+    echo "  Check logs: $LOG_DIR/<name>.log" >&2
+fi
+
+# Knowledge socket is the single most common breakage: if it isn't
+# bound, the shell's 'Projects' / 'Recent Files' silently degrade to
+# empty. Surface that here instead of letting it be a mystery later.
+if [ ! -S "$LUNARIS_DAEMON_SOCKET" ]; then
+    echo "WARNING: knowledge socket not found at $LUNARIS_DAEMON_SOCKET" >&2
+    echo "  tail -f $LOG_DIR/knowledge.log to diagnose" >&2
+fi
 
 echo "=== Lunaris Dev Environment Started ==="
 echo ""
