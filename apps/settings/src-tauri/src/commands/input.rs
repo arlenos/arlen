@@ -1314,11 +1314,22 @@ mod tests {
     // ── Disk-backed roundtrip tests ──────────────────────────────────
     //
     // These tests flip `LUNARIS_CONFIG_DIR` to a tempdir so the real
-    // `~/.config/lunaris/` is never touched. They must run single-
-    // threaded (`cargo test -- --test-threads=1`) because the env
-    // override is process-global.
+    // `~/.config/lunaris/` is never touched. Because the env var is
+    // process-global, concurrent runs would stomp on each other; the
+    // `TEST_ENV_LOCK` mutex serialises just this family of tests so
+    // the rest of the suite can still run in parallel. (Previously
+    // the workaround was `-- --test-threads=1`, which forced the
+    // whole app-settings suite to serialise.)
+
+    static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     fn with_temp_config<F: FnOnce()>(f: F) {
+        // `unwrap_or_else(|e| e.into_inner())`: a previous test that
+        // poisoned the lock (panicked while holding it) shouldn't
+        // block the rest — we recover the guard and keep going.
+        let _guard = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let dir = tempfile::TempDir::new().unwrap();
         let prev = std::env::var_os("LUNARIS_CONFIG_DIR");
         std::env::set_var("LUNARIS_CONFIG_DIR", dir.path());
