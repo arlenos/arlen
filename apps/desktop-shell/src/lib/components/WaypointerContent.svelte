@@ -41,6 +41,24 @@
     powerResults, updatePowerResults, clearPowerResults, invokePowerAction,
     type PowerActionResult,
   } from "$lib/stores/waypointerPower.js";
+  import {
+    fileResults, updateFileResults, clearFileResults, openFileResult,
+    type FileResult,
+  } from "$lib/stores/waypointerFiles.js";
+  import {
+    clipboardResults, clipboardEnabled, refreshClipboardEnabled,
+    updateClipboardResults, clearClipboardResults,
+    copyClipboardEntry, deleteClipboardEntry, clearAllClipboard,
+    type ClipboardResult,
+  } from "$lib/stores/waypointerClipboard.js";
+  import {
+    dictResults, updateDictResults, clearDictResults,
+    type DictResult,
+  } from "$lib/stores/waypointerDict.js";
+  import {
+    FileText, FileCode, FileCog, FileImage, FileArchive, FileAudio, FileVideo,
+    Clipboard, Trash2,
+  } from "lucide-svelte";
 
   let query = $state("");
   let inputRef = $state<HTMLInputElement | null>(null);
@@ -92,6 +110,9 @@
       })
       .catch(() => { console.timeEnd("wp-init"); });
     reloadSettingsIndex();
+    // Prime the clipboard opt-in flag so the Waypointer knows
+    // whether to render the Clear-All affordance below.
+    refreshClipboardEnabled();
   });
 
   function doSearch(q: string) {
@@ -138,6 +159,37 @@
           );
         })
         .catch(() => {});
+      // File-search plugin: same bridge, separate section.
+      const t3 = performance.now();
+      updateFileResults(q)
+        .then(() => {
+          console.log(
+            `[wp-search] files: ${(performance.now() - t3).toFixed(1)}ms`,
+          );
+        })
+        .catch(() => {});
+      // Clipboard-history plugin: only fires when opt-in is on.
+      // Backend short-circuits to empty when disabled; we skip the
+      // invoke entirely in that case to save the IPC hop.
+      const t4 = performance.now();
+      updateClipboardResults(q)
+        .then(() => {
+          console.log(
+            `[wp-search] clipboard: ${(performance.now() - t4).toFixed(1)}ms`,
+          );
+        })
+        .catch(() => {});
+      // Dictionary plugin: also via the generic bridge. Returns empty
+      // until the WordNet data is loaded (first query kicks off the
+      // background load, usually ready by the second keystroke).
+      const t5 = performance.now();
+      updateDictResults(q)
+        .then(() => {
+          console.log(
+            `[wp-search] dict: ${(performance.now() - t5).toFixed(1)}ms`,
+          );
+        })
+        .catch(() => {});
       requestAnimationFrame(() => {
         console.timeEnd("wp-search-total");
       });
@@ -160,6 +212,9 @@
     clearUnicodeResults();
     clearSettingsResults();
     clearPowerResults();
+    clearFileResults();
+    clearClipboardResults();
+    clearDictResults();
     clearRecents();
     console.timeLog("wp-open", "stores cleared");
     // Load MRU apps + graph-recent files in parallel. Both are cached
@@ -326,6 +381,26 @@
       case "power.shutdown": return Power;
       case "power.logout":   return LogOut;
       default:               return Power;
+    }
+  }
+
+  /// Map the lucide-icon-name string returned by the `core.files`
+  /// plugin (`file-code`, `file-text`, …) to the actual lucide-svelte
+  /// component. Backend picks the name from file extension; frontend
+  /// renders the corresponding lucide icon so we keep the chrome
+  /// palette uniform without shipping extension->icon maps in both
+  /// languages.
+  /// eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function iconForFileName(icon: string | null): any {
+    switch (icon) {
+      case "file-code":    return FileCode;
+      case "file-text":    return FileText;
+      case "file-cog":     return FileCog;
+      case "file-image":   return FileImage;
+      case "file-archive": return FileArchive;
+      case "file-audio":   return FileAudio;
+      case "file-video":   return FileVideo;
+      default:             return FileIcon;
     }
   }
 
@@ -644,7 +719,7 @@
         <!-- CommandEmpty is unusable with shouldFilter={false} because
              cmdk always reports 0 internal matches. Use our own check
              across all provider stores instead. -->
-        {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $unicodeResults.length === 0 && $powerResults.length === 0 && filteredProjects.length === 0 && $recentAppsStore.length === 0 && $recentFilesStore.length === 0 && query.trim().length > 0}
+        {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $unicodeResults.length === 0 && $powerResults.length === 0 && $fileResults.length === 0 && $clipboardResults.length === 0 && $dictResults.length === 0 && filteredProjects.length === 0 && $recentAppsStore.length === 0 && $recentFilesStore.length === 0 && query.trim().length > 0}
           <div class="wp-empty">No results found.</div>
         {/if}
 
@@ -812,6 +887,86 @@
                 <div class="wp-app-info">
                   <span class="wp-app-name">{project.name}</span>
                   <span class="wp-app-desc">{project.rootPath}</span>
+                </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+          <CommandSeparator />
+        {/if}
+
+        {#if $clipboardResults.length > 0}
+          <CommandGroup heading="Clipboard">
+            {#each $clipboardResults as entry (entry.id)}
+              <CommandItem
+                value={`clip-item-${entry.id}`}
+                onSelect={() => { copyClipboardEntry(entry); close(); }}
+              >
+                <Clipboard size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{entry.title}</span>
+                  {#if entry.description}
+                    <span class="wp-app-desc">{entry.description}</span>
+                  {/if}
+                </div>
+                <button
+                  class="wp-inline-btn"
+                  title="Delete entry"
+                  onclick={(e) => { e.stopPropagation(); deleteClipboardEntry(entry); }}
+                >
+                  <Trash2 size={12} strokeWidth={1.5} />
+                </button>
+              </CommandItem>
+            {/each}
+            {#if $clipboardEnabled && $clipboardResults.length >= 2}
+              <CommandItem
+                value="clip-clear-all"
+                onSelect={() => { clearAllClipboard(); close(); }}
+              >
+                <Trash2 size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">Clear clipboard history</span>
+                  <span class="wp-app-desc">Drop all {$clipboardResults.length} entries</span>
+                </div>
+              </CommandItem>
+            {/if}
+          </CommandGroup>
+          <CommandSeparator />
+        {/if}
+
+        {#if $fileResults.length > 0}
+          <CommandGroup heading="Files">
+            {#each $fileResults as file (file.id)}
+              {@const FileIconComponent = iconForFileName(file.icon)}
+              <CommandItem
+                value={`file-${file.id}`}
+                onSelect={() => { openFileResult(file); close(); }}
+              >
+                <FileIconComponent size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{file.title}</span>
+                  {#if file.description}
+                    <span class="wp-app-desc">{file.description}</span>
+                  {/if}
+                </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+          <CommandSeparator />
+        {/if}
+
+        {#if $dictResults.length > 0}
+          <CommandGroup heading="Definitions">
+            {#each $dictResults as def (def.id)}
+              <CommandItem
+                value={`dict-${def.id}`}
+                onSelect={() => { close(); }}
+              >
+                <BookOpen size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{def.title}</span>
+                  {#if def.description}
+                    <span class="wp-app-desc">{def.description}</span>
+                  {/if}
                 </div>
               </CommandItem>
             {/each}
@@ -1028,6 +1183,30 @@
   /* Suppress pointer hover selection while navigating with keyboard. */
   :global(.wp-kb-active [data-slot="command-item"]) {
     pointer-events: none;
+  }
+
+  /* Small inline action button (used by clipboard entries for per-row
+     delete). Sits at the right edge of the command item; clicks don't
+     bubble to the item's onSelect. */
+  .wp-inline-btn {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--color-fg-shell);
+    opacity: 0.35;
+    cursor: pointer;
+    transition: background 80ms ease, opacity 80ms ease;
+  }
+  .wp-inline-btn:hover {
+    background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent);
+    opacity: 0.9;
   }
 
   @keyframes wp-fade-in {

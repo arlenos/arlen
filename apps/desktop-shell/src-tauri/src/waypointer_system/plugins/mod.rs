@@ -2,7 +2,10 @@
 
 pub mod app_search;
 pub mod calculator;
+pub mod clipboard;
 pub mod datetime;
+pub mod dict;
+pub mod files;
 pub mod man;
 pub mod power;
 pub mod process_kill;
@@ -14,6 +17,7 @@ pub mod url;
 pub mod window_switcher;
 
 use crate::app_index;
+use crate::clipboard_history::ClipboardHistoryState;
 use crate::wayland_client;
 use super::manager::PluginManager;
 use super::registry;
@@ -33,6 +37,7 @@ pub fn register_builtins(
     mgr: &mut PluginManager,
     app_index: app_index::AppIndex,
     window_list: wayland_client::WindowList,
+    clipboard: ClipboardHistoryState,
 ) {
     let disabled = registry::load_disabled_plugins();
     if !disabled.is_empty() {
@@ -47,6 +52,9 @@ pub fn register_builtins(
         Box::new(unit_converter::UnitConverterPlugin),
         Box::new(datetime::DateTimePlugin),
         Box::new(projects::ProjectsPlugin),
+        Box::new(files::FilesPlugin::new()),
+        Box::new(clipboard::ClipboardPlugin::new(clipboard)),
+        Box::new(dict::DictPlugin::new()),
         Box::new(power::PowerPlugin),
         Box::new(shell::ShellPlugin),
         Box::new(man::ManPlugin),
