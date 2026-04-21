@@ -13,18 +13,10 @@ pub mod registry;
 pub use plugin::*;
 pub use manager::*;
 
-use std::sync::RwLock;
+use std::sync::Mutex;
 
 /// Tauri managed state for the plugin manager.
-///
-/// `RwLock` rather than `Mutex`: registration happens once at startup
-/// (brief `.write()`), while `search` / `execute` are called on every
-/// Waypointer keystroke from multiple plugins in parallel. Previously
-/// a `Mutex` serialised every lookup, so a slow plugin (e.g. Files'
-/// graph round-trip) blocked all other plugins' searches. Since
-/// `search_plugin` takes `&self` under the hood — `WaypointerPlugin`
-/// methods are immutable — concurrent reads are always safe.
-pub type PluginManagerState = RwLock<PluginManager>;
+pub type PluginManagerState = Mutex<PluginManager>;
 
 /// Search via the plugin manager (new Tauri command).
 #[tauri::command]
@@ -32,7 +24,7 @@ pub fn waypointer_search(
     query: String,
     state: tauri::State<'_, PluginManagerState>,
 ) -> Vec<SearchResult> {
-    let mgr = state.read().unwrap();
+    let mgr = state.lock().unwrap();
     mgr.search(&query)
 }
 
@@ -42,7 +34,7 @@ pub fn waypointer_execute(
     result: SearchResult,
     state: tauri::State<'_, PluginManagerState>,
 ) -> Result<(), String> {
-    let mgr = state.read().unwrap();
+    let mgr = state.lock().unwrap();
     mgr.execute(&result).map_err(|e| e.to_string())
 }
 
@@ -54,7 +46,7 @@ pub fn waypointer_execute(
 pub fn waypointer_list_plugins(
     state: tauri::State<'_, PluginManagerState>,
 ) -> Vec<PluginDescriptor> {
-    let mgr = state.read().unwrap();
+    let mgr = state.lock().unwrap();
     mgr.plugin_descriptors()
 }
 
@@ -68,13 +60,14 @@ pub fn waypointer_search_plugin(
     query: String,
     state: tauri::State<'_, PluginManagerState>,
 ) -> Vec<SearchResult> {
-    // DEBUG level: this fires per keystroke per registered plugin
-    // group (~4 calls per key). Keeping it at info was ~80% of the
-    // shell log noise during a short Waypointer session.
-    log::debug!("waypointer_search_plugin: plugin_id='{plugin_id}' query='{query}'");
-    let mgr = state.read().unwrap();
+    // Instrumentation: surface every frontend → manager hop in the
+    // shell log so missing plugin results are debuggable without
+    // breaking out browser devtools. Low-frequency (once per
+    // debounced keystroke) — safe at info level.
+    log::info!("waypointer_search_plugin: plugin_id='{plugin_id}' query='{query}'");
+    let mgr = state.lock().unwrap();
     let results = mgr.search_plugin(&plugin_id, &query);
-    log::debug!(
+    log::info!(
         "waypointer_search_plugin: plugin_id='{plugin_id}' returned {} results",
         results.len()
     );
