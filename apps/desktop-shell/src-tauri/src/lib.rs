@@ -1,3 +1,4 @@
+mod app_history;
 mod app_index;
 mod audio;
 mod battery;
@@ -16,6 +17,7 @@ mod power;
 mod notifications;
 mod permissions;
 mod projects;
+mod recent_files;
 mod sni;
 mod shell_overlay_client;
 mod settings_provider;
@@ -231,6 +233,7 @@ pub fn run() {
             waypointer_system::waypointer_search,
             waypointer_system::waypointer_execute,
             waypointer_system::waypointer_list_plugins,
+            waypointer_system::waypointer_search_plugin,
             extension_registry::get_topbar_indicators,
             theme::commands::get_theme,
             theme::commands::get_theme_css,
@@ -252,6 +255,10 @@ pub fn run() {
             app_index::search_apps,
             app_index::launch_app,
             waypointer_plugins::evaluate_waypointer_input,
+            app_history::record_app_launch,
+            app_history::get_recent_apps,
+            recent_files::get_recent_files,
+            recent_files::open_recent_file,
             wayland_client::workspace_activate,
             wayland_client::activate_window,
             wayland_client::window_move_to_workspace,

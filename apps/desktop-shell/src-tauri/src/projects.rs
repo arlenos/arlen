@@ -66,6 +66,23 @@ const KNOWLEDGE_SOCKET: &str = "/run/lunaris/knowledge.sock";
 /// empty and log at debug level instead.
 const GRAPH_QUERY_TIMEOUT_MS: u64 = 200;
 
+/// Resolve the knowledge-daemon socket path with the same fallback
+/// logic the daemon itself uses. If `LUNARIS_DAEMON_SOCKET` is set
+/// (normal path via `start-dev.sh`), use it. Otherwise fall back to
+/// `$XDG_RUNTIME_DIR/lunaris/knowledge.sock` so the shell works when
+/// launched ad-hoc without the launcher exporting the env var. Last
+/// resort: the hardcoded `/run/lunaris/` default (historically
+/// root-only; kept as a fourth fallback for completeness).
+fn knowledge_socket_path() -> String {
+    if let Ok(p) = std::env::var("LUNARIS_DAEMON_SOCKET") {
+        return p;
+    }
+    if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
+        return format!("{xdg}/lunaris/knowledge.sock");
+    }
+    KNOWLEDGE_SOCKET.to_string()
+}
+
 /// Send a Cypher query to the Knowledge Daemon and return the raw result.
 ///
 /// This is a blocking-I/O call. Callers reached from async contexts
@@ -73,8 +90,7 @@ const GRAPH_QUERY_TIMEOUT_MS: u64 = 200;
 /// [`graph_query_async`] which runs it on `spawn_blocking` with a
 /// timeout so a hung daemon can't block the async runtime.
 pub(crate) fn graph_query(cypher: &str) -> Result<String, String> {
-    let socket = std::env::var("LUNARIS_DAEMON_SOCKET")
-        .unwrap_or_else(|_| KNOWLEDGE_SOCKET.to_string());
+    let socket = knowledge_socket_path();
 
     let mut stream =
         UnixStream::connect(&socket).map_err(|e| format!("graph connect: {e}"))?;
@@ -109,7 +125,7 @@ pub(crate) fn graph_query(cypher: &str) -> Result<String, String> {
 /// `spawn_blocking` to keep the sync socket I/O off the tokio worker
 /// thread. Returns an error on timeout; callers decide whether to
 /// degrade gracefully (e.g. empty list) or propagate.
-async fn graph_query_async(cypher: String) -> Result<String, String> {
+pub(crate) async fn graph_query_async(cypher: String) -> Result<String, String> {
     use std::time::Duration;
     let timeout = Duration::from_millis(GRAPH_QUERY_TIMEOUT_MS);
     let join = tokio::task::spawn_blocking(move || graph_query(&cypher));

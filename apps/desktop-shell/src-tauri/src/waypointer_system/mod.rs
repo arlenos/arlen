@@ -49,3 +49,27 @@ pub fn waypointer_list_plugins(
     let mgr = state.lock().unwrap();
     mgr.plugin_descriptors()
 }
+
+/// Query a single plugin by id. The Waypointer frontend uses this to
+/// surface dedicated plugins (e.g. `core.power`) as their own
+/// CommandGroup sections without routing through the generic search —
+/// see `search_plugin` on `PluginManager` for why that matters.
+#[tauri::command]
+pub fn waypointer_search_plugin(
+    plugin_id: String,
+    query: String,
+    state: tauri::State<'_, PluginManagerState>,
+) -> Vec<SearchResult> {
+    // Instrumentation: surface every frontend → manager hop in the
+    // shell log so missing plugin results are debuggable without
+    // breaking out browser devtools. Low-frequency (once per
+    // debounced keystroke) — safe at info level.
+    log::info!("waypointer_search_plugin: plugin_id='{plugin_id}' query='{query}'");
+    let mgr = state.lock().unwrap();
+    let results = mgr.search_plugin(&plugin_id, &query);
+    log::info!(
+        "waypointer_search_plugin: plugin_id='{plugin_id}' returned {} results",
+        results.len()
+    );
+    results
+}

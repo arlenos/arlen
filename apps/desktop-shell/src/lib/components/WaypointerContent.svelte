@@ -28,6 +28,19 @@
     reloadSettingsIndex, openSettingsDeepLink,
   } from "$lib/stores/settingsSearch.js";
   import WaypointerSettingInline from "./WaypointerSettingInline.svelte";
+  import {
+    recentAppsStore, recentFilesStore,
+    loadRecents, recordAppLaunch, openRecentFile, clearRecents,
+    type RecentFile,
+  } from "$lib/stores/waypointerRecents.js";
+  import {
+    File as FileIcon, History, Power,
+    Moon, Lock, RotateCw, LogOut,
+  } from "lucide-svelte";
+  import {
+    powerResults, updatePowerResults, clearPowerResults, invokePowerAction,
+    type PowerActionResult,
+  } from "$lib/stores/waypointerPower.js";
 
   let query = $state("");
   let inputRef = $state<HTMLInputElement | null>(null);
@@ -113,6 +126,18 @@
       const t1 = performance.now();
       searchSettings(q);
       console.log(`[wp-search] settings: ${(performance.now() - t1).toFixed(1)}ms`);
+      // Power-plugin via the generic manager bridge. Previously
+      // missing here — Power plugin was registered but never queried,
+      // so typing "shutdown" returned nothing. Fires the same
+      // debounced cycle as apps / windows / settings.
+      const t2 = performance.now();
+      updatePowerResults(q)
+        .then(() => {
+          console.log(
+            `[wp-search] power: ${(performance.now() - t2).toFixed(1)}ms`,
+          );
+        })
+        .catch(() => {});
       requestAnimationFrame(() => {
         console.timeEnd("wp-search-total");
       });
@@ -134,11 +159,18 @@
     clearProcessResults();
     clearUnicodeResults();
     clearSettingsResults();
+    clearPowerResults();
+    clearRecents();
     console.timeLog("wp-open", "stores cleared");
-    // Show max 8 suggested apps on empty query instead of ALL apps.
-    // Rendering 100-200 CommandItems with base64 icons was the main
-    // bottleneck — each open created hundreds of DOM nodes.
-    searchResults.set(allApps.slice(0, 8));
+    // Load MRU apps + graph-recent files in parallel. Both are cached
+    // behind short TTLs on the Rust side so repeated opens are cheap.
+    loadRecents(allApps).then(() => {
+      console.timeLog("wp-open", "recents loaded");
+    }).catch(() => {});
+    // Keep the empty-query grid EMPTY — recents now fill that role.
+    // Previously we showed `allApps.slice(0, 8)` as generic suggestions;
+    // with recents populated, alphabetical-first-8 is worse than MRU.
+    searchResults.set([]);
     console.timeLog("wp-open", `set ${Math.min(8, allApps.length)}/${allApps.length} apps`);
     if (listRef) listRef.scrollTop = 0;
     // Measure when the browser actually paints.
@@ -278,6 +310,23 @@
   function copyUnicodeChar(uc: UnicodeChar) {
     navigator.clipboard.writeText(uc.char_str).catch(() => {});
     close();
+  }
+
+  /// Map `PowerActionResult.id` to its lucide icon. The backend sets
+  /// a freedesktop icon name on `SearchResult.icon` (`system-suspend`,
+  /// `system-reboot`, …) but those aren't guaranteed to be present in
+  /// the user's icon theme. Rest of the shell uses lucide consistently
+  /// for chrome-icons, so we keep that convention here.
+  /// eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function iconForPowerAction(id: string): any {
+    switch (id) {
+      case "power.sleep":    return Moon;
+      case "power.lock":     return Lock;
+      case "power.restart":  return RotateCw;
+      case "power.shutdown": return Power;
+      case "power.logout":   return LogOut;
+      default:               return Power;
+    }
   }
 
   function killProcessAction(proc: ProcessInfo, force: boolean) {
@@ -495,8 +544,27 @@
   }
 
   function launchAppAndClose(app: AppEntry) {
+    // Record the launch BEFORE closing: the close path may tear down
+    // event listeners, and the record call is fire-and-forget so it
+    // doesn't block the actual launch below.
+    recordAppLaunch(app.exec);
     launchAppCmd(app.exec);
     close();
+  }
+
+  function openRecentFileAndClose(file: RecentFile) {
+    openRecentFile(file.path);
+    close();
+  }
+
+  /// Shortened display name for a recent-file path. Shows the final
+  /// path component + parent directory so two files with the same
+  /// name in different dirs stay distinguishable.
+  function shortPath(p: string): string {
+    const parts = p.split("/").filter((x) => x.length > 0);
+    if (parts.length === 0) return p;
+    if (parts.length === 1) return parts[0];
+    return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
   }
 
   function switchToWindow(win: WindowInfo) {
@@ -576,8 +644,82 @@
         <!-- CommandEmpty is unusable with shouldFilter={false} because
              cmdk always reports 0 internal matches. Use our own check
              across all provider stores instead. -->
-        {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $unicodeResults.length === 0 && filteredProjects.length === 0 && query.trim().length > 0}
+        {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $unicodeResults.length === 0 && $powerResults.length === 0 && filteredProjects.length === 0 && $recentAppsStore.length === 0 && $recentFilesStore.length === 0 && query.trim().length > 0}
           <div class="wp-empty">No results found.</div>
+        {/if}
+
+        <!-- Power actions from the `core.power` plugin. Placed above
+             the app-search group so an exact keyword like "shutdown"
+             (relevance 1.0) surfaces at the top, beating any partial
+             app-name match. -->
+        {#if $powerResults.length > 0}
+          <CommandGroup heading="System">
+            {#each $powerResults as action (action.id)}
+              {@const ActionIcon = iconForPowerAction(action.id)}
+              <CommandItem
+                value={`power-${action.id}`}
+                onSelect={() => {
+                  invokePowerAction(action);
+                  close();
+                }}
+              >
+                <ActionIcon size={16} strokeWidth={1.5} class="shrink-0 opacity-70" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{action.title}</span>
+                  {#if action.description}
+                    <span class="wp-app-desc">{action.description}</span>
+                  {/if}
+                </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+          <CommandSeparator />
+        {/if}
+
+        <!-- Empty-query landing page: MRU apps + graph-recent files.
+             Hidden as soon as the user types anything so the search
+             result sections can take over. -->
+        {#if query.trim().length === 0 && $recentAppsStore.length > 0}
+          <CommandGroup heading="Recent Apps">
+            {#each $recentAppsStore as app, i (app.name + "_rec_" + i)}
+              <CommandItem
+                value={`recent-app-${app.exec}`}
+                onSelect={() => launchAppAndClose(app)}
+              >
+                {#if app.icon_data}
+                  <img src={app.icon_data} alt="" class="wp-app-icon" />
+                {:else}
+                  <AppWindow size={16} strokeWidth={1.5} class="wp-fallback-icon" />
+                {/if}
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{app.name}</span>
+                  {#if app.description}
+                    <span class="wp-app-desc">{app.description}</span>
+                  {/if}
+                </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+          {#if $recentFilesStore.length > 0}
+            <CommandSeparator />
+          {/if}
+        {/if}
+
+        {#if query.trim().length === 0 && $recentFilesStore.length > 0}
+          <CommandGroup heading="Recent Files">
+            {#each $recentFilesStore as file (file.path)}
+              <CommandItem
+                value={`recent-file-${file.path}`}
+                onSelect={() => openRecentFileAndClose(file)}
+              >
+                <FileIcon size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{shortPath(file.path)}</span>
+                  <span class="wp-app-desc">{file.path}</span>
+                </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
         {/if}
 
         {#if $windowResults.length > 0}

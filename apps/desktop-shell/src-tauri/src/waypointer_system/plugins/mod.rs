@@ -4,6 +4,7 @@ pub mod app_search;
 pub mod calculator;
 pub mod datetime;
 pub mod man;
+pub mod power;
 pub mod process_kill;
 pub mod projects;
 pub mod shell;
@@ -46,6 +47,7 @@ pub fn register_builtins(
         Box::new(unit_converter::UnitConverterPlugin),
         Box::new(datetime::DateTimePlugin),
         Box::new(projects::ProjectsPlugin),
+        Box::new(power::PowerPlugin),
         Box::new(shell::ShellPlugin),
         Box::new(man::ManPlugin),
         Box::new(process_kill::ProcessKillPlugin),
