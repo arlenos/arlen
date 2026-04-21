@@ -42,25 +42,34 @@
   import { toastConfig, initToastConfig } from "$lib/stores/toastConfig.js";
 
   onMount(() => {
-    initWindowListeners();
-    initContextMenuListeners();
-    initNotifications();
-    initWorkspaceListeners();
-    initMenuListeners();
-    initTabBarListeners();
-    initIndicatorListeners();
-    initZoomListeners();
-    initWindowHeaderListeners();
-    initProjects();
-    initToastConfig();
+    // Every store init now returns a disposer. Collecting them lets
+    // onMount's return closure tear down every Tauri listener on
+    // unmount, preventing the "every HMR adds another listener" leak
+    // that was making the shell slower with time.
+    const disposers: Array<() => void> = [
+      initWindowListeners(),
+      initContextMenuListeners(),
+      initNotifications(),
+      initWorkspaceListeners(),
+      initMenuListeners(),
+      initTabBarListeners(),
+      initIndicatorListeners(),
+      initZoomListeners(),
+      initWindowHeaderListeners(),
+      initProjects(),
+      initToastConfig(),
+    ];
 
     // Initialize theme system (loads appearance.toml, injects CSS vars,
-    // subscribes to live theme-changed events from Rust).
+    // subscribes to live theme-changed events from Rust). Its internal
+    // `listen()` lives for the lifetime of the page — it has no init/
+    // dispose pair because the theme store is module-scoped state.
     initTheme().catch(() => {});
 
     document.addEventListener("contextmenu", suppressBrowserContextMenu);
     return () => {
       document.removeEventListener("contextmenu", suppressBrowserContextMenu);
+      for (const dispose of disposers) dispose();
     };
   });
 </script>

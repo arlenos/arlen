@@ -33,10 +33,13 @@ impl WaypointerPlugin for AppSearchPlugin {
         let mut results = Vec::new();
 
         for entry in index.iter() {
-            let name_lower = entry.name.to_lowercase();
-            let desc_lower = entry.description.to_lowercase();
+            // Use precomputed lowercase fields. Allocating `.to_lowercase()`
+            // per entry per keystroke was ~2 allocations × N apps per tick
+            // on typing — avoidable since the index is built once.
+            let name_lower = &entry.name_lower;
+            let desc_lower = &entry.description_lower;
 
-            let relevance = if name_lower == query {
+            let relevance = if name_lower.as_str() == query {
                 1.0
             } else if name_lower.starts_with(&query) {
                 0.9

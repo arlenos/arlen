@@ -14,6 +14,15 @@
 
   let expandedGroups = $state<Set<string>>(new Set());
 
+  /// Materialise the Map<string, Notification[]> into a stable array
+  /// once per store update. Inlining `[...$groupedNotifications.entries()]`
+  /// directly in `{#each}` creates a fresh array reference on every
+  /// render, which defeats Svelte's identity-based child reconciliation
+  /// and makes the whole panel re-render on any unrelated parent update.
+  const groupEntries = $derived(
+    Array.from($groupedNotifications.entries()),
+  );
+
   function toggleGroup(key: string) {
     expandedGroups = new Set(expandedGroups);
     if (expandedGroups.has(key)) {
@@ -42,7 +51,7 @@
     </div>
   {:else}
     <div class="notif-list">
-      {#each [...$groupedNotifications.entries()] as [appName, items] (appName)}
+      {#each groupEntries as [appName, items] (appName)}
         <!-- Group header (always shown) -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <!-- svelte-ignore a11y_click_events_have_key_events -->

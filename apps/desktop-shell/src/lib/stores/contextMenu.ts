@@ -1,6 +1,7 @@
 import { writable } from "svelte/store";
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { makeDisposer } from "./_disposer.js";
 
 /// Top-level sentinel matching `u32::MAX` sent by the compositor for items
 /// that have no parent submenu.
@@ -73,26 +74,41 @@ export async function dismissMenu(menu_id: number): Promise<void> {
     contextMenu.set(HIDDEN);
 }
 
-export function initContextMenuListeners(): void {
+let started = false;
+let teardown: (() => void) | null = null;
+
+export function initContextMenuListeners(): () => void {
+    if (started && teardown) return teardown;
+    started = true;
+
     console.log("[contextMenu] initContextMenuListeners called, registering listeners");
-    listen<{ menu_id: number; x: number; y: number; items: MenuItem[] }>(
+
+    const showPromise = listen<{ menu_id: number; x: number; y: number; items: MenuItem[] }>(
         "lunaris://context-menu-show",
         ({ payload }) => {
             console.log("[contextMenu] context-menu-show received:", payload);
             contextMenu.set({ visible: true, ...payload });
-        }
-    ).then(() => {
+        },
+    );
+    showPromise.then(() => {
         console.log("[contextMenu] context-menu-show listener registered");
     }).catch((e) => {
         console.error("[contextMenu] failed to register context-menu-show listener:", e);
     });
-    listen<{ menu_id: number }>(
+
+    const hidePromise = listen<{ menu_id: number }>(
         "lunaris://context-menu-hide",
         ({ payload }) => {
             console.log("[contextMenu] context-menu-hide received:", payload);
             contextMenu.set(HIDDEN);
-        }
-    ).catch((e) => {
+        },
+    );
+    hidePromise.catch((e) => {
         console.error("[contextMenu] failed to register context-menu-hide listener:", e);
     });
+
+    const pending: Array<Promise<UnlistenFn>> = [showPromise, hidePromise];
+    const disposer = makeDisposer(pending);
+    teardown = () => { disposer(); started = false; teardown = null; };
+    return teardown;
 }

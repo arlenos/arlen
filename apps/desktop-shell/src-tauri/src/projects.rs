@@ -61,8 +61,17 @@ impl ProjectsState {
 // ── Graph Query Client ──────────────────────────────────────────────────
 
 const KNOWLEDGE_SOCKET: &str = "/run/lunaris/knowledge.sock";
+/// Hard ceiling on graph round-trips from a Tauri command. When the
+/// daemon is hung or paused, we don't want the UI to freeze — return
+/// empty and log at debug level instead.
+const GRAPH_QUERY_TIMEOUT_MS: u64 = 200;
 
 /// Send a Cypher query to the Knowledge Daemon and return the raw result.
+///
+/// This is a blocking-I/O call. Callers reached from async contexts
+/// (Tauri commands, event handlers) should wrap it in
+/// [`graph_query_async`] which runs it on `spawn_blocking` with a
+/// timeout so a hung daemon can't block the async runtime.
 pub(crate) fn graph_query(cypher: &str) -> Result<String, String> {
     let socket = std::env::var("LUNARIS_DAEMON_SOCKET")
         .unwrap_or_else(|_| KNOWLEDGE_SOCKET.to_string());
@@ -94,6 +103,67 @@ pub(crate) fn graph_query(cypher: &str) -> Result<String, String> {
         .map_err(|e| format!("graph read body: {e}"))?;
 
     String::from_utf8(buf).map_err(|e| format!("graph utf8: {e}"))
+}
+
+/// Async wrapper for [`graph_query`] with a hard timeout and
+/// `spawn_blocking` to keep the sync socket I/O off the tokio worker
+/// thread. Returns an error on timeout; callers decide whether to
+/// degrade gracefully (e.g. empty list) or propagate.
+async fn graph_query_async(cypher: String) -> Result<String, String> {
+    use std::time::Duration;
+    let timeout = Duration::from_millis(GRAPH_QUERY_TIMEOUT_MS);
+    let join = tokio::task::spawn_blocking(move || graph_query(&cypher));
+    match tokio::time::timeout(timeout, join).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(join_err)) => Err(format!("graph task panicked: {join_err}")),
+        Err(_) => Err(format!(
+            "graph query exceeded {GRAPH_QUERY_TIMEOUT_MS}ms timeout"
+        )),
+    }
+}
+
+// ── Query-result cache ──────────────────────────────────────────────────
+//
+// The UI calls `list_projects` on every Waypointer open and
+// `get_project_for_app` once per window in the Workspace overlay. With
+// even a dozen windows that's a dozen graph round-trips per overlay
+// open. The caches below hold results for a short TTL; fresh enough
+// that project lifecycle events show up within a few seconds, old
+// enough to absorb burst access.
+
+const LIST_PROJECTS_TTL_MS: i64 = 5_000;
+const APP_PROJECT_TTL_MS: i64 = 60_000;
+
+struct CachedList {
+    fetched_at: i64,
+    projects: Vec<Project>,
+}
+
+struct CachedAppProject {
+    fetched_at: i64,
+    result: Option<ProjectInfo>,
+}
+
+fn now_ms() -> i64 {
+    chrono::Utc::now().timestamp_millis()
+}
+
+static LIST_PROJECTS_CACHE: std::sync::OnceLock<
+    tokio::sync::Mutex<Option<CachedList>>,
+> = std::sync::OnceLock::new();
+
+static APP_PROJECT_CACHE: std::sync::OnceLock<
+    tokio::sync::Mutex<std::collections::HashMap<String, CachedAppProject>>,
+> = std::sync::OnceLock::new();
+
+fn list_projects_cache()
+-> &'static tokio::sync::Mutex<Option<CachedList>> {
+    LIST_PROJECTS_CACHE.get_or_init(|| tokio::sync::Mutex::new(None))
+}
+
+fn app_project_cache()
+-> &'static tokio::sync::Mutex<std::collections::HashMap<String, CachedAppProject>> {
+    APP_PROJECT_CACHE.get_or_init(|| tokio::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
 /// Parse pipe-delimited rows from a Ladybug text result.
@@ -163,22 +233,47 @@ pub(crate) fn parse_projects_result(raw: &str) -> Vec<Project> {
 // ── Tauri Commands ──────────────────────────────────────────────────────
 
 /// List all active projects from the Knowledge Graph.
+///
+/// Results are cached for [`LIST_PROJECTS_TTL_MS`] to absorb the
+/// Waypointer-open burst (one call per open) and the occasional
+/// rapid-fire refresh during shell startup. Project lifecycle events
+/// (`project:created/updated/archived`) propagate independently via
+/// the Event Bus, so the TTL isn't load-bearing for correctness — it
+/// just flattens query pressure on the knowledge daemon.
 #[tauri::command]
 pub async fn list_projects() -> Result<Vec<Project>, String> {
-    let result = match graph_query(
-        "MATCH (p:Project) WHERE p.status = 'active' \
+    {
+        let cache = list_projects_cache().lock().await;
+        if let Some(ref entry) = *cache {
+            if now_ms() - entry.fetched_at < LIST_PROJECTS_TTL_MS {
+                return Ok(entry.projects.clone());
+            }
+        }
+    }
+
+    let cypher = "MATCH (p:Project) WHERE p.status = 'active' \
          RETURN p.id, p.name, p.description, p.root_path, \
          p.accent_color, p.icon, p.status, p.created_at, \
          p.last_accessed, p.inferred, p.confidence, p.promoted \
-         ORDER BY p.last_accessed DESC",
-    ) {
+         ORDER BY p.last_accessed DESC"
+        .to_string();
+
+    let raw = match graph_query_async(cypher).await {
         Ok(r) => r,
         Err(e) => {
-            log::info!("list_projects: graph query failed (is knowledge daemon running?): {e}");
+            log::info!(
+                "list_projects: graph query failed (is knowledge daemon running?): {e}"
+            );
             return Ok(Vec::new());
         }
     };
-    Ok(parse_projects_result(&result))
+    let projects = parse_projects_result(&raw);
+
+    *list_projects_cache().lock().await = Some(CachedList {
+        fetched_at: now_ms(),
+        projects: projects.clone(),
+    });
+    Ok(projects)
 }
 
 /// Minimal project shape returned by `get_project_for_app`. The
@@ -208,6 +303,19 @@ pub async fn get_project_for_app(app_id: String) -> Result<Option<ProjectInfo>, 
     if app_id.trim().is_empty() {
         return Ok(None);
     }
+
+    // Cache lookup: WorkspaceIndicator overlay calls this once per
+    // window per open. A 60s TTL keeps overlay opens snappy without
+    // significantly delaying the reflection of newly-promoted files.
+    {
+        let cache = app_project_cache().lock().await;
+        if let Some(entry) = cache.get(&app_id) {
+            if now_ms() - entry.fetched_at < APP_PROJECT_TTL_MS {
+                return Ok(entry.result.clone());
+            }
+        }
+    }
+
     let id_esc = app_id.replace('\'', "\\'");
     let cypher = format!(
         "MATCH (a:App {{id: '{id_esc}'}})<-[:ACCESSED_BY]-(f:File)-[:FILE_PART_OF]->(p:Project) \
@@ -217,11 +325,13 @@ pub async fn get_project_for_app(app_id: String) -> Result<Option<ProjectInfo>, 
          LIMIT 1"
     );
 
-    let raw = match graph_query(&cypher) {
+    let raw = match graph_query_async(cypher).await {
         Ok(r) => r,
         Err(e) => {
-            // Daemon not running or socket missing is expected during
-            // dev when knowledge isn't up. Don't spam error logs.
+            // Daemon not running, socket missing, or timeout — expected
+            // during dev when knowledge isn't up. Don't spam errors.
+            // Also don't poison the cache: on daemon recovery the next
+            // call should go through without a 60s wait.
             log::debug!("get_project_for_app: graph query failed: {e}");
             return Ok(None);
         }
@@ -231,18 +341,33 @@ pub async fn get_project_for_app(app_id: String) -> Result<Option<ProjectInfo>, 
     // `parse_projects_result`). We only pull id/name/root_path.
     let mut lines = raw.lines();
     let _header = lines.next();
-    let Some(line) = lines.next() else {
-        return Ok(None);
+    let result = match lines.next() {
+        Some(line) => {
+            let cols: Vec<&str> = line.split('|').collect();
+            if cols.len() < 3 {
+                None
+            } else {
+                Some(ProjectInfo {
+                    id: cols[0].trim().to_string(),
+                    name: cols[1].trim().to_string(),
+                    root_path: cols[2].trim().to_string(),
+                })
+            }
+        }
+        None => None,
     };
-    let cols: Vec<&str> = line.split('|').collect();
-    if cols.len() < 3 {
-        return Ok(None);
-    }
-    Ok(Some(ProjectInfo {
-        id: cols[0].trim().to_string(),
-        name: cols[1].trim().to_string(),
-        root_path: cols[2].trim().to_string(),
-    }))
+
+    // Cache the result (positive OR negative). Negative caching is
+    // important: without it, every unmapped app_id in the Workspace
+    // overlay triggers a new round-trip on every open.
+    app_project_cache().lock().await.insert(
+        app_id,
+        CachedAppProject {
+            fetched_at: now_ms(),
+            result: result.clone(),
+        },
+    );
+    Ok(result)
 }
 
 /// Get a single project by ID.

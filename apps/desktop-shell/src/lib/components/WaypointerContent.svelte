@@ -95,19 +95,28 @@
       .catch(() => { searchResults.set([]); });
   }
 
+  /// Debounce delay for search fan-out. 120ms matches the input poll
+  /// tick (150ms, see `$effect` further down) so typing a burst doesn't
+  /// fire three invokes per keystroke. Previously doSearch ran
+  /// synchronously here but updateWindowResults + searchSettings fired
+  /// unconditionally on every call, causing backend pile-up.
+  const SEARCH_DEBOUNCE_MS = 120;
+
   function debouncedSearch(q: string) {
     if (searchTimer) clearTimeout(searchTimer);
-    console.time("wp-search-total");
-    doSearch(q);
-    const t0 = performance.now();
-    updateWindowResults(q);
-    console.log(`[wp-search] windows: ${(performance.now() - t0).toFixed(1)}ms`);
-    const t1 = performance.now();
-    searchSettings(q);
-    console.log(`[wp-search] settings: ${(performance.now() - t1).toFixed(1)}ms`);
-    requestAnimationFrame(() => {
-      console.timeEnd("wp-search-total");
-    });
+    searchTimer = setTimeout(() => {
+      console.time("wp-search-total");
+      doSearch(q);
+      const t0 = performance.now();
+      updateWindowResults(q);
+      console.log(`[wp-search] windows: ${(performance.now() - t0).toFixed(1)}ms`);
+      const t1 = performance.now();
+      searchSettings(q);
+      console.log(`[wp-search] settings: ${(performance.now() - t1).toFixed(1)}ms`);
+      requestAnimationFrame(() => {
+        console.timeEnd("wp-search-total");
+      });
+    }, SEARCH_DEBOUNCE_MS);
   }
 
   function open() {
@@ -285,11 +294,13 @@
   }
 
   // Poll for query changes and trigger search + evaluation.
-  let _pollInterval: ReturnType<typeof setInterval> | null = null;
+  // The interval lives inside `$effect` so each mount gets its own
+  // handle and the effect's cleanup reliably tears it down on
+  // unmount/HMR. The previous module-scoped guard could leak the
+  // interval when the effect ran twice before cleanup fired.
   $effect(() => {
-    if (_pollInterval) return;
     let prev = "";
-    _pollInterval = setInterval(() => {
+    const pollInterval = setInterval(() => {
         const q = inputRef?.value ?? query;
         if (q === prev) return;
         prev = q;
@@ -463,7 +474,7 @@
             if (wrap) wrap.style.display = "none";
           });
       }, 150);
-    return () => { if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null; } };
+    return () => clearInterval(pollInterval);
   });
 
   function handleInlineAction(result: WaypointerResult) {

@@ -27,25 +27,36 @@
     + " bg-[var(--color-bg-shell)] text-[var(--color-fg-shell)] border-[color-mix(in_srgb,var(--color-bg-shell)_60%,white_40%)]";
 
   async function poll() {
-    try {
-      airplaneMode = await invoke<boolean>("get_airplane_mode");
-    } catch {
-      airplaneMode = false;
-    }
-    if (!airplaneMode) {
-      try {
-        status = await invoke<NetworkStatus>("get_network_status");
-      } catch {
-        status = null;
-      }
-    }
+    // Run the two independent D-Bus queries in parallel. The extra
+    // `get_network_status` call when airplane mode is on is cheap
+    // (nmcli returns "disconnected" quickly) and saves ~100-200ms of
+    // sequential waiting in the common non-airplane case.
+    const [air, net] = await Promise.all([
+      invoke<boolean>("get_airplane_mode").catch(() => false),
+      invoke<NetworkStatus>("get_network_status").catch(() => null),
+    ]);
+    airplaneMode = air;
+    status = air ? null : net;
   }
 
   poll();
+
+  // Event-freshness fallback: `network-changed` is the authoritative
+  // source. The timer below only fires if no event has arrived within
+  // the freshness window, saving two D-Bus calls per 30s when the
+  // event stream is healthy.
+  const POLL_STALE_MS = 90_000;
+  let lastEventAt = Date.now();
+
   onMount(() => {
-    const unlisten = listen("network-changed", () => poll());
-    // Fallback poll every 30s in case D-Bus monitor is not running.
-    const fallback = setInterval(poll, 30_000);
+    const unlisten = listen("network-changed", () => {
+      lastEventAt = Date.now();
+      poll();
+    });
+    const fallback = setInterval(() => {
+      if (Date.now() - lastEventAt < POLL_STALE_MS) return;
+      poll();
+    }, 30_000);
     return () => {
       unlisten.then((fn) => fn());
       clearInterval(fallback);

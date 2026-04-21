@@ -3,6 +3,8 @@
 /// Reads and sets the default audio sink volume using the `wpctl` CLI.
 
 use serde::{Deserialize, Serialize};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 /// Current audio status.
 #[derive(Clone, Serialize, Deserialize)]
@@ -22,9 +24,44 @@ pub struct AudioStatus {
 // command that runs 3-4 subprocesses instead of the current 10-15 when
 // AudioPopover opens. Each command currently spawns its own wpctl/pactl.
 
+/// Short-TTL cache for [`get_audio_status`]. The indicator polls this
+/// every 30s (with event-freshness gating) and the popover reads it
+/// on open; without caching, opening the popover right after the
+/// indicator polled double-counts the wpctl+pactl subprocesses. TTL
+/// is deliberately short so volume changes made outside the shell
+/// (e.g. via CLI) still surface within ~1s on the next read.
+const AUDIO_STATUS_TTL: Duration = Duration::from_millis(800);
+
+static AUDIO_STATUS_CACHE: OnceLock<Mutex<Option<(Instant, AudioStatus)>>> =
+    OnceLock::new();
+
+fn audio_status_cache() -> &'static Mutex<Option<(Instant, AudioStatus)>> {
+    AUDIO_STATUS_CACHE.get_or_init(|| Mutex::new(None))
+}
+
+/// Invalidate the cached `AudioStatus`. Call this after any mutation
+/// that changes volume/mute so the next poll reflects the change
+/// rather than serving the pre-change value from cache.
+fn invalidate_audio_status_cache() {
+    if let Ok(mut guard) = audio_status_cache().lock() {
+        *guard = None;
+    }
+}
+
 /// Returns the current volume, mute state, and output device type.
 #[tauri::command]
 pub fn get_audio_status() -> Result<AudioStatus, String> {
+    // Cache hit → return immediately. The event-driven polling pattern
+    // in the frontend already throttles to ~one call per 30s, but
+    // AudioPopover + AudioIndicator occasionally race.
+    if let Ok(guard) = audio_status_cache().lock() {
+        if let Some((fetched_at, ref status)) = *guard {
+            if fetched_at.elapsed() < AUDIO_STATUS_TTL {
+                return Ok(status.clone());
+            }
+        }
+    }
+
     let output = std::process::Command::new("wpctl")
         .args(["get-volume", "@DEFAULT_AUDIO_SINK@"])
         .output()
@@ -50,11 +87,17 @@ pub fn get_audio_status() -> Result<AudioStatus, String> {
 
     let output_type = detect_output_type();
 
-    Ok(AudioStatus {
+    let status = AudioStatus {
         volume,
         muted,
         output_type,
-    })
+    };
+
+    if let Ok(mut guard) = audio_status_cache().lock() {
+        *guard = Some((Instant::now(), status.clone()));
+    }
+
+    Ok(status)
 }
 
 /// Detect the type of the default audio output device.
@@ -144,6 +187,7 @@ pub fn set_audio_volume(volume: u8) -> Result<(), String> {
     if !status.success() {
         return Err("wpctl set-volume returned non-zero".into());
     }
+    invalidate_audio_status_cache();
     Ok(())
 }
 
@@ -549,6 +593,7 @@ pub fn toggle_audio_mute() -> Result<(), String> {
     if !status.success() {
         return Err("wpctl set-mute returned non-zero".into());
     }
+    invalidate_audio_status_cache();
     Ok(())
 }
 

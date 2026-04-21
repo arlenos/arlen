@@ -7,7 +7,7 @@
 
 import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -136,8 +136,15 @@ function removeFocusAccent(): void {
 
 // ── Initialization ───────────────────────────────────────────────────────
 
-/** Initialize stores and event listeners. Call once from +layout.svelte. */
-export function initProjects(): void {
+let projectsStarted = false;
+let projectsTeardown: (() => void) | null = null;
+
+/** Initialize stores and event listeners. Call once from +layout.svelte.
+ *  Returns a disposer that removes all 5 listeners. Idempotent. */
+export function initProjects(): () => void {
+  if (projectsStarted && projectsTeardown) return projectsTeardown;
+  projectsStarted = true;
+
   loadProjects();
 
   // Try restoring persisted focus state.
@@ -150,37 +157,43 @@ export function initProjects(): void {
     })
     .catch(() => {});
 
-  // Project lifecycle events.
-  listen<Project>("project:created", ({ payload }) => {
-    console.log("[projects] created event:", payload.name, "promoted:", payload.promoted);
-    projects.update((list) => [...list, payload]);
-  });
+  const pending: Promise<UnlistenFn>[] = [
+    // Project lifecycle events.
+    listen<Project>("project:created", ({ payload }) => {
+      console.log("[projects] created event:", payload.name, "promoted:", payload.promoted);
+      projects.update((list) => [...list, payload]);
+    }),
+    listen<Project>("project:updated", ({ payload }) => {
+      projects.update((list) =>
+        list.map((p) => (p.id === payload.id ? payload : p))
+      );
+    }),
+    listen<{ projectId: string }>("project:archived", ({ payload }) => {
+      projects.update((list) =>
+        list.map((p) =>
+          p.id === payload.projectId
+            ? { ...p, status: "archived" as const }
+            : p
+        )
+      );
+    }),
 
-  listen<Project>("project:updated", ({ payload }) => {
-    projects.update((list) =>
-      list.map((p) => (p.id === payload.id ? payload : p))
-    );
-  });
+    // Focus Mode events.
+    listen<FocusState>("focus:activated", ({ payload }) => {
+      console.log("[projects] focus:activated event:", payload);
+      focusState.set(payload);
+      applyFocusAccent(payload.accentColor);
+    }),
+    listen("focus:deactivated", () => {
+      focusState.set({ ...EMPTY_FOCUS });
+      removeFocusAccent();
+    }),
+  ];
 
-  listen<{ projectId: string }>("project:archived", ({ payload }) => {
-    projects.update((list) =>
-      list.map((p) =>
-        p.id === payload.projectId
-          ? { ...p, status: "archived" as const }
-          : p
-      )
-    );
-  });
-
-  // Focus Mode events.
-  listen<FocusState>("focus:activated", ({ payload }) => {
-    console.log("[projects] focus:activated event:", payload);
-    focusState.set(payload);
-    applyFocusAccent(payload.accentColor);
-  });
-
-  listen("focus:deactivated", () => {
-    focusState.set({ ...EMPTY_FOCUS });
-    removeFocusAccent();
-  });
+  projectsTeardown = () => {
+    pending.forEach((p) => p.then((fn) => fn()).catch(() => {}));
+    projectsStarted = false;
+    projectsTeardown = null;
+  };
+  return projectsTeardown;
 }

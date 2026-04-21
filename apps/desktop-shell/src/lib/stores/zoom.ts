@@ -1,5 +1,5 @@
 import { writable } from "svelte/store";
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
 export interface ZoomState {
@@ -18,32 +18,44 @@ const INITIAL: ZoomState = {
 
 export const zoom = writable<ZoomState>(INITIAL);
 
-export function initZoomListeners(): void {
-    listen<{ level: number; increment: number; movement: number }>(
-        "lunaris://zoom-toolbar-show",
-        ({ payload }) => {
-            zoom.set({
-                visible: true,
-                level: payload.level,
-                increment: payload.increment,
-                movement: payload.movement,
-            });
-        }
-    );
+let zoomStarted = false;
+let zoomTeardown: (() => void) | null = null;
 
-    listen<{ level: number }>(
-        "lunaris://zoom-toolbar-update",
-        ({ payload }) => {
-            zoom.update((z) => ({ ...z, level: payload.level }));
-        }
-    );
+/// Install zoom-toolbar show/update/hide listeners. Returns a disposer.
+/// Idempotent across HMR and re-mount.
+export function initZoomListeners(): () => void {
+    if (zoomStarted && zoomTeardown) return zoomTeardown;
+    zoomStarted = true;
 
-    listen(
-        "lunaris://zoom-toolbar-hide",
-        () => {
+    const pending: Promise<UnlistenFn>[] = [
+        listen<{ level: number; increment: number; movement: number }>(
+            "lunaris://zoom-toolbar-show",
+            ({ payload }) => {
+                zoom.set({
+                    visible: true,
+                    level: payload.level,
+                    increment: payload.increment,
+                    movement: payload.movement,
+                });
+            },
+        ),
+        listen<{ level: number }>(
+            "lunaris://zoom-toolbar-update",
+            ({ payload }) => {
+                zoom.update((z) => ({ ...z, level: payload.level }));
+            },
+        ),
+        listen("lunaris://zoom-toolbar-hide", () => {
             zoom.set(INITIAL);
-        }
-    );
+        }),
+    ];
+
+    zoomTeardown = () => {
+        pending.forEach((p) => p.then((fn) => fn()).catch(() => {}));
+        zoomStarted = false;
+        zoomTeardown = null;
+    };
+    return zoomTeardown;
 }
 
 export async function zoomIncrease(): Promise<void> {

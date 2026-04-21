@@ -900,18 +900,44 @@ pub fn set_popover_input_region(app: tauri::AppHandle, expanded: bool) {
     update_input_region(&app);
 }
 
-/// Resolves a freedesktop app icon path for the given `app_id`.
-///
-/// Searches standard icon theme directories for a matching `.png` or `.svg`.
-/// Returns `None` if no icon is found.
 /// Resolves a freedesktop app icon and returns it as a base64 data URL.
+///
+/// Searches standard icon theme directories for a matching `.png` or `.svg`
+/// and encodes the bytes as `data:image/...;base64,...`. Returns `None`
+/// if no icon is found.
+///
+/// **Cached**: results (both hits and misses) are memoised in
+/// [`ICON_CACHE`] for the process lifetime. Each cold call walks up to
+/// ~54 filesystem paths; without the cache that cost was paid on every
+/// incoming notification, every `.desktop` entry at app-index build
+/// time, and every window shown in the WorkspaceIndicator overlay.
+///
+/// The cache is process-wide because icon themes are system state that
+/// doesn't change at runtime. If a user reinstalls an icon theme, the
+/// shell needs a restart to pick up the new paths — a trade-off the
+/// notification-daemon also accepts for the same reason.
 #[tauri::command]
 pub fn resolve_app_icon(app_id: String) -> Option<String> {
-    use base64::Engine;
+    resolve_app_icon_cached(&app_id)
+}
 
+fn resolve_app_icon_cached(app_id: &str) -> Option<String> {
+    // Cache hit → return immediately, skipping all filesystem probing.
+    if let Some(cached) = icon_cache_lookup(app_id) {
+        return cached;
+    }
+
+    let result = resolve_app_icon_uncached(app_id);
+    icon_cache_store(app_id, result.clone());
+    result
+}
+
+/// Actual filesystem walk. Kept separate so tests can exercise it
+/// without going through the cache.
+fn resolve_app_icon_uncached(app_id: &str) -> Option<String> {
     // If the icon_name is an absolute path, read it directly.
     if app_id.starts_with('/') {
-        let path = std::path::Path::new(&app_id);
+        let path = std::path::Path::new(app_id);
         if path.exists() {
             let mime = match path.extension().and_then(|e| e.to_str()) {
                 Some("png") => "image/png",
@@ -919,7 +945,7 @@ pub fn resolve_app_icon(app_id: String) -> Option<String> {
                 Some("xpm") => "image/x-xpixmap",
                 _ => "image/png",
             };
-            if let Some(url) = read_as_data_url(&app_id, mime) {
+            if let Some(url) = read_as_data_url(app_id, mime) {
                 return Some(url);
             }
         }
@@ -977,6 +1003,51 @@ pub fn resolve_app_icon(app_id: String) -> Option<String> {
     None
 }
 
+// ── Icon resolution cache ───────────────────────────────────────────────
+
+/// Process-wide cache for [`resolve_app_icon`]. Maps `app_id` to the
+/// resolved data URL (or `None` for cached negative results — those
+/// are just as important since a missing icon causes the full 54-path
+/// walk on every call otherwise).
+///
+/// Capped at [`ICON_CACHE_MAX`] entries. On overflow the whole cache
+/// is cleared — icon churn is rare (only on theme reinstall), so a
+/// simple drop-all is cheaper than a proper LRU.
+static ICON_CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, Option<String>>>> =
+    std::sync::OnceLock::new();
+
+const ICON_CACHE_MAX: usize = 512;
+
+fn icon_cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, Option<String>>> {
+    ICON_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+fn icon_cache_lookup(app_id: &str) -> Option<Option<String>> {
+    icon_cache().lock().ok()?.get(app_id).cloned()
+}
+
+fn icon_cache_store(app_id: &str, value: Option<String>) {
+    let Ok(mut guard) = icon_cache().lock() else { return };
+    if guard.len() >= ICON_CACHE_MAX {
+        guard.clear();
+    }
+    guard.insert(app_id.to_string(), value);
+}
+
+/// Clears the icon cache. Exposed for tests and the (hypothetical)
+/// future "reload icon theme" user action.
+#[cfg(test)]
+pub(crate) fn icon_cache_clear() {
+    if let Ok(mut guard) = icon_cache().lock() {
+        guard.clear();
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn icon_cache_len() -> usize {
+    icon_cache().lock().map(|g| g.len()).unwrap_or(0)
+}
+
 /// Reads a file and encodes it as a `data:` URL. Returns `None` if the
 /// file does not exist or cannot be read.
 fn read_as_data_url(path: &str, mime: &str) -> Option<String> {
@@ -990,4 +1061,58 @@ fn read_as_data_url(path: &str, mime: &str) -> Option<String> {
 #[tauri::command]
 pub fn debug_workspace_update(data: String) {
     log::info!("debug_workspace_update: {data}");
+}
+
+#[cfg(test)]
+mod icon_cache_tests {
+    use super::*;
+
+    // Serial execution — the cache is process-wide state. Each test
+    // clears before it runs to avoid cross-talk from the parallel
+    // runner.
+
+    #[test]
+    fn cache_stores_hits_and_misses() {
+        icon_cache_clear();
+        // A path that doesn't exist — a cold miss.
+        let first = resolve_app_icon_cached("does-not-exist-xyz");
+        assert!(first.is_none());
+        // Cache now has a negative entry.
+        assert!(icon_cache_len() >= 1);
+        // Second call hits the cache (we can't observe timing, but the
+        // result matches and the store() path is a no-op-on-replace,
+        // so cache size stays stable).
+        let second = resolve_app_icon_cached("does-not-exist-xyz");
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn cache_clears_on_overflow() {
+        icon_cache_clear();
+        // Fill past cap with unique keys.
+        for i in 0..(ICON_CACHE_MAX + 5) {
+            let _ = resolve_app_icon_cached(&format!("fake-app-{i}"));
+        }
+        // Clear triggered at the moment len >= MAX; we should now hold
+        // fewer than MAX entries even though we asked for MAX+5.
+        assert!(icon_cache_len() < ICON_CACHE_MAX);
+    }
+
+    #[test]
+    fn absolute_nonexistent_path_returns_none() {
+        icon_cache_clear();
+        let result = resolve_app_icon_cached("/definitely/does/not/exist.png");
+        assert!(result.is_none());
+        // And the negative result is cached.
+        assert_eq!(icon_cache_lookup("/definitely/does/not/exist.png"), Some(None));
+    }
+
+    #[test]
+    fn cache_clear_empties_store() {
+        icon_cache_clear();
+        let _ = resolve_app_icon_cached("sample");
+        assert!(icon_cache_len() >= 1);
+        icon_cache_clear();
+        assert_eq!(icon_cache_len(), 0);
+    }
 }

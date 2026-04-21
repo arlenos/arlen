@@ -3,7 +3,7 @@
  * events and provides reactive state for the UI.
  */
 
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { writable, derived, get } from "svelte/store";
 import { toast } from "svelte-sonner";
@@ -144,20 +144,30 @@ function onToastGone() {
 const MAX_QUEUED = 5;
 let toastQueue: Notification[] = [];
 let panelOpen = false;
+let unsubscribePanel: (() => void) | null = null;
 
-// Track panel state.
-activePopover.subscribe((v) => {
-  const wasOpen = panelOpen;
-  panelOpen = v !== null;
-  // Panel just closed: flush queued toasts.
-  if (wasOpen && !panelOpen) {
-    const toFlush = toastQueue.splice(0, MAX_QUEUED);
-    toastQueue = [];
-    for (const n of toFlush) {
-      fireToast(n);
+function startPanelTracker(): void {
+  if (unsubscribePanel) return;
+  unsubscribePanel = activePopover.subscribe((v) => {
+    const wasOpen = panelOpen;
+    panelOpen = v !== null;
+    // Panel just closed: flush queued toasts.
+    if (wasOpen && !panelOpen) {
+      const toFlush = toastQueue.splice(0, MAX_QUEUED);
+      toastQueue = [];
+      for (const n of toFlush) {
+        fireToast(n);
+      }
     }
+  });
+}
+
+function stopPanelTracker(): void {
+  if (unsubscribePanel) {
+    unsubscribePanel();
+    unsubscribePanel = null;
   }
-});
+}
 
 // ── Toast Logic ──────────────────────────────────────────────────────────
 
@@ -307,61 +317,100 @@ function fireToast(n: Notification) {
 
 // ── Initialization ───────────────────────────────────────────────────────
 
-/** Initialize notification event listeners. Call once from +layout.svelte. */
-export function initNotifications() {
+const MAX_NOTIFICATIONS = 200;
+
+let notificationsStarted = false;
+let notificationsTeardown: (() => void) | null = null;
+
+/** Initialize notification event listeners. Call once from +layout.svelte.
+ *  Returns a disposer that removes all listeners, the panel-tracker store
+ *  subscription, and the global toast click handler. Idempotent. */
+export function initNotifications(): () => void {
+  if (notificationsStarted && notificationsTeardown) return notificationsTeardown;
+  notificationsStarted = true;
+
   installToastClickHandler();
+  startPanelTracker();
 
-  // New notification from daemon.
-  listen<Notification>("notification:new", ({ payload }) => {
-    console.log("[notifications] new:", payload.id, payload.app_name, payload.summary, "icon:", payload.app_icon ? "yes" : "no");
-    notifications.update(($n) => {
-      const updated = [payload, ...$n];
-      // Cap at 200 to prevent unbounded memory growth in long sessions.
-      return updated.length > 200 ? updated.slice(0, 200) : updated;
-    });
-    showToast(payload);
-  });
-
-  // Notification closed/dismissed.
-  listen<{ id: number }>("notification:closed", ({ payload }) => {
-    notifications.update(($n) => $n.filter((n) => n.id !== payload.id));
-  });
-
-  // Notification marked as read.
-  listen<{ id: number }>("notification:read", ({ payload }) => {
-    notifications.update(($n) =>
-      $n.map((n) => (n.id === payload.id ? { ...n, read: true } : n))
-    );
-  });
-
-  // All cleared.
-  listen("notification:cleared", () => {
-    notifications.set([]);
-  });
-
-  // DND state changed.
-  listen<DndState>("notification:dnd_changed", ({ payload }) => {
-    dndState.set(payload);
-  });
-
-  // Initial sync from daemon.
-  listen<SyncPayload>("notification:sync", ({ payload }) => {
-    console.log("[notifications] sync:", payload.pending.length, "pending, dnd:", payload.dnd_mode);
-    notifications.set(payload.pending);
-    dndState.set({ mode: payload.dnd_mode });
-  });
-
-  // History response (appended to store for infinite scroll).
-  listen<{ notifications: Notification[]; has_more: boolean }>(
-    "notification:history",
-    ({ payload }) => {
+  const pending: Promise<UnlistenFn>[] = [
+    // New notification from daemon.
+    listen<Notification>("notification:new", ({ payload }) => {
+      console.log(
+        "[notifications] new:",
+        payload.id,
+        payload.app_name,
+        payload.summary,
+        "icon:",
+        payload.app_icon ? "yes" : "no",
+      );
       notifications.update(($n) => {
-        const existingIds = new Set($n.map((n) => n.id));
-        const newOnes = payload.notifications.filter(
-          (n) => !existingIds.has(n.id)
-        );
-        return [...$n, ...newOnes];
+        const updated = [payload, ...$n];
+        return updated.length > MAX_NOTIFICATIONS
+          ? updated.slice(0, MAX_NOTIFICATIONS)
+          : updated;
       });
-    }
-  );
+      showToast(payload);
+    }),
+
+    // Notification closed/dismissed.
+    listen<{ id: number }>("notification:closed", ({ payload }) => {
+      notifications.update(($n) => $n.filter((n) => n.id !== payload.id));
+    }),
+
+    // Notification marked as read.
+    listen<{ id: number }>("notification:read", ({ payload }) => {
+      notifications.update(($n) =>
+        $n.map((n) => (n.id === payload.id ? { ...n, read: true } : n))
+      );
+    }),
+
+    // All cleared.
+    listen("notification:cleared", () => {
+      notifications.set([]);
+    }),
+
+    // DND state changed.
+    listen<DndState>("notification:dnd_changed", ({ payload }) => {
+      dndState.set(payload);
+    }),
+
+    // Initial sync from daemon.
+    listen<SyncPayload>("notification:sync", ({ payload }) => {
+      console.log(
+        "[notifications] sync:",
+        payload.pending.length,
+        "pending, dnd:",
+        payload.dnd_mode,
+      );
+      notifications.set(payload.pending);
+      dndState.set({ mode: payload.dnd_mode });
+    }),
+
+    // History response (appended to store for infinite scroll). Re-applies
+    // the MAX_NOTIFICATIONS cap so incremental history pages never push
+    // the store past the bound.
+    listen<{ notifications: Notification[]; has_more: boolean }>(
+      "notification:history",
+      ({ payload }) => {
+        notifications.update(($n) => {
+          const existingIds = new Set($n.map((n) => n.id));
+          const newOnes = payload.notifications.filter(
+            (n) => !existingIds.has(n.id),
+          );
+          const merged = [...$n, ...newOnes];
+          return merged.length > MAX_NOTIFICATIONS
+            ? merged.slice(0, MAX_NOTIFICATIONS)
+            : merged;
+        });
+      },
+    ),
+  ];
+
+  notificationsTeardown = () => {
+    pending.forEach((p) => p.then((fn) => fn()).catch(() => {}));
+    stopPanelTracker();
+    notificationsStarted = false;
+    notificationsTeardown = null;
+  };
+  return notificationsTeardown;
 }
