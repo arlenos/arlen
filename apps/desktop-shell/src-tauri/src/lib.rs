@@ -81,7 +81,7 @@ pub fn run() {
         Arc::clone(&window_list),
         Arc::clone(&clipboard_state),
     );
-    let plugin_mgr_state: waypointer_system::PluginManagerState = std::sync::Mutex::new(plugin_mgr);
+    let plugin_mgr_state: waypointer_system::PluginManagerState = std::sync::RwLock::new(plugin_mgr);
 
     let ext_registry: extension_registry::ExtensionRegistryState =
         std::sync::Mutex::new(extension_registry::ExtensionRegistry::new());
