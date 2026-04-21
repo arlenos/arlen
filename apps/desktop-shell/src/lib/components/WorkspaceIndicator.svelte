@@ -321,8 +321,24 @@
     return { shown: list.slice(0, 5), overflow: list.length - 5 };
   }
 
+  /// Pre-compute a Map<wsId, WindowInfo[]> once per render tick rather
+  /// than filtering `$windows` inline for each of the 9 workspace
+  /// columns. With 30+ windows this drops overlay render cost from
+  /// O(workspaces × windows) to O(windows).
+  const windowsByWorkspace = $derived.by(() => {
+    const map = new Map<string, WindowInfo[]>();
+    for (const w of $windows) {
+      for (const wsId of w.workspace_ids) {
+        const bucket = map.get(wsId);
+        if (bucket) bucket.push(w);
+        else map.set(wsId, [w]);
+      }
+    }
+    return map;
+  });
+
   function getWindowsForWorkspace(wsId: string): WindowInfo[] {
-    return $windows.filter((w) => w.workspace_ids.includes(wsId));
+    return windowsByWorkspace.get(wsId) ?? [];
   }
 
   function truncateTitle(title: string, appId: string): string {
@@ -445,10 +461,45 @@
     return column?.dataset.wsId ?? null;
   }
 
+  /// rAF-throttled hit-test for the drag hover state.
+  ///
+  /// Every `elementFromPoint()` forces a synchronous style+layout pass
+  /// which at 60+ Hz pointermove (WebKitGTK fires them faster than that)
+  /// causes 100-200ms stutters on constrained machines. Coalescing to
+  /// one hit-test per animation frame drops the cost to at most ~60 Hz
+  /// while still feeling responsive.
+  let pendingHitTest: { x: number; y: number } | null = null;
+  let pendingHitTestFrame = 0;
+
+  function scheduleHitTest(x: number, y: number): void {
+    // Coalesce: overwrite coords so the scheduled frame hits the latest
+    // pointer position, not the stale one from the first event.
+    if (pendingHitTest) {
+      pendingHitTest.x = x;
+      pendingHitTest.y = y;
+      return;
+    }
+    pendingHitTest = { x, y };
+    pendingHitTestFrame = requestAnimationFrame(() => {
+      if (!pendingHitTest) return;
+      dragOverWs = columnIdAt(pendingHitTest.x, pendingHitTest.y);
+      pendingHitTest = null;
+    });
+  }
+
+  function cancelPendingHitTest(): void {
+    if (pendingHitTestFrame !== 0) {
+      cancelAnimationFrame(pendingHitTestFrame);
+      pendingHitTestFrame = 0;
+    }
+    pendingHitTest = null;
+  }
+
   function resetDragUI() {
     dragState = null;
     dragOverWs = null;
     removeGhost();
+    cancelPendingHitTest();
   }
 
   function onCardPointerDown(
@@ -528,7 +579,7 @@
     }
 
     positionGhost(e.clientX, e.clientY);
-    dragOverWs = columnIdAt(e.clientX, e.clientY);
+    scheduleHitTest(e.clientX, e.clientY);
   }
 
   function onCardPointerUp(e: PointerEvent) {

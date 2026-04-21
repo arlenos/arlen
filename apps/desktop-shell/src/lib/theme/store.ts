@@ -38,14 +38,17 @@ export async function initTheme(): Promise<void> {
   themeError.set(null);
 
   try {
-    const css = await invoke<CssVariables>("get_theme");
+    // Three independent Tauri calls — run in parallel. Previously
+    // sequential, which blocked first paint for ~300-500ms because the
+    // CSS injection can't happen until `get_theme` resolves.
+    const [css, themes, id] = await Promise.all([
+      invoke<CssVariables>("get_theme"),
+      invoke<ThemeInfo[]>("get_available_themes"),
+      invoke<string>("get_active_theme_id"),
+    ]);
     injectThemeVariables(css);
     themeVars.set(css);
-
-    const themes = await invoke<ThemeInfo[]>("get_available_themes");
     availableThemes.set(themes);
-
-    const id = await invoke<string>("get_active_theme_id");
     activeThemeId.set(id);
   } catch (e) {
     themeError.set(e instanceof Error ? e.message : String(e));

@@ -1,7 +1,8 @@
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { writable, derived } from "svelte/store";
 import { activeWindow } from "./windows.js";
+import { makeDisposer } from "./_disposer.js";
 
 export interface MenuItem {
     label: string;
@@ -33,22 +34,39 @@ export const activeMenu = derived(
 /// The app_id of the currently active window.
 export const activeAppId = derived(activeWindow, ($w) => $w?.app_id ?? null);
 
-export function initMenuListeners() {
-    listen<{ app_id: string; items: MenuGroup[] }>("lunaris://menu-registered", ({ payload }) => {
-        appMenus.update(($m) => {
-            const next = new Map($m);
-            next.set(payload.app_id, payload.items);
-            return next;
-        });
-    });
+let started = false;
+let teardown: (() => void) | null = null;
 
-    listen<{ app_id: string }>("lunaris://menu-unregistered", ({ payload }) => {
-        appMenus.update(($m) => {
-            const next = new Map($m);
-            next.delete(payload.app_id);
-            return next;
-        });
-    });
+export function initMenuListeners(): () => void {
+    if (started && teardown) return teardown;
+    started = true;
+
+    const pending: Array<Promise<UnlistenFn>> = [
+        listen<{ app_id: string; items: MenuGroup[] }>(
+            "lunaris://menu-registered",
+            ({ payload }) => {
+                appMenus.update(($m) => {
+                    const next = new Map($m);
+                    next.set(payload.app_id, payload.items);
+                    return next;
+                });
+            },
+        ),
+        listen<{ app_id: string }>(
+            "lunaris://menu-unregistered",
+            ({ payload }) => {
+                appMenus.update(($m) => {
+                    const next = new Map($m);
+                    next.delete(payload.app_id);
+                    return next;
+                });
+            },
+        ),
+    ];
+
+    const disposer = makeDisposer(pending);
+    teardown = () => { disposer(); started = false; teardown = null; };
+    return teardown;
 }
 
 /// Dispatch a menu action to the backend.

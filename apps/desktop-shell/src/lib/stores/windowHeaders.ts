@@ -1,6 +1,7 @@
 import { writable } from "svelte/store";
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { makeDisposer } from "./_disposer.js";
 
 export interface WindowHeaderState {
     surface_id: number;
@@ -25,51 +26,61 @@ export async function headerAction(surfaceId: number, action: number): Promise<v
     await invoke("window_header_action", { surfaceId, action });
 }
 
-export function initWindowHeaderListeners(): void {
-    listen<{
-        surface_id: number; x: number; y: number; width: number; height: number;
-        title: string; activated: boolean; has_minimize: boolean; has_maximize: boolean;
-    }>(
-        "lunaris://window-header-show",
-        ({ payload }) => {
-            windowHeaders.update((m) => {
-                m.set(payload.surface_id, payload);
-                return new Map(m);
-            });
-        }
-    );
+let started = false;
+let teardown: (() => void) | null = null;
 
-    listen<{
-        surface_id: number; x: number; y: number; width: number; height: number;
-        title: string; activated: boolean;
-    }>(
-        "lunaris://window-header-update",
-        ({ payload }) => {
-            windowHeaders.update((m) => {
-                const existing = m.get(payload.surface_id);
-                if (existing) {
-                    m.set(payload.surface_id, {
-                        ...existing,
-                        x: payload.x,
-                        y: payload.y,
-                        width: payload.width,
-                        height: payload.height,
-                        title: payload.title,
-                        activated: payload.activated,
-                    });
-                }
-                return new Map(m);
-            });
-        }
-    );
+export function initWindowHeaderListeners(): () => void {
+    if (started && teardown) return teardown;
+    started = true;
 
-    listen<{ surface_id: number }>(
-        "lunaris://window-header-hide",
-        ({ payload }) => {
-            windowHeaders.update((m) => {
-                m.delete(payload.surface_id);
-                return new Map(m);
-            });
-        }
-    );
+    const pending: Array<Promise<UnlistenFn>> = [
+        listen<{
+            surface_id: number; x: number; y: number; width: number; height: number;
+            title: string; activated: boolean; has_minimize: boolean; has_maximize: boolean;
+        }>(
+            "lunaris://window-header-show",
+            ({ payload }) => {
+                windowHeaders.update((m) => {
+                    m.set(payload.surface_id, payload);
+                    return new Map(m);
+                });
+            },
+        ),
+        listen<{
+            surface_id: number; x: number; y: number; width: number; height: number;
+            title: string; activated: boolean;
+        }>(
+            "lunaris://window-header-update",
+            ({ payload }) => {
+                windowHeaders.update((m) => {
+                    const existing = m.get(payload.surface_id);
+                    if (existing) {
+                        m.set(payload.surface_id, {
+                            ...existing,
+                            x: payload.x,
+                            y: payload.y,
+                            width: payload.width,
+                            height: payload.height,
+                            title: payload.title,
+                            activated: payload.activated,
+                        });
+                    }
+                    return new Map(m);
+                });
+            },
+        ),
+        listen<{ surface_id: number }>(
+            "lunaris://window-header-hide",
+            ({ payload }) => {
+                windowHeaders.update((m) => {
+                    m.delete(payload.surface_id);
+                    return new Map(m);
+                });
+            },
+        ),
+    ];
+
+    const disposer = makeDisposer(pending);
+    teardown = () => { disposer(); started = false; teardown = null; };
+    return teardown;
 }

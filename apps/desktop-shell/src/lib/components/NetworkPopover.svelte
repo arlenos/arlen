@@ -56,7 +56,20 @@
     } catch { error = "Failed to toggle WiFi"; }
   }
   async function pollStatus() { try { status = await invoke<NetworkStatus>("get_network_status"); } catch {} }
+
+  /// Throttle scans so rapid clicks on the refresh button can't spam
+  /// nmcli with RF scan requests. A WiFi rescan is expensive (radio
+  /// sweep + D-Bus round-trip) and the radio itself rate-limits; a
+  /// user-initiated burst would just queue and drain battery. 3s is
+  /// short enough to feel responsive, long enough to skip repeated
+  /// no-op clicks.
+  const NET_SCAN_COOLDOWN_MS = 3000;
+  let lastScanAt = 0;
+
   async function loadNetworks() {
+    const now = Date.now();
+    if (now - lastScanAt < NET_SCAN_COOLDOWN_MS) return;
+    lastScanAt = now;
     loading = true; error = null;
     try { networks = await invoke<WifiNetwork[]>("get_wifi_networks"); } catch { error = "Could not load networks"; }
     loading = false;

@@ -32,9 +32,23 @@
   }
 
   poll();
+
+  // Event-freshness fallback: the D-Bus monitor is the authoritative
+  // source. The timer below only fires if no event has arrived within
+  // the freshness window — skipping work when the event stream is
+  // healthy (the common case). Previously polled every 30s unconditionally.
+  const POLL_STALE_MS = 90_000; // skip fallback if event arrived in last 90s
+  let lastEventAt = Date.now();
+
   onMount(() => {
-    const unlisten = listen("audio-changed", () => poll());
-    const fallback = setInterval(poll, 30_000);
+    const unlisten = listen("audio-changed", () => {
+      lastEventAt = Date.now();
+      poll();
+    });
+    const fallback = setInterval(() => {
+      if (Date.now() - lastEventAt < POLL_STALE_MS) return;
+      poll();
+    }, 30_000);
     return () => {
       unlisten.then((fn) => fn());
       clearInterval(fallback);

@@ -1,12 +1,13 @@
 // Value + type imports split — inline mixed form trips Tailwind's
 // Vite plugin CSS parser and cascades into bogus "Invalid declaration"
 // errors on subsequent value-only imports in the same pipeline run.
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { writable, derived } from "svelte/store";
 import type { Readable } from "svelte/store";
 import { windows } from "./windows.js";
 import type { WindowInfo } from "./windows.js";
+import { makeDisposer } from "./_disposer.js";
 
 export interface WorkspaceInfo {
     id: string;
@@ -39,7 +40,13 @@ export const activeWorkspace = derived(primaryWorkspaces, ($ws) =>
 /// can verify the store is updating.
 export const wsUpdateCount = writable(0);
 
-export function initWorkspaceListeners() {
+let started = false;
+let teardown: (() => void) | null = null;
+
+export function initWorkspaceListeners(): () => void {
+    if (started && teardown) return teardown;
+    started = true;
+
     // Prime the store synchronously with the backend's cached
     // snapshot. Needed because the compositor only emits
     // `lunaris://workspace-list` on state changes; after a Vite
@@ -58,10 +65,16 @@ export function initWorkspaceListeners() {
         })
         .catch((e) => console.warn("get_workspaces failed", e));
 
-    listen<WorkspaceInfo[]>("lunaris://workspace-list", ({ payload }) => {
-        workspaces.set(payload);
-        wsUpdateCount.update((n) => n + 1);
-    });
+    const pending: Array<Promise<UnlistenFn>> = [
+        listen<WorkspaceInfo[]>("lunaris://workspace-list", ({ payload }) => {
+            workspaces.set(payload);
+            wsUpdateCount.update((n) => n + 1);
+        }),
+    ];
+
+    const disposer = makeDisposer(pending);
+    teardown = () => { disposer(); started = false; teardown = null; };
+    return teardown;
 }
 
 /// Returns a derived store of all windows assigned to the given workspace.

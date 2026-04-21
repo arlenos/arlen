@@ -7,7 +7,7 @@
 
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export type ToastPosition =
   | "top-right"
@@ -51,11 +51,25 @@ async function load(): Promise<void> {
 }
 
 let started = false;
-export function initToastConfig(): void {
-  if (started) return;
+let teardown: (() => void) | null = null;
+
+export function initToastConfig(): () => void {
+  if (started && teardown) return teardown;
   started = true;
+
   load();
-  listen("lunaris://shell-config-changed", () => {
-    load();
-  });
+
+  const unlistenPromise: Promise<UnlistenFn> = listen(
+    "lunaris://shell-config-changed",
+    () => {
+      load();
+    },
+  );
+
+  teardown = () => {
+    unlistenPromise.then((fn) => fn()).catch(() => {});
+    started = false;
+    teardown = null;
+  };
+  return teardown;
 }

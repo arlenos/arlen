@@ -51,6 +51,13 @@ fn convert_units(input: &str) -> Option<WaypointerResult> {
     let lower = input.to_lowercase();
     let parts: Vec<&str> = lower.split_whitespace().collect();
 
+    // Four token shapes accepted:
+    //   "30 f in c"         → [30, f, in, c]
+    //   "30f in c"          → [30f, in, c]
+    //   "30 f c"            → [30, f, c]          (implicit "to")
+    //   "30f c"             → [30f, c]            (implicit "to")
+    // Previously only the first two were recognised, so users who
+    // omitted "in"/"to" got a silent no-op.
     let (value, from, to) = if parts.len() == 4
         && (parts[2] == "in" || parts[2] == "to")
     {
@@ -59,6 +66,14 @@ fn convert_units(input: &str) -> Option<WaypointerResult> {
     } else if parts.len() == 3 && (parts[1] == "in" || parts[1] == "to") {
         let (v, u) = split_number_unit(parts[0])?;
         (v, u, parts[2])
+    } else if parts.len() == 3 {
+        // "30 f c" — no connector word, assume "to".
+        let v: f64 = parts[0].parse().ok()?;
+        (v, parts[1], parts[2])
+    } else if parts.len() == 2 {
+        // "30f c" — glued number+unit, then target.
+        let (v, u) = split_number_unit(parts[0])?;
+        (v, u, parts[1])
     } else {
         return None;
     };

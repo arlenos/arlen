@@ -33,10 +33,13 @@ impl WaypointerPlugin for AppSearchPlugin {
         let mut results = Vec::new();
 
         for entry in index.iter() {
-            let name_lower = entry.name.to_lowercase();
-            let desc_lower = entry.description.to_lowercase();
+            // Use precomputed lowercase fields. Allocating `.to_lowercase()`
+            // per entry per keystroke was ~2 allocations × N apps per tick
+            // on typing — avoidable since the index is built once.
+            let name_lower = &entry.name_lower;
+            let desc_lower = &entry.description_lower;
 
-            let relevance = if name_lower == query {
+            let relevance = if name_lower.as_str() == query {
                 1.0
             } else if name_lower.starts_with(&query) {
                 0.9
@@ -71,8 +74,15 @@ impl WaypointerPlugin for AppSearchPlugin {
             }
         }
 
+        // Secondary sort by title so equal-relevance entries have a
+        // stable order across keystrokes. Without the tiebreaker,
+        // two apps at relevance 0.7 swap position whenever the
+        // HashMap iteration order changes.
         results.sort_by(|a, b| {
-            b.relevance.partial_cmp(&a.relevance).unwrap_or(std::cmp::Ordering::Equal)
+            b.relevance
+                .partial_cmp(&a.relevance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.title.to_lowercase().cmp(&b.title.to_lowercase()))
         });
 
         results

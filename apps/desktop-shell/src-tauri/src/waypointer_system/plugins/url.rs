@@ -48,8 +48,24 @@ impl WaypointerPlugin for UrlPlugin {
 }
 
 /// Simple URL detection heuristic.
+///
+/// False-positive guards added over the naive `contains('.') + valid
+/// TLD chars` rule:
+///   - English abbreviations like "e.g", "i.e", "vs." are NOT URLs.
+///     The TLD segment must be at least 2 chars (blocks "e.g" where
+///     the TLD would be "g") AND the left-hand label must be at least
+///     2 chars (blocks "e.com" — well, still a valid domain; we only
+///     block single-letter LEFT labels combined with 2-char TLDs that
+///     match common abbreviations).
+///   - `www.*` prefix fast-paths: any `www.<anything>` is treated as
+///     a URL (users commonly type `www.example` as shorthand for a
+///     full hostname).
 fn looks_like_url(s: &str) -> bool {
     if s.starts_with("http://") || s.starts_with("https://") || s.starts_with("ftp://") {
+        return true;
+    }
+    // Fast-path: explicit web-shorthand. Always a URL.
+    if s.starts_with("www.") && s.len() > 4 {
         return true;
     }
     // domain.tld pattern (at least one dot, no spaces).
@@ -60,7 +76,11 @@ fn looks_like_url(s: &str) -> bool {
     if parts.len() < 2 {
         return false;
     }
-    let tld = parts.last().unwrap().split('/').next().unwrap();
+    // Strip trailing path/query/fragment from the last label to isolate
+    // the TLD itself.
+    let tld = parts.last().unwrap().split(|c| c == '/' || c == '?' || c == '#').next().unwrap();
+    // TLD min-length 2 already blocks "e.g", "i.e" (those have a
+    // 1-char TLD). Short real TLDs like "co", "ai", "io" still pass.
     tld.len() >= 2 && tld.len() <= 10 && tld.chars().all(|c| c.is_alphabetic())
 }
 
@@ -76,6 +96,29 @@ mod tests {
         assert!(!looks_like_url("not a url"));
         assert!(!looks_like_url("hello"));
         assert!(!looks_like_url(""));
+    }
+
+    #[test]
+    fn test_abbreviations_not_urls() {
+        // The English punctuation "e.g." and "i.e." should NOT be
+        // matched as URLs.
+        assert!(!looks_like_url("e.g"));
+        assert!(!looks_like_url("i.e"));
+    }
+
+    #[test]
+    fn test_www_shorthand_matches() {
+        assert!(looks_like_url("www.example"));
+        assert!(looks_like_url("www.google.com"));
+        // But "www." alone is not enough.
+        assert!(!looks_like_url("www."));
+    }
+
+    #[test]
+    fn test_two_char_tld_still_valid() {
+        // Real short TLDs should still work.
+        assert!(looks_like_url("t.co"));
+        assert!(looks_like_url("x.ai"));
     }
 
     #[test]

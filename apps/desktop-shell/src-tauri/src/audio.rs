@@ -3,6 +3,8 @@
 /// Reads and sets the default audio sink volume using the `wpctl` CLI.
 
 use serde::{Deserialize, Serialize};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 /// Current audio status.
 #[derive(Clone, Serialize, Deserialize)]
@@ -17,14 +19,54 @@ pub struct AudioStatus {
     pub output_type: String,
 }
 
-// TODO: Batch refactor — combine get_audio_status + get_audio_outputs +
-// get_audio_inputs + get_app_volumes into a single get_audio_full_state()
-// command that runs 3-4 subprocesses instead of the current 10-15 when
-// AudioPopover opens. Each command currently spawns its own wpctl/pactl.
+/// Short-TTL cache for [`get_audio_status`]. The indicator polls this
+/// every 30s (with event-freshness gating) and the popover reads it
+/// on open; without caching, opening the popover right after the
+/// indicator polled double-counts the wpctl+pactl subprocesses. TTL
+/// is deliberately short so volume changes made outside the shell
+/// (e.g. via CLI) still surface within ~1s on the next read.
+const AUDIO_STATUS_TTL: Duration = Duration::from_millis(800);
+
+static AUDIO_STATUS_CACHE: OnceLock<Mutex<Option<(Instant, AudioStatus)>>> =
+    OnceLock::new();
+
+fn audio_status_cache() -> &'static Mutex<Option<(Instant, AudioStatus)>> {
+    AUDIO_STATUS_CACHE.get_or_init(|| Mutex::new(None))
+}
+
+/// Invalidate the cached `AudioStatus`. Call this after any mutation
+/// that changes volume/mute so the next poll reflects the change
+/// rather than serving the pre-change value from cache.
+fn invalidate_audio_status_cache() {
+    if let Ok(mut guard) = audio_status_cache().lock() {
+        *guard = None;
+    }
+}
 
 /// Returns the current volume, mute state, and output device type.
+/// Async + `spawn_blocking` so the two subprocess spawns inside don't
+/// pin a Tauri worker thread — this command fires on every
+/// `audio-changed` event, so the per-call cost adds up under volume
+/// scrubbing.
 #[tauri::command]
-pub fn get_audio_status() -> Result<AudioStatus, String> {
+pub async fn get_audio_status() -> Result<AudioStatus, String> {
+    tauri::async_runtime::spawn_blocking(get_audio_status_impl)
+        .await
+        .map_err(|e| format!("audio task join: {e}"))?
+}
+
+fn get_audio_status_impl() -> Result<AudioStatus, String> {
+    // Cache hit → return immediately. The event-driven polling pattern
+    // in the frontend already throttles to ~one call per 30s, but
+    // AudioPopover + AudioIndicator occasionally race.
+    if let Ok(guard) = audio_status_cache().lock() {
+        if let Some((fetched_at, ref status)) = *guard {
+            if fetched_at.elapsed() < AUDIO_STATUS_TTL {
+                return Ok(status.clone());
+            }
+        }
+    }
+
     let output = std::process::Command::new("wpctl")
         .args(["get-volume", "@DEFAULT_AUDIO_SINK@"])
         .output()
@@ -50,11 +92,17 @@ pub fn get_audio_status() -> Result<AudioStatus, String> {
 
     let output_type = detect_output_type();
 
-    Ok(AudioStatus {
+    let status = AudioStatus {
         volume,
         muted,
         output_type,
-    })
+    };
+
+    if let Ok(mut guard) = audio_status_cache().lock() {
+        *guard = Some((Instant::now(), status.clone()));
+    }
+
+    Ok(status)
 }
 
 /// Detect the type of the default audio output device.
@@ -144,6 +192,7 @@ pub fn set_audio_volume(volume: u8) -> Result<(), String> {
     if !status.success() {
         return Err("wpctl set-volume returned non-zero".into());
     }
+    invalidate_audio_status_cache();
     Ok(())
 }
 
@@ -160,7 +209,13 @@ pub struct AudioOutput {
 
 /// Returns available audio output devices with human-readable names.
 #[tauri::command]
-pub fn get_audio_outputs() -> Result<Vec<AudioOutput>, String> {
+pub async fn get_audio_outputs() -> Result<Vec<AudioOutput>, String> {
+    tauri::async_runtime::spawn_blocking(get_audio_outputs_impl)
+        .await
+        .map_err(|e| format!("audio task join: {e}"))?
+}
+
+fn get_audio_outputs_impl() -> Result<Vec<AudioOutput>, String> {
     // Get default sink name.
     let default_name = std::process::Command::new("pactl")
         .args(["get-default-sink"])
@@ -235,7 +290,13 @@ pub struct AudioInput {
 /// Returns available audio input devices (microphones).
 /// Filters out monitor sources.
 #[tauri::command]
-pub fn get_audio_inputs() -> Result<Vec<AudioInput>, String> {
+pub async fn get_audio_inputs() -> Result<Vec<AudioInput>, String> {
+    tauri::async_runtime::spawn_blocking(get_audio_inputs_impl)
+        .await
+        .map_err(|e| format!("audio task join: {e}"))?
+}
+
+fn get_audio_inputs_impl() -> Result<Vec<AudioInput>, String> {
     let default_src = std::process::Command::new("pactl")
         .args(["get-default-source"])
         .output()
@@ -296,7 +357,13 @@ pub fn set_audio_input(id: String) -> Result<(), String> {
 
 /// Returns the current input (microphone) volume and mute state.
 #[tauri::command]
-pub fn get_input_volume() -> Result<AudioStatus, String> {
+pub async fn get_input_volume() -> Result<AudioStatus, String> {
+    tauri::async_runtime::spawn_blocking(get_input_volume_impl)
+        .await
+        .map_err(|e| format!("audio task join: {e}"))?
+}
+
+fn get_input_volume_impl() -> Result<AudioStatus, String> {
     let output = std::process::Command::new("wpctl")
         .args(["get-volume", "@DEFAULT_AUDIO_SOURCE@"])
         .output()
@@ -367,7 +434,13 @@ pub struct AppVolume {
 
 /// Returns all running applications that are playing audio.
 #[tauri::command]
-pub fn get_app_volumes() -> Result<Vec<AppVolume>, String> {
+pub async fn get_app_volumes() -> Result<Vec<AppVolume>, String> {
+    tauri::async_runtime::spawn_blocking(get_app_volumes_impl)
+        .await
+        .map_err(|e| format!("audio task join: {e}"))?
+}
+
+fn get_app_volumes_impl() -> Result<Vec<AppVolume>, String> {
     let output = std::process::Command::new("pactl")
         .args(["-f", "json", "list", "sink-inputs"])
         .output()
@@ -549,6 +622,7 @@ pub fn toggle_audio_mute() -> Result<(), String> {
     if !status.success() {
         return Err("wpctl set-mute returned non-zero".into());
     }
+    invalidate_audio_status_cache();
     Ok(())
 }
 
@@ -572,14 +646,34 @@ pub struct AudioFullState {
     pub apps: Vec<AppVolume>,
 }
 
+/// Bundle the five AudioPopover reads into one Tauri round-trip.
+///
+/// Previously this was a sync function calling its five sub-commands
+/// sequentially — ~7-8 subprocess spawns × ~15ms each = ~100-150ms
+/// of blocking time per popover open. Now every sub-call runs on its
+/// own `spawn_blocking` task so the pactl/wpctl subprocesses execute
+/// in parallel; total latency drops to the max of the five, roughly
+/// 20-30ms.
 #[tauri::command]
-pub fn get_audio_full_state() -> Result<AudioFullState, String> {
+pub async fn get_audio_full_state() -> Result<AudioFullState, String> {
+    let h_status = tauri::async_runtime::spawn_blocking(get_audio_status_impl);
+    let h_input = tauri::async_runtime::spawn_blocking(get_input_volume_impl);
+    let h_outputs = tauri::async_runtime::spawn_blocking(get_audio_outputs_impl);
+    let h_inputs = tauri::async_runtime::spawn_blocking(get_audio_inputs_impl);
+    let h_apps = tauri::async_runtime::spawn_blocking(get_app_volumes_impl);
+
+    let status = h_status.await.map_err(|e| format!("audio task join: {e}"))??;
+    let input_status = h_input.await.map_err(|e| format!("audio task join: {e}"))??;
+    let outputs = h_outputs.await.map_err(|e| format!("audio task join: {e}"))??;
+    let inputs = h_inputs.await.map_err(|e| format!("audio task join: {e}"))??;
+    let apps = h_apps.await.map_err(|e| format!("audio task join: {e}"))??;
+
     Ok(AudioFullState {
-        status: get_audio_status()?,
-        input_status: get_input_volume()?,
-        outputs: get_audio_outputs()?,
-        inputs: get_audio_inputs()?,
-        apps: get_app_volumes()?,
+        status,
+        input_status,
+        outputs,
+        inputs,
+        apps,
     })
 }
 

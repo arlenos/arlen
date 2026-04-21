@@ -1,6 +1,7 @@
 import { writable } from "svelte/store";
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { makeDisposer } from "./_disposer.js";
 
 export interface TabInfo {
     index: number;
@@ -24,8 +25,15 @@ export async function activateTab(stackId: number, index: number): Promise<void>
     await invoke("tab_activate", { stackId, index });
 }
 
-export function initTabBarListeners(): void {
-    listen<{ stack_id: number; x: number; y: number; width: number; height: number }>(
+let started = false;
+let teardown: (() => void) | null = null;
+
+export function initTabBarListeners(): () => void {
+    if (started && teardown) return teardown;
+    started = true;
+
+    const pending: Array<Promise<UnlistenFn>> = [
+        listen<{ stack_id: number; x: number; y: number; width: number; height: number }>(
         "lunaris://tab-bar-show",
         ({ payload }) => {
             tabBars.update((bars) => {
@@ -41,8 +49,8 @@ export function initTabBarListeners(): void {
                 });
                 return new Map(bars);
             });
-        }
-    );
+        },
+    ),
 
     listen<{ stack_id: number }>(
         "lunaris://tab-bar-hide",
@@ -51,8 +59,8 @@ export function initTabBarListeners(): void {
                 bars.delete(payload.stack_id);
                 return new Map(bars);
             });
-        }
-    );
+        },
+    ),
 
     listen<{ stack_id: number; index: number; title: string; app_id: string; active: boolean }>(
         "lunaris://tab-added",
@@ -82,8 +90,8 @@ export function initTabBarListeners(): void {
                 }
                 return new Map(bars);
             });
-        }
-    );
+        },
+    ),
 
     listen<{ stack_id: number; index: number }>(
         "lunaris://tab-removed",
@@ -102,8 +110,8 @@ export function initTabBarListeners(): void {
                 }
                 return new Map(bars);
             });
-        }
-    );
+        },
+    ),
 
     listen<{ stack_id: number; index: number }>(
         "lunaris://tab-activated",
@@ -113,8 +121,8 @@ export function initTabBarListeners(): void {
                 if (bar) bar.active = payload.index;
                 return new Map(bars);
             });
-        }
-    );
+        },
+    ),
 
     listen<{ stack_id: number; index: number; title: string }>(
         "lunaris://tab-title-changed",
@@ -127,6 +135,11 @@ export function initTabBarListeners(): void {
                 }
                 return new Map(bars);
             });
-        }
-    );
+        },
+    ),
+    ];
+
+    const disposer = makeDisposer(pending);
+    teardown = () => { disposer(); started = false; teardown = null; };
+    return teardown;
 }

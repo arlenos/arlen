@@ -82,6 +82,29 @@ impl PluginManager {
         all_results
     }
 
+    /// Query a **single** plugin by id, bypassing the prefix-routing
+    /// logic used by `search`. Useful for UI layers that already know
+    /// which plugin they want to surface as a dedicated section —
+    /// e.g. the Waypointer's "Power Actions" group pulls from
+    /// `core.power` on every keystroke regardless of prefix. Returns
+    /// an empty vec if the plugin id isn't registered.
+    ///
+    /// Results are stamped with `plugin_id` and truncated to the
+    /// plugin's `max_results()` cap, matching the guarantees of the
+    /// generic `search` path.
+    pub fn search_plugin(&self, plugin_id: &str, query: &str) -> Vec<SearchResult> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Vec::new();
+        }
+        let Some(plugin) = self.plugins.iter().find(|p| p.id() == plugin_id) else {
+            return Vec::new();
+        };
+        let mut results = stamp_results(plugin.as_ref(), plugin.search(query));
+        results.truncate(plugin.max_results());
+        results
+    }
+
     /// Execute the action for a result (dispatches to the owning plugin).
     pub fn execute(&self, result: &SearchResult) -> Result<(), PluginError> {
         let plugin = self
@@ -269,6 +292,35 @@ mod tests {
         mgr.unregister("test.echo");
         assert_eq!(mgr.len(), 0);
         assert!(mgr.search("hello").is_empty());
+    }
+
+    #[test]
+    fn test_search_plugin_bypasses_prefix_routing() {
+        // CalcPlugin has a "=" prefix — via `search("hello")` it's
+        // skipped (prefix-only plugins aren't run in general queries).
+        // Via `search_plugin("test.calc", "hello")` it MUST run anyway
+        // because the caller is explicitly addressing it.
+        let mut mgr = PluginManager::new();
+        mgr.register(Box::new(EchoPlugin { prio: 50 })).unwrap();
+        mgr.register(Box::new(CalcPlugin)).unwrap();
+
+        let r = mgr.search_plugin("test.calc", "hello");
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].plugin_id, "test.calc");
+    }
+
+    #[test]
+    fn test_search_plugin_unknown_id_empty() {
+        let mgr = PluginManager::new();
+        assert!(mgr.search_plugin("nope", "anything").is_empty());
+    }
+
+    #[test]
+    fn test_search_plugin_empty_query_empty() {
+        let mut mgr = PluginManager::new();
+        mgr.register(Box::new(EchoPlugin { prio: 50 })).unwrap();
+        assert!(mgr.search_plugin("test.echo", "").is_empty());
+        assert!(mgr.search_plugin("test.echo", "   ").is_empty());
     }
 
     #[test]

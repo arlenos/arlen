@@ -1,6 +1,8 @@
+mod app_history;
 mod app_index;
 mod audio;
 mod battery;
+mod clipboard_history;
 mod event_bus;
 mod gtk_menu_bridge;
 mod layer_shell;
@@ -16,6 +18,7 @@ mod power;
 mod notifications;
 mod permissions;
 mod projects;
+mod recent_files;
 mod sni;
 mod shell_overlay_client;
 mod settings_provider;
@@ -60,14 +63,25 @@ pub fn run() {
     let module_loader: modules::ModuleLoaderState = std::sync::Mutex::new(modules::ModuleLoader::new());
     let error_tracker: module_errors::ErrorTrackerState = std::sync::Mutex::new(module_errors::ModuleErrorTracker::new());
 
+    // Clipboard history: opt-in via shell.toml. The state is created
+    // regardless so the Tauri commands have something to manage, but
+    // the watcher only spawns when enabled. We keep a pair of clones
+    // here: one moves into setup() for the watcher thread (which
+    // needs the shared WindowList reference), the other is `.manage`d
+    // so Tauri commands can read/mutate the ring buffer.
+    let clipboard_state = clipboard_history::create_state();
+    let clipboard_for_watcher = Arc::clone(&clipboard_state);
+    let window_list_for_clipboard = Arc::clone(&window_list);
+
     // PluginManager needs Arc clones of AppIndex and WindowList.
     let mut plugin_mgr = waypointer_system::PluginManager::new();
     waypointer_system::plugins::register_builtins(
         &mut plugin_mgr,
         Arc::clone(&app_idx),
         Arc::clone(&window_list),
+        Arc::clone(&clipboard_state),
     );
-    let plugin_mgr_state: waypointer_system::PluginManagerState = std::sync::Mutex::new(plugin_mgr);
+    let plugin_mgr_state: waypointer_system::PluginManagerState = std::sync::RwLock::new(plugin_mgr);
 
     let ext_registry: extension_registry::ExtensionRegistryState =
         std::sync::Mutex::new(extension_registry::ExtensionRegistry::new());
@@ -88,6 +102,7 @@ pub fn run() {
         .manage(ext_registry)
         .manage(Arc::new(projects::ProjectsState::new()))
         .manage(system_toggles::ToggleState::new())
+        .manage(clipboard_state)
         .setup(|app| {
             // Initialize the new theme system (v2).
             let config_dir = dirs::config_dir()
@@ -124,6 +139,11 @@ pub fn run() {
             shell_overlay_client::start(app.handle().clone(), overlay_sender);
             let notif_writer = notifications::start(app.handle().clone());
             app.manage(notif_writer);
+            clipboard_history::start(
+                app.handle().clone(),
+                clipboard_for_watcher,
+                window_list_for_clipboard,
+            );
             sni::start(app.handle().clone(), sni_items);
             bluetooth::start_monitor(app.handle().clone());
             network::start_monitor(app.handle().clone());
@@ -231,6 +251,7 @@ pub fn run() {
             waypointer_system::waypointer_search,
             waypointer_system::waypointer_execute,
             waypointer_system::waypointer_list_plugins,
+            waypointer_system::waypointer_search_plugin,
             extension_registry::get_topbar_indicators,
             theme::commands::get_theme,
             theme::commands::get_theme_css,
@@ -252,6 +273,10 @@ pub fn run() {
             app_index::search_apps,
             app_index::launch_app,
             waypointer_plugins::evaluate_waypointer_input,
+            app_history::record_app_launch,
+            app_history::get_recent_apps,
+            recent_files::get_recent_files,
+            recent_files::open_recent_file,
             wayland_client::workspace_activate,
             wayland_client::activate_window,
             wayland_client::window_move_to_workspace,
@@ -281,6 +306,11 @@ pub fn run() {
             settings_provider::settings_get_value,
             settings_provider::settings_set_value,
             settings_provider::settings_open_deep_link,
+            clipboard_history::clipboard_get_entries,
+            clipboard_history::clipboard_delete_entry,
+            clipboard_history::clipboard_clear_all,
+            clipboard_history::clipboard_is_enabled,
+            clipboard_history::clipboard_copy_entry,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

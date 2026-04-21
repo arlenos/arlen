@@ -10,6 +10,13 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 
 /// A single application entry parsed from a `.desktop` file.
+///
+/// The `*_lower` fields are precomputed at index-build time so the
+/// waypointer app-search plugin can skip `.to_lowercase()` allocations
+/// on every keystroke. At 500+ apps with two lowercase conversions
+/// per entry per keystroke, the difference is 1000 allocations per
+/// keystroke vs zero — small per keystroke but compounding across
+/// typing bursts.
 #[derive(Clone, Debug, Serialize)]
 pub struct AppEntry {
     /// Human-readable name (Name= key).
@@ -24,6 +31,12 @@ pub struct AppEntry {
     pub description: String,
     /// Semicolon-separated categories (Categories= key).
     pub categories: Vec<String>,
+    /// Precomputed lowercase of `name`. Not serialised to the frontend.
+    #[serde(skip)]
+    pub name_lower: String,
+    /// Precomputed lowercase of `description`. Not serialised.
+    #[serde(skip)]
+    pub description_lower: String,
 }
 
 /// Shared app index managed by Tauri.
@@ -164,6 +177,8 @@ fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
         })
         .unwrap_or_default();
 
+    let name_lower = name.to_lowercase();
+    let description_lower = description.to_lowercase();
     Some(AppEntry {
         name,
         exec: strip_exec_placeholders(&exec),
@@ -171,6 +186,8 @@ fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
         icon_data: None,
         description,
         categories,
+        name_lower,
+        description_lower,
     })
 }
 

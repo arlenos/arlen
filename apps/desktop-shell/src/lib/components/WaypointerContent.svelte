@@ -28,6 +28,37 @@
     reloadSettingsIndex, openSettingsDeepLink,
   } from "$lib/stores/settingsSearch.js";
   import WaypointerSettingInline from "./WaypointerSettingInline.svelte";
+  import {
+    recentAppsStore, recentFilesStore,
+    loadRecents, recordAppLaunch, openRecentFile, clearRecents,
+    type RecentFile,
+  } from "$lib/stores/waypointerRecents.js";
+  import {
+    File as FileIcon, History, Power,
+    Moon, Lock, RotateCw, LogOut,
+  } from "lucide-svelte";
+  import {
+    powerResults, updatePowerResults, clearPowerResults, invokePowerAction,
+    type PowerActionResult,
+  } from "$lib/stores/waypointerPower.js";
+  import {
+    fileResults, updateFileResults, clearFileResults, openFileResult,
+    type FileResult,
+  } from "$lib/stores/waypointerFiles.js";
+  import {
+    clipboardResults, clipboardEnabled, refreshClipboardEnabled,
+    updateClipboardResults, clearClipboardResults,
+    copyClipboardEntry, deleteClipboardEntry, clearAllClipboard,
+    type ClipboardResult,
+  } from "$lib/stores/waypointerClipboard.js";
+  import {
+    dictResults, updateDictResults, clearDictResults,
+    type DictResult,
+  } from "$lib/stores/waypointerDict.js";
+  import {
+    FileText, FileCode, FileCog, FileImage, FileArchive, FileAudio, FileVideo,
+    Clipboard, Trash2,
+  } from "lucide-svelte";
 
   let query = $state("");
   let inputRef = $state<HTMLInputElement | null>(null);
@@ -79,6 +110,9 @@
       })
       .catch(() => { console.timeEnd("wp-init"); });
     reloadSettingsIndex();
+    // Prime the clipboard opt-in flag so the Waypointer knows
+    // whether to render the Clear-All affordance below.
+    refreshClipboardEnabled();
   });
 
   function doSearch(q: string) {
@@ -95,19 +129,71 @@
       .catch(() => { searchResults.set([]); });
   }
 
+  /// Debounce delay for search fan-out. 120ms matches the input poll
+  /// tick (150ms, see `$effect` further down) so typing a burst doesn't
+  /// fire three invokes per keystroke. Previously doSearch ran
+  /// synchronously here but updateWindowResults + searchSettings fired
+  /// unconditionally on every call, causing backend pile-up.
+  const SEARCH_DEBOUNCE_MS = 120;
+
   function debouncedSearch(q: string) {
     if (searchTimer) clearTimeout(searchTimer);
-    console.time("wp-search-total");
-    doSearch(q);
-    const t0 = performance.now();
-    updateWindowResults(q);
-    console.log(`[wp-search] windows: ${(performance.now() - t0).toFixed(1)}ms`);
-    const t1 = performance.now();
-    searchSettings(q);
-    console.log(`[wp-search] settings: ${(performance.now() - t1).toFixed(1)}ms`);
-    requestAnimationFrame(() => {
-      console.timeEnd("wp-search-total");
-    });
+    searchTimer = setTimeout(() => {
+      console.time("wp-search-total");
+      doSearch(q);
+      const t0 = performance.now();
+      updateWindowResults(q);
+      console.log(`[wp-search] windows: ${(performance.now() - t0).toFixed(1)}ms`);
+      const t1 = performance.now();
+      searchSettings(q);
+      console.log(`[wp-search] settings: ${(performance.now() - t1).toFixed(1)}ms`);
+      // Power-plugin via the generic manager bridge. Previously
+      // missing here — Power plugin was registered but never queried,
+      // so typing "shutdown" returned nothing. Fires the same
+      // debounced cycle as apps / windows / settings.
+      const t2 = performance.now();
+      updatePowerResults(q)
+        .then(() => {
+          console.log(
+            `[wp-search] power: ${(performance.now() - t2).toFixed(1)}ms`,
+          );
+        })
+        .catch(() => {});
+      // File-search plugin: same bridge, separate section.
+      const t3 = performance.now();
+      updateFileResults(q)
+        .then(() => {
+          console.log(
+            `[wp-search] files: ${(performance.now() - t3).toFixed(1)}ms`,
+          );
+        })
+        .catch(() => {});
+      // Clipboard-history plugin: only fires when opt-in is on.
+      // Backend short-circuits to empty when disabled; we skip the
+      // invoke entirely in that case to save the IPC hop.
+      const t4 = performance.now();
+      updateClipboardResults(q)
+        .then(() => {
+          console.log(
+            `[wp-search] clipboard: ${(performance.now() - t4).toFixed(1)}ms`,
+          );
+        })
+        .catch(() => {});
+      // Dictionary plugin: also via the generic bridge. Returns empty
+      // until the WordNet data is loaded (first query kicks off the
+      // background load, usually ready by the second keystroke).
+      const t5 = performance.now();
+      updateDictResults(q)
+        .then(() => {
+          console.log(
+            `[wp-search] dict: ${(performance.now() - t5).toFixed(1)}ms`,
+          );
+        })
+        .catch(() => {});
+      requestAnimationFrame(() => {
+        console.timeEnd("wp-search-total");
+      });
+    }, SEARCH_DEBOUNCE_MS);
   }
 
   function open() {
@@ -125,11 +211,21 @@
     clearProcessResults();
     clearUnicodeResults();
     clearSettingsResults();
+    clearPowerResults();
+    clearFileResults();
+    clearClipboardResults();
+    clearDictResults();
+    clearRecents();
     console.timeLog("wp-open", "stores cleared");
-    // Show max 8 suggested apps on empty query instead of ALL apps.
-    // Rendering 100-200 CommandItems with base64 icons was the main
-    // bottleneck — each open created hundreds of DOM nodes.
-    searchResults.set(allApps.slice(0, 8));
+    // Load MRU apps + graph-recent files in parallel. Both are cached
+    // behind short TTLs on the Rust side so repeated opens are cheap.
+    loadRecents(allApps).then(() => {
+      console.timeLog("wp-open", "recents loaded");
+    }).catch(() => {});
+    // Keep the empty-query grid EMPTY — recents now fill that role.
+    // Previously we showed `allApps.slice(0, 8)` as generic suggestions;
+    // with recents populated, alphabetical-first-8 is worse than MRU.
+    searchResults.set([]);
     console.timeLog("wp-open", `set ${Math.min(8, allApps.length)}/${allApps.length} apps`);
     if (listRef) listRef.scrollTop = 0;
     // Measure when the browser actually paints.
@@ -271,6 +367,43 @@
     close();
   }
 
+  /// Map `PowerActionResult.id` to its lucide icon. The backend sets
+  /// a freedesktop icon name on `SearchResult.icon` (`system-suspend`,
+  /// `system-reboot`, …) but those aren't guaranteed to be present in
+  /// the user's icon theme. Rest of the shell uses lucide consistently
+  /// for chrome-icons, so we keep that convention here.
+  /// eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function iconForPowerAction(id: string): any {
+    switch (id) {
+      case "power.sleep":    return Moon;
+      case "power.lock":     return Lock;
+      case "power.restart":  return RotateCw;
+      case "power.shutdown": return Power;
+      case "power.logout":   return LogOut;
+      default:               return Power;
+    }
+  }
+
+  /// Map the lucide-icon-name string returned by the `core.files`
+  /// plugin (`file-code`, `file-text`, …) to the actual lucide-svelte
+  /// component. Backend picks the name from file extension; frontend
+  /// renders the corresponding lucide icon so we keep the chrome
+  /// palette uniform without shipping extension->icon maps in both
+  /// languages.
+  /// eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function iconForFileName(icon: string | null): any {
+    switch (icon) {
+      case "file-code":    return FileCode;
+      case "file-text":    return FileText;
+      case "file-cog":     return FileCog;
+      case "file-image":   return FileImage;
+      case "file-archive": return FileArchive;
+      case "file-audio":   return FileAudio;
+      case "file-video":   return FileVideo;
+      default:             return FileIcon;
+    }
+  }
+
   function killProcessAction(proc: ProcessInfo, force: boolean) {
     killProcess(proc.pid, force).catch(() => {});
     close();
@@ -285,11 +418,13 @@
   }
 
   // Poll for query changes and trigger search + evaluation.
-  let _pollInterval: ReturnType<typeof setInterval> | null = null;
+  // The interval lives inside `$effect` so each mount gets its own
+  // handle and the effect's cleanup reliably tears it down on
+  // unmount/HMR. The previous module-scoped guard could leak the
+  // interval when the effect ran twice before cleanup fired.
   $effect(() => {
-    if (_pollInterval) return;
     let prev = "";
-    _pollInterval = setInterval(() => {
+    const pollInterval = setInterval(() => {
         const q = inputRef?.value ?? query;
         if (q === prev) return;
         prev = q;
@@ -463,7 +598,7 @@
             if (wrap) wrap.style.display = "none";
           });
       }, 150);
-    return () => { if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null; } };
+    return () => clearInterval(pollInterval);
   });
 
   function handleInlineAction(result: WaypointerResult) {
@@ -484,8 +619,27 @@
   }
 
   function launchAppAndClose(app: AppEntry) {
+    // Record the launch BEFORE closing: the close path may tear down
+    // event listeners, and the record call is fire-and-forget so it
+    // doesn't block the actual launch below.
+    recordAppLaunch(app.exec);
     launchAppCmd(app.exec);
     close();
+  }
+
+  function openRecentFileAndClose(file: RecentFile) {
+    openRecentFile(file.path);
+    close();
+  }
+
+  /// Shortened display name for a recent-file path. Shows the final
+  /// path component + parent directory so two files with the same
+  /// name in different dirs stay distinguishable.
+  function shortPath(p: string): string {
+    const parts = p.split("/").filter((x) => x.length > 0);
+    if (parts.length === 0) return p;
+    if (parts.length === 1) return parts[0];
+    return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
   }
 
   function switchToWindow(win: WindowInfo) {
@@ -565,8 +719,82 @@
         <!-- CommandEmpty is unusable with shouldFilter={false} because
              cmdk always reports 0 internal matches. Use our own check
              across all provider stores instead. -->
-        {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $unicodeResults.length === 0 && filteredProjects.length === 0 && query.trim().length > 0}
+        {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $unicodeResults.length === 0 && $powerResults.length === 0 && $fileResults.length === 0 && $clipboardResults.length === 0 && $dictResults.length === 0 && filteredProjects.length === 0 && $recentAppsStore.length === 0 && $recentFilesStore.length === 0 && query.trim().length > 0}
           <div class="wp-empty">No results found.</div>
+        {/if}
+
+        <!-- Power actions from the `core.power` plugin. Placed above
+             the app-search group so an exact keyword like "shutdown"
+             (relevance 1.0) surfaces at the top, beating any partial
+             app-name match. -->
+        {#if $powerResults.length > 0}
+          <CommandGroup heading="System">
+            {#each $powerResults as action (action.id)}
+              {@const ActionIcon = iconForPowerAction(action.id)}
+              <CommandItem
+                value={`power-${action.id}`}
+                onSelect={() => {
+                  invokePowerAction(action);
+                  close();
+                }}
+              >
+                <ActionIcon size={16} strokeWidth={1.5} class="shrink-0 opacity-70" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{action.title}</span>
+                  {#if action.description}
+                    <span class="wp-app-desc">{action.description}</span>
+                  {/if}
+                </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+          <CommandSeparator />
+        {/if}
+
+        <!-- Empty-query landing page: MRU apps + graph-recent files.
+             Hidden as soon as the user types anything so the search
+             result sections can take over. -->
+        {#if query.trim().length === 0 && $recentAppsStore.length > 0}
+          <CommandGroup heading="Recent Apps">
+            {#each $recentAppsStore as app, i (app.name + "_rec_" + i)}
+              <CommandItem
+                value={`recent-app-${app.exec}`}
+                onSelect={() => launchAppAndClose(app)}
+              >
+                {#if app.icon_data}
+                  <img src={app.icon_data} alt="" class="wp-app-icon" />
+                {:else}
+                  <AppWindow size={16} strokeWidth={1.5} class="wp-fallback-icon" />
+                {/if}
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{app.name}</span>
+                  {#if app.description}
+                    <span class="wp-app-desc">{app.description}</span>
+                  {/if}
+                </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+          {#if $recentFilesStore.length > 0}
+            <CommandSeparator />
+          {/if}
+        {/if}
+
+        {#if query.trim().length === 0 && $recentFilesStore.length > 0}
+          <CommandGroup heading="Recent Files">
+            {#each $recentFilesStore as file (file.path)}
+              <CommandItem
+                value={`recent-file-${file.path}`}
+                onSelect={() => openRecentFileAndClose(file)}
+              >
+                <FileIcon size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{shortPath(file.path)}</span>
+                  <span class="wp-app-desc">{file.path}</span>
+                </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
         {/if}
 
         {#if $windowResults.length > 0}
@@ -659,6 +887,86 @@
                 <div class="wp-app-info">
                   <span class="wp-app-name">{project.name}</span>
                   <span class="wp-app-desc">{project.rootPath}</span>
+                </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+          <CommandSeparator />
+        {/if}
+
+        {#if $clipboardResults.length > 0}
+          <CommandGroup heading="Clipboard">
+            {#each $clipboardResults as entry (entry.id)}
+              <CommandItem
+                value={`clip-item-${entry.id}`}
+                onSelect={() => { copyClipboardEntry(entry); close(); }}
+              >
+                <Clipboard size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{entry.title}</span>
+                  {#if entry.description}
+                    <span class="wp-app-desc">{entry.description}</span>
+                  {/if}
+                </div>
+                <button
+                  class="wp-inline-btn"
+                  title="Delete entry"
+                  onclick={(e) => { e.stopPropagation(); deleteClipboardEntry(entry); }}
+                >
+                  <Trash2 size={12} strokeWidth={1.5} />
+                </button>
+              </CommandItem>
+            {/each}
+            {#if $clipboardEnabled && $clipboardResults.length >= 2}
+              <CommandItem
+                value="clip-clear-all"
+                onSelect={() => { clearAllClipboard(); close(); }}
+              >
+                <Trash2 size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">Clear clipboard history</span>
+                  <span class="wp-app-desc">Drop all {$clipboardResults.length} entries</span>
+                </div>
+              </CommandItem>
+            {/if}
+          </CommandGroup>
+          <CommandSeparator />
+        {/if}
+
+        {#if $fileResults.length > 0}
+          <CommandGroup heading="Files">
+            {#each $fileResults as file (file.id)}
+              {@const FileIconComponent = iconForFileName(file.icon)}
+              <CommandItem
+                value={`file-${file.id}`}
+                onSelect={() => { openFileResult(file); close(); }}
+              >
+                <FileIconComponent size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{file.title}</span>
+                  {#if file.description}
+                    <span class="wp-app-desc">{file.description}</span>
+                  {/if}
+                </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+          <CommandSeparator />
+        {/if}
+
+        {#if $dictResults.length > 0}
+          <CommandGroup heading="Definitions">
+            {#each $dictResults as def (def.id)}
+              <CommandItem
+                value={`dict-${def.id}`}
+                onSelect={() => { close(); }}
+              >
+                <BookOpen size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{def.title}</span>
+                  {#if def.description}
+                    <span class="wp-app-desc">{def.description}</span>
+                  {/if}
                 </div>
               </CommandItem>
             {/each}
@@ -875,6 +1183,30 @@
   /* Suppress pointer hover selection while navigating with keyboard. */
   :global(.wp-kb-active [data-slot="command-item"]) {
     pointer-events: none;
+  }
+
+  /* Small inline action button (used by clipboard entries for per-row
+     delete). Sits at the right edge of the command item; clicks don't
+     bubble to the item's onSelect. */
+  .wp-inline-btn {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--color-fg-shell);
+    opacity: 0.35;
+    cursor: pointer;
+    transition: background 80ms ease, opacity 80ms ease;
+  }
+  .wp-inline-btn:hover {
+    background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent);
+    opacity: 0.9;
   }
 
   @keyframes wp-fade-in {

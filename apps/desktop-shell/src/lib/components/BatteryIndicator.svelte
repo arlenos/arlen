@@ -37,10 +37,22 @@
   }
 
   poll();
+
+  // Event-freshness fallback: the UPower D-Bus monitor emits
+  // `battery-changed` on every percentage tick. The timer below only
+  // fires if no event has arrived within the freshness window.
+  const POLL_STALE_MS = 180_000; // battery changes are slow; wider window
+  let lastEventAt = Date.now();
+
   onMount(() => {
-    const unlisten = listen("battery-changed", () => poll());
-    // Fallback poll every 60s in case D-Bus monitor is not running.
-    const fallback = setInterval(poll, 60_000);
+    const unlisten = listen("battery-changed", () => {
+      lastEventAt = Date.now();
+      poll();
+    });
+    const fallback = setInterval(() => {
+      if (Date.now() - lastEventAt < POLL_STALE_MS) return;
+      poll();
+    }, 60_000);
     return () => {
       unlisten.then((fn) => fn());
       clearInterval(fallback);

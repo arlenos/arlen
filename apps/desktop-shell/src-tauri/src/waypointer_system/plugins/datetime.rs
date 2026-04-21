@@ -78,6 +78,18 @@ pub fn try_evaluate(input: &str) -> Option<WaypointerResult> {
         if let Some(display) = resolve_timezone_time(rest) {
             return Some(dt_result(&display, &display));
         }
+        // User clearly intended a timezone query ("time foo") but we
+        // couldn't resolve it. Return an explicit "unknown timezone"
+        // result instead of silently falling through to the generic
+        // no-match path — the user sees feedback and knows they typed
+        // something the plugin didn't recognise.
+        if !rest.trim().is_empty() {
+            return Some(WaypointerResult {
+                result_type: "datetime".to_string(),
+                display: format!("Unknown timezone or city: {rest}"),
+                copy_value: String::new(),
+            });
+        }
     }
 
     if let Some(rest) = lower.strip_prefix("in ") {

@@ -90,6 +90,25 @@ fn evaluate_expression(expr: &str) -> Option<WaypointerResult> {
                 copy_value: copy,
             })
         }
+        // Surface infinities/NaN explicitly so `1/0`, `log(-1)` etc.
+        // show "= ∞" / "= undefined" instead of silently dropping and
+        // making the Waypointer look broken. We keep the result_type
+        // as "math" so the clipboard copy still works (symbols are
+        // pasteable — callers that care about numeric parse should
+        // branch on is_finite themselves).
+        Ok(v) if v.is_infinite() => {
+            let sign = if v.is_sign_negative() { "-" } else { "" };
+            Some(WaypointerResult {
+                result_type: "math".to_string(),
+                display: format!("= {sign}∞"),
+                copy_value: format!("{sign}∞"),
+            })
+        }
+        Ok(v) if v.is_nan() => Some(WaypointerResult {
+            result_type: "math".to_string(),
+            display: "= undefined".to_string(),
+            copy_value: "NaN".to_string(),
+        }),
         _ => evaluate_with_evalexpr(&normalized),
     }
 }

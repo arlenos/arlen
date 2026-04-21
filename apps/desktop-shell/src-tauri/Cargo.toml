@@ -53,6 +53,9 @@ zbus = { version = "5", default-features = false, features = ["tokio"] }
 tokio = { version = "1", features = ["net", "io-util", "sync", "macros", "rt"] }
 notification-proto = { path = "../../notification-proto" }
 bytes = "1"
+wordnet-db = "0.1"
+wordnet-morphy = "0.1"
+wordnet-types = "0.1"
 
 [dev-dependencies]
 tempfile = "3"

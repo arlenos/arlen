@@ -1,6 +1,7 @@
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { writable, derived } from "svelte/store";
+import { makeDisposer } from "./_disposer.js";
 
 export interface WindowInfo {
     id: string;
@@ -22,7 +23,13 @@ export const activeAppName = derived(activeWindow, ($active) => {
     return $active.title || $active.app_id || "";
 });
 
-export function initWindowListeners() {
+let started = false;
+let teardown: (() => void) | null = null;
+
+export function initWindowListeners(): () => void {
+    if (started && teardown) return teardown;
+    started = true;
+
     // Prime the store with the backend's cached snapshot. Needed
     // because `toplevel-added` only fires for NEW toplevels after the
     // listener is installed — existing windows opened before a HMR
@@ -37,22 +44,30 @@ export function initWindowListeners() {
         })
         .catch((e) => console.warn("get_windows failed", e));
 
-    listen<WindowInfo>("lunaris://toplevel-added", (event) => {
-        windows.update((ws) => {
-            // Guard against duplicates when a prime + live-event arrive
-            // for the same window near-simultaneously after a reload.
-            if (ws.some((w) => w.id === event.payload.id)) return ws;
-            return [...ws, event.payload];
-        });
-    });
+    const pending: Array<Promise<UnlistenFn>> = [
+        listen<WindowInfo>("lunaris://toplevel-added", (event) => {
+            windows.update((ws) => {
+                // Guard against duplicates when a prime + live-event arrive
+                // for the same window near-simultaneously after a reload.
+                if (ws.some((w) => w.id === event.payload.id)) return ws;
+                return [...ws, event.payload];
+            });
+        }),
+        listen<WindowInfo>("lunaris://toplevel-changed", (event) => {
+            windows.update((ws) =>
+                ws.map((w) => (w.id === event.payload.id ? event.payload : w))
+            );
+        }),
+        listen<{ id: string }>("lunaris://toplevel-removed", (event) => {
+            windows.update((ws) => ws.filter((w) => w.id !== event.payload.id));
+        }),
+    ];
 
-    listen<WindowInfo>("lunaris://toplevel-changed", (event) => {
-        windows.update((ws) =>
-            ws.map((w) => (w.id === event.payload.id ? event.payload : w))
-        );
-    });
-
-    listen<{ id: string }>("lunaris://toplevel-removed", (event) => {
-        windows.update((ws) => ws.filter((w) => w.id !== event.payload.id));
-    });
+    const disposer = makeDisposer(pending);
+    teardown = () => {
+        disposer();
+        started = false;
+        teardown = null;
+    };
+    return teardown;
 }
