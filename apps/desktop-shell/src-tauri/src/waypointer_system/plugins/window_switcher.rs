@@ -34,17 +34,41 @@ impl WaypointerPlugin for WindowSwitcherPlugin {
             let title_lower = win.title.to_lowercase();
             let app_lower = win.app_id.to_lowercase();
 
-            let relevance = if title_lower.contains(&query) {
-                0.8
+            // Layered relevance:
+            //   1.0  title exactly equals query
+            //   0.95 title starts with query
+            //   0.85 title contains query
+            //   0.7  app_id starts with query
+            //   0.55 app_id contains query
+            // Previously: binary 0.8 / 0.6, which made sort order
+            // non-deterministic on ties.
+            let relevance = if title_lower == query {
+                1.0
+            } else if title_lower.starts_with(&query) {
+                0.95
+            } else if title_lower.contains(&query) {
+                0.85
+            } else if app_lower.starts_with(&query) {
+                0.7
             } else if app_lower.contains(&query) {
-                0.6
+                0.55
             } else {
                 continue;
             };
 
+            // Use app_id as the visible title when the raw title is
+            // empty. Chromium-based apps sometimes ship blank titles
+            // right after window creation; without this fallback those
+            // rows rendered as empty strings and were un-selectable.
+            let display_title = if win.title.trim().is_empty() {
+                win.app_id.clone()
+            } else {
+                win.title.clone()
+            };
+
             results.push(SearchResult {
                 id: format!("win-{}", win.id),
-                title: win.title.clone(),
+                title: display_title,
                 description: Some(win.app_id.clone()),
                 icon: None,
                 relevance,
@@ -59,6 +83,17 @@ impl WaypointerPlugin for WindowSwitcherPlugin {
                 break;
             }
         }
+
+        // Stable secondary sort by title after relevance — the manager
+        // sort is by relevance only and would otherwise leave equal-
+        // relevance rows in filesystem-iteration order, which jitters
+        // visibly across keystrokes.
+        results.sort_by(|a, b| {
+            b.relevance
+                .partial_cmp(&a.relevance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.title.to_lowercase().cmp(&b.title.to_lowercase()))
+        });
 
         results
     }

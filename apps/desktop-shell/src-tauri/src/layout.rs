@@ -107,9 +107,30 @@ fn update_layout_field(key: &str, value: toml::Value) {
     invalidate_layout_cache();
 }
 
-/// Set the gaps.
+/// Minimum and maximum accepted gap values (pixels). Matches the slider
+/// range in LayoutPopover; this server-side clamp catches malformed or
+/// forged invoke payloads so the compositor never sees a nonsense
+/// value that would render windows at screen-edge or absurdly spaced.
+const GAP_MIN: i32 = 0;
+const GAP_MAX: i32 = 100;
+
+fn clamp_gap(name: &str, v: i32) -> i32 {
+    let clamped = v.clamp(GAP_MIN, GAP_MAX);
+    if clamped != v {
+        log::warn!(
+            "layout: {name}={v} out of range [{GAP_MIN}, {GAP_MAX}]; clamped to {clamped}"
+        );
+    }
+    clamped
+}
+
+/// Set the gaps. Values outside `[GAP_MIN, GAP_MAX]` are clamped with a
+/// warning; the command never rejects so the UI doesn't have to handle
+/// an error case for a hardware-impossible input.
 #[tauri::command]
 pub fn set_layout_gaps(inner: i32, outer: i32) {
+    let inner = clamp_gap("inner_gap", inner);
+    let outer = clamp_gap("outer_gap", outer);
     update_layout_field("inner_gap", toml::Value::Integer(inner as i64));
     update_layout_field("outer_gap", toml::Value::Integer(outer as i64));
     log::info!("layout: gaps set to inner={inner} outer={outer}");

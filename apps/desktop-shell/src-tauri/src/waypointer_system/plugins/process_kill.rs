@@ -23,11 +23,21 @@ impl WaypointerPlugin for ProcessKillPlugin {
             Err(_) => return results,
         };
 
+        let own_pid: u32 = std::process::id();
+
         for entry in proc_dir.flatten() {
             let pid: u32 = match entry.file_name().to_string_lossy().parse() {
                 Ok(p) => p,
                 Err(_) => continue,
             };
+
+            // Safety: hide PID 1 (init / systemd) and the Waypointer's
+            // own process from the kill list. Offering either would
+            // let the user take down the session (PID 1) or the shell
+            // itself with a single click — never desirable.
+            if pid == 1 || pid == own_pid {
+                continue;
+            }
 
             // Check ownership.
             let status_path = format!("/proc/{pid}/status");
@@ -94,10 +104,43 @@ impl WaypointerPlugin for ProcessKillPlugin {
 
     fn execute(&self, result: &SearchResult) -> Result<(), PluginError> {
         if let Action::Custom { ref data, .. } = result.action {
-            if let Some(pid) = data.get("pid").and_then(|v| v.as_u64()) {
-                unsafe {
-                    libc::kill(pid as i32, libc::SIGTERM);
-                }
+            let Some(pid) = data.get("pid").and_then(|v| v.as_u64()) else {
+                return Err(PluginError::ExecuteFailed(
+                    "kill_process action missing 'pid' field".into(),
+                ));
+            };
+
+            // Frontend may include `"signal": "SIGKILL"` to force-kill
+            // (mapped from Shift+Enter). Default is SIGTERM so callers
+            // don't need to know about signals unless they explicitly
+            // want the harder kill.
+            let signal = match data.get("signal").and_then(|v| v.as_str()) {
+                Some("SIGKILL") => libc::SIGKILL,
+                Some("SIGINT") => libc::SIGINT,
+                Some("SIGHUP") => libc::SIGHUP,
+                _ => libc::SIGTERM,
+            };
+
+            // Extra guardrail: the search path already filters out
+            // PID 1 and our own PID, but a replay of a stale result
+            // after the process exited could hit those too. Refuse
+            // both here as a belt-and-braces second check.
+            if pid == 1 || pid as u32 == std::process::id() {
+                return Err(PluginError::ExecuteFailed(format!(
+                    "refusing to signal protected PID {pid}"
+                )));
+            }
+
+            // SAFETY: `libc::kill` is a simple system call with no
+            // Rust-side invariants; it returns -1 with errno set on
+            // failure (e.g. ESRCH if the process is gone, EPERM on
+            // permission error).
+            let rc = unsafe { libc::kill(pid as i32, signal) };
+            if rc != 0 {
+                let err = std::io::Error::last_os_error();
+                return Err(PluginError::ExecuteFailed(format!(
+                    "kill({pid}, {signal}) failed: {err}"
+                )));
             }
         }
         Ok(())

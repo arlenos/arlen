@@ -25,9 +25,19 @@
     if ($activePopover === "battery") poll();
   });
 
-  function setProfile(p: string) {
+  async function setProfile(p: string) {
+    // Optimistic UI update so the profile pill reflects the click
+    // immediately. Re-poll afterwards so the `time_remaining` estimate
+    // reflects the new profile (UPower recalculates based on current
+    // drain; previously this stayed stale until the next upstream
+    // battery event).
     powerProfile = p;
-    invoke("set_power_profile", { profile: p }).catch(() => {});
+    try {
+      await invoke("set_power_profile", { profile: p });
+    } catch (e) {
+      console.warn("[battery] set_power_profile failed:", e);
+    }
+    await poll();
   }
 
   function timeStr(mins: number | null): string {

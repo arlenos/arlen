@@ -40,7 +40,18 @@ impl WaypointerPlugin for ProjectsPlugin {
                 .collect()
         };
 
-        matched
+        // Deduplicate by project id. The graph query shouldn't return
+        // duplicates in normal operation, but a partially-repaired
+        // database or migration can leave duplicate Project nodes —
+        // we collapse them here rather than let the user see the same
+        // focus target twice.
+        let mut seen = std::collections::HashSet::new();
+        let deduped: Vec<&Project> = matched
+            .into_iter()
+            .filter(|p| seen.insert(p.id.clone()))
+            .collect();
+
+        deduped
             .into_iter()
             .take(self.max_results())
             .map(|p| SearchResult {

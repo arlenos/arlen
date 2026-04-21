@@ -81,7 +81,20 @@
     const unlisten = listen("bluetooth-changed", () => {
       if ($activePopover === "bluetooth") load();
     });
-    return () => { unlisten.then((fn) => fn()); };
+    return () => {
+      unlisten.then((fn) => fn()).catch(() => {});
+      // Hard cleanup on component destroy: the $effect above handles
+      // the scan-timer on popover close, but an abrupt unmount (window
+      // hide, HMR full-reload) bypasses it and would leave the 10-s
+      // timer scheduled on a detached closure.
+      if (scanTimer) {
+        clearTimeout(scanTimer);
+        scanTimer = null;
+      }
+      if (btState?.discovering) {
+        invoke("stop_bluetooth_scan").catch(() => {});
+      }
+    };
   });
 
   async function togglePower() {

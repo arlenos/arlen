@@ -74,8 +74,15 @@ impl WaypointerPlugin for AppSearchPlugin {
             }
         }
 
+        // Secondary sort by title so equal-relevance entries have a
+        // stable order across keystrokes. Without the tiebreaker,
+        // two apps at relevance 0.7 swap position whenever the
+        // HashMap iteration order changes.
         results.sort_by(|a, b| {
-            b.relevance.partial_cmp(&a.relevance).unwrap_or(std::cmp::Ordering::Equal)
+            b.relevance
+                .partial_cmp(&a.relevance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.title.to_lowercase().cmp(&b.title.to_lowercase()))
         });
 
         results
