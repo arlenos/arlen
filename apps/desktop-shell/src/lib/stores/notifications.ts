@@ -7,7 +7,10 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { writable, derived, get } from "svelte/store";
 import { toast } from "svelte-sonner";
+import type { Component } from "svelte";
+import NotificationToastIcon from "$lib/components/NotificationToastIcon.svelte";
 import { activePopover } from "./activePopover.js";
+import { windows } from "./windows.js";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -173,13 +176,97 @@ function showToast(n: Notification) {
   fireToast(n);
 }
 
+/// Build a per-toast icon component with `app_icon` and `app_name`
+/// pre-bound via closure. svelte-sonner instantiates the icon slot as
+/// `<toast.icon />` without passing props, so we wrap the real Svelte 5
+/// component (which is a function of `(anchor, props)`) in a thin
+/// forwarder that injects the baked-in values.
+function makeToastIcon(iconUrl: string, appName: string): Component {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const Inner = NotificationToastIcon as unknown as (
+    anchor: any,
+    props: { iconUrl: string; appName: string },
+  ) => unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return ((anchor: any) => Inner(anchor, { iconUrl, appName })) as Component;
+}
+
+/// Find a matching open window for a notification and activate it.
+/// Case-insensitive; tries exact, then substring both directions, so
+/// "Thunderbird" matches `thunderbird`, "Discord" matches
+/// `org.discordapp.Discord`, and so on. Does nothing if no window
+/// matches — we deliberately don't launch the app here; a click that
+/// silently fails is safer than spawning a fresh process when the
+/// user just wanted to surface an existing window.
+function focusAppForNotification(n: Notification): void {
+  const target = n.app_name.toLowerCase().trim();
+  if (!target) return;
+  const wins = get(windows);
+  const match =
+    wins.find((w) => w.app_id.toLowerCase() === target) ??
+    wins.find((w) => w.app_id.toLowerCase().includes(target)) ??
+    wins.find((w) => target.includes(w.app_id.toLowerCase())) ??
+    null;
+  if (match) {
+    invoke("activate_window", { id: match.id }).catch((e) =>
+      console.warn("[toast-click] activate_window failed:", e),
+    );
+  } else {
+    console.log(
+      `[toast-click] no window match for app_name="${n.app_name}" (tried ${wins.length} windows)`,
+    );
+  }
+}
+
+/// Install a single document-level click listener that turns clicks on
+/// a toast body (anywhere outside action/cancel/close buttons) into a
+/// focus-the-app action. Runs once; subsequent calls are no-ops.
+///
+/// We deliberately do not use svelte-sonner's built-in action handler
+/// here: that would conflate "click to peek" with "confirm primary
+/// action", which is dangerous for destructive notifications (e.g.
+/// "Delete all messages" with an Undo action would execute the delete
+/// instead of surfacing the app).
+let toastClickHandlerInstalled = false;
+function installToastClickHandler(): void {
+  if (toastClickHandlerInstalled) return;
+  toastClickHandlerInstalled = true;
+  document.addEventListener("click", (e) => {
+    const target = e.target as Element | null;
+    if (!target) return;
+    const toastEl = target.closest("[data-sonner-toast]");
+    if (!toastEl) return;
+    // Skip clicks that land on one of the toast's own buttons — those
+    // own their handlers (action/cancel callbacks, close dismiss).
+    if (target.closest("button")) return;
+    // Per-toast marker class carries the notification id.
+    const idClass = Array.from(toastEl.classList).find((c) =>
+      c.startsWith("lunaris-notif-"),
+    );
+    if (!idClass) return;
+    const id = parseInt(idClass.slice("lunaris-notif-".length), 10);
+    if (Number.isNaN(id)) return;
+    const notif = get(notifications).find((nn) => nn.id === id);
+    if (!notif) return;
+    focusAppForNotification(notif);
+    toast.dismiss(id);
+  });
+}
+
 function fireToast(n: Notification) {
   const description = n.body || undefined;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const opts: Record<string, any> = {
+    // Use the notification's own id so we can `toast.dismiss(id)`
+    // after surfacing the app on body-click.
+    id: n.id,
     description,
     closeButton: true,
+    icon: makeToastIcon(n.app_icon, n.app_name),
+    // Per-toast marker class for click routing. Merged with the
+    // Toaster-level default class by svelte-sonner.
+    class: `lunaris-notif-${n.id}`,
     onDismiss: onToastGone,
     onAutoClose: onToastGone,
   };
@@ -222,6 +309,8 @@ function fireToast(n: Notification) {
 
 /** Initialize notification event listeners. Call once from +layout.svelte. */
 export function initNotifications() {
+  installToastClickHandler();
+
   // New notification from daemon.
   listen<Notification>("notification:new", ({ payload }) => {
     console.log("[notifications] new:", payload.id, payload.app_name, payload.summary, "icon:", payload.app_icon ? "yes" : "no");
