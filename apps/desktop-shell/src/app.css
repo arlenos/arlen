@@ -254,39 +254,135 @@
   right: 8px !important;
 }
 
-/* Toast action/cancel button alignment. */
+/* ============================================================
+   Toast layout: two-row grid.
+   Row 1: icon (auto) | content (span rest)
+   Row 2: actions span full width; with two buttons split 50/50.
+
+   Grid (vs. sonner's default flex) gives us predictable placement
+   without touching sonner's DOM order, so `lunaris-toast-anim-*`
+   still drives in/out animation unchanged.
+   ============================================================ */
 [data-sonner-toast][data-styled="true"] {
+  display: grid !important;
+  grid-template-columns: auto 1fr 1fr !important;
+  column-gap: 12px !important;
+  row-gap: 10px !important;
   align-items: center !important;
-  /* Follow the runtime corner radius. svelte-sonner ships with a fixed
-     8px border-radius; we override it here so toasts rescale alongside
-     the rest of the shell when appearance.toml [window].corner_radius
-     changes. --radius-lg keeps toasts visibly more rounded than
-     in-shell chrome at the default theme. */
+  padding: 14px !important;
+  /* Runtime corner radius — scales with appearance.toml [window].corner_radius. */
   border-radius: var(--radius-lg) !important;
+  /* Click-to-focus-app: signal that the body is interactive. Action
+     buttons get their own cursor via browser default. */
+  cursor: pointer;
 }
-/* Action / cancel buttons inside the toast follow the smaller token. */
-[data-sonner-toast][data-styled="true"] [data-button],
-[data-sonner-toast][data-styled="true"] [data-cancel] {
-  border-radius: var(--radius-md) !important;
-}
-/* Close (X) button on the toast — svelte-sonner ships a hardcoded
-   round dismiss button. Use the small token so it scales with the
-   rest of the shell instead of staying a fixed circle. */
-[data-sonner-toast] [data-close-button],
-[data-sonner-toast][data-styled="true"] [data-close-button] {
-  border-radius: var(--radius-sm) !important;
+[data-sonner-toast][data-styled="true"] [data-icon] {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
 }
 [data-sonner-toast][data-styled="true"] [data-content] {
-  flex: 1 !important;
+  grid-column: 2 / 4 !important;
+  grid-row: 1 !important;
   min-width: 0 !important;
 }
-[data-sonner-toast][data-styled="true"] [data-button] {
-  margin-left: 0 !important;
-  margin-right: 0 !important;
+[data-sonner-toast][data-styled="true"] [data-title] {
+  font-size: 0.875rem !important;   /* 14px */
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
+}
+[data-sonner-toast][data-styled="true"] [data-description] {
+  font-size: 0.8125rem !important;  /* 13px */
+  line-height: 1.45 !important;
+  opacity: 0.8;
+  margin-top: 2px;
+}
+
+/* Action / cancel buttons: row 2, full width when solo, 50/50 when both.
+   Uses :has() to detect the cancel sibling and switch layout.
+
+   Styling mirrors the shell's shared button pattern (qs-toggle-btn,
+   net-refresh, popover items): subtle fg-tinted background, 1px
+   fg-tinted border, motion-token transitions, tactile `:active`
+   scale. Both buttons look identical — the "primary" vs "cancel"
+   distinction is conveyed by position (right vs left), not colour.
+   ============================================================ */
+[data-sonner-toast][data-styled="true"] [data-button],
+[data-sonner-toast][data-styled="true"] [data-cancel] {
+  grid-row: 2 !important;
+  grid-column: 2 / 4 !important;
+  margin: 0 !important;
+  justify-self: stretch !important;
   white-space: nowrap !important;
-  flex-shrink: 0 !important;
+  padding: 7px 12px !important;
+  border-radius: var(--radius-md) !important;
+  background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent) !important;
+  color: var(--color-fg-shell) !important;
+  font-size: 0.8125rem !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-micro) var(--ease-out) !important;
 }
-/* Stack buttons vertically when both present. */
-[data-sonner-toast][data-styled="true"] [data-cancel] + [data-button] {
-  margin-left: 0 !important;
+[data-sonner-toast][data-styled="true"] [data-button]:hover,
+[data-sonner-toast][data-styled="true"] [data-cancel]:hover {
+  background: color-mix(in srgb, var(--color-fg-shell) 14%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-fg-shell) 25%, transparent) !important;
 }
+[data-sonner-toast][data-styled="true"] [data-button]:active,
+[data-sonner-toast][data-styled="true"] [data-cancel]:active {
+  transform: scale(0.97);
+}
+[data-sonner-toast][data-styled="true"]:has([data-cancel]) [data-cancel] {
+  grid-column: 2 !important;
+}
+[data-sonner-toast][data-styled="true"]:has([data-cancel]) [data-button] {
+  grid-column: 3 !important;
+}
+
+/* ============================================================
+   Close button: inside the toast, hover-revealed, 16x16, dezent.
+
+   Sonner's default positions it at top:0/left or right:0 with
+   transform: translate(±35%, -35%) — i.e., protruding out of the
+   corner. We reset the transform and use top/right inside-padding
+   so it sits neatly in the toast's upper-right. Opacity is 0 by
+   default and fades in on parent hover using motion tokens.
+   ============================================================ */
+[data-sonner-toast][data-styled="true"] [data-close-button] {
+  position: absolute !important;
+  top: 8px !important;
+  right: 8px !important;
+  left: auto !important;
+  transform: none !important;
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: var(--radius-sm) !important;
+  background: transparent !important;
+  border: none !important;
+  color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent) !important;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out) !important;
+}
+[data-sonner-toast][data-styled="true"] [data-close-button] svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+[data-sonner-toast][data-styled="true"]:hover [data-close-button] {
+  opacity: 0.65;
+}
+[data-sonner-toast][data-styled="true"] [data-close-button]:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent) !important;
+}
+
+/* Critical notifications rely on svelte-sonner's `richColors` path
+   (fireToast() uses `toast.error()` for Priority::Critical) which
+   already applies a red background tint via `--error-bg/border/text`.
+   We deliberately don't add extra border/shadow on top of that — the
+   tint alone reads clearly without over-styling. */
