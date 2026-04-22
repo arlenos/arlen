@@ -113,15 +113,55 @@
     height: 22px;
     padding: 0;
     opacity: 0.7;
-    transition: opacity var(--duration-fast) var(--easing-default);
+    /*
+      Transform + background transitions on `--duration-micro` match
+      the rest of the shell's interactive-chrome feel (see
+      .interactive in sdk/ui-kit/motion.css). Opacity uses
+      `--duration-fast` because a slightly longer fade reads as
+      deliberate rather than jumpy. Baseline `scale(1)` is required
+      so the hover/active scales have a GPU-composited layer ready
+      from the first frame — without it the first scale triggers
+      a repaint.
+    */
+    transform: scale(1);
+    transition:
+      opacity var(--duration-fast, 150ms) var(--ease-out, ease-out),
+      transform var(--duration-micro, 100ms) var(--ease-out, ease-out),
+      background-color var(--duration-micro, 100ms) var(--ease-out, ease-out),
+      color var(--duration-micro, 100ms) var(--ease-out, ease-out);
   }
 
   .window-buttons :global(.control-btn:hover) {
     opacity: 1;
+    transform: scale(1.1);
+    background-color: color-mix(in srgb, var(--foreground) 10%, transparent);
+  }
+
+  .window-buttons :global(.control-btn:active) {
+    transform: scale(0.9);
+  }
+
+  .window-buttons :global(.control-btn:focus-visible) {
+    outline: 2px solid var(--color-accent, currentColor);
+    outline-offset: 1px;
   }
 
   .window-buttons :global(.close-btn:hover) {
     background-color: var(--destructive);
     color: #ffffff;
+  }
+
+  /*
+    Reduced-motion guardrail: motion.css zeroes the duration tokens
+    under `prefers-reduced-motion: reduce`, but the scale transforms
+    still apply instantly without a transition. Disable them here so
+    the button stays visually static under that preference.
+  */
+  @media (prefers-reduced-motion: reduce) {
+    .window-buttons :global(.control-btn),
+    .window-buttons :global(.control-btn:hover),
+    .window-buttons :global(.control-btn:active) {
+      transform: none;
+    }
   }
 </style>

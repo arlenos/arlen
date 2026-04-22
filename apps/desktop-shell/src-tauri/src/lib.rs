@@ -184,6 +184,7 @@ pub fn run() {
             shell_overlay_client::zoom_close,
             shell_overlay_client::zoom_set_increment,
             shell_overlay_client::zoom_set_movement,
+            shell_overlay_client::update_window_header_regions,
             shell_overlay_client::window_header_action,
             shell_overlay_client::set_notification_input_region,
             shell_overlay_client::set_popover_input_region,
