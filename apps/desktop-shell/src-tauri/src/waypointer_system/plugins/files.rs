@@ -51,7 +51,7 @@ const CACHE_TTL_MS: i64 = 5_000;
 const GRAPH_TIMEOUT_MS: u64 = 200;
 
 pub struct FilesPlugin {
-    cache: Mutex<Option<CachedQuery>>,
+    cache: Mutex<Option<CachedPool>>,
 }
 
 impl FilesPlugin {
@@ -68,9 +68,15 @@ impl Default for FilesPlugin {
     }
 }
 
-/// One cached query: its normalised key and the files we returned.
-struct CachedQuery {
-    key: String,
+/// Cached candidate pool. Holds the last snapshot of the top-200
+/// recently-accessed files from the graph. Previously this was keyed
+/// per (mode, filter-text) tuple, which meant typing `c`, `co`, `cop`
+/// in the Waypointer fired *three* separate graph round-trips even
+/// though `fetch_rows()` returns the same pool regardless of the
+/// query — the filter is applied post-fetch in Rust. One untagged
+/// cache entry means one graph call per 5-second window no matter
+/// how many characters the user types.
+struct CachedPool {
     fetched_at: i64,
     files: Vec<FileRow>,
 }
@@ -117,14 +123,6 @@ impl<'a> QueryMode<'a> {
             QueryMode::Plain(s) | QueryMode::Project(s) | QueryMode::App(s) => s,
         }
     }
-
-    fn cache_key(&self) -> String {
-        match self {
-            QueryMode::Plain(s) => format!("plain:{}", s.to_lowercase()),
-            QueryMode::Project(s) => format!("project:{}", s.to_lowercase()),
-            QueryMode::App(s) => format!("app:{}", s.to_lowercase()),
-        }
-    }
 }
 
 impl WaypointerPlugin for FilesPlugin {
@@ -151,12 +149,11 @@ impl WaypointerPlugin for FilesPlugin {
             return Vec::new();
         }
 
-        let key = mode.cache_key();
-        let rows = match cached_rows(&self.cache, &key) {
+        let rows = match cached_rows(&self.cache) {
             Some(r) => r,
             None => {
                 let rows = fetch_rows();
-                store_cache(&self.cache, key, rows.clone());
+                store_cache(&self.cache, rows.clone());
                 rows
             }
         };
@@ -190,22 +187,18 @@ impl WaypointerPlugin for FilesPlugin {
 }
 
 /// Cache lookup. Returns `Some(rows)` when a fresh entry exists.
-fn cached_rows(cache: &Mutex<Option<CachedQuery>>, key: &str) -> Option<Vec<FileRow>> {
+fn cached_rows(cache: &Mutex<Option<CachedPool>>) -> Option<Vec<FileRow>> {
     let guard = cache.lock().ok()?;
     let entry = guard.as_ref()?;
-    if entry.key != key {
-        return None;
-    }
     if now_ms() - entry.fetched_at >= CACHE_TTL_MS {
         return None;
     }
     Some(entry.files.clone())
 }
 
-fn store_cache(cache: &Mutex<Option<CachedQuery>>, key: String, files: Vec<FileRow>) {
+fn store_cache(cache: &Mutex<Option<CachedPool>>, files: Vec<FileRow>) {
     if let Ok(mut guard) = cache.lock() {
-        *guard = Some(CachedQuery {
-            key,
+        *guard = Some(CachedPool {
             fetched_at: now_ms(),
             files,
         });
@@ -753,17 +746,21 @@ mod tests {
     fn cache_hit_returns_stored_rows() {
         let cache = Mutex::new(None);
         let rows = vec![mk_row("/a/x.md", "app", 1000, None)];
-        store_cache(&cache, "plain:test".into(), rows.clone());
-        let hit = cached_rows(&cache, "plain:test");
+        store_cache(&cache, rows.clone());
+        let hit = cached_rows(&cache);
         assert!(hit.is_some());
         assert_eq!(hit.unwrap().len(), 1);
     }
 
     #[test]
-    fn cache_miss_on_different_key() {
+    fn cache_shared_across_modes() {
+        // The pool cache is mode-independent by design: every query
+        // (plain, project:, app:) shares the same Top-200 rows.
         let cache = Mutex::new(None);
-        store_cache(&cache, "plain:test".into(), vec![]);
-        assert!(cached_rows(&cache, "plain:other").is_none());
+        let rows = vec![mk_row("/a/x.md", "app", 1000, Some("Lunaris"))];
+        store_cache(&cache, rows);
+        // Any subsequent call, regardless of mode/filter, gets the hit.
+        assert!(cached_rows(&cache).is_some());
     }
 
     #[test]
@@ -772,13 +769,12 @@ mod tests {
         // Manually insert a stale entry.
         {
             let mut guard = cache.lock().unwrap();
-            *guard = Some(CachedQuery {
-                key: "plain:test".into(),
+            *guard = Some(CachedPool {
                 fetched_at: now_ms() - CACHE_TTL_MS - 1_000,
                 files: vec![],
             });
         }
-        assert!(cached_rows(&cache, "plain:test").is_none());
+        assert!(cached_rows(&cache).is_none());
     }
 
     #[test]

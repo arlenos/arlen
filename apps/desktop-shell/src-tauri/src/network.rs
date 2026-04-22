@@ -171,10 +171,21 @@ pub fn get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
     }
 
     // Cache expired — trigger RF scan (best-effort, non-blocking).
+    //
+    // `.spawn()` + dropping the child, not `.output()`: a full 2.4/5GHz
+    // scan takes 1-5 seconds and `.output()` would wait for it. The
+    // fresh results show up on the *next* call (once NetworkManager
+    // has published them); callers see the stale cache meanwhile.
+    // Previously this was `.output()` which stalled a Tauri worker
+    // thread for seconds when the cache expired — the top complaint
+    // in the freeze report.
     if should_rescan_wifi() {
         let _ = std::process::Command::new("nmcli")
             .args(["dev", "wifi", "rescan"])
-            .output();
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
     }
 
     let output = std::process::Command::new("nmcli")

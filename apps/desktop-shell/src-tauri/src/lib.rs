@@ -8,6 +8,7 @@ mod gtk_menu_bridge;
 mod layer_shell;
 mod layout;
 mod menu_store;
+mod minimized_windows;
 mod modules;
 mod module_errors;
 mod extension_registry;
@@ -81,7 +82,7 @@ pub fn run() {
         Arc::clone(&window_list),
         Arc::clone(&clipboard_state),
     );
-    let plugin_mgr_state: waypointer_system::PluginManagerState = std::sync::Mutex::new(plugin_mgr);
+    let plugin_mgr_state: waypointer_system::PluginManagerState = std::sync::RwLock::new(plugin_mgr);
 
     let ext_registry: extension_registry::ExtensionRegistryState =
         std::sync::Mutex::new(extension_registry::ExtensionRegistry::new());
@@ -282,6 +283,14 @@ pub fn run() {
             wayland_client::window_move_to_workspace,
             wayland_client::get_windows,
             wayland_client::get_workspaces,
+            minimized_windows::get_minimized_windows,
+            minimized_windows::restore_window,
+            minimized_windows::restore_window_to_workspace,
+            minimized_windows::close_minimized_window,
+            minimized_windows::minimize_window,
+            minimized_windows::close_window,
+            minimized_windows::fullscreen_window,
+            minimized_windows::tile_window,
             waypointer_processes::get_processes,
             waypointer_processes::kill_process,
             waypointer_unicode::search_unicode,

@@ -3,6 +3,8 @@
 /// Queries `org.freedesktop.UPower` for the display device's battery
 /// state. Returns `None` on desktop PCs without a battery.
 
+use std::sync::{Mutex, OnceLock};
+
 use serde::Serialize;
 use zbus::blocking::Connection;
 use zbus::names::{BusName, InterfaceName};
@@ -19,15 +21,68 @@ pub struct BatteryStatus {
     pub time_remaining_minutes: Option<u32>,
 }
 
-/// Returns the current battery status, or None if no battery is present.
+/// Cached system-bus connection. Previously the command opened a new
+/// connection on every call (UPower fires PropertiesChanged every
+/// ~30s when charging, and the BatteryIndicator re-queries on each
+/// event), which added 20-80ms of sync authentication + socket
+/// handshake per call on a Tauri worker thread. The connection stays
+/// valid for the process lifetime; if it's ever lost we invalidate
+/// the cache on error so the next call reconnects.
+static CONN: OnceLock<Mutex<Option<Connection>>> = OnceLock::new();
+
+fn conn_cache() -> &'static Mutex<Option<Connection>> {
+    CONN.get_or_init(|| Mutex::new(None))
+}
+
+/// Fetch a system-bus connection, reusing the cached one when healthy.
+/// The `Mutex` guards the swap; the returned `Connection` is cheap to
+/// clone (Arc inside) so callers don't hold the lock across D-Bus I/O.
+fn get_connection() -> Option<Connection> {
+    let mut guard = conn_cache().lock().ok()?;
+    if let Some(ref c) = *guard {
+        return Some(c.clone());
+    }
+    let c = Connection::system().ok()?;
+    *guard = Some(c.clone());
+    Some(c)
+}
+
+/// Drop the cached connection. Called from a method's error path so
+/// the next call rebuilds it (e.g. after a dbus-daemon restart).
+fn invalidate_connection() {
+    if let Ok(mut guard) = conn_cache().lock() {
+        *guard = None;
+    }
+}
+
+/// Returns the current battery status, or None if no battery is
+/// present. Async + `spawn_blocking` to keep the sync zbus calls off
+/// the tokio runtime — previously this was a sync `pub fn` that
+/// pinned a Tauri worker thread for ~50ms each call.
 #[tauri::command]
-pub fn get_battery_status() -> Option<BatteryStatus> {
-    let conn = Connection::system().ok()?;
+pub async fn get_battery_status() -> Option<BatteryStatus> {
+    tauri::async_runtime::spawn_blocking(get_battery_status_blocking)
+        .await
+        .ok()
+        .flatten()
+}
+
+fn get_battery_status_blocking() -> Option<BatteryStatus> {
+    let conn = get_connection()?;
 
     let path = "/org/freedesktop/UPower/devices/DisplayDevice";
     let iface = "org.freedesktop.UPower.Device";
 
-    let percentage = get_property_f64(&conn, path, iface, "Percentage")?;
+    let percentage = match get_property_f64(&conn, path, iface, "Percentage") {
+        Some(p) => p,
+        None => {
+            // Missing property after a successful connect is almost
+            // always the dbus-daemon going away. Drop the cached
+            // connection so the next call can retry from clean state.
+            invalidate_connection();
+            return None;
+        }
+    };
     let state = get_property_u32(&conn, path, iface, "State")?;
 
     // UPower State enum: 0=Unknown, 1=Charging, 2=Discharging,

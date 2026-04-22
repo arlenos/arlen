@@ -33,6 +33,18 @@ pub struct ToplevelPayload {
     pub title: String,
     pub app_id: String,
     pub active: bool,
+    /// True when `zcosmic_toplevel_handle_v1::State::Minimized` is set.
+    /// The cosmic-toplevel-info protocol broadcasts this on every state
+    /// transition, so the shell's minimized-windows UI reads state
+    /// here rather than subscribing to separate event-bus events.
+    #[serde(default)]
+    pub minimized: bool,
+    /// True when `zcosmic_toplevel_handle_v1::State::Fullscreen` is
+    /// set. Read by the overlay's context menu so the "Fullscreen"
+    /// entry can toggle correctly (send `unset_fullscreen` when the
+    /// window is already fullscreen).
+    #[serde(default)]
+    pub fullscreen: bool,
     pub workspace_ids: Vec<String>,
 }
 
@@ -150,6 +162,85 @@ impl ToplevelSender {
             workspace_handles: Mutex::new(HashMap::new()),
             workspace_outputs: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Ask the compositor to close the window via
+    /// `zcosmic_toplevel_manager_v1::close`. The target app sees a
+    /// polite close request and can prompt for unsaved-work confirm
+    /// — this is the equivalent of a titlebar × button click, not a
+    /// SIGKILL. No-op on missing handle / manager.
+    pub fn close(&self, id: &str) {
+        let handles = self.handles.lock().unwrap();
+        let Some(handle) = handles.get(id) else {
+            log::warn!("toplevel_sender: close: no handle for id={id}");
+            return;
+        };
+        let manager = self.manager.lock().unwrap();
+        let Some(mgr) = manager.as_ref() else {
+            log::warn!("toplevel_sender: close: no manager bound");
+            return;
+        };
+        mgr.close(handle);
+        drop(handles);
+        drop(manager);
+        self.flush();
+        log::debug!("toplevel_sender: close id={id}");
+    }
+
+    /// Toggle the fullscreen state of a window via cosmic-toplevel-
+    /// management. `enable=true` sends `set_fullscreen` (with no
+    /// output override so the compositor picks the window's current
+    /// output); `false` sends `unset_fullscreen`.
+    pub fn set_fullscreen(&self, id: &str, enable: bool) {
+        let handles = self.handles.lock().unwrap();
+        let Some(handle) = handles.get(id) else {
+            log::warn!("toplevel_sender: set_fullscreen: no handle for id={id}");
+            return;
+        };
+        let manager = self.manager.lock().unwrap();
+        let Some(mgr) = manager.as_ref() else {
+            log::warn!("toplevel_sender: set_fullscreen: no manager bound");
+            return;
+        };
+        if enable {
+            // `set_fullscreen` signature: (toplevel, Option<output>).
+            // Passing None lets the compositor keep the toplevel's
+            // current output, which is what a user toggling "go
+            // fullscreen" from the overlay expects.
+            mgr.set_fullscreen(handle, None);
+        } else {
+            mgr.unset_fullscreen(handle);
+        }
+        drop(handles);
+        drop(manager);
+        self.flush();
+        log::debug!("toplevel_sender: set_fullscreen({enable}) id={id}");
+    }
+
+    /// Toggle the minimized state of a window via cosmic-toplevel-
+    /// management. `minimize=true` hides, `minimize=false` restores
+    /// without focusing — call `activate()` separately if the caller
+    /// wants follow-focus.
+    pub fn set_minimized(&self, id: &str, minimize: bool) {
+        let handles = self.handles.lock().unwrap();
+        let Some(handle) = handles.get(id) else {
+            log::warn!("toplevel_sender: set_minimized: no handle for id={id}");
+            return;
+        };
+        let manager = self.manager.lock().unwrap();
+        let Some(mgr) = manager.as_ref() else {
+            log::warn!("toplevel_sender: set_minimized: no manager bound");
+            return;
+        };
+        if minimize {
+            mgr.set_minimized(handle);
+        } else {
+            mgr.unset_minimized(handle);
+        }
+        drop(handles);
+        drop(manager);
+        self.flush();
+        log::debug!("toplevel_sender: set_minimized({minimize}) id={id}");
     }
 
     /// Activates (focuses) the window with the given identifier.
@@ -303,6 +394,12 @@ impl ToplevelInfoHandler for AppData {
                 active: info
                     .state
                     .contains(&zcosmic_toplevel_handle_v1::State::Activated),
+                minimized: info
+                    .state
+                    .contains(&zcosmic_toplevel_handle_v1::State::Minimized),
+                fullscreen: info
+                    .state
+                    .contains(&zcosmic_toplevel_handle_v1::State::Fullscreen),
                 workspace_ids: info.workspace.iter().map(|h| h.id().to_string()).collect(),
             };
             {
@@ -337,6 +434,12 @@ impl ToplevelInfoHandler for AppData {
                 active: info
                     .state
                     .contains(&zcosmic_toplevel_handle_v1::State::Activated),
+                minimized: info
+                    .state
+                    .contains(&zcosmic_toplevel_handle_v1::State::Minimized),
+                fullscreen: info
+                    .state
+                    .contains(&zcosmic_toplevel_handle_v1::State::Fullscreen),
                 workspace_ids: info.workspace.iter().map(|h| h.id().to_string()).collect(),
             };
             {

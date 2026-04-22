@@ -57,7 +57,15 @@
       {#if $isFocused}
         <div class="focus-indicator">
           {#if $focusState.accentColor}
-            <span class="focus-dot" style="background:{$focusState.accentColor}"></span>
+            <!--
+              Svelte `style:` directive rather than `style="..."` with
+              {} interpolation. The Tailwind Vite plugin otherwise
+              tries to CSS-parse the interpolation braces and trips
+              up, surfacing as "Invalid declaration: <script lang=\"ts\">"
+              on the script block a few lines above (known plugin
+              bug — see CLAUDE.md "Tailwind v4 in Tauri/SvelteKit").
+            -->
+            <span class="focus-dot" style:background={$focusState.accentColor}></span>
           {/if}
           <span class="focus-name">{$focusState.projectName}</span>
         </div>

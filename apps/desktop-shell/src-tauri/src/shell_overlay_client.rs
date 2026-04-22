@@ -971,7 +971,7 @@ fn resolve_app_icon_uncached(app_id: &str) -> Option<String> {
             for size in &png_sizes {
                 let path = format!("{base}/{theme}/{size}/apps/{app_id}.png");
                 if let Some(url) = read_as_data_url(&path, "image/png") {
-                    log::info!("resolve_app_icon: FOUND \"{path}\"");
+                    log::debug!("resolve_app_icon: FOUND \"{path}\"");
                     return Some(url);
                 }
             }
@@ -983,7 +983,7 @@ fn resolve_app_icon_uncached(app_id: &str) -> Option<String> {
         for theme in &themes {
             let path = format!("{base}/{theme}/scalable/apps/{app_id}.svg");
             if let Some(url) = read_as_data_url(&path, "image/svg+xml") {
-                log::info!("resolve_app_icon: FOUND (svg) \"{path}\"");
+                log::debug!("resolve_app_icon: FOUND (svg) \"{path}\"");
                 return Some(url);
             }
         }
@@ -994,12 +994,12 @@ fn resolve_app_icon_uncached(app_id: &str) -> Option<String> {
     for (ext, mime) in pixmap_exts {
         let path = format!("/usr/share/pixmaps/{app_id}.{ext}");
         if let Some(url) = read_as_data_url(&path, mime) {
-            log::info!("resolve_app_icon: FOUND (pixmaps) \"{path}\"");
+            log::debug!("resolve_app_icon: FOUND (pixmaps) \"{path}\"");
             return Some(url);
         }
     }
 
-    log::info!("resolve_app_icon: NOT FOUND for \"{app_id}\"");
+    log::debug!("resolve_app_icon: NOT FOUND for \"{app_id}\"");
     None
 }
 
