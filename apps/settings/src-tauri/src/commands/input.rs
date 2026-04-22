@@ -406,11 +406,13 @@ const CATALOGUE: &[CatalogueRow] = &[
         default_binding: Some("Super+Space"),
     },
     CatalogueRow {
-        action: "shell:workspace_overlay_open",
-        category: "shell",
-        label: "Open Workspace Overview",
+        action: "shell:workspace_map_open",
+        category: "workspace_map",
+        label: "Open Workspace Map",
         description: Some(
-            "Horizontal overlay with all workspaces; cycles focus on repeat",
+            "Horizontal overview of all workspaces with window cards; \
+             cycles focus on repeat. Inside the Map, see the \
+             \"Workspace Map\" category for navigation keys.",
         ),
         default_binding: Some("Super+Tab"),
     },
@@ -483,6 +485,28 @@ fn read_bindings() -> Result<BTreeMap<String, String>, String> {
 
 /// Return one entry per catalogue action, plus one entry per custom
 /// binding found in the TOML that is not in the catalogue.
+/// Action aliases: old name → new canonical name. When looking up a
+/// user's existing TOML binding for the new name, we fall back to the
+/// old name so renamed-actions keep their binding without forcing the
+/// user to rebind. Also used by the custom-orphan detection loop so
+/// an old-name binding doesn't show up twice (once as catalogue entry,
+/// once as custom orphan).
+const ACTION_ALIASES: &[(&str, &str)] = &[
+    // Workspace Overlay → Workspace Map rename (2026-04).
+    ("shell:workspace_overlay_open", "shell:workspace_map_open"),
+    ("shell:workspace_overlay_toggle", "shell:workspace_map_open"),
+];
+
+fn alias_for(action: &str) -> Option<&'static str> {
+    ACTION_ALIASES.iter().find_map(
+        |(old, new)| if *new == action { Some(*old) } else { None },
+    )
+}
+
+fn is_aliased_to_catalogue(action: &str) -> bool {
+    ACTION_ALIASES.iter().any(|(old, _)| *old == action)
+}
+
 #[tauri::command]
 pub fn keybindings_get_all() -> Result<Vec<KeybindingEntry>, String> {
     let user = read_bindings()?;
@@ -495,14 +519,23 @@ pub fn keybindings_get_all() -> Result<Vec<KeybindingEntry>, String> {
     let mut out = Vec::new();
     // Catalogue rows.
     for row in CATALOGUE {
-        let binding = action_to_accel.get(row.action).cloned();
-        // If the TOML does not have a [keybindings] section at all,
-        // fall back to defaults so the UI still shows sensible values.
-        let binding = if user.is_empty() {
-            row.default_binding.map(|s| s.to_string())
-        } else {
-            binding
-        };
+        // Three-step binding resolution:
+        // 1. User's explicit override for this action
+        // 2. User's explicit override for a deprecated alias
+        //    (migration path for renamed actions)
+        // 3. The built-in default from the catalogue
+        // Previously this only used steps 1+2 (defaults only when the
+        // whole [keybindings] section was absent), so new catalogue
+        // entries landed on screen as "Not set" for users who had any
+        // prior customisation.
+        let binding = action_to_accel
+            .get(row.action)
+            .cloned()
+            .or_else(|| {
+                alias_for(row.action)
+                    .and_then(|old| action_to_accel.get(old).cloned())
+            })
+            .or_else(|| row.default_binding.map(|s| s.to_string()));
         let is_custom = match (&binding, &row.default_binding) {
             (Some(b), Some(d)) => b != d,
             (Some(_), None) => true,
@@ -524,10 +557,16 @@ pub fn keybindings_get_all() -> Result<Vec<KeybindingEntry>, String> {
     // Custom entries: anything in TOML whose action is not in the
     // catalogue. Keyed by accelerator because two custom entries could
     // share the same action string (unlikely, but technically legal).
+    // Deprecated-alias actions are treated as "known" here so a user's
+    // pre-migration TOML entry (e.g. `shell:workspace_overlay_open`)
+    // doesn't render alongside the renamed catalogue entry.
     let known: std::collections::BTreeSet<&str> =
         CATALOGUE.iter().map(|r| r.action).collect();
     for (accel, action) in &user {
         if known.contains(action.as_str()) {
+            continue;
+        }
+        if is_aliased_to_catalogue(action) {
             continue;
         }
         out.push(KeybindingEntry {
@@ -622,14 +661,22 @@ fn label_for_module_action(action: &str, module_id: &str) -> String {
 #[tauri::command]
 pub fn keybindings_set(action: String, binding: Option<String>) -> Result<(), String> {
     let mut doc = read_doc()?;
-    // First: remove any existing accelerator that maps to this action.
+    // First: remove any existing accelerator that maps to this action
+    // OR to a deprecated alias of it. The alias sweep keeps the TOML
+    // clean when a renamed action is rebound — otherwise a pre-
+    // migration entry for the old name would linger beside the new
+    // one and both would fire.
     {
         let table = keybindings_table_mut(&mut doc);
+        let aliases: Vec<&str> = ACTION_ALIASES
+            .iter()
+            .filter_map(|(old, new)| if *new == action { Some(*old) } else { None })
+            .collect();
         let to_remove: Vec<String> = table
             .iter()
             .filter_map(|(k, v)| {
                 v.as_str()
-                    .filter(|s| *s == action)
+                    .filter(|s| *s == action || aliases.contains(s))
                     .map(|_| k.clone())
             })
             .collect();
@@ -1219,6 +1266,10 @@ mod tests {
 
     #[test]
     fn catalogue_categories_are_known() {
+        // Keep in sync with the frontend `CATEGORIES` list in
+        // src/lib/stores/keybindings.ts — the Settings UI only
+        // renders known categories. Adding a new category here
+        // requires the same id on the frontend.
         const VALID: &[&str] = &[
             "window",
             "focus",
@@ -1226,6 +1277,7 @@ mod tests {
             "tiling",
             "workspace",
             "workspace_move",
+            "workspace_map",
             "keyboard",
             "shell",
             "apps",
@@ -1238,6 +1290,20 @@ mod tests {
                 row.action
             );
         }
+    }
+
+    #[test]
+    fn alias_resolution_round_trip() {
+        // User's existing TOML has the pre-rename action with a
+        // binding. The catalogue has only the new name. alias_for
+        // should bridge them so the UI doesn't render "Not set".
+        let old = "shell:workspace_overlay_open";
+        let new_ = "shell:workspace_map_open";
+        assert_eq!(alias_for(new_), Some(old));
+        assert!(is_aliased_to_catalogue(old));
+        // Non-aliased actions return None.
+        assert!(alias_for("shell:waypointer_open").is_none());
+        assert!(!is_aliased_to_catalogue("shell:waypointer_open"));
     }
 
     #[test]
