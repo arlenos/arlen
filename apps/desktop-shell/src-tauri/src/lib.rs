@@ -8,6 +8,7 @@ mod gtk_menu_bridge;
 mod layer_shell;
 mod layout;
 mod menu_store;
+mod minimized_windows;
 mod modules;
 mod module_errors;
 mod extension_registry;
@@ -282,6 +283,11 @@ pub fn run() {
             wayland_client::window_move_to_workspace,
             wayland_client::get_windows,
             wayland_client::get_workspaces,
+            minimized_windows::get_minimized_windows,
+            minimized_windows::restore_window,
+            minimized_windows::restore_window_to_workspace,
+            minimized_windows::close_minimized_window,
+            minimized_windows::minimize_window,
             waypointer_processes::get_processes,
             waypointer_processes::kill_process,
             waypointer_unicode::search_unicode,

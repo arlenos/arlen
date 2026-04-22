@@ -8,10 +8,26 @@
   import type { WindowInfo } from "$lib/stores/windows.js";
   import { projectPerWorkspace } from "$lib/stores/workspaceProjects.js";
   import { resolveAppIcon } from "$lib/stores/appIcons.js";
+  import {
+    minimizedByWorkspace,
+    loadMinimizedWindows,
+    restoreWindow,
+    restoreWindowToWorkspace,
+    minimizeWindow,
+  } from "$lib/stores/minimizedWindows.js";
+  import type { MinimizedWindow } from "$lib/stores/minimizedWindows.js";
+  import { scale } from "svelte/transition";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import type { UnlistenFn } from "@tauri-apps/api/event";
   import { AppWindow } from "lucide-svelte";
+
+  /// One-shot primer for the icon cache — runs on mount so the first
+  /// paint of minimized-window cards in the overlay doesn't incur
+  /// N serial invokes for resolve_app_icon.
+  $effect(() => {
+    loadMinimizedWindows();
+  });
 
   const mode = $derived(
     $primaryWorkspaces.length <= 5
@@ -215,7 +231,16 @@
   function activateFocused() {
     const id = focusedWindowId;
     if (!id) return;
-    invoke("activate_window", { id }).catch(() => {});
+    // Enter on a minimized card restores instead of activating —
+    // activate alone wouldn't un-minimize on cosmic, it just toggles
+    // focus. restoreWindow calls both unset_minimized and activate,
+    // which is what the user expects.
+    const win = $windows.find((w) => w.id === id);
+    if (win?.minimized) {
+      restoreWindow(id);
+    } else {
+      invoke("activate_window", { id }).catch(() => {});
+    }
     closeOverlayKeyboard();
   }
 
@@ -328,6 +353,10 @@
   const windowsByWorkspace = $derived.by(() => {
     const map = new Map<string, WindowInfo[]>();
     for (const w of $windows) {
+      // Minimized windows move to the dedicated minimized section
+      // below each workspace card in the overlay. If they also
+      // appeared in the regular cards row it would double-count.
+      if (w.minimized) continue;
       for (const wsId of w.workspace_ids) {
         const bucket = map.get(wsId);
         if (bucket) bucket.push(w);
@@ -354,10 +383,20 @@
   // and keeps the component stable (custom ghosts previously caused
   // shell freezes; see debug session 2026-04-19).
 
-  let dragState = $state<{ windowId: string; sourceWs: string } | null>(
-    null,
-  );
+  /// Drag state. `kind` distinguishes active vs. minimized source
+  /// cards so the drop handler knows which row to target on same-
+  /// workspace drops. `sourceWs` is "" for sticky/orphan minimized
+  /// windows (no workspace attachment).
+  type DragSourceKind = "active" | "minimized";
+  let dragState = $state<
+    | { windowId: string; sourceWs: string; kind: DragSourceKind }
+    | null
+  >(null);
   let dragOverWs = $state<string | null>(null);
+  /// Which subregion the cursor is hovering during drag. Used for
+  /// the drop-zone highlight so the user sees exactly whether the
+  /// drop will land in the Active or Minimized area.
+  let dragOverSection = $state<DropSection | null>(null);
 
   // ── Pointer-based drag & drop ───────────────────────────────────────────
   //
@@ -382,6 +421,11 @@
   /// Non-reactive pointer-state for the in-flight gesture. Holds
   /// enough info to distinguish a click (pointer released before
   /// moving past `DRAG_THRESHOLD_PX`) from a drag.
+  ///
+  /// `kind` discriminates the source card subregion. The drop
+  /// handler uses (kind, target-section, same/different workspace)
+  /// to decide the action. All drags go through the overlay; the
+  /// topbar pills are click-only.
   let pointerDrag: {
     pointerId: number;
     startX: number;
@@ -390,6 +434,7 @@
     sourceWs: string;
     card: HTMLElement;
     dragging: boolean;
+    kind: DragSourceKind;
   } | null = null;
 
   let ghostEl: HTMLElement | null = null;
@@ -450,15 +495,40 @@
       `translate3d(${x}px, ${y}px, 0) rotate(${ghostRotation.toFixed(2)}deg) scale(1.05)`;
   }
 
-  /// Finds the workspace column under (x, y) via elementFromPoint,
-  /// returning its workspace id (from `data-ws-id`) or null if the
-  /// pointer isn't over any column. Used for live hover highlight
-  /// during the drag and for drop-target resolution.
-  function columnIdAt(clientX: number, clientY: number): string | null {
-    const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+  /// A drop-target location resolved from a cursor position. The
+  /// section tells the drop handler whether the user dropped on the
+  /// "active windows" area (top 75%) or the "minimized" area
+  /// (bottom 25%) of a workspace card — the action matrix branches
+  /// on this.
+  type DropSection = "active" | "minimized";
+  type DropTarget = { wsId: string; section: DropSection };
+
+  /// Finds the drop-target column + section under (x, y) via
+  /// elementFromPoint. Walks the DOM for the closest `data-ws-id`
+  /// (gives the workspace) AND the closest `data-ws-section`
+  /// (gives active vs minimized). The data attributes are set on
+  /// the overlay's card subregions — pills in the topbar don't
+  /// carry them, so the topbar indicator never acts as a drop
+  /// zone.
+  function dropTargetAt(
+    clientX: number,
+    clientY: number,
+  ): DropTarget | null {
+    const el = document.elementFromPoint(
+      clientX,
+      clientY,
+    ) as HTMLElement | null;
     if (!el) return null;
     const column = el.closest("[data-ws-id]") as HTMLElement | null;
-    return column?.dataset.wsId ?? null;
+    if (!column) return null;
+    const sectionEl = el.closest("[data-ws-section]") as HTMLElement | null;
+    // Missing section element = cursor is over the column header or
+    // padding. We still return a target with a default section of
+    // "active" so users who drop slightly off the cards still get a
+    // reasonable action (move-to-workspace keeps the window open).
+    const section = (sectionEl?.dataset.wsSection as DropSection | undefined)
+      ?? "active";
+    return { wsId: column.dataset.wsId!, section };
   }
 
   /// rAF-throttled hit-test for the drag hover state.
@@ -482,7 +552,9 @@
     pendingHitTest = { x, y };
     pendingHitTestFrame = requestAnimationFrame(() => {
       if (!pendingHitTest) return;
-      dragOverWs = columnIdAt(pendingHitTest.x, pendingHitTest.y);
+      const t = dropTargetAt(pendingHitTest.x, pendingHitTest.y);
+      dragOverWs = t?.wsId ?? null;
+      dragOverSection = t?.section ?? null;
       pendingHitTest = null;
     });
   }
@@ -498,14 +570,19 @@
   function resetDragUI() {
     dragState = null;
     dragOverWs = null;
+    dragOverSection = null;
     removeGhost();
     cancelPendingHitTest();
   }
 
+  /// Unified pointer-down handler for both active and minimized
+  /// cards. `kind` routes the action at drop time; the rest of the
+  /// gesture (threshold, ghost, hit-test) is identical.
   function onCardPointerDown(
     e: PointerEvent,
-    win: WindowInfo,
+    windowId: string,
     sourceWs: string,
+    kind: DragSourceKind,
   ) {
     if (e.button !== 0) return; // left mouse / primary touch only
     const card = e.currentTarget as HTMLElement;
@@ -518,10 +595,6 @@
     } catch {
       /* capture not supported → we'll still get events on the card */
     }
-    // Capture the offset from card-top-left to pointer NOW while
-    // the card is still in its starting position. Used later to
-    // position the ghost so the pointer stays on the same point
-    // of the card.
     const rect = card.getBoundingClientRect();
     ghostOffsetX = e.clientX - rect.left;
     ghostOffsetY = e.clientY - rect.top;
@@ -530,10 +603,11 @@
       pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
-      windowId: win.id,
+      windowId,
       sourceWs,
       card,
       dragging: false,
+      kind,
     };
   }
 
@@ -571,6 +645,7 @@
       dragState = {
         windowId: pointerDrag.windowId,
         sourceWs: pointerDrag.sourceWs,
+        kind: pointerDrag.kind,
       };
 
       // Backstop in case pointerup/cancel never fire (OS-level
@@ -593,30 +668,65 @@
     }
 
     if (captured.dragging) {
-      const targetWs = columnIdAt(e.clientX, e.clientY);
+      const drop = dropTargetAt(e.clientX, e.clientY);
       // Mark the drop BEFORE resetDragUI so the synthetic click that
       // follows pointerup (see `lastDropTime` comment) is inside the
       // 300ms suppression window.
       lastDropTime = performance.now();
       resetDragUI();
-      if (targetWs && targetWs !== captured.sourceWs) {
-        invoke("window_move_to_workspace", {
-          windowId: captured.windowId,
-          targetWorkspaceId: targetWs,
-        }).catch((err) =>
-          console.error("window_move_to_workspace failed", err),
-        );
+
+      // Drop outside any workspace column → cancel, no state change.
+      if (!drop) {
+        return;
+      }
+
+      const sameWs = drop.wsId === captured.sourceWs;
+      const sourceKind = captured.kind;
+      const targetSection = drop.section;
+
+      // Action matrix (see spec):
+      //
+      // | Source     | Target workspace | Target section | Action     |
+      // |------------|------------------|----------------|------------|
+      // | active     | same             | active         | no-op      |
+      // | active     | same             | minimized      | minimize   |
+      // | active     | different        | any            | move       |
+      // | minimized  | same             | active         | restore    |
+      // | minimized  | same             | minimized      | no-op      |
+      // | minimized  | different        | any            | move+restore|
+      if (sourceKind === "active") {
+        if (sameWs && targetSection === "minimized") {
+          minimizeWindow(captured.windowId);
+        } else if (!sameWs) {
+          invoke("window_move_to_workspace", {
+            windowId: captured.windowId,
+            targetWorkspaceId: drop.wsId,
+          }).catch((err) =>
+            console.error("window_move_to_workspace failed", err),
+          );
+        }
+        // else: same workspace, active section → no-op
+      } else {
+        // sourceKind === "minimized"
+        if (sameWs && targetSection === "active") {
+          restoreWindow(captured.windowId);
+        } else if (!sameWs) {
+          restoreWindowToWorkspace(captured.windowId, drop.wsId);
+        }
+        // else: same workspace, minimized section → no-op
       }
     } else {
       // Pointer never moved past the threshold — treat as a click.
-      // Unifies focus-on-click with drag so we don't need a
-      // separate `onclick` that would fire AFTER pointerup and
-      // double-trigger.
-      invoke("activate_window", { id: captured.windowId }).catch(() => {});
+      if (captured.kind === "active") {
+        // Active click: focus-and-switch (existing behaviour).
+        invoke("activate_window", { id: captured.windowId }).catch(() => {});
+      } else {
+        // Minimized click: restore + focus. Closes the overlay so
+        // the user sees the restored window on its workspace.
+        restoreWindow(captured.windowId);
+      }
       overlayVisible = false;
-      invoke("set_popover_input_region", { expanded: false }).catch(
-        () => {},
-      );
+      invoke("set_popover_input_region", { expanded: false }).catch(() => {});
     }
   }
 
@@ -626,6 +736,22 @@
     pointerDrag = null;
     try {
       captured.card.releasePointerCapture(e.pointerId);
+    } catch {
+      /* capture already released */
+    }
+    resetDragUI();
+  }
+
+  /// Document-level Escape handler that aborts an in-flight drag.
+  /// Registered in the same $effect as the overlay-keydown handler
+  /// below. Keeps the cancel path consistent across both drag kinds:
+  /// overlay-card and minimized-icon.
+  function onDragEscape(e: KeyboardEvent) {
+    if (e.key !== "Escape" || !pointerDrag) return;
+    const captured = pointerDrag;
+    pointerDrag = null;
+    try {
+      captured.card.releasePointerCapture(captured.pointerId);
     } catch {
       /* capture already released */
     }
@@ -665,9 +791,11 @@
       );
 
     document.addEventListener("keydown", onKeydown);
+    document.addEventListener("keydown", onDragEscape);
 
     return () => {
       document.removeEventListener("keydown", onKeydown);
+      document.removeEventListener("keydown", onDragEscape);
       if (unlistenWsOverlay) unlistenWsOverlay();
       if (hoverTimer) clearTimeout(hoverTimer);
       pointerDrag = null;
@@ -736,6 +864,7 @@
           {@const { shown, overflow } = visibleSlice(wsWindows)}
           {@const isDropTarget =
             dragState !== null && dragState.sourceWs !== ws.id}
+          {@const wsMinimized = $minimizedByWorkspace.get(ws.id) ?? []}
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <div
             class="ws-column"
@@ -762,51 +891,129 @@
               {$projectPerWorkspace?.get(ws.id)?.name ?? ""}
             </div>
 
-            {#if shown.length === 0}
-              <div class="ws-empty">Empty</div>
-            {:else}
-              <div class="ws-cards">
-                {#each shown as win (win.id)}
-                  <!-- svelte-ignore a11y_click_events_have_key_events -->
-                  <button
-                    class="window-card"
-                    class:window-card-dragging={dragState?.windowId ===
-                      win.id}
-                    class:window-card-keyboard-focus={focusedWindowId ===
-                      win.id}
-                    onpointerdown={(e) => onCardPointerDown(e, win, ws.id)}
-                    onpointermove={onCardPointerMove}
-                    onpointerup={onCardPointerUp}
-                    onpointercancel={onCardPointerCancel}
-                    title={win.title || win.app_id}
-                    aria-label={`${win.title || win.app_id} on workspace ${i + 1}`}
-                  >
-                    {#if iconUrls[win.app_id]}
-                      <img
-                        class="window-card-icon"
-                        src={iconUrls[win.app_id]}
-                        alt=""
-                        width="24"
-                        height="24"
-                        draggable="false"
-                      />
-                    {:else}
-                      <AppWindow
-                        size={20}
-                        strokeWidth={1.5}
-                        class="window-card-icon-fallback"
-                      />
-                    {/if}
-                    <span class="window-card-title">
-                      {truncateTitle(win.title, win.app_id)}
-                    </span>
-                  </button>
-                {/each}
-                {#if overflow > 0}
-                  <div class="window-card overflow-badge" aria-hidden="true">
-                    +{overflow}
-                  </div>
-                {/if}
+            <!--
+              Active-windows section: top ~75% of each workspace
+              card. Drop target for minimized windows (restores them
+              on drop). `data-ws-section` drives the drop-target
+              routing in `dropTargetAt` + `onCardPointerUp`.
+            -->
+            <div
+              class="ws-section ws-section-active"
+              class:ws-section-drop-hover={isDropTarget
+                && dragOverWs === ws.id
+                && dragOverSection === "active"}
+              data-ws-section="active"
+            >
+              {#if shown.length === 0}
+                <div class="ws-empty">No open windows</div>
+              {:else}
+                <div class="ws-cards">
+                  {#each shown as win (win.id)}
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                    <button
+                      class="window-card"
+                      class:window-card-dragging={dragState?.windowId ===
+                        win.id}
+                      class:window-card-keyboard-focus={focusedWindowId ===
+                        win.id}
+                      onpointerdown={(e) =>
+                        onCardPointerDown(e, win.id, ws.id, "active")}
+                      onpointermove={onCardPointerMove}
+                      onpointerup={onCardPointerUp}
+                      onpointercancel={onCardPointerCancel}
+                      title={win.title || win.app_id}
+                      aria-label={`${win.title || win.app_id} on workspace ${i + 1}`}
+                    >
+                      {#if iconUrls[win.app_id]}
+                        <img
+                          class="window-card-icon"
+                          src={iconUrls[win.app_id]}
+                          alt=""
+                          width="24"
+                          height="24"
+                          draggable="false"
+                        />
+                      {:else}
+                        <AppWindow
+                          size={20}
+                          strokeWidth={1.5}
+                          class="window-card-icon-fallback"
+                        />
+                      {/if}
+                      <span class="window-card-title">
+                        {truncateTitle(win.title, win.app_id)}
+                      </span>
+                    </button>
+                  {/each}
+                  {#if overflow > 0}
+                    <div class="window-card overflow-badge" aria-hidden="true">
+                      +{overflow}
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+
+            <!--
+              Minimized section: bottom ~25%. Only rendered when the
+              workspace has at least one minimized window — avoids
+              wasting vertical space when none are present. During
+              an active-card drag on the same workspace the section
+              is forced-visible with a dashed outline so the user
+              sees a valid drop zone even on cards that currently
+              have no minimized windows (empty workspaces etc.).
+            -->
+            {#if wsMinimized.length > 0
+              || (dragState?.kind === "active"
+                && dragState.sourceWs === ws.id)}
+              <div
+                class="ws-section ws-section-minimized"
+                class:ws-section-drop-hover={isDropTarget
+                  && dragOverWs === ws.id
+                  && dragOverSection === "minimized"}
+                class:ws-section-minimized-empty={wsMinimized.length === 0}
+                data-ws-section="minimized"
+              >
+                <div class="ws-minimized-label">Minimized</div>
+                <div class="ws-cards">
+                  {#each wsMinimized as m (m.windowId)}
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                    <button
+                      class="window-card window-card-minimized"
+                      class:window-card-dragging={dragState?.windowId ===
+                        m.windowId}
+                      class:window-card-keyboard-focus={focusedWindowId ===
+                        m.windowId}
+                      onpointerdown={(e) =>
+                        onCardPointerDown(e, m.windowId, ws.id, "minimized")}
+                      onpointermove={onCardPointerMove}
+                      onpointerup={onCardPointerUp}
+                      onpointercancel={onCardPointerCancel}
+                      title={m.title || m.appId}
+                      aria-label={`Minimized: ${m.title || m.appId} on workspace ${i + 1}`}
+                    >
+                      {#if iconUrls[m.appId]}
+                        <img
+                          class="window-card-icon"
+                          src={iconUrls[m.appId]}
+                          alt=""
+                          width="24"
+                          height="24"
+                          draggable="false"
+                        />
+                      {:else}
+                        <AppWindow
+                          size={20}
+                          strokeWidth={1.5}
+                          class="window-card-icon-fallback"
+                        />
+                      {/if}
+                      <span class="window-card-title">
+                        {truncateTitle(m.title, m.appId)}
+                      </span>
+                    </button>
+                  {/each}
+                </div>
               </div>
             {/if}
           </div>
@@ -828,6 +1035,75 @@
     align-items: center;
     gap: 4px;
   }
+
+  /* ── Workspace card: Active + Minimized sections ───────────────── */
+
+  /* The two subregions share a baseline container. Flex-grow on
+     the active section gives it the "~75%" weight per spec; the
+     minimized section auto-sizes to its content and caps growth. */
+  .ws-section {
+    width: 100%;
+    padding: 6px 6px 4px;
+    border-radius: var(--radius-md);
+    transition:
+      background var(--duration-fast, 150ms) ease,
+      outline-color var(--duration-fast, 150ms) ease;
+  }
+
+  .ws-section-active {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  /* Minimized section has its own subtle background tint instead
+     of a hard separator — same horizontal padding as the active
+     section, but shifted toward the darker end of the surface
+     palette so the eye reads it as secondary without needing a
+     visible divider line. `margin-top` gives the sections a small
+     gap to soften the transition. */
+  .ws-section-minimized {
+    flex: 0 0 auto;
+    /* No max-height: a percentage against the implicit-height
+       `.ws-column` collapses the section to zero and the cards
+       "disappear". Let the section size to its content — the
+       whole overlay absorbs the growth. If a workspace ever has
+       enough minimized windows to overflow the screen the
+       `.ws-column` itself can grow a vertical scrollbar. */
+    margin-top: 6px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    background: color-mix(in srgb, var(--color-fg-shell) 4%, transparent);
+    border-radius: var(--radius-md);
+    transition: background var(--duration-fast, 150ms) ease;
+  }
+
+  /* Accent-tinted dashed outline when the section is rendered
+     empty solely as a drag drop-hint. `background` comes from
+     the regular minimized section tint (stays on while dragging). */
+  .ws-section-minimized-empty {
+    min-height: 56px;
+    outline: 1px dashed
+      color-mix(in srgb, var(--color-accent) 45%, transparent);
+    outline-offset: -4px;
+  }
+
+  .ws-section-drop-hover {
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+    outline: 1px dashed
+      color-mix(in srgb, var(--color-accent) 55%, transparent);
+    outline-offset: -2px;
+  }
+
+  .ws-minimized-label {
+    font-size: 9px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.4;
+    text-align: center;
+    margin-bottom: 6px;
+  }
+
 
   /* ── Overlay ────────────────────────────────────────────────────────── */
 
@@ -869,6 +1145,12 @@
     align-items: center;
     min-width: 140px;
     max-width: 200px;
+    /* Cap per-column height so a workspace with many minimized
+       windows grows a scroll track inside its own column rather
+       than pushing the overlay off the screen. 70vh leaves room
+       for the topbar + overlay padding + margins. */
+    max-height: 70vh;
+    overflow-y: auto;
     padding: 12px;
     border-radius: var(--radius-md);
     border: 1px solid transparent;
@@ -878,6 +1160,25 @@
       background-color 120ms ease,
       border-color 120ms ease;
     color: var(--color-fg-shell);
+    /* Firefox / WebKit quiet-scrollbar: keep the track invisible
+       until hover so the column doesn't show a persistent scrollbar
+       for 2 minimized windows. */
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  .ws-column:hover {
+    scrollbar-color: color-mix(in srgb, var(--color-fg-shell) 30%, transparent)
+      transparent;
+  }
+  :global(.ws-column::-webkit-scrollbar) {
+    width: 6px;
+  }
+  :global(.ws-column::-webkit-scrollbar-thumb) {
+    background: transparent;
+    border-radius: 3px;
+  }
+  :global(.ws-column:hover::-webkit-scrollbar-thumb) {
+    background: color-mix(in srgb, var(--color-fg-shell) 30%, transparent);
   }
 
   .ws-column:hover {
@@ -1047,6 +1348,41 @@
 
   .overflow-badge:hover {
     transform: none;
+  }
+
+  /* ── Minimized card overrides ──────────────────────────────────────
+     These MUST come after the .window-card / .window-card-icon /
+     .window-card-title blocks above. Svelte scopes both `.window-card`
+     and `.window-card-minimized` to the same component hash, giving
+     them equal specificity (0,2,0). Source order then decides the
+     tie — so the more-specific-looking dual-class selector only wins
+     if it's declared later in the file.
+     `:global(...)` is used so the ghost clone in document.body (which
+     doesn't carry the component's scope hash) still gets the size
+     override during drag. The dual-class selector inside `:global`
+     has specificity (0,2,0), same as the scoped `.window-card`, so
+     the source-order rule applies there too. */
+  :global(.window-card.window-card-minimized) {
+    width: 48px;
+    height: 44px;
+    padding: 6px 3px;
+    gap: 3px;
+    opacity: 0.72;
+    transition:
+      transform 100ms ease,
+      background-color 100ms ease,
+      opacity var(--duration-fast, 150ms) ease;
+  }
+  :global(.window-card.window-card-minimized:hover) {
+    opacity: 1;
+  }
+  :global(.window-card.window-card-minimized .window-card-icon) {
+    width: 18px;
+    height: 18px;
+  }
+  :global(.window-card.window-card-minimized .window-card-title) {
+    font-size: 9px;
+    line-height: 1.05;
   }
 
   /* ── Pills ──────────────────────────────────────────────────────────── */

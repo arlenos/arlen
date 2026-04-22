@@ -8,6 +8,13 @@ export interface WindowInfo {
     app_id: string;
     title: string;
     active: boolean;
+    /**
+     * True when cosmic-toplevel-info reports `State::Minimized`.
+     * Defaults to false so components that pre-existed this field
+     * (e.g. older stores loaded from cache on HMR) don't get
+     * undefined checks.
+     */
+    minimized?: boolean;
     /** Workspace handle IDs this window belongs to (usually one). */
     workspace_ids: string[];
 }
