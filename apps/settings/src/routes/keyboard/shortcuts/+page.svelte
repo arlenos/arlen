@@ -6,6 +6,7 @@
   import { Button } from "$lib/components/ui/button";
   import SettingsPage from "$lib/components/settings/SettingsPage.svelte";
   import KeybindingRow from "$lib/components/settings/KeybindingRow.svelte";
+  import ReadOnlyKeybindingRow from "$lib/components/settings/ReadOnlyKeybindingRow.svelte";
   import KeyCapture from "$lib/components/settings/KeyCapture.svelte";
   import AddCustomBinding from "$lib/components/settings/AddCustomBinding.svelte";
   import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
@@ -23,6 +24,7 @@
     resetToBuiltinDefaults,
     resetModuleFragments,
     type KeybindingEntry,
+    WORKSPACE_MAP_INTERNAL_BINDINGS,
   } from "$lib/stores/keybindings";
 
   onMount(async () => {
@@ -299,7 +301,8 @@
   <div class="flex flex-col gap-2">
     {#each CATEGORIES as category (category.id)}
       {@const entries = filtered[category.id] ?? []}
-      {#if entries.length > 0}
+      {@const isWorkspaceMap = category.id === "workspace_map"}
+      {#if entries.length > 0 || isWorkspaceMap}
         {@const expanded = expandedCategories.has(category.id)}
         <section
           class="overflow-hidden rounded-[var(--radius)] border border-border bg-card"
@@ -317,7 +320,8 @@
             />
             <span class="flex-1">{category.label}</span>
             <span class="text-xs font-normal normal-case text-muted-foreground">
-              {entries.length}
+              {entries.length +
+                (isWorkspaceMap ? WORKSPACE_MAP_INTERNAL_BINDINGS.length : 0)}
             </span>
           </button>
           {#if expanded}
@@ -331,6 +335,22 @@
                   onRemove={onRemove}
                 />
               {/each}
+              {#if isWorkspaceMap}
+                <!--
+                  Internal Workspace Map keybindings: handled by the
+                  desktop-shell while the overlay is open, not by the
+                  compositor. Rendered as read-only rows that share
+                  KeybindingRow's visual language (same padding, same
+                  binding pill) so the category list has no style
+                  seam between editable and reference entries.
+                -->
+                {#each WORKSPACE_MAP_INTERNAL_BINDINGS as row (row.keys + row.label)}
+                  <ReadOnlyKeybindingRow
+                    label={row.label}
+                    keys={row.keys}
+                  />
+                {/each}
+              {/if}
             </div>
           {/if}
         </section>

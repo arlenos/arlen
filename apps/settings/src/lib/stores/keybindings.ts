@@ -241,12 +241,51 @@ export const CATEGORIES = [
   { id: "tiling", label: "Tiling" },
   { id: "workspace", label: "Workspaces" },
   { id: "workspace_move", label: "Move to Workspace" },
+  { id: "workspace_map", label: "Workspace Map" },
   { id: "keyboard", label: "Keyboard" },
   { id: "shell", label: "Shell" },
   { id: "apps", label: "Apps & Launchers" },
   { id: "custom", label: "Custom" },
   { id: "module", label: "Modules" },
 ] as const;
+
+/// Internal Workspace Map keybindings — handled entirely by the
+/// desktop-shell frontend while the overlay is open. These aren't
+/// part of the compositor's keybinding system (no config entry, no
+/// conflict detection) so we expose them via the Shortcuts page as
+/// read-only reference rows. The frontend hardcodes these values in
+/// `WorkspaceIndicator.svelte`'s `onKeydown` — if the UI text here
+/// ever disagrees with the handler, the handler is the source of
+/// truth.
+export interface WorkspaceMapInternalBinding {
+  keys: string;
+  label: string;
+  description?: string;
+  group: "navigation" | "actions" | "multi";
+}
+
+export const WORKSPACE_MAP_INTERNAL_BINDINGS: WorkspaceMapInternalBinding[] = [
+  // Navigation
+  { keys: "h / ←", label: "Previous workspace", group: "navigation" },
+  { keys: "l / →", label: "Next workspace", group: "navigation" },
+  { keys: "k / ↑", label: "Previous window in column", group: "navigation" },
+  { keys: "j / ↓", label: "Next window in column", group: "navigation" },
+  { keys: "Tab", label: "Next window (cycle)", group: "navigation" },
+  { keys: "Shift+Tab", label: "Previous window", group: "navigation" },
+  { keys: "1-9", label: "Focus workspace N", group: "navigation" },
+  { keys: "g then 1-9", label: "Go to workspace N and close Map", group: "navigation" },
+  // Single-window actions
+  { keys: "Enter", label: "Activate / restore focused window and close Map", group: "actions" },
+  { keys: "Escape", label: "Clear selection, then close Map", group: "actions" },
+  { keys: "d / Delete", label: "Close focused window", group: "actions" },
+  { keys: "m", label: "Toggle minimize / restore on focused window", group: "actions" },
+  { keys: "f", label: "Toggle fullscreen on focused window", group: "actions" },
+  { keys: "Space", label: "Toggle selection on focused window", group: "actions" },
+  // Multi-select actions
+  { keys: "Ctrl/Cmd+Click", label: "Toggle selection", group: "multi" },
+  { keys: "d / Delete", label: "Close all selected", group: "multi" },
+  { keys: "m", label: "Minimize / restore all selected", group: "multi" },
+];
 
 export type CategoryId = (typeof CATEGORIES)[number]["id"];
 
