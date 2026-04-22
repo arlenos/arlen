@@ -56,6 +56,23 @@ enum InputRegionMode {
     WithPopover,
 }
 
+/// Rectangle in shell-overlay (and thus compositor-global) coordinates.
+#[derive(Debug, Clone, Copy)]
+struct HeaderRect {
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+}
+
+/// Live window-header rectangles. Updated from the Svelte side via
+/// `update_window_header_regions`. Every `set_input_region` call
+/// unions these into the final region so buttons on Lunaris-rendered
+/// window headers receive pointer input — which the Shell layer-
+/// surface would otherwise swallow click-through-wise. Empty list is
+/// the common case (no SSD windows visible → no extra union cost).
+static WINDOW_HEADER_RECTS: Mutex<Vec<HeaderRect>> = Mutex::new(Vec::new());
+
 /// Set the input region on the GTK layer-shell window and flush immediately.
 ///
 /// Calls `input_shape_combine_region` directly on the `gtk::Window`
@@ -113,6 +130,25 @@ fn set_input_region(app: &tauri::AppHandle, mode: InputRegionMode) {
             }
         };
 
+        // Union in all currently-active Lunaris window headers. Each
+        // 36px-high header sits over a client window's top; clicks on
+        // those rectangles must reach the shell (Min/Max/Close
+        // buttons + title-drag) while everything else stays click-
+        // through. The guard is a tiny lock — Mutex<Vec<HeaderRect>>
+        // with typically 0-4 entries; no contention issue.
+        if let Ok(rects) = WINDOW_HEADER_RECTS.lock() {
+            for r in rects.iter() {
+                let hdr = Region::create_rectangle(&RectangleInt::new(r.x, r.y, r.w, r.h));
+                region.union(&hdr);
+            }
+            if !rects.is_empty() {
+                log::debug!(
+                    "set_input_region: merged {} window-header rect(s)",
+                    rects.len()
+                );
+            }
+        }
+
         gtk_window.input_shape_combine_region(Some(&region));
         gtk_window.queue_draw();
 
@@ -120,6 +156,34 @@ fn set_input_region(app: &tauri::AppHandle, mode: InputRegionMode) {
             display.flush();
         }
     });
+}
+
+/// Tauri command called from `windowHeaders.ts` whenever the header
+/// list mutates (show/update/hide events from the compositor). Stores
+/// the rectangles and re-runs `update_input_region` so buttons on the
+/// new set of headers become clickable immediately.
+///
+/// Coordinates are expected to be GLOBAL compositor coordinates —
+/// same space the shell-overlay protocol sent them in. GTK's
+/// `input_shape_combine_region` operates in the layer-surface's
+/// local coordinates, and for a fullscreen-anchored layer-shell
+/// surface those line up with compositor-global.
+#[tauri::command]
+pub fn update_window_header_regions(
+    rects: Vec<(i32, i32, i32, i32)>,
+    app: tauri::AppHandle,
+) {
+    {
+        let mut guard = match WINDOW_HEADER_RECTS.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        *guard = rects
+            .into_iter()
+            .map(|(x, y, w, h)| HeaderRect { x, y, w, h })
+            .collect();
+    }
+    update_input_region(&app);
 }
 
 /// Tracks whether a context menu or notifications are currently active.
@@ -244,6 +308,11 @@ struct WindowHeaderShowPayload {
     activated: bool,
     has_minimize: bool,
     has_maximize: bool,
+    /// Nonzero when this header belongs to a CosmicStack. The shell
+    /// correlates tab rendering via the `tab_added`/`tab_activated`/
+    /// `tab_removed` stream on the same `stack_id`. See Feature 3
+    /// (integrated stack header) for the design.
+    stack_id: u32,
 }
 
 #[derive(Clone, Serialize)]
@@ -255,6 +324,7 @@ struct WindowHeaderUpdatePayload {
     height: i32,
     title: String,
     activated: bool,
+    stack_id: u32,
 }
 
 #[derive(Clone, Serialize)]
@@ -543,7 +613,12 @@ impl Dispatch<OverlayProxy, ()> for AppData {
 
             overlay::Event::WindowHeaderShow {
                 surface_id, x, y, width, height, title, activated, has_minimize, has_maximize,
+                stack_id,
             } => {
+                log::debug!(
+                    "STACK-DEBUG window_header_show surface_id={} stack_id={} title={:?}",
+                    surface_id, stack_id, title
+                );
                 let _ = state.app_handle.emit(
                     "lunaris://window-header-show",
                     WindowHeaderShowPayload {
@@ -551,18 +626,21 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                         activated: activated != 0,
                         has_minimize: has_minimize != 0,
                         has_maximize: has_maximize != 0,
+                        stack_id,
                     },
                 );
             }
 
             overlay::Event::WindowHeaderUpdate {
                 surface_id, x, y, width, height, title, activated,
+                stack_id,
             } => {
                 let _ = state.app_handle.emit(
                     "lunaris://window-header-update",
                     WindowHeaderUpdatePayload {
                         surface_id, x, y, width, height, title,
                         activated: activated != 0,
+                        stack_id,
                     },
                 );
             }
@@ -571,6 +649,28 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                 let _ = state.app_handle.emit(
                     "lunaris://window-header-hide",
                     WindowHeaderHidePayload { surface_id },
+                );
+            }
+
+            overlay::Event::WindowDragStart { surface_id } => {
+                log::info!(
+                    "ATTACH-DEBUG shell received window_drag_start surface_id={}",
+                    surface_id
+                );
+                let _ = state.app_handle.emit(
+                    "lunaris://window-drag-start",
+                    serde_json::json!({ "surface_id": surface_id }),
+                );
+            }
+
+            overlay::Event::WindowDragEnd { surface_id } => {
+                log::info!(
+                    "ATTACH-DEBUG shell received window_drag_end surface_id={}",
+                    surface_id
+                );
+                let _ = state.app_handle.emit(
+                    "lunaris://window-drag-end",
+                    serde_json::json!({ "surface_id": surface_id }),
                 );
             }
 

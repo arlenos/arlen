@@ -1779,7 +1779,10 @@
     top: 100%;
     left: 50%;
     transform: translateX(-50%) translateY(-4px);
-    z-index: 50;
+    /* Sits alongside the system popovers (z=100) and the quick-
+       settings power dropdown (z=110). 120 keeps it above both
+       while staying well under context menus (z=300). */
+    z-index: 120;
     padding: 16px;
     border-radius: var(--radius-lg);
     background: var(--color-bg-shell);

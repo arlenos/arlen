@@ -54,7 +54,18 @@ pub fn init(window: tauri::WebviewWindow) -> Result<(), tauri::Error> {
         log::info!("layer_shell: is_layer_window = {}", gtk_window.is_layer_window());
         log::info!("layer_shell: layer = {:?}", gtk_window.layer());
 
-        gtk_window.set_layer(Layer::Overlay);
+        // `Layer::Top` (not `Overlay`). The Waypointer lives on
+        // `Layer::Overlay` — keeping both on the same layer leaves
+        // their stack order implementation-defined in wlr-layer-
+        // shell, and in practice the main shell often painted on
+        // top, visually clipping the fullscreen launcher behind the
+        // 36px bar. Layer::Top still sits above regular xdg-toplevel
+        // windows (so the bar, context menus, window headers, toasts
+        // and other shell overlays still float over apps) but lets
+        // the Waypointer's Overlay layer reliably cover everything
+        // when it's open, without having to negotiate a compositor-
+        // level grab.
+        gtk_window.set_layer(Layer::Top);
         gtk_window.set_anchor(Edge::Top, true);
         gtk_window.set_anchor(Edge::Left, true);
         gtk_window.set_anchor(Edge::Right, true);

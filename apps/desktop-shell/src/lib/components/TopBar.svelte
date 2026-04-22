@@ -21,17 +21,9 @@
   import { X } from "lucide-svelte";
 </script>
 
-<!--
-  Top Bar Layout:
-  [GlobalMenuBar][slot-toolbar]  |  [WorkspaceIndicator]  |  [SNI][slot-project]|[slot-temp][Net BT Audio Bat | Clock Panel]
-       region-left                      region-center                           region-right
-
-  Slots: slot-toolbar, slot-sni, slot-project, slot-temp, slot-system-icons
-  Empty slots collapse via :empty pseudo-class.
--->
 <div
   class="flex items-center justify-between h-9 w-full px-2 gap-4 relative select-none shrink-0 shell-surface"
-  style="background: var(--background); z-index: 95"
+  style="background: var(--background)"
   data-tauri-drag-region
 >
   <!-- LEFT: App menu + toolbar -->
