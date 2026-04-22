@@ -15,6 +15,11 @@ export interface WindowInfo {
      * undefined checks.
      */
     minimized?: boolean;
+    /**
+     * True when cosmic-toplevel-info reports `State::Fullscreen`.
+     * Used by the context menu to label/toggle correctly.
+     */
+    fullscreen?: boolean;
     /** Workspace handle IDs this window belongs to (usually one). */
     workspace_ids: string[];
 }

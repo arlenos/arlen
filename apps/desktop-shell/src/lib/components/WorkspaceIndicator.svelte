@@ -14,8 +14,19 @@
     restoreWindow,
     restoreWindowToWorkspace,
     minimizeWindow,
+    closeMinimizedWindow,
   } from "$lib/stores/minimizedWindows.js";
   import type { MinimizedWindow } from "$lib/stores/minimizedWindows.js";
+  import {
+    selectedWindowIds,
+    toggleSelection,
+    selectOnly,
+    clearSelection,
+    isSelected,
+    selectionSnapshot,
+    pruneSelection,
+  } from "$lib/stores/overlaySelection.js";
+  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import { scale } from "svelte/transition";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -27,6 +38,24 @@
   /// N serial invokes for resolve_app_icon.
   $effect(() => {
     loadMinimizedWindows();
+  });
+
+  /// Selection pruning: when a window disappears (closed externally,
+  /// crashed), drop it out of the selection set so the multi-menu
+  /// doesn't try to act on a dead id. Re-runs on every `$windows`
+  /// change; cheap because `pruneSelection` is a no-op when nothing
+  /// to prune.
+  $effect(() => {
+    const live = new Set($windows.map((w) => w.id));
+    pruneSelection(live);
+  });
+
+  /// Close-overlay side effect: whenever the overlay hides we also
+  /// clear any outstanding selection so the next open starts fresh.
+  $effect(() => {
+    if (!overlayVisible) {
+      clearSelection();
+    }
   });
 
   const mode = $derived(
@@ -59,9 +88,70 @@
     invoke("set_popover_input_region", { expanded: true }).catch(() => {});
   }
 
+  /// Tracks whether any card's shadcn ContextMenu is currently open.
+  /// When one is, `scheduleClose` is a no-op: the menu Portal renders
+  /// in `document.body`, outside `.ws-root`, so moving the pointer
+  /// from a card into the menu fires `onmouseleave` on ws-root and
+  /// would otherwise close the overlay while the user is picking a
+  /// menu item. Wired per-card via `<ContextMenu.Root onOpenChange>`.
+  let contextMenuOpen = $state(false);
+
+  function onCardMenuOpenChange(open: boolean): void {
+    contextMenuOpen = open;
+    invoke("log_frontend", {
+      message:
+        `[overlay] contextMenu open=${open} hoverInside=${hoverInsideRoot} ` +
+        `overlayVisible=${overlayVisible}`,
+    }).catch(() => {});
+    // Deliberately NO scheduleClose on menu close here. The previous
+    // version called scheduleClose when the menu closed and the
+    // cursor was outside ws-root, but that fired even for the
+    // "user clicked a menu item" case — the cursor is obviously
+    // outside ws-root (on the menu item itself) at that moment, so
+    // every action would also close the overlay. The overlay now
+    // stays open until the user deliberately moves the cursor
+    // outside, which triggers a fresh mouseleave on ws-root.
+  }
+
+  /// Tracks hover state on ws-root via the existing mouseenter/leave.
+  /// Needed so onCardMenuOpenChange can decide whether to re-schedule
+  /// a close after the menu dismisses (pointer still inside = don't
+  /// close; pointer already gone = close as if no menu was active).
+  let hoverInsideRoot = $state(false);
+
+  /// True iff any bits-ui context menu content is currently mounted
+  /// in the document. Used as a backup for `contextMenuOpen` — the
+  /// Svelte-tracked flag can lag bits-ui's internal state due to
+  /// microtask ordering, but a DOM query is always ground truth.
+  function anyContextMenuMounted(): boolean {
+    return (
+      document.querySelector('[role="menu"]:not([hidden])') !== null ||
+      document.querySelector("[data-bits-context-menu-content]") !== null
+    );
+  }
+
   function scheduleClose() {
     if (hoverTimer) clearTimeout(hoverTimer);
+    // Three guards against the menu-Portal race:
+    //  1. Svelte-tracked `contextMenuOpen` flag
+    //  2. Live DOM query for any bits-ui menu
+    //  3. The onLeave handler below also short-circuits when the
+    //     pointer moved into a menu (`relatedTarget` check) — that
+    //     catches the case where the menu is transitioning open.
+    // Any one of these returning true keeps the overlay open.
+    if (contextMenuOpen || anyContextMenuMounted()) {
+      invoke("log_frontend", {
+        message: `[overlay] scheduleClose blocked (ctxOpen=${contextMenuOpen} domMenu=${anyContextMenuMounted()})`,
+      }).catch(() => {});
+      return;
+    }
     hoverTimer = setTimeout(() => {
+      // Re-check at fire time: the user may have moved to a menu
+      // DURING the 300ms wait (bits-ui's transition delays).
+      if (contextMenuOpen || anyContextMenuMounted()) {
+        hoverTimer = null;
+        return;
+      }
       overlayVisible = false;
       invoke("set_popover_input_region", { expanded: false }).catch(
         () => {},
@@ -71,6 +161,7 @@
   }
 
   function onEnter() {
+    hoverInsideRoot = true;
     if (hoverTimer) clearTimeout(hoverTimer);
     hoverTimer = setTimeout(() => {
       openOverlay();
@@ -78,11 +169,41 @@
     }, 50);
   }
 
-  function onLeave() {
+  /// Check whether a DOM node belongs to an open context menu portal.
+  /// bits-ui decorates menu content with `role="menu"` and several
+  /// `data-bits-*` attributes. Any ancestor match counts — the menu
+  /// item the cursor is entering might be nested deeper.
+  function isInsideContextMenu(el: EventTarget | null): boolean {
+    if (!(el instanceof Element)) return false;
+    return (
+      el.closest('[role="menu"]') !== null ||
+      el.closest("[data-bits-context-menu-content]") !== null ||
+      el.closest("[data-context-menu-content]") !== null
+    );
+  }
+
+  function onLeave(e: MouseEvent) {
+    hoverInsideRoot = false;
+    const related = e.relatedTarget;
+    const intoMenu = isInsideContextMenu(related);
+    invoke("log_frontend", {
+      message:
+        `[overlay] ws-root mouseleave intoMenu=${intoMenu} ` +
+        `ctxOpen=${contextMenuOpen} domMenu=${anyContextMenuMounted()} ` +
+        `related=${related instanceof Element ? related.tagName : String(related)}`,
+    }).catch(() => {});
+    if (intoMenu) {
+      // Pointer moved into a menu portal — keep the overlay open.
+      // Don't even schedule a close: the menu-closed path will
+      // re-check state and either let the user interact further
+      // or schedule close naturally via the next mouseleave.
+      return;
+    }
     scheduleClose();
   }
 
   function onOverlayEnter() {
+    hoverInsideRoot = true;
     if (hoverTimer) {
       clearTimeout(hoverTimer);
       hoverTimer = null;
@@ -152,6 +273,97 @@
     }
     return order;
   });
+
+  /// ─── Context menu actions ─────────────────────────────────────
+  ///
+  /// Thin wrappers around `invoke(...)` so the context-menu items
+  /// stay declarative in the template. Each returns void — nothing
+  /// in the menu path reads a return value. Failures are logged but
+  /// never surface to the user: the menu is fire-and-forget, and
+  /// the UI re-renders from live Wayland state regardless.
+
+  function closeWindowAction(windowId: string): void {
+    invoke("close_window", { windowId }).catch((e) =>
+      console.warn("close_window failed:", e),
+    );
+  }
+
+  function fullscreenWindowAction(
+    windowId: string,
+    currentlyFullscreen: boolean,
+  ): void {
+    invoke("fullscreen_window", {
+      windowId,
+      enabled: !currentlyFullscreen,
+    }).catch((e) => console.warn("fullscreen_window failed:", e));
+  }
+
+  function tileWindowAction(
+    windowId: string,
+    direction: "left" | "right",
+  ): void {
+    invoke("tile_window", { windowId, direction }).catch((e) =>
+      console.warn("tile_window failed:", e),
+    );
+  }
+
+  function moveWindowToWorkspaceAction(windowId: string, wsId: string): void {
+    invoke("window_move_to_workspace", {
+      windowId,
+      targetWorkspaceId: wsId,
+    }).catch((e) => console.warn("window_move_to_workspace failed:", e));
+  }
+
+  /// Multi-action helpers. Each snapshots the selection at invoke
+  /// time so subsequent re-renders (from the actions themselves
+  /// causing state transitions) don't cause iteration to drop
+  /// mid-loop.
+  function closeAllSelected(): void {
+    for (const id of selectionSnapshot()) closeWindowAction(id);
+    clearSelection();
+  }
+
+  function minimizeAllSelected(): void {
+    for (const id of selectionSnapshot()) {
+      const w = $windows.find((x) => x.id === id);
+      if (w && !w.minimized) minimizeWindow(id);
+    }
+    clearSelection();
+  }
+
+  function restoreAllSelected(): void {
+    for (const id of selectionSnapshot()) {
+      const w = $windows.find((x) => x.id === id);
+      if (w && w.minimized) restoreWindow(id);
+    }
+    clearSelection();
+    overlayVisible = false;
+  }
+
+  function moveAllSelectedToWorkspace(wsId: string): void {
+    for (const id of selectionSnapshot()) {
+      const w = $windows.find((x) => x.id === id);
+      if (!w) continue;
+      if (w.minimized) {
+        // Multi-move keeps minimize state — use plain move, NOT
+        // restoreWindowToWorkspace (which un-minimizes on arrival).
+        invoke("window_move_to_workspace", {
+          windowId: id,
+          targetWorkspaceId: wsId,
+        }).catch(() => {});
+      } else {
+        moveWindowToWorkspaceAction(id, wsId);
+      }
+    }
+    clearSelection();
+  }
+
+  function tileSideBySide(ids: [string, string]): void {
+    tileWindowAction(ids[0], "left");
+    tileWindowAction(ids[1], "right");
+    clearSelection();
+    overlayVisible = false;
+  }
 
   function pickInitialFocus(): string | null {
     // Prefer the currently active window so the first Tab move is
@@ -250,35 +462,189 @@
     invoke("set_popover_input_region", { expanded: false }).catch(() => {});
   }
 
+  /// Two-key "go to" gesture: press `g`, then within `GOTO_TIMEOUT_MS`
+  /// press a digit 1-9 to jump to that workspace AND close the Map.
+  /// Any other key cancels the pending state. Matches vim `g` prefix
+  /// behaviour — familiar to keyboard-first users.
+  const GOTO_TIMEOUT_MS = 800;
+  let gotoPending = $state(false);
+  let gotoPendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function startGotoPending(): void {
+    gotoPending = true;
+    if (gotoPendingTimer) clearTimeout(gotoPendingTimer);
+    gotoPendingTimer = setTimeout(() => {
+      gotoPending = false;
+      gotoPendingTimer = null;
+    }, GOTO_TIMEOUT_MS);
+  }
+
+  function cancelGotoPending(): void {
+    gotoPending = false;
+    if (gotoPendingTimer) {
+      clearTimeout(gotoPendingTimer);
+      gotoPendingTimer = null;
+    }
+  }
+
+  /// Fire `d` / Delete / `m` / `f` / Space against the currently-
+  /// focused window, branching on selection size. Centralised so the
+  /// handler switch stays compact.
+
+  function actionDelete(): void {
+    const sel = selectionSnapshot();
+    if (sel.length > 0) {
+      closeAllSelected();
+      return;
+    }
+    if (focusedWindowId) {
+      closeWindowAction(focusedWindowId);
+    }
+  }
+
+  function actionMinimizeToggle(): void {
+    const sel = selectionSnapshot();
+    if (sel.length > 1) {
+      // Multi: if any is active, minimize; else restore.
+      const selWindows = sel
+        .map((id) => $windows.find((w) => w.id === id))
+        .filter((w): w is WindowInfo => Boolean(w));
+      const anyActive = selWindows.some((w) => !w.minimized);
+      if (anyActive) {
+        minimizeAllSelected();
+      } else {
+        restoreAllSelected();
+      }
+      return;
+    }
+    const id = focusedWindowId;
+    if (!id) return;
+    const w = $windows.find((x) => x.id === id);
+    if (!w) return;
+    if (w.minimized) {
+      restoreWindow(id);
+      closeOverlayKeyboard();
+    } else {
+      minimizeWindow(id);
+    }
+  }
+
+  function actionFullscreen(): void {
+    const id = focusedWindowId;
+    if (!id) return;
+    const w = $windows.find((x) => x.id === id);
+    if (!w) return;
+    fullscreenWindowAction(id, w.fullscreen ?? false);
+  }
+
+  function actionToggleSelection(): void {
+    if (focusedWindowId) {
+      toggleSelection(focusedWindowId);
+    }
+  }
+
   function onKeydown(e: KeyboardEvent) {
     if (!overlayVisible) return;
 
+    // Vim-key alias resolution. `e.key` for letters respects Shift
+    // and CapsLock, so `e.key` on `h` is always "h" (lowercase) when
+    // CapsLock is off and "H" when on — we case-insensitise by
+    // lowering. Shift+H -> "H" means `Shift+m` (Move dialog) still
+    // works because Shift+M arrives as "M" and we inspect shiftKey
+    // independently.
+    const rawKey = e.key;
+    const key = rawKey.length === 1 ? rawKey.toLowerCase() : rawKey;
+
+    // `g` pending state: if the user pressed `g` within the last
+    // `GOTO_TIMEOUT_MS`, a digit now means "go to workspace N and
+    // close the Map", not just "focus workspace N". Any other key
+    // cancels pending (including `g` pressed twice — harmless).
+    if (gotoPending && key >= "1" && key <= "9") {
+      cancelGotoPending();
+      clearSelection();
+      jumpToWorkspaceN(parseInt(key, 10));
+      const ws = $primaryWorkspaces[parseInt(key, 10) - 1];
+      if (ws) activateWorkspace(ws.id);
+      closeOverlayKeyboard();
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (gotoPending && key !== "g") {
+      // Any other key while pending cancels — the user changed mind.
+      cancelGotoPending();
+      // Fall through to normal handling of this key.
+    }
+
     let handled = true;
-    switch (e.key) {
+    switch (key) {
+      // Navigation: arrows + vim hjkl
       case "Tab":
+        clearSelection();
         cycleWindow(e.shiftKey ? -1 : 1);
         break;
       case "ArrowLeft":
+      case "h":
+        clearSelection();
         navigateWorkspace(-1);
         break;
       case "ArrowRight":
+      case "l":
+        clearSelection();
         navigateWorkspace(1);
         break;
       case "ArrowUp":
+      case "k":
         navigateColumn(-1);
         break;
       case "ArrowDown":
+      case "j":
         navigateColumn(1);
         break;
+      case "g":
+        // Start pending-goto mode. Any digit within the timeout
+        // jumps and closes; any other key cancels.
+        startGotoPending();
+        break;
+      // Actions
       case "Enter":
+        clearSelection();
         activateFocused();
         break;
+      case "d":
+      case "Delete":
+        actionDelete();
+        break;
+      case "m":
+        if (e.shiftKey) {
+          // Shift+M: Move dialog — placeholder, spec calls this a
+          // keyboard alternative to the context menu "Move to"
+          // submenu. The existing context menu already covers this,
+          // a dedicated dialog is future work.
+          // TODO: render a workspace-picker overlay here.
+          handled = false;
+        } else {
+          actionMinimizeToggle();
+        }
+        break;
+      case "f":
+        actionFullscreen();
+        break;
+      case " ":
+      case "Space":
+        actionToggleSelection();
+        break;
       case "Escape":
-        closeOverlayKeyboard();
+        if (selectionSnapshot().length > 0) {
+          clearSelection();
+        } else {
+          closeOverlayKeyboard();
+        }
         break;
       default:
-        if (e.key >= "1" && e.key <= "9") {
-          jumpToWorkspaceN(parseInt(e.key, 10));
+        if (key >= "1" && key <= "9") {
+          clearSelection();
+          jumpToWorkspaceN(parseInt(key, 10));
         } else {
           handled = false;
         }
@@ -435,6 +801,14 @@
     card: HTMLElement;
     dragging: boolean;
     kind: DragSourceKind;
+    /// Was Ctrl held on pointerdown? Used on pointerup-without-drag
+    /// to branch between "activate" (plain click) and "toggle
+    /// selection" (Ctrl+click).
+    ctrlOnDown: boolean;
+    /// Ids the drop handler should operate on. Single-element array
+    /// for normal drags, multiple for a drag started on a selected
+    /// card when the selection had > 1 entries.
+    targets: string[];
   } | null = null;
 
   let ghostEl: HTMLElement | null = null;
@@ -454,6 +828,79 @@
   const TILT_LERP = 0.25; // 0 = frozen, 1 = no smoothing
   let ghostLastX = 0;
   let ghostRotation = 0;
+
+  /// Builds a drag-ghost element.
+  ///
+  /// Single-window drag: clones the source card directly.
+  ///
+  /// Multi-window drag (targets.length > 1): builds a stacked-cards
+  /// presentation. Up to 3 card clones are layered with a small
+  /// x/y offset so the user sees a physical "stack" under the
+  /// cursor. If more than 3 targets exist, a "+N" badge appears in
+  /// the bottom-right corner indicating the overflow.
+  ///
+  /// Returns the container element (already appended to document
+  /// body). Tilt / position updates in `positionGhost` apply to
+  /// this container as-is — the inner card clones are positioned
+  /// absolutely relative to it.
+  function buildGhost(sourceCard: HTMLElement, targets: string[]): HTMLElement {
+    const rect = sourceCard.getBoundingClientRect();
+
+    if (targets.length <= 1) {
+      const clone = sourceCard.cloneNode(true) as HTMLElement;
+      clone.removeAttribute("draggable");
+      clone.classList.add("drag-ghost");
+      clone.style.width = `${rect.width}px`;
+      clone.style.height = `${rect.height}px`;
+      document.body.appendChild(clone);
+      return clone;
+    }
+
+    // Multi: stack container. Gets a fixed size equal to the source
+    // card plus the total stack offset so the whole stack is one
+    // positional unit for translate3d.
+    const STACK_VISIBLE = 3;
+    const STACK_OFFSET_PX = 4;
+    const visible = Math.min(targets.length, STACK_VISIBLE);
+    const container = document.createElement("div");
+    container.classList.add("drag-ghost", "drag-ghost-stack");
+    container.style.width = `${rect.width + (visible - 1) * STACK_OFFSET_PX}px`;
+    container.style.height = `${rect.height + (visible - 1) * STACK_OFFSET_PX}px`;
+
+    // Paint back-to-front so the clicked card (index 0) sits on top.
+    for (let i = visible - 1; i >= 0; i--) {
+      // Pick the card DOM for each target. If another selected card
+      // isn't currently in the DOM (off-screen workspace column),
+      // fall back to cloning the source card — the visual still
+      // reads as "N cards".
+      const targetId = targets[i];
+      const targetEl =
+        targetId === targets[0]
+          ? sourceCard
+          : (document.querySelector<HTMLElement>(
+              `[data-ws-id] [aria-label][title], [data-ws-id]`,
+            ) ?? sourceCard);
+      const clone = targetEl.cloneNode(true) as HTMLElement;
+      clone.removeAttribute("draggable");
+      clone.classList.add("drag-ghost-card");
+      clone.style.position = "absolute";
+      clone.style.top = `${i * STACK_OFFSET_PX}px`;
+      clone.style.left = `${i * STACK_OFFSET_PX}px`;
+      clone.style.width = `${rect.width}px`;
+      clone.style.height = `${rect.height}px`;
+      container.appendChild(clone);
+    }
+
+    if (targets.length > STACK_VISIBLE) {
+      const badge = document.createElement("span");
+      badge.classList.add("drag-ghost-badge");
+      badge.textContent = `+${targets.length - STACK_VISIBLE}`;
+      container.appendChild(badge);
+    }
+
+    document.body.appendChild(container);
+    return container;
+  }
 
   function removeGhost() {
     if (dragWatchdog) {
@@ -578,18 +1025,48 @@
   /// Unified pointer-down handler for both active and minimized
   /// cards. `kind` routes the action at drop time; the rest of the
   /// gesture (threshold, ghost, hit-test) is identical.
+  ///
+  /// Multi-select gesture rules (spec §Feature 4):
+  /// - If the card is in the current selection AND selection has
+  ///   >1 entries → multi-drag: targets = full selection snapshot.
+  /// - Otherwise → single-drag: targets = [windowId]. If the card
+  ///   was NOT in the selection, clear the selection first so the
+  ///   visual state matches the intent ("I'm starting a new drag,
+  ///   not operating on the previous multi-select").
   function onCardPointerDown(
     e: PointerEvent,
     windowId: string,
     sourceWs: string,
     kind: DragSourceKind,
   ) {
+    // Right-click (button 2): prepare the selection state that the
+    // about-to-open shadcn ContextMenu should see, then fall through
+    // so bits-ui's own `oncontextmenu` (bound via `{...props}` on the
+    // button) can open the menu unobstructed.
+    //
+    // This is the spec path — we previously had an `oncontextmenu`
+    // handler on the button, but spreading `{...props}` *before* our
+    // handler means ours overrode bits-ui's, and the menu never
+    // opened at all. Using pointerdown-with-button-2 runs ahead of
+    // the contextmenu event, so the menu renders with the right
+    // selection state in `cardContextMenu`.
+    if (e.button === 2) {
+      const snap = selectionSnapshot();
+      if (!(snap.length > 1 && snap.includes(windowId))) {
+        selectOnly(windowId);
+      }
+      // Use log_frontend so the message lands in the shell's
+      // tracing log (console.debug never makes it out of WebKitGTK
+      // reliably, so the previous debug lines were invisible in
+      // diagnostic sessions).
+      invoke("log_frontend", {
+        message: `[overlay] right-click card=${windowId} selectionSize=${snap.length}`,
+      }).catch(() => {});
+      return;
+    }
     if (e.button !== 0) return; // left mouse / primary touch only
+
     const card = e.currentTarget as HTMLElement;
-    // Pointer capture: all subsequent move/up events for this
-    // pointerId route to `card`, even when the pointer leaves
-    // the card's bounds. Drops the need for document-level
-    // fallback listeners.
     try {
       card.setPointerCapture(e.pointerId);
     } catch {
@@ -598,6 +1075,29 @@
     const rect = card.getBoundingClientRect();
     ghostOffsetX = e.clientX - rect.left;
     ghostOffsetY = e.clientY - rect.top;
+
+    // `ctrlKey || metaKey` so Cmd+click on macOS / WebKitGTK-style
+    // environments behaves the same as Ctrl+click on Linux. The drag
+    // and the click handlers both read this flag.
+    const multiKey = e.ctrlKey || e.metaKey;
+    const wasSelected = isSelected(windowId);
+    const snap = selectionSnapshot();
+    let targets: string[];
+    if (wasSelected && snap.length > 1) {
+      targets = snap.slice();
+    } else {
+      if (!wasSelected && !multiKey) {
+        clearSelection();
+      }
+      targets = [windowId];
+    }
+
+    invoke("log_frontend", {
+      message:
+        `[overlay] pointerdown card=${windowId} button=${e.button} ` +
+        `ctrl=${e.ctrlKey} meta=${e.metaKey} multiKey=${multiKey} ` +
+        `wasSelected=${wasSelected} selSize=${snap.length} targets=${targets.length}`,
+    }).catch(() => {});
 
     pointerDrag = {
       pointerId: e.pointerId,
@@ -608,6 +1108,8 @@
       card,
       dragging: false,
       kind,
+      ctrlOnDown: multiKey,
+      targets,
     };
   }
 
@@ -624,17 +1126,7 @@
       // plain click doesn't leave stray DOM behind.
       pointerDrag.dragging = true;
       try {
-        const rect = pointerDrag.card.getBoundingClientRect();
-        const clone = pointerDrag.card.cloneNode(true) as HTMLElement;
-        clone.removeAttribute("draggable");
-        clone.classList.add("drag-ghost");
-        clone.style.width = `${rect.width}px`;
-        clone.style.height = `${rect.height}px`;
-        document.body.appendChild(clone);
-        ghostEl = clone;
-        // Seed the tilt tracker with the current X so the very first
-        // positionGhost call sees deltaX ≈ 0 (neutral tilt) instead
-        // of an artificial jump from 0 → clientX.
+        ghostEl = buildGhost(pointerDrag.card, pointerDrag.targets);
         ghostLastX = e.clientX;
         ghostRotation = 0;
       } catch (err) {
@@ -669,64 +1161,97 @@
 
     if (captured.dragging) {
       const drop = dropTargetAt(e.clientX, e.clientY);
-      // Mark the drop BEFORE resetDragUI so the synthetic click that
-      // follows pointerup (see `lastDropTime` comment) is inside the
-      // 300ms suppression window.
       lastDropTime = performance.now();
       resetDragUI();
 
-      // Drop outside any workspace column → cancel, no state change.
       if (!drop) {
         return;
       }
 
-      const sameWs = drop.wsId === captured.sourceWs;
-      const sourceKind = captured.kind;
-      const targetSection = drop.section;
-
-      // Action matrix (see spec):
-      //
-      // | Source     | Target workspace | Target section | Action     |
-      // |------------|------------------|----------------|------------|
-      // | active     | same             | active         | no-op      |
-      // | active     | same             | minimized      | minimize   |
-      // | active     | different        | any            | move       |
-      // | minimized  | same             | active         | restore    |
-      // | minimized  | same             | minimized      | no-op      |
-      // | minimized  | different        | any            | move+restore|
-      if (sourceKind === "active") {
-        if (sameWs && targetSection === "minimized") {
-          minimizeWindow(captured.windowId);
-        } else if (!sameWs) {
-          invoke("window_move_to_workspace", {
-            windowId: captured.windowId,
-            targetWorkspaceId: drop.wsId,
-          }).catch((err) =>
-            console.error("window_move_to_workspace failed", err),
-          );
-        }
-        // else: same workspace, active section → no-op
-      } else {
-        // sourceKind === "minimized"
-        if (sameWs && targetSection === "active") {
-          restoreWindow(captured.windowId);
-        } else if (!sameWs) {
-          restoreWindowToWorkspace(captured.windowId, drop.wsId);
-        }
-        // else: same workspace, minimized section → no-op
+      // Apply the action matrix (spec §Feature 4) to every target in
+      // the captured drag. For single drags `targets.length === 1`.
+      // For multi-drags we need per-window classification (active vs
+      // minimized) because the source kind of the "anchor" card may
+      // differ from the kind of other selected cards (a selection
+      // can span both sections on the same workspace).
+      for (const targetId of captured.targets) {
+        const win = $windows.find((w) => w.id === targetId);
+        if (!win) continue;
+        const perWinKind: DragSourceKind =
+          win.minimized ? "minimized" : "active";
+        const perWinSourceWs =
+          win.workspace_ids.find((id) =>
+            $primaryWorkspaces.some((ws) => ws.id === id),
+          ) ?? "";
+        applyDropAction(targetId, perWinKind, perWinSourceWs, drop);
       }
+      clearSelection();
     } else {
       // Pointer never moved past the threshold — treat as a click.
+      //
+      // Multi-select click rules (spec §Feature 2):
+      // - Ctrl+click: toggle selection, don't activate, don't close
+      // - Plain click: clear selection, activate/restore, close overlay
+      if (captured.ctrlOnDown) {
+        toggleSelection(captured.windowId);
+        invoke("log_frontend", {
+          message: `[overlay] toggleSelection card=${captured.windowId}`,
+        }).catch(() => {});
+        return;
+      }
+      clearSelection();
       if (captured.kind === "active") {
-        // Active click: focus-and-switch (existing behaviour).
         invoke("activate_window", { id: captured.windowId }).catch(() => {});
       } else {
-        // Minimized click: restore + focus. Closes the overlay so
-        // the user sees the restored window on its workspace.
         restoreWindow(captured.windowId);
       }
       overlayVisible = false;
       invoke("set_popover_input_region", { expanded: false }).catch(() => {});
+    }
+  }
+
+  /// Applies one drop action based on the source card's kind +
+  /// workspace and the drop target. Extracted so multi-drag can loop
+  /// over targets without duplicating the branch logic.
+  function applyDropAction(
+    windowId: string,
+    sourceKind: DragSourceKind,
+    sourceWs: string,
+    drop: DropTarget,
+  ) {
+    const sameWs = drop.wsId === sourceWs;
+    const targetSection = drop.section;
+    if (sourceKind === "active") {
+      if (sameWs && targetSection === "minimized") {
+        minimizeWindow(windowId);
+      } else if (!sameWs) {
+        invoke("window_move_to_workspace", {
+          windowId,
+          targetWorkspaceId: drop.wsId,
+        }).catch((err) =>
+          console.error("window_move_to_workspace failed", err),
+        );
+        // Drop target is the minimized section on a different
+        // workspace → move + minimize (spec §Feature 4).
+        if (targetSection === "minimized") {
+          minimizeWindow(windowId);
+        }
+      }
+    } else {
+      if (sameWs && targetSection === "active") {
+        restoreWindow(windowId);
+      } else if (!sameWs) {
+        if (targetSection === "active") {
+          restoreWindowToWorkspace(windowId, drop.wsId);
+        } else {
+          // Minimized → other workspace's minimized section: move
+          // without restoring (keeps the minimize state).
+          invoke("window_move_to_workspace", {
+            windowId,
+            targetWorkspaceId: drop.wsId,
+          }).catch(() => {});
+        }
+      }
     }
   }
 
@@ -803,6 +1328,118 @@
     };
   });
 </script>
+
+<!--
+  Context-menu content snippet shared by the active-window cards and
+  the minimized-window cards. The snippet branches three ways based
+  on the current selection:
+  - Multi-select: shows Close All / Minimize All / Restore All /
+    Move All to / (optional) Tile Side by Side.
+  - Single active: Close / Minimize / Move to → / Tile Left / Tile
+    Right / Fullscreen.
+  - Single minimized: Restore / Close / Move to →.
+  The snippet reads `$selectedWindowIds` and `$windows` directly —
+  Svelte 5 snippets track reactive dependencies transparently.
+-->
+{#snippet cardContextMenu(windowId: string, isMinimized: boolean)}
+  {@const sel = Array.from($selectedWindowIds)}
+  {@const multi = sel.length > 1 && sel.includes(windowId)}
+  {@const win = $windows.find((w) => w.id === windowId)}
+  {@const currentWs = win?.workspace_ids[0] ?? ""}
+  {@const moveTargets = $primaryWorkspaces.filter((ws) => ws.id !== currentWs)}
+
+  {#if multi}
+    {@const selWindows = sel
+      .map((id) => $windows.find((w) => w.id === id))
+      .filter((w): w is WindowInfo => Boolean(w))}
+    {@const anyActive = selWindows.some((w) => !w.minimized)}
+    {@const anyMinimized = selWindows.some((w) => w.minimized)}
+    {@const twoActive = selWindows.length === 2 && selWindows.every((w) => !w.minimized)}
+
+    <ContextMenu.Item onclick={closeAllSelected}>
+      Close All ({sel.length})
+    </ContextMenu.Item>
+    {#if anyActive}
+      <ContextMenu.Item onclick={minimizeAllSelected}>Minimize All</ContextMenu.Item>
+    {/if}
+    {#if anyMinimized}
+      <ContextMenu.Item onclick={restoreAllSelected}>Restore All</ContextMenu.Item>
+    {/if}
+    {#if moveTargets.length > 0}
+      <ContextMenu.Separator />
+      <ContextMenu.Sub>
+        <ContextMenu.SubTrigger>Move All to</ContextMenu.SubTrigger>
+        <ContextMenu.Portal>
+          <ContextMenu.SubContent class="shell-popover">
+            {#each moveTargets as ws, i (ws.id)}
+              <ContextMenu.Item onclick={() => moveAllSelectedToWorkspace(ws.id)}>
+                {ws.name || `Workspace ${i + 1}`}
+              </ContextMenu.Item>
+            {/each}
+          </ContextMenu.SubContent>
+        </ContextMenu.Portal>
+      </ContextMenu.Sub>
+    {/if}
+    {#if twoActive}
+      <ContextMenu.Separator />
+      <ContextMenu.Item onclick={() => tileSideBySide([sel[0], sel[1]])}>
+        Tile Side by Side
+      </ContextMenu.Item>
+    {/if}
+  {:else if isMinimized}
+    <ContextMenu.Item onclick={() => { restoreWindow(windowId); overlayVisible = false; }}>
+      Restore
+    </ContextMenu.Item>
+    <ContextMenu.Item onclick={() => closeMinimizedWindow(windowId)}>
+      Close
+    </ContextMenu.Item>
+    {#if moveTargets.length > 0}
+      <ContextMenu.Separator />
+      <ContextMenu.Sub>
+        <ContextMenu.SubTrigger>Move to</ContextMenu.SubTrigger>
+        <ContextMenu.Portal>
+          <ContextMenu.SubContent class="shell-popover">
+            {#each moveTargets as ws, i (ws.id)}
+              <ContextMenu.Item onclick={() => restoreWindowToWorkspace(windowId, ws.id)}>
+                {ws.name || `Workspace ${i + 1}`}
+              </ContextMenu.Item>
+            {/each}
+          </ContextMenu.SubContent>
+        </ContextMenu.Portal>
+      </ContextMenu.Sub>
+    {/if}
+  {:else}
+    <ContextMenu.Item onclick={() => closeWindowAction(windowId)}>Close</ContextMenu.Item>
+    <ContextMenu.Item onclick={() => minimizeWindow(windowId)}>Minimize</ContextMenu.Item>
+    {#if moveTargets.length > 0}
+      <ContextMenu.Separator />
+      <ContextMenu.Sub>
+        <ContextMenu.SubTrigger>Move to</ContextMenu.SubTrigger>
+        <ContextMenu.Portal>
+          <ContextMenu.SubContent class="shell-popover">
+            {#each moveTargets as ws, i (ws.id)}
+              <ContextMenu.Item onclick={() => moveWindowToWorkspaceAction(windowId, ws.id)}>
+                {ws.name || `Workspace ${i + 1}`}
+              </ContextMenu.Item>
+            {/each}
+          </ContextMenu.SubContent>
+        </ContextMenu.Portal>
+      </ContextMenu.Sub>
+    {/if}
+    <ContextMenu.Separator />
+    <ContextMenu.Item onclick={() => tileWindowAction(windowId, "left")}>
+      Tile Left
+    </ContextMenu.Item>
+    <ContextMenu.Item onclick={() => tileWindowAction(windowId, "right")}>
+      Tile Right
+    </ContextMenu.Item>
+    <ContextMenu.Item
+      onclick={() => fullscreenWindowAction(windowId, win?.fullscreen ?? false)}
+    >
+      {win?.fullscreen ? "Exit Fullscreen" : "Fullscreen"}
+    </ContextMenu.Item>
+  {/if}
+{/snippet}
 
 {#if $primaryWorkspaces.length > 0}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -909,41 +1546,56 @@
               {:else}
                 <div class="ws-cards">
                   {#each shown as win (win.id)}
-                    <!-- svelte-ignore a11y_click_events_have_key_events -->
-                    <button
-                      class="window-card"
-                      class:window-card-dragging={dragState?.windowId ===
-                        win.id}
-                      class:window-card-keyboard-focus={focusedWindowId ===
-                        win.id}
-                      onpointerdown={(e) =>
-                        onCardPointerDown(e, win.id, ws.id, "active")}
-                      onpointermove={onCardPointerMove}
-                      onpointerup={onCardPointerUp}
-                      onpointercancel={onCardPointerCancel}
-                      title={win.title || win.app_id}
-                      aria-label={`${win.title || win.app_id} on workspace ${i + 1}`}
-                    >
-                      {#if iconUrls[win.app_id]}
-                        <img
-                          class="window-card-icon"
-                          src={iconUrls[win.app_id]}
-                          alt=""
-                          width="24"
-                          height="24"
-                          draggable="false"
-                        />
-                      {:else}
-                        <AppWindow
-                          size={20}
-                          strokeWidth={1.5}
-                          class="window-card-icon-fallback"
-                        />
-                      {/if}
-                      <span class="window-card-title">
-                        {truncateTitle(win.title, win.app_id)}
-                      </span>
-                    </button>
+                    <ContextMenu.Root onOpenChange={onCardMenuOpenChange}>
+                      <ContextMenu.Trigger>
+                        {#snippet child({ props })}
+                          <!-- svelte-ignore a11y_click_events_have_key_events -->
+                          <button
+                            {...props}
+                            class="window-card"
+                            class:window-card-dragging={dragState?.windowId ===
+                              win.id}
+                            class:window-card-keyboard-focus={focusedWindowId ===
+                              win.id}
+                            class:window-card-selected={$selectedWindowIds.has(
+                              win.id,
+                            )}
+                            onpointerdown={(e) =>
+                              onCardPointerDown(e, win.id, ws.id, "active")}
+                            onpointermove={onCardPointerMove}
+                            onpointerup={onCardPointerUp}
+                            onpointercancel={onCardPointerCancel}
+                            title={win.title || win.app_id}
+                            aria-label={`${win.title || win.app_id} on workspace ${i + 1}`}
+                          >
+                            {#if iconUrls[win.app_id]}
+                              <img
+                                class="window-card-icon"
+                                src={iconUrls[win.app_id]}
+                                alt=""
+                                width="24"
+                                height="24"
+                                draggable="false"
+                              />
+                            {:else}
+                              <AppWindow
+                                size={20}
+                                strokeWidth={1.5}
+                                class="window-card-icon-fallback"
+                              />
+                            {/if}
+                            <span class="window-card-title">
+                              {truncateTitle(win.title, win.app_id)}
+                            </span>
+                          </button>
+                        {/snippet}
+                      </ContextMenu.Trigger>
+                      <ContextMenu.Portal>
+                        <ContextMenu.Content class="shell-popover">
+                          {@render cardContextMenu(win.id, false)}
+                        </ContextMenu.Content>
+                      </ContextMenu.Portal>
+                    </ContextMenu.Root>
                   {/each}
                   {#if overflow > 0}
                     <div class="window-card overflow-badge" aria-hidden="true">
@@ -977,41 +1629,56 @@
                 <div class="ws-minimized-label">Minimized</div>
                 <div class="ws-cards">
                   {#each wsMinimized as m (m.windowId)}
-                    <!-- svelte-ignore a11y_click_events_have_key_events -->
-                    <button
-                      class="window-card window-card-minimized"
-                      class:window-card-dragging={dragState?.windowId ===
-                        m.windowId}
-                      class:window-card-keyboard-focus={focusedWindowId ===
-                        m.windowId}
-                      onpointerdown={(e) =>
-                        onCardPointerDown(e, m.windowId, ws.id, "minimized")}
-                      onpointermove={onCardPointerMove}
-                      onpointerup={onCardPointerUp}
-                      onpointercancel={onCardPointerCancel}
-                      title={m.title || m.appId}
-                      aria-label={`Minimized: ${m.title || m.appId} on workspace ${i + 1}`}
-                    >
-                      {#if iconUrls[m.appId]}
-                        <img
-                          class="window-card-icon"
-                          src={iconUrls[m.appId]}
-                          alt=""
-                          width="24"
-                          height="24"
-                          draggable="false"
-                        />
-                      {:else}
-                        <AppWindow
-                          size={20}
-                          strokeWidth={1.5}
-                          class="window-card-icon-fallback"
-                        />
-                      {/if}
-                      <span class="window-card-title">
-                        {truncateTitle(m.title, m.appId)}
-                      </span>
-                    </button>
+                    <ContextMenu.Root>
+                      <ContextMenu.Trigger>
+                        {#snippet child({ props })}
+                          <!-- svelte-ignore a11y_click_events_have_key_events -->
+                          <button
+                            {...props}
+                            class="window-card window-card-minimized"
+                            class:window-card-dragging={dragState?.windowId ===
+                              m.windowId}
+                            class:window-card-keyboard-focus={focusedWindowId ===
+                              m.windowId}
+                            class:window-card-selected={$selectedWindowIds.has(
+                              m.windowId,
+                            )}
+                            onpointerdown={(e) =>
+                              onCardPointerDown(e, m.windowId, ws.id, "minimized")}
+                            onpointermove={onCardPointerMove}
+                            onpointerup={onCardPointerUp}
+                            onpointercancel={onCardPointerCancel}
+                            title={m.title || m.appId}
+                            aria-label={`Minimized: ${m.title || m.appId} on workspace ${i + 1}`}
+                          >
+                            {#if iconUrls[m.appId]}
+                              <img
+                                class="window-card-icon"
+                                src={iconUrls[m.appId]}
+                                alt=""
+                                width="24"
+                                height="24"
+                                draggable="false"
+                              />
+                            {:else}
+                              <AppWindow
+                                size={20}
+                                strokeWidth={1.5}
+                                class="window-card-icon-fallback"
+                              />
+                            {/if}
+                            <span class="window-card-title">
+                              {truncateTitle(m.title, m.appId)}
+                            </span>
+                          </button>
+                        {/snippet}
+                      </ContextMenu.Trigger>
+                      <ContextMenu.Portal>
+                        <ContextMenu.Content class="shell-popover">
+                          {@render cardContextMenu(m.windowId, true)}
+                        </ContextMenu.Content>
+                      </ContextMenu.Portal>
+                    </ContextMenu.Root>
                   {/each}
                 </div>
               </div>
@@ -1288,6 +1955,19 @@
     border-color: var(--color-accent);
   }
 
+  /* Multi-selection ring. Accent border + accent-tinted background
+     so the selection reads as distinct from hover (neutral tint)
+     and keyboard focus (thin solid ring). A selected card that is
+     also keyboard-focused uses the focus ring on top — the
+     selection background still shows through. */
+  .window-card-selected {
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  }
+  .window-card-selected:hover {
+    background: color-mix(in srgb, var(--color-accent) 24%, transparent);
+  }
+
   .window-card-icon {
     width: 24px;
     height: 24px;
@@ -1326,6 +2006,38 @@
     cursor: grabbing !important;
     outline: none !important;
     will-change: transform;
+  }
+
+  /* Multi-drag stack: container owns position/transform; the
+     inner card clones sit absolutely at staggered offsets so the
+     user sees a 3-card stack trailing the pointer. Each inner
+     clone gets its own subtle shadow so the layering reads even
+     when the outer .drag-ghost shadow is diffuse. */
+  :global(.drag-ghost-stack) {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  :global(.drag-ghost-stack .drag-ghost-card) {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+  :global(.drag-ghost-badge) {
+    position: absolute;
+    right: -6px;
+    bottom: -6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: var(--radius-full);
+    background: var(--color-accent);
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+    z-index: 1;
   }
 
   .window-card-title {

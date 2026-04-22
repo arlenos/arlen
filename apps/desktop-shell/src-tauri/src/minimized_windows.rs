@@ -120,6 +120,59 @@ pub fn close_minimized_window(
     sender.close(&window_id);
 }
 
+/// Generic close request for any window (active OR minimized). The
+/// underlying cosmic-toplevel-manager `close` request is state-
+/// independent; this command exists separately from
+/// `close_minimized_window` so the context-menu callsite reads as
+/// intent-matching ("Close" on a regular active window).
+#[tauri::command]
+pub fn close_window(
+    window_id: String,
+    sender: State<'_, Arc<ToplevelSender>>,
+) {
+    sender.close(&window_id);
+}
+
+/// Toggle fullscreen on the window. Frontend reads the current
+/// fullscreen flag from the windows store and passes the desired
+/// value; keeping the toggle decision on the frontend lets the call
+/// site (context menu) show the right label ("Fullscreen" vs. "Exit
+/// Fullscreen") without a round-trip.
+#[tauri::command]
+pub fn fullscreen_window(
+    window_id: String,
+    enabled: bool,
+    sender: State<'_, Arc<ToplevelSender>>,
+) {
+    sender.set_fullscreen(&window_id, enabled);
+}
+
+/// Tile a window to a screen half. `direction` accepts `"left"`,
+/// `"right"`, `"top"`, or `"bottom"`.
+///
+/// NOTE: cosmic-toplevel-management does NOT expose a half-tile
+/// request. A proper implementation needs a new `tile_toplevel`
+/// request in `lunaris-shell-overlay-v1` that the compositor
+/// resolves against its internal tiling layout. For now this
+/// command logs a warning and returns Ok — the UI surfaces the
+/// option so the wiring is ready, but the window doesn't move.
+#[tauri::command]
+pub fn tile_window(window_id: String, direction: String) -> Result<(), String> {
+    let valid = matches!(
+        direction.as_str(),
+        "left" | "right" | "top" | "bottom"
+    );
+    if !valid {
+        return Err(format!("tile_window: unknown direction '{direction}'"));
+    }
+    log::warn!(
+        "tile_window: direction={direction} id={window_id} \
+         (not yet implemented — pending lunaris-shell-overlay protocol \
+         extension for half-tile requests)"
+    );
+    Ok(())
+}
+
 /// Minimize a currently-visible window. The opposite of
 /// `restore_window` — used by the Workspace Overlay when the user
 /// drags an active window card into the Minimized area. Sends
@@ -176,6 +229,7 @@ mod tests {
             app_id: format!("app.{id}"),
             active: false,
             minimized,
+            fullscreen: false,
             workspace_ids: ws.iter().map(|s| s.to_string()).collect(),
         }
     }
@@ -279,6 +333,16 @@ mod tests {
         let p = mk_payload("orphan", true, &[]);
         let ws_id: String = p.workspace_ids.first().cloned().unwrap_or_default();
         assert!(ws_id.is_empty());
+    }
+
+    #[test]
+    fn fullscreen_flag_defaults_to_false() {
+        // Any new toplevel entering the windows list should start as
+        // non-fullscreen — the context menu's "Fullscreen" label
+        // relies on this default when cosmic hasn't yet sent a
+        // state update.
+        let p = mk_payload("x", false, &["ws-1"]);
+        assert!(!p.fullscreen);
     }
 
     #[test]
