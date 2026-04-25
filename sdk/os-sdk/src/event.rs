@@ -107,6 +107,13 @@ impl EventEmitter for UnixEventEmitter {
                 pid: std::process::id(),
                 session_id: self.session_id.clone(),
                 payload,
+                // uid is enriched by the bus via SO_PEERCRED on the
+                // accept socket; sending 0 here is the documented
+                // "let the daemon fill it in" path. project_id is
+                // optional audit-log scoping that apps don't set
+                // themselves — focus events propagate context.
+                uid: 0,
+                project_id: String::new(),
             };
 
             let encoded = event.encode_to_vec();
