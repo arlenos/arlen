@@ -243,6 +243,7 @@ pub fn run() {
             layout::set_layout_mode,
             layout::set_layout_gaps,
             layout::set_layout_smart_gaps,
+            layout::set_layout_tiled_headers,
             permissions::get_app_permissions,
             permissions::get_app_permission_detail,
             modules::list_modules,

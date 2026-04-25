@@ -14,6 +14,7 @@
     inner_gap: number;
     outer_gap: number;
     smart_gaps: boolean;
+    tiled_headers: boolean;
   }
 
   let state = $state<LayoutState>({
@@ -21,6 +22,7 @@
     inner_gap: 8,
     outer_gap: 8,
     smart_gaps: true,
+    tiled_headers: false,
   });
 
   let saveTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -56,6 +58,11 @@
   function toggleSmartGaps() {
     state.smart_gaps = !state.smart_gaps;
     invoke("set_layout_smart_gaps", { enabled: state.smart_gaps }).catch(() => {});
+  }
+
+  function toggleTiledHeaders() {
+    state.tiled_headers = !state.tiled_headers;
+    invoke("set_layout_tiled_headers", { enabled: state.tiled_headers }).catch(() => {});
   }
 
   function persistGaps() {
@@ -139,6 +146,23 @@
           ariaLabel="Smart Gaps"
         />
       </div>
+
+      <!--
+        Tiled Headers: only meaningful when tiled windows actually exist.
+        Hidden in floating mode to keep the UI focused. The setting is
+        global (compositor.toml [layout]) so toggling it in tiling/monocle
+        and switching back to floating preserves the value silently.
+      -->
+      {#if state.mode === "tiling" || state.mode === "monocle"}
+        <div class="toggle-row" title="Hide compositor title bars on tiled windows">
+          <span class="toggle-label">Tiled Headers</span>
+          <Switch
+            value={state.tiled_headers}
+            onchange={toggleTiledHeaders}
+            ariaLabel="Tiled Headers"
+          />
+        </div>
+      {/if}
 
     </div>
   </div>
