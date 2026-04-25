@@ -10,9 +10,16 @@
 ///   `f:<substring>`      - explicit "files only" prefix (same effect)
 ///   `project:<name>`     - files tagged as part of a project
 ///   `app:<id>`           - files accessed by a given app id
+///
+/// When Focus Mode is active and the user types a bare substring (no
+/// explicit prefix), this store auto-prepends `project:<focused-name>`
+/// before sending the query to the plugin. An explicit `project:`,
+/// `f:`, or `app:` prefix is treated as a deliberate override and
+/// bypasses the auto-scope. See `applyFocusScope` below.
 
-import { writable, type Readable } from "svelte/store";
+import { writable, type Readable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { focusState } from "./projects.js";
 
 /// Mirrors the Rust `SearchResult` struct. Same as `PowerActionResult`
 /// but typed here for clarity.
@@ -31,6 +38,29 @@ export const fileResults: Readable<FileResult[]> = {
     subscribe: _results.subscribe,
 };
 
+/// Auto-scope the query to the focused project when Focus Mode is on.
+///
+/// Per docs/architecture/project-system.md §Focus Mode → State
+/// Changes table, file search should narrow to the active project.
+/// We honour a manual `f:`, `app:`, or `project:` prefix as an
+/// explicit override so the user can still search globally or against
+/// a different project without leaving Focus.
+function applyFocusScope(query: string): string {
+    const trimmed = query.trim();
+    if (
+        trimmed.startsWith("f:") ||
+        trimmed.startsWith("app:") ||
+        trimmed.startsWith("project:")
+    ) {
+        return query;
+    }
+    const focus = get(focusState);
+    if (!focus.projectName) {
+        return query;
+    }
+    return `project:${focus.projectName} ${query}`;
+}
+
 /// Fetch fresh results for the given query. Empty query -> empty
 /// store. Failure is silent — a missing Knowledge daemon or a query
 /// timeout should not surface as an error in the Waypointer.
@@ -39,10 +69,11 @@ export async function updateFileResults(query: string): Promise<void> {
         _results.set([]);
         return;
     }
+    const scoped = applyFocusScope(query);
     try {
         const r = await invoke<FileResult[]>("waypointer_search_plugin", {
             pluginId: "core.files",
-            query,
+            query: scoped,
         });
         _results.set(r);
     } catch (e) {

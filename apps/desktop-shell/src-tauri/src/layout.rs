@@ -20,6 +20,7 @@ pub struct LayoutState {
     pub inner_gap: i32,
     pub outer_gap: i32,
     pub smart_gaps: bool,
+    pub tiled_headers: bool,
 }
 
 /// Get the layout config path.
@@ -83,6 +84,10 @@ pub fn get_layout_state() -> LayoutState {
             .and_then(|l| l.get("smart_gaps"))
             .and_then(|v| v.as_bool())
             .unwrap_or(true),
+        tiled_headers: layout
+            .and_then(|l| l.get("tiled_headers"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
     }
 }
 
@@ -163,4 +168,16 @@ pub fn set_layout_mode(
 pub fn set_layout_smart_gaps(enabled: bool) {
     update_layout_field("smart_gaps", toml::Value::Boolean(enabled));
     log::info!("layout: smart_gaps={enabled}");
+}
+
+/// Toggle compositor-rendered header rendering on tiled SSD windows.
+///
+/// When `false` (default), tiled windows lose their compositor-rendered
+/// 36px header to match tiling-WM convention (i3, sway, hyprland).
+/// Stacks always keep their tab-bar header (functional UI), and floating
+/// windows are unaffected.
+#[tauri::command]
+pub fn set_layout_tiled_headers(enabled: bool) {
+    update_layout_field("tiled_headers", toml::Value::Boolean(enabled));
+    log::info!("layout: tiled_headers={enabled}");
 }
