@@ -11,6 +11,8 @@ mod menu_store;
 mod minimized_windows;
 mod modules;
 mod module_errors;
+mod module_scheme;
+mod modulesd_client;
 mod extension_registry;
 mod bluetooth;
 mod network;
@@ -87,8 +89,26 @@ pub fn run() {
     let ext_registry: extension_registry::ExtensionRegistryState =
         std::sync::Mutex::new(extension_registry::ExtensionRegistry::new());
 
+    // Module Runtime daemon client. Connection is established lazily
+    // in setup() so the shell still launches if `lunaris-modulesd` is
+    // not running yet (e.g. on first boot before the user has any
+    // third-party modules).
+    let modulesd_client = modulesd_client::ModulesdClient::new(
+        modulesd_client::ModulesdClient::default_path(),
+    );
+    let modulesd_for_scheme = Arc::clone(&modulesd_client);
+    let modulesd_for_setup = Arc::clone(&modulesd_client);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .register_asynchronous_uri_scheme_protocol("module", move |ctx, request, responder| {
+            let client = Arc::clone(&modulesd_for_scheme);
+            tauri::async_runtime::spawn(async move {
+                let resp = module_scheme::handle(client, request).await;
+                responder.respond(resp);
+            });
+            let _ = ctx;
+        })
         .manage(Arc::clone(&overlay_sender))
         .manage(Arc::clone(&workspace_sender))
         .manage(Arc::clone(&toplevel_sender))
@@ -104,7 +124,18 @@ pub fn run() {
         .manage(Arc::new(projects::ProjectsState::new()))
         .manage(system_toggles::ToggleState::new())
         .manage(clipboard_state)
-        .setup(|app| {
+        .manage(Arc::clone(&modulesd_client))
+        .setup(move |app| {
+            // Best-effort connect to lunaris-modulesd. Failure is
+            // non-fatal: third-party modules just stay unavailable
+            // until the daemon comes up.
+            let connect_client = Arc::clone(&modulesd_for_setup);
+            tauri::async_runtime::spawn(async move {
+                match connect_client.connect().await {
+                    Ok(()) => log::info!("modulesd_client: connected"),
+                    Err(err) => log::warn!("modulesd_client: connect failed: {err}"),
+                }
+            });
             // Initialize the new theme system (v2).
             let config_dir = dirs::config_dir()
                 .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))

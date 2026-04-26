@@ -53,6 +53,7 @@ zbus = { version = "5", default-features = false, features = ["tokio"] }
 tokio = { version = "1", features = ["net", "io-util", "sync", "macros", "rt"] }
 notification-proto = { path = "../../notification-proto" }
 module-sdk = { path = "../../sdk/module-sdk" }
+modulesd-proto = { path = "../../modulesd-proto" }
 bytes = "1"
 wordnet-db = "0.1"
 wordnet-morphy = "0.1"
