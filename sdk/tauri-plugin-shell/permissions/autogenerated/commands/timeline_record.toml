@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-timeline-record"
+description = "Enables the timeline_record command without any pre-configured scope."
+commands.allow = ["timeline_record"]
+
+[[permission]]
+identifier = "deny-timeline-record"
+description = "Denies the timeline_record command without any pre-configured scope."
+commands.deny = ["timeline_record"]
