@@ -137,7 +137,38 @@ pub async fn handle(
         return error_response(StatusCode::FORBIDDEN, "path traversal blocked");
     };
 
-    let bytes = match tokio::fs::read(&full_path).await {
+    // Symlink-resolve the requested path and reject anything that
+    // escapes the module's own bundle directory. `safe_join` only
+    // blocks `..` segments in the requested path; a malicious or
+    // accidentally-misconfigured module bundle could still contain
+    // a symlink that points outside the bundle. This canonicalize
+    // step closes that hole.
+    let canonical_root = match std::fs::canonicalize(&root_path) {
+        Ok(p) => p,
+        Err(_) => {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "module root path missing",
+            );
+        }
+    };
+    let canonical_full = match std::fs::canonicalize(&full_path) {
+        Ok(p) => p,
+        Err(_) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                &format!("asset not found: {asset_path}"),
+            );
+        }
+    };
+    if !canonical_full.starts_with(&canonical_root) {
+        return error_response(
+            StatusCode::FORBIDDEN,
+            "asset escapes module root via symlink",
+        );
+    }
+
+    let bytes = match tokio::fs::read(&canonical_full).await {
         Ok(b) => b,
         Err(_) => {
             return error_response(
@@ -149,7 +180,7 @@ pub async fn handle(
 
     HttpResponse::builder()
         .status(StatusCode::OK)
-        .header("content-type", content_type_for(&full_path))
+        .header("content-type", content_type_for(&canonical_full))
         .header("Content-Security-Policy", csp)
         .header("X-Module-Id", &module_id)
         .body(bytes)
@@ -186,6 +217,25 @@ mod tests {
         let root = Path::new("/usr/share/lunaris/modules/x");
         assert!(safe_join(root, "../escape.txt").is_none());
         assert!(safe_join(root, "ok/path.txt").is_some());
+    }
+
+    #[test]
+    fn canonicalize_blocks_symlink_escape() {
+        // Create a temp module dir containing a symlink pointing at
+        // /etc/passwd. The runtime canonical-prefix check should
+        // reject reading via the symlink even though `safe_join`
+        // happily produces the path.
+        let tmp = tempfile::tempdir().unwrap();
+        let module_root = tmp.path().join("module");
+        std::fs::create_dir_all(&module_root).unwrap();
+        let evil = module_root.join("escape.txt");
+        // Symlink may fail on platforms without permission; skip if so.
+        if std::os::unix::fs::symlink("/etc/passwd", &evil).is_err() {
+            return;
+        }
+        let canonical_root = std::fs::canonicalize(&module_root).unwrap();
+        let canonical_target = std::fs::canonicalize(&evil).unwrap();
+        assert!(!canonical_target.starts_with(&canonical_root));
     }
 
     #[test]

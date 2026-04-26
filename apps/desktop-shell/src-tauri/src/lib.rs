@@ -9,11 +9,9 @@ mod layer_shell;
 mod layout;
 mod menu_store;
 mod minimized_windows;
-mod modules;
-mod module_errors;
 mod module_scheme;
 mod modulesd_client;
-mod extension_registry;
+mod modulesd_commands;
 mod bluetooth;
 mod network;
 mod shell_config;
@@ -63,8 +61,6 @@ pub fn run() {
     let app_idx: app_index::AppIndex = Arc::new(std::sync::Mutex::new(app_index::build_index()));
     log::info!("app_index: build took {:?}", t_app.elapsed());
     let sni_items: sni::SniItems = Arc::new(std::sync::Mutex::new(HashMap::new()));
-    let module_loader: modules::ModuleLoaderState = std::sync::Mutex::new(modules::ModuleLoader::new());
-    let error_tracker: module_errors::ErrorTrackerState = std::sync::Mutex::new(module_errors::ModuleErrorTracker::new());
 
     // Clipboard history: opt-in via shell.toml. The state is created
     // regardless so the Tauri commands have something to manage, but
@@ -85,9 +81,6 @@ pub fn run() {
         Arc::clone(&clipboard_state),
     );
     let plugin_mgr_state: waypointer_system::PluginManagerState = std::sync::RwLock::new(plugin_mgr);
-
-    let ext_registry: extension_registry::ExtensionRegistryState =
-        std::sync::Mutex::new(extension_registry::ExtensionRegistry::new());
 
     // Module Runtime daemon client. Connection is established lazily
     // in setup() so the shell still launches if `lunaris-modulesd` is
@@ -117,10 +110,7 @@ pub fn run() {
         .manage(Arc::clone(&menu_store))
         .manage(app_idx)
         .manage(Arc::clone(&sni_items))
-        .manage(module_loader)
-        .manage(error_tracker)
         .manage(plugin_mgr_state)
-        .manage(ext_registry)
         .manage(Arc::new(projects::ProjectsState::new()))
         .manage(system_toggles::ToggleState::new())
         .manage(clipboard_state)
@@ -206,6 +196,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             log_frontend,
+            modulesd_commands::modulesd_list_modules,
+            modulesd_commands::mint_iframe,
+            modulesd_commands::module_host_call,
+            modulesd_commands::modulesd_set_enabled,
+            modulesd_commands::retry_module,
             // theme::get_surface_tokens removed (legacy, no frontend consumers)
             shell_overlay_client::context_menu_activate,
             shell_overlay_client::context_menu_dismiss,
@@ -278,16 +273,10 @@ pub fn run() {
             layout::set_layout_tiled_headers,
             permissions::get_app_permissions,
             permissions::get_app_permission_detail,
-            modules::list_modules,
-            modules::set_module_enabled,
-            module_errors::record_module_error,
-            module_errors::get_module_errors,
-            module_errors::reset_module_errors,
             waypointer_system::waypointer_search,
             waypointer_system::waypointer_execute,
             waypointer_system::waypointer_list_plugins,
             waypointer_system::waypointer_search_plugin,
-            extension_registry::get_topbar_indicators,
             theme::commands::get_theme,
             theme::commands::get_theme_css,
             theme::commands::set_theme,

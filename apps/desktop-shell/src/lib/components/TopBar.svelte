@@ -14,7 +14,7 @@
   import AudioPopover from "$lib/components/AudioPopover.svelte";
   import BatteryPopover from "$lib/components/BatteryPopover.svelte";
   import WorkspaceIndicator from "$lib/components/WorkspaceIndicator.svelte";
-  import ModuleIndicatorSlot from "$lib/components/ModuleIndicatorSlot.svelte";
+  import SandboxedModuleIndicatorSlot from "$lib/components/SandboxedModuleIndicatorSlot.svelte";
   import LayoutIndicator from "$lib/components/LayoutIndicator.svelte";
   import LayoutPopover from "$lib/components/LayoutPopover.svelte";
   import { isFocused, focusState, deactivateFocus } from "$lib/stores/projects.js";
@@ -82,7 +82,7 @@
 
     <!-- Third-party module indicators -->
     <div class="slot-temp flex items-center gap-0.5">
-      <ModuleIndicatorSlot />
+      <SandboxedModuleIndicatorSlot />
     </div>
 
     <!-- System indicators -->
