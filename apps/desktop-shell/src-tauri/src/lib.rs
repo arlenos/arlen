@@ -194,6 +194,7 @@ pub fn run() {
             menu_store::unregister_menu,
             menu_store::dispatch_menu_action,
             menu_store::get_menu,
+            menu_store::set_menu_state,
             waypointer::toggle_waypointer,
             audio::get_audio_status,
             audio::set_audio_volume,
