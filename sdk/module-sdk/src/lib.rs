@@ -2,4 +2,7 @@
 // It re-exports only what external developers need, keeping internal
 // os-sdk surfaces unexposed.
 
-pub use os_sdk::event::{EventEmitter, EmitError};
+pub mod waypointer;
+
+pub use os_sdk::event::{EmitError, EventEmitter};
+pub use waypointer::{Action, PluginDescriptor, PluginError, SearchResult, WaypointerPlugin};
