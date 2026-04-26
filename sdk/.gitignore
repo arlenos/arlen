@@ -1,3 +1,7 @@
 /target
 Cargo.lock
 *.bak
+
+# TypeScript SDK packages (module-sdk, tauri-plugin-menu, tauri-plugin-shell)
+node_modules/
+package-lock.json

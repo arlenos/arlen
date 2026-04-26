@@ -1,0 +1,87 @@
+/// Waypointer extension-point interfaces.
+///
+/// `provider` modules return search results for arbitrary queries.
+/// `action` modules execute named commands. Both run inside Tier 1 WASM
+/// components hosted by `lunaris-modulesd`.
+package lunaris:waypointer@0.1.0;
+
+interface provider {
+    record search-result {
+        /// Stable per-call identifier. The host prefixes the module-id
+        /// before passing this to the shell so result IDs are globally
+        /// unique even across modules with overlapping spaces.
+        id: string,
+        title: string,
+        description: option<string>,
+        /// Lucide icon name or absolute path (host resolves both).
+        icon: option<string>,
+        /// 0.0 to 1.0. Higher means more relevant. Host clamps.
+        relevance: f32,
+        action: action,
+    }
+
+    variant action {
+        /// Copy the given text to the clipboard.
+        copy(string),
+        /// Open a URL in the default browser.
+        open-url(string),
+        /// Open a filesystem path in the default app.
+        open-path(string),
+        /// Run a shell command.
+        execute(string),
+        /// Module-defined custom action; host echoes it back through
+        /// `execute()` when the user activates the result.
+        custom(custom-action),
+    }
+
+    record custom-action {
+        handler: string,
+        data: string, // JSON
+    }
+
+    /// Called once at module load. Failure marks the module dead; the
+    /// daemon will not retry.
+    init: func() -> result<_, string>;
+
+    /// Called per Waypointer keystroke. Must return within the
+    /// daemon's per-call fuel budget (default 1 M instructions, ~10 ms).
+    /// Slow modules are trapped and counted toward crash recovery.
+    search: func(query: string) -> list<search-result>;
+
+    /// Called when the user activates a result. Default actions
+    /// (copy/open-url/open-path/execute) are fulfilled by the host;
+    /// `custom` actions are echoed back here for the module to handle.
+    execute: func(result: search-result) -> result<_, string>;
+
+    /// Called when the daemon is shutting the module down. Best-effort.
+    shutdown: func();
+}
+
+interface action {
+    record command {
+        name: string,
+        description: string,
+    }
+
+    /// Static command list shown to the user as Waypointer hints.
+    commands: func() -> list<command>;
+
+    /// Execute a named command with a free-form argument string.
+    invoke: func(command: string, args: string) -> result<string, string>;
+}
+
+world waypointer-provider {
+    import lunaris:host/graph@0.1.0;
+    import lunaris:host/network@0.1.0;
+    import lunaris:host/events@0.1.0;
+    import lunaris:host/log@0.1.0;
+    export provider;
+}
+
+world waypointer-action {
+    import lunaris:host/graph@0.1.0;
+    import lunaris:host/network@0.1.0;
+    import lunaris:host/events@0.1.0;
+    import lunaris:host/log@0.1.0;
+    export action;
+}
