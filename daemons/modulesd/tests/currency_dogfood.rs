@@ -114,24 +114,26 @@ async fn currency_module_discoverable_after_copy_and_capabilities_enforced() {
         other => panic!("expected IframeMeta, got {other:?}"),
     }
 
-    // 4. Allowed network call succeeds (modulo the stub body which
-    // is empty until S5+ wires real HTTP).
-    let resp = manager
-        .handle_request(Request::HostCall {
-            id: "4".into(),
-            nonce: nonce.clone(),
-            call: HostCall::NetworkFetch {
-                url: "https://api.exchangerate.host/latest?base=USD&symbols=EUR".into(),
-                headers: vec![],
-            },
-        })
-        .await;
-    match resp {
-        Response::HostReply { reply, .. } => {
-            assert!(matches!(reply, HostReply::NetworkBody { .. }));
-        }
-        other => panic!("expected HostReply ok, got {other:?}"),
-    }
+    // 4. Allowed network call passes the capability gate at the
+    //    SDK level (`check_fetch`). We deliberately do NOT invoke
+    //    the full `HostCall::NetworkFetch` round-trip here because
+    //    that would launch a real reqwest call against
+    //    `api.exchangerate.host`; on offline / firewalled CI the
+    //    30 s timeout would block the suite. Wiremock-driven
+    //    end-to-end coverage lives in `network_e2e.rs`.
+    use lunaris_modulesd::host::{network::check_fetch, CapabilityContext};
+    use lunaris_modules::{ModuleCapabilities, NetworkCapability};
+    let mut caps = ModuleCapabilities::default();
+    caps.network = Some(NetworkCapability {
+        allowed_domains: vec!["api.exchangerate.host".into()],
+    });
+    let ctx = CapabilityContext::new("com.example.currency", caps);
+    check_fetch(
+        &ctx,
+        "https://api.exchangerate.host/latest?base=USD&symbols=EUR",
+    )
+    .expect("allowlisted https URL must pass the capability check");
+    let _ = nonce;
 
     // 5. Denied network call (host outside the manifest allowlist).
     let resp = manager

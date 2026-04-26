@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{broadcast, OwnedSemaphorePermit, RwLock, Semaphore};
 use tracing::{debug, info, warn};
 
 use crate::host::CapabilityContext;
@@ -60,11 +60,21 @@ impl ModuleEntry {
     }
 }
 
+/// How many concurrent network fetches each module is allowed to
+/// have in flight. Foundation does not pin this number; 4 is enough
+/// for typical refresh patterns and small enough that a runaway loop
+/// hits backpressure quickly.
+const NETWORK_CONCURRENCY_PER_MODULE: usize = 4;
+
 pub struct Manager {
     modules: RwLock<HashMap<String, ModuleEntry>>,
     tier1: Arc<Tier1Runtime>,
     tier2: Arc<Tier2Broker>,
     events_tx: broadcast::Sender<Event>,
+    /// One `Semaphore` per module, lazily created. `Mutex` rather
+    /// than `RwLock` because writes (insert on first use) and reads
+    /// (acquire) both happen on the hot path.
+    network_permits: tokio::sync::Mutex<HashMap<String, Arc<Semaphore>>>,
 }
 
 impl Manager {
@@ -76,7 +86,27 @@ impl Manager {
             tier1,
             tier2,
             events_tx,
+            network_permits: tokio::sync::Mutex::new(HashMap::new()),
         }))
+    }
+
+    /// Acquire a per-module network permit. Returned permit limits a
+    /// module to at most `NETWORK_CONCURRENCY_PER_MODULE` concurrent
+    /// fetches. Drop the permit (or let it fall out of scope) to
+    /// release the slot.
+    async fn acquire_network_permit(&self, module_id: &str) -> OwnedSemaphorePermit {
+        let semaphore = {
+            let mut guard = self.network_permits.lock().await;
+            Arc::clone(
+                guard
+                    .entry(module_id.to_string())
+                    .or_insert_with(|| Arc::new(Semaphore::new(NETWORK_CONCURRENCY_PER_MODULE))),
+            )
+        };
+        semaphore
+            .acquire_owned()
+            .await
+            .expect("network permit semaphore was closed")
     }
 
     /// Run discovery and populate the module table. Idempotent.
@@ -298,6 +328,45 @@ impl Manager {
             };
         };
 
+        // Re-check the backing module's lifecycle state on every
+        // call. A nonce can outlive its module's enabled bit if a
+        // disable raced with an in-flight call, or if the daemon's
+        // own revocation is still in progress. Failing closed here
+        // closes that race.
+        {
+            let guard = self.modules.read().await;
+            match guard.get(&instance.module_id) {
+                Some(entry) if !entry.enabled => {
+                    return Response::Error {
+                        id: id.to_string(),
+                        code: ErrorCode::PermissionDenied,
+                        message: format!("module {} is disabled", instance.module_id),
+                    };
+                }
+                Some(entry) if entry.crash.is_failed() => {
+                    return Response::Error {
+                        id: id.to_string(),
+                        code: ErrorCode::ModuleFailed,
+                        message: format!(
+                            "module {} permanently failed",
+                            instance.module_id
+                        ),
+                    };
+                }
+                None => {
+                    return Response::Error {
+                        id: id.to_string(),
+                        code: ErrorCode::NotFound,
+                        message: format!(
+                            "module {} no longer registered",
+                            instance.module_id
+                        ),
+                    };
+                }
+                _ => {}
+            }
+        }
+
         use crate::host;
         use crate::socket::protocol::{HostCall, HostReply};
 
@@ -338,13 +407,18 @@ impl Manager {
                     },
                 }
             }
-            HostCall::NetworkFetch { url, headers: _ } => {
-                match host::network::check_fetch(&instance.ctx, &url) {
-                    Ok(()) => HostReply::NetworkBody {
-                        // Empty body until the real HTTP client lands
-                        // in S5; the policy layer is what S3 ships.
-                        status: 200,
-                        body_b64: String::new(),
+            HostCall::NetworkFetch { url, headers } => {
+                use base64::Engine;
+                use std::sync::Arc;
+                let ctx_arc = Arc::new(instance.ctx.clone());
+                let permit = self.acquire_network_permit(&instance.module_id).await;
+                let outcome = host::network::fetch(ctx_arc, &url, &headers).await;
+                drop(permit);
+                match outcome {
+                    Ok(resp) => HostReply::NetworkBody {
+                        status: resp.status,
+                        body_b64: base64::engine::general_purpose::STANDARD
+                            .encode(&resp.body),
                     },
                     Err(crate::error::DaemonError::CapabilityDenied { capability, .. }) => {
                         HostReply::Error {
@@ -397,6 +471,17 @@ impl Manager {
             };
         };
         entry.enabled = enabled;
+        drop(guard);
+        // On disable, every live nonce belonging to this module must
+        // be revoked so any iframe still mounted in the shell can no
+        // longer issue capability-checked host calls. Without this the
+        // `enabled = false` flip would only block *new* mints; old
+        // iframes would keep using their pre-existing nonce until
+        // process restart, which (now that fetch is real) is a data
+        // exfiltration window.
+        if !enabled {
+            self.tier2.revoke_module(module_id).await;
+        }
         let _ = self.events_tx.send(if enabled {
             Event::ModuleEnabled {
                 module_id: module_id.to_string(),
@@ -468,8 +553,10 @@ impl Manager {
     }
 
     /// For tests: directly insert a record. Not part of the public
-    /// API surface.
-    #[cfg(test)]
+    /// API surface; integration tests in `modulesd/tests/` need it
+    /// because they cannot reach `#[cfg(test)]` inner items, so it
+    /// is `pub` on the lib but namespaced as `_for_test` to keep
+    /// production callers from using it accidentally.
     pub async fn insert_for_test(&self, record: ModuleRecord) {
         self.modules.write().await.insert(
             record.id().to_string(),
@@ -483,7 +570,6 @@ impl Manager {
 
     /// For tests: register a Tier 2 iframe directly without going
     /// through the mint flow.
-    #[cfg(test)]
     pub async fn register_iframe_for_test(
         &self,
         instance: crate::runtime::tier2::IframeInstance,
@@ -664,6 +750,8 @@ mod tests {
 
         let (tx, _rx) = broadcast::channel(16);
         let m = Manager::new(tx).unwrap();
+        m.insert_for_test(record("com.example.weather", Tier::Iframe))
+            .await;
         let mut caps = ModuleCapabilities::default();
         caps.network = Some(NetworkCapability {
             allowed_domains: vec!["api.example.com".into()],
@@ -698,16 +786,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn host_call_network_allowed_when_url_in_allowlist() {
+    async fn host_call_network_allowed_url_passes_capability_check() {
+        // We can't easily reach `https://api.example.com` in unit
+        // tests, but we can verify the capability layer doesn't
+        // reject the URL before reqwest tries. A real network
+        // round-trip is exercised by the wiremock-based integration
+        // test under `tests/network_e2e.rs`.
         use crate::host::CapabilityContext;
         use crate::runtime::tier2::IframeInstance;
         use lunaris_modules::{ModuleCapabilities, NetworkCapability};
 
         let (tx, _rx) = broadcast::channel(16);
         let m = Manager::new(tx).unwrap();
+        m.insert_for_test(record("x", Tier::Iframe)).await;
         let mut caps = ModuleCapabilities::default();
         caps.network = Some(NetworkCapability {
-            allowed_domains: vec!["api.example.com".into()],
+            allowed_domains: vec!["api.example.invalid".into()],
         });
         let ctx = CapabilityContext::new("x", caps);
         m.register_iframe_for_test(IframeInstance {
@@ -724,7 +818,7 @@ mod tests {
                 id: "1".into(),
                 nonce: "n1".into(),
                 call: crate::socket::protocol::HostCall::NetworkFetch {
-                    url: "https://api.example.com/v1".into(),
+                    url: "https://api.example.invalid/v1".into(),
                     headers: vec![],
                 },
             })
@@ -732,7 +826,21 @@ mod tests {
         match resp {
             Response::HostReply { reply, .. } => {
                 use crate::socket::protocol::HostReply;
-                assert!(matches!(reply, HostReply::NetworkBody { status: 200, .. }));
+                // Capability passes, then reqwest fails on
+                // unresolvable host: that's an Internal error, not
+                // a PermissionDenied. Distinguishing those two is
+                // exactly what the test asserts.
+                match reply {
+                    HostReply::NetworkBody { .. } => {} // surprising but ok
+                    HostReply::Error { code, .. } => {
+                        assert_ne!(
+                            code,
+                            ErrorCode::PermissionDenied,
+                            "capability check must pass; only the actual fetch fails"
+                        );
+                    }
+                    other => panic!("unexpected reply: {other:?}"),
+                }
             }
             other => panic!("expected HostReply, got {other:?}"),
         }
@@ -746,6 +854,7 @@ mod tests {
 
         let (tx, _rx) = broadcast::channel(16);
         let m = Manager::new(tx).unwrap();
+        m.insert_for_test(record("x", Tier::Iframe)).await;
         let mut caps = ModuleCapabilities::default();
         caps.event_bus = Some(EventBusCapability {
             publish: vec!["module.com.example.".into()],
@@ -795,6 +904,98 @@ mod tests {
             ));
         } else {
             panic!();
+        }
+    }
+
+    #[tokio::test]
+    async fn disabling_a_module_revokes_its_iframe_nonces() {
+        use crate::host::CapabilityContext;
+        use crate::runtime::tier2::IframeInstance;
+
+        let (tx, _rx) = broadcast::channel(16);
+        let m = Manager::new(tx).unwrap();
+        m.insert_for_test(record("com.example.weather", Tier::Iframe))
+            .await;
+        m.register_iframe_for_test(IframeInstance {
+            module_id: "com.example.weather".into(),
+            instance_id: "iid".into(),
+            nonce: "live-nonce".into(),
+            created_at: std::time::Instant::now(),
+            ctx: CapabilityContext::empty("com.example.weather"),
+        })
+        .await;
+
+        // Disable the module. The daemon should revoke every live
+        // nonce belonging to it, so a subsequent host call from the
+        // (still-mounted) iframe is rejected.
+        m.handle_request(Request::SetEnabled {
+            id: "1".into(),
+            module_id: "com.example.weather".into(),
+            enabled: false,
+        })
+        .await;
+
+        let resp = m
+            .handle_request(Request::HostCall {
+                id: "2".into(),
+                nonce: "live-nonce".into(),
+                call: crate::socket::protocol::HostCall::NetworkFetch {
+                    url: "https://api.example.com/exfil".into(),
+                    headers: vec![],
+                },
+            })
+            .await;
+        match resp {
+            Response::Error { code, .. } => {
+                assert_eq!(code, ErrorCode::PermissionDenied);
+            }
+            other => panic!("expected PermissionDenied, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn host_call_after_disable_without_nonce_revoke_still_fails() {
+        // Belt-and-suspenders: even if the tier2 broker had a bug
+        // and forgot to revoke the nonce, the per-call enabled
+        // re-check in handle_host_call still rejects the request.
+        use crate::host::CapabilityContext;
+        use crate::runtime::tier2::IframeInstance;
+
+        let (tx, _rx) = broadcast::channel(16);
+        let m = Manager::new(tx).unwrap();
+        m.insert_for_test(record("x", Tier::Iframe)).await;
+        m.register_iframe_for_test(IframeInstance {
+            module_id: "x".into(),
+            instance_id: "iid".into(),
+            nonce: "n1".into(),
+            created_at: std::time::Instant::now(),
+            ctx: CapabilityContext::empty("x"),
+        })
+        .await;
+
+        // Manually flip the enabled bit without going through
+        // SetEnabled (and therefore without revoking nonces). The
+        // host_call path should still recognise the disabled state.
+        {
+            let mut guard = m.modules.write().await;
+            guard.get_mut("x").unwrap().enabled = false;
+        }
+
+        let resp = m
+            .handle_request(Request::HostCall {
+                id: "1".into(),
+                nonce: "n1".into(),
+                call: crate::socket::protocol::HostCall::NetworkFetch {
+                    url: "https://api.example.com".into(),
+                    headers: vec![],
+                },
+            })
+            .await;
+        match resp {
+            Response::Error { code, .. } => {
+                assert_eq!(code, ErrorCode::PermissionDenied);
+            }
+            other => panic!("expected PermissionDenied, got {other:?}"),
         }
     }
 

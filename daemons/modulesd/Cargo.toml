@@ -27,6 +27,12 @@ async-trait = "0.1"
 # require rustc >= 1.92, while the repo-wide toolchain is 1.90.
 wasmtime = { version = "36", features = ["component-model", "async"] }
 
+# HTTP client for Tier 1/Tier 2 host::network::fetch.
+# rustls-tls keeps us off OpenSSL and gives reproducible builds.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+futures-util = "0.3"
+base64 = "0.22"
+
 # Lunaris workspace dependencies.
 lunaris-modules = { path = "../sdk/modules" }
 lunaris-permissions = { path = "../sdk/permissions" }
@@ -36,5 +42,6 @@ modulesd-proto = { path = "../modulesd-proto" }
 
 [dev-dependencies]
 tempfile = "3"
+wiremock = "0.6"
 
 [workspace]
