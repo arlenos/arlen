@@ -1,14 +1,22 @@
-/// Barrel export for the module system frontend.
+/// Barrel export for the Tier 2 (iframe) module system frontend.
 
-export { default as ModuleHost } from "./ModuleHost.svelte";
+export { default as SandboxedModuleHost } from "./SandboxedModuleHost.svelte";
 export type {
-  ShellToModuleMessage,
-  ModuleToShellMessage,
+  HostToModule,
+  ModuleToHost,
+  HostCall,
+  HostReply,
   SearchResult,
-  SearchResultsMessage,
-  ActionMessage,
-  IndicatorUpdateMessage,
-  ReadyMessage,
-  ErrorMessage,
-} from "./protocol.js";
-export { isModuleMessage } from "./protocol.js";
+  SearchAction,
+  Capabilities,
+  ThemeTokens,
+  ProjectInfo,
+  ErrorCode,
+} from "./postmsg.js";
+export { isModuleToHost } from "./postmsg.js";
+export {
+  refreshFromDaemon,
+  searchModules,
+  installListener,
+  moduleWorkers,
+} from "./moduleSearchStore.js";

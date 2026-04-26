@@ -1,5 +1,6 @@
 <script lang="ts">
   import { writable } from "$lib/stores/svelteRe.js";
+  import { invoke } from "@tauri-apps/api/core";
   import { waypointerVisible, initWaypointerListeners, closeWaypointer } from "$lib/stores/waypointer.js";
   import {
     fetchAllApps, searchApps, launchApp as launchAppCmd, evaluateInput, executeShellCommand,
@@ -56,6 +57,12 @@
     type DictResult,
   } from "$lib/stores/waypointerDict.js";
   import {
+    refreshFromDaemon as refreshModuleWorkers,
+    installListener as installModuleListener,
+    searchModules,
+  } from "$lib/modules/moduleSearchStore.js";
+  import type { SearchResult as ModuleSearchResult } from "$lib/modules/postmsg.js";
+  import {
     FileText, FileCode, FileCog, FileImage, FileArchive, FileAudio, FileVideo,
     Clipboard, Trash2,
   } from "lucide-svelte";
@@ -88,6 +95,11 @@
 
   // App search results from Rust (max 20, pre-filtered, icons included).
   const searchResults = writable<AppEntry[]>([]);
+  // Tier 2 sandboxed module search results, aggregated across all
+  // workers in `moduleSearchStore`. The worker iframes themselves
+  // live under a body-level hidden host owned by the store, not
+  // under this component's DOM.
+  const moduleResults = writable<ModuleSearchResult[]>([]);
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
   // Full app list cached for the calculator fallback.
   let allApps: AppEntry[] = [];
@@ -190,6 +202,19 @@
           );
         })
         .catch(() => {});
+      // Tier 2 sandboxed module providers: fan out to every worker
+      // iframe in the pool, aggregate replies with a 200 ms cap.
+      const t6 = performance.now();
+      searchModules(q)
+        .then((results) => {
+          console.log(
+            `[wp-search] modules: ${(performance.now() - t6).toFixed(1)}ms (${results.length} results)`,
+          );
+          moduleResults.set(results);
+        })
+        .catch(() => {
+          moduleResults.set([]);
+        });
       requestAnimationFrame(() => {
         console.timeEnd("wp-search-total");
       });
@@ -416,6 +441,19 @@
     if (/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z]{2,10})+([\/\?#].*)?$/i.test(s)) return true;
     return false;
   }
+
+  // Initialise the Tier 2 module worker pool once per Waypointer
+  // mount. The store owns a body-level hidden host element where
+  // worker iframes are parked; we just kick discovery here and the
+  // store handles DOM placement, listener install, and lifecycle.
+  $effect(() => {
+    installModuleListener();
+    refreshModuleWorkers();
+    const handle = setInterval(() => {
+      refreshModuleWorkers();
+    }, 30_000);
+    return () => clearInterval(handle);
+  });
 
   // Poll for query changes and trigger search + evaluation.
   // The interval lives inside `$effect` so each mount gets its own
@@ -1021,6 +1059,33 @@
                   <span class="wp-app-name">{app.name}</span>
                   {#if app.description}
                     <span class="wp-app-desc">{app.description}</span>
+                  {/if}
+                </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+        {/if}
+        {#if $moduleResults.length > 0}
+          <CommandGroup heading="Modules">
+            {#each $moduleResults as result (result.id)}
+              <CommandItem
+                value={`module:${result.id}`}
+                onSelect={async () => {
+                  if (result.action.type === "copy") {
+                    try { await navigator.clipboard.writeText(result.action.text); } catch {}
+                  } else if (result.action.type === "open_url") {
+                    try { await invoke("open_url", { url: result.action.url }); } catch {}
+                  } else if (result.action.type === "execute") {
+                    try { await invoke("execute_shell_command", { command: result.action.command }); } catch {}
+                  }
+                  closeWaypointer();
+                }}
+              >
+                <Globe size={16} strokeWidth={1.5} class="wp-fallback-icon" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{result.title}</span>
+                  {#if result.description}
+                    <span class="wp-app-desc">{result.description}</span>
                   {/if}
                 </div>
               </CommandItem>

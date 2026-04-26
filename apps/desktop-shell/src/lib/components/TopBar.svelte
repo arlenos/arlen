@@ -14,16 +14,26 @@
   import AudioPopover from "$lib/components/AudioPopover.svelte";
   import BatteryPopover from "$lib/components/BatteryPopover.svelte";
   import WorkspaceIndicator from "$lib/components/WorkspaceIndicator.svelte";
-  import ModuleIndicatorSlot from "$lib/components/ModuleIndicatorSlot.svelte";
+  import SandboxedModuleIndicatorSlot from "$lib/components/SandboxedModuleIndicatorSlot.svelte";
   import LayoutIndicator from "$lib/components/LayoutIndicator.svelte";
   import LayoutPopover from "$lib/components/LayoutPopover.svelte";
   import { isFocused, focusState, deactivateFocus } from "$lib/stores/projects.js";
   import { X } from "lucide-svelte";
 </script>
 
+<!--
+  z-index 95 keeps the bar (and its indicator buttons) above the
+  popover backdrop (z-index 90) while still sitting below the
+  popover panels (z-index 100). Without this, an open popover's
+  backdrop would intercept hover events on the indicators, breaking
+  the macOS-style hover-switch where moving the mouse from one
+  applet to another should swap the visible popover without a click.
+  Clicking the bar's background between buttons stays a no-op (the
+  click does not reach the backdrop), matching menu-bar conventions.
+-->
 <div
   class="flex items-center justify-between h-9 w-full px-2 gap-4 relative select-none shrink-0 shell-surface"
-  style="background: var(--background)"
+  style="background: var(--background); z-index: 95;"
   data-tauri-drag-region
 >
   <!-- LEFT: App menu + toolbar -->
@@ -72,7 +82,7 @@
 
     <!-- Third-party module indicators -->
     <div class="slot-temp flex items-center gap-0.5">
-      <ModuleIndicatorSlot />
+      <SandboxedModuleIndicatorSlot />
     </div>
 
     <!-- System indicators -->
