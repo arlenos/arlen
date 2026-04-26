@@ -113,11 +113,16 @@
     height: 22px;
     padding: 0;
     opacity: 0.7;
-    transition: opacity var(--duration-fast) var(--easing-default);
+    background-color: transparent;
+    border-radius: var(--radius-sm);
+    transition:
+      opacity var(--duration-fast) var(--easing-default),
+      background-color var(--duration-fast) var(--easing-default);
   }
 
   .window-buttons :global(.control-btn:hover) {
     opacity: 1;
+    background-color: color-mix(in srgb, var(--color-fg-shell, currentColor) 10%, transparent);
   }
 
   .window-buttons :global(.close-btn:hover) {

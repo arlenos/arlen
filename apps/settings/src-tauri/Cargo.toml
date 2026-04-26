@@ -43,6 +43,21 @@ tauri-plugin-lunaris-menu = { path = "../../sdk/tauri-plugin-menu" }
 # Settings app and the shell use the same schema via this crate.
 lunaris-modules = { path = "../../sdk/modules" }
 
+# Wayland client for the Display panel. We talk wlr-output-management
+# (zwlr_output_manager_v1) directly because the compositor implements
+# both wlr-output-management and cosmic-output-management on the
+# server side. wlr is the cross-compositor standard so the app stays
+# usable under plain wlroots / labwc / sway too.
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+libc = "0.2"
+
+# Output config types shared with the compositor. We reuse the
+# canonical OutputConfig + TOML schema (D0) so the apply path round-
+# trips through the same struct shape that lands on disk.
+cosmic-comp-config = { path = "../../compositor/cosmic-comp-config", features = ["output"] }
+
 [dev-dependencies]
 tempfile = "3"
 

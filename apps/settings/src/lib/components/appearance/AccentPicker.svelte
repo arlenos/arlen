@@ -4,6 +4,7 @@
   /// an outer ring and an inset check icon.
   import { Check, Pipette, Contrast } from "lucide-svelte";
   import { ACCENT_PRESETS, MONO_SENTINEL } from "$lib/stores/theme";
+  import { ColorPicker } from "$lib/components/ui/color-picker";
 
   let {
     value,
@@ -18,7 +19,8 @@
     onchange: (value: string) => void;
   } = $props();
 
-  let customInput = $state<HTMLInputElement | null>(null);
+  let pickerOpen = $state(false);
+  let pickerWrap = $state<HTMLDivElement | null>(null);
 
   const isMono = $derived(rawOverride === MONO_SENTINEL);
   const activePreset = $derived(
@@ -31,12 +33,28 @@
   const isCustom = $derived(!isMono && !activePreset);
 
   function openPicker(): void {
-    customInput?.click();
+    pickerOpen = !pickerOpen;
   }
 
-  function onPickerInput(e: Event) {
-    onchange((e.currentTarget as HTMLInputElement).value);
-  }
+  // Close on outside click. Mounted only while the popover is open
+  // so the listener cost stays scoped to the user actually interacting.
+  $effect(() => {
+    if (!pickerOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!pickerWrap) return;
+      if (!pickerWrap.contains(e.target as Node)) pickerOpen = false;
+    };
+    // Defer one tick so the click that opened the popover does not
+    // immediately close it.
+    const id = window.setTimeout(
+      () => document.addEventListener("mousedown", handler),
+      0,
+    );
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("mousedown", handler);
+    };
+  });
 </script>
 
 <div class="swatches">
@@ -75,32 +93,34 @@
     {/if}
   </button>
 
-  <button
-    type="button"
-    class="swatch swatch-custom"
-    class:selected={isCustom}
-    aria-label="Custom color"
-    aria-pressed={isCustom}
-    title="Custom color"
-    style={isCustom ? `background-color: ${value};` : undefined}
-    onclick={openPicker}
-  >
-    {#if isCustom}
-      <Check size={12} strokeWidth={3} class="swatch-check" />
-    {:else}
-      <Pipette size={11} strokeWidth={2.5} class="swatch-pipette" />
-    {/if}
-  </button>
+  <div class="swatch-custom-wrap" bind:this={pickerWrap}>
+    <button
+      type="button"
+      class="swatch swatch-custom"
+      class:selected={isCustom}
+      aria-label="Custom color"
+      aria-pressed={isCustom}
+      aria-expanded={pickerOpen}
+      title="Custom color"
+      style={isCustom ? `background-color: ${value};` : undefined}
+      onclick={openPicker}
+    >
+      {#if isCustom}
+        <Check size={12} strokeWidth={3} class="swatch-check" />
+      {:else}
+        <Pipette size={11} strokeWidth={2.5} class="swatch-pipette" />
+      {/if}
+    </button>
 
-  <input
-    bind:this={customInput}
-    type="color"
-    {value}
-    oninput={onPickerInput}
-    class="sr-only"
-    tabindex={-1}
-    aria-hidden="true"
-  />
+    {#if pickerOpen}
+      <div class="swatch-popover">
+        <ColorPicker
+          {value}
+          onchange={(hex) => onchange(hex)}
+        />
+      </div>
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -186,14 +206,15 @@
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
   }
 
-  .sr-only {
+  .swatch-custom-wrap {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .swatch-popover {
     position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    border: 0;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 50;
   }
 </style>
