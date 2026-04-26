@@ -30,7 +30,7 @@ export const PANELS: PanelMeta[] = [
   { id: "shortcuts", title: "Shortcuts", icon: "Command", enabled: true, href: "/keyboard/shortcuts" },
   { id: "mouse", title: "Mouse", icon: "Mouse", enabled: true, href: "/mouse" },
   { id: "touchpad", title: "Touchpad", icon: "SquareMousePointer", enabled: true, href: "/touchpad" },
-  { id: "display", title: "Display", icon: "Monitor", enabled: false, href: "/display" },
+  { id: "display", title: "Display", icon: "Monitor", enabled: true, href: "/display" },
   { id: "notifications", title: "Notifications", icon: "Bell", enabled: true, href: "/notifications" },
   { id: "privacy", title: "Privacy", icon: "Shield", enabled: false, href: "/privacy" },
   { id: "extensions", title: "Extensions", icon: "Puzzle", enabled: true, href: "/extensions" },

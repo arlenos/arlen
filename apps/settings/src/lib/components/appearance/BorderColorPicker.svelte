@@ -5,6 +5,7 @@
   /// re-resolve it on theme mode switches.
 
   import { Check, Pipette } from "lucide-svelte";
+  import { ColorPicker } from "$lib/components/ui/color-picker";
 
   let {
     value,
@@ -24,18 +25,34 @@
     onchange: (value: string) => void;
   } = $props();
 
-  let customInput = $state<HTMLInputElement | null>(null);
+  let pickerOpen = $state(false);
+  let pickerWrap = $state<HTMLDivElement | null>(null);
 
   const isSentinel = $derived(value === sentinel);
   const isCustom = $derived(!isSentinel && typeof value === "string");
+  const initialPickerValue = $derived(
+    isCustom && typeof value === "string" ? value : "#888888",
+  );
 
   function openPicker() {
-    customInput?.click();
+    pickerOpen = !pickerOpen;
   }
 
-  function onPickerInput(e: Event) {
-    onchange((e.currentTarget as HTMLInputElement).value);
-  }
+  $effect(() => {
+    if (!pickerOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!pickerWrap) return;
+      if (!pickerWrap.contains(e.target as Node)) pickerOpen = false;
+    };
+    const id = window.setTimeout(
+      () => document.addEventListener("mousedown", handler),
+      0,
+    );
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("mousedown", handler);
+    };
+  });
 </script>
 
 <div class="bpick">
@@ -53,32 +70,34 @@
     {/if}
   </button>
 
-  <button
-    type="button"
-    class="chip"
-    class:selected={isCustom}
-    aria-label="Custom color"
-    aria-pressed={isCustom}
-    title="Custom color"
-    style={isCustom ? `background-color: ${value};` : undefined}
-    onclick={openPicker}
-  >
-    {#if isCustom}
-      <Check size={12} strokeWidth={3} class="chip-check" />
-    {:else}
-      <Pipette size={11} strokeWidth={2.5} class="chip-pipette" />
-    {/if}
-  </button>
+  <div class="chip-wrap" bind:this={pickerWrap}>
+    <button
+      type="button"
+      class="chip"
+      class:selected={isCustom}
+      aria-label="Custom color"
+      aria-pressed={isCustom}
+      aria-expanded={pickerOpen}
+      title="Custom color"
+      style={isCustom ? `background-color: ${value};` : undefined}
+      onclick={openPicker}
+    >
+      {#if isCustom}
+        <Check size={12} strokeWidth={3} class="chip-check" />
+      {:else}
+        <Pipette size={11} strokeWidth={2.5} class="chip-pipette" />
+      {/if}
+    </button>
 
-  <input
-    bind:this={customInput}
-    type="color"
-    value={isCustom ? value : "#000000"}
-    oninput={onPickerInput}
-    class="sr-only"
-    tabindex={-1}
-    aria-hidden="true"
-  />
+    {#if pickerOpen}
+      <div class="chip-popover">
+        <ColorPicker
+          value={initialPickerValue}
+          onchange={(hex) => onchange(hex)}
+        />
+      </div>
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -187,14 +206,15 @@
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
   }
 
-  .sr-only {
+  .chip-wrap {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .chip-popover {
     position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    border: 0;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 50;
   }
 </style>

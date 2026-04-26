@@ -15,6 +15,8 @@
     syncFromRoute,
     breadcrumbs,
     navigateTo,
+    navigation,
+    consumeScrollTarget,
     type PanelId,
   } from "$lib/stores/navigation";
   import { theme } from "$lib/stores/theme";
@@ -25,6 +27,26 @@
   // Sync navigation store with route changes.
   $effect(() => {
     syncFromRoute($page.url.pathname);
+  });
+
+  // Whenever an in-app navigation sets a `scrollTarget` on the
+  // store (search results, contextual deep links from one panel
+  // to another), wait for the destination DOM to mount and then
+  // scroll + pulse the matching element. Mirrors the CLI launch-
+  // args path further down but for runtime-driven navigation.
+  // `consumeScrollTarget()` clears the store entry so a later
+  // route change doesn't repeat the highlight.
+  $effect(() => {
+    const target = $navigation.scrollTarget;
+    if (!target) return;
+    pollForElement(target, 2000).then((el) => {
+      if (el) scrollToSetting(el);
+      else
+        console.warn(
+          `[search-jump] element #${target} not found after 2s`,
+        );
+      consumeScrollTarget();
+    });
   });
 
   // Push breadcrumb updates to the Lunaris titlebar plugin. Under the

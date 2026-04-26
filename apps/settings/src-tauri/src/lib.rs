@@ -5,11 +5,16 @@
 
 mod commands;
 mod config_watcher;
+mod displays;
 
 /// Tauri application entry point invoked from `main.rs`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    env_logger::init();
+    // env_logger's default filter is `error`, which silently drops
+    // every `log::info!` from the wayland output-management thread.
+    // Default to `info` so the Display panel is debuggable; users
+    // can still override via `RUST_LOG=…`.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_lunaris_menu::init())
@@ -24,9 +29,27 @@ pub fn run() {
             // is ready.
             commands::search::store_launch_args();
 
+            // Spawn the wlr-output-management Wayland client on a
+            // dedicated thread. Failure is non-fatal: under non-
+            // Lunaris compositors the protocol may be missing and
+            // the Display panel just shows an empty list. Settings
+            // still launches.
+            match displays::wayland_client::spawn(app.handle().clone()) {
+                Ok(handle) => {
+                    use tauri::Manager;
+                    app.manage(std::sync::Arc::new(handle));
+                }
+                Err(err) => {
+                    log::warn!(
+                        "displays: wayland output-management unavailable, panel will be empty: {err}",
+                    );
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::frontend_log,
             commands::config::config_get,
             commands::config::config_set,
             commands::config::config_reset,
@@ -65,6 +88,10 @@ pub fn run() {
             commands::input::keyboard_set_layouts,
             commands::input::keyboard_get_variants,
             commands::input::keyboard_set_variants,
+            commands::displays::display_get_monitors,
+            commands::displays::display_apply_config,
+            commands::displays::display_revert,
+            commands::displays::display_save_current,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
