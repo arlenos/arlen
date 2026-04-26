@@ -100,6 +100,18 @@ pub struct GraphPermissions {
     pub write: Vec<String>,
     #[serde(default)]
     pub app_isolated: bool,
+    /// Reverse-domain namespaces this app may read annotations FROM
+    /// in addition to its own. Foundation §395: "reading another
+    /// application's annotations requires an explicit permission
+    /// declaration." Wildcards follow the same `pattern_matches`
+    /// semantics as `read`/`write`: `"com.example.*"` permits all
+    /// namespaces under that prefix; `"*"` would permit reading every
+    /// app's annotations and is intentionally not a special-case.
+    /// Daemon-side enforcement of this is part of the Phase 3.2-full
+    /// token-authenticated write path; for now, the SDK honours the
+    /// declaration on the client side.
+    #[serde(default)]
+    pub annotations_read_cross_namespace: Vec<String>,
 }
 
 impl GraphPermissions {
@@ -111,6 +123,17 @@ impl GraphPermissions {
 
     pub fn can_write(&self, entity_type: &str) -> bool {
         pattern_matches(&self.write, entity_type)
+    }
+
+    /// Whether the app may read annotations from a foreign namespace.
+    /// `own_namespace == requested` is always allowed; reading
+    /// another app's namespace requires a matching pattern in
+    /// `annotations_read_cross_namespace`.
+    pub fn can_read_annotations_from(&self, own_namespace: &str, requested: &str) -> bool {
+        if own_namespace == requested {
+            return true;
+        }
+        pattern_matches(&self.annotations_read_cross_namespace, requested)
     }
 }
 
@@ -452,6 +475,46 @@ background = true
         };
         assert!(g.can_write("com.app.Note"));
         assert!(!g.can_write("shared.Person"));
+    }
+
+    #[test]
+    fn test_annotations_own_namespace_always_allowed() {
+        // Empty cross-namespace allowlist — own namespace is still
+        // allowed because the API has no concept of forbidding it.
+        let g = GraphPermissions::default();
+        assert!(g.can_read_annotations_from("com.example.editor", "com.example.editor"));
+    }
+
+    #[test]
+    fn test_annotations_cross_namespace_denied_by_default() {
+        let g = GraphPermissions::default();
+        assert!(!g.can_read_annotations_from("com.example.editor", "com.example.git"));
+    }
+
+    #[test]
+    fn test_annotations_cross_namespace_explicit_allow() {
+        let g = GraphPermissions {
+            annotations_read_cross_namespace: vec!["com.example.git".into()],
+            ..Default::default()
+        };
+        assert!(g.can_read_annotations_from("com.example.editor", "com.example.git"));
+        // Allowlist is exact / pattern based — unrelated namespace
+        // still denied.
+        assert!(!g.can_read_annotations_from(
+            "com.example.editor",
+            "com.malicious.read-everything"
+        ));
+    }
+
+    #[test]
+    fn test_annotations_cross_namespace_wildcard() {
+        let g = GraphPermissions {
+            annotations_read_cross_namespace: vec!["com.example.*".into()],
+            ..Default::default()
+        };
+        assert!(g.can_read_annotations_from("com.example.editor", "com.example.git"));
+        assert!(g.can_read_annotations_from("com.example.editor", "com.example.notes"));
+        assert!(!g.can_read_annotations_from("com.example.editor", "com.other.app"));
     }
 
     // ── Event Bus permissions ──

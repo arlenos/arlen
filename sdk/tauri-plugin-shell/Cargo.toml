@@ -1,0 +1,17 @@
+[package]
+name = "tauri-plugin-lunaris-shell"
+version = "0.1.0"
+edition = "2021"
+description = "Tauri plugin exposing the Lunaris OS shell API to Tauri apps"
+license = "GPL-3.0-only"
+links = "tauri-plugin-lunaris-shell"
+
+[dependencies]
+tauri = { version = "2", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+os-sdk = { path = "../os-sdk" }
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
