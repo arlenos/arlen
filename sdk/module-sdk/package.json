@@ -1,0 +1,17 @@
+{
+  "name": "@lunaris/module-sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for Lunaris OS Tier 2 (iframe) modules: postMessage protocol, capability-gated host calls, shadcn-svelte component re-exports",
+  "license": "GPL-3.0-only",
+  "main": "index.ts",
+  "types": "index.ts",
+  "files": [
+    "index.ts",
+    "postmsg.ts",
+    "host.ts",
+    "module.ts"
+  ],
+  "devDependencies": {
+    "typescript": "^6.0.2"
+  }
+}

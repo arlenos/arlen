@@ -6,7 +6,6 @@
 ///
 /// See `docs/architecture/module-system.md`.
 
-use std::collections::HashMap;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -277,6 +276,11 @@ fn default_polling() -> u32 {
 // ---------------------------------------------------------------------------
 
 /// Module capability requests (subset of full PermissionProfile).
+///
+/// Used by `lunaris-modulesd` to decide which host imports a Tier 1
+/// WASM module sees and which postMessage actions a Tier 2 iframe is
+/// allowed to perform. Mirrors the `[capabilities]` block defined in
+/// Foundation §07 module manifest spec.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ModuleCapabilities {
     #[serde(default)]
@@ -287,6 +291,31 @@ pub struct ModuleCapabilities {
     pub notifications: bool,
     #[serde(default)]
     pub clipboard: Option<ClipboardCapability>,
+    /// Knowledge Graph access. `read` and `write` are namespace
+    /// allowlists (`["core.File", "shared.Person"]` etc); empty means no
+    /// access. The host enforces namespace prefix matching.
+    #[serde(default)]
+    pub graph: Option<GraphCapability>,
+    /// Event Bus access. `subscribe` and `publish` are event-type prefix
+    /// allowlists (`["focus.", "window."]` etc).
+    #[serde(default)]
+    pub event_bus: Option<EventBusCapability>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct GraphCapability {
+    #[serde(default)]
+    pub read: Vec<String>,
+    #[serde(default)]
+    pub write: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct EventBusCapability {
+    #[serde(default)]
+    pub subscribe: Vec<String>,
+    #[serde(default)]
+    pub publish: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
