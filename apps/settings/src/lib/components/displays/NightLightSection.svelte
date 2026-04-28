@@ -20,6 +20,7 @@
   import { ValueSlider } from "$lib/components/ui/value-slider";
   import { PopoverSelect } from "$lib/components/ui/popover-select";
   import { TimeInput } from "$lib/components/ui/time-input";
+  import { NumberInput } from "$lib/components/ui/number-input";
   import SettingsGroup from "$lib/components/settings/SettingsGroup.svelte";
   import SettingsRow from "$lib/components/settings/SettingsRow.svelte";
 
@@ -133,9 +134,7 @@
     }).catch((err) => console.warn("night_light_set_schedule failed:", err));
   }
 
-  function setLatitude(v: string) {
-    const lat = parseFloat(v);
-    if (Number.isNaN(lat)) return;
+  function setLatitude(lat: number) {
     cfg = { ...cfg, latitude: lat };
     invoke("night_light_set_location", {
       latitude: lat,
@@ -143,9 +142,7 @@
     }).catch((err) => console.warn("night_light_set_location failed:", err));
   }
 
-  function setLongitude(v: string) {
-    const lon = parseFloat(v);
-    if (Number.isNaN(lon)) return;
+  function setLongitude(lon: number) {
     cfg = { ...cfg, longitude: lon };
     invoke("night_light_set_location", {
       latitude: cfg.latitude,
@@ -239,27 +236,27 @@
         : undefined}
     >
       {#snippet control()}
-        <input
-          class="coord"
-          type="number"
-          step="0.0001"
+        <NumberInput
           value={cfg.latitude}
-          aria-label="Latitude"
-          oninput={(e) =>
-            setLatitude((e.currentTarget as HTMLInputElement).value)}
+          min={-90}
+          max={90}
+          step={0.0001}
+          ariaLabel="Latitude"
+          width="160px"
+          onchange={setLatitude}
         />
       {/snippet}
     </SettingsRow>
     <SettingsRow label="Longitude">
       {#snippet control()}
-        <input
-          class="coord"
-          type="number"
-          step="0.0001"
+        <NumberInput
           value={cfg.longitude}
-          aria-label="Longitude"
-          oninput={(e) =>
-            setLongitude((e.currentTarget as HTMLInputElement).value)}
+          min={-180}
+          max={180}
+          step={0.0001}
+          ariaLabel="Longitude"
+          width="160px"
+          onchange={setLongitude}
         />
       {/snippet}
     </SettingsRow>
@@ -274,20 +271,4 @@
     width: 220px;
   }
 
-  .coord {
-    height: 28px;
-    width: 110px;
-    padding: 0 8px;
-    background: color-mix(in srgb, var(--color-fg-app) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-fg-app) 10%, transparent);
-    border-radius: var(--radius-sm);
-    color: var(--color-fg-app);
-    font-size: 0.85rem;
-    font-family: ui-monospace, monospace;
-  }
-
-  .coord:focus {
-    outline: none;
-    border-color: var(--color-accent);
-  }
 </style>

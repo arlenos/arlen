@@ -233,7 +233,7 @@
     align-items: center;
     gap: 0.5rem;
     width: 100%;
-    height: 28px;
+    height: var(--control-h);
     padding: 0 0.625rem 0 0.75rem;
     border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
@@ -323,7 +323,7 @@
     align-items: center;
     gap: 0.5rem;
     width: 100%;
-    min-height: 28px;
+    min-height: var(--control-h);
     padding: 0 0.625rem 0 0.75rem;
     border: none;
     background: transparent;

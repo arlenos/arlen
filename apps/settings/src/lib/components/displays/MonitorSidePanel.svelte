@@ -18,6 +18,7 @@
   import { groupedResolutions } from "$lib/stores/displays";
   import { Switch } from "$lib/components/ui/switch";
   import { PopoverSelect } from "$lib/components/ui/popover-select";
+  import { Button } from "$lib/components/ui/button";
   import SettingsRow from "$lib/components/settings/SettingsRow.svelte";
 
   interface Props {
@@ -177,14 +178,14 @@
     {#snippet control()}
       <div class="presets">
         {#each SCALE_PRESETS as p}
-          <button
-            type="button"
-            class="preset"
-            class:selected={Math.abs(draft.scale - p) < 0.01}
+          {@const isSelected = Math.abs(draft.scale - p) < 0.01}
+          <Button
+            variant={isSelected ? "secondary" : "outline"}
+            size="sm"
             onclick={() => setScale(p)}
           >
             {p}×
-          </button>
+          </Button>
         {/each}
       </div>
     {/snippet}
@@ -240,26 +241,6 @@
   .presets {
     display: flex;
     gap: 4px;
-  }
-
-  .preset {
-    padding: 4px 10px;
-    background: color-mix(in srgb, var(--color-fg-app) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-fg-app) 10%, transparent);
-    border-radius: var(--radius-sm);
-    color: var(--color-fg-app);
-    font-size: 0.8rem;
-    cursor: pointer;
-    transition: background 80ms ease;
-  }
-
-  .preset:hover {
-    background: color-mix(in srgb, var(--color-fg-app) 10%, transparent);
-  }
-
-  .preset.selected {
-    background: color-mix(in srgb, var(--color-accent) 25%, transparent);
-    border-color: var(--color-accent);
   }
 
   .hint-row {
