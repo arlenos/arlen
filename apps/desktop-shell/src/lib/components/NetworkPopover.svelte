@@ -357,7 +357,7 @@
 
   .net-section-label { font-size: 0.6875rem; opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
   .net-list-header { display: flex; align-items: center; justify-content: space-between; font-size: 0.6875rem; opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-  .net-refresh { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-sm); color: inherit; cursor: pointer; padding: 0; }
+  .net-refresh { width: var(--control-h-sm); height: var(--control-h-sm); display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-sm); color: inherit; cursor: pointer; padding: 0; }
   .net-refresh:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
 
   .net-list { display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow-y: auto; }

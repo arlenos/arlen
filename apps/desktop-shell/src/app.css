@@ -56,6 +56,20 @@
   --spacing-lg: 24px;
   --spacing-xl: 32px;
 
+  /* Control heights — single source of truth for the height of
+     interactive elements (buttons, inputs, selects, sliders…) so
+     a row of mixed controls reads as one rhythmic line.
+     Use them via Tailwind's `h-control-{sm,md,lg}` classes (defined
+     below in @theme inline) or via `var(--control-h-*)` in CSS. */
+  --control-h-sm: 24px;
+  --control-h:    28px;
+  --control-h-lg: 36px;
+
+  /* Slider geometry tokens — track height + thumb size shared
+     across `Slider`, `ValueSlider`, and the bespoke shell sliders. */
+  --slider-track-h:   3px;
+  --slider-thumb-size: 12px;
+
   /* Motion tokens live in sdk/ui-kit/src/lib/motion.css (imported above). */
 
   /* Depth */
@@ -174,6 +188,15 @@
   --radius-3xl: calc(var(--radius-md) + 24px);
   --radius-full: var(--radius-full);
   --radius: var(--radius-md);
+
+  /* Control-height utilities: `h-control` / `h-control-sm` /
+     `h-control-lg` map to the `--control-h*` design tokens so the
+     shadcn Tailwind-side primitives (Button, Input, Select…) and
+     the bespoke CSS-in-Svelte primitives (PopoverSelect,
+     ValueSlider, TimeInput…) agree on row height. */
+  --height-control-sm: var(--control-h-sm);
+  --height-control:    var(--control-h);
+  --height-control-lg: var(--control-h-lg);
 
   /* Motion tokens registered as Tailwind utilities. Values come from
      sdk/ui-kit/src/lib/motion.css; this block only exposes them to
