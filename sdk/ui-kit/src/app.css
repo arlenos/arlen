@@ -34,6 +34,18 @@
   --radius-3xl: 32px;
   --radius-full: 9999px;
 
+  /* Control heights — single source of truth for the height of
+     interactive elements (buttons, inputs, selects, sliders…) so
+     a row of mixed controls reads as one rhythmic line. */
+  --control-h-sm: 24px;
+  --control-h:    28px;
+  --control-h-lg: 36px;
+
+  /* Slider geometry tokens — track height + thumb size shared
+     across `Slider`, `ValueSlider`, and the bespoke shell sliders. */
+  --slider-track-h:    3px;
+  --slider-thumb-size: 12px;
+
   /* ============================================================
      Interaction Design System - Animation Timing Tokens
      Blueprint Section 6.13 (Motion tokens), Listing 31.
@@ -150,6 +162,11 @@
   --radius-3xl: var(--radius-3xl, 32px);
   --radius-full: var(--radius-full, 9999px);
   --radius: var(--radius-md, 8px);
+
+  /* Control-height utilities (`h-control-sm`, `h-control`, `h-control-lg`) */
+  --height-control-sm: var(--control-h-sm, 24px);
+  --height-control:    var(--control-h, 28px);
+  --height-control-lg: var(--control-h-lg, 36px);
 }
 
 @layer base {
