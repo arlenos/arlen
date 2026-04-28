@@ -21,8 +21,11 @@
   } from "$lib/stores/displays";
   import MonitorMap from "$lib/components/displays/MonitorMap.svelte";
   import MonitorSidePanel from "$lib/components/displays/MonitorSidePanel.svelte";
+  import NightLightSection from "$lib/components/displays/NightLightSection.svelte";
   import RevertConfirmModal from "$lib/components/displays/RevertConfirmModal.svelte";
   import { Button } from "$lib/components/ui/button";
+  import SettingsPage from "$lib/components/settings/SettingsPage.svelte";
+  import SettingsGroup from "$lib/components/settings/SettingsGroup.svelte";
 
   // We deliberately do NOT mirror $monitors / $selectedConnector
   // into local `$state`. Svelte 5's runes scheduler does not detect
@@ -112,49 +115,50 @@
   }
 </script>
 
-<div class="page">
-  <header class="hdr">
-    <h1>Displays</h1>
-    <p class="lead">
-      Drag the boxes to rearrange. Pick a display to tune resolution,
-      scale, rotation, mirror mode, and more.
-    </p>
-  </header>
+<SettingsPage
+  title="Displays"
+  description="Drag the boxes to rearrange. Pick a display to tune resolution, scale, rotation, mirror mode, and more."
+>
+  <SettingsGroup label="Arrangement">
+    <div class="map-wrap">
+      <MonitorMap
+        {drafts}
+        selected={$selectedConnector}
+        onSelect={selectMonitor}
+        onPositionChange={updatePosition}
+      />
+    </div>
+  </SettingsGroup>
 
-  <MonitorMap
-    {drafts}
-    selected={$selectedConnector}
-    onSelect={selectMonitor}
-    onPositionChange={updatePosition}
-  />
+  {#if $monitors.length > 0}
+    {@const selectedMonitor =
+      $monitors.find((m) => m.connector === $selectedConnector) ?? null}
+    {@const otherMonitors =
+      $monitors.filter((m) => m.connector !== $selectedConnector)}
+    {@const dirty = isDirty($monitors, drafts)}
 
-  <div class="bottom">
-    {#if $monitors.length > 0}
-      {@const selectedMonitor =
-        $monitors.find((m) => m.connector === $selectedConnector) ?? null}
-      {@const otherMonitors =
-        $monitors.filter((m) => m.connector !== $selectedConnector)}
-      {@const dirty = isDirty($monitors, drafts)}
-      {#if selectedMonitor}
+    {#if selectedMonitor}
+      <SettingsGroup label={selectedMonitor.connector}>
         <MonitorSidePanel
           monitor={selectedMonitor}
           draft={drafts[selectedMonitor.connector] ?? monitorToConfig(selectedMonitor)}
           others={otherMonitors}
           onChange={(d) => updateDraft(selectedMonitor.connector, d)}
         />
-      {:else}
-        <div class="empty-side">Select a display from the map above.</div>
-      {/if}
-
-      <div class="apply-row">
-        {#if applyError}
-          <p class="apply-error">{applyError}</p>
-        {/if}
-        <Button onclick={onApply} disabled={!dirty}>Apply</Button>
-      </div>
+        <div class="action-row">
+          {#if applyError}
+            <p class="apply-error">{applyError}</p>
+          {/if}
+          <Button variant="outline" onclick={onApply} disabled={!dirty}>
+            Apply
+          </Button>
+        </div>
+      </SettingsGroup>
     {/if}
-  </div>
-</div>
+  {/if}
+
+  <NightLightSection />
+</SettingsPage>
 
 <RevertConfirmModal
   open={modalOpen}
@@ -164,48 +168,24 @@
 />
 
 <style>
-  .page {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    padding: 24px;
-    max-width: 960px;
-    margin: 0 auto;
+  /* MonitorMap is the canvas — let it use the SettingsGroup card's
+     full width without inner padding so the rectangle preview can
+     fill the bounds. */
+  .map-wrap {
+    padding: 12px;
   }
 
-  .hdr h1 {
-    margin: 0 0 4px 0;
-    font-size: 1.4rem;
-    font-weight: 600;
-  }
-
-  .lead {
-    margin: 0;
-    color: color-mix(in srgb, var(--color-fg-app) 60%, transparent);
-    font-size: 0.9rem;
-  }
-
-  .bottom {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-
-  .empty-side {
-    padding: 16px;
-    background: var(--color-bg-card);
-    border: 1px solid color-mix(in srgb, var(--color-fg-app) 8%, transparent);
-    border-radius: var(--radius-md);
-    color: color-mix(in srgb, var(--color-fg-app) 55%, transparent);
-    font-size: 0.85rem;
-    text-align: center;
-  }
-
-  .apply-row {
+  /* Apply lives as a footer row inside the side-panel card so the
+     `divide-y` of `SettingsGroup` draws a separator above it; same
+     padding as `SettingsRow` (`px-4 py-3`). Right-aligned so the
+     button trails the row and the user's eye lands on it after
+     scanning the controls. */
+  .action-row {
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: 12px;
+    padding: 12px 16px;
   }
 
   .apply-error {

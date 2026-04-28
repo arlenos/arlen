@@ -92,6 +92,10 @@ pub fn run() {
             commands::displays::display_apply_config,
             commands::displays::display_revert,
             commands::displays::display_save_current,
+            commands::night_light::night_light_get_state,
+            commands::night_light::night_light_set,
+            commands::night_light::night_light_set_schedule,
+            commands::night_light::night_light_set_location,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

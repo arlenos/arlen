@@ -18,6 +18,7 @@
   import { groupedResolutions } from "$lib/stores/displays";
   import { Switch } from "$lib/components/ui/switch";
   import { PopoverSelect } from "$lib/components/ui/popover-select";
+  import SettingsRow from "$lib/components/settings/SettingsRow.svelte";
 
   interface Props {
     monitor: Monitor;
@@ -138,20 +139,15 @@
   ]);
 </script>
 
-<div class="panel" id="display-side-panel">
-  <header>
-    <span class="conn">{monitor.connector}</span>
-    <span class="meta">{monitor.make} {monitor.model}</span>
-  </header>
-
-  <section class="row">
-    <span class="label">Active</span>
+<SettingsRow label="Active" description="{monitor.make} {monitor.model}">
+  {#snippet control()}
     <Switch value={isActive} onchange={setEnabled} />
-  </section>
+  {/snippet}
+</SettingsRow>
 
-  {#if isActive}
-    <section class="row">
-      <span class="label">Resolution</span>
+{#if isActive}
+  <SettingsRow label="Resolution">
+    {#snippet control()}
       <PopoverSelect
         value={currentMode ? `${currentMode.width}x${currentMode.height}` : ""}
         options={resolutionOptions}
@@ -162,10 +158,11 @@
           if (w && h) pickResolution(w, h);
         }}
       />
-    </section>
+    {/snippet}
+  </SettingsRow>
 
-    <section class="row">
-      <span class="label">Refresh Rate</span>
+  <SettingsRow label="Refresh Rate">
+    {#snippet control()}
       <PopoverSelect
         value={currentMode ? String(currentMode.refreshMhz) : ""}
         options={refreshOptions}
@@ -173,10 +170,11 @@
         width="180px"
         onchange={(v) => pickRefresh(Number(v))}
       />
-    </section>
+    {/snippet}
+  </SettingsRow>
 
-    <section class="row">
-      <span class="label">Scale</span>
+  <SettingsRow label="Scale">
+    {#snippet control()}
       <div class="presets">
         {#each SCALE_PRESETS as p}
           <button
@@ -189,10 +187,11 @@
           </button>
         {/each}
       </div>
-    </section>
+    {/snippet}
+  </SettingsRow>
 
-    <section class="row">
-      <span class="label">Rotation</span>
+  <SettingsRow label="Rotation">
+    {#snippet control()}
       <PopoverSelect
         value={draft.transform}
         options={TRANSFORM_OPTIONS}
@@ -200,10 +199,14 @@
         width="180px"
         onchange={(v) => setTransform(v as Transform)}
       />
-    </section>
+    {/snippet}
+  </SettingsRow>
 
-    <section class="row">
-      <span class="label">Adaptive Sync (VRR)</span>
+  <SettingsRow
+    label="Adaptive Sync"
+    description="Variable refresh rate (VRR / FreeSync)"
+  >
+    {#snippet control()}
       <PopoverSelect
         value={draft.vrr}
         options={VRR_OPTIONS}
@@ -211,11 +214,12 @@
         width="180px"
         onchange={(v) => setVrr(v as VrrState)}
       />
-    </section>
+    {/snippet}
+  </SettingsRow>
 
-    {#if others.length > 0}
-      <section class="row">
-        <span class="label">Mirror To</span>
+  {#if others.length > 0}
+    <SettingsRow label="Mirror To">
+      {#snippet control()}
         <PopoverSelect
           value={mirrorTarget ?? "__none__"}
           options={mirrorOptions}
@@ -223,58 +227,16 @@
           width="180px"
           onchange={setMirror}
         />
-      </section>
-    {/if}
-
-  {:else}
-    <p class="hint">
-      This output is currently disabled. Toggle <em>Active</em> to wake it.
-    </p>
+      {/snippet}
+    </SettingsRow>
   {/if}
-</div>
+{:else}
+  <div class="hint-row">
+    This output is currently disabled. Toggle <em>Active</em> to wake it.
+  </div>
+{/if}
 
 <style>
-  .panel {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    padding: 16px;
-    background: var(--color-bg-card);
-    border: 1px solid color-mix(in srgb, var(--color-fg-app) 8%, transparent);
-    border-radius: var(--radius-md);
-    color: var(--color-fg-app);
-  }
-
-  header {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid color-mix(in srgb, var(--color-fg-app) 6%, transparent);
-  }
-
-  .conn {
-    font-weight: 600;
-    font-size: 0.95rem;
-  }
-
-  .meta {
-    font-size: 0.78rem;
-    color: color-mix(in srgb, var(--color-fg-app) 55%, transparent);
-  }
-
-  .row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-
-  .label {
-    font-size: 0.85rem;
-    color: var(--color-fg-app);
-  }
-
   .presets {
     display: flex;
     gap: 4px;
@@ -300,8 +262,8 @@
     border-color: var(--color-accent);
   }
 
-  .hint {
-    margin: 0;
+  .hint-row {
+    padding: 12px 16px;
     font-size: 0.85rem;
     color: color-mix(in srgb, var(--color-fg-app) 55%, transparent);
   }
