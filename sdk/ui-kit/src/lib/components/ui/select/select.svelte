@@ -32,7 +32,7 @@
   <select
     {value}
     onchange={handleChange}
-    class="h-9 w-full appearance-none rounded-md border border-border bg-input px-3 pr-8 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    class="h-control w-full appearance-none rounded-md border border-border bg-input px-3 pr-8 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
   >
     {#if !value}
       <option value="" disabled>{placeholder}</option>
