@@ -38,6 +38,20 @@
 
   --radius: 0.5rem;
 
+  /* Control heights — single source of truth for the height of
+     interactive elements (buttons, inputs, selects, sliders…) so
+     a row of mixed controls reads as one rhythmic line. Values
+     mirrored in `desktop-shell/src/app.css` and
+     `sdk/ui-kit/src/lib/...`. */
+  --control-h-sm: 24px;
+  --control-h:    28px;
+  --control-h-lg: 36px;
+
+  /* Slider geometry tokens — track height + thumb size shared
+     across `Slider`, `ValueSlider`, and the bespoke shell sliders. */
+  --slider-track-h:    3px;
+  --slider-thumb-size: 12px;
+
   /* Motion tokens live in sdk/ui-kit/src/lib/motion.css (imported above). */
 
   /* Shadcn variable mapping */
@@ -154,6 +168,14 @@
   --radius-2xl: calc(var(--radius) + 12px);
   --radius-3xl: calc(var(--radius) + 20px);
   --radius-full: 9999px;
+
+  /* Control height utilities — `h-control` / `h-control-sm` /
+     `h-control-lg` map to the design tokens. Use these in Tailwind
+     classes so shadcn primitives and bespoke CSS-in-Svelte
+     primitives agree on row height. */
+  --height-control-sm: var(--control-h-sm);
+  --height-control:    var(--control-h);
+  --height-control-lg: var(--control-h-lg);
 
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "JetBrains Mono", monospace;

@@ -155,7 +155,7 @@
     justify-content: center;
     width: 36px;
     min-width: 36px;
-    height: 36px;
+    height: var(--control-h);
     background: transparent;
     border: none;
     color: var(--foreground);
@@ -196,7 +196,7 @@
     justify-content: center;
     gap: 6px;
     padding: 0 10px;
-    height: 36px;
+    height: var(--control-h);
     min-width: 72px;
     flex: 1;
   }
@@ -210,13 +210,13 @@
     appearance: textfield;
     width: 100%;
     min-width: 40px;
-    height: 36px;
+    height: var(--control-h);
     background: transparent;
     border: none;
     outline: none;
     font: inherit;
     font-size: 14px;
-    line-height: 36px;
+    line-height: var(--control-h);
     font-variant-numeric: tabular-nums;
     font-weight: 500;
     text-align: center;

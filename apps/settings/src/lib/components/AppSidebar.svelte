@@ -10,7 +10,9 @@
     SidebarMenuButton,
     SidebarMenuItem,
     SidebarRail,
+    useSidebar,
   } from "$lib/components/ui/sidebar";
+  import { tick } from "svelte";
   import { PANELS, navigateTo } from "$lib/stores/navigation";
   import { search, type SearchResult } from "$lib/search/index";
   import {
@@ -29,9 +31,29 @@
 
   let query = $state("");
   let activeIndex = $state(0);
+  let inputEl = $state<HTMLInputElement | null>(null);
   const results = $derived<SearchResult[]>(
     query.trim().length > 0 ? search(query, 8) : [],
   );
+
+  const sidebar = useSidebar();
+  const collapsed = $derived(!sidebar.open);
+
+  /// While collapsed the search box is a glorified expand button:
+  /// no placeholder text fits in 32 px, focusing the input behind
+  /// the icon would feel broken. Click expands the sidebar and
+  /// transfers focus to the input on the next tick (after the
+  /// width animation settles).
+  async function onSearchClick(e: MouseEvent) {
+    if (!collapsed) return;
+    e.preventDefault();
+    sidebar.toggle();
+    await tick();
+    // Wait for the 200ms sidebar transition before focusing — the
+    // browser otherwise scrolls the half-grown input into view and
+    // the cursor lands in a glitchy intermediate position.
+    setTimeout(() => inputEl?.focus(), 220);
+  }
 
   function onPick(r: SearchResult) {
     // Pass the setting's `anchor` as the scrollTarget so the
@@ -125,11 +147,17 @@
       />
       <input
         type="text"
+        bind:this={inputEl}
         bind:value={query}
         onkeydown={onKey}
-        placeholder="Search settings..."
+        onmousedown={onSearchClick}
+        onfocus={() => {
+          if (collapsed) sidebar.toggle();
+        }}
+        placeholder={collapsed ? "" : "Search settings..."}
         aria-label="Search settings"
-        class="search-input group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:px-0"
+        readonly={collapsed}
+        class="search-input"
       />
       {#if results.length > 0}
         <div
@@ -223,7 +251,28 @@
     outline: none;
     transition:
       background 120ms ease,
-      border-color 120ms ease;
+      border-color 120ms ease,
+      width 120ms ease,
+      padding 120ms ease;
+  }
+
+  /* In icon-collapsed mode the SidebarHeader gives us the actual
+     content width via flex (the sidebar's 48px minus 1px `border-r`
+     and 8px each side of `p-2` lands around 31px in practice). We
+     deliberately don't pin a fixed 32px width here — that overflows
+     the right divider by 1px. Instead the wrap stays `width: 100%`
+     and the input shrinks padding to 0 so its rounded box matches
+     whatever space the flex parent assigns it. The `:global()` is
+     needed because `[data-collapsible="icon"]` lives on the outer
+     Sidebar wrapper, outside Svelte's class-hash scope. */
+  :global([data-collapsible="icon"]) .search-input {
+    padding: 4px 0;
+    cursor: pointer;
+  }
+
+  :global([data-collapsible="icon"] .settings-search-wrap .search-icon) {
+    left: 50%;
+    transform: translate(-50%, -50%);
   }
 
   .search-input:focus {

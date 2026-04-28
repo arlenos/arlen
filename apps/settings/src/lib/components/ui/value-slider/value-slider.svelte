@@ -59,7 +59,7 @@
   .track-wrap {
     position: relative;
     flex: 1;
-    height: 18px;
+    height: var(--control-h);
     display: flex;
     align-items: center;
   }
@@ -68,7 +68,7 @@
     position: absolute;
     left: 0;
     right: 0;
-    height: 3px;
+    height: var(--slider-track-h);
     border-radius: var(--radius-sm);
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
   }
@@ -77,7 +77,7 @@
     position: absolute;
     left: 0;
     width: var(--percent);
-    height: 3px;
+    height: var(--slider-track-h);
     border-radius: var(--radius-sm);
     background: var(--color-accent);
   }
@@ -85,8 +85,8 @@
   .thumb {
     position: absolute;
     left: var(--percent);
-    width: 12px;
-    height: 12px;
+    width: var(--slider-thumb-size);
+    height: var(--slider-thumb-size);
     margin-left: -6px;
     border-radius: var(--radius-md);
     background: var(--foreground);

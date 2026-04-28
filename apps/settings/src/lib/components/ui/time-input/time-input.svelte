@@ -27,7 +27,7 @@
 
 <style>
   .time {
-    height: 26px;
+    height: var(--control-h);
     width: 96px;
     padding: 0 0.5rem;
     border-radius: var(--radius-md);

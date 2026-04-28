@@ -4,6 +4,7 @@ pub mod config;
 pub mod displays;
 pub mod input;
 pub mod modules;
+pub mod night_light;
 pub mod notifications;
 pub mod search;
 pub mod theme;
