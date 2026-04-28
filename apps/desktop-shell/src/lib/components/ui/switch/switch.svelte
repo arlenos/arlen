@@ -52,8 +52,13 @@
     padding: 0;
     flex-shrink: 0;
     transition:
-      background-color 150ms ease,
-      border-color 150ms ease;
+      transform var(--duration-micro) var(--ease-out),
+      background-color var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out);
+  }
+
+  .sw:active:not(:disabled) {
+    transform: scale(0.94);
   }
 
   .sw.default {
@@ -86,7 +91,7 @@
     border-radius: var(--radius-md);
     background: var(--foreground);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-    transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform var(--duration-medium) var(--ease-out);
   }
 
   .sw.default .thumb {

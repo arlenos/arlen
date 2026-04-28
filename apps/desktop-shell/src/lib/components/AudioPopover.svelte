@@ -224,7 +224,7 @@
   /* Volume row */
   .vol-row { display: flex; align-items: center; gap: 8px; }
   .vol-icon-btn {
-    width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+    width: var(--control-h); height: var(--control-h); display: flex; align-items: center; justify-content: center;
     background: transparent; border: none; border-radius: var(--radius-sm);
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
     cursor: pointer; padding: 0; flex-shrink: 0;
@@ -235,12 +235,12 @@
 
   /* Slider */
   .vol-slider { position: relative; flex: 1; height: 20px; display: flex; align-items: center; }
-  .vol-slider-track { position: absolute; left: 0; right: 0; height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: var(--radius-sm); }
+  .vol-slider-track { position: absolute; left: 0; right: 0; height: var(--slider-track-h); background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: var(--radius-sm); }
   .vol-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: var(--color-accent); border-radius: var(--radius-sm); }
-  .vol-slider-thumb { position: absolute; left: var(--value); width: 14px; height: 14px; background: var(--color-fg-shell); border-radius: var(--radius-md); transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
+  .vol-slider-thumb { position: absolute; left: var(--value); width: var(--slider-thumb-size); height: var(--slider-thumb-size); background: var(--color-fg-shell); border-radius: var(--radius-md); transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
   .vol-slider input[type="range"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; appearance: none; -webkit-appearance: none; }
   .app-slider { width: 100px; flex: none; }
-  .app-slider .vol-slider-thumb { width: 12px; height: 12px; }
+  .app-slider .vol-slider-thumb { width: var(--slider-thumb-size); height: var(--slider-thumb-size); }
 
   /*
    * Output/input device pickers use the shared PopoverSelect from
@@ -263,7 +263,7 @@
   .apps-list { display: flex; flex-direction: column; gap: 6px; }
   .app-row { display: flex; align-items: center; gap: 6px; }
   .app-icon {
-    width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+    width: var(--control-h-sm); height: var(--control-h-sm); display: flex; align-items: center; justify-content: center;
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
     border-radius: var(--radius-sm); flex-shrink: 0;
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);

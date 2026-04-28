@@ -86,7 +86,16 @@
 
   function toggleNightLight() {
     config.night_light.enabled = !config.night_light.enabled;
-    persistConfig();
+    // Don't go through `persistConfig` for night light: the
+    // backend command persists shell.toml AND dispatches the
+    // compositor request in one shot, which is what makes the
+    // gamma engine warm the screen within the spec'd 200ms.
+    invoke("night_light_set", {
+      enabled: config.night_light.enabled,
+      temperature: config.night_light.temperature,
+    }).catch((err) => {
+      console.warn("night_light_set failed:", err);
+    });
   }
 
   function setBrightness(value: number) {
@@ -290,9 +299,9 @@
   .qs-brightness-row { display: flex; align-items: center; gap: 12px; padding: 8px 12px; }
   :global(.qs-brightness-icon) { color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent); flex-shrink: 0; }
   .qs-slider { position: relative; flex: 1; height: 20px; display: flex; align-items: center; }
-  .qs-slider-track { position: absolute; left: 0; right: 0; height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: var(--radius-sm); }
+  .qs-slider-track { position: absolute; left: 0; right: 0; height: var(--slider-track-h); background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: var(--radius-sm); }
   .qs-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: var(--color-accent); border-radius: var(--radius-sm); }
-  .qs-slider-thumb { position: absolute; left: var(--value); width: 14px; height: 14px; background: var(--color-fg-shell); border-radius: var(--radius-md); transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
+  .qs-slider-thumb { position: absolute; left: var(--value); width: var(--slider-thumb-size); height: var(--slider-thumb-size); background: var(--color-fg-shell); border-radius: var(--radius-md); transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
   .qs-slider input[type="range"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; appearance: none; -webkit-appearance: none; }
 
 

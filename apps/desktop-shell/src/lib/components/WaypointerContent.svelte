@@ -202,19 +202,21 @@
           );
         })
         .catch(() => {});
-      // Tier 2 sandboxed module providers: fan out to every worker
-      // iframe in the pool, aggregate replies with a 200 ms cap.
-      const t6 = performance.now();
-      searchModules(q)
-        .then((results) => {
-          console.log(
-            `[wp-search] modules: ${(performance.now() - t6).toFixed(1)}ms (${results.length} results)`,
-          );
-          moduleResults.set(results);
-        })
-        .catch(() => {
-          moduleResults.set([]);
-        });
+      // TEMPORARILY DISABLED: same bisection as the worker-pool
+      // init effect above. If a hidden iframe host is the layout
+      // regressor, even silently calling searchModules with no
+      // workers shouldn't matter, but cutting the call avoids any
+      // listener side-effects too.
+      void searchModules;
+      void moduleResults;
+      // const t6 = performance.now();
+      // searchModules(q)
+      //   .then((results) => {
+      //     moduleResults.set(results);
+      //   })
+      //   .catch(() => {
+      //     moduleResults.set([]);
+      //   });
       requestAnimationFrame(() => {
         console.timeEnd("wp-search-total");
       });
@@ -442,18 +444,18 @@
     return false;
   }
 
-  // Initialise the Tier 2 module worker pool once per Waypointer
-  // mount. The store owns a body-level hidden host element where
-  // worker iframes are parked; we just kick discovery here and the
-  // store handles DOM placement, listener install, and lifecycle.
-  $effect(() => {
-    installModuleListener();
-    refreshModuleWorkers();
-    const handle = setInterval(() => {
-      refreshModuleWorkers();
-    }, 30_000);
-    return () => clearInterval(handle);
-  });
+  // PERMANENTLY OFF until the Tier 2 worker pool can be initialised
+  // without taking over the Waypointer's flex layout. The Waypointer
+  // window is a layer-shell overlay anchored to all four edges, and
+  // calling `installModuleListener()` / `refreshModuleWorkers()` at
+  // mount time was making the wp-card stretch to fill the window.
+  // The store's body-level host insertion alone shouldn't matter —
+  // it's always positioned off-screen — so the regression is
+  // probably the listener install racing with the Tauri webview
+  // first paint. Re-enable once we wire the worker pool from a
+  // dedicated route or after the Waypointer is actually shown.
+  void installModuleListener;
+  void refreshModuleWorkers;
 
   // Poll for query changes and trigger search + evaluation.
   // The interval lives inside `$effect` so each mount gets its own
@@ -909,6 +911,34 @@
           </CommandGroup>
         {/if}
 
+        {#if $searchResults.length > 0}
+          <CommandGroup heading="Applications">
+            {#each $searchResults as app, i (app.name + i)}
+              <CommandItem
+                value={app.name}
+                onSelect={() => launchAppAndClose(app)}
+              >
+                {#if app.icon_data}
+                  <img
+                    src={app.icon_data}
+                    alt=""
+                    class="wp-app-icon"
+                  />
+                {:else}
+                  <AppWindow size={16} strokeWidth={1.5} class="wp-fallback-icon" />
+                {/if}
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{app.name}</span>
+                  {#if app.description}
+                    <span class="wp-app-desc">{app.description}</span>
+                  {/if}
+                </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+          <CommandSeparator />
+        {/if}
+
         {#if filteredProjects.length > 0 || $isFocused}
           <CommandGroup heading="Projects">
             {#if $isFocused}
@@ -1039,32 +1069,6 @@
           <CommandSeparator />
         {/if}
 
-        {#if $searchResults.length > 0}
-          <CommandGroup heading="Applications">
-            {#each $searchResults as app, i (app.name + i)}
-              <CommandItem
-                value={app.name}
-                onSelect={() => launchAppAndClose(app)}
-              >
-                {#if app.icon_data}
-                  <img
-                    src={app.icon_data}
-                    alt=""
-                    class="wp-app-icon"
-                  />
-                {:else}
-                  <AppWindow size={16} strokeWidth={1.5} class="wp-fallback-icon" />
-                {/if}
-                <div class="wp-app-info">
-                  <span class="wp-app-name">{app.name}</span>
-                  {#if app.description}
-                    <span class="wp-app-desc">{app.description}</span>
-                  {/if}
-                </div>
-              </CommandItem>
-            {/each}
-          </CommandGroup>
-        {/if}
         {#if $moduleResults.length > 0}
           <CommandGroup heading="Modules">
             {#each $moduleResults as result (result.id)}
