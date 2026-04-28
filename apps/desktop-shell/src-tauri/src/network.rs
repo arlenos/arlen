@@ -163,51 +163,67 @@ fn should_rescan_wifi() -> bool {
 /// Returns visible WiFi networks, sorted by connected first then signal.
 /// Results are cached for 30 seconds — within that window, no RF scan
 /// and no nmcli subprocesses are spawned.
+///
+/// **Async on purpose.** Earlier this was a blocking sync `pub fn`,
+/// which meant the very first popover open (with empty cache) parked
+/// a Tauri worker thread for 1-5 s while NetworkManager finished a
+/// fresh RF scan. The shell felt frozen because that worker is
+/// shared with theme/window-list updates that the topbar polls on a
+/// tight cadence. Switching to `pub async fn` plus
+/// `tokio::process::Command` makes every nmcli invocation cooperate
+/// with the runtime instead of stalling a thread.
 #[tauri::command]
-pub fn get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
+pub async fn get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
     // Return cached list if fresh.
     if let Some(cached) = get_wifi_cache() {
         return Ok(cached);
     }
 
     // Cache expired — trigger RF scan (best-effort, non-blocking).
-    //
-    // `.spawn()` + dropping the child, not `.output()`: a full 2.4/5GHz
-    // scan takes 1-5 seconds and `.output()` would wait for it. The
-    // fresh results show up on the *next* call (once NetworkManager
-    // has published them); callers see the stale cache meanwhile.
-    // Previously this was `.output()` which stalled a Tauri worker
-    // thread for seconds when the cache expired — the top complaint
-    // in the freeze report.
+    // `tokio::process::Command::spawn` returns immediately; we drop
+    // the child and let NetworkManager publish results in its own
+    // time. The user will see fresh results on the next poll.
     if should_rescan_wifi() {
-        let _ = std::process::Command::new("nmcli")
+        if let Ok(mut child) = tokio::process::Command::new("nmcli")
             .args(["dev", "wifi", "rescan"])
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .spawn();
+            .kill_on_drop(true)
+            .spawn()
+        {
+            // Detach: don't await; let NetworkManager finish in the
+            // background while we read whatever's already published.
+            tokio::spawn(async move {
+                let _ = child.wait().await;
+            });
+        }
     }
 
-    let output = std::process::Command::new("nmcli")
+    let output = tokio::process::Command::new("nmcli")
         .args(["-t", "-f", "SSID,SIGNAL,SECURITY,IN-USE", "dev", "wifi", "list"])
         .output()
+        .await
         .map_err(|e| format!("nmcli not found: {e}"))?;
 
     if !output.status.success() {
         return Err("nmcli wifi list failed".into());
     }
 
-    // Collect known connection names.
-    let known: std::collections::HashSet<String> = std::process::Command::new("nmcli")
-        .args(["-t", "-f", "NAME", "connection", "show"])
-        .output()
-        .map(|o| {
-            String::from_utf8_lossy(&o.stdout)
+    // Collect known connection names. Async so the second nmcli
+    // invocation also yields to the runtime rather than blocking.
+    let known: std::collections::HashSet<String> =
+        match tokio::process::Command::new("nmcli")
+            .args(["-t", "-f", "NAME", "connection", "show"])
+            .output()
+            .await
+        {
+            Ok(o) => String::from_utf8_lossy(&o.stdout)
                 .lines()
                 .map(|s| s.to_string())
-                .collect()
-        })
-        .unwrap_or_default();
+                .collect(),
+            Err(_) => Default::default(),
+        };
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut networks = Vec::new();

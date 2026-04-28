@@ -134,7 +134,11 @@
   .window-buttons :global(.control-btn:hover) {
     opacity: 1;
     transform: scale(1.1);
-    background-color: color-mix(in srgb, var(--foreground) 10%, transparent);
+    /* `--foreground` is not defined in the desktop-shell theme
+       scope (it's a shadcn token from ui-kit). Use the shell's
+       canonical fg token so the hover rectangle actually shows up
+       against the topbar / titlebar background. */
+    background-color: color-mix(in srgb, var(--color-fg-shell, currentColor) 10%, transparent);
   }
 
   .window-buttons :global(.control-btn:active) {

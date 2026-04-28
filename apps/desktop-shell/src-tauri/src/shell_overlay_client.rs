@@ -834,6 +834,56 @@ impl ShellOverlaySender {
         }
     }
 
+    /// Returns true once the Wayland proxy has bound to the
+    /// `lunaris_shell_overlay_v1` global. Callers replaying
+    /// persisted state poll this so they don't fire a request
+    /// that gets silently dropped on an unbound proxy.
+    pub fn is_bound(&self) -> bool {
+        self.proxy.lock().unwrap().is_some()
+    }
+
+    /// Send `set_night_light` request to the compositor.
+    pub fn set_night_light(&self, enabled: bool, temperature: u32) {
+        if let Some(p) = self.proxy.lock().unwrap().as_ref() {
+            p.set_night_light(if enabled { 1 } else { 0 }, temperature);
+            self.flush();
+        }
+    }
+
+    /// Send `set_night_light_schedule` request to the compositor.
+    /// `mode` follows the protocol enum: 0=manual, 1=sunset, 2=custom.
+    pub fn set_night_light_schedule(
+        &self,
+        mode: u32,
+        custom_start: u32,
+        custom_end: u32,
+    ) {
+        if let Some(p) = self.proxy.lock().unwrap().as_ref() {
+            if let Ok(m) = overlay::NightLightSchedule::try_from(mode) {
+                p.set_night_light_schedule(m, custom_start, custom_end);
+                self.flush();
+            }
+        }
+    }
+
+    /// Send `set_night_light_location` request. Latitude / longitude
+    /// arrive as f64 degrees and are encoded as signed micro-degrees
+    /// (×1_000_000) for the wire protocol.
+    pub fn set_night_light_location(&self, latitude: f64, longitude: f64) {
+        if let Some(p) = self.proxy.lock().unwrap().as_ref() {
+            let lat_udeg = (latitude * 1_000_000.0).round().clamp(
+                i32::MIN as f64,
+                i32::MAX as f64,
+            ) as i32;
+            let lon_udeg = (longitude * 1_000_000.0).round().clamp(
+                i32::MIN as f64,
+                i32::MAX as f64,
+            ) as i32;
+            p.set_night_light_location(lat_udeg, lon_udeg);
+            self.flush();
+        }
+    }
+
     fn flush(&self) {
         if let Some(c) = self.conn.lock().unwrap().as_ref() {
             if let Err(e) = c.flush() {

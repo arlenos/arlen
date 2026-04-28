@@ -63,19 +63,78 @@ impl Default for ToastConfig {
     }
 }
 
-/// Night light configuration.
+/// Night light configuration. The schedule + location fields are
+/// optional with sensible defaults so existing shell.toml files
+/// stay readable after the D2 night-light backend lands.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NightLightConfig {
-    /// Whether night light is currently active.
+    /// User's intent for the manual toggle. The compositor's actual
+    /// "is the warm tint on right now" state is derived from this
+    /// + the schedule, so we never have to store a transient.
     #[serde(default)]
     pub enabled: bool,
-    /// Color temperature in Kelvin (lower = warmer).
+    /// Color temperature in Kelvin (lower = warmer). Compositor
+    /// clamps to its supported warm-tint range (1000–6500 K).
     #[serde(default = "default_temperature")]
     pub temperature: u16,
+    /// When the warm tint should activate.
+    #[serde(default)]
+    pub schedule: NightLightSchedule,
+    /// Custom-mode start, minutes since midnight (default 22:00).
+    #[serde(default = "default_custom_start")]
+    pub custom_start: u32,
+    /// Custom-mode end, minutes since midnight (default 07:00).
+    #[serde(default = "default_custom_end")]
+    pub custom_end: u32,
+    /// Latitude for sunset/sunrise mode. `0.0` means unset; in that
+    /// case sunset mode falls back to the manual flag.
+    #[serde(default)]
+    pub latitude: f64,
+    /// Longitude for sunset/sunrise mode.
+    #[serde(default)]
+    pub longitude: f64,
+}
+
+/// Schedule mode mirrored from the compositor's
+/// `lunaris-shell-overlay::night_light_schedule` enum. Kept as a
+/// string in TOML so the file is readable; the dispatcher converts
+/// to the protocol uint at the boundary.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NightLightSchedule {
+    Manual,
+    SunsetSunrise,
+    Custom,
+}
+
+impl Default for NightLightSchedule {
+    fn default() -> Self {
+        NightLightSchedule::Manual
+    }
+}
+
+impl NightLightSchedule {
+    /// Encode to the wire-protocol uint. Mirrors the
+    /// `night_light_schedule` enum in `lunaris-shell-overlay.xml`.
+    pub fn to_protocol(self) -> u32 {
+        match self {
+            NightLightSchedule::Manual => 0,
+            NightLightSchedule::SunsetSunrise => 1,
+            NightLightSchedule::Custom => 2,
+        }
+    }
 }
 
 fn default_temperature() -> u16 {
     3400
+}
+
+fn default_custom_start() -> u32 {
+    22 * 60
+}
+
+fn default_custom_end() -> u32 {
+    7 * 60
 }
 
 impl Default for NightLightConfig {
@@ -83,6 +142,11 @@ impl Default for NightLightConfig {
         Self {
             enabled: false,
             temperature: default_temperature(),
+            schedule: NightLightSchedule::default(),
+            custom_start: default_custom_start(),
+            custom_end: default_custom_end(),
+            latitude: 0.0,
+            longitude: 0.0,
         }
     }
 }
@@ -165,7 +229,7 @@ pub fn start_shell_config_watcher(app: tauri::AppHandle) {
     use notify::{EventKind, RecursiveMode, Watcher};
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
-    use tauri::Emitter;
+    use tauri::{Emitter, Manager};
 
     let target = config_path();
     let watch_dir = match target.parent() {
@@ -206,6 +270,17 @@ pub fn start_shell_config_watcher(app: tauri::AppHandle) {
                 }
                 std::thread::sleep(Duration::from_millis(30));
                 let _ = app_clone.emit("lunaris://shell-config-changed", ());
+                // Cross-app night-light flow: app-settings writes
+                // shell.toml's [night_light] section directly (it
+                // can't reach desktop-shell's Tauri commands across
+                // processes). The watcher relays the new state to
+                // the compositor here so the gamma engine reflects
+                // the change without requiring desktop-shell IPC.
+                if let Some(sender) = app_clone
+                    .try_state::<std::sync::Arc<crate::shell_overlay_client::ShellOverlaySender>>()
+                {
+                    crate::night_light::replay_persisted_state(std::sync::Arc::clone(&sender));
+                }
             },
         ) {
             Ok(w) => w,

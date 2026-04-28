@@ -14,6 +14,7 @@ mod modulesd_client;
 mod modulesd_commands;
 mod bluetooth;
 mod network;
+mod night_light;
 mod shell_config;
 mod power;
 mod notifications;
@@ -158,7 +159,13 @@ pub fn run() {
                 window_list,
                 workspace_list,
             );
-            shell_overlay_client::start(app.handle().clone(), overlay_sender);
+            shell_overlay_client::start(app.handle().clone(), Arc::clone(&overlay_sender));
+            // Replay night-light state from shell.toml so the
+            // compositor's gamma engine resumes where the last
+            // session left off (waits up to 5s for the overlay
+            // proxy to bind). Done after `start` so the polling
+            // thread sees the binding event.
+            night_light::replay_persisted_state(Arc::clone(&overlay_sender));
             let notif_writer = notifications::start(app.handle().clone());
             app.manage(notif_writer);
             clipboard_history::start(
@@ -266,6 +273,9 @@ pub fn run() {
             bluetooth::pair_bluetooth_device,
             shell_config::get_shell_config,
             shell_config::save_shell_config,
+            night_light::night_light_set,
+            night_light::night_light_set_schedule,
+            night_light::night_light_set_location,
             layout::get_layout_state,
             layout::set_layout_mode,
             layout::set_layout_gaps,

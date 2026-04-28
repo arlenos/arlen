@@ -86,7 +86,16 @@
 
   function toggleNightLight() {
     config.night_light.enabled = !config.night_light.enabled;
-    persistConfig();
+    // Don't go through `persistConfig` for night light: the
+    // backend command persists shell.toml AND dispatches the
+    // compositor request in one shot, which is what makes the
+    // gamma engine warm the screen within the spec'd 200ms.
+    invoke("night_light_set", {
+      enabled: config.night_light.enabled,
+      temperature: config.night_light.temperature,
+    }).catch((err) => {
+      console.warn("night_light_set failed:", err);
+    });
   }
 
   function setBrightness(value: number) {
