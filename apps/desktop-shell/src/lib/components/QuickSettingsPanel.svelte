@@ -55,6 +55,9 @@
   let airplaneMode = $state(false);
   let powerMenuOpen = $state(false);
   let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+  let brightnessDevice = $state<string | null>(null);
+  let brightnessSupported = $state(false);
+  let brightnessApplyTimer: ReturnType<typeof setTimeout> | null = null;
 
   const brightnessPercent = $derived(Math.round(config.display.brightness * 100));
 
@@ -62,8 +65,33 @@
     invoke<ShellConfig>("get_shell_config")
       .then((c) => { config = c; })
       .catch(() => {});
+
+    // Read live hardware brightness so the slider matches what's
+    // on screen (not what was persisted at last save). The slider
+    // is hidden entirely when no backlight device exists.
+    invoke<{ name: string; max: number; current: number; kind: string } | null>(
+      "brightness_get_primary",
+    )
+      .then((dev) => {
+        if (!dev) {
+          brightnessSupported = false;
+          return;
+        }
+        brightnessSupported = true;
+        brightnessDevice = dev.name;
+        const linear = dev.max > 0 ? dev.current / dev.max : 0;
+        // Inverse of the gamma curve used in `brightness_set` so
+        // the slider ends up at the perceived position.
+        const slider = Math.pow(linear, 1 / 2.2);
+        config.display.brightness = Math.max(0, Math.min(1, slider));
+      })
+      .catch(() => {
+        brightnessSupported = false;
+      });
+
     return () => {
       if (saveTimeout) clearTimeout(saveTimeout);
+      if (brightnessApplyTimer) clearTimeout(brightnessApplyTimer);
     };
   });
 
@@ -99,7 +127,20 @@
   }
 
   function setBrightness(value: number) {
-    config.display.brightness = value / 100;
+    const fraction = value / 100;
+    config.display.brightness = fraction;
+    // Drag fires this at ~120 Hz; coalesce hardware writes to ~30 Hz
+    // so the logind D-Bus call doesn't get flooded. The persisted
+    // shell.toml goes through the regular 500 ms debounce.
+    if (brightnessApplyTimer) clearTimeout(brightnessApplyTimer);
+    if (brightnessSupported && brightnessDevice) {
+      const dev = brightnessDevice;
+      brightnessApplyTimer = setTimeout(() => {
+        invoke("brightness_set", { device: dev, value: fraction }).catch(
+          (err) => console.warn("brightness_set failed:", err),
+        );
+      }, 32);
+    }
     persistConfig();
   }
 

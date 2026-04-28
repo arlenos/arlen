@@ -13,6 +13,7 @@ mod module_scheme;
 mod modulesd_client;
 mod modulesd_commands;
 mod bluetooth;
+mod brightness;
 mod network;
 mod night_light;
 mod shell_config;
@@ -166,6 +167,16 @@ pub fn run() {
             // proxy to bind). Done after `start` so the polling
             // thread sees the binding event.
             night_light::replay_persisted_state(Arc::clone(&overlay_sender));
+
+            // Replay brightness from shell.toml so the laptop
+            // panel resumes at the user's last setting after a
+            // reboot. logind D-Bus, single async call; silent on
+            // failure (no backlight = nothing to do).
+            tauri::async_runtime::spawn(async move {
+                if let Ok(cfg) = shell_config::get_shell_config() {
+                    brightness::replay_persisted_brightness(cfg.display.brightness).await;
+                }
+            });
             let notif_writer = notifications::start(app.handle().clone());
             app.manage(notif_writer);
             clipboard_history::start(
@@ -276,6 +287,9 @@ pub fn run() {
             night_light::night_light_set,
             night_light::night_light_set_schedule,
             night_light::night_light_set_location,
+            brightness::brightness_get_devices,
+            brightness::brightness_get_primary,
+            brightness::brightness_set,
             layout::get_layout_state,
             layout::set_layout_mode,
             layout::set_layout_gaps,
