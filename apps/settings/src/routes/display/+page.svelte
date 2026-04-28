@@ -22,6 +22,7 @@
   import MonitorMap from "$lib/components/displays/MonitorMap.svelte";
   import MonitorSidePanel from "$lib/components/displays/MonitorSidePanel.svelte";
   import NightLightSection from "$lib/components/displays/NightLightSection.svelte";
+  import BrightnessSection from "$lib/components/displays/BrightnessSection.svelte";
   import RevertConfirmModal from "$lib/components/displays/RevertConfirmModal.svelte";
   import { Button } from "$lib/components/ui/button";
   import SettingsPage from "$lib/components/settings/SettingsPage.svelte";
@@ -157,6 +158,7 @@
     {/if}
   {/if}
 
+  <BrightnessSection />
   <NightLightSection />
 </SettingsPage>
 
