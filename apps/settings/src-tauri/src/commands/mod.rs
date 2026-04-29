@@ -1,5 +1,6 @@
 //! Tauri command handlers grouped by config file.
 
+pub mod brightness;
 pub mod config;
 pub mod displays;
 pub mod input;

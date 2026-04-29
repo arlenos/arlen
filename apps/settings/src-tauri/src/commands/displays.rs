@@ -16,10 +16,12 @@
 
 use std::sync::Arc;
 
+use cosmic_comp_config::output::comp::{OutputConfig, OutputInfo, OutputState};
 use tauri::{AppHandle, State};
 
 use crate::displays::{
-    types::{Monitor, MonitorConfig},
+    profiles::{self, ProfileSummary},
+    types::{Monitor, MonitorConfig, MonitorMode},
     wayland_client::{WaylandCommand, WaylandHandle},
 };
 
@@ -257,6 +259,272 @@ pub struct DisplayApplyHandle {
     pub request_id: String,
     /// Pre-apply state, suitable for `display_revert`.
     pub snapshot: Vec<MonitorConfig>,
+}
+
+// ===========================================================================
+// Hot-plug profiles (D4)
+// ===========================================================================
+
+/// List every saved profile from displays.toml + the sidecar
+/// metadata. The frontend renders this as a card list; the
+/// `is_current` flag tells the UI which row to highlight.
+#[tauri::command]
+pub fn display_profiles_list(
+    handle: State<'_, ManagedWaylandHandle>,
+) -> Result<Vec<ProfileSummary>, String> {
+    let monitors = {
+        let state = handle
+            .state
+            .lock()
+            .map_err(|e| format!("display state lock poisoned: {e}"))?;
+        state.monitors.clone()
+    };
+    let live_set = monitors
+        .iter()
+        .map(|m| OutputInfo {
+            connector: m.connector.clone(),
+            make: if m.make.is_empty() {
+                "Unknown".into()
+            } else {
+                m.make.clone()
+            },
+            model: if m.model.is_empty() {
+                "Unknown".into()
+            } else {
+                m.model.clone()
+            },
+        })
+        .collect::<Vec<_>>();
+    Ok(profiles::list_profiles(&live_set))
+}
+
+/// Save the live monitor topology as a new profile. Mirrors
+/// `display_save_current` (which writes the `output_set` keyed
+/// entry into displays.toml) but additionally writes the user-
+/// chosen label + a `last_used` timestamp into the sidecar so the
+/// list shows it correctly. Returns the new profile summary so
+/// the frontend can highlight it without an extra round-trip.
+#[tauri::command]
+pub fn display_profile_save(
+    label: String,
+    handle: State<'_, ManagedWaylandHandle>,
+) -> Result<ProfileSummary, String> {
+    let monitors = {
+        let state = handle
+            .state
+            .lock()
+            .map_err(|e| format!("display state lock poisoned: {e}"))?;
+        state.monitors.clone()
+    };
+    if monitors.is_empty() {
+        return Err("no live monitors to save".into());
+    }
+    let mut infos: Vec<OutputInfo> = monitors
+        .iter()
+        .map(|m| OutputInfo {
+            connector: m.connector.clone(),
+            make: if m.make.is_empty() {
+                "Unknown".into()
+            } else {
+                m.make.clone()
+            },
+            model: if m.model.is_empty() {
+                "Unknown".into()
+            } else {
+                m.model.clone()
+            },
+        })
+        .collect();
+    infos.sort();
+
+    let mut by_connector: std::collections::HashMap<String, OutputConfig> =
+        monitors_to_output_configs(&monitors);
+    let outputs: Vec<OutputConfig> = infos
+        .iter()
+        .filter_map(|info| by_connector.remove(&info.connector))
+        .collect();
+
+    profiles::save_profile(label, infos, outputs)
+}
+
+/// Apply a previously-saved profile. Goes through the same
+/// `WaylandCommand::Apply` pipeline as `display_apply_config` so
+/// the 15-second revert modal still kicks in.
+#[tauri::command]
+pub fn display_profile_apply(
+    id: String,
+    handle: State<'_, ManagedWaylandHandle>,
+) -> Result<DisplayApplyHandle, String> {
+    let (output_set, outputs) = profiles::load_profile_for_apply(&id)?;
+
+    let monitors = {
+        let state = handle
+            .state
+            .lock()
+            .map_err(|e| format!("display state lock poisoned: {e}"))?;
+        state.monitors.clone()
+    };
+
+    // Pre-apply snapshot, identical shape to `display_apply_config`'s
+    // so the revert modal flow can reuse the existing pipeline.
+    let snapshot: Vec<MonitorConfig> = monitors.iter().map(monitor_to_config).collect();
+
+    let config: Vec<MonitorConfig> = output_set
+        .iter()
+        .zip(outputs.iter())
+        .filter_map(|(info, out)| {
+            let monitor = monitors
+                .iter()
+                .find(|m| m.connector == info.connector)?;
+            Some(output_config_to_monitor_config(out, monitor))
+        })
+        .collect();
+
+    let request_id = generate_request_id();
+    handle
+        .sender
+        .send(WaylandCommand::Apply {
+            request_id: request_id.clone(),
+            config,
+        })
+        .map_err(|e| format!("wayland thread closed: {e}"))?;
+
+    Ok(DisplayApplyHandle {
+        request_id,
+        snapshot,
+    })
+}
+
+#[tauri::command]
+pub fn display_profile_delete(id: String) -> Result<(), String> {
+    profiles::delete_profile(&id)
+}
+
+#[tauri::command]
+pub fn display_profile_rename(id: String, label: String) -> Result<(), String> {
+    profiles::rename_profile(&id, label)
+}
+
+/// Compose the full per-connector OutputConfig map from the live
+/// Monitor snapshot. Shared between `display_save_current` and
+/// `display_profile_save` so on-disk layouts are byte-identical
+/// regardless of the entry point.
+fn monitors_to_output_configs(
+    monitors: &[Monitor],
+) -> std::collections::HashMap<String, OutputConfig> {
+    use cosmic_comp_config::output::comp::AdaptiveSync;
+
+    monitors
+        .iter()
+        .map(|m| {
+            let mode = m.current_mode.and_then(|i| m.modes.get(i)).cloned();
+            let conf = OutputConfig {
+                mode: mode
+                    .map(|md| ((md.width, md.height), Some(md.refresh_mhz)))
+                    .unwrap_or(((0, 0), None)),
+                vrr: match m.vrr {
+                    crate::displays::types::VrrState::Enabled => AdaptiveSync::Enabled,
+                    crate::displays::types::VrrState::Disabled => AdaptiveSync::Disabled,
+                    crate::displays::types::VrrState::Force => AdaptiveSync::Force,
+                },
+                scale: m.scale,
+                transform: transform_to_def(m.transform),
+                position: (m.position.x.max(0) as u32, m.position.y.max(0) as u32),
+                enabled: if !m.enabled {
+                    OutputState::Disabled
+                } else if let Some(target) = &m.mirroring {
+                    OutputState::Mirroring(target.clone())
+                } else {
+                    OutputState::Enabled
+                },
+                max_bpc: if m.max_bpc == 0 { None } else { Some(m.max_bpc) },
+                xwayland_primary: m.primary,
+            };
+            (m.connector.clone(), conf)
+        })
+        .collect()
+}
+
+/// Convert a canonical OutputConfig (read from displays.toml) back
+/// into a frontend MonitorConfig that the wayland-client can apply.
+/// Mode lookup is best-effort: we match on `(width, height,
+/// refresh_mhz)` against the live monitor's mode list. If the
+/// stored mode no longer exists (firmware update, EDID change),
+/// we fall back to the preferred mode so the apply doesn't
+/// silently target a non-existent mode index.
+fn output_config_to_monitor_config(
+    cfg: &OutputConfig,
+    monitor: &Monitor,
+) -> MonitorConfig {
+    use crate::displays::types::{EnabledKind, Position, Transform, VrrState};
+    use cosmic_comp_config::output::comp::TransformDef;
+
+    let ((w, h), refresh) = cfg.mode;
+    let target_refresh = refresh.unwrap_or(0);
+    let mode_index = match_mode_index(&monitor.modes, w, h, target_refresh)
+        .or(monitor.preferred_mode)
+        .or(monitor.current_mode);
+
+    let transform = match cfg.transform {
+        TransformDef::Normal => Transform::Normal,
+        TransformDef::_90 => Transform::Rotate90,
+        TransformDef::_180 => Transform::Rotate180,
+        TransformDef::_270 => Transform::Rotate270,
+        TransformDef::Flipped => Transform::Flipped,
+        TransformDef::Flipped90 => Transform::Flipped90,
+        TransformDef::Flipped180 => Transform::Flipped180,
+        TransformDef::Flipped270 => Transform::Flipped270,
+    };
+
+    let enabled = match &cfg.enabled {
+        OutputState::Disabled => EnabledKind::Disabled,
+        OutputState::Mirroring(target) => EnabledKind::Mirror(target.clone()),
+        OutputState::Enabled => EnabledKind::Active,
+    };
+
+    let vrr = match cfg.vrr {
+        cosmic_comp_config::output::comp::AdaptiveSync::Enabled => VrrState::Enabled,
+        cosmic_comp_config::output::comp::AdaptiveSync::Disabled => VrrState::Disabled,
+        cosmic_comp_config::output::comp::AdaptiveSync::Force => VrrState::Force,
+    };
+
+    MonitorConfig {
+        connector: monitor.connector.clone(),
+        mode_index,
+        position: Position {
+            x: cfg.position.0 as i32,
+            y: cfg.position.1 as i32,
+        },
+        scale: cfg.scale,
+        transform,
+        enabled,
+        vrr,
+        primary: cfg.xwayland_primary,
+        max_bpc: cfg.max_bpc.unwrap_or(0),
+    }
+}
+
+fn match_mode_index(
+    modes: &[MonitorMode],
+    width: i32,
+    height: i32,
+    refresh_mhz: u32,
+) -> Option<usize> {
+    // Exact triple match first, then dimension-only with
+    // closest-refresh, then nothing.
+    if let Some(idx) = modes.iter().position(|m| {
+        m.width == width && m.height == height && m.refresh_mhz == refresh_mhz
+    }) {
+        return Some(idx);
+    }
+    modes
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| m.width == width && m.height == height)
+        .min_by_key(|(_, m)| {
+            (refresh_mhz as i64 - m.refresh_mhz as i64).abs()
+        })
+        .map(|(idx, _)| idx)
 }
 
 #[cfg(test)]

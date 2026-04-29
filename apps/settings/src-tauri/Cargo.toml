@@ -52,6 +52,12 @@ wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 libc = "0.2"
+# Brightness control via logind D-Bus
+# (`org.freedesktop.login1.Session.SetBrightness`). Same path as
+# desktop-shell's `brightness.rs`; the two processes can't share
+# Tauri commands so we keep a slim mirror in app-settings.
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+tokio = { version = "1", features = ["rt", "macros"] }
 
 # Output config types shared with the compositor. We reuse the
 # canonical OutputConfig + TOML schema (D0) so the apply path round-
