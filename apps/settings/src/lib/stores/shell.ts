@@ -23,8 +23,26 @@ export interface ToastSection {
   animation?: ToastAnimation;
 }
 
+/// User-default settings for Focus Mode. Distinct from the runtime
+/// `[focus]` section that desktop-shell uses for the active project
+/// state — Sprint C added `[focus_settings]` so editing defaults
+/// here doesn't trample the live state.
+export interface FocusSettingsSection {
+  /// Apps whose notifications get suppressed by default whenever
+  /// any project's Focus Mode is active. Per-project `.project`
+  /// `suppress_notifications_from` lists override this.
+  default_suppressed_apps?: string[];
+  /// Pin the active project name to the top bar.
+  show_project_name?: boolean;
+}
+
+export const FOCUS_SETTINGS_DEFAULTS = {
+  show_project_name: true,
+} as const;
+
 export interface ShellConfig {
   toast?: ToastSection;
+  focus_settings?: FocusSettingsSection;
 }
 
 export const shell: ConfigStore<ShellConfig> =
