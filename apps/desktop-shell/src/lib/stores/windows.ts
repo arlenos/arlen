@@ -22,6 +22,10 @@ export interface WindowInfo {
     fullscreen?: boolean;
     /** Workspace handle IDs this window belongs to (usually one). */
     workspace_ids: string[];
+    /** Output connectors (`DP-1`, …) the window is currently visible on.
+     *  Multi-output windows have more than one entry; absent during
+     *  the brief startup race before xdg-output names arrive. */
+    output_connectors?: string[];
 }
 
 export const windows = writable<WindowInfo[]>([]);
@@ -29,6 +33,26 @@ export const windows = writable<WindowInfo[]>([]);
 export const activeWindow = derived(windows, ($windows) =>
     $windows.find((w) => w.active) ?? null
 );
+
+/// Active window AS SEEN by a specific output. Returns the active
+/// window when its `output_connectors` includes the given
+/// connector, else null. Used by per-output GlobalMenuBar so each
+/// bar only shows the menu of windows that physically live on
+/// that monitor. When `connector` is null (registry race), falls
+/// through to the legacy global `activeWindow` so the primary bar
+/// stays populated during startup.
+export function activeWindowForOutput(
+    connector: string | null,
+): typeof activeWindow {
+    if (connector === null) return activeWindow;
+    return derived(windows, ($windows) => {
+        const a = $windows.find((w) => w.active);
+        if (!a) return null;
+        const outputs = a.output_connectors ?? [];
+        if (outputs.length === 0) return a; // pre-resolution fallback
+        return outputs.includes(connector) ? a : null;
+    });
+}
 
 export const activeAppName = derived(activeWindow, ($active) => {
     if (!$active) return "";

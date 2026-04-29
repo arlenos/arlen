@@ -1,10 +1,12 @@
 <script lang="ts">
   import { activeMenu, activeAppId, dispatchMenuAction, type MenuGroup, type MenuItem } from "$lib/stores/menus.js";
-  import { activeAppName } from "$lib/stores/windows.js";
+  import { activeAppName, activeWindowForOutput } from "$lib/stores/windows.js";
   import {
     Root, Trigger, Content, Item, Separator, CheckboxItem, Shortcut,
     Sub, SubTrigger, SubContent,
   } from "$lib/components/ui/dropdown-menu/index.js";
+  import { getContext } from "svelte";
+  import type { Readable } from "svelte/store";
   const shellColors =
     "bg-[var(--color-bg-shell)] text-[var(--color-fg-shell)] border-[color-mix(in_srgb,var(--color-bg-shell)_60%,white_40%)]";
 
@@ -13,6 +15,27 @@
     if (appId) dispatchMenuAction(appId, action);
   }
 
+  /// Each per-output bar mounts its own GlobalMenuBar instance.
+  /// We only render the menu when the focused window physically
+  /// lives on this monitor — otherwise the user would see the
+  /// same menu duplicated on every screen, with no way to tell
+  /// which one is the "real" menu for the focused app.
+  ///
+  /// Pre-resolution (connector === null) the legacy
+  /// `activeWindow`-equivalent is returned, so the primary bar's
+  /// first paint isn't blank during startup.
+  const outputCtx = getContext<
+    Readable<{ connector: string | null; primary: boolean }>
+  >("topbar-output");
+  const outputConnector = $derived($outputCtx?.connector ?? null);
+  const windowForThisBar = $derived(activeWindowForOutput(outputConnector));
+  let visibleWindowExists = $state(false);
+  $effect(() => {
+    const unsub = windowForThisBar.subscribe((w) => {
+      visibleWindowExists = w !== null;
+    });
+    return () => unsub();
+  });
 </script>
 
 {#snippet menuItems(items: MenuItem[])}
@@ -43,11 +66,12 @@
 {/snippet}
 
 <div class="menubar">
-  <span class="menubar-appname">
-    {$activeAppName || "Lunaris"}
-  </span>
+  {#if visibleWindowExists}
+    <span class="menubar-appname">
+      {$activeAppName || "Lunaris"}
+    </span>
 
-  {#if $activeMenu}
+    {#if $activeMenu}
     {#each $activeMenu as group, gi (gi)}
       <Root>
         <Trigger>
@@ -62,6 +86,7 @@
         </Content>
       </Root>
     {/each}
+    {/if}
   {/if}
 </div>
 
