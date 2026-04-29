@@ -14,7 +14,8 @@ export type ConfigFile =
   | "compositor"
   | "shell"
   | "notifications"
-  | "modules";
+  | "modules"
+  | "graph";
 
 export interface ConfigState<T> {
   data: T | null;

@@ -50,9 +50,23 @@ export interface WorkspacesSection {
   workspace_layout?: WorkspaceLayout;
 }
 
+export interface AccessibilityZoomSection {
+  start_on_login?: boolean;
+  show_overlay?: boolean;
+  increment?: number;
+  view_moves?: "OnEdge" | "Centered" | "Continuously";
+  enable_mouse_zoom_shortcuts?: boolean;
+}
+
+export interface SystemActionsSection {
+  [actionKey: string]: string;
+}
+
 export interface CompositorConfig {
   workspaces?: WorkspacesSection;
   layout?: LayoutConfig;
+  accessibility_zoom?: AccessibilityZoomSection;
+  system_actions?: SystemActionsSection;
   /// Other compositor.toml sections we don't render here are
   /// preserved as-is by toml_writer; the type declaration just
   /// avoids strict-mode complaints when reading them back.

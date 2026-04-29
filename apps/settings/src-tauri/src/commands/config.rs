@@ -16,6 +16,12 @@ pub enum ConfigFile {
     Shell,
     Notifications,
     Modules,
+    /// Knowledge daemon project-watch config (`graph.toml`).
+    /// Settings UI for Focus Mode + Knowledge Graph pages writes
+    /// `[projects]` here. The daemon reads this file on startup
+    /// only — Settings warns the user that changes need a daemon
+    /// restart until live-reload lands in a follow-up sprint.
+    Graph,
 }
 
 impl ConfigFile {
@@ -26,6 +32,7 @@ impl ConfigFile {
             Self::Shell => "shell.toml",
             Self::Notifications => "notifications.toml",
             Self::Modules => "modules.toml",
+            Self::Graph => "graph.toml",
         }
     }
 

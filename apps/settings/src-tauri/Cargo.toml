@@ -22,6 +22,11 @@ toml = "0.8"
 # `toml::to_string_pretty(&full_struct)` would lose the user's
 # comments and formatting; toml_edit keeps them.
 toml_edit = "0.22"
+# RON serialiser used to write the screen-filter state file at
+# `~/.local/state/cosmic-comp/a11y_screen_filter.ron`. The
+# compositor reads this file format; matching it lets the Settings
+# app round-trip with the same notify-watcher pipeline.
+ron = "0.8"
 dirs = "5"
 notify = "6"
 anyhow = "1"

@@ -1,9 +1,11 @@
 //! Tauri command handlers grouped by config file.
 
+pub mod accessibility;
 pub mod brightness;
 pub mod config;
 pub mod displays;
 pub mod input;
+pub mod knowledge;
 pub mod modules;
 pub mod night_light;
 pub mod notifications;
