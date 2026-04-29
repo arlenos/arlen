@@ -12,6 +12,7 @@
 /// camelCase, JSON-friendly view that does not depend on the
 /// compositor's struct shape evolving.
 
+pub mod profiles;
 pub mod types;
 pub mod wayland_client;
 

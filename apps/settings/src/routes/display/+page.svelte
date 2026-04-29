@@ -23,7 +23,9 @@
   import MonitorSidePanel from "$lib/components/displays/MonitorSidePanel.svelte";
   import NightLightSection from "$lib/components/displays/NightLightSection.svelte";
   import BrightnessSection from "$lib/components/displays/BrightnessSection.svelte";
+  import ProfileSection from "$lib/components/displays/ProfileSection.svelte";
   import RevertConfirmModal from "$lib/components/displays/RevertConfirmModal.svelte";
+  import type { ApplyHandle } from "$lib/stores/displays";
   import { Button } from "$lib/components/ui/button";
   import SettingsPage from "$lib/components/settings/SettingsPage.svelte";
   import SettingsGroup from "$lib/components/settings/SettingsGroup.svelte";
@@ -114,6 +116,16 @@
   function selectMonitor(connector: string) {
     selectedConnector.set(connector);
   }
+
+  /// Bridge for the saved-layouts list: ProfileSection runs an
+  /// apply but doesn't own the revert modal; the page does. We
+  /// open the same modal here with the snapshot returned by the
+  /// command.
+  function onProfileApplied(handle: ApplyHandle) {
+    modalSnapshot = handle.snapshot;
+    modalRequestId = handle.requestId;
+    modalOpen = true;
+  }
 </script>
 
 <SettingsPage
@@ -158,6 +170,7 @@
     {/if}
   {/if}
 
+  <ProfileSection onApplied={onProfileApplied} />
   <BrightnessSection />
   <NightLightSection />
 </SettingsPage>
