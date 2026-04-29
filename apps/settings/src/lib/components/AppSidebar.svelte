@@ -27,6 +27,11 @@
     Shield,
     Puzzle,
     Info,
+    LayoutGrid,
+    Accessibility,
+    Crosshair,
+    Brain,
+    Zap,
   } from "lucide-svelte";
 
   let query = $state("");
@@ -95,25 +100,38 @@
     Shield,
     Puzzle,
     Info,
+    LayoutGrid,
+    Accessibility,
+    Crosshair,
+    Brain,
+    Zap,
   };
 
-  // Group panels by section, matching the settings-app spec.
+  // Group panels by section, matching the Pre-Phase-6 plan
+  // (`docs/architecture/settings-app.md` section structure plus
+  // four new pages).
   const SECTIONS = [
     {
-      label: "Personalization",
-      panelIds: ["appearance", "display"] as const,
+      label: "System",
+      panelIds: ["display", "workspaces", "notifications", "about"] as const,
+    },
+    {
+      label: "Personal",
+      panelIds: ["appearance", "accessibility", "focus", "knowledge"] as const,
     },
     {
       label: "Input",
-      panelIds: ["keyboard", "shortcuts", "mouse", "touchpad"] as const,
+      panelIds: [
+        "keyboard",
+        "shortcuts",
+        "mouse",
+        "touchpad",
+        "system-actions",
+      ] as const,
     },
     {
-      label: "System",
-      panelIds: ["notifications", "privacy", "extensions"] as const,
-    },
-    {
-      label: "Info",
-      panelIds: ["about"] as const,
+      label: "Apps & Modules",
+      panelIds: ["extensions", "privacy"] as const,
     },
   ];
 

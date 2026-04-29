@@ -7,6 +7,7 @@ pub mod input;
 pub mod modules;
 pub mod night_light;
 pub mod notifications;
+pub mod picker;
 pub mod search;
 pub mod theme;
 pub mod waypointer_plugins;

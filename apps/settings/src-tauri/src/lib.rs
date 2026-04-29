@@ -6,6 +6,7 @@
 mod commands;
 mod config_watcher;
 mod displays;
+mod toml_writer;
 
 /// Tauri application entry point invoked from `main.rs`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -50,6 +51,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::frontend_log,
+            commands::picker::pick_directory,
             commands::config::config_get,
             commands::config::config_set,
             commands::config::config_reset,

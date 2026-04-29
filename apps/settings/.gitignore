@@ -19,3 +19,7 @@ src-tauri/Cargo.lock
 # Env
 .env
 .env.local
+
+# Local dev notes — not committed, lives on the maintainer's machine
+# as cross-sprint reference.
+COMPONENTS.md

@@ -9,8 +9,13 @@ export type PanelId =
   | "shortcuts"
   | "mouse"
   | "touchpad"
+  | "system-actions"
   | "display"
+  | "workspaces"
   | "notifications"
+  | "accessibility"
+  | "focus"
+  | "knowledge"
   | "privacy"
   | "extensions"
   | "about";
@@ -24,17 +29,30 @@ export interface PanelMeta {
 }
 
 /// All panels in display order. Disabled ones render greyed out.
+/// Sidebar grouping is configured in `AppSidebar.svelte::SECTIONS`.
 export const PANELS: PanelMeta[] = [
+  // System
+  { id: "display", title: "Display", icon: "Monitor", enabled: true, href: "/display" },
+  { id: "workspaces", title: "Workspaces & Tiling", icon: "LayoutGrid", enabled: true, href: "/workspaces" },
+  { id: "notifications", title: "Notifications", icon: "Bell", enabled: true, href: "/notifications" },
+  { id: "about", title: "About", icon: "Info", enabled: true, href: "/about" },
+
+  // Personal
   { id: "appearance", title: "Appearance", icon: "Palette", enabled: true, href: "/appearance" },
+  { id: "accessibility", title: "Accessibility", icon: "Accessibility", enabled: true, href: "/accessibility" },
+  { id: "focus", title: "Focus Mode", icon: "Crosshair", enabled: true, href: "/focus" },
+  { id: "knowledge", title: "Knowledge Graph", icon: "Brain", enabled: true, href: "/knowledge" },
+
+  // Input
   { id: "keyboard", title: "Keyboard", icon: "Keyboard", enabled: true, href: "/keyboard" },
   { id: "shortcuts", title: "Shortcuts", icon: "Command", enabled: true, href: "/keyboard/shortcuts" },
   { id: "mouse", title: "Mouse", icon: "Mouse", enabled: true, href: "/mouse" },
   { id: "touchpad", title: "Touchpad", icon: "SquareMousePointer", enabled: true, href: "/touchpad" },
-  { id: "display", title: "Display", icon: "Monitor", enabled: true, href: "/display" },
-  { id: "notifications", title: "Notifications", icon: "Bell", enabled: true, href: "/notifications" },
-  { id: "privacy", title: "Privacy", icon: "Shield", enabled: false, href: "/privacy" },
+  { id: "system-actions", title: "System Actions", icon: "Zap", enabled: true, href: "/system-actions" },
+
+  // Apps & Modules
   { id: "extensions", title: "Extensions", icon: "Puzzle", enabled: true, href: "/extensions" },
-  { id: "about", title: "About", icon: "Info", enabled: true, href: "/about" },
+  { id: "privacy", title: "Privacy", icon: "Shield", enabled: false, href: "/privacy" },
 ];
 
 interface NavigationState {
