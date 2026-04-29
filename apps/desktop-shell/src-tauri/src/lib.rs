@@ -13,6 +13,7 @@ mod module_scheme;
 mod modulesd_client;
 mod modulesd_commands;
 mod bluetooth;
+mod bluetooth_agent;
 mod brightness;
 mod network;
 mod night_light;
@@ -193,6 +194,21 @@ pub fn run() {
             );
             sni::start(app.handle().clone(), sni_items);
             bluetooth::start_monitor(app.handle().clone());
+            // Register the BlueZ Agent1 implementation so first-time
+            // pairing works for devices that need PIN/passkey/
+            // confirmation interaction. See
+            // docs/architecture/bluetooth-pairing.md.
+            {
+                let agent = std::sync::Arc::new(bluetooth_agent::BluetoothAgent::new(
+                    app.handle().clone(),
+                ));
+                app.manage(std::sync::Arc::clone(&agent));
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = bluetooth_agent::register_with_bluez(agent).await {
+                        log::warn!("bluetooth_agent: register failed: {e}");
+                    }
+                });
+            }
             network::start_monitor(app.handle().clone());
             battery::start_monitor(app.handle().clone());
             audio::start_monitor(app.handle().clone());
@@ -297,6 +313,8 @@ pub fn run() {
             bluetooth::start_bluetooth_scan,
             bluetooth::stop_bluetooth_scan,
             bluetooth::pair_bluetooth_device,
+            bluetooth_agent::bluetooth_pair_respond,
+            bluetooth_agent::bluetooth_pair_pending_requests,
             shell_config::get_shell_config,
             shell_config::save_shell_config,
             night_light::night_light_set,

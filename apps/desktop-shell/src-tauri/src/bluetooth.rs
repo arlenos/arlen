@@ -511,11 +511,25 @@ pub async fn stop_bluetooth_scan() -> Result<(), String> {
 
 /// Initiate pairing with a device.
 ///
-/// For "Just Works" devices (most headphones), this completes immediately.
-/// For devices requiring PIN confirmation, BlueZ calls back on the registered
-/// agent (Phase 4).
+/// For "Just Works" devices (most headphones), this completes
+/// immediately. For devices requiring PIN / passkey / confirmation,
+/// BlueZ calls back on the agent registered by `bluetooth_agent.rs`,
+/// the user resolves the dialog, and `Pair()` returns when the
+/// negotiation finishes either way.
+///
+/// Errors are mapped to user-readable strings via
+/// [`map_pair_error`] so the toast surface in
+/// `BluetoothPopover.svelte` shows something actionable.
+///
+/// On success, dismisses any Display dialog still attached to this
+/// device. The agent's PropertiesChanged watcher does the same on
+/// `Paired=true`, but we also do it inline here so the
+/// user-initiated path doesn't depend on signal-delivery latency.
 #[tauri::command]
-pub async fn pair_bluetooth_device(path: String) -> Result<(), String> {
+pub async fn pair_bluetooth_device(
+    path: String,
+    agent: tauri::State<'_, std::sync::Arc<crate::bluetooth_agent::BluetoothAgent>>,
+) -> Result<(), String> {
     let conn = Connection::system()
         .await
         .map_err(|e| format!("system bus: {e}"))?;
@@ -527,12 +541,109 @@ pub async fn pair_bluetooth_device(path: String) -> Result<(), String> {
     proxy
         .call_method("Pair", &())
         .await
-        .map_err(|e| format!("Pair: {e}"))?;
+        .map_err(map_pair_error)?;
+
+    // Drop any DisplayPinCode / DisplayPasskey dialog that's still
+    // visible — we know the pairing finished here.
+    agent.dismiss_display_for_device(&path).await;
 
     // Auto-trust after successful pairing.
     let _ = set_device_trusted(path, true).await;
 
     Ok(())
+}
+
+/// Translate the most common BlueZ pairing errors into the strings
+/// `BluetoothPopover.svelte` shows in its toast. Anything we don't
+/// recognise falls through with the raw error attached for debug
+/// visibility — better an ugly string the user can paste into a
+/// search than a silent failure.
+pub(crate) fn map_pair_error(err: zbus::Error) -> String {
+    map_pair_error_str(&err.to_string())
+}
+
+/// Pure string-level mapping. Split out for testability — the
+/// `zbus::Error` type has no public constructors that let us
+/// fabricate every variant in a test, but the user-visible mapping
+/// happens at the `Display` level anyway.
+pub(crate) fn map_pair_error_str(raw: &str) -> String {
+    let name_part = raw.split(':').next().unwrap_or(raw).trim();
+    match name_part {
+        "org.bluez.Error.AuthenticationRejected" => {
+            "Pairing rejected by the device".into()
+        }
+        "org.bluez.Error.AuthenticationFailed" => {
+            "Pairing failed: wrong PIN or passkey".into()
+        }
+        "org.bluez.Error.AuthenticationCanceled" => "Pairing canceled".into(),
+        "org.bluez.Error.AuthenticationTimeout" => {
+            "Pairing timed out — try again".into()
+        }
+        "org.bluez.Error.ConnectionAttemptFailed" => {
+            "Could not reach the device".into()
+        }
+        "org.bluez.Error.AlreadyExists" => "Device is already paired".into(),
+        "org.freedesktop.DBus.Error.AccessDenied" => {
+            "Bluetooth pairing requires polkit permission. Add the user \
+             to the bluetooth group or install a pairing policy."
+                .into()
+        }
+        _ => format!("Pair: {raw}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pair_error_known_names_become_friendly_strings() {
+        assert_eq!(
+            map_pair_error_str("org.bluez.Error.AuthenticationRejected: User said no"),
+            "Pairing rejected by the device"
+        );
+        assert_eq!(
+            map_pair_error_str("org.bluez.Error.AuthenticationFailed: PIN mismatch"),
+            "Pairing failed: wrong PIN or passkey"
+        );
+        assert_eq!(
+            map_pair_error_str("org.bluez.Error.AuthenticationTimeout"),
+            "Pairing timed out — try again"
+        );
+        assert_eq!(
+            map_pair_error_str("org.bluez.Error.AlreadyExists: foo"),
+            "Device is already paired"
+        );
+    }
+
+    #[test]
+    fn pair_error_polkit_message_is_actionable() {
+        let msg = map_pair_error_str(
+            "org.freedesktop.DBus.Error.AccessDenied: not allowed",
+        );
+        // The user must be able to figure out *what to do* from the
+        // toast text. Two anchor words: "polkit" and either "group"
+        // or "policy".
+        assert!(msg.contains("polkit"));
+        assert!(msg.contains("group") || msg.contains("policy"));
+    }
+
+    #[test]
+    fn pair_error_unknown_falls_through_with_raw() {
+        let msg = map_pair_error_str("org.bluez.Error.Something.Weird: details");
+        // Falls through to "Pair: {raw}" so the user can search
+        // even an unfamiliar name.
+        assert!(msg.starts_with("Pair: "));
+        assert!(msg.contains("org.bluez.Error.Something.Weird"));
+    }
+
+    #[test]
+    fn pair_error_handles_no_colon_gracefully() {
+        // Defensive: a hypothetical error with no ":" still works
+        // (e.g. a bare name).
+        let msg = map_pair_error_str("org.bluez.Error.AuthenticationCanceled");
+        assert_eq!(msg, "Pairing canceled");
+    }
 }
 
 // ---------------------------------------------------------------------------
