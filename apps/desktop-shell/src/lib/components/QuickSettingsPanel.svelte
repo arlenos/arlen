@@ -3,6 +3,7 @@
 
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import {
     Moon, Sun, Plane, Settings, Lock, Power,
@@ -89,9 +90,25 @@
         brightnessSupported = false;
       });
 
+    // The hardware Fn-row brightness keys go straight to logind
+    // via the compositor-driven `brightness_step` event; the
+    // shell-side helper emits `lunaris://brightness-changed`
+    // afterwards so the slider catches up to the new hardware
+    // position without polling.
+    let unlistenBrightness: UnlistenFn | null = null;
+    listen<{ device: string; fraction: number }>(
+      "lunaris://brightness-changed",
+      ({ payload }) => {
+        config.display.brightness = payload.fraction;
+      },
+    ).then((un) => {
+      unlistenBrightness = un;
+    });
+
     return () => {
       if (saveTimeout) clearTimeout(saveTimeout);
       if (brightnessApplyTimer) clearTimeout(brightnessApplyTimer);
+      unlistenBrightness?.();
     };
   });
 

@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::shell_config::{
-    NightLightSchedule, ShellConfig, get_shell_config, save_shell_config,
+    NightLightSchedule, ShellConfig, get_shell_config, update_shell_config,
 };
 use crate::shell_overlay_client::ShellOverlaySender;
 
@@ -26,10 +26,10 @@ pub fn night_light_set(
     temperature: u16,
     sender: State<'_, Arc<ShellOverlaySender>>,
 ) -> Result<(), String> {
-    let mut cfg = get_shell_config().unwrap_or_default();
-    cfg.night_light.enabled = enabled;
-    cfg.night_light.temperature = temperature;
-    save_shell_config(cfg.clone())?;
+    update_shell_config(|cfg| {
+        cfg.night_light.enabled = enabled;
+        cfg.night_light.temperature = temperature;
+    })?;
     sender.set_night_light(enabled, temperature as u32);
     Ok(())
 }
@@ -52,11 +52,11 @@ pub fn night_light_set_schedule(
         "custom" => NightLightSchedule::Custom,
         other => return Err(format!("unknown schedule '{other}'")),
     };
-    let mut cfg = get_shell_config().unwrap_or_default();
-    cfg.night_light.schedule = parsed;
-    cfg.night_light.custom_start = custom_start;
-    cfg.night_light.custom_end = custom_end;
-    save_shell_config(cfg.clone())?;
+    update_shell_config(|cfg| {
+        cfg.night_light.schedule = parsed;
+        cfg.night_light.custom_start = custom_start;
+        cfg.night_light.custom_end = custom_end;
+    })?;
     sender.set_night_light_schedule(parsed.to_protocol(), custom_start, custom_end);
     Ok(())
 }
@@ -70,10 +70,10 @@ pub fn night_light_set_location(
     longitude: f64,
     sender: State<'_, Arc<ShellOverlaySender>>,
 ) -> Result<(), String> {
-    let mut cfg = get_shell_config().unwrap_or_default();
-    cfg.night_light.latitude = latitude;
-    cfg.night_light.longitude = longitude;
-    save_shell_config(cfg.clone())?;
+    update_shell_config(|cfg| {
+        cfg.night_light.latitude = latitude;
+        cfg.night_light.longitude = longitude;
+    })?;
     sender.set_night_light_location(latitude, longitude);
     Ok(())
 }

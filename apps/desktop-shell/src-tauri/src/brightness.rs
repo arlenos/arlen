@@ -215,6 +215,167 @@ pub async fn brightness_set(device: String, value: f32) -> Result<u32, String> {
     Ok(raw)
 }
 
+/// Step size per hardware-key press, expressed as a slider
+/// fraction. 5 % matches GNOME / macOS conventions and feels
+/// neither sluggish nor coarse on a 0-100 % range.
+const STEP_FRACTION: f32 = 0.05;
+/// Coalesce window for held-key repeats. The kernel emits
+/// auto-repeat events at ~30Hz; without coalescing every press
+/// would issue a logind D-Bus read+write. ~33 ms keeps the
+/// effective rate at 30 Hz max while individual taps still feel
+/// responsive (32ms is well below human pre-attentive perception).
+const STEP_COALESCE_MS: u64 = 33;
+
+/// Pending step state. Kept module-global because the hardware-
+/// key handler doesn't have a natural place to thread it through
+/// otherwise. Tracks accumulated direction (so 3 rapid taps in a
+/// 33ms window collapse into one +3 step) and the in-flight task
+/// guard so we don't spawn parallel writers.
+static PENDING_STEP: std::sync::Mutex<i32> = std::sync::Mutex::new(0);
+static STEP_INFLIGHT: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Step the primary backlight by `direction × STEP_FRACTION`.
+///
+/// Coalesces rapid repeats: presses arriving within one
+/// `STEP_COALESCE_MS` window collapse into a single read-modify-write
+/// rather than serialising. The worker holds `STEP_INFLIGHT` for the
+/// full D-Bus round-trip and only releases it once `PENDING_STEP`
+/// stays zero across a release-then-recheck cycle, so an increment
+/// that lands between drain and release can never be silently lost.
+///
+/// `direction` is an IPC-trust boundary: the compositor's
+/// `lunaris-shell-overlay` `brightness_step` event documents it as
+/// `+1` or `-1`, but the channel is an `int` and a buggy or skewed
+/// sender can put any `i32` on the wire. We reject anything that
+/// isn't exactly `±1` and log a warning so protocol mismatches are
+/// loud rather than silently writing a 50-step jump to logind.
+///
+/// Persists the new fraction to `shell.toml` so the level survives a
+/// reboot, then emits `lunaris://brightness-changed` so the
+/// QuickSettings + Settings sliders re-read the hardware position
+/// without polling.
+pub fn brightness_step_relative(app: tauri::AppHandle, direction: i32) {
+    if direction != 1 && direction != -1 {
+        log::warn!(
+            "brightness_step: rejecting out-of-contract direction={direction} \
+             (expected +1 or -1); ignoring event"
+        );
+        return;
+    }
+    {
+        let mut p = PENDING_STEP.lock().unwrap();
+        *p += direction;
+    }
+    if STEP_INFLIGHT.swap(true, std::sync::atomic::Ordering::AcqRel) {
+        // A coalescing task is already running; it will pick up
+        // the new pending direction on its next loop iteration.
+        return;
+    }
+    tauri::async_runtime::spawn(async move {
+        loop {
+            // Coalesce window so adjacent presses fold into one
+            // D-Bus write.
+            tokio::time::sleep(std::time::Duration::from_millis(STEP_COALESCE_MS)).await;
+
+            let direction = {
+                let mut p = PENDING_STEP.lock().unwrap();
+                std::mem::take(&mut *p)
+            };
+
+            if direction == 0 {
+                // Nothing to do this cycle. Release the guard, then
+                // re-check PENDING_STEP: a producer that incremented
+                // between the drain above and this release would
+                // have seen INFLIGHT==true and returned without
+                // spawning, so we must pick it up ourselves.
+                STEP_INFLIGHT.store(false, std::sync::atomic::Ordering::Release);
+                let leftover = *PENDING_STEP.lock().unwrap();
+                if leftover == 0 {
+                    return;
+                }
+                // A late increment slipped in. Try to re-claim the
+                // guard; if a fresh producer raced ahead and got it
+                // first, our work is its problem now.
+                if STEP_INFLIGHT.swap(true, std::sync::atomic::Ordering::AcqRel) {
+                    return;
+                }
+                continue;
+            }
+
+            let devices = tokio::task::spawn_blocking(enumerate_devices)
+                .await
+                .unwrap_or_default();
+            let Some(primary) = devices.into_iter().next() else {
+                log::info!("brightness_step: no backlight device, ignoring");
+                // Drop any further pending presses — without
+                // hardware they're meaningless.
+                *PENDING_STEP.lock().unwrap() = 0;
+                STEP_INFLIGHT.store(false, std::sync::atomic::Ordering::Release);
+                return;
+            };
+            let new_fraction =
+                (primary.current_fraction() + direction as f32 * STEP_FRACTION).clamp(0.0, 1.0);
+            let raw = slider_to_raw(new_fraction, primary.max);
+            if let Err(err) = set_brightness_logind(&primary.name, raw).await {
+                log::warn!("brightness_step: set failed: {err}");
+                // On a hardware/D-Bus failure, drop the queue and
+                // bail. Better than spinning indefinitely against a
+                // broken backend.
+                *PENDING_STEP.lock().unwrap() = 0;
+                STEP_INFLIGHT.store(false, std::sync::atomic::Ordering::Release);
+                return;
+            }
+            log::info!(
+                "brightness_step: device={} direction={} fraction={:.2} raw={}",
+                primary.name,
+                direction,
+                new_fraction,
+                raw
+            );
+
+            // Persist so the level survives a reboot. Errors are
+            // logged-and-continued — a transient TOML write failure
+            // shouldn't break the running session.
+            persist_brightness(new_fraction);
+
+            use tauri::Emitter;
+            let _ = app.emit(
+                "lunaris://brightness-changed",
+                serde_json::json!({
+                    "device": primary.name,
+                    "fraction": new_fraction,
+                }),
+            );
+
+            // Loop continues; STEP_INFLIGHT stays held so a producer
+            // arriving during the next sleep simply increments
+            // PENDING_STEP and we drain it on the following pass.
+        }
+    });
+}
+
+/// Update `~/.config/lunaris/shell.toml` so the new brightness is
+/// the value `replay_persisted_brightness` reads on the next boot.
+///
+/// Routed through `update_shell_config` so the load-modify-write is
+/// serialised against every other in-process writer (night-light
+/// commands, the frontend's full-replace path) under
+/// `WRITE_LOCK`. A bare `get_shell_config` + `save_shell_config`
+/// here would race those writers and silently drop their fields on
+/// every key press.
+///
+/// Errors are logged-and-swallowed: the hardware write already
+/// succeeded, and a transient TOML failure shouldn't break the
+/// running session.
+fn persist_brightness(fraction: f32) {
+    if let Err(err) = crate::shell_config::update_shell_config(|cfg| {
+        cfg.display.brightness = fraction;
+    }) {
+        log::warn!("brightness persist: update failed: {err}");
+    }
+}
+
 /// Replay the persisted brightness from `shell.toml` on startup.
 /// Called from `lib.rs::run` after the Tauri app initialises so
 /// the user resumes at the same brightness level across reboots.
@@ -321,5 +482,32 @@ mod tests {
     fn kind_priority_orders_firmware_first() {
         assert!(kind_priority("firmware") < kind_priority("platform"));
         assert!(kind_priority("platform") < kind_priority("raw"));
+    }
+
+    /// `brightness_step_relative` accepts `direction` over a
+    /// Wayland IPC where the channel is a wide `int`. Anything but
+    /// exactly `±1` is a contract violation by the sender — drop
+    /// the increment instead of letting it accumulate. We can't
+    /// invoke the public function in unit tests (it needs a Tauri
+    /// AppHandle and spawns a runtime), but we exercise the same
+    /// validation predicate here so the contract stays codified
+    /// in tests.
+    #[test]
+    fn step_direction_contract_rejects_out_of_range() {
+        fn is_valid_step(direction: i32) -> bool {
+            direction == 1 || direction == -1
+        }
+
+        // The contract values.
+        assert!(is_valid_step(1));
+        assert!(is_valid_step(-1));
+
+        // Common mistakes / protocol-skew payloads.
+        assert!(!is_valid_step(0));
+        assert!(!is_valid_step(2));
+        assert!(!is_valid_step(-2));
+        assert!(!is_valid_step(50));
+        assert!(!is_valid_step(i32::MAX));
+        assert!(!is_valid_step(i32::MIN));
     }
 }
