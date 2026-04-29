@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
   import GlobalMenuBar from "$lib/components/GlobalMenuBar.svelte";
   import ClockIndicator from "$lib/components/ClockIndicator.svelte";
   import NetworkIndicator from "$lib/components/NetworkIndicator.svelte";
@@ -19,6 +22,63 @@
   import LayoutPopover from "$lib/components/LayoutPopover.svelte";
   import { isFocused, focusState, deactivateFocus } from "$lib/stores/projects.js";
   import { X } from "lucide-svelte";
+
+  /// Per-output bar identity. The desktop-shell creates one
+  /// WebviewWindow per monitor; each one mounts this component.
+  /// `topbar_get_output` returns the registry entry the backend
+  /// stamped on the window — including the `primary` flag.
+  /// Secondary bars hide the system-indicators block (Audio,
+  /// Network, Tray, QuickSettings) so we don't double-render the
+  /// same global state on every screen.
+  interface OutputInfo {
+    gdkIndex: number;
+    description: string;
+    primary: boolean;
+  }
+
+  // Default by window label, synchronously, so the first paint is
+  // already correct. The only window labelled `main` is the one
+  // bound to the primary monitor by `output_bars`; every dynamic
+  // bar uses a `topbar-N` label and is by definition secondary.
+  // This avoids a race where a fast-mounting secondary bar can see
+  // `outputInfo === null` and fall through to a primary-rendering
+  // default, briefly mounting tray + popovers + per-app D-Bus
+  // subscribers it shouldn't have.
+  const initialIsPrimary =
+    typeof window !== "undefined" &&
+    getCurrentWebviewWindow().label === "main";
+
+  let outputInfo = $state<OutputInfo | null>(null);
+  // `isPrimary` falls back to the label-derived value until the
+  // registry replies. Once `outputInfo` is set we trust the
+  // registry's `primary` flag (covers edge cases where `main` ends
+  // up orphaned after a hot-plug).
+  const isPrimary = $derived(
+    outputInfo === null ? initialIsPrimary : outputInfo.primary,
+  );
+
+  onMount(async () => {
+    // Retry briefly because the backend creates the WebviewWindow
+    // before writing the registry entry under some startup
+    // orderings — without this, a transient `null` would stick
+    // forever and the `initialIsPrimary` fallback is the only
+    // signal the bar has.
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        const info = await invoke<OutputInfo | null>("topbar_get_output");
+        if (info !== null) {
+          outputInfo = info;
+          return;
+        }
+      } catch (err) {
+        console.warn("topbar_get_output failed:", err);
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    console.warn(
+      "topbar: registry never populated, falling back to label-derived primary flag",
+    );
+  });
 </script>
 
 <!--
@@ -49,10 +109,13 @@
 
   <!-- RIGHT: Tray + indicators + clock + panel -->
   <div class="flex items-center gap-2 flex-1 justify-end">
-    <!-- SNI system tray -->
-    <div class="slot-sni flex items-center gap-2">
-      <TrayIndicator />
-    </div>
+    <!-- SNI system tray (primary bar only — single global tray
+         instance avoids duplicating SNI clients per output) -->
+    {#if isPrimary}
+      <div class="slot-sni flex items-center gap-2">
+        <TrayIndicator />
+      </div>
+    {/if}
 
     <!-- Focus mode project name -->
     <div class="slot-project flex items-center gap-1.5">
@@ -85,28 +148,38 @@
       <SandboxedModuleIndicatorSlot />
     </div>
 
-    <!-- System indicators -->
+    <!-- System indicators. Primary bar gets the full set; secondary
+         bars only show clock so the user has time-of-day on every
+         screen without duplicating Wayland subscribers + popovers. -->
     <div class="flex items-center gap-0.5">
-      <NetworkIndicator />
-      <BluetoothIndicator />
-      <AudioIndicator />
-      <BatteryIndicator />
-      <LayoutIndicator />
-      <div class="topbar-sep"></div>
+      {#if isPrimary}
+        <NetworkIndicator />
+        <BluetoothIndicator />
+        <AudioIndicator />
+        <BatteryIndicator />
+        <LayoutIndicator />
+        <div class="topbar-sep"></div>
+      {/if}
       <ClockIndicator />
-      <PanelTrigger />
+      {#if isPrimary}
+        <PanelTrigger />
+      {/if}
     </div>
   </div>
 </div>
 
-<!-- Popovers (rendered outside the bar, positioned fixed) -->
-<LayoutPopover />
-<NetworkPopover />
-<AudioPopover />
-<BatteryPopover />
-<BluetoothPopover />
-<TrayPopover />
-<QuickSettingsPanel />
+<!-- Popovers (rendered outside the bar, positioned fixed). Only
+     the primary bar mounts these — they'd otherwise pile up
+     duplicate D-Bus / Wayland subscriptions on every output. -->
+{#if isPrimary}
+  <LayoutPopover />
+  <NetworkPopover />
+  <AudioPopover />
+  <BatteryPopover />
+  <BluetoothPopover />
+  <TrayPopover />
+  <QuickSettingsPanel />
+{/if}
 
 <style>
   /* Empty slots collapse */

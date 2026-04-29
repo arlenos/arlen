@@ -16,6 +16,7 @@ mod bluetooth;
 mod brightness;
 mod network;
 mod night_light;
+mod output_bars;
 mod shell_config;
 mod power;
 mod notifications;
@@ -51,6 +52,7 @@ pub fn run() {
 
     // Created before Builder so they can be both managed and moved into start().
     let overlay_sender = Arc::new(shell_overlay_client::ShellOverlaySender::new());
+    let output_bar_registry = Arc::new(output_bars::OutputBarRegistry::new());
     let workspace_sender = Arc::new(wayland_client::WorkspaceSender::new());
     let toplevel_sender = Arc::new(wayland_client::ToplevelSender::new());
     let window_list: wayland_client::WindowList = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -105,6 +107,7 @@ pub fn run() {
             let _ = ctx;
         })
         .manage(Arc::clone(&overlay_sender))
+        .manage(Arc::clone(&output_bar_registry))
         .manage(Arc::clone(&workspace_sender))
         .manage(Arc::clone(&toplevel_sender))
         .manage(Arc::clone(&window_list))
@@ -200,6 +203,8 @@ pub fn run() {
             {
                 let window_clone = app.get_webview_window("main").unwrap();
                 let wp_clone = app.get_webview_window("waypointer");
+                let app_for_bars = app.handle().clone();
+                let registry_for_bars = Arc::clone(&output_bar_registry);
                 glib::idle_add_once(move || {
                     if let Err(e) = layer_shell::init(window_clone) {
                         log::error!("layer_shell: init failed: {e}");
@@ -207,6 +212,11 @@ pub fn run() {
                     if let Some(wp) = wp_clone {
                         waypointer::init_layer_shell(wp);
                     }
+                    // Discover secondary monitors via GDK and spawn
+                    // a layer-shell-bound bar window per output. The
+                    // primary monitor is bound to `main` (already
+                    // initialised above).
+                    output_bars::install(app_for_bars, registry_for_bars);
                 });
             }
 
@@ -290,6 +300,7 @@ pub fn run() {
             brightness::brightness_get_devices,
             brightness::brightness_get_primary,
             brightness::brightness_set,
+            output_bars::topbar_get_output,
             layout::get_layout_state,
             layout::set_layout_mode,
             layout::set_layout_gaps,
