@@ -231,6 +231,7 @@ mod tests {
             minimized,
             fullscreen: false,
             workspace_ids: ws.iter().map(|s| s.to_string()).collect(),
+            output_connectors: Vec::new(),
         }
     }
 

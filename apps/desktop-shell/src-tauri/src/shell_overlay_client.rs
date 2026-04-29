@@ -705,6 +705,17 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                 );
             }
 
+            overlay::Event::BrightnessStep { direction } => {
+                // Hardware Fn-row press. Read current backlight via
+                // logind, step ±5 %, write back. The shell-side
+                // helper coalesces rapid repeats so a held key
+                // doesn't flood the D-Bus session.
+                crate::brightness::brightness_step_relative(
+                    state.app_handle.clone(),
+                    direction,
+                );
+            }
+
             _ => {}
         }
     }
