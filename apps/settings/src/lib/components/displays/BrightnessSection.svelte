@@ -10,7 +10,7 @@
   /// `^2.2` gamma already applied, so we work in slider-space here
   /// directly. No need to know the device's raw range.
 
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { ValueSlider } from "$lib/components/ui/value-slider";
   import { PopoverSelect } from "$lib/components/ui/popover-select";
@@ -60,7 +60,27 @@
     }
   }
 
-  onMount(reload);
+  // The hardware Fn-row keys go through the desktop-shell process,
+  // not through ours — Tauri events don't cross processes. Best
+  // we can do without a separate IPC channel is re-read sysfs on
+  // every focus change so the slider stays close to the actual
+  // hardware state when the user comes back to Settings.
+  function onVisibility() {
+    if (typeof document !== "undefined" && !document.hidden) {
+      reload();
+    }
+  }
+
+  onMount(() => {
+    reload();
+    document.addEventListener("visibilitychange", onVisibility);
+  });
+
+  onDestroy(() => {
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", onVisibility);
+    }
+  });
 
   function setPercent(p: number) {
     percent = p;

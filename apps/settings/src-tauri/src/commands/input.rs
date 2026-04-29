@@ -405,6 +405,33 @@ const CATALOGUE: &[CatalogueRow] = &[
         description: Some("Launcher and inline command palette"),
         default_binding: Some("Super+Space"),
     },
+    // Hardware Fn-row keys. The compositor catches XF86 keysyms
+    // before any window sees them, so re-binding from the Shortcuts
+    // UI's KeyCapture won't work for these — KeyCapture is fed by
+    // GTK on the Settings window, which never receives the raw
+    // multimedia keys. Listing them here keeps the binding
+    // discoverable and lets power users move the action onto a
+    // regular accelerator via "Add custom" if they want to.
+    CatalogueRow {
+        action: "shell:brightness_up",
+        category: "shell",
+        label: "Brightness up",
+        description: Some(
+            "Step the internal display backlight by +5 %. Bound by \
+             default to the laptop's hardware brightness key.",
+        ),
+        default_binding: Some("XF86MonBrightnessUp"),
+    },
+    CatalogueRow {
+        action: "shell:brightness_down",
+        category: "shell",
+        label: "Brightness down",
+        description: Some(
+            "Step the internal display backlight by -5 %. Bound by \
+             default to the laptop's hardware brightness key.",
+        ),
+        default_binding: Some("XF86MonBrightnessDown"),
+    },
     CatalogueRow {
         action: "shell:workspace_map_open",
         category: "workspace_map",
