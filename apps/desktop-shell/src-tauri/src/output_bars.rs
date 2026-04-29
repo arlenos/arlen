@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 const MAIN_LABEL: &str = "main";
 const BAR_PREFIX: &str = "topbar-";
@@ -34,6 +34,67 @@ pub struct OutputInfo {
     /// `true` for the GDK-primary monitor. Only the primary bar
     /// renders system indicators (Audio, Network, Tray, …).
     pub primary: bool,
+    /// Connector name (`DP-1`, `HDMI-A-1`) resolved via the
+    /// `wayland_client` thread's xdg-output cache. `None` while
+    /// the cache hasn't yet seen this output (transient race
+    /// during startup or hot-plug). Frontend's per-output filters
+    /// fall back to the primary-only legacy path until this is
+    /// populated.
+    pub connector: Option<String>,
+}
+
+/// Snapshot of one wl_output's logical position + connector.
+/// `wayland_client` writes the table on every output add/update;
+/// `output_bars` reads it during `sync_bars` to resolve a
+/// `gdk::Monitor` to its connector by matching geometry origin.
+#[derive(Debug, Clone)]
+pub struct OutputGeometry {
+    pub x: i32,
+    pub y: i32,
+    pub connector: String,
+}
+
+/// Tauri-managed shared cache. Single mutex; both producer
+/// (`wayland_client`) and consumer (`output_bars::sync_bars`) read
+/// briefly, no contention in practice.
+#[derive(Default)]
+pub struct OutputConnectorTable {
+    inner: Arc<Mutex<Vec<OutputGeometry>>>,
+}
+
+impl OutputConnectorTable {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn update(&self, table: Vec<OutputGeometry>) {
+        *self.inner.lock().unwrap() = table;
+    }
+    /// Resolve a `(x, y)` GDK monitor origin to a single connector
+    /// name. Returns `None` when zero or MORE THAN ONE outputs
+    /// share the same logical position — the latter happens with
+    /// mirrored displays where multiple wl_outputs report the
+    /// same `(0, 0)` and we cannot tell them apart from the
+    /// origin alone. Refusing the match in that case keeps
+    /// per-output filtering deterministic (frontend falls back to
+    /// the legacy global view on the affected bars) instead of
+    /// silently routing both bars to the same connector.
+    pub fn lookup_at(&self, x: i32, y: i32) -> Option<String> {
+        let g = self.inner.lock().unwrap();
+        let matches: Vec<&OutputGeometry> =
+            g.iter().filter(|g| g.x == x && g.y == y).collect();
+        if matches.len() == 1 {
+            Some(matches[0].connector.clone())
+        } else {
+            if matches.len() > 1 {
+                log::debug!(
+                    "output_bars: ambiguous origin ({x}, {y}) matches {} outputs ({}), refusing per-output assignment",
+                    matches.len(),
+                    matches.iter().map(|g| g.connector.as_str()).collect::<Vec<_>>().join(", "),
+                );
+            }
+            None
+        }
+    }
 }
 
 #[derive(Default)]
@@ -80,9 +141,11 @@ pub fn topbar_get_output(
 /// Discover monitors via GDK and spin up bars. Called from the GTK
 /// main thread (via `glib::idle_add_once`) after the `main`
 /// window's layer-shell init.
-pub fn install(app: AppHandle, registry: Arc<OutputBarRegistry>) {
-    
-
+pub fn install(
+    app: AppHandle,
+    registry: Arc<OutputBarRegistry>,
+    table: Arc<OutputConnectorTable>,
+) {
     let display = match gtk::gdk::Display::default() {
         Some(d) => d,
         None => {
@@ -96,34 +159,57 @@ pub fn install(app: AppHandle, registry: Arc<OutputBarRegistry>) {
         display.n_monitors(),
     );
 
-    sync_bars(&app, &registry, &display);
+    sync_bars(&app, &registry, &table, &display);
 
     // Hot-plug. GDK 3 emits `monitor-added` / `monitor-removed` on
     // the Display. Both trigger a full re-sync (cheap — current
     // hardware tops out at 4-6 monitors).
     let app_added = app.clone();
     let registry_added = Arc::clone(&registry);
+    let table_added = Arc::clone(&table);
     let app_removed = app.clone();
     let registry_removed = Arc::clone(&registry);
+    let table_removed = Arc::clone(&table);
     display.connect_monitor_added(move |display, _monitor| {
         log::info!(
             "output_bars: monitor added (now {})",
             display.n_monitors()
         );
-        sync_bars(&app_added, &registry_added, display);
+        sync_bars(&app_added, &registry_added, &table_added, display);
     });
     display.connect_monitor_removed(move |display, _monitor| {
         log::info!(
             "output_bars: monitor removed (now {})",
             display.n_monitors()
         );
-        sync_bars(&app_removed, &registry_removed, display);
+        sync_bars(&app_removed, &registry_removed, &table_removed, display);
+    });
+}
+
+/// Re-run a sync from outside the GDK signal handlers. Called by
+/// `wayland_client` (a separate thread) after the xdg-output
+/// table fills in, so the registry's `connector` field gets
+/// backfilled without waiting for a hot-plug.
+///
+/// Uses `glib::idle_add_once` (Send-safe variant) so the actual
+/// GDK calls land on the GTK main thread regardless of which
+/// thread invoked the refresh.
+pub fn refresh(
+    app: AppHandle,
+    registry: Arc<OutputBarRegistry>,
+    table: Arc<OutputConnectorTable>,
+) {
+    glib::idle_add_once(move || {
+        if let Some(display) = gtk::gdk::Display::default() {
+            sync_bars(&app, &registry, &table, &display);
+        }
     });
 }
 
 fn sync_bars(
     app: &AppHandle,
     registry: &Arc<OutputBarRegistry>,
+    table: &Arc<OutputConnectorTable>,
     display: &gtk::gdk::Display,
 ) {
     use gtk::gdk::prelude::MonitorExt;
@@ -152,11 +238,19 @@ fn sync_bars(
         let Some(monitor) = display.monitor(i) else { continue };
         let is_primary_monitor = i == primary_idx;
         let description = describe_monitor(&monitor, i);
+        // Resolve connector via the wl_output table populated by
+        // `wayland_client`. Match by GDK monitor's geometry origin
+        // — `xdg_output::logical_position` and GDK's geometry use
+        // the same compositor-coordinate space, so equal `(x, y)`
+        // identifies the same physical output.
+        let geom = monitor.geometry();
+        let connector = table.lookup_at(geom.x(), geom.y());
 
         let info = OutputInfo {
             gdk_index: i,
             description,
             primary: is_primary_monitor,
+            connector,
         };
 
         if is_primary_monitor {
@@ -212,6 +306,13 @@ fn sync_bars(
         }
         registry.remove(&label);
     }
+
+    // Notify every TopBar instance that the registry changed, so
+    // bars that mounted with `connector: null` (xdg-output name
+    // hadn't arrived yet) re-fetch and pick up the resolved
+    // connector. Without this the secondary bar would remain
+    // permanently in the legacy primary-only fallback.
+    let _ = app.emit("lunaris://topbar-output-changed", ());
 }
 
 fn create_secondary_bar(

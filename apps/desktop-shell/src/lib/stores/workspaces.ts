@@ -15,6 +15,10 @@ export interface WorkspaceInfo {
     group_id: string;
     name: string;
     active: boolean;
+    /** Output connectors this workspace's group spans (resolved from
+     *  cosmic workspace_groups + xdg-output names). Empty when the
+     *  compositor hasn't reported the connector mapping yet. */
+    output_connectors: string[];
 }
 
 /// Full workspace list across all outputs, sorted by compositor coordinates.
@@ -82,6 +86,26 @@ export function windowsOnWorkspace(workspaceId: string): Readable<WindowInfo[]> 
     return derived(windows, ($windows) =>
         $windows.filter((w) => w.workspace_ids.includes(workspaceId))
     );
+}
+
+/// Workspaces belonging to the named output. The per-output
+/// TopBar's `WorkspaceIndicator` filters its strip on this so each
+/// monitor's bar only shows that monitor's workspaces. When the
+/// connector is `null` (registry not populated yet) we fall back
+/// to the legacy primary-only filter so the primary bar's first
+/// paint still has a populated strip — the secondary bars stay
+/// empty until the compositor reports their connector.
+export function workspacesByOutput(
+    connector: string | null,
+): Readable<WorkspaceInfo[]> {
+    return derived(workspaces, ($ws) => {
+        if ($ws.length === 0) return [];
+        if (connector === null) {
+            const primary = $ws[0].group_id;
+            return $ws.filter((w) => w.group_id === primary);
+        }
+        return $ws.filter((w) => w.output_connectors.includes(connector));
+    });
 }
 
 /// Sends a workspace activation request to the compositor.

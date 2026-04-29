@@ -46,6 +46,13 @@ pub struct ToplevelPayload {
     #[serde(default)]
     pub fullscreen: bool,
     pub workspace_ids: Vec<String>,
+    /// Output connectors (`DP-1`, `HDMI-A-1`, …) the toplevel is
+    /// currently visible on. Multi-output windows (sticky, or
+    /// stretching across two monitors) appear in more than one
+    /// entry. Used by the per-output GlobalMenuBar so each bar
+    /// shows the menu only when this window lives on its monitor.
+    #[serde(default)]
+    pub output_connectors: Vec<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -69,6 +76,12 @@ pub struct WorkspaceInfo {
     pub name: String,
     /// Whether this workspace is currently active on its output.
     pub active: bool,
+    /// Output connectors (`DP-1`, `HDMI-A-1`, …) this workspace's
+    /// group spans. Per-output WorkspaceIndicator filters its
+    /// strip on this list so each bar shows only its own
+    /// monitor's workspaces.
+    #[serde(default)]
+    pub output_connectors: Vec<String>,
 }
 
 /// Shared snapshot of the latest workspace list. Written every time
@@ -338,6 +351,15 @@ struct AppData {
     toplevel_info_state: ToplevelInfoState,
     toplevel_manager_state: Option<ToplevelManagerState>,
     workspace_state: WorkspaceState,
+    /// Registry shared with `output_bars`. We trigger a refresh
+    /// from this thread whenever the xdg-output table changes so
+    /// the per-bar `connector` field gets backfilled without
+    /// waiting for a hot-plug event.
+    output_bar_registry: Arc<crate::output_bars::OutputBarRegistry>,
+    /// Cache of `(geometry origin, connector)` tuples consumed by
+    /// `output_bars::sync_bars` to map each `gdk::Monitor` to its
+    /// connector name.
+    output_connector_table: Arc<crate::output_bars::OutputConnectorTable>,
 }
 
 impl ProvidesRegistryState for AppData {
@@ -351,14 +373,152 @@ impl OutputHandler for AppData {
     fn output_state(&mut self) -> &mut OutputState {
         &mut self.output_state
     }
-    fn new_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {}
-    fn update_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {}
+    fn new_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {
+        self.publish_output_table();
+    }
+    fn update_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {
+        self.publish_output_table();
+    }
     fn output_destroyed(
         &mut self,
         _: &Connection,
         _: &QueueHandle<Self>,
         _: wl_output::WlOutput,
     ) {
+        self.publish_output_table();
+    }
+}
+
+impl AppData {
+    /// Snapshot every known wl_output's logical position +
+    /// connector and write it to the shared
+    /// `OutputConnectorTable`. Then schedule an `output_bars`
+    /// refresh so the per-bar `connector` field gets backfilled,
+    /// AND re-emit the current toplevel + workspace snapshots so
+    /// frontends that already consumed payloads with empty
+    /// `output_connectors` (race against xdg-output name arrival)
+    /// receive the resolved values without waiting for an
+    /// unrelated workspace/window event.
+    fn publish_output_table(&mut self) {
+        use crate::output_bars::OutputGeometry;
+        let table: Vec<OutputGeometry> = self
+            .output_state
+            .outputs()
+            .filter_map(|o| {
+                let info = self.output_state.info(&o)?;
+                let connector = info.name?;
+                let (x, y) = info.logical_position?;
+                Some(OutputGeometry { x, y, connector })
+            })
+            .collect();
+        log::debug!(
+            "wayland_client: output table now has {} entries",
+            table.len()
+        );
+        self.output_connector_table.update(table);
+        crate::output_bars::refresh(
+            self.app_handle.clone(),
+            Arc::clone(&self.output_bar_registry),
+            Arc::clone(&self.output_connector_table),
+        );
+
+        self.republish_toplevels();
+        self.republish_workspaces();
+    }
+
+    /// Re-emit `lunaris://toplevel-changed` for every known
+    /// toplevel. The freshly-built payloads carry the now-resolved
+    /// `output_connectors` so the frontend's per-output
+    /// `activeWindowForOutput` filter starts seeing the correct
+    /// monitor assignment.
+    fn republish_toplevels(&self) {
+        let snapshots: Vec<ToplevelPayload> = self
+            .toplevel_info_state
+            .toplevels()
+            .map(|info| ToplevelPayload {
+                id: info.identifier.clone(),
+                title: info.title.clone(),
+                app_id: info.app_id.clone(),
+                active: info
+                    .state
+                    .contains(&zcosmic_toplevel_handle_v1::State::Activated),
+                minimized: info
+                    .state
+                    .contains(&zcosmic_toplevel_handle_v1::State::Minimized),
+                fullscreen: info
+                    .state
+                    .contains(&zcosmic_toplevel_handle_v1::State::Fullscreen),
+                workspace_ids: info
+                    .workspace
+                    .iter()
+                    .map(|h| h.id().to_string())
+                    .collect(),
+                output_connectors: self.resolve_connectors(info.output.iter()),
+            })
+            .collect();
+        for payload in snapshots {
+            {
+                let mut wl = self.window_list.lock().unwrap();
+                if let Some(pos) = wl.iter().position(|w| w.id == payload.id) {
+                    wl[pos] = payload.clone();
+                }
+            }
+            let _ = self
+                .app_handle
+                .emit("lunaris://toplevel-changed", payload);
+        }
+    }
+
+    /// Recompute and re-emit `lunaris://workspace-list` from the
+    /// current `workspace_state`. Mirrors the work
+    /// `WorkspaceHandler::done` does on every compositor batch,
+    /// minus the manager-handle bookkeeping (unchanged here).
+    fn republish_workspaces(&mut self) {
+        let mut infos: Vec<WorkspaceInfo> = Vec::new();
+        for group in self.workspace_state.workspace_groups() {
+            let group_id = group.handle.id().to_string();
+            let group_connectors = self.resolve_connectors(group.outputs.iter());
+
+            let mut group_ws: Vec<_> = group
+                .workspaces
+                .iter()
+                .filter_map(|wh| self.workspace_state.workspace_info(wh))
+                .collect();
+            group_ws.sort_by(|a, b| a.coordinates.cmp(&b.coordinates));
+
+            for w in &group_ws {
+                let active = w.state.contains(ext_workspace_handle_v1::State::Active);
+                infos.push(WorkspaceInfo {
+                    id: w.handle.id().to_string(),
+                    group_id: group_id.clone(),
+                    name: w.name.clone(),
+                    active,
+                    output_connectors: group_connectors.clone(),
+                });
+            }
+        }
+        *self.workspace_list.lock().unwrap() = infos.clone();
+        let _ = self.app_handle.emit("lunaris://workspace-list", infos);
+    }
+}
+
+impl AppData {
+    /// Resolve a slice of `wl_output` proxies to their connector
+    /// names ("DP-1", "HDMI-A-1") via the SCTK `OutputState`'s
+    /// xdg-output cache. Outputs whose `name` hasn't arrived yet
+    /// (transient binding race) are skipped — the next update
+    /// event re-runs this and fills them in.
+    fn resolve_connectors<'a, I>(&self, outputs: I) -> Vec<String>
+    where
+        I: IntoIterator<Item = &'a wl_output::WlOutput>,
+    {
+        let mut out: Vec<String> = outputs
+            .into_iter()
+            .filter_map(|o| self.output_state.info(o).and_then(|i| i.name))
+            .collect();
+        out.sort();
+        out.dedup();
+        out
     }
 }
 
@@ -401,6 +561,7 @@ impl ToplevelInfoHandler for AppData {
                     .state
                     .contains(&zcosmic_toplevel_handle_v1::State::Fullscreen),
                 workspace_ids: info.workspace.iter().map(|h| h.id().to_string()).collect(),
+                output_connectors: self.resolve_connectors(info.output.iter()),
             };
             {
                 let mut wl = self.window_list.lock().unwrap();
@@ -441,6 +602,7 @@ impl ToplevelInfoHandler for AppData {
                     .state
                     .contains(&zcosmic_toplevel_handle_v1::State::Fullscreen),
                 workspace_ids: info.workspace.iter().map(|h| h.id().to_string()).collect(),
+                output_connectors: self.resolve_connectors(info.output.iter()),
             };
             {
                 let mut wl = self.window_list.lock().unwrap();
@@ -520,6 +682,7 @@ impl WorkspaceHandler for AppData {
         for group in self.workspace_state.workspace_groups() {
             let group_id = group.handle.id().to_string();
             let primary_output = group.outputs.first().cloned();
+            let group_connectors = self.resolve_connectors(group.outputs.iter());
 
             let mut group_ws: Vec<_> = group
                 .workspaces
@@ -541,6 +704,7 @@ impl WorkspaceHandler for AppData {
                     group_id: group_id.clone(),
                     name: w.name.clone(),
                     active,
+                    output_connectors: group_connectors.clone(),
                 });
             }
         }
@@ -598,6 +762,8 @@ pub fn start(
     toplevel_sender: Arc<ToplevelSender>,
     window_list: WindowList,
     workspace_list: WorkspaceList,
+    output_bar_registry: Arc<crate::output_bars::OutputBarRegistry>,
+    output_connector_table: Arc<crate::output_bars::OutputConnectorTable>,
 ) {
     std::thread::spawn(move || {
         let conn = loop {
@@ -673,6 +839,8 @@ pub fn start(
             toplevel_manager_state,
             workspace_state,
             registry_state,
+            output_bar_registry,
+            output_connector_table,
         };
 
         loop {

@@ -1,6 +1,9 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy, setContext } from "svelte";
+  import { writable } from "svelte/store";
+  import type { Readable } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
   import GlobalMenuBar from "$lib/components/GlobalMenuBar.svelte";
   import ClockIndicator from "$lib/components/ClockIndicator.svelte";
@@ -34,6 +37,9 @@
     gdkIndex: number;
     description: string;
     primary: boolean;
+    /** Connector name (`DP-1`, …). May be `null` while the
+     *  compositor's xdg-output name event is still pending. */
+    connector: string | null;
   }
 
   // Default by window label, synchronously, so the first paint is
@@ -57,27 +63,84 @@
     outputInfo === null ? initialIsPrimary : outputInfo.primary,
   );
 
-  onMount(async () => {
-    // Retry briefly because the backend creates the WebviewWindow
-    // before writing the registry entry under some startup
-    // orderings — without this, a transient `null` would stick
-    // forever and the `initialIsPrimary` fallback is the only
-    // signal the bar has.
-    for (let attempt = 0; attempt < 10; attempt++) {
-      try {
-        const info = await invoke<OutputInfo | null>("topbar_get_output");
-        if (info !== null) {
-          outputInfo = info;
-          return;
-        }
-      } catch (err) {
-        console.warn("topbar_get_output failed:", err);
+  // Per-output context published to children (WorkspaceIndicator,
+  // GlobalMenuBar). The connector is `null` until the
+  // `wayland_client` xdg-output table fills in; consumers fall
+  // back to legacy global views for the brief startup window.
+  const outputContext = writable<{
+    connector: string | null;
+    primary: boolean;
+  }>({
+    connector: null,
+    primary: initialIsPrimary,
+  });
+  setContext<Readable<{ connector: string | null; primary: boolean }>>(
+    "topbar-output",
+    outputContext,
+  );
+
+  // Keep the context in lock-step with `outputInfo` so children
+  // see updates as soon as the registry replies (or polls in).
+  $effect(() => {
+    outputContext.set({
+      connector: outputInfo?.connector ?? null,
+      primary: isPrimary,
+    });
+  });
+
+  let unlistenOutputChanged: UnlistenFn | null = null;
+
+  /// Re-fetch the registry entry. Called from mount, on each
+  /// `lunaris://topbar-output-changed` event, AND on a 100 ms
+  /// retry loop until the connector is resolved (xdg-output name
+  /// arrival is asynchronous and can lag the WebView mount).
+  /// `accept_null_connector` is true only for the primary bar —
+  /// secondary bars MUST keep retrying until they have a
+  /// connector, otherwise per-output filtering stays stuck on
+  /// the global fallback.
+  async function refetchOutputInfo(): Promise<OutputInfo | null> {
+    try {
+      const info = await invoke<OutputInfo | null>("topbar_get_output");
+      if (info !== null) {
+        outputInfo = info;
       }
+      return info;
+    } catch (err) {
+      console.warn("topbar_get_output failed:", err);
+      return null;
+    }
+  }
+
+  onMount(async () => {
+    // Subscribe to the backend's "registry changed" notifications
+    // first so any change between mount and the initial fetch is
+    // not missed.
+    unlistenOutputChanged = await listen(
+      "lunaris://topbar-output-changed",
+      () => {
+        refetchOutputInfo();
+      },
+    );
+
+    // Retry until we have a registry entry. Then keep retrying
+    // until the connector is non-null for secondary bars — the
+    // primary bar is allowed to ship with connector=null because
+    // its identity is already known via the `main` window label.
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const info = await refetchOutputInfo();
+      const acceptable =
+        info !== null &&
+        (info.primary || info.connector !== null);
+      if (acceptable) return;
       await new Promise((r) => setTimeout(r, 100));
     }
     console.warn(
-      "topbar: registry never populated, falling back to label-derived primary flag",
+      "topbar: connector never resolved after 5s, per-output filters stay on label-derived fallback",
     );
+  });
+
+  onDestroy(() => {
+    unlistenOutputChanged?.();
   });
 </script>
 

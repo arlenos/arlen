@@ -2,8 +2,10 @@
   // Value and type imports are split — inline mixed form trips a
   // Tailwind Vite plugin bug (CSS-parses the script block). See
   // top-level CLAUDE.md.
-  import { primaryWorkspaces, activateWorkspace } from "$lib/stores/workspaces.js";
+  import { workspacesByOutput, activateWorkspace } from "$lib/stores/workspaces.js";
   import type { WorkspaceInfo } from "$lib/stores/workspaces.js";
+  import { getContext } from "svelte";
+  import type { Readable } from "svelte/store";
   import { windows } from "$lib/stores/windows.js";
   import type { WindowInfo } from "$lib/stores/windows.js";
   import { projectPerWorkspace } from "$lib/stores/workspaceProjects.js";
@@ -33,6 +35,34 @@
   import type { UnlistenFn } from "@tauri-apps/api/event";
   import { AppWindow } from "lucide-svelte";
 
+  /// Output context published by the parent TopBar. The
+  /// connector is `null` until the registry replies; in that
+  /// window the legacy primary-only fallback inside
+  /// `workspacesByOutput` keeps the strip populated.
+  const outputCtx = getContext<
+    Readable<{ connector: string | null; primary: boolean }>
+  >("topbar-output");
+  const outputConnector = $derived($outputCtx?.connector ?? null);
+  const outputWorkspaces = $derived.by(() => {
+    // Re-derive the store every time the connector changes so the
+    // filter follows the bar's identity. Each store instance is
+    // tiny (one closure + a Map) so reallocating per change is
+    // cheaper than building one mega-store with subscribe-side
+    // filtering.
+    return workspacesByOutput(outputConnector);
+  });
+  // Re-subscribe whenever the underlying store handle changes.
+  // `$outputWorkspaces` would normally subscribe once at compile
+  // time; using `$derived` over the store handle here forces a
+  // fresh subscription chain.
+  let workspacesView = $state<WorkspaceInfo[]>([]);
+  $effect(() => {
+    const unsub = outputWorkspaces.subscribe((v) => {
+      workspacesView = v;
+    });
+    return () => unsub();
+  });
+
   /// One-shot primer for the icon cache — runs on mount so the first
   /// paint of minimized-window cards in the overlay doesn't incur
   /// N serial invokes for resolve_app_icon.
@@ -59,15 +89,15 @@
   });
 
   const mode = $derived(
-    $primaryWorkspaces.length <= 5
+    workspacesView.length <= 5
       ? ("pills" as const)
-      : $primaryWorkspaces.length <= 9
+      : workspacesView.length <= 9
         ? ("dots" as const)
         : ("text" as const),
   );
 
   const activeIndex = $derived(
-    $primaryWorkspaces.findIndex((w) => w.active),
+    workspacesView.findIndex((w) => w.active),
   );
 
   // Hover overlay state.
@@ -264,7 +294,7 @@
   /// cycle across workspace boundaries.
   const flatWindowOrder = $derived.by(() => {
     const order: { winId: string; wsId: string }[] = [];
-    for (const ws of $primaryWorkspaces) {
+    for (const ws of workspacesView) {
       for (const w of $windows) {
         if (w.workspace_ids.includes(ws.id)) {
           order.push({ winId: w.id, wsId: ws.id });
@@ -370,7 +400,7 @@
     // semantically "show me the next thing after where I am".
     const active = $windows.find((w) => w.active);
     if (active) return active.id;
-    const activeWs = $primaryWorkspaces.find((w) => w.active);
+    const activeWs = workspacesView.find((w) => w.active);
     if (activeWs) {
       const wins = $windows.filter((w) =>
         w.workspace_ids.includes(activeWs.id),
@@ -397,23 +427,23 @@
   }
 
   function navigateWorkspace(direction: 1 | -1) {
-    if ($primaryWorkspaces.length === 0) return;
+    if (workspacesView.length === 0) return;
     let currentWsIdx = -1;
     if (focusedWindowId) {
       const win = $windows.find((w) => w.id === focusedWindowId);
       if (win) {
-        currentWsIdx = $primaryWorkspaces.findIndex((ws) =>
+        currentWsIdx = workspacesView.findIndex((ws) =>
           win.workspace_ids.includes(ws.id),
         );
       }
     }
     if (currentWsIdx < 0) {
-      currentWsIdx = $primaryWorkspaces.findIndex((ws) => ws.active);
+      currentWsIdx = workspacesView.findIndex((ws) => ws.active);
     }
     const wsIdx =
-      (currentWsIdx + direction + $primaryWorkspaces.length) %
-      $primaryWorkspaces.length;
-    const wsId = $primaryWorkspaces[wsIdx].id;
+      (currentWsIdx + direction + workspacesView.length) %
+      workspacesView.length;
+    const wsId = workspacesView[wsIdx].id;
     const wins = $windows.filter((w) => w.workspace_ids.includes(wsId));
     focusedWindowId = wins[0]?.id ?? null;
   }
@@ -434,7 +464,7 @@
   }
 
   function jumpToWorkspaceN(n: number) {
-    const ws = $primaryWorkspaces[n - 1];
+    const ws = workspacesView[n - 1];
     if (!ws) return;
     const wins = $windows.filter((w) => w.workspace_ids.includes(ws.id));
     focusedWindowId = wins[0]?.id ?? null;
@@ -563,7 +593,7 @@
       cancelGotoPending();
       clearSelection();
       jumpToWorkspaceN(parseInt(key, 10));
-      const ws = $primaryWorkspaces[parseInt(key, 10) - 1];
+      const ws = workspacesView[parseInt(key, 10) - 1];
       if (ws) activateWorkspace(ws.id);
       closeOverlayKeyboard();
       e.preventDefault();
@@ -1181,7 +1211,7 @@
           win.minimized ? "minimized" : "active";
         const perWinSourceWs =
           win.workspace_ids.find((id) =>
-            $primaryWorkspaces.some((ws) => ws.id === id),
+            workspacesView.some((ws) => ws.id === id),
           ) ?? "";
         applyDropAction(targetId, perWinKind, perWinSourceWs, drop);
       }
@@ -1346,7 +1376,7 @@
   {@const multi = sel.length > 1 && sel.includes(windowId)}
   {@const win = $windows.find((w) => w.id === windowId)}
   {@const currentWs = win?.workspace_ids[0] ?? ""}
-  {@const moveTargets = $primaryWorkspaces.filter((ws) => ws.id !== currentWs)}
+  {@const moveTargets = workspacesView.filter((ws) => ws.id !== currentWs)}
 
   {#if multi}
     {@const selWindows = sel
@@ -1441,12 +1471,12 @@
   {/if}
 {/snippet}
 
-{#if $primaryWorkspaces.length > 0}
+{#if workspacesView.length > 0}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="ws-root" onmouseenter={onEnter} onmouseleave={onLeave}>
     {#if mode === "pills"}
       <div class="indicator" role="group" aria-label="Workspaces">
-        {#each $primaryWorkspaces as ws, i (ws.id)}
+        {#each workspacesView as ws, i (ws.id)}
           <button
             class="pill"
             class:pill-active={ws.active}
@@ -1460,7 +1490,7 @@
       </div>
     {:else if mode === "dots"}
       <div class="indicator" role="group" aria-label="Workspaces">
-        {#each $primaryWorkspaces as ws, i (ws.id)}
+        {#each workspacesView as ws, i (ws.id)}
           <button
             class="dot-btn"
             onclick={() => handlePillClick(ws.id)}
@@ -1474,7 +1504,7 @@
     {:else}
       <div class="indicator" role="group" aria-label="Workspaces">
         <span class="ws-text">
-          {activeIndex >= 0 ? activeIndex + 1 : 1} / {$primaryWorkspaces.length}
+          {activeIndex >= 0 ? activeIndex + 1 : 1} / {workspacesView.length}
         </span>
       </div>
     {/if}
@@ -1496,7 +1526,7 @@
       onmouseenter={onOverlayEnter}
     >
       <div class="ws-columns">
-        {#each $primaryWorkspaces as ws, i (ws.id)}
+        {#each workspacesView as ws, i (ws.id)}
           {@const wsWindows = getWindowsForWorkspace(ws.id)}
           {@const { shown, overflow } = visibleSlice(wsWindows)}
           {@const isDropTarget =

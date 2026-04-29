@@ -53,6 +53,7 @@ pub fn run() {
     // Created before Builder so they can be both managed and moved into start().
     let overlay_sender = Arc::new(shell_overlay_client::ShellOverlaySender::new());
     let output_bar_registry = Arc::new(output_bars::OutputBarRegistry::new());
+    let output_connector_table = Arc::new(output_bars::OutputConnectorTable::new());
     let workspace_sender = Arc::new(wayland_client::WorkspaceSender::new());
     let toplevel_sender = Arc::new(wayland_client::ToplevelSender::new());
     let window_list: wayland_client::WindowList = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -108,6 +109,7 @@ pub fn run() {
         })
         .manage(Arc::clone(&overlay_sender))
         .manage(Arc::clone(&output_bar_registry))
+        .manage(Arc::clone(&output_connector_table))
         .manage(Arc::clone(&workspace_sender))
         .manage(Arc::clone(&toplevel_sender))
         .manage(Arc::clone(&window_list))
@@ -162,6 +164,8 @@ pub fn run() {
                 toplevel_sender,
                 window_list,
                 workspace_list,
+                Arc::clone(&output_bar_registry),
+                Arc::clone(&output_connector_table),
             );
             shell_overlay_client::start(app.handle().clone(), Arc::clone(&overlay_sender));
             // Replay night-light state from shell.toml so the
@@ -205,6 +209,7 @@ pub fn run() {
                 let wp_clone = app.get_webview_window("waypointer");
                 let app_for_bars = app.handle().clone();
                 let registry_for_bars = Arc::clone(&output_bar_registry);
+                let table_for_bars = Arc::clone(&output_connector_table);
                 glib::idle_add_once(move || {
                     if let Err(e) = layer_shell::init(window_clone) {
                         log::error!("layer_shell: init failed: {e}");
@@ -216,7 +221,7 @@ pub fn run() {
                     // a layer-shell-bound bar window per output. The
                     // primary monitor is bound to `main` (already
                     // initialised above).
-                    output_bars::install(app_for_bars, registry_for_bars);
+                    output_bars::install(app_for_bars, registry_for_bars, table_for_bars);
                 });
             }
 
