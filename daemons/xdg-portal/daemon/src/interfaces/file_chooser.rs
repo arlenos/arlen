@@ -38,6 +38,14 @@ const RESULT_URIS: &str = "uris";
 /// time. Echoed only when the picker actually carried one.
 const RESULT_CURRENT_FILTER: &str = "current_filter";
 
+/// Wall-clock timeout per FileChooser request (E13). Five minutes
+/// is generous enough that real users browsing slow filesystems
+/// have time to think while still bounding orphaned requests when
+/// the Wayland compositor or the frontend portal daemon vanishes
+/// mid-pick. Tests override this via `cfg(test)` if needed; runtime
+/// changes would require config plumbing we have not added.
+const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
 #[derive(Clone)]
 pub struct FileChooser {
     state: DaemonState,
@@ -64,6 +72,7 @@ impl FileChooser {
     ) -> (u32, HashMap<String, OwnedValue>) {
         let _guard = self.state.track_request();
         let req = RequestHandle::from_object_path(request_path.into());
+        let req_id = req.path.to_string();
 
         if let Err(e) = self.state.picker_lifecycle.ensure_running().await {
             tracing::warn!(request = %req.path, method, error = %e, "picker-ui spawn failed");
@@ -78,13 +87,35 @@ impl FileChooser {
             }
         };
 
-        let response = match rx.await {
-            Ok(r) => r,
-            Err(_) => {
+        // E13 wall-clock cap. If the picker UI hangs for any reason
+        // (frontend portal daemon disappears, Wayland compositor
+        // restarts, user walks away for an hour), we drop the
+        // pending slot and tell the picker to dismiss the dialog
+        // so the next request starts fresh.
+        let response = match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
+            Ok(Ok(r)) => r,
+            Ok(Err(_)) => {
                 tracing::warn!(request = %req.path, method, "picker IPC oneshot dropped");
                 return (
                     response::OTHER,
                     error_results("picker IPC channel closed"),
+                );
+            }
+            Err(_) => {
+                tracing::warn!(
+                    request = %req.path,
+                    method,
+                    timeout_secs = REQUEST_TIMEOUT.as_secs(),
+                    "request timed out"
+                );
+                self.state.picker_ipc.cancel_pending(&req_id).await;
+                self.state.picker_ipc.try_send_cancel(&req_id).await;
+                return (
+                    response::OTHER,
+                    error_results(&format!(
+                        "request timed out after {} seconds",
+                        REQUEST_TIMEOUT.as_secs()
+                    )),
                 );
             }
         };
@@ -95,6 +126,34 @@ impl FileChooser {
                 current_filter,
                 ..
             } => {
+                // Save paths come back from the picker UI as
+                // `<currentDir>/<filename>` where filename is user-
+                // typed. Defense in depth against the path-traversal
+                // class Codex flagged: reject `..` / `.` components
+                // before handing the path to the Document Portal or
+                // the caller. The picker UI also rejects these in
+                // the input field, but the daemon revalidates so a
+                // compromised picker process cannot forge an escape.
+                if writable {
+                    for path in &paths {
+                        if let Err(reason) = validate_save_path(path) {
+                            tracing::warn!(
+                                request = %req.path,
+                                method,
+                                path = %path.display(),
+                                reason,
+                                "rejected save path"
+                            );
+                            return (
+                                response::OTHER,
+                                error_results(&format!(
+                                    "invalid save path {}: {reason}",
+                                    path.display()
+                                )),
+                            );
+                        }
+                    }
+                }
                 let uris = match build_uris_for_caller(
                     &paths,
                     &identity,
@@ -133,6 +192,13 @@ impl FileChooser {
 /// Construct the URI list returned to the caller. Sandboxed callers
 /// route through the Document Portal (FA8); unconfined callers get
 /// raw `file://` URIs.
+///
+/// `writable` controls both the Document Portal permission list and
+/// which portal call we use: read-only / OpenFile flows need
+/// AddFull on existing files, write flows (Save*) need AddNamedFull
+/// because the target file may not exist yet — Codex review found
+/// that AddFull's underlying `open(path)` failed with ENOENT for
+/// new save targets, breaking the entire SaveFile sandbox path.
 async fn build_uris_for_caller(
     paths: &[PathBuf],
     identity: &CallerIdentity,
@@ -143,7 +209,11 @@ async fn build_uris_for_caller(
         Some(app_id) => {
             // Sandboxed: hand paths to Document Portal so the caller
             // sees URIs that resolve inside its bubblewrap mount.
-            document_portal::export_for_caller(connection, app_id, paths, writable).await
+            if writable {
+                document_portal::export_named_for_save(connection, app_id, paths, true).await
+            } else {
+                document_portal::export_for_caller(connection, app_id, paths, false).await
+            }
         }
         None => {
             // Unconfined: raw `file://` URIs are reachable directly.
@@ -263,6 +333,32 @@ fn parse_parent_window(parent_window: &str) -> Option<String> {
     }
 }
 
+/// Validate that a Save target path does not escape its declared
+/// directory. The picker UI builds save paths as
+/// `<currentDir>/<typed-filename>` and a malicious or buggy filename
+/// of `../../etc/passwd` would canonicalize to a path the user did
+/// not see in the UI. Reject any path with `..` components, any
+/// non-absolute path, and any path with NUL bytes.
+///
+/// `Path::components()` already normalises `.` segments away, so we
+/// do not check for them explicitly — `/foo/./bar` and `/foo/bar`
+/// resolve identically.
+fn validate_save_path(path: &Path) -> Result<(), &'static str> {
+    if !path.is_absolute() {
+        return Err("not absolute");
+    }
+    let s = path.as_os_str().as_encoded_bytes();
+    if s.contains(&0) {
+        return Err("NUL byte in path");
+    }
+    for comp in path.components() {
+        if matches!(comp, std::path::Component::ParentDir) {
+            return Err("contains ..");
+        }
+    }
+    Ok(())
+}
+
 #[interface(name = "org.freedesktop.impl.portal.FileChooser")]
 #[allow(clippy::too_many_arguments)] // spec-mandated method signatures
 impl FileChooser {
@@ -285,6 +381,7 @@ impl FileChooser {
             current_filter: options::read_current_filter(&opts),
             multiple: options::read_bool(&opts, "multiple", false),
             modal: options::read_bool(&opts, "modal", true),
+            directory: options::read_bool(&opts, "directory", false),
             current_folder: options::read_path_bytes(&opts, "current_folder"),
             parent_window: parse_parent_window(parent_window),
         };
@@ -345,6 +442,7 @@ impl FileChooser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
     use std::path::PathBuf;
 
     /// Ordinary ASCII paths pass through unchanged after the file://
@@ -401,5 +499,50 @@ mod tests {
     fn slashes_preserved() {
         let p = PathBuf::from("/a/b/c");
         assert_eq!(path_to_file_uri(&p), "file:///a/b/c");
+    }
+
+    /// Codex H2: save-path validator rejects any `..` component, no
+    /// matter where it appears in the path. This is the trust
+    /// boundary between picker-UI typed input and the Document
+    /// Portal export.
+    #[test]
+    fn validate_rejects_parent_dir() {
+        assert!(validate_save_path(&PathBuf::from("/home/user/Documents/../passwd")).is_err());
+        assert!(validate_save_path(&PathBuf::from("/../etc/passwd")).is_err());
+    }
+
+    /// `.` segments are normalised away by `Path::components` so a
+    /// path with `./` is still considered clean — same target file.
+    #[test]
+    fn validate_accepts_current_dir_segment() {
+        assert!(validate_save_path(&PathBuf::from("/home/user/./report.pdf")).is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_relative() {
+        assert!(validate_save_path(&PathBuf::from("relative.pdf")).is_err());
+        assert!(validate_save_path(&PathBuf::from("./local.pdf")).is_err());
+    }
+
+    /// A clean absolute path with no `..` passes.
+    #[test]
+    fn validate_accepts_clean_path() {
+        assert!(validate_save_path(&PathBuf::from("/home/user/Documents/report.pdf")).is_ok());
+        assert!(validate_save_path(&PathBuf::from("/tmp/a.txt")).is_ok());
+    }
+
+    /// NUL byte anywhere in the path is rejected so the save target
+    /// cannot smuggle a string-truncation past D-Bus or filesystem
+    /// layers.
+    #[test]
+    fn validate_rejects_nul_byte() {
+        let mut bad = std::ffi::OsString::from("/home/user/");
+        // Construct a NUL by adding a byte that the platform-aware
+        // OsString accepts; use raw bytes via OsStr::from_bytes.
+        use std::os::unix::ffi::OsStringExt;
+        let mut bytes = bad.into_vec();
+        bytes.extend_from_slice(b"foo\0bar.txt");
+        bad = OsString::from_vec(bytes);
+        assert!(validate_save_path(&PathBuf::from(bad)).is_err());
     }
 }
