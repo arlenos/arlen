@@ -22,6 +22,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 // ── Types (mirror os-sdk Rust API) ────────────────────────────────────
 
@@ -116,6 +117,33 @@ export interface AnnotationRecord {
   last_modified: number;
 }
 
+/**
+ * Tagged-union payload delivered to `onChanged` handlers.
+ *
+ * Wire form matches `serde(tag = "kind", rename_all = "lowercase")`
+ * on the Rust side: `{ kind: "set", target, namespace, app_id, data }`
+ * or `{ kind: "cleared", target, namespace, app_id }`.
+ */
+export type AnnotationChange =
+  | {
+      kind: "set";
+      target: AnnotationTarget;
+      namespace: string;
+      app_id: string;
+      data: unknown;
+    }
+  | {
+      kind: "cleared";
+      target: AnnotationTarget;
+      namespace: string;
+      app_id: string;
+    };
+
+export interface AnnotationSubscribeParams {
+  target: AnnotationTarget;
+  namespace: string;
+}
+
 export const annotations = {
   async set(params: AnnotationSetParams): Promise<void> {
     return invoke(`${PLUGIN}|annotation_set`, { params });
@@ -125,6 +153,51 @@ export const annotations = {
   },
   async get(lookup: AnnotationLookup): Promise<AnnotationRecord | null> {
     return invoke(`${PLUGIN}|annotation_get`, { lookup });
+  },
+  /**
+   * Subscribe to annotation changes for a specific target+namespace.
+   *
+   * Returns an unsubscribe function. Call it (or let the window
+   * close — subscriptions are automatically torn down on
+   * `WindowEvent::Destroyed`) to release the subscription.
+   *
+   * Subscribers see future events only. To bootstrap with the
+   * current state, call `annotations.get()` first; there is a
+   * small race window between the two calls (FA8 in
+   * `docs/architecture/annotations-api.md`).
+   *
+   * Implementation note — two-step subscribe:
+   *
+   *   1. `annotation_subscribe_prepare` opens the bus stream
+   *      and parks events in a backend buffer.
+   *   2. `listen()` registers the JS handler.
+   *   3. `annotation_subscribe_start` flushes the buffer and
+   *      begins emitting per-webview events going forward.
+   *
+   * The order is what closes the listener-registration race —
+   * any event between prepare and start sits in the backend
+   * buffer until the JS listener exists. The single-shot
+   * `subscribe()` shape was a footgun precisely here.
+   */
+  async onChanged(
+    params: AnnotationSubscribeParams,
+    handler: (change: AnnotationChange) => void,
+  ): Promise<() => Promise<void>> {
+    const subscriptionId: string = await invoke(
+      `${PLUGIN}|annotation_subscribe_prepare`,
+      { params },
+    );
+    const eventName = `lunaris://annotation-changed/${subscriptionId}`;
+    const unlisten: UnlistenFn = await listen<AnnotationChange>(
+      eventName,
+      (e) => handler(e.payload),
+    );
+    // Listener is now registered; safe to start the pump.
+    await invoke(`${PLUGIN}|annotation_subscribe_start`, { subscriptionId });
+    return async () => {
+      unlisten();
+      await invoke(`${PLUGIN}|annotation_unsubscribe`, { subscriptionId });
+    };
   },
 };
 

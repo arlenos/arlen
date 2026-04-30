@@ -157,6 +157,93 @@ impl GraphClient for MockGraphClient {
     }
 }
 
+/// In-process mock [`EventConsumer`] for tests.
+///
+/// Mirrors [`MockEventEmitter`] in shape: clone-cheap, internally
+/// shares a `tokio::sync::broadcast` channel that test code can
+/// drive via [`MockEventConsumer::push`]. Each `subscribe()` call
+/// creates a new mpsc receiver that yields all events whose type
+/// matches the requested prefixes.
+#[derive(Clone)]
+pub struct MockEventConsumer {
+    inner: Arc<MockEventConsumerInner>,
+}
+
+struct MockEventConsumerInner {
+    broadcast: tokio::sync::broadcast::Sender<crate::proto::Event>,
+}
+
+impl MockEventConsumer {
+    /// Construct a new mock consumer with an empty broadcast.
+    pub fn new() -> Self {
+        let (broadcast, _rx) = tokio::sync::broadcast::channel(64);
+        Self {
+            inner: Arc::new(MockEventConsumerInner { broadcast }),
+        }
+    }
+
+    /// Push an event into the mock bus. Every active subscriber
+    /// whose type filter matches receives a copy.
+    pub fn push(&self, event: crate::proto::Event) {
+        // Best-effort send — if there are no subscribers, drop.
+        let _ = self.inner.broadcast.send(event);
+    }
+
+    /// Return the current subscriber count. Useful for asserting
+    /// that drop tears down the subscription.
+    pub fn subscriber_count(&self) -> usize {
+        self.inner.broadcast.receiver_count()
+    }
+}
+
+impl Default for MockEventConsumer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl crate::event_consumer::EventConsumer for MockEventConsumer {
+    fn subscribe<'a>(
+        &'a self,
+        subscribed_types: Vec<String>,
+    ) -> impl Future<
+        Output = Result<
+            tokio::sync::mpsc::Receiver<crate::proto::Event>,
+            crate::event_consumer::SubscribeError,
+        >,
+    > + Send
+           + 'a {
+        async move {
+            let mut bcast_rx = self.inner.broadcast.subscribe();
+            let (tx, rx) = tokio::sync::mpsc::channel::<crate::proto::Event>(64);
+            tokio::spawn(async move {
+                while let Ok(event) = bcast_rx.recv().await {
+                    if !type_matches(&event.r#type, &subscribed_types) {
+                        continue;
+                    }
+                    if tx.send(event).await.is_err() {
+                        return;
+                    }
+                }
+            });
+            Ok(rx)
+        }
+    }
+}
+
+/// Replicates the bus's prefix-match logic for the mock.
+fn type_matches(event_type: &str, subscribed_types: &[String]) -> bool {
+    subscribed_types.iter().any(|sub| {
+        if sub == "*" {
+            true
+        } else if let Some(prefix) = sub.strip_suffix('.') {
+            event_type.starts_with(prefix)
+        } else {
+            sub == event_type
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,5 +301,74 @@ mod tests {
             .await
             .unwrap();
         assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn mock_consumer_delivers_matching_events_only() {
+        use crate::event_consumer::EventConsumer;
+        let bus = MockEventConsumer::new();
+        let mut rx = bus
+            .subscribe(vec!["app.annotation.".to_string()])
+            .await
+            .unwrap();
+
+        // Allow the spawn to register on the broadcast.
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
+        bus.push(crate::proto::Event {
+            id: "e1".into(),
+            r#type: "app.annotation.set".into(),
+            timestamp: 1,
+            source: "app:test".into(),
+            pid: 0,
+            session_id: "s".into(),
+            payload: vec![],
+            uid: 0,
+            project_id: String::new(),
+        });
+        bus.push(crate::proto::Event {
+            id: "e2".into(),
+            r#type: "file.opened".into(),
+            timestamp: 2,
+            source: "kernel".into(),
+            pid: 0,
+            session_id: "s".into(),
+            payload: vec![],
+            uid: 0,
+            project_id: String::new(),
+        });
+
+        let received = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("recv in time")
+            .expect("got event");
+        assert_eq!(received.id, "e1");
+
+        // A second recv should yield nothing within a short
+        // window — `file.opened` does not match the filter.
+        let second = tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            rx.recv(),
+        )
+        .await;
+        assert!(second.is_err(), "non-matching event must be filtered");
+    }
+
+    #[tokio::test]
+    async fn mock_consumer_drop_unsubscribes() {
+        use crate::event_consumer::EventConsumer;
+        let bus = MockEventConsumer::new();
+        let rx = bus.subscribe(vec!["*".to_string()]).await.unwrap();
+        // Allow the forwarder to register on broadcast.
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        assert_eq!(bus.subscriber_count(), 1);
+
+        drop(rx);
+        // Forwarder needs one broadcast send to detect the
+        // closed mpsc and exit; push a dummy event to nudge it.
+        bus.push(crate::proto::Event::default());
+        // Give the forwarder time to exit.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(bus.subscriber_count(), 0);
     }
 }

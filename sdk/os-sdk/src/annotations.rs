@@ -24,9 +24,11 @@ use std::future::Future;
 
 use prost::Message;
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::event::{EmitError, EventEmitter};
+use crate::event_consumer::{EventConsumer, SubscribeError};
 use crate::graph::{GraphClient, QueryError};
 use crate::proto::{AnnotationClearPayload, AnnotationSetPayload};
 
@@ -241,10 +243,193 @@ impl<E: EventEmitter, G: GraphClient> Annotations<E, G> {
     }
 }
 
+/// One side of an annotation change observed via [`Annotations::on_changed`].
+///
+/// Serialised tagged-union form on the wire (`{ kind: "set", ...}`
+/// / `{ kind: "cleared", ... }`) so Tauri-plugin frontends can
+/// pattern-match cleanly.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum AnnotationChange {
+    /// The annotation was set or replaced. `data` is the new payload.
+    Set {
+        target: AnnotationTarget,
+        namespace: String,
+        app_id: String,
+        data: serde_json::Value,
+    },
+    /// The annotation was cleared.
+    Cleared {
+        target: AnnotationTarget,
+        namespace: String,
+        app_id: String,
+    },
+}
+
+/// Abort-on-drop guard for a forwarder task. Holding this keeps
+/// the subscription alive; dropping it aborts the forwarder and
+/// (transitively) closes the upstream bus connection.
+pub struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// RAII handle for a live `on_changed` subscription.
+///
+/// Drop the handle to unsubscribe — the internal forwarder task
+/// is aborted and the underlying Event Bus connection drops,
+/// causing the bus registry to release the consumer entry.
+///
+/// For consumers (e.g. the Tauri plugin) that want to store the
+/// abort handle separately from the receiver, use [`Self::split`].
+pub struct Subscription {
+    abort_on_drop: AbortOnDrop,
+    rx: mpsc::Receiver<AnnotationChange>,
+}
+
+impl Subscription {
+    /// Receive the next matching change. Returns `None` when the
+    /// subscription has ended (forwarder exited or bus closed
+    /// unrecoverably).
+    pub async fn recv(&mut self) -> Option<AnnotationChange> {
+        self.rx.recv().await
+    }
+
+    /// Split the subscription into an abort-on-drop guard and the
+    /// underlying receiver. Hold both halves to keep the
+    /// subscription alive; drop the guard to unsubscribe even if
+    /// the receiver is still being drained elsewhere.
+    pub fn split(self) -> (AbortOnDrop, mpsc::Receiver<AnnotationChange>) {
+        (self.abort_on_drop, self.rx)
+    }
+}
+
+impl<E: EventEmitter, G: GraphClient> Annotations<E, G> {
+    /// Subscribe to annotation changes for `(target, namespace)`.
+    ///
+    /// The returned [`Subscription`] yields [`AnnotationChange`]
+    /// values matching the filter. Drop the handle to unsubscribe.
+    ///
+    /// Implementation: registers as a fresh Event Bus consumer
+    /// with prefix `app.annotation.`, decodes each event's
+    /// payload as either [`AnnotationSetPayload`] or
+    /// [`AnnotationClearPayload`], and forwards only those whose
+    /// `(target_type, target_id, namespace)` match.
+    ///
+    /// # Snapshot semantics
+    ///
+    /// Subscribers see future events only. Callers that need the
+    /// current state should call [`Self::get`] first; there is a
+    /// small race window between the two calls (FA8 in
+    /// `docs/architecture/annotations-api.md`).
+    ///
+    /// # Errors
+    /// [`SubscribeError::ConnectionFailed`] if the bus is
+    /// unreachable after the initial-connect retry budget.
+    pub async fn on_changed<C: EventConsumer + 'static>(
+        &self,
+        consumer: &C,
+        target: AnnotationTarget,
+        namespace: String,
+    ) -> Result<Subscription, SubscribeError> {
+        let raw_rx = consumer
+            .subscribe(vec!["app.annotation.".to_string()])
+            .await?;
+
+        let (tx, rx) = mpsc::channel::<AnnotationChange>(64);
+        let target_type = target.target_type().to_string();
+        let target_id = target.target_id().to_string();
+        let namespace_filter = namespace;
+
+        let task = tokio::spawn(async move {
+            let mut raw_rx = raw_rx;
+            while let Some(event) = raw_rx.recv().await {
+                let Some(change) = decode_change(
+                    &event,
+                    &target_type,
+                    &target_id,
+                    &namespace_filter,
+                ) else {
+                    continue;
+                };
+                if tx.send(change).await.is_err() {
+                    return; // caller dropped the receiver
+                }
+            }
+        });
+
+        Ok(Subscription {
+            abort_on_drop: AbortOnDrop(task),
+            rx,
+        })
+    }
+}
+
+/// Decode the bus event into an [`AnnotationChange`] iff it
+/// matches the target+namespace filter. Returns `None` for
+/// non-matching or undecodable events (E11, E12).
+fn decode_change(
+    event: &crate::proto::Event,
+    target_type: &str,
+    target_id: &str,
+    namespace: &str,
+) -> Option<AnnotationChange> {
+    match event.r#type.as_str() {
+        "app.annotation.set" => {
+            let p = AnnotationSetPayload::decode(event.payload.as_slice()).ok()?;
+            if p.target_type != target_type
+                || p.target_id != target_id
+                || p.namespace != namespace
+            {
+                return None;
+            }
+            let data = serde_json::from_str(&p.data_json).unwrap_or(serde_json::Value::Null);
+            Some(AnnotationChange::Set {
+                target: rebuild_target(&p.target_type, p.target_id),
+                namespace: p.namespace,
+                app_id: p.app_id,
+                data,
+            })
+        }
+        "app.annotation.cleared" => {
+            let p = AnnotationClearPayload::decode(event.payload.as_slice()).ok()?;
+            if p.target_type != target_type
+                || p.target_id != target_id
+                || p.namespace != namespace
+            {
+                return None;
+            }
+            Some(AnnotationChange::Cleared {
+                target: rebuild_target(&p.target_type, p.target_id),
+                namespace: p.namespace,
+                app_id: p.app_id,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Reconstruct an [`AnnotationTarget`] from the wire pair. Falls
+/// back to `App { id }` for unknown target types so the caller
+/// always gets a structured value (E12 strict-by-default; future
+/// types degrade gracefully into App).
+fn rebuild_target(target_type: &str, target_id: String) -> AnnotationTarget {
+    match target_type {
+        "File" => AnnotationTarget::File { path: target_id },
+        "App" => AnnotationTarget::App { id: target_id },
+        "Project" => AnnotationTarget::Project { id: target_id },
+        "Session" => AnnotationTarget::Session { id: target_id },
+        _ => AnnotationTarget::App { id: target_id },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mock::{MockEventEmitter, MockGraphClient};
+    use crate::mock::{MockEventConsumer, MockEventEmitter, MockGraphClient};
 
     fn decode_set(bytes: &[u8]) -> AnnotationSetPayload {
         AnnotationSetPayload::decode(bytes).expect("valid AnnotationSetPayload")
@@ -390,5 +575,323 @@ mod tests {
             AnnotationTarget::Session { id: "s".into() }.target_type(),
             "Session"
         );
+    }
+
+    /// Helper: build an `app.annotation.set` Event envelope with
+    /// the given payload fields. Used by on_changed tests.
+    fn build_set_event(
+        app_id: &str,
+        namespace: &str,
+        target_type: &str,
+        target_id: &str,
+        data_json: &str,
+    ) -> crate::proto::Event {
+        let payload = AnnotationSetPayload {
+            app_id: app_id.into(),
+            namespace: namespace.into(),
+            target_type: target_type.into(),
+            target_id: target_id.into(),
+            data_json: data_json.into(),
+        };
+        crate::proto::Event {
+            id: "evt".into(),
+            r#type: "app.annotation.set".into(),
+            timestamp: 1,
+            source: format!("app:{app_id}"),
+            pid: 0,
+            session_id: "s".into(),
+            payload: payload.encode_to_vec(),
+            uid: 1000,
+            project_id: String::new(),
+        }
+    }
+
+    fn build_clear_event(
+        app_id: &str,
+        namespace: &str,
+        target_type: &str,
+        target_id: &str,
+    ) -> crate::proto::Event {
+        let payload = AnnotationClearPayload {
+            app_id: app_id.into(),
+            namespace: namespace.into(),
+            target_type: target_type.into(),
+            target_id: target_id.into(),
+        };
+        crate::proto::Event {
+            id: "evt-c".into(),
+            r#type: "app.annotation.cleared".into(),
+            timestamp: 2,
+            source: format!("app:{app_id}"),
+            pid: 0,
+            session_id: "s".into(),
+            payload: payload.encode_to_vec(),
+            uid: 1000,
+            project_id: String::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn on_changed_yields_matching_set_event() {
+        let bus = MockEventConsumer::new();
+        let ann = Annotations::new(
+            MockEventEmitter::new(),
+            MockGraphClient::new(),
+            "com.example.editor",
+        );
+        let mut sub = ann
+            .on_changed(
+                &bus,
+                AnnotationTarget::File {
+                    path: "/notes.md".into(),
+                },
+                "com.example.editor".into(),
+            )
+            .await
+            .unwrap();
+
+        // Allow forwarder spawn to register on broadcast.
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
+        bus.push(build_set_event(
+            "com.example.editor",
+            "com.example.editor",
+            "File",
+            "/notes.md",
+            r#"{"word_count":1240}"#,
+        ));
+
+        let change = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            sub.recv(),
+        )
+        .await
+        .expect("recv in time")
+        .expect("change");
+        match change {
+            AnnotationChange::Set {
+                target,
+                namespace,
+                data,
+                ..
+            } => {
+                assert_eq!(
+                    target,
+                    AnnotationTarget::File {
+                        path: "/notes.md".into()
+                    }
+                );
+                assert_eq!(namespace, "com.example.editor");
+                assert_eq!(data, serde_json::json!({"word_count": 1240}));
+            }
+            other => panic!("expected Set, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn on_changed_filters_by_target_and_namespace() {
+        let bus = MockEventConsumer::new();
+        let ann = Annotations::new(
+            MockEventEmitter::new(),
+            MockGraphClient::new(),
+            "com.example.editor",
+        );
+        let mut sub = ann
+            .on_changed(
+                &bus,
+                AnnotationTarget::File {
+                    path: "/wanted.md".into(),
+                },
+                "com.example.editor".into(),
+            )
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
+        // Wrong target id — must be filtered.
+        bus.push(build_set_event(
+            "com.example.editor",
+            "com.example.editor",
+            "File",
+            "/other.md",
+            r#"{}"#,
+        ));
+        // Wrong namespace — must be filtered.
+        bus.push(build_set_event(
+            "com.other.app",
+            "com.other.app",
+            "File",
+            "/wanted.md",
+            r#"{}"#,
+        ));
+        // Matching event — must arrive.
+        bus.push(build_set_event(
+            "com.example.editor",
+            "com.example.editor",
+            "File",
+            "/wanted.md",
+            r#"{"good":true}"#,
+        ));
+
+        let change = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            sub.recv(),
+        )
+        .await
+        .expect("recv")
+        .expect("change");
+        match change {
+            AnnotationChange::Set { data, .. } => {
+                assert_eq!(data, serde_json::json!({"good": true}));
+            }
+            other => panic!("expected Set, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn on_changed_yields_clear_events() {
+        let bus = MockEventConsumer::new();
+        let ann = Annotations::new(
+            MockEventEmitter::new(),
+            MockGraphClient::new(),
+            "com.example.editor",
+        );
+        let mut sub = ann
+            .on_changed(
+                &bus,
+                AnnotationTarget::Project {
+                    id: "550e8400-e29b-41d4-a716-446655440000".into(),
+                },
+                "com.example.editor".into(),
+            )
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
+        bus.push(build_clear_event(
+            "com.example.editor",
+            "com.example.editor",
+            "Project",
+            "550e8400-e29b-41d4-a716-446655440000",
+        ));
+
+        let change = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            sub.recv(),
+        )
+        .await
+        .expect("recv")
+        .expect("change");
+        assert!(matches!(change, AnnotationChange::Cleared { .. }));
+    }
+
+    /// Regression for Sprint-A8 / Codex adversarial review
+    /// finding 1 (listener-registration race).
+    ///
+    /// The Tauri plugin's two-step subscribe protocol relies on
+    /// the SDK-side property that events arriving between
+    /// `Subscription::split()` and the receiver being drained
+    /// are buffered in the mpsc, not lost. This test simulates
+    /// the Pending phase: hold the receiver without polling for
+    /// 100 ms while events flow, then drain — and verify all
+    /// events surface in order.
+    #[tokio::test]
+    async fn split_receiver_buffers_events_until_drained() {
+        let bus = MockEventConsumer::new();
+        let ann = Annotations::new(
+            MockEventEmitter::new(),
+            MockGraphClient::new(),
+            "com.example.editor",
+        );
+        let sub = ann
+            .on_changed(
+                &bus,
+                AnnotationTarget::File {
+                    path: "/buffered.md".into(),
+                },
+                "com.example.editor".into(),
+            )
+            .await
+            .unwrap();
+        let (_abort, mut rx) = sub.split();
+
+        // Allow forwarder to register on broadcast.
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
+        // Push three matching events while NOTHING is draining.
+        // This stands in for the prepare-to-start window in the
+        // Tauri plugin: events accumulate in the rx buffer while
+        // no pump task exists yet.
+        for i in 0..3 {
+            bus.push(build_set_event(
+                "com.example.editor",
+                "com.example.editor",
+                "File",
+                "/buffered.md",
+                &format!(r#"{{"i":{i}}}"#),
+            ));
+        }
+
+        // Simulate the IPC roundtrip + listen() registration
+        // delay before the pump starts draining.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Drain in order — none lost, FIFO preserved.
+        for i in 0..3 {
+            let change = tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                rx.recv(),
+            )
+            .await
+            .expect("recv in time")
+            .expect("change");
+            match change {
+                AnnotationChange::Set { data, .. } => {
+                    assert_eq!(data, serde_json::json!({"i": i}));
+                }
+                other => panic!("expected Set, got {other:?}"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn drop_subscription_unsubscribes() {
+        let bus = MockEventConsumer::new();
+        let ann = Annotations::new(
+            MockEventEmitter::new(),
+            MockGraphClient::new(),
+            "com.example.editor",
+        );
+        let sub = ann
+            .on_changed(
+                &bus,
+                AnnotationTarget::File {
+                    path: "/x".into(),
+                },
+                "com.example.editor".into(),
+            )
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        assert_eq!(bus.subscriber_count(), 1);
+
+        drop(sub);
+        // Nudge the mock-internal forwarder with a *matching*
+        // event so it actually attempts to send into the now-
+        // dropped mpsc (which triggers its exit and the broadcast
+        // unsubscription). A non-matching default event would be
+        // filtered by the mock and not exercise the send path.
+        bus.push(build_set_event(
+            "ignored",
+            "ignored",
+            "File",
+            "/x",
+            r#"{}"#,
+        ));
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(bus.subscriber_count(), 0);
     }
 }

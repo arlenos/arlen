@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-annotation-subscribe-prepare"
+description = "Enables the annotation_subscribe_prepare command without any pre-configured scope."
+commands.allow = ["annotation_subscribe_prepare"]
+
+[[permission]]
+identifier = "deny-annotation-subscribe-prepare"
+description = "Denies the annotation_subscribe_prepare command without any pre-configured scope."
+commands.deny = ["annotation_subscribe_prepare"]

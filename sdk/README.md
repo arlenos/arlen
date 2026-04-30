@@ -45,10 +45,36 @@ while let Some(entry) = events.recv().await {
 
 See `docs/architecture/clipboard-api.md` for the broker design and sensitivity-label rules.
 
+Apps can subscribe to annotation changes with the consumer-side Event Bus client:
+
+```rust
+use os_sdk::{Annotations, AnnotationChange, AnnotationTarget,
+             UnixEventConsumer, UnixEventEmitter, UnixGraphClient};
+
+let consumer = UnixEventConsumer::new("/run/lunaris/event-bus-consumer.sock");
+let ann = Annotations::new(emitter, graph, "com.example.editor");
+
+let mut sub = ann.on_changed(
+    &consumer,
+    AnnotationTarget::File { path: "/notes.md".into() },
+    "com.example.editor".into(),
+).await?;
+
+while let Some(change) = sub.recv().await {
+    match change {
+        AnnotationChange::Set { data, .. } => println!("set: {data}"),
+        AnnotationChange::Cleared { .. } => println!("cleared"),
+    }
+}
+// Drop sub to unsubscribe.
+```
+
+See `docs/architecture/annotations-api.md` for the consumer-side wire protocol, lifecycle, and edge-case coverage.
+
 **For testing**, use the mock implementations:
 
 ```rust
-use os_sdk::mock::{MockEventEmitter, MockGraphClient};
+use os_sdk::mock::{MockEventConsumer, MockEventEmitter, MockGraphClient};
 use os_sdk::MockClipboardClient;
 
 let emitter = MockEventEmitter::new();
@@ -56,6 +82,7 @@ my_function(&emitter).await;
 assert_eq!(emitter.emitted().await[0].event_type, "file.opened");
 
 let clipboard = MockClipboardClient::new();
+let consumer = MockEventConsumer::new();
 ```
 
 ### `module-sdk`
@@ -74,9 +101,10 @@ Stub crate for module-specific APIs. Will be expanded in Phase 2.
 ## Testing
 
 ```bash
-cargo test -p os-sdk                              # unit and mock tests
-cargo test -p os-sdk --test unix_implementations  # event-bus + graph socket integration
-cargo test -p os-sdk --test clipboard_integration # clipboard broker socket integration
+cargo test -p os-sdk                                  # unit and mock tests
+cargo test -p os-sdk --test unix_implementations      # event-bus + graph socket integration
+cargo test -p os-sdk --test clipboard_integration     # clipboard broker socket integration
+cargo test -p os-sdk --test event_consumer_integration # event-bus consumer-side integration
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 

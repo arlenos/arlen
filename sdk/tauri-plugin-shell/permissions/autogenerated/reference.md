@@ -88,6 +88,110 @@ Denies the annotation_set command without any pre-configured scope.
 <tr>
 <td>
 
+`lunaris-shell:allow-annotation-subscribe`
+
+</td>
+<td>
+
+Enables the annotation_subscribe command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:deny-annotation-subscribe`
+
+</td>
+<td>
+
+Denies the annotation_subscribe command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:allow-annotation-subscribe-prepare`
+
+</td>
+<td>
+
+Enables the annotation_subscribe_prepare command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:deny-annotation-subscribe-prepare`
+
+</td>
+<td>
+
+Denies the annotation_subscribe_prepare command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:allow-annotation-subscribe-start`
+
+</td>
+<td>
+
+Enables the annotation_subscribe_start command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:deny-annotation-subscribe-start`
+
+</td>
+<td>
+
+Denies the annotation_subscribe_start command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:allow-annotation-unsubscribe`
+
+</td>
+<td>
+
+Enables the annotation_unsubscribe command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:deny-annotation-unsubscribe`
+
+</td>
+<td>
+
+Denies the annotation_unsubscribe command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `lunaris-shell:allow-presence-clear`
 
 </td>
