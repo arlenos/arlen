@@ -2869,6 +2869,7 @@ name = "os-sdk"
 version = "0.1.0"
 dependencies = [
  "dirs 5.0.1",
+ "libc",
  "notify",
  "prost",
  "prost-build",
