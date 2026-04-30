@@ -1,4 +1,5 @@
 pub mod annotations;
+pub mod clipboard;
 pub mod config;
 pub mod event;
 pub mod graph;
@@ -13,8 +14,18 @@ pub(crate) mod proto {
     include!(concat!(env!("OUT_DIR"), "/lunaris.eventbus.rs"));
 }
 
+pub(crate) mod proto_clipboard {
+    #![allow(dead_code)]
+    #![allow(clippy::doc_markdown)]
+    include!(concat!(env!("OUT_DIR"), "/lunaris.clipboard.rs"));
+}
+
 pub use annotations::{
     AnnotationLookup, AnnotationRecord, AnnotationSetParams, AnnotationTarget, Annotations,
+};
+pub use clipboard::{
+    ClipboardEntry, ClipboardError, ClipboardLabel, MockClipboardClient, UnixClipboardClient,
+    WriteParams,
 };
 pub use event::{EmitError, EventEmitter, UnixEventEmitter};
 pub use graph::{GraphClient, QueryError, UnixGraphClient};
