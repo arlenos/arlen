@@ -7,6 +7,7 @@ members = [
     "modules",
     "permissions",
     "tauri-plugin-menu",
+    "tauri-plugin-portal",
     "tauri-plugin-shell",
     "theme",
 ]
