@@ -52,6 +52,13 @@ export const PANELS: PanelMeta[] = [
 
   // Apps & Modules
   { id: "extensions", title: "Extensions", icon: "Puzzle", enabled: true, href: "/extensions" },
+  // Disabled until Phase 8 ships the permission-management UI.
+  // The route still resolves (the page renders a placeholder for
+  // direct-URL visitors) but the sidebar entry is greyed out and
+  // the settings-search index doesn't list it — Codex Sprint D
+  // review HIGH 1: enabling a non-functional permission panel is a
+  // security UX trap, users could infer permissions are manageable
+  // here.
   { id: "privacy", title: "Privacy", icon: "Shield", enabled: false, href: "/privacy" },
 ];
 

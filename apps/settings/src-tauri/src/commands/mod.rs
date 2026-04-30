@@ -1,5 +1,6 @@
 //! Tauri command handlers grouped by config file.
 
+pub mod about;
 pub mod accessibility;
 pub mod brightness;
 pub mod config;
@@ -12,6 +13,7 @@ pub mod notifications;
 pub mod picker;
 pub mod search;
 pub mod theme;
+pub mod url;
 pub mod waypointer_plugins;
 
 /// Route a log line from the frontend into the Rust logger so it

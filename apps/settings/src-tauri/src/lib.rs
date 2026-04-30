@@ -52,6 +52,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::frontend_log,
             commands::picker::pick_directory,
+            commands::url::open_url,
+            commands::about::about_get_system_info,
             commands::accessibility::accessibility_filter_get,
             commands::accessibility::accessibility_filter_set,
             commands::knowledge::knowledge_stats_get,

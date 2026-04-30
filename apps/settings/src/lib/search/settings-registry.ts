@@ -981,4 +981,114 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     section: "Stats",
     anchor: "kg-daemon-status",
   },
+
+  // ── Display (Sprint D coverage) ────────────────────────────────────
+  // Display panel uses bespoke layout components that don't yet
+  // declare per-control DOM ids. We index the panel itself so
+  // search by "monitor"/"resolution"/"display" surfaces it; deep
+  // linking to specific controls is a follow-up that needs to be
+  // paired with `id={anchor}` props on each Row (Codex Sprint D
+  // review MEDIUM 2).
+  {
+    id: "display.panel",
+    title: "Display",
+    description: "Monitors, resolution, refresh rate, scale, night light",
+    keywords: [
+      "display",
+      "monitor",
+      "resolution",
+      "refresh",
+      "scale",
+      "rotation",
+      "primary",
+      "hidpi",
+      "1080p",
+      "1440p",
+      "4k",
+      "hz",
+    ],
+    panel: "display",
+    section: "Display",
+    anchor: "",
+  },
+
+  // ── Keyboard extends (Sprint D coverage) ───────────────────────────
+  // Same caveat as Display — Keyboard panel uses custom layout-
+  // editor components without per-row ids. Single panel entry
+  // covers search; per-row deepLinks are a follow-up.
+  {
+    id: "keyboard.panel",
+    title: "Keyboard",
+    description: "Layout, repeat rate, numlock",
+    keywords: [
+      "keyboard",
+      "layout",
+      "xkb",
+      "variant",
+      "dvorak",
+      "colemak",
+      "repeat",
+      "delay",
+      "rate",
+      "numlock",
+      "german",
+      "english",
+    ],
+    panel: "keyboard",
+    section: "Keyboard",
+    anchor: "",
+  },
+
+  // ── Extensions (Sprint D coverage) ─────────────────────────────────
+  {
+    id: "extensions.panel",
+    title: "Extensions",
+    description: "Installed Waypointer plugins, top-bar applets, modules",
+    keywords: [
+      "extensions",
+      "modules",
+      "plugins",
+      "waypointer",
+      "install",
+      "forage",
+      "lunpkg",
+    ],
+    panel: "extensions",
+    section: "Modules",
+    anchor: "",
+  },
+
+  // ── About (Sprint D coverage) ──────────────────────────────────────
+  {
+    id: "about.version",
+    title: "Lunaris Version",
+    description: "Release tag and kernel version",
+    keywords: ["about", "version", "release", "kernel"],
+    panel: "about",
+    section: "Lunaris OS",
+    anchor: "lunaris-version",
+  },
+  {
+    id: "about.daemons",
+    title: "Daemon Status",
+    description: "Knowledge, Notification, Event Bus, Install daemon health",
+    keywords: ["about", "daemon", "status", "notification", "event bus", "install"],
+    panel: "about",
+    section: "Daemons",
+    anchor: "daemon-knowledge-graph",
+  },
+
+  // Privacy panel intentionally NOT in the registry: it's
+  // disabled in navigation until Phase 8 ships the
+  // permission-management UI. Indexing it would surface
+  // misleading hits in Waypointer search (Codex Sprint D review
+  // HIGH 1). The placeholder page still renders for direct-URL
+  // visitors so the architecture link stays reachable.
+
+  // Mouse + Touchpad: existing entries already cover the well-
+  // known anchors (acceleration, tap-to-click, …); per-control
+  // additions for middle-click-emulation, tap-drag-lock, etc.
+  // would point to non-existent ids on the existing pages. Drop
+  // the broken extras until the pages opt into id={anchor} (Codex
+  // Sprint D review MEDIUM 2).
 ];
