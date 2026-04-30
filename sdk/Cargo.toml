@@ -6,6 +6,7 @@ members = [
     "module-sdk",
     "modules",
     "permissions",
+    "tauri-plugin-clipboard",
     "tauri-plugin-menu",
     "tauri-plugin-portal",
     "tauri-plugin-shell",

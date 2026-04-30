@@ -215,12 +215,35 @@ pub struct NotificationPermissions {
 
 // ── Clipboard ──
 
+/// Clipboard subsystem permissions. Apps request these in their
+/// permission profile under `[permissions.clipboard]`.
+///
+/// `read`/`write` cover the basic shell.clipboard API surface.
+/// `read_sensitive` lets the app see clipboard content that the
+/// writer marked `label = "sensitive"`; without it, `read()` and
+/// `onChanged()` return `null`-content for sensitive entries.
+/// `history` gates `getHistory()` — sensitive entries are filtered
+/// out at write time and never appear in history regardless of
+/// this permission.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ClipboardPermissions {
     #[serde(default)]
     pub read: bool,
+    /// Receive content of sensitive-labelled clipboard entries.
+    /// Without this, `read()` and `onChanged()` deliver
+    /// metadata-only for sensitive content. Defaults to false so
+    /// existing permission profiles automatically drop into the
+    /// safe state on upgrade.
+    #[serde(default)]
+    pub read_sensitive: bool,
     #[serde(default)]
     pub write: bool,
+    /// Query clipboard history via `getHistory()`. Sensitive
+    /// entries are excluded from history at write time, so this
+    /// permission is strictly about "may I see the historical
+    /// list at all" — not a fine-grained sensitivity gate.
+    #[serde(default)]
+    pub history: bool,
 }
 
 // ── System ──
