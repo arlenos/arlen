@@ -7,6 +7,9 @@ fn main() {
         "annotation_set",
         "annotation_clear",
         "annotation_get",
+        "annotation_subscribe_prepare",
+        "annotation_subscribe_start",
+        "annotation_unsubscribe",
     ])
     .build();
 }

@@ -2,6 +2,7 @@ pub mod annotations;
 pub mod clipboard;
 pub mod config;
 pub mod event;
+pub mod event_consumer;
 pub mod graph;
 pub mod mock;
 pub mod presence;
@@ -21,13 +22,15 @@ pub(crate) mod proto_clipboard {
 }
 
 pub use annotations::{
-    AnnotationLookup, AnnotationRecord, AnnotationSetParams, AnnotationTarget, Annotations,
+    AbortOnDrop, AnnotationChange, AnnotationLookup, AnnotationRecord,
+    AnnotationSetParams, AnnotationTarget, Annotations, Subscription,
 };
 pub use clipboard::{
     ClipboardEntry, ClipboardError, ClipboardLabel, MockClipboardClient, UnixClipboardClient,
     WriteParams,
 };
 pub use event::{EmitError, EventEmitter, UnixEventEmitter};
+pub use event_consumer::{EventConsumer, SubscribeError, UnixEventConsumer};
 pub use graph::{GraphClient, QueryError, UnixGraphClient};
 pub use presence::{AutoClear, Presence, PresenceParams};
 pub use spatial::{GeometryHint, OutputHint, Spatial, SpatialHint};
