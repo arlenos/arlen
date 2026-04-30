@@ -2287,6 +2287,66 @@
           "type": "string",
           "const": "lunaris-menu:deny-update-tab",
           "markdownDescription": "Denies the update_tab command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_uri command without any pre-configured scope.",
+          "type": "string",
+          "const": "lunaris-portal:allow-open-uri",
+          "markdownDescription": "Enables the open_uri command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pick_directory command without any pre-configured scope.",
+          "type": "string",
+          "const": "lunaris-portal:allow-pick-directory",
+          "markdownDescription": "Enables the pick_directory command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pick_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "lunaris-portal:allow-pick-file",
+          "markdownDescription": "Enables the pick_file command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the save_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "lunaris-portal:allow-save-file",
+          "markdownDescription": "Enables the save_file command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the save_files command without any pre-configured scope.",
+          "type": "string",
+          "const": "lunaris-portal:allow-save-files",
+          "markdownDescription": "Enables the save_files command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_uri command without any pre-configured scope.",
+          "type": "string",
+          "const": "lunaris-portal:deny-open-uri",
+          "markdownDescription": "Denies the open_uri command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pick_directory command without any pre-configured scope.",
+          "type": "string",
+          "const": "lunaris-portal:deny-pick-directory",
+          "markdownDescription": "Denies the pick_directory command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pick_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "lunaris-portal:deny-pick-file",
+          "markdownDescription": "Denies the pick_file command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "lunaris-portal:deny-save-file",
+          "markdownDescription": "Denies the save_file command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save_files command without any pre-configured scope.",
+          "type": "string",
+          "const": "lunaris-portal:deny-save-files",
+          "markdownDescription": "Denies the save_files command without any pre-configured scope."
         }
       ]
     },
