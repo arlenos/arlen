@@ -1,0 +1,4 @@
+[portal]
+DBusName=org.freedesktop.impl.portal.desktop.lunaris
+Interfaces=
+UseIn=lunaris;
