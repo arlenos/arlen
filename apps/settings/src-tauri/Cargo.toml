@@ -49,6 +49,13 @@ lunaris-input-client = { path = "../../sdk/lunaris-input-client" }
 # fallback means the Settings app still works on plain wlroots/GNOME.
 tauri-plugin-lunaris-menu = { path = "../../sdk/tauri-plugin-menu" }
 
+# Lunaris portal plugin: wraps org.freedesktop.portal.Desktop FileChooser
+# and OpenURI. Reused by `commands::picker::pick_directory` so the
+# directory selector goes through the Lunaris-themed picker on a Lunaris
+# session and falls back to kdialog/zenity when the portal frontend is
+# not installed (CI, headless dev sessions, stripped images).
+tauri-plugin-lunaris-portal = { path = "../../sdk/tauri-plugin-portal" }
+
 # Shared manifest parser / validator for module.toml files. The
 # Settings app and the shell use the same schema via this crate.
 lunaris-modules = { path = "../../sdk/modules" }

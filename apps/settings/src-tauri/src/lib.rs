@@ -19,6 +19,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_lunaris_menu::init())
+        .plugin(tauri_plugin_lunaris_portal::init())
         .setup(|app| {
             // Spawn the multi-file config watcher. It emits
             // `config:{file}:changed` Tauri events to the frontend.
