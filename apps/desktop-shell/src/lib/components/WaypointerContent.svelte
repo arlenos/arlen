@@ -43,6 +43,13 @@
     type PowerActionResult,
   } from "$lib/stores/waypointerPower.js";
   import {
+    quickActionResults,
+    updateQuickActionResults,
+    clearQuickActionResults,
+    invokeQuickAction,
+    type QuickActionResult,
+  } from "$lib/stores/waypointerQuickActions.js";
+  import {
     fileResults, updateFileResults, clearFileResults, openFileResult,
     type FileResult,
   } from "$lib/stores/waypointerFiles.js";
@@ -171,6 +178,17 @@
           );
         })
         .catch(() => {});
+      // Quick-Actions plugin: same generic-bridge pattern. Catalog
+      // covers DND, network/BT toggles, theme switches, Settings
+      // launchers (Sprint D).
+      const t2a = performance.now();
+      updateQuickActionResults(q)
+        .then(() => {
+          console.log(
+            `[wp-search] quick-actions: ${(performance.now() - t2a).toFixed(1)}ms`,
+          );
+        })
+        .catch(() => {});
       // File-search plugin: same bridge, separate section.
       const t3 = performance.now();
       updateFileResults(q)
@@ -239,6 +257,7 @@
     clearUnicodeResults();
     clearSettingsResults();
     clearPowerResults();
+    clearQuickActionResults();
     clearFileResults();
     clearClipboardResults();
     clearDictResults();
@@ -759,7 +778,7 @@
         <!-- CommandEmpty is unusable with shouldFilter={false} because
              cmdk always reports 0 internal matches. Use our own check
              across all provider stores instead. -->
-        {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $unicodeResults.length === 0 && $powerResults.length === 0 && $fileResults.length === 0 && $clipboardResults.length === 0 && $dictResults.length === 0 && filteredProjects.length === 0 && $recentAppsStore.length === 0 && $recentFilesStore.length === 0 && query.trim().length > 0}
+        {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $unicodeResults.length === 0 && $powerResults.length === 0 && $quickActionResults.length === 0 && $fileResults.length === 0 && $clipboardResults.length === 0 && $dictResults.length === 0 && filteredProjects.length === 0 && $recentAppsStore.length === 0 && $recentFilesStore.length === 0 && query.trim().length > 0}
           <div class="wp-empty">No results found.</div>
         {/if}
 
@@ -783,6 +802,36 @@
                   <span class="wp-app-name">{action.title}</span>
                   {#if action.description}
                     <span class="wp-app-desc">{action.description}</span>
+                  {/if}
+                </div>
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+          <CommandSeparator />
+        {/if}
+
+        <!-- Quick Actions (DND, theme, settings shortcuts, …) from
+             the `core.quick_actions` plugin. Priority 50 keeps them
+             below Apps for app-name queries, but for Lunaris-specific
+             keywords (DND / brightness / focus / …) Apps has nothing
+             to offer so Quick-Actions surface naturally. Toast-after-
+             execute confirmation arrives via the `lunaris://toast`
+             event bridge in `+layout.svelte`. -->
+        {#if $quickActionResults.length > 0}
+          <CommandGroup heading="Quick Actions">
+            {#each $quickActionResults as qa (qa.id)}
+              <CommandItem
+                value={`qa-${qa.id}`}
+                onSelect={() => {
+                  invokeQuickAction(qa.id);
+                  close();
+                }}
+              >
+                <Settings2 size={16} strokeWidth={1.5} class="shrink-0 opacity-70" />
+                <div class="wp-app-info">
+                  <span class="wp-app-name">{qa.title}</span>
+                  {#if qa.description}
+                    <span class="wp-app-desc">{qa.description}</span>
                   {/if}
                 </div>
               </CommandItem>

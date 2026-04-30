@@ -3,6 +3,7 @@ mod app_index;
 mod audio;
 mod battery;
 mod clipboard_history;
+mod clipboard_ipc;
 mod event_bus;
 mod gtk_menu_bridge;
 mod layer_shell;
@@ -15,6 +16,7 @@ mod modulesd_commands;
 mod bluetooth;
 mod bluetooth_agent;
 mod brightness;
+mod quick_actions;
 mod network;
 mod night_light;
 mod output_bars;
@@ -189,9 +191,10 @@ pub fn run() {
             app.manage(notif_writer);
             clipboard_history::start(
                 app.handle().clone(),
-                clipboard_for_watcher,
+                clipboard_for_watcher.clone(),
                 window_list_for_clipboard,
             );
+            clipboard_ipc::start(clipboard_for_watcher);
             sni::start(app.handle().clone(), sni_items);
             bluetooth::start_monitor(app.handle().clone());
             // Register the BlueZ Agent1 implementation so first-time
@@ -315,6 +318,7 @@ pub fn run() {
             bluetooth::pair_bluetooth_device,
             bluetooth_agent::bluetooth_pair_respond,
             bluetooth_agent::bluetooth_pair_pending_requests,
+            quick_actions::quick_action_run,
             shell_config::get_shell_config,
             shell_config::save_shell_config,
             night_light::night_light_set,

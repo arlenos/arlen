@@ -2874,6 +2874,7 @@ dependencies = [
  "prost-build",
  "serde",
  "serde_json",
+ "thiserror 1.0.69",
  "tokio",
  "toml 0.8.2",
  "ts-rs",

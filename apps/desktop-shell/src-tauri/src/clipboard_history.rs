@@ -22,9 +22,9 @@
 /// window at copy-time is typically the app that initiated the copy.
 
 use std::collections::{HashMap, VecDeque};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -32,6 +32,44 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::wayland_client::WindowList;
+
+/// Sensitivity label attached to a clipboard entry.
+///
+/// `Normal` is the default. `Sensitive` triggers two behaviours:
+/// the entry is never recorded in history (filter at write time per
+/// edge case E12 in the architecture doc), and SDK readers without
+/// the `clipboard.read.sensitive` permission receive the entry's
+/// metadata only — the `content` is dropped. Wayland itself does
+/// not carry this label; it is enforcement-on-trust within the
+/// Lunaris SDK boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Label {
+    Normal,
+    Sensitive,
+}
+
+impl Default for Label {
+    fn default() -> Self {
+        Label::Normal
+    }
+}
+
+impl Label {
+    fn as_u8(self) -> u8 {
+        match self {
+            Label::Normal => 0,
+            Label::Sensitive => 1,
+        }
+    }
+
+    fn from_u8(v: u8) -> Self {
+        match v {
+            1 => Label::Sensitive,
+            _ => Label::Normal,
+        }
+    }
+}
 
 /// Max entries kept in-memory.
 pub const MAX_ENTRIES: usize = 30;
@@ -72,23 +110,114 @@ pub struct ClipboardEntry {
     pub source_app_id: String,
     /// Always "text/plain" for now — we don't record anything else.
     pub mime: String,
+    /// Sensitivity label set by the SDK writer or defaulted to
+    /// Normal for non-Lunaris-aware writes. Sensitive entries are
+    /// filtered at write time and never appear in history snapshots,
+    /// so any entry the existing Tauri commands hand the frontend
+    /// is always Normal in practice; the field is here for the SDK
+    /// IPC path where it carries real information.
+    #[serde(default)]
+    pub label: Label,
 }
 
 /// Shared clipboard state.
+///
+/// Phase 6 TODO: introduce a dedicated `current_entry: Mutex<
+/// Option<ClipboardEntry>>` field that is updated on every
+/// `push()` (including filter-rejected and Sensitive entries) so
+/// the re-enabled `read()` IPC handler has a single source of
+/// truth instead of mixing `entries.front()` (history-only) with
+/// `current_label` (status flag). Tracked in
+/// `docs/architecture/clipboard-api.md` FA13.
 pub struct ClipboardHistory {
     entries: Mutex<VecDeque<ClipboardEntry>>,
     next_id: AtomicU64,
     /// Whether the watcher is active. Set from shell.toml at startup.
     enabled: AtomicBool,
+    /// Last label set by an SDK write. Stored as `AtomicU8` because
+    /// it is touched from the wl-paste watcher thread (read) and the
+    /// SDK IPC tasks (write); the relaxed ordering is sufficient
+    /// because last-write-wins matches the Wayland clipboard
+    /// semantics anyway.
+    current_label: AtomicU8,
+    /// Pending-label slot consumed by `push()` when the wl-paste
+    /// watcher fires. Only set just before an SDK `wl-copy`; the
+    /// content match guards against external writes that fire the
+    /// watcher between staging and consumption.
+    pending_label: Mutex<Option<(String, Label)>>,
+    /// Broadcast channel for SDK subscribers. Capacity 64 is the
+    /// soft cap on how far a slow subscriber may lag before tokio
+    /// drops the oldest pending entry; clipboard ops are rare so
+    /// 64 is generous.
+    broadcast: tokio::sync::broadcast::Sender<ClipboardEntry>,
 }
 
 impl ClipboardHistory {
     pub fn new() -> Self {
+        let (broadcast, _rx) = tokio::sync::broadcast::channel(64);
         Self {
             entries: Mutex::new(VecDeque::with_capacity(MAX_ENTRIES)),
             next_id: AtomicU64::new(1),
             enabled: AtomicBool::new(false),
+            current_label: AtomicU8::new(Label::Normal.as_u8()),
+            pending_label: Mutex::new(None),
+            broadcast,
         }
+    }
+
+    /// Most recent label set on the clipboard. SDK readers without
+    /// the `read.sensitive` permission consult this and drop content
+    /// when it returns `Sensitive`.
+    pub fn current_label(&self) -> Label {
+        Label::from_u8(self.current_label.load(Ordering::Relaxed))
+    }
+
+    /// Subscribe to clipboard changes. Each subscriber receives every
+    /// future entry that survives the privacy filters; sensitive
+    /// entries are ALSO broadcast so subscribers can know "the
+    /// clipboard changed" even when they cannot see the content.
+    /// Subscribers without `read.sensitive` permission filter at
+    /// the receiving end before forwarding to their own callers.
+    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<ClipboardEntry> {
+        self.broadcast.subscribe()
+    }
+
+    /// SDK-side write. Stages the label for the next watcher event,
+    /// then invokes wl-copy with the content. The watcher consumes
+    /// the staged label inside `push()` when the matching content
+    /// arrives — content match guards against an external write
+    /// firing the watcher between stage and pickup.
+    ///
+    /// Returns the stored entry (Normal-labelled writes that pass
+    /// the filters), `Ok(None)` for Sensitive writes (deliberately
+    /// not recorded) and writes filtered by the password heuristic
+    /// or blocklist, or `Err(io::Error)` if `wl-copy` itself failed.
+    pub fn write_with_label(
+        &self,
+        content: String,
+        label: Label,
+        _source_app_id: String,
+    ) -> std::io::Result<()> {
+        if let Ok(mut pending) = self.pending_label.lock() {
+            *pending = Some((content.clone(), label));
+        }
+        self.current_label
+            .store(label.as_u8(), Ordering::Relaxed);
+
+        let mut child = Command::new("wl-copy")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        if let Some(stdin) = child.stdin.as_mut() {
+            stdin.write_all(content.as_bytes())?;
+        }
+        // wl-copy double-forks to keep the selection alive after we
+        // drop the child handle. We wait so the stdin pipe is
+        // flushed before we return; the daemonised grand-child
+        // detaches automatically.
+        let _ = child.wait();
+        Ok(())
     }
 
     pub fn is_enabled(&self) -> bool {
@@ -135,11 +264,57 @@ impl ClipboardHistory {
     /// Append a new entry after filter/dedup. Returns the stored entry
     /// if it was accepted, `None` if filtered out. `pub(crate)` so the
     /// plugin tests can seed the ring without spawning a watcher.
+    ///
+    /// Also consumes any pending SDK-staged label and broadcasts the
+    /// resulting entry to live subscribers.
     pub(crate) fn push(&self, content: String, source_app_id: String) -> Option<ClipboardEntry> {
         let content = truncate_to_bytes(&content, MAX_ENTRY_BYTES);
         if content.trim().is_empty() {
             return None;
         }
+
+        // Resolve the label for this push. The pending slot is
+        // consumed only when its content matches — otherwise an
+        // external write happened between stage and pickup, and the
+        // staged label belongs to a still-pending event.
+        let label = {
+            let mut pending = self.pending_label.lock().ok()?;
+            match pending.as_ref() {
+                Some((staged_content, staged_label)) if staged_content == &content => {
+                    let label = *staged_label;
+                    *pending = None;
+                    label
+                }
+                _ => Label::Normal,
+            }
+        };
+
+        // `current_label` mirrors the actual Wayland clipboard
+        // sensitivity. It MUST update on every push (including
+        // external Normal copies and filter-rejected entries),
+        // otherwise a `Sensitive` write followed by an external
+        // `Normal` copy would leave the label stuck on Sensitive
+        // and any future read would wrongly strip content.
+        self.current_label.store(label.as_u8(), Ordering::Relaxed);
+
+        // Sensitive entries are never recorded in history (E12).
+        // Subscribers still receive the entry so they know the
+        // clipboard changed; per-subscriber permission filtering
+        // happens at the IPC boundary (read-without-content for
+        // readers lacking `read.sensitive`).
+        if label == Label::Sensitive {
+            let entry = ClipboardEntry {
+                id: self.next_id.fetch_add(1, Ordering::SeqCst),
+                content,
+                timestamp_ms: chrono::Utc::now().timestamp_millis(),
+                source_app_id,
+                mime: "text/plain".into(),
+                label,
+            };
+            let _ = self.broadcast.send(entry);
+            return None;
+        }
+
         if is_blocked_app(&source_app_id) {
             return None;
         }
@@ -163,11 +338,13 @@ impl ClipboardHistory {
             timestamp_ms: chrono::Utc::now().timestamp_millis(),
             source_app_id,
             mime: "text/plain".into(),
+            label,
         };
         entries.push_front(entry.clone());
         while entries.len() > MAX_ENTRIES {
             entries.pop_back();
         }
+        let _ = self.broadcast.send(entry.clone());
         Some(entry)
     }
 
@@ -615,6 +792,64 @@ mod tests {
         let h = ClipboardHistory::new();
         assert!(h.push("   ".into(), "".into()).is_none());
         assert!(h.push("".into(), "".into()).is_none());
+    }
+
+    #[test]
+    fn push_updates_current_label_to_normal_after_sensitive() {
+        // Regression for the sticky-sensitive-label bug surfaced
+        // by Codex review: after a Sensitive SDK write followed
+        // by an external Normal copy, `current_label` must reflect
+        // the actual current Wayland clipboard sensitivity, not
+        // the last SDK label.
+        let h = ClipboardHistory::new();
+
+        // Simulate an SDK Sensitive write: stage the pending
+        // label, then trigger the watcher path with the matching
+        // content. Bypasses wl-copy so the unit test does not
+        // shell out.
+        *h.pending_label.lock().unwrap() = Some(("secret".into(), Label::Sensitive));
+        let stored = h.push("secret".into(), String::new());
+        assert!(stored.is_none(), "Sensitive entries are not retained in history");
+        assert_eq!(
+            h.current_label(),
+            Label::Sensitive,
+            "current_label tracks the SDK Sensitive write"
+        );
+
+        // External Normal copy fires the watcher next. push must
+        // reset current_label to Normal even though no SDK write
+        // staged anything — otherwise reads after a sensitive
+        // write would wrongly strip content from the new entry.
+        let stored = h.push("public text".into(), String::new());
+        assert!(stored.is_some(), "Normal entries land in history");
+        assert_eq!(
+            h.current_label(),
+            Label::Normal,
+            "current_label resets to Normal on external copy"
+        );
+    }
+
+    #[test]
+    fn push_updates_current_label_for_filter_rejected_entries() {
+        // Even when an entry is dropped by a filter (blocked app,
+        // password heuristic), the Wayland clipboard still holds
+        // that content. `current_label` must mirror reality, not
+        // history-membership.
+        let h = ClipboardHistory::new();
+
+        // Seed Sensitive state.
+        *h.pending_label.lock().unwrap() = Some(("secret".into(), Label::Sensitive));
+        h.push("secret".into(), String::new());
+        assert_eq!(h.current_label(), Label::Sensitive);
+
+        // Blocked-app copy: filter drops it but the clipboard
+        // changed, so the label must follow.
+        h.push("any text".into(), "keepassxc".into());
+        assert_eq!(
+            h.current_label(),
+            Label::Normal,
+            "filter-rejected entries still update current_label"
+        );
     }
 
     #[test]

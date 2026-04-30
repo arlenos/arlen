@@ -41,6 +41,7 @@
   import BluetoothPairingDialog from "$lib/components/BluetoothPairingDialog.svelte";
   import { Toaster } from "svelte-sonner";
   import { toastConfig, initToastConfig } from "$lib/stores/toastConfig.js";
+  import { initToastBridge } from "$lib/stores/toastBridge.js";
 
   onMount(() => {
     // Every store init now returns a disposer. Collecting them lets
@@ -59,6 +60,7 @@
       initWindowHeaderListeners(),
       initProjects(),
       initToastConfig(),
+      initToastBridge(),
     ];
 
     // Initialize theme system (loads appearance.toml, injects CSS vars,

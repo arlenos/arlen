@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+// Clipboard SDK RPC over a per-user Unix socket. Distinct from
+// `lunaris.eventbus.ClipboardOperationPayload` (which is a metadata-
+// only event flowing through the event bus). This package is the
+// app-facing read/write/subscribe/history protocol the shell
+// brokers on behalf of Lunaris-aware callers.
+package lunaris.clipboard;
+
+// Sensitivity label attached to clipboard content.
+//
+// `LABEL_NORMAL` is the default for any write that does not pass
+// an explicit label and for any compositor-observed write from a
+// non-Lunaris-aware caller.
+//
+// `LABEL_SENSITIVE` is enforcement-on-trust: shell-side filtering
+// drops content for readers without the
+// `clipboard.read.sensitive` permission and never lands sensitive
+// entries in history. Wayland itself does not carry this label —
+// other Wayland clients see the raw bytes regardless.
+enum Label {
+  LABEL_NORMAL    = 0;
+  LABEL_SENSITIVE = 1;
+}
+
+// One clipboard entry as the shell reports it. `content` is unset
+// when the reader lacks the relevant sensitivity permission, so
+// every Lunaris client must handle missing content explicitly.
+message ClipboardEntry {
+  string id           = 1;  // monotonic, stable for filter/delete
+  optional bytes content = 2;
+  string mime         = 3;
+  Label  label        = 4;
+  int64  timestamp_ms = 5;
+  string source_app_id = 6;
+}
+
+// ── Requests ───────────────────────────────────────────────────
+
+message WriteRequest {
+  bytes  content = 1;
+  string mime    = 2;
+  Label  label   = 3;
+}
+
+message ReadRequest {}
+
+message SubscribeRequest {}
+
+message HistoryRequest {
+  // 0 means "as many as the shell will send" (capped by the
+  // ring-buffer size). Values larger than the cap are silently
+  // trimmed.
+  uint32 limit = 1;
+}
+
+// ── Responses ──────────────────────────────────────────────────
+
+message WriteResponse {
+  // The entry as the shell stored it after applying its filter
+  // chain (dedup, password heuristic, blocklist). `entry` is unset
+  // if the write succeeded but the shell chose not to record it
+  // in history (e.g. password-heuristic flagged it).
+  optional ClipboardEntry entry = 1;
+}
+
+message ReadResponse {
+  optional ClipboardEntry entry = 1;
+}
+
+// Acknowledgement for `SubscribeRequest`. The shell sends exactly
+// one of these immediately after the subscription is registered,
+// before any `SubscriptionEvent`. The SDK uses it as the
+// handshake signal: only after this frame arrives does the client
+// hand a receiver to the caller.
+message SubscribeResponse {}
+
+// Pushed to subscribers on every clipboard change after the
+// `SubscribeRequest` was acknowledged.
+message SubscriptionEvent {
+  ClipboardEntry entry = 1;
+}
+
+message HistoryResponse {
+  repeated ClipboardEntry entries = 1;
+}
+
+// ── Errors ─────────────────────────────────────────────────────
+
+enum ErrorKind {
+  ERROR_UNKNOWN          = 0;
+  ERROR_PERMISSION_DENIED = 1;
+  ERROR_CONTENT_TOO_LARGE = 2;
+  ERROR_UNSUPPORTED_MIME  = 3;
+  ERROR_SYSTEM            = 4;  // wl-copy / wl-paste failed, etc.
+  ERROR_HISTORY_DISABLED  = 5;  // shell.toml [clipboard] enabled = false
+}
+
+message ErrorResponse {
+  ErrorKind kind   = 1;
+  string    detail = 2;
+}
+
+// ── Envelope ───────────────────────────────────────────────────
+
+message ClipboardEnvelope {
+  oneof message {
+    WriteRequest      write_request      = 1;
+    WriteResponse     write_response     = 2;
+    ReadRequest       read_request       = 3;
+    ReadResponse      read_response      = 4;
+    SubscribeRequest  subscribe_request  = 5;
+    SubscriptionEvent subscription_event = 6;
+    HistoryRequest    history_request    = 7;
+    HistoryResponse   history_response   = 8;
+    ErrorResponse     error              = 9;
+    SubscribeResponse subscribe_response = 10;
+  }
+}

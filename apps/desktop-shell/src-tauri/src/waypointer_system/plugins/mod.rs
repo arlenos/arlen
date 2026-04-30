@@ -9,6 +9,7 @@ pub mod files;
 pub mod man;
 pub mod power;
 pub mod process_kill;
+pub mod quick_actions;
 pub mod projects;
 pub mod shell;
 pub mod unicode;
@@ -56,6 +57,7 @@ pub fn register_builtins(
         Box::new(clipboard::ClipboardPlugin::new(clipboard)),
         Box::new(dict::DictPlugin::new()),
         Box::new(power::PowerPlugin),
+        Box::new(quick_actions::QuickActionsPlugin),
         Box::new(shell::ShellPlugin),
         Box::new(man::ManPlugin),
         Box::new(process_kill::ProcessKillPlugin),
