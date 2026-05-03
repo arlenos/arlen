@@ -1,11 +1,17 @@
 /// Permission profile types for Lunaris OS.
 ///
-/// Each app has a TOML profile at `/var/lib/lunaris/permissions/{uid}/{app_id}.toml`
-/// defining what it can access: Knowledge Graph, Event Bus, filesystem, network, etc.
+/// Each app has a TOML profile at `~/.config/permissions/{app_id}.toml`
+/// defining what it can access: Knowledge Graph, Event Bus, filesystem,
+/// network, clipboard, notifications, etc. The user owns this file
+/// (foundation §7.3 — sole source of truth).
 ///
-/// See `docs/architecture/permission-system.md`.
+/// See `docs/architecture/AUTH-CANONICAL.md`.
 
+pub mod connection_auth;
+pub mod identity;
 pub mod token;
+
+pub use connection_auth::{AuthError, ConnectionAuth};
 
 use std::path::{Path, PathBuf};
 
@@ -18,8 +24,10 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum PermissionError {
-    #[error("profile not found for {app_id} (uid {uid})")]
-    NotFound { uid: u32, app_id: String },
+    #[error("profile not found for {app_id}")]
+    NotFound { app_id: String },
+    #[error("home directory not found")]
+    NoHomeDir,
     #[error("IO: {0}")]
     Io(#[from] std::io::Error),
     #[error("parse: {0}")]
@@ -309,31 +317,36 @@ impl InputPermissions {
 // Loading
 // ---------------------------------------------------------------------------
 
-const PERMISSIONS_DIR: &str = "/var/lib/lunaris/permissions";
-
 /// Get the profile file path for an app.
-pub fn profile_path(uid: u32, app_id: &str) -> PathBuf {
-    let base = std::env::var("LUNARIS_PERMISSIONS_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(PERMISSIONS_DIR));
-    base.join(uid.to_string()).join(format!("{app_id}.toml"))
+///
+/// Foundation §7.3 canonical path: `~/.config/permissions/{app_id}.toml`.
+/// The user owns this file. The optional `LUNARIS_PERMISSIONS_DIR` env
+/// override is for tests and dev sandboxes only — never set in
+/// production.
+pub fn profile_path(app_id: &str) -> Result<PathBuf, PermissionError> {
+    if let Ok(p) = std::env::var("LUNARIS_PERMISSIONS_DIR") {
+        return Ok(PathBuf::from(p).join(format!("{app_id}.toml")));
+    }
+    let home = dirs::home_dir().ok_or(PermissionError::NoHomeDir)?;
+    Ok(home
+        .join(".config")
+        .join("permissions")
+        .join(format!("{app_id}.toml")))
 }
 
-/// Load a permission profile from disk.
-pub fn load_profile(uid: u32, app_id: &str) -> Result<PermissionProfile, PermissionError> {
-    let path = profile_path(uid, app_id);
-    load_profile_from(&path, uid, app_id)
+/// Load a permission profile from the canonical user-config path.
+pub fn load_profile(app_id: &str) -> Result<PermissionProfile, PermissionError> {
+    let path = profile_path(app_id)?;
+    load_profile_from(&path, app_id)
 }
 
 /// Load from an explicit path (for testing).
 pub fn load_profile_from(
     path: &Path,
-    uid: u32,
     app_id: &str,
 ) -> Result<PermissionProfile, PermissionError> {
     if !path.exists() {
         return Err(PermissionError::NotFound {
-            uid,
             app_id: app_id.into(),
         });
     }
@@ -428,7 +441,7 @@ background = true
     fn test_load_from_file() {
         let dir = tempfile::TempDir::new().unwrap();
         let path = write_profile(dir.path(), SAMPLE_PROFILE);
-        let profile = load_profile_from(&path, 1000, "com.example.notes").unwrap();
+        let profile = load_profile_from(&path, "com.example.notes").unwrap();
         assert_eq!(profile.info.app_id, "com.example.notes");
         assert!(profile.graph.app_isolated);
         assert!(profile.filesystem.documents);
@@ -439,7 +452,6 @@ background = true
     fn test_load_not_found() {
         let result = load_profile_from(
             Path::new("/tmp/nonexistent-xyz.toml"),
-            1000,
             "com.missing",
         );
         assert!(matches!(result, Err(PermissionError::NotFound { .. })));
