@@ -18,12 +18,15 @@
 use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use lunaris_permissions::{AuthError, ConnectionAuth};
 use prost::Message;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
+use tokio::sync::Semaphore;
+use tokio::time::timeout;
 
 use crate::clipboard_history::{ClipboardEntry as InternalEntry, ClipboardHistory, Label};
 
@@ -36,6 +39,29 @@ mod proto {
 
 const MAX_FRAME_BYTES: usize = 1024 * 1024;
 const SOCKET_NAME: &str = "clipboard.sock";
+
+/// Cap on simultaneous in-flight broker connections. Mirrors the
+/// search broker's hardening (Codex post-Sprint review MEDIUM-2).
+/// Higher than search because clipboard subscribe-connections are
+/// long-lived (a Lunaris-aware app holds one open across its
+/// session); 64 covers a realistic 8-app workspace with 8x
+/// safety margin. Excess accepts dropped at the listener.
+const MAX_CONCURRENT_CONNS: usize = 64;
+
+/// First-frame deadline: time-from-accept until the connection
+/// has authenticated AND received its first complete envelope.
+/// After the first frame, subscribe-connections idle indefinitely
+/// (their long-lived nature is the whole point of subscribe), so
+/// we cannot timeout the per-frame read in the loop below.
+/// Stalled-attacker mitigation is therefore "first-frame only" —
+/// enough to drop a peer that connects but never sends.
+const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(5);
+
+fn semaphore() -> Arc<Semaphore> {
+    static SEM: OnceLock<Arc<Semaphore>> = OnceLock::new();
+    SEM.get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_CONNS)))
+        .clone()
+}
 
 /// Bind the IPC socket and spawn the accept loop. Idempotent: a
 /// stale socket from a previous shell crash is removed before bind
@@ -65,8 +91,24 @@ async fn run(history: Arc<ClipboardHistory>) -> Result<(), String> {
     loop {
         match listener.accept().await {
             Ok((stream, _)) => {
+                // Connection cap (Codex review parity with search_ipc).
+                // Try-acquire so we never block the accept loop: if
+                // 64 connections are already in flight, drop the new
+                // socket. The peer can retry; a flood-attacker gets
+                // denial-by-default rather than task exhaustion.
+                let permit = match semaphore().try_acquire_owned() {
+                    Ok(p) => p,
+                    Err(_) => {
+                        log::warn!(
+                            "clipboard_ipc: connection cap of {MAX_CONCURRENT_CONNS} reached, dropping accept"
+                        );
+                        drop(stream);
+                        continue;
+                    }
+                };
                 let history = history.clone();
                 tokio::spawn(async move {
+                    let _permit = permit;
                     if let Err(e) = connection_task(stream, history).await {
                         log::warn!("clipboard_ipc: connection task ended: {e}");
                     }
@@ -121,11 +163,36 @@ async fn connection_task(
     let mut buf = Vec::with_capacity(4096);
     let mut chunk = [0u8; 4096];
 
+    // First-frame timeout: an attacker that completes accept+
+    // SO_PEERCRED but never sends a frame would otherwise pin the
+    // task indefinitely. Once the peer's first envelope decodes
+    // successfully we drop the deadline — subscribe-style
+    // connections legitimately idle for hours waiting for clipboard
+    // events. (Codex-parity with search_ipc; first-frame-only
+    // because clipboard is long-lived, unlike search's single-shot.)
+    let mut got_first_frame = false;
+
     loop {
-        let n = reader
-            .read(&mut chunk)
-            .await
-            .map_err(|e| format!("read: {e}"))?;
+        let n = if !got_first_frame {
+            match timeout(FIRST_FRAME_TIMEOUT, reader.read(&mut chunk)).await {
+                Ok(Ok(n)) => n,
+                Ok(Err(e)) => return Err(format!("read: {e}")),
+                Err(_) => {
+                    let g = auth.lock().await;
+                    let (app, pid) = (g.app_id().to_string(), g.pid());
+                    drop(g);
+                    log::warn!(
+                        "clipboard_ipc: first-frame timeout from app_id={app} pid={pid} after {FIRST_FRAME_TIMEOUT:?} — dropping"
+                    );
+                    return Ok(());
+                }
+            }
+        } else {
+            reader
+                .read(&mut chunk)
+                .await
+                .map_err(|e| format!("read: {e}"))?
+        };
         if n == 0 {
             return Ok(());
         }
@@ -133,6 +200,7 @@ async fn connection_task(
 
         while let Some((consumed, envelope)) = decode_frame(&buf)? {
             buf.drain(..consumed);
+            got_first_frame = true;
             // Per-request liveness check (PID-recycle guard).
             if let Err(e) = auth.lock().await.verify_alive() {
                 log::info!("clipboard_ipc: peer no longer alive: {e}");
@@ -538,7 +606,38 @@ mod tests {
             system: Default::default(),
             input: Default::default(),
             search: Default::default(),
+            intents: Default::default(),
         }
+    }
+
+    /// Codex-parity with search_ipc: a stalled or malicious
+    /// authenticated client cannot pin the broker task. Unlike
+    /// search's per-frame deadline, clipboard's deadline is
+    /// FIRST-FRAME ONLY because subscribe-connections legitimately
+    /// idle for hours.
+    #[test]
+    fn first_frame_timeout_is_bounded() {
+        assert!(FIRST_FRAME_TIMEOUT >= Duration::from_secs(1));
+        assert!(FIRST_FRAME_TIMEOUT <= Duration::from_secs(30));
+    }
+
+    /// Codex-parity: connection cap protects against fd-exhaustion.
+    /// 64 (vs search's 32) because clipboard's subscribe pattern
+    /// keeps connections open across the app's session, so a
+    /// realistic 8-app workspace already wants 8 slots.
+    #[test]
+    fn clipboard_connection_cap_is_finite() {
+        assert!(MAX_CONCURRENT_CONNS > 0);
+        assert!(MAX_CONCURRENT_CONNS <= 256);
+    }
+
+    /// Semaphore singleton — repeated calls return the same Arc.
+    #[test]
+    fn clipboard_semaphore_is_shared_singleton() {
+        let s1 = semaphore();
+        let s2 = semaphore();
+        assert_eq!(Arc::as_ptr(&s1), Arc::as_ptr(&s2));
+        assert!(s1.available_permits() <= MAX_CONCURRENT_CONNS);
     }
 
     /// Drives `handle_envelope` over a `UnixStream::pair()` with

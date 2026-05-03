@@ -502,6 +502,41 @@ pub fn emit_shortcut_action_invoked(app_id: &str, window_id: &str, action: &str)
     }
 }
 
+/// Public API: push an `app.intent.dispatched` event for
+/// `shell.intents.dispatch` Knowledge-Graph promotion. **`subject`
+/// is the intent type (`url` / `file` / `text` / `email` /
+/// `project`), NOT the user-supplied data field.** Same audit
+/// discipline as the broker's audit-log lines (see
+/// `intent-system.md` §6) — the graph can learn that an app
+/// dispatched intents of a given type without ever recording
+/// the URL / path / text content.
+///
+/// `handler_id` records which dispatcher actually ran
+/// (`builtin.url` / `builtin.file` / etc.), enabling Phase-7
+/// follow-on analytics that compare built-in default coverage
+/// vs registered third-party handlers without re-instrumenting.
+pub fn emit_intent_dispatched(
+    app_id: &str,
+    action: &str,
+    intent_type: &str,
+    handler_id: &str,
+) {
+    use prost::Message;
+    let mut metadata = std::collections::HashMap::new();
+    metadata.insert("handler".to_string(), handler_id.to_string());
+    metadata.insert("source_app_id".to_string(), app_id.to_string());
+    let payload = proto::AppActionPayload {
+        category: "intent".to_string(),
+        action: action.to_string(),
+        subject: intent_type.to_string(),
+        metadata,
+    };
+    let encoded = payload.encode_to_vec();
+    if let Err(e) = emit_event("app.intent.dispatched", encoded) {
+        log::warn!("emit intent dispatched failed: {e}");
+    }
+}
+
 /// Extract a string field from the JSON-encoded event payload.
 fn extract_payload_field(event: &proto::Event, field: &str) -> Option<String> {
     let json: serde_json::Value = serde_json::from_slice(&event.payload).ok()?;

@@ -5,6 +5,7 @@ mod audio;
 mod battery;
 mod clipboard_history;
 mod clipboard_ipc;
+mod intent_ipc;
 mod search_ipc;
 mod event_bus;
 mod gtk_menu_bridge;
@@ -246,6 +247,7 @@ pub fn run() {
             );
             clipboard_ipc::start(clipboard_for_watcher);
             search_ipc::start(app.handle().clone());
+            intent_ipc::start(app.handle().clone());
             sni::start(app.handle().clone(), sni_items);
             bluetooth::start_monitor(app.handle().clone());
             // Register the BlueZ Agent1 implementation so first-time

@@ -1,0 +1,102 @@
+// shell.intents broker wire format.
+//
+// Single-shot request/response: external Tauri apps connect to
+// $XDG_RUNTIME_DIR/lunaris/intents.sock, send one DispatchRequest,
+// receive DispatchResponse or IntentError, and disconnect.
+//
+// Long-lived handler-registration goes through modulesd's
+// (planned Phase-7) `intent.handler` extension point and is NOT
+// covered by this proto.
+//
+// See `docs/architecture/intent-system.md` for the broker
+// contract and Phase-6/Phase-7 split.
+
+syntax = "proto3";
+
+package lunaris.intents;
+
+// Wire-format envelope. Brokers and clients exchange one envelope
+// per direction per single-shot connection.
+message IntentEnvelope {
+  oneof message {
+    DispatchRequest dispatch_request = 1;
+    DispatchResponse dispatch_response = 2;
+    IntentError error = 3;
+  }
+}
+
+// Dispatch a typed intent. Apps require the
+// `[intents] dispatch = true` permission scope.
+//
+// Phase 6 routes by `type` to a built-in handler:
+//   url   -> xdg-portal-lunaris OpenURI
+//   file  -> xdg-portal-lunaris OpenURI (file:// form)
+//   text  -> clipboard_history.write
+//   email -> xdg-portal-lunaris OpenURI (mailto:)
+//   project -> projects.activate (Focus Mode)
+//
+// Phase 7 will additionally consult modulesd-hosted
+// `intent.handler` modules registered for the action+type+pattern.
+message DispatchRequest {
+  // App-defined verb (e.g. "view", "edit", "share"). Phase 6
+  // built-ins ignore this; Phase 7 register'd handlers can
+  // pattern-match on it.
+  string action = 1;
+
+  // Intent type. One of: "url", "file", "text", "email", "project".
+  // Unknown types return ErrorKind::UnknownType.
+  string type = 2;
+
+  // Type-specific payload. UTF-8 string in Phase 6:
+  //   url     -> URL
+  //   file    -> absolute path or file:// URI
+  //   text    -> the text (max 64 KB)
+  //   email   -> mailto: URI
+  //   project -> project_id
+  // Reserved as `bytes` so Phase 7 can extend with type-specific
+  // structs without proto schema break.
+  bytes data = 3;
+
+  // Optional fallback string. Ignored in Phase 6 (no register'd
+  // handlers exist; built-ins always match). Phase 7 honors this
+  // when no register'd handler matches the pattern.
+  string fallback = 4;
+}
+
+// Successful dispatch.
+message DispatchResponse {
+  // Identifier of the handler that ran:
+  //   "builtin.url" | "builtin.file" | "builtin.text"
+  //   | "builtin.email" | "builtin.project"
+  // Phase 7 third-party handlers will use module-id form.
+  string handler = 1;
+
+  // Type-specific structured outcome (optional). Examples:
+  //   text    -> clipboard entry id
+  //   project -> project name
+  // Empty for url/file/email (xdg-open is fire-and-forget).
+  string outcome = 2;
+}
+
+message IntentError {
+  ErrorKind kind = 1;
+  string detail = 2;
+}
+
+enum ErrorKind {
+  ERROR_UNKNOWN = 0;
+  ERROR_PERMISSION_DENIED = 1;
+  // `type` field is not on the Phase-6 allowlist.
+  ERROR_UNKNOWN_TYPE = 2;
+  // `data` is not valid UTF-8 / not the right shape for `type`.
+  ERROR_INVALID_DATA = 3;
+  // Built-in dispatcher missing or failed (e.g. xdg-portal not
+  // running, xdg-open binary absent).
+  ERROR_NO_HANDLER = 4;
+  // Type-specific lookup failed (project_id not in graph,
+  // file path missing, etc.).
+  ERROR_NOT_FOUND = 5;
+  // `data` exceeds the per-type byte cap (text: 64 KB).
+  ERROR_DATA_TOO_LARGE = 6;
+  ERROR_INTERNAL = 99;
+}
