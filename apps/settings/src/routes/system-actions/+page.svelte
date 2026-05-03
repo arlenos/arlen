@@ -163,7 +163,7 @@
     padding: 0.75rem 1rem;
     border: 1px dashed
       color-mix(in srgb, var(--foreground) 14%, transparent);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
   }
 
   .footer-note code {

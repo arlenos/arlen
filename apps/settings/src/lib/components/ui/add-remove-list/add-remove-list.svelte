@@ -83,7 +83,7 @@
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
     border: 1px dashed
       color-mix(in srgb, var(--foreground) 14%, transparent);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     text-align: center;
   }
 
@@ -98,7 +98,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.375rem 0.5rem 0.375rem 0.75rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
     transition: background 0.1s ease;
   }
@@ -121,7 +121,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     border: 1px solid transparent;
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);

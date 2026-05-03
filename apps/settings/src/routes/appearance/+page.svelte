@@ -39,7 +39,12 @@
 
   const currentAccent = $derived(resolveAccent($theme.data));
   const accentOverride = $derived($theme.data?.overrides?.accent);
-  const cornerRadius = $derived($theme.data?.window?.corner_radius ?? 8);
+  // Radius intensity multiplier (0.0..=2.0). Replaces the old
+  // `[window].corner_radius` u32 px slider with a semantic
+  // multiplier applied to all chip/button/input/card/modal
+  // tokens. 1.0 = theme defaults; 0.0 = sharp brutalist;
+  // 2.0 = max round.
+  const radiusIntensity = $derived($theme.data?.overrides?.radius_intensity ?? 1.0);
   const borderWidth = $derived($theme.data?.window?.border_width ?? 2);
   // Gaps live in compositor.toml [layout], not appearance.toml.
   // Same path the desktop-shell LayoutPopover writes to, so the
@@ -125,22 +130,24 @@
       </Group>
 
       <Group label="Window">
-        <Row label="Corner Radius" id="corner-radius">
+        <Row label="Roundness" id="radius-intensity">
           {#snippet preview()}
             <div
               class="radius-preview"
-              style="border-radius: {cornerRadius}px;"
+              style="border-radius: {Math.round(12 * radiusIntensity)}px;"
             ></div>
           {/snippet}
           {#snippet control()}
             <ValueSlider
-              value={cornerRadius}
+              value={Math.round(radiusIntensity * 100)}
               min={0}
-              max={16}
-              step={1}
-              unit="px"
-              ariaLabel="Corner Radius"
-              onchange={(v) => setWindow("corner_radius", v)}
+              max={200}
+              step={5}
+              unit="%"
+              ariaLabel="Roundness"
+              onchange={(v) =>
+                theme.setValue("overrides.radius_intensity", v / 100)
+              }
             />
           {/snippet}
         </Row>
@@ -298,7 +305,7 @@
 
   .error {
     padding: 0.75rem 1rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     border: 1px solid
       color-mix(in srgb, var(--color-error) 40%, transparent);
     background: color-mix(in srgb, var(--color-error) 10%, transparent);
@@ -319,7 +326,7 @@
   .border-preview {
     width: 22px;
     height: 22px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     border-style: solid;
     border-color: color-mix(in srgb, var(--foreground) 35%, transparent);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
@@ -336,7 +343,7 @@
     display: block;
     width: 9px;
     height: 22px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 15%, transparent);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 20%, transparent);

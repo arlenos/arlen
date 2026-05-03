@@ -161,7 +161,7 @@
     font-size: 0.75rem;
     color: var(--foreground);
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

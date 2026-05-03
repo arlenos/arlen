@@ -13,7 +13,7 @@
     {label}
   </h2>
   <div
-    class="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card"
+    class="divide-y divide-border overflow-hidden rounded-card border border-border bg-card"
   >
     {@render children?.()}
   </div>

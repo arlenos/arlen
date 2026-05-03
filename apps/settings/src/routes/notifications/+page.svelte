@@ -701,7 +701,7 @@
   }
   .error {
     padding: 0.75rem 1rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     border: 1px solid color-mix(in srgb, var(--color-error) 40%, transparent);
     background: color-mix(in srgb, var(--color-error) 10%, transparent);
     color: var(--color-error);
@@ -729,7 +729,7 @@
     align-items: center;
     text-align: left;
     padding: 0.5rem 0.625rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 9%, transparent);
     cursor: pointer;
@@ -751,7 +751,7 @@
     justify-content: center;
     width: 24px;
     height: 24px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     color: color-mix(in srgb, var(--foreground) 65%, transparent);
   }
   .dnd-pill.active .dnd-pill-icon {
@@ -773,7 +773,7 @@
     align-items: center;
     gap: 6px;
     padding: 0.5rem 0.625rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
     color: var(--color-accent);
@@ -804,7 +804,7 @@
     align-items: center;
     gap: 6px;
     padding: 0.4rem 0.65rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     color: var(--foreground);
@@ -831,7 +831,7 @@
   .chip {
     height: 22px;
     padding: 0 0.5rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--color-accent) 18%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
     color: var(--foreground);
@@ -855,14 +855,14 @@
     display: inline-flex;
     gap: 2px;
     padding: 2px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 9%, transparent);
   }
   .seg-pill {
     height: 22px;
     padding: 0 0.6rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: transparent;
     border: none;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
@@ -888,7 +888,7 @@
   .test-btn {
     height: 26px;
     padding: 0 0.65rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     color: var(--foreground);
@@ -913,7 +913,7 @@
     align-items: center;
     gap: 6px;
     padding: 0.4rem 0.65rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--color-error) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-error) 35%, transparent);
     color: var(--color-error);
@@ -946,7 +946,7 @@
   .apps-filter {
     height: 28px;
     padding: 0 0.6rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     color: var(--foreground);

@@ -22,10 +22,17 @@ export interface ThemeSection {
 }
 
 /// `[overrides]` section in the shell's appearance schema. This is where
-/// the accent override belongs.
+/// the accent override and the user's radius-intensity multiplier
+/// live (the latter replaces the now-removed `[window].corner_radius`
+/// integer-px slider — see docs/architecture/theme-system.md).
 export interface OverridesSection {
   accent?: string;
   font_scale?: number;
+  /// Radius intensity multiplier `0.0..=2.0`. `1.0` = theme defaults,
+  /// `0.0` = sharp brutalist, `2.0` = max round. Applied at emit
+  /// time to all semantic radius tokens (chip/button/input/card/
+  /// modal). `full` and `window_corners` stay categorical.
+  radius_intensity?: number;
 }
 
 export interface WindowBorderSection {
@@ -36,7 +43,7 @@ export interface WindowBorderSection {
 }
 
 export interface WindowSection {
-  corner_radius?: number;
+  /// Outline thickness in pixels (compositor render). Zero = no outline.
   border_width?: number;
   border?: WindowBorderSection;
 }
@@ -141,7 +148,31 @@ export function accentForeground(hex: string): string {
 const DEFAULT_FONT_INTERFACE = "Inter Variable";
 const DEFAULT_FONT_MONO = "JetBrains Mono";
 const DEFAULT_FONT_SIZE = 14;
-const DEFAULT_RADIUS = 8;
+
+// Semantic radius base values. Mirror sdk/theme bundled defaults +
+// the LunarisTheme::scale_radius math (intensity × base, clamped to
+// [0.0, 2.0], rounded to integer pixels). Theme switching does not
+// change these — they're per-token defaults that the theme author
+// can override via `~/.config/lunaris/theme.toml [radius]`. The
+// per-user multiplier is read from `appearance.toml [overrides]
+// .radius_intensity` and applied here so app-settings's CSD chrome
+// (WindowControls + cards + popovers) respects the same intensity
+// as the desktop-shell and compositor-rendered surfaces.
+const RADIUS_DEFAULTS = {
+  chip:   4,
+  button: 6,
+  input:  8,
+  card:   12,
+  modal:  16,
+  full:   9999,
+} as const;
+
+/// `effective_X = round(base × clamp(intensity, 0, 2))` — same math
+/// as `LunarisTheme::scale_radius` in sdk/theme.
+function effectiveRadius(base: number, intensity: number): number {
+  const i = Math.max(0, Math.min(2, intensity));
+  return Math.round(base * i);
+}
 
 /// Apply a loaded AppearanceConfig to the document root as CSS variables.
 ///
@@ -166,8 +197,33 @@ export function applyAppearance(config: AppearanceConfig | null): void {
   root.style.setProperty("--color-accent", accent);
   root.style.setProperty("--color-accent-foreground", accentForeground(accent));
 
-  const radius = config?.window?.corner_radius ?? DEFAULT_RADIUS;
-  root.style.setProperty("--radius", `${radius / 16}rem`);
+  // Radius intensity → 6 semantic CSS vars. `full` and the per-corner
+  // window outline are categorical and never scaled (mirrors
+  // LunarisTheme::effective_full / effective_window_corners).
+  // Codex post-Sprint review HIGH-3 + companion app-settings-side
+  // intensity-injection bug.
+  const intensity = config?.overrides?.radius_intensity ?? 1.0;
+  root.style.setProperty(
+    "--radius-chip",
+    `${effectiveRadius(RADIUS_DEFAULTS.chip, intensity)}px`,
+  );
+  root.style.setProperty(
+    "--radius-button",
+    `${effectiveRadius(RADIUS_DEFAULTS.button, intensity)}px`,
+  );
+  root.style.setProperty(
+    "--radius-input",
+    `${effectiveRadius(RADIUS_DEFAULTS.input, intensity)}px`,
+  );
+  root.style.setProperty(
+    "--radius-card",
+    `${effectiveRadius(RADIUS_DEFAULTS.card, intensity)}px`,
+  );
+  root.style.setProperty(
+    "--radius-modal",
+    `${effectiveRadius(RADIUS_DEFAULTS.modal, intensity)}px`,
+  );
+  root.style.setProperty("--radius-full", `${RADIUS_DEFAULTS.full}px`);
 
   const fontInterface =
     config?.fonts?.interface ?? DEFAULT_FONT_INTERFACE;

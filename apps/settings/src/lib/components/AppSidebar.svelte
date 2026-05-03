@@ -263,7 +263,7 @@
     padding: 4px 10px 4px 30px;
     background: color-mix(in srgb, var(--color-fg-app) 6%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-fg-app) 8%, transparent);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     color: var(--color-fg-app);
     font-size: 0.875rem;
     outline: none;
@@ -312,7 +312,7 @@
     overflow-y: auto;
     background: var(--color-bg-card);
     border: 1px solid color-mix(in srgb, var(--color-fg-app) 12%, transparent);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     box-shadow: var(--shadow-lg);
     padding: 4px;
   }
@@ -325,7 +325,7 @@
     padding: 8px 10px;
     background: transparent;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     color: var(--color-fg-app);
     text-align: left;
     cursor: pointer;
@@ -345,7 +345,7 @@
     width: 28px;
     height: 28px;
     flex-shrink: 0;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--color-fg-app) 8%, transparent);
     color: color-mix(in srgb, var(--color-fg-app) 80%, transparent);
   }

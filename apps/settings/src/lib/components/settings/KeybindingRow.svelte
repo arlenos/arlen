@@ -33,7 +33,7 @@
 </script>
 
 <div
-  class="flex items-center gap-3 rounded-[var(--radius-sm)] border border-transparent px-3 py-2 transition-colors hover:border-border hover:bg-muted/30"
+  class="flex items-center gap-3 rounded-[var(--radius-chip)] border border-transparent px-3 py-2 transition-colors hover:border-border hover:bg-muted/30"
   class:bg-destructive={hasConflict}
   class:text-destructive-foreground={hasConflict}
   class:border-destructive={hasConflict}
@@ -62,7 +62,7 @@
 
   <button
     type="button"
-    class="inline-flex min-w-20 items-center justify-center rounded-[var(--radius-sm)] border border-border bg-background px-3 py-1 font-mono text-xs transition-colors hover:bg-muted"
+    class="inline-flex min-w-20 items-center justify-center rounded-[var(--radius-chip)] border border-border bg-background px-3 py-1 font-mono text-xs transition-colors hover:bg-muted"
     onclick={() => onRebind(entry)}
     aria-label="Change binding for {entry.label}"
   >

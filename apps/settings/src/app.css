@@ -36,7 +36,16 @@
   --color-warning:        #f59e0b;
   --color-success:        #10b981;
 
-  --radius: 0.5rem;
+  /* Semantic radius tokens — defaults mirror sdk/theme/themes/dark.toml
+     for first-paint correctness before the runtime theme injection
+     runs. Runtime intensity overrides come via appearance.toml
+     [overrides].radius_intensity. See docs/architecture/theme-system.md. */
+  --radius-chip:   4px;
+  --radius-button: 6px;
+  --radius-input:  8px;
+  --radius-card:   12px;
+  --radius-modal:  16px;
+  --radius-full:   9999px;
 
   /* Control heights — single source of truth for the height of
      interactive elements (buttons, inputs, selects, sliders…) so
@@ -161,13 +170,19 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --radius-sm: max(0px, calc(var(--radius) - 4px));
-  --radius-md: max(0px, calc(var(--radius) - 2px));
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 12px);
-  --radius-3xl: calc(var(--radius) + 20px);
-  --radius-full: 9999px;
+  /* Semantic radius tokens — see sdk/theme + theme-system.md.
+     `--radius-X` defaults are pre-loaded in :root; these
+     @theme-inline lines just expose them as Tailwind utilities
+     (rounded-chip / rounded-button / rounded-input / rounded-card
+     / rounded-modal / rounded-full). Runtime overrides come via
+     the user's appearance.toml [overrides].radius_intensity
+     multiplier applied at theme-emit time. */
+  --radius-chip:   var(--radius-chip);
+  --radius-button: var(--radius-button);
+  --radius-input:  var(--radius-input);
+  --radius-card:   var(--radius-card);
+  --radius-modal:  var(--radius-modal);
+  --radius-full:   var(--radius-full);
 
   /* Control height utilities — `h-control` / `h-control-sm` /
      `h-control-lg` map to the design tokens. Use these in Tailwind
@@ -246,7 +261,7 @@ textarea,
 }
 ::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--foreground) 18%, transparent);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-input);
   border: 2px solid var(--background);
   background-clip: padding-box;
 }

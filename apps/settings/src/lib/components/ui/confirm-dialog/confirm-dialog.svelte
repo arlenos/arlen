@@ -89,7 +89,7 @@
     onkeydown={handleKeydown}
   >
     <div
-      class="w-full max-w-md rounded-[var(--radius)] border border-border bg-card p-6 shadow-lg"
+      class="w-full max-w-md rounded-[var(--radius-input)] border border-border bg-card p-6 shadow-lg"
     >
       <h2
         id="confirm-dialog-title"

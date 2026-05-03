@@ -434,9 +434,13 @@ active = "dark"
 mode = "dark"
 
 [overrides]
+# `radius_intensity` is the user's global radius multiplier (0.0..=2.0).
+# Applied at emit time to chip/button/input/card/modal tokens; `full`
+# and the per-corner window outline stay categorical. See
+# docs/architecture/theme-system.md.
+# radius_intensity = 1.0
 
 [window]
-corner_radius = 8
 border_width = 1
 gap_size = 8
 

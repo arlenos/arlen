@@ -182,7 +182,7 @@
     padding: 20px;
     background: var(--color-bg-card);
     border: 1px solid color-mix(in srgb, var(--color-fg-app) 12%, transparent);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-card);
     box-shadow: var(--shadow-lg);
     color: var(--color-fg-app);
     display: flex;
@@ -238,7 +238,7 @@
     padding: 8px 10px;
     background: color-mix(in srgb, var(--destructive) 18%, transparent);
     border: 1px solid color-mix(in srgb, var(--destructive) 40%, transparent);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     font-size: 0.8rem;
     color: var(--destructive);
   }

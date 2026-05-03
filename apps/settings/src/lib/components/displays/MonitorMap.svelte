@@ -273,7 +273,7 @@
     height: 360px;
     background: color-mix(in srgb, var(--color-fg-app) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-fg-app) 10%, transparent);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     overflow: hidden;
     user-select: none;
   }
@@ -309,7 +309,7 @@
     padding: 8px;
     background: var(--color-bg-card);
     border: 2px solid color-mix(in srgb, var(--color-fg-app) 15%, transparent);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     color: var(--color-fg-app);
     cursor: grab;
     transition:

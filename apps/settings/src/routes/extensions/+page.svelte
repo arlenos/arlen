@@ -190,7 +190,7 @@
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     padding: 0.05rem 0.3rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
   }
   .refresh-btn {
@@ -200,7 +200,7 @@
     width: 28px;
     height: 28px;
     padding: 0;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     color: var(--foreground);
@@ -218,7 +218,7 @@
     gap: 8px;
     padding: 0.6rem 0.75rem;
     margin-bottom: 1rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
     color: var(--color-accent);
@@ -252,7 +252,7 @@
     width: 100%;
     height: 30px;
     padding: 0 0.7rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     color: var(--foreground);
@@ -283,7 +283,7 @@
   }
   .error {
     padding: 0.75rem 1rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     border: 1px solid color-mix(in srgb, var(--color-error) 40%, transparent);
     background: color-mix(in srgb, var(--color-error) 10%, transparent);
     color: var(--color-error);
@@ -297,7 +297,7 @@
     text-align: center;
     gap: 0.75rem;
     padding: 3rem 1rem;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-card);
     border: 1px dashed color-mix(in srgb, var(--foreground) 15%, transparent);
     background: color-mix(in srgb, var(--foreground) 2%, transparent);
   }
@@ -312,7 +312,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-card);
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
     color: var(--color-accent);
   }
@@ -333,7 +333,7 @@
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     padding: 0.05rem 0.3rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
   }
   .empty strong {
@@ -347,7 +347,7 @@
     color: var(--color-accent);
     text-decoration: none;
     padding: 0.3rem 0.6rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     transition: background-color 120ms ease;
   }
   .empty-link:hover {

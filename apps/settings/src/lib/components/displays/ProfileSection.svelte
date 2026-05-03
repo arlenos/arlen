@@ -314,7 +314,7 @@
     padding: 1px 6px;
     background: color-mix(in srgb, var(--color-accent) 22%, transparent);
     color: var(--color-accent);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     font-size: 0.7rem;
     font-weight: 600;
     text-transform: uppercase;

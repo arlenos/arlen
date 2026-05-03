@@ -132,7 +132,7 @@
     aria-labelledby="keycapture-title"
   >
     <div
-      class="w-full max-w-md rounded-[var(--radius)] border border-border bg-card p-6 shadow-lg"
+      class="w-full max-w-md rounded-[var(--radius-input)] border border-border bg-card p-6 shadow-lg"
     >
       <h2 id="keycapture-title" class="mb-2 text-base font-semibold">
         Press a key combination
@@ -143,7 +143,7 @@
           : "Press the keys you want to bind. Press Escape to cancel."}
       </p>
       <div
-        class="flex min-h-12 items-center justify-center rounded-[var(--radius-sm)] border border-border bg-background px-4 py-3 font-mono text-sm"
+        class="flex min-h-12 items-center justify-center rounded-[var(--radius-chip)] border border-border bg-background px-4 py-3 font-mono text-sm"
         class:border-destructive={hasConflict}
       >
         {captured ?? livePreview}
@@ -157,7 +157,7 @@
             </p>
           {:else if hasConflict && conflicts}
             <div
-              class="flex items-start gap-2 rounded-[var(--radius-sm)] border border-destructive/40 bg-destructive/10 p-3 text-xs"
+              class="flex items-start gap-2 rounded-[var(--radius-chip)] border border-destructive/40 bg-destructive/10 p-3 text-xs"
             >
               <AlertTriangle
                 class="mt-0.5 h-4 w-4 shrink-0 text-destructive"

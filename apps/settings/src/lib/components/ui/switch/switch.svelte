@@ -44,7 +44,7 @@
 <style>
   .sw {
     position: relative;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 14%, transparent);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
@@ -88,7 +88,7 @@
     position: absolute;
     top: 1px;
     left: 1px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: var(--foreground);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
     transition: transform var(--duration-medium) var(--ease-out);
