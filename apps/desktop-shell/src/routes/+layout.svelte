@@ -42,6 +42,7 @@
   import { Toaster } from "svelte-sonner";
   import { toastConfig, initToastConfig } from "$lib/stores/toastConfig.js";
   import { initToastBridge } from "$lib/stores/toastBridge.js";
+  import { initToolbarStore } from "$lib/stores/toolbarStore";
 
   onMount(() => {
     // Every store init now returns a disposer. Collecting them lets
@@ -61,6 +62,7 @@
       initProjects(),
       initToastConfig(),
       initToastBridge(),
+      initToolbarStore(),
     ];
 
     // Initialize theme system (loads appearance.toml, injects CSS vars,

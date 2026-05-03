@@ -49,6 +49,30 @@ fn log_frontend(message: String) {
     println!("[FRONTEND] {message}");
 }
 
+/// Dispatch a toolbar action click back to the source app's
+/// specific window.
+///
+/// User clicked a Quick Action or Breadcrumb segment in the
+/// shell's TopBar. The shell does not hold direct webview
+/// handles for other Tauri apps, so the dispatch crosses the
+/// process boundary via the Event Bus: we emit
+/// `app.toolbar.action_invoked` with `(app_id, window_id,
+/// action)`. The target app's tauri-plugin-shell consumer
+/// filters on its own `LUNARIS_APP_ID`, looks up the webview
+/// by `window_id`, and re-emits as `lunaris://app-action`
+/// scoped to that webview only — multi-window apps route the
+/// click correctly back to the originating window.
+///
+/// `window_id` is the Tauri webview label captured when the
+/// toolbar state was set. Empty string falls back to app-wide
+/// broadcast (legacy / single-window apps).
+///
+/// See `docs/architecture/topbar-toolbar.md` FA6.
+#[tauri::command]
+fn dispatch_app_action(app_id: String, window_id: String, action: String) {
+    event_bus::emit_toolbar_action_invoked(&app_id, &window_id, &action);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::init();
@@ -248,6 +272,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             log_frontend,
+            dispatch_app_action,
             modulesd_commands::modulesd_list_modules,
             modulesd_commands::mint_iframe,
             modulesd_commands::module_host_call,

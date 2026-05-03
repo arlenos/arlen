@@ -10,8 +10,16 @@ use tauri::{AppHandle, Emitter};
 
 const DEFAULT_CONSUMER_SOCKET: &str = "/run/lunaris/event-bus-consumer.sock";
 const CONSUMER_ID: &str = "desktop-shell";
-/// Subscribe to window, config, and project events.
-const SUBSCRIPTIONS: &str = "window.,config.,project.";
+/// Subscribe to window, config, project, and app.toolbar events.
+///
+/// Note: per-app toolbar state is NOT pruned on process exit
+/// in this iteration. Stale HashMap entries are harmless
+/// (rendered only when the app id matches the focused window's
+/// app id, and bounded in size by app count). Process-exit
+/// cleanup + TTL fallback (FA8 in topbar-toolbar.md) lands in
+/// a Phase-6 hardening pass once pid→app_id mapping
+/// infrastructure exists.
+const SUBSCRIPTIONS: &str = "window.,config.,project.,app.toolbar.";
 
 /// Window event payload forwarded to the TypeScript frontend.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -124,6 +132,15 @@ fn forward_to_frontend(app: &AppHandle, event: proto::Event) {
         return;
     }
 
+    // App.toolbar events. Decoded and forwarded to the frontend
+    // as Tauri events. The frontend store keys by app_id and
+    // derives focused-app render. State stays in memory until
+    // the app emits `cleared` or the shell process exits.
+    if event_type.starts_with("app.toolbar.") {
+        forward_toolbar_event(app, event_type, &event.payload);
+        return;
+    }
+
     // Config events.
     if event_type.starts_with("config.") {
         let payload = ConfigChangedPayload {
@@ -186,6 +203,130 @@ fn forward_project_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
             }
         }
         _ => {}
+    }
+}
+
+/// Forward `app.toolbar.*` events to the frontend. Events are
+/// re-emitted as `lunaris://toolbar-{event}` Tauri events with
+/// the decoded payload as JSON; the frontend keys per-app
+/// state by `app_id` and renders only the focused app's slot.
+fn forward_toolbar_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
+    use prost::Message;
+
+    match event_type {
+        "app.toolbar.quick_actions" => {
+            if let Ok(p) = proto::ToolbarQuickActionsPayload::decode(payload) {
+                let json = serde_json::json!({
+                    "appId": p.app_id,
+                    "windowId": p.window_id,
+                    "actions": p.actions.into_iter().map(|a| serde_json::json!({
+                        "icon": a.icon,
+                        "action": a.action,
+                        "tooltip": a.tooltip,
+                        "toggle": a.toggle,
+                        "active": a.active,
+                    })).collect::<Vec<_>>(),
+                });
+                let _ = app.emit("lunaris://toolbar-quick-actions", &json);
+            }
+        }
+        "app.toolbar.breadcrumb" => {
+            if let Ok(p) = proto::ToolbarBreadcrumbPayload::decode(payload) {
+                let json = serde_json::json!({
+                    "appId": p.app_id,
+                    "windowId": p.window_id,
+                    "items": p.items.into_iter().map(|i| serde_json::json!({
+                        "label": i.label,
+                        "action": i.action,
+                    })).collect::<Vec<_>>(),
+                });
+                let _ = app.emit("lunaris://toolbar-breadcrumb", &json);
+            }
+        }
+        "app.toolbar.progress" => {
+            if let Ok(p) = proto::ToolbarProgressPayload::decode(payload) {
+                let json = serde_json::json!({
+                    "appId": p.app_id,
+                    "windowId": p.window_id,
+                    "value": p.value,
+                    "label": if p.label.is_empty() { None } else { Some(p.label) },
+                });
+                let _ = app.emit("lunaris://toolbar-progress", &json);
+            }
+        }
+        "app.toolbar.progress_cleared" => {
+            if let Ok(p) = proto::ToolbarProgressClearedPayload::decode(payload) {
+                let json = serde_json::json!({
+                    "appId": p.app_id,
+                    "windowId": p.window_id,
+                });
+                let _ = app.emit("lunaris://toolbar-progress-cleared", &json);
+            }
+        }
+        "app.toolbar.cleared" => {
+            if let Ok(p) = proto::ToolbarClearedPayload::decode(payload) {
+                let json = serde_json::json!({
+                    "appId": p.app_id,
+                    "windowId": p.window_id,
+                });
+                let _ = app.emit("lunaris://toolbar-cleared", &json);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// One-shot producer-side emit. Used by the action-dispatch
+/// path which needs to push an `app.toolbar.action_invoked`
+/// event into the bus when the user clicks a Quick Action or
+/// Breadcrumb. Synchronous + connection-per-call: actions are
+/// rare so the cost is negligible, and avoiding a long-lived
+/// emitter keeps this module sync-`std::os::unix` flavour.
+fn emit_event(event_type: &str, payload: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
+    use prost::Message;
+    let producer_socket = std::env::var("LUNARIS_PRODUCER_SOCKET")
+        .unwrap_or_else(|_| "/run/lunaris/event-bus-producer.sock".to_string());
+
+    let event = proto::Event {
+        id: uuid::Uuid::now_v7().to_string(),
+        r#type: event_type.to_string(),
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_micros() as i64,
+        source: "desktop-shell".to_string(),
+        pid: std::process::id(),
+        session_id: std::env::var("LUNARIS_SESSION_ID").unwrap_or_else(|_| "shell".into()),
+        payload,
+        uid: 0,
+        project_id: String::new(),
+    };
+
+    let encoded = event.encode_to_vec();
+    let len = u32::try_from(encoded.len())?.to_be_bytes();
+
+    let mut stream = UnixStream::connect(producer_socket)?;
+    stream.write_all(&len)?;
+    stream.write_all(&encoded)?;
+    Ok(())
+}
+
+/// Public API: push an `app.toolbar.action_invoked` event so
+/// the source app's tauri-plugin-shell consumer can forward it
+/// to its specific webview. `window_id` is the originating
+/// webview label captured when the toolbar state was set;
+/// empty string falls back to app-wide broadcast on the
+/// receiver side.
+pub fn emit_toolbar_action_invoked(app_id: &str, window_id: &str, action: &str) {
+    use prost::Message;
+    let payload = proto::ToolbarActionInvokedPayload {
+        app_id: app_id.to_string(),
+        action: action.to_string(),
+        window_id: window_id.to_string(),
+    };
+    let encoded = payload.encode_to_vec();
+    if let Err(e) = emit_event("app.toolbar.action_invoked", encoded) {
+        log::warn!("emit toolbar action_invoked failed: {e}");
     }
 }
 
