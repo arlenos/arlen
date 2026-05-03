@@ -1,8 +1,9 @@
 use crate::graph::GraphHandle;
 use crate::project::ProjectStore;
 use crate::proto::{
-    AnnotationClearPayload, AnnotationSetPayload, FileOpenedPayload, PresenceClearPayload,
-    PresenceSetPayload, TimelineRecordPayload, WindowFocusedPayload,
+    AnnotationClearPayload, AnnotationSetPayload, BadgeSetPayload, BadgeStatus,
+    FileOpenedPayload, PresenceClearPayload, PresenceSetPayload, TimelineRecordPayload,
+    WindowFocusedPayload,
 };
 use crate::utils::escape_cypher;
 use anyhow::Result;
@@ -30,9 +31,9 @@ pub(crate) fn annotation_id(target_type: &str, target_id: &str, namespace: &str)
     uuid::Uuid::new_v5(&ANNOTATION_UUID_NAMESPACE, key.as_bytes())
 }
 
-/// Number of distinct files opened in one session before an inferred
-/// project gets promoted (visible in Waypointer / Focus Mode).
-const PROMOTION_THRESHOLD: usize = 3;
+/// Fallback when `graph.toml [projects].auto_promote_threshold` is
+/// not set. Mirrors `WatchConfig::default().auto_promote_threshold`.
+const PROMOTION_THRESHOLD_DEFAULT: usize = 3;
 
 /// How often the promotion pass runs.
 const PROMOTION_INTERVAL: Duration = Duration::from_secs(30);
@@ -53,6 +54,13 @@ pub async fn run(pool: SqlitePool, graph: GraphHandle) -> Result<()> {
 
     let project_store = ProjectStore::new(graph.clone());
 
+    // Read once at startup. graph.toml hot-reload is a separate
+    // sprint item — for now, threshold changes need a daemon
+    // restart. Documented in the Settings UI.
+    let watch_config = crate::project::watch_config::WatchConfig::load();
+    let threshold = watch_config.auto_promote_threshold;
+    info!(threshold, "auto-promotion threshold loaded from graph.toml");
+
     let mut interval = time::interval(PROMOTION_INTERVAL);
     // Skip the first immediate tick so we don't run before the write store
     // has had a chance to accumulate events.
@@ -60,7 +68,7 @@ pub async fn run(pool: SqlitePool, graph: GraphHandle) -> Result<()> {
 
     loop {
         interval.tick().await;
-        if let Err(e) = run_pass(&pool, &graph, &project_store).await {
+        if let Err(e) = run_pass(&pool, &graph, &project_store, threshold).await {
             error!("promotion pass failed: {e}");
         }
     }
@@ -115,7 +123,12 @@ async fn write_hwm(pool: &SqlitePool, hwm: i64) -> Result<()> {
 /// - All `file.opened` events become `File` and `App` nodes with an `ACCESSED_BY` edge.
 /// - All `window.focused` events become `App`, `Session`, and `Event` nodes with `ACTIVE_IN` edge.
 /// - Other event types are stored in SQLite but not yet promoted (Phase 2).
-async fn run_pass(pool: &SqlitePool, graph: &GraphHandle, project_store: &ProjectStore) -> Result<()> {
+async fn run_pass(
+    pool: &SqlitePool,
+    graph: &GraphHandle,
+    project_store: &ProjectStore,
+    promote_threshold: usize,
+) -> Result<()> {
     let hwm = read_hwm(pool).await?;
 
     // Fetch unprocessed events ordered by timestamp, including the payload.
@@ -155,6 +168,7 @@ async fn run_pass(pool: &SqlitePool, graph: &GraphHandle, project_store: &Projec
                                 &fp.path,
                                 session_id,
                                 project_store,
+                                promote_threshold,
                             )
                             .await
                             {
@@ -181,6 +195,7 @@ async fn run_pass(pool: &SqlitePool, graph: &GraphHandle, project_store: &Projec
                 promote_annotation_set(graph, timestamp, payload).await
             }
             "app.annotation.cleared" => promote_annotation_cleared(graph, payload).await,
+            "app.badge.set" => promote_badge_set(graph, id, timestamp, payload).await,
             _ => {
                 // Not yet promoted; will be handled in a later phase.
                 debug!(event_type, "skipping promotion for unhandled event type");
@@ -340,6 +355,7 @@ async fn link_file_to_project(
     file_path: &str,
     session_id: &str,
     store: &ProjectStore,
+    promote_threshold: usize,
 ) -> Result<()> {
     let Some(project) = store.find_by_path_prefix(file_path).await? else {
         return Ok(()); // file not inside any project
@@ -356,11 +372,12 @@ async fn link_file_to_project(
     // Auto-promote inferred projects after enough session activity.
     if !project.promoted {
         let count = store.count_session_files(session_id, project.id).await?;
-        if count >= PROMOTION_THRESHOLD {
+        if count >= promote_threshold {
             store.promote(project.id).await?;
             info!(
                 project = %project.name,
                 files = count,
+                threshold = promote_threshold,
                 "auto-promoted project (session threshold)",
             );
         }
@@ -544,6 +561,59 @@ async fn promote_annotation_cleared(graph: &GraphHandle, payload: &[u8]) -> Resu
         namespace = %p.namespace,
         annotation_id = %id,
         "promoted app.annotation.cleared"
+    );
+    Ok(())
+}
+
+/// Promote an `app.badge.set` event into a UserAction node —
+/// but only for `error` / `warning` status. Foundation §6.4
+/// Listing 14: "Error and warning badges are recorded in the
+/// Knowledge Graph; count-only badges are not."
+///
+/// `category = "badge"`, `action = "error" | "warning"`,
+/// `subject = app_id`. Reuses the existing UserAction schema;
+/// no new node type. AI queries can correlate badge spikes
+/// with build / test failures over time.
+async fn promote_badge_set(
+    graph: &GraphHandle,
+    event_id: &str,
+    timestamp: &i64,
+    payload: &[u8],
+) -> Result<()> {
+    let p = BadgeSetPayload::decode(payload)?;
+    let status_kind = match BadgeStatus::try_from(p.status).unwrap_or(BadgeStatus::Unspecified) {
+        BadgeStatus::Error => "error",
+        BadgeStatus::Warning => "warning",
+        // Success / Progress / Unspecified / count-only — not promoted.
+        _ => {
+            debug!(
+                event_id,
+                app_id = %p.app_id,
+                status = p.status,
+                "badge not promoted (status not error/warning)"
+            );
+            return Ok(());
+        }
+    };
+
+    let id_esc = escape_cypher(event_id);
+    let app_esc = escape_cypher(&p.app_id);
+
+    graph
+        .write(format!(
+            "MERGE (u:UserAction {{id: '{id_esc}'}})
+             SET u.category = 'badge',
+                 u.action   = '{status_kind}',
+                 u.subject  = '{app_esc}',
+                 u.timestamp = {timestamp}"
+        ))
+        .await?;
+
+    debug!(
+        event_id,
+        app_id = %p.app_id,
+        status = status_kind,
+        "promoted app.badge.set"
     );
     Ok(())
 }
@@ -975,7 +1045,7 @@ mod project_tests {
 
         create_file_node(&graph, "/home/user/proj/src/main.rs").await;
 
-        link_file_to_project("/home/user/proj/src/main.rs", "sess", &store)
+        link_file_to_project("/home/user/proj/src/main.rs", "sess", &store, PROMOTION_THRESHOLD_DEFAULT)
             .await
             .unwrap();
 
@@ -993,7 +1063,7 @@ mod project_tests {
         store.create(&project).await.unwrap();
 
         // File is outside the project root.
-        link_file_to_project("/home/user/other/file.txt", "sess", &store)
+        link_file_to_project("/home/user/other/file.txt", "sess", &store, PROMOTION_THRESHOLD_DEFAULT)
             .await
             .unwrap();
 
@@ -1015,7 +1085,7 @@ mod project_tests {
 
         create_file_node(&graph, "/home/user/mono/pkg/app-a/src/lib.rs").await;
 
-        link_file_to_project("/home/user/mono/pkg/app-a/src/lib.rs", "sess", &store)
+        link_file_to_project("/home/user/mono/pkg/app-a/src/lib.rs", "sess", &store, PROMOTION_THRESHOLD_DEFAULT)
             .await
             .unwrap();
 
@@ -1039,7 +1109,7 @@ mod project_tests {
         create_file_node(&graph, "/a/f.rs").await;
 
         for _ in 0..3 {
-            link_file_to_project("/a/f.rs", "sess", &store)
+            link_file_to_project("/a/f.rs", "sess", &store, PROMOTION_THRESHOLD_DEFAULT)
                 .await
                 .unwrap();
         }
@@ -1093,7 +1163,9 @@ mod project_tests {
             .await;
 
         // Now call link_file_to_project to trigger the threshold check.
-        link_file_to_project(path, session, &store).await.unwrap();
+        link_file_to_project(path, session, &store, PROMOTION_THRESHOLD_DEFAULT)
+            .await
+            .unwrap();
 
         let p = store.get_by_id(project.id).await.unwrap().unwrap();
         assert!(p.promoted, "should promote with 3 files");
