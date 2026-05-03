@@ -537,6 +537,7 @@ mod tests {
             clipboard: c,
             system: Default::default(),
             input: Default::default(),
+            search: Default::default(),
         }
     }
 

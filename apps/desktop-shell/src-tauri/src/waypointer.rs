@@ -5,10 +5,36 @@
 /// Super key (via `waypointer_open` protocol event) or Tauri command.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 static WAYPOINTER_VISIBLE: AtomicBool = AtomicBool::new(false);
+
+/// Cold-start prefill state. The IPC broker
+/// (`crate::search_ipc`) writes here when it accepts a
+/// `shell.search.open` request before the Waypointer webview
+/// has finished mounting; the value is consumed by `show()`'s
+/// eval-thread on the next show cycle.
+static PENDING_PREFILL: Mutex<Option<String>> = Mutex::new(None);
+
+/// Sets the launcher input field's value via webview eval and
+/// dispatches an `input` Event so bits-ui Command rerenders /
+/// re-filters. Centralised so `show()` (cold-start path) and
+/// `set_query_and_show()` (already-visible path) cannot drift.
+fn set_input_value(w: &WebviewWindow, value: &str) {
+    // serde_json::to_string produces a valid JS string literal
+    // (with quotes). Cheaper than a hand-rolled escaper and
+    // immune to backslash/quote/newline edge cases.
+    let json = serde_json::to_string(value).unwrap_or_else(|_| "\"\"".into());
+    let js = format!(
+        r#"(() => {{
+            const i = document.querySelector('[data-slot="command-input"]');
+            if (i) {{ i.value = {json}; i.dispatchEvent(new Event('input', {{bubbles:true}})); }}
+        }})()"#
+    );
+    let _ = w.eval(&js);
+}
 
 /// Creates the Waypointer WebviewWindow (hidden) and configures it as
 /// a layer-shell overlay surface.
@@ -128,18 +154,21 @@ pub fn show(app: &AppHandle) {
             "document.querySelector('[data-slot=\"command-input\"]')?.focus()"
         );
 
-        // Clear the input value after a short delay (DOM needs one
-        // frame after show_all to accept mutations). Focus is already
-        // set above so keystrokes land in the input immediately.
+        // Clear or prefill the input after a short delay (DOM needs
+        // one frame after show_all to accept mutations). Focus is
+        // already set above so keystrokes land in the input
+        // immediately. If `set_query_and_show` stashed a value into
+        // PENDING_PREFILL while the window was still being mapped,
+        // consume it here; otherwise default to clearing.
         let w2 = w.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(30));
-            let _ = w2.eval(
-                "(() => { \
-                   const i = document.querySelector('[data-slot=\"command-input\"]'); \
-                   if (i) { i.value = ''; i.dispatchEvent(new Event('input', {bubbles:true})); } \
-                 })()"
-            );
+            let prefill = PENDING_PREFILL
+                .lock()
+                .ok()
+                .and_then(|mut g| g.take())
+                .unwrap_or_default();
+            set_input_value(&w2, &prefill);
         });
 
         log::info!("waypointer: shown");
@@ -205,4 +234,60 @@ pub fn is_visible() -> bool {
 #[tauri::command]
 pub fn toggle_waypointer(app: AppHandle) {
     toggle(&app);
+}
+
+/// Show the Waypointer launcher with a prefilled query, or update
+/// the input if the launcher is already visible. Called by the
+/// `shell.search` IPC broker after permission + validation. Not a
+/// toggle — the operation is idempotent set+show, never hide.
+///
+/// `mode` empty string = no routing hint. Non-empty allowed values
+/// are validated by the broker (allowlist `{ai, files, apps}`); by
+/// the time we get here the broker has either accepted or
+/// silent-mapped to empty. Mode is injected as a `"<mode>: "`
+/// prefix so plugins that opt in can match.
+///
+/// **Concurrency contract.** Both apply paths drain
+/// `PENDING_PREFILL`, so latest-arriving submit wins regardless
+/// of timing. If a hidden-path call's 30ms-delayed apply thread
+/// is still in flight when a newer visible-path call arrives,
+/// the newer call drains first and the stale thread finds
+/// `None` and no-ops. Codex post-Sprint review HIGH-1 race fix.
+#[tauri::command]
+pub fn set_query_and_show(app: AppHandle, query: String, mode: String) -> Result<(), String> {
+    let prefilled = if mode.is_empty() {
+        query
+    } else {
+        format!("{mode}: {query}")
+    };
+    let w = app
+        .get_webview_window("waypointer")
+        .ok_or_else(|| "waypointer window not yet created".to_string())?;
+
+    // Always overwrite PENDING_PREFILL with the freshest value.
+    // Both apply paths (visible-now-direct + show()-delayed-thread)
+    // drain from this slot, so the LAST submit always wins.
+    if let Ok(mut g) = PENDING_PREFILL.lock() {
+        *g = Some(prefilled);
+    }
+
+    if WAYPOINTER_VISIBLE.load(Ordering::SeqCst) {
+        // Drain whatever is currently freshest and apply it. If a
+        // stale delayed thread from a prior hidden-path call fires
+        // after this, it will find `None` and no-op.
+        let drained = PENDING_PREFILL
+            .lock()
+            .ok()
+            .and_then(|mut g| g.take())
+            .unwrap_or_default();
+        set_input_value(&w, &drained);
+        let _ = w.set_focus();
+    } else {
+        // show()'s 30ms-delayed thread drains PENDING_PREFILL.
+        // If multiple submits arrive before that thread fires, the
+        // last one wins because submit overwrites the slot and the
+        // thread takes whatever is current at fire time.
+        show(&app);
+    }
+    Ok(())
 }

@@ -5,6 +5,7 @@ mod audio;
 mod battery;
 mod clipboard_history;
 mod clipboard_ipc;
+mod search_ipc;
 mod event_bus;
 mod gtk_menu_bridge;
 mod layer_shell;
@@ -244,6 +245,7 @@ pub fn run() {
                 window_list_for_clipboard,
             );
             clipboard_ipc::start(clipboard_for_watcher);
+            search_ipc::start(app.handle().clone());
             sni::start(app.handle().clone(), sni_items);
             bluetooth::start_monitor(app.handle().clone());
             // Register the BlueZ Agent1 implementation so first-time
@@ -325,6 +327,7 @@ pub fn run() {
             menu_store::get_menu,
             menu_store::set_menu_state,
             waypointer::toggle_waypointer,
+            waypointer::set_query_and_show,
             audio::get_audio_status,
             audio::set_audio_volume,
             audio::toggle_audio_mute,
