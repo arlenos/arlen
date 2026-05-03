@@ -8,6 +8,8 @@ description = "Permission profile types and loading for Lunaris OS"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 thiserror = "2"
+dirs = "5"
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"
