@@ -88,21 +88,31 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
 
   // ── Appearance: Window ─────────────────────────────────────────────
   {
-    id: "appearance.window.corner_radius",
-    title: "Corner Radius",
-    description: "Roundness of window corners, buttons, and cards",
-    keywords: ["corner", "radius", "rounded", "round", "square", "border-radius"],
+    id: "appearance.overrides.radius_intensity",
+    title: "Roundness",
+    description:
+      "Global radius multiplier (0% sharp / 100% theme default / 200% max round)",
+    keywords: [
+      "corner",
+      "radius",
+      "rounded",
+      "round",
+      "square",
+      "intensity",
+      "border-radius",
+      "roundness",
+    ],
     panel: "appearance",
     section: "Window",
-    anchor: "corner-radius",
+    anchor: "radius-intensity",
     inlineAction: {
       type: "slider",
       configFile: "appearance",
-      configKey: "window.corner_radius",
+      configKey: "overrides.radius_intensity",
       min: 0,
-      max: 16,
-      step: 1,
-      unit: "px",
+      max: 200,
+      step: 5,
+      unit: "%",
     },
   },
   {

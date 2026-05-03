@@ -65,13 +65,13 @@
     width: 80px;
     height: 56px;
     padding: 4px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
   }
 
   .slot {
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: transparent;
     border: 1px solid transparent;
     padding: 0;
@@ -97,7 +97,7 @@
   .dot {
     width: 8px;
     height: 4px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 35%, transparent);
     transition: background-color 120ms ease;
   }

@@ -9,7 +9,7 @@
 
 <SettingsPage {title} {description}>
   <div
-    class="flex h-64 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground"
+    class="flex h-64 items-center justify-center rounded-card border border-dashed border-border text-sm text-muted-foreground"
   >
     Coming soon
   </div>

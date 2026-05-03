@@ -68,7 +68,7 @@
     border: none;
     background: transparent;
     color: var(--color-fg-secondary);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     cursor: pointer;
     transition: background-color 150ms ease, color 150ms ease;
   }

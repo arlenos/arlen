@@ -84,15 +84,15 @@
     aria-modal="true"
   >
     <div
-      class="w-full max-w-md rounded-[var(--radius)] border border-border bg-card p-6 shadow-lg"
+      class="w-full max-w-md rounded-[var(--radius-input)] border border-border bg-card p-6 shadow-lg"
     >
       <h2 class="mb-4 text-base font-semibold">Add custom binding</h2>
 
-      <div class="mb-4 flex gap-1 rounded-[var(--radius-sm)] bg-muted p-1">
+      <div class="mb-4 flex gap-1 rounded-[var(--radius-chip)] bg-muted p-1">
         {#each ["app", "command", "shell"] as const as tab (tab)}
           <button
             type="button"
-            class="flex-1 rounded-[var(--radius-sm)] px-3 py-1.5 text-xs capitalize transition-colors"
+            class="flex-1 rounded-[var(--radius-chip)] px-3 py-1.5 text-xs capitalize transition-colors"
             class:bg-background={mode === tab}
             class:shadow-sm={mode === tab}
             onclick={() => (mode = tab)}
@@ -131,7 +131,7 @@
         <span class="mb-1 block text-xs text-muted-foreground">Binding</span>
         <button
           type="button"
-          class="inline-flex min-h-10 w-full items-center justify-center rounded-[var(--radius-sm)] border border-border bg-background px-3 py-2 font-mono text-sm transition-colors hover:bg-muted"
+          class="inline-flex min-h-10 w-full items-center justify-center rounded-[var(--radius-chip)] border border-border bg-background px-3 py-2 font-mono text-sm transition-colors hover:bg-muted"
           onclick={() => (capturing = true)}
         >
           {binding ?? "Click to capture…"}

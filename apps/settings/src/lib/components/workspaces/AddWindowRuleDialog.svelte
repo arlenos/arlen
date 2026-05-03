@@ -195,7 +195,7 @@
     background: var(--card);
     color: var(--foreground);
     border: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
-    border-radius: var(--radius);
+    border-radius: var(--radius-input);
     padding: 1rem 1.25rem;
     display: flex;
     flex-direction: column;

@@ -139,7 +139,7 @@
 
   {#if $touchpad.error}
     <div
-      class="rounded-[var(--radius-sm)] border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+      class="rounded-[var(--radius-chip)] border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
     >
       {$touchpad.error}
     </div>

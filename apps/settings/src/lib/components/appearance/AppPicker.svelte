@@ -182,7 +182,7 @@
     gap: 6px;
     height: 28px;
     padding: 0 0.25rem 0 0.5rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     transition:
@@ -225,7 +225,7 @@
     height: 22px;
     padding: 0;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
     cursor: pointer;
@@ -249,7 +249,7 @@
     right: 0;
     z-index: 60;
     padding: 4px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--background) 94%, var(--foreground) 8%);
     border: 1px solid color-mix(in srgb, var(--foreground) 15%, transparent);
     box-shadow:
@@ -267,7 +267,7 @@
     padding: 0.4rem 0.6rem;
     background: transparent;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     color: var(--foreground);
     font-size: 0.75rem;
     text-align: left;
@@ -300,7 +300,7 @@
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     padding: 0.05rem 0.3rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
   }
   .empty strong {

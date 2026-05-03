@@ -268,7 +268,7 @@
 
   {#if $keybindings.conflicts.length > 0}
     <div
-      class="flex items-start gap-2 rounded-[var(--radius-sm)] border border-destructive/40 bg-destructive/10 p-3 text-sm"
+      class="flex items-start gap-2 rounded-[var(--radius-chip)] border border-destructive/40 bg-destructive/10 p-3 text-sm"
     >
       <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
       <div>
@@ -292,7 +292,7 @@
 
   {#if lastError}
     <div
-      class="rounded-[var(--radius-sm)] border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+      class="rounded-[var(--radius-chip)] border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
     >
       {lastError}
     </div>
@@ -305,7 +305,7 @@
       {#if entries.length > 0 || isWorkspaceMap}
         {@const expanded = expandedCategories.has(category.id)}
         <section
-          class="overflow-hidden rounded-[var(--radius)] border border-border bg-card"
+          class="overflow-hidden rounded-[var(--radius-input)] border border-border bg-card"
           id={`cat-${category.id}`}
         >
           <button

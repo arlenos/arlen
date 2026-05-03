@@ -261,7 +261,7 @@
        switch shortcut` link see the relevant bindings. -->
   <a
     href="/keyboard/shortcuts#cat-keyboard"
-    class="group flex items-center gap-3 rounded-[var(--radius)] border border-border bg-card px-4 py-3 transition-colors hover:bg-muted/40"
+    class="group flex items-center gap-3 rounded-[var(--radius-input)] border border-border bg-card px-4 py-3 transition-colors hover:bg-muted/40"
   >
     <KeyboardIcon class="h-5 w-5 text-muted-foreground" />
     <div class="flex-1">
@@ -277,7 +277,7 @@
 
   {#if lastError}
     <div
-      class="rounded-[var(--radius-sm)] border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+      class="rounded-[var(--radius-chip)] border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
     >
       {lastError}
     </div>
@@ -294,7 +294,7 @@
               </span>
               {#if i === 0}
                 <span
-                  class="rounded-[var(--radius-sm)] bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary"
+                  class="rounded-[var(--radius-chip)] bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary"
                   title="This is the layout active after login. Actions change the primary at runtime."
                 >
                   Primary

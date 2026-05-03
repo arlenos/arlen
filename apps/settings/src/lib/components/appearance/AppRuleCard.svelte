@@ -134,7 +134,7 @@
 <style>
   .card {
     border: 1px solid color-mix(in srgb, var(--foreground) 9%, transparent);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 3%, transparent);
     overflow: hidden;
   }
@@ -190,7 +190,7 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
     padding: 0.1rem 0.4rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--color-accent) 18%, transparent);
     color: var(--color-accent);
   }
@@ -205,7 +205,7 @@
     justify-content: center;
     width: 22px;
     height: 22px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: transparent;
     border: none;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
@@ -256,7 +256,7 @@
   .prio-pill {
     height: 22px;
     padding: 0 0.55rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);

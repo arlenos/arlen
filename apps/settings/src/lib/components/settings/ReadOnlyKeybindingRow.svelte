@@ -19,7 +19,7 @@
   let { label, keys, description }: Props = $props();
 </script>
 
-<div class="flex items-center gap-3 rounded-[var(--radius-sm)] border border-transparent px-3 py-2">
+<div class="flex items-center gap-3 rounded-[var(--radius-chip)] border border-transparent px-3 py-2">
   <div class="min-w-0 flex-1">
     <div class="flex items-center gap-2">
       <span class="text-sm font-medium">{label}</span>
@@ -32,7 +32,7 @@
   </div>
 
   <div
-    class="inline-flex min-w-20 items-center justify-center rounded-[var(--radius-sm)] border border-border bg-background px-3 py-1 font-mono text-xs text-muted-foreground"
+    class="inline-flex min-w-20 items-center justify-center rounded-[var(--radius-chip)] border border-border bg-background px-3 py-1 font-mono text-xs text-muted-foreground"
   >
     {keys}
   </div>

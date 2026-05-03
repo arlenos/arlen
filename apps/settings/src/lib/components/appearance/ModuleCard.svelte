@@ -144,7 +144,7 @@
 <style>
   .card {
     border: 1px solid color-mix(in srgb, var(--foreground) 9%, transparent);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 3%, transparent);
     overflow: hidden;
     transition: opacity 150ms ease;
@@ -172,7 +172,7 @@
     text-align: left;
     color: var(--foreground);
     font: inherit;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     transition: background-color 120ms ease;
   }
   .head-toggle:hover {
@@ -195,7 +195,7 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--color-accent) 15%, transparent);
     color: var(--color-accent);
   }
@@ -234,7 +234,7 @@
     align-items: center;
     gap: 3px;
     padding: 0.05rem 0.35rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
     font-weight: 600;
@@ -311,7 +311,7 @@
 
   .warnings {
     padding: 0.5rem 0.6rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--color-warning) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
     color: var(--color-warning);
@@ -339,7 +339,7 @@
     align-items: center;
     gap: 6px;
     padding: 0.35rem 0.6rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--color-error) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-error) 35%, transparent);
     color: var(--color-error);

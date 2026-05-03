@@ -35,7 +35,7 @@
     height: 18px;
     /* Track follows the theme radius. At default md (8px) the 18px
        track still reads as a pill; at radius 0 it becomes a square. */
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 14%, transparent);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
@@ -61,7 +61,7 @@
     left: 1px;
     width: 14px;
     height: 14px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: var(--foreground);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
     transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1);

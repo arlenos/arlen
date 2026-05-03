@@ -69,7 +69,7 @@
     left: 0;
     right: 0;
     height: 3px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
   }
 
@@ -78,7 +78,7 @@
     left: 0;
     width: var(--percent);
     height: 3px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: var(--color-accent);
   }
 
@@ -88,7 +88,7 @@
     width: 12px;
     height: 12px;
     margin-left: -6px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: var(--foreground);
     box-shadow:
       0 1px 2px rgba(0, 0, 0, 0.4),
