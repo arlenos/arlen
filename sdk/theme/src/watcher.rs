@@ -1,42 +1,55 @@
 //! File watcher for live theme updates.
+//!
+//! The watcher signals "something changed, re-resolve". Re-resolution
+//! (loading the bundled bytes + reading user-theme + customization
+//! files + computing the merged `LunarisTheme`) is the caller's
+//! responsibility — that's where the bundled bytes live (per-crate
+//! `include_str!`) and where the `appearance.toml [theme].active`
+//! lookup happens.
+//!
+//! What the watcher monitors:
+//!
+//! - `~/.config/lunaris/theme.toml` (user customization overlay)
+//! - `~/.config/lunaris/appearance.toml` (active theme, intensity)
+//!
+//! On any change to either file, the callback fires. Atomic editor
+//! renames are handled by watching the parent directory and
+//! filtering on filename.
 
 use crate::LunarisTheme;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use std::path::PathBuf;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 
-/// Watches `~/.config/lunaris/theme.toml` and calls a callback with the
-/// newly loaded `LunarisTheme` whenever the file changes.
-///
-/// The watcher monitors the parent directory (to catch atomic editor renames)
-/// and filters for changes to `theme.toml` specifically.
+/// Watches the user theme files and notifies on changes.
 pub struct ThemeWatcher {
     _watcher: RecommendedWatcher,
 }
 
 impl ThemeWatcher {
-    /// Start watching and call `on_change` with the new theme on every update.
-    ///
-    /// The callback runs on a background thread. The returned `ThemeWatcher`
-    /// must be kept alive; dropping it stops the watcher.
+    /// Start watching the standard theme paths and call `on_change`
+    /// (with no argument) whenever any of them change. The callback
+    /// re-loads + re-resolves and applies the new theme.
     pub fn start<F>(on_change: F) -> Result<Self, notify::Error>
     where
-        F: Fn(LunarisTheme) + Send + 'static,
+        F: Fn() + Send + 'static,
     {
-        let theme_path = LunarisTheme::default_path();
-        Self::start_at(theme_path, on_change)
+        let custom = LunarisTheme::user_customization_path();
+        let appearance = appearance_path();
+        Self::start_at(vec![custom, appearance], on_change)
     }
 
-    /// Start watching a specific path.
-    pub fn start_at<F>(theme_path: PathBuf, on_change: F) -> Result<Self, notify::Error>
+    /// Watch an explicit list of file paths. Used by tests + for
+    /// non-default config locations.
+    pub fn start_at<F>(paths: Vec<PathBuf>, on_change: F) -> Result<Self, notify::Error>
     where
-        F: Fn(LunarisTheme) + Send + 'static,
+        F: Fn() + Send + 'static,
     {
-        let path_for_load = theme_path.clone();
-        let file_name = theme_path
-            .file_name()
-            .map(|n| n.to_os_string())
-            .unwrap_or_default();
+        let interesting: Vec<OsString> = paths
+            .iter()
+            .filter_map(|p| p.file_name().map(|n| n.to_os_string()))
+            .collect();
 
         let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, _>| {
             if let Ok(event) = res {
@@ -45,34 +58,48 @@ impl ThemeWatcher {
                     event.kind,
                     EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
                 );
-                let relevant = event
-                    .paths
-                    .iter()
-                    .any(|p| p.file_name().map(|n| n == file_name).unwrap_or(false));
-
+                let relevant = event.paths.iter().any(|p| {
+                    p.file_name()
+                        .map(|n| interesting.iter().any(|w| w == n))
+                        .unwrap_or(false)
+                });
                 if dominated && relevant {
-                    let theme = LunarisTheme::load_from(&path_for_load);
-                    on_change(theme);
+                    on_change();
                 }
             }
         })?;
 
-        // Watch parent directory to catch atomic renames.
-        if let Some(parent) = theme_path.parent() {
-            if parent.exists() {
-                watcher.watch(parent, RecursiveMode::NonRecursive)?;
+        // Watch each parent directory to catch atomic editor renames.
+        // Multiple paths may share a parent (`~/.config/lunaris/`),
+        // dedup so we don't double-watch.
+        let mut watched_parents: Vec<&Path> = Vec::new();
+        for p in paths.iter() {
+            if let Some(parent) = p.parent() {
+                if !watched_parents.iter().any(|w| *w == parent) && parent.exists() {
+                    watcher.watch(parent, RecursiveMode::NonRecursive)?;
+                    watched_parents.push(parent);
+                }
             }
         }
 
         Ok(ThemeWatcher { _watcher: watcher })
     }
 
-    /// Create a channel-based watcher that sends new themes to a receiver.
-    pub fn channel() -> Result<(Self, mpsc::Receiver<LunarisTheme>), notify::Error> {
+    /// Channel-based variant: returns a receiver that ticks once
+    /// per change. Caller still re-resolves and applies the theme
+    /// — the watcher does not carry state.
+    pub fn channel() -> Result<(Self, mpsc::Receiver<()>), notify::Error> {
         let (tx, rx) = mpsc::channel();
-        let watcher = Self::start(move |theme| {
-            let _ = tx.send(theme);
+        let watcher = Self::start(move || {
+            let _ = tx.send(());
         })?;
         Ok((watcher, rx))
     }
+}
+
+fn appearance_path() -> PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join("lunaris")
+        .join("appearance.toml")
 }

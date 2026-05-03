@@ -235,7 +235,7 @@
     width: 100%;
     height: var(--control-h);
     padding: 0 0.625rem 0 0.75rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 10%, transparent);
@@ -297,7 +297,7 @@
     max-height: 280px;
     overflow-y: auto;
     padding: 4px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--background) 94%, var(--foreground) 8%);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 15%, transparent);
@@ -327,7 +327,7 @@
     padding: 0 0.625rem 0 0.75rem;
     border: none;
     background: transparent;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     cursor: pointer;
     font-family: inherit;
     transition: background-color 100ms ease;

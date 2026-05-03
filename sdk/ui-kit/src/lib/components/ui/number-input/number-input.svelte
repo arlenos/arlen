@@ -136,7 +136,7 @@
   .wrap {
     display: inline-flex;
     align-items: stretch;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 12%, transparent);
     background: color-mix(in srgb, var(--foreground) 4%, transparent);

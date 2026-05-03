@@ -8,3 +8,4 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 notify = "7"
 dirs = "5"
+thiserror = "1"
