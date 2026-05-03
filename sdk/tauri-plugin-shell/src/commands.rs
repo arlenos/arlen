@@ -8,7 +8,8 @@
 
 use os_sdk::{
     AnnotationLookup, AnnotationRecord, AnnotationSetParams, AnnotationTarget,
-    PresenceParams, SpatialHint, TimelineParams,
+    BreadcrumbItem, PresenceParams, ProgressState, QuickAction, SpatialHint,
+    TimelineParams,
 };
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State, WebviewWindow};
@@ -235,4 +236,76 @@ pub async fn annotation_unsubscribe<R: Runtime>(
     let mut subs = state.annotation_subs.lock().await;
     subs.remove(&key);
     Ok(())
+}
+
+// ── shell.toolbar surface ──────────────────────────────────────
+//
+// Each command extracts the calling webview's label as
+// `window_id` and passes it through to the SDK so the shell can
+// key state per-(app, window) and route action dispatch back to
+// the originating webview specifically. Multi-window apps get
+// distinct toolbar state per window; the shell never confuses
+// two windows of the same app.
+
+#[tauri::command]
+pub async fn toolbar_set_quick_actions<R: Runtime>(
+    window: WebviewWindow<R>,
+    state: State<'_, ShellState>,
+    actions: Vec<QuickAction>,
+) -> Result<(), String> {
+    state
+        .toolbar
+        .set_quick_actions(window.label().to_string(), actions)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn toolbar_set_breadcrumb<R: Runtime>(
+    window: WebviewWindow<R>,
+    state: State<'_, ShellState>,
+    items: Vec<BreadcrumbItem>,
+) -> Result<(), String> {
+    state
+        .toolbar
+        .set_breadcrumb(window.label().to_string(), items)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn toolbar_set_progress<R: Runtime>(
+    window: WebviewWindow<R>,
+    state: State<'_, ShellState>,
+    progress: ProgressState,
+) -> Result<(), String> {
+    state
+        .toolbar
+        .set_progress(window.label().to_string(), progress)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn toolbar_clear_progress<R: Runtime>(
+    window: WebviewWindow<R>,
+    state: State<'_, ShellState>,
+) -> Result<(), String> {
+    state
+        .toolbar
+        .clear_progress(window.label().to_string())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn toolbar_clear<R: Runtime>(
+    window: WebviewWindow<R>,
+    state: State<'_, ShellState>,
+) -> Result<(), String> {
+    state
+        .toolbar
+        .clear(window.label().to_string())
+        .await
+        .map_err(|e| e.to_string())
 }

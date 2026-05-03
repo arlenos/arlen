@@ -46,8 +46,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use os_sdk::{
-    AbortOnDrop, AnnotationChange, Annotations, Presence, Spatial, Timeline,
-    UnixEventConsumer, UnixEventEmitter, UnixGraphClient,
+    decode_action_invoked, AbortOnDrop, AnnotationChange, Annotations, EventConsumer,
+    Presence, Spatial, Timeline, Toolbar, UnixEventConsumer, UnixEventEmitter,
+    UnixGraphClient,
 };
 use tauri::{
     plugin::{Builder, TauriPlugin},
@@ -87,6 +88,7 @@ pub struct ShellState {
     pub timeline: Arc<Timeline<UnixEventEmitter>>,
     pub spatial: Arc<Spatial<UnixEventEmitter>>,
     pub annotations: Arc<Annotations<UnixEventEmitter, UnixGraphClient>>,
+    pub toolbar: Arc<Toolbar<UnixEventEmitter>>,
     /// Consumer-side bus client used by annotations on_changed.
     /// Cloned per `subscribe` call (the consumer itself is cheap
     /// to clone; each `subscribe()` opens its own underlying
@@ -99,6 +101,9 @@ pub struct ShellState {
     /// the SDK forwarder task; if a receiver is still in the
     /// slot (`Pending`) it is dropped along with it.
     pub annotation_subs: Arc<Mutex<HashMap<SubscriptionKey, SubscriptionSlot>>>,
+    /// App id used by the toolbar action-invoked filter.
+    /// `LUNARIS_APP_ID` at plugin init; falls back to "unknown".
+    pub app_id: String,
 }
 
 impl ShellState {
@@ -123,9 +128,11 @@ impl ShellState {
             presence: Arc::new(Presence::new(emitter.clone(), app_id.clone())),
             timeline: Arc::new(Timeline::new(emitter.clone(), app_id.clone())),
             spatial: Arc::new(Spatial::new(emitter.clone(), app_id.clone())),
-            annotations: Arc::new(Annotations::new(emitter, graph, app_id)),
+            toolbar: Arc::new(Toolbar::new(emitter.clone(), app_id.clone())),
+            annotations: Arc::new(Annotations::new(emitter, graph, app_id.clone())),
             consumer,
             annotation_subs: Arc::new(Mutex::new(HashMap::new())),
+            app_id,
         }
     }
 }
@@ -154,9 +161,16 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::annotation_subscribe_prepare,
             commands::annotation_subscribe_start,
             commands::annotation_unsubscribe,
+            commands::toolbar_set_quick_actions,
+            commands::toolbar_set_breadcrumb,
+            commands::toolbar_set_progress,
+            commands::toolbar_clear_progress,
+            commands::toolbar_clear,
         ])
         .setup(|app, _api| {
-            app.manage(ShellState::new());
+            let state = ShellState::new();
+            spawn_action_invoked_consumer(app, &state);
+            app.manage(state);
             Ok(())
         })
         .on_event(|app, event| {
@@ -170,6 +184,110 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             }
         })
         .build()
+}
+
+/// Subscribe to `app.toolbar.action_invoked` Event Bus events
+/// and re-emit matching ones (filtered by this app's id) as
+/// per-webview `lunaris://app-action` Tauri events.
+///
+/// This is the receive side of the action-dispatch path the
+/// desktop-shell pushes when the user clicks a Quick Action or
+/// Breadcrumb segment in the TopBar. The shell does not have
+/// direct webview handles for other Tauri apps, so it crosses
+/// the process boundary via the Event Bus.
+///
+/// Self-healing: on any subscribe failure or stream end the
+/// outer loop reconnects with exponential backoff (capped 30 s).
+/// A startup race against the bus or a transient socket error
+/// must not permanently disable toolbar dispatch — the inner
+/// `EventConsumer::subscribe` only retries the *initial*
+/// connect for ~400 ms, so the supervising loop here is what
+/// turns "consumer task" into "consumer service".
+///
+/// Foundation §6.4 Listing 22 + `topbar-toolbar.md` FA6.
+fn spawn_action_invoked_consumer<R: Runtime, M: tauri::Manager<R>>(
+    app: &M,
+    state: &ShellState,
+) {
+    use tauri::Emitter;
+
+    let consumer = state.consumer.clone();
+    let target_app_id = state.app_id.clone();
+    let app_handle = app.app_handle().clone();
+
+    tauri::async_runtime::spawn(async move {
+        let mut backoff = std::time::Duration::from_millis(500);
+        let backoff_max = std::time::Duration::from_secs(30);
+
+        loop {
+            let mut rx = match consumer
+                .subscribe(vec!["app.toolbar.action_invoked".to_string()])
+                .await
+            {
+                Ok(rx) => {
+                    backoff = std::time::Duration::from_millis(500);
+                    rx
+                }
+                Err(e) => {
+                    log::warn!(
+                        "toolbar action-invoked subscribe failed (retrying in {:?}): {e}",
+                        backoff
+                    );
+                    tokio::time::sleep(backoff).await;
+                    backoff = (backoff * 2).min(backoff_max);
+                    continue;
+                }
+            };
+
+            while let Some(event) = rx.recv().await {
+                if event.r#type != "app.toolbar.action_invoked" {
+                    continue;
+                }
+                let Some(invoked) = decode_action_invoked(&event.payload) else {
+                    continue;
+                };
+                // Filter: only forward actions targeted at this app.
+                if invoked.app_id != target_app_id {
+                    continue;
+                }
+                // Route per-webview using the window_id field
+                // carried in the payload (B8.4 — closes the
+                // multi-window same-app routing gap). Falls back
+                // to broadcast only when window_id is empty (e.g.
+                // legacy producers that pre-date the window_id
+                // schema).
+                if invoked.window_id.is_empty() {
+                    if let Err(e) = app_handle.emit(
+                        "lunaris://app-action",
+                        serde_json::json!({ "action": invoked.action }),
+                    ) {
+                        log::warn!("toolbar app-action broadcast emit failed: {e}");
+                    }
+                    continue;
+                }
+                let Some(window) = app_handle.get_webview_window(&invoked.window_id)
+                else {
+                    // Window is gone (closed during dispatch).
+                    // Drop silently — the action has no recipient.
+                    continue;
+                };
+                if let Err(e) = window.emit(
+                    "lunaris://app-action",
+                    serde_json::json!({ "action": invoked.action }),
+                ) {
+                    log::warn!("toolbar app-action emit failed: {e}");
+                }
+            }
+
+            // The receiver yielded None. The SDK consumer's
+            // internal reconnect-loop already tried to recover
+            // and gave up (channel closed). Retry the entire
+            // subscribe from the top with backoff.
+            log::warn!("toolbar action-invoked stream ended, resubscribing");
+            tokio::time::sleep(backoff).await;
+            backoff = (backoff * 2).min(backoff_max);
+        }
+    });
 }
 
 /// Drop every annotation subscription whose key matches the

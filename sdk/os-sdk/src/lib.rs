@@ -8,6 +8,7 @@ pub mod mock;
 pub mod presence;
 pub mod spatial;
 pub mod timeline;
+pub mod toolbar;
 
 pub(crate) mod proto {
     #![allow(dead_code)]
@@ -35,4 +36,8 @@ pub use graph::{GraphClient, QueryError, UnixGraphClient};
 pub use presence::{AutoClear, Presence, PresenceParams};
 pub use spatial::{GeometryHint, OutputHint, Spatial, SpatialHint};
 pub use timeline::{Timeline, TimelineParams};
+pub use toolbar::{
+    decode_action_invoked, ActionInvoked, BreadcrumbItem, ProgressState, QuickAction,
+    Toolbar, MAX_QUICK_ACTIONS,
+};
 pub mod shell_types;

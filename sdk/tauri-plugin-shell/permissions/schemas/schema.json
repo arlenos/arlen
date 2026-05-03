@@ -425,6 +425,66 @@
           "type": "string",
           "const": "deny-timeline-record",
           "markdownDescription": "Denies the timeline_record command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the toolbar_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-toolbar-clear",
+          "markdownDescription": "Enables the toolbar_clear command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the toolbar_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-toolbar-clear",
+          "markdownDescription": "Denies the toolbar_clear command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the toolbar_clear_progress command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-toolbar-clear-progress",
+          "markdownDescription": "Enables the toolbar_clear_progress command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the toolbar_clear_progress command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-toolbar-clear-progress",
+          "markdownDescription": "Denies the toolbar_clear_progress command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the toolbar_set_breadcrumb command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-toolbar-set-breadcrumb",
+          "markdownDescription": "Enables the toolbar_set_breadcrumb command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the toolbar_set_breadcrumb command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-toolbar-set-breadcrumb",
+          "markdownDescription": "Denies the toolbar_set_breadcrumb command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the toolbar_set_progress command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-toolbar-set-progress",
+          "markdownDescription": "Enables the toolbar_set_progress command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the toolbar_set_progress command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-toolbar-set-progress",
+          "markdownDescription": "Denies the toolbar_set_progress command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the toolbar_set_quick_actions command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-toolbar-set-quick-actions",
+          "markdownDescription": "Enables the toolbar_set_quick_actions command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the toolbar_set_quick_actions command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-toolbar-set-quick-actions",
+          "markdownDescription": "Denies the toolbar_set_quick_actions command without any pre-configured scope."
         }
       ]
     }
