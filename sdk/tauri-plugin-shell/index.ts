@@ -201,5 +201,102 @@ export const annotations = {
   },
 };
 
-/** Aggregate matching foundation §316 (`shell.{presence,timeline,spatial,annotations}`). */
-export const shell = { presence, timeline, spatial, annotations };
+// ── shell.toolbar ─────────────────────────────────────────────────
+
+export interface QuickAction {
+  /** ui-kit / Lucide icon id. */
+  icon: string;
+  /** Opaque action string dispatched back to the app on click. */
+  action: string;
+  tooltip: string;
+  toggle?: boolean;
+  active?: boolean;
+}
+
+export interface BreadcrumbItem {
+  label: string;
+  action: string;
+}
+
+export interface ProgressState {
+  /** Clamped to [0, 1] backend-side. */
+  value: number;
+  label?: string;
+}
+
+/**
+ * Payload of the per-window `lunaris://app-action/{action}`
+ * Tauri event the shell dispatches when the user clicks a
+ * Quick Action or Breadcrumb segment in the top bar.
+ */
+export interface AppActionEvent {
+  action: string;
+}
+
+/**
+ * Hard cap from foundation §6.4 Listing 22. The SDK rejects
+ * `setQuickActions` calls with more than this many entries.
+ */
+export const MAX_QUICK_ACTIONS = 3;
+
+export const toolbar = {
+  /**
+   * Push Quick Action buttons into the top bar slot. Replaces
+   * any previously-set Quick Actions, Breadcrumb, or Progress
+   * (mutually exclusive).
+   *
+   * Throws if `actions.length > MAX_QUICK_ACTIONS`.
+   */
+  async setQuickActions(actions: QuickAction[]): Promise<void> {
+    return invoke(`${PLUGIN}|toolbar_set_quick_actions`, { actions });
+  },
+  /** Push a Breadcrumb path. Replaces any previously-set toolbar variant. */
+  async setBreadcrumb(items: BreadcrumbItem[]): Promise<void> {
+    return invoke(`${PLUGIN}|toolbar_set_breadcrumb`, { items });
+  },
+  /** Set the Progress indicator. `value` is clamped to [0, 1] backend-side. */
+  async setProgress(progress: ProgressState): Promise<void> {
+    return invoke(`${PLUGIN}|toolbar_set_progress`, { progress });
+  },
+  /** Clear only the Progress slot. Quick Actions / Breadcrumb stay. */
+  async clearProgress(): Promise<void> {
+    return invoke(`${PLUGIN}|toolbar_clear_progress`);
+  },
+  /**
+   * Drop every toolbar variant for this app. The shell also
+   * clears on focus loss automatically; call this for eager
+   * pre-blur clear (e.g. mid-task abort).
+   */
+  async clear(): Promise<void> {
+    return invoke(`${PLUGIN}|toolbar_clear`);
+  },
+  /**
+   * Subscribe to action dispatches from the shell. The shell
+   * fires `lunaris://app-action/{action}` Tauri events scoped
+   * to this webview when the user clicks a Quick Action or
+   * Breadcrumb segment.
+   *
+   * Returns an unsubscribe function. The handler receives the
+   * action id; the app routes from there.
+   *
+   * Listener is window-scoped: actions only reach the focused
+   * webview that registered. For multi-webview apps, each
+   * webview must register its own handler if it handles
+   * different actions.
+   */
+  async onAction(
+    handler: (event: AppActionEvent) => void,
+  ): Promise<() => void> {
+    // Listen to the per-action event family. Tauri does not
+    // support wildcards in `listen`, so we use a single shared
+    // event name and let the handler discriminate.
+    const unlisten: UnlistenFn = await listen<AppActionEvent>(
+      "lunaris://app-action",
+      (e) => handler(e.payload),
+    );
+    return () => unlisten();
+  },
+};
+
+/** Aggregate matching foundation §6.4 (`shell.{presence,timeline,spatial,annotations,toolbar}`). */
+export const shell = { presence, timeline, spatial, annotations, toolbar };

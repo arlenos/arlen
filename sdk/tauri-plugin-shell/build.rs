@@ -10,6 +10,11 @@ fn main() {
         "annotation_subscribe_prepare",
         "annotation_subscribe_start",
         "annotation_unsubscribe",
+        "toolbar_set_quick_actions",
+        "toolbar_set_breadcrumb",
+        "toolbar_set_progress",
+        "toolbar_clear_progress",
+        "toolbar_clear",
     ])
     .build();
 }

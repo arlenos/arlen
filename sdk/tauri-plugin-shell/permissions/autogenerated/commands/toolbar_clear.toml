@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-toolbar-clear"
+description = "Enables the toolbar_clear command without any pre-configured scope."
+commands.allow = ["toolbar_clear"]
+
+[[permission]]
+identifier = "deny-toolbar-clear"
+description = "Denies the toolbar_clear command without any pre-configured scope."
+commands.deny = ["toolbar_clear"]

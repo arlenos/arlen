@@ -105,6 +105,7 @@ cargo test -p os-sdk                                  # unit and mock tests
 cargo test -p os-sdk --test unix_implementations      # event-bus + graph socket integration
 cargo test -p os-sdk --test clipboard_integration     # clipboard broker socket integration
 cargo test -p os-sdk --test event_consumer_integration # event-bus consumer-side integration
+cargo test -p os-sdk --test toolbar_integration       # shell.toolbar producer integration
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 
