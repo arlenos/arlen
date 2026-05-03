@@ -46,9 +46,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use os_sdk::{
-    decode_action_invoked, AbortOnDrop, AnnotationChange, Annotations, EventConsumer,
-    Presence, Spatial, Timeline, Toolbar, UnixEventConsumer, UnixEventEmitter,
-    UnixGraphClient,
+    decode_action_invoked, decode_shortcut_invoked, AbortOnDrop, Ambient, AnnotationChange,
+    Annotations, Badges, EventConsumer, Presence, Shortcuts, Spatial, Timeline, Toolbar,
+    UnixEventConsumer, UnixEventEmitter, UnixGraphClient,
 };
 use tauri::{
     plugin::{Builder, TauriPlugin},
@@ -89,6 +89,9 @@ pub struct ShellState {
     pub spatial: Arc<Spatial<UnixEventEmitter>>,
     pub annotations: Arc<Annotations<UnixEventEmitter, UnixGraphClient>>,
     pub toolbar: Arc<Toolbar<UnixEventEmitter>>,
+    pub shortcuts: Arc<Shortcuts<UnixEventEmitter>>,
+    pub badges: Arc<Badges<UnixEventEmitter>>,
+    pub ambient: Arc<Ambient<UnixEventEmitter>>,
     /// Consumer-side bus client used by annotations on_changed.
     /// Cloned per `subscribe` call (the consumer itself is cheap
     /// to clone; each `subscribe()` opens its own underlying
@@ -129,6 +132,9 @@ impl ShellState {
             timeline: Arc::new(Timeline::new(emitter.clone(), app_id.clone())),
             spatial: Arc::new(Spatial::new(emitter.clone(), app_id.clone())),
             toolbar: Arc::new(Toolbar::new(emitter.clone(), app_id.clone())),
+            shortcuts: Arc::new(Shortcuts::new(emitter.clone(), app_id.clone())),
+            badges: Arc::new(Badges::new(emitter.clone(), app_id.clone())),
+            ambient: Arc::new(Ambient::new(emitter.clone(), app_id.clone())),
             annotations: Arc::new(Annotations::new(emitter, graph, app_id.clone())),
             consumer,
             annotation_subs: Arc::new(Mutex::new(HashMap::new())),
@@ -166,6 +172,13 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::toolbar_set_progress,
             commands::toolbar_clear_progress,
             commands::toolbar_clear,
+            commands::shortcuts_register,
+            commands::shortcuts_set_state,
+            commands::shortcuts_clear,
+            commands::badges_set,
+            commands::badges_clear,
+            commands::ambient_set,
+            commands::ambient_clear,
         ])
         .setup(|app, _api| {
             let state = ShellState::new();
@@ -186,9 +199,19 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .build()
 }
 
-/// Subscribe to `app.toolbar.action_invoked` Event Bus events
-/// and re-emit matching ones (filtered by this app's id) as
-/// per-webview `lunaris://app-action` Tauri events.
+/// Internal helper to keep the action-invoked decode + filter
+/// loop typed regardless of which surface fired
+/// (toolbar vs. shortcut).
+struct ActionTuple {
+    app_id: String,
+    action: String,
+    window_id: String,
+}
+
+/// Subscribe to `app.toolbar.action_invoked` and
+/// `app.shortcut.action_invoked` Event Bus events and re-emit
+/// matching ones (filtered by this app's id) as per-webview
+/// `lunaris://app-action` Tauri events.
 ///
 /// This is the receive side of the action-dispatch path the
 /// desktop-shell pushes when the user clicks a Quick Action or
@@ -221,7 +244,10 @@ fn spawn_action_invoked_consumer<R: Runtime, M: tauri::Manager<R>>(
 
         loop {
             let mut rx = match consumer
-                .subscribe(vec!["app.toolbar.action_invoked".to_string()])
+                .subscribe(vec![
+                    "app.toolbar.action_invoked".to_string(),
+                    "app.shortcut.action_invoked".to_string(),
+                ])
                 .await
             {
                 Ok(rx) => {
@@ -230,7 +256,7 @@ fn spawn_action_invoked_consumer<R: Runtime, M: tauri::Manager<R>>(
                 }
                 Err(e) => {
                     log::warn!(
-                        "toolbar action-invoked subscribe failed (retrying in {:?}): {e}",
+                        "action-invoked subscribe failed (retrying in {:?}): {e}",
                         backoff
                     );
                     tokio::time::sleep(backoff).await;
@@ -240,11 +266,35 @@ fn spawn_action_invoked_consumer<R: Runtime, M: tauri::Manager<R>>(
             };
 
             while let Some(event) = rx.recv().await {
-                if event.r#type != "app.toolbar.action_invoked" {
+                // Decode based on which action surface fired.
+                // Both have identical wire shape (app_id, action,
+                // window_id) — apps' onAction handler treats
+                // them uniformly.
+                let invoked = match event.r#type.as_str() {
+                    "app.toolbar.action_invoked" => {
+                        decode_action_invoked(&event.payload).map(|v| {
+                            (v.app_id, v.action, v.window_id)
+                        })
+                    }
+                    "app.shortcut.action_invoked" => {
+                        decode_shortcut_invoked(&event.payload).map(|v| {
+                            (v.app_id, v.action, v.window_id)
+                        })
+                    }
+                    _ => continue,
+                };
+                let Some((invoked_app_id, action, window_id)) = invoked else {
                     continue;
-                }
-                let Some(invoked) = decode_action_invoked(&event.payload) else {
-                    continue;
+                };
+                // Re-pack into a struct shape identical to the
+                // toolbar branch to keep the rest of the loop
+                // simple. `crate::os_sdk::ActionInvoked` would be
+                // ideal but it's typed for the toolbar event;
+                // we open-code the tuple instead.
+                let invoked = ActionTuple {
+                    app_id: invoked_app_id,
+                    action,
+                    window_id,
                 };
                 // Filter: only forward actions targeted at this app.
                 if invoked.app_id != target_app_id {

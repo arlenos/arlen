@@ -295,6 +295,30 @@
       "type": "string",
       "oneOf": [
         {
+          "description": "Enables the ambient_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-ambient-clear",
+          "markdownDescription": "Enables the ambient_clear command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the ambient_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-ambient-clear",
+          "markdownDescription": "Denies the ambient_clear command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the ambient_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-ambient-set",
+          "markdownDescription": "Enables the ambient_set command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the ambient_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-ambient-set",
+          "markdownDescription": "Denies the ambient_set command without any pre-configured scope."
+        },
+        {
           "description": "Enables the annotation_clear command without any pre-configured scope.",
           "type": "string",
           "const": "allow-annotation-clear",
@@ -379,6 +403,30 @@
           "markdownDescription": "Denies the annotation_unsubscribe command without any pre-configured scope."
         },
         {
+          "description": "Enables the badges_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-badges-clear",
+          "markdownDescription": "Enables the badges_clear command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the badges_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-badges-clear",
+          "markdownDescription": "Denies the badges_clear command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the badges_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-badges-set",
+          "markdownDescription": "Enables the badges_set command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the badges_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-badges-set",
+          "markdownDescription": "Denies the badges_set command without any pre-configured scope."
+        },
+        {
           "description": "Enables the presence_clear command without any pre-configured scope.",
           "type": "string",
           "const": "allow-presence-clear",
@@ -401,6 +449,42 @@
           "type": "string",
           "const": "deny-presence-set",
           "markdownDescription": "Denies the presence_set command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the shortcuts_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-shortcuts-clear",
+          "markdownDescription": "Enables the shortcuts_clear command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the shortcuts_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-shortcuts-clear",
+          "markdownDescription": "Denies the shortcuts_clear command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the shortcuts_register command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-shortcuts-register",
+          "markdownDescription": "Enables the shortcuts_register command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the shortcuts_register command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-shortcuts-register",
+          "markdownDescription": "Denies the shortcuts_register command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the shortcuts_set_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-shortcuts-set-state",
+          "markdownDescription": "Enables the shortcuts_set_state command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the shortcuts_set_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-shortcuts-set-state",
+          "markdownDescription": "Denies the shortcuts_set_state command without any pre-configured scope."
         },
         {
           "description": "Enables the spatial_hint command without any pre-configured scope.",

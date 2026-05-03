@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-shortcuts-set-state"
+description = "Enables the shortcuts_set_state command without any pre-configured scope."
+commands.allow = ["shortcuts_set_state"]
+
+[[permission]]
+identifier = "deny-shortcuts-set-state"
+description = "Denies the shortcuts_set_state command without any pre-configured scope."
+commands.deny = ["shortcuts_set_state"]

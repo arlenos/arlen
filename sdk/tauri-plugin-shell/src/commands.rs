@@ -7,9 +7,9 @@
 /// commands cannot return arbitrary Rust error types.
 
 use os_sdk::{
-    AnnotationLookup, AnnotationRecord, AnnotationSetParams, AnnotationTarget,
-    BreadcrumbItem, PresenceParams, ProgressState, QuickAction, SpatialHint,
-    TimelineParams,
+    AmbientParams, AnnotationLookup, AnnotationRecord, AnnotationSetParams,
+    AnnotationTarget, BadgeKind, BreadcrumbItem, PresenceParams, ProgressState,
+    QuickAction, Shortcut, ShortcutState, SpatialHint, TimelineParams,
 };
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State, WebviewWindow};
@@ -308,4 +308,84 @@ pub async fn toolbar_clear<R: Runtime>(
         .clear(window.label().to_string())
         .await
         .map_err(|e| e.to_string())
+}
+
+// ── shell.shortcuts surface ────────────────────────────────────
+//
+// Per-app surface (not per-window) — see shortcuts-api.md FA1.
+// The action-dispatch path uses `app.shortcut.action_invoked`
+// with the same payload shape as toolbar's, so the existing
+// `onAction` listener handles both surfaces uniformly.
+
+#[tauri::command]
+pub async fn shortcuts_register<R: Runtime>(
+    _app: tauri::AppHandle<R>,
+    state: State<'_, ShellState>,
+    shortcuts: Vec<Shortcut>,
+) -> Result<(), String> {
+    state
+        .shortcuts
+        .register(shortcuts)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn shortcuts_set_state<R: Runtime>(
+    _app: tauri::AppHandle<R>,
+    state: State<'_, ShellState>,
+    action: String,
+    new_state: ShortcutState,
+) -> Result<(), String> {
+    state
+        .shortcuts
+        .set_state(action, new_state)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn shortcuts_clear<R: Runtime>(
+    _app: tauri::AppHandle<R>,
+    state: State<'_, ShellState>,
+) -> Result<(), String> {
+    state.shortcuts.clear().await.map_err(|e| e.to_string())
+}
+
+// ── shell.badges surface ───────────────────────────────────────
+
+#[tauri::command]
+pub async fn badges_set<R: Runtime>(
+    _app: tauri::AppHandle<R>,
+    state: State<'_, ShellState>,
+    badge: BadgeKind,
+) -> Result<(), String> {
+    state.badges.set(badge).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn badges_clear<R: Runtime>(
+    _app: tauri::AppHandle<R>,
+    state: State<'_, ShellState>,
+) -> Result<(), String> {
+    state.badges.clear().await.map_err(|e| e.to_string())
+}
+
+// ── shell.ambient surface ──────────────────────────────────────
+
+#[tauri::command]
+pub async fn ambient_set<R: Runtime>(
+    _app: tauri::AppHandle<R>,
+    state: State<'_, ShellState>,
+    params: AmbientParams,
+) -> Result<(), String> {
+    state.ambient.set(params).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn ambient_clear<R: Runtime>(
+    _app: tauri::AppHandle<R>,
+    state: State<'_, ShellState>,
+) -> Result<(), String> {
+    state.ambient.clear().await.map_err(|e| e.to_string())
 }
