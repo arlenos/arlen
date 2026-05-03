@@ -23,6 +23,7 @@
   import SandboxedModuleIndicatorSlot from "$lib/components/SandboxedModuleIndicatorSlot.svelte";
   import LayoutIndicator from "$lib/components/LayoutIndicator.svelte";
   import LayoutPopover from "$lib/components/LayoutPopover.svelte";
+  import ToolbarSlot from "$lib/components/ToolbarSlot.svelte";
   import { isFocused, focusState, deactivateFocus } from "$lib/stores/projects.js";
   import { X } from "lucide-svelte";
 
@@ -162,7 +163,9 @@
   <!-- LEFT: App menu + toolbar -->
   <div class="flex items-center gap-2 flex-1 min-w-0" data-tauri-drag-region>
     <GlobalMenuBar />
-    <div class="slot-toolbar flex items-center gap-2"></div>
+    <div class="slot-toolbar flex items-center gap-2">
+      <ToolbarSlot />
+    </div>
   </div>
 
   <!-- CENTER: Workspace indicator -->
