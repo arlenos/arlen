@@ -239,6 +239,7 @@ fn empty_profile(app_id: &str) -> PermissionProfile {
         system: Default::default(),
         input: Default::default(),
         search: Default::default(),
+        intents: Default::default(),
     }
 }
 

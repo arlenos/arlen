@@ -87,6 +87,8 @@ pub struct PermissionProfile {
     pub input: InputPermissions,
     #[serde(default)]
     pub search: SearchPermissions,
+    #[serde(default)]
+    pub intents: IntentsPermissions,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -293,6 +295,41 @@ pub struct SearchPermissions {
     /// register_handler. Reserved; no broker honors this today.
     #[serde(default)]
     pub intercept_all: bool,
+}
+
+// ── Intents ──
+
+/// `shell.intents` cross-process action dispatch.
+///
+/// `dispatch` lets an app fire typed intents (`url`, `file`,
+/// `text`, `email`, `project`) via the `os-sdk::intents` SDK.
+/// Phase-6-live, broker single-shot, Foundation §6.4 / Listing 11.
+///
+/// `register` and `preferences` are reserved for the Phase-7
+/// modulesd `intent.handler` extension point and the multi-
+/// handler-resolution preference cache (foundation §6.4 "user
+/// chooses once and the preference is remembered"). They parse
+/// cleanly today so profiles authored against Phase-7 schema
+/// survive without rewrite.
+///
+/// See `docs/architecture/intent-system.md` for the broker
+/// contract and `identity-spoof-mitigation.md` for the F3 same-
+/// uid spoof acceptance for `dispatch` (blast ≤ xdg-open).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct IntentsPermissions {
+    /// Programmatic intent dispatch via `shell.intents.dispatch`.
+    /// Built-in Phase-6 handlers cover url/file/text/email/project.
+    #[serde(default)]
+    pub dispatch: bool,
+    /// Phase-7 modulesd-hosted handler-registration. Reserved;
+    /// no broker honors this today.
+    #[serde(default)]
+    pub register: bool,
+    /// Phase-7 multi-handler-resolution preference cache write
+    /// permission. Reserved; "user chooses once and is remembered"
+    /// requires consent-prompt + AppArmor (F3 bundle).
+    #[serde(default)]
+    pub preferences: bool,
 }
 
 // ── Input ──
@@ -712,6 +749,52 @@ intercept_all = true
         assert!(p.search.open);
         assert!(p.search.register_handler);
         assert!(p.search.intercept_all);
+    }
+
+    // ── Intents permissions ──
+
+    #[test]
+    fn intents_default_deny() {
+        let toml = r#"
+[info]
+app_id = "com.test"
+"#;
+        let p: PermissionProfile = toml::from_str(toml).unwrap();
+        assert!(!p.intents.dispatch, "intents.dispatch must default to false");
+        assert!(!p.intents.register);
+        assert!(!p.intents.preferences);
+    }
+
+    #[test]
+    fn intents_explicit_grant() {
+        let toml = r#"
+[info]
+app_id = "com.test"
+[intents]
+dispatch = true
+"#;
+        let p: PermissionProfile = toml::from_str(toml).unwrap();
+        assert!(p.intents.dispatch);
+        // Reserved Phase-7 fields default-deny even with explicit section
+        assert!(!p.intents.register);
+        assert!(!p.intents.preferences);
+    }
+
+    #[test]
+    fn intents_phase7_fields_parse_without_being_honored() {
+        // Forward-compat for Phase-7 schema.
+        let toml = r#"
+[info]
+app_id = "com.test"
+[intents]
+dispatch = true
+register = true
+preferences = true
+"#;
+        let p: PermissionProfile = toml::from_str(toml).unwrap();
+        assert!(p.intents.dispatch);
+        assert!(p.intents.register);
+        assert!(p.intents.preferences);
     }
 
     // ── Pattern matching ──
