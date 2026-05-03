@@ -22,7 +22,7 @@
 		bind:value
 		data-slot="command-input"
 		class={cn(
-			"flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
+			"flex h-10 w-full rounded-input bg-transparent py-3 text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
 			className
 		)}
 		style="color: var(--color-fg-shell); --placeholder-color: color-mix(in srgb, var(--color-fg-shell) 35%, transparent);"

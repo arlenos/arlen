@@ -14,7 +14,7 @@
   aria-label="Toggle Sidebar"
   onclick={() => sidebar.toggle()}
   class={cn(
-    "inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors",
+    "inline-flex size-7 items-center justify-center rounded-input text-muted-foreground hover:bg-muted hover:text-foreground transition-colors",
     className
   )}
 >
