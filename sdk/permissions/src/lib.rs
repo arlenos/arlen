@@ -85,6 +85,8 @@ pub struct PermissionProfile {
     pub system: SystemPermissions,
     #[serde(default)]
     pub input: InputPermissions,
+    #[serde(default)]
+    pub search: SearchPermissions,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -262,6 +264,35 @@ pub struct SystemPermissions {
     pub autostart: bool,
     #[serde(default)]
     pub background: bool,
+}
+
+// ── Search ──
+
+/// Waypointer search subsystem permissions.
+///
+/// `open` lets an app programmatically open the Waypointer launcher
+/// with a prefilled query via `os-sdk::search::UnixSearchClient::open`.
+/// Low-blast-radius scope; spoof per F3 lets an attacker pop the
+/// user's launcher with a chosen query, no further reach.
+///
+/// `register_handler` and `intercept_all` are reserved for the Phase-7
+/// modulesd-based handler-registration pipeline and are NOT honored
+/// by any current broker. They parse cleanly so profiles authored
+/// today survive the Phase-7 schema rollout without rewrite.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SearchPermissions {
+    /// Programmatic Waypointer-open with prefilled query.
+    /// `os-sdk::search::open(query, mode)` requires this scope.
+    #[serde(default)]
+    pub open: bool,
+    /// Phase-7 modulesd-hosted search-result-provider registration.
+    /// Reserved; no broker honors this today. Document-only.
+    #[serde(default)]
+    pub register_handler: bool,
+    /// Phase-7 gate for `.*`-style universal-match patterns in
+    /// register_handler. Reserved; no broker honors this today.
+    #[serde(default)]
+    pub intercept_all: bool,
 }
 
 // ── Input ──
@@ -632,6 +663,55 @@ app_id = "com.test"
         assert!(profile.graph.read.is_empty());
         assert!(!profile.network.allow_all);
         assert!(!profile.notifications.enabled);
+        assert!(!profile.search.open);
+        assert!(!profile.search.register_handler);
+        assert!(!profile.search.intercept_all);
+    }
+
+    // ── Search permissions ──
+
+    #[test]
+    fn search_default_deny() {
+        let toml = r#"
+[info]
+app_id = "com.test"
+"#;
+        let p: PermissionProfile = toml::from_str(toml).unwrap();
+        assert!(!p.search.open, "search.open must default to false");
+    }
+
+    #[test]
+    fn search_explicit_grant() {
+        let toml = r#"
+[info]
+app_id = "com.test"
+[search]
+open = true
+"#;
+        let p: PermissionProfile = toml::from_str(toml).unwrap();
+        assert!(p.search.open);
+        // Reserved Phase-7 fields default-deny even with explicit [search] section
+        assert!(!p.search.register_handler);
+        assert!(!p.search.intercept_all);
+    }
+
+    #[test]
+    fn search_phase7_fields_parse_without_being_honored() {
+        // Forward-compat: profiles authored against the Phase-7 schema
+        // must parse cleanly today even though no current broker reads
+        // these flags.
+        let toml = r#"
+[info]
+app_id = "com.test"
+[search]
+open = true
+register_handler = true
+intercept_all = true
+"#;
+        let p: PermissionProfile = toml::from_str(toml).unwrap();
+        assert!(p.search.open);
+        assert!(p.search.register_handler);
+        assert!(p.search.intercept_all);
     }
 
     // ── Pattern matching ──

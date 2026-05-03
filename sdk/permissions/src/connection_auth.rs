@@ -238,6 +238,7 @@ fn empty_profile(app_id: &str) -> PermissionProfile {
         clipboard: Default::default(),
         system: Default::default(),
         input: Default::default(),
+        search: Default::default(),
     }
 }
 
