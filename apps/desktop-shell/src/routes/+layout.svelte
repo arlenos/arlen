@@ -39,10 +39,12 @@
   import ZoomToolbar from "$lib/components/ZoomToolbar.svelte";
   import WindowHeader from "$lib/components/WindowHeader.svelte";
   import BluetoothPairingDialog from "$lib/components/BluetoothPairingDialog.svelte";
+  import AmbientOverlay from "$lib/components/AmbientOverlay.svelte";
   import { Toaster } from "svelte-sonner";
   import { toastConfig, initToastConfig } from "$lib/stores/toastConfig.js";
   import { initToastBridge } from "$lib/stores/toastBridge.js";
   import { initToolbarStore } from "$lib/stores/toolbarStore";
+  import { initAppStateStores } from "$lib/stores/appStateStores";
 
   onMount(() => {
     // Every store init now returns a disposer. Collecting them lets
@@ -63,6 +65,7 @@
       initToastConfig(),
       initToastBridge(),
       initToolbarStore(),
+      initAppStateStores(),
     ];
 
     // Initialize theme system (loads appearance.toml, injects CSS vars,
@@ -81,6 +84,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
+<AmbientOverlay />
 <slot />
 <ContextMenu />
 <TabBar />

@@ -2384,6 +2384,7 @@ dependencies = [
  "image",
  "libc",
  "log",
+ "lunaris-permissions",
  "meval",
  "module-sdk",
  "modulesd-proto",
@@ -2411,6 +2412,17 @@ dependencies = [
  "wordnet-morphy",
  "wordnet-types",
  "zbus",
+]
+
+[[package]]
+name = "lunaris-permissions"
+version = "0.1.0"
+dependencies = [
+ "dirs 5.0.1",
+ "libc",
+ "serde",
+ "thiserror 2.0.18",
+ "toml 0.8.2",
 ]
 
 [[package]]

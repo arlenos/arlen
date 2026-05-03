@@ -1,6 +1,7 @@
 /// Built-in Waypointer plugins (Phase 2: compiled into shell).
 
 pub mod app_search;
+pub mod app_shortcuts;
 pub mod calculator;
 pub mod clipboard;
 pub mod datetime;
@@ -18,6 +19,7 @@ pub mod url;
 pub mod window_switcher;
 
 use crate::app_index;
+use crate::app_state::ShortcutsState;
 use crate::clipboard_history::ClipboardHistoryState;
 use crate::wayland_client;
 use super::manager::PluginManager;
@@ -39,6 +41,7 @@ pub fn register_builtins(
     app_index: app_index::AppIndex,
     window_list: wayland_client::WindowList,
     clipboard: ClipboardHistoryState,
+    shortcuts: ShortcutsState,
 ) {
     let disabled = registry::load_disabled_plugins();
     if !disabled.is_empty() {
@@ -48,7 +51,8 @@ pub fn register_builtins(
     let plugins: Vec<Box<dyn super::plugin::WaypointerPlugin>> = vec![
         Box::new(app_search::AppSearchPlugin::new(app_index)),
         Box::new(url::UrlPlugin),
-        Box::new(window_switcher::WindowSwitcherPlugin::new(window_list)),
+        Box::new(window_switcher::WindowSwitcherPlugin::new(window_list.clone())),
+        Box::new(app_shortcuts::AppShortcutsPlugin::new(window_list, shortcuts)),
         Box::new(calculator::CalculatorPlugin),
         Box::new(unit_converter::UnitConverterPlugin),
         Box::new(datetime::DateTimePlugin),

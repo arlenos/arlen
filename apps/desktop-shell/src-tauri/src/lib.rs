@@ -1,9 +1,12 @@
 mod app_history;
 mod app_index;
+mod app_state;
 mod audio;
 mod battery;
 mod clipboard_history;
 mod clipboard_ipc;
+mod intent_ipc;
+mod search_ipc;
 mod event_bus;
 mod gtk_menu_bridge;
 mod layer_shell;
@@ -73,6 +76,24 @@ fn dispatch_app_action(app_id: String, window_id: String, action: String) {
     event_bus::emit_toolbar_action_invoked(&app_id, &window_id, &action);
 }
 
+/// Invoke an app shortcut from the Waypointer.
+///
+/// Crosses the process boundary via `app.shortcut.action_invoked`
+/// (separate from `app.toolbar.action_invoked` for audit
+/// clarity, but shape-identical). The receiving app's
+/// tauri-plugin-shell consumer routes it as
+/// `lunaris://app-action` to its webview.
+///
+/// `window_id` is the focused window at click-time. Empty
+/// string falls back to app-wide broadcast on the receiver
+/// side. The Phase-1 confirmation-dialog flow (FA7 in
+/// shortcuts-api.md) is deferred — the frontend currently
+/// dispatches without prompting.
+#[tauri::command]
+fn app_shortcut_invoke(app_id: String, window_id: String, action: String) {
+    event_bus::emit_shortcut_action_invoked(&app_id, &window_id, &action);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::init();
@@ -104,6 +125,11 @@ pub fn run() {
     let clipboard_for_watcher = Arc::clone(&clipboard_state);
     let window_list_for_clipboard = Arc::clone(&window_list);
 
+    // Backend mirror of the per-app shortcut state (Sprint B-fat).
+    // Populated by event_bus's app.shortcut.* consumer; read by the
+    // Waypointer plugin core.app-shortcuts.
+    let shortcuts_state = app_state::new_shortcuts_state();
+
     // PluginManager needs Arc clones of AppIndex and WindowList.
     let mut plugin_mgr = waypointer_system::PluginManager::new();
     waypointer_system::plugins::register_builtins(
@@ -111,6 +137,7 @@ pub fn run() {
         Arc::clone(&app_idx),
         Arc::clone(&window_list),
         Arc::clone(&clipboard_state),
+        Arc::clone(&shortcuts_state),
     );
     let plugin_mgr_state: waypointer_system::PluginManagerState = std::sync::RwLock::new(plugin_mgr);
 
@@ -184,7 +211,7 @@ pub fn run() {
             // The v2 appearance watcher below handles all theme reloads.
             theme::commands::start_appearance_watcher(app.handle().clone());
             shell_config::start_shell_config_watcher(app.handle().clone());
-            event_bus::start(app.handle().clone());
+            event_bus::start(app.handle().clone(), Arc::clone(&shortcuts_state));
             wayland_client::start(
                 app.handle().clone(),
                 workspace_sender,
@@ -219,6 +246,8 @@ pub fn run() {
                 window_list_for_clipboard,
             );
             clipboard_ipc::start(clipboard_for_watcher);
+            search_ipc::start(app.handle().clone());
+            intent_ipc::start(app.handle().clone());
             sni::start(app.handle().clone(), sni_items);
             bluetooth::start_monitor(app.handle().clone());
             // Register the BlueZ Agent1 implementation so first-time
@@ -273,6 +302,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             log_frontend,
             dispatch_app_action,
+            app_shortcut_invoke,
             modulesd_commands::modulesd_list_modules,
             modulesd_commands::mint_iframe,
             modulesd_commands::module_host_call,
@@ -299,6 +329,7 @@ pub fn run() {
             menu_store::get_menu,
             menu_store::set_menu_state,
             waypointer::toggle_waypointer,
+            waypointer::set_query_and_show,
             audio::get_audio_status,
             audio::set_audio_volume,
             audio::toggle_audio_mute,

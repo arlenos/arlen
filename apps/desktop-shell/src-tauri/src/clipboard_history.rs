@@ -144,7 +144,7 @@ pub struct ClipboardHistory {
     /// watcher fires. Only set just before an SDK `wl-copy`; the
     /// content match guards against external writes that fire the
     /// watcher between staging and consumption.
-    pending_label: Mutex<Option<(String, Label)>>,
+    pub(crate) pending_label: Mutex<Option<(String, Label)>>,
     /// Broadcast channel for SDK subscribers. Capacity 64 is the
     /// soft cap on how far a slow subscriber may lag before tokio
     /// drops the oldest pending entry; clipboard ops are rare so
