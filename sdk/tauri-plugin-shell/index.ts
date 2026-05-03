@@ -298,5 +298,118 @@ export const toolbar = {
   },
 };
 
-/** Aggregate matching foundation §6.4 (`shell.{presence,timeline,spatial,annotations,toolbar}`). */
-export const shell = { presence, timeline, spatial, annotations, toolbar };
+// ── shell.shortcuts ───────────────────────────────────────────────
+
+export interface Shortcut {
+  label: string;
+  /** ui-kit / Lucide icon id. */
+  icon: string;
+  /** Opaque dispatch identifier (received in `onAction`). */
+  action: string;
+  /**
+   * Tag filter for Focus-Mode-aware rendering. Phase 1 ignores
+   * this field; Phase 6 brings tag-aware filtering once the
+   * project tag system lands.
+   */
+  context?: string[];
+  /**
+   * Optional confirm-dialog text. When set, the shell shows a
+   * yes/no dialog before dispatching the action.
+   */
+  confirm?: string;
+}
+
+export interface ShortcutState {
+  enabled?: boolean;
+  /** "" clears the badge. */
+  badge?: string;
+}
+
+export const shortcuts = {
+  /**
+   * Register the app's full shortcut list. Replaces any
+   * previously-registered set. Empty list = clear.
+   */
+  async register(list: Shortcut[]): Promise<void> {
+    return invoke(`${PLUGIN}|shortcuts_register`, { shortcuts: list });
+  },
+  /**
+   * Update one shortcut's state without re-emitting the full
+   * list. Action must reference a previously-registered
+   * shortcut; silently no-op on miss.
+   */
+  async setState(action: string, state: ShortcutState): Promise<void> {
+    return invoke(`${PLUGIN}|shortcuts_set_state`, { action, newState: state });
+  },
+  async clear(): Promise<void> {
+    return invoke(`${PLUGIN}|shortcuts_clear`);
+  },
+  // onAction is provided by `toolbar.onAction` — the same
+  // listener handles both toolbar Quick-Action / Breadcrumb
+  // clicks and shortcut clicks (uniform `lunaris://app-action`
+  // event on the receive side).
+};
+
+// ── shell.badges ──────────────────────────────────────────────────
+
+export type BadgeStatus = "success" | "warning" | "error" | "progress";
+
+export type BadgeKind =
+  | { kind: "count"; count: number }
+  | { kind: "dot" }
+  | { kind: "status"; status: BadgeStatus; value?: number }
+  | { kind: "countWithStatus"; count: number; status: BadgeStatus };
+
+export const badges = {
+  /** Replaces any previous variant. Mutually exclusive per app. */
+  async set(badge: BadgeKind): Promise<void> {
+    return invoke(`${PLUGIN}|badges_set`, { badge });
+  },
+  async clear(): Promise<void> {
+    return invoke(`${PLUGIN}|badges_clear`);
+  },
+};
+
+// ── shell.ambient ─────────────────────────────────────────────────
+
+export type AmbientEffect = "pulse" | "tint";
+export type AmbientColor = "accent" | "warning" | "error" | "success";
+export type AmbientSpeed = "slow" | "medium" | "fast";
+
+export interface AmbientParams {
+  effect: AmbientEffect;
+  /**
+   * Token-system color name. Hex / arbitrary CSS values are
+   * not permitted; the renderer maps these to
+   * `var(--color-{accent|warning|error|success})`.
+   */
+  color: AmbientColor;
+  /** Hard-capped at 0.5 SDK-side. Negative values clamp to 0. */
+  intensity: number;
+  speed: AmbientSpeed;
+  /** Free-form, for debug. Not rendered. */
+  reason?: string;
+  /** Shell-side autoClear timer in milliseconds. */
+  autoClearMs?: number;
+}
+
+export const ambient = {
+  async set(params: AmbientParams): Promise<void> {
+    return invoke(`${PLUGIN}|ambient_set`, { params });
+  },
+  async clear(): Promise<void> {
+    return invoke(`${PLUGIN}|ambient_clear`);
+  },
+};
+
+/** Aggregate matching foundation §6.4 (`shell.{presence,timeline,spatial,annotations,toolbar,shortcuts,badges,ambient}`). */
+export const shell = {
+  presence,
+  timeline,
+  spatial,
+  annotations,
+  toolbar,
+  shortcuts,
+  badges,
+  ambient,
+};

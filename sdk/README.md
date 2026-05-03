@@ -106,6 +106,7 @@ cargo test -p os-sdk --test unix_implementations      # event-bus + graph socket
 cargo test -p os-sdk --test clipboard_integration     # clipboard broker socket integration
 cargo test -p os-sdk --test event_consumer_integration # event-bus consumer-side integration
 cargo test -p os-sdk --test toolbar_integration       # shell.toolbar producer integration
+cargo test -p os-sdk shortcuts:: badges:: ambient::   # B-fat sub-API unit tests
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 

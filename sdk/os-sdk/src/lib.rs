@@ -1,4 +1,6 @@
+pub mod ambient;
 pub mod annotations;
+pub mod badges;
 pub mod clipboard;
 pub mod config;
 pub mod event;
@@ -6,6 +8,7 @@ pub mod event_consumer;
 pub mod graph;
 pub mod mock;
 pub mod presence;
+pub mod shortcuts;
 pub mod spatial;
 pub mod timeline;
 pub mod toolbar;
@@ -39,5 +42,12 @@ pub use timeline::{Timeline, TimelineParams};
 pub use toolbar::{
     decode_action_invoked, ActionInvoked, BreadcrumbItem, ProgressState, QuickAction,
     Toolbar, MAX_QUICK_ACTIONS,
+};
+pub use ambient::{
+    Ambient, AmbientColor, AmbientEffect, AmbientParams, AmbientSpeed, MAX_INTENSITY,
+};
+pub use badges::{BadgeKind, BadgeStatus, Badges};
+pub use shortcuts::{
+    decode_shortcut_invoked, Shortcut, ShortcutInvoked, ShortcutState, Shortcuts,
 };
 pub mod shell_types;

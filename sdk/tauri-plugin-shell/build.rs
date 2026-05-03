@@ -15,6 +15,13 @@ fn main() {
         "toolbar_set_progress",
         "toolbar_clear_progress",
         "toolbar_clear",
+        "shortcuts_register",
+        "shortcuts_set_state",
+        "shortcuts_clear",
+        "badges_set",
+        "badges_clear",
+        "ambient_set",
+        "ambient_clear",
     ])
     .build();
 }

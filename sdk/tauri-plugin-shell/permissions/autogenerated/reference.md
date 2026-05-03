@@ -10,6 +10,58 @@
 <tr>
 <td>
 
+`lunaris-shell:allow-ambient-clear`
+
+</td>
+<td>
+
+Enables the ambient_clear command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:deny-ambient-clear`
+
+</td>
+<td>
+
+Denies the ambient_clear command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:allow-ambient-set`
+
+</td>
+<td>
+
+Enables the ambient_set command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:deny-ambient-set`
+
+</td>
+<td>
+
+Denies the ambient_set command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `lunaris-shell:allow-annotation-clear`
 
 </td>
@@ -192,6 +244,58 @@ Denies the annotation_unsubscribe command without any pre-configured scope.
 <tr>
 <td>
 
+`lunaris-shell:allow-badges-clear`
+
+</td>
+<td>
+
+Enables the badges_clear command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:deny-badges-clear`
+
+</td>
+<td>
+
+Denies the badges_clear command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:allow-badges-set`
+
+</td>
+<td>
+
+Enables the badges_set command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:deny-badges-set`
+
+</td>
+<td>
+
+Denies the badges_set command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `lunaris-shell:allow-presence-clear`
 
 </td>
@@ -237,6 +341,84 @@ Enables the presence_set command without any pre-configured scope.
 <td>
 
 Denies the presence_set command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:allow-shortcuts-clear`
+
+</td>
+<td>
+
+Enables the shortcuts_clear command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:deny-shortcuts-clear`
+
+</td>
+<td>
+
+Denies the shortcuts_clear command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:allow-shortcuts-register`
+
+</td>
+<td>
+
+Enables the shortcuts_register command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:deny-shortcuts-register`
+
+</td>
+<td>
+
+Denies the shortcuts_register command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:allow-shortcuts-set-state`
+
+</td>
+<td>
+
+Enables the shortcuts_set_state command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`lunaris-shell:deny-shortcuts-set-state`
+
+</td>
+<td>
+
+Denies the shortcuts_set_state command without any pre-configured scope.
 
 </td>
 </tr>
