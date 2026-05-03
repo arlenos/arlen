@@ -7,6 +7,7 @@ pub mod event;
 pub mod event_consumer;
 pub mod graph;
 pub mod mock;
+pub mod intents;
 pub mod presence;
 pub mod search;
 pub mod shortcuts;
@@ -32,6 +33,12 @@ pub(crate) mod proto_search {
     include!(concat!(env!("OUT_DIR"), "/lunaris.search.rs"));
 }
 
+pub(crate) mod proto_intents {
+    #![allow(dead_code)]
+    #![allow(clippy::doc_markdown)]
+    include!(concat!(env!("OUT_DIR"), "/lunaris.intents.rs"));
+}
+
 pub use annotations::{
     AbortOnDrop, AnnotationChange, AnnotationLookup, AnnotationRecord,
     AnnotationSetParams, AnnotationTarget, Annotations, Subscription,
@@ -43,6 +50,7 @@ pub use clipboard::{
 pub use event::{EmitError, EventEmitter, UnixEventEmitter};
 pub use event_consumer::{EventConsumer, SubscribeError, UnixEventConsumer};
 pub use graph::{GraphClient, QueryError, UnixGraphClient};
+pub use intents::{IntentError, IntentType, UnixIntentClient};
 pub use presence::{AutoClear, Presence, PresenceParams};
 pub use search::{SearchError, SearchMode, UnixSearchClient};
 pub use spatial::{GeometryHint, OutputHint, Spatial, SpatialHint};
