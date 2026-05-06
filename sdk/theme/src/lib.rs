@@ -336,13 +336,23 @@ impl LunarisTheme {
     pub fn effective_modal(&self) -> f32 {
         scale_radius(self.radius.modal, self.radius.intensity)
     }
-    /// Pill / full radius — **never scaled by intensity**.
+    /// Pill / full radius — **never scaled by intensity** because
+    /// "fully round" doesn't have a meaningful intermediate state.
     pub fn effective_full(&self) -> f32 {
         self.radius.full
     }
-    /// Per-corner window outline — **never scaled by intensity**.
+    /// Per-corner window outline. Scaled by `radius.intensity` so
+    /// the user's single appearance-page slider drives BOTH the
+    /// shell's tile/card/modal radii AND the compositor's window-
+    /// corner radii in lock-step. Without this, dragging the
+    /// roundness slider visually only affected shell content while
+    /// the compositor kept rendering windows at the theme's
+    /// hardcoded corner radius — confusing UX where "make
+    /// everything sharper" left half the screen rounded.
     pub fn effective_window_corners(&self) -> [f32; 4] {
-        self.radius.window_corners
+        self.radius
+            .window_corners
+            .map(|r| scale_radius(r, self.radius.intensity))
     }
 
     /// Accent color as `[r, g, b]` (no alpha), for shader uniforms.
@@ -805,9 +815,15 @@ size  = 24
         assert_eq!(t.effective_input(), 16.0);
         assert_eq!(t.effective_card(),  24.0);
         assert_eq!(t.effective_modal(), 32.0);
-        // Full + window_corners NOT scaled.
+        // Full stays pill — categorical, not on the spectrum.
         assert_eq!(t.effective_full(), 9999.0);
-        assert_eq!(t.effective_window_corners(), [12.0, 12.0, 12.0, 12.0]);
+        // Window corners NOW scale with intensity (single-knob
+        // user contract: roundness slider drives shell + window
+        // chrome together).
+        assert_eq!(
+            t.effective_window_corners(),
+            [24.0, 24.0, 24.0, 24.0]
+        );
     }
 
     #[test]
