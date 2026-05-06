@@ -86,6 +86,37 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     anchor: "accent-color",
   },
 
+  // ── Quick Settings: layout ────────────────────────────────────────
+  {
+    id: "quicksettings.layout",
+    title: "Quick Settings tile layout",
+    description:
+      "Reorder, hide, and resize the tiles in the Quick Settings panel.",
+    keywords: [
+      "quick settings",
+      "control center",
+      "tiles",
+      "layout",
+      "panel",
+      "reorder",
+      "hide",
+      "show",
+      "resize",
+    ],
+    panel: "quicksettings",
+    section: "Layout",
+    anchor: "qs-layout-list",
+  },
+  {
+    id: "quicksettings.layout.reset",
+    title: "Reset Quick Settings to defaults",
+    description: "Restore the bundled order, sizes, and visibility for tiles.",
+    keywords: ["reset", "defaults", "quick settings", "restore"],
+    panel: "quicksettings",
+    section: "Layout",
+    anchor: "qs-layout-list",
+  },
+
   // ── Appearance: Window ─────────────────────────────────────────────
   {
     id: "appearance.overrides.radius_intensity",
