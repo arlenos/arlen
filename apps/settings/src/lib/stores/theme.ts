@@ -241,7 +241,7 @@ export function applyAppearance(config: AppearanceConfig | null): void {
 
   console.log("[theme] applied:", {
     accent,
-    radius,
+    intensity,
     fontInterface,
     fontMono,
     fontSize,

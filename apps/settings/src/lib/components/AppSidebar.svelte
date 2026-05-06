@@ -117,7 +117,13 @@
     },
     {
       label: "Personal",
-      panelIds: ["appearance", "accessibility", "focus", "knowledge"] as const,
+      panelIds: [
+        "appearance",
+        "quicksettings",
+        "accessibility",
+        "focus",
+        "knowledge",
+      ] as const,
     },
     {
       label: "Input",

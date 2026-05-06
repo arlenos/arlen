@@ -22,6 +22,11 @@ pub enum ConfigFile {
     /// only — Settings warns the user that changes need a daemon
     /// restart until live-reload lands in a follow-up sprint.
     Graph,
+    /// Quick Settings tile layout (`quicksettings.toml`). Schema:
+    /// `[[tile]] id, visible, size`. The desktop-shell reads this on
+    /// QS-panel mount via `qs_layout_get`; Settings writes it through
+    /// the generic config API.
+    QuickSettings,
 }
 
 impl ConfigFile {
@@ -33,6 +38,7 @@ impl ConfigFile {
             Self::Notifications => "notifications.toml",
             Self::Modules => "modules.toml",
             Self::Graph => "graph.toml",
+            Self::QuickSettings => "quicksettings.toml",
         }
     }
 

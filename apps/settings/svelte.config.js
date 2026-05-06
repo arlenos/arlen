@@ -9,6 +9,10 @@ const config = {
     adapter: adapter({
       fallback: "index.html",
     }),
+    alias: {
+      "@lunaris/ui-kit": "../sdk/ui-kit/src/lib",
+      "@lunaris/ui-kit/*": "../sdk/ui-kit/src/lib/*",
+    },
   },
 };
 
