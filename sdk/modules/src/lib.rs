@@ -68,6 +68,11 @@ pub struct ModuleManifest {
     pub waypointer: Option<WaypointerConfig>,
     #[serde(default)]
     pub topbar: Option<TopbarConfig>,
+    /// Quick Settings tile extension point. Module declares a tile
+    /// rendered inside the shell QS panel. See `docs/architecture/
+    /// quicksettings-system.md`.
+    #[serde(default, rename = "quicksettings")]
+    pub quicksettings: Option<QuickSettingsConfig>,
     #[serde(default)]
     pub settings: Option<SettingsConfig>,
     #[serde(default)]
@@ -243,6 +248,119 @@ pub struct TopbarAppletConfig {
     pub icon: String,
 }
 
+/// Quick Settings tile extension point.
+///
+/// A module declares a tile via `[quicksettings.tile]`. The shell merges
+/// declared tiles with the user's `~/.config/lunaris/quicksettings.toml`
+/// layout to compute the rendered grid. See
+/// `docs/architecture/quicksettings-system.md` for the full spec.
+#[derive(Debug, Clone, Deserialize)]
+pub struct QuickSettingsConfig {
+    pub tile: Option<QuickSettingsTileConfig>,
+}
+
+/// One tile declaration. Tiles are placed in a 2-column logical grid.
+/// `default_size` is the size used when the user has not customised the
+/// tile. `allowed_sizes` is the spectrum the user may pick between in
+/// the Settings UI; `default_size` MUST be a member of `allowed_sizes`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct QuickSettingsTileConfig {
+    /// Stable identifier within the module, e.g. `"main"` or `"vpn"`.
+    /// The full tile id rendered in `quicksettings.toml` is
+    /// `<module-id>:<tile.id>` (system-tier tiles use `system.<id>`).
+    pub id: String,
+    /// User-visible label.
+    pub label: String,
+    /// Lucide icon name. Resolved by the shell's icon registry.
+    #[serde(default)]
+    pub icon: String,
+    /// Size when first rendered. Must appear in `allowed_sizes`.
+    #[serde(default = "default_tile_size")]
+    pub default_size: TileSize,
+    /// Sizes the user is allowed to pick in the Settings customization
+    /// UI. If empty, the schema validator rejects the manifest. The
+    /// shell ignores sizes outside this set when reading the user's
+    /// layout file.
+    #[serde(default = "default_allowed_sizes")]
+    pub allowed_sizes: Vec<TileSize>,
+    /// Click behaviour. `toggle` flips a boolean (e.g. WiFi on/off).
+    /// `popover` opens a detail surface. `flyout` opens an inline
+    /// dropdown without dismissing the panel. `noop` makes the tile a
+    /// pure status display.
+    #[serde(default = "default_tile_click")]
+    pub click: TileClick,
+    /// Status channel the tile subscribes to. The shell publishes
+    /// `lunaris://qs/status/<channel>` events with `StatusUpdate { active,
+    /// status_text }`. Empty disables status subscription.
+    #[serde(default)]
+    pub status_channel: String,
+    /// Component name the shell renders when `click = "popover"` or
+    /// `click = "flyout"`. The shell maintains a registry mapping
+    /// component-id strings to actual Svelte components.
+    #[serde(default)]
+    pub detail_component: String,
+    /// Optional manifest-time gating predicate. The shell evaluates
+    /// this to decide whether the tile is even *eligible* for the
+    /// layout. Strings the shell understands include `"backlight"`
+    /// (only when a brightness device exists), `"bluetooth-adapter"`
+    /// (only when BlueZ reports an adapter), `"battery"` (UPower
+    /// device present), `"vpn"` (NetworkManager VPN connection
+    /// present). Empty = always eligible.
+    #[serde(default)]
+    pub available_when: String,
+}
+
+/// Tile size in the 2-column logical grid. `OneByOne` is half a row;
+/// `TwoByOne` spans the full row; `TwoByTwo` spans the full row across
+/// two rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TileSize {
+    /// Single cell (half-row).
+    OneByOne,
+    /// Full-row, single height.
+    TwoByOne,
+    /// Full-row, double height.
+    TwoByTwo,
+}
+
+impl TileSize {
+    /// Cells consumed in the logical grid (column-count × row-count).
+    pub fn cells(self) -> (u32, u32) {
+        match self {
+            Self::OneByOne => (1, 1),
+            Self::TwoByOne => (2, 1),
+            Self::TwoByTwo => (2, 2),
+        }
+    }
+}
+
+/// Tile click behaviour.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TileClick {
+    /// Flip a boolean state via the status channel's underlying backend.
+    Toggle,
+    /// Open a popover surface attached to the tile.
+    Popover,
+    /// Open an inline flyout (does not dismiss the panel).
+    Flyout,
+    /// Pure status display; the tile is not clickable.
+    Noop,
+}
+
+fn default_tile_size() -> TileSize {
+    TileSize::OneByOne
+}
+
+fn default_tile_click() -> TileClick {
+    TileClick::Toggle
+}
+
+fn default_allowed_sizes() -> Vec<TileSize> {
+    vec![TileSize::OneByOne]
+}
+
 /// Settings panel extension.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SettingsConfig {
@@ -408,6 +526,50 @@ pub fn validate_manifest(manifest: &ModuleManifest) -> Vec<ValidationWarning> {
                         message: "prefix is unusually long (>5 chars)".into(),
                     });
                 }
+            }
+        }
+    }
+
+    // QuickSettings tile.
+    if let Some(qs) = &manifest.quicksettings {
+        if let Some(tile) = &qs.tile {
+            if tile.id.trim().is_empty() {
+                warnings.push(ValidationWarning {
+                    field: "quicksettings.tile.id".into(),
+                    message: "tile id must not be empty".into(),
+                });
+            }
+            if tile.label.trim().is_empty() {
+                warnings.push(ValidationWarning {
+                    field: "quicksettings.tile.label".into(),
+                    message: "tile label must not be empty".into(),
+                });
+            }
+            if tile.allowed_sizes.is_empty() {
+                warnings.push(ValidationWarning {
+                    field: "quicksettings.tile.allowed_sizes".into(),
+                    message: "allowed_sizes must declare at least one size".into(),
+                });
+            } else if !tile.allowed_sizes.contains(&tile.default_size) {
+                warnings.push(ValidationWarning {
+                    field: "quicksettings.tile.default_size".into(),
+                    message: format!(
+                        "default_size {:?} is not in allowed_sizes {:?}",
+                        tile.default_size, tile.allowed_sizes
+                    ),
+                });
+            }
+            // popover/flyout require a detail_component.
+            if matches!(tile.click, TileClick::Popover | TileClick::Flyout)
+                && tile.detail_component.trim().is_empty()
+            {
+                warnings.push(ValidationWarning {
+                    field: "quicksettings.tile.detail_component".into(),
+                    message: format!(
+                        "click = {:?} requires detail_component",
+                        tile.click
+                    ),
+                });
             }
         }
     }
@@ -1032,6 +1194,158 @@ scope = "everywhere"
         let m = parse_manifest(toml).unwrap();
         let warnings = validate_manifest(&m);
         assert!(warnings.iter().any(|w| w.field == "keybinding[0].scope"));
+    }
+
+    // -----------------------------------------------------------------
+    // QuickSettings tile manifest
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn parses_quicksettings_tile_section() {
+        let toml = r#"
+[module]
+id = "com.example.vpn"
+name = "VPN"
+version = "1.0.0"
+
+[quicksettings.tile]
+id = "main"
+label = "VPN"
+icon = "shield"
+default_size = "one_by_one"
+allowed_sizes = ["one_by_one", "two_by_one"]
+click = "popover"
+status_channel = "vpn.status"
+detail_component = "vpn-popover"
+available_when = "vpn"
+"#;
+        let m = parse_manifest(toml).unwrap();
+        let tile = m.quicksettings.unwrap().tile.unwrap();
+        assert_eq!(tile.id, "main");
+        assert_eq!(tile.label, "VPN");
+        assert_eq!(tile.default_size, TileSize::OneByOne);
+        assert_eq!(tile.allowed_sizes.len(), 2);
+        assert_eq!(tile.click, TileClick::Popover);
+        assert_eq!(tile.status_channel, "vpn.status");
+        assert_eq!(tile.detail_component, "vpn-popover");
+        assert_eq!(tile.available_when, "vpn");
+    }
+
+    #[test]
+    fn validate_flags_default_size_outside_allowed() {
+        let toml = r#"
+[module]
+id = "com.example.bad-tile"
+name = "Bad"
+version = "1.0.0"
+
+[quicksettings.tile]
+id = "main"
+label = "Main"
+default_size = "two_by_two"
+allowed_sizes = ["one_by_one"]
+click = "toggle"
+"#;
+        let m = parse_manifest(toml).unwrap();
+        let warnings = validate_manifest(&m);
+        assert!(warnings
+            .iter()
+            .any(|w| w.field == "quicksettings.tile.default_size"));
+    }
+
+    #[test]
+    fn validate_flags_empty_allowed_sizes() {
+        let toml = r#"
+[module]
+id = "com.example.empty-sizes"
+name = "Empty"
+version = "1.0.0"
+
+[quicksettings.tile]
+id = "main"
+label = "Main"
+default_size = "one_by_one"
+allowed_sizes = []
+click = "toggle"
+"#;
+        let m = parse_manifest(toml).unwrap();
+        let warnings = validate_manifest(&m);
+        assert!(warnings
+            .iter()
+            .any(|w| w.field == "quicksettings.tile.allowed_sizes"));
+    }
+
+    #[test]
+    fn validate_flags_popover_without_detail_component() {
+        let toml = r#"
+[module]
+id = "com.example.popover-no-detail"
+name = "PND"
+version = "1.0.0"
+
+[quicksettings.tile]
+id = "main"
+label = "Main"
+default_size = "one_by_one"
+allowed_sizes = ["one_by_one"]
+click = "popover"
+"#;
+        let m = parse_manifest(toml).unwrap();
+        let warnings = validate_manifest(&m);
+        assert!(warnings
+            .iter()
+            .any(|w| w.field == "quicksettings.tile.detail_component"));
+    }
+
+    #[test]
+    fn validate_passes_for_valid_tile() {
+        let toml = r#"
+[module]
+id = "com.example.valid-tile"
+name = "Valid"
+version = "1.0.0"
+
+[quicksettings.tile]
+id = "main"
+label = "Main"
+default_size = "one_by_one"
+allowed_sizes = ["one_by_one", "two_by_one"]
+click = "toggle"
+status_channel = "vpn.status"
+"#;
+        let m = parse_manifest(toml).unwrap();
+        let warnings = validate_manifest(&m);
+        assert!(
+            warnings.is_empty(),
+            "expected no warnings, got: {:?}",
+            warnings
+        );
+    }
+
+    #[test]
+    fn tile_size_cells() {
+        assert_eq!(TileSize::OneByOne.cells(), (1, 1));
+        assert_eq!(TileSize::TwoByOne.cells(), (2, 1));
+        assert_eq!(TileSize::TwoByTwo.cells(), (2, 2));
+    }
+
+    #[test]
+    fn tile_click_default_is_toggle() {
+        let toml = r#"
+[module]
+id = "com.example.default-click"
+name = "DC"
+version = "1.0.0"
+
+[quicksettings.tile]
+id = "main"
+label = "Main"
+default_size = "one_by_one"
+allowed_sizes = ["one_by_one"]
+"#;
+        let m = parse_manifest(toml).unwrap();
+        let tile = m.quicksettings.unwrap().tile.unwrap();
+        assert_eq!(tile.click, TileClick::Toggle);
     }
 
     #[test]
