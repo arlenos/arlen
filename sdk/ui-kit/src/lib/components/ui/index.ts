@@ -6,7 +6,7 @@
 /// instead:
 ///
 ///   import { Button } from '$lib/components/ui/button';
-///   import { ValueSlider } from '$lib/components/ui/value-slider';
+///   import { FillSlider } from '$lib/components/ui/fill-slider';
 ///
 /// Consuming apps (desktop-shell, app-settings) keep file copies of
 /// each component under their own `src/lib/components/ui/` directory.
@@ -21,10 +21,10 @@
 // `$lib/stores/theme` etc. stay in their respective apps.
 export { ConfirmDialog } from "./confirm-dialog";
 export { DaysPicker } from "./days-picker";
+export { FillSlider } from "./fill-slider";
 export { Group } from "./group";
 export { NumberInput } from "./number-input";
 export { PopoverSelect, type PopoverSelectOption } from "./popover-select";
 export { PositionPicker } from "./position-picker";
 export { Row } from "./row";
 export { TimeInput } from "./time-input";
-export { ValueSlider } from "./value-slider";

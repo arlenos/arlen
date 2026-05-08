@@ -42,7 +42,7 @@
     align-items: center;
     gap: 0.875rem;
     padding: 0.75rem 1rem;
-    min-height: 40px;
+    min-height: var(--height-row, 40px);
   }
 
   .label {

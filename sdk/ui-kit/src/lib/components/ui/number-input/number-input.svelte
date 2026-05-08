@@ -9,8 +9,9 @@
   ///
   /// Design goals:
   ///
-  /// * 36×36 minimum hit target on both the `−` and `+` buttons so
-  ///   this works on touchpads and touch screens without a zoom pass.
+  /// * 28×28 hit target on both `−` and `+` (matches --height-control;
+  ///   28px is comfortably above the 24px desktop hit-target floor
+  ///   and aligns with the rest of the inline-control register).
   /// * Native spin-buttons are hidden (they were the reason we built
   ///   this component — they're <12px on most browsers).
   /// * Arrow-Up / Arrow-Down on the focused input still increment
@@ -153,9 +154,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    min-width: 36px;
-    height: var(--control-h);
+    width: var(--height-control, 28px);
+    min-width: var(--height-control, 28px);
+    height: var(--height-control, 28px);
     background: transparent;
     border: none;
     color: var(--foreground);
@@ -196,7 +197,7 @@
     justify-content: center;
     gap: 6px;
     padding: 0 10px;
-    height: var(--control-h);
+    height: var(--height-control, 28px);
     min-width: 72px;
     flex: 1;
   }
@@ -210,13 +211,13 @@
     appearance: textfield;
     width: 100%;
     min-width: 40px;
-    height: var(--control-h);
+    height: var(--height-control, 28px);
     background: transparent;
     border: none;
     outline: none;
     font: inherit;
     font-size: 14px;
-    line-height: var(--control-h);
+    line-height: var(--height-control, 28px);
     font-variant-numeric: tabular-nums;
     font-weight: 500;
     text-align: center;
