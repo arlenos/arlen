@@ -219,7 +219,7 @@
     align-items: flex-start;
     gap: 10px;
     padding: 12px;
-    min-height: 36px;
+    min-height: var(--height-control-prominent, 36px);
   }
   .qs-tile.has-strip .qs-tile-head {
     /* Tighter when followed by a strip — the head no longer carries
@@ -278,7 +278,12 @@
     justify-content: space-between;
     gap: 10px;
     padding: 8px 12px;
-    min-height: 32px;
+    /* Strip uses --height-control (28) rather than the head's
+       --height-control-prominent (36): hierarchy comes from this
+       step-down, plus the smaller status-text font, plus the
+       hover-bg differentiation. Token-bound so a future scale
+       revision moves both head and strip together. */
+    min-height: var(--height-control, 28px);
     margin-top: auto;
     transition: background-color 100ms ease;
   }

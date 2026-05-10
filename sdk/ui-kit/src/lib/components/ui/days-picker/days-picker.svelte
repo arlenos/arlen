@@ -56,8 +56,8 @@
   }
 
   .day {
-    width: 28px;
-    height: 24px;
+    width: var(--height-control, 28px);
+    height: var(--height-control, 28px);
     display: inline-flex;
     align-items: center;
     justify-content: center;

@@ -15,6 +15,7 @@
   /// and renders the legacy two-row layout (head + slider).
   import type { Snippet } from "svelte";
   import { ChevronRight } from "@lucide/svelte";
+  import { FillSlider } from "../ui/fill-slider";
 
   let {
     label,
@@ -101,22 +102,17 @@
     </div>
     <span class="qs-tile-value">{Math.round(percent)}%</span>
   </div>
-  <div class="qs-slider" style="--value: {percent}%">
-    <div class="qs-slider-track"></div>
-    <div class="qs-slider-fill"></div>
-    <div class="qs-slider-thumb"></div>
-    <input
-      type="range"
-      {min}
-      {max}
-      {step}
-      {value}
-      {disabled}
-      oninput={(e) => oninput?.(parseFloat(e.currentTarget.value))}
-      onfocus={() => onfocus?.()}
-      onblur={() => onblur?.()}
-    />
-  </div>
+  <FillSlider
+    {value}
+    {min}
+    {max}
+    {step}
+    {disabled}
+    ariaLabel={label}
+    {oninput}
+    {onfocus}
+    {onblur}
+  />
 
   {#if statusText}
     {#if onDetail}
@@ -215,51 +211,6 @@
     font-size: 0.6875rem;
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
-  }
-
-  .qs-slider {
-    position: relative;
-    height: 20px;
-    display: flex;
-    align-items: center;
-  }
-  .qs-slider-track {
-    position: absolute;
-    left: 0;
-    right: 0;
-    height: var(--slider-track-h, 4px);
-    background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
-    border-radius: var(--radius-chip);
-  }
-  .qs-slider-fill {
-    position: absolute;
-    left: 0;
-    width: var(--value);
-    height: 4px;
-    background: var(--color-accent);
-    border-radius: var(--radius-chip);
-  }
-  .qs-slider-thumb {
-    position: absolute;
-    left: var(--value);
-    width: var(--slider-thumb-size, 14px);
-    height: var(--slider-thumb-size, 14px);
-    background: var(--color-fg-shell);
-    border-radius: var(--radius-input);
-    transform: translateX(-50%);
-    box-shadow: var(--shadow-sm);
-    pointer-events: none;
-  }
-  .qs-slider input[type="range"] {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0;
-    cursor: pointer;
-    margin: 0;
-    appearance: none;
-    -webkit-appearance: none;
   }
 
   /* Status strip — mirrors BaseTile pattern. Negative horizontal
