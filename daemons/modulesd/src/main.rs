@@ -41,7 +41,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     manager.discover().await;
 
     let socket_path = default_socket_path();
-    let server = SocketServer::bind(&socket_path, Arc::clone(&manager), events_tx)?;
+    // S7.6: prefer the systemd-passed listener when socket activation
+    // is in play. Falls back to binding ourselves for dev runs.
+    let server = SocketServer::bind_or_inherit(
+        &socket_path,
+        Arc::clone(&manager),
+        events_tx,
+    )?;
+
+    // S7.1: tell systemd the daemon is ready. Required when the
+    // unit declares `Type=notify`. On non-systemd runs (cargo run,
+    // custom init) the call returns `Err(NotConnected)` because no
+    // `NOTIFY_SOCKET` env var is set — non-fatal, we log and keep
+    // going so dev mode still works.
+    if let Err(err) = sd_notify::notify(false, &[sd_notify::NotifyState::Ready]) {
+        info!("modulesd: sd_notify ready not sent ({err}); running without systemd readiness signal");
+    }
 
     // Cooperative shutdown: SIGINT / SIGTERM trigger a clean exit so
     // the socket file is removed.

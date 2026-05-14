@@ -1,0 +1,18 @@
+[Unit]
+Description=Lunaris Module Runtime socket
+Documentation=https://github.com/lunaris-sys/modulesd
+
+[Socket]
+# `%t` is the runtime directory: `/run/user/{uid}` for user services.
+# Matches the path modulesd's `default_socket_path()` resolves to so
+# clients (desktop-shell, settings) reach the same socket whether
+# socket activation kicked the daemon awake or modulesd was launched
+# directly.
+ListenStream=%t/lunaris/modulesd.sock
+SocketMode=0600
+# User services run under the invoking user's session anyway, so the
+# socket is automatically owned by that user. No SocketUser= needed
+# (and `%i` would only make sense for templated units).
+
+[Install]
+WantedBy=sockets.target

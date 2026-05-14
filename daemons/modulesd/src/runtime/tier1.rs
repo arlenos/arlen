@@ -99,6 +99,28 @@ impl Tier1Runtime {
         // interrupted by setting `Store::epoch_deadline_trap`.
         config.epoch_interruption(true);
 
+        // S7.3: wasmtime caches compiled components under
+        // `$XDG_CACHE_HOME/wasmtime/` (or `~/.cache/wasmtime/`) so
+        // subsequent modulesd starts skip the 100-300 ms compile
+        // step per loaded module. Cache misses (e.g. read-only
+        // home, sealed image, missing dir) downgrade to "always
+        // recompile" rather than fail; the daemon stays usable
+        // without cache.
+        //
+        // Wasmtime 36 API: `Cache::from_file(None)` loads the
+        // default per-user cache config. Earlier wasmtime exposed
+        // this as `Config::cache_config_load_default()`.
+        match wasmtime::Cache::from_file(None) {
+            Ok(cache) => {
+                config.cache(Some(cache));
+            }
+            Err(err) => {
+                tracing::info!(
+                    "modulesd: wasmtime cache disabled ({err}); modules will recompile each start"
+                );
+            }
+        }
+
         let engine = Engine::new(&config)
             .map_err(|e| DaemonError::Internal(format!("wasmtime engine init: {e}")))?;
 

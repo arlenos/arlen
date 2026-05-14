@@ -74,21 +74,28 @@ impl Tier2Broker {
     }
 }
 
-/// Mint a fresh per-instance nonce. Uses 256 bits of entropy from the
-/// system RNG (via `uuid::Uuid::new_v4` for portability without a hard
-/// dep on `getrandom`'s features).
+/// Mint a fresh per-instance nonce. S7.2: replaces the previous
+/// timestamp + PID placeholder with 128 bits of CSPRNG entropy from
+/// `OsRng` (`getrandom` under the hood, never blocks on a modern
+/// Linux kernel). Hex-encoded to a 32-char ASCII string so the
+/// existing wire format (a `String`) stays the same.
+///
+/// 128 bits is more than enough for collision-resistance — even at
+/// 10^9 active nonces the birthday-bound probability of collision
+/// is ~10^-20. The important property is that knowing one nonce
+/// gives zero information about any other; the previous scheme
+/// leaked process boot time and PID, which let an adjacent
+/// attacker iframe predict future nonces.
 pub fn mint_nonce() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    // Lightweight nonce: timestamp + random tail. A real broker would
-    // use a CSPRNG; until S3 wires `rand`, this is a placeholder strong
-    // enough for tests and weakly bound for development. The S3
-    // scheme-handler step swaps it for a 32-byte CSPRNG nonce.
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let pid = std::process::id();
-    format!("{nanos:x}-{pid:x}")
+    use rand::RngCore;
+    use std::fmt::Write;
+    let mut bytes = [0u8; 16];
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    let mut hex = String::with_capacity(32);
+    for b in bytes {
+        let _ = write!(&mut hex, "{b:02x}");
+    }
+    hex
 }
 
 #[cfg(test)]
@@ -141,9 +148,39 @@ mod tests {
 
     #[test]
     fn nonces_are_unique_per_call() {
+        // S7.2: CSPRNG-generated nonces are unique without needing
+        // to wait between calls — the old timestamp+PID stub needed
+        // a sleep because nonces collapsed when generated in the
+        // same nanosecond.
         let a = mint_nonce();
-        std::thread::sleep(std::time::Duration::from_nanos(100));
         let b = mint_nonce();
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn nonce_is_128_bits_hex() {
+        // 16 bytes → 32 hex chars. The wire format depends on this
+        // length being predictable; consumers (e.g. the module://
+        // scheme handler) treat the string as opaque but length is
+        // an implicit sanity check against transcoding bugs.
+        let n = mint_nonce();
+        assert_eq!(n.len(), 32);
+        assert!(n.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn nonces_have_high_entropy_across_many_calls() {
+        // Defence in depth against a regression that returns a
+        // constant or near-constant value. 100 nonces should all be
+        // distinct under any reasonable CSPRNG; if this ever fails,
+        // a placeholder slipped back in.
+        use std::collections::HashSet;
+        let mut seen = HashSet::new();
+        for _ in 0..100 {
+            assert!(
+                seen.insert(mint_nonce()),
+                "duplicate nonce after CSPRNG swap"
+            );
+        }
     }
 }

@@ -38,6 +38,9 @@ pub struct SocketServer {
 }
 
 impl SocketServer {
+    /// Bind a fresh listener at `socket_path`, removing any stale
+    /// socket file from a previous run first. Used when modulesd is
+    /// started directly (not via systemd socket activation).
     pub fn bind(
         socket_path: &std::path::Path,
         manager: Arc<Manager>,
@@ -55,6 +58,47 @@ impl SocketServer {
             manager,
             events_tx,
         })
+    }
+
+    /// S7.6: inherit a listening socket from systemd socket
+    /// activation when `LISTEN_FDS` is set, otherwise bind a fresh
+    /// listener at `socket_path`. Avoids the race where systemd
+    /// holds the listening socket and modulesd tries to create a
+    /// second one at the same path (`EADDRINUSE`).
+    ///
+    /// systemd's socket activation protocol: file descriptors start
+    /// at SD_LISTEN_FDS_START = 3 and there are `LISTEN_FDS` of
+    /// them. modulesd's unit only declares one socket, so we take
+    /// the first.
+    pub fn bind_or_inherit(
+        socket_path: &std::path::Path,
+        manager: Arc<Manager>,
+        events_tx: broadcast::Sender<Event>,
+    ) -> Result<Self> {
+        // sd-notify 0.4's `listen_fds()` returns an iterator over the
+        // passed FDs. modulesd's unit declares exactly one socket, so
+        // the first FD is our listener. On non-systemd runs (cargo
+        // run, dev mode, custom init) `listen_fds` returns an empty
+        // iterator (LISTEN_FDS unset).
+        if let Ok(mut fds) = sd_notify::listen_fds() {
+            if let Some(raw_fd) = fds.next() {
+                // Take ownership of the FD so Drop on the std listener
+                // closes it instead of leaking on shutdown.
+                use std::os::unix::io::FromRawFd;
+                let std_listener =
+                    unsafe { std::os::unix::net::UnixListener::from_raw_fd(raw_fd) };
+                std_listener.set_nonblocking(true)?;
+                let listener = UnixListener::from_std(std_listener)
+                    .map_err(DaemonError::Io)?;
+                info!("modulesd: inherited socket activation listener (fd {raw_fd})");
+                return Ok(Self {
+                    listener,
+                    manager,
+                    events_tx,
+                });
+            }
+        }
+        Self::bind(socket_path, manager, events_tx)
     }
 
     pub async fn run(self) -> Result<()> {
