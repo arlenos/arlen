@@ -51,7 +51,11 @@ interface provider {
     /// Called when the user activates a result. Default actions
     /// (copy/open-url/open-path/execute) are fulfilled by the host;
     /// `custom` actions are echoed back here for the module to handle.
-    execute: func(result: search-result) -> result<_, string>;
+    ///
+    /// Parameter is named `hit` rather than `result` because `result`
+    /// is a reserved keyword in WIT (it's the result-type ADT) and
+    /// wasmtime's bindgen macro rejects the file otherwise.
+    execute: func(hit: search-result) -> result<_, string>;
 
     /// Called when the daemon is shutting the module down. Best-effort.
     shutdown: func();
