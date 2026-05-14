@@ -209,6 +209,13 @@ pub struct WaypointerSearchConfig {
     pub prefix: Option<String>,
     #[serde(default)]
     pub detect_pattern: Option<String>,
+    /// Maximum number of search results this module is allowed to
+    /// return per call. modulesd truncates anything beyond this to
+    /// protect the shell from unbounded `Vec<SearchResult>` payloads
+    /// from a malicious or buggy module. Default 8 matches the
+    /// in-process `WaypointerPlugin::max_results` trait default.
+    #[serde(default)]
+    pub max_results: Option<usize>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
