@@ -41,6 +41,13 @@ pub enum DaemonError {
     #[error("module marked failed (crash count {crashes}); manual retry required")]
     PermanentlyFailed { module_id: String, crashes: u32 },
 
+    /// The module is currently in crash backoff. Foundation §07
+    /// Table 08 keeps the daemon from re-running compile/init on
+    /// every keystroke while a recent crash's recovery delay is
+    /// still elapsing. This is **not** counted as a fresh crash.
+    #[error("module {module_id} in crash backoff until next retry")]
+    InCooldown { module_id: String },
+
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
 

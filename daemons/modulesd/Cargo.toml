@@ -23,9 +23,22 @@ dirs = "6"
 libc = "0.2"
 async-trait = "0.1"
 
+# Pattern matching for waypointer.search.detect_pattern manifest field.
+# Used by handle_search_all to gate which modules see which queries.
+regex = "1"
+
+# CSPRNG for Tier 2 iframe nonces (S7.2). OsRng is the system-RNG
+# wrapper; using getrandom under the hood. 16 bytes per nonce.
+rand = "0.8"
+
+# systemd readiness + socket activation (S7.1, S7.6). Pure-Rust, no
+# libsystemd link dep. Non-systemd environments (cargo run, custom
+# init) silently no-op.
+sd-notify = "0.4"
+
 # WASM Component Model runtime. Pinned at 36 because newer releases
 # require rustc >= 1.92, while the repo-wide toolchain is 1.90.
-wasmtime = { version = "36", features = ["component-model", "async"] }
+wasmtime = { version = "36", features = ["component-model", "async", "cache"] }
 
 # HTTP client for Tier 1/Tier 2 host::network::fetch.
 # rustls-tls keeps us off OpenSSL and gives reproducible builds.

@@ -8,8 +8,10 @@
 
 pub mod crash;
 pub mod csp;
+pub mod host_bindings;
 pub mod tier1;
 pub mod tier2;
+pub mod wit;
 
 pub use crash::{CrashState, Recovery};
 pub use csp::build_csp;
