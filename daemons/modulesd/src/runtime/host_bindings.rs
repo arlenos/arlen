@@ -9,6 +9,8 @@
 //! a module that asks for something it did not declare gets a
 //! structured failure it can react to, not a kill signal.
 
+use os_sdk::{EventEmitter, GraphClient};
+
 use crate::host::CapabilityContext;
 use crate::runtime::tier1::ModuleStore;
 use crate::runtime::wit;
@@ -49,32 +51,47 @@ impl wit::lunaris::host::log::Host for ModuleStore {
 
 // ----- events ---------------------------------------------------------------
 //
-// Codex adversarial-review finding 2: returning `Ok(())` after a
-// policy-only check is silent data loss — guests see success but the
-// event never reaches the bus. Until S6 wires the real
-// `UnixEventEmitter`, we return `BusDisconnected` with an explicit
-// "pending backend wiring" message so modules get a loud, typed
-// failure they can react to.
+// S6: real `UnixEventEmitter` wired in. The guest's `payload: list<u8>`
+// is forwarded verbatim into the envelope's `payload` bytes; modulesd
+// is the envelope source (`app:lunaris-modulesd`), per-module
+// attribution lives inside the payload bytes (the module embeds its
+// own `module_id` as needed). Foundation §8 origin-tracking is
+// satisfied by the daemon's SO_PEERCRED uid stamp plus the envelope
+// `source` field.
 
 impl wit::lunaris::host::events::Host for ModuleStore {
     async fn emit(
         &mut self,
         event_type: String,
-        _payload: Vec<u8>,
+        payload: Vec<u8>,
     ) -> Result<(), wit::lunaris::host::events::Error> {
+        // Per-module publish-namespace gate. A module emitting
+        // outside its declared event_bus.publish prefixes is
+        // rejected here without ever touching the bus.
         if let Err(err) = crate::host::events::check_publish(&self.ctx, &event_type) {
             return Err(wit::lunaris::host::events::Error {
                 code: wit::lunaris::host::events::ErrorCode::Denied,
                 message: err.to_string(),
             });
         }
-        // Capability allowed but backend not yet wired (S6 task).
-        // Fail closed so a guest does not assume its event reached
-        // any subscriber.
-        Err(wit::lunaris::host::events::Error {
-            code: wit::lunaris::host::events::ErrorCode::BusDisconnected,
-            message: "events backend pending: S6 wires UnixEventEmitter".into(),
-        })
+
+        // Real emit. Map EmitError variants onto the WIT error code
+        // enum so guests get typed failures.
+        match self.event_emitter.emit(&event_type, payload).await {
+            Ok(()) => Ok(()),
+            Err(os_sdk::EmitError::ConnectionFailed(msg)) => {
+                Err(wit::lunaris::host::events::Error {
+                    code: wit::lunaris::host::events::ErrorCode::BusDisconnected,
+                    message: msg,
+                })
+            }
+            Err(os_sdk::EmitError::SerializationFailed(msg)) => {
+                Err(wit::lunaris::host::events::Error {
+                    code: wit::lunaris::host::events::ErrorCode::InvalidPayload,
+                    message: msg,
+                })
+            }
+        }
     }
 }
 
@@ -90,50 +107,101 @@ fn graph_error(
     }
 }
 
-// Codex finding 2 again: graph query/write returning Ok("[]") after
-// the capability check would mislead guests into thinking their
-// mutation persisted. Until S6 wires `UnixGraphClient`, both surfaces
-// return `Internal` with an explicit "pending backend wiring" message
-// — capability is verified but execution refuses to claim success it
-// cannot back up.
+// S6: graph host imports wired to the real `UnixGraphClient` held by
+// the Manager and cloned into every `ModuleStore`. The per-module
+// capability gate (`check_query`) runs first; the wire call only
+// happens for queries the module's manifest actually allowed.
+// Daemon errors map onto the WIT `error-code` enum so guests get
+// typed failures, not opaque strings.
+
+fn map_query_error(err: os_sdk::QueryError) -> wit::lunaris::host::graph::Error {
+    use os_sdk::QueryError;
+    use wit::lunaris::host::graph::ErrorCode as Wit;
+    let (code, message) = match err {
+        QueryError::ConnectionFailed(m) => (Wit::Internal, m),
+        QueryError::InvalidQuery(m) => (Wit::InvalidQuery, m),
+        QueryError::PermissionDenied => {
+            (Wit::Denied, "knowledge daemon refused the token".to_string())
+        }
+    };
+    graph_error(code, message)
+}
 
 impl wit::lunaris::host::graph::Host for ModuleStore {
     async fn query(
         &mut self,
         cypher: String,
     ) -> Result<String, wit::lunaris::host::graph::Error> {
-        match crate::host::graph::check_query(&self.ctx, &cypher) {
-            Ok(_) => Err(graph_error(
-                wit::lunaris::host::graph::ErrorCode::Internal,
-                "graph backend pending: S6 wires UnixGraphClient",
-            )),
-            Err(crate::error::DaemonError::CapabilityDenied { capability, .. }) => {
-                Err(graph_error(wit::lunaris::host::graph::ErrorCode::Denied, capability))
-            }
-            Err(other) => Err(graph_error(
-                wit::lunaris::host::graph::ErrorCode::Internal,
-                other.to_string(),
-            )),
+        // 1. Per-module capability check (existing pre-flight). A
+        //    module asking outside its declared graph.read namespace
+        //    is rejected here without ever touching the daemon.
+        if let Err(err) = crate::host::graph::check_query(&self.ctx, &cypher) {
+            return Err(match err {
+                crate::error::DaemonError::CapabilityDenied { capability, .. } => {
+                    graph_error(wit::lunaris::host::graph::ErrorCode::Denied, capability)
+                }
+                other => graph_error(
+                    wit::lunaris::host::graph::ErrorCode::Internal,
+                    other.to_string(),
+                ),
+            });
         }
+
+        // 2. Real execution. Phase 1A knowledge daemon doesn't take
+        //    parameters; pass an empty map so the SDK shape stays
+        //    consistent for when Phase 3 adds parameter support.
+        let rows = self
+            .graph_client
+            .query(&cypher, std::collections::HashMap::new())
+            .await
+            .map_err(map_query_error)?;
+
+        // 3. Serialise to a JSON string for the WIT `result<string,
+        //    error>` shape. Modules deserialise on their side with
+        //    whatever JSON parser they ship; the wire format is
+        //    `[{column: value, ...}, ...]`.
+        serde_json::to_string(&rows).map_err(|e| {
+            graph_error(
+                wit::lunaris::host::graph::ErrorCode::Internal,
+                format!("serialise graph rows: {e}"),
+            )
+        })
     }
 
     async fn write(
         &mut self,
         cypher: String,
     ) -> Result<String, wit::lunaris::host::graph::Error> {
-        match crate::host::graph::check_query(&self.ctx, &cypher) {
-            Ok(_) => Err(graph_error(
-                wit::lunaris::host::graph::ErrorCode::Internal,
-                "graph backend pending: S6 wires UnixGraphClient",
-            )),
-            Err(crate::error::DaemonError::CapabilityDenied { capability, .. }) => {
-                Err(graph_error(wit::lunaris::host::graph::ErrorCode::Denied, capability))
-            }
-            Err(other) => Err(graph_error(
-                wit::lunaris::host::graph::ErrorCode::Internal,
-                other.to_string(),
-            )),
+        if let Err(err) = crate::host::graph::check_query(&self.ctx, &cypher) {
+            return Err(match err {
+                crate::error::DaemonError::CapabilityDenied { capability, .. } => {
+                    graph_error(wit::lunaris::host::graph::ErrorCode::Denied, capability)
+                }
+                other => graph_error(
+                    wit::lunaris::host::graph::ErrorCode::Internal,
+                    other.to_string(),
+                ),
+            });
         }
+
+        // Phase 1A knowledge daemon rejects every write outright with
+        // "ERROR: write queries are not permitted" — the SDK
+        // surfaces this as `QueryError::InvalidQuery`. We still send
+        // the call so any future daemon that accepts writes Just
+        // Works; today it propagates the typed rejection to the
+        // guest unchanged.
+        let rows = self
+            .graph_client
+            .query(&cypher, std::collections::HashMap::new())
+            .await
+            .map_err(map_query_error)?;
+
+        serde_json::to_string(&rows).map_err(|e| {
+            graph_error(
+                wit::lunaris::host::graph::ErrorCode::Internal,
+                format!("serialise graph rows: {e}"),
+            )
+        })
     }
 }
 
@@ -228,7 +296,21 @@ mod tests {
     };
 
     fn store_with(caps: ModuleCapabilities) -> ModuleStore {
-        ModuleStore::new(CapabilityContext::new("com.example.test", caps))
+        // S6: tests use real (but unconnected) clients. Lazy
+        // connection means no socket is touched unless a test
+        // actually invokes graph/events through the trait; the
+        // tests in this file only verify the capability gate.
+        let graph = std::sync::Arc::new(
+            os_sdk::UnixGraphClient::new("/tmp/lunaris-test-knowledge.sock"),
+        );
+        let events = std::sync::Arc::new(
+            os_sdk::UnixEventEmitter::new("/tmp/lunaris-test-events.sock"),
+        );
+        ModuleStore::new(
+            CapabilityContext::new("com.example.test", caps),
+            graph,
+            events,
+        )
     }
 
     #[tokio::test]
@@ -306,12 +388,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn events_emit_allowed_returns_backend_pending_error_in_s5() {
-        // Codex finding 2: capability-allowed events must NOT return
-        // Ok until S6 wires the real Event Bus. Returning Ok would be
-        // silent data loss. The expected post-fix behaviour is a
-        // typed BusDisconnected error so the guest sees a loud
-        // failure rather than thinking the event was delivered.
+    async fn events_emit_allowed_attempts_real_backend_call() {
+        // S6: events go through the real UnixEventEmitter. The test
+        // emitter points at a non-existent socket → ConnectionFailed
+        // → BusDisconnected. The important property is that we got
+        // past the capability gate (no `Denied`) and the SDK
+        // actually attempted the wire call.
         let mut caps = ModuleCapabilities::default();
         caps.event_bus = Some(EventBusCapability {
             publish: vec!["module.com.example.".into()],
@@ -324,12 +406,16 @@ mod tests {
             b"payload".to_vec(),
         )
         .await;
-        let err = result.expect_err("must return typed error until S6 wires the backend");
+        let err = result.expect_err("non-existent socket means BusDisconnected");
         assert!(matches!(
             err.code,
             wit::lunaris::host::events::ErrorCode::BusDisconnected
         ));
-        assert!(err.message.contains("S6"));
+        // Confirm we got past the capability gate.
+        assert!(!matches!(
+            err.code,
+            wit::lunaris::host::events::ErrorCode::Denied
+        ));
     }
 
     #[tokio::test]
@@ -348,12 +434,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn graph_query_allowed_returns_backend_pending_error_in_s5() {
-        // Codex finding 2: capability-allowed graph reads must NOT
-        // return Ok("[]") until S6 wires the UnixGraphClient. Empty
-        // results are indistinguishable from "match found zero rows",
-        // which would mislead the guest's downstream logic. Expected
-        // post-fix behaviour: typed Internal error pointing at S6.
+    async fn graph_query_allowed_attempts_real_backend_call() {
+        // S6: capability-allowed reads now route through the real
+        // UnixGraphClient. The test store points at a non-existent
+        // socket, so the call surfaces as ConnectionFailed →
+        // ErrorCode::Internal. The important guarantee is that the
+        // capability check passed (no `Denied` code) and the wire
+        // call was actually attempted — no more silent stub.
         let mut caps = ModuleCapabilities::default();
         caps.graph = Some(GraphCapability {
             read: vec!["core.".into()],
@@ -363,19 +450,27 @@ mod tests {
         let result =
             wit::lunaris::host::graph::Host::query(&mut s, "MATCH (f:core.File) RETURN f".into())
                 .await;
-        let err = result.expect_err("must return typed error until S6 wires UnixGraphClient");
+        let err = result.expect_err("non-existent socket means ConnectionFailed");
         assert!(matches!(
             err.code,
             wit::lunaris::host::graph::ErrorCode::Internal
         ));
-        assert!(err.message.contains("S6"));
+        // Confirm we got past the capability gate by checking it is
+        // NOT a Denied error.
+        assert!(!matches!(
+            err.code,
+            wit::lunaris::host::graph::ErrorCode::Denied
+        ));
     }
 
     #[tokio::test]
-    async fn graph_write_allowed_returns_backend_pending_error_in_s5() {
-        // Companion case: allowed graph writes must also fail loudly
-        // until S6. A silent fake-success on writes is worse than on
-        // reads — guests would believe their mutation persisted.
+    async fn graph_write_allowed_attempts_real_backend_call() {
+        // Phase 1A knowledge daemon rejects writes outright. The
+        // host-binding still attempts the call; with no daemon
+        // reachable in tests we see ConnectionFailed → Internal.
+        // Once a real daemon is wired, an allowed write that the
+        // daemon rejects would surface as `InvalidQuery` per the
+        // SDK's QueryError mapping.
         let mut caps = ModuleCapabilities::default();
         caps.graph = Some(GraphCapability {
             read: vec![],
@@ -387,12 +482,11 @@ mod tests {
             "CREATE (n:module.x.Foo {name: 'bar'})".into(),
         )
         .await;
-        let err = result.expect_err("must return typed error until S6 wires UnixGraphClient");
-        assert!(matches!(
+        let err = result.expect_err("non-existent socket means ConnectionFailed");
+        assert!(!matches!(
             err.code,
-            wit::lunaris::host::graph::ErrorCode::Internal
+            wit::lunaris::host::graph::ErrorCode::Denied
         ));
-        assert!(err.message.contains("S6"));
     }
 
     #[tokio::test]
