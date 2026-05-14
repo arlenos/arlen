@@ -23,6 +23,10 @@ dirs = "6"
 libc = "0.2"
 async-trait = "0.1"
 
+# Pattern matching for waypointer.search.detect_pattern manifest field.
+# Used by handle_search_all to gate which modules see which queries.
+regex = "1"
+
 # WASM Component Model runtime. Pinned at 36 because newer releases
 # require rustc >= 1.92, while the repo-wide toolchain is 1.90.
 wasmtime = { version = "36", features = ["component-model", "async"] }

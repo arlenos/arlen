@@ -35,7 +35,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Cooperative shutdown: SIGINT / SIGTERM trigger a clean exit so
     // the socket file is removed.
+    // Cooperative shutdown: SIGINT / SIGTERM trigger a clean exit so
+    // the socket file is removed and every loaded Tier 1 module gets
+    // a `Guest::shutdown` politeness call (capped at 1 s per module
+    // by `Manager::shutdown_all_tier1`).
     let socket_path_clone = socket_path.clone();
+    let manager_for_shutdown = Arc::clone(&manager);
     let shutdown = async move {
         let mut sigint = tokio::signal::unix::signal(
             tokio::signal::unix::SignalKind::interrupt(),
@@ -47,6 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ = sigint.recv() => info!("modulesd: SIGINT received"),
             _ = sigterm.recv() => info!("modulesd: SIGTERM received"),
         }
+        manager_for_shutdown.shutdown_all_tier1().await;
         let _ = std::fs::remove_file(&socket_path_clone);
         Ok::<_, std::io::Error>(())
     };
