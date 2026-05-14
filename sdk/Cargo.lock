@@ -1751,6 +1751,7 @@ version = "0.1.0"
 dependencies = [
  "dirs 5.0.1",
  "libc",
+ "notify 6.1.1",
  "serde",
  "tempfile",
  "thiserror 2.0.18",
