@@ -153,7 +153,7 @@
     gap: 8px;
     flex: 1;
     min-width: 0;
-    height: 36px;
+    height: var(--height-control-prominent, 36px);
     padding: 0 0.5rem 0 0.6rem;
     background: transparent;
     border: none;
@@ -203,8 +203,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     border-radius: var(--radius-chip);
     background: transparent;
     border: none;
@@ -232,7 +232,7 @@
     display: flex;
     align-items: center;
     gap: 1rem;
-    min-height: 30px;
+    min-height: var(--height-control, 28px);
   }
   .row-label {
     flex: 1;
@@ -254,7 +254,7 @@
     gap: 4px;
   }
   .prio-pill {
-    height: 22px;
+    height: 24px;
     padding: 0 0.55rem;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);

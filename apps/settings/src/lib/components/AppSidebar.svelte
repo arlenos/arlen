@@ -31,6 +31,7 @@
     Accessibility,
     Crosshair,
     Brain,
+    Sparkles,
     Zap,
   } from "lucide-svelte";
 
@@ -104,6 +105,7 @@
     Accessibility,
     Crosshair,
     Brain,
+    Sparkles,
     Zap,
   };
 
@@ -123,6 +125,7 @@
         "accessibility",
         "focus",
         "knowledge",
+        "ai",
       ] as const,
     },
     {
@@ -265,7 +268,7 @@
 
   .search-input {
     width: 100%;
-    height: 32px;
+    height: var(--height-control-prominent, 36px);
     padding: 4px 10px 4px 30px;
     background: color-mix(in srgb, var(--color-fg-app) 6%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-fg-app) 8%, transparent);
@@ -348,8 +351,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: var(--height-control, 28px);
+    height: var(--height-control, 28px);
     flex-shrink: 0;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--color-fg-app) 8%, transparent);

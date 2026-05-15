@@ -267,6 +267,8 @@
     flex-shrink: 0;
   }
   .preview-label {
+    flex: 1;
+    min-width: 0;
     font-size: 0.8125rem;
     font-weight: 500;
     line-height: 1.2;
@@ -308,8 +310,8 @@
     opacity: 0.6;
   }
   :global(.footer-avatar) {
-    width: 28px;
-    height: 28px;
+    width: var(--height-control, 28px);
+    height: var(--height-control, 28px);
     border-radius: var(--radius-card);
     flex-shrink: 0;
   }
@@ -325,8 +327,8 @@
     margin-left: auto;
   }
   :global(.footer-action) {
-    width: 24px;
-    height: 24px;
+    width: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 24px);
     border-radius: var(--radius-input);
   }
 </style>

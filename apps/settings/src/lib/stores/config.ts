@@ -15,7 +15,8 @@ export type ConfigFile =
   | "shell"
   | "notifications"
   | "modules"
-  | "graph";
+  | "graph"
+  | "ai";
 
 export interface ConfigState<T> {
   data: T | null;

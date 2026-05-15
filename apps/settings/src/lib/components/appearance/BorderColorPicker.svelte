@@ -111,7 +111,7 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    height: 22px;
+    height: 24px;
     padding: 0 0.5rem 0 0.4rem;
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
@@ -158,8 +158,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     border-radius: var(--radius-input);
     border: none;
     padding: 0;

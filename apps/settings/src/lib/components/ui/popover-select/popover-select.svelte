@@ -233,7 +233,7 @@
     align-items: center;
     gap: 0.5rem;
     width: 100%;
-    height: var(--control-h);
+    height: var(--height-control, 28px);
     padding: 0 0.625rem 0 0.75rem;
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
@@ -323,7 +323,7 @@
     align-items: center;
     gap: 0.5rem;
     width: 100%;
-    min-height: var(--control-h);
+    min-height: var(--height-control, 28px);
     padding: 0 0.625rem 0 0.75rem;
     border: none;
     background: transparent;

@@ -14,11 +14,11 @@
   } from "$lib/stores/theme";
   import { compositor } from "$lib/stores/compositor";
 
-  import Group from "$lib/components/appearance/Group.svelte";
-  import Row from "$lib/components/appearance/Row.svelte";
+  import { Group } from "$lib/components/ui/group";
+  import { Row } from "$lib/components/ui/row";
   import ModeToggle from "$lib/components/appearance/ModeToggle.svelte";
   import AccentPicker from "$lib/components/appearance/AccentPicker.svelte";
-  import ValueSlider from "$lib/components/appearance/ValueSlider.svelte";
+  import { ValueSlider } from "$lib/components/ui/value-slider";
   import FontSelect from "$lib/components/appearance/FontSelect.svelte";
   import { Switch } from "$lib/components/ui/switch";
   import BorderColorPicker from "$lib/components/appearance/BorderColorPicker.svelte";

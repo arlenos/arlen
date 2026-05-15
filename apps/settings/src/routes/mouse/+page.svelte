@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Slider } from "$lib/components/ui/slider";
+  import { FillSlider } from "$lib/components/ui/fill-slider";
   import Switch from "$lib/components/ui/switch/switch.svelte";
   import SettingsPage from "$lib/components/settings/SettingsPage.svelte";
   import SettingsGroup from "$lib/components/settings/SettingsGroup.svelte";
@@ -31,14 +31,16 @@
     >
       {#snippet control()}
         <div class="flex items-center gap-3">
-          <Slider
-            min={0}
-            max={100}
-            step={1}
-            value={accelToTick($mouse.config.acceleration)}
-            onValueChange={(v) => set("acceleration", tickToAccel(v))}
-            class="w-40"
-          />
+          <div class="w-40">
+            <FillSlider
+              min={0}
+              max={100}
+              step={1}
+              value={accelToTick($mouse.config.acceleration)}
+              ariaLabel="Acceleration"
+              oninput={(v) => set("acceleration", tickToAccel(v))}
+            />
+          </div>
           <span
             class="min-w-12 text-right font-mono text-xs text-muted-foreground"
           >
@@ -78,14 +80,16 @@
     >
       {#snippet control()}
         <div class="flex items-center gap-3">
-          <Slider
-            min={10}
-            max={300}
-            step={10}
-            value={Math.round($mouse.config.scroll_speed * 100)}
-            onValueChange={(v) => set("scroll_speed", v / 100)}
-            class="w-40"
-          />
+          <div class="w-40">
+            <FillSlider
+              min={10}
+              max={300}
+              step={10}
+              value={Math.round($mouse.config.scroll_speed * 100)}
+              ariaLabel="Scroll speed"
+              oninput={(v) => set("scroll_speed", v / 100)}
+            />
+          </div>
           <span
             class="min-w-12 text-right font-mono text-xs text-muted-foreground"
           >

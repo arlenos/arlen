@@ -42,7 +42,7 @@
     align-items: center;
     gap: 0.875rem;
     padding: 0.75rem 1rem;
-    min-height: 40px;
+    min-height: var(--height-row, 40px);
   }
 
   .label {
@@ -50,11 +50,18 @@
     min-width: 0;
   }
 
+  /* Title truncates; description wraps to multiple lines if it
+     can't fit on one. This keeps the row height stable per
+     row-rhythm spec while still allowing prose-style hints
+     below the title. */
   .label-title {
     font-size: 0.8125rem;
     font-weight: 500;
     color: var(--foreground);
     line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .label-desc {

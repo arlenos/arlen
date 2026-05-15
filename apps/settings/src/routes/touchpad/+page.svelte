@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Slider } from "$lib/components/ui/slider";
+  import { FillSlider } from "$lib/components/ui/fill-slider";
   import { PopoverSelect } from "$lib/components/ui/popover-select";
   import Switch from "$lib/components/ui/switch/switch.svelte";
   import SettingsPage from "$lib/components/settings/SettingsPage.svelte";
@@ -119,14 +119,16 @@
     >
       {#snippet control()}
         <div class="flex items-center gap-3">
-          <Slider
-            min={0}
-            max={100}
-            step={1}
-            value={accelToTick($touchpad.config.acceleration)}
-            onValueChange={(v) => set("acceleration", tickToAccel(v))}
-            class="w-40"
-          />
+          <div class="w-40">
+            <FillSlider
+              min={0}
+              max={100}
+              step={1}
+              value={accelToTick($touchpad.config.acceleration)}
+              ariaLabel="Acceleration"
+              oninput={(v) => set("acceleration", tickToAccel(v))}
+            />
+          </div>
           <span
             class="min-w-12 text-right font-mono text-xs text-muted-foreground"
           >
