@@ -12,18 +12,21 @@
 /// calls) happens with the lock released.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use tokio::sync::{broadcast, Mutex, OnceCell, OwnedSemaphorePermit, RwLock, Semaphore};
+use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 
-use os_sdk::{UnixEventEmitter, UnixGraphClient};
+use os_sdk::{EventEmitter, UnixEventEmitter, UnixGraphClient};
 
 use crate::error::DaemonError;
 use crate::host::CapabilityContext;
 use crate::manifest::{discover_all, ModuleRecord, Tier};
 use crate::runtime::{
+    mcp::{is_safe_module_id, mcp_module_socket_path, McpModuleHost, ModuleMcpBridge},
     tier1::{Tier1Instance, Tier1Runtime},
     tier2::Tier2Broker,
     CrashState, Recovery,
@@ -58,6 +61,9 @@ impl ModuleEntry {
         }
         if self.record.manifest.settings.is_some() {
             points.push("settings".to_string());
+        }
+        if self.record.manifest.mcp.is_some() {
+            points.push("mcp".to_string());
         }
         ModuleSummary {
             id: self.record.id().to_string(),
@@ -363,6 +369,22 @@ pub struct Manager {
     /// `Mutex<Tier1Instance>` still serialises calls on the same
     /// module because wasmtime `Store` is `!Sync`.
     tier1_instances: RwLock<HashMap<String, Arc<OnceCell<Arc<Mutex<Tier1Instance>>>>>>,
+    /// Running `mcp.server` socket supervisors, keyed by `module.id`.
+    /// Each entry owns the WASM host and the task serving the
+    /// module's MCP Unix socket. Unlike `tier1_instances` (lazy, on
+    /// keystroke), an `mcp.server` module is hosted for as long as it
+    /// is enabled because the AI daemon holds a standing connection.
+    mcp_servers: Mutex<HashMap<String, McpServerEntry>>,
+}
+
+/// One running `mcp.server` supervisor.
+struct McpServerEntry {
+    /// The task running `serve_mcp_at` plus the fault watcher.
+    task: JoinHandle<()>,
+    /// The WASM host, retained so SIGTERM can call `Guest::shutdown`.
+    host: Arc<McpModuleHost>,
+    /// The socket path, removed from disk on teardown.
+    socket_path: PathBuf,
 }
 
 impl Manager {
@@ -388,6 +410,7 @@ impl Manager {
             events_tx,
             network_permits: Mutex::new(HashMap::new()),
             tier1_instances: RwLock::new(HashMap::new()),
+            mcp_servers: Mutex::new(HashMap::new()),
             knowledge_socket,
             producer_socket,
             graph_client,
@@ -625,7 +648,272 @@ impl Manager {
         self.tier1_instances.write().await.clear();
     }
 
-    pub async fn handle_request(&self, req: Request) -> Response {
+    // ---------------------------------------------------------------
+    // mcp.server hosting
+    //
+    // An `mcp.server` module is fronted by a standard MCP server on a
+    // per-module Unix socket. The supervisor task owns the WASM host
+    // and runs `serve_mcp_at`; a guest trap/timeout is reported over
+    // a fault channel. On a fault the supervisor records a crash,
+    // revokes the host (so connections the AI daemon still holds open
+    // fail closed), tears the socket down, and restarts per the
+    // Foundation Table 08 ladder: immediately, after a backoff delay,
+    // or never once permanently failed.
+    // ---------------------------------------------------------------
+
+    /// Start MCP socket servers for every enabled `mcp.server` module.
+    /// Called once after [`discover`](Self::discover) at startup.
+    pub async fn start_all_mcp_servers(self: &Arc<Self>) {
+        let mcp_module_ids: Vec<String> = {
+            let guard = self.modules.read().await;
+            guard
+                .values()
+                .filter(|e| {
+                    e.enabled
+                        && e.record.tier == Tier::Wasm
+                        && e.record.manifest.mcp.is_some()
+                })
+                .map(|e| e.record.id().to_string())
+                .collect()
+        };
+        for module_id in mcp_module_ids {
+            self.start_mcp_server(&module_id).await;
+        }
+    }
+
+    /// Start the MCP socket server for one module. A no-op if a
+    /// supervisor is already registered for it, if the module id is
+    /// unsafe to place in a socket path, or if the module is not an
+    /// enabled, non-failed Tier 1 `mcp.server` past its crash
+    /// backoff. The supervisor task removes its own registry entry
+    /// when it ends, so a later restart sees a clean slot.
+    ///
+    /// Returns a boxed future: the crash-recovery path spawns a task
+    /// that calls this method again, and a plain `async fn` cannot
+    /// have its `Send`-ness inferred through that self-reference.
+    pub fn start_mcp_server<'a>(
+        self: &'a Arc<Self>,
+        module_id: &'a str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+        Box::pin(async move {
+        // A `module.id` carrying a path separator could make the
+        // socket path escape the modules directory. Discovery only
+        // warns on a malformed id, so hosting rejects it here.
+        if !is_safe_module_id(module_id) {
+            warn!(
+                module = %module_id,
+                "refusing to host mcp.server: module id is unsafe for a socket path"
+            );
+            return;
+        }
+        if self.mcp_servers.lock().await.contains_key(module_id) {
+            return;
+        }
+
+        // Resolve the module and gate on enabled / tier / crash state.
+        let (wasm_path, ctx) = {
+            let guard = self.modules.read().await;
+            let Some(entry) = guard.get(module_id) else {
+                return;
+            };
+            if !entry.enabled
+                || entry.crash.is_failed()
+                || entry.record.tier != Tier::Wasm
+                || entry.record.manifest.mcp.is_none()
+            {
+                return;
+            }
+            if let Some(deadline) = entry.next_retry_at {
+                if Instant::now() < deadline {
+                    return;
+                }
+            }
+            let ctx = CapabilityContext::new(
+                entry.record.id().to_string(),
+                entry.record.manifest.capabilities.clone(),
+            );
+            (entry.record.wasm_path(), ctx)
+        };
+
+        let (graph, events) = self.per_module_clients();
+        let host = match McpModuleHost::load(
+            &self.tier1,
+            module_id,
+            &wasm_path,
+            ctx,
+            graph,
+            events,
+        )
+        .await
+        {
+            Ok(h) => Arc::new(h),
+            Err(DaemonError::WasmTrap { reason, .. }) => {
+                // An init-time trap counts toward crash recovery the
+                // same as a runtime fault: act on the returned ladder
+                // step so a transient init failure does not strand
+                // the module with no server and no scheduled restart.
+                warn!(module = %module_id, "mcp module init trapped: {reason}");
+                let recovery = self.record_crash(module_id).await;
+                self.schedule_mcp_restart(module_id, recovery);
+                return;
+            }
+            Err(other) => {
+                warn!(module = %module_id, "mcp module failed to load: {other}");
+                return;
+            }
+        };
+
+        let socket_path = mcp_module_socket_path(module_id);
+        // Bind the socket here, synchronously: a successful return is
+        // proof this process owns it. Only then is it safe to spawn
+        // the server, register the entry, and announce the module.
+        // If the path is already served the bind fails and we bail,
+        // so a pre-existing same-UID socket cannot make us announce
+        // an imposter server.
+        let listener = match os_sdk::mcp::bind_mcp_socket(&socket_path) {
+            Ok(listener) => listener,
+            Err(err) => {
+                warn!(module = %module_id, "mcp socket bind failed: {err}");
+                return;
+            }
+        };
+        let (fault_tx, mut fault_rx) =
+            tokio::sync::mpsc::unbounded_channel::<String>();
+
+        let manager = Arc::clone(self);
+        let host_for_task = Arc::clone(&host);
+        let socket_for_task = socket_path.clone();
+        let module_id_owned = module_id.to_string();
+        let task = tokio::spawn(async move {
+            let make_handler = {
+                let host = Arc::clone(&host_for_task);
+                move || ModuleMcpBridge::new(Arc::clone(&host), fault_tx.clone())
+            };
+            // `recovery` is `Some` only on a guest fault; a plain
+            // serve-error does not restart (a rebind would re-fail).
+            let recovery = tokio::select! {
+                served = os_sdk::mcp::serve_mcp_listener(listener, make_handler) => {
+                    if let Err(err) = served {
+                        warn!(
+                            module = %module_id_owned,
+                            "mcp socket server ended: {err}"
+                        );
+                    }
+                    None
+                }
+                Some(faulted) = fault_rx.recv() => {
+                    warn!(
+                        module = %faulted,
+                        "mcp module faulted on a guest call; recording crash"
+                    );
+                    Some(manager.record_crash(&faulted).await)
+                }
+            };
+            // Teardown. `revoke` makes every still-open connection's
+            // next list/call fail closed; the instance is poisoned
+            // after a trap and unreachable after a serve error.
+            host_for_task.revoke();
+            host_for_task.graceful_shutdown().await;
+            let _ = std::fs::remove_file(&socket_for_task);
+            // Drop our own registry entry so a restart finds a clean
+            // slot. Done before the restart is spawned.
+            manager.mcp_servers.lock().await.remove(&module_id_owned);
+            // Tell the AI daemon's discovery the socket is gone.
+            let _ = manager
+                .event_emitter
+                .emit("module.removed", module_id_owned.as_bytes().to_vec())
+                .await;
+            // Restart per the crash ladder. The restart runs in its
+            // own task because this one is about to end.
+            if let Some(recovery) = recovery {
+                manager.schedule_mcp_restart(&module_id_owned, recovery);
+            }
+        });
+
+        self.mcp_servers.lock().await.insert(
+            module_id.to_string(),
+            McpServerEntry {
+                task,
+                host,
+                socket_path,
+            },
+        );
+
+        // The bind already succeeded, so the socket is bound and
+        // owned by this process: announce it for the AI daemon's
+        // discovery without racing a not-yet-listening socket.
+        let _ = self
+            .event_emitter
+            .emit("module.installed", module_id.as_bytes().to_vec())
+            .await;
+        })
+    }
+
+    /// Schedule a crash-ladder restart of an `mcp.server` module.
+    /// `Immediate` restarts at once, `Delayed` after the backoff,
+    /// `PermanentlyFailed` not at all. The restart runs in its own
+    /// task so the caller (a dying supervisor, or `start_mcp_server`
+    /// itself) is not blocked.
+    fn schedule_mcp_restart(self: &Arc<Self>, module_id: &str, recovery: Recovery) {
+        let delay = match recovery {
+            Recovery::Immediate => Duration::ZERO,
+            Recovery::Delayed { delay } => delay,
+            Recovery::PermanentlyFailed { .. } => return,
+        };
+        let manager = Arc::clone(self);
+        let module_id = module_id.to_string();
+        tokio::spawn(async move {
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
+            }
+            manager.start_mcp_server(&module_id).await;
+        });
+    }
+
+    /// Stop and tear down the MCP socket server for one module.
+    /// `revoke` fails closed every connection the AI daemon may still
+    /// hold open; `abort` ends the supervisor (and its accept loop).
+    pub async fn stop_mcp_server(&self, module_id: &str) {
+        let entry = self.mcp_servers.lock().await.remove(module_id);
+        if let Some(entry) = entry {
+            entry.host.revoke();
+            entry.task.abort();
+            entry.host.graceful_shutdown().await;
+            let _ = std::fs::remove_file(&entry.socket_path);
+            // Aborting the supervisor skips its own teardown, so the
+            // `module.removed` announcement is emitted here instead.
+            let _ = self
+                .event_emitter
+                .emit("module.removed", module_id.as_bytes().to_vec())
+                .await;
+        }
+    }
+
+    /// Tear down every MCP socket server. Used by the SIGTERM handler;
+    /// each `Guest::shutdown` is capped at 1 s so one stuck module
+    /// cannot block daemon exit.
+    pub async fn shutdown_all_mcp(&self) {
+        let entries: Vec<McpServerEntry> = {
+            let mut guard = self.mcp_servers.lock().await;
+            guard.drain().map(|(_, v)| v).collect()
+        };
+        for entry in entries {
+            entry.host.revoke();
+            entry.task.abort();
+            if tokio::time::timeout(
+                Duration::from_secs(1),
+                entry.host.graceful_shutdown(),
+            )
+            .await
+            .is_err()
+            {
+                warn!("modulesd: mcp module shutdown timed out after 1s");
+            }
+            let _ = std::fs::remove_file(&entry.socket_path);
+        }
+    }
+
+    pub async fn handle_request(self: &Arc<Self>, req: Request) -> Response {
         match req {
             Request::Hello { id, client, version } => {
                 debug!("modulesd: hello from {client} v{version}");
@@ -1362,21 +1650,25 @@ impl Manager {
     }
 
     async fn handle_set_enabled(
-        &self,
+        self: &Arc<Self>,
         id: &str,
         module_id: &str,
         enabled: bool,
     ) -> Response {
-        let mut guard = self.modules.write().await;
-        let Some(entry) = guard.get_mut(module_id) else {
-            return Response::Error {
-                id: id.to_string(),
-                code: ErrorCode::NotFound,
-                message: format!("module {module_id} not found"),
+        let is_mcp_module;
+        {
+            let mut guard = self.modules.write().await;
+            let Some(entry) = guard.get_mut(module_id) else {
+                return Response::Error {
+                    id: id.to_string(),
+                    code: ErrorCode::NotFound,
+                    message: format!("module {module_id} not found"),
+                };
             };
-        };
-        entry.enabled = enabled;
-        drop(guard);
+            entry.enabled = enabled;
+            is_mcp_module = entry.record.tier == Tier::Wasm
+                && entry.record.manifest.mcp.is_some();
+        }
         // On disable, every live nonce belonging to this module must
         // be revoked so any iframe still mounted in the shell can no
         // longer issue capability-checked host calls. Without this the
@@ -1386,6 +1678,15 @@ impl Manager {
         // exfiltration window.
         if !enabled {
             self.tier2.revoke_module(module_id).await;
+        }
+        // Bring the module's MCP socket server up or down to match.
+        // A disabled module must not keep serving tools to the AI.
+        if is_mcp_module {
+            if enabled {
+                self.start_mcp_server(module_id).await;
+            } else {
+                self.stop_mcp_server(module_id).await;
+            }
         }
         let _ = self.events_tx.send(if enabled {
             Event::ModuleEnabled {
@@ -1399,24 +1700,35 @@ impl Manager {
         Response::Acked { id: id.to_string() }
     }
 
-    async fn handle_retry(&self, id: &str, module_id: &str) -> Response {
-        let mut guard = self.modules.write().await;
-        let Some(entry) = guard.get_mut(module_id) else {
-            return Response::Error {
-                id: id.to_string(),
-                code: ErrorCode::NotFound,
-                message: format!("module {module_id} not found"),
+    async fn handle_retry(self: &Arc<Self>, id: &str, module_id: &str) -> Response {
+        let is_mcp_module;
+        {
+            let mut guard = self.modules.write().await;
+            let Some(entry) = guard.get_mut(module_id) else {
+                return Response::Error {
+                    id: id.to_string(),
+                    code: ErrorCode::NotFound,
+                    message: format!("module {module_id} not found"),
+                };
             };
-        };
-        if !entry.crash.is_failed() {
-            return Response::Acked { id: id.to_string() };
+            if !entry.crash.is_failed() {
+                return Response::Acked { id: id.to_string() };
+            }
+            entry.crash.manual_retry();
+            // Clear any pending backoff deadline so the next search can
+            // immediately rebuild the instance. The user explicitly
+            // pushed Retry; the backoff ladder resets.
+            entry.next_retry_at = None;
+            is_mcp_module = entry.record.tier == Tier::Wasm
+                && entry.record.manifest.mcp.is_some();
         }
-        entry.crash.manual_retry();
-        // Clear any pending backoff deadline so the next search can
-        // immediately rebuild the instance. The user explicitly
-        // pushed Retry; the backoff ladder resets.
-        entry.next_retry_at = None;
         info!("modulesd: manual retry for {module_id}");
+        // A waypointer module rebuilds lazily on the next search; an
+        // mcp.server module has no such trigger, so Retry restarts
+        // its socket server here.
+        if is_mcp_module {
+            self.start_mcp_server(module_id).await;
+        }
         Response::Acked { id: id.to_string() }
     }
 
@@ -1525,6 +1837,7 @@ mod tests {
                 topbar: None,
                 settings: None,
                 quicksettings: None,
+                mcp: None,
                 capabilities: Default::default(),
                 permissions: Default::default(),
                 keybindings: Vec::new(),

@@ -56,5 +56,8 @@ modulesd-proto = { path = "../modulesd-proto" }
 [dev-dependencies]
 tempfile = "3"
 wiremock = "0.6"
+# The mcp.server dogfood test drives a hosted module through the AI
+# daemon's real MCP client, exactly the path the daemon uses.
+lunaris-ai-core = { path = "../ai-layer/ai-core" }
 
 [workspace]

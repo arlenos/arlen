@@ -37,6 +37,7 @@ fn record_for(id: &str) -> ModuleRecord {
             topbar: None,
             settings: None,
             quicksettings: None,
+            mcp: None,
             capabilities: Default::default(),
             permissions: Default::default(),
             keybindings: Vec::new(),

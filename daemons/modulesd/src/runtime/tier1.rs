@@ -233,6 +233,58 @@ impl Tier1Runtime {
             }),
         }
     }
+
+    /// Instantiate an `mcp.server` module against this runtime.
+    ///
+    /// The mcp-server world reuses the same four `lunaris:host/*`
+    /// imports as the waypointer world, so the same populated linker
+    /// satisfies it. Mirrors [`instantiate`](Self::instantiate): the
+    /// guest `init()` export runs under the same wall-clock timeout
+    /// and the same `WasmLoad` / `WasmTrap` error split.
+    pub async fn instantiate_mcp(
+        &self,
+        module_id: &str,
+        component: &Component,
+        ctx: CapabilityContext,
+        graph_client: Arc<UnixGraphClient>,
+        event_emitter: Arc<UnixEventEmitter>,
+    ) -> Result<McpInstance> {
+        use crate::runtime::wit::mcp::McpServer;
+
+        let linker = self.linker.lock().await;
+        let mut store = self.create_store(ctx, graph_client, event_emitter);
+        let provider = McpServer::instantiate_async(&mut store, component, &linker)
+            .await
+            .map_err(|e| DaemonError::WasmLoad {
+                module_id: module_id.to_string(),
+                reason: format!("instantiate: {e}"),
+            })?;
+        drop(linker);
+
+        let init_result = tokio::time::timeout(
+            INIT_TIMEOUT,
+            provider
+                .lunaris_waypointer_server()
+                .call_init(&mut store),
+        )
+        .await;
+
+        match init_result {
+            Ok(Ok(Ok(()))) => Ok(McpInstance { store, provider }),
+            Ok(Ok(Err(module_err))) => Err(DaemonError::WasmTrap {
+                module_id: module_id.to_string(),
+                reason: format!("init returned error: {module_err}"),
+            }),
+            Ok(Err(trap)) => Err(DaemonError::WasmTrap {
+                module_id: module_id.to_string(),
+                reason: format!("init trapped: {trap}"),
+            }),
+            Err(_elapsed) => Err(DaemonError::WasmTrap {
+                module_id: module_id.to_string(),
+                reason: format!("init exceeded {}s wall-clock timeout", INIT_TIMEOUT.as_secs()),
+            }),
+        }
+    }
 }
 
 /// One loaded Tier 1 module instance. Holds its own `Store` (linear
@@ -263,6 +315,32 @@ impl Tier1Instance {
                 module = module_id,
                 "shutdown trapped: {err}",
             );
+        }
+    }
+}
+
+/// One loaded `mcp.server` Tier 1 module instance. The `mcp-server`
+/// counterpart of [`Tier1Instance`]: same `Store` discipline, but it
+/// holds the `mcp-server` world's provider rather than the
+/// waypointer one. The higher-level hosting (per-call fuel + timeout,
+/// the rmcp socket bridge) lives in `runtime::mcp`.
+pub struct McpInstance {
+    pub store: Store<ModuleStore>,
+    pub provider: crate::runtime::wit::mcp::McpServer,
+}
+
+impl McpInstance {
+    /// Best-effort call into the guest's `shutdown()` export, used by
+    /// the daemon SIGTERM handler. A trapping shutdown is logged but
+    /// does not block: this is a politeness signal, not correctness.
+    pub async fn graceful_shutdown(&mut self, module_id: &str) {
+        if let Err(err) = self
+            .provider
+            .lunaris_waypointer_server()
+            .call_shutdown(&mut self.store)
+            .await
+        {
+            tracing::warn!(module = module_id, "mcp shutdown trapped: {err}");
         }
     }
 }

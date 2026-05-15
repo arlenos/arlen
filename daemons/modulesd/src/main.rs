@@ -39,6 +39,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (events_tx, _events_rx) = broadcast::channel(256);
     let manager: Arc<Manager> = Manager::new(events_tx.clone())?;
     manager.discover().await;
+    // Bring up an MCP socket server for every enabled `mcp.server`
+    // module so the AI daemon can connect to its tools.
+    manager.start_all_mcp_servers().await;
 
     let socket_path = default_socket_path();
     // S7.6: prefer the systemd-passed listener when socket activation
@@ -77,6 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ = sigint.recv() => info!("modulesd: SIGINT received"),
             _ = sigterm.recv() => info!("modulesd: SIGTERM received"),
         }
+        manager_for_shutdown.shutdown_all_mcp().await;
         manager_for_shutdown.shutdown_all_tier1().await;
         let _ = std::fs::remove_file(&socket_path_clone);
         Ok::<_, std::io::Error>(())
