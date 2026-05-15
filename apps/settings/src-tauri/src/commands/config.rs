@@ -27,6 +27,10 @@ pub enum ConfigFile {
     /// QS-panel mount via `qs_layout_get`; Settings writes it through
     /// the generic config API.
     QuickSettings,
+    /// AI layer config (`ai.toml`). Schema: `[ai] enabled, provider`.
+    /// The `lunaris-ai-daemon` watches this file: toggling `enabled`
+    /// switches the AI layer on/off live (Phase 9-α S7).
+    Ai,
 }
 
 impl ConfigFile {
@@ -39,6 +43,7 @@ impl ConfigFile {
             Self::Modules => "modules.toml",
             Self::Graph => "graph.toml",
             Self::QuickSettings => "quicksettings.toml",
+            Self::Ai => "ai.toml",
         }
     }
 
@@ -336,8 +341,7 @@ fn remove_dotted_in_doc(doc: &mut toml_edit::DocumentMut, key: &str) {
 /// the outer dispatcher and dropped object elements that came
 /// back as `Item::Table` because `Item::Table.as_value()` is
 /// always `None`. That silently truncated `window_rules` arrays
-/// to empty on save, a data-loss bug flagged in Codex review of
-/// Sprint B.
+/// to empty on save, a data-loss bug found during Sprint B.
 fn json_to_toml_edit(v: serde_json::Value) -> toml_edit::Item {
     use serde_json::Value as J;
     match v {
@@ -426,11 +430,21 @@ fn default_for(file: ConfigFile) -> toml::Value {
     let raw = match file {
         ConfigFile::Appearance => DEFAULT_APPEARANCE,
         ConfigFile::Notifications => DEFAULT_NOTIFICATIONS,
+        ConfigFile::Ai => DEFAULT_AI,
         _ => return toml::Value::Table(toml::map::Map::new()),
     };
     toml::from_str::<toml::Value>(raw)
         .unwrap_or_else(|_| toml::Value::Table(toml::map::Map::new()))
 }
+
+/// Default `ai.toml`. The AI layer is opt-in (Foundation §5.1-5.2):
+/// it ships disabled. `provider` names a catalogued provider on the
+/// AI proxy; Phase 9-α ships only the local Ollama provider.
+const DEFAULT_AI: &str = r##"
+[ai]
+enabled = false
+provider = "ollama-default"
+"##;
 
 /// Default appearance.toml shipped with the settings app. Matches the
 /// dark theme values used by desktop-shell.
@@ -635,6 +649,23 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_default_ai_is_valid_toml() {
+        let v: Result<toml::Value, _> = toml::from_str(DEFAULT_AI);
+        assert!(v.is_ok(), "DEFAULT_AI parse error: {:?}", v.err());
+        let table = v.unwrap();
+        // The AI layer ships disabled (opt-in, Foundation §5.1-5.2).
+        assert_eq!(
+            get_path(&table, "ai.enabled").and_then(|x| x.as_bool()),
+            Some(false),
+            "ai.enabled must default to false"
+        );
+        assert!(
+            get_path(&table, "ai.provider").is_some(),
+            "ai.provider must exist"
+        );
+    }
+
     // ── format-preserving dotted-set on toml_edit::DocumentMut ──────────
 
     /// Sprint A migrated `config_set` from `toml::to_string_pretty`
@@ -707,9 +738,9 @@ workspace_layout = "Horizontal"
         assert!(written.contains("y = 2"));
     }
 
-    /// Critical regression test for the Codex Sprint B review: an
-    /// array of objects (e.g. `layout.window_rules`) must survive a
-    /// round-trip through `config_set`. The previous implementation
+    /// Critical regression test from Sprint B: an array of objects
+    /// (e.g. `layout.window_rules`) must survive a round-trip through
+    /// `config_set`. The previous implementation
     /// silently dropped object entries because `Item::Table` returns
     /// `None` from `.as_value()`. This test would have caught it on
     /// the first save.

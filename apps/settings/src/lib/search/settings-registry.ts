@@ -1119,6 +1119,35 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     anchor: "daemon-knowledge-graph",
   },
 
+  // ── AI (Phase 9-α S7) ──────────────────────────────────────────────
+  {
+    id: "ai.enable",
+    title: "Enable AI features",
+    description: "Turn the AI assistant on or off",
+    keywords: ["ai", "assistant", "enable", "llm", "model", "intelligence"],
+    panel: "ai",
+    section: "AI Layer",
+    anchor: "ai-enable",
+  },
+  {
+    id: "ai.provider",
+    title: "AI model provider",
+    description: "Choose which model answers your queries (Ollama, ...)",
+    keywords: ["ai", "provider", "model", "ollama", "local", "llm"],
+    panel: "ai",
+    section: "Provider",
+    anchor: "ai-provider",
+  },
+  {
+    id: "ai.status",
+    title: "AI daemon status",
+    description: "Whether the AI daemon and network proxy are running",
+    keywords: ["ai", "daemon", "proxy", "status", "running"],
+    panel: "ai",
+    section: "Daemon Status",
+    anchor: "ai-daemon-status",
+  },
+
   // Privacy panel intentionally NOT in the registry: it's
   // disabled in navigation until Phase 8 ships the
   // permission-management UI. Indexing it would surface

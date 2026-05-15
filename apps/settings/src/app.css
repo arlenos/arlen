@@ -47,19 +47,19 @@
   --radius-modal:  16px;
   --radius-full:   9999px;
 
-  /* Control heights — single source of truth for the height of
-     interactive elements (buttons, inputs, selects, sliders…) so
-     a row of mixed controls reads as one rhythmic line. Values
-     mirrored in `desktop-shell/src/app.css` and
-     `sdk/ui-kit/src/lib/...`. */
-  --control-h-sm: 24px;
-  --control-h:    28px;
-  --control-h-lg: 36px;
-
-  /* Slider geometry tokens — track height + thumb size shared
-     across `Slider`, `ValueSlider`, and the bespoke shell sliders. */
-  --slider-track-h:    3px;
-  --slider-thumb-size: 12px;
+  /* Sizing scale — see docs/architecture/sizing-system.md.
+     Semantic naming over t-shirt sizing. Components pick a token
+     by VISUAL ROLE. Variant props on components (sm/default/lg)
+     are ergonomic aliases; each maps internally to one of these
+     tokens. Values mirrored in `desktop-shell/src/app.css` and
+     `sdk/ui-kit/src/app.css`. */
+  --height-tag:                 20px;  /* Badges, status pills, indicators */
+  --height-control-compact:     24px;  /* Compact controls in dense rows */
+  --height-control:             28px;  /* Standard controls (most common) */
+  --height-control-prominent:   36px;  /* Prominent controls, default button */
+  --height-control-emphasized:  40px;  /* Emphasized buttons, hero inputs */
+  --height-row:                 40px;  /* Settings rows, dense list items */
+  --height-bar:                 36px;  /* Top bar, compositor SSD header */
 
   /* Motion tokens live in sdk/ui-kit/src/lib/motion.css (imported above). */
 
@@ -184,13 +184,16 @@
   --radius-modal:  var(--radius-modal);
   --radius-full:   var(--radius-full);
 
-  /* Control height utilities — `h-control` / `h-control-sm` /
-     `h-control-lg` map to the design tokens. Use these in Tailwind
-     classes so shadcn primitives and bespoke CSS-in-Svelte
-     primitives agree on row height. */
-  --height-control-sm: var(--control-h-sm);
-  --height-control:    var(--control-h);
-  --height-control-lg: var(--control-h-lg);
+  /* Sizing-scale utilities — see docs/architecture/sizing-system.md.
+     Generates h-tag, h-control-compact, h-control,
+     h-control-prominent, h-control-emphasized, h-row, h-bar. */
+  --height-tag:                 var(--height-tag, 20px);
+  --height-control-compact:     var(--height-control-compact, 24px);
+  --height-control:             var(--height-control, 28px);
+  --height-control-prominent:   var(--height-control-prominent, 36px);
+  --height-control-emphasized:  var(--height-control-emphasized, 40px);
+  --height-row:                 var(--height-row, 40px);
+  --height-bar:                 var(--height-bar, 36px);
 
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "JetBrains Mono", monospace;

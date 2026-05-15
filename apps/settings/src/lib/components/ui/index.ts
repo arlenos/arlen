@@ -16,6 +16,7 @@
 // and NO app-specific store imports. Components that depend on
 // `$lib/stores/theme` etc. stay in their respective apps.
 export { DaysPicker } from "./days-picker";
+export { FillSlider } from "./fill-slider";
 export { Group } from "./group";
 export { PositionPicker } from "./position-picker";
 export { Row } from "./row";

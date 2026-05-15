@@ -180,7 +180,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    height: 28px;
+    height: var(--height-control, 28px);
     padding: 0 0.25rem 0 0.5rem;
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
@@ -221,8 +221,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     padding: 0;
     border: none;
     border-radius: var(--radius-chip);

@@ -34,13 +34,13 @@
   } from "$lib/stores/notifications";
   import { shell, type ToastPosition, type ToastAnimation } from "$lib/stores/shell";
 
-  import Group from "$lib/components/appearance/Group.svelte";
-  import Row from "$lib/components/appearance/Row.svelte";
+  import { Group } from "$lib/components/ui/group";
+  import { Row } from "$lib/components/ui/row";
   import { Switch } from "$lib/components/ui/switch";
-  import ValueSlider from "$lib/components/appearance/ValueSlider.svelte";
-  import TimeInput from "$lib/components/appearance/TimeInput.svelte";
-  import DaysPicker from "$lib/components/appearance/DaysPicker.svelte";
-  import PositionPicker from "$lib/components/appearance/PositionPicker.svelte";
+  import { ValueSlider } from "$lib/components/ui/value-slider";
+  import { TimeInput } from "$lib/components/ui/time-input";
+  import { DaysPicker } from "$lib/components/ui/days-picker";
+  import { PositionPicker } from "$lib/components/ui/position-picker";
   import AppPicker from "$lib/components/appearance/AppPicker.svelte";
   import AppRuleCard from "$lib/components/appearance/AppRuleCard.svelte";
 

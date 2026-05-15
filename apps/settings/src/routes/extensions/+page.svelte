@@ -12,7 +12,7 @@
 
   import { onMount } from "svelte";
   import { RefreshCw, Puzzle, Info, ExternalLink } from "lucide-svelte";
-  import Group from "$lib/components/appearance/Group.svelte";
+  import { Group } from "$lib/components/ui/group";
   import ModuleCard from "$lib/components/appearance/ModuleCard.svelte";
   import { modules, moduleGroups } from "$lib/stores/modules";
 

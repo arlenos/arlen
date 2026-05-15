@@ -17,6 +17,7 @@ export type PanelId =
   | "accessibility"
   | "focus"
   | "knowledge"
+  | "ai"
   | "privacy"
   | "extensions"
   | "about";
@@ -44,6 +45,7 @@ export const PANELS: PanelMeta[] = [
   { id: "accessibility", title: "Accessibility", icon: "Accessibility", enabled: true, href: "/accessibility" },
   { id: "focus", title: "Focus Mode", icon: "Crosshair", enabled: true, href: "/focus" },
   { id: "knowledge", title: "Knowledge Graph", icon: "Brain", enabled: true, href: "/knowledge" },
+  { id: "ai", title: "AI", icon: "Sparkles", enabled: true, href: "/ai" },
 
   // Input
   { id: "keyboard", title: "Keyboard", icon: "Keyboard", enabled: true, href: "/keyboard" },

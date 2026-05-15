@@ -15,18 +15,20 @@
 				link: "text-primary underline-offset-4 hover:underline",
 			},
 			size: {
-				// `default` = page-action / modal button, matches `--control-h-lg` (36px).
-				// `sm`      = inline-row button, matches `--control-h` (28px) so it
-				//             sits flush with PopoverSelect / Input / TimeInput etc.
-				// `xs`      = compact list button, matches `--control-h-sm` (24px).
-				default: "h-control-lg gap-1.5 px-2.5 in-data-[slot=button-group]:rounded-input has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-				xs: "h-control-sm gap-1 rounded-[min(var(--radius-input),8px)] px-2 text-xs in-data-[slot=button-group]:rounded-input has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
+				// Variants map to sizing-system tokens. See
+				// docs/architecture/sizing-system.md.
+				// `default` = page-action / modal button → --height-control-prominent (36)
+				// `sm`      = inline-row button         → --height-control (28), flush with Input/Select etc.
+				// `xs`      = compact list button       → --height-control-compact (24)
+				// `lg`      = emphasized button         → --height-control-emphasized (40)
+				default: "h-control-prominent gap-1.5 px-2.5 in-data-[slot=button-group]:rounded-input has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+				xs: "h-control-compact gap-1 rounded-[min(var(--radius-input),8px)] px-2 text-xs in-data-[slot=button-group]:rounded-input has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
 				sm: "h-control gap-1 rounded-[min(var(--radius-input),10px)] px-2.5 in-data-[slot=button-group]:rounded-input has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5",
-				lg: "h-10 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3",
-				icon: "size-[var(--control-h-lg)]",
-				"icon-xs": "size-[var(--control-h-sm)] rounded-[min(var(--radius-input),8px)] in-data-[slot=button-group]:rounded-input [&_svg:not([class*='size-'])]:size-3",
-				"icon-sm": "size-[var(--control-h)] rounded-[min(var(--radius-input),10px)] in-data-[slot=button-group]:rounded-input",
-				"icon-lg": "size-10",
+				lg: "h-control-emphasized gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3",
+				icon: "size-[var(--height-control-prominent,36px)]",
+				"icon-xs": "size-[var(--height-control-compact,24px)] rounded-[min(var(--radius-input),8px)] in-data-[slot=button-group]:rounded-input [&_svg:not([class*='size-'])]:size-3",
+				"icon-sm": "size-[var(--height-control,28px)] rounded-[min(var(--radius-input),10px)] in-data-[slot=button-group]:rounded-input",
+				"icon-lg": "size-[var(--height-control-emphasized,40px)]",
 			},
 		},
 		defaultVariants: {

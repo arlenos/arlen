@@ -55,7 +55,7 @@
     position: relative;
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    height: 26px;
+    height: var(--height-control, 28px);
     padding: 2px;
     width: 200px;
     background: color-mix(in srgb, var(--foreground) 6%, transparent);
