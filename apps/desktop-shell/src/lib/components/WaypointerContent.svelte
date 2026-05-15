@@ -1175,7 +1175,7 @@
     z-index: 10;
     width: 100%;
     max-width: 600px;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-card);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     box-shadow: var(--shadow-lg);
     overflow: hidden;
@@ -1203,7 +1203,7 @@
     align-items: center;
     gap: 10px;
     padding: 8px 12px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
     color: var(--color-fg-shell);
   }
@@ -1237,7 +1237,7 @@
     width: 12px;
     height: 12px;
     background: var(--color-bg-shell);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     color: var(--color-fg-shell);
     opacity: 0.7;
   }
@@ -1258,7 +1258,7 @@
   .wp-app-icon {
     width: 20px;
     height: 20px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     object-fit: contain;
     flex-shrink: 0;
   }
@@ -1316,7 +1316,7 @@
     flex-shrink: 0;
     background: transparent;
     border: 0;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     color: var(--color-fg-shell);
     opacity: 0.35;
     cursor: pointer;

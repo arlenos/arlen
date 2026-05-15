@@ -180,7 +180,7 @@
     font-size: 0.75rem;
     font-weight: 500;
     cursor: pointer;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     white-space: nowrap;
     transition: background-color 100ms ease, color 100ms ease;
   }

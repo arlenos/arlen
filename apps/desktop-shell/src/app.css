@@ -12,6 +12,22 @@
    correctly before the Tauri backend is ready.
    ============================================================ */
 :root {
+  /* ============================================================
+     Topbar applet sizing tokens — shell-controlled chrome that
+     every Applet primitive in `sdk/ui-kit/topbar/` references.
+     Themes (and future "compact / comfortable" variants) override
+     these tokens to resize all topbar applets at once. Defaults
+     match the 36px topbar height and the 28×28 hit-target the rest
+     of the shell standardises on.
+     ============================================================ */
+  --topbar-applet-h:           28px;
+  --topbar-applet-min-w:       28px;
+  --topbar-applet-radius:      var(--radius-chip);
+  --topbar-applet-icon-size:   14px;
+  --topbar-applet-label-max-w: 120px;
+  --topbar-applet-hover-bg:    color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
+  --topbar-tooltip-delay:      1500ms;
+
   /* Background */
   --color-bg-shell:   #0a0a0a;
   --color-bg-app:     #0f0f0f;
@@ -42,12 +58,17 @@
   --color-border-strong:  #3f3f46;
   --color-border:         var(--color-border-default);
 
-  /* Radius */
-  --radius-sm:   4px;
-  --radius-md:   8px;
-  --radius-lg:   12px;
-  --radius-full: 9999px;
-  --radius:      var(--radius-md);
+  /* Radius — semantic tokens (sdk/theme canonical schema).
+     Runtime values get injected by the theme loader; defaults
+     here mirror the bundled `dark.toml` for first-paint
+     correctness before the JS loader runs. See
+     `docs/architecture/theme-system.md`. */
+  --radius-chip:   4px;
+  --radius-button: 6px;
+  --radius-input:  8px;
+  --radius-card:   12px;
+  --radius-modal:  16px;
+  --radius-full:   9999px;
 
   /* Spacing */
   --spacing-xs: 4px;
@@ -175,19 +196,17 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  /* Register the full radius scale so Tailwind utilities like `rounded-md`
-     emit `border-radius: var(--radius-md)` instead of a hardcoded literal.
-     Runtime reloads from appearance.toml then propagate into every utility
-     class without touching components. `--radius` (singular) is kept as an
-     alias so shadcn primitives that read it continue to work. */
-  --radius-sm: var(--radius-sm);
-  --radius-md: var(--radius-md);
-  --radius-lg: var(--radius-lg);
-  --radius-xl: calc(var(--radius-md) + 8px);
-  --radius-2xl: calc(var(--radius-md) + 16px);
-  --radius-3xl: calc(var(--radius-md) + 24px);
-  --radius-full: var(--radius-full);
-  --radius: var(--radius-md);
+  /* Register the semantic radius scale so Tailwind utilities like
+     `rounded-card` / `rounded-button` emit `border-radius: var(--radius-X)`
+     instead of a hardcoded literal. Runtime intensity reloads from
+     `appearance.toml [overrides].radius_intensity` then propagate into
+     every utility class without touching components. */
+  --radius-chip:   var(--radius-chip);
+  --radius-button: var(--radius-button);
+  --radius-input:  var(--radius-input);
+  --radius-card:   var(--radius-card);
+  --radius-modal:  var(--radius-modal);
+  --radius-full:   var(--radius-full);
 
   /* Control-height utilities: `h-control` / `h-control-sm` /
      `h-control-lg` map to the `--control-h*` design tokens so the
@@ -294,7 +313,7 @@
   align-items: center !important;
   padding: 14px !important;
   /* Runtime corner radius — scales with appearance.toml [window].corner_radius. */
-  border-radius: var(--radius-lg) !important;
+  border-radius: var(--radius-card) !important;
   /* Click-to-focus-app: signal that the body is interactive. Action
      buttons get their own cursor via browser default. */
   cursor: pointer;
@@ -329,15 +348,25 @@
    scale. Both buttons look identical — the "primary" vs "cancel"
    distinction is conveyed by position (right vs left), not colour.
    ============================================================ */
+/* Action buttons. Sonner places `[data-button]` and `[data-cancel]`
+   as siblings under the toast grid. Pinning all of them to
+   `grid-column: 2/4` makes 2+ buttons collapse into a single cell
+   and stack on top of each other. Letting `grid-row: auto` flow
+   into successive rows keeps them legible regardless of how many
+   actions an app declares — `--action="yes=Yes" --action="no=No"`
+   shows two stacked rows, matching macOS notification action
+   layout. The shared full-width column (2/4) plus
+   `justify-self: stretch` keeps each button bar-wide so they read
+   as primary CTAs rather than inline pills. */
 [data-sonner-toast][data-styled="true"] [data-button],
 [data-sonner-toast][data-styled="true"] [data-cancel] {
-  grid-row: 2 !important;
+  grid-row: auto !important;
   grid-column: 2 / 4 !important;
-  margin: 0 !important;
+  margin: 6px 0 0 0 !important;
   justify-self: stretch !important;
   white-space: nowrap !important;
   padding: 7px 12px !important;
-  border-radius: var(--radius-md) !important;
+  border-radius: var(--radius-input) !important;
   background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent) !important;
   border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent) !important;
   color: var(--color-fg-shell) !important;
@@ -358,12 +387,6 @@
 [data-sonner-toast][data-styled="true"] [data-cancel]:active {
   transform: scale(0.97);
 }
-[data-sonner-toast][data-styled="true"]:has([data-cancel]) [data-cancel] {
-  grid-column: 2 !important;
-}
-[data-sonner-toast][data-styled="true"]:has([data-cancel]) [data-button] {
-  grid-column: 3 !important;
-}
 
 /* ============================================================
    Close button: inside the toast, hover-revealed, 16x16, dezent.
@@ -380,9 +403,9 @@
   right: 8px !important;
   left: auto !important;
   transform: none !important;
-  width: 16px !important;
-  height: 16px !important;
-  border-radius: var(--radius-sm) !important;
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: var(--radius-chip) !important;
   background: transparent !important;
   border: none !important;
   color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent) !important;
@@ -393,8 +416,8 @@
     color var(--duration-fast) var(--ease-out) !important;
 }
 [data-sonner-toast][data-styled="true"] [data-close-button] svg {
-  width: 12px !important;
-  height: 12px !important;
+  width: 16px !important;
+  height: 16px !important;
 }
 [data-sonner-toast][data-styled="true"]:hover [data-close-button] {
   opacity: 0.65;

@@ -9,7 +9,7 @@
   import { Bell, BellOff } from "lucide-svelte";
 
   const tooltipClass =
-    "rounded-md border px-2 py-0.5 text-xs shadow-md select-none"
+    "rounded-input border px-2 py-0.5 text-xs shadow-md select-none"
     + " bg-[var(--color-bg-shell)] text-[var(--color-fg-shell)] border-[color-mix(in_srgb,var(--color-bg-shell)_60%,white_40%)]";
 
   const Icon = $derived($dndState.mode !== "off" ? BellOff : Bell);
@@ -60,7 +60,7 @@
     padding: 0;
     border: none;
     background: transparent;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     cursor: pointer;
     color: var(--foreground);
     transition: background-color 150ms ease;
@@ -78,7 +78,7 @@
     min-width: 14px;
     height: 14px;
     padding: 0 3px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: var(--color-error);
     color: var(--color-fg-inverse);
     font-size: 0.5625rem;

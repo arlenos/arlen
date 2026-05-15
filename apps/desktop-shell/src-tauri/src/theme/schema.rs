@@ -1,279 +1,128 @@
-/// Full theme token schema for Lunaris OS.
-///
-/// Every visual property (colors, radii, spacing, typography, motion, depth)
-/// is defined here. Built-in themes ship as TOML files that deserialize
-/// directly into `ThemeTokens`.
+//! Desktop-shell-specific theme schema.
+//!
+//! The full token hierarchy lives in `lunaris-theme` (sdk/theme) and
+//! is re-exported here for callers that previously imported from
+//! this module. The types defined HERE are desktop-shell-side
+//! configuration concerns:
+//!
+//! - `AppearanceConfig` / sub-structs: `~/.config/lunaris/appearance.toml`
+//!   schema (theme selection + accessibility prefs + radius_intensity)
+//! - `ThemeInfo`: lightweight summary for the Settings theme picker
+//!
+//! The `[radius]` and color tokens themselves are NEVER defined here
+//! — they live in the canonical `lunaris-theme` schema. This module
+//! only configures *which* theme is active and *how* the user
+//! overlay layers on top.
 
 use serde::{Deserialize, Serialize};
 
-// ---------------------------------------------------------------------------
-// Top-level
-// ---------------------------------------------------------------------------
-
-/// Complete set of design tokens for a Lunaris theme.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ThemeTokens {
-    /// Theme metadata.
-    pub meta: ThemeMeta,
-    /// Color palette.
-    pub colors: ColorTokens,
-    /// Border radii.
-    pub radius: RadiusTokens,
-    /// Spacing scale.
-    pub spacing: SpacingTokens,
-    /// Font settings.
-    pub typography: TypographyTokens,
-    /// Animation timing.
-    pub motion: MotionTokens,
-    /// Box shadows.
-    pub depth: DepthTokens,
-}
-
-/// Theme metadata stored in the `[meta]` TOML section.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ThemeMeta {
-    /// Unique identifier (e.g. "dark", "light", "nord").
-    pub id: String,
-    /// Human-readable name.
-    pub name: String,
-    /// Dark or light variant.
-    pub variant: ThemeVariant,
-    /// Optional parent theme to inherit from.
-    pub extends: Option<String>,
-}
-
-/// Whether the theme is dark or light.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ThemeVariant {
-    Dark,
-    Light,
-}
+// Re-exports: callers that used to `use crate::theme::schema::ThemeTokens`
+// transparently switch to the canonical `lunaris-theme` types.
+pub use lunaris_theme::{
+    ColorTokens, CursorTokens, DepthTokens, LunarisTheme, MotionTokens, RadiusTokens,
+    SpacingTokens, ThemeMeta, ThemeVariant, TypographyTokens, WmTokens,
+};
 
 // ---------------------------------------------------------------------------
-// Colors
+// User config (appearance.toml)
 // ---------------------------------------------------------------------------
 
-/// All color tokens, organized by role.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ColorTokens {
-    /// Background colors.
-    pub background: BackgroundColors,
-    /// Foreground (text) colors.
-    pub foreground: ForegroundColors,
-    /// Semantic / accent colors.
-    pub semantic: SemanticColors,
-    /// Border colors.
-    pub border: BorderColors,
+/// Top-level appearance config (`~/.config/lunaris/appearance.toml`).
+///
+/// Distinct from `~/.config/lunaris/theme.toml` (the full theme
+/// customization overlay handled by `lunaris_theme`): this file
+/// captures *preferences* like which theme is active, accessibility
+/// options, and the user's radius-intensity multiplier. It does
+/// **not** define theme data itself.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AppearanceConfig {
+    /// Which theme to activate.
+    #[serde(default)]
+    pub theme: ThemeSelection,
+    /// User overlay: pointers into the active theme.
+    #[serde(default)]
+    pub overrides: UserOverrides,
+    /// Accessibility preferences.
+    #[serde(default)]
+    pub accessibility: AccessibilitySettings,
+    /// Window decoration preferences (border width — radius lives
+    /// in the theme, intensity is in `[overrides]`).
+    #[serde(default)]
+    pub window: WindowSection,
 }
 
-/// Background color roles.
+/// `[theme]` section.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BackgroundColors {
-    /// Shell chrome (top bar, panels).
-    pub shell: String,
-    /// Application content area.
-    pub app: String,
-    /// Elevated cards.
-    pub card: String,
-    /// Modal overlays and backdrops.
-    pub overlay: String,
-    /// Text input fields.
-    pub input: String,
+pub struct ThemeSelection {
+    /// Theme id to activate. Must match one of the bundled themes
+    /// (`dark`, `light`) or a user theme at
+    /// `~/.local/share/lunaris/themes/{id}.toml`.
+    #[serde(default = "default_theme_active")]
+    pub active: String,
 }
 
-/// Foreground (text) color roles.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ForegroundColors {
-    /// Primary text.
-    pub primary: String,
-    /// Secondary / muted text.
-    pub secondary: String,
-    /// Disabled text.
-    pub disabled: String,
-    /// Inverse text (on accent backgrounds).
-    pub inverse: String,
+fn default_theme_active() -> String {
+    "dark".to_string()
 }
 
-/// Semantic / interactive colors.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SemanticColors {
-    /// Primary accent.
-    pub accent: String,
-    /// Accent on hover.
-    pub accent_hover: String,
-    /// Accent when pressed.
-    pub accent_pressed: String,
-    /// Success state.
-    pub success: String,
-    /// Warning state.
-    pub warning: String,
-    /// Error / destructive state.
-    pub error: String,
-    /// Informational state.
-    pub info: String,
+impl Default for ThemeSelection {
+    fn default() -> Self {
+        Self {
+            active: default_theme_active(),
+        }
+    }
 }
 
-/// Border color roles.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BorderColors {
-    /// Default subtle border.
-    pub default: String,
-    /// Stronger, more visible border.
-    pub strong: String,
-}
-
-// ---------------------------------------------------------------------------
-// Non-color tokens
-// ---------------------------------------------------------------------------
-
-/// Border radius scale.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RadiusTokens {
-    pub sm: String,
-    pub md: String,
-    pub lg: String,
-    pub full: String,
-}
-
-/// Spacing scale.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SpacingTokens {
-    pub xs: String,
-    pub sm: String,
-    pub md: String,
-    pub lg: String,
-    pub xl: String,
-}
-
-/// Typography tokens.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TypographyTokens {
-    /// Sans-serif font stack.
-    pub font_sans: String,
-    /// Monospace font stack.
-    pub font_mono: String,
-    /// Base font size.
-    pub size_base: String,
-    /// Base line height.
-    pub line_height: String,
-    /// Normal font weight.
-    pub weight_normal: String,
-    /// Medium font weight.
-    pub weight_medium: String,
-    /// Bold font weight.
-    pub weight_bold: String,
-}
-
-/// Animation / transition timing.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MotionTokens {
-    /// Fast transitions (hover, focus).
-    pub duration_fast: String,
-    /// Normal transitions (expand, collapse).
-    pub duration_normal: String,
-    /// Slow transitions (page, modal).
-    pub duration_slow: String,
-    /// Default easing curve.
-    pub easing_default: String,
-    /// Spring-like easing.
-    pub easing_spring: String,
-}
-
-/// Elevation / shadow tokens.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DepthTokens {
-    /// Subtle shadow (cards).
-    pub shadow_sm: String,
-    /// Medium shadow (dropdowns, popovers).
-    pub shadow_md: String,
-    /// Heavy shadow (modals).
-    pub shadow_lg: String,
-}
-
-// ---------------------------------------------------------------------------
-// User config
-// ---------------------------------------------------------------------------
-
-/// User overrides applied on top of any theme.
+/// `[overrides]` section. The `accent` and `font_scale` fields layer
+/// on top of the active theme; `radius_intensity` is the user's
+/// global radius multiplier (see `LunarisTheme::effective_*`).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UserOverrides {
-    /// Custom accent color (hex).
+    /// Custom accent color (`#rrggbb`) or the sentinel
+    /// `$foreground` to bind the accent to the active theme's
+    /// primary text color (auto-flips with dark/light).
+    #[serde(default)]
     pub accent: Option<String>,
-    /// Font scale multiplier (1.0 = normal).
+    /// Font scale multiplier (1.0 = default).
+    #[serde(default)]
     pub font_scale: Option<f32>,
+    /// Radius intensity multiplier. `0.0` = sharp brutalist;
+    /// `1.0` = theme defaults; `2.0` = max round. Clamped to
+    /// `[0.0, 2.0]` at apply time. Defaults to `None` so a
+    /// missing field falls through to the theme's own intensity.
+    #[serde(default)]
+    pub radius_intensity: Option<f32>,
 }
 
-/// Accessibility preferences.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// `[accessibility]` section.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AccessibilitySettings {
     /// Disable all animations.
     #[serde(default)]
     pub reduce_motion: bool,
 }
 
-impl Default for AccessibilitySettings {
-    fn default() -> Self {
-        Self { reduce_motion: false }
-    }
-}
-
-/// `[window]` section of appearance.toml. The shell only reads the
-/// visual fields that map to CSS variables (`--radius-*`). Border
-/// width and colour are compositor-only and are ignored here.
+/// `[window]` section. Border width is a compositor-only setting
+/// that doesn't fit the theme schema; it lives here. Corner radius
+/// USED to live here as `corner_radius: u32`; that's been replaced
+/// by `[overrides].radius_intensity` (semantic, percentage-based).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WindowSection {
-    /// Corner radius in pixels. Integer — matches the Settings app
-    /// slider. Overrides `theme.radius.md` (and derives sm/lg).
+    /// Window outline border width in pixels. Zero = no outline.
     #[serde(default)]
-    pub corner_radius: Option<u32>,
+    pub border_width: Option<u32>,
 }
 
-/// Top-level appearance config file (`~/.config/lunaris/appearance.toml`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AppearanceConfig {
-    /// Which theme to use.
-    pub theme: ThemeSelection,
-    /// User overrides.
-    #[serde(default)]
-    pub overrides: UserOverrides,
-    /// Accessibility settings.
-    #[serde(default)]
-    pub accessibility: AccessibilitySettings,
-    /// Window decoration overrides (corner radius, ...).
-    #[serde(default)]
-    pub window: WindowSection,
-}
+// ---------------------------------------------------------------------------
+// Theme info (UI summary)
+// ---------------------------------------------------------------------------
 
-/// Theme selection within the appearance config.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ThemeSelection {
-    /// Theme ID to activate.
-    pub active: String,
-}
-
-impl Default for AppearanceConfig {
-    fn default() -> Self {
-        Self {
-            theme: ThemeSelection {
-                active: "dark".into(),
-            },
-            overrides: UserOverrides::default(),
-            accessibility: AccessibilitySettings::default(),
-            window: WindowSection::default(),
-        }
-    }
-}
-
-/// Lightweight theme summary for the UI theme picker.
+/// Lightweight theme summary returned by the Tauri
+/// `get_available_themes` command.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemeInfo {
-    /// Unique identifier.
     pub id: String,
-    /// Display name.
     pub name: String,
-    /// Dark or light.
     pub variant: ThemeVariant,
-    /// Whether this is a built-in (non-removable) theme.
     pub is_builtin: bool,
 }

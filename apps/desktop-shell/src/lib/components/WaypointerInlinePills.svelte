@@ -41,14 +41,14 @@
     display: inline-flex;
     gap: 1px;
     padding: 2px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
     flex-shrink: 0;
   }
   .wp-pill {
     height: 20px;
     padding: 0 0.5rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: transparent;
     border: none;
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);

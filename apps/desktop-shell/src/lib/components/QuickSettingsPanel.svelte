@@ -1,368 +1,341 @@
 <script lang="ts">
-  /// Quick Settings Panel with persistent config via shell.toml.
-
+  /// Quick Settings panel orchestrator.
+  ///
+  /// Reads the user's `~/.config/lunaris/quicksettings.toml` layout via
+  /// `qs_layout_get`, merges with the bundled-defaults catalogue, and
+  /// renders the resulting tile list in a 2-column logical grid. Each
+  /// tile's behaviour (toggle/popover/flyout/slider) lives inside the
+  /// individual tile components in `lib/quicksettings/tiles/`.
+  ///
+  /// The panel is a popover in the global `activePopover` store. It
+  /// closes on backdrop click and on `Escape` (handled by the
+  /// `focusGrid` keyboard helper from `@lunaris/ui-kit/keyboard`).
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
-  import {
-    Moon, Sun, Plane, Settings, Lock, Power,
-    LogOut, RotateCcw, Coffee, Circle, Sunset,
-  } from "lucide-svelte";
-  import NotificationPanel from "$lib/components/NotificationPanel.svelte";
+  import { toast } from "svelte-sonner";
+  import { focusGrid } from "@lunaris/ui-kit/keyboard";
+  import { resolveLayout, sizeFromWire, type LayoutEntry, type ResolvedTile, type WireSize } from "$lib/quicksettings/grid.js";
 
-  let isDark = $state(true);
-  let caffeineActive = $state(false);
-  let recordingActive = $state(false);
-
-  async function toggleTheme() {
-    const next = isDark ? "light" : "dark";
-    try {
-      await invoke("set_theme", { id: next });
-      isDark = !isDark;
-    } catch (e) {
-      console.error("theme toggle failed:", e);
-    }
+  interface RawTileEntry {
+    id: string;
+    visible: boolean;
+    size: WireSize;
+  }
+  interface RawLayoutFile {
+    tile?: RawTileEntry[];
+    tiles?: RawTileEntry[];
   }
 
-  async function toggleCaffeine() {
-    try {
-      caffeineActive = await invoke<boolean>("toggle_caffeine");
-    } catch (e) {
-      console.error("caffeine toggle failed:", e);
-    }
+  let userEntries = $state<LayoutEntry[]>([]);
+  let resolvedTiles = $derived(resolveLayout(userEntries));
+  let helpOpen = $state(false);
+  let panelEl: HTMLElement | undefined = $state();
+
+  /// Coalesces watcher-driven reloads. The notify watcher debounces
+  /// at 120ms and atomic-rename writes can still emit multiple
+  /// events per save; the frontend stacks another 250ms here so a
+  /// rapid-fire sequence of writes (e.g. user hammering the
+  /// drag-drop in app-settings) lands as a single re-render rather
+  /// than nine of them. This is the user-visible "shell freezes
+  /// for ~5sec while panel updates" — many cascading re-renders
+  /// across nine tile components compound far worse than they
+  /// should.
+  const RELOAD_DEBOUNCE_MS = 250;
+  let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+  function scheduleReload() {
+    if (reloadTimer) clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(() => {
+      reloadTimer = null;
+      loadLayout();
+    }, RELOAD_DEBOUNCE_MS);
   }
-
-  async function toggleRecording() {
-    try {
-      recordingActive = await invoke<boolean>("toggle_recording");
-    } catch (e) {
-      console.error("recording toggle failed:", e);
-    }
-  }
-
-  interface ShellConfig {
-    night_light: { enabled: boolean; temperature: number };
-    display: { brightness: number };
-    layout: { mode: string };
-  }
-
-  let config = $state<ShellConfig>({
-    night_light: { enabled: false, temperature: 3400 },
-    display: { brightness: 1.0 },
-    layout: { mode: "float" },
-  });
-
-  let airplaneMode = $state(false);
-  let powerMenuOpen = $state(false);
-  let saveTimeout: ReturnType<typeof setTimeout> | null = null;
-  let brightnessDevice = $state<string | null>(null);
-  let brightnessSupported = $state(false);
-  let brightnessApplyTimer: ReturnType<typeof setTimeout> | null = null;
-
-  const brightnessPercent = $derived(Math.round(config.display.brightness * 100));
 
   onMount(() => {
-    invoke<ShellConfig>("get_shell_config")
-      .then((c) => { config = c; })
-      .catch(() => {});
-
-    // Read live hardware brightness so the slider matches what's
-    // on screen (not what was persisted at last save). The slider
-    // is hidden entirely when no backlight device exists.
-    invoke<{ name: string; max: number; current: number; kind: string } | null>(
-      "brightness_get_primary",
-    )
-      .then((dev) => {
-        if (!dev) {
-          brightnessSupported = false;
-          return;
-        }
-        brightnessSupported = true;
-        brightnessDevice = dev.name;
-        const linear = dev.max > 0 ? dev.current / dev.max : 0;
-        // Inverse of the gamma curve used in `brightness_set` so
-        // the slider ends up at the perceived position.
-        const slider = Math.pow(linear, 1 / 2.2);
-        config.display.brightness = Math.max(0, Math.min(1, slider));
-      })
-      .catch(() => {
-        brightnessSupported = false;
-      });
-
-    // The hardware Fn-row brightness keys go straight to logind
-    // via the compositor-driven `brightness_step` event; the
-    // shell-side helper emits `lunaris://brightness-changed`
-    // afterwards so the slider catches up to the new hardware
-    // position without polling.
-    let unlistenBrightness: UnlistenFn | null = null;
-    listen<{ device: string; fraction: number }>(
-      "lunaris://brightness-changed",
-      ({ payload }) => {
-        config.display.brightness = payload.fraction;
-      },
-    ).then((un) => {
-      unlistenBrightness = un;
-    });
-
+    loadLayout();
+    // Watcher events: shell.toml changes (night-light, brightness)
+    // and quicksettings.toml changes (layout edits). Both call the
+    // debounced scheduleReload so back-to-back saves don't cascade
+    // into back-to-back full panel re-renders.
+    let stops: UnlistenFn[] = [];
+    listen("lunaris://shell-config-changed", scheduleReload).then((u) =>
+      stops.push(u),
+    );
+    listen("lunaris://qs-layout-changed", scheduleReload).then((u) =>
+      stops.push(u),
+    );
     return () => {
-      if (saveTimeout) clearTimeout(saveTimeout);
-      if (brightnessApplyTimer) clearTimeout(brightnessApplyTimer);
-      unlistenBrightness?.();
+      for (const s of stops) s();
+      if (reloadTimer) clearTimeout(reloadTimer);
     };
   });
 
-  $effect(() => {
-    if ($activePopover === "quick-settings") {
-      invoke<boolean>("get_airplane_mode").then((v) => { airplaneMode = v; }).catch(() => {});
-      invoke<string>("get_active_theme_id").then((id) => { isDark = id !== "light"; }).catch(() => {});
-      invoke<{ caffeineActive: boolean; recordingActive: boolean }>("get_toggle_status")
-        .then((s) => { caffeineActive = s.caffeineActive; recordingActive = s.recordingActive; })
-        .catch(() => {});
-    }
-  });
+  /// Tracks whether we've successfully loaded the user file at
+  /// least once. On the very first load, an error means we have no
+  /// known-good state — fall through to bundled defaults so the
+  /// user sees a working panel. On subsequent reloads (triggered
+  /// by the shell-config-changed file watch), an error means the
+  /// user's customisation just got corrupted somehow; we keep the
+  /// last-known-good state in `userEntries` rather than silently
+  /// reverting to defaults (Codex review HIGH-3 / medium-3).
+  /// Either way we surface a visible warning toast — without it
+  /// the failure looks like a "reset to defaults" mystery.
+  let hasLoadedOnce = $state(false);
 
-  function persistConfig() {
-    if (saveTimeout) clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(() => {
-      invoke("save_shell_config", { config }).catch(() => {});
-    }, 500);
-  }
-
-  function toggleNightLight() {
-    config.night_light.enabled = !config.night_light.enabled;
-    // Don't go through `persistConfig` for night light: the
-    // backend command persists shell.toml AND dispatches the
-    // compositor request in one shot, which is what makes the
-    // gamma engine warm the screen within the spec'd 200ms.
-    invoke("night_light_set", {
-      enabled: config.night_light.enabled,
-      temperature: config.night_light.temperature,
-    }).catch((err) => {
-      console.warn("night_light_set failed:", err);
-    });
-  }
-
-  function setBrightness(value: number) {
-    const fraction = value / 100;
-    config.display.brightness = fraction;
-    // Drag fires this at ~120 Hz; coalesce hardware writes to ~30 Hz
-    // so the logind D-Bus call doesn't get flooded. The persisted
-    // shell.toml goes through the regular 500 ms debounce.
-    if (brightnessApplyTimer) clearTimeout(brightnessApplyTimer);
-    if (brightnessSupported && brightnessDevice) {
-      const dev = brightnessDevice;
-      brightnessApplyTimer = setTimeout(() => {
-        invoke("brightness_set", { device: dev, value: fraction }).catch(
-          (err) => console.warn("brightness_set failed:", err),
-        );
-      }, 32);
-    }
-    persistConfig();
-  }
-
-  async function toggleAirplaneMode() {
+  async function loadLayout() {
     try {
-      await invoke("set_airplane_mode", { enabled: !airplaneMode });
-      airplaneMode = !airplaneMode;
-    } catch {}
+      const raw = await invoke<RawLayoutFile>("qs_layout_get");
+      const arr = raw.tile ?? raw.tiles ?? [];
+      userEntries = arr.map((e) => ({
+        id: e.id,
+        visible: e.visible,
+        size: sizeFromWire(e.size),
+      }));
+      hasLoadedOnce = true;
+    } catch (err) {
+      console.warn("qs_layout_get failed:", err);
+      const isParseError = String(err).includes("parse:");
+      if (!hasLoadedOnce) {
+        userEntries = [];
+      }
+      // else: keep the last-known-good `userEntries` rendered.
+      toast.warning(
+        isParseError
+          ? "Quick Settings layout file is malformed. Using "
+            + (hasLoadedOnce ? "last good state" : "defaults")
+            + " — fix or reset the file in Settings."
+          : "Could not read Quick Settings layout: " + err,
+        { duration: 8000 },
+      );
+    }
   }
 
-  function handleKeydown(e: KeyboardEvent) {
-    let current: string | null = null;
-    activePopover.subscribe((v) => { current = v; })();
-    if (current !== "quick-settings") return;
-    if (e.key === "Escape") {
-      e.preventDefault();
-      if (powerMenuOpen) { powerMenuOpen = false; }
-      else { closePopover(); }
-    }
+  /// Build the focus-grid cells snapshot every key-press: tile DOM may
+  /// re-render when state changes.
+  function gridCells() {
+    if (!panelEl) return [];
+    const elements = panelEl.querySelectorAll<HTMLElement>(
+      ".qs-tile, .user-row-trigger",
+    );
+    return Array.from(elements).map((el) => {
+      const fullRow = el.classList.contains("size-2x1") ||
+                      el.classList.contains("size-2x2") ||
+                      el.closest(".audio-tile-wrap, .user-row-tile") !== null;
+      return { el, spanCols: (fullRow ? 2 : 1) as 1 | 2 };
+    });
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
+<!-- Backdrop: only mounted while open. Lightweight DOM, no state
+     to preserve. -->
 {#if $activePopover === "quick-settings"}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="qs-backdrop" onclick={() => { powerMenuOpen = false; closePopover(); }}></div>
+  <div class="qs-backdrop" onclick={() => closePopover()}></div>
+{/if}
 
+<!-- Panel: ALWAYS mounted, visibility toggled via class. Each tile
+     polls / subscribes to its data source on first mount; the
+     `{#if}` model from before unmounted the panel on close, which
+     forced every tile to re-poll on open (and briefly flash
+     "off" because state was null until the network/bluetooth/
+     audio call returned). Persistent mounting keeps event
+     listeners attached across opens and lands the panel
+     pre-populated. -->
+{#if true}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="qs-panel shell-popover" onclick={() => { powerMenuOpen = false; }}>
-
-    <!-- 1. User Row -->
-    <div class="qs-user-row">
-      <div class="qs-user-trigger" role="button" tabindex="-1"
-        onclick={(e) => { e.stopPropagation(); powerMenuOpen = !powerMenuOpen; }}
-      >
-        <span class="qs-avatar">TK</span>
-        <span class="qs-user-name">Tim Kicker</span>
+  <div
+    bind:this={panelEl}
+    class="qs-panel shell-popover"
+    class:visible={$activePopover === "quick-settings"}
+    use:focusGrid={{
+      cells: gridCells,
+      onEscape: closePopover,
+      onHelp: () => (helpOpen = !helpOpen),
+    }}
+  >
+    {#if resolvedTiles.length === 0}
+      <div class="qs-empty">
+        No tiles enabled. Open
+        <button
+          class="qs-link"
+          onclick={() =>
+            invoke("quick_action_run", { id: "qa.open_settings_appearance" }).catch(() => {})}
+        >
+          Settings → Quick Settings
+        </button>
+        to enable some.
       </div>
-
-      <button
-        class="qs-icon-btn"
-        onclick={(e) => { e.stopPropagation(); closePopover(); }}
-        title="Settings"
-      >
-        <Settings size={16} strokeWidth={1.5} />
-      </button>
-
-      {#if powerMenuOpen}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div class="qs-power-menu" onclick={(e) => e.stopPropagation()}>
-          <button onclick={() => { powerMenuOpen = false; closePopover(); }}>
-            <Lock size={14} strokeWidth={1.5} /><span>Lock</span>
-          </button>
-          <button onclick={() => { powerMenuOpen = false; closePopover(); }}>
-            <LogOut size={14} strokeWidth={1.5} /><span>Log Out</span>
-          </button>
-          <div class="qs-sep"></div>
-          <button onclick={() => { powerMenuOpen = false; closePopover(); }}>
-            <RotateCcw size={14} strokeWidth={1.5} /><span>Restart</span>
-          </button>
-          <button class="qs-power-danger" onclick={() => { powerMenuOpen = false; closePopover(); }}>
-            <Power size={14} strokeWidth={1.5} /><span>Shut Down</span>
-          </button>
-        </div>
-      {/if}
-    </div>
-
-    <div class="qs-sep"></div>
-
-    <!-- 2. Quick Toggles -->
-    <div class="qs-toggles">
-      <button
-        class="qs-toggle-btn"
-        class:active={!isDark}
-        onclick={(e) => { e.stopPropagation(); toggleTheme(); }}
-        title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
-      >
-        {#if isDark}
-          <Sun size={16} strokeWidth={1.5} />
-        {:else}
-          <Moon size={16} strokeWidth={1.5} />
-        {/if}
-      </button>
-
-      <button
-        class="qs-toggle-btn"
-        class:active={config.night_light.enabled}
-        onclick={(e) => { e.stopPropagation(); toggleNightLight(); }}
-        title={config.night_light.enabled ? "Disable Night Light" : "Enable Night Light"}
-      >
-        <Sunset size={16} strokeWidth={1.5} />
-      </button>
-
-      <button
-        class="qs-toggle-btn"
-        class:active={airplaneMode}
-        onclick={(e) => { e.stopPropagation(); toggleAirplaneMode(); }}
-        title={airplaneMode ? "Disable Airplane Mode" : "Enable Airplane Mode"}
-      >
-        <Plane size={16} strokeWidth={1.5} />
-      </button>
-
-      <button
-        class="qs-toggle-btn"
-        class:active={caffeineActive}
-        onclick={(e) => { e.stopPropagation(); toggleCaffeine(); }}
-        title={caffeineActive ? "Disable Caffeine" : "Enable Caffeine"}
-      >
-        <Coffee size={16} strokeWidth={1.5} />
-      </button>
-
-      <button
-        class="qs-toggle-btn"
-        class:active={recordingActive}
-        class:recording={recordingActive}
-        onclick={(e) => { e.stopPropagation(); toggleRecording(); }}
-        title={recordingActive ? "Stop Recording" : "Start Recording"}
-      >
-        <Circle size={16} strokeWidth={1.5} />
-      </button>
-    </div>
-
-    <!-- 3. Brightness -->
-    <div class="qs-brightness-row">
-      <Sun size={16} strokeWidth={1.5} class="qs-brightness-icon" />
-      <div class="qs-slider" style="--value: {brightnessPercent}%">
-        <div class="qs-slider-track"></div>
-        <div class="qs-slider-fill"></div>
-        <div class="qs-slider-thumb"></div>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={brightnessPercent}
-          oninput={(e) => setBrightness(parseInt(e.currentTarget.value))}
-        />
+    {:else}
+      <div class="qs-grid">
+        {#each resolvedTiles as t (t.id)}
+          {@const Tile = t.component}
+          <div class="qs-grid-cell" class:full-row={t.fullRow}>
+            <Tile size={t.size} />
+          </div>
+        {/each}
       </div>
-    </div>
+    {/if}
 
-    <!-- 4. Notifications -->
-    <div class="qs-section">
-      <NotificationPanel />
-    </div>
+    {#if helpOpen}
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <div
+        class="qs-help-backdrop"
+        onclick={(e) => {
+          e.stopPropagation();
+          helpOpen = false;
+        }}
+      ></div>
+      <div class="qs-help">
+        <h3>Keyboard</h3>
+        <ul>
+          <li><kbd>↑↓←→</kbd> / <kbd>hjkl</kbd> &nbsp;Navigate tiles</li>
+          <li><kbd>Enter</kbd> / <kbd>Space</kbd> &nbsp;Activate</li>
+          <li><kbd>Tab</kbd> &nbsp;Next focusable</li>
+          <li><kbd>?</kbd> &nbsp;Toggle this help</li>
+          <li><kbd>Esc</kbd> &nbsp;Close panel</li>
+        </ul>
+      </div>
+    {/if}
   </div>
 {/if}
 
 <style>
   .qs-backdrop { position: fixed; inset: 0; z-index: 90; }
 
+  /* Panel is permanently mounted. The `.visible` class drives the
+     reveal — opacity + transform + pointer-events transition in,
+     `visibility: hidden` (delayed) finishes the close so the panel
+     is fully off-flow when not open. Tiles inside stay alive
+     across open/close cycles which means no flash of "off" state
+     while live data re-fetches. */
   .qs-panel {
-    position: fixed; top: 40px; right: 8px; z-index: 100; width: 340px;
-    border-radius: var(--radius-lg); background: var(--color-bg-shell);
+    position: fixed;
+    top: 40px;
+    right: 8px;
+    z-index: 100;
+    width: 380px;
+    max-height: calc(100vh - 56px);
+    overflow-y: auto;
+    border-radius: var(--radius-card);
+    background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
-    box-shadow: var(--shadow-lg); color: var(--color-fg-shell);
-    overflow: visible;
-    animation: lunaris-popover-in var(--duration-medium) var(--ease-out) both;
+    box-shadow: var(--shadow-lg);
+    color: var(--color-fg-shell);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
     transform-origin: top center;
+    /* Hidden default state. */
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-4px) scale(0.98);
+    transition:
+      opacity var(--duration-medium) var(--ease-out),
+      transform var(--duration-medium) var(--ease-out),
+      visibility 0s linear var(--duration-medium);
   }
-  /* Entry keyframes defined in sdk/ui-kit/src/lib/motion.css. */
-
-  .qs-sep { height: 1px; background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
-
-  /* User row */
-  .qs-user-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; position: relative; }
-  .qs-user-trigger { display: flex; align-items: center; gap: 10px; flex: 1; cursor: pointer; border-radius: var(--radius-md); padding: 2px; margin: -2px; transition: background-color 100ms ease; }
-  .qs-user-trigger:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
-  .qs-avatar { width: 32px; height: 32px; border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent); display: flex; align-items: center; justify-content: center; font-size: 0.6875rem; font-weight: 600; flex-shrink: 0; user-select: none; }
-  .qs-user-name { flex: 1; font-size: 0.8125rem; }
-  .qs-icon-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-md); color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent); cursor: pointer; transition: all 100ms ease; padding: 0; }
-  .qs-icon-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); color: var(--color-fg-shell); }
-
-  /* Power menu */
-  .qs-power-menu { position: absolute; top: 100%; left: 12px; margin-top: 4px; min-width: 160px; background: var(--color-bg-shell); border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: var(--radius-md); padding: 4px; box-shadow: var(--shadow-md); z-index: 110; }
-  .qs-power-menu button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: transparent; border: none; border-radius: var(--radius-md); color: var(--color-fg-shell); font-size: 0.75rem; cursor: pointer; text-align: left; transition: background-color 100ms ease; }
-  .qs-power-menu button:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
-  .qs-power-danger { color: var(--color-error) !important; }
-  .qs-power-danger:hover { background: color-mix(in srgb, var(--color-error) 15%, transparent) !important; }
-
-  /* Toggle buttons - same pattern as bt-scan-btn, net-item etc. */
-  .qs-toggles { display: flex; gap: 6px; padding: 10px 12px; }
-  .qs-toggle-btn {
-    width: 40px; height: 36px; display: flex; align-items: center; justify-content: center;
-    background: transparent; border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
-    border-radius: var(--radius-md); color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
-    cursor: pointer; padding: 0; transition: all 100ms ease;
+  .qs-panel.visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(0) scale(1);
+    /* On opening, visibility flips instantly so the transitions
+       on opacity + transform actually run (otherwise the element
+       is hidden the whole way). */
+    transition:
+      opacity var(--duration-medium) var(--ease-out),
+      transform var(--duration-medium) var(--ease-out),
+      visibility 0s linear 0s;
   }
-  .qs-toggle-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); color: var(--color-fg-shell); }
-  .qs-toggle-btn.active { background: color-mix(in srgb, var(--color-accent) 15%, transparent); border-color: color-mix(in srgb, var(--color-accent) 30%, transparent); color: var(--color-fg-shell); }
-  .qs-toggle-btn.recording { color: var(--color-error); border-color: color-mix(in srgb, var(--color-error) 40%, transparent); animation: qs-pulse 1.5s ease-in-out infinite; }
-  @keyframes qs-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-  /* Brightness slider - same pattern as pop-slider in AudioPopover */
-  .qs-brightness-row { display: flex; align-items: center; gap: 12px; padding: 8px 12px; }
-  :global(.qs-brightness-icon) { color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent); flex-shrink: 0; }
-  .qs-slider { position: relative; flex: 1; height: 20px; display: flex; align-items: center; }
-  .qs-slider-track { position: absolute; left: 0; right: 0; height: var(--slider-track-h); background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: var(--radius-sm); }
-  .qs-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: var(--color-accent); border-radius: var(--radius-sm); }
-  .qs-slider-thumb { position: absolute; left: var(--value); width: var(--slider-thumb-size); height: var(--slider-thumb-size); background: var(--color-fg-shell); border-radius: var(--radius-md); transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
-  .qs-slider input[type="range"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; appearance: none; -webkit-appearance: none; }
+  .qs-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
 
+  .qs-grid-cell {
+    display: flex;
+    min-width: 0;
+  }
+  .qs-grid-cell.full-row {
+    grid-column: span 2;
+  }
+  /* The tile components own their inner padding; the grid-cell wrapper
+     only positions them. The :global is needed because tiles render in
+     ui-kit's scope, not desktop-shell's. */
+  .qs-grid-cell :global(.qs-tile) {
+    width: 100%;
+  }
+  .qs-grid-cell.full-row :global(.qs-tile) {
+    grid-column: span 2;
+  }
 
-  /* Notifications */
-  .qs-section { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+  .qs-empty {
+    padding: 24px 12px;
+    color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    text-align: center;
+  }
+  .qs-link {
+    display: inline;
+    background: transparent;
+    border: none;
+    color: var(--color-accent);
+    cursor: pointer;
+    padding: 0;
+    font: inherit;
+    text-decoration: underline;
+  }
+
+  .qs-help-backdrop {
+    position: fixed;
+    inset: 0;
+    background: color-mix(in srgb, black 30%, transparent);
+    z-index: 110;
+  }
+  .qs-help {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 120;
+    background: var(--color-bg-shell);
+    border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
+    border-radius: var(--radius-modal);
+    padding: 16px 20px;
+    box-shadow: var(--shadow-lg);
+    color: var(--color-fg-shell);
+    min-width: 260px;
+  }
+  .qs-help h3 {
+    margin: 0 0 8px 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .qs-help ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.8125rem;
+  }
+  .qs-help li {
+    padding: 4px 0;
+    color: color-mix(in srgb, var(--color-fg-shell) 80%, transparent);
+  }
+  .qs-help kbd {
+    display: inline-block;
+    padding: 1px 6px;
+    background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent);
+    border-radius: var(--radius-chip);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    margin-right: 4px;
+  }
 </style>

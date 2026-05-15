@@ -172,7 +172,7 @@
         background: var(--background);
         color: var(--muted-foreground);
         border-bottom: 1px solid var(--border);
-        border-radius: var(--radius-md) var(--radius-md) 0 0;
+        border-radius: var(--radius-input) var(--radius-input) 0 0;
         overflow: hidden;
         pointer-events: auto;
         will-change: transform;
@@ -231,8 +231,8 @@
         border: none;
         background: transparent;
         color: inherit;
-        border-top-left-radius: var(--radius-md);
-        border-top-right-radius: var(--radius-md);
+        border-top-left-radius: var(--radius-input);
+        border-top-right-radius: var(--radius-input);
         cursor: pointer;
         font-size: 12px;
         line-height: 1;
@@ -286,7 +286,7 @@
         width: 28px;
         height: 28px;
         border: none;
-        border-radius: var(--radius-md);
+        border-radius: var(--radius-input);
         background: transparent;
         color: inherit;
         cursor: pointer;

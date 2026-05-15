@@ -232,7 +232,7 @@
   .code-display {
     margin: 4px 0 8px;
     padding: 14px 16px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 1.6rem;

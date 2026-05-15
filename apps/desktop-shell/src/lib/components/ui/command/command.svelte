@@ -15,7 +15,7 @@
 	bind:value
 	data-slot="command"
 	class={cn(
-		"flex h-full w-full flex-col overflow-hidden rounded-md",
+		"flex h-full w-full flex-col overflow-hidden rounded-input",
 		className
 	)}
 	style="background: var(--color-bg-shell); color: var(--color-fg-shell);"

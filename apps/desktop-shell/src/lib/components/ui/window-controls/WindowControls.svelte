@@ -114,7 +114,7 @@
     padding: 0;
     opacity: 0.7;
     background-color: transparent;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     transition:
       opacity var(--duration-fast) var(--easing-default),
       background-color var(--duration-fast) var(--easing-default);

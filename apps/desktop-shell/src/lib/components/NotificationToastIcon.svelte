@@ -29,7 +29,7 @@
   .toast-icon-img {
     width: 24px;
     height: 24px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     object-fit: contain;
     flex-shrink: 0;
   }
@@ -40,7 +40,7 @@
     justify-content: center;
     width: 24px;
     height: 24px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, currentColor 12%, transparent);
     color: inherit;
     font-size: 0.75rem;

@@ -330,7 +330,7 @@
 <style>
   .pop-backdrop { position: fixed; inset: 0; z-index: 90; }
   .pop-panel {
-    position: fixed; top: 40px; z-index: 100; border-radius: var(--radius-lg);
+    position: fixed; top: 40px; z-index: 100; border-radius: var(--radius-card);
     background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     box-shadow: var(--shadow-lg); color: var(--color-fg-shell);
@@ -352,18 +352,18 @@
   .net-status-name { font-size: 0.8125rem; font-weight: 500; }
   .net-status-detail { font-size: 0.6875rem; opacity: 0.5; }
 
-  .net-error { padding: 6px 10px; background: rgba(239, 68, 68, 0.15); border-radius: var(--radius-md); color: #ef4444; font-size: 0.6875rem; }
+  .net-error { padding: 6px 10px; background: rgba(239, 68, 68, 0.15); border-radius: var(--radius-input); color: #ef4444; font-size: 0.6875rem; }
   .net-loading { padding: 20px; text-align: center; opacity: 0.4; font-size: 0.75rem; }
 
   .net-section-label { font-size: 0.6875rem; opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
   .net-list-header { display: flex; align-items: center; justify-content: space-between; font-size: 0.6875rem; opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-  .net-refresh { width: var(--control-h-sm); height: var(--control-h-sm); display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-sm); color: inherit; cursor: pointer; padding: 0; }
+  .net-refresh { width: var(--control-h-sm); height: var(--control-h-sm); display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-chip); color: inherit; cursor: pointer; padding: 0; }
   .net-refresh:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
 
   .net-list { display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow-y: auto; }
   .net-item {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 8px 10px; background: transparent; border: none; border-radius: var(--radius-md);
+    padding: 8px 10px; background: transparent; border: none; border-radius: var(--radius-input);
     color: var(--color-fg-shell); font-size: 0.8125rem; cursor: pointer;
     text-align: left; width: 100%; transition: background-color 0.1s ease;
   }
@@ -383,7 +383,7 @@
 
   .vpn-header {
     display: flex; align-items: center; gap: 6px;
-    padding: 6px 4px; background: transparent; border: none; border-radius: var(--radius-sm);
+    padding: 6px 4px; background: transparent; border: none; border-radius: var(--radius-chip);
     color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
     font-size: 0.75rem; font-weight: 500; cursor: pointer; width: 100%; text-align: left;
     transition: color 0.1s ease;
@@ -397,7 +397,7 @@
   .pw-section { display: flex; flex-direction: column; gap: 10px; }
   .pw-title { font-size: 0.8125rem; }
   .pw-input {
-    width: 100%; padding: 7px 10px; border-radius: var(--radius-md);
+    width: 100%; padding: 7px 10px; border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     color: var(--color-fg-shell); font-size: 0.8125rem; outline: none;
@@ -405,7 +405,7 @@
   .pw-input:focus { border-color: color-mix(in srgb, var(--color-fg-shell) 40%, transparent); }
   .pw-actions { display: flex; justify-content: flex-end; gap: 6px; }
   .pw-btn {
-    padding: 5px 12px; border-radius: var(--radius-md); font-size: 0.6875rem; cursor: pointer;
+    padding: 5px 12px; border-radius: var(--radius-input); font-size: 0.6875rem; cursor: pointer;
     background: transparent; border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     color: var(--color-fg-shell);
   }
