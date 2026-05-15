@@ -85,14 +85,53 @@ pub enum McpServeError {
 /// `$XDG_RUNTIME_DIR/lunaris/mcp/{app_id}.sock`, falling back to
 /// `/run/lunaris/mcp/{app_id}.sock` when the runtime dir is unset.
 pub fn mcp_socket_path(app_id: &str) -> PathBuf {
+    mcp_runtime_dir().join(format!("{app_id}.sock"))
+}
+
+/// Resolve the per-*module* MCP socket path:
+/// `$XDG_RUNTIME_DIR/lunaris/mcp/modules/{module_id}.sock`. Tier-1
+/// `mcp.server` modules hosted by `lunaris-modulesd` live one
+/// directory below first-party app sockets so the two namespaces
+/// can never collide. Both modulesd (which binds the socket) and the
+/// AI daemon (which connects to it) resolve the path through here so
+/// the convention has a single source of truth.
+///
+/// The caller must reject ids that fail [`is_safe_module_id`] first:
+/// the id is formatted straight into the path, so a `/` or `..` in
+/// it would escape the modules directory.
+pub fn mcp_module_socket_path(module_id: &str) -> PathBuf {
+    mcp_runtime_dir()
+        .join("modules")
+        .join(format!("{module_id}.sock"))
+}
+
+/// Whether a module id is safe to embed in an MCP socket filename.
+///
+/// [`mcp_module_socket_path`] formats the id straight into a path,
+/// so an id carrying a `/` (or any non-reverse-domain character)
+/// could place or resolve the socket outside the modules directory.
+/// modulesd checks this before binding, and the AI daemon's
+/// discovery checks it before connecting — neither trusts an id it
+/// did not validate. Accepts the reverse-domain charset only.
+pub fn is_safe_module_id(module_id: &str) -> bool {
+    !module_id.is_empty()
+        && module_id.len() <= 128
+        && module_id != "."
+        && module_id != ".."
+        && module_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
+}
+
+/// `$XDG_RUNTIME_DIR/lunaris/mcp/`, falling back to
+/// `/run/lunaris/mcp/` when the runtime dir is unset.
+fn mcp_runtime_dir() -> PathBuf {
     let base = std::env::var("XDG_RUNTIME_DIR")
         .ok()
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/run"));
-    base.join("lunaris")
-        .join("mcp")
-        .join(format!("{app_id}.sock"))
+    base.join("lunaris").join("mcp")
 }
 
 /// Bind the app's MCP socket and serve it. Convenience wrapper over
@@ -121,6 +160,11 @@ where
 /// The socket is mode 0600. Combined with peer auth that gives two
 /// layers: `0600` excludes other Unix users, peer auth excludes
 /// other processes of the same user.
+///
+/// A caller that needs to know the bind succeeded before acting
+/// (e.g. announcing the socket on a discovery channel) uses
+/// [`bind_mcp_socket`] + [`serve_mcp_listener`] directly: `serve_mcp_at`
+/// is the two composed for callers that do not.
 pub async fn serve_mcp_at<S, F>(
     socket_path: &Path,
     make_handler: F,
@@ -129,6 +173,18 @@ where
     S: rmcp::ServerHandler + Send + 'static,
     F: Fn() -> S + Send + 'static,
 {
+    let listener = bind_mcp_socket(socket_path)?;
+    serve_mcp_listener(listener, make_handler).await
+}
+
+/// Bind (only) the MCP server socket at `socket_path`, mode 0600.
+///
+/// Returns the bound [`UnixListener`] on success. A successful return
+/// is proof this process owns the socket: the caller may safely
+/// announce it. If a live server already holds the path the call
+/// fails rather than clobbering it; a stale leftover is cleared
+/// first. Pair with [`serve_mcp_listener`].
+pub fn bind_mcp_socket(socket_path: &Path) -> Result<UnixListener, McpServeError> {
     use std::os::unix::fs::PermissionsExt;
 
     if let Some(parent) = socket_path.parent() {
@@ -160,11 +216,24 @@ where
     })?;
     std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600))
         .map_err(|e| McpServeError::Socket(format!("chmod: {e}")))?;
+    Ok(listener)
+}
 
+/// Serve an already-[`bind_mcp_socket`]-bound listener: peer-auth
+/// every connection and hand admitted ones a fresh `make_handler()`
+/// instance. Runs until the accept loop errors.
+pub async fn serve_mcp_listener<S, F>(
+    listener: UnixListener,
+    make_handler: F,
+) -> Result<(), McpServeError>
+where
+    S: rmcp::ServerHandler + Send + 'static,
+    F: Fn() -> S + Send + 'static,
+{
     // SAFETY: getuid() is always successful and has no preconditions.
     let caller_uid = unsafe { libc::getuid() };
 
-    tracing::info!(socket = %socket_path.display(), "mcp server listening");
+    tracing::info!("mcp server listening");
     loop {
         let (stream, _) = listener
             .accept()
@@ -219,6 +288,30 @@ mod tests {
         let p = mcp_socket_path("com.example.files");
         let s = p.to_string_lossy();
         assert!(s.ends_with("lunaris/mcp/com.example.files.sock"), "{s}");
+    }
+
+    #[test]
+    fn module_socket_path_is_under_mcp_modules() {
+        let s = mcp_module_socket_path("com.example.notes")
+            .to_string_lossy()
+            .into_owned();
+        assert!(s.ends_with("lunaris/mcp/modules/com.example.notes.sock"), "{s}");
+    }
+
+    #[test]
+    fn is_safe_module_id_rejects_path_escapes() {
+        // Reverse-domain ids are accepted.
+        assert!(is_safe_module_id("com.example.notes"));
+        assert!(is_safe_module_id("org.lunaris.knowledge-mcp"));
+        // Anything that could escape the modules directory is not.
+        assert!(!is_safe_module_id(""));
+        assert!(!is_safe_module_id("."));
+        assert!(!is_safe_module_id(".."));
+        assert!(!is_safe_module_id("a/b"));
+        assert!(!is_safe_module_id("../../etc/cron.d/x"));
+        assert!(!is_safe_module_id("com.example/../escape"));
+        assert!(!is_safe_module_id("has space"));
+        assert!(!is_safe_module_id(&"x".repeat(200)));
     }
 
     #[derive(Clone)]

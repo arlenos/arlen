@@ -75,6 +75,12 @@ pub struct ModuleManifest {
     pub quicksettings: Option<QuickSettingsConfig>,
     #[serde(default)]
     pub settings: Option<SettingsConfig>,
+    /// MCP server extension point. The module exposes a set of MCP
+    /// tools the AI daemon can list and call. Tier 1 (WASM) only;
+    /// `lunaris-modulesd` fronts the component with a Unix-socket MCP
+    /// endpoint. See `docs/architecture/mcp-server-layer.md`.
+    #[serde(default)]
+    pub mcp: Option<McpConfig>,
     #[serde(default)]
     pub capabilities: ModuleCapabilities,
     /// Declared permission requests. Mirrored onto the runtime
@@ -381,6 +387,32 @@ pub struct SettingsPanelConfig {
     pub icon: String,
     #[serde(default)]
     pub category: String,
+}
+
+/// MCP server extension.
+///
+/// Declared as `[mcp.server]` in the manifest. A module with this
+/// section exposes MCP tools that the AI daemon can discover and
+/// call. The runtime hosting lives in `lunaris-modulesd`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct McpConfig {
+    #[serde(default)]
+    pub server: Option<McpServerConfig>,
+}
+
+/// The `[mcp.server]` block.
+#[derive(Debug, Clone, Deserialize)]
+pub struct McpServerConfig {
+    /// The module's own claim that all of its tools only read state.
+    ///
+    /// This is advisory. Per foundation §5.7, a third-party MCP
+    /// server is treated as action-requiring regardless of this flag
+    /// until it carries a verified Security Audit Badge, so the AI
+    /// daemon ignores it for unaudited modules. It exists so audited
+    /// and first-party modules can be marked correctly without a
+    /// separate channel.
+    #[serde(default)]
+    pub read_only: bool,
 }
 
 fn default_priority() -> u32 {
@@ -830,7 +862,39 @@ version = "0.1.0"
         assert!(m.waypointer.is_none());
         assert!(m.topbar.is_none());
         assert!(m.settings.is_none());
+        assert!(m.mcp.is_none());
         assert!(!m.capabilities.notifications);
+    }
+
+    #[test]
+    fn parses_mcp_server_section() {
+        let toml = r#"
+[module]
+id = "com.example.notes-mcp"
+name = "Notes MCP"
+version = "1.0.0"
+
+[mcp.server]
+read_only = true
+"#;
+        let m = parse_manifest(toml).unwrap();
+        let server = m.mcp.expect("mcp section").server.expect("server block");
+        assert!(server.read_only);
+    }
+
+    #[test]
+    fn mcp_server_read_only_defaults_false() {
+        let toml = r#"
+[module]
+id = "com.example.terminal-mcp"
+name = "Terminal MCP"
+version = "1.0.0"
+
+[mcp.server]
+"#;
+        let m = parse_manifest(toml).unwrap();
+        let server = m.mcp.unwrap().server.unwrap();
+        assert!(!server.read_only, "read_only must default to false");
     }
 
     #[test]
