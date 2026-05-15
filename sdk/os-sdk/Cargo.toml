@@ -12,6 +12,9 @@ thiserror = "1"
 ts-rs = { version = "10", features = ["serde-compat"] }
 uuid = { version = "1", features = ["v5", "v7"] }
 libc = "0.2"
+rmcp = { version = "1.7", features = ["server", "macros"] }
+tracing = "0.1"
+lunaris-permissions = { path = "../permissions" }
 
 toml = "0.8"
 notify = "6"
@@ -27,3 +30,4 @@ dirs = "5"
 [dev-dependencies]
 prost = "0.13"
 tempfile = "3"
+rmcp = { version = "1.7", features = ["server", "macros", "client"] }

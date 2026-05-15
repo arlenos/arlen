@@ -240,6 +240,7 @@ fn empty_profile(app_id: &str) -> PermissionProfile {
         input: Default::default(),
         search: Default::default(),
         intents: Default::default(),
+        mcp: Default::default(),
     }
 }
 
