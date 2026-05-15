@@ -8,6 +8,7 @@ pub mod event_consumer;
 pub mod graph;
 pub mod mock;
 pub mod intents;
+pub mod mcp;
 pub mod presence;
 pub mod search;
 pub mod shortcuts;

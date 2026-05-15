@@ -91,6 +91,8 @@ pub struct PermissionProfile {
     pub search: SearchPermissions,
     #[serde(default)]
     pub intents: IntentsPermissions,
+    #[serde(default)]
+    pub mcp: McpPermissions,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -383,6 +385,45 @@ impl InputPermissions {
     }
 }
 
+// ── MCP ──
+
+/// MCP-related permissions on a [`PermissionProfile`].
+///
+/// An app that ships an MCP server declares which of its tools are
+/// read-only (default-permitted within the user's AI permission
+/// level) and which require per-session authorization before the AI
+/// may call them. `always_confirm_overrides` lets an app mark extra
+/// tools as always-confirm; it can only *add* to the hardcoded
+/// always-confirm set, never remove from it.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct McpPermissions {
+    /// Tool names exposed as read-only. Calling these does not
+    /// change state, so no per-session authorization is required.
+    #[serde(default)]
+    pub tools_default_permit: Vec<String>,
+    /// Tool names that mutate state. The AI must hold a live
+    /// per-session authorization grant before calling these.
+    #[serde(default)]
+    pub tools_action_authorize: Vec<String>,
+    /// Tool names this app additionally wants always-confirmed, on
+    /// top of the hardcoded always-confirm set. Additive only.
+    #[serde(default)]
+    pub always_confirm_overrides: Vec<String>,
+}
+
+impl McpPermissions {
+    /// Whether a tool is declared as read-only by this app.
+    pub fn is_read_only(&self, tool: &str) -> bool {
+        self.tools_default_permit.iter().any(|t| t == tool)
+    }
+
+    /// Whether a tool is declared as requiring per-session
+    /// authorization by this app.
+    pub fn requires_authorization(&self, tool: &str) -> bool {
+        self.tools_action_authorize.iter().any(|t| t == tool)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Loading
 // ---------------------------------------------------------------------------
@@ -503,6 +544,40 @@ background = true
         let reparsed: PermissionProfile = toml::from_str(&serialized).unwrap();
         assert_eq!(reparsed.info.app_id, "com.example.notes");
         assert_eq!(reparsed.graph.read.len(), profile.graph.read.len());
+    }
+
+    // ── MCP ──
+
+    #[test]
+    fn test_mcp_permissions_roundtrip() {
+        let toml_str = r#"
+[info]
+app_id = "com.example.files"
+tier = "first-party"
+
+[mcp]
+tools_default_permit = ["list_directory", "file_metadata"]
+tools_action_authorize = ["move_file", "delete_file"]
+always_confirm_overrides = ["empty_trash"]
+"#;
+        let profile: PermissionProfile = toml::from_str(toml_str).unwrap();
+        assert!(profile.mcp.is_read_only("list_directory"));
+        assert!(!profile.mcp.is_read_only("move_file"));
+        assert!(profile.mcp.requires_authorization("delete_file"));
+        assert!(!profile.mcp.requires_authorization("list_directory"));
+        assert_eq!(profile.mcp.always_confirm_overrides, vec!["empty_trash"]);
+
+        let reparsed: PermissionProfile =
+            toml::from_str(&toml::to_string_pretty(&profile).unwrap()).unwrap();
+        assert_eq!(reparsed.mcp, profile.mcp);
+    }
+
+    #[test]
+    fn test_mcp_permissions_default_empty() {
+        // A profile with no [mcp] section parses with empty lists.
+        let profile: PermissionProfile = toml::from_str(SAMPLE_PROFILE).unwrap();
+        assert!(profile.mcp.tools_default_permit.is_empty());
+        assert!(profile.mcp.tools_action_authorize.is_empty());
     }
 
     // ── Loading ──
