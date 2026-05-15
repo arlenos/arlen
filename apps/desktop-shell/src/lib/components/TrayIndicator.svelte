@@ -1,12 +1,18 @@
 <script lang="ts">
-  /// System tray indicator: shows a chevron when SNI items are registered.
+  /// SNI system tray indicator for the top bar.
+  ///
+  /// Wraps the shared `Applet` primitive. Visible only when at
+  /// least one StatusNotifierItem is registered. The "needs
+  /// attention" state surfaces as a red dot badge so the user
+  /// notices apps requesting interaction (Discord ping etc.)
+  /// without having to expand the tray.
 
-  import { togglePopover, hoverPopover } from "$lib/stores/activePopover.js";
+  import { togglePopover, hoverPopover, activePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
+  import { Applet, AppletBadge } from "@lunaris/ui-kit/components/topbar";
   import { ChevronDown } from "lucide-svelte";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
 
   interface SniItem {
     service: string;
@@ -40,64 +46,26 @@
   });
 
   const visible = $derived(items.length > 0);
+  const isOpen = $derived($activePopover === "tray");
+  const tooltip = $derived(`Background Apps (${items.length})`);
 </script>
 
 {#if visible}
-  <Tooltip.Root>
-    <Tooltip.Trigger>
-      {#snippet child({ props })}
-        <button
-          {...props}
-          class="tray-btn"
-          class:has-attention={hasAttention}
-          onclick={() => togglePopover("tray")}
-          onmouseenter={() => hoverPopover("tray")}
-        >
-          <ChevronDown size={14} strokeWidth={1.5} />
-          {#if hasAttention}
-            <span class="attention-dot"></span>
-          {/if}
-        </button>
-      {/snippet}
-    </Tooltip.Trigger>
-    <Tooltip.Content>
-      <p>Background Apps ({items.length})</p>
-    </Tooltip.Content>
-  </Tooltip.Root>
+  <Applet
+    appletId="tray"
+    {tooltip}
+    popoverOpen={isOpen}
+    state={hasAttention ? "warn" : undefined}
+    onclick={() => togglePopover("tray")}
+    onmouseenter={() => hoverPopover("tray")}
+  >
+    {#snippet icon()}
+      <ChevronDown size={14} strokeWidth={1.5} />
+    {/snippet}
+    {#snippet badge()}
+      {#if hasAttention}
+        <AppletBadge variant="dot" color="error" />
+      {/if}
+    {/snippet}
+  </Applet>
 {/if}
-
-<style>
-  .tray-btn {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-md);
-    color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
-    cursor: pointer;
-    transition:
-      transform var(--duration-micro) var(--ease-out),
-      background-color var(--duration-fast) var(--ease-out),
-      color var(--duration-fast) var(--ease-out);
-  }
-  .tray-btn:hover {
-    background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
-    color: var(--color-fg-shell);
-  }
-  .tray-btn:active {
-    transform: scale(0.96);
-  }
-  .attention-dot {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    width: 6px;
-    height: 6px;
-    background: var(--color-error);
-    border-radius: var(--radius-full);
-  }
-</style>

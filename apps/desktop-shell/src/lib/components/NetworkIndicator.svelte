@@ -1,12 +1,17 @@
 <script lang="ts">
   /// Network status indicator for the top bar.
   ///
-  /// Polls nmcli via Tauri every 5 seconds. Shows WiFi signal,
-  /// Ethernet, or disconnected state. VPN shown as shield badge.
+  /// Wraps the shared `Applet` primitive — click/hover/tooltip/
+  /// hit-target are shell-controlled. This component owns the
+  /// nmcli polling, icon-by-state mapping, and the VPN corner
+  /// badge.
+  ///
+  /// Polls nmcli via Tauri every 30s as a freshness fallback;
+  /// the authoritative source is the `network-changed` event.
 
   import { invoke } from "@tauri-apps/api/core";
-  import { togglePopover, hoverPopover } from "$lib/stores/activePopover.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { togglePopover, hoverPopover, activePopover } from "$lib/stores/activePopover.js";
+  import { Applet, AppletBadge } from "@lunaris/ui-kit/components/topbar";
   import { Wifi, WifiOff, Cable, Shield, Plane } from "lucide-svelte";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
@@ -22,15 +27,7 @@
   let status = $state<NetworkStatus | null>(null);
   let airplaneMode = $state(false);
 
-  const tooltipClass =
-    "rounded-md border px-2 py-0.5 text-xs shadow-md select-none"
-    + " bg-[var(--color-bg-shell)] text-[var(--color-fg-shell)] border-[color-mix(in_srgb,var(--color-bg-shell)_60%,white_40%)]";
-
   async function poll() {
-    // Run the two independent D-Bus queries in parallel. The extra
-    // `get_network_status` call when airplane mode is on is cheap
-    // (nmcli returns "disconnected" quickly) and saves ~100-200ms of
-    // sequential waiting in the common non-airplane case.
     const [air, net] = await Promise.all([
       invoke<boolean>("get_airplane_mode").catch(() => false),
       invoke<NetworkStatus>("get_network_status").catch(() => null),
@@ -41,10 +38,6 @@
 
   poll();
 
-  // Event-freshness fallback: `network-changed` is the authoritative
-  // source. The timer below only fires if no event has arrived within
-  // the freshness window, saving two D-Bus calls per 30s when the
-  // event stream is healthy.
   const POLL_STALE_MS = 90_000;
   let lastEventAt = Date.now();
 
@@ -64,20 +57,26 @@
   });
 
   const Icon = $derived(
-    airplaneMode ? Plane :
-    !status || !status.connected ? WifiOff :
-    status.connection_type === "ethernet" ? Cable :
-    Wifi
+    airplaneMode
+      ? Plane
+      : !status || !status.connected
+        ? WifiOff
+        : status.connection_type === "ethernet"
+          ? Cable
+          : Wifi,
   );
 
-  // WiFi signal opacity: stronger signal = more opaque icon.
+  /// Signal-strength → icon-opacity mapping. Weaker signal renders
+  /// a subtler icon so the user's first-glance read of "how strong
+  /// is the connection" matches their visual expectation. Bottoms
+  /// at 40% so a 1-bar connection is still legible.
   const signalOpacity = $derived(
     status?.signal_strength != null
       ? Math.max(0.4, status.signal_strength / 100)
-      : 1
+      : 1,
   );
 
-  const label = $derived(() => {
+  const tooltip = $derived.by(() => {
     if (airplaneMode) return "Airplane Mode";
     if (!status || !status.connected) return "Disconnected";
     if (status.connection_type === "ethernet") {
@@ -93,85 +92,35 @@
     return text;
   });
 
-  function handleContextMenu(e: MouseEvent) {
-    e.preventDefault();
-    // TODO: Open Network Settings.
-  }
+  const isOpen = $derived($activePopover === "network");
+  const dimmed = $derived(!status?.connected && !airplaneMode);
 </script>
 
-<Tooltip.Root>
-  <Tooltip.Trigger>
-    {#snippet child({ props })}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <button
-        class="network-btn"
-        class:disconnected={!status?.connected}
-        aria-label={label()}
-        {...props}
-        onclick={() => togglePopover("network")}
-        onmouseenter={() => hoverPopover("network")}
-        oncontextmenu={handleContextMenu}
-      >
-        <span style:opacity={signalOpacity}>
-          <Icon size={14} strokeWidth={1.5} />
-        </span>
-        {#if status?.vpn_active}
-          <span class="vpn-badge">
-            <Shield size={7} strokeWidth={2.5} />
-          </span>
-        {/if}
-      </button>
-    {/snippet}
-  </Tooltip.Trigger>
-  <Tooltip.Portal>
-    <Tooltip.Content side="bottom" class={tooltipClass}>{label()}</Tooltip.Content>
-  </Tooltip.Portal>
-</Tooltip.Root>
+<Applet
+  appletId="network"
+  {tooltip}
+  popoverOpen={isOpen}
+  {dimmed}
+  state={airplaneMode ? "off" : status?.connected ? "on" : "off"}
+  onclick={() => togglePopover("network")}
+  onmouseenter={() => hoverPopover("network")}
+>
+  {#snippet icon()}
+    <span style:opacity={signalOpacity}>
+      <Icon size={14} strokeWidth={1.5} />
+    </span>
+  {/snippet}
+  {#snippet badge()}
+    {#if status?.vpn_active}
+      <AppletBadge
+        variant="icon"
+        color="success"
+        icon={vpnIcon}
+      />
+    {/if}
+  {/snippet}
+</Applet>
 
-<style>
-  .network-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    min-width: 24px;
-    min-height: 24px;
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    border: none;
-    background: transparent;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    color: var(--foreground);
-    transition:
-      transform var(--duration-micro) var(--ease-out),
-      background-color var(--duration-fast) var(--ease-out);
-  }
-
-  .network-btn:hover {
-    background: color-mix(in srgb, var(--foreground) 10%, transparent);
-  }
-
-  .network-btn:active {
-    transform: scale(0.96);
-  }
-
-  .disconnected {
-    opacity: 0.4;
-  }
-
-  .vpn-badge {
-    position: absolute;
-    bottom: 2px;
-    right: 2px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 10px;
-    height: 10px;
-    background: var(--color-bg-shell);
-    border-radius: var(--radius-sm);
-    color: var(--color-success);
-  }
-</style>
+{#snippet vpnIcon()}
+  <Shield size={9} strokeWidth={2.5} />
+{/snippet}

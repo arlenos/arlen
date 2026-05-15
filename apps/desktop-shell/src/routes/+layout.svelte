@@ -46,6 +46,79 @@
   import { initToolbarStore } from "$lib/stores/toolbarStore";
   import { initAppStateStores } from "$lib/stores/appStateStores";
 
+  /// Top of the QS / Notifications popover panels. Matches their
+  /// CSS `top: 40px` so the math here stays in lock-step with where
+  /// the panels actually land.
+  const PANEL_TOP = 40;
+  /// Distance (px) from the top of the screen at which toasts begin
+  /// when no panel is open. Topbar (36px) + 8px breathing room.
+  const TOAST_BASE_OFFSET = 44;
+  /// Gap between an open panel's bottom edge and the toast stack
+  /// below it. 24px gives a clear visual break so toasts don't read
+  /// as part of the panel.
+  const TOAST_PANEL_GAP = 24;
+
+  /// Live-measured height of the open right-column panel
+  /// (QuickSettingsPanel or NotificationsPopover). Drives the
+  /// Toaster `offset` so toasts always land BELOW whichever panel
+  /// is open instead of overlapping it.
+  ///
+  /// One-shot RAF measurement was insufficient — async tile
+  /// content (KnowledgeTile chart loads after a graph-query round-
+  /// trip, NotificationPanel grows when notifications stream in)
+  /// makes the panel grow tens of pixels AFTER first measurement,
+  /// leaving the toast stack ~2cm too high. ResizeObserver tracks
+  /// the live height and updates `panelHeight` on every layout
+  /// shift, so the toast stays glued to the panel's bottom edge
+  /// even when the panel keeps growing. Falls back to
+  /// `offsetHeight` (transform-independent) so the popover's
+  /// scale-in animation doesn't briefly under-measure.
+  let panelHeight = $state(0);
+
+  $effect(() => {
+    const id = $activePopover;
+    if (id !== "quick-settings" && id !== "notifications") {
+      panelHeight = 0;
+      return;
+    }
+
+    const sel = id === "quick-settings" ? ".qs-panel" : ".np-popover";
+    let observer: ResizeObserver | null = null;
+    let raf: number | null = null;
+
+    function attach() {
+      const el = document.querySelector<HTMLElement>(sel);
+      if (!el) {
+        // Panel not yet in DOM — try again next frame.
+        raf = requestAnimationFrame(attach);
+        return;
+      }
+      // Initial measurement uses offsetHeight (transform-
+      // independent) so the in-progress popover-in animation
+      // doesn't briefly report a scale(0.98) box.
+      panelHeight = el.offsetHeight;
+      observer = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const target = entry.target as HTMLElement;
+          panelHeight = target.offsetHeight;
+        }
+      });
+      observer.observe(el);
+    }
+    attach();
+
+    return () => {
+      if (raf !== null) cancelAnimationFrame(raf);
+      observer?.disconnect();
+    };
+  });
+
+  const toasterOffset = $derived(
+    panelHeight > 0
+      ? PANEL_TOP + panelHeight + TOAST_PANEL_GAP
+      : TOAST_BASE_OFFSET,
+  );
+
   onMount(() => {
     // Every store init now returns a disposer. Collecting them lets
     // onMount's return closure tear down every Tauri listener on
@@ -98,7 +171,7 @@
   expand={false}
   closeButton
   theme="dark"
-  offset={44}
+  offset={toasterOffset}
   toastOptions={{
     style: `width: ${$toastConfig.width}px;`,
     class: `lunaris-toast lunaris-toast-anim-${$toastConfig.animation}`,

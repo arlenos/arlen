@@ -171,7 +171,7 @@
 <style>
   .pop-backdrop { position: fixed; inset: 0; z-index: 90; }
   .pop-panel {
-    position: fixed; top: 40px; z-index: 100; border-radius: var(--radius-lg);
+    position: fixed; top: 40px; z-index: 100; border-radius: var(--radius-card);
     background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     box-shadow: var(--shadow-lg);
@@ -189,7 +189,7 @@
   .mode-pills { display: flex; gap: 4px; }
   .mode-pill {
     flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
-    padding: 8px 4px; border-radius: var(--radius-md);
+    padding: 8px 4px; border-radius: var(--radius-input);
     background: transparent;
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
@@ -211,9 +211,9 @@
   .gap-label { font-size: 0.75rem; flex-shrink: 0; }
   .gap-value { font-size: 0.6875rem; opacity: 0.5; min-width: 28px; text-align: right; }
   .gap-slider { position: relative; flex: 1; height: 20px; display: flex; align-items: center; }
-  .gap-slider-track { position: absolute; left: 0; right: 0; height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: var(--radius-sm); }
-  .gap-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: var(--color-accent); border-radius: var(--radius-sm); }
-  .gap-slider-thumb { position: absolute; left: var(--value); width: 14px; height: 14px; background: var(--color-fg-shell); border-radius: var(--radius-md); transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
+  .gap-slider-track { position: absolute; left: 0; right: 0; height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: var(--radius-chip); }
+  .gap-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: var(--color-accent); border-radius: var(--radius-chip); }
+  .gap-slider-thumb { position: absolute; left: var(--value); width: 14px; height: 14px; background: var(--color-fg-shell); border-radius: var(--radius-input); transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
   .gap-slider input[type="range"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; appearance: none; -webkit-appearance: none; }
 
   /* Smart gaps toggle */

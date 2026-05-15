@@ -109,7 +109,7 @@
 <style>
   .pop-backdrop { position: fixed; inset: 0; z-index: 90; }
   .pop-panel {
-    position: fixed; top: 40px; z-index: 100; border-radius: var(--radius-lg);
+    position: fixed; top: 40px; z-index: 100; border-radius: var(--radius-card);
     background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     box-shadow: var(--shadow-lg);
@@ -128,7 +128,7 @@
 
   .tray-item {
     display: flex; align-items: center; gap: 10px;
-    padding: 8px 10px; background: transparent; border: none; border-radius: var(--radius-md);
+    padding: 8px 10px; background: transparent; border: none; border-radius: var(--radius-input);
     color: var(--color-fg-shell); cursor: pointer; text-align: left; width: 100%;
     transition: background-color 0.1s ease;
   }
@@ -138,7 +138,7 @@
   .tray-item-icon {
     width: var(--control-h-sm); height: var(--control-h-sm); display: flex; align-items: center; justify-content: center;
     background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
-    border-radius: var(--radius-sm); font-size: 0.625rem; font-weight: 600; flex-shrink: 0;
+    border-radius: var(--radius-chip); font-size: 0.625rem; font-weight: 600; flex-shrink: 0;
   }
   .tray-item-icon img { width: 18px; height: 18px; object-fit: contain; }
   .tray-item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }

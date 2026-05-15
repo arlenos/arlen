@@ -11,6 +11,6 @@
 
 <style>
   .signal-bars { display: flex; align-items: flex-end; gap: 1px; height: 14px; }
-  .signal-bar { width: 3px; background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: var(--radius-sm); }
+  .signal-bar { width: 3px; background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: var(--radius-chip); }
   .signal-bar.active { background: var(--color-fg-shell); }
 </style>

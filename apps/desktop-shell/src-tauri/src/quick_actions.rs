@@ -87,9 +87,127 @@ async fn dispatch(id: &str, app: AppHandle) -> Result<String, String> {
         "qa.open_settings_display" => open_settings(Some("display")),
         "qa.open_settings_keyboard" => open_settings(Some("keyboard")),
         "qa.open_settings_focus" => open_settings(Some("focus")),
+        "qa.open_settings_knowledge" => open_settings(Some("knowledge")),
         "qa.open_settings_notifications" => open_settings(Some("notifications")),
+        "qa.lock_screen" => session_action(&["lock-session"], "Locking screen"),
+        "qa.logout" => session_logout(),
+        "qa.reboot" => power_action(&["reboot"], "Restarting"),
+        "qa.shutdown" => power_action(&["poweroff"], "Shutting down"),
         other => Err(format!("unknown quick action: {other}")),
     }
+}
+
+/// Run a `loginctl <action>` scoped to the current GUI session.
+///
+/// Codex high-1: previously `qa.logout` shelled out to `loginctl
+/// terminate-user <whoami>`, which kills *every* session for the
+/// user — SSH logins, parallel desktop sessions, long-running
+/// background processes — not just the one the user clicked
+/// "Log Out" in. We resolve the active session via
+/// `XDG_SESSION_ID` (set by logind for the current login) and
+/// terminate only it. If the env var is missing (rare; nested
+/// dev sessions, broken login flow) we surface an error rather
+/// than fall back to the user-wide kill — losing parallel work
+/// to a typoed click is a worse failure than the user finding a
+/// different way to log out.
+fn session_logout() -> Result<String, String> {
+    let session = std::env::var("XDG_SESSION_ID")
+        .map_err(|_| {
+            "XDG_SESSION_ID is not set — cannot scope logout to the current session".to_string()
+        })?;
+    if session.trim().is_empty() {
+        return Err("XDG_SESSION_ID is empty".into());
+    }
+    session_action(&["terminate-session", session.trim()], "Logging out")
+}
+
+/// Spawn `loginctl <args>` and wait briefly for early failure.
+///
+/// The logind session-management calls (`lock-session`,
+/// `terminate-session`) return quickly. We give them up to 1.5s
+/// to fail; a non-zero exit during that window means policy
+/// rejected the call (PolicyKit rule, missing permission) and we
+/// surface stderr. If the call is still running after the
+/// timeout we trust the success path — it'll either complete
+/// silently or eventually fail in a way the user notices via the
+/// session ending (logout) or the screen actually locking
+/// (lock-session).
+fn session_action(args: &[&str], message: &str) -> Result<String, String> {
+    spawn_and_check("loginctl", args, message, 1500)
+}
+
+/// Spawn `systemctl <args>` for poweroff / reboot.
+///
+/// These are special: a successful poweroff or reboot tears the
+/// process tree down before any exit code reaches us. The
+/// "successful path" is therefore "still running after the
+/// timeout" — by then the kernel halt sequence is in flight.
+/// An early non-zero exit means PolicyKit denied the call (or
+/// the user lacks permission); we surface stderr.
+fn power_action(args: &[&str], message: &str) -> Result<String, String> {
+    spawn_and_check("systemctl", args, message, 2000)
+}
+
+/// Spawn `cmd args`, wait up to `timeout_ms`, surface stderr on
+/// early non-zero exit. If the child is still running at timeout,
+/// treat as success — appropriate for both fast-returning logind
+/// calls and never-returning system shutdowns.
+fn spawn_and_check(
+    cmd: &str,
+    args: &[&str],
+    message: &str,
+    timeout_ms: u64,
+) -> Result<String, String> {
+    let mut child = std::process::Command::new(cmd)
+        .args(args)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("{cmd}: {e}"))?;
+
+    // Poll for early exit. Steps of 50ms keep the worst-case
+    // latency for a denied call below ~50ms while letting the
+    // process exit cleanly when it's going to. The total budget
+    // (timeout_ms) only applies to "still running after this" =
+    // success path.
+    let deadline = std::time::Instant::now()
+        + std::time::Duration::from_millis(timeout_ms);
+    while std::time::Instant::now() < deadline {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => {
+                return Ok(message.to_string());
+            }
+            Ok(Some(status)) => {
+                let mut stderr = String::new();
+                if let Some(mut err) = child.stderr.take() {
+                    use std::io::Read;
+                    let _ = err.read_to_string(&mut stderr);
+                }
+                let stderr_trim = stderr.trim();
+                let detail = if stderr_trim.is_empty() {
+                    format!("exit code {status}")
+                } else {
+                    stderr_trim.to_string()
+                };
+                return Err(format!("{cmd} failed: {detail}"));
+            }
+            Ok(None) => {
+                // Still running — fine for poweroff/reboot, we'll
+                // either time out and report success, or get a
+                // late exit on the next iteration.
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(e) => {
+                return Err(format!("{cmd}: wait failed: {e}"));
+            }
+        }
+    }
+    // Still running after timeout: treat as success. For
+    // poweroff/reboot this is the expected path (system is going
+    // down before the process can exit cleanly). For session
+    // calls a long-running call is rare but harmless to declare
+    // success on.
+    Ok(message.to_string())
 }
 
 // ── Toggle helpers ─────────────────────────────────────────────────
@@ -278,7 +396,12 @@ mod tests {
                     | "qa.open_settings_display"
                     | "qa.open_settings_keyboard"
                     | "qa.open_settings_focus"
+                    | "qa.open_settings_knowledge"
                     | "qa.open_settings_notifications"
+                    | "qa.lock_screen"
+                    | "qa.logout"
+                    | "qa.reboot"
+                    | "qa.shutdown"
             )
         }
         assert!(matches_known("qa.dnd_enable"));

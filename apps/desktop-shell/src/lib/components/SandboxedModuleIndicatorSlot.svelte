@@ -62,7 +62,7 @@
     justify-content: center;
     width: 28px;
     height: 28px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-chip);
     overflow: hidden;
   }
   .mod-indicator :global(iframe) {

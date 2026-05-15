@@ -33,7 +33,7 @@
   }
 
   .group-card {
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-card);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 10%, transparent);
     background: color-mix(in srgb, var(--foreground) 3%, transparent);

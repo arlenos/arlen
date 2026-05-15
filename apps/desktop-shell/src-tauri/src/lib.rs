@@ -25,6 +25,8 @@ mod night_light;
 mod output_bars;
 mod shell_config;
 mod power;
+mod knowledge;
+mod quicksettings;
 mod notifications;
 mod permissions;
 mod projects;
@@ -211,6 +213,7 @@ pub fn run() {
             // The v2 appearance watcher below handles all theme reloads.
             theme::commands::start_appearance_watcher(app.handle().clone());
             shell_config::start_shell_config_watcher(app.handle().clone());
+            quicksettings::layout::start_qs_layout_watcher(app.handle().clone());
             event_bus::start(app.handle().clone(), Arc::clone(&shortcuts_state));
             wayland_client::start(
                 app.handle().clone(),
@@ -377,6 +380,14 @@ pub fn run() {
             quick_actions::quick_action_run,
             shell_config::get_shell_config,
             shell_config::save_shell_config,
+            knowledge::knowledge_daily_counts,
+            quicksettings::layout::qs_layout_get,
+            quicksettings::layout::qs_layout_set,
+            quicksettings::layout::qs_layout_reset,
+            quicksettings::layout::qs_layout_move_tile,
+            quicksettings::layout::qs_layout_set_visibility,
+            quicksettings::layout::qs_layout_set_size,
+            quicksettings::defaults::qs_layout_bundled_defaults,
             night_light::night_light_set,
             night_light::night_light_set_schedule,
             night_light::night_light_set_location,

@@ -1,96 +1,59 @@
 <script lang="ts">
-  /// Layout mode indicator for the top bar.
+  /// Layout-mode indicator for the top bar.
   ///
-  /// Shows an icon reflecting the active layout mode (floating, tiling,
-  /// monocle). Click opens the Layout Popover.
+  /// Wraps the shared `Applet` primitive. Reflects the current
+  /// compositor layout mode (floating / tiling / monocle) via icon
+  /// swap. Click toggles the LayoutPopover.
 
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
-  import { togglePopover, hoverPopover } from "$lib/stores/activePopover.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { togglePopover, hoverPopover, activePopover } from "$lib/stores/activePopover.js";
+  import { Applet } from "@lunaris/ui-kit/components/topbar";
   import { Layers, LayoutPanelLeft, Maximize } from "lucide-svelte";
 
   let mode = $state("floating");
 
-  const tooltipClass =
-    "rounded-md border px-2 py-0.5 text-xs shadow-md select-none"
-    + " bg-[var(--color-bg-shell)] text-[var(--color-fg-shell)] border-[color-mix(in_srgb,var(--color-bg-shell)_60%,white_40%)]";
-
   async function poll() {
     try {
-      const state = await invoke<{ mode: string }>("get_layout_state");
-      mode = state.mode;
+      const s = await invoke<{ mode: string }>("get_layout_state");
+      mode = s.mode;
     } catch {}
   }
 
   poll();
+
   onMount(() => {
     const unlisten = listen("lunaris://layout-mode-changed", (e: any) => {
       if (e.payload?.mode) mode = e.payload.mode;
     });
-    return () => { unlisten.then((fn) => fn()); };
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   });
 
   const Icon = $derived(
-    mode === "tiling" ? LayoutPanelLeft :
-    mode === "monocle" ? Maximize :
-    Layers
+    mode === "tiling" ? LayoutPanelLeft : mode === "monocle" ? Maximize : Layers,
+  );
+  const tooltip = $derived(
+    mode === "tiling"
+      ? "Layout: Tiling"
+      : mode === "monocle"
+        ? "Layout: Monocle"
+        : "Layout: Floating",
   );
 
-  const label = $derived(
-    mode === "tiling" ? "Layout: Tiling" :
-    mode === "monocle" ? "Layout: Monocle" :
-    "Layout: Floating"
-  );
-
-  function handleClick() {
-    togglePopover("layout");
-  }
+  const isOpen = $derived($activePopover === "layout");
 </script>
 
-<Tooltip.Root>
-  <Tooltip.Trigger>
-    {#snippet child({ props })}
-      <button
-        class="layout-btn"
-        aria-label={label}
-        {...props}
-        onclick={handleClick}
-        onmouseenter={() => hoverPopover("layout")}
-      >
-        <Icon size={14} strokeWidth={1.5} />
-      </button>
-    {/snippet}
-  </Tooltip.Trigger>
-  <Tooltip.Portal>
-    <Tooltip.Content side="bottom" class={tooltipClass}>{label}</Tooltip.Content>
-  </Tooltip.Portal>
-</Tooltip.Root>
-
-<style>
-  .layout-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 24px;
-    min-height: 24px;
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    border: none;
-    background: transparent;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    color: var(--foreground);
-    transition:
-      transform var(--duration-micro) var(--ease-out),
-      background-color var(--duration-fast) var(--ease-out);
-  }
-  .layout-btn:hover {
-    background: color-mix(in srgb, var(--foreground) 10%, transparent);
-  }
-  .layout-btn:active {
-    transform: scale(0.96);
-  }
-</style>
+<Applet
+  appletId="layout"
+  {tooltip}
+  popoverOpen={isOpen}
+  onclick={() => togglePopover("layout")}
+  onmouseenter={() => hoverPopover("layout")}
+>
+  {#snippet icon()}
+    <Icon size={14} strokeWidth={1.5} />
+  {/snippet}
+</Applet>

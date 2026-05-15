@@ -1741,7 +1741,7 @@
   .ws-section {
     width: 100%;
     padding: 6px 6px 4px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     transition:
       background var(--duration-fast, 150ms) ease,
       outline-color var(--duration-fast, 150ms) ease;
@@ -1770,7 +1770,7 @@
     padding-top: 8px;
     padding-bottom: 8px;
     background: color-mix(in srgb, var(--color-fg-shell) 4%, transparent);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     transition: background var(--duration-fast, 150ms) ease;
   }
 
@@ -1814,7 +1814,7 @@
        while staying well under context menus (z=300). */
     z-index: 120;
     padding: 16px;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-card);
     background: var(--color-bg-shell);
     border: 1px solid
       color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
@@ -1852,7 +1852,7 @@
     max-height: 70vh;
     overflow-y: auto;
     padding: 12px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     border: 1px solid transparent;
     background: transparent;
     cursor: pointer;
@@ -1943,7 +1943,7 @@
     width: 60px;
     height: 56px;
     padding: 8px 4px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--color-fg-shell) 6%, transparent);
     border: 1px solid
       color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
@@ -2139,7 +2139,7 @@
     height: 24px;
     min-width: 32px;
     padding: 0 10px;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-card);
     border: none;
     font-size: 0.6875rem;
     font-weight: 500;

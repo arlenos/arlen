@@ -46,7 +46,7 @@
   .pop-title { flex: 1; font-size: 0.8125rem; font-weight: 500; }
   .pop-settings-btn {
     width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
-    background: transparent; border: none; border-radius: var(--radius-sm);
+    background: transparent; border: none; border-radius: var(--radius-chip);
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
     cursor: pointer; padding: 0;
   }

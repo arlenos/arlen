@@ -10,6 +10,10 @@ pub struct ToggleState {
     caffeine: Mutex<Option<Child>>,
     recording: Mutex<Option<Child>>,
     recording_path: Mutex<Option<String>>,
+    /// UNIX-millis timestamp when the active recording started. The
+    /// top-bar Recording badge consumes this to render a live elapsed
+    /// counter.
+    recording_started_at: Mutex<Option<u64>>,
 }
 
 impl ToggleState {
@@ -19,6 +23,7 @@ impl ToggleState {
             caffeine: Mutex::new(None),
             recording: Mutex::new(None),
             recording_path: Mutex::new(None),
+            recording_started_at: Mutex::new(None),
         }
     }
 }
@@ -30,6 +35,8 @@ pub struct ToggleStatus {
     pub caffeine_active: bool,
     pub recording_active: bool,
     pub recording_path: Option<String>,
+    /// UNIX-millis timestamp when the recording started, or None.
+    pub recording_started_at: Option<u64>,
 }
 
 /// Get current toggle state.
@@ -38,10 +45,12 @@ pub fn get_toggle_status(state: tauri::State<'_, ToggleState>) -> ToggleStatus {
     let caffeine = state.caffeine.lock().unwrap().is_some();
     let recording = state.recording.lock().unwrap().is_some();
     let path = state.recording_path.lock().unwrap().clone();
+    let started = *state.recording_started_at.lock().unwrap();
     ToggleStatus {
         caffeine_active: caffeine,
         recording_active: recording,
         recording_path: path,
+        recording_started_at: started,
     }
 }
 
@@ -88,6 +97,7 @@ pub fn toggle_caffeine(state: tauri::State<'_, ToggleState>) -> Result<bool, Str
 pub fn toggle_recording(state: tauri::State<'_, ToggleState>) -> Result<bool, String> {
     let mut rec_guard = state.recording.lock().unwrap();
     let mut path_guard = state.recording_path.lock().unwrap();
+    let mut started_guard = state.recording_started_at.lock().unwrap();
 
     if let Some(ref mut child) = *rec_guard {
         // Stop: send SIGINT (graceful stop for wf-recorder).
@@ -97,6 +107,7 @@ pub fn toggle_recording(state: tauri::State<'_, ToggleState>) -> Result<bool, St
         let _ = child.wait();
         let path = path_guard.take();
         *rec_guard = None;
+        *started_guard = None;
         log::info!("recording: stopped ({})", path.as_deref().unwrap_or("?"));
         Ok(false)
     } else {
@@ -121,6 +132,12 @@ pub fn toggle_recording(state: tauri::State<'_, ToggleState>) -> Result<bool, St
 
         *rec_guard = Some(child);
         *path_guard = Some(output_str.clone());
+        *started_guard = Some(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0),
+        );
         log::info!("recording: started -> {output_str}");
         Ok(true)
     }

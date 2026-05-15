@@ -114,7 +114,7 @@
         align-items: center;
         gap: 4px;
         padding: 6px 10px;
-        border-radius: var(--radius-lg);
+        border-radius: var(--radius-card);
         border: 1px solid var(--border);
     }
 
@@ -125,7 +125,7 @@
         width: 28px;
         height: 28px;
         border: none;
-        border-radius: var(--radius-md);
+        border-radius: var(--radius-input);
         cursor: pointer;
         background: transparent;
         color: var(--foreground);
@@ -175,7 +175,7 @@
         transform: translateX(-50%);
         background: var(--background);
         border: 1px solid var(--border);
-        border-radius: var(--radius-md);
+        border-radius: var(--radius-input);
         padding: 4px 0;
         min-width: 140px;
         z-index: 9600;

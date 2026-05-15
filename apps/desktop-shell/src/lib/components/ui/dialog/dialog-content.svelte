@@ -36,7 +36,7 @@
     bind:ref
     data-slot="dialog-content"
     class={cn(
-      "shell-popover fixed left-1/2 top-1/2 z-[500] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius)] border border-border bg-[var(--color-bg-card)] p-5 shadow-2xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95",
+      "shell-popover fixed left-1/2 top-1/2 z-[500] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-input)] border border-border bg-[var(--color-bg-card)] p-5 shadow-2xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95",
       className,
     )}
     {...restProps}
