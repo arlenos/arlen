@@ -9,6 +9,6 @@ mod store;
 
 pub use entry::{
     compute_entry_hash, AuditEntry, AuditKind, ForensicRecord, StructuralRecord,
-    GENESIS_PREV_HASH,
+    StructuralView, GENESIS_PREV_HASH,
 };
-pub use store::Ledger;
+pub use store::{Ledger, LedgerReader};

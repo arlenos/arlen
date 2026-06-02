@@ -17,6 +17,14 @@ pub enum AuditError {
     #[error("audit ledger is full")]
     LedgerFull,
 
+    /// The HMAC key cannot be used in a way that forbids proceeding —
+    /// most importantly, the key file is missing while the ledger
+    /// already holds entries. Generating a fresh key would make the
+    /// whole existing chain read as tampered, so the daemon fails
+    /// closed instead of re-keying.
+    #[error("audit key unavailable: {0}")]
+    KeyUnavailable(String),
+
     /// The hash chain failed verification: an entry was modified,
     /// removed, or inserted out of band. The `index` is the first
     /// entry at which the chain does not hold.
@@ -31,6 +39,14 @@ pub enum AuditError {
     /// An underlying I/O error.
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+}
+
+impl From<audit_proto::ProtoError> for AuditError {
+    /// A wire-protocol failure on a socket is, to the audit daemon,
+    /// a storage-layer failure of that exchange.
+    fn from(e: audit_proto::ProtoError) -> Self {
+        AuditError::Storage(e.to_string())
+    }
 }
 
 /// Result alias for the audit daemon.

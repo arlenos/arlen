@@ -1,0 +1,43 @@
+[Unit]
+Description=Lunaris Audit Daemon (user service)
+Documentation=https://github.com/lunaris-sys/audit-daemon
+# The daemon re-emits audit.* events on the Event Bus. This is a
+# best-effort dependency, not a hard one: the daemon serves its
+# sockets and writes the ledger whether or not the bus is up, so
+# `After=` orders startup without `Requires=` blocking it.
+After=lunaris-event-bus.service
+
+[Service]
+# `Type=notify`: the daemon calls sd_notify(READY=1) once both the
+# ingest and read sockets are bound, so dependent units (the AI
+# layer) do not connect before the audit log is ready to record.
+Type=notify
+# Production binary path (system-wide install). Dev runs invoke the
+# debug binary directly; this file is the canonical production unit.
+ExecStart=/usr/lib/lunaris/libexec/lunaris-auditd
+Restart=on-failure
+RestartSec=2
+
+# The audit daemon holds the ledger's HMAC key — the one secret that
+# makes the hash chain unforgeable. Hardening is correspondingly
+# tight: it writes only the per-user ledger directory and binds only
+# Unix sockets under the runtime dir, and it never touches the
+# network, so the address-family restriction both hardens it and
+# documents that property.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/lunaris
+ReadWritePaths=/run/user/%U/lunaris
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

@@ -6,7 +6,7 @@
 //! property of foundation §8.4.7 is enforced by the absence of those
 //! operations, not by a runtime check.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use sqlx::sqlite::{
     SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteRow,
@@ -15,9 +15,15 @@ use sqlx::{Row, SqlitePool};
 
 use super::entry::{
     compute_entry_hash, AuditEntry, AuditKind, ForensicRecord, StructuralRecord,
-    GENESIS_PREV_HASH,
+    StructuralView, GENESIS_PREV_HASH,
 };
+use crate::checkpoint::{self, Checkpoint};
 use crate::error::{AuditError, Result};
+
+/// Largest page the read API will return in one request. A larger
+/// `limit` is clamped to this so one request cannot pull the whole
+/// ledger into memory.
+pub const MAX_READ_LIMIT: u64 = 1000;
 
 /// The append-only audit ledger.
 ///
@@ -31,6 +37,10 @@ pub struct Ledger {
     key: Vec<u8>,
     next_index: u64,
     prev_hash: [u8; 32],
+    /// Path of the head checkpoint written after every append. Lets
+    /// startup detect truncation the hash chain cannot (see
+    /// [`crate::checkpoint`]).
+    checkpoint_path: PathBuf,
 }
 
 impl Ledger {
@@ -39,7 +49,8 @@ impl Ledger {
     /// appends proceed.
     pub async fn open(db_path: &Path, key: Vec<u8>) -> Result<Self> {
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent)?;
+            // 0700 so only the owning user can reach the ledger.
+            crate::ensure_private_dir(parent)?;
         }
         let opts = SqliteConnectOptions::new()
             .filename(db_path)
@@ -57,12 +68,100 @@ impl Ledger {
             key,
             next_index,
             prev_hash,
+            checkpoint_path: checkpoint::checkpoint_path(db_path),
         })
     }
 
     /// The index the next [`append`](Self::append) will assign.
     pub fn next_index(&self) -> u64 {
         self.next_index
+    }
+
+    /// The ledger's current head as `(index, entry_hash_hex)`, or
+    /// `None` for an empty ledger. Used by the startup checkpoint
+    /// comparison.
+    pub fn head_for_checkpoint(&self) -> Option<(u64, String)> {
+        if self.next_index == 0 {
+            None
+        } else {
+            Some((self.next_index - 1, hex(&self.prev_hash)))
+        }
+    }
+
+    /// Path of the head checkpoint beside this ledger.
+    pub fn checkpoint_path(&self) -> &Path {
+        &self.checkpoint_path
+    }
+
+    /// The hex-encoded `entry_hash` of the entry at `index`, or `None`
+    /// if no such row exists. Used by the startup checkpoint
+    /// comparison to confirm the checkpointed entry is still present
+    /// and unchanged.
+    pub async fn entry_hash_hex_at(&self, index: u64) -> Result<Option<String>> {
+        let row = sqlx::query("SELECT entry_hash FROM audit_entries WHERE idx = ?")
+            .bind(index as i64)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(map_sqlx)?;
+        match row {
+            None => Ok(None),
+            Some(r) => {
+                let hash: Vec<u8> = r.try_get("entry_hash").map_err(map_sqlx)?;
+                Ok(Some(hex(&hash)))
+            }
+        }
+    }
+
+    /// Probe whether the ledger at `db_path` already holds entries,
+    /// without needing the HMAC key. The daemon calls this at startup
+    /// to tell genesis (an absent or empty ledger, where generating a
+    /// fresh key is fine) apart from a fault (a populated ledger whose
+    /// key file has gone missing).
+    ///
+    /// Emptiness is determined **positively** — the `audit_entries`
+    /// table is genuinely absent from `sqlite_master`. Every other
+    /// failure (a locked, corrupt, or unreadable database) propagates
+    /// as an error, so a probe failure can never be mistaken for an
+    /// empty ledger and trigger a re-key.
+    pub async fn probe_has_entries(db_path: &Path) -> Result<bool> {
+        if !db_path.exists() {
+            return Ok(false);
+        }
+        let opts = SqliteConnectOptions::new()
+            .filename(db_path)
+            .create_if_missing(false)
+            .read_only(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(opts)
+            .await
+            .map_err(map_sqlx)?;
+
+        // Is the table there at all? A readable database with no
+        // `audit_entries` table is a genuine empty/genesis ledger.
+        // A failure of *this* query means the database itself is not
+        // readable — that must propagate, not read as "empty".
+        let table: Option<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master \
+             WHERE type = 'table' AND name = 'audit_entries'",
+        )
+        .fetch_optional(&pool)
+        .await
+        .map_err(map_sqlx)?;
+
+        let has = match table {
+            None => false,
+            Some(_) => {
+                let count: i64 =
+                    sqlx::query_scalar("SELECT COUNT(*) FROM audit_entries")
+                        .fetch_one(&pool)
+                        .await
+                        .map_err(map_sqlx)?;
+                count > 0
+            }
+        };
+        pool.close().await;
+        Ok(has)
     }
 
     /// Append one entry. Returns the assigned chain index.
@@ -129,6 +228,31 @@ impl Ledger {
 
         self.next_index += 1;
         self.prev_hash = entry_hash;
+
+        // Record the new head durably outside the database, so a later
+        // truncation (deleting rows or the whole file) is evident at
+        // startup. A checkpoint write failure is fail-closed, NOT
+        // swallowed: if the head cannot be witnessed, the append
+        // returns an error so the caller (via the ingest socket) gets
+        // `Unavailable` and does not proceed with the action. That
+        // keeps the invariant "the action proceeded ⇒ the checkpoint
+        // advanced" — a degraded checkpoint cannot leave a window of
+        // acknowledged-but-unwitnessed entries that a later truncation
+        // could erase silently. The row stays committed (harmless: its
+        // caller failed closed and abandoned the action), and the next
+        // successful append rewrites the checkpoint to the live head.
+        let cp = Checkpoint {
+            index,
+            entry_hash_hex: hex(&entry_hash),
+        };
+        if let Err(e) = checkpoint::write(&self.checkpoint_path, &cp) {
+            tracing::error!(
+                "audit checkpoint write failed (entry {index} committed but \
+                 unwitnessed); failing the append closed: {e}"
+            );
+            return Err(e);
+        }
+
         Ok(index)
     }
 
@@ -187,6 +311,73 @@ impl Ledger {
             expected_index += 1;
         }
         Ok(expected_index)
+    }
+}
+
+/// Read-only view onto the ledger, for the read API.
+///
+/// It opens its own read-only SQLite pool, so range queries run
+/// concurrently with appends (WAL mode) and never contend on the
+/// append writer's lock. It exposes the **Structural tier only** —
+/// the `forensic` column is not even selected, so Forensic-tier
+/// content cannot leak through this path.
+pub struct LedgerReader {
+    pool: SqlitePool,
+}
+
+impl LedgerReader {
+    /// Open a read-only handle on the ledger at `db_path`.
+    pub async fn open(db_path: &Path) -> Result<Self> {
+        let opts = SqliteConnectOptions::new()
+            .filename(db_path)
+            .create_if_missing(false)
+            .read_only(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(4)
+            .connect_with(opts)
+            .await
+            .map_err(map_sqlx)?;
+        Ok(Self { pool })
+    }
+
+    /// Read a page of entries as Structural-tier views.
+    ///
+    /// Returns entries with index in `[from, to)`, ascending, capped
+    /// at `min(limit, MAX_READ_LIMIT)`. When `project_id` is `Some`,
+    /// only entries recorded under that project are returned — the
+    /// basis of the project-scoped export. The `forensic` column is
+    /// never selected.
+    pub async fn read_structural(
+        &self,
+        from: u64,
+        to: u64,
+        limit: u64,
+        project_id: Option<&str>,
+    ) -> Result<Vec<StructuralView>> {
+        // `idx` is a SQLite INTEGER (i64); clamp the u64 bounds so a
+        // value past i64::MAX (e.g. `to = u64::MAX` for "everything")
+        // does not wrap to a negative bound and match nothing.
+        let from = i64::try_from(from).unwrap_or(i64::MAX);
+        let to = i64::try_from(to).unwrap_or(i64::MAX);
+        let capped = limit.min(MAX_READ_LIMIT) as i64;
+
+        let rows = sqlx::query(
+            "SELECT idx, timestamp, kind, actor, structural,
+                    call_chain_id, project_id, entry_hash
+             FROM audit_entries
+             WHERE idx >= ?1 AND idx < ?2
+               AND (?3 IS NULL OR project_id = ?3)
+             ORDER BY idx ASC LIMIT ?4",
+        )
+        .bind(from)
+        .bind(to)
+        .bind(project_id)
+        .bind(capped)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sqlx)?;
+
+        rows.iter().map(decode_structural_view).collect()
     }
 }
 
@@ -270,6 +461,47 @@ fn decode_row(row: &SqliteRow) -> Result<AuditEntry> {
         prev_hash: to_hash(&prev_hash)?,
         entry_hash: to_hash(&entry_hash)?,
     })
+}
+
+/// Build a [`StructuralView`] from a read-API row. The query behind
+/// this does not select the `forensic` column, so the Forensic tier
+/// cannot reach a reader through this path.
+fn decode_structural_view(row: &SqliteRow) -> Result<StructuralView> {
+    let idx: i64 = row.try_get("idx").map_err(map_sqlx)?;
+    let timestamp: i64 = row.try_get("timestamp").map_err(map_sqlx)?;
+    let kind_str: String = row.try_get("kind").map_err(map_sqlx)?;
+    let kind = AuditKind::from_wire(&kind_str).ok_or_else(|| {
+        AuditError::Storage(format!("unknown audit kind '{kind_str}'"))
+    })?;
+    let actor: String = row.try_get("actor").map_err(map_sqlx)?;
+    let structural_json: String = row.try_get("structural").map_err(map_sqlx)?;
+    let structural: StructuralRecord = serde_json::from_str(&structural_json)
+        .map_err(|e| AuditError::Storage(format!("decode structural: {e}")))?;
+    let call_chain_id: Option<String> =
+        row.try_get("call_chain_id").map_err(map_sqlx)?;
+    let project_id: Option<String> =
+        row.try_get("project_id").map_err(map_sqlx)?;
+    let entry_hash: Vec<u8> = row.try_get("entry_hash").map_err(map_sqlx)?;
+    Ok(StructuralView {
+        index: idx as u64,
+        timestamp_micros: timestamp,
+        kind,
+        actor,
+        structural,
+        call_chain_id,
+        project_id,
+        entry_hash_hex: hex(&entry_hash),
+    })
+}
+
+/// Lowercase hex encoding of a byte slice.
+fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
 }
 
 /// Convert a hash column to a fixed 32-byte array. A wrong length is
@@ -466,5 +698,256 @@ mod tests {
         // The forensic payload is covered by the chain hash, so the
         // entry verifies only if it round-tripped intact.
         assert_eq!(ledger.verify().await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn deleting_the_last_row_is_caught_by_the_checkpoint() {
+        // The hash chain alone cannot catch tail truncation: the
+        // remaining prefix verifies fine. The head checkpoint, written
+        // beside the database on every append, records that there were
+        // more entries.
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("ledger.db");
+        {
+            let mut ledger = open_temp(dir.path(), key()).await;
+            for _ in 0..3 {
+                ledger
+                    .append(AuditKind::Query, "ai-daemon", &structural("ok"), None, None, None)
+                    .await
+                    .unwrap();
+            }
+            // The checkpoint now records head index 2.
+        }
+        // Delete the newest row out of band — the chain prefix 0..=1
+        // still links and re-hashes correctly.
+        {
+            let ledger = open_temp(dir.path(), key()).await;
+            sqlx::query("DELETE FROM audit_entries WHERE idx = 2")
+                .execute(&ledger.pool)
+                .await
+                .unwrap();
+        }
+        let ledger = open_temp(dir.path(), key()).await;
+        // The chain verifier is satisfied by the truncated prefix...
+        assert_eq!(ledger.verify().await.unwrap(), 2);
+        // ...but the checkpoint witness flags the missing entry: the
+        // checkpoint points at index 2, which no longer exists.
+        let stored = checkpoint::read(ledger.checkpoint_path());
+        let cp_index = stored
+            .as_ref()
+            .ok()
+            .and_then(|o| o.as_ref())
+            .map(|c| c.index)
+            .unwrap();
+        let entry_hash_at_cp = ledger.entry_hash_hex_at(cp_index).await.unwrap();
+        assert_eq!(entry_hash_at_cp, None, "the checkpointed entry was deleted");
+        assert!(
+            matches!(
+                checkpoint::assess_startup(
+                    stored,
+                    ledger.head_for_checkpoint().is_none(),
+                    entry_hash_at_cp,
+                ),
+                checkpoint::StartupCheck::Tampered { .. }
+            ),
+            "tail truncation must be caught by the checkpoint"
+        );
+        assert!(db.exists());
+    }
+
+    #[tokio::test]
+    async fn append_fails_closed_when_the_checkpoint_cannot_be_written() {
+        // If the head cannot be witnessed, the append must fail rather
+        // than acknowledge an unwitnessed entry: the caller then fails
+        // closed and does not perform the action. This keeps "action
+        // proceeded ⇒ checkpoint advanced", closing the stale-
+        // checkpoint truncation hole.
+        let dir = tempfile::tempdir().unwrap();
+        let mut ledger = open_temp(dir.path(), key()).await;
+        // Database stays writable (tempdir); only the checkpoint target
+        // is unwritable — its parent directory does not exist.
+        ledger.checkpoint_path =
+            PathBuf::from("/nonexistent-audit-dir/head.checkpoint");
+        let result = ledger
+            .append(AuditKind::Query, "ai-daemon", &structural("ok"), None, None, None)
+            .await;
+        assert!(
+            result.is_err(),
+            "an unwritable checkpoint must fail the append closed"
+        );
+    }
+
+    #[tokio::test]
+    async fn deleting_the_whole_database_is_caught_by_the_checkpoint() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("ledger.db");
+        {
+            let mut ledger = open_temp(dir.path(), key()).await;
+            ledger
+                .append(AuditKind::Query, "ai-daemon", &structural("ok"), None, None, None)
+                .await
+                .unwrap();
+        }
+        // Delete the database (and its WAL sidecars), leaving the
+        // checkpoint behind — the naive "wipe the audit log" attack.
+        let _ = std::fs::remove_file(&db);
+        let _ = std::fs::remove_file(dir.path().join("ledger.db-wal"));
+        let _ = std::fs::remove_file(dir.path().join("ledger.db-shm"));
+
+        // Reopening recreates an empty database — a silent fresh start
+        // without the checkpoint.
+        let ledger = open_temp(dir.path(), key()).await;
+        assert_eq!(ledger.verify().await.unwrap(), 0);
+        assert_eq!(
+            ledger.head_for_checkpoint(),
+            None,
+            "reopened database is empty"
+        );
+        let stored = checkpoint::read(ledger.checkpoint_path());
+        let cp_index = stored
+            .as_ref()
+            .ok()
+            .and_then(|o| o.as_ref())
+            .map(|c| c.index)
+            .unwrap();
+        let entry_hash_at_cp = ledger.entry_hash_hex_at(cp_index).await.unwrap();
+        assert!(
+            matches!(
+                checkpoint::assess_startup(stored, true, entry_hash_at_cp),
+                checkpoint::StartupCheck::Tampered { .. }
+            ),
+            "whole-database deletion must be caught by the checkpoint"
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_reports_an_absent_ledger_as_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("ledger.db");
+        assert_eq!(Ledger::probe_has_entries(&missing).await.unwrap(), false);
+    }
+
+    #[tokio::test]
+    async fn probe_reports_an_empty_ledger_as_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        // Opening creates the schema but writes no rows.
+        let _ledger = open_temp(dir.path(), key()).await;
+        drop(_ledger);
+        let db = dir.path().join("ledger.db");
+        assert_eq!(Ledger::probe_has_entries(&db).await.unwrap(), false);
+    }
+
+    #[tokio::test]
+    async fn probe_reports_a_populated_ledger_as_nonempty() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let mut ledger = open_temp(dir.path(), key()).await;
+            ledger
+                .append(AuditKind::Query, "ai-daemon", &structural("ok"), None, None, None)
+                .await
+                .unwrap();
+        }
+        let db = dir.path().join("ledger.db");
+        assert_eq!(Ledger::probe_has_entries(&db).await.unwrap(), true);
+    }
+
+    #[tokio::test]
+    async fn probe_propagates_an_error_on_a_corrupt_db() {
+        // A non-SQLite file at the ledger path must surface as an
+        // error, never be mistaken for an empty (genesis) ledger —
+        // that mistake would re-key a populated chain.
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("ledger.db");
+        std::fs::write(&db, b"this is not a sqlite database").unwrap();
+        assert!(
+            Ledger::probe_has_entries(&db).await.is_err(),
+            "a corrupt ledger must propagate an error, not read as empty"
+        );
+    }
+
+    /// Append `n` entries, each tagged with the given project id.
+    async fn append_n(ledger: &mut Ledger, n: usize, project: Option<&str>) {
+        for _ in 0..n {
+            ledger
+                .append(
+                    AuditKind::Query,
+                    "ai-daemon",
+                    &structural("ok"),
+                    None,
+                    None,
+                    project,
+                )
+                .await
+                .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn reader_returns_a_half_open_index_range() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let mut ledger = open_temp(dir.path(), key()).await;
+            append_n(&mut ledger, 5, None).await;
+        }
+        let reader = LedgerReader::open(&dir.path().join("ledger.db"))
+            .await
+            .unwrap();
+        let page = reader.read_structural(1, 4, 100, None).await.unwrap();
+        let indices: Vec<u64> = page.iter().map(|e| e.index).collect();
+        assert_eq!(indices, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn reader_respects_the_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let mut ledger = open_temp(dir.path(), key()).await;
+            append_n(&mut ledger, 5, None).await;
+        }
+        let reader = LedgerReader::open(&dir.path().join("ledger.db"))
+            .await
+            .unwrap();
+        let page = reader.read_structural(0, u64::MAX, 2, None).await.unwrap();
+        assert_eq!(page.len(), 2, "the page must honour the limit");
+    }
+
+    #[tokio::test]
+    async fn reader_to_u64_max_returns_every_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let mut ledger = open_temp(dir.path(), key()).await;
+            append_n(&mut ledger, 3, None).await;
+        }
+        let reader = LedgerReader::open(&dir.path().join("ledger.db"))
+            .await
+            .unwrap();
+        // `to = u64::MAX` must not wrap to a negative SQLite bound.
+        let page = reader.read_structural(0, u64::MAX, 100, None).await.unwrap();
+        assert_eq!(page.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn reader_filters_by_project() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let mut ledger = open_temp(dir.path(), key()).await;
+            append_n(&mut ledger, 2, Some("proj-a")).await;
+            append_n(&mut ledger, 3, Some("proj-b")).await;
+            append_n(&mut ledger, 1, None).await;
+        }
+        let reader = LedgerReader::open(&dir.path().join("ledger.db"))
+            .await
+            .unwrap();
+        let only_a = reader
+            .read_structural(0, u64::MAX, 100, Some("proj-a"))
+            .await
+            .unwrap();
+        assert_eq!(only_a.len(), 2);
+        assert!(only_a
+            .iter()
+            .all(|e| e.project_id.as_deref() == Some("proj-a")));
+        // No filter returns all six.
+        let all = reader.read_structural(0, u64::MAX, 100, None).await.unwrap();
+        assert_eq!(all.len(), 6);
     }
 }
