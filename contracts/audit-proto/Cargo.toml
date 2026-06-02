@@ -1,0 +1,24 @@
+[package]
+name = "audit-proto"
+version = "0.1.0"
+edition = "2021"
+description = "Shared wire protocol and client for the Lunaris audit daemon"
+
+[features]
+# Exposes `MockAuditSink`, an in-memory accepting/failing sink for
+# downstream test suites. NOT enabled by default: an accepting mock is
+# a fail-open sink, so it must never be reachable in a production
+# build. Consumers enable it as a dev-dependency feature.
+test-util = []
+
+[dependencies]
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["net", "io-util", "time", "sync"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync"] }
+
+[workspace]
