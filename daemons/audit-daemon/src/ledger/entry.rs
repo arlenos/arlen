@@ -1,111 +1,29 @@
-//! Audit entry types and the HMAC hash-chain.
+//! Ledger entry types and the HMAC hash-chain.
+//!
+//! The wire types `AuditKind`, `StructuralRecord`, and
+//! `ForensicRecord` are defined once, in `audit-proto`, and
+//! re-exported here so the rest of the daemon refers to them through
+//! `crate::ledger`. The daemon-internal types — [`AuditEntry`] (the
+//! committed row, with its raw hashes) and [`StructuralView`] (the
+//! read-API projection) — live here.
 //!
 //! The two-tier split from foundation §8.4.7 is enforced by the type
-//! system: [`StructuralRecord`] has no field that can hold a query
-//! string, result content, or a node ID, while [`ForensicRecord`] —
-//! the opt-in tier that *does* carry that content — is a separate
-//! struct attached only as an `Option`. A content leak into the
-//! always-on Structural tier is therefore a compile error.
+//! system: `StructuralRecord` has no field that can hold a query
+//! string, result content, or a node ID, and `StructuralView`
+//! likewise; the opt-in `ForensicRecord` is a separate struct
+//! attached only as an `Option`.
 
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+
+pub use audit_proto::{AuditKind, ForensicRecord, StructuralRecord};
 
 type HmacSha256 = Hmac<Sha256>;
 
 /// The `prev_hash` of the genesis entry: 32 zero bytes. The verifier
 /// expects index 0 to chain from this fixed value.
 pub const GENESIS_PREV_HASH: [u8; 32] = [0u8; 32];
-
-/// What kind of audited action an entry records.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AuditKind {
-    /// An AI natural-language query.
-    Query,
-    /// An MCP tool invocation.
-    ToolCall,
-    /// A user confirmation of a high-impact action.
-    Confirm,
-    /// A rejected call: depth limit, permission, or always-confirm.
-    PolicyViolation,
-    /// A Knowledge-Graph access.
-    GraphAccess,
-    /// A permission grant or denial.
-    Permission,
-}
-
-impl AuditKind {
-    /// Stable wire string. Also the suffix of the Event Bus event
-    /// type re-emitted after a successful append (`audit.ai.<kind>`).
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Query => "query",
-            Self::ToolCall => "tool_call",
-            Self::Confirm => "confirm",
-            Self::PolicyViolation => "policy_violation",
-            Self::GraphAccess => "graph_access",
-            Self::Permission => "permission",
-        }
-    }
-
-    /// Parse a kind back from its [`as_str`](Self::as_str) wire form.
-    /// Returns `None` for an unrecognised string (a corrupt ledger
-    /// row), which the store surfaces as a storage error.
-    pub fn from_wire(s: &str) -> Option<Self> {
-        match s {
-            "query" => Some(Self::Query),
-            "tool_call" => Some(Self::ToolCall),
-            "confirm" => Some(Self::Confirm),
-            "policy_violation" => Some(Self::PolicyViolation),
-            "graph_access" => Some(Self::GraphAccess),
-            "permission" => Some(Self::Permission),
-            _ => None,
-        }
-    }
-}
-
-/// Content-free interaction metadata — the Structural tier of
-/// foundation §8.4.7, always recorded. Every field here is a coarse
-/// identifier or a count; none can hold a query string, a result
-/// value, or a concrete node ID.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct StructuralRecord {
-    /// Coarse subject identifier: an MCP server id, a tool name, or
-    /// a graph target label. Never free-form content.
-    pub subject: String,
-    /// Graph node types touched, if any.
-    #[serde(default)]
-    pub node_types: Vec<String>,
-    /// Graph relations traversed, if any.
-    #[serde(default)]
-    pub relations: Vec<String>,
-    /// Number of results, when meaningful for this kind.
-    #[serde(default)]
-    pub result_count: Option<u64>,
-    /// Wall-clock duration of the action, when measured.
-    #[serde(default)]
-    pub duration_ms: Option<u64>,
-    /// Coarse outcome label: `ok`, `denied`, `error`, ...
-    pub outcome: String,
-    /// MCP call-chain depth, when the entry is part of one.
-    #[serde(default)]
-    pub depth: Option<u8>,
-}
-
-/// The opt-in Forensic tier (foundation §8.4.7): the content the
-/// Structural tier deliberately omits. An entry carries this only
-/// when Forensic Mode was active at the time it was written; on
-/// every other entry it is `None`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ForensicRecord {
-    /// The full query string.
-    pub query_string: String,
-    /// Query parameters (not result contents).
-    pub parameters: String,
-    /// The calling process stack trace.
-    pub stack_trace: String,
-}
 
 /// One committed ledger entry. Produced by the store on append and
 /// reconstructed from the store on read or verify.
@@ -127,14 +45,41 @@ pub struct AuditEntry {
     pub forensic: Option<ForensicRecord>,
     /// MCP call-chain id, when the entry belongs to one.
     pub call_chain_id: Option<String>,
-    /// Project context, when one was active — drives the
-    /// project-scoped export.
+    /// Project context, when one was active.
     pub project_id: Option<String>,
     /// `entry_hash` of the previous entry; `GENESIS_PREV_HASH` at
     /// index 0.
     pub prev_hash: [u8; 32],
     /// This entry's HMAC chain hash.
     pub entry_hash: [u8; 32],
+}
+
+/// One audit entry as the read API exposes it: the Structural tier
+/// only.
+///
+/// There is deliberately **no** forensic field. The read API must
+/// never serve Forensic-tier content (foundation §8.4.7: "no
+/// administrator, no daemon, and no application can read it"), and a
+/// type that *cannot hold* forensic content enforces that by
+/// construction rather than by review discipline.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StructuralView {
+    /// Chain index of the entry.
+    pub index: u64,
+    /// Append time, microseconds since the Unix epoch.
+    pub timestamp_micros: i64,
+    /// What kind of action the entry records.
+    pub kind: AuditKind,
+    /// `app_id` of the component that performed the action.
+    pub actor: String,
+    /// The content-free structural metadata.
+    pub structural: StructuralRecord,
+    /// MCP call-chain id, when the entry belongs to one.
+    pub call_chain_id: Option<String>,
+    /// Project context, when one was active.
+    pub project_id: Option<String>,
+    /// Hex-encoded `entry_hash` — an opaque per-entry reference id.
+    pub entry_hash_hex: String,
 }
 
 /// Compute the HMAC chain hash for an entry.
@@ -235,19 +180,16 @@ mod tests {
             key, 0, 1000, AuditKind::Query, "ai-daemon", &structural(),
             None, None, None, &GENESIS_PREV_HASH,
         );
-        // A different actor.
         let other_actor = compute_entry_hash(
             key, 0, 1000, AuditKind::Query, "evil", &structural(),
             None, None, None, &GENESIS_PREV_HASH,
         );
         assert_ne!(base, other_actor);
-        // A different prev_hash (the chain linkage).
         let other_prev = compute_entry_hash(
             key, 0, 1000, AuditKind::Query, "ai-daemon", &structural(),
             None, None, None, &[9u8; 32],
         );
         assert_ne!(base, other_prev);
-        // A different index.
         let other_index = compute_entry_hash(
             key, 1, 1000, AuditKind::Query, "ai-daemon", &structural(),
             None, None, None, &GENESIS_PREV_HASH,
@@ -267,21 +209,5 @@ mod tests {
             None, None, None, &GENESIS_PREV_HASH,
         );
         assert_ne!(with_a, with_b, "the HMAC key must affect the hash");
-    }
-
-    #[test]
-    fn kind_strings_are_stable_and_distinct() {
-        let kinds = [
-            AuditKind::Query,
-            AuditKind::ToolCall,
-            AuditKind::Confirm,
-            AuditKind::PolicyViolation,
-            AuditKind::GraphAccess,
-            AuditKind::Permission,
-        ];
-        let mut seen = std::collections::HashSet::new();
-        for k in kinds {
-            assert!(seen.insert(k.as_str()), "kind strings must be distinct");
-        }
     }
 }
