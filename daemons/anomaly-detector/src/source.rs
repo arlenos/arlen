@@ -256,9 +256,14 @@ impl Detector {
             // A committed audit append: drain it (and anything missed)
             // from the read API immediately.
             self.poll().await;
+        } else if ev_type == "graph.rate_limited" {
+            // The Knowledge daemon throttled a caller (foundation §8.4).
+            // The payload is the offending app_id. Live signal — not
+            // gated by bootstrap.
+            let app_id = String::from_utf8_lossy(payload);
+            let alert = Alert::rate_limit(&app_id);
+            self.maybe_dispatch(&alert, crate::now_micros()).await;
         }
-        // Future: a graph/AI rate-limit-violation event (S15) is
-        // handled here; until S15 emits it there is nothing to do.
     }
 
     /// Run forever: subscribe to `audit.*` + `window.*`, poll on a
@@ -273,7 +278,11 @@ impl Detector {
 
         loop {
             let mut rx = match consumer
-                .subscribe(vec!["audit.".to_string(), "window.".to_string()])
+                .subscribe(vec![
+                    "audit.".to_string(),
+                    "window.".to_string(),
+                    "graph.rate_limited".to_string(),
+                ])
                 .await
             {
                 Ok(rx) => rx,
@@ -286,7 +295,9 @@ impl Detector {
                     continue;
                 }
             };
-            tracing::info!("anomaly detector: subscribed to audit.* + window.*");
+            tracing::info!(
+                "anomaly detector: subscribed to audit.* + window.* + graph.rate_limited"
+            );
             loop {
                 tokio::select! {
                     _ = interval.tick() => self.poll().await,
@@ -452,6 +463,22 @@ mod tests {
         assert!(
             d.state.alert_cooldowns.contains_key(AlertKind::AuditTampered.as_str()),
             "a tampered read page must raise the critical alert"
+        );
+    }
+
+    #[tokio::test]
+    async fn graph_rate_limited_event_raises_a_rate_limit_alert() {
+        let mut state = State::default();
+        state.bootstrapped = true;
+        let mut d = detector(state, DetectorConfig::default(), MockSource::new(vec![]), 0);
+        d.handle_event("graph.rate_limited", b"com.evil.app").await;
+        assert!(
+            d.state
+                .alert_cooldowns
+                .keys()
+                .any(|k| k.contains("com.evil.app")),
+            "a rate-limit event must raise a per-app RateLimit alert: {:?}",
+            d.state.alert_cooldowns
         );
     }
 

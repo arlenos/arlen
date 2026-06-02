@@ -97,6 +97,23 @@ impl Alert {
         }
     }
 
+    /// A component repeatedly exceeded its Knowledge-Graph query rate
+    /// limit (foundation §8.4: a rate-limit violation generates an
+    /// event for the detector; repeated violations trigger an alert).
+    pub fn rate_limit(app_id: &str) -> Self {
+        Alert {
+            kind: AlertKind::RateLimit,
+            key: format!("{}:{app_id}", AlertKind::RateLimit.as_str()),
+            summary: "Unusual data access rate".to_string(),
+            body: format!(
+                "The component '{app_id}' exceeded its Knowledge Graph query \
+                 rate limit and was throttled. If you did not start a large \
+                 task, this can indicate a runaway or compromised component."
+            ),
+            critical: false,
+        }
+    }
+
     /// A critical alert that the audit log itself was tampered with.
     pub fn audit_tampered(detail: &str) -> Self {
         Alert {
