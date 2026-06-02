@@ -1,0 +1,33 @@
+[package]
+name = "lunaris-anomalyd"
+version = "0.1.0"
+edition = "2021"
+description = "Anomaly Detector: watches the Lunaris audit log and Event Bus for behavioural anomalies and raises advisory alerts"
+
+[[bin]]
+name = "lunaris-anomalyd"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+async-trait = "0.1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net", "time", "sync", "io-util"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+sd-notify = "0.4"
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+
+# Reads the audit log over the shared read API and its wire types.
+audit-proto = { path = "../audit-proto" }
+# Event Bus consumer for audit.* and window.* (user-activity proxy).
+os-sdk = { path = "../sdk/os-sdk" }
+
+[dev-dependencies]
+tempfile = "3"
+
+[workspace]
