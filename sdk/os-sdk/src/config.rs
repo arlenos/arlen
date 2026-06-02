@@ -99,7 +99,14 @@ impl Config {
         let mut watcher = notify::recommended_watcher(move |event: Result<Event, _>| {
             if let Ok(event) = event {
                 match event.kind {
-                    EventKind::Modify(_) | EventKind::Create(_) => {
+                    // Removal is a change too: a deleted or moved-away
+                    // config file must wake the caller so it can reload
+                    // (and, for security-relevant configs, fail closed)
+                    // rather than keep serving the last in-memory state
+                    // indefinitely. Atomic replace (write-temp + rename)
+                    // still surfaces as Create/Modify on the name, so
+                    // this does not add spurious wake-ups to normal saves.
+                    EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_) => {
                         let _ = tx.send(());
                     }
                     _ => {}
