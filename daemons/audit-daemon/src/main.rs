@@ -147,8 +147,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let reader = Arc::new(LedgerReader::open(&ledger_path).await?);
     let ledger = Arc::new(Mutex::new(ledger));
 
-    let ingest = Arc::new(IngestServer::new(ledger, emitter, tampered));
-    let read = Arc::new(ReadServer::new(reader));
+    let ingest = Arc::new(IngestServer::new(ledger, emitter, tampered.clone()));
+    let read = Arc::new(ReadServer::new(reader, tampered));
 
     // The socket paths are bound to locals so they outlive the
     // futures the `select!` holds, and stay available for cleanup.

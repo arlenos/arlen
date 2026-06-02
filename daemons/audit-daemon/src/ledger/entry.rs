@@ -14,10 +14,9 @@
 //! attached only as an `Option`.
 
 use hmac::{Hmac, Mac};
-use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-pub use audit_proto::{AuditKind, ForensicRecord, StructuralRecord};
+pub use audit_proto::{AuditKind, ForensicRecord, StructuralRecord, StructuralView};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -54,33 +53,9 @@ pub struct AuditEntry {
     pub entry_hash: [u8; 32],
 }
 
-/// One audit entry as the read API exposes it: the Structural tier
-/// only.
-///
-/// There is deliberately **no** forensic field. The read API must
-/// never serve Forensic-tier content (foundation §8.4.7: "no
-/// administrator, no daemon, and no application can read it"), and a
-/// type that *cannot hold* forensic content enforces that by
-/// construction rather than by review discipline.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct StructuralView {
-    /// Chain index of the entry.
-    pub index: u64,
-    /// Append time, microseconds since the Unix epoch.
-    pub timestamp_micros: i64,
-    /// What kind of action the entry records.
-    pub kind: AuditKind,
-    /// `app_id` of the component that performed the action.
-    pub actor: String,
-    /// The content-free structural metadata.
-    pub structural: StructuralRecord,
-    /// MCP call-chain id, when the entry belongs to one.
-    pub call_chain_id: Option<String>,
-    /// Project context, when one was active.
-    pub project_id: Option<String>,
-    /// Hex-encoded `entry_hash` — an opaque per-entry reference id.
-    pub entry_hash_hex: String,
-}
+// `StructuralView` (the read-API projection) is defined once in
+// `audit-proto` and re-exported above, so the daemon and its read
+// clients share one type.
 
 /// Compute the HMAC chain hash for an entry.
 ///

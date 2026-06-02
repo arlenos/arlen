@@ -11,72 +11,38 @@
 //! [`crate::ledger::StructuralView`] has no field that can hold
 //! Forensic content, and the underlying query does not select it.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
 use tokio::net::UnixStream;
 
-use audit_proto::{read_frame, write_frame};
+use audit_proto::{read_frame, write_frame, ReadRequest, ReadResponse};
+// Re-export so `lunaris_auditd::read::read_socket_path` stays the
+// canonical path the binary and tests use; the type lives in
+// `audit-proto` so readers (the Anomaly Detector) share it.
+pub use audit_proto::read_socket_path;
 
 use crate::error::{AuditError, Result};
-use crate::ledger::{LedgerReader, StructuralView};
-
-/// Resolve the read socket path:
-/// `$XDG_RUNTIME_DIR/lunaris/audit-read.sock`, falling back to
-/// `/run/lunaris/audit-read.sock`.
-pub fn read_socket_path() -> PathBuf {
-    let base = std::env::var_os("XDG_RUNTIME_DIR")
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/run"));
-    base.join("lunaris").join("audit-read.sock")
-}
-
-/// A read query: the half-open index range `[from, to)`, capped by
-/// `limit`, optionally filtered to one project.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReadRequest {
-    /// First index to include (default 0).
-    #[serde(default)]
-    pub from: u64,
-    /// First index to exclude. Use `u64::MAX` for "to the end".
-    pub to: u64,
-    /// Maximum entries to return; the daemon clamps it to
-    /// [`crate::ledger::MAX_READ_LIMIT`].
-    pub limit: u64,
-    /// When set, only entries recorded under this project — the
-    /// basis of the project-scoped export.
-    #[serde(default)]
-    pub project_id: Option<String>,
-}
-
-/// The reply to a [`ReadRequest`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ReadResponse {
-    /// A page of Structural-tier views, ascending by index. To page,
-    /// the caller advances `from` past the last index returned.
-    Page {
-        /// The matching entries.
-        entries: Vec<StructuralView>,
-    },
-    /// The query could not be served.
-    Error {
-        /// Human-readable reason.
-        reason: String,
-    },
-}
+use crate::ledger::LedgerReader;
 
 /// The read API server.
 pub struct ReadServer {
     reader: Arc<LedgerReader>,
+    /// Shared with the daemon (and the ingest server): set when
+    /// startup verification found the ledger tampered. Reported on
+    /// every page so a reader learns tamper state over the reliable
+    /// poll path, not only via a best-effort `audit.tampered` event.
+    tampered: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl ReadServer {
-    /// Build a server over a read-only ledger handle.
-    pub fn new(reader: Arc<LedgerReader>) -> Self {
-        Self { reader }
+    /// Build a server over a read-only ledger handle and the shared
+    /// tamper flag.
+    pub fn new(
+        reader: Arc<LedgerReader>,
+        tampered: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        Self { reader, tampered }
     }
 
     /// Bind the read socket and serve it until the accept loop
@@ -129,7 +95,10 @@ impl ReadServer {
             .read_structural(req.from, req.to, req.limit, req.project_id.as_deref())
             .await
         {
-            Ok(entries) => ReadResponse::Page { entries },
+            Ok(entries) => ReadResponse::Page {
+                entries,
+                tampered: self.tampered.load(std::sync::atomic::Ordering::SeqCst),
+            },
             Err(e) => ReadResponse::Error {
                 reason: e.to_string(),
             },
@@ -188,7 +157,8 @@ mod tests {
         }
 
         let reader = Arc::new(LedgerReader::open(&db).await.unwrap());
-        let server = Arc::new(ReadServer::new(reader));
+        let tampered = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let server = Arc::new(ReadServer::new(reader, tampered));
         let socket = dir.path().join("audit-read.sock");
         let socket_for_task = socket.clone();
         let serving = tokio::spawn(async move {
@@ -214,12 +184,13 @@ mod tests {
         let reply = read_frame(&mut client).await.unwrap();
         let resp: ReadResponse = serde_json::from_slice(&reply).unwrap();
         match resp {
-            ReadResponse::Page { entries } => {
+            ReadResponse::Page { entries, tampered } => {
                 assert_eq!(entries.len(), 3);
                 assert_eq!(entries[0].index, 0);
                 assert_eq!(entries[2].index, 2);
                 assert_eq!(entries[0].actor, "ai-daemon");
                 assert_eq!(entries[0].entry_hash_hex.len(), 64);
+                assert!(!tampered, "untampered ledger reports tampered=false");
             }
             ReadResponse::Error { reason } => panic!("read failed: {reason}"),
         }
