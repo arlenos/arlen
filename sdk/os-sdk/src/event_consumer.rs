@@ -188,21 +188,30 @@ async fn forwarder(
 ) {
     let mut backoff = RECONNECT_INITIAL;
     loop {
-        // Pump events from the current stream until disconnect.
-        match pump_events(&mut stream, &tx).await {
-            PumpResult::ChannelClosed => {
+        // Pump events from the current stream until disconnect, but also bail
+        // the moment the caller drops the receiver. `tx.closed()` resolves as
+        // soon as the last receiver is gone, so an unsubscribe tears the bus
+        // connection down promptly instead of lingering (blocked on the next
+        // read) until another event happens to arrive.
+        tokio::select! {
+            result = pump_events(&mut stream, &tx) => match result {
                 // Caller dropped the receiver — exit cleanly.
-                return;
-            }
-            PumpResult::StreamClosed => {
+                PumpResult::ChannelClosed => return,
                 // Fall through to reconnect.
-            }
+                PumpResult::StreamClosed => {}
+            },
+            _ = tx.closed() => return,
         }
 
         // Reconnect loop. Each iteration generates a fresh
         // consumer-id so the bus does not see stale Vec entries.
         loop {
-            tokio::time::sleep(backoff).await;
+            tokio::select! {
+                _ = tokio::time::sleep(backoff) => {}
+                // A receiver dropped while we waited to reconnect: stop rather
+                // than re-register a subscription nobody is reading.
+                _ = tx.closed() => return,
+            }
             backoff = (backoff * 2).min(RECONNECT_MAX);
 
             let consumer_id = format!("os-sdk-{}-{}", app_id, uuid::Uuid::now_v7());
