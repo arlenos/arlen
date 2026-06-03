@@ -95,9 +95,25 @@ impl Config {
     pub fn watch(&self) -> Result<ConfigWatcher, ConfigError> {
         let (tx, rx) = mpsc::channel::<()>();
         let path = self.path.clone();
+        // We watch the parent directory (to catch atomic write-and-rename
+        // saves), so the raw stream also carries every sibling file's
+        // changes. Keep only events that touch this file by name, so an
+        // unrelated write in the same config directory does not fire a
+        // spurious wake-up. Events with no path (overflow / rescan) are
+        // ambiguous, so they still wake the caller, biasing toward a
+        // reload for security-relevant configs rather than missing one.
+        let target_name = path.file_name().map(|n| n.to_os_string());
 
         let mut watcher = notify::recommended_watcher(move |event: Result<Event, _>| {
             if let Ok(event) = event {
+                let touches_target = event.paths.is_empty()
+                    || event
+                        .paths
+                        .iter()
+                        .any(|p| p.file_name() == target_name.as_deref());
+                if !touches_target {
+                    return;
+                }
                 match event.kind {
                     // Removal is a change too: a deleted or moved-away
                     // config file must wake the caller so it can reload
@@ -330,5 +346,25 @@ shell = "#1a1a2e"
         // Should receive a change notification within 2 seconds
         let result = watcher.rx.recv_timeout(std::time::Duration::from_secs(2));
         assert!(result.is_ok(), "expected change notification");
+    }
+
+    #[test]
+    fn watch_ignores_sibling_file_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("ai.toml");
+        std::fs::write(&target, "value = \"initial\"").unwrap();
+
+        let config = Config::load_path(&target).unwrap();
+        let watcher = config.watch().unwrap();
+
+        // A write to a different file in the same directory must not wake.
+        std::fs::write(dir.path().join("shell.toml"), "x = 1").unwrap();
+        let sibling = watcher.rx.recv_timeout(std::time::Duration::from_millis(500));
+        assert!(sibling.is_err(), "a sibling write must not fire a wake-up");
+
+        // A write to the watched file itself must still wake.
+        std::fs::write(&target, "value = \"changed\"").unwrap();
+        let target_change = watcher.rx.recv_timeout(std::time::Duration::from_secs(2));
+        assert!(target_change.is_ok(), "a change to the watched file must wake");
     }
 }
