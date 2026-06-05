@@ -29,8 +29,12 @@ use crate::agentic::{build_agent_prompt, external_screen_text, parse_agent_step,
 use lunaris_ai_classifier::{screen, ClassifierPolicy, InjectionClassifier, Verdict};
 use crate::behaviour::{Behaviour, BehaviourKind, ReadScope};
 use crate::compaction::{self, CompactionPolicy, TranscriptEntry};
-use crate::gate::{ActionContext, Gate, GateError, ProposedAction};
+use crate::gate::{ActionContext, DecisionReason, Gate, GateError, ProposedAction};
 use crate::loader::LoadedBehaviour;
+use crate::registry::plan_for;
+/// Re-exported so the public [`DispatchOutcome::Decided`] can carry a plan while
+/// the trusted registry module itself stays crate-private.
+pub use crate::registry::ExecutionPlan;
 use crate::router::matching_behaviours;
 use crate::seams::{AgentEvent, Clock, DeniedGraph, GraphHandle, TriggerSource};
 
@@ -121,8 +125,14 @@ pub enum DispatchOutcome {
         action: ProposedAction,
         /// The gate's decision.
         decision: ActionDecision,
+        /// The faithful reason for that decision (D2), from the gate's logic.
+        reason: DecisionReason,
         /// The audit ledger index of the recorded decision.
         audit_index: u64,
+        /// What the action would do and how to undo it (B1 compensation), for a
+        /// registered action; `None` for an unregistered tool. Surfaced so the
+        /// decision's concrete effect and its undo are visible (logged today).
+        plan: Option<ExecutionPlan>,
     },
     /// The handler reached a terminal condition with no action.
     Terminal {
@@ -705,12 +715,17 @@ impl<'a> Dispatcher<'a> {
                     .decide_action(&behaviour, m.mode, &m.tools, &action, &ctx, graph)
                     .await
                 {
-                    Ok(receipt) => DispatchOutcome::Decided {
-                        behaviour,
-                        action,
-                        decision: receipt.decision,
-                        audit_index: receipt.audit_index,
-                    },
+                    Ok(receipt) => {
+                        let plan = plan_for(&action.tool);
+                        DispatchOutcome::Decided {
+                            behaviour,
+                            action,
+                            decision: receipt.decision,
+                            reason: receipt.reason,
+                            audit_index: receipt.audit_index,
+                            plan,
+                        }
+                    }
                     Err(e) => DispatchOutcome::Refused {
                         behaviour,
                         reason: e.to_string(),
@@ -976,11 +991,14 @@ impl<'a> Dispatcher<'a> {
                                 summary: action.summary.clone(),
                                 decision: format!("{:?}", receipt.decision),
                             });
+                            let plan = plan_for(&action.tool);
                             outcomes.push(DispatchOutcome::Decided {
                                 behaviour: behaviour.clone(),
                                 action,
                                 decision: receipt.decision,
+                                reason: receipt.reason,
                                 audit_index: receipt.audit_index,
+                                plan,
                             });
                         }
                         Err(GateError::AuditUnavailable(reason)) => {
@@ -1507,7 +1525,9 @@ tools:
                     arguments: Default::default(),
                 },
                 decision: ActionDecision::Propose,
+                reason: DecisionReason::Mode,
                 audit_index: 0,
+                plan: plan_for("graph.write"),
             }
         );
         let recorded = audit.recorded().await;
@@ -1635,7 +1655,9 @@ tools:
                     arguments: Default::default(),
                 },
                 decision: ActionDecision::RequireConfirmation,
+                reason: DecisionReason::ExternalTrigger,
                 audit_index: 0,
+                plan: plan_for("graph.write"),
             }
         );
     }

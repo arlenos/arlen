@@ -161,6 +161,30 @@ pub struct ActionContext<'a> {
     pub correlation_id: &'a str,
 }
 
+/// The faithful reason the gate reached its decision, derived from the gate's
+/// own logic (the action's class, the trigger, the proof), never the model's
+/// free-text rationale (Foundation D2: the explanation must be the real causal
+/// chain, not a narrative the model could fabricate). Surfaced so a confirmation
+/// prompt or the activity view can say *why* an action needs the user.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecisionReason {
+    /// The action's kind always requires confirmation (a high-impact class,
+    /// including a schema-derived [`ActionKind::Irreversible`]).
+    HighImpact(ActionKind),
+    /// The trigger carried external content, which always confirms regardless
+    /// of mode (prompt-injection containment).
+    ExternalTrigger,
+    /// An executing decision could not be proven safe (no rule, an unprovable
+    /// invocation, an irreversible effect, or a timed-out proof), so the
+    /// conservative cap (confirmation) stands.
+    Unproven,
+    /// A proven, reversible action was lifted to previewed execution.
+    ProvenReversible,
+    /// No override applied; the per-application action mode decided it (the
+    /// suggest flow, where the user executes the proposal manually).
+    Mode,
+}
+
 /// The gate's verdict for one proposed action, plus the ledger index of
 /// the audit entry that recorded it. The executor attaches `audit_index`
 /// to the subsequent execution/outcome record so the two link in the
@@ -169,6 +193,8 @@ pub struct ActionContext<'a> {
 pub struct GateReceipt {
     /// What the gate decided.
     pub decision: ActionDecision,
+    /// The faithful reason for that decision.
+    pub reason: DecisionReason,
     /// The audit ledger index of the recorded decision.
     pub audit_index: u64,
 }
@@ -259,11 +285,29 @@ impl<'a> Gate<'a> {
             });
         }
 
-        // Classify the proposed tool with the shared always-confirm
-        // classifier (the same one MCP dispatch uses) — never a risk class
-        // taken from the proposal. Combine with the mode (ceiling ∧ grant)
-        // for the trusted target app and the external-trigger override.
-        let kind = action_kind_for_tool(&action.tool);
+        // Reversibility (Foundation B1) grounds the gate's high-impact logic:
+        // "reversible" was assumed but never defined, leaving it circular. An
+        // action is reversible iff its registry-resolved schema has a derivable
+        // compensation. `None` = unregistered (unmodelled, not a *declared*
+        // irreversibility), `Some(false)` = registered but irreversible,
+        // `Some(true)` = reversible. A static property of the schema's effects.
+        let schema_reversible = registry::lookup(&action.tool).map(|t| t.is_reversible());
+
+        // Classify the proposed tool with the shared always-confirm classifier
+        // (the same one MCP dispatch uses) — never a risk class taken from the
+        // proposal. A tool already high-impact by name keeps that specific
+        // class; otherwise a registered-but-irreversible schema escalates to
+        // `Irreversible` (also high-impact), so an irreversible action always
+        // requires confirmation in EVERY mode, not only the executing one. An
+        // unregistered tool stays Ordinary and is held back instead by the lift
+        // below, which needs a proof it cannot get. Combine with the mode
+        // (ceiling ∧ grant) and the external-trigger override.
+        let base_kind = action_kind_for_tool(&action.tool);
+        let kind = if !base_kind.always_requires_confirmation() && schema_reversible == Some(false) {
+            ActionKind::Irreversible
+        } else {
+            base_kind
+        };
         let decision =
             self.capability
                 .decide_for_behaviour(ctx.app_id, kind, ctx.external_trigger, ceiling);
@@ -294,20 +338,24 @@ impl<'a> Gate<'a> {
         };
 
         let decision = match decision {
-            // A proven executing action is lifted, but only to a *previewed*
-            // execution, never silent autonomous `Proceed`. Two boundaries are
-            // not yet in place that full auto-execution would need, so the
-            // human-visible preview is the bridge: (1) the proof is a
-            // point-in-time slice (the graph has no snapshot/version, gap A2),
+            // A proven, reversible executing action is lifted, but only to a
+            // *previewed* execution, never silent autonomous `Proceed`. Two
+            // boundaries are not yet in place that full auto-execution would
+            // need, so the human-visible preview is the bridge: (1) the proof is
+            // a point-in-time slice (the graph has no snapshot/version, gap A2),
             // so the executor that eventually acts on a lifted decision must
             // re-check the preconditions atomically at write time; (2) the
             // per-app grant consulted is the *agent's own* (the acting app),
             // the current coarse model, so a finer per-target/per-behaviour
             // grant is future work. Capping at preview keeps a human in the
-            // loop until those land. Nothing executes today (there is no
-            // executor); this is the authorization the executor will honour.
+            // loop until those land. Only a `Some(true)` reversible schema is
+            // lifted: an irreversible one was already escalated to `Irreversible`
+            // above (so it never reaches this arm), and an unregistered tool
+            // (`None`) cannot be proven, so both stay confirmation. Nothing
+            // executes today (there is no executor); this is the authorization
+            // the executor will honour.
             ActionDecision::PreviewThenExecute | ActionDecision::Proceed => {
-                if proven {
+                if proven && schema_reversible == Some(true) {
                     ActionDecision::PreviewThenExecute
                 } else {
                     ActionDecision::RequireConfirmation
@@ -316,14 +364,38 @@ impl<'a> Gate<'a> {
             keep @ (ActionDecision::Propose | ActionDecision::RequireConfirmation) => keep,
         };
 
-        // Audit-before-acting, fail-closed. The decision is committed to
-        // the ledger before the caller is told what it is, so there is no
-        // path on which the action is surfaced/executed without a record.
+        // The faithful reason for the final decision, read off the gate's own
+        // logic (never the model's rationale). A previewed execution is the
+        // proven-reversible lift; a propose is the plain suggest-mode flow; a
+        // confirmation is one of the overrides (high-impact class, external
+        // trigger) or an executing decision that could not be proven/lifted.
+        let reason = match decision {
+            ActionDecision::PreviewThenExecute => DecisionReason::ProvenReversible,
+            ActionDecision::Propose => DecisionReason::Mode,
+            ActionDecision::RequireConfirmation => {
+                if kind.always_requires_confirmation() {
+                    DecisionReason::HighImpact(kind)
+                } else if ctx.external_trigger {
+                    DecisionReason::ExternalTrigger
+                } else {
+                    DecisionReason::Unproven
+                }
+            }
+            // The lift caps `Proceed` to a preview, so it is unreachable here;
+            // report it faithfully as the mode flow rather than assert.
+            ActionDecision::Proceed => DecisionReason::Mode,
+        };
+
+        // Audit-before-acting, fail-closed. The decision AND its faithful reason
+        // are committed to the ledger before the caller is told what it is, so
+        // there is no path on which the action is surfaced/executed without a
+        // durable record of what was decided and why, even if the dispatch is
+        // aborted (reload/shutdown) before the in-memory outcome is logged.
         let audit_index = self
             .audit
             .submit(behaviour_action_event(
                 behaviour_name,
-                decision_label(decision),
+                format!("{}:{}", decision_label(decision), reason_label(reason)),
                 ctx.correlation_id,
             ))
             .await
@@ -332,6 +404,7 @@ impl<'a> Gate<'a> {
         self.observer.observed(&decision);
         Ok(GateReceipt {
             decision,
+            reason,
             audit_index,
         })
     }
@@ -426,6 +499,35 @@ fn decision_label(decision: ActionDecision) -> &'static str {
     }
 }
 
+/// A content-free label for the faithful decision reason (D2), folded into the
+/// durable audit `outcome` so the ledger records *why* a decision was made, not
+/// only what it was. This survives a dispatch aborted after the audit write
+/// (a reload/shutdown winning before the outcome is logged), which is exactly
+/// the post-incident path where the reason matters most. The high-impact label
+/// preserves the specific action class (still content-free: a class, never the
+/// operands), so the ledger distinguishes an irreversible link from a permanent
+/// delete or an external message.
+fn reason_label(reason: DecisionReason) -> &'static str {
+    match reason {
+        DecisionReason::HighImpact(kind) => match kind {
+            ActionKind::PermanentDelete => "high-impact-permanent-delete",
+            ActionKind::SendExternalMessage => "high-impact-external-message",
+            ActionKind::PackageChange => "high-impact-package-change",
+            ActionKind::SystemConfigChange => "high-impact-system-config",
+            ActionKind::UndeclaredNetwork => "high-impact-undeclared-network",
+            ActionKind::ElevatedPrivilege => "high-impact-elevated-privilege",
+            ActionKind::Irreversible => "high-impact-irreversible",
+            // Ordinary is not high-impact, so it never reaches a HighImpact
+            // reason; labelled defensively rather than asserted.
+            ActionKind::Ordinary => "high-impact",
+        },
+        DecisionReason::ExternalTrigger => "external-trigger",
+        DecisionReason::Unproven => "unproven",
+        DecisionReason::ProvenReversible => "proven-reversible",
+        DecisionReason::Mode => "mode",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -454,6 +556,48 @@ mod tests {
             summary: "tag foo.rs as part of lunaris-sys".to_string(),
             arguments: BTreeMap::new(),
         }
+    }
+
+    fn irreversible_action() -> ProposedAction {
+        ProposedAction {
+            tool: "test.irreversible".to_string(),
+            summary: "an action with no derivable compensation".to_string(),
+            arguments: BTreeMap::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn an_irreversible_action_requires_confirmation_even_in_suggest_mode() {
+        // Foundation B1: an action whose registry schema has no compensation is
+        // irreversible -> high-impact -> always confirm, in EVERY mode. Under
+        // Suggest the preliminary decision would be Propose; the schema-derived
+        // Irreversible classification escalates it to RequireConfirmation.
+        let cap = suggest_only();
+        let audit = MockAuditSink::accepting();
+        let obs = Recorder::default();
+        let receipt = Gate::new(&cap, &audit, &obs, &FsPathResolver, &StaticMountPolicy::empty())
+            .decide_action(
+                "some-behaviour",
+                BaselineMode::Suggest,
+                &scope(&["test.irreversible"]),
+                &irreversible_action(),
+                &ctx(false, "run-irrev"),
+                &DeniedGraph,
+            )
+            .await
+            .expect("accepting sink");
+        assert_eq!(receipt.decision, ActionDecision::RequireConfirmation);
+        // The faithful reason is the schema-derived irreversibility, not the mode.
+        assert_eq!(
+            receipt.reason,
+            DecisionReason::HighImpact(ActionKind::Irreversible)
+        );
+        // The durable audit preserves the specific high-impact class, not just
+        // "high-impact", so a post-incident reader knows it was irreversibility.
+        assert_eq!(
+            audit.recorded().await[0].structural.outcome,
+            "require-confirmation:high-impact-irreversible"
+        );
     }
 
     /// A trusted action context targeting a fixed app.
@@ -493,12 +637,14 @@ mod tests {
             .expect("accepting sink");
 
         assert_eq!(receipt.decision, ActionDecision::Propose);
+        assert_eq!(receipt.reason, DecisionReason::Mode);
         assert_eq!(receipt.audit_index, 0);
         // The decision was recorded, content-free + correlated, before returning.
         let recorded = audit.recorded().await;
         assert_eq!(recorded.len(), 1);
         assert_eq!(recorded[0].structural.subject, "agent.auto-tag-by-project");
-        assert_eq!(recorded[0].structural.outcome, "propose");
+        // The durable audit records the decision AND its faithful reason.
+        assert_eq!(recorded[0].structural.outcome, "propose:mode");
         assert_eq!(recorded[0].call_chain_id.as_deref(), Some("run-1"));
         assert_eq!(obs.0.lock().unwrap().as_slice(), &[ActionDecision::Propose]);
     }
@@ -562,9 +708,11 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(receipt.decision, ActionDecision::RequireConfirmation);
+        assert_eq!(receipt.reason, DecisionReason::ExternalTrigger);
+        // The reason is durable in the ledger, not only in the in-memory outcome.
         assert_eq!(
             audit.recorded().await[0].structural.outcome,
-            "require-confirmation"
+            "require-confirmation:external-trigger"
         );
     }
 
@@ -715,6 +863,7 @@ mod tests {
         // The world model proved the link safe, so the capability's executing
         // decision stands instead of being capped to confirmation.
         assert_eq!(receipt.decision, ActionDecision::PreviewThenExecute);
+        assert_eq!(receipt.reason, DecisionReason::ProvenReversible);
         assert_eq!(obs.0.lock().unwrap().as_slice(), &[ActionDecision::PreviewThenExecute]);
     }
 
