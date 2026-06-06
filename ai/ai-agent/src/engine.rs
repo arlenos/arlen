@@ -164,20 +164,32 @@ pub type HandlerRegistry = BTreeMap<String, Box<dyn WorkflowHandler>>;
 /// erased. Only ever set when the daemon opted into executing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecutionResult {
-    /// The authorised write was performed; the variant records whether the edge
-    /// was created or already present.
-    Written(crate::executor::WriteOutcome),
+    /// The authorised write was performed; the variant carries the full
+    /// execution receipt (relation, created/exists outcome, op_id, correlation
+    /// id), so a downstream rollback/undo path can compensate the exact edge
+    /// this execution wrote without re-deriving the op_id from context (the
+    /// stale-context redirect the receipt design eliminates).
+    Written(crate::executor::ExecutedWrite),
     /// Execution was refused or definitely did not write (a stale proof, an
     /// audit outage, a pre-send write error). The reason is for logging and
     /// recovery; the attempt, if it reached the write, was audited beforehand.
     Failed(String),
-    /// The write timed out after the request may already have been sent, so it
-    /// is **unknown** whether the daemon committed the relation. NOT a failure:
-    /// reporting it as one would lose the authoritative created/exists signal for
-    /// a write that did commit. It is pre-audited, and the executor's
+    /// The write's commit is **unknown** (a timeout after the request may have
+    /// been sent, or a reconciliation read that could not confirm the op-id
+    /// edge). NOT a failure: reporting it as one would lose the authoritative
+    /// created/exists signal for a write that did commit. It carries the
+    /// [`PendingWrite`](crate::executor::PendingWrite) key (the write's op_id +
+    /// correlation id), so a write that commits late is not left uncompensable —
+    /// a recovery path has the key to re-run the op-id-keyed reconcile/retract.
+    /// `reason` is for logging. It is pre-audited, and the executor's
     /// re-validation reconciles it on the next run (a committed edge fails the
     /// `Not(EdgeExists)` proof, so it is neither double-written nor lost).
-    Indeterminate(String),
+    Indeterminate {
+        /// The durable key to reconcile or compensate the unconfirmed write.
+        pending: crate::executor::PendingWrite,
+        /// Human-readable detail for logging; not load-bearing.
+        reason: String,
+    },
 }
 
 /// The outcome of dispatching one matched behaviour for one event.
@@ -887,28 +899,31 @@ impl<'a> Dispatcher<'a> {
             Ok(Some(written)) => {
                 tracing::info!(
                     behaviour = %behaviour,
-                    write = ?written.write,
-                    outcome = ?written.outcome,
+                    write = ?written.write(),
+                    outcome = ?written.outcome(),
                     "live executor performed the authorised write"
                 );
-                Some(ExecutionResult::Written(written.outcome))
+                // Carry the whole receipt, not just the outcome: a downstream
+                // rollback/undo path needs its op_id + correlation_id to
+                // compensate the exact edge this execution wrote, and the
+                // content-free audit cannot recover them after the fact.
+                Some(ExecutionResult::Written(written))
             }
             // A non-executing decision (the executor planned nothing): nothing
             // to record beyond the decision itself.
             Ok(None) => None,
             // A timed-out or post-send-failed write may have committed, so it is
             // indeterminate, not a failure: mapping it to Failed would discard the
-            // created/exists signal for a write that did persist. The next run's
-            // re-validation reconciles it.
-            Err(
-                e @ (crate::executor::ExecError::WriteTimeout
-                | crate::executor::ExecError::WriteIndeterminate(_)),
-            ) => {
+            // created/exists signal for a write that did persist. Carry the
+            // pending key out (not just a string), so a late commit can still be
+            // reconciled/compensated. The next run's re-validation also reconciles
+            // it (a committed edge fails the `Not(EdgeExists)` proof).
+            Err(crate::executor::ExecError::WriteIndeterminate { pending, reason }) => {
                 tracing::warn!(
                     behaviour = %behaviour,
-                    "live executor write outcome unknown (may have committed): {e}"
+                    "live executor write outcome unknown (may have committed): {reason}"
                 );
-                Some(ExecutionResult::Indeterminate(e.to_string()))
+                Some(ExecutionResult::Indeterminate { pending, reason })
             }
             Err(e) => {
                 tracing::warn!(
@@ -3242,7 +3257,9 @@ trigger:
 
     // ---- Live executor wired into the dispatch loop ----
 
-    use crate::executor::{LiveExecutor, RelationWrite, RelationWriter, WriteError, WriteOutcome};
+    use crate::executor::{
+        LiveExecutor, RelationWrite, RelationWriter, RetractOutcome, WriteError, WriteOutcome,
+    };
     use crate::slice::{PathResolver, SliceError, StaticMountPolicy};
 
     /// A graph shaped like the proof for tagging `/proj/a.rs` to `p1`, unlinked
@@ -3313,6 +3330,9 @@ trigger:
             self.0.lock().unwrap().push(write.clone());
             Ok(WriteOutcome::Created)
         }
+        async fn retract_relation(&self, _write: &RelationWrite, _op_id: &str) -> Result<RetractOutcome, WriteError> {
+            Ok(RetractOutcome::Retracted)
+        }
     }
 
     /// A capability that lifts a proven Ordinary action to `PreviewThenExecute`
@@ -3343,16 +3363,25 @@ trigger:
 
         let outcomes = d.dispatch(&event("/proj/a.rs")).await;
 
-        // The decision lifted to PreviewThenExecute and the execution result is
-        // carried on the outcome (here a `Created` write), not erased.
+        // The decision lifted to PreviewThenExecute and the execution receipt is
+        // carried on the outcome (here a `Created` write), not erased. The
+        // receipt carries the op_id/correlation_id a downstream undo would need.
         match outcomes.as_slice() {
             [DispatchOutcome::Decided { decision, executed, .. }] => {
                 assert_eq!(*decision, ActionDecision::PreviewThenExecute);
-                assert_eq!(
-                    *executed,
-                    Some(ExecutionResult::Written(WriteOutcome::Created)),
-                    "the execution result is surfaced on the outcome"
-                );
+                match executed {
+                    Some(ExecutionResult::Written(receipt)) => {
+                        assert_eq!(receipt.outcome(), WriteOutcome::Created);
+                        assert_eq!(receipt.write().relation_type, "FILE_PART_OF");
+                        assert!(!receipt.op_id().is_empty(), "the receipt carries its op_id");
+                        assert_eq!(
+                            receipt.correlation_id(),
+                            "e1:auto-tag-by-project",
+                            "and the decision identity for a later compensation"
+                        );
+                    }
+                    other => panic!("expected a Written receipt, got {other:?}"),
+                }
             }
             other => panic!("expected one Decided/PreviewThenExecute, got {other:?}"),
         }
@@ -3388,6 +3417,9 @@ trigger:
         async fn write_relation(&self, _write: &RelationWrite, _op_id: &str) -> Result<WriteOutcome, WriteError> {
             Err(WriteError::Failed("daemon unreachable".to_string()))
         }
+        async fn retract_relation(&self, _write: &RelationWrite, _op_id: &str) -> Result<RetractOutcome, WriteError> {
+            Err(WriteError::Failed("daemon unreachable".to_string()))
+        }
     }
 
     /// A writer that never returns, to exercise the write timeout end to end.
@@ -3395,6 +3427,9 @@ trigger:
     #[async_trait::async_trait]
     impl RelationWriter for HangingWriter {
         async fn write_relation(&self, _write: &RelationWrite, _op_id: &str) -> Result<WriteOutcome, WriteError> {
+            std::future::pending().await
+        }
+        async fn retract_relation(&self, _write: &RelationWrite, _op_id: &str) -> Result<RetractOutcome, WriteError> {
             std::future::pending().await
         }
     }
@@ -3420,8 +3455,16 @@ trigger:
         // pending work, so this resolves immediately.
         let outcomes = d.dispatch(&event("/proj/a.rs")).await;
         match outcomes.as_slice() {
-            [DispatchOutcome::Decided { executed: Some(ExecutionResult::Indeterminate(_)), .. }] => {}
-            other => panic!("a timed-out write must be Indeterminate, not Failed: {other:?}"),
+            [DispatchOutcome::Decided { executed: Some(ExecutionResult::Indeterminate { pending, .. }), .. }] =>
+            {
+                // The pending key survives to the dispatch outcome, so a late
+                // commit is not left uncompensable: a recovery path has the
+                // op_id + relation + correlation id to reconcile/retract.
+                assert!(!pending.op_id().is_empty(), "the pending key carries the op_id");
+                assert_eq!(pending.write().relation_type, "FILE_PART_OF");
+                assert_eq!(pending.correlation_id(), "e1:auto-tag-by-project");
+            }
+            other => panic!("a timed-out write must be Indeterminate with a pending key: {other:?}"),
         }
     }
 
@@ -3431,6 +3474,9 @@ trigger:
     #[async_trait::async_trait]
     impl RelationWriter for PostSendFailWriter {
         async fn write_relation(&self, _write: &RelationWrite, _op_id: &str) -> Result<WriteOutcome, WriteError> {
+            Err(WriteError::Indeterminate("connection dropped after send".to_string()))
+        }
+        async fn retract_relation(&self, _write: &RelationWrite, _op_id: &str) -> Result<RetractOutcome, WriteError> {
             Err(WriteError::Indeterminate("connection dropped after send".to_string()))
         }
     }
@@ -3454,7 +3500,7 @@ trigger:
 
         let outcomes = d.dispatch(&event("/proj/a.rs")).await;
         match outcomes.as_slice() {
-            [DispatchOutcome::Decided { executed: Some(ExecutionResult::Indeterminate(_)), .. }] => {}
+            [DispatchOutcome::Decided { executed: Some(ExecutionResult::Indeterminate { .. }), .. }] => {}
             other => panic!("a post-send write failure must be Indeterminate: {other:?}"),
         }
     }

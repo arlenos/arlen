@@ -62,10 +62,28 @@ const REVALIDATION_TIMEOUT: Duration = Duration::from_secs(5);
 /// closed (pre-audited + idempotent, so reconcilable on a later run).
 const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Wall-clock bound on a reconciliation read that resolves a commit-unknown
-/// write. Short, like the write: each is a single indexed edge query, and a
-/// stalled read must not re-introduce the hang the write timeout avoided.
+/// Wall-clock bound on a single reconciliation read that resolves a
+/// commit-unknown write. Short, like the write: each is a single indexed edge
+/// query, and a stalled read must not re-introduce the hang the write timeout
+/// avoided.
 const RECONCILE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// How many times the reconciler reads the op-id edge before giving up. A
+/// commit-unknown write may land slightly *after* the immediate post-write read
+/// (the daemon's queued CREATE runs on its serial graph thread, which can be
+/// briefly behind), so a single read would too often report indeterminate for a
+/// write that commits a moment later. Polling a few times with backoff catches
+/// that late commit; the total added latency stays bounded (see
+/// [`reconcile_backoff`]) so a never-landing write still resolves promptly to
+/// indeterminate with its key preserved for the next organic reconcile.
+const RECONCILE_ATTEMPTS: u32 = 4;
+
+/// Backoff before the `attempt`-th reconciliation read (1-based; no wait before
+/// the first). Grows so the cheap early reads catch a fast commit while the
+/// total bound stays small (250 + 500 + 750 ms = 1.5 s across the retries).
+fn reconcile_backoff(attempt: u32) -> Duration {
+    Duration::from_millis(250 * u64::from(attempt))
+}
 
 /// The concrete relation write a proven action would perform: the namespaced
 /// endpoint entity types, their resolved node ids, and the edge type. The
@@ -134,18 +152,23 @@ pub enum ExecError {
     /// of it (the S13 audit-before-acting invariant the gate also honours).
     #[error("audit unavailable, execution refused: {0}")]
     AuditUnavailable(String),
-    /// The write did not finish within [`WRITE_TIMEOUT`]. Fail-closed so a
-    /// stalled write cannot park the executor (and the daemon's dispatch loop);
-    /// the write is pre-audited and idempotent, so it is reconcilable on a later
-    /// run rather than lost. Commit-unknown (the request may have been sent).
-    #[error("the write timed out")]
-    WriteTimeout,
-    /// The write failed in a way that leaves its commit **unknown** (a transport
-    /// failure after the request may already have been sent). Distinct from
-    /// `Write` (a definite no-commit), so the outcome is reported as
-    /// indeterminate and reconciled on a later run.
-    #[error("the write outcome is unknown: {0}")]
-    WriteIndeterminate(String),
+    /// The write's commit is **unknown** (a timeout after the request may have
+    /// been sent, a post-send transport failure, or a reconciliation read that
+    /// could not confirm the op-id edge). Distinct from `Write` (a definite
+    /// no-commit), so it is reported as indeterminate and reconciled on a later
+    /// run. Carries the [`PendingWrite`] key — the `(write, op_id, correlation
+    /// id)` of the unconfirmed operation — so a late commit is not left
+    /// uncompensable: the key reaches the dispatcher (and any recovery path),
+    /// which can re-run the op-id-keyed reconcile/retract rather than having only
+    /// a reason string. `reason` is for logging.
+    #[error("the write outcome is unknown: {reason}")]
+    WriteIndeterminate {
+        /// The durable key needed to reconcile or compensate the unconfirmed write.
+        pending: PendingWrite,
+        /// Human-readable detail for logging (the edge was not yet observed, or a
+        /// read failed); not load-bearing.
+        reason: String,
+    },
 }
 
 /// A failure to persist a planned relation write, classified by whether the
@@ -181,6 +204,18 @@ pub enum WriteOutcome {
     AlreadyExists,
 }
 
+/// Whether a retract removed the op-id-keyed edge or found nothing to remove.
+/// The daemon's retract is keyed by the operation id, so it deletes only the
+/// edge a matching create stamped; a non-match (already gone, or never this
+/// op's edge) is `Absent`, an idempotent no-op.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RetractOutcome {
+    /// This call removed the edge carrying the given op id.
+    Retracted,
+    /// No edge carried the given op id; the call was an idempotent no-op.
+    Absent,
+}
+
 /// The seam through which the live executor performs an authorised write. The
 /// production impl wraps the os-sdk graph write client (the knowledge daemon's
 /// write socket); tests inject a mock that records the write without I/O. Kept
@@ -199,17 +234,154 @@ pub trait RelationWriter: Send + Sync {
         write: &RelationWrite,
         op_id: &str,
     ) -> Result<WriteOutcome, WriteError>;
+
+    /// Retract (compensate) the relation this op created, deleting only the edge
+    /// carrying `op_id`. The inverse of [`write_relation`](Self::write_relation),
+    /// it undoes exactly the edge the matching create stamped, so it can never
+    /// remove an edge this op did not create. Idempotent (a no-match is
+    /// [`RetractOutcome::Absent`]), so a transport retry is safe. The same
+    /// commit-certainty classification applies: a definite no-commit is
+    /// [`WriteError::Failed`], a commit-unknown transport failure is
+    /// [`WriteError::Indeterminate`].
+    async fn retract_relation(
+        &self,
+        write: &RelationWrite,
+        op_id: &str,
+    ) -> Result<RetractOutcome, WriteError>;
 }
 
-/// A write the live executor performed: the relation and whether it was created
-/// or already present. Returned so a caller (and future compensation) acts only
-/// on a real create.
+/// A write the live executor performed: the **execution receipt**, an opaque
+/// authority token for compensation.
+///
+/// It carries not just the relation and whether it was created, but the exact
+/// `op_id` stamped on the edge and the `correlation_id` of the decision that
+/// produced it. Compensation is keyed off THIS receipt, never a separately
+/// passed context, so the retract can only ever target the very edge this
+/// execution created (a mis-threaded or stale context cannot redirect the delete
+/// to another op's edge).
+///
+/// Its fields are **private with no public constructor**, so the only way to
+/// obtain one is from [`LiveExecutor::execute`] / its reconciliation: the
+/// `(write, op_id)` pairing is therefore always the one the executor actually
+/// derived and wrote, never a caller-fabricated or corrupted pairing that
+/// `compensate` would otherwise trust into retracting the wrong edge. Read
+/// access is via accessors; mutation and construction stay inside this module.
+/// (A receipt that must survive a process boundary — e.g. a persisted undo log
+/// across a daemon restart — needs a signed or ledger-backed form rather than
+/// this in-memory token; that is the undo-log increment's concern, since
+/// receipts live only in-process today.)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutedWrite {
     /// The relation that was written.
-    pub write: RelationWrite,
+    write: RelationWrite,
     /// Whether this call created the edge or found it present.
-    pub outcome: WriteOutcome,
+    outcome: WriteOutcome,
+    /// The durable operation id stamped on the edge by this execution. The
+    /// compensation key: retract deletes only the edge carrying this id.
+    op_id: String,
+    /// The correlation id of the decision that produced this write, so a later
+    /// compensation audits under the same decision identity (it is taken from
+    /// the receipt, not re-supplied, so it cannot drift from the op_id).
+    correlation_id: String,
+}
+
+impl ExecutedWrite {
+    /// Build a receipt. Module-private: only [`LiveExecutor::execute`] and its
+    /// reconciliation construct one, so the `(write, op_id)` pairing is always
+    /// executor-derived. (The test submodule, an in-module descendant, builds
+    /// receipts directly to exercise compensation.)
+    fn new(
+        write: RelationWrite,
+        outcome: WriteOutcome,
+        op_id: String,
+        correlation_id: String,
+    ) -> Self {
+        Self {
+            write,
+            outcome,
+            op_id,
+            correlation_id,
+        }
+    }
+
+    /// The relation that was written.
+    pub fn write(&self) -> &RelationWrite {
+        &self.write
+    }
+
+    /// Whether this execution created the edge or found it already present.
+    pub fn outcome(&self) -> WriteOutcome {
+        self.outcome
+    }
+
+    /// The durable operation id stamped on the edge (the compensation key).
+    pub fn op_id(&self) -> &str {
+        &self.op_id
+    }
+
+    /// The correlation id of the decision that produced this write.
+    pub fn correlation_id(&self) -> &str {
+        &self.correlation_id
+    }
+}
+
+/// The durable key for a write whose commit is **unknown**: the relation, the
+/// op_id the executor stamped, and the decision's correlation id. It is the
+/// receipt's counterpart for the indeterminate path — a late in-process commit
+/// would otherwise leave this operation's op-id-stamped edge in the graph with
+/// nothing holding the key to reconcile or compensate it. Carrying it out of the
+/// executor (through [`ExecError::WriteIndeterminate`] and on to the dispatcher)
+/// lets a recovery path re-run the op-id-keyed reconcile/retract.
+///
+/// Like [`ExecutedWrite`] it is opaque (private fields, module-private
+/// constructor, read accessors), so the only `(write, op_id)` pairing is the one
+/// the executor derived, never a fabricated one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingWrite {
+    write: RelationWrite,
+    op_id: String,
+    correlation_id: String,
+}
+
+impl PendingWrite {
+    /// Build a pending-write key. Module-private: only the executor's
+    /// reconciliation constructs one.
+    fn new(write: RelationWrite, op_id: String, correlation_id: String) -> Self {
+        Self {
+            write,
+            op_id,
+            correlation_id,
+        }
+    }
+
+    /// The relation whose write is unconfirmed.
+    pub fn write(&self) -> &RelationWrite {
+        &self.write
+    }
+
+    /// The op id the unconfirmed write stamped (the reconcile/retract key).
+    pub fn op_id(&self) -> &str {
+        &self.op_id
+    }
+
+    /// The correlation id of the decision behind the unconfirmed write.
+    pub fn correlation_id(&self) -> &str {
+        &self.correlation_id
+    }
+}
+
+/// The result of compensating (undoing) a previously-executed write. Closes the
+/// predict -> gate -> act -> audit -> **compensate** loop: an action that
+/// declared a reversible effect (and so was lifted) can have that exact effect
+/// retracted, keyed by the op id the create stamped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompensationOutcome {
+    /// The compensation removed the edge this action had created.
+    Retracted,
+    /// There was nothing to undo: the edge was already gone, or the original
+    /// write was an idempotent no-op (`AlreadyExists`), so this action never
+    /// created the edge and must not retract one it did not write.
+    NothingToUndo,
 }
 
 /// What a dry run would do, surfaced for logging / the activity view. Holds the
@@ -567,13 +739,134 @@ impl<'a> LiveExecutor<'a> {
             // the durable op_id rather than report a failure that could discard a
             // real commit.
             Ok(Err(WriteError::Indeterminate(_))) | Err(_) => {
-                return self.reconcile(report.write, &op_id, graph).await
+                return self.reconcile(report.write, op_id, ctx.correlation_id, graph).await
             }
         };
-        Ok(Some(ExecutedWrite {
-            write: report.write,
+        Ok(Some(ExecutedWrite::new(
+            report.write,
             outcome,
-        }))
+            op_id,
+            ctx.correlation_id.to_string(),
+        )))
+    }
+
+    /// Compensate (undo) a write this executor performed, retracting exactly the
+    /// edge it created.
+    ///
+    /// This is the inverse of [`execute`](Self::execute) and closes the
+    /// predict -> gate -> act -> audit -> compensate loop. It needs no fresh
+    /// world-model proof: the action was lifted precisely because it declared a
+    /// reversible effect, so its compensation (the retract) is safe by
+    /// construction. The op id and the audit correlation id are taken **from the
+    /// execution receipt** (`executed.op_id` / `executed.correlation_id`), never
+    /// re-derived from a separately-supplied context, so the retract is keyed to
+    /// the very edge THIS execution stamped — a mis-threaded or stale context
+    /// over the same relation cannot redirect the delete to another op's edge,
+    /// and the audit always links to the decision that actually wrote it.
+    ///
+    /// Only a [`WriteOutcome::Created`] write is compensated: an `AlreadyExists`
+    /// write never created the edge, so there is nothing this action may undo
+    /// ([`CompensationOutcome::NothingToUndo`]). Even were that guard absent, the
+    /// op-id keying would make the retract a no-op (this op's id is not on an edge
+    /// it did not create), so this is defence in depth, not the sole safeguard.
+    ///
+    /// The compensation is audited fail-closed **before** the retract (the same
+    /// S13 audit-before-acting invariant as `execute`), linked to the original
+    /// decision by the receipt's correlation id. The retract is time-bounded and
+    /// idempotent; a commit-unknown retract is reconciled by reading whether this
+    /// op's edge is now gone.
+    pub async fn compensate(
+        &self,
+        executed: &ExecutedWrite,
+        graph: &dyn GraphHandle,
+        behaviour_name: &str,
+    ) -> Result<CompensationOutcome, ExecError> {
+        // Only undo a real create. A no-op write created nothing to retract.
+        if executed.outcome != WriteOutcome::Created {
+            return Ok(CompensationOutcome::NothingToUndo);
+        }
+
+        // Audit the compensation before the retract, fail-closed: the graph is
+        // not mutated (here, un-mutated) without a durable, content-free record,
+        // linked to the original decision by the receipt's own correlation id.
+        self.audit
+            .submit(behaviour_action_event(behaviour_name, "compensate", &executed.correlation_id))
+            .await
+            .map_err(|e| ExecError::AuditUnavailable(e.to_string()))?;
+
+        // The op id comes from the receipt, so the retract is keyed to this
+        // execution's own edge and nothing else.
+        match tokio::time::timeout(
+            WRITE_TIMEOUT,
+            self.writer.retract_relation(&executed.write, &executed.op_id),
+        )
+        .await
+        {
+            Ok(Ok(RetractOutcome::Retracted)) => Ok(CompensationOutcome::Retracted),
+            Ok(Ok(RetractOutcome::Absent)) => Ok(CompensationOutcome::NothingToUndo),
+            // A definite no-commit: the retract did not run, the edge is unchanged.
+            Ok(Err(WriteError::Failed(e))) => Err(ExecError::Write(e)),
+            // Commit-unknown (post-send transport failure, or a timeout that may
+            // have fired after the retract reached the daemon). Reconcile by the
+            // op id rather than report a failure that could hide a real retract.
+            Ok(Err(WriteError::Indeterminate(_))) | Err(_) => {
+                self.reconcile_retract(
+                    &executed.write,
+                    &executed.op_id,
+                    &executed.correlation_id,
+                    graph,
+                )
+                .await
+            }
+        }
+    }
+
+    /// Resolve a commit-unknown retract by its durable operation id.
+    ///
+    /// `Retracted` is reported iff this op's edge is now **absent**. This is the
+    /// mirror of the create-side reconciliation and sound by the same op-id
+    /// monotonicity, run in the opposite direction: a retract can only *remove*
+    /// the op-id edge, and nothing recreates that specific id under normal
+    /// operation (only this op's create stamps it, and that create already
+    /// happened — compensation runs only for a `Created` write), so once the
+    /// op-id edge is gone it stays gone. Absent is therefore a *terminal*
+    /// post-state, not merely a point-in-time read. It asserts the goal state
+    /// (this op's link is undone), not causal authorship: the edge may have gone
+    /// via this retract or via an independent bulk delete (e.g. the project store
+    /// unlinking the project's files). Either way the undo is achieved and a
+    /// retry would be a no-op, so suppressing the retry is correct, not a hidden
+    /// failure. If the edge is still present, the retract did not commit
+    /// ([`ExecError::WriteIndeterminate`], resolved by an idempotent retry); a
+    /// failed read is likewise indeterminate, never a false success.
+    ///
+    /// (The one theoretical way the op-id edge could reappear is a crash-replay
+    /// of the *original* create, which derives the same op_id; that is a fresh
+    /// dispatch re-running predict/gate, not a concurrent event during this
+    /// reconcile, and is the same bounded replay caveat the create side carries.)
+    async fn reconcile_retract(
+        &self,
+        write: &RelationWrite,
+        op_id: &str,
+        correlation_id: &str,
+        graph: &dyn GraphHandle,
+    ) -> Result<CompensationOutcome, ExecError> {
+        let pending = || {
+            PendingWrite::new(write.clone(), op_id.to_string(), correlation_id.to_string())
+        };
+        // Poll for the edge becoming ABSENT (target = not present): the retract
+        // may land slightly after the immediate read, so a few backed-off reads
+        // catch it before reporting indeterminate.
+        match self.poll_for(write, op_id, graph, false).await {
+            Some(true) => Ok(CompensationOutcome::Retracted),
+            Some(false) => Err(ExecError::WriteIndeterminate {
+                pending: pending(),
+                reason: "retract unconfirmed; this op's edge is still present".to_string(),
+            }),
+            None => Err(ExecError::WriteIndeterminate {
+                pending: pending(),
+                reason: "retract reconciliation read failed".to_string(),
+            }),
+        }
     }
 
     /// Resolve a commit-unknown write by its durable operation id. The op_id
@@ -588,7 +881,8 @@ impl<'a> LiveExecutor<'a> {
     async fn reconcile(
         &self,
         write: RelationWrite,
-        op_id: &str,
+        op_id: String,
+        correlation_id: &str,
         graph: &dyn GraphHandle,
     ) -> Result<Option<ExecutedWrite>, ExecError> {
         // The ONLY sound positive verdict is the op_id edge being present: an
@@ -600,17 +894,28 @@ impl<'a> LiveExecutor<'a> {
         // still-in-flight write could then create its own op_id edge; and a
         // missing edge may yet be created by this write. A retry with the same
         // op_id resolves it (its op_id edge would then be observed).
-        match self.edge_exists(&write, graph, op_id).await {
-            Some(true) => Ok(Some(ExecutedWrite {
+        // Poll for the op-id edge becoming PRESENT (target = present): a commit
+        // that lands just after the write timed out is caught by the backed-off
+        // retries instead of being reported indeterminate prematurely.
+        match self.poll_for(&write, &op_id, graph, true).await {
+            Some(true) => Ok(Some(ExecutedWrite::new(
                 write,
-                outcome: WriteOutcome::Created,
-            })),
-            Some(false) => Err(ExecError::WriteIndeterminate(
-                "write unconfirmed; its op_id edge is not present".to_string(),
-            )),
-            None => Err(ExecError::WriteIndeterminate(
-                "reconciliation read failed".to_string(),
-            )),
+                WriteOutcome::Created,
+                op_id,
+                correlation_id.to_string(),
+            ))),
+            // Still not confirmed after the poll budget. Carry the key out, so a
+            // write that commits even LATER (the daemon's queued CREATE may run
+            // beyond the budget) is not left with its op-id edge in the graph and
+            // no receipt to undo it; the next organic reconcile resolves it.
+            Some(false) => Err(ExecError::WriteIndeterminate {
+                pending: PendingWrite::new(write, op_id, correlation_id.to_string()),
+                reason: "write unconfirmed; its op_id edge is not present".to_string(),
+            }),
+            None => Err(ExecError::WriteIndeterminate {
+                pending: PendingWrite::new(write, op_id, correlation_id.to_string()),
+                reason: "reconciliation read failed".to_string(),
+            }),
         }
     }
 
@@ -648,6 +953,50 @@ impl<'a> LiveExecutor<'a> {
             return None;
         }
         Some(n > 0)
+    }
+
+    /// Reconciler: poll [`edge_exists`] up to [`RECONCILE_ATTEMPTS`] times with
+    /// backoff, stopping as soon as the edge reaches `target_present` (present
+    /// for a create's confirmation, absent for a retract's). This is the bounded
+    /// "read repeatedly until confirmed" job: a commit (or delete) that lands a
+    /// moment after the immediate read is caught instead of being reported
+    /// indeterminate too early.
+    ///
+    /// Returns `Some(true)` once it observes the target state (a definite,
+    /// sound verdict — for a create, op-id-present can only be this write; for a
+    /// retract, op-id-absent is terminal by the same monotonicity); `Some(false)`
+    /// if every definite read disagreed across the whole budget (still
+    /// unresolved, the key is preserved for the next organic reconcile); `None`
+    /// if no read ever succeeded (a persistently failing/stalled socket). It
+    /// never blocks unbounded: a never-landing write resolves to `Some(false)`
+    /// after the fixed budget rather than waiting forever.
+    async fn poll_for(
+        &self,
+        write: &RelationWrite,
+        op_id: &str,
+        graph: &dyn GraphHandle,
+        target_present: bool,
+    ) -> Option<bool> {
+        let mut had_definite_read = false;
+        for attempt in 0..RECONCILE_ATTEMPTS {
+            if attempt > 0 {
+                tokio::time::sleep(reconcile_backoff(attempt)).await;
+            }
+            if let Some(present) = self.edge_exists(write, graph, op_id).await {
+                had_definite_read = true;
+                if present == target_present {
+                    return Some(true);
+                }
+            }
+        }
+        // Never reached the target. Distinguish "definitely never matched" (we
+        // got at least one good read) from "could not read at all" (None), so a
+        // read outage is not mistaken for a definite disagreement.
+        if had_definite_read {
+            Some(false)
+        } else {
+            None
+        }
     }
 }
 
@@ -885,15 +1234,22 @@ mod tests {
         )
     }
 
-    /// Records each write without performing I/O.
+    /// Records each write and retract without performing I/O.
     #[derive(Default)]
-    struct MockWriter(Mutex<Vec<RelationWrite>>);
+    struct MockWriter {
+        writes: Mutex<Vec<RelationWrite>>,
+        retracts: Mutex<Vec<(RelationWrite, String)>>,
+    }
 
     #[async_trait]
     impl RelationWriter for MockWriter {
         async fn write_relation(&self, write: &RelationWrite, _op_id: &str) -> Result<WriteOutcome, WriteError> {
-            self.0.lock().unwrap().push(write.clone());
+            self.writes.lock().unwrap().push(write.clone());
             Ok(WriteOutcome::Created)
+        }
+        async fn retract_relation(&self, write: &RelationWrite, op_id: &str) -> Result<RetractOutcome, WriteError> {
+            self.retracts.lock().unwrap().push((write.clone(), op_id.to_string()));
+            Ok(RetractOutcome::Retracted)
         }
     }
 
@@ -929,7 +1285,7 @@ mod tests {
             .unwrap();
         assert_eq!(written.write.relation_type, "FILE_PART_OF");
         assert_eq!(written.outcome, WriteOutcome::Created);
-        let recorded = writer.0.lock().unwrap();
+        let recorded = writer.writes.lock().unwrap();
         assert_eq!(recorded.len(), 1, "exactly one write performed");
         assert_eq!(recorded[0].to_type, "system.Project");
         assert_eq!(recorded[0].from_id, "/proj/a.rs");
@@ -964,16 +1320,19 @@ mod tests {
             .await;
         assert!(matches!(result, Err(ExecError::AuditUnavailable(_))));
         assert!(
-            writer.0.lock().unwrap().is_empty(),
+            writer.writes.lock().unwrap().is_empty(),
             "no write may happen when the act cannot be audited"
         );
     }
 
-    /// A writer that never returns, to exercise the write timeout.
+    /// A writer that never returns, to exercise the write/retract timeout.
     struct HangingWriter;
     #[async_trait]
     impl RelationWriter for HangingWriter {
         async fn write_relation(&self, _write: &RelationWrite, _op_id: &str) -> Result<WriteOutcome, WriteError> {
+            std::future::pending().await
+        }
+        async fn retract_relation(&self, _write: &RelationWrite, _op_id: &str) -> Result<RetractOutcome, WriteError> {
             std::future::pending().await
         }
     }
@@ -1002,7 +1361,18 @@ mod tests {
                 BaselineMode::Supervised,
             )
             .await;
-        assert!(matches!(result, Err(ExecError::WriteIndeterminate(_))));
+        // The indeterminate error carries the pending key (not just a reason),
+        // so a late commit is reconcilable: the op_id is the one this execution
+        // derived, the relation is the one written, and the correlation id is
+        // the decision's. Without this the late commit would be uncompensable.
+        match result {
+            Err(ExecError::WriteIndeterminate { pending, .. }) => {
+                assert_eq!(pending.op_id(), derive_op_id("run-x", pending.write()));
+                assert_eq!(pending.write().relation_type, "FILE_PART_OF");
+                assert_eq!(pending.correlation_id(), "run-x");
+            }
+            other => panic!("expected WriteIndeterminate with a pending key, got {other:?}"),
+        }
         // The act was still audited before the write was attempted.
         assert_eq!(audit.recorded().await.len(), 1);
     }
@@ -1039,7 +1409,7 @@ mod tests {
         LiveExecutor::new(cap, resolver, mounts, writer, audit)
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn reconcile_resolves_by_op_id() {
         let (cap, resolver, mounts, writer, audit) = (
             executing_cap(),
@@ -1061,20 +1431,70 @@ mod tests {
         // the only sound positive verdict, valid even if the edge is later
         // deleted).
         let g = ReconcileGraph { mine: Some("op-mine".into()), malformed: false };
-        let r = exec.reconcile(write(), "op-mine", &g).await;
+        let r = exec.reconcile(write(), "op-mine".to_string(), "run-x", &g).await;
         assert!(matches!(r, Ok(Some(ExecutedWrite { outcome: WriteOutcome::Created, .. }))));
 
         // My op_id absent -> indeterminate (not AlreadyExists: FILE_PART_OF is
         // deletable, so a bare edge cannot prove this write was a no-op, and the
         // write may yet commit; a retry with the same op_id resolves it).
         let g = ReconcileGraph { mine: Some("op-other".into()), malformed: false };
-        let r = exec.reconcile(write(), "op-mine", &g).await;
-        assert!(matches!(r, Err(ExecError::WriteIndeterminate(_))));
+        let r = exec.reconcile(write(), "op-mine".to_string(), "run-x", &g).await;
+        assert!(matches!(r, Err(ExecError::WriteIndeterminate { .. })));
 
         // A malformed read fails closed to indeterminate, never a false absence.
         let g = ReconcileGraph { mine: None, malformed: true };
-        let r = exec.reconcile(write(), "op-mine", &g).await;
-        assert!(matches!(r, Err(ExecError::WriteIndeterminate(_))));
+        let r = exec.reconcile(write(), "op-mine".to_string(), "run-x", &g).await;
+        assert!(matches!(r, Err(ExecError::WriteIndeterminate { .. })));
+    }
+
+    /// A graph whose op-id edge is ABSENT until the `present_from`-th read, then
+    /// PRESENT — a write that commits a moment after the immediate read. The
+    /// reconciler's polling must catch it instead of reporting indeterminate.
+    struct LateCommitGraph {
+        calls: std::sync::atomic::AtomicU32,
+        present_from: u32,
+    }
+    #[async_trait]
+    impl GraphHandle for LateCommitGraph {
+        async fn query(
+            &self,
+            _cypher: &str,
+        ) -> Result<Vec<HashMap<String, serde_json::Value>>, GraphError> {
+            let n = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let present = i64::from(n + 1 >= self.present_from);
+            Ok(vec![[("n".to_string(), serde_json::json!(present))].into_iter().collect()])
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn reconcile_catches_a_commit_that_lands_after_the_first_read() {
+        let (cap, resolver, mounts, writer, audit) = (
+            executing_cap(),
+            IdentityResolver,
+            StaticMountPolicy::empty(),
+            MockWriter::default(),
+            MockAuditSink::accepting(),
+        );
+        let exec = reconcile_executor(&cap, &resolver, &mounts, &writer, &audit);
+        let write = RelationWrite {
+            from_type: "system.File".into(),
+            from_id: "f1".into(),
+            to_type: "system.Project".into(),
+            to_id: "p1".into(),
+            relation_type: "FILE_PART_OF".into(),
+        };
+        // Absent on the first two reads, present on the third: within the poll
+        // budget, so the reconciler confirms the late commit as Created rather
+        // than giving up after the immediate read.
+        let g = LateCommitGraph {
+            calls: std::sync::atomic::AtomicU32::new(0),
+            present_from: 3,
+        };
+        let r = exec.reconcile(write, "op-late".to_string(), "run-x", &g).await;
+        assert!(
+            matches!(r, Ok(Some(ExecutedWrite { outcome: WriteOutcome::Created, .. }))),
+            "a commit landing within the poll budget is caught, got {r:?}"
+        );
     }
 
     #[tokio::test]
@@ -1099,7 +1519,7 @@ mod tests {
             .await;
         assert!(matches!(result, Err(ExecError::ProofStale)));
         assert!(
-            writer.0.lock().unwrap().is_empty(),
+            writer.writes.lock().unwrap().is_empty(),
             "no write may happen on a stale proof"
         );
         // A refused proof is not audited as an execution (the act never happened).
@@ -1127,7 +1547,158 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(written, None);
-        assert!(writer.0.lock().unwrap().is_empty());
+        assert!(writer.writes.lock().unwrap().is_empty());
         assert!(audit.recorded().await.is_empty(), "nothing executed, nothing audited");
+    }
+
+    // ---- LiveExecutor: compensation (undo) ----
+
+    fn file_part_of_write() -> RelationWrite {
+        RelationWrite {
+            from_type: "system.File".into(),
+            from_id: "/proj/a.rs".into(),
+            to_type: "system.Project".into(),
+            to_id: "p1".into(),
+            relation_type: "FILE_PART_OF".into(),
+        }
+    }
+
+    /// An execution receipt as `execute` would build it: the write, the outcome,
+    /// the op_id `execute` derived (from the same correlation id), and that id.
+    fn receipt(outcome: WriteOutcome) -> ExecutedWrite {
+        let write = file_part_of_write();
+        let op_id = derive_op_id("run-x", &write);
+        ExecutedWrite {
+            write,
+            outcome,
+            op_id,
+            correlation_id: "run-x".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn compensate_retracts_a_created_write_keyed_by_its_op_id() {
+        let cap = executing_cap();
+        let writer = MockWriter::default();
+        let audit = MockAuditSink::accepting();
+        let graph = tag_graph(true); // graph not read on the happy path
+        let (resolver, mounts) = (IdentityResolver, StaticMountPolicy::empty());
+        let exec = LiveExecutor::new(&cap, &resolver, &mounts, &writer, &audit);
+
+        let executed = receipt(WriteOutcome::Created);
+        let outcome = exec
+            .compensate(&executed, &graph, "auto-tag-by-project")
+            .await
+            .unwrap();
+        assert_eq!(outcome, CompensationOutcome::Retracted);
+
+        // Exactly one retract, keyed by the SAME op id the write would carry, so
+        // it undoes only this op's own edge.
+        let retracts = writer.retracts.lock().unwrap();
+        assert_eq!(retracts.len(), 1, "exactly one retract performed");
+        assert_eq!(retracts[0].0.relation_type, "FILE_PART_OF");
+        assert_eq!(retracts[0].1, derive_op_id("run-x", &file_part_of_write()));
+
+        // The compensation is audited content-free, linked by correlation id.
+        let entries = audit.recorded().await;
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].structural.outcome, "compensate");
+        assert_eq!(entries[0].call_chain_id.as_deref(), Some("run-x"));
+    }
+
+    #[tokio::test]
+    async fn compensate_uses_the_receipt_op_id_not_a_re_derivation() {
+        let cap = executing_cap();
+        let writer = MockWriter::default();
+        let audit = MockAuditSink::accepting();
+        let graph = tag_graph(true);
+        let (resolver, mounts) = (IdentityResolver, StaticMountPolicy::empty());
+        let exec = LiveExecutor::new(&cap, &resolver, &mounts, &writer, &audit);
+
+        // A receipt whose stored op id is NOT what derive_op_id(correlation_id,
+        // write) would produce. The retract must use the stored id verbatim, so a
+        // mis-threaded or stale correlation id can never redirect the delete to a
+        // different op's edge.
+        let executed = ExecutedWrite {
+            write: file_part_of_write(),
+            outcome: WriteOutcome::Created,
+            op_id: "receipt-op-id".to_string(),
+            correlation_id: "decision-A".to_string(),
+        };
+        exec.compensate(&executed, &graph, "auto-tag-by-project").await.unwrap();
+
+        let retracts = writer.retracts.lock().unwrap();
+        assert_eq!(retracts[0].1, "receipt-op-id", "the retract is keyed by the receipt's op id");
+        assert_ne!(
+            "receipt-op-id",
+            derive_op_id("decision-A", &file_part_of_write()),
+            "and that id is not a re-derivation, so this proves it is receipt-keyed"
+        );
+        // The audit links to the receipt's own decision id.
+        let entries = audit.recorded().await;
+        assert_eq!(entries[0].call_chain_id.as_deref(), Some("decision-A"));
+    }
+
+    #[tokio::test]
+    async fn compensate_skips_a_write_that_only_found_the_edge() {
+        let cap = executing_cap();
+        let writer = MockWriter::default();
+        let audit = MockAuditSink::accepting();
+        let graph = tag_graph(true);
+        let (resolver, mounts) = (IdentityResolver, StaticMountPolicy::empty());
+        let exec = LiveExecutor::new(&cap, &resolver, &mounts, &writer, &audit);
+
+        // An AlreadyExists write never created the edge, so there is nothing this
+        // action may undo: no retract, and no audit (nothing happened).
+        let executed = receipt(WriteOutcome::AlreadyExists);
+        let outcome = exec
+            .compensate(&executed, &graph, "auto-tag-by-project")
+            .await
+            .unwrap();
+        assert_eq!(outcome, CompensationOutcome::NothingToUndo);
+        assert!(writer.retracts.lock().unwrap().is_empty(), "no edge it created, no retract");
+        assert!(audit.recorded().await.is_empty(), "nothing undone, nothing audited");
+    }
+
+    #[tokio::test]
+    async fn compensate_refuses_when_audit_unavailable() {
+        let cap = executing_cap();
+        let writer = MockWriter::default();
+        let audit = MockAuditSink::failing();
+        let graph = tag_graph(true);
+        let (resolver, mounts) = (IdentityResolver, StaticMountPolicy::empty());
+        let exec = LiveExecutor::new(&cap, &resolver, &mounts, &writer, &audit);
+
+        let executed = receipt(WriteOutcome::Created);
+        let result = exec
+            .compensate(&executed, &graph, "auto-tag-by-project")
+            .await;
+        assert!(matches!(result, Err(ExecError::AuditUnavailable(_))));
+        assert!(
+            writer.retracts.lock().unwrap().is_empty(),
+            "no retract may happen when the compensation cannot be audited"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn compensate_timeout_reconciles_to_retracted_when_edge_is_gone() {
+        let cap = executing_cap();
+        let writer = HangingWriter;
+        let audit = MockAuditSink::accepting();
+        // The op id edge is absent now, so the reconciliation confirms the
+        // retract committed (only this op could have stamped that edge, so its
+        // disappearance proves the delete).
+        let graph = ReconcileGraph { mine: None, malformed: false };
+        let (resolver, mounts) = (IdentityResolver, StaticMountPolicy::empty());
+        let exec = LiveExecutor::new(&cap, &resolver, &mounts, &writer, &audit);
+
+        let executed = receipt(WriteOutcome::Created);
+        let outcome = exec
+            .compensate(&executed, &graph, "auto-tag-by-project")
+            .await
+            .unwrap();
+        assert_eq!(outcome, CompensationOutcome::Retracted);
+        // The compensation was audited before the retract was attempted.
+        assert_eq!(audit.recorded().await.len(), 1);
     }
 }
