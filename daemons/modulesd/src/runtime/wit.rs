@@ -24,7 +24,7 @@
 //! `arlen:waypointer` lives at the WIT root.
 
 wasmtime::component::bindgen!({
-    path: "../sdk/module-sdk/wit",
+    path: "../../sdk/module-sdk/wit",
     world: "waypointer-provider",
     // wasmtime 36 replaced the v0.x `async: true` flag with per-direction
     // configuration. `default: async` on both imports + exports makes
@@ -58,7 +58,7 @@ pub use arlen::host as host_imports;
 /// re-exports it under a name that reads correctly.
 pub mod mcp {
     wasmtime::component::bindgen!({
-        path: "../sdk/module-sdk/wit",
+        path: "../../sdk/module-sdk/wit",
         world: "mcp-server",
         imports: { default: async },
         exports: { default: async },

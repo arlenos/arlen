@@ -14,7 +14,7 @@
   "license": "GPL-3.0-only",
   "dependencies": {
     "@lucide/svelte": "^1.8.0",
-    "@arlen/tauri-plugin-menu": "file:../sdk/tauri-plugin-menu",
+    "@arlen/tauri-plugin-menu": "file:../../sdk/tauri-plugin-menu",
     "@tauri-apps/api": "^2",
     "lucide-svelte": "^0.577.0"
   },

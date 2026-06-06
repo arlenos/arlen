@@ -68,6 +68,9 @@ pub fn profile_from_manifest(manifest: &ModuleManifest) -> PermissionProfile {
         clipboard: clipboard_from(&manifest.capabilities),
         system: Default::default(),
         input: Default::default(),
+        search: Default::default(),
+        intents: Default::default(),
+        mcp: Default::default(),
     }
 }
 
@@ -172,7 +175,9 @@ mod tests {
             },
             waypointer: None,
             topbar: None,
+            quicksettings: None,
             settings: None,
+            mcp: None,
             capabilities: caps,
             permissions: Default::default(),
             keybindings: Vec::new(),

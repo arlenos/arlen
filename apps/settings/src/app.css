@@ -5,10 +5,10 @@
    classes used by ui-kit's shadcn-derived components, which are imported via
    the @arlen/ui-kit alias instead of being copied into this app. See
    docs/architecture/design-system.md §2.1. */
-@source "../../sdk/ui-kit/src/lib/components/**/*.{svelte,ts}";
+@source "../../../sdk/ui-kit/src/lib/components/**/*.{svelte,ts}";
 /* Canonical motion tokens + shared interaction classes.
    Single source of truth for both desktop-shell and app-settings. */
-@import "../../sdk/ui-kit/src/lib/motion.css";
+@import "../../../sdk/ui-kit/src/lib/motion.css";
 
 /* ============================================================
    Arlen Settings App - Dark Theme Defaults
