@@ -23,17 +23,23 @@
 //!    [`source::UnixGraphReader`] over the os-sdk graph client. The
 //!    live-moment fields (processes, network) and anomalies have their
 //!    own sources, folded in by the caller.
-//! 3. **Orchestration + daemon wiring (next).** `explain_system()`
-//!    over the `AIProvider` seam, exposed as the ai-daemon
-//!    `org.lunaris.AI1` D-Bus method.
+//! 3. **Orchestration (this increment).** [`explain`] turns an
+//!    assembled snapshot into a plain-language summary via the
+//!    `AIProvider` seam; [`explain_system`] wires the graph-context
+//!    source for today's callers.
+//! 4. **Daemon wiring (next).** Expose it as the ai-daemon
+//!    `org.lunaris.AI1` `explain_system()` D-Bus method, assembling a
+//!    full snapshot once the live-moment and anomaly sources exist.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod explain;
 pub mod prompt;
 pub mod snapshot;
 pub mod source;
 
+pub use explain::{explain, explain_system, ExplainError};
 pub use prompt::{build_explanation_prompt, render_snapshot};
 pub use snapshot::{
     Anomaly, AnomalyKind, FileActivity, NetworkActivity, ProcessActivity, ProjectContext,
