@@ -34,9 +34,11 @@
   } from "$lib/stores/notifications";
   import { shell, type ToastPosition, type ToastAnimation } from "$lib/stores/shell";
 
-  import { Group } from "$lib/components/ui/group";
-  import { Row } from "$lib/components/ui/row";
-  import { Switch } from "$lib/components/ui/switch";
+  import { Page } from "@lunaris/ui-kit/components/ui/page";
+  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
+  import { Group } from "@lunaris/ui-kit/components/ui/group";
+  import { Row } from "@lunaris/ui-kit/components/ui/row";
+  import { Switch } from "@lunaris/ui-kit/components/ui/switch";
   import { ValueSlider } from "$lib/components/ui/value-slider";
   import { TimeInput } from "$lib/components/ui/time-input";
   import { DaysPicker } from "$lib/components/ui/days-picker";
@@ -260,14 +262,12 @@
   }
 </script>
 
-<div class="page">
-  <header class="head">
-    <h1>Notifications</h1>
-    <p class="lede">
-      Control how Lunaris delivers notifications, when to stay quiet, and
-      which apps get special treatment.
-    </p>
-  </header>
+<Page
+  title="Notifications"
+  description="Control how Lunaris delivers notifications, when to stay quiet, and which apps get special treatment."
+>
+  <SectionGrid>
+  <div class="span-full notif-column">
 
   {#if $notifications.loading && !$notifications.data}
     <div class="status">Loading…</div>
@@ -664,29 +664,15 @@
       </Group>
     </div>
   {/if}
-</div>
+  </div>
+  </SectionGrid>
+</Page>
 
 <style>
-  .page {
-    width: 100%;
-    max-width: 44rem;
-    margin: 0 auto;
-    padding: 1.25rem 1.5rem 2rem;
-  }
-  .head {
-    margin-bottom: 1.25rem;
-  }
-  h1 {
-    margin: 0 0 0.25rem;
-    font-size: 1.125rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    color: var(--foreground);
-  }
-  .lede {
-    margin: 0;
-    font-size: 0.75rem;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  .notif-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
   }
 
   .groups {
