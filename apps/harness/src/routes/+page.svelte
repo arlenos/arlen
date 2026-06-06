@@ -7,14 +7,33 @@
   /// poll → answer), plain-text message bubbles, a pending state, and
   /// honest error rendering. Visible tool calls, graph-data citations,
   /// streaming, and the always-visible capability context come in A3.
-  import { tick } from "svelte";
+  import { tick, onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import { Input } from "@lunaris/ui-kit/components/ui/input";
   import { Button } from "@lunaris/ui-kit/components/ui/button";
-  import { MessageSquare, ArrowUp, AlertCircle } from "@lucide/svelte";
+  import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2 } from "@lucide/svelte";
   import { messages, busy, send } from "$lib/stores/conversation";
+
+  interface Capability {
+    enabled: boolean;
+    tier: string;
+    actionMode: string;
+  }
 
   let draft = $state("");
   let scrollEl = $state<HTMLDivElement | null>(null);
+  let capability = $state<Capability | null>(null);
+
+  // Always-visible capability context (ai-app.md §2.1): the read tier
+  // and action mode the AI operates under, from ai.toml (what the daemon
+  // enforces). Refreshed each mount so a Settings change is reflected.
+  onMount(async () => {
+    try {
+      capability = await invoke<Capability>("ai_capability");
+    } catch {
+      capability = null;
+    }
+  });
 
   function scrollToBottom() {
     scrollEl?.scrollTo({ top: scrollEl.scrollHeight, behavior: "smooth" });
@@ -42,6 +61,18 @@
 </script>
 
 <div class="conversation">
+  {#if capability}
+    <div class="context-bar" title="What the assistant can see and do, from your AI settings">
+      <span class="cap" class:off={!capability.enabled}>
+        <span class="cap-dot"></span>
+        {capability.enabled ? "Enabled" : "Disabled"}
+      </span>
+      <span class="cap-sep">·</span>
+      <span class="cap"><Eye size={12} strokeWidth={1.75} />Reads: {capability.tier}</span>
+      <span class="cap-sep">·</span>
+      <span class="cap"><Wand2 size={12} strokeWidth={1.75} />{capability.actionMode}</span>
+    </div>
+  {/if}
   <div class="messages" bind:this={scrollEl}>
     {#if $messages.length === 0}
       <div class="empty-state">
@@ -101,6 +132,32 @@
     flex-direction: column;
     height: 100%;
     min-height: 0;
+  }
+  .context-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.72rem;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+  .cap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .cap-sep {
+    opacity: 0.4;
+  }
+  .cap-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-success);
+  }
+  .cap.off .cap-dot {
+    background: color-mix(in srgb, var(--foreground) 35%, transparent);
   }
   .messages {
     flex: 1;
