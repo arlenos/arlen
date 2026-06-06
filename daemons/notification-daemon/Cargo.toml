@@ -39,7 +39,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # Base64 encoding for the `data:image/png;base64,...` URI we set as
 # app_icon after converting image-data to PNG.
 base64 = "0.22"
-notification-proto = { path = "../notification-proto" }
+notification-proto = { path = "../../contracts/notification-proto" }
 
 [build-dependencies]
 prost-build = "0.13"
