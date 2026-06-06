@@ -24,7 +24,7 @@ use crate::socket::protocol::{Event, Request, Response};
 const MAX_FRAME_BYTES: usize = 1024 * 1024;
 
 pub fn default_socket_path() -> PathBuf {
-    if let Ok(p) = std::env::var("LUNARIS_MODULESD_SOCKET") {
+    if let Ok(p) = std::env::var("ARLEN_MODULESD_SOCKET") {
         return PathBuf::from(p);
     }
     let uid = unsafe { libc::getuid() };
@@ -212,10 +212,10 @@ mod tests {
     #[test]
     fn default_socket_path_resolves_correctly() {
         // One serial test to avoid parallel contention on the shared
-        // LUNARIS_MODULESD_SOCKET env var.
-        std::env::set_var("LUNARIS_MODULESD_SOCKET", "/tmp/test.sock");
+        // ARLEN_MODULESD_SOCKET env var.
+        std::env::set_var("ARLEN_MODULESD_SOCKET", "/tmp/test.sock");
         assert_eq!(default_socket_path(), PathBuf::from("/tmp/test.sock"));
-        std::env::remove_var("LUNARIS_MODULESD_SOCKET");
+        std::env::remove_var("ARLEN_MODULESD_SOCKET");
         let p = default_socket_path();
         let s = p.to_string_lossy();
         assert!(s.contains("/run/user/"));

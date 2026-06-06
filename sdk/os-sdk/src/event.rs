@@ -81,8 +81,8 @@ impl UnixEventEmitter {
         Self {
             socket_path: socket_path.into(),
             stream: Arc::new(Mutex::new(None)),
-            app_id: std::env::var("LUNARIS_APP_ID").unwrap_or_else(|_| "unknown".to_string()),
-            session_id: std::env::var("LUNARIS_SESSION_ID")
+            app_id: std::env::var("ARLEN_APP_ID").unwrap_or_else(|_| "unknown".to_string()),
+            session_id: std::env::var("ARLEN_SESSION_ID")
                 .unwrap_or_else(|_| "unknown".to_string()),
         }
     }

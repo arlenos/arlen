@@ -71,8 +71,8 @@ start_tmux() {
 
     # Create new session with event-bus in first pane
     ssh_vm "tmux new-session -d -s $TMUX_SESSION -x 220 -y 50 \
-        'LUNARIS_PRODUCER_SOCKET=$VM_PRODUCER_SOCKET \
-         LUNARIS_CONSUMER_SOCKET=$VM_CONSUMER_SOCKET \
+        'ARLEN_PRODUCER_SOCKET=$VM_PRODUCER_SOCKET \
+         ARLEN_CONSUMER_SOCKET=$VM_CONSUMER_SOCKET \
          RUST_LOG=info \
          ./event-bus 2>&1 | tee /tmp/event-bus.log; bash'"
 
@@ -80,10 +80,10 @@ start_tmux() {
     sleep 1
     ssh_vm "tmux split-window -t $TMUX_SESSION -h \
         'sleep 1 && \
-         LUNARIS_CONSUMER_SOCKET=$VM_CONSUMER_SOCKET \
-         LUNARIS_DB_PATH=$VM_DB_PATH \
-         LUNARIS_GRAPH_PATH=$VM_GRAPH_PATH \
-         LUNARIS_DAEMON_SOCKET=$VM_DAEMON_SOCKET \
+         ARLEN_CONSUMER_SOCKET=$VM_CONSUMER_SOCKET \
+         ARLEN_DB_PATH=$VM_DB_PATH \
+         ARLEN_GRAPH_PATH=$VM_GRAPH_PATH \
+         ARLEN_DAEMON_SOCKET=$VM_DAEMON_SOCKET \
          RUST_LOG=info \
          ./knowledge 2>&1 | tee /tmp/knowledge.log; bash'"
 
@@ -91,8 +91,8 @@ start_tmux() {
     sleep 1
     ssh_vm "tmux split-window -t $TMUX_SESSION -v \
         'sleep 2 && \
-         LUNARIS_PRODUCER_SOCKET=$VM_PRODUCER_SOCKET \
-         LUNARIS_SESSION_ID=$VM_SESSION_ID \
+         ARLEN_PRODUCER_SOCKET=$VM_PRODUCER_SOCKET \
+         ARLEN_SESSION_ID=$VM_SESSION_ID \
          RUST_LOG=info \
          sudo -E ./kernel-layer 2>&1 | tee /tmp/kernel-layer.log; bash'"
 

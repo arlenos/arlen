@@ -272,8 +272,8 @@ mod tests {
         let desktop = tempfile::TempDir::new().unwrap();
         let temp = tempfile::TempDir::new().unwrap();
 
-        std::env::set_var("LUNARIS_USER_APPS_DIR", apps.path());
-        std::env::set_var("LUNARIS_USER_DESKTOP_DIR", desktop.path());
+        std::env::set_var("ARLEN_USER_APPS_DIR", apps.path());
+        std::env::set_var("ARLEN_USER_DESKTOP_DIR", desktop.path());
 
         // Create minimal extracted package.
         fs::create_dir_all(temp.path().join("bin")).unwrap();
@@ -295,8 +295,8 @@ mod tests {
         assert!(entry.exists());
 
         // Cleanup.
-        std::env::remove_var("LUNARIS_USER_APPS_DIR");
-        std::env::remove_var("LUNARIS_USER_DESKTOP_DIR");
+        std::env::remove_var("ARLEN_USER_APPS_DIR");
+        std::env::remove_var("ARLEN_USER_DESKTOP_DIR");
     }
 
     #[test]
@@ -305,8 +305,8 @@ mod tests {
         let desktop = tempfile::TempDir::new().unwrap();
         let temp = tempfile::TempDir::new().unwrap();
 
-        std::env::set_var("LUNARIS_USER_APPS_DIR", apps.path());
-        std::env::set_var("LUNARIS_USER_DESKTOP_DIR", desktop.path());
+        std::env::set_var("ARLEN_USER_APPS_DIR", apps.path());
+        std::env::set_var("ARLEN_USER_DESKTOP_DIR", desktop.path());
 
         fs::create_dir_all(temp.path().join("bin")).unwrap();
         fs::write(temp.path().join("bin/app"), "#!/bin/sh").unwrap();
@@ -333,8 +333,8 @@ mod tests {
         assert!(!app_dir.exists(), "app dir should be removed by rollback");
         assert!(!entry_path.exists(), "desktop entry should be removed by rollback");
 
-        std::env::remove_var("LUNARIS_USER_APPS_DIR");
-        std::env::remove_var("LUNARIS_USER_DESKTOP_DIR");
+        std::env::remove_var("ARLEN_USER_APPS_DIR");
+        std::env::remove_var("ARLEN_USER_DESKTOP_DIR");
     }
 
     #[test]
@@ -342,14 +342,14 @@ mod tests {
         let temp = tempfile::TempDir::new().unwrap();
         fs::write(temp.path().join("small.txt"), "hello").unwrap();
 
-        std::env::set_var("LUNARIS_USER_APPS_DIR", temp.path());
+        std::env::set_var("ARLEN_USER_APPS_DIR", temp.path());
 
         let manifest = test_manifest();
         let txn = InstallTransaction::new(temp.path().to_path_buf(), manifest);
         // Should pass -- tempdir filesystem has plenty of space for 5 bytes.
         assert!(txn.check_disk_space().is_ok());
 
-        std::env::remove_var("LUNARIS_USER_APPS_DIR");
+        std::env::remove_var("ARLEN_USER_APPS_DIR");
     }
 
     #[test]

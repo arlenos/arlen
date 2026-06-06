@@ -157,8 +157,8 @@ mod tests {
         AutoTagByProject.run(&opened(path), graph).await.unwrap()
     }
 
-    const LUNARIS: &str = "~/Repositories/arlenos";
-    const LUNARIS_FILE: &str = "~/Repositories/arlenos/foo.rs";
+    const ARLEN: &str = "~/Repositories/arlenos";
+    const ARLEN_FILE: &str = "~/Repositories/arlenos/foo.rs";
 
     #[test]
     fn path_within_respects_component_boundaries() {
@@ -171,14 +171,14 @@ mod tests {
 
     #[tokio::test]
     async fn proposes_the_matching_project_with_operands() {
-        let g = projects(&[("proj-a", LUNARIS), ("proj-b", "~/Other")]);
-        match run(&g, LUNARIS_FILE).await {
+        let g = projects(&[("proj-a", ARLEN), ("proj-b", "~/Other")]);
+        match run(&g, ARLEN_FILE).await {
             HandlerOutcome::Propose(action) => {
                 assert_eq!(action.tool, "graph.write");
                 assert!(action.summary.contains("proj-a"));
                 // The file operand is the path (the File node id by convention);
                 // the project operand is the matched project id.
-                assert_eq!(action.arguments.get("file").map(String::as_str), Some(LUNARIS_FILE));
+                assert_eq!(action.arguments.get("file").map(String::as_str), Some(ARLEN_FILE));
                 assert_eq!(action.arguments.get("project").map(String::as_str), Some("proj-a"));
             }
             other => panic!("expected a proposal, got {other:?}"),
@@ -188,7 +188,7 @@ mod tests {
     #[tokio::test]
     async fn most_specific_nested_project_wins() {
         let g = projects(&[
-            ("outer", LUNARIS),
+            ("outer", ARLEN),
             ("inner", "~/Repositories/arlenos/desktop-shell"),
         ]);
         match run(&g, "~/Repositories/arlenos/desktop-shell/src/x.rs").await {
@@ -202,7 +202,7 @@ mod tests {
 
     #[tokio::test]
     async fn no_match_and_ambiguous_reach_terminals() {
-        let none = projects(&[("proj-a", LUNARIS)]);
+        let none = projects(&[("proj-a", ARLEN)]);
         assert!(matches!(
             run(&none, "~/Downloads/x.pdf").await,
             HandlerOutcome::Terminal(t) if t == "no_matching_project"
@@ -222,7 +222,7 @@ mod tests {
             projects: vec![],
             err: true,
         };
-        let err = AutoTagByProject.run(&opened(LUNARIS_FILE), &g).await.unwrap_err();
+        let err = AutoTagByProject.run(&opened(ARLEN_FILE), &g).await.unwrap_err();
         assert!(format!("{err}").contains("boom"));
     }
 }

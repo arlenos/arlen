@@ -108,10 +108,10 @@ impl Drop for ProfileWatcher {
 
 impl ProfileWatcher {
     /// Default canonical path per AUTH-CANONICAL.md §2:
-    /// `~/.config/permissions/`. Honours `LUNARIS_PERMISSIONS_DIR`
+    /// `~/.config/permissions/`. Honours `ARLEN_PERMISSIONS_DIR`
     /// for tests (same env var `installd` uses).
     pub fn permissions_dir() -> PathBuf {
-        if let Ok(p) = std::env::var("LUNARIS_PERMISSIONS_DIR") {
+        if let Ok(p) = std::env::var("ARLEN_PERMISSIONS_DIR") {
             return PathBuf::from(p);
         }
         dirs::home_dir()

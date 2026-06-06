@@ -55,7 +55,7 @@ struct HistoryFile {
 fn history_path() -> PathBuf {
     // Allow tests / sandboxed sessions to redirect the path without
     // touching the real user directory.
-    if let Ok(p) = std::env::var("LUNARIS_APP_HISTORY") {
+    if let Ok(p) = std::env::var("ARLEN_APP_HISTORY") {
         return PathBuf::from(p);
     }
     dirs::data_local_dir()

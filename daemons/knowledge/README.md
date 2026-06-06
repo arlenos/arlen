@@ -29,7 +29,7 @@ Other event types land in SQLite but are not yet promoted. The promotion pipelin
 
 ## Query interface
 
-Connect to `LUNARIS_DAEMON_SOCKET` and send `[4-byte big-endian length][UTF-8 Cypher query]`. Receive `[4-byte big-endian length][UTF-8 result]`.
+Connect to `ARLEN_DAEMON_SOCKET` and send `[4-byte big-endian length][UTF-8 Cypher query]`. Receive `[4-byte big-endian length][UTF-8 result]`.
 
 Write queries (CREATE, MERGE, DELETE, SET, REMOVE, DROP) are rejected. The query interface is read-only by design.
 
@@ -41,10 +41,10 @@ MATCH (f:File)-[:ACCESSED_BY]->(a:App) RETURN f.path, a.name LIMIT 10
 ## Running
 
 ```bash
-LUNARIS_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock \
-LUNARIS_DB_PATH=/var/lib/arlen/knowledge/events.db \
-LUNARIS_GRAPH_PATH=/var/lib/arlen/knowledge/graph \
-LUNARIS_DAEMON_SOCKET=/run/arlen/knowledge.sock \
+ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock \
+ARLEN_DB_PATH=/var/lib/arlen/knowledge/events.db \
+ARLEN_GRAPH_PATH=/var/lib/arlen/knowledge/graph \
+ARLEN_DAEMON_SOCKET=/run/arlen/knowledge.sock \
 RUST_LOG=info \
 ./knowledge
 ```
@@ -53,10 +53,10 @@ RUST_LOG=info \
 
 | Variable | Default | Description |
 |---|---|---|
-| `LUNARIS_CONSUMER_SOCKET` | `/run/arlen/event-bus-consumer.sock` | Event Bus consumer socket |
-| `LUNARIS_DB_PATH` | `/var/lib/arlen/knowledge/events.db` | SQLite database path |
-| `LUNARIS_GRAPH_PATH` | `/var/lib/arlen/knowledge/graph` | Ladybug database directory |
-| `LUNARIS_DAEMON_SOCKET` | `/run/arlen/knowledge.sock` | Query interface socket |
+| `ARLEN_CONSUMER_SOCKET` | `/run/arlen/event-bus-consumer.sock` | Event Bus consumer socket |
+| `ARLEN_DB_PATH` | `/var/lib/arlen/knowledge/events.db` | SQLite database path |
+| `ARLEN_GRAPH_PATH` | `/var/lib/arlen/knowledge/graph` | Ladybug database directory |
+| `ARLEN_DAEMON_SOCKET` | `/run/arlen/knowledge.sock` | Query interface socket |
 
 ## Testing
 

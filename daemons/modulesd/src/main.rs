@@ -26,12 +26,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // S6: identify modulesd as the source of every event Tier 1
     // modules emit through the shared UnixEventEmitter. Without this
-    // the emitter would read an empty LUNARIS_APP_ID at construction
+    // the emitter would read an empty ARLEN_APP_ID at construction
     // and downstream consumers would see "app:" as the source.
     // Per-module attribution lives in the event payload, not the
     // envelope source (see host_bindings::events::Host::emit).
-    if std::env::var_os("LUNARIS_APP_ID").is_none() {
-        std::env::set_var("LUNARIS_APP_ID", "arlen-modulesd");
+    if std::env::var_os("ARLEN_APP_ID").is_none() {
+        std::env::set_var("ARLEN_APP_ID", "arlen-modulesd");
     }
 
     info!("modulesd: starting v{}", env!("CARGO_PKG_VERSION"));

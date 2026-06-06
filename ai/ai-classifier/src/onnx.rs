@@ -308,14 +308,14 @@ mod tests {
     }
 
     /// End-to-end inference against a real DeBERTa prompt-injection
-    /// model. Skipped unless `LUNARIS_PI_TEST_MODEL` points at a
+    /// model. Skipped unless `ARLEN_PI_TEST_MODEL` points at a
     /// directory holding `model.onnx` + `tokenizer.json`. Verified
     /// locally against the Apache-2.0 ProtectAI DeBERTa export, which
     /// shares Prompt-Guard's inference contract.
     #[test]
     fn scores_benign_low_and_injection_high() {
-        let Some(dir) = std::env::var_os("LUNARIS_PI_TEST_MODEL").map(PathBuf::from) else {
-            eprintln!("LUNARIS_PI_TEST_MODEL unset; skipping ONNX inference test");
+        let Some(dir) = std::env::var_os("ARLEN_PI_TEST_MODEL").map(PathBuf::from) else {
+            eprintln!("ARLEN_PI_TEST_MODEL unset; skipping ONNX inference test");
             return;
         };
         let clf = OnnxClassifier::load(&cfg(&dir)).expect("load model");
@@ -342,8 +342,8 @@ mod tests {
 
     #[test]
     fn injection_in_a_later_window_of_a_long_input_is_caught() {
-        let Some(dir) = std::env::var_os("LUNARIS_PI_TEST_MODEL").map(PathBuf::from) else {
-            eprintln!("LUNARIS_PI_TEST_MODEL unset; skipping long-input test");
+        let Some(dir) = std::env::var_os("ARLEN_PI_TEST_MODEL").map(PathBuf::from) else {
+            eprintln!("ARLEN_PI_TEST_MODEL unset; skipping long-input test");
             return;
         };
         let clf = OnnxClassifier::load(&cfg(&dir)).expect("load model");
@@ -362,8 +362,8 @@ mod tests {
 
     #[test]
     fn injection_straddling_a_window_boundary_is_caught() {
-        let Some(dir) = std::env::var_os("LUNARIS_PI_TEST_MODEL").map(PathBuf::from) else {
-            eprintln!("LUNARIS_PI_TEST_MODEL unset; skipping boundary test");
+        let Some(dir) = std::env::var_os("ARLEN_PI_TEST_MODEL").map(PathBuf::from) else {
+            eprintln!("ARLEN_PI_TEST_MODEL unset; skipping boundary test");
             return;
         };
         let clf = OnnxClassifier::load(&cfg(&dir)).expect("load model");

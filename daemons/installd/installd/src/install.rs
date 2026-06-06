@@ -187,7 +187,7 @@ pub fn user_apps_dir_pub() -> PathBuf {
 
 /// Get the user apps install directory.
 fn user_apps_dir() -> PathBuf {
-    std::env::var("LUNARIS_USER_APPS_DIR")
+    std::env::var("ARLEN_USER_APPS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             dirs::data_dir()
@@ -198,7 +198,7 @@ fn user_apps_dir() -> PathBuf {
 
 /// Get the user desktop entries directory.
 fn user_desktop_dir() -> PathBuf {
-    std::env::var("LUNARIS_USER_DESKTOP_DIR")
+    std::env::var("ARLEN_USER_DESKTOP_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             dirs::data_dir()
@@ -211,9 +211,9 @@ fn user_desktop_dir() -> PathBuf {
 /// install daemon on behalf of module packages. The compositor watches
 /// this path and merges every `*.toml` into its static binding set.
 ///
-/// Overrideable via `LUNARIS_USER_KEYBINDINGS_DIR` for tests.
+/// Overrideable via `ARLEN_USER_KEYBINDINGS_DIR` for tests.
 pub fn user_keybindings_fragment_dir() -> PathBuf {
-    std::env::var("LUNARIS_USER_KEYBINDINGS_DIR")
+    std::env::var("ARLEN_USER_KEYBINDINGS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             dirs::config_dir()
@@ -224,7 +224,7 @@ pub fn user_keybindings_fragment_dir() -> PathBuf {
 
 /// Get the user GSettings schemas directory.
 fn user_schemas_dir() -> PathBuf {
-    std::env::var("LUNARIS_USER_SCHEMAS_DIR")
+    std::env::var("ARLEN_USER_SCHEMAS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             dirs::data_dir()
@@ -235,7 +235,7 @@ fn user_schemas_dir() -> PathBuf {
 
 /// Get the user modules directory.
 fn user_modules_dir() -> PathBuf {
-    std::env::var("LUNARIS_USER_MODULES_DIR")
+    std::env::var("ARLEN_USER_MODULES_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             dirs::data_dir()
@@ -899,7 +899,7 @@ path = "bin/testapp"
 "#;
         fs::write(extracted.path().join("manifest.toml"), manifest_toml).unwrap();
 
-        std::env::set_var("LUNARIS_USER_APPS_DIR", base.path());
+        std::env::set_var("ARLEN_USER_APPS_DIR", base.path());
 
         let manifest = load_manifest(extracted.path()).unwrap();
         validate_manifest(&manifest).unwrap();
@@ -919,16 +919,16 @@ path = "bin/testapp"
         uninstall_user("com.test.app").unwrap();
         assert!(!dest.exists());
 
-        std::env::remove_var("LUNARIS_USER_APPS_DIR");
+        std::env::remove_var("ARLEN_USER_APPS_DIR");
     }
 
     #[test]
     fn test_list_empty() {
         let base = tempfile::TempDir::new().unwrap();
-        std::env::set_var("LUNARIS_USER_APPS_DIR", base.path());
+        std::env::set_var("ARLEN_USER_APPS_DIR", base.path());
         let apps = list_installed();
         assert!(apps.is_empty());
-        std::env::remove_var("LUNARIS_USER_APPS_DIR");
+        std::env::remove_var("ARLEN_USER_APPS_DIR");
     }
 
     #[test]
@@ -950,7 +950,7 @@ path = "bin/testapp"
         let schemas_dir = tempfile::TempDir::new().unwrap();
         let extracted = tempfile::TempDir::new().unwrap();
 
-        std::env::set_var("LUNARIS_USER_SCHEMAS_DIR", schemas_dir.path());
+        std::env::set_var("ARLEN_USER_SCHEMAS_DIR", schemas_dir.path());
 
         // Create a schema file in the package.
         fs::create_dir_all(extracted.path().join("schemas")).unwrap();
@@ -977,7 +977,7 @@ path = "bin/testapp"
             .join("com.test.app.gschema.xml")
             .exists());
 
-        std::env::remove_var("LUNARIS_USER_SCHEMAS_DIR");
+        std::env::remove_var("ARLEN_USER_SCHEMAS_DIR");
     }
 
     #[test]
@@ -985,14 +985,14 @@ path = "bin/testapp"
         let schemas_dir = tempfile::TempDir::new().unwrap();
         let extracted = tempfile::TempDir::new().unwrap();
 
-        std::env::set_var("LUNARIS_USER_SCHEMAS_DIR", schemas_dir.path());
+        std::env::set_var("ARLEN_USER_SCHEMAS_DIR", schemas_dir.path());
 
         let mut manifest = make_manifest();
         manifest.schemas.files = vec!["../../etc/passwd".into()];
 
         assert!(install_schemas(&manifest, extracted.path()).is_err());
 
-        std::env::remove_var("LUNARIS_USER_SCHEMAS_DIR");
+        std::env::remove_var("ARLEN_USER_SCHEMAS_DIR");
     }
 
     #[test]
@@ -1000,7 +1000,7 @@ path = "bin/testapp"
         let modules_dir = tempfile::TempDir::new().unwrap();
         let extracted = tempfile::TempDir::new().unwrap();
 
-        std::env::set_var("LUNARIS_USER_MODULES_DIR", modules_dir.path());
+        std::env::set_var("ARLEN_USER_MODULES_DIR", modules_dir.path());
 
         // Create a module directory in the package.
         let mod_dir = extracted
@@ -1036,7 +1036,7 @@ path = "bin/testapp"
             .join("com.test.app.waypointer")
             .exists());
 
-        std::env::remove_var("LUNARIS_USER_MODULES_DIR");
+        std::env::remove_var("ARLEN_USER_MODULES_DIR");
     }
 
     #[test]
@@ -1044,14 +1044,14 @@ path = "bin/testapp"
         let modules_dir = tempfile::TempDir::new().unwrap();
         let extracted = tempfile::TempDir::new().unwrap();
 
-        std::env::set_var("LUNARIS_USER_MODULES_DIR", modules_dir.path());
+        std::env::set_var("ARLEN_USER_MODULES_DIR", modules_dir.path());
 
         let mut manifest = make_manifest();
         manifest.modules.bundled = vec!["../../etc".into()];
 
         assert!(install_modules(&manifest, extracted.path()).is_err());
 
-        std::env::remove_var("LUNARIS_USER_MODULES_DIR");
+        std::env::remove_var("ARLEN_USER_MODULES_DIR");
     }
 
     #[test]
@@ -1121,7 +1121,7 @@ default_binding = "Super+O"
     #[test]
     fn write_keybindings_fragment_writes_and_can_be_removed() {
         let dir = tempfile::TempDir::new().unwrap();
-        std::env::set_var("LUNARIS_USER_KEYBINDINGS_DIR", dir.path());
+        std::env::set_var("ARLEN_USER_KEYBINDINGS_DIR", dir.path());
 
         let m = manifest_with_bindings(
             "com.test.kb",
@@ -1144,13 +1144,13 @@ default_binding = "Super+O"
         remove_keybindings_fragment("com.test.kb").unwrap();
         assert!(!path.exists());
 
-        std::env::remove_var("LUNARIS_USER_KEYBINDINGS_DIR");
+        std::env::remove_var("ARLEN_USER_KEYBINDINGS_DIR");
     }
 
     #[test]
     fn write_keybindings_fragment_skips_global_without_permission() {
         let dir = tempfile::TempDir::new().unwrap();
-        std::env::set_var("LUNARIS_USER_KEYBINDINGS_DIR", dir.path());
+        std::env::set_var("ARLEN_USER_KEYBINDINGS_DIR", dir.path());
 
         let m = manifest_with_bindings(
             "com.untrusted",
@@ -1180,25 +1180,25 @@ default_binding = "Super+O"
         assert!(!content.contains("Super+G"));
         assert!(content.contains("Ctrl+F"));
 
-        std::env::remove_var("LUNARIS_USER_KEYBINDINGS_DIR");
+        std::env::remove_var("ARLEN_USER_KEYBINDINGS_DIR");
     }
 
     #[test]
     fn write_keybindings_fragment_no_bindings_is_noop() {
         let dir = tempfile::TempDir::new().unwrap();
-        std::env::set_var("LUNARIS_USER_KEYBINDINGS_DIR", dir.path());
+        std::env::set_var("ARLEN_USER_KEYBINDINGS_DIR", dir.path());
 
         let m = manifest_with_bindings("com.noop", true, Vec::new());
         assert!(write_keybindings_fragment(&m).unwrap().is_none());
         assert!(!dir.path().join("com.noop.toml").exists());
 
-        std::env::remove_var("LUNARIS_USER_KEYBINDINGS_DIR");
+        std::env::remove_var("ARLEN_USER_KEYBINDINGS_DIR");
     }
 
     #[test]
     fn write_keybindings_fragment_all_filtered_is_noop() {
         let dir = tempfile::TempDir::new().unwrap();
-        std::env::set_var("LUNARIS_USER_KEYBINDINGS_DIR", dir.path());
+        std::env::set_var("ARLEN_USER_KEYBINDINGS_DIR", dir.path());
 
         let m = manifest_with_bindings(
             "com.untrusted.global_only",
@@ -1215,15 +1215,15 @@ default_binding = "Super+O"
         // Every entry filtered out → no file should be written.
         assert!(write_keybindings_fragment(&m).unwrap().is_none());
 
-        std::env::remove_var("LUNARIS_USER_KEYBINDINGS_DIR");
+        std::env::remove_var("ARLEN_USER_KEYBINDINGS_DIR");
     }
 
     #[test]
     fn remove_keybindings_fragment_missing_is_ok() {
         let dir = tempfile::TempDir::new().unwrap();
-        std::env::set_var("LUNARIS_USER_KEYBINDINGS_DIR", dir.path());
+        std::env::set_var("ARLEN_USER_KEYBINDINGS_DIR", dir.path());
         remove_keybindings_fragment("com.does-not-exist").unwrap();
-        std::env::remove_var("LUNARIS_USER_KEYBINDINGS_DIR");
+        std::env::remove_var("ARLEN_USER_KEYBINDINGS_DIR");
     }
 
     #[test]

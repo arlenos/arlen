@@ -55,7 +55,7 @@ pub struct ModuleSummary {
 // ---------------------------------------------------------------------------
 
 fn system_modules_dir() -> PathBuf {
-    std::env::var("LUNARIS_SYSTEM_MODULES")
+    std::env::var("ARLEN_SYSTEM_MODULES")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("/usr/share/arlen/modules"))
 }

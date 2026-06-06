@@ -131,7 +131,7 @@ struct NotificationsSection {
 
 /// Resolve the permissions directory.
 fn permissions_dir() -> PathBuf {
-    std::env::var("LUNARIS_PERMISSIONS_DIR")
+    std::env::var("ARLEN_PERMISSIONS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("/var/lib/arlen/permissions"))
 }

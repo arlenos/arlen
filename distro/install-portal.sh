@@ -16,8 +16,8 @@ set -euo pipefail
 
 # ── Configuration ──────────────────────────────────────────────
 
-LUNARIS_PATH="${LUNARIS_PATH:-$HOME/Repositories/arlenos}"
-SRC="$LUNARIS_PATH/xdg-desktop-portal-arlen"
+ARLEN_PATH="${ARLEN_PATH:-$HOME/Repositories/arlenos}"
+SRC="$ARLEN_PATH/xdg-desktop-portal-arlen"
 
 # Source artefacts. Built via:
 #   (cd "$SRC" && cargo build --release)
@@ -43,7 +43,7 @@ ENV_GEN_NAME="30-arlen"
 # itself once rather than ask the user to type sudo for every cp.
 if [ "$(id -u)" -ne 0 ]; then
     echo "Re-executing under sudo for /usr writes..."
-    exec sudo --preserve-env=LUNARIS_PATH "$0" "$@"
+    exec sudo --preserve-env=ARLEN_PATH "$0" "$@"
 fi
 
 echo "=== Arlen portal install ==="

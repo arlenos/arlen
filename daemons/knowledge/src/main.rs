@@ -43,11 +43,11 @@ const DEFAULT_TIMELINE_MOUNT: &str = ".timeline";
 /// Pick the daemon socket path with a graceful fallback for non-root
 /// runs. The hardcoded `/run/arlen/` default requires write access
 /// we don't have outside privileged launchers; if nothing is pinned
-/// via `LUNARIS_DAEMON_SOCKET` and XDG_RUNTIME_DIR is available, use
+/// via `ARLEN_DAEMON_SOCKET` and XDG_RUNTIME_DIR is available, use
 /// that. The daemon itself thus starts cleanly in a normal dev
 /// session even if the launcher script forgets to set the env var.
 fn pick_daemon_socket() -> String {
-    if let Ok(p) = std::env::var("LUNARIS_DAEMON_SOCKET") {
+    if let Ok(p) = std::env::var("ARLEN_DAEMON_SOCKET") {
         return p;
     }
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
@@ -95,14 +95,14 @@ async fn main() -> Result<()> {
 
     info!("starting knowledge daemon");
 
-    let consumer_socket = std::env::var("LUNARIS_CONSUMER_SOCKET")
+    let consumer_socket = std::env::var("ARLEN_CONSUMER_SOCKET")
         .unwrap_or_else(|_| DEFAULT_CONSUMER_SOCKET.to_string());
-    let db_path = std::env::var("LUNARIS_DB_PATH")
+    let db_path = std::env::var("ARLEN_DB_PATH")
         .unwrap_or_else(|_| DEFAULT_DB_PATH.to_string());
-    let graph_path = std::env::var("LUNARIS_GRAPH_PATH")
+    let graph_path = std::env::var("ARLEN_GRAPH_PATH")
         .unwrap_or_else(|_| DEFAULT_GRAPH_PATH.to_string());
     let daemon_socket = pick_daemon_socket();
-    let timeline_mount = std::env::var("LUNARIS_TIMELINE_MOUNT").unwrap_or_else(|_| {
+    let timeline_mount = std::env::var("ARLEN_TIMELINE_MOUNT").unwrap_or_else(|_| {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
         format!("{home}/{DEFAULT_TIMELINE_MOUNT}")
     });

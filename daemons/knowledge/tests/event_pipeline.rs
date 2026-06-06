@@ -109,8 +109,8 @@ async fn event_lands_in_sqlite() {
     // Start the event-bus daemon.
     let _event_bus = KillOnDrop(
         Command::new(binary_path("event-bus"))
-            .env("LUNARIS_PRODUCER_SOCKET", producer_socket_str)
-            .env("LUNARIS_CONSUMER_SOCKET", consumer_socket_str)
+            .env("ARLEN_PRODUCER_SOCKET", producer_socket_str)
+            .env("ARLEN_CONSUMER_SOCKET", consumer_socket_str)
             .env("RUST_LOG", "error") // suppress noise in test output
             .spawn()
             .expect("failed to start event-bus"),
@@ -123,10 +123,10 @@ async fn event_lands_in_sqlite() {
     // Start the knowledge daemon.
     let _knowledge = KillOnDrop(
         Command::new(binary_path("knowledge"))
-            .env("LUNARIS_CONSUMER_SOCKET", consumer_socket_str)
-            .env("LUNARIS_DB_PATH", db_path_str)
-            .env("LUNARIS_GRAPH_PATH", tmp.path().join("graph").to_str().unwrap())
-            .env("LUNARIS_DAEMON_SOCKET", tmp.path().join("daemon.sock").to_str().unwrap())
+            .env("ARLEN_CONSUMER_SOCKET", consumer_socket_str)
+            .env("ARLEN_DB_PATH", db_path_str)
+            .env("ARLEN_GRAPH_PATH", tmp.path().join("graph").to_str().unwrap())
+            .env("ARLEN_DAEMON_SOCKET", tmp.path().join("daemon.sock").to_str().unwrap())
             .env("RUST_LOG", "error")
             .spawn()
             .expect("failed to start knowledge"),

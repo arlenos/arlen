@@ -55,7 +55,7 @@ export interface MenuItem {
 }
 
 export interface MenuRegisterOptions {
-  /** App identifier. Defaults to `LUNARIS_APP_ID` env var on the Rust side. */
+  /** App identifier. Defaults to `ARLEN_APP_ID` env var on the Rust side. */
   appId?: string;
   /** Top-level menu structure. */
   items: MenuItem[];

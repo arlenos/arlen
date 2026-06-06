@@ -30,10 +30,10 @@ pub struct ConfigEventEmitter {
 impl ConfigEventEmitter {
     /// Create a new emitter. Does not connect yet (lazy).
     pub fn new() -> Self {
-        let socket_path = std::env::var("LUNARIS_PRODUCER_SOCKET")
+        let socket_path = std::env::var("ARLEN_PRODUCER_SOCKET")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("/run/arlen/event-bus-producer.sock"));
-        let session_id = std::env::var("LUNARIS_SESSION_ID")
+        let session_id = std::env::var("ARLEN_SESSION_ID")
             .unwrap_or_else(|_| "unknown".into());
         Self {
             socket_path,

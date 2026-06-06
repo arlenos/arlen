@@ -62,7 +62,7 @@ async fn mcp_demo_module_lists_and_calls_echo() {
     // is where the MCP socket is bound) into temp directories.
     let modules_dir = tempfile::tempdir().unwrap();
     let runtime_dir = tempfile::tempdir().unwrap();
-    std::env::set_var("LUNARIS_USER_MODULES_DIR", modules_dir.path());
+    std::env::set_var("ARLEN_USER_MODULES_DIR", modules_dir.path());
     std::env::set_var("XDG_RUNTIME_DIR", runtime_dir.path());
     copy_dir_recursive(&example, &modules_dir.path().join("com.example.mcp-demo"));
 
@@ -128,6 +128,6 @@ async fn mcp_demo_module_lists_and_calls_echo() {
     );
 
     manager.shutdown_all_mcp().await;
-    std::env::remove_var("LUNARIS_USER_MODULES_DIR");
+    std::env::remove_var("ARLEN_USER_MODULES_DIR");
     std::env::remove_var("XDG_RUNTIME_DIR");
 }

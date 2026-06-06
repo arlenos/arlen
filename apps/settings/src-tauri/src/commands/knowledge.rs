@@ -72,11 +72,11 @@ pub fn knowledge_stats_get() -> Result<KnowledgeStats, String> {
 }
 
 /// Resolve the daemon socket path with the same fallback chain
-/// the desktop-shell client uses: `LUNARIS_DAEMON_SOCKET` env var
+/// the desktop-shell client uses: `ARLEN_DAEMON_SOCKET` env var
 /// (set by `start-dev.sh`), then `$XDG_RUNTIME_DIR/arlen/...`,
 /// finally the hardcoded `/run/arlen/...` system default.
 fn daemon_socket_path() -> std::path::PathBuf {
-    if let Ok(p) = std::env::var("LUNARIS_DAEMON_SOCKET") {
+    if let Ok(p) = std::env::var("ARLEN_DAEMON_SOCKET") {
         return std::path::PathBuf::from(p);
     }
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
@@ -213,12 +213,12 @@ mod tests {
     /// Socket-path resolution honours env-var fallbacks.
     #[test]
     fn socket_path_uses_env_overrides() {
-        let prev_socket = std::env::var("LUNARIS_DAEMON_SOCKET").ok();
+        let prev_socket = std::env::var("ARLEN_DAEMON_SOCKET").ok();
         let prev_xdg = std::env::var("XDG_RUNTIME_DIR").ok();
 
         // Explicit override wins.
         unsafe {
-            std::env::set_var("LUNARIS_DAEMON_SOCKET", "/tmp/test-knowledge.sock");
+            std::env::set_var("ARLEN_DAEMON_SOCKET", "/tmp/test-knowledge.sock");
         }
         assert_eq!(
             daemon_socket_path(),
@@ -227,7 +227,7 @@ mod tests {
 
         // Without explicit override, XDG_RUNTIME_DIR is the next stop.
         unsafe {
-            std::env::remove_var("LUNARIS_DAEMON_SOCKET");
+            std::env::remove_var("ARLEN_DAEMON_SOCKET");
             std::env::set_var("XDG_RUNTIME_DIR", "/tmp/run-test");
         }
         assert_eq!(
@@ -238,8 +238,8 @@ mod tests {
         // Restore env.
         unsafe {
             match prev_socket {
-                Some(v) => std::env::set_var("LUNARIS_DAEMON_SOCKET", v),
-                None => std::env::remove_var("LUNARIS_DAEMON_SOCKET"),
+                Some(v) => std::env::set_var("ARLEN_DAEMON_SOCKET", v),
+                None => std::env::remove_var("ARLEN_DAEMON_SOCKET"),
             }
             match prev_xdg {
                 Some(v) => std::env::set_var("XDG_RUNTIME_DIR", v),

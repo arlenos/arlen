@@ -392,10 +392,10 @@ impl Manager {
         // S6: build the backend clients up-front. Socket paths follow
         // the same env-fallback convention every other Arlen client
         // uses; defaults match `os-sdk` and `installd`.
-        let knowledge_socket = std::env::var("LUNARIS_KNOWLEDGE_SOCKET")
-            .or_else(|_| std::env::var("LUNARIS_DAEMON_SOCKET"))
+        let knowledge_socket = std::env::var("ARLEN_KNOWLEDGE_SOCKET")
+            .or_else(|_| std::env::var("ARLEN_DAEMON_SOCKET"))
             .unwrap_or_else(|_| "/run/arlen/knowledge.sock".into());
-        let producer_socket = std::env::var("LUNARIS_PRODUCER_SOCKET")
+        let producer_socket = std::env::var("ARLEN_PRODUCER_SOCKET")
             .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".into());
 
         let graph_client = Arc::new(UnixGraphClient::new(knowledge_socket.clone()));

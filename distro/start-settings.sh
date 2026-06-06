@@ -14,8 +14,8 @@
 
 set -e
 
-LUNARIS_PATH="$HOME/Repositories/arlenos"
-LOG_DIR="$LUNARIS_PATH/logs"
+ARLEN_PATH="$HOME/Repositories/arlenos"
+LOG_DIR="$ARLEN_PATH/logs"
 mkdir -p "$LOG_DIR"
 
 # Match the compositor / desktop-shell wayland socket and verbosity.
@@ -23,5 +23,5 @@ mkdir -p "$LOG_DIR"
 export WAYLAND_DISPLAY=wayland-2
 export RUST_LOG=info
 
-cd "$LUNARIS_PATH/app-settings"
+cd "$ARLEN_PATH/app-settings"
 cargo tauri dev 2>&1 | tee "$LOG_DIR/settings.log"

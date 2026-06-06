@@ -23,11 +23,11 @@ const DEFAULT_PRODUCER_SOCKET: &str = "/run/arlen/event-bus-producer.sock";
 async fn main() -> Result<()> {
     env_logger::init();
 
-    let producer_socket = std::env::var("LUNARIS_PRODUCER_SOCKET")
+    let producer_socket = std::env::var("ARLEN_PRODUCER_SOCKET")
         .unwrap_or_else(|_| DEFAULT_PRODUCER_SOCKET.to_string());
 
     // Read or generate session ID.
-    let session_id = std::env::var("LUNARIS_SESSION_ID")
+    let session_id = std::env::var("ARLEN_SESSION_ID")
         .unwrap_or_else(|_| uuid::Uuid::now_v7().to_string());
 
     info!("starting kernel-layer daemon");

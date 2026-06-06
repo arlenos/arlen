@@ -21,7 +21,7 @@ pub struct ProjectEmitter {
 impl ProjectEmitter {
     /// Create a new emitter. Does not connect immediately.
     pub fn new() -> Self {
-        let path = std::env::var("LUNARIS_PRODUCER_SOCKET")
+        let path = std::env::var("ARLEN_PRODUCER_SOCKET")
             .unwrap_or_else(|_| DEFAULT_PRODUCER_SOCKET.to_string());
         Self {
             socket_path: PathBuf::from(path),

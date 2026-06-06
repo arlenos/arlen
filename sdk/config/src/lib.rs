@@ -39,7 +39,7 @@ fn user_config_dir() -> Option<PathBuf> {
 
 /// Resolve the system defaults directory.
 fn system_defaults_dir() -> PathBuf {
-    std::env::var("LUNARIS_DEFAULTS_DIR")
+    std::env::var("ARLEN_DEFAULTS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(SYSTEM_DEFAULTS_DIR))
 }

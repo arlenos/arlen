@@ -109,7 +109,7 @@ impl UnixEventConsumer {
     /// Connection happens on `subscribe()`.
     pub fn new(socket_path: impl Into<String>) -> Self {
         let app_id =
-            std::env::var("LUNARIS_APP_ID").unwrap_or_else(|_| "unknown".to_string());
+            std::env::var("ARLEN_APP_ID").unwrap_or_else(|_| "unknown".to_string());
         let uid = unsafe { libc::getuid() };
         Self {
             socket_path: socket_path.into(),

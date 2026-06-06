@@ -17,8 +17,8 @@
 
 set -euo pipefail
 
-LUNARIS_PATH="${LUNARIS_PATH:-$HOME/Repositories/arlenos}"
-SRC="$LUNARIS_PATH/xdg-desktop-portal-arlen"
+ARLEN_PATH="${ARLEN_PATH:-$HOME/Repositories/arlenos}"
+SRC="$ARLEN_PATH/xdg-desktop-portal-arlen"
 
 USER_DBUS_SVC="$HOME/.local/share/dbus-1/services"
 DBUS_SVC_NAME="org.freedesktop.impl.portal.desktop.arlen.service"

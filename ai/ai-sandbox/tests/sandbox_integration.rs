@@ -14,7 +14,7 @@ fn sandbox_denies_filesystem_access() {
     // The worker self-tests after sandboxing: exit 0 means opening a
     // file was correctly denied by Landlock.
     let status = Command::new(BIN)
-        .env("LUNARIS_SANDBOX_SELFTEST", "fs")
+        .env("ARLEN_SANDBOX_SELFTEST", "fs")
         .status()
         .expect("spawn worker");
     assert!(
@@ -28,7 +28,7 @@ fn sandbox_denies_network_access() {
     // Exit 0 means socket creation / connect was correctly denied by
     // seccomp.
     let status = Command::new(BIN)
-        .env("LUNARIS_SANDBOX_SELFTEST", "net")
+        .env("ARLEN_SANDBOX_SELFTEST", "net")
         .status()
         .expect("spawn worker");
     assert!(
@@ -42,7 +42,7 @@ fn sandbox_denies_process_creation() {
     // Exit 0 means a raw fork was denied by seccomp, so no descendant
     // can outlive the worker holding stdout open.
     let status = Command::new(BIN)
-        .env("LUNARIS_SANDBOX_SELFTEST", "fork")
+        .env("ARLEN_SANDBOX_SELFTEST", "fork")
         .status()
         .expect("spawn worker");
     assert!(
@@ -54,7 +54,7 @@ fn sandbox_denies_process_creation() {
 #[test]
 fn sandbox_denies_signalling_other_processes() {
     let status = Command::new(BIN)
-        .env("LUNARIS_SANDBOX_SELFTEST", "signal")
+        .env("ARLEN_SANDBOX_SELFTEST", "signal")
         .status()
         .expect("spawn worker");
     assert!(
@@ -66,7 +66,7 @@ fn sandbox_denies_signalling_other_processes() {
 #[test]
 fn sandbox_denies_path_metadata_probing() {
     let status = Command::new(BIN)
-        .env("LUNARIS_SANDBOX_SELFTEST", "stat")
+        .env("ARLEN_SANDBOX_SELFTEST", "stat")
         .status()
         .expect("spawn worker");
     assert!(
@@ -87,8 +87,8 @@ fn sandbox_denies_path_truncation() {
     std::fs::write(&path, b"keep me intact").expect("write probe file");
 
     let status = Command::new(BIN)
-        .env("LUNARIS_SANDBOX_SELFTEST", "truncate")
-        .env("LUNARIS_TRUNCATE_TARGET", &path)
+        .env("ARLEN_SANDBOX_SELFTEST", "truncate")
+        .env("ARLEN_TRUNCATE_TARGET", &path)
         .status()
         .expect("spawn worker");
 

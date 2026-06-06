@@ -32,7 +32,7 @@ pub enum GraphEvent {
 ///   Line 2: comma-separated event patterns
 ///   Line 3: UID filter
 pub async fn connect(consumer_id: &str, uid: u32) -> Result<UnixStream> {
-    let socket_path = std::env::var("LUNARIS_CONSUMER_SOCKET")
+    let socket_path = std::env::var("ARLEN_CONSUMER_SOCKET")
         .unwrap_or_else(|_| DEFAULT_EVENT_BUS.to_string());
 
     let mut stream = UnixStream::connect(&socket_path).await?;

@@ -30,7 +30,7 @@ fn main() {
     // Self-test hook for the integration tests: after sandboxing, probe
     // a forbidden operation and exit 0 if it was correctly denied, 1 if
     // it unexpectedly succeeded. Never reads stdin in this mode.
-    match std::env::var("LUNARIS_SANDBOX_SELFTEST").as_deref() {
+    match std::env::var("ARLEN_SANDBOX_SELFTEST").as_deref() {
         Ok("fs") => std::process::exit(probe_fs_denied()),
         Ok("net") => std::process::exit(probe_net_denied()),
         Ok("truncate") => std::process::exit(probe_truncate_denied()),
@@ -152,12 +152,12 @@ fn probe_net_denied() -> i32 {
 
 /// Returns 0 if truncating a path is denied (Landlock v3+ / seccomp
 /// working), 1 if it unexpectedly succeeds. The target is a throwaway
-/// file supplied by the test via `LUNARIS_TRUNCATE_TARGET`, never a
+/// file supplied by the test via `ARLEN_TRUNCATE_TARGET`, never a
 /// system file: if the sandbox were broken the worst case is that this
 /// disposable file is emptied, not real data loss.
 #[cfg(target_os = "linux")]
 fn probe_truncate_denied() -> i32 {
-    let Ok(path) = std::env::var("LUNARIS_TRUNCATE_TARGET") else {
+    let Ok(path) = std::env::var("ARLEN_TRUNCATE_TARGET") else {
         return 0;
     };
     let Ok(cpath) = std::ffi::CString::new(path) else {

@@ -290,7 +290,7 @@ message ToolbarClearedPayload {
 // Emitted by the desktop-shell when the user clicks a Quick
 // Action or Breadcrumb segment. The source app's
 // tauri-plugin-shell consumes this, filters by matching its
-// own LUNARIS_APP_ID, and re-emits as a per-webview Tauri
+// own ARLEN_APP_ID, and re-emits as a per-webview Tauri
 // event scoped to `window_id` so multi-window apps route the
 // click to the originating webview only.
 message ToolbarActionInvokedPayload {

@@ -31,9 +31,9 @@ async fn main() -> Result<()> {
     // Read socket paths from environment, fall back to production defaults.
     // This allows integration tests to use temporary paths without modifying
     // the binary.
-    let producer_socket = std::env::var("LUNARIS_PRODUCER_SOCKET")
+    let producer_socket = std::env::var("ARLEN_PRODUCER_SOCKET")
         .unwrap_or_else(|_| DEFAULT_PRODUCER_SOCKET.to_string());
-    let consumer_socket = std::env::var("LUNARIS_CONSUMER_SOCKET")
+    let consumer_socket = std::env::var("ARLEN_CONSUMER_SOCKET")
         .unwrap_or_else(|_| DEFAULT_CONSUMER_SOCKET.to_string());
 
     info!("starting event bus daemon");

@@ -36,7 +36,7 @@ pub fn subscription_types(behaviours: &[LoadedBehaviour]) -> Vec<String> {
 }
 
 /// The Event Bus consumer socket. The daemon resolves the real path from
-/// `LUNARIS_CONSUMER_SOCKET` (with this as the fallback).
+/// `ARLEN_CONSUMER_SOCKET` (with this as the fallback).
 pub const DEFAULT_CONSUMER_SOCKET: &str = "/run/arlen/event-bus-consumer.sock";
 
 /// A [`TriggerSource`] backed by an Event Bus subscription.

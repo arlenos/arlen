@@ -431,11 +431,11 @@ impl McpPermissions {
 /// Get the profile file path for an app.
 ///
 /// Foundation §7.3 canonical path: `~/.config/permissions/{app_id}.toml`.
-/// The user owns this file. The optional `LUNARIS_PERMISSIONS_DIR` env
+/// The user owns this file. The optional `ARLEN_PERMISSIONS_DIR` env
 /// override is for tests and dev sandboxes only — never set in
 /// production.
 pub fn profile_path(app_id: &str) -> Result<PathBuf, PermissionError> {
-    if let Ok(p) = std::env::var("LUNARIS_PERMISSIONS_DIR") {
+    if let Ok(p) = std::env::var("ARLEN_PERMISSIONS_DIR") {
         return Ok(PathBuf::from(p).join(format!("{app_id}.toml")));
     }
     let home = dirs::home_dir().ok_or(PermissionError::NoHomeDir)?;

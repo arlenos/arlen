@@ -15,9 +15,9 @@ This is the central nervous system of the Arlen data pipeline. Every component t
 
 Events are length-prefixed protobuf messages. The schema lives in `proto/event.proto`.
 
-**Producer:** connect to `LUNARIS_PRODUCER_SOCKET`, send `[4-byte big-endian length][protobuf Event]`
+**Producer:** connect to `ARLEN_PRODUCER_SOCKET`, send `[4-byte big-endian length][protobuf Event]`
 
-**Consumer:** connect to `LUNARIS_CONSUMER_SOCKET`, send registration:
+**Consumer:** connect to `ARLEN_CONSUMER_SOCKET`, send registration:
 ```
 <consumer-id>\n
 <event-type1>,<event-type2>,...\n
@@ -32,8 +32,8 @@ Event type filters support:
 ## Running
 
 ```bash
-LUNARIS_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock \
-LUNARIS_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock \
+ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock \
+ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock \
 RUST_LOG=info \
 ./event-bus
 ```
@@ -42,8 +42,8 @@ RUST_LOG=info \
 
 | Variable | Default | Description |
 |---|---|---|
-| `LUNARIS_PRODUCER_SOCKET` | `/run/arlen/event-bus-producer.sock` | Producer socket path |
-| `LUNARIS_CONSUMER_SOCKET` | `/run/arlen/event-bus-consumer.sock` | Consumer socket path |
+| `ARLEN_PRODUCER_SOCKET` | `/run/arlen/event-bus-producer.sock` | Producer socket path |
+| `ARLEN_CONSUMER_SOCKET` | `/run/arlen/event-bus-consumer.sock` | Consumer socket path |
 
 ## Testing
 

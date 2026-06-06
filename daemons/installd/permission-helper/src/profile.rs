@@ -23,7 +23,7 @@ pub enum ProfileError {
 
 /// Get the base directory.
 fn base_dir() -> PathBuf {
-    std::env::var("LUNARIS_PERMISSIONS_DIR")
+    std::env::var("ARLEN_PERMISSIONS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(DEFAULT_BASE))
 }

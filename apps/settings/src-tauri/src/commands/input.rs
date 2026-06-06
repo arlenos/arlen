@@ -25,10 +25,10 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 fn compositor_toml_path() -> PathBuf {
-    // `LUNARIS_CONFIG_DIR` overrides the lookup for tests and for
+    // `ARLEN_CONFIG_DIR` overrides the lookup for tests and for
     // packagers that need a non-standard location. Matches the
-    // pattern used by installd's `LUNARIS_USER_*_DIR` overrides.
-    let dir = std::env::var("LUNARIS_CONFIG_DIR")
+    // pattern used by installd's `ARLEN_USER_*_DIR` overrides.
+    let dir = std::env::var("ARLEN_CONFIG_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             dirs::config_dir()
@@ -1406,7 +1406,7 @@ mod tests {
 
     // ── Disk-backed roundtrip tests ──────────────────────────────────
     //
-    // These tests flip `LUNARIS_CONFIG_DIR` to a tempdir so the real
+    // These tests flip `ARLEN_CONFIG_DIR` to a tempdir so the real
     // `~/.config/arlen/` is never touched. Because the env var is
     // process-global, concurrent runs would stomp on each other; the
     // `TEST_ENV_LOCK` mutex serialises just this family of tests so
@@ -1424,12 +1424,12 @@ mod tests {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let dir = tempfile::TempDir::new().unwrap();
-        let prev = std::env::var_os("LUNARIS_CONFIG_DIR");
-        std::env::set_var("LUNARIS_CONFIG_DIR", dir.path());
+        let prev = std::env::var_os("ARLEN_CONFIG_DIR");
+        std::env::set_var("ARLEN_CONFIG_DIR", dir.path());
         f();
         match prev {
-            Some(v) => std::env::set_var("LUNARIS_CONFIG_DIR", v),
-            None => std::env::remove_var("LUNARIS_CONFIG_DIR"),
+            Some(v) => std::env::set_var("ARLEN_CONFIG_DIR", v),
+            None => std::env::remove_var("ARLEN_CONFIG_DIR"),
         }
     }
 

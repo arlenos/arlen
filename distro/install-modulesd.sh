@@ -16,8 +16,8 @@ set -euo pipefail
 
 # ── Configuration ──────────────────────────────────────────────
 
-LUNARIS_PATH="${LUNARIS_PATH:-$HOME/Repositories/arlenos}"
-SRC="$LUNARIS_PATH/modulesd"
+ARLEN_PATH="${ARLEN_PATH:-$HOME/Repositories/arlenos}"
+SRC="$ARLEN_PATH/modulesd"
 
 # Source artefacts. Built via:
 #   (cd "$SRC" && cargo build --release)
@@ -34,7 +34,7 @@ DEST_SYSTEMD_USER="/usr/lib/systemd/user"
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "Re-executing under sudo for /usr writes..."
-    exec sudo --preserve-env=LUNARIS_PATH "$0" "$@"
+    exec sudo --preserve-env=ARLEN_PATH "$0" "$@"
 fi
 
 echo "=== Arlen modulesd install ==="

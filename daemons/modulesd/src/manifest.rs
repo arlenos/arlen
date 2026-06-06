@@ -51,7 +51,7 @@ pub fn system_modules_dir() -> PathBuf {
 
 /// User search path; matches `installd` write location.
 pub fn user_modules_dir() -> PathBuf {
-    if let Ok(p) = std::env::var("LUNARIS_USER_MODULES_DIR") {
+    if let Ok(p) = std::env::var("ARLEN_USER_MODULES_DIR") {
         return PathBuf::from(p);
     }
     dirs::data_dir()

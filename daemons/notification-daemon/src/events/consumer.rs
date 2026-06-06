@@ -27,7 +27,7 @@ pub mod proto {
 }
 
 /// Default consumer-socket path matching `event-bus::main::DEFAULT_CONSUMER_SOCKET`.
-/// Override with `LUNARIS_CONSUMER_SOCKET` for dev sessions.
+/// Override with `ARLEN_CONSUMER_SOCKET` for dev sessions.
 pub const DEFAULT_CONSUMER_SOCKET: &str = "/run/arlen/event-bus-consumer.sock";
 const CONSUMER_ID: &str = "notification-daemon";
 /// Prefix subscriptions. The registry supports `*` for all, exact type,
@@ -44,7 +44,7 @@ const MAX_MESSAGE_BYTES: u32 = 1024 * 1024;
 /// other daemon tasks.
 pub fn start(manager: Arc<NotificationManager>) {
     tokio::spawn(async move {
-        let socket_path = std::env::var("LUNARIS_CONSUMER_SOCKET")
+        let socket_path = std::env::var("ARLEN_CONSUMER_SOCKET")
             .unwrap_or_else(|_| DEFAULT_CONSUMER_SOCKET.to_string());
         loop {
             if let Err(e) = run_once(&socket_path, &manager).await {

@@ -2,7 +2,7 @@
 /// `examples/modules/com.example.currency`.
 ///
 /// Runs the full lifecycle on a temp module dir:
-///   1. Copy the example bundle into a temp `LUNARIS_USER_MODULES_DIR`.
+///   1. Copy the example bundle into a temp `ARLEN_USER_MODULES_DIR`.
 ///   2. Boot the manager and run discovery.
 ///   3. Mint a Tier 2 iframe URL.
 ///   4. Look up the resulting nonce; confirm CSP and root path.
@@ -52,7 +52,7 @@ async fn currency_module_discoverable_after_copy_and_capabilities_enforced() {
     }
 
     let tmp = tempfile::tempdir().unwrap();
-    std::env::set_var("LUNARIS_USER_MODULES_DIR", tmp.path());
+    std::env::set_var("ARLEN_USER_MODULES_DIR", tmp.path());
     copy_dir_recursive(&example, &tmp.path().join("com.example.currency"));
 
     let (tx, _rx) = broadcast::channel(16);
@@ -154,5 +154,5 @@ async fn currency_module_discoverable_after_copy_and_capabilities_enforced() {
         other => panic!("expected HostReply, got {other:?}"),
     }
 
-    std::env::remove_var("LUNARIS_USER_MODULES_DIR");
+    std::env::remove_var("ARLEN_USER_MODULES_DIR");
 }

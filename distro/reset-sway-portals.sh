@@ -32,7 +32,7 @@ note()   { printf '    %s\n' "$*"; }
 step()   { printf '\n→ %s\n' "$*"; }
 
 USER_DBUS_SVC="$HOME/.local/share/dbus-1/services"
-LUNARIS_DBUS_SVC="$USER_DBUS_SVC/org.freedesktop.impl.portal.desktop.arlen.service"
+ARLEN_DBUS_SVC="$USER_DBUS_SVC/org.freedesktop.impl.portal.desktop.arlen.service"
 USER_PORTAL_DIR="$HOME/.config/xdg-desktop-portal"
 TS="$(date +%Y%m%d-%H%M%S)"
 
@@ -56,9 +56,9 @@ fi
 
 # ── 2. Remove dev D-Bus service shim ───────────────────────────
 step "2/6  Removing dev-mode D-Bus service shim"
-if [ -e "$LUNARIS_DBUS_SVC" ]; then
-    rm -f "$LUNARIS_DBUS_SVC"
-    green "  removed: $LUNARIS_DBUS_SVC"
+if [ -e "$ARLEN_DBUS_SVC" ]; then
+    rm -f "$ARLEN_DBUS_SVC"
+    green "  removed: $ARLEN_DBUS_SVC"
 else
     note "(none to remove)"
 fi
