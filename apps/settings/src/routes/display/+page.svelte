@@ -27,8 +27,9 @@
   import RevertConfirmModal from "$lib/components/displays/RevertConfirmModal.svelte";
   import type { ApplyHandle } from "$lib/stores/displays";
   import { Button } from "$lib/components/ui/button";
-  import SettingsPage from "$lib/components/settings/SettingsPage.svelte";
-  import SettingsGroup from "$lib/components/settings/SettingsGroup.svelte";
+  import { Page } from "@lunaris/ui-kit/components/ui/page";
+  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
+  import { Group } from "@lunaris/ui-kit/components/ui/group";
 
   // We deliberately do NOT mirror $monitors / $selectedConnector
   // into local `$state`. Svelte 5's runes scheduler does not detect
@@ -128,11 +129,13 @@
   }
 </script>
 
-<SettingsPage
+<Page
   title="Displays"
   description="Drag the boxes to rearrange. Pick a display to tune resolution, scale, rotation, mirror mode, and more."
 >
-  <SettingsGroup label="Arrangement">
+  <SectionGrid>
+  <div class="span-full disp-column">
+  <Group label="Arrangement">
     <div class="map-wrap">
       <MonitorMap
         {drafts}
@@ -141,7 +144,7 @@
         onPositionChange={updatePosition}
       />
     </div>
-  </SettingsGroup>
+  </Group>
 
   {#if $monitors.length > 0}
     {@const selectedMonitor =
@@ -151,7 +154,7 @@
     {@const dirty = isDirty($monitors, drafts)}
 
     {#if selectedMonitor}
-      <SettingsGroup label={selectedMonitor.connector}>
+      <Group label={selectedMonitor.connector}>
         <MonitorSidePanel
           monitor={selectedMonitor}
           draft={drafts[selectedMonitor.connector] ?? monitorToConfig(selectedMonitor)}
@@ -166,14 +169,16 @@
             Apply
           </Button>
         </div>
-      </SettingsGroup>
+      </Group>
     {/if}
   {/if}
 
   <ProfileSection onApplied={onProfileApplied} />
   <BrightnessSection />
   <NightLightSection />
-</SettingsPage>
+  </div>
+  </SectionGrid>
+</Page>
 
 <RevertConfirmModal
   open={modalOpen}
@@ -183,6 +188,14 @@
 />
 
 <style>
+  /* Display is a single-column page (the arrangement canvas wants the full
+     width); the span-full wrapper keeps it one column at the grid cap. */
+  .disp-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
   /* MonitorMap is the canvas — let it use the SettingsGroup card's
      full width without inner padding so the rectangle preview can
      fill the bounds. */
