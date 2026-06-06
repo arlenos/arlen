@@ -1,6 +1,6 @@
 <script lang="ts">
   import { cn } from "$lib/utils";
-  import { ChevronDown } from "lucide-svelte";
+  import { ChevronDown } from "@lucide/svelte";
 
   interface Option {
     value: string;

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { cn } from "$lib/utils";
-  import { PanelLeft } from "lucide-svelte";
+  import { PanelLeft } from "@lucide/svelte";
   import { useSidebar } from "./context.svelte";
 
   let { class: className }: { class?: string } = $props();

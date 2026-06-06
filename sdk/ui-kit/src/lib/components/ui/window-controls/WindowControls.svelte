@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { Minus, Square, X } from "lucide-svelte";
+  import { Minus, Square, X } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button/index.js";
 
   interface Props {

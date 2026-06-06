@@ -25,7 +25,7 @@
   /// is plain text. The Typography font picker uses it to render each
   /// option in its own font family.
 
-  import { ChevronDown, Check } from "lucide-svelte";
+  import { ChevronDown, Check } from "@lucide/svelte";
   import type { Snippet } from "svelte";
 
   type Props = {
