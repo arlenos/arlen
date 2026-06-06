@@ -58,7 +58,9 @@ pub use clipboard::{
 pub use event::{EmitError, EventEmitter, UnixEventEmitter};
 pub use event_consumer::{EventConsumer, SubscribeError, UnixEventConsumer};
 pub use proto::Event;
-pub use graph::{GraphClient, QueryError, UnixGraphClient};
+pub use graph::{
+    GraphClient, QueryError, RelationRetractOutcome, RelationWriteOutcome, UnixGraphClient,
+};
 pub use intents::{IntentError, IntentType, UnixIntentClient};
 pub use presence::{AutoClear, Presence, PresenceParams};
 pub use search::{SearchError, SearchMode, UnixSearchClient};
