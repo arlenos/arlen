@@ -96,14 +96,21 @@ impl ReadServer {
             .await
         {
             Ok(entries) => {
-                // `head` is read after the page, so it is at least the
-                // highest index returned. It is advisory (lets a client
-                // seek to the tail), so a head probe failure degrades to
-                // 0 rather than failing the whole page.
-                let head = self.reader.head().await.unwrap_or_else(|e| {
-                    tracing::warn!("read head probe failed: {e}");
-                    0
-                });
+                // `head` reflects the SAME filter as the page (a
+                // project-scoped read must not leak the global volume)
+                // and is read after the page, so it is at least the
+                // highest index returned. On a head-probe failure it
+                // degrades to `last returned index + 1` rather than an
+                // impossible 0 under a populated page, preserving the
+                // invariant `head >= max(returned index) + 1`.
+                let fallback_head = entries.last().map_or(0, |e| e.index + 1);
+                let head = match self.reader.head(req.project_id.as_deref()).await {
+                    Ok(h) => h.max(fallback_head),
+                    Err(e) => {
+                        tracing::warn!("read head probe failed: {e}");
+                        fallback_head
+                    }
+                };
                 ReadResponse::Page {
                     entries,
                     tampered: self.tampered.load(std::sync::atomic::Ordering::SeqCst),
