@@ -156,7 +156,12 @@ async fn connection_task(
         raw_auth.app_id(),
         raw_auth.pid()
     );
+    let app_id = raw_auth.app_id().to_string();
     let auth = Arc::new(tokio::sync::Mutex::new(raw_auth));
+    // RAII registration in the permission-revocation registry.
+    // Dropping `_guard` at the end of this function (success, error,
+    // panic — all paths) deregisters automatically.
+    let _guard = crate::permission_watcher::register_connection(app_id, Arc::clone(&auth));
 
     let (mut reader, writer) = stream.into_split();
     let writer = Arc::new(tokio::sync::Mutex::new(writer));

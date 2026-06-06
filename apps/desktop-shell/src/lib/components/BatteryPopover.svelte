@@ -3,7 +3,7 @@
 
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
-  import { Separator } from "$lib/components/ui/separator/index.js";
+  import { Separator } from "@lunaris/ui-kit/components/ui/separator/index.js";
   import { Zap, Battery, Leaf, Scale } from "lucide-svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
 

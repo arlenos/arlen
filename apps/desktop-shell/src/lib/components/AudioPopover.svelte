@@ -3,12 +3,13 @@
 
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
-  import { Separator } from "$lib/components/ui/separator/index.js";
-  import { PopoverSelect } from "$lib/components/ui/popover-select";
+  import { Separator } from "@lunaris/ui-kit/components/ui/separator/index.js";
+  import { PopoverSelect } from "@lunaris/ui-kit/components/ui/popover-select";
   import {
     Volume2, VolumeX, Mic, MicOff, ChevronRight,
   } from "lucide-svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
+  import { FillSlider } from "@lunaris/ui-kit/components/ui/fill-slider";
 
   interface AudioDevice { id: string; name: string; is_default: boolean; }
   interface AppVol { id: number; name: string; volume: number; icon_data: string | null; }
@@ -116,12 +117,16 @@
             <Volume2 size={16} strokeWidth={1.5} />
           {/if}
         </button>
-        <div class="vol-slider" style="--value: {volume}%">
-          <div class="vol-slider-track"></div>
-          <div class="vol-slider-fill"></div>
-          <div class="vol-slider-thumb"></div>
-          <input type="range" min="0" max="100" value={volume}
-            oninput={(e) => setVolume(parseInt(e.currentTarget.value))} />
+        <div class="vol-slider-wrap">
+          <FillSlider
+            value={volume}
+            min={0}
+            max={100}
+            step={1}
+            size="sm"
+            ariaLabel="Output volume"
+            oninput={(v) => setVolume(v)}
+          />
         </div>
         <span class="vol-value">{volume}%</span>
       </div>
@@ -148,12 +153,16 @@
               <Mic size={16} strokeWidth={1.5} />
             {/if}
           </button>
-          <div class="vol-slider" style="--value: {inputVolume}%">
-            <div class="vol-slider-track"></div>
-            <div class="vol-slider-fill"></div>
-            <div class="vol-slider-thumb"></div>
-            <input type="range" min="0" max="100" value={inputVolume}
-              oninput={(e) => setInputVol(parseInt(e.currentTarget.value))} />
+          <div class="vol-slider-wrap">
+            <FillSlider
+              value={inputVolume}
+              min={0}
+              max={100}
+              step={1}
+              size="sm"
+              ariaLabel="Input volume"
+              oninput={(v) => setInputVol(v)}
+            />
           </div>
           <span class="vol-value">{inputVolume}%</span>
         </div>
@@ -187,12 +196,16 @@
                   {/if}
                 </div>
                 <span class="app-name" title={app.name}>{app.name}</span>
-                <div class="vol-slider app-slider" style="--value: {app.volume}%">
-                  <div class="vol-slider-track"></div>
-                  <div class="vol-slider-fill"></div>
-                  <div class="vol-slider-thumb"></div>
-                  <input type="range" min="0" max="100" value={app.volume}
-                    oninput={(e) => setAppVol(app.id, parseInt(e.currentTarget.value))} />
+                <div class="vol-slider-wrap app-slider-wrap">
+                  <FillSlider
+                    value={app.volume}
+                    min={0}
+                    max={100}
+                    step={1}
+                    size="sm"
+                    ariaLabel="{app.name} volume"
+                    oninput={(v) => setAppVol(app.id, v)}
+                  />
                 </div>
                 <span class="vol-value">{app.volume}%</span>
               </div>
@@ -224,7 +237,7 @@
   /* Volume row */
   .vol-row { display: flex; align-items: center; gap: 8px; }
   .vol-icon-btn {
-    width: var(--control-h); height: var(--control-h); display: flex; align-items: center; justify-content: center;
+    width: var(--height-control, 28px); height: var(--height-control, 28px); display: flex; align-items: center; justify-content: center;
     background: transparent; border: none; border-radius: var(--radius-chip);
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
     cursor: pointer; padding: 0; flex-shrink: 0;
@@ -233,14 +246,9 @@
   .vol-icon-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); color: var(--color-fg-shell); }
   .vol-value { font-size: 0.6875rem; opacity: 0.5; min-width: 30px; text-align: right; }
 
-  /* Slider */
-  .vol-slider { position: relative; flex: 1; height: 20px; display: flex; align-items: center; }
-  .vol-slider-track { position: absolute; left: 0; right: 0; height: var(--slider-track-h); background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: var(--radius-chip); }
-  .vol-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: var(--color-accent); border-radius: var(--radius-chip); }
-  .vol-slider-thumb { position: absolute; left: var(--value); width: var(--slider-thumb-size); height: var(--slider-thumb-size); background: var(--color-fg-shell); border-radius: var(--radius-input); transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
-  .vol-slider input[type="range"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; appearance: none; -webkit-appearance: none; }
-  .app-slider { width: 100px; flex: none; }
-  .app-slider .vol-slider-thumb { width: var(--slider-thumb-size); height: var(--slider-thumb-size); }
+  /* Slider wrappers — sizing only; the bar itself comes from FillSlider. */
+  .vol-slider-wrap { flex: 1; display: flex; align-items: center; }
+  .app-slider-wrap { width: 100px; flex: none; }
 
   /*
    * Output/input device pickers use the shared PopoverSelect from
@@ -263,7 +271,7 @@
   .apps-list { display: flex; flex-direction: column; gap: 6px; }
   .app-row { display: flex; align-items: center; gap: 6px; }
   .app-icon {
-    width: var(--control-h-sm); height: var(--control-h-sm); display: flex; align-items: center; justify-content: center;
+    width: var(--height-control-compact, 24px); height: var(--height-control-compact, 24px); display: flex; align-items: center; justify-content: center;
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
     border-radius: var(--radius-chip); flex-shrink: 0;
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);

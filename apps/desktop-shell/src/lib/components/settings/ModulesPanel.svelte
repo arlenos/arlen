@@ -4,7 +4,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
-  import Switch from "$lib/components/ui/switch/switch.svelte";
+  import Switch from "@lunaris/ui-kit/components/ui/switch/switch.svelte";
   import {
     Puzzle, AlertTriangle, RefreshCw,
     ChevronDown, ChevronUp,

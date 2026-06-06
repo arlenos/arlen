@@ -5,7 +5,7 @@
   import {
     Root, Trigger, Content, Item, Separator, CheckboxItem, Shortcut,
     Sub, SubTrigger, SubContent,
-  } from "$lib/components/ui/dropdown-menu/index.js";
+  } from "@lunaris/ui-kit/components/ui/dropdown-menu/index.js";
   import { getContext } from "svelte";
   import type { Readable } from "svelte/store";
   const shellColors =

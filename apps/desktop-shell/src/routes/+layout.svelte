@@ -39,6 +39,7 @@
   import ZoomToolbar from "$lib/components/ZoomToolbar.svelte";
   import WindowHeader from "$lib/components/WindowHeader.svelte";
   import BluetoothPairingDialog from "$lib/components/BluetoothPairingDialog.svelte";
+  import AuthorizationDialog from "$lib/components/AuthorizationDialog.svelte";
   import AmbientOverlay from "$lib/components/AmbientOverlay.svelte";
   import { Toaster } from "svelte-sonner";
   import { toastConfig, initToastConfig } from "$lib/stores/toastConfig.js";
@@ -165,6 +166,7 @@
 <ZoomToolbar />
 <WindowHeader />
 <BluetoothPairingDialog />
+<AuthorizationDialog />
 <Toaster
   position={$toastConfig.position}
   richColors

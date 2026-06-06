@@ -3,7 +3,7 @@
 
   import { Settings } from "lucide-svelte";
   import { closePopover } from "$lib/stores/activePopover.js";
-  import Switch from "$lib/components/ui/switch/switch.svelte";
+  import Switch from "@lunaris/ui-kit/components/ui/switch/switch.svelte";
 
   interface Props {
     icon: any;
@@ -43,12 +43,26 @@
     padding: 10px 12px;
     border-bottom: 1px solid color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
   }
-  .pop-title { flex: 1; font-size: 0.8125rem; font-weight: 500; }
+  /* Title truncates instead of wrapping, so long device names
+     (e.g., bluetooth audio) don't push the toggle/settings off
+     the right edge or expand the popover height. */
+  .pop-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .pop-settings-btn {
-    width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+    width: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 24px);
+    display: flex; align-items: center; justify-content: center;
     background: transparent; border: none; border-radius: var(--radius-chip);
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
     cursor: pointer; padding: 0;
+    flex-shrink: 0;
   }
   .pop-settings-btn:hover {
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);

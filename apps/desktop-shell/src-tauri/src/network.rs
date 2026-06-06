@@ -21,9 +21,9 @@ pub struct NetworkStatus {
 
 /// Returns the current network status.
 #[tauri::command]
-pub fn get_network_status() -> Result<NetworkStatus, String> {
-    let (conn_type, connected, name, signal) = parse_device_status()?;
-    let vpn_active = check_vpn();
+pub async fn get_network_status() -> Result<NetworkStatus, String> {
+    let (conn_type, connected, name, signal) = parse_device_status().await?;
+    let vpn_active = check_vpn().await;
 
     Ok(NetworkStatus {
         connection_type: conn_type,
@@ -35,10 +35,11 @@ pub fn get_network_status() -> Result<NetworkStatus, String> {
 }
 
 /// Parses `nmcli -t -f TYPE,STATE,CONNECTION device` for the primary connection.
-fn parse_device_status() -> Result<(String, bool, Option<String>, Option<u8>), String> {
-    let output = std::process::Command::new("nmcli")
+async fn parse_device_status() -> Result<(String, bool, Option<String>, Option<u8>), String> {
+    let output = tokio::process::Command::new("nmcli")
         .args(["-t", "-f", "TYPE,STATE,CONNECTION", "device"])
         .output()
+        .await
         .map_err(|e| format!("nmcli not found: {e}"))?;
 
     if !output.status.success() {
@@ -86,37 +87,24 @@ fn parse_device_status() -> Result<(String, bool, Option<String>, Option<u8>), S
     Ok(("disconnected".into(), false, None, None))
 }
 
-/// Gets WiFi signal strength for the connected SSID.
+/// Returns signal strength for the connected SSID, sourced from the
+/// `WIFI_CACHE` populated by `get_wifi_networks`.
+///
+/// Previously this ran a synchronous `nmcli dev wifi list` of its own
+/// — which on the first hover after shell start triggers a fresh RF
+/// radio sweep (1-3s) and was the dominant cause of the first-hover
+/// freeze. The cache is populated whenever `loadNetworks()` runs from
+/// the popover (or the network monitor) so by the time
+/// `get_network_status` is asked we usually already have a number.
+/// Returns `None` on cache miss; the indicator handles that gracefully.
 fn get_wifi_signal(ssid: &str) -> Option<u8> {
-    let output = std::process::Command::new("nmcli")
-        .args(["-t", "-f", "IN-USE,SSID,SIGNAL", "dev", "wifi", "list"])
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        let parts: Vec<&str> = line.split(':').collect();
-        if parts.len() >= 3 && parts[0] == "*" {
-            // Active connection indicated by '*' in IN-USE field.
-            let signal: u8 = parts[2].parse().unwrap_or(0);
-            return Some(signal);
-        }
-    }
-
-    // Fallback: match by SSID name.
-    for line in stdout.lines() {
-        let parts: Vec<&str> = line.split(':').collect();
-        if parts.len() >= 3 && parts[1] == ssid {
-            let signal: u8 = parts[2].parse().unwrap_or(0);
-            return Some(signal);
-        }
-    }
-
-    None
+    let cached = get_wifi_cache()?;
+    // Active connection has is_connected == true; fall back to ssid match.
+    cached
+        .iter()
+        .find(|n| n.is_connected)
+        .or_else(|| cached.iter().find(|n| n.ssid == ssid))
+        .map(|n| n.signal)
 }
 
 /// A WiFi network visible in the area.
@@ -142,6 +130,15 @@ fn get_wifi_cache() -> Option<Vec<WifiNetwork>> {
         Some((ts, list)) if ts.elapsed() < WIFI_CACHE_TTL => Some(list.clone()),
         _ => None,
     }
+}
+
+/// Invalidate the WiFi cache. Called after connect/disconnect/forget
+/// so the next `get_wifi_networks` does a fresh fetch and the
+/// `is_connected` flags reflect the new state. Without this, the
+/// shell would show the OLD connected network in the available list
+/// for up to 30 s after switching networks.
+fn invalidate_wifi_cache() {
+    *WIFI_CACHE.lock().unwrap() = None;
 }
 
 /// Store a fresh WiFi list in the cache.
@@ -226,28 +223,46 @@ pub async fn get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
         };
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut networks = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-
+    // nmcli emits ONE row per BSSID (access point), so an SSID with
+    // a mesh / dual-band setup produces multiple rows. We need to
+    // keep the one with IN-USE="*" if any (the BSSID we're actually
+    // connected to), otherwise the strongest signal. Dropping by
+    // first-occurrence loses the connected flag whenever the active
+    // BSSID isn't the first row — which then shows the active SSID
+    // in the "Available Networks" list as if it were unconnected.
+    use std::collections::HashMap;
+    let mut by_ssid: HashMap<String, WifiNetwork> = HashMap::new();
     for line in stdout.lines() {
         let parts: Vec<&str> = line.split(':').collect();
         if parts.len() < 4 {
             continue;
         }
         let ssid = parts[0].to_string();
-        if ssid.is_empty() || seen.contains(&ssid) {
+        if ssid.is_empty() {
             continue;
         }
-        seen.insert(ssid.clone());
-
-        networks.push(WifiNetwork {
+        let candidate = WifiNetwork {
             signal: parts[1].parse().unwrap_or(0),
             security: parts[2].to_string(),
             is_connected: parts[3] == "*",
             is_known: known.contains(&ssid),
-            ssid,
-        });
+            ssid: ssid.clone(),
+        };
+        match by_ssid.get(&ssid) {
+            Some(existing) => {
+                // Prefer connected row; fall back to higher signal.
+                let prefer_new = candidate.is_connected
+                    || (!existing.is_connected && candidate.signal > existing.signal);
+                if prefer_new {
+                    by_ssid.insert(ssid, candidate);
+                }
+            }
+            None => {
+                by_ssid.insert(ssid, candidate);
+            }
+        }
     }
+    let mut networks: Vec<WifiNetwork> = by_ssid.into_values().collect();
 
     networks.sort_by(|a, b| {
         b.is_connected
@@ -261,48 +276,61 @@ pub async fn get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
 
 /// Connects to a known WiFi network by SSID.
 #[tauri::command]
-pub fn connect_wifi(ssid: String) -> Result<(), String> {
-    let output = std::process::Command::new("nmcli")
+pub async fn connect_wifi(ssid: String) -> Result<(), String> {
+    let output = tokio::process::Command::new("nmcli")
         .args(["dev", "wifi", "connect", &ssid])
         .output()
+        .await
         .map_err(|e| format!("nmcli connect failed: {e}"))?;
 
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
     }
+    invalidate_wifi_cache();
     Ok(())
 }
 
 /// Connects to a WiFi network with a password.
 #[tauri::command]
-pub fn connect_wifi_password(ssid: String, password: String) -> Result<(), String> {
-    let output = std::process::Command::new("nmcli")
+pub async fn connect_wifi_password(ssid: String, password: String) -> Result<(), String> {
+    let output = tokio::process::Command::new("nmcli")
         .args(["dev", "wifi", "connect", &ssid, "password", &password])
         .output()
+        .await
         .map_err(|e| format!("nmcli connect failed: {e}"))?;
 
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
     }
+    invalidate_wifi_cache();
     Ok(())
 }
 
 /// Disconnects WiFi by finding the active wifi device.
 #[tauri::command]
-pub fn disconnect_wifi() -> Result<(), String> {
+pub async fn disconnect_wifi() -> Result<(), String> {
     // Find the wifi device name.
-    let output = std::process::Command::new("nmcli")
+    let output = tokio::process::Command::new("nmcli")
         .args(["-t", "-f", "DEVICE,TYPE,STATE", "device"])
         .output()
+        .await
         .map_err(|e| format!("nmcli failed: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     for line in stdout.lines() {
         let parts: Vec<&str> = line.split(':').collect();
         if parts.len() >= 3 && parts[1] == "wifi" && parts[2] == "connected" {
-            let _ = std::process::Command::new("nmcli")
+            let result = tokio::process::Command::new("nmcli")
                 .args(["dev", "disconnect", parts[0]])
-                .output();
+                .output()
+                .await
+                .map_err(|e| format!("nmcli disconnect: {e}"))?;
+            if !result.status.success() {
+                return Err(String::from_utf8_lossy(&result.stderr)
+                    .trim()
+                    .to_string());
+            }
+            invalidate_wifi_cache();
             return Ok(());
         }
     }
@@ -311,10 +339,11 @@ pub fn disconnect_wifi() -> Result<(), String> {
 
 /// Returns whether WiFi radio is enabled.
 #[tauri::command]
-pub fn get_wifi_enabled() -> Result<bool, String> {
-    let output = std::process::Command::new("nmcli")
+pub async fn get_wifi_enabled() -> Result<bool, String> {
+    let output = tokio::process::Command::new("nmcli")
         .args(["radio", "wifi"])
         .output()
+        .await
         .map_err(|e| format!("nmcli radio wifi: {e}"))?;
     let text = String::from_utf8_lossy(&output.stdout);
     Ok(text.trim() == "enabled")
@@ -322,11 +351,12 @@ pub fn get_wifi_enabled() -> Result<bool, String> {
 
 /// Enable or disable the WiFi radio via NetworkManager.
 #[tauri::command]
-pub fn set_wifi_enabled(enabled: bool) -> Result<(), String> {
+pub async fn set_wifi_enabled(enabled: bool) -> Result<(), String> {
     let val = if enabled { "on" } else { "off" };
-    let status = std::process::Command::new("nmcli")
+    let status = tokio::process::Command::new("nmcli")
         .args(["radio", "wifi", val])
         .status()
+        .await
         .map_err(|e| format!("nmcli radio wifi {val}: {e}"))?;
     if !status.success() {
         return Err(format!("nmcli radio wifi {val} returned non-zero"));
@@ -336,10 +366,11 @@ pub fn set_wifi_enabled(enabled: bool) -> Result<(), String> {
 
 /// Returns whether airplane mode is active (all WiFi radios soft-blocked).
 #[tauri::command]
-pub fn get_airplane_mode() -> Result<bool, String> {
-    let output = std::process::Command::new("rfkill")
+pub async fn get_airplane_mode() -> Result<bool, String> {
+    let output = tokio::process::Command::new("rfkill")
         .args(["list", "wifi"])
         .output()
+        .await
         .map_err(|e| format!("rfkill not found: {e}"))?;
     let text = String::from_utf8_lossy(&output.stdout);
     Ok(text.contains("Soft blocked: yes"))
@@ -347,11 +378,12 @@ pub fn get_airplane_mode() -> Result<bool, String> {
 
 /// Toggles airplane mode by blocking or unblocking all wireless radios.
 #[tauri::command]
-pub fn set_airplane_mode(enabled: bool) -> Result<(), String> {
+pub async fn set_airplane_mode(enabled: bool) -> Result<(), String> {
     let action = if enabled { "block" } else { "unblock" };
-    let status = std::process::Command::new("rfkill")
+    let status = tokio::process::Command::new("rfkill")
         .args([action, "all"])
         .status()
+        .await
         .map_err(|e| format!("rfkill {action} failed: {e}"))?;
     if !status.success() {
         return Err(format!("rfkill {action} all returned non-zero"));
@@ -377,10 +409,11 @@ pub struct VpnConnection {
 
 /// Get detailed connection info for a connected/known network.
 #[tauri::command]
-pub fn get_connection_details(ssid: String) -> Result<ConnectionDetails, String> {
-    let output = std::process::Command::new("nmcli")
+pub async fn get_connection_details(ssid: String) -> Result<ConnectionDetails, String> {
+    let output = tokio::process::Command::new("nmcli")
         .args(["-t", "-f", "IP4.ADDRESS,IP4.GATEWAY,IP4.DNS,GENERAL.HWADDR", "connection", "show", &ssid])
         .output()
+        .await
         .map_err(|e| format!("nmcli: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -407,10 +440,11 @@ pub fn get_connection_details(ssid: String) -> Result<ConnectionDetails, String>
 
 /// Get the saved PSK password for a known WiFi network.
 #[tauri::command]
-pub fn get_saved_password(ssid: String) -> Result<Option<String>, String> {
-    let output = std::process::Command::new("nmcli")
+pub async fn get_saved_password(ssid: String) -> Result<Option<String>, String> {
+    let output = tokio::process::Command::new("nmcli")
         .args(["-s", "-t", "-f", "802-11-wireless-security.psk", "connection", "show", &ssid])
         .output()
+        .await
         .map_err(|e| format!("nmcli: {e}"))?;
 
     if !output.status.success() {
@@ -431,42 +465,47 @@ pub fn get_saved_password(ssid: String) -> Result<Option<String>, String> {
 
 /// Delete a saved network connection.
 #[tauri::command]
-pub fn forget_network(ssid: String) -> Result<(), String> {
-    let status = std::process::Command::new("nmcli")
+pub async fn forget_network(ssid: String) -> Result<(), String> {
+    let status = tokio::process::Command::new("nmcli")
         .args(["connection", "delete", &ssid])
         .status()
+        .await
         .map_err(|e| format!("nmcli: {e}"))?;
     if !status.success() {
         return Err(format!("Failed to forget {ssid}"));
     }
+    invalidate_wifi_cache();
     Ok(())
 }
 
 /// Connect to a hidden WiFi network with SSID and password.
 #[tauri::command]
-pub fn connect_hidden_network(ssid: String, password: String) -> Result<(), String> {
-    let output = std::process::Command::new("nmcli")
+pub async fn connect_hidden_network(ssid: String, password: String) -> Result<(), String> {
+    let output = tokio::process::Command::new("nmcli")
         .args([
             "dev", "wifi", "connect", &ssid,
             "password", &password,
             "hidden", "yes",
         ])
         .output()
+        .await
         .map_err(|e| format!("nmcli: {e}"))?;
 
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
     }
+    invalidate_wifi_cache();
     Ok(())
 }
 
 /// List all VPN connections (active and inactive).
 #[tauri::command]
-pub fn get_vpn_connections() -> Result<Vec<VpnConnection>, String> {
+pub async fn get_vpn_connections() -> Result<Vec<VpnConnection>, String> {
     // Get all VPN connections.
-    let output = std::process::Command::new("nmcli")
+    let output = tokio::process::Command::new("nmcli")
         .args(["-t", "-f", "NAME,TYPE", "connection", "show"])
         .output()
+        .await
         .map_err(|e| format!("nmcli: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -483,9 +522,10 @@ pub fn get_vpn_connections() -> Result<Vec<VpnConnection>, String> {
         .collect();
 
     // Get active VPN connections.
-    let active_output = std::process::Command::new("nmcli")
+    let active_output = tokio::process::Command::new("nmcli")
         .args(["-t", "-f", "NAME,TYPE,STATE", "connection", "show", "--active"])
         .output()
+        .await
         .unwrap_or_else(|_| std::process::Output {
             status: std::process::ExitStatus::default(),
             stdout: Vec::new(),
@@ -516,10 +556,11 @@ pub fn get_vpn_connections() -> Result<Vec<VpnConnection>, String> {
 
 /// Connect a VPN by name.
 #[tauri::command]
-pub fn connect_vpn(name: String) -> Result<(), String> {
-    let status = std::process::Command::new("nmcli")
+pub async fn connect_vpn(name: String) -> Result<(), String> {
+    let status = tokio::process::Command::new("nmcli")
         .args(["connection", "up", &name])
         .status()
+        .await
         .map_err(|e| format!("nmcli: {e}"))?;
     if !status.success() {
         return Err(format!("Failed to connect VPN {name}"));
@@ -529,10 +570,11 @@ pub fn connect_vpn(name: String) -> Result<(), String> {
 
 /// Disconnect a VPN by name.
 #[tauri::command]
-pub fn disconnect_vpn(name: String) -> Result<(), String> {
-    let status = std::process::Command::new("nmcli")
+pub async fn disconnect_vpn(name: String) -> Result<(), String> {
+    let status = tokio::process::Command::new("nmcli")
         .args(["connection", "down", &name])
         .status()
+        .await
         .map_err(|e| format!("nmcli: {e}"))?;
     if !status.success() {
         return Err(format!("Failed to disconnect VPN {name}"));
@@ -541,10 +583,11 @@ pub fn disconnect_vpn(name: String) -> Result<(), String> {
 }
 
 /// Checks if any VPN connection is active.
-fn check_vpn() -> bool {
-    let output = match std::process::Command::new("nmcli")
+async fn check_vpn() -> bool {
+    let output = match tokio::process::Command::new("nmcli")
         .args(["-t", "-f", "TYPE,STATE", "con", "show", "--active"])
         .output()
+        .await
     {
         Ok(o) => o,
         Err(_) => return false,

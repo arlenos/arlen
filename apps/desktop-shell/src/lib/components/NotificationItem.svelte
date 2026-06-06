@@ -86,8 +86,8 @@
   }
 
   .notif-icon {
-    width: 24px;
-    height: 24px;
+    width: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 24px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -158,8 +158,8 @@
     position: absolute;
     top: 8px;
     right: 8px;
-    width: 24px;
-    height: 24px;
+    width: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 24px);
     display: flex;
     align-items: center;
     justify-content: center;

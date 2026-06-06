@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
+/* Single-source: scan the ui-kit canon so Tailwind generates the utility
+   classes for ui-kit's shadcn-derived components, which are imported via the
+   @lunaris/ui-kit alias instead of copied. See design-system.md §2.1. */
+@source "../../sdk/ui-kit/src/lib/components/**/*.{svelte,ts}";
 /* Canonical motion tokens + shared interaction classes.
    Single source of truth for both desktop-shell and app-settings. */
 @import "../../sdk/ui-kit/src/lib/motion.css";
@@ -20,8 +24,11 @@
      match the 36px topbar height and the 28×28 hit-target the rest
      of the shell standardises on.
      ============================================================ */
-  --topbar-applet-h:           28px;
-  --topbar-applet-min-w:       28px;
+  /* Topbar applet height aliases the canonical control height so
+     the bar reads in the same rhythm as inline controls. Width
+     stays decoupled because applets size to content + min. */
+  --topbar-applet-h:           var(--height-control, 28px);
+  --topbar-applet-min-w:       var(--height-control, 28px);
   --topbar-applet-radius:      var(--radius-chip);
   --topbar-applet-icon-size:   14px;
   --topbar-applet-label-max-w: 120px;
@@ -77,19 +84,21 @@
   --spacing-lg: 24px;
   --spacing-xl: 32px;
 
-  /* Control heights — single source of truth for the height of
-     interactive elements (buttons, inputs, selects, sliders…) so
-     a row of mixed controls reads as one rhythmic line.
-     Use them via Tailwind's `h-control-{sm,md,lg}` classes (defined
-     below in @theme inline) or via `var(--control-h-*)` in CSS. */
-  --control-h-sm: 24px;
-  --control-h:    28px;
-  --control-h-lg: 36px;
-
-  /* Slider geometry tokens — track height + thumb size shared
-     across `Slider`, `ValueSlider`, and the bespoke shell sliders. */
-  --slider-track-h:   3px;
-  --slider-thumb-size: 12px;
+  /* Sizing scale — see docs/architecture/sizing-system.md.
+     Semantic naming over t-shirt sizing (mirrors theme-system.md
+     radius tokens). Components pick a token by VISUAL ROLE.
+     Use via Tailwind utility classes (h-tag, h-control-compact,
+     h-control, h-control-prominent, h-control-emphasized, h-row,
+     h-bar — defined below in @theme inline) or var() in CSS.
+     Values mirrored in `app-settings/src/app.css` and
+     `sdk/ui-kit/src/app.css`. */
+  --height-tag:                 20px;  /* Badges, status pills, indicators */
+  --height-control-compact:     24px;  /* Compact controls in dense rows */
+  --height-control:             28px;  /* Standard controls (most common) */
+  --height-control-prominent:   36px;  /* Prominent controls, default button */
+  --height-control-emphasized:  40px;  /* Emphasized buttons, hero inputs */
+  --height-row:                 40px;  /* Settings rows, dense list items */
+  --height-bar:                 36px;  /* Top bar, compositor SSD header */
 
   /* Motion tokens live in sdk/ui-kit/src/lib/motion.css (imported above). */
 
@@ -163,6 +172,36 @@
 [data-context-menu-content] { z-index: 300 !important; }
 [data-context-menu-sub-content] { z-index: 310 !important; }
 
+/* Themed scrollbar: applied to any element with `.themed-scroll`
+   plus an `overflow: auto/scroll`. Uses WebKit pseudo-elements
+   (Lunaris's Tauri webview is WebKitGTK). The thumb picks up the
+   surface-context foreground via cascade so it works in both
+   shell-popover (light thumb on dark bg) and app-surface (dark
+   thumb on light bg). */
+.themed-scroll {
+  scrollbar-width: thin;
+  scrollbar-color:
+    color-mix(in srgb, var(--foreground) 38%, transparent)
+    transparent;
+}
+.themed-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.themed-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.themed-scroll::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--foreground) 38%, transparent);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  min-height: 24px;
+}
+.themed-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--foreground) 55%, transparent);
+}
+
 /* bits-ui uses focus (not hover) for menu highlight, but pointer-enter
    focus can be unreliable in WebKitGTK. Add explicit hover fallback. */
 [data-context-menu-item]:not([data-disabled]):hover {
@@ -208,14 +247,16 @@
   --radius-modal:  var(--radius-modal);
   --radius-full:   var(--radius-full);
 
-  /* Control-height utilities: `h-control` / `h-control-sm` /
-     `h-control-lg` map to the `--control-h*` design tokens so the
-     shadcn Tailwind-side primitives (Button, Input, Select…) and
-     the bespoke CSS-in-Svelte primitives (PopoverSelect,
-     ValueSlider, TimeInput…) agree on row height. */
-  --height-control-sm: var(--control-h-sm);
-  --height-control:    var(--control-h);
-  --height-control-lg: var(--control-h-lg);
+  /* Sizing-scale utilities — see docs/architecture/sizing-system.md.
+     Generates h-tag, h-control-compact, h-control,
+     h-control-prominent, h-control-emphasized, h-row, h-bar. */
+  --height-tag:                 var(--height-tag, 20px);
+  --height-control-compact:     var(--height-control-compact, 24px);
+  --height-control:             var(--height-control, 28px);
+  --height-control-prominent:   var(--height-control-prominent, 36px);
+  --height-control-emphasized:  var(--height-control-emphasized, 40px);
+  --height-row:                 var(--height-row, 40px);
+  --height-bar:                 var(--height-bar, 36px);
 
   /* Motion tokens registered as Tailwind utilities. Values come from
      sdk/ui-kit/src/lib/motion.css; this block only exposes them to
