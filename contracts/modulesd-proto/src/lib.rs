@@ -225,6 +225,17 @@ pub enum HostCall {
     GraphQuery { cypher: String },
     GraphWrite { cypher: String },
     NetworkFetch { url: String, headers: Vec<(String, String)> },
+    /// HTTP POST host call for Tier 2 iframes. `body_b64` is the
+    /// base64-encoded request body so the JSON wire format stays
+    /// safe for arbitrary bytes. Header semantics + capability
+    /// gating match `NetworkFetch`; the SDK `host::network::post`
+    /// helper runs the same HTTPS-only + SSRF + per-hop redirect
+    /// re-validation pipeline.
+    NetworkPost {
+        url: String,
+        body_b64: String,
+        headers: Vec<(String, String)>,
+    },
     EventEmit { event_type: String, payload_b64: String },
 }
 
