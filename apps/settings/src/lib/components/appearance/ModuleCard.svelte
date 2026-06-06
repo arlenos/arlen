@@ -12,7 +12,7 @@
     Settings2,
     AlertTriangle,
   } from "lucide-svelte";
-  import { Switch } from "$lib/components/ui/switch";
+  import { Switch } from "@lunaris/ui-kit/components/ui/switch";
   import type { ModuleSummary } from "$lib/stores/modules";
 
   let {

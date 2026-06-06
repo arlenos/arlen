@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { AlertTriangle, ChevronRight, Plus, Search } from "lucide-svelte";
 
-  import { Input } from "$lib/components/ui/input";
+  import { Input } from "@lunaris/ui-kit/components/ui/input";
   import { Button } from "@lunaris/ui-kit/components/ui/button";
   import { Page } from "@lunaris/ui-kit/components/ui/page";
   import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
@@ -10,7 +10,7 @@
   import ReadOnlyKeybindingRow from "$lib/components/settings/ReadOnlyKeybindingRow.svelte";
   import KeyCapture from "$lib/components/settings/KeyCapture.svelte";
   import AddCustomBinding from "$lib/components/settings/AddCustomBinding.svelte";
-  import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
+  import { ConfirmDialog } from "@lunaris/ui-kit/components/ui/confirm-dialog";
 
   import {
     keybindings,

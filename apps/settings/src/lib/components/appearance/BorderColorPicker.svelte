@@ -5,7 +5,7 @@
   /// re-resolve it on theme mode switches.
 
   import { Check, Pipette } from "lucide-svelte";
-  import { ColorPicker } from "$lib/components/ui/color-picker";
+  import { ColorPicker } from "@lunaris/ui-kit/components/ui/color-picker";
 
   let {
     value,

@@ -1,24 +1,15 @@
-/// Component index for reference only.
+/// Reference index for the app-LOCAL ui components only.
 ///
-/// shadcn-svelte components export overlapping names (Root, Content,
-/// Trigger, Separator, etc.) across different component directories,
-/// so a flat `export *` barrel creates ambiguity. Import per-directory
-/// instead:
+/// The shared design-system canon (Page, SectionGrid, Group, Row, Button,
+/// Switch, inputs, …) now lives in `sdk/ui-kit` and is imported directly via
+/// the `@lunaris/ui-kit` alias, e.g.
+///   import { Button } from "@lunaris/ui-kit/components/ui/button";
+/// Do NOT copy those here. Only app-specific components that have no ui-kit
+/// canon stay under this directory (add-remove-list, command-string-editor,
+/// directory-picker, skeleton, value-slider) plus the complex multi-file
+/// shadcn components still pending the cross-crate consolidation (command,
+/// context-menu, dropdown-menu, popover, popover-select, select, sidebar).
 ///
-///   import { Button } from '$lib/components/ui/button';
-///   import { ValueSlider } from '$lib/components/ui/value-slider';
-///
-/// Consuming apps (desktop-shell, app-settings) symlink their own
-/// `src/lib/components/ui/` to this directory so the standard
-/// `$lib/components/ui/X` import path resolves here.
+/// Import per-directory (shadcn names overlap, so no flat `export *`).
 
-// Re-export only the custom Lunaris components that have unique names
-// and NO app-specific store imports. Components that depend on
-// `$lib/stores/theme` etc. stay in their respective apps.
-export { DaysPicker } from "./days-picker";
-export { FillSlider } from "./fill-slider";
-export { Group } from "./group";
-export { PositionPicker } from "./position-picker";
-export { Row } from "./row";
-export { TimeInput } from "./time-input";
 export { ValueSlider } from "./value-slider";

@@ -3,7 +3,7 @@
   /// Row/Switch from `@lunaris/ui-kit`; FillSlider/PopoverSelect app-local).
 
   import { onMount } from "svelte";
-  import { FillSlider } from "$lib/components/ui/fill-slider";
+  import { FillSlider } from "@lunaris/ui-kit/components/ui/fill-slider";
   import { PopoverSelect } from "$lib/components/ui/popover-select";
   import { Page } from "@lunaris/ui-kit/components/ui/page";
   import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";

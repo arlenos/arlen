@@ -4,7 +4,7 @@
   /// `bypass_dnd`, `priority`) plus an optional toast duration.
 
   import { ChevronRight, X } from "lucide-svelte";
-  import { Switch } from "$lib/components/ui/switch";
+  import { Switch } from "@lunaris/ui-kit/components/ui/switch";
   import type { AppOverride } from "$lib/stores/notifications";
 
   let {

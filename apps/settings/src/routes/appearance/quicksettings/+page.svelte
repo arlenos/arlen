@@ -36,7 +36,7 @@
   import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
   import { Group } from "@lunaris/ui-kit/components/ui/group";
   import { Button } from "@lunaris/ui-kit/components/ui/button";
-  import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
+  import { ConfirmDialog } from "@lunaris/ui-kit/components/ui/confirm-dialog";
   import PanelPreview from "$lib/components/quicksettings/PanelPreview.svelte";
   import HiddenDrawer from "$lib/components/quicksettings/HiddenDrawer.svelte";
 

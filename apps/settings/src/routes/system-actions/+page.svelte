@@ -11,7 +11,7 @@
   /// compositor picks the default again. Reset-all confirms first.
 
   import { onMount } from "svelte";
-  import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
+  import { ConfirmDialog } from "@lunaris/ui-kit/components/ui/confirm-dialog";
   import { Button } from "@lunaris/ui-kit/components/ui/button";
   import { Page } from "@lunaris/ui-kit/components/ui/page";
   import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
