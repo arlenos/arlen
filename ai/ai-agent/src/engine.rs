@@ -164,9 +164,12 @@ pub type HandlerRegistry = BTreeMap<String, Box<dyn WorkflowHandler>>;
 /// erased. Only ever set when the daemon opted into executing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecutionResult {
-    /// The authorised write was performed; the variant records whether the edge
-    /// was created or already present.
-    Written(crate::executor::WriteOutcome),
+    /// The authorised write was performed; the variant carries the full
+    /// execution receipt (relation, created/exists outcome, op_id, correlation
+    /// id), so a downstream rollback/undo path can compensate the exact edge
+    /// this execution wrote without re-deriving the op_id from context (the
+    /// stale-context redirect the receipt design eliminates).
+    Written(crate::executor::ExecutedWrite),
     /// Execution was refused or definitely did not write (a stale proof, an
     /// audit outage, a pre-send write error). The reason is for logging and
     /// recovery; the attempt, if it reached the write, was audited beforehand.
@@ -887,11 +890,15 @@ impl<'a> Dispatcher<'a> {
             Ok(Some(written)) => {
                 tracing::info!(
                     behaviour = %behaviour,
-                    write = ?written.write,
-                    outcome = ?written.outcome,
+                    write = ?written.write(),
+                    outcome = ?written.outcome(),
                     "live executor performed the authorised write"
                 );
-                Some(ExecutionResult::Written(written.outcome))
+                // Carry the whole receipt, not just the outcome: a downstream
+                // rollback/undo path needs its op_id + correlation_id to
+                // compensate the exact edge this execution wrote, and the
+                // content-free audit cannot recover them after the fact.
+                Some(ExecutionResult::Written(written))
             }
             // A non-executing decision (the executor planned nothing): nothing
             // to record beyond the decision itself.
@@ -3348,16 +3355,25 @@ trigger:
 
         let outcomes = d.dispatch(&event("/proj/a.rs")).await;
 
-        // The decision lifted to PreviewThenExecute and the execution result is
-        // carried on the outcome (here a `Created` write), not erased.
+        // The decision lifted to PreviewThenExecute and the execution receipt is
+        // carried on the outcome (here a `Created` write), not erased. The
+        // receipt carries the op_id/correlation_id a downstream undo would need.
         match outcomes.as_slice() {
             [DispatchOutcome::Decided { decision, executed, .. }] => {
                 assert_eq!(*decision, ActionDecision::PreviewThenExecute);
-                assert_eq!(
-                    *executed,
-                    Some(ExecutionResult::Written(WriteOutcome::Created)),
-                    "the execution result is surfaced on the outcome"
-                );
+                match executed {
+                    Some(ExecutionResult::Written(receipt)) => {
+                        assert_eq!(receipt.outcome(), WriteOutcome::Created);
+                        assert_eq!(receipt.write().relation_type, "FILE_PART_OF");
+                        assert!(!receipt.op_id().is_empty(), "the receipt carries its op_id");
+                        assert_eq!(
+                            receipt.correlation_id(),
+                            "e1:auto-tag-by-project",
+                            "and the decision identity for a later compensation"
+                        );
+                    }
+                    other => panic!("expected a Written receipt, got {other:?}"),
+                }
             }
             other => panic!("expected one Decided/PreviewThenExecute, got {other:?}"),
         }

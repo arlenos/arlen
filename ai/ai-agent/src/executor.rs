@@ -227,27 +227,79 @@ pub trait RelationWriter: Send + Sync {
     ) -> Result<RetractOutcome, WriteError>;
 }
 
-/// A write the live executor performed: the **execution receipt**. It carries
-/// not just the relation and whether it was created, but the exact `op_id`
-/// stamped on the edge and the `correlation_id` of the decision that produced
-/// it. Compensation is keyed off THIS receipt, never a separately-passed
-/// context, so the retract can only ever target the very edge this execution
-/// created (a mis-threaded or stale context cannot redirect the delete to
-/// another op's edge). Only [`LiveExecutor::execute`] / its reconciliation build
-/// it, so the `(write, op_id)` pairing is always the one the executor derived.
+/// A write the live executor performed: the **execution receipt**, an opaque
+/// authority token for compensation.
+///
+/// It carries not just the relation and whether it was created, but the exact
+/// `op_id` stamped on the edge and the `correlation_id` of the decision that
+/// produced it. Compensation is keyed off THIS receipt, never a separately
+/// passed context, so the retract can only ever target the very edge this
+/// execution created (a mis-threaded or stale context cannot redirect the delete
+/// to another op's edge).
+///
+/// Its fields are **private with no public constructor**, so the only way to
+/// obtain one is from [`LiveExecutor::execute`] / its reconciliation: the
+/// `(write, op_id)` pairing is therefore always the one the executor actually
+/// derived and wrote, never a caller-fabricated or corrupted pairing that
+/// `compensate` would otherwise trust into retracting the wrong edge. Read
+/// access is via accessors; mutation and construction stay inside this module.
+/// (A receipt that must survive a process boundary — e.g. a persisted undo log
+/// across a daemon restart — needs a signed or ledger-backed form rather than
+/// this in-memory token; that is the undo-log increment's concern, since
+/// receipts live only in-process today.)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutedWrite {
     /// The relation that was written.
-    pub write: RelationWrite,
+    write: RelationWrite,
     /// Whether this call created the edge or found it present.
-    pub outcome: WriteOutcome,
+    outcome: WriteOutcome,
     /// The durable operation id stamped on the edge by this execution. The
     /// compensation key: retract deletes only the edge carrying this id.
-    pub op_id: String,
+    op_id: String,
     /// The correlation id of the decision that produced this write, so a later
     /// compensation audits under the same decision identity (it is taken from
     /// the receipt, not re-supplied, so it cannot drift from the op_id).
-    pub correlation_id: String,
+    correlation_id: String,
+}
+
+impl ExecutedWrite {
+    /// Build a receipt. Module-private: only [`LiveExecutor::execute`] and its
+    /// reconciliation construct one, so the `(write, op_id)` pairing is always
+    /// executor-derived. (The test submodule, an in-module descendant, builds
+    /// receipts directly to exercise compensation.)
+    fn new(
+        write: RelationWrite,
+        outcome: WriteOutcome,
+        op_id: String,
+        correlation_id: String,
+    ) -> Self {
+        Self {
+            write,
+            outcome,
+            op_id,
+            correlation_id,
+        }
+    }
+
+    /// The relation that was written.
+    pub fn write(&self) -> &RelationWrite {
+        &self.write
+    }
+
+    /// Whether this execution created the edge or found it already present.
+    pub fn outcome(&self) -> WriteOutcome {
+        self.outcome
+    }
+
+    /// The durable operation id stamped on the edge (the compensation key).
+    pub fn op_id(&self) -> &str {
+        &self.op_id
+    }
+
+    /// The correlation id of the decision that produced this write.
+    pub fn correlation_id(&self) -> &str {
+        &self.correlation_id
+    }
 }
 
 /// The result of compensating (undoing) a previously-executed write. Closes the
@@ -622,12 +674,12 @@ impl<'a> LiveExecutor<'a> {
                 return self.reconcile(report.write, op_id, ctx.correlation_id, graph).await
             }
         };
-        Ok(Some(ExecutedWrite {
-            write: report.write,
+        Ok(Some(ExecutedWrite::new(
+            report.write,
             outcome,
             op_id,
-            correlation_id: ctx.correlation_id.to_string(),
-        }))
+            ctx.correlation_id.to_string(),
+        )))
     }
 
     /// Compensate (undo) a write this executor performed, retracting exactly the
@@ -760,12 +812,12 @@ impl<'a> LiveExecutor<'a> {
         // missing edge may yet be created by this write. A retry with the same
         // op_id resolves it (its op_id edge would then be observed).
         match self.edge_exists(&write, graph, &op_id).await {
-            Some(true) => Ok(Some(ExecutedWrite {
+            Some(true) => Ok(Some(ExecutedWrite::new(
                 write,
-                outcome: WriteOutcome::Created,
+                WriteOutcome::Created,
                 op_id,
-                correlation_id: correlation_id.to_string(),
-            })),
+                correlation_id.to_string(),
+            ))),
             Some(false) => Err(ExecError::WriteIndeterminate(
                 "write unconfirmed; its op_id edge is not present".to_string(),
             )),
