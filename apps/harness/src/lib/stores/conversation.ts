@@ -1,9 +1,11 @@
 /// Conversation state for the query surface (ai-app.md §2.1).
 ///
-/// A2 MVP: a flat multi-turn message list backed by the `ai_query`
-/// Tauri command (submit → poll → answer). One turn is in flight at a
-/// time (`busy`). Tool-call parts, citations, and streaming come in A3;
-/// here a message is plain text plus a pending flag.
+/// A2 MVP: a transcript of turns backed by the `ai_query` Tauri command
+/// (submit → poll → answer). Each turn is independent — only the current
+/// prompt is sent; the daemon query path carries no conversation memory
+/// yet, so the UI says so and prior turns are not threaded in. One turn
+/// is in flight at a time (`busy`). Tool-call parts, citations, and
+/// streaming come in A3; here a message is plain text plus a pending flag.
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 

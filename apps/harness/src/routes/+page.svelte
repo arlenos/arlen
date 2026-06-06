@@ -48,8 +48,10 @@
         <MessageSquare size={28} strokeWidth={1.5} />
         <p class="empty-title">Ask the assistant</p>
         <p class="empty-sub">
-          Multi-turn conversation against the on-device AI. Answers are
-          grounded in your Knowledge Graph under the configured read tier.
+          Ask the on-device AI about your files, projects, and activity.
+          Answers are grounded in your Knowledge Graph under the configured
+          read tier. Each question is answered on its own for now —
+          conversation memory comes later.
         </p>
       </div>
     {:else}
@@ -88,6 +90,9 @@
       <ArrowUp size={16} strokeWidth={2} />
     </Button>
   </div>
+  {#if $messages.length > 0}
+    <p class="turn-note">Each question is answered independently — no conversation memory yet.</p>
+  {/if}
 </div>
 
 <style>
@@ -179,6 +184,13 @@
   }
   .composer :global(input) {
     flex: 1;
+  }
+  .turn-note {
+    margin: 0;
+    padding: 0 1rem 0.5rem;
+    font-size: 0.7rem;
+    text-align: center;
+    color: color-mix(in srgb, var(--foreground) 40%, transparent);
   }
   .dots {
     display: inline-flex;
