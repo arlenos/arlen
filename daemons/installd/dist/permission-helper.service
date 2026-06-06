@@ -1,6 +1,6 @@
 [Unit]
 Description=Arlen Permission Helper
-Documentation=https://github.com/lunaris-sys/installd
+Documentation=https://github.com/arlenos/installd
 
 [Service]
 Type=dbus

@@ -26,7 +26,7 @@
   /// Link to the module-system spec shipped with the repo. When the
   /// Arlen docs site goes live this should flip to the canonical URL.
   const MODULES_DOCS =
-    "https://github.com/lunaris-sys/docs/blob/main/architecture/module-system.md";
+    "https://github.com/arlenos/docs/blob/main/architecture/module-system.md";
 
   let filter = $state("");
 

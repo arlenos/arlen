@@ -91,6 +91,6 @@ audit-proto = { path = "../../../contracts/audit-proto" }
 tempfile = "3"
 
 # SDK crates (git deps once the settings repo is detached):
-# os-sdk         = { git = "https://github.com/lunaris-sys/sdk", path = "os-sdk" }
-# arlen-theme  = { git = "https://github.com/lunaris-sys/sdk", path = "theme" }
-# arlen-config = { git = "https://github.com/lunaris-sys/sdk", path = "config" }
+# os-sdk         = { git = "https://github.com/arlenos/sdk", path = "os-sdk" }
+# arlen-theme  = { git = "https://github.com/arlenos/sdk", path = "theme" }
+# arlen-config = { git = "https://github.com/arlenos/sdk", path = "config" }

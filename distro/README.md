@@ -71,4 +71,4 @@ qemu-img create -f qcow2 -F qcow2 \
 
 ## Part of
 
-[Arlen](https://github.com/lunaris-sys): a Linux desktop OS built around a system-wide knowledge graph.
+[Arlen](https://github.com/arlenos): a Linux desktop OS built around a system-wide knowledge graph.

@@ -19,7 +19,7 @@
 
 set -e
 
-ROOT="$HOME/Repositories/lunaris-sys"
+ROOT="$HOME/Repositories/arlenos"
 SRC="$ROOT/sdk/ui-kit/src/lib/components/ui"
 CONSUMERS=(
   "$ROOT/app-settings/src/lib/components/ui"

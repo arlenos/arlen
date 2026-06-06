@@ -99,7 +99,7 @@ case "$current_xdg" in
     *arlen*) needs_reset=1 ;;
 esac
 case "$current_dirs" in
-    *lunaris-sys*|*xdg-desktop-portal-arlen*) needs_reset=1 ;;
+    *arlenos*|*xdg-desktop-portal-arlen*) needs_reset=1 ;;
 esac
 
 if [ $needs_reset -eq 1 ]; then

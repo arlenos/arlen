@@ -1,6 +1,6 @@
 [Unit]
 Description=Arlen Audit Daemon (user service)
-Documentation=https://github.com/lunaris-sys/audit-daemon
+Documentation=https://github.com/arlenos/audit-daemon
 # The daemon re-emits audit.* events on the Event Bus. This is a
 # best-effort dependency, not a hard one: the daemon serves its
 # sockets and writes the ledger whether or not the bus is up, so

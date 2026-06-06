@@ -6,7 +6,7 @@
 # daemon awake on first shell connection.
 #
 # Usage:
-#   cd ~/Repositories/lunaris-sys
+#   cd ~/Repositories/arlenos
 #   ./distro/install-modulesd.sh
 #
 # For dev work (no sudo, repo-local debug binary) use
@@ -16,7 +16,7 @@ set -euo pipefail
 
 # ── Configuration ──────────────────────────────────────────────
 
-LUNARIS_PATH="${LUNARIS_PATH:-$HOME/Repositories/lunaris-sys}"
+LUNARIS_PATH="${LUNARIS_PATH:-$HOME/Repositories/arlenos}"
 SRC="$LUNARIS_PATH/modulesd"
 
 # Source artefacts. Built via:

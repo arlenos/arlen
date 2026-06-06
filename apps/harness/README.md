@@ -31,7 +31,7 @@ Read before building:
 - `docs/architecture/ai-agent-design.md` - the AI layer, interaction model
   (silent curator + pull), capability model.
 
-(Those docs live in the shared `lunaris-sys/docs/` folder.)
+(Those docs live in the shared `arlenos/docs/` folder.)
 
 ## Status
 

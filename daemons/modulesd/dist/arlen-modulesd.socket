@@ -1,6 +1,6 @@
 [Unit]
 Description=Arlen Module Runtime socket
-Documentation=https://github.com/lunaris-sys/modulesd
+Documentation=https://github.com/arlenos/modulesd
 
 [Socket]
 # `%t` is the runtime directory: `/run/user/{uid}` for user services.

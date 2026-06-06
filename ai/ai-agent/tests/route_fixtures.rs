@@ -27,7 +27,7 @@ fn routes_a_file_opened_event_to_the_enabled_workflow() {
     // trigger on file.opened, filter passes).
     let matched = matching_behaviours(
         "file.opened",
-        &fields(&[("path", "~/Repositories/lunaris-sys/foo.rs")]),
+        &fields(&[("path", "~/Repositories/arlenos/foo.rs")]),
         &outcome.loaded,
     );
     assert_eq!(matched.len(), 1);

@@ -56,7 +56,7 @@
           size="sm"
           onclick={() =>
             openUrl(
-              "https://github.com/lunaris-sys/docs/blob/main/architecture/permission-system.md",
+              "https://github.com/arlenos/docs/blob/main/architecture/permission-system.md",
             )}
         >
           <ExternalLink size={14} />

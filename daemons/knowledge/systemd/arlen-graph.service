@@ -1,6 +1,6 @@
 [Unit]
 Description=Arlen Graph Daemon
-Documentation=https://github.com/lunaris-sys/knowledge
+Documentation=https://github.com/arlenos/knowledge
 After=arlen-event-bus.service
 
 [Service]

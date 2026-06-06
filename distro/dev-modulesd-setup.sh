@@ -18,7 +18,7 @@
 
 set -euo pipefail
 
-LUNARIS_PATH="${LUNARIS_PATH:-$HOME/Repositories/lunaris-sys}"
+LUNARIS_PATH="${LUNARIS_PATH:-$HOME/Repositories/arlenos}"
 SRC="$LUNARIS_PATH/modulesd"
 
 USER_SYSTEMD="$HOME/.config/systemd/user"

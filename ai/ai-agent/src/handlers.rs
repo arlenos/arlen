@@ -157,8 +157,8 @@ mod tests {
         AutoTagByProject.run(&opened(path), graph).await.unwrap()
     }
 
-    const LUNARIS: &str = "~/Repositories/lunaris-sys";
-    const LUNARIS_FILE: &str = "~/Repositories/lunaris-sys/foo.rs";
+    const LUNARIS: &str = "~/Repositories/arlenos";
+    const LUNARIS_FILE: &str = "~/Repositories/arlenos/foo.rs";
 
     #[test]
     fn path_within_respects_component_boundaries() {
@@ -189,9 +189,9 @@ mod tests {
     async fn most_specific_nested_project_wins() {
         let g = projects(&[
             ("outer", LUNARIS),
-            ("inner", "~/Repositories/lunaris-sys/desktop-shell"),
+            ("inner", "~/Repositories/arlenos/desktop-shell"),
         ]);
-        match run(&g, "~/Repositories/lunaris-sys/desktop-shell/src/x.rs").await {
+        match run(&g, "~/Repositories/arlenos/desktop-shell/src/x.rs").await {
             HandlerOutcome::Propose(action) => {
                 assert!(action.summary.contains("inner"));
                 assert_eq!(action.arguments.get("project").map(String::as_str), Some("inner"));

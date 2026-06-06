@@ -26,7 +26,7 @@ enum VPath {
     Last7Days,
     Date(String),
     DateApp(String, String),
-    /// Intermediate directory under /projects/ (e.g. "lunaris-sys").
+    /// Intermediate directory under /projects/ (e.g. "arlenos").
     /// Stores the virtual prefix path relative to /projects/.
     ProjectDir(String),
     /// Leaf project directory. Stores the graph project ID.
@@ -269,7 +269,7 @@ impl TimelineFs {
     /// Compute relative paths for projects under /projects/.
     ///
     /// Finds the common ancestor of all root_paths and strips it,
-    /// producing paths like `lunaris-sys/desktop-shell`.
+    /// producing paths like `arlenos/desktop-shell`.
     /// Projects not sharing a common prefix keep their directory name.
     fn project_relative_paths(&self) -> Vec<(String, String, String)> {
         let projects = self.query_active_projects_full();
@@ -705,20 +705,20 @@ mod tests {
     #[test]
     fn common_dir_basic() {
         let paths = vec![
-            "/home/tim/Repositories/lunaris-sys/desktop-shell",
-            "/home/tim/Repositories/lunaris-sys/knowledge",
-            "/home/tim/Repositories/lunaris-sys/compositor",
+            "/home/tim/Repositories/arlenos/desktop-shell",
+            "/home/tim/Repositories/arlenos/knowledge",
+            "/home/tim/Repositories/arlenos/compositor",
         ];
         assert_eq!(
             longest_common_dir(&paths),
-            "/home/tim/Repositories/lunaris-sys"
+            "/home/tim/Repositories/arlenos"
         );
     }
 
     #[test]
     fn common_dir_mixed() {
         let paths = vec![
-            "/home/tim/Repositories/lunaris-sys/desktop-shell",
+            "/home/tim/Repositories/arlenos/desktop-shell",
             "/home/tim/Repositories/podliner",
         ];
         assert_eq!(longest_common_dir(&paths), "/home/tim/Repositories");
@@ -739,8 +739,8 @@ mod tests {
     #[test]
     fn last_n_components_2() {
         assert_eq!(
-            last_n_components("/home/tim/Repositories/lunaris-sys/desktop-shell", 2),
-            "lunaris-sys/desktop-shell"
+            last_n_components("/home/tim/Repositories/arlenos/desktop-shell", 2),
+            "arlenos/desktop-shell"
         );
     }
 

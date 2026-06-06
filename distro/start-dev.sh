@@ -33,7 +33,7 @@ for arg in "$@"; do
 done
 
 # Base path
-LUNARIS_PATH="${LUNARIS_PATH:-$HOME/Repositories/lunaris-sys}"
+LUNARIS_PATH="${LUNARIS_PATH:-$HOME/Repositories/arlenos}"
 
 # Log directory. Every component tees its stdout+stderr to a fresh file
 # so the user can grep without opening DevTools / scrolling tmux history.
@@ -165,7 +165,7 @@ fi
 echo "[$SESSION_STEP/$STEP_TOTAL] Starting tmux session..."
 
 # Each component runs with RUST_LOG=info and tees combined stdout+stderr
-# into a dedicated file under $LOG_DIR, so `tail -f ~/Repositories/lunaris-sys/logs/compositor.log`
+# into a dedicated file under $LOG_DIR, so `tail -f ~/Repositories/arlenos/logs/compositor.log`
 # works regardless of whether the user is attached to tmux.
 # All components inherit LUNARIS_PRODUCER_SOCKET / LUNARIS_CONSUMER_SOCKET
 # from this shell's exported environment so they agree on the socket

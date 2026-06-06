@@ -63,7 +63,7 @@ fn cache() -> &'static tokio::sync::Mutex<Option<CachedList>> {
 /// ```text
 /// f.path|f.last_accessed
 /// /home/tim/docs/report.md|1713567890123
-/// /home/tim/Projects/lunaris-sys/CLAUDE.md|1713567123456
+/// /home/tim/Projects/arlenos/CLAUDE.md|1713567123456
 /// ```
 fn parse_rows(raw: &str) -> Vec<RecentFile> {
     if raw.trim().is_empty() || raw.starts_with("ERROR") {

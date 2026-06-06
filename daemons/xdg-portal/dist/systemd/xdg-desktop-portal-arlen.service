@@ -1,6 +1,6 @@
 [Unit]
 Description=Arlen xdg-desktop-portal backend (FileChooser, OpenURI)
-Documentation=https://github.com/lunaris-sys/xdg-desktop-portal-arlen
+Documentation=https://github.com/arlenos/xdg-desktop-portal-arlen
 PartOf=graphical-session.target
 
 [Service]

@@ -47,12 +47,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lunaris-sys/sdk.git",
+    "url": "git+https://github.com/arlenos/sdk.git",
     "directory": "module-sdk"
   },
-  "homepage": "https://github.com/lunaris-sys/sdk/tree/master/module-sdk#readme",
+  "homepage": "https://github.com/arlenos/sdk/tree/master/module-sdk#readme",
   "bugs": {
-    "url": "https://github.com/lunaris-sys/sdk/issues"
+    "url": "https://github.com/arlenos/sdk/issues"
   },
   "publishConfig": {
     "access": "public",

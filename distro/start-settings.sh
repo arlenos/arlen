@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Start the Arlen Settings app inside the running nested cosmic-comp
-# session and pipe stdout/stderr to ~/Repositories/lunaris-sys/logs/settings.log.
+# session and pipe stdout/stderr to ~/Repositories/arlenos/logs/settings.log.
 #
 # Prereqs:
 #  - `start-dev.sh` is running in tmux, so wayland-2 is up.
@@ -14,7 +14,7 @@
 
 set -e
 
-LUNARIS_PATH="$HOME/Repositories/lunaris-sys"
+LUNARIS_PATH="$HOME/Repositories/arlenos"
 LOG_DIR="$LUNARIS_PATH/logs"
 mkdir -p "$LOG_DIR"
 

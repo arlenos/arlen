@@ -109,7 +109,7 @@
     <Group label="Resources">
       <Row label="Documentation" id="link-docs">
         {#snippet control()}
-          <Button variant="outline" size="sm" onclick={() => openUrl("https://github.com/lunaris-sys/docs")}>
+          <Button variant="outline" size="sm" onclick={() => openUrl("https://github.com/arlenos/docs")}>
             <FileText size={14} />
             Open
             <ExternalLink size={12} />
@@ -118,7 +118,7 @@
       </Row>
       <Row label="GitHub organisation" id="link-github">
         {#snippet control()}
-          <Button variant="outline" size="sm" onclick={() => openUrl("https://github.com/lunaris-sys")}>
+          <Button variant="outline" size="sm" onclick={() => openUrl("https://github.com/arlenos")}>
             <Info size={14} />
             Open
             <ExternalLink size={12} />
@@ -130,7 +130,7 @@
           <Button
             variant="outline"
             size="sm"
-            onclick={() => openUrl("https://github.com/lunaris-sys/desktop-shell/issues/new")}
+            onclick={() => openUrl("https://github.com/arlenos/desktop-shell/issues/new")}
           >
             <Bug size={14} />
             Open

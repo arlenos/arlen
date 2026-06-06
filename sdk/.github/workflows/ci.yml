@@ -6,4 +6,4 @@ on:
 
 jobs:
   ci:
-    uses: lunaris-sys/distro/.github/workflows/ci-template.yml@main
+    uses: arlenos/distro/.github/workflows/ci-template.yml@main

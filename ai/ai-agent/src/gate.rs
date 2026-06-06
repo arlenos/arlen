@@ -652,7 +652,7 @@ mod tests {
     fn action() -> ProposedAction {
         ProposedAction {
             tool: "graph.write".to_string(),
-            summary: "tag foo.rs as part of lunaris-sys".to_string(),
+            summary: "tag foo.rs as part of arlenos".to_string(),
             arguments: BTreeMap::new(),
         }
     }

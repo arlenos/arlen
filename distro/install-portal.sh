@@ -6,7 +6,7 @@
 # daemon dispatches FileChooser/OpenURI calls to Arlen.
 #
 # Usage:
-#   cd ~/Repositories/lunaris-sys
+#   cd ~/Repositories/arlenos
 #   ./distro/install-portal.sh
 #
 # This is the production path; for dev work (no sudo, repo-local
@@ -16,7 +16,7 @@ set -euo pipefail
 
 # ── Configuration ──────────────────────────────────────────────
 
-LUNARIS_PATH="${LUNARIS_PATH:-$HOME/Repositories/lunaris-sys}"
+LUNARIS_PATH="${LUNARIS_PATH:-$HOME/Repositories/arlenos}"
 SRC="$LUNARIS_PATH/xdg-desktop-portal-arlen"
 
 # Source artefacts. Built via:

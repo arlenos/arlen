@@ -1,6 +1,6 @@
 [Unit]
 Description=Arlen Notification Daemon
-Documentation=https://github.com/lunaris-sys/notification-daemon
+Documentation=https://github.com/arlenos/notification-daemon
 
 [Service]
 Type=dbus

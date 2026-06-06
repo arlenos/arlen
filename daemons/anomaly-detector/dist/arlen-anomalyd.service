@@ -1,6 +1,6 @@
 [Unit]
 Description=Arlen Anomaly Detector (user service)
-Documentation=https://github.com/lunaris-sys/anomaly-detector
+Documentation=https://github.com/arlenos/anomaly-detector
 # Reads the audit log (read API) and the Event Bus, and dispatches
 # alerts via the notification daemon. All are best-effort dependencies:
 # the detector retries and degrades rather than failing if any is

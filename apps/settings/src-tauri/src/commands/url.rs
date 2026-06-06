@@ -40,7 +40,7 @@ mod tests {
     #[test]
     fn allowed_schemes_pass_validation() {
         for url in [
-            "https://github.com/lunaris-sys",
+            "https://github.com/arlenos",
             "http://example.com",
             "https://example.com/path?query=1",
         ] {
