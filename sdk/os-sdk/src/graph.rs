@@ -41,6 +41,11 @@ const MAX_RESPONSE_BYTES: usize = 64 * 1024 * 1024;
 /// cannot be parsed into a much larger tree of values.
 const MAX_TYPED_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 
+/// Largest response frame the client will allocate for a write request. The
+/// daemon answers a write with a tiny plaintext status (`OK` / `ERROR: ...`),
+/// so this is deliberately small.
+const MAX_WRITE_RESPONSE_BYTES: usize = 64 * 1024;
+
 /// Largest column count the client will accept in a typed result, matching the
 /// daemon's own cap. Bounds work before any per-row map is built.
 const MAX_TYPED_COLUMNS: usize = 256;
@@ -253,6 +258,58 @@ impl UnixGraphClient {
             Self::check_error(&String::from_utf8_lossy(&bytes))?;
         }
         parse_row_set(&bytes)
+    }
+
+    /// Create a built-in graph relation `from -[relation_type]-> to` between two
+    /// existing nodes, via the daemon's write socket.
+    ///
+    /// This is the write counterpart to [`query_rows`]: a leading `0x02` byte
+    /// selects the daemon's structured write mode, and the body is the JSON
+    /// request the daemon authorises against the caller's permission profile
+    /// (the relation must be one the profile grants) and persists with a checked
+    /// MATCH/MERGE. Endpoint types are the namespaced graph types (e.g.
+    /// `system.File`, `system.Project`) and the ids are the concrete node ids.
+    ///
+    /// Returns `Ok(())` only on a definitive `OK` (the edge is committed). A
+    /// daemon `ERROR:` maps to [`QueryError`] (a permission error to
+    /// [`QueryError::PermissionDenied`]). The daemon's MERGE is idempotent, so
+    /// retrying after a transport failure re-confirms the edge rather than
+    /// duplicating it.
+    pub async fn create_relation(
+        &self,
+        from_type: &str,
+        from_id: &str,
+        to_type: &str,
+        to_id: &str,
+        relation_type: &str,
+    ) -> Result<(), QueryError> {
+        let req = serde_json::json!({
+            "op": "create_relation",
+            "from_type": from_type,
+            "from_id": from_id,
+            "to_type": to_type,
+            "to_id": to_id,
+            "relation_type": relation_type,
+        });
+        let json = serde_json::to_vec(&req).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+
+        // A leading 0x02 byte selects the daemon's structured write mode.
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x02);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_WRITE_RESPONSE_BYTES).await?;
+        // The daemon answers with a tiny plaintext status, so a lossy decode is
+        // fine here (unlike the typed-row path).
+        let response = String::from_utf8_lossy(&bytes);
+        Self::check_error(&response)?;
+        if response.trim() == "OK" {
+            Ok(())
+        } else {
+            Err(QueryError::InvalidQuery(format!(
+                "unexpected daemon write response: {response}"
+            )))
+        }
     }
 }
 
@@ -499,5 +556,82 @@ mod tests {
             Err(QueryError::InvalidQuery(msg)) => assert!(msg.contains("exceeds")),
             other => panic!("expected oversized-frame rejection, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn create_relation_sends_a_tagged_write_request_and_accepts_ok() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("lunaris-os-sdk-write-ok-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            // The write-mode prefix, then the tagged JSON request.
+            assert_eq!(req[0], 0x02, "write requests carry the 0x02 prefix");
+            let body: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
+            assert_eq!(body["op"], "create_relation");
+            assert_eq!(body["from_type"], "system.File");
+            assert_eq!(body["from_id"], "f1");
+            assert_eq!(body["to_type"], "system.Project");
+            assert_eq!(body["to_id"], "p1");
+            assert_eq!(body["relation_type"], "FILE_PART_OF");
+
+            let ok = b"OK";
+            conn.write_all(&(ok.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(ok).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let result = client
+            .create_relation("system.File", "f1", "system.Project", "p1", "FILE_PART_OF")
+            .await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        assert!(result.is_ok(), "an OK status must map to Ok(()), got {result:?}");
+    }
+
+    #[tokio::test]
+    async fn create_relation_maps_a_permission_error() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("lunaris-os-sdk-write-denied-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            let err = b"ERROR: permission denied: cannot create relation";
+            conn.write_all(&(err.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(err).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let result = client
+            .create_relation("system.File", "f1", "system.Project", "p1", "FILE_PART_OF")
+            .await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        assert!(
+            matches!(result, Err(QueryError::PermissionDenied)),
+            "a permission ERROR must map to PermissionDenied, got {result:?}"
+        );
     }
 }
