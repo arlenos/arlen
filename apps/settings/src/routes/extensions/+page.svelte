@@ -12,7 +12,9 @@
 
   import { onMount } from "svelte";
   import { RefreshCw, Puzzle, Info, ExternalLink } from "lucide-svelte";
-  import { Group } from "$lib/components/ui/group";
+  import { Page } from "@lunaris/ui-kit/components/ui/page";
+  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
+  import { Group } from "@lunaris/ui-kit/components/ui/group";
   import ModuleCard from "$lib/components/appearance/ModuleCard.svelte";
   import { modules, moduleGroups } from "$lib/stores/modules";
 
@@ -55,16 +57,13 @@
   );
 </script>
 
-<div class="page">
-  <header class="head">
-    <div class="head-text">
-      <h1>Extensions</h1>
-      <p class="lede">
-        Modules that extend the Lunaris shell. Install third-party modules
-        by dropping them into
-        <code>~/.local/share/lunaris/modules/</code>.
-      </p>
-    </div>
+<Page
+  title="Extensions"
+  description="Modules that extend the Lunaris shell. Install third-party modules by dropping them into ~/.local/share/lunaris/modules/."
+>
+  <SectionGrid>
+  <div class="span-full ext-column">
+  <div class="ext-toolbar">
     <button
       type="button"
       class="refresh-btn"
@@ -73,7 +72,7 @@
     >
       <RefreshCw size={12} strokeWidth={2.25} />
     </button>
-  </header>
+  </div>
 
   {#if $modules.restartRequired}
     <div class="banner">
@@ -155,43 +154,20 @@
       {/if}
     </div>
   {/if}
-</div>
+  </div>
+  </SectionGrid>
+</Page>
 
 <style>
-  .page {
-    width: 100%;
-    max-width: 44rem;
-    margin: 0 auto;
-    padding: 1.25rem 1.5rem 2rem;
-  }
-  .head {
+  /* Single-column flow inside the grid (cap + centring come from SectionGrid). */
+  .ext-column {
     display: flex;
-    align-items: flex-start;
+    flex-direction: column;
     gap: 1rem;
-    margin-bottom: 1.25rem;
   }
-  .head-text {
-    flex: 1;
-  }
-  h1 {
-    margin: 0 0 0.25rem;
-    font-size: 1.125rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    color: var(--foreground);
-  }
-  .lede {
-    margin: 0;
-    font-size: 0.75rem;
-    line-height: 1.5;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  .lede code {
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    padding: 0.05rem 0.3rem;
-    border-radius: var(--radius-chip);
-    background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  .ext-toolbar {
+    display: flex;
+    justify-content: flex-end;
   }
   .refresh-btn {
     display: inline-flex;
