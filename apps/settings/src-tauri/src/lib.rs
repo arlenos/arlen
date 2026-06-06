@@ -59,6 +59,7 @@ pub fn run() {
             commands::accessibility::accessibility_filter_set,
             commands::knowledge::knowledge_stats_get,
             commands::ai::ai_status,
+            commands::activity::ai_activity_recent,
             commands::config::config_get,
             commands::config::config_set,
             commands::config::config_reset,
