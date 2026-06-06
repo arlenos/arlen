@@ -35,17 +35,46 @@ pub const SERVER_ID: &str = "system.knowledge";
 /// The single read-only tool this server exposes.
 pub const QUERY_TOOL: &str = "query";
 
-/// Default path of the knowledge daemon's read-query socket. Overridable with
-/// `ARLEN_KNOWLEDGE_SOCKET` for tests and non-default layouts.
+/// System fallback path of the knowledge daemon's read-query socket, used
+/// when no env override and no per-user runtime dir is available.
 pub const DEFAULT_KNOWLEDGE_SOCKET: &str = "/run/arlen/knowledge.sock";
 
-/// Resolve the knowledge daemon's read-query socket path, honouring
-/// `ARLEN_KNOWLEDGE_SOCKET` and falling back to [`DEFAULT_KNOWLEDGE_SOCKET`].
+/// Resolve the knowledge daemon's read-query socket path. Mirrors the
+/// resolution the AI daemon and the knowledge daemon itself use, so the
+/// server always points at the same socket the daemon binds:
+///
+/// 1. `ARLEN_KNOWLEDGE_SOCKET`: this server's own explicit override.
+/// 2. `ARLEN_DAEMON_SOCKET`: the knowledge daemon's socket env, so the two
+///    stay in sync when the daemon's read socket is relocated.
+/// 3. `$XDG_RUNTIME_DIR/arlen/knowledge.sock`: the normal per-user session.
+/// 4. [`DEFAULT_KNOWLEDGE_SOCKET`]: the system fallback.
 pub fn knowledge_socket_path() -> String {
-    std::env::var("ARLEN_KNOWLEDGE_SOCKET")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| DEFAULT_KNOWLEDGE_SOCKET.to_string())
+    resolve_socket(
+        std::env::var("ARLEN_KNOWLEDGE_SOCKET").ok(),
+        std::env::var("ARLEN_DAEMON_SOCKET").ok(),
+        std::env::var("XDG_RUNTIME_DIR").ok(),
+    )
+}
+
+/// Pure socket resolution over the three env inputs. Separated from
+/// [`knowledge_socket_path`] so the precedence can be tested without touching
+/// process-global environment.
+fn resolve_socket(
+    explicit: Option<String>,
+    daemon: Option<String>,
+    xdg: Option<String>,
+) -> String {
+    let nonempty = |v: Option<String>| v.filter(|s| !s.is_empty());
+    if let Some(p) = nonempty(explicit) {
+        return p;
+    }
+    if let Some(p) = nonempty(daemon) {
+        return p;
+    }
+    if let Some(dir) = nonempty(xdg) {
+        return format!("{dir}/arlen/knowledge.sock");
+    }
+    DEFAULT_KNOWLEDGE_SOCKET.to_string()
 }
 
 /// Read-only MCP server over the Knowledge Graph. Holds a lazy client to the
@@ -155,12 +184,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn knowledge_socket_path_defaults_when_env_unset() {
-        // Not asserting on the env-set branch: the variable is process-global
-        // and racing it against other tests is the bug we avoid elsewhere.
-        if std::env::var("ARLEN_KNOWLEDGE_SOCKET").is_err() {
-            assert_eq!(knowledge_socket_path(), DEFAULT_KNOWLEDGE_SOCKET);
-        }
+    fn socket_resolution_precedence() {
+        // Pure over its inputs, so no process-global env race.
+        assert_eq!(
+            resolve_socket(Some("/x.sock".into()), Some("/d.sock".into()), Some("/run/user/1000".into())),
+            "/x.sock",
+            "explicit override wins"
+        );
+        assert_eq!(
+            resolve_socket(None, Some("/d.sock".into()), Some("/run/user/1000".into())),
+            "/d.sock",
+            "the daemon socket env is next"
+        );
+        assert_eq!(
+            resolve_socket(None, None, Some("/run/user/1000".into())),
+            "/run/user/1000/arlen/knowledge.sock",
+            "per-user runtime path is the normal session case"
+        );
+        assert_eq!(
+            resolve_socket(Some(String::new()), None, None),
+            DEFAULT_KNOWLEDGE_SOCKET,
+            "empty values are ignored and fall through to the system path"
+        );
     }
 
     #[test]
