@@ -658,7 +658,7 @@ mod tests {
         assert!(is_rejected_scheme("JaVaScRiPt:alert(1)"));
         assert!(is_rejected_scheme("JAVASCRIPT:alert(1)"));
         assert!(is_rejected_scheme("Arlen://shell-internal"));
-        assert!(is_rejected_scheme("LUNARIS://shell-internal"));
+        assert!(is_rejected_scheme("ARLEN://shell-internal"));
         assert!(is_rejected_scheme("DATA:text/html"));
         assert!(is_rejected_scheme("VbScRiPt:foo"));
         assert!(is_rejected_scheme("FILE:///tmp/x"));

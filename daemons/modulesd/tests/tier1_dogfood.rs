@@ -64,7 +64,7 @@ async fn tier1_unit_converter_discovers_runs_init_and_search() {
     }
 
     let tmp = tempfile::tempdir().unwrap();
-    std::env::set_var("LUNARIS_USER_MODULES_DIR", tmp.path());
+    std::env::set_var("ARLEN_USER_MODULES_DIR", tmp.path());
     copy_dir_recursive(&example, &tmp.path().join("com.example.unit-converter"));
 
     let (tx, _rx) = broadcast::channel(16);
@@ -144,5 +144,5 @@ async fn tier1_unit_converter_discovers_runs_init_and_search() {
     //    to verify it completes against a real loaded instance.
     manager.shutdown_all_tier1().await;
 
-    std::env::remove_var("LUNARIS_USER_MODULES_DIR");
+    std::env::remove_var("ARLEN_USER_MODULES_DIR");
 }

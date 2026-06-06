@@ -69,10 +69,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Resolve the Event Bus consumer socket: explicit
-/// `LUNARIS_CONSUMER_SOCKET` wins; else the per-user runtime path when
+/// `ARLEN_CONSUMER_SOCKET` wins; else the per-user runtime path when
 /// present; else the system path.
 fn resolve_event_consumer_socket() -> String {
-    if let Ok(explicit) = std::env::var("LUNARIS_CONSUMER_SOCKET") {
+    if let Ok(explicit) = std::env::var("ARLEN_CONSUMER_SOCKET") {
         if !explicit.is_empty() {
             return explicit;
         }

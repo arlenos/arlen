@@ -34,8 +34,8 @@
 ///
 /// # Configuration
 ///
-/// The plugin reads `LUNARIS_APP_ID` and the producer-socket env
-/// (`LUNARIS_PRODUCER_SOCKET`, default
+/// The plugin reads `ARLEN_APP_ID` and the producer-socket env
+/// (`ARLEN_PRODUCER_SOCKET`, default
 /// `/run/arlen/event-bus-producer.sock`) at init time. Apps that
 /// need to override the socket path can do so by setting the env
 /// variable before constructing the Tauri builder.
@@ -105,20 +105,20 @@ pub struct ShellState {
     /// slot (`Pending`) it is dropped along with it.
     pub annotation_subs: Arc<Mutex<HashMap<SubscriptionKey, SubscriptionSlot>>>,
     /// App id used by the toolbar action-invoked filter.
-    /// `LUNARIS_APP_ID` at plugin init; falls back to "unknown".
+    /// `ARLEN_APP_ID` at plugin init; falls back to "unknown".
     pub app_id: String,
 }
 
 impl ShellState {
     fn new() -> Self {
-        let producer_socket = std::env::var("LUNARIS_PRODUCER_SOCKET")
+        let producer_socket = std::env::var("ARLEN_PRODUCER_SOCKET")
             .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".to_string());
-        let consumer_socket = std::env::var("LUNARIS_CONSUMER_SOCKET")
+        let consumer_socket = std::env::var("ARLEN_CONSUMER_SOCKET")
             .unwrap_or_else(|_| "/run/arlen/event-bus-consumer.sock".to_string());
-        let daemon_socket = std::env::var("LUNARIS_DAEMON_SOCKET")
+        let daemon_socket = std::env::var("ARLEN_DAEMON_SOCKET")
             .unwrap_or_else(|_| "/run/arlen/knowledge.sock".to_string());
         let app_id =
-            std::env::var("LUNARIS_APP_ID").unwrap_or_else(|_| "unknown".to_string());
+            std::env::var("ARLEN_APP_ID").unwrap_or_else(|_| "unknown".to_string());
 
         // One emitter shared across the write-side surfaces; one
         // graph client for annotation reads; one consumer for

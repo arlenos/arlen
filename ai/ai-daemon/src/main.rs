@@ -38,13 +38,13 @@ const OBJECT_PATH: &str = "/org/arlen/AI1";
 
 /// Resolve the Knowledge Daemon query socket the same way every
 /// other Arlen client does: an explicit
-/// `LUNARIS_DAEMON_SOCKET` override wins; otherwise the per-user
+/// `ARLEN_DAEMON_SOCKET` override wins; otherwise the per-user
 /// runtime path `$XDG_RUNTIME_DIR/arlen/knowledge.sock` is used
 /// when it exists (the daemon listens there in an unprivileged
 /// session); the system path `/run/arlen/knowledge.sock` is the
 /// final fallback.
 fn resolve_knowledge_socket() -> String {
-    if let Ok(explicit) = std::env::var("LUNARIS_DAEMON_SOCKET") {
+    if let Ok(explicit) = std::env::var("ARLEN_DAEMON_SOCKET") {
         if !explicit.is_empty() {
             return explicit;
         }
@@ -61,11 +61,11 @@ fn resolve_knowledge_socket() -> String {
 }
 
 /// Resolve the Event Bus consumer socket the same way: an explicit
-/// `LUNARIS_CONSUMER_SOCKET` override wins; otherwise the per-user
+/// `ARLEN_CONSUMER_SOCKET` override wins; otherwise the per-user
 /// runtime path is used when it exists; the system path is the
 /// final fallback.
 fn resolve_event_consumer_socket() -> String {
-    if let Ok(explicit) = std::env::var("LUNARIS_CONSUMER_SOCKET") {
+    if let Ok(explicit) = std::env::var("ARLEN_CONSUMER_SOCKET") {
         if !explicit.is_empty() {
             return explicit;
         }
@@ -381,7 +381,7 @@ const TRUSTED_SHELL_BINS: &[&str] = &[
 
 /// Whether `exe_path` is the trusted desktop shell.
 ///
-/// In debug builds a `LUNARIS_AI_TRUSTED_SHELL_BIN` env var adds a
+/// In debug builds a `ARLEN_AI_TRUSTED_SHELL_BIN` env var adds a
 /// dev path (the repo-relative `cargo tauri dev` binary). The
 /// override is compiled out of release builds so it cannot become
 /// part of the production trust boundary.
@@ -390,7 +390,7 @@ fn is_trusted_shell(exe_path: &str) -> bool {
         return true;
     }
     #[cfg(debug_assertions)]
-    if let Ok(dev) = std::env::var("LUNARIS_AI_TRUSTED_SHELL_BIN") {
+    if let Ok(dev) = std::env::var("ARLEN_AI_TRUSTED_SHELL_BIN") {
         if !dev.is_empty() && dev == exe_path {
             return true;
         }

@@ -195,7 +195,7 @@ fn on_change(change: ProfileChange) {
 /// Producer socket path; same env override and default as the
 /// existing `projects.rs::emit_to_event_bus`.
 fn producer_socket_path() -> String {
-    std::env::var("LUNARIS_PRODUCER_SOCKET")
+    std::env::var("ARLEN_PRODUCER_SOCKET")
         .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".to_string())
 }
 

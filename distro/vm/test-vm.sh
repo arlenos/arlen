@@ -18,22 +18,22 @@ ssh $SSH_OPTS tim@localhost "
   pkill kernel-layer || true
   sleep 1
 
-  LUNARIS_PRODUCER_SOCKET=/tmp/test-producer.sock \
-  LUNARIS_CONSUMER_SOCKET=/tmp/test-consumer.sock \
+  ARLEN_PRODUCER_SOCKET=/tmp/test-producer.sock \
+  ARLEN_CONSUMER_SOCKET=/tmp/test-consumer.sock \
   RUST_LOG=error ./event-bus &
 
   sleep 1
 
-  LUNARIS_CONSUMER_SOCKET=/tmp/test-consumer.sock \
-  LUNARIS_DB_PATH=/tmp/test-events.db \
-  LUNARIS_GRAPH_PATH=/tmp/test-graph \
-  LUNARIS_DAEMON_SOCKET=/tmp/test-daemon.sock \
+  ARLEN_CONSUMER_SOCKET=/tmp/test-consumer.sock \
+  ARLEN_DB_PATH=/tmp/test-events.db \
+  ARLEN_GRAPH_PATH=/tmp/test-graph \
+  ARLEN_DAEMON_SOCKET=/tmp/test-daemon.sock \
   RUST_LOG=error ./knowledge &
 
   sleep 1
 
-  sudo LUNARIS_PRODUCER_SOCKET=/tmp/test-producer.sock \
-  LUNARIS_SESSION_ID=smoke-test \
+  sudo ARLEN_PRODUCER_SOCKET=/tmp/test-producer.sock \
+  ARLEN_SESSION_ID=smoke-test \
   RUST_LOG=error ./kernel-layer &
 
   sleep 3

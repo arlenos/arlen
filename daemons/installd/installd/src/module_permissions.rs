@@ -31,10 +31,10 @@ use crate::install::InstallError;
 
 /// Foundation §7.3 canonical: `~/.config/permissions/{app_id}.toml`.
 /// No `arlen/` sub-dir (this module previously used the wrong path).
-/// `LUNARIS_PERMISSIONS_DIR` test override resolves directly to a flat
+/// `ARLEN_PERMISSIONS_DIR` test override resolves directly to a flat
 /// `<dir>/{app_id}.toml` for test simplicity.
 pub fn permissions_dir() -> PathBuf {
-    if let Ok(p) = std::env::var("LUNARIS_PERMISSIONS_DIR") {
+    if let Ok(p) = std::env::var("ARLEN_PERMISSIONS_DIR") {
         return PathBuf::from(p);
     }
     dirs::home_dir()
@@ -229,7 +229,7 @@ mod tests {
     #[test]
     fn write_and_remove_profile_round_trip() {
         let tmp = tempfile::tempdir().unwrap();
-        std::env::set_var("LUNARIS_PERMISSIONS_DIR", tmp.path());
+        std::env::set_var("ARLEN_PERMISSIONS_DIR", tmp.path());
 
         let p = profile_from_manifest(&manifest_with(ModuleCapabilities::default()));
         write_profile(&p).unwrap();
@@ -239,6 +239,6 @@ mod tests {
         remove_profile("com.example.test").unwrap();
         assert!(!path.exists());
 
-        std::env::remove_var("LUNARIS_PERMISSIONS_DIR");
+        std::env::remove_var("ARLEN_PERMISSIONS_DIR");
     }
 }

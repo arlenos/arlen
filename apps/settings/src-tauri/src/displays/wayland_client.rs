@@ -90,7 +90,7 @@ pub struct DisplayState {
 /// The wayland connection picks up `WAYLAND_DISPLAY` by default.
 /// During development we test the panel against a nested Arlen
 /// compositor while Settings itself runs on the host compositor;
-/// in that case `LUNARIS_DISPLAY_WAYLAND=wayland-N` overrides only
+/// in that case `ARLEN_DISPLAY_WAYLAND=wayland-N` overrides only
 /// the output-management connection, leaving Tauri's webview on
 /// the host's regular `WAYLAND_DISPLAY`.
 pub fn spawn(app: AppHandle) -> Result<WaylandHandle, ConnectError> {
@@ -101,7 +101,7 @@ pub fn spawn(app: AppHandle) -> Result<WaylandHandle, ConnectError> {
     // Block on the connect synchronously so the caller sees the
     // failure. The dispatch loop runs on its own thread once we
     // have a working connection.
-    let conn = match std::env::var("LUNARIS_DISPLAY_WAYLAND") {
+    let conn = match std::env::var("ARLEN_DISPLAY_WAYLAND") {
         Ok(name) if !name.is_empty() => {
             let runtime = std::env::var("XDG_RUNTIME_DIR")
                 .map_err(|_| ConnectError::OverrideEnv("XDG_RUNTIME_DIR not set".into()))?;
@@ -157,7 +157,7 @@ pub fn spawn(app: AppHandle) -> Result<WaylandHandle, ConnectError> {
 pub enum ConnectError {
     #[error("wayland connect failed: {0}")]
     Connect(#[from] wayland_client::ConnectError),
-    #[error("LUNARIS_DISPLAY_WAYLAND override failed: {0}")]
+    #[error("ARLEN_DISPLAY_WAYLAND override failed: {0}")]
     OverrideEnv(String),
     #[error("wayland globals enumeration failed: {0}")]
     Globals(wayland_client::globals::GlobalError),

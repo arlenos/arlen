@@ -39,7 +39,7 @@ pub struct PluginSummary {
 // ---------------------------------------------------------------------------
 
 fn registry_path() -> PathBuf {
-    if let Ok(p) = std::env::var("LUNARIS_WAYPOINTER_REGISTRY") {
+    if let Ok(p) = std::env::var("ARLEN_WAYPOINTER_REGISTRY") {
         return PathBuf::from(p);
     }
     dirs::data_dir()
@@ -48,7 +48,7 @@ fn registry_path() -> PathBuf {
 }
 
 fn modules_config_path() -> PathBuf {
-    if let Ok(p) = std::env::var("LUNARIS_MODULES_CONFIG") {
+    if let Ok(p) = std::env::var("ARLEN_MODULES_CONFIG") {
         return PathBuf::from(p);
     }
     dirs::config_dir()

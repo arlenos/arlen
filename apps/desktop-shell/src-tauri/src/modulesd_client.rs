@@ -62,7 +62,7 @@ impl ModulesdClient {
     }
 
     pub fn default_path() -> PathBuf {
-        if let Ok(p) = std::env::var("LUNARIS_MODULESD_SOCKET") {
+        if let Ok(p) = std::env::var("ARLEN_MODULESD_SOCKET") {
             return PathBuf::from(p);
         }
         let uid = unsafe { libc::getuid() };
@@ -197,10 +197,10 @@ mod tests {
     #[test]
     fn default_path_resolves_correctly() {
         // Both checks share one test to avoid parallel-test
-        // contention on the shared LUNARIS_MODULESD_SOCKET env var.
-        std::env::set_var("LUNARIS_MODULESD_SOCKET", "/tmp/mocktest.sock");
+        // contention on the shared ARLEN_MODULESD_SOCKET env var.
+        std::env::set_var("ARLEN_MODULESD_SOCKET", "/tmp/mocktest.sock");
         assert_eq!(ModulesdClient::default_path(), PathBuf::from("/tmp/mocktest.sock"));
-        std::env::remove_var("LUNARIS_MODULESD_SOCKET");
+        std::env::remove_var("ARLEN_MODULESD_SOCKET");
         let p = ModulesdClient::default_path();
         assert!(p.to_string_lossy().contains("/run/user/"));
     }

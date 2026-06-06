@@ -37,13 +37,13 @@ const BUS_NAME: &str = "org.freedesktop.impl.portal.desktop.arlen";
 const OBJECT_PATH: &str = "/org/freedesktop/portal/desktop";
 
 /// Default idle window before the daemon exits when no requests are
-/// open. Override via `LUNARIS_PORTAL_IDLE_TIMEOUT_SECS` (handy for
+/// open. Override via `ARLEN_PORTAL_IDLE_TIMEOUT_SECS` (handy for
 /// dev sessions where 60 s would kick in mid-debug). See FA10 and
 /// edge case E12 for the open-request-counter interaction.
 const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 60;
 
 fn idle_timeout() -> Duration {
-    let secs = std::env::var("LUNARIS_PORTAL_IDLE_TIMEOUT_SECS")
+    let secs = std::env::var("ARLEN_PORTAL_IDLE_TIMEOUT_SECS")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(DEFAULT_IDLE_TIMEOUT_SECS);

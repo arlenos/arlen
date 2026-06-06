@@ -18,8 +18,8 @@
 
 set -euo pipefail
 
-LUNARIS_PATH="${LUNARIS_PATH:-$HOME/Repositories/arlenos}"
-SRC="$LUNARIS_PATH/modulesd"
+ARLEN_PATH="${ARLEN_PATH:-$HOME/Repositories/arlenos}"
+SRC="$ARLEN_PATH/modulesd"
 
 USER_SYSTEMD="$HOME/.config/systemd/user"
 DAEMON_BIN="$SRC/target/debug/arlen-modulesd"

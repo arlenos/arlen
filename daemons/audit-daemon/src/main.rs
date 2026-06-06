@@ -39,8 +39,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Identify the daemon as the source of the `audit.*` events it
     // emits; without this the Event Bus envelope source is empty.
-    if std::env::var_os("LUNARIS_APP_ID").is_none() {
-        std::env::set_var("LUNARIS_APP_ID", "audit-daemon");
+    if std::env::var_os("ARLEN_APP_ID").is_none() {
+        std::env::set_var("ARLEN_APP_ID", "audit-daemon");
     }
     tracing::info!("arlen-auditd starting");
 
@@ -56,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // The Event Bus producer client. Created before verification so a
     // tamper alert can be emitted the moment it is detected.
-    let producer_socket = std::env::var("LUNARIS_PRODUCER_SOCKET")
+    let producer_socket = std::env::var("ARLEN_PRODUCER_SOCKET")
         .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".to_string());
     let emitter = Arc::new(UnixEventEmitter::new(producer_socket));
 

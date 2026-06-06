@@ -33,11 +33,11 @@ for arg in "$@"; do
 done
 
 # Base path
-LUNARIS_PATH="${LUNARIS_PATH:-$HOME/Repositories/arlenos}"
+ARLEN_PATH="${ARLEN_PATH:-$HOME/Repositories/arlenos}"
 
 # Log directory. Every component tees its stdout+stderr to a fresh file
 # so the user can grep without opening DevTools / scrolling tmux history.
-LOG_DIR="$LUNARIS_PATH/logs"
+LOG_DIR="$ARLEN_PATH/logs"
 mkdir -p "$LOG_DIR"
 # Wipe previous session logs so `tail -f` / `grep` only shows this run.
 rm -f "$LOG_DIR"/*.log
@@ -49,12 +49,12 @@ rm -f "$LOG_DIR"/*.log
 # XDG_RUNTIME_DIR so the whole stack runs as the login user.
 EVENT_BUS_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/arlen"
 mkdir -p "$EVENT_BUS_DIR"
-export LUNARIS_PRODUCER_SOCKET="$EVENT_BUS_DIR/event-bus-producer.sock"
-export LUNARIS_CONSUMER_SOCKET="$EVENT_BUS_DIR/event-bus-consumer.sock"
+export ARLEN_PRODUCER_SOCKET="$EVENT_BUS_DIR/event-bus-producer.sock"
+export ARLEN_CONSUMER_SOCKET="$EVENT_BUS_DIR/event-bus-consumer.sock"
 # Knowledge-daemon socket: also in XDG so no sudo needed. Without
 # this, the daemon falls back to /run/arlen/knowledge.sock where
 # the bind() fails with EACCES and the daemon terminates.
-export LUNARIS_DAEMON_SOCKET="$EVENT_BUS_DIR/knowledge.sock"
+export ARLEN_DAEMON_SOCKET="$EVENT_BUS_DIR/knowledge.sock"
 
 TIMELINE_MOUNT="$HOME/.timeline"
 
@@ -143,7 +143,7 @@ tmux kill-session -t arlen 2>/dev/null || true
 # Skipped without --with-portal so the default workflow stays
 # fast.
 if [ "$WITH_PORTAL" -eq 1 ]; then
-    PORTAL_SRC="$LUNARIS_PATH/xdg-desktop-portal-arlen"
+    PORTAL_SRC="$ARLEN_PATH/xdg-desktop-portal-arlen"
     PICKER_BIN="$PORTAL_SRC/picker-ui/src-tauri/target/debug/xdg-desktop-portal-arlen-picker"
     echo "[5/$STEP_TOTAL] Pre-building portal picker-ui (warm-cache: ~2s, cold: ~30s)..."
     if [ ! -d "$PORTAL_SRC/picker-ui/node_modules" ]; then
@@ -167,7 +167,7 @@ echo "[$SESSION_STEP/$STEP_TOTAL] Starting tmux session..."
 # Each component runs with RUST_LOG=info and tees combined stdout+stderr
 # into a dedicated file under $LOG_DIR, so `tail -f ~/Repositories/arlenos/logs/compositor.log`
 # works regardless of whether the user is attached to tmux.
-# All components inherit LUNARIS_PRODUCER_SOCKET / LUNARIS_CONSUMER_SOCKET
+# All components inherit ARLEN_PRODUCER_SOCKET / ARLEN_CONSUMER_SOCKET
 # from this shell's exported environment so they agree on the socket
 # path without a hardcoded constant.
 
@@ -175,7 +175,7 @@ echo "[$SESSION_STEP/$STEP_TOTAL] Starting tmux session..."
 # interactive shell's rc-file (bashrc, zshrc) cannot silently strip
 # them. Quote once with single-quotes so the shell inside tmux expands
 # `$RUST_LOG_FILTER` from the final command line, not from the parent.
-ENV_PREFIX="RUST_LOG='$RUST_LOG_FILTER' LUNARIS_PRODUCER_SOCKET='$LUNARIS_PRODUCER_SOCKET' LUNARIS_CONSUMER_SOCKET='$LUNARIS_CONSUMER_SOCKET' LUNARIS_DAEMON_SOCKET='$LUNARIS_DAEMON_SOCKET'"
+ENV_PREFIX="RUST_LOG='$RUST_LOG_FILTER' ARLEN_PRODUCER_SOCKET='$ARLEN_PRODUCER_SOCKET' ARLEN_CONSUMER_SOCKET='$ARLEN_CONSUMER_SOCKET' ARLEN_DAEMON_SOCKET='$ARLEN_DAEMON_SOCKET'"
 
 # Portal-mode env additions. XDG_CURRENT_DESKTOP makes the
 # frontend portal daemon match our `UseIn=arlen;` config (kept
@@ -183,7 +183,7 @@ ENV_PREFIX="RUST_LOG='$RUST_LOG_FILTER' LUNARIS_PRODUCER_SOCKET='$LUNARIS_PRODUC
 # is APPENDED — prepending would let dev portal configs shadow
 # system XDG specs and break unrelated apps.
 if [ "$WITH_PORTAL" -eq 1 ]; then
-    PORTAL_DIST="$LUNARIS_PATH/xdg-desktop-portal-arlen/dist"
+    PORTAL_DIST="$ARLEN_PATH/xdg-desktop-portal-arlen/dist"
     EXISTING_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
     PORTAL_DATA_DIRS="$EXISTING_DATA_DIRS:$PORTAL_DIST"
     EXISTING_DESKTOP="${XDG_CURRENT_DESKTOP:-wlroots}"
@@ -194,7 +194,7 @@ if [ "$WITH_PORTAL" -eq 1 ]; then
     # Idle timeout extended to 30 min for dev sessions so the daemon
     # doesn't exit mid-debug while you're staring at logs. Production
     # leaves it at the 60 s default.
-    PORTAL_ENV_PREFIX="$ENV_PREFIX XDG_CURRENT_DESKTOP='$PORTAL_DESKTOP' XDG_DATA_DIRS='$PORTAL_DATA_DIRS' LUNARIS_PORTAL_PICKER_BIN='$PICKER_BIN' LUNARIS_PORTAL_IDLE_TIMEOUT_SECS='1800'"
+    PORTAL_ENV_PREFIX="$ENV_PREFIX XDG_CURRENT_DESKTOP='$PORTAL_DESKTOP' XDG_DATA_DIRS='$PORTAL_DATA_DIRS' ARLEN_PORTAL_PICKER_BIN='$PICKER_BIN' ARLEN_PORTAL_IDLE_TIMEOUT_SECS='1800'"
 
     # Codex review: tmux child env doesn't reach the systemd
     # user-manager-spawned `xdg-desktop-portal.service`, which is
@@ -219,30 +219,30 @@ fi
 
 # Window 0: Compositor
 tmux new-session -d -s arlen -n compositor
-tmux send-keys -t arlen:compositor "cd $LUNARIS_PATH/compositor && $ENV_PREFIX cargo run --bin cosmic-comp 2>&1 | tee $LOG_DIR/compositor.log" Enter
+tmux send-keys -t arlen:compositor "cd $ARLEN_PATH/compositor && $ENV_PREFIX cargo run --bin cosmic-comp 2>&1 | tee $LOG_DIR/compositor.log" Enter
 
 # Window 1: Event Bus (user-owned socket in XDG_RUNTIME_DIR — no sudo)
 tmux new-window -t arlen -n eventbus
-tmux send-keys -t arlen:eventbus "sleep 2 && cd $LUNARIS_PATH/event-bus && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/event-bus.log" Enter
+tmux send-keys -t arlen:eventbus "sleep 2 && cd $ARLEN_PATH/event-bus && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/event-bus.log" Enter
 
 # Window 2: Knowledge
 tmux new-window -t arlen -n knowledge
-tmux send-keys -t arlen:knowledge "sleep 6 && cd $LUNARIS_PATH/knowledge && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/knowledge.log" Enter
+tmux send-keys -t arlen:knowledge "sleep 6 && cd $ARLEN_PATH/knowledge && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/knowledge.log" Enter
 
 # Window 3: Notification Daemon
 tmux new-window -t arlen -n notifyd
-tmux send-keys -t arlen:notifyd "sleep 7 && cd $LUNARIS_PATH/notification-daemon && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/notifyd.log" Enter
+tmux send-keys -t arlen:notifyd "sleep 7 && cd $ARLEN_PATH/notification-daemon && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/notifyd.log" Enter
 
 # Window 4: Desktop Shell (Tauri). `cargo tauri dev` also spawns the
 # Vite dev server; tee captures both.
 tmux new-window -t arlen -n shell
-tmux send-keys -t arlen:shell "sleep 10 && cd $LUNARIS_PATH/desktop-shell && $ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo tauri dev 2>&1 | tee $LOG_DIR/desktop-shell.log" Enter
+tmux send-keys -t arlen:shell "sleep 10 && cd $ARLEN_PATH/desktop-shell && $ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo tauri dev 2>&1 | tee $LOG_DIR/desktop-shell.log" Enter
 
 if [ "$WITH_PORTAL" -eq 1 ]; then
     # Window 5: app-settings (Tauri). The Settings DirectoryPicker
     # is the unconfined-side E2E test for the portal plugin.
     tmux new-window -t arlen -n settings
-    tmux send-keys -t arlen:settings "sleep 12 && cd $LUNARIS_PATH/app-settings && $PORTAL_ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo tauri dev 2>&1 | tee $LOG_DIR/app-settings.log" Enter
+    tmux send-keys -t arlen:settings "sleep 12 && cd $ARLEN_PATH/app-settings && $PORTAL_ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo tauri dev 2>&1 | tee $LOG_DIR/app-settings.log" Enter
 
     # Window 6: portal daemon. Spawned AFTER the picker binary
     # build (pre-build step) so the daemon's pre-warm finds it.
@@ -252,7 +252,7 @@ if [ "$WITH_PORTAL" -eq 1 ]; then
     # session (whichever Wayland the dev shell is on) instead of
     # the nested cosmic-comp the rest of the stack runs against.
     tmux new-window -t arlen -n portal-daemon
-    tmux send-keys -t arlen:portal-daemon "sleep 8 && cd $LUNARIS_PATH/xdg-desktop-portal-arlen && $PORTAL_ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo run --bin xdg-desktop-portal-arlen 2>&1 | tee $LOG_DIR/portal-daemon.log" Enter
+    tmux send-keys -t arlen:portal-daemon "sleep 8 && cd $ARLEN_PATH/xdg-desktop-portal-arlen && $PORTAL_ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo run --bin xdg-desktop-portal-arlen 2>&1 | tee $LOG_DIR/portal-daemon.log" Enter
 fi
 
 # Select shell window
@@ -287,8 +287,8 @@ fi
 # Knowledge socket is the single most common breakage: if it isn't
 # bound, the shell's 'Projects' / 'Recent Files' silently degrade to
 # empty. Surface that here instead of letting it be a mystery later.
-if [ ! -S "$LUNARIS_DAEMON_SOCKET" ]; then
-    echo "WARNING: knowledge socket not found at $LUNARIS_DAEMON_SOCKET" >&2
+if [ ! -S "$ARLEN_DAEMON_SOCKET" ]; then
+    echo "WARNING: knowledge socket not found at $ARLEN_DAEMON_SOCKET" >&2
     echo "  tail -f $LOG_DIR/knowledge.log to diagnose" >&2
 fi
 

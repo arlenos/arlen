@@ -95,8 +95,8 @@ async fn compositor_window_focused_lands_in_sqlite() {
     // Start event-bus
     let _event_bus = KillOnDrop(
         Command::new(binary_path("event-bus", "event-bus"))
-            .env("LUNARIS_PRODUCER_SOCKET", producer_str)
-            .env("LUNARIS_CONSUMER_SOCKET", consumer_str)
+            .env("ARLEN_PRODUCER_SOCKET", producer_str)
+            .env("ARLEN_CONSUMER_SOCKET", consumer_str)
             .env("RUST_LOG", "error")
             .spawn()
             .expect("failed to start event-bus"),
@@ -108,10 +108,10 @@ async fn compositor_window_focused_lands_in_sqlite() {
     // Start knowledge daemon
     let _knowledge = KillOnDrop(
         Command::new(binary_path("knowledge", "knowledge"))
-            .env("LUNARIS_CONSUMER_SOCKET", consumer_str)
-            .env("LUNARIS_DB_PATH", db_str)
-            .env("LUNARIS_GRAPH_PATH", graph_str)
-            .env("LUNARIS_DAEMON_SOCKET", daemon_str)
+            .env("ARLEN_CONSUMER_SOCKET", consumer_str)
+            .env("ARLEN_DB_PATH", db_str)
+            .env("ARLEN_GRAPH_PATH", graph_str)
+            .env("ARLEN_DAEMON_SOCKET", daemon_str)
             .env("RUST_LOG", "error")
             .spawn()
             .expect("failed to start knowledge"),
@@ -134,7 +134,7 @@ async fn compositor_window_focused_lands_in_sqlite() {
     let display = std::env::var("DISPLAY").unwrap_or_else(|_| ":0".to_string());
     let _compositor = KillOnDrop(
         Command::new(binary_path("compositor", "cosmic-comp"))
-            .env("LUNARIS_PRODUCER_SOCKET", producer_str)
+            .env("ARLEN_PRODUCER_SOCKET", producer_str)
             .env("DISPLAY", &display)
             .env("RUST_LOG", "error")
             .arg("--nested")

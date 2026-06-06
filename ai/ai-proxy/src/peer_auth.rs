@@ -32,7 +32,7 @@ pub const CANONICAL_AI_AGENT_BIN: &str = "/usr/lib/arlen/libexec/arlen-ai-agent"
 /// Env var that lets developers extend the executable allowlist for
 /// dev installs (colon-separated paths). Production deploys leave it
 /// unset.
-pub const EXTRA_BINS_ENV: &str = "LUNARIS_AI_PROXY_EXTRA_BINS";
+pub const EXTRA_BINS_ENV: &str = "ARLEN_AI_PROXY_EXTRA_BINS";
 
 /// Mapping from executable path to the well-known name the proxy
 /// will record for the caller.
@@ -50,7 +50,7 @@ impl Default for PeerAuthMap {
 impl PeerAuthMap {
     /// Build the default mapping.
     ///
-    /// In **debug builds only**, a `LUNARIS_AI_PROXY_EXTRA_BINS` env
+    /// In **debug builds only**, a `ARLEN_AI_PROXY_EXTRA_BINS` env
     /// var extends the executable map for local iteration against
     /// repo-relative binaries (colon-separated `<exe-path>=<name>`
     /// pairs). The override is compiled out of release builds: an

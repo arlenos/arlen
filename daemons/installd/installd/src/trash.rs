@@ -51,7 +51,7 @@ pub struct TrashInfo {
 
 /// Get the trash directory.
 fn trash_dir() -> PathBuf {
-    std::env::var("LUNARIS_TRASH_DIR")
+    std::env::var("ARLEN_TRASH_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             dirs::data_dir()
@@ -340,9 +340,9 @@ mod tests {
         let trash = tempfile::TempDir::new().unwrap();
         let desktop = tempfile::TempDir::new().unwrap();
 
-        std::env::set_var("LUNARIS_USER_APPS_DIR", apps.path());
-        std::env::set_var("LUNARIS_TRASH_DIR", trash.path());
-        std::env::set_var("LUNARIS_USER_DESKTOP_DIR", desktop.path());
+        std::env::set_var("ARLEN_USER_APPS_DIR", apps.path());
+        std::env::set_var("ARLEN_TRASH_DIR", trash.path());
+        std::env::set_var("ARLEN_USER_DESKTOP_DIR", desktop.path());
 
         // Create a minimal installed app.
         let app_dir = apps.path().join("com.test.trash");
@@ -377,25 +377,25 @@ mod tests {
             "trash entry should be gone"
         );
 
-        std::env::remove_var("LUNARIS_USER_APPS_DIR");
-        std::env::remove_var("LUNARIS_TRASH_DIR");
-        std::env::remove_var("LUNARIS_USER_DESKTOP_DIR");
+        std::env::remove_var("ARLEN_USER_APPS_DIR");
+        std::env::remove_var("ARLEN_TRASH_DIR");
+        std::env::remove_var("ARLEN_USER_DESKTOP_DIR");
     }
 
     #[test]
     fn test_restore_not_in_trash() {
         let trash = tempfile::TempDir::new().unwrap();
-        std::env::set_var("LUNARIS_TRASH_DIR", trash.path());
+        std::env::set_var("ARLEN_TRASH_DIR", trash.path());
 
         assert!(restore_app("com.nonexistent.app").is_err());
 
-        std::env::remove_var("LUNARIS_TRASH_DIR");
+        std::env::remove_var("ARLEN_TRASH_DIR");
     }
 
     #[test]
     fn test_cleanup_expired() {
         let trash = tempfile::TempDir::new().unwrap();
-        std::env::set_var("LUNARIS_TRASH_DIR", trash.path());
+        std::env::set_var("ARLEN_TRASH_DIR", trash.path());
 
         // Create an expired entry (timestamp 31 days ago).
         let entry_dir = trash.path().join("com.test.old");
@@ -439,13 +439,13 @@ mod tests {
         assert!(!entry_dir.exists(), "expired entry should be deleted");
         assert!(recent_dir.exists(), "recent entry should survive");
 
-        std::env::remove_var("LUNARIS_TRASH_DIR");
+        std::env::remove_var("ARLEN_TRASH_DIR");
     }
 
     #[test]
     fn test_cleanup_orphaned_entry() {
         let trash = tempfile::TempDir::new().unwrap();
-        std::env::set_var("LUNARIS_TRASH_DIR", trash.path());
+        std::env::set_var("ARLEN_TRASH_DIR", trash.path());
 
         // Entry without .trash-info (orphaned).
         let orphan = trash.path().join("com.test.orphan");
@@ -456,7 +456,7 @@ mod tests {
         assert_eq!(deleted, 1);
         assert!(!orphan.exists());
 
-        std::env::remove_var("LUNARIS_TRASH_DIR");
+        std::env::remove_var("ARLEN_TRASH_DIR");
     }
 
     #[test]

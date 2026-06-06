@@ -235,7 +235,7 @@ fn fetch_rows() -> Vec<FileRow> {
 
 /// Knowledge daemon socket path (same fallback chain as `projects.rs`).
 fn knowledge_socket_path() -> String {
-    if let Ok(p) = std::env::var("LUNARIS_DAEMON_SOCKET") {
+    if let Ok(p) = std::env::var("ARLEN_DAEMON_SOCKET") {
         return p;
     }
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
@@ -702,14 +702,14 @@ mod tests {
     fn plugin_graceful_when_daemon_unreachable() {
         // Point at a socket that can't be connected to. Plugin must
         // return empty, not panic, not error.
-        std::env::set_var("LUNARIS_DAEMON_SOCKET", "/tmp/nonexistent-arlen-test-socket");
+        std::env::set_var("ARLEN_DAEMON_SOCKET", "/tmp/nonexistent-arlen-test-socket");
         let p = FilesPlugin::new();
         let r = p.search("test");
         // Either empty (expected) or whatever is in a prior cache —
         // we can't assert emptiness strictly if another test populated
         // the cache first, but we CAN assert no panic.
         let _ = r;
-        std::env::remove_var("LUNARIS_DAEMON_SOCKET");
+        std::env::remove_var("ARLEN_DAEMON_SOCKET");
     }
 
     #[test]

@@ -33,14 +33,14 @@ pub enum InstallError {
 
 /// Get the system app installation base directory.
 fn apps_dir() -> PathBuf {
-    std::env::var("LUNARIS_SYSTEM_APPS_DIR")
+    std::env::var("ARLEN_SYSTEM_APPS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(SYSTEM_APPS_DIR))
 }
 
 /// Get the system desktop entries directory.
 fn desktop_dir() -> PathBuf {
-    std::env::var("LUNARIS_SYSTEM_DESKTOP_DIR")
+    std::env::var("ARLEN_SYSTEM_DESKTOP_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(SYSTEM_DESKTOP_DIR))
 }
@@ -248,7 +248,7 @@ mod tests {
         fs::write(src.path().join("share/readme.txt"), "hello").unwrap();
 
         // Override base directory.
-        std::env::set_var("LUNARIS_SYSTEM_APPS_DIR", base.path());
+        std::env::set_var("ARLEN_SYSTEM_APPS_DIR", base.path());
 
         let dest = install_system("com.test.app", src.path().to_str().unwrap()).unwrap();
         assert!(dest.join("bin/myapp").exists());
@@ -264,13 +264,13 @@ mod tests {
         // Uninstall non-existent should fail.
         assert!(uninstall_system("com.test.app").is_err());
 
-        std::env::remove_var("LUNARIS_SYSTEM_APPS_DIR");
+        std::env::remove_var("ARLEN_SYSTEM_APPS_DIR");
     }
 
     #[test]
     fn test_create_desktop_entry() {
         let dir = tempfile::TempDir::new().unwrap();
-        std::env::set_var("LUNARIS_SYSTEM_DESKTOP_DIR", dir.path());
+        std::env::set_var("ARLEN_SYSTEM_DESKTOP_DIR", dir.path());
 
         let content = "[Desktop Entry]\nType=Application\nName=Test\nExec=/usr/bin/test\n";
         let path = create_desktop_entry("com.test.app", content).unwrap();
@@ -280,16 +280,16 @@ mod tests {
         assert!(read.contains("[Desktop Entry]"));
         assert!(read.contains("Name=Test"));
 
-        std::env::remove_var("LUNARIS_SYSTEM_DESKTOP_DIR");
+        std::env::remove_var("ARLEN_SYSTEM_DESKTOP_DIR");
     }
 
     #[test]
     fn test_create_desktop_entry_invalid() {
         let dir = tempfile::TempDir::new().unwrap();
-        std::env::set_var("LUNARIS_SYSTEM_DESKTOP_DIR", dir.path());
+        std::env::set_var("ARLEN_SYSTEM_DESKTOP_DIR", dir.path());
 
         assert!(create_desktop_entry("com.test.app", "not a desktop entry").is_err());
 
-        std::env::remove_var("LUNARIS_SYSTEM_DESKTOP_DIR");
+        std::env::remove_var("ARLEN_SYSTEM_DESKTOP_DIR");
     }
 }

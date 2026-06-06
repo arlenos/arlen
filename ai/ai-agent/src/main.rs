@@ -1028,9 +1028,9 @@ async fn shutdown_requested(shutdown_rx: &mut watch::Receiver<bool>) {
     let _ = shutdown_rx.wait_for(|&stop| stop).await;
 }
 
-/// The path to `ai.toml` (`LUNARIS_AI_CONFIG` overrides the default).
+/// The path to `ai.toml` (`ARLEN_AI_CONFIG` overrides the default).
 fn ai_config_path() -> PathBuf {
-    if let Ok(path) = std::env::var("LUNARIS_AI_CONFIG") {
+    if let Ok(path) = std::env::var("ARLEN_AI_CONFIG") {
         return PathBuf::from(path);
     }
     let home = std::env::var("HOME").unwrap_or_default();
@@ -1052,18 +1052,18 @@ fn behaviour_sources() -> Vec<BehaviourSource> {
     // into a deployed system (it would otherwise satisfy a built-in-only
     // config approval from an attacker-controllable path).
     #[cfg(debug_assertions)]
-    if let Ok(dir) = std::env::var("LUNARIS_AGENT_BEHAVIOURS") {
+    if let Ok(dir) = std::env::var("ARLEN_AGENT_BEHAVIOURS") {
         sources.push(BehaviourSource::builtin(dir));
     }
     sources
 }
 
 fn consumer_socket() -> String {
-    std::env::var("LUNARIS_CONSUMER_SOCKET").unwrap_or_else(|_| DEFAULT_CONSUMER_SOCKET.to_string())
+    std::env::var("ARLEN_CONSUMER_SOCKET").unwrap_or_else(|_| DEFAULT_CONSUMER_SOCKET.to_string())
 }
 
 fn graph_socket() -> String {
-    std::env::var("LUNARIS_KNOWLEDGE_SOCKET").unwrap_or_else(|_| DEFAULT_GRAPH_SOCKET.to_string())
+    std::env::var("ARLEN_KNOWLEDGE_SOCKET").unwrap_or_else(|_| DEFAULT_GRAPH_SOCKET.to_string())
 }
 
 /// Resolve when Ctrl-C or SIGTERM arrives, so the daemon stops cleanly.

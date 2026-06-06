@@ -8,7 +8,7 @@
 ///
 /// Data source fallback chain:
 ///
-/// 1. `LUNARIS_WORDNET_DIR` env var (explicit override, primarily for
+/// 1. `ARLEN_WORDNET_DIR` env var (explicit override, primarily for
 ///    tests and packaging).
 /// 2. `~/.local/share/arlen/dictionaries/wordnet-en/`
 /// 3. `/usr/share/wordnet/` and `/usr/share/wordnet/en/` (system
@@ -172,7 +172,7 @@ fn strip_dict_prefix(q: &str) -> &str {
 /// when no candidate path exists, so the plugin can skip even spawning
 /// the load thread.
 fn resolve_data_dir() -> Option<PathBuf> {
-    if let Ok(dir) = std::env::var("LUNARIS_WORDNET_DIR") {
+    if let Ok(dir) = std::env::var("ARLEN_WORDNET_DIR") {
         let p = PathBuf::from(dir);
         if data_files_exist(&p) {
             return Some(p);
@@ -362,7 +362,7 @@ mod tests {
         // checks for the expected WordNet files and returns None when
         // they're absent.
         std::env::set_var(
-            "LUNARIS_WORDNET_DIR",
+            "ARLEN_WORDNET_DIR",
             "/tmp/nonexistent-arlen-wordnet-xyz",
         );
         assert!(resolve_data_dir().is_none() || {
@@ -371,7 +371,7 @@ mod tests {
             // rejected (since the path doesn't exist).
             true
         });
-        std::env::remove_var("LUNARIS_WORDNET_DIR");
+        std::env::remove_var("ARLEN_WORDNET_DIR");
     }
 
     #[test]
@@ -401,12 +401,12 @@ mod tests {
     fn plugin_without_corpus_returns_empty() {
         // Data dir must NOT resolve. Force it.
         std::env::set_var(
-            "LUNARIS_WORDNET_DIR",
+            "ARLEN_WORDNET_DIR",
             "/tmp/nonexistent-arlen-wordnet-empty",
         );
         let p = DictPlugin::new();
         assert!(p.search("happy").is_empty());
-        std::env::remove_var("LUNARIS_WORDNET_DIR");
+        std::env::remove_var("ARLEN_WORDNET_DIR");
     }
 
     #[test]

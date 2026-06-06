@@ -44,7 +44,7 @@ pub struct ConfigChangedPayload {
 /// forwards received events to the Tauri frontend.
 /// Reconnects automatically if the connection is lost.
 pub fn start(app: AppHandle, shortcuts_state: crate::app_state::ShortcutsState) {
-    let socket_path = std::env::var("LUNARIS_CONSUMER_SOCKET")
+    let socket_path = std::env::var("ARLEN_CONSUMER_SOCKET")
         .unwrap_or_else(|_| DEFAULT_CONSUMER_SOCKET.to_string());
 
     std::thread::spawn(move || {
@@ -438,7 +438,7 @@ fn forward_ambient_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
 /// emitter keeps this module sync-`std::os::unix` flavour.
 fn emit_event(event_type: &str, payload: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
     use prost::Message;
-    let producer_socket = std::env::var("LUNARIS_PRODUCER_SOCKET")
+    let producer_socket = std::env::var("ARLEN_PRODUCER_SOCKET")
         .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".to_string());
 
     let event = proto::Event {
@@ -450,7 +450,7 @@ fn emit_event(event_type: &str, payload: Vec<u8>) -> Result<(), Box<dyn std::err
             .as_micros() as i64,
         source: "desktop-shell".to_string(),
         pid: std::process::id(),
-        session_id: std::env::var("LUNARIS_SESSION_ID").unwrap_or_else(|_| "shell".into()),
+        session_id: std::env::var("ARLEN_SESSION_ID").unwrap_or_else(|_| "shell".into()),
         payload,
         uid: 0,
         project_id: String::new(),

@@ -67,14 +67,14 @@ const KNOWLEDGE_SOCKET: &str = "/run/arlen/knowledge.sock";
 const GRAPH_QUERY_TIMEOUT_MS: u64 = 200;
 
 /// Resolve the knowledge-daemon socket path with the same fallback
-/// logic the daemon itself uses. If `LUNARIS_DAEMON_SOCKET` is set
+/// logic the daemon itself uses. If `ARLEN_DAEMON_SOCKET` is set
 /// (normal path via `start-dev.sh`), use it. Otherwise fall back to
 /// `$XDG_RUNTIME_DIR/arlen/knowledge.sock` so the shell works when
 /// launched ad-hoc without the launcher exporting the env var. Last
 /// resort: the hardcoded `/run/arlen/` default (historically
 /// root-only; kept as a fourth fallback for completeness).
 fn knowledge_socket_path() -> String {
-    if let Ok(p) = std::env::var("LUNARIS_DAEMON_SOCKET") {
+    if let Ok(p) = std::env::var("ARLEN_DAEMON_SOCKET") {
         return p;
     }
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
@@ -488,7 +488,7 @@ mod proto {
 const PRODUCER_SOCKET: &str = "/run/arlen/event-bus-producer.sock";
 
 fn emit_to_event_bus(event_type: &str, payload: Vec<u8>) {
-    let socket = std::env::var("LUNARIS_PRODUCER_SOCKET")
+    let socket = std::env::var("ARLEN_PRODUCER_SOCKET")
         .unwrap_or_else(|_| PRODUCER_SOCKET.to_string());
 
     let event = proto::Event {
@@ -760,9 +760,9 @@ mod tests {
 
     #[test]
     fn emit_to_missing_socket_does_not_panic() {
-        std::env::set_var("LUNARIS_PRODUCER_SOCKET", "/tmp/nonexistent-test-socket");
+        std::env::set_var("ARLEN_PRODUCER_SOCKET", "/tmp/nonexistent-test-socket");
         emit_focus_activated("id", "name", "/path", &None, &[]);
         emit_focus_deactivated("id", 0);
-        std::env::remove_var("LUNARIS_PRODUCER_SOCKET");
+        std::env::remove_var("ARLEN_PRODUCER_SOCKET");
     }
 }

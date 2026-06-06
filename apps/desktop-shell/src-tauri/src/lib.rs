@@ -65,7 +65,7 @@ fn log_frontend(message: String) {
 /// process boundary via the Event Bus: we emit
 /// `app.toolbar.action_invoked` with `(app_id, window_id,
 /// action)`. The target app's tauri-plugin-shell consumer
-/// filters on its own `LUNARIS_APP_ID`, looks up the webview
+/// filters on its own `ARLEN_APP_ID`, looks up the webview
 /// by `window_id`, and re-emits as `arlen://app-action`
 /// scoped to that webview only — multi-window apps route the
 /// click correctly back to the originating window.

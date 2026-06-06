@@ -111,7 +111,7 @@ impl InstallHelper {
     /// Check if a system-wide app is installed.
     async fn is_installed(&self, app_id: &str) -> bool {
         install::validate_app_id(app_id).is_ok() && {
-            let base = std::env::var("LUNARIS_SYSTEM_APPS_DIR")
+            let base = std::env::var("ARLEN_SYSTEM_APPS_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| std::path::PathBuf::from("/usr/lib/arlen/apps"));
             base.join(app_id).exists()

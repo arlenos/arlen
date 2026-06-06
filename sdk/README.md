@@ -95,8 +95,8 @@ Stub crate for module-specific APIs. Will be expanded in Phase 2.
 
 | Variable | Used for |
 |---|---|
-| `LUNARIS_APP_ID` | Identifies the emitting app in events |
-| `LUNARIS_SESSION_ID` | Session identifier attached to all events |
+| `ARLEN_APP_ID` | Identifies the emitting app in events |
+| `ARLEN_SESSION_ID` | Session identifier attached to all events |
 
 ## Testing
 

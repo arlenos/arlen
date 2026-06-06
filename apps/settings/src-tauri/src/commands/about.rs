@@ -93,7 +93,7 @@ fn daemon_statuses() -> Vec<DaemonStatus> {
 // ── Socket-existence probes ────────────────────────────────────────
 
 fn knowledge_socket_path_string() -> String {
-    if let Ok(p) = std::env::var("LUNARIS_DAEMON_SOCKET") {
+    if let Ok(p) = std::env::var("ARLEN_DAEMON_SOCKET") {
         return p;
     }
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {

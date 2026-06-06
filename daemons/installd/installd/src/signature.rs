@@ -44,14 +44,14 @@ const SYSTEM_KEYS_DIR: &str = "/etc/arlen/trusted-keys";
 
 /// Get the system trusted keys directory.
 fn system_keys_dir() -> PathBuf {
-    std::env::var("LUNARIS_SYSTEM_KEYS_DIR")
+    std::env::var("ARLEN_SYSTEM_KEYS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(SYSTEM_KEYS_DIR))
 }
 
 /// Get the user trusted keys directory.
 fn user_keys_dir() -> PathBuf {
-    std::env::var("LUNARIS_USER_KEYS_DIR")
+    std::env::var("ARLEN_USER_KEYS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             dirs::config_dir()
@@ -310,22 +310,22 @@ mod tests {
     fn test_verify_valid_signature() {
         let pkg = tempfile::TempDir::new().unwrap();
         let keys = tempfile::TempDir::new().unwrap();
-        std::env::set_var("LUNARIS_USER_KEYS_DIR", keys.path());
-        std::env::set_var("LUNARIS_SYSTEM_KEYS_DIR", "/nonexistent");
+        std::env::set_var("ARLEN_USER_KEYS_DIR", keys.path());
+        std::env::set_var("ARLEN_SYSTEM_KEYS_DIR", "/nonexistent");
 
         create_signed_package(pkg.path(), keys.path());
         assert!(verify_signature(pkg.path()).is_ok());
 
-        std::env::remove_var("LUNARIS_USER_KEYS_DIR");
-        std::env::remove_var("LUNARIS_SYSTEM_KEYS_DIR");
+        std::env::remove_var("ARLEN_USER_KEYS_DIR");
+        std::env::remove_var("ARLEN_SYSTEM_KEYS_DIR");
     }
 
     #[test]
     fn test_verify_tampered_content() {
         let pkg = tempfile::TempDir::new().unwrap();
         let keys = tempfile::TempDir::new().unwrap();
-        std::env::set_var("LUNARIS_USER_KEYS_DIR", keys.path());
-        std::env::set_var("LUNARIS_SYSTEM_KEYS_DIR", "/nonexistent");
+        std::env::set_var("ARLEN_USER_KEYS_DIR", keys.path());
+        std::env::set_var("ARLEN_SYSTEM_KEYS_DIR", "/nonexistent");
 
         create_signed_package(pkg.path(), keys.path());
 
@@ -339,8 +339,8 @@ mod tests {
             .to_string()
             .contains("tampered"));
 
-        std::env::remove_var("LUNARIS_USER_KEYS_DIR");
-        std::env::remove_var("LUNARIS_SYSTEM_KEYS_DIR");
+        std::env::remove_var("ARLEN_USER_KEYS_DIR");
+        std::env::remove_var("ARLEN_SYSTEM_KEYS_DIR");
     }
 
     #[test]
@@ -360,8 +360,8 @@ mod tests {
     fn test_verify_wrong_key() {
         let pkg = tempfile::TempDir::new().unwrap();
         let keys = tempfile::TempDir::new().unwrap();
-        std::env::set_var("LUNARIS_USER_KEYS_DIR", keys.path());
-        std::env::set_var("LUNARIS_SYSTEM_KEYS_DIR", "/nonexistent");
+        std::env::set_var("ARLEN_USER_KEYS_DIR", keys.path());
+        std::env::set_var("ARLEN_SYSTEM_KEYS_DIR", "/nonexistent");
 
         // Sign with one key.
         create_signed_package(pkg.path(), keys.path());
@@ -374,15 +374,15 @@ mod tests {
         let result = verify_signature(pkg.path());
         assert!(result.is_err());
 
-        std::env::remove_var("LUNARIS_USER_KEYS_DIR");
-        std::env::remove_var("LUNARIS_SYSTEM_KEYS_DIR");
+        std::env::remove_var("ARLEN_USER_KEYS_DIR");
+        std::env::remove_var("ARLEN_SYSTEM_KEYS_DIR");
     }
 
     #[test]
     fn test_verify_no_trusted_keys() {
         let pkg = tempfile::TempDir::new().unwrap();
-        std::env::set_var("LUNARIS_USER_KEYS_DIR", "/nonexistent-user");
-        std::env::set_var("LUNARIS_SYSTEM_KEYS_DIR", "/nonexistent-system");
+        std::env::set_var("ARLEN_USER_KEYS_DIR", "/nonexistent-user");
+        std::env::set_var("ARLEN_SYSTEM_KEYS_DIR", "/nonexistent-system");
 
         fs::write(pkg.path().join("manifest.toml"), "test").unwrap();
         fs::write(pkg.path().join("signature.sig"), [0u8; 64]).unwrap();
@@ -390,8 +390,8 @@ mod tests {
         let result = verify_signature(pkg.path());
         assert!(matches!(result, Err(SignatureError::NoTrustedKeys)));
 
-        std::env::remove_var("LUNARIS_USER_KEYS_DIR");
-        std::env::remove_var("LUNARIS_SYSTEM_KEYS_DIR");
+        std::env::remove_var("ARLEN_USER_KEYS_DIR");
+        std::env::remove_var("ARLEN_SYSTEM_KEYS_DIR");
     }
 
     #[test]
@@ -440,8 +440,8 @@ mod tests {
     fn test_base64_key_loading() {
         let pkg = tempfile::TempDir::new().unwrap();
         let keys = tempfile::TempDir::new().unwrap();
-        std::env::set_var("LUNARIS_USER_KEYS_DIR", keys.path());
-        std::env::set_var("LUNARIS_SYSTEM_KEYS_DIR", "/nonexistent");
+        std::env::set_var("ARLEN_USER_KEYS_DIR", keys.path());
+        std::env::set_var("ARLEN_SYSTEM_KEYS_DIR", "/nonexistent");
 
         let (sk, vk_bytes) = test_keypair();
 
@@ -461,8 +461,8 @@ mod tests {
 
         assert!(verify_signature(pkg.path()).is_ok());
 
-        std::env::remove_var("LUNARIS_USER_KEYS_DIR");
-        std::env::remove_var("LUNARIS_SYSTEM_KEYS_DIR");
+        std::env::remove_var("ARLEN_USER_KEYS_DIR");
+        std::env::remove_var("ARLEN_SYSTEM_KEYS_DIR");
     }
 
     /// Simple base64 encoder for tests.

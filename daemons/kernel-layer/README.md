@@ -50,8 +50,8 @@ cargo build -p kernel-layer
 Must run as root or with `CAP_BPF` + `CAP_PERFMON`.
 
 ```bash
-LUNARIS_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock \
-LUNARIS_SESSION_ID=$(cat /run/arlen/session-id) \
+ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock \
+ARLEN_SESSION_ID=$(cat /run/arlen/session-id) \
 RUST_LOG=info \
 sudo ./kernel-layer
 ```
@@ -60,8 +60,8 @@ sudo ./kernel-layer
 
 | Variable | Default | Description |
 |---|---|---|
-| `LUNARIS_PRODUCER_SOCKET` | `/run/arlen/event-bus-producer.sock` | Event Bus producer socket |
-| `LUNARIS_SESSION_ID` | generated UUID v7 | Session ID attached to all events |
+| `ARLEN_PRODUCER_SOCKET` | `/run/arlen/event-bus-producer.sock` | Event Bus producer socket |
+| `ARLEN_SESSION_ID` | generated UUID v7 | Session ID attached to all events |
 
 ## Normalizer
 
