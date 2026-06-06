@@ -11,7 +11,7 @@
   /// callback so the confirm button can show a brief "Working…" state
   /// for slow operations. Escape and backdrop click both cancel.
 
-  import { Button } from "$lib/components/ui/button";
+  import { Button } from "../button";
 
   type Variant = "default" | "destructive";
 

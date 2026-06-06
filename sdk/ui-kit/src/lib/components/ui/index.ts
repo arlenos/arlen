@@ -8,13 +8,19 @@
 ///   import { Button } from '$lib/components/ui/button';
 ///   import { FillSlider } from '$lib/components/ui/fill-slider';
 ///
-/// Consuming apps (desktop-shell, app-settings) keep file copies of
-/// each component under their own `src/lib/components/ui/` directory.
-/// Tailwind's scope-hashing breaks if the file is imported across
-/// crate boundaries, so we sync via copy rather than symlink. When
-/// you change a canonical component here, mirror the change into
-/// both `app-settings/src/lib/components/ui/<name>/` and
-/// `desktop-shell/src/lib/components/ui/<name>/`.
+/// Consumption (validated June 2026, see docs/architecture/design-system.md §2.1):
+/// consuming apps import these directly via the `@lunaris/ui-kit` SvelteKit
+/// alias (`svelte.config.js`: "@lunaris/ui-kit" -> "../sdk/ui-kit/src/lib"),
+/// e.g. `import { Page } from "@lunaris/ui-kit/components/ui/page"`. This is the
+/// single source — do NOT copy these into apps.
+///   - Scoped-style components (Page, SectionGrid, Group, Row, Switch,
+///     SegmentedControl, ChipList, Toolbar, StatGrid, topbar, …) import cleanly
+///     cross-crate with no extra setup (desktop-shell + app-settings both do).
+///   - Tailwind-utility-class components (the shadcn-derived button/card/etc.)
+///     additionally need the consuming app's `app.css` to scan this source via
+///     `@source "../../sdk/ui-kit/src/lib/components/**/*.{svelte,ts}"`, so their
+///     classes are generated; until each app adds that, those specific ones are
+///     still copied (the S-U1b consolidation removes the copies).
 
 // Re-export only the custom Lunaris components that have unique names
 // and NO app-specific store imports. Components that depend on

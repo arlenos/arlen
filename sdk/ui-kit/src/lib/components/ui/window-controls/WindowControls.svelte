@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { Minus, Square, X } from "lucide-svelte";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import { Minus, Square, X } from "@lucide/svelte";
+  import { Button } from "../button/index.js";
 
   interface Props {
     /** Whether to show the maximize button. False for fixed-size windows. */

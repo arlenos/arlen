@@ -36,7 +36,7 @@
   /// Badge slot is z-index-lifted above the icon's opacity layer so
   /// a `dimmed` applet still shows a crisp badge.
   import type { Snippet } from "svelte";
-  import * as Tooltip from "$lib/components/ui/tooltip";
+  import * as Tooltip from "../ui/tooltip";
 
   export type AppletState = "on" | "off" | "connecting" | "warn" | "error";
 

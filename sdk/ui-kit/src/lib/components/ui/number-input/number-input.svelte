@@ -20,7 +20,7 @@
   /// * Min/max disable the respective button but still allow direct
   ///   typing; values outside the range are clamped on commit.
 
-  import { Minus, Plus } from "lucide-svelte";
+  import { Minus, Plus } from "@lucide/svelte";
 
   type Props = {
     value: number;

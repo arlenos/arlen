@@ -30,7 +30,7 @@
 	)}
 	{...restProps}
 >
-	{#snippet children({ checked })}
+	{#snippet children({ checked }: { checked: boolean; indeterminate: boolean })}
 		<span class="absolute right-2 pointer-events-none">
 			{#if checked}
 				<CheckIcon  />
