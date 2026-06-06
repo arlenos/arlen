@@ -134,18 +134,23 @@ pub enum ExecError {
     /// of it (the S13 audit-before-acting invariant the gate also honours).
     #[error("audit unavailable, execution refused: {0}")]
     AuditUnavailable(String),
-    /// The write did not finish within [`WRITE_TIMEOUT`]. Fail-closed so a
-    /// stalled write cannot park the executor (and the daemon's dispatch loop);
-    /// the write is pre-audited and idempotent, so it is reconcilable on a later
-    /// run rather than lost. Commit-unknown (the request may have been sent).
-    #[error("the write timed out")]
-    WriteTimeout,
-    /// The write failed in a way that leaves its commit **unknown** (a transport
-    /// failure after the request may already have been sent). Distinct from
-    /// `Write` (a definite no-commit), so the outcome is reported as
-    /// indeterminate and reconciled on a later run.
-    #[error("the write outcome is unknown: {0}")]
-    WriteIndeterminate(String),
+    /// The write's commit is **unknown** (a timeout after the request may have
+    /// been sent, a post-send transport failure, or a reconciliation read that
+    /// could not confirm the op-id edge). Distinct from `Write` (a definite
+    /// no-commit), so it is reported as indeterminate and reconciled on a later
+    /// run. Carries the [`PendingWrite`] key — the `(write, op_id, correlation
+    /// id)` of the unconfirmed operation — so a late commit is not left
+    /// uncompensable: the key reaches the dispatcher (and any recovery path),
+    /// which can re-run the op-id-keyed reconcile/retract rather than having only
+    /// a reason string. `reason` is for logging.
+    #[error("the write outcome is unknown: {reason}")]
+    WriteIndeterminate {
+        /// The durable key needed to reconcile or compensate the unconfirmed write.
+        pending: PendingWrite,
+        /// Human-readable detail for logging (the edge was not yet observed, or a
+        /// read failed); not load-bearing.
+        reason: String,
+    },
 }
 
 /// A failure to persist a planned relation write, classified by whether the
@@ -297,6 +302,51 @@ impl ExecutedWrite {
     }
 
     /// The correlation id of the decision that produced this write.
+    pub fn correlation_id(&self) -> &str {
+        &self.correlation_id
+    }
+}
+
+/// The durable key for a write whose commit is **unknown**: the relation, the
+/// op_id the executor stamped, and the decision's correlation id. It is the
+/// receipt's counterpart for the indeterminate path — a late in-process commit
+/// would otherwise leave this operation's op-id-stamped edge in the graph with
+/// nothing holding the key to reconcile or compensate it. Carrying it out of the
+/// executor (through [`ExecError::WriteIndeterminate`] and on to the dispatcher)
+/// lets a recovery path re-run the op-id-keyed reconcile/retract.
+///
+/// Like [`ExecutedWrite`] it is opaque (private fields, module-private
+/// constructor, read accessors), so the only `(write, op_id)` pairing is the one
+/// the executor derived, never a fabricated one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingWrite {
+    write: RelationWrite,
+    op_id: String,
+    correlation_id: String,
+}
+
+impl PendingWrite {
+    /// Build a pending-write key. Module-private: only the executor's
+    /// reconciliation constructs one.
+    fn new(write: RelationWrite, op_id: String, correlation_id: String) -> Self {
+        Self {
+            write,
+            op_id,
+            correlation_id,
+        }
+    }
+
+    /// The relation whose write is unconfirmed.
+    pub fn write(&self) -> &RelationWrite {
+        &self.write
+    }
+
+    /// The op id the unconfirmed write stamped (the reconcile/retract key).
+    pub fn op_id(&self) -> &str {
+        &self.op_id
+    }
+
+    /// The correlation id of the decision behind the unconfirmed write.
     pub fn correlation_id(&self) -> &str {
         &self.correlation_id
     }
@@ -742,7 +792,13 @@ impl<'a> LiveExecutor<'a> {
             // have fired after the retract reached the daemon). Reconcile by the
             // op id rather than report a failure that could hide a real retract.
             Ok(Err(WriteError::Indeterminate(_))) | Err(_) => {
-                self.reconcile_retract(&executed.write, &executed.op_id, graph).await
+                self.reconcile_retract(
+                    &executed.write,
+                    &executed.op_id,
+                    &executed.correlation_id,
+                    graph,
+                )
+                .await
             }
         }
     }
@@ -773,16 +829,22 @@ impl<'a> LiveExecutor<'a> {
         &self,
         write: &RelationWrite,
         op_id: &str,
+        correlation_id: &str,
         graph: &dyn GraphHandle,
     ) -> Result<CompensationOutcome, ExecError> {
+        let pending = || {
+            PendingWrite::new(write.clone(), op_id.to_string(), correlation_id.to_string())
+        };
         match self.edge_exists(write, graph, op_id).await {
             Some(false) => Ok(CompensationOutcome::Retracted),
-            Some(true) => Err(ExecError::WriteIndeterminate(
-                "retract unconfirmed; this op's edge is still present".to_string(),
-            )),
-            None => Err(ExecError::WriteIndeterminate(
-                "retract reconciliation read failed".to_string(),
-            )),
+            Some(true) => Err(ExecError::WriteIndeterminate {
+                pending: pending(),
+                reason: "retract unconfirmed; this op's edge is still present".to_string(),
+            }),
+            None => Err(ExecError::WriteIndeterminate {
+                pending: pending(),
+                reason: "retract reconciliation read failed".to_string(),
+            }),
         }
     }
 
@@ -818,12 +880,17 @@ impl<'a> LiveExecutor<'a> {
                 op_id,
                 correlation_id.to_string(),
             ))),
-            Some(false) => Err(ExecError::WriteIndeterminate(
-                "write unconfirmed; its op_id edge is not present".to_string(),
-            )),
-            None => Err(ExecError::WriteIndeterminate(
-                "reconciliation read failed".to_string(),
-            )),
+            // Indeterminate: carry the key out, so a write that commits AFTER
+            // this read (the daemon's queued CREATE may run later) is not left
+            // with its op-id edge in the graph and no receipt to undo it.
+            Some(false) => Err(ExecError::WriteIndeterminate {
+                pending: PendingWrite::new(write, op_id, correlation_id.to_string()),
+                reason: "write unconfirmed; its op_id edge is not present".to_string(),
+            }),
+            None => Err(ExecError::WriteIndeterminate {
+                pending: PendingWrite::new(write, op_id, correlation_id.to_string()),
+                reason: "reconciliation read failed".to_string(),
+            }),
         }
     }
 
@@ -1225,7 +1292,18 @@ mod tests {
                 BaselineMode::Supervised,
             )
             .await;
-        assert!(matches!(result, Err(ExecError::WriteIndeterminate(_))));
+        // The indeterminate error carries the pending key (not just a reason),
+        // so a late commit is reconcilable: the op_id is the one this execution
+        // derived, the relation is the one written, and the correlation id is
+        // the decision's. Without this the late commit would be uncompensable.
+        match result {
+            Err(ExecError::WriteIndeterminate { pending, .. }) => {
+                assert_eq!(pending.op_id(), derive_op_id("run-x", pending.write()));
+                assert_eq!(pending.write().relation_type, "FILE_PART_OF");
+                assert_eq!(pending.correlation_id(), "run-x");
+            }
+            other => panic!("expected WriteIndeterminate with a pending key, got {other:?}"),
+        }
         // The act was still audited before the write was attempted.
         assert_eq!(audit.recorded().await.len(), 1);
     }
@@ -1292,12 +1370,12 @@ mod tests {
         // write may yet commit; a retry with the same op_id resolves it).
         let g = ReconcileGraph { mine: Some("op-other".into()), malformed: false };
         let r = exec.reconcile(write(), "op-mine".to_string(), "run-x", &g).await;
-        assert!(matches!(r, Err(ExecError::WriteIndeterminate(_))));
+        assert!(matches!(r, Err(ExecError::WriteIndeterminate { .. })));
 
         // A malformed read fails closed to indeterminate, never a false absence.
         let g = ReconcileGraph { mine: None, malformed: true };
         let r = exec.reconcile(write(), "op-mine".to_string(), "run-x", &g).await;
-        assert!(matches!(r, Err(ExecError::WriteIndeterminate(_))));
+        assert!(matches!(r, Err(ExecError::WriteIndeterminate { .. })));
     }
 
     #[tokio::test]

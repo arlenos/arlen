@@ -174,13 +174,22 @@ pub enum ExecutionResult {
     /// audit outage, a pre-send write error). The reason is for logging and
     /// recovery; the attempt, if it reached the write, was audited beforehand.
     Failed(String),
-    /// The write timed out after the request may already have been sent, so it
-    /// is **unknown** whether the daemon committed the relation. NOT a failure:
-    /// reporting it as one would lose the authoritative created/exists signal for
-    /// a write that did commit. It is pre-audited, and the executor's
+    /// The write's commit is **unknown** (a timeout after the request may have
+    /// been sent, or a reconciliation read that could not confirm the op-id
+    /// edge). NOT a failure: reporting it as one would lose the authoritative
+    /// created/exists signal for a write that did commit. It carries the
+    /// [`PendingWrite`](crate::executor::PendingWrite) key (the write's op_id +
+    /// correlation id), so a write that commits late is not left uncompensable —
+    /// a recovery path has the key to re-run the op-id-keyed reconcile/retract.
+    /// `reason` is for logging. It is pre-audited, and the executor's
     /// re-validation reconciles it on the next run (a committed edge fails the
     /// `Not(EdgeExists)` proof, so it is neither double-written nor lost).
-    Indeterminate(String),
+    Indeterminate {
+        /// The durable key to reconcile or compensate the unconfirmed write.
+        pending: crate::executor::PendingWrite,
+        /// Human-readable detail for logging; not load-bearing.
+        reason: String,
+    },
 }
 
 /// The outcome of dispatching one matched behaviour for one event.
@@ -905,17 +914,16 @@ impl<'a> Dispatcher<'a> {
             Ok(None) => None,
             // A timed-out or post-send-failed write may have committed, so it is
             // indeterminate, not a failure: mapping it to Failed would discard the
-            // created/exists signal for a write that did persist. The next run's
-            // re-validation reconciles it.
-            Err(
-                e @ (crate::executor::ExecError::WriteTimeout
-                | crate::executor::ExecError::WriteIndeterminate(_)),
-            ) => {
+            // created/exists signal for a write that did persist. Carry the
+            // pending key out (not just a string), so a late commit can still be
+            // reconciled/compensated. The next run's re-validation also reconciles
+            // it (a committed edge fails the `Not(EdgeExists)` proof).
+            Err(crate::executor::ExecError::WriteIndeterminate { pending, reason }) => {
                 tracing::warn!(
                     behaviour = %behaviour,
-                    "live executor write outcome unknown (may have committed): {e}"
+                    "live executor write outcome unknown (may have committed): {reason}"
                 );
-                Some(ExecutionResult::Indeterminate(e.to_string()))
+                Some(ExecutionResult::Indeterminate { pending, reason })
             }
             Err(e) => {
                 tracing::warn!(
@@ -3447,8 +3455,16 @@ trigger:
         // pending work, so this resolves immediately.
         let outcomes = d.dispatch(&event("/proj/a.rs")).await;
         match outcomes.as_slice() {
-            [DispatchOutcome::Decided { executed: Some(ExecutionResult::Indeterminate(_)), .. }] => {}
-            other => panic!("a timed-out write must be Indeterminate, not Failed: {other:?}"),
+            [DispatchOutcome::Decided { executed: Some(ExecutionResult::Indeterminate { pending, .. }), .. }] =>
+            {
+                // The pending key survives to the dispatch outcome, so a late
+                // commit is not left uncompensable: a recovery path has the
+                // op_id + relation + correlation id to reconcile/retract.
+                assert!(!pending.op_id().is_empty(), "the pending key carries the op_id");
+                assert_eq!(pending.write().relation_type, "FILE_PART_OF");
+                assert_eq!(pending.correlation_id(), "e1:auto-tag-by-project");
+            }
+            other => panic!("a timed-out write must be Indeterminate with a pending key: {other:?}"),
         }
     }
 
@@ -3484,7 +3500,7 @@ trigger:
 
         let outcomes = d.dispatch(&event("/proj/a.rs")).await;
         match outcomes.as_slice() {
-            [DispatchOutcome::Decided { executed: Some(ExecutionResult::Indeterminate(_)), .. }] => {}
+            [DispatchOutcome::Decided { executed: Some(ExecutionResult::Indeterminate { .. }), .. }] => {}
             other => panic!("a post-send write failure must be Indeterminate: {other:?}"),
         }
     }
