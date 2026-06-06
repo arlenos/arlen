@@ -14,11 +14,13 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+pub mod activity;
 pub mod client;
 pub mod read;
 pub mod read_client;
 pub mod sink;
 
+pub use activity::{ActivityEntry, ActivityPage, MAX_ACTIVITY_LIMIT};
 pub use read::{read_socket_path, ReadPage, ReadRequest, ReadResponse, StructuralView};
 pub use read_client::{ReadClient, ReadClientError};
 
