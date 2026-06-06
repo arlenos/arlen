@@ -23,23 +23,64 @@
     class?: string;
   } = $props();
 
+  // Button refs for roving-focus keyboard navigation.
+  let btns = $state<HTMLButtonElement[]>([]);
+
+  // Roving tabindex: exactly one radio is tabbable — the selected one, or the
+  // first when nothing is selected yet (the WAI-ARIA radio-group pattern).
+  const tabbableIndex = $derived.by(() => {
+    const i = options.findIndex((o) => o.value === value);
+    return i >= 0 ? i : 0;
+  });
+
   function select(v: string) {
     if (disabled || v === value) return;
     value = v;
     onchange?.(v);
   }
+
+  /// Arrow/Home/End move focus AND selection (selection follows focus, per the
+  /// radio-group model), wrapping at the ends.
+  function onKeydown(e: KeyboardEvent, i: number) {
+    if (disabled) return;
+    let next = i;
+    switch (e.key) {
+      case "ArrowRight":
+      case "ArrowDown":
+        next = (i + 1) % options.length;
+        break;
+      case "ArrowLeft":
+      case "ArrowUp":
+        next = (i - 1 + options.length) % options.length;
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = options.length - 1;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    select(options[next].value);
+    btns[next]?.focus();
+  }
 </script>
 
 <div class="seg {className ?? ''}" {id} role="radiogroup" aria-label={ariaLabel}>
-  {#each options as opt (opt.value)}
+  {#each options as opt, i (opt.value)}
     <button
+      bind:this={btns[i]}
       type="button"
       role="radio"
       aria-checked={value === opt.value}
+      tabindex={i === tabbableIndex ? 0 : -1}
       {disabled}
       class="seg-pill"
       class:active={value === opt.value}
       onclick={() => select(opt.value)}
+      onkeydown={(e) => onKeydown(e, i)}
     >
       {opt.label}
     </button>

@@ -59,12 +59,15 @@
     </span>
   {/each}
   {#if !disabled}
+    <!-- Commit only on Enter (explicit), never on blur: a half-typed or invalid
+         value must not be silently persisted by tabbing/clicking away, since
+         consumers persist on `onchange` (e.g. an app-id allow list). The draft
+         is discarded on blur. -->
     <input
       class="chip-input"
       bind:value={draft}
       {placeholder}
-      onkeydown={onkeydown}
-      onblur={add} />
+      onkeydown={onkeydown} />
   {/if}
 </div>
 

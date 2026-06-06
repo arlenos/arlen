@@ -6,10 +6,13 @@
   let {
     label,
     children,
-  }: { label: string; children?: Snippet } = $props();
+    class: className,
+  }: { label: string; children?: Snippet; class?: string } = $props();
 </script>
 
-<div class="group">
+<!-- `class` is forwarded to the root so a section can opt into the SectionGrid
+     `span-full` escape hatch via `<Group class="span-full">`. -->
+<div class="group {className ?? ''}">
   <div class="group-label">{label}</div>
   <div class="group-card">
     {@render children?.()}
