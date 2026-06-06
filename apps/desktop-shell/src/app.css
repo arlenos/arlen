@@ -1,0 +1,475 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/inter";
+/* Single-source: scan the ui-kit canon so Tailwind generates the utility
+   classes for ui-kit's shadcn-derived components, which are imported via the
+   @lunaris/ui-kit alias instead of copied. See design-system.md §2.1. */
+@source "../../sdk/ui-kit/src/lib/components/**/*.{svelte,ts}";
+/* Canonical motion tokens + shared interaction classes.
+   Single source of truth for both desktop-shell and app-settings. */
+@import "../../sdk/ui-kit/src/lib/motion.css";
+
+/* ============================================================
+   Lunaris Dark Theme - CSS variable defaults.
+   Overridden at runtime by initTheme() from appearance.toml.
+   Values here match themes/dark.toml so the shell renders
+   correctly before the Tauri backend is ready.
+   ============================================================ */
+:root {
+  /* ============================================================
+     Topbar applet sizing tokens — shell-controlled chrome that
+     every Applet primitive in `sdk/ui-kit/topbar/` references.
+     Themes (and future "compact / comfortable" variants) override
+     these tokens to resize all topbar applets at once. Defaults
+     match the 36px topbar height and the 28×28 hit-target the rest
+     of the shell standardises on.
+     ============================================================ */
+  /* Topbar applet height aliases the canonical control height so
+     the bar reads in the same rhythm as inline controls. Width
+     stays decoupled because applets size to content + min. */
+  --topbar-applet-h:           var(--height-control, 28px);
+  --topbar-applet-min-w:       var(--height-control, 28px);
+  --topbar-applet-radius:      var(--radius-chip);
+  --topbar-applet-icon-size:   14px;
+  --topbar-applet-label-max-w: 120px;
+  --topbar-applet-hover-bg:    color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
+  --topbar-tooltip-delay:      1500ms;
+
+  /* Background */
+  --color-bg-shell:   #0a0a0a;
+  --color-bg-app:     #0f0f0f;
+  --color-bg-card:    #171717;
+  --color-bg-overlay: #00000080;
+  --color-bg-input:   #1a1a1a;
+
+  /* Foreground */
+  --color-fg-primary:   #fafafa;
+  --color-fg-secondary: #a1a1aa;
+  --color-fg-disabled:  #52525b;
+  --color-fg-inverse:   #0a0a0a;
+  /* Legacy aliases (consumed by shell-surface / shell-popover contexts) */
+  --color-fg-shell:     var(--color-fg-primary);
+  --color-fg-app:       var(--color-fg-primary);
+
+  /* Semantic */
+  --color-accent:         #6366f1;
+  --color-accent-hover:   #818cf8;
+  --color-accent-pressed: #4f46e5;
+  --color-success:        #22c55e;
+  --color-warning:        #eab308;
+  --color-error:          #ef4444;
+  --color-info:           #3b82f6;
+
+  /* Border */
+  --color-border-default: #27272a;
+  --color-border-strong:  #3f3f46;
+  --color-border:         var(--color-border-default);
+
+  /* Radius — semantic tokens (sdk/theme canonical schema).
+     Runtime values get injected by the theme loader; defaults
+     here mirror the bundled `dark.toml` for first-paint
+     correctness before the JS loader runs. See
+     `docs/architecture/theme-system.md`. */
+  --radius-chip:   4px;
+  --radius-button: 6px;
+  --radius-input:  8px;
+  --radius-card:   12px;
+  --radius-modal:  16px;
+  --radius-full:   9999px;
+
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+
+  /* Sizing scale — see docs/architecture/sizing-system.md.
+     Semantic naming over t-shirt sizing (mirrors theme-system.md
+     radius tokens). Components pick a token by VISUAL ROLE.
+     Use via Tailwind utility classes (h-tag, h-control-compact,
+     h-control, h-control-prominent, h-control-emphasized, h-row,
+     h-bar — defined below in @theme inline) or var() in CSS.
+     Values mirrored in `app-settings/src/app.css` and
+     `sdk/ui-kit/src/app.css`. */
+  --height-tag:                 20px;  /* Badges, status pills, indicators */
+  --height-control-compact:     24px;  /* Compact controls in dense rows */
+  --height-control:             28px;  /* Standard controls (most common) */
+  --height-control-prominent:   36px;  /* Prominent controls, default button */
+  --height-control-emphasized:  40px;  /* Emphasized buttons, hero inputs */
+  --height-row:                 40px;  /* Settings rows, dense list items */
+  --height-bar:                 36px;  /* Top bar, compositor SSD header */
+
+  /* Motion tokens live in sdk/ui-kit/src/lib/motion.css (imported above). */
+
+  /* Depth */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  /* ============================================================
+     Shadcn/ui variable mapping (app surface context).
+     Shadcn components read these; we derive them from our tokens.
+     ============================================================ */
+  --background:          var(--color-bg-app);
+  --foreground:          var(--color-fg-primary);
+  --card:                var(--color-bg-card);
+  --card-foreground:     var(--color-fg-primary);
+  --popover:             var(--color-bg-card);
+  --popover-foreground:  var(--color-fg-primary);
+  --primary:             var(--color-accent);
+  --primary-foreground:  var(--color-fg-inverse);
+  --secondary:           var(--color-bg-card);
+  --secondary-foreground: var(--color-fg-primary);
+  --muted:               var(--color-bg-card);
+  --muted-foreground:    var(--color-fg-secondary);
+  --accent:              var(--color-accent);
+  --accent-foreground:   var(--color-fg-inverse);
+  --destructive:         var(--color-error);
+  --border:              var(--color-border-default);
+  --input:               var(--color-bg-input);
+  --ring:                var(--color-accent);
+
+  color-scheme: dark;
+}
+
+/* Shell surface context - components inside .shell-surface
+   use shell colors instead of app colors. Used for the panel,
+   launcher, and other shell chrome. */
+.shell-surface {
+  --background:      var(--color-bg-shell);
+  --foreground:      var(--color-fg-shell);
+  --card:            color-mix(in srgb, var(--color-bg-shell) 80%, white 20%);
+  --card-foreground: var(--color-fg-shell);
+  --border:          color-mix(in srgb, var(--color-bg-shell) 60%, white 40%);
+  --input:           color-mix(in srgb, var(--color-bg-shell) 70%, white 30%);
+  --muted:           color-mix(in srgb, var(--color-bg-shell) 80%, white 20%);
+  --muted-foreground: color-mix(in srgb, var(--color-fg-shell) 70%, transparent 30%);
+}
+
+/* Shell popover context - for fixed-position popovers and panels
+   that render outside the .shell-surface DOM tree but need shell
+   colors for shadcn components (Switch, Select, Separator, etc.). */
+.shell-popover {
+  --background:          var(--color-bg-shell);
+  --foreground:          var(--color-fg-shell);
+  --popover:             var(--color-bg-shell);
+  --popover-foreground:  var(--color-fg-shell);
+  --primary:             var(--color-accent);
+  --primary-foreground:  var(--color-bg-shell);
+  --secondary:           color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
+  --secondary-foreground: var(--color-fg-shell);
+  --muted:               color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
+  --muted-foreground:    color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
+  --accent:              color-mix(in srgb, var(--color-accent) 15%, transparent);
+  --accent-foreground:   var(--color-fg-shell);
+  --border:              color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
+  --input:               color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
+  --ring:                var(--color-accent);
+}
+
+/* Context menus (portaled) must sit above popovers (z-100). */
+[data-context-menu-content] { z-index: 300 !important; }
+[data-context-menu-sub-content] { z-index: 310 !important; }
+
+/* Themed scrollbar: applied to any element with `.themed-scroll`
+   plus an `overflow: auto/scroll`. Uses WebKit pseudo-elements
+   (Lunaris's Tauri webview is WebKitGTK). The thumb picks up the
+   surface-context foreground via cascade so it works in both
+   shell-popover (light thumb on dark bg) and app-surface (dark
+   thumb on light bg). */
+.themed-scroll {
+  scrollbar-width: thin;
+  scrollbar-color:
+    color-mix(in srgb, var(--foreground) 38%, transparent)
+    transparent;
+}
+.themed-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.themed-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.themed-scroll::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--foreground) 38%, transparent);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  min-height: 24px;
+}
+.themed-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--foreground) 55%, transparent);
+}
+
+/* bits-ui uses focus (not hover) for menu highlight, but pointer-enter
+   focus can be unreliable in WebKitGTK. Add explicit hover fallback. */
+[data-context-menu-item]:not([data-disabled]):hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+
+/* Register Lunaris tokens as Tailwind v4 theme variables.
+   `@theme inline` with var() references makes Tailwind emit
+   `var(--token)` in utility classes instead of resolving to literals
+   at build time. This lets :root overrides (and shell-surface /
+   shell-popover scopes) re-colour all shadcn components at runtime. */
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  /* Register the semantic radius scale so Tailwind utilities like
+     `rounded-card` / `rounded-button` emit `border-radius: var(--radius-X)`
+     instead of a hardcoded literal. Runtime intensity reloads from
+     `appearance.toml [overrides].radius_intensity` then propagate into
+     every utility class without touching components. */
+  --radius-chip:   var(--radius-chip);
+  --radius-button: var(--radius-button);
+  --radius-input:  var(--radius-input);
+  --radius-card:   var(--radius-card);
+  --radius-modal:  var(--radius-modal);
+  --radius-full:   var(--radius-full);
+
+  /* Sizing-scale utilities — see docs/architecture/sizing-system.md.
+     Generates h-tag, h-control-compact, h-control,
+     h-control-prominent, h-control-emphasized, h-row, h-bar. */
+  --height-tag:                 var(--height-tag, 20px);
+  --height-control-compact:     var(--height-control-compact, 24px);
+  --height-control:             var(--height-control, 28px);
+  --height-control-prominent:   var(--height-control-prominent, 36px);
+  --height-control-emphasized:  var(--height-control-emphasized, 40px);
+  --height-row:                 var(--height-row, 40px);
+  --height-bar:                 var(--height-bar, 36px);
+
+  /* Motion tokens registered as Tailwind utilities. Values come from
+     sdk/ui-kit/src/lib/motion.css; this block only exposes them to
+     utility classes like `duration-fast`, `ease-out`. */
+  --transition-duration-micro:   var(--duration-micro);
+  --transition-duration-fast:    var(--duration-fast);
+  --transition-duration-medium:  var(--duration-medium);
+  --transition-duration-slow:    var(--duration-slow);
+  --transition-duration-instant: var(--duration-micro);
+  --ease-out:    var(--ease-out);
+  --ease-in-out: var(--ease-in-out);
+  --ease-bounce: var(--ease-bounce);
+  --ease-default: var(--ease-in-out);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+		user-select: none;
+		-webkit-user-select: none;
+		-webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply text-foreground;
+    background: transparent;
+  }
+  html {
+    @apply font-sans;
+    font-family: "Inter Variable", "Inter", system-ui, sans-serif;
+  }
+}
+
+@custom-variant data-open {
+  &:where([data-state="open"]), &:where([data-open]:not([data-open="false"])) {
+    @slot;
+  }
+}
+
+/* Toast renderer overrides — driven by `shell.toml [toast]` via the
+   toastConfig store. The width comes through inline style; here we
+   only define the optional animation flavours. */
+.lunaris-toast-anim-fade {
+  /* Fade in/out instead of svelte-sonner's default slide. */
+  animation-name: lunaris-toast-fade !important;
+  transform: none !important;
+}
+.lunaris-toast-anim-none {
+  /* Skip animation entirely. */
+  animation: none !important;
+  transform: none !important;
+  transition: none !important;
+}
+@keyframes lunaris-toast-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@custom-variant data-closed {
+  &:where([data-state="closed"]), &:where([data-closed]:not([data-closed="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-checked {
+  &:where([data-state="checked"]), &:where([data-checked]:not([data-checked="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-disabled {
+  &:where([data-disabled]:not([data-disabled="false"])) {
+    @slot;
+  }
+}
+
+/* Pull Sonner toasts closer to the right edge of the screen. */
+[data-sonner-toaster][data-x-position="right"] {
+  right: 8px !important;
+}
+
+/* ============================================================
+   Toast layout: two-row grid.
+   Row 1: icon (auto) | content (span rest)
+   Row 2: actions span full width; with two buttons split 50/50.
+
+   Grid (vs. sonner's default flex) gives us predictable placement
+   without touching sonner's DOM order, so `lunaris-toast-anim-*`
+   still drives in/out animation unchanged.
+   ============================================================ */
+[data-sonner-toast][data-styled="true"] {
+  display: grid !important;
+  grid-template-columns: auto 1fr 1fr !important;
+  column-gap: 12px !important;
+  row-gap: 10px !important;
+  align-items: center !important;
+  padding: 14px !important;
+  /* Runtime corner radius — scales with appearance.toml [window].corner_radius. */
+  border-radius: var(--radius-card) !important;
+  /* Click-to-focus-app: signal that the body is interactive. Action
+     buttons get their own cursor via browser default. */
+  cursor: pointer;
+}
+[data-sonner-toast][data-styled="true"] [data-icon] {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+}
+[data-sonner-toast][data-styled="true"] [data-content] {
+  grid-column: 2 / 4 !important;
+  grid-row: 1 !important;
+  min-width: 0 !important;
+}
+[data-sonner-toast][data-styled="true"] [data-title] {
+  font-size: 0.875rem !important;   /* 14px */
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
+}
+[data-sonner-toast][data-styled="true"] [data-description] {
+  font-size: 0.8125rem !important;  /* 13px */
+  line-height: 1.45 !important;
+  opacity: 0.8;
+  margin-top: 2px;
+}
+
+/* Action / cancel buttons: row 2, full width when solo, 50/50 when both.
+   Uses :has() to detect the cancel sibling and switch layout.
+
+   Styling mirrors the shell's shared button pattern (qs-toggle-btn,
+   net-refresh, popover items): subtle fg-tinted background, 1px
+   fg-tinted border, motion-token transitions, tactile `:active`
+   scale. Both buttons look identical — the "primary" vs "cancel"
+   distinction is conveyed by position (right vs left), not colour.
+   ============================================================ */
+/* Action buttons. Sonner places `[data-button]` and `[data-cancel]`
+   as siblings under the toast grid. Pinning all of them to
+   `grid-column: 2/4` makes 2+ buttons collapse into a single cell
+   and stack on top of each other. Letting `grid-row: auto` flow
+   into successive rows keeps them legible regardless of how many
+   actions an app declares — `--action="yes=Yes" --action="no=No"`
+   shows two stacked rows, matching macOS notification action
+   layout. The shared full-width column (2/4) plus
+   `justify-self: stretch` keeps each button bar-wide so they read
+   as primary CTAs rather than inline pills. */
+[data-sonner-toast][data-styled="true"] [data-button],
+[data-sonner-toast][data-styled="true"] [data-cancel] {
+  grid-row: auto !important;
+  grid-column: 2 / 4 !important;
+  margin: 6px 0 0 0 !important;
+  justify-self: stretch !important;
+  white-space: nowrap !important;
+  padding: 7px 12px !important;
+  border-radius: var(--radius-input) !important;
+  background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent) !important;
+  color: var(--color-fg-shell) !important;
+  font-size: 0.8125rem !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-micro) var(--ease-out) !important;
+}
+[data-sonner-toast][data-styled="true"] [data-button]:hover,
+[data-sonner-toast][data-styled="true"] [data-cancel]:hover {
+  background: color-mix(in srgb, var(--color-fg-shell) 14%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-fg-shell) 25%, transparent) !important;
+}
+[data-sonner-toast][data-styled="true"] [data-button]:active,
+[data-sonner-toast][data-styled="true"] [data-cancel]:active {
+  transform: scale(0.97);
+}
+
+/* ============================================================
+   Close button: inside the toast, hover-revealed, 16x16, dezent.
+
+   Sonner's default positions it at top:0/left or right:0 with
+   transform: translate(±35%, -35%) — i.e., protruding out of the
+   corner. We reset the transform and use top/right inside-padding
+   so it sits neatly in the toast's upper-right. Opacity is 0 by
+   default and fades in on parent hover using motion tokens.
+   ============================================================ */
+[data-sonner-toast][data-styled="true"] [data-close-button] {
+  position: absolute !important;
+  top: 8px !important;
+  right: 8px !important;
+  left: auto !important;
+  transform: none !important;
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: var(--radius-chip) !important;
+  background: transparent !important;
+  border: none !important;
+  color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent) !important;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out) !important;
+}
+[data-sonner-toast][data-styled="true"] [data-close-button] svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+[data-sonner-toast][data-styled="true"]:hover [data-close-button] {
+  opacity: 0.65;
+}
+[data-sonner-toast][data-styled="true"] [data-close-button]:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent) !important;
+}
+
+/* Critical notifications rely on svelte-sonner's `richColors` path
+   (fireToast() uses `toast.error()` for Priority::Critical) which
+   already applies a red background tint via `--error-bg/border/text`.
+   We deliberately don't add extra border/shadow on top of that — the
+   tint alone reads clearly without over-styling. */

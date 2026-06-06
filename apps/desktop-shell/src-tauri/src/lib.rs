@@ -1,0 +1,494 @@
+mod ai_authz;
+mod app_history;
+mod app_index;
+mod app_state;
+mod audio;
+mod battery;
+mod clipboard_history;
+mod clipboard_ipc;
+mod intent_ipc;
+mod permission_watcher;
+mod search_ipc;
+mod event_bus;
+mod gtk_menu_bridge;
+mod layer_shell;
+mod layout;
+mod menu_store;
+mod minimized_windows;
+mod module_scheme;
+mod modulesd_client;
+mod modulesd_commands;
+mod bluetooth;
+mod bluetooth_agent;
+mod brightness;
+mod quick_actions;
+mod network;
+mod night_light;
+mod output_bars;
+mod shell_config;
+mod power;
+mod knowledge;
+mod quicksettings;
+mod notifications;
+mod permissions;
+mod projects;
+mod recent_files;
+mod sni;
+mod shell_overlay_client;
+mod settings_provider;
+mod shell_runner;
+mod system_toggles;
+mod theme;
+mod wayland_client;
+mod waypointer;
+mod waypointer_plugins;
+mod waypointer_processes;
+mod waypointer_system;
+mod waypointer_unicode;
+
+use std::collections::HashMap;
+use std::sync::Arc;
+use tauri::Manager;
+
+/// Relay a log message from the frontend to the terminal.
+#[tauri::command]
+fn log_frontend(message: String) {
+    println!("[FRONTEND] {message}");
+}
+
+/// Dispatch a toolbar action click back to the source app's
+/// specific window.
+///
+/// User clicked a Quick Action or Breadcrumb segment in the
+/// shell's TopBar. The shell does not hold direct webview
+/// handles for other Tauri apps, so the dispatch crosses the
+/// process boundary via the Event Bus: we emit
+/// `app.toolbar.action_invoked` with `(app_id, window_id,
+/// action)`. The target app's tauri-plugin-shell consumer
+/// filters on its own `LUNARIS_APP_ID`, looks up the webview
+/// by `window_id`, and re-emits as `lunaris://app-action`
+/// scoped to that webview only — multi-window apps route the
+/// click correctly back to the originating window.
+///
+/// `window_id` is the Tauri webview label captured when the
+/// toolbar state was set. Empty string falls back to app-wide
+/// broadcast (legacy / single-window apps).
+///
+/// See `docs/architecture/topbar-toolbar.md` FA6.
+#[tauri::command]
+fn dispatch_app_action(app_id: String, window_id: String, action: String) {
+    event_bus::emit_toolbar_action_invoked(&app_id, &window_id, &action);
+}
+
+/// Invoke an app shortcut from the Waypointer.
+///
+/// Crosses the process boundary via `app.shortcut.action_invoked`
+/// (separate from `app.toolbar.action_invoked` for audit
+/// clarity, but shape-identical). The receiving app's
+/// tauri-plugin-shell consumer routes it as
+/// `lunaris://app-action` to its webview.
+///
+/// `window_id` is the focused window at click-time. Empty
+/// string falls back to app-wide broadcast on the receiver
+/// side. The Phase-1 confirmation-dialog flow (FA7 in
+/// shortcuts-api.md) is deferred — the frontend currently
+/// dispatches without prompting.
+#[tauri::command]
+fn app_shortcut_invoke(app_id: String, window_id: String, action: String) {
+    event_bus::emit_shortcut_action_invoked(&app_id, &window_id, &action);
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    env_logger::init();
+
+    // Created before Builder so they can be both managed and moved into start().
+    let overlay_sender = Arc::new(shell_overlay_client::ShellOverlaySender::new());
+    let output_bar_registry = Arc::new(output_bars::OutputBarRegistry::new());
+    let output_connector_table = Arc::new(output_bars::OutputConnectorTable::new());
+    let workspace_sender = Arc::new(wayland_client::WorkspaceSender::new());
+    let toplevel_sender = Arc::new(wayland_client::ToplevelSender::new());
+    let window_list: wayland_client::WindowList = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let workspace_list: wayland_client::WorkspaceList =
+        Arc::new(std::sync::Mutex::new(Vec::new()));
+    let menu_store: menu_store::AppMenuStore =
+        Arc::new(std::sync::Mutex::new(HashMap::new()));
+    let menu_store_for_bridge = Arc::clone(&menu_store);
+    let t_app = std::time::Instant::now();
+    let app_idx: app_index::AppIndex = Arc::new(std::sync::Mutex::new(app_index::build_index()));
+    log::info!("app_index: build took {:?}", t_app.elapsed());
+    let sni_items: sni::SniItems = Arc::new(std::sync::Mutex::new(HashMap::new()));
+
+    // Clipboard history: opt-in via shell.toml. The state is created
+    // regardless so the Tauri commands have something to manage, but
+    // the watcher only spawns when enabled. We keep a pair of clones
+    // here: one moves into setup() for the watcher thread (which
+    // needs the shared WindowList reference), the other is `.manage`d
+    // so Tauri commands can read/mutate the ring buffer.
+    let clipboard_state = clipboard_history::create_state();
+    let clipboard_for_watcher = Arc::clone(&clipboard_state);
+    let window_list_for_clipboard = Arc::clone(&window_list);
+
+    // Backend mirror of the per-app shortcut state (Sprint B-fat).
+    // Populated by event_bus's app.shortcut.* consumer; read by the
+    // Waypointer plugin core.app-shortcuts.
+    let shortcuts_state = app_state::new_shortcuts_state();
+
+    // PluginManager needs Arc clones of AppIndex and WindowList.
+    let mut plugin_mgr = waypointer_system::PluginManager::new();
+    waypointer_system::plugins::register_builtins(
+        &mut plugin_mgr,
+        Arc::clone(&app_idx),
+        Arc::clone(&window_list),
+        Arc::clone(&clipboard_state),
+        Arc::clone(&shortcuts_state),
+    );
+    let plugin_mgr_state: waypointer_system::PluginManagerState = std::sync::RwLock::new(plugin_mgr);
+
+    // Module Runtime daemon client. Connection is established lazily
+    // in setup() so the shell still launches if `lunaris-modulesd` is
+    // not running yet (e.g. on first boot before the user has any
+    // third-party modules).
+    let modulesd_client = modulesd_client::ModulesdClient::new(
+        modulesd_client::ModulesdClient::default_path(),
+    );
+    let modulesd_for_scheme = Arc::clone(&modulesd_client);
+    let modulesd_for_setup = Arc::clone(&modulesd_client);
+
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .register_asynchronous_uri_scheme_protocol("module", move |ctx, request, responder| {
+            let client = Arc::clone(&modulesd_for_scheme);
+            tauri::async_runtime::spawn(async move {
+                let resp = module_scheme::handle(client, request).await;
+                responder.respond(resp);
+            });
+            let _ = ctx;
+        })
+        .manage(Arc::clone(&overlay_sender))
+        .manage(Arc::clone(&output_bar_registry))
+        .manage(Arc::clone(&output_connector_table))
+        .manage(Arc::clone(&workspace_sender))
+        .manage(Arc::clone(&toplevel_sender))
+        .manage(Arc::clone(&window_list))
+        .manage(Arc::clone(&workspace_list))
+        .manage(Arc::clone(&menu_store))
+        .manage(app_idx)
+        .manage(Arc::clone(&sni_items))
+        .manage(plugin_mgr_state)
+        .manage(Arc::new(projects::ProjectsState::new()))
+        .manage(system_toggles::ToggleState::new())
+        .manage(clipboard_state)
+        .manage(Arc::clone(&modulesd_client))
+        .setup(move |app| {
+            // Best-effort connect to lunaris-modulesd. Failure is
+            // non-fatal: third-party modules just stay unavailable
+            // until the daemon comes up.
+            let connect_client = Arc::clone(&modulesd_for_setup);
+            tauri::async_runtime::spawn(async move {
+                match connect_client.connect().await {
+                    Ok(()) => log::info!("modulesd_client: connected"),
+                    Err(err) => log::warn!("modulesd_client: connect failed: {err}"),
+                }
+            });
+            // Initialize the new theme system (v2).
+            let config_dir = dirs::config_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+                .join("lunaris");
+            let data_dir = dirs::data_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+                .join("lunaris");
+            match theme::commands::ThemeState::new(config_dir, data_dir) {
+                Ok(ts) => { app.manage(ts); }
+                Err(e) => {
+                    log::warn!("theme: state init failed ({e}), using in-memory defaults");
+                    let fallback = theme::commands::ThemeState::new(
+                        std::path::PathBuf::from("/tmp/lunaris-fallback"),
+                        std::path::PathBuf::from("/tmp/lunaris-fallback"),
+                    ).unwrap();
+                    app.manage(fallback);
+                }
+            }
+
+            // theme::start_watcher removed — legacy theme.toml pipeline is
+            // superseded by the v2 system (ThemeState + appearance.toml).
+            // The v2 appearance watcher below handles all theme reloads.
+            theme::commands::start_appearance_watcher(app.handle().clone());
+            shell_config::start_shell_config_watcher(app.handle().clone());
+            quicksettings::layout::start_qs_layout_watcher(app.handle().clone());
+            event_bus::start(app.handle().clone(), Arc::clone(&shortcuts_state));
+            wayland_client::start(
+                app.handle().clone(),
+                workspace_sender,
+                toplevel_sender,
+                window_list,
+                workspace_list,
+                Arc::clone(&output_bar_registry),
+                Arc::clone(&output_connector_table),
+            );
+            shell_overlay_client::start(app.handle().clone(), Arc::clone(&overlay_sender));
+            // Replay night-light state from shell.toml so the
+            // compositor's gamma engine resumes where the last
+            // session left off (waits up to 5s for the overlay
+            // proxy to bind). Done after `start` so the polling
+            // thread sees the binding event.
+            night_light::replay_persisted_state(Arc::clone(&overlay_sender));
+
+            // Replay brightness from shell.toml so the laptop
+            // panel resumes at the user's last setting after a
+            // reboot. logind D-Bus, single async call; silent on
+            // failure (no backlight = nothing to do).
+            tauri::async_runtime::spawn(async move {
+                if let Ok(cfg) = shell_config::get_shell_config() {
+                    brightness::replay_persisted_brightness(cfg.display.brightness).await;
+                }
+            });
+            let notif_writer = notifications::start(app.handle().clone());
+            app.manage(notif_writer);
+            clipboard_history::start(
+                app.handle().clone(),
+                clipboard_for_watcher.clone(),
+                window_list_for_clipboard,
+            );
+            clipboard_ipc::start(clipboard_for_watcher);
+            search_ipc::start(app.handle().clone());
+            intent_ipc::start(app.handle().clone());
+            // Permission revocation watcher: refreshes any active
+            // broker connections' ConnectionAuth when the user
+            // edits ~/.config/permissions/, plus emits
+            // `permission.changed` on the Event Bus so the
+            // knowledge daemon invalidates its token cache. See
+            // docs/architecture/peer-auth-system.md "In-flight
+            // revocation".
+            if let Some(watcher) = permission_watcher::start(app.handle().clone()) {
+                app.manage(watcher);
+            }
+            sni::start(app.handle().clone(), sni_items);
+            bluetooth::start_monitor(app.handle().clone());
+            // Register the BlueZ Agent1 implementation so first-time
+            // pairing works for devices that need PIN/passkey/
+            // confirmation interaction. See
+            // docs/architecture/bluetooth-pairing.md.
+            {
+                let agent = std::sync::Arc::new(bluetooth_agent::BluetoothAgent::new(
+                    app.handle().clone(),
+                ));
+                app.manage(std::sync::Arc::clone(&agent));
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = bluetooth_agent::register_with_bluez(agent).await {
+                        log::warn!("bluetooth_agent: register failed: {e}");
+                    }
+                });
+            }
+            network::start_monitor(app.handle().clone());
+            battery::start_monitor(app.handle().clone());
+            // Relay AI authorization prompts from the AI daemon to
+            // the shell UI. No-op if the daemon is not running.
+            ai_authz::spawn(app.handle().clone());
+            audio::start_monitor(app.handle().clone());
+            gtk_menu_bridge::start(app.handle().clone(), menu_store_for_bridge);
+
+            // Create the Waypointer overlay window (hidden).
+            if let Err(e) = waypointer::create_window(app.handle()) {
+                log::error!("waypointer: window creation failed: {e}");
+            }
+
+            #[cfg(target_os = "linux")]
+            {
+                let window_clone = app.get_webview_window("main").unwrap();
+                let wp_clone = app.get_webview_window("waypointer");
+                let app_for_bars = app.handle().clone();
+                let registry_for_bars = Arc::clone(&output_bar_registry);
+                let table_for_bars = Arc::clone(&output_connector_table);
+                glib::idle_add_once(move || {
+                    if let Err(e) = layer_shell::init(window_clone) {
+                        log::error!("layer_shell: init failed: {e}");
+                    }
+                    if let Some(wp) = wp_clone {
+                        waypointer::init_layer_shell(wp);
+                    }
+                    // Discover secondary monitors via GDK and spawn
+                    // a layer-shell-bound bar window per output. The
+                    // primary monitor is bound to `main` (already
+                    // initialised above).
+                    output_bars::install(app_for_bars, registry_for_bars, table_for_bars);
+                });
+            }
+
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            log_frontend,
+            dispatch_app_action,
+            app_shortcut_invoke,
+            ai_authz::ai_respond_authorization,
+            modulesd_commands::modulesd_list_modules,
+            modulesd_commands::mint_iframe,
+            modulesd_commands::module_host_call,
+            modulesd_commands::modulesd_set_enabled,
+            modulesd_commands::retry_module,
+            // theme::get_surface_tokens removed (legacy, no frontend consumers)
+            shell_overlay_client::context_menu_activate,
+            shell_overlay_client::context_menu_dismiss,
+            shell_overlay_client::tab_activate,
+            shell_overlay_client::zoom_increase,
+            shell_overlay_client::zoom_decrease,
+            shell_overlay_client::zoom_close,
+            shell_overlay_client::zoom_set_increment,
+            shell_overlay_client::zoom_set_movement,
+            shell_overlay_client::update_window_header_regions,
+            shell_overlay_client::window_header_action,
+            shell_overlay_client::set_notification_input_region,
+            shell_overlay_client::set_popover_input_region,
+            shell_overlay_client::resolve_app_icon,
+            shell_overlay_client::debug_workspace_update,
+            menu_store::register_menu,
+            menu_store::unregister_menu,
+            menu_store::dispatch_menu_action,
+            menu_store::get_menu,
+            menu_store::set_menu_state,
+            waypointer::toggle_waypointer,
+            waypointer::set_query_and_show,
+            audio::get_audio_status,
+            audio::set_audio_volume,
+            audio::toggle_audio_mute,
+            audio::get_audio_outputs,
+            audio::set_audio_output,
+            audio::get_audio_inputs,
+            audio::set_audio_input,
+            audio::get_input_volume,
+            audio::set_input_volume,
+            audio::toggle_input_mute,
+            audio::get_app_volumes,
+            audio::get_audio_full_state,
+            audio::set_app_volume,
+            audio::set_dnd_enabled,
+            battery::get_battery_status,
+            power::get_power_profile,
+            power::set_power_profile,
+            network::get_network_status,
+            network::get_wifi_networks,
+            network::connect_wifi,
+            network::connect_wifi_password,
+            network::disconnect_wifi,
+            network::get_wifi_enabled,
+            network::set_wifi_enabled,
+            network::get_airplane_mode,
+            network::set_airplane_mode,
+            network::get_connection_details,
+            network::get_saved_password,
+            network::forget_network,
+            network::connect_hidden_network,
+            network::get_vpn_connections,
+            network::connect_vpn,
+            network::disconnect_vpn,
+            bluetooth::get_bluetooth_state,
+            bluetooth::set_bluetooth_powered,
+            bluetooth::connect_bluetooth_device,
+            bluetooth::disconnect_bluetooth_device,
+            bluetooth::remove_bluetooth_device,
+            bluetooth::set_device_trusted,
+            bluetooth::start_bluetooth_scan,
+            bluetooth::stop_bluetooth_scan,
+            bluetooth::pair_bluetooth_device,
+            bluetooth_agent::bluetooth_pair_respond,
+            bluetooth_agent::bluetooth_pair_pending_requests,
+            quick_actions::quick_action_run,
+            shell_config::get_shell_config,
+            shell_config::save_shell_config,
+            knowledge::knowledge_daily_counts,
+            quicksettings::layout::qs_layout_get,
+            quicksettings::layout::qs_layout_set,
+            quicksettings::layout::qs_layout_reset,
+            quicksettings::layout::qs_layout_move_tile,
+            quicksettings::layout::qs_layout_set_visibility,
+            quicksettings::layout::qs_layout_set_size,
+            quicksettings::defaults::qs_layout_bundled_defaults,
+            night_light::night_light_set,
+            night_light::night_light_set_schedule,
+            night_light::night_light_set_location,
+            brightness::brightness_get_devices,
+            brightness::brightness_get_primary,
+            brightness::brightness_set,
+            output_bars::topbar_get_output,
+            layout::get_layout_state,
+            layout::set_layout_mode,
+            layout::set_layout_gaps,
+            layout::set_layout_smart_gaps,
+            layout::set_layout_tiled_headers,
+            permissions::get_app_permissions,
+            permissions::get_app_permission_detail,
+            waypointer_system::waypointer_search,
+            waypointer_system::waypointer_execute,
+            waypointer_system::waypointer_list_plugins,
+            waypointer_system::waypointer_search_plugin,
+            theme::commands::get_theme,
+            theme::commands::get_theme_css,
+            theme::commands::set_theme,
+            theme::commands::get_available_themes,
+            theme::commands::get_active_theme_id,
+            theme::commands::set_accent_color,
+            theme::commands::set_font_scale,
+            theme::commands::set_reduce_motion,
+            theme::commands::get_appearance_config,
+            theme::commands::reset_theme,
+            sni::get_sni_items,
+            sni::activate_sni_item,
+            sni::get_sni_menu,
+            sni::click_sni_menu_item,
+            shell_runner::execute_shell_command,
+            shell_runner::open_url,
+            app_index::get_apps,
+            app_index::search_apps,
+            app_index::launch_app,
+            waypointer_plugins::evaluate_waypointer_input,
+            app_history::record_app_launch,
+            app_history::get_recent_apps,
+            recent_files::get_recent_files,
+            recent_files::open_recent_file,
+            wayland_client::workspace_activate,
+            wayland_client::activate_window,
+            wayland_client::window_move_to_workspace,
+            wayland_client::get_windows,
+            wayland_client::get_workspaces,
+            minimized_windows::get_minimized_windows,
+            minimized_windows::restore_window,
+            minimized_windows::restore_window_to_workspace,
+            minimized_windows::close_minimized_window,
+            minimized_windows::minimize_window,
+            minimized_windows::close_window,
+            minimized_windows::fullscreen_window,
+            minimized_windows::tile_window,
+            waypointer_processes::get_processes,
+            waypointer_processes::kill_process,
+            waypointer_unicode::search_unicode,
+            projects::list_projects,
+            projects::get_project,
+            projects::get_project_for_app,
+            projects::activate_focus,
+            projects::deactivate_focus,
+            projects::get_focus_state,
+            system_toggles::get_toggle_status,
+            system_toggles::toggle_caffeine,
+            system_toggles::toggle_recording,
+            notifications::notification_dismiss,
+            notifications::notification_invoke_action,
+            notifications::notification_mark_read,
+            notifications::notification_clear_all,
+            notifications::notification_set_dnd,
+            notifications::notification_get_history,
+            notifications::notification_get_known_apps,
+            settings_provider::settings_reload_index,
+            settings_provider::settings_search,
+            settings_provider::settings_get_value,
+            settings_provider::settings_set_value,
+            settings_provider::settings_open_deep_link,
+            clipboard_history::clipboard_get_entries,
+            clipboard_history::clipboard_delete_entry,
+            clipboard_history::clipboard_clear_all,
+            clipboard_history::clipboard_is_enabled,
+            clipboard_history::clipboard_copy_entry,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
