@@ -4,7 +4,7 @@
   /// Visible only while a screen recording is in progress. Renders
   /// a live elapsed-time counter beside the icon and pulsates to
   /// draw the eye.
-  import { StatusBadge } from "@lunaris/ui-kit/components/topbar";
+  import { StatusBadge } from "@arlen/ui-kit/components/topbar";
   import { Circle } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";

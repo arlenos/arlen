@@ -22,5 +22,5 @@ pub mod write;
 pub mod proto {
     #![allow(dead_code)]
     #![allow(clippy::doc_markdown)]
-    include!(concat!(env!("OUT_DIR"), "/lunaris.eventbus.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }

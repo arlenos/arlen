@@ -1,8 +1,8 @@
 /* ============================================================
-   Lunaris Motion System - Single Source of Truth
+   Arlen Motion System - Single Source of Truth
 
    Canonical animation tokens and shared interaction classes for
-   every Lunaris UI surface. Both desktop-shell and app-settings
+   every Arlen UI surface. Both desktop-shell and app-settings
    import this file via relative path from their app.css:
 
      @import "../../sdk/ui-kit/src/lib/motion.css";
@@ -66,28 +66,28 @@
 
 /* Popover / panel entry animation. Attach to the popover root. */
 .shell-popover-anim {
-  animation: lunaris-popover-in var(--duration-medium) var(--ease-out) both;
+  animation: arlen-popover-in var(--duration-medium) var(--ease-out) both;
   transform-origin: top center;
 }
-@keyframes lunaris-popover-in {
+@keyframes arlen-popover-in {
   from { opacity: 0; transform: translateY(-4px) scale(0.98); }
   to   { opacity: 1; transform: translateY(0)    scale(1); }
 }
 
 /* One-shot pulse when a toggle flips state. */
 .toggle-pulse {
-  animation: lunaris-toggle-pulse var(--duration-fast) var(--ease-bounce);
+  animation: arlen-toggle-pulse var(--duration-fast) var(--ease-bounce);
 }
-@keyframes lunaris-toggle-pulse {
+@keyframes arlen-toggle-pulse {
   0%, 100% { transform: scale(1); }
   50%      { transform: scale(1.08); }
 }
 
 /* Badge entry (unread counters becoming non-zero, etc.). */
 .badge-pop {
-  animation: lunaris-badge-in var(--duration-fast) var(--ease-bounce);
+  animation: arlen-badge-in var(--duration-fast) var(--ease-bounce);
 }
-@keyframes lunaris-badge-in {
+@keyframes arlen-badge-in {
   from { transform: scale(0); }
   to   { transform: scale(1); }
 }

@@ -1,5 +1,5 @@
 /// Tauri commands that bridge the desktop-shell frontend to
-/// `lunaris-modulesd`.
+/// `arlen-modulesd`.
 ///
 /// All real module work happens in the daemon. This file is a thin
 /// translation layer: take a Tauri command, build the corresponding

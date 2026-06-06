@@ -1,7 +1,7 @@
 {
-  "name": "lunaris-harness",
+  "name": "arlen-harness",
   "version": "0.1.0",
-  "description": "Lunaris OS AI harness app (conversation + agent observability)",
+  "description": "Arlen OS AI harness app (conversation + agent observability)",
   "type": "module",
   "scripts": {
     "dev": "vite dev",

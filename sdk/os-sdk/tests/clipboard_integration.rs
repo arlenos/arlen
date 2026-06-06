@@ -22,7 +22,7 @@ use tokio::task::JoinHandle;
 mod proto {
     #![allow(dead_code)]
     #![allow(clippy::doc_markdown)]
-    include!(concat!(env!("OUT_DIR"), "/lunaris.clipboard.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.clipboard.rs"));
 }
 
 use proto::clipboard_envelope::Message as Envelope;

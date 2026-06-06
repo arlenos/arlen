@@ -1,4 +1,4 @@
-//! Conversation client for the AI daemon (`org.lunaris.AI1`).
+//! Conversation client for the AI daemon (`org.arlen.AI1`).
 //!
 //! A2 conversation MVP (ai-app.md §2.1): submit a query and poll it to
 //! completion, returning the assistant's answer. The daemon's query
@@ -23,8 +23,8 @@ use tokio::time::{timeout, timeout_at, Instant};
 use zbus::{Connection, Proxy};
 
 /// AI daemon bus name, object path, interface.
-const AI_BUS_NAME: &str = "org.lunaris.AI1";
-const AI_OBJECT_PATH: &str = "/org/lunaris/AI1";
+const AI_BUS_NAME: &str = "org.arlen.AI1";
+const AI_OBJECT_PATH: &str = "/org/arlen/AI1";
 
 /// How long a whole turn (submit + every poll + the waits between) may
 /// take before it is abandoned and the query cancelled.

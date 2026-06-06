@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "lunaris-harness",
+  "productName": "arlen-harness",
   "version": "0.1.0",
-  "identifier": "dev.lunaris.harness",
+  "identifier": "dev.arlen.harness",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1423",

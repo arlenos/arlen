@@ -1,4 +1,4 @@
-/// Tauri command handlers for the Lunaris shell plugin.
+/// Tauri command handlers for the Arlen shell plugin.
 ///
 /// Each command is a thin wrapper that takes typed parameters from the
 /// Tauri frontend (deserialised by Tauri's command machinery) and
@@ -208,7 +208,7 @@ pub async fn annotation_subscribe_start<R: Runtime>(
             .ok_or_else(|| "subscription already started".to_string())?
     };
 
-    let event_name = format!("lunaris://annotation-changed/{subscription_id}");
+    let event_name = format!("arlen://annotation-changed/{subscription_id}");
     let target_window = window.clone();
     tauri::async_runtime::spawn(async move {
         let mut rx = rx;

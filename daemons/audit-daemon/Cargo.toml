@@ -1,11 +1,11 @@
 [package]
-name = "lunaris-auditd"
+name = "arlen-auditd"
 version = "0.1.0"
 edition = "2021"
-description = "Audit Daemon: the sole writer of the Lunaris append-only, hash-chained audit log"
+description = "Audit Daemon: the sole writer of the Arlen append-only, hash-chained audit log"
 
 [[bin]]
-name = "lunaris-auditd"
+name = "arlen-auditd"
 path = "src/main.rs"
 
 [lib]
@@ -33,7 +33,7 @@ audit-proto = { path = "../../contracts/audit-proto" }
 
 # Per-connection peer authentication on the ingest socket, and the
 # Event Bus producer client for re-emitting `audit.ai.*` events.
-lunaris-permissions = { path = "../../sdk/permissions" }
+arlen-permissions = { path = "../../sdk/permissions" }
 os-sdk = { path = "../../sdk/os-sdk" }
 
 [dev-dependencies]

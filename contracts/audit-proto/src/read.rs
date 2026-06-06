@@ -118,12 +118,12 @@ pub struct ReadPage {
 }
 
 /// Resolve the read socket path:
-/// `$XDG_RUNTIME_DIR/lunaris/audit-read.sock`, falling back to
-/// `/run/lunaris/audit-read.sock`.
+/// `$XDG_RUNTIME_DIR/arlen/audit-read.sock`, falling back to
+/// `/run/arlen/audit-read.sock`.
 pub fn read_socket_path() -> PathBuf {
     let base = std::env::var_os("XDG_RUNTIME_DIR")
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/run"));
-    base.join("lunaris").join("audit-read.sock")
+    base.join("arlen").join("audit-read.sock")
 }

@@ -1,8 +1,8 @@
 /**
- * @lunaris/tauri-plugin-clipboard
+ * @arlen/tauri-plugin-clipboard
  *
- * TypeScript bindings for the Lunaris clipboard plugin. Wraps the
- * shell-broker IPC at `$XDG_RUNTIME_DIR/lunaris/clipboard.sock`,
+ * TypeScript bindings for the Arlen clipboard plugin. Wraps the
+ * shell-broker IPC at `$XDG_RUNTIME_DIR/arlen/clipboard.sock`,
  * giving first-party apps a sandbox-safe replacement for the raw
  * Wayland `wl_data_device` interface.
  *
@@ -25,13 +25,13 @@
  * # Example
  *
  * ```typescript
- * import { write, subscribe } from '@lunaris/tauri-plugin-clipboard';
+ * import { write, subscribe } from '@arlen/tauri-plugin-clipboard';
  *
  * await write({ content: new TextEncoder().encode('hello'), mime: 'text/plain' });
  *
  * await subscribe();
  * import { listen } from '@tauri-apps/api/event';
- * await listen<ClipboardEntry>('lunaris://clipboard-changed', (e) => {
+ * await listen<ClipboardEntry>('arlen://clipboard-changed', (e) => {
  *   console.log('clipboard changed:', e.payload);
  * });
  * ```
@@ -107,7 +107,7 @@ function encodeWrite(params: WriteParams): {
  * oversized content, or unsupported MIME.
  */
 export async function write(params: WriteParams): Promise<void> {
-  await invoke("plugin:lunaris-clipboard|write", {
+  await invoke("plugin:arlen-clipboard|write", {
     params: encodeWrite(params),
   });
 }
@@ -118,7 +118,7 @@ export async function write(params: WriteParams): Promise<void> {
  */
 export async function read(): Promise<ClipboardEntry | null> {
   const raw = await invoke<RawClipboardEntry | null>(
-    "plugin:lunaris-clipboard|read"
+    "plugin:arlen-clipboard|read"
   );
   return raw === null ? null : decodeEntry(raw);
 }
@@ -129,7 +129,7 @@ export async function read(): Promise<ClipboardEntry | null> {
  */
 export async function history(limit?: number): Promise<ClipboardEntry[]> {
   const raw = await invoke<RawClipboardEntry[]>(
-    "plugin:lunaris-clipboard|history",
+    "plugin:arlen-clipboard|history",
     { limit }
   );
   return raw.map(decodeEntry);
@@ -137,7 +137,7 @@ export async function history(limit?: number): Promise<ClipboardEntry[]> {
 
 /**
  * Subscribe to clipboard changes. Subsequent updates are emitted
- * as `lunaris://clipboard-changed` Tauri events with a
+ * as `arlen://clipboard-changed` Tauri events with a
  * `ClipboardEntry` payload. Use `@tauri-apps/api/event` `listen`
  * to receive them.
  *
@@ -145,10 +145,10 @@ export async function history(limit?: number): Promise<ClipboardEntry[]> {
  * `AlreadySubscribed`.
  */
 export async function subscribe(): Promise<void> {
-  await invoke("plugin:lunaris-clipboard|subscribe");
+  await invoke("plugin:arlen-clipboard|subscribe");
 }
 
 /** Cancel an active subscription. */
 export async function unsubscribe(): Promise<void> {
-  await invoke("plugin:lunaris-clipboard|unsubscribe");
+  await invoke("plugin:arlen-clipboard|unsubscribe");
 }

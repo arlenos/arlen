@@ -10,7 +10,7 @@ mod theme;
 use std::sync::Arc;
 
 use tauri::{AppHandle, Manager, State};
-use xdg_portal_lunaris_protocol::{PickerRequest, PickerResponse};
+use xdg_portal_arlen_protocol::{PickerRequest, PickerResponse};
 
 use ipc_client::{connect, DaemonClient};
 
@@ -38,7 +38,7 @@ async fn picker_respond(
     Ok(())
 }
 
-/// Tauri command: return the user's resolved Lunaris theme so the
+/// Tauri command: return the user's resolved Arlen theme so the
 /// frontend can inject matching CSS variables on mount. Falls back
 /// to dark defaults on any failure to read appearance.toml.
 #[tauri::command]

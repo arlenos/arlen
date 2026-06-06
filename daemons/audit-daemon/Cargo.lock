@@ -33,6 +33,40 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
+name = "arlen-auditd"
+version = "0.1.0"
+dependencies = [
+ "arlen-permissions",
+ "audit-proto",
+ "getrandom 0.2.17",
+ "hmac",
+ "libc",
+ "os-sdk",
+ "sd-notify",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "arlen-permissions"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "libc",
+ "notify",
+ "serde",
+ "thiserror 2.0.18",
+ "toml",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -935,40 +969,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
-name = "lunaris-auditd"
-version = "0.1.0"
-dependencies = [
- "audit-proto",
- "getrandom 0.2.17",
- "hmac",
- "libc",
- "lunaris-permissions",
- "os-sdk",
- "sd-notify",
- "serde",
- "serde_json",
- "sha2",
- "sqlx",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "lunaris-permissions"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "libc",
- "notify",
- "serde",
- "thiserror 2.0.18",
- "toml",
-]
-
-[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1112,9 +1112,9 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 name = "os-sdk"
 version = "0.1.0"
 dependencies = [
+ "arlen-permissions",
  "dirs",
  "libc",
- "lunaris-permissions",
  "notify",
  "prost",
  "prost-build",

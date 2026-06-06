@@ -1,7 +1,7 @@
 //! Clipboard IPC server.
 //!
 //! Brokers clipboard read/write/subscribe/history operations from
-//! Lunaris-aware apps to the existing `ClipboardHistory` store.
+//! Arlen-aware apps to the existing `ClipboardHistory` store.
 //! Wire-protocol matches the rest of the SDK: 4-byte big-endian
 //! length prefix, then a `ClipboardEnvelope` protobuf body.
 //!
@@ -21,7 +21,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use lunaris_permissions::{AuthError, ConnectionAuth};
+use arlen_permissions::{AuthError, ConnectionAuth};
 use prost::Message;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
@@ -34,7 +34,7 @@ use crate::clipboard_history::{ClipboardEntry as InternalEntry, ClipboardHistory
 /// `build.rs` from `proto/clipboard_api.proto`.
 mod proto {
     #![allow(dead_code, clippy::doc_markdown)]
-    include!(concat!(env!("OUT_DIR"), "/lunaris.clipboard.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.clipboard.rs"));
 }
 
 const MAX_FRAME_BYTES: usize = 1024 * 1024;
@@ -43,7 +43,7 @@ const SOCKET_NAME: &str = "clipboard.sock";
 /// Cap on simultaneous in-flight broker connections. Mirrors the
 /// search broker's hardening (Codex post-Sprint review MEDIUM-2).
 /// Higher than search because clipboard subscribe-connections are
-/// long-lived (a Lunaris-aware app holds one open across its
+/// long-lived (a Arlen-aware app holds one open across its
 /// session); 64 covers a realistic 8-app workspace with 8x
 /// safety margin. Excess accepts dropped at the listener.
 const MAX_CONCURRENT_CONNS: usize = 64;
@@ -126,7 +126,7 @@ fn socket_path() -> Result<PathBuf, String> {
     let runtime = std::env::var_os("XDG_RUNTIME_DIR")
         .ok_or_else(|| "XDG_RUNTIME_DIR not set".to_string())?;
     let mut p = PathBuf::from(runtime);
-    p.push("lunaris");
+    p.push("arlen");
     p.push(SOCKET_NAME);
     Ok(p)
 }
@@ -590,7 +590,7 @@ fn error_envelope(err: ProtoError) -> proto::ClipboardEnvelope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lunaris_permissions::{
+    use arlen_permissions::{
         AppTier, ClipboardPermissions, PermissionProfile, ProfileInfo,
     };
     use proto::clipboard_envelope::Message as Msg;

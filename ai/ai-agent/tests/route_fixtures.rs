@@ -5,8 +5,8 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use lunaris_ai_agent::loader::{load, BehaviourSource, Provenance};
-use lunaris_ai_agent::router::matching_behaviours;
+use arlen_ai_agent::loader::{load, BehaviourSource, Provenance};
+use arlen_ai_agent::router::matching_behaviours;
 
 fn behaviours_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("behaviours")

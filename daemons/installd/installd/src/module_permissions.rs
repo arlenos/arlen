@@ -4,8 +4,8 @@
 /// Tier 2 iframe), it derives the runtime `PermissionProfile`
 /// (`sdk/permissions`) from the manifest's `[capabilities]` block
 /// and writes it to `~/.config/permissions/{module_id}.toml` (per
-/// `AUTH-CANONICAL.md` §2; no `lunaris/` sub-dir).
-/// `lunaris-modulesd` reads that profile when loading the module so
+/// `AUTH-CANONICAL.md` §2; no `arlen/` sub-dir).
+/// `arlen-modulesd` reads that profile when loading the module so
 /// the runtime gating matches what the user agreed to at install
 /// time.
 ///
@@ -20,8 +20,8 @@
 use std::fs;
 use std::path::PathBuf;
 
-use lunaris_modules::{ModuleCapabilities, ModuleManifest, ModuleType};
-use lunaris_permissions::{
+use arlen_modules::{ModuleCapabilities, ModuleManifest, ModuleType};
+use arlen_permissions::{
     AppTier, ClipboardPermissions, EventBusPermissions, FilesystemPermissions,
     GraphPermissions, NetworkPermissions, NotificationPermissions,
     PermissionProfile, ProfileInfo,
@@ -30,7 +30,7 @@ use lunaris_permissions::{
 use crate::install::InstallError;
 
 /// Foundation §7.3 canonical: `~/.config/permissions/{app_id}.toml`.
-/// No `lunaris/` sub-dir (this module previously used the wrong path).
+/// No `arlen/` sub-dir (this module previously used the wrong path).
 /// `LUNARIS_PERMISSIONS_DIR` test override resolves directly to a flat
 /// `<dir>/{app_id}.toml` for test simplicity.
 pub fn permissions_dir() -> PathBuf {
@@ -155,7 +155,7 @@ pub fn remove_profile(module_id: &str) -> Result<(), InstallError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lunaris_modules::{
+    use arlen_modules::{
         EventBusCapability, GraphCapability, ModuleMeta, NetworkCapability,
     };
 

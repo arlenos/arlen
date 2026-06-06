@@ -1,4 +1,4 @@
-//! Static description of the Lunaris Knowledge Graph schema.
+//! Static description of the Arlen Knowledge Graph schema.
 //!
 //! The structured query DSL (`graph_query`) validates every label,
 //! edge, and field reference against this schema before a single
@@ -54,7 +54,7 @@ pub struct GraphSchema {
 }
 
 impl GraphSchema {
-    /// The canonical Lunaris Knowledge Graph schema.
+    /// The canonical Arlen Knowledge Graph schema.
     pub fn knowledge_graph() -> Self {
         Self {
             nodes: NODES,

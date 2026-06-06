@@ -1,12 +1,12 @@
-//! Client for the Lunaris compositor's input services.
+//! Client for the Arlen compositor's input services.
 //!
 //! Two D-Bus interfaces on the session bus:
 //!
-//! * `org.lunaris.App1` at `/org/lunaris/App` — apps call
+//! * `org.arlen.App1` at `/org/arlen/App` — apps call
 //!   [`AppClient::register`] once at startup to declare their identity
 //!   and the action ids they accept. The compositor uses this to
 //!   correlate focused Wayland toplevels with D-Bus registrations.
-//! * `org.lunaris.InputManager1` at `/org/lunaris/InputManager1` —
+//! * `org.arlen.InputManager1` at `/org/arlen/InputManager1` —
 //!   apps call [`InputManagerClient::register_binding`] to bind a
 //!   keystroke, and subscribe to the `BindingInvoked` signal via
 //!   [`InputManagerClient::listen`] to react when the compositor
@@ -15,7 +15,7 @@
 //! Typical app integration:
 //!
 //! ```no_run
-//! use lunaris_input_client::{AppClient, InputManagerClient, DeclaredAction};
+//! use arlen_input_client::{AppClient, InputManagerClient, DeclaredAction};
 //!
 //! # async fn example() -> zbus::Result<()> {
 //! let conn = zbus::Connection::session().await?;
@@ -60,10 +60,10 @@ use zbus::zvariant::Type;
 
 pub use zbus;
 
-const APP_SERVICE: &str = "org.lunaris.App1";
-const APP_PATH: &str = "/org/lunaris/App";
-const INPUT_SERVICE: &str = "org.lunaris.InputManager1";
-const INPUT_PATH: &str = "/org/lunaris/InputManager1";
+const APP_SERVICE: &str = "org.arlen.App1";
+const APP_PATH: &str = "/org/arlen/App";
+const INPUT_SERVICE: &str = "org.arlen.InputManager1";
+const INPUT_PATH: &str = "/org/arlen/InputManager1";
 
 // ---------------------------------------------------------------------------
 // Wire types (mirror of compositor/src/dbus/*.rs)
@@ -103,13 +103,13 @@ pub struct RegisterResult {
 }
 
 // ---------------------------------------------------------------------------
-// org.lunaris.App1 proxy
+// org.arlen.App1 proxy
 // ---------------------------------------------------------------------------
 
 #[zbus::proxy(
-    interface = "org.lunaris.App1",
-    default_service = "org.lunaris.App1",
-    default_path = "/org/lunaris/App"
+    interface = "org.arlen.App1",
+    default_service = "org.arlen.App1",
+    default_path = "/org/arlen/App"
 )]
 trait AppBus {
     fn register_app(
@@ -133,7 +133,7 @@ pub struct AppClient<'c> {
 }
 
 impl<'c> AppClient<'c> {
-    /// Connect to `org.lunaris.App1` on the session bus.
+    /// Connect to `org.arlen.App1` on the session bus.
     pub async fn new(conn: &zbus::Connection) -> zbus::Result<Self> {
         let proxy = AppBusProxy::builder(conn)
             .destination(APP_SERVICE)?
@@ -192,13 +192,13 @@ impl<'c> AppClient<'c> {
 }
 
 // ---------------------------------------------------------------------------
-// org.lunaris.InputManager1 proxy
+// org.arlen.InputManager1 proxy
 // ---------------------------------------------------------------------------
 
 #[zbus::proxy(
-    interface = "org.lunaris.InputManager1",
-    default_service = "org.lunaris.InputManager1",
-    default_path = "/org/lunaris/InputManager1"
+    interface = "org.arlen.InputManager1",
+    default_service = "org.arlen.InputManager1",
+    default_path = "/org/arlen/InputManager1"
 )]
 trait InputManagerBus {
     fn register_binding(
@@ -240,7 +240,7 @@ pub struct InputManagerClient<'c> {
 }
 
 impl<'c> InputManagerClient<'c> {
-    /// Connect to `org.lunaris.InputManager1` on the session bus.
+    /// Connect to `org.arlen.InputManager1` on the session bus.
     pub async fn new(conn: &zbus::Connection) -> zbus::Result<Self> {
         let proxy = InputManagerBusProxy::builder(conn)
             .destination(INPUT_SERVICE)?

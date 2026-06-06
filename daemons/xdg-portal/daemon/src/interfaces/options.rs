@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use xdg_portal_lunaris_protocol::{FileFilter, FilterPattern};
+use xdg_portal_arlen_protocol::{FileFilter, FilterPattern};
 use zbus::zvariant::{OwnedValue, Value};
 
 /// Read a boolean option, defaulting to `default` if missing or of

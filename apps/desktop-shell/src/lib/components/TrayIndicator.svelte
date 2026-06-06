@@ -11,7 +11,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
-  import { Applet, AppletBadge } from "@lunaris/ui-kit/components/topbar";
+  import { Applet, AppletBadge } from "@arlen/ui-kit/components/topbar";
   import { ChevronDown } from "lucide-svelte";
 
   interface SniItem {

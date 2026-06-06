@@ -4,9 +4,9 @@
   /// * Command: same as App, but presented as raw shell input
   /// * Shell:  user picks a known shell-overlay event (`shell:<name>`)
 
-  import { Button } from "@lunaris/ui-kit/components/ui/button";
-  import { Input } from "@lunaris/ui-kit/components/ui/input";
-  import { PopoverSelect } from "@lunaris/ui-kit/components/ui/popover-select";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import KeyCapture from "./KeyCapture.svelte";
 
   type Mode = "app" | "command" | "shell";

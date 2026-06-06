@@ -3,7 +3,7 @@
   /// Fetches the com.canonical.dbusmenu layout on mount and renders
   /// via shadcn ContextMenu primitives with submenu support.
 
-  import * as ContextMenu from "@lunaris/ui-kit/components/ui/context-menu/index.js";
+  import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu/index.js";
   import { Check } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
 

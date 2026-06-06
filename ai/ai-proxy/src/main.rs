@@ -1,18 +1,18 @@
-//! `lunaris-ai-proxy` daemon entry point.
+//! `arlen-ai-proxy` daemon entry point.
 //!
 //! Wires the policy core (`ProxyService`) into a real outbound layer
-//! (`ReqwestForwarder`) and exposes `org.lunaris.AIProxy1` on the
+//! (`ReqwestForwarder`) and exposes `org.arlen.AIProxy1` on the
 //! session D-Bus. Foundation §8.4.6 forbids any AI traffic from
 //! leaving the host through any other path.
 
 use std::sync::Arc;
 
-use lunaris_ai_proxy::allowlist::Allowlist;
-use lunaris_ai_proxy::audit::{AuditSink, LedgerAuditSink};
-use lunaris_ai_proxy::catalog::ProviderCatalog;
-use lunaris_ai_proxy::forward::ReqwestForwarder;
-use lunaris_ai_proxy::peer_auth::{self, PeerAuthError, PeerAuthMap};
-use lunaris_ai_proxy::service::{
+use arlen_ai_proxy::allowlist::Allowlist;
+use arlen_ai_proxy::audit::{AuditSink, LedgerAuditSink};
+use arlen_ai_proxy::catalog::ProviderCatalog;
+use arlen_ai_proxy::forward::ReqwestForwarder;
+use arlen_ai_proxy::peer_auth::{self, PeerAuthError, PeerAuthMap};
+use arlen_ai_proxy::service::{
     CallerAllowlist, ForwardRequest, ProxyError, ProxyService,
 };
 use zbus::Connection;
@@ -29,39 +29,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let forwarder = Arc::new(ReqwestForwarder::new()?);
     let audit_sink: Arc<dyn AuditSink> = Arc::new(LedgerAuditSink::at_default_socket());
     let service = Arc::new(ProxyService::new(
-        Allowlist::default_lunaris(),
-        ProviderCatalog::default_lunaris(),
-        CallerAllowlist::default_lunaris(),
+        Allowlist::default_arlen(),
+        ProviderCatalog::default_arlen(),
+        CallerAllowlist::default_arlen(),
         forwarder,
         audit_sink,
     ));
 
-    let peer_map = Arc::new(PeerAuthMap::default_lunaris());
+    let peer_map = Arc::new(PeerAuthMap::default_arlen());
     let dbus = ProxyInterface {
         service: service.clone(),
         peer_map: peer_map.clone(),
     };
 
     let _connection = zbus::connection::Builder::session()?
-        .name("org.lunaris.AIProxy1")?
-        .serve_at("/org/lunaris/AIProxy1", dbus)?
+        .name("org.arlen.AIProxy1")?
+        .serve_at("/org/arlen/AIProxy1", dbus)?
         .build()
         .await?;
 
-    tracing::info!("lunaris-ai-proxy: serving org.lunaris.AIProxy1");
+    tracing::info!("arlen-ai-proxy: serving org.arlen.AIProxy1");
 
     tokio::signal::ctrl_c().await?;
-    tracing::info!("lunaris-ai-proxy: shutting down");
+    tracing::info!("arlen-ai-proxy: shutting down");
     Ok(())
 }
 
-/// D-Bus surface (`org.lunaris.AIProxy1`).
+/// D-Bus surface (`org.arlen.AIProxy1`).
 struct ProxyInterface {
     service: Arc<ProxyService>,
     peer_map: Arc<PeerAuthMap>,
 }
 
-#[zbus::interface(name = "org.lunaris.AIProxy1")]
+#[zbus::interface(name = "org.arlen.AIProxy1")]
 impl ProxyInterface {
     /// Forward a completion request through the named provider's
     /// catalogued endpoint. The proxy uses its own provider catalog

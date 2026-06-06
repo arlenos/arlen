@@ -1,7 +1,7 @@
-/// Tauri plugin for the Lunaris titlebar protocol.
+/// Tauri plugin for the Arlen titlebar protocol.
 ///
 /// Connects to the compositor as a Wayland client, binds the
-/// `lunaris-titlebar-v1` protocol, and exposes titlebar management
+/// `arlen-titlebar-v1` protocol, and exposes titlebar management
 /// (tabs, buttons, breadcrumbs, search) to the Tauri frontend via
 /// commands and events.
 ///
@@ -10,7 +10,7 @@
 /// ```rust,ignore
 /// fn main() {
 ///     tauri::Builder::default()
-///         .plugin(tauri_plugin_lunaris_menu::init())
+///         .plugin(tauri_plugin_arlen_menu::init())
 ///         .run(tauri::generate_context!())
 ///         .expect("error running app");
 /// }
@@ -19,7 +19,7 @@
 /// # Usage (TypeScript)
 ///
 /// ```typescript
-/// import { addTab, onTabActivated } from '@lunaris/tauri-plugin-menu';
+/// import { addTab, onTabActivated } from '@arlen/tauri-plugin-menu';
 ///
 /// addTab({ id: "1", title: "main.rs", status: "modified" });
 /// onTabActivated((id) => console.log("activated:", id));
@@ -38,12 +38,12 @@ use tauri::{
 
 use wayland::{SharedConnection, TitlebarConnection};
 
-/// Initialize the Lunaris menu plugin.
+/// Initialize the Arlen menu plugin.
 ///
 /// Registers all titlebar commands and starts the Wayland client thread
-/// that connects to the compositor's `lunaris-titlebar-v1` protocol.
+/// that connects to the compositor's `arlen-titlebar-v1` protocol.
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
-    Builder::new("lunaris-menu")
+    Builder::new("arlen-menu")
         .invoke_handler(tauri::generate_handler![
             commands::set_title,
             commands::set_breadcrumb,

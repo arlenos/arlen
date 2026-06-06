@@ -14,7 +14,7 @@
   /// is dropped at 1×1 — there isn't enough horizontal room. Users
   /// who need the path can right-click → resize the tile to 2×1 in
   /// Settings (the path-text returns automatically).
-  import { BaseTile } from "@lunaris/ui-kit/components/quicksettings";
+  import { BaseTile } from "@arlen/ui-kit/components/quicksettings";
   import { FolderOpen, FolderPlus } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { focusState, focusedProject } from "$lib/stores/projects.js";

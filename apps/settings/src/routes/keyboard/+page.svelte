@@ -10,15 +10,15 @@
     ArrowDown,
   } from "lucide-svelte";
 
-  import { Input } from "@lunaris/ui-kit/components/ui/input";
-  import { NumberInput } from "@lunaris/ui-kit/components/ui/number-input";
-  import { PopoverSelect } from "@lunaris/ui-kit/components/ui/popover-select";
-  import { Button } from "@lunaris/ui-kit/components/ui/button";
-  import { Switch } from "@lunaris/ui-kit/components/ui/switch";
-  import { Page } from "@lunaris/ui-kit/components/ui/page";
-  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
-  import { Group } from "@lunaris/ui-kit/components/ui/group";
-  import { Row } from "@lunaris/ui-kit/components/ui/row";
+  import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { NumberInput } from "@arlen/ui-kit/components/ui/number-input";
+  import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Switch } from "@arlen/ui-kit/components/ui/switch";
+  import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
+  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
 
   /// Everything the UI needs from `[xkb_config]` except layouts + variants,
   /// which go through dedicated backend commands so the single- vs
@@ -93,7 +93,7 @@
         value: "grp:alt_shift_toggle",
         label: "Alt+Shift switches layout",
         description:
-          "XKB-level shortcut. Works independently of Lunaris keybindings.",
+          "XKB-level shortcut. Works independently of Arlen keybindings.",
       },
       {
         value: "terminate:ctrl_alt_bksp",

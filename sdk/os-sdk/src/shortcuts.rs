@@ -2,7 +2,7 @@
 //! Waypointer when the app is focused.
 //!
 //! Foundation §6.4 Listing 13, p53. Distinct from the keyboard
-//! shortcut registration system in `lunaris-input-client` — see
+//! shortcut registration system in `arlen-input-client` — see
 //! `docs/architecture/shortcuts-api.md` for the comparison.
 //!
 //! Per-app: one shortcut list per app, shared across all the

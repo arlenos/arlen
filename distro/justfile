@@ -1,4 +1,4 @@
-# Lunaris top-level task runner
+# Arlen top-level task runner
 # Requires: just, cargo, qemu, mkosi
 
 REPOS := "../event-bus ../sdk ../knowledge"
@@ -79,7 +79,7 @@ shell:
     cd ../desktop-shell && WAYLAND_DISPLAY="$display" cargo tauri dev
 
 # Logs land in ../logs/. Detach with Ctrl+B d, reattach with
-# `tmux attach -t lunaris`.
+# `tmux attach -t arlen`.
 # Full-stack dev on host (event-bus + knowledge + notifyd + compositor + shell) in tmux.
 dev-stack:
     bash start-dev.sh

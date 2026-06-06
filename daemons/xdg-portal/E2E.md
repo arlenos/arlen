@@ -1,7 +1,7 @@
 # E2E test checklist
 
-Manual scenarios for `xdg-desktop-portal-lunaris`. None of these are
-automated — they need a Wayland session, a Lunaris compositor, and
+Manual scenarios for `xdg-desktop-portal-arlen`. None of these are
+automated — they need a Wayland session, a Arlen compositor, and
 real apps that exercise the portal interfaces. Walk this list after
 shipping any Sprint F changes.
 
@@ -9,7 +9,7 @@ shipping any Sprint F changes.
 
 - `./distro/dev-portal-setup.sh` succeeded (see repo root README).
 - `./distro/start-dev.sh --with-portal` is running.
-- `busctl --user list | grep org.freedesktop.impl.portal.desktop.lunaris`
+- `busctl --user list | grep org.freedesktop.impl.portal.desktop.arlen`
   prints the bus name. If not, `tail -f logs/portal-daemon.log`.
 
 For the Flatpak scenarios you need at least one Flatpak app with a
@@ -34,10 +34,10 @@ flatpak install --user flathub org.kde.kdenlive
 
 1. Open the **Settings → Knowledge** panel.
 2. Click "Browse" next to "Project Watch Path".
-3. **Expect:** Lunaris-themed picker window appears.
+3. **Expect:** Arlen-themed picker window appears.
 4. Pick `~/Documents`, click "Choose folder".
 5. **Expect:** path appears in the row; `graph.toml` updates
-   (verify with `cat ~/.config/lunaris/graph.toml`).
+   (verify with `cat ~/.config/arlen/graph.toml`).
 6. Repeat, click "Cancel" instead.
 7. **Expect:** no toml change, picker closes silently.
 
@@ -45,7 +45,7 @@ flatpak install --user flathub org.kde.kdenlive
 
 1. Run any installed Flatpak app, e.g. `flatpak run --user org.kde.kdenlive`.
 2. Trigger its file-open dialog (File → Open Project, or similar).
-3. **Expect:** Lunaris picker (not the toolkit's native picker or
+3. **Expect:** Arlen picker (not the toolkit's native picker or
    GTK fallback). The window title comes from the caller.
 4. Pick a file, click "Open".
 5. **Expect:** the file loads in the caller.
@@ -99,7 +99,7 @@ covered by unit tests rather than an end-to-end run:
 - `file_uri_percent_encoded_traversal_rejected`
 
 Both in `daemon/src/interfaces/open_uri.rs`. Run with
-`cargo test -p xdg-desktop-portal-lunaris` from the daemon
+`cargo test -p xdg-desktop-portal-arlen` from the daemon
 directory.
 
 For end-to-end confirmation that sandboxed callers DO get
@@ -119,7 +119,7 @@ is the load-bearing test.
 
 1. Trigger any picker.
 2. While the picker is open, find its PID:
-   `pgrep -f xdg-desktop-portal-lunaris-picker`.
+   `pgrep -f xdg-desktop-portal-arlen-picker`.
 3. `kill -9 <pid>`.
 4. **Expect:** caller sees an Error response (NOT Cancelled).
    Daemon log shows

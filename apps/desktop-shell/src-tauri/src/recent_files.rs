@@ -1,6 +1,6 @@
 /// Recent-files list sourced from the Knowledge Graph.
 ///
-/// Lunaris tracks every `file.opened` event system-wide via eBPF →
+/// Arlen tracks every `file.opened` event system-wide via eBPF →
 /// Event Bus → Knowledge daemon (`file.opened` events are promoted to
 /// `File` nodes with a `last_accessed` timestamp). The Waypointer's
 /// "Recent Files" section reads the top-N by that timestamp.
@@ -9,9 +9,9 @@
 /// concrete advantages:
 ///
 ///   1. **Cross-app:** captures file opens from any application, not
-///      just Lunaris-shell-initiated launches. A file touched in the
+///      just Arlen-shell-initiated launches. A file touched in the
 ///      terminal or via another app shows up here.
-///   2. **Single source of truth:** aligns with Lunaris' "Knowledge
+///   2. **Single source of truth:** aligns with Arlen' "Knowledge
 ///      Graph as first-class infrastructure" principle — no
 ///      parallel mini-database for what the graph already tracks.
 ///

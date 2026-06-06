@@ -1,4 +1,4 @@
-/// `lunaris-modulesd` entry point.
+/// `arlen-modulesd` entry point.
 ///
 /// Bring-up sequence:
 ///   1. Init tracing.
@@ -12,15 +12,15 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::info;
 
-use lunaris_modulesd::manager::Manager;
-use lunaris_modulesd::socket::server::{default_socket_path, SocketServer};
+use arlen_modulesd::manager::Manager;
+use arlen_modulesd::socket::server::{default_socket_path, SocketServer};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("lunaris_modulesd=info".parse()?),
+                .add_directive("arlen_modulesd=info".parse()?),
         )
         .init();
 
@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Per-module attribution lives in the event payload, not the
     // envelope source (see host_bindings::events::Host::emit).
     if std::env::var_os("LUNARIS_APP_ID").is_none() {
-        std::env::set_var("LUNARIS_APP_ID", "lunaris-modulesd");
+        std::env::set_var("LUNARIS_APP_ID", "arlen-modulesd");
     }
 
     info!("modulesd: starting v{}", env!("CARGO_PKG_VERSION"));

@@ -1,8 +1,8 @@
 [package]
-name = "lunaris-permissions"
+name = "arlen-permissions"
 version = "0.1.0"
 edition = "2021"
-description = "Permission profile types and loading for Lunaris OS"
+description = "Permission profile types and loading for Arlen OS"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

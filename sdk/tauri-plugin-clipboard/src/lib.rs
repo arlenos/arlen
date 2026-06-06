@@ -1,8 +1,8 @@
-//! Tauri plugin for the Lunaris clipboard subsystem.
+//! Tauri plugin for the Arlen clipboard subsystem.
 //!
 //! Wraps [`os_sdk::UnixClipboardClient`] and exposes
 //! `write` / `read` / `history` / `subscribe` / `unsubscribe`
-//! Tauri commands plus a `lunaris://clipboard-changed` event
+//! Tauri commands plus a `arlen://clipboard-changed` event
 //! that the frontend can listen to for live updates.
 //!
 //! # Public API
@@ -15,7 +15,7 @@
 //! ```rust,ignore
 //! fn main() {
 //!     tauri::Builder::default()
-//!         .plugin(tauri_plugin_lunaris_clipboard::init())
+//!         .plugin(tauri_plugin_arlen_clipboard::init())
 //!         .run(tauri::generate_context!())
 //!         .expect("error running app");
 //! }
@@ -31,10 +31,10 @@ use tauri::{
     Manager, Runtime,
 };
 
-/// Initialise the Lunaris clipboard plugin. Registers all five
+/// Initialise the Arlen clipboard plugin. Registers all five
 /// Tauri commands and the per-app `ClipboardState`.
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
-    Builder::new("lunaris-clipboard")
+    Builder::new("arlen-clipboard")
         .invoke_handler(tauri::generate_handler![
             commands::write,
             commands::read,

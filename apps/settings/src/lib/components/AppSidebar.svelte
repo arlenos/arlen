@@ -11,7 +11,7 @@
     SidebarMenuItem,
     SidebarRail,
     useSidebar,
-  } from "@lunaris/ui-kit/components/ui/sidebar";
+  } from "@arlen/ui-kit/components/ui/sidebar";
   import { tick } from "svelte";
   import { PANELS, navigateTo } from "$lib/stores/navigation";
   import { search, type SearchResult } from "$lib/search/index";
@@ -152,7 +152,7 @@
 <Sidebar collapsible="icon">
   <SidebarHeader>
     <!--
-      Search replaces the static "Settings · Lunaris OS" branding
+      Search replaces the static "Settings · Arlen OS" branding
       that lived here. The block was decorative and the slot is on
       every Settings page; turning it into a search bar gives users a
       direct way into any setting without scanning the sidebar list.

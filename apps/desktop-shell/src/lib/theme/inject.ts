@@ -2,7 +2,7 @@
 
 import type { CssVariables } from "./types.js";
 
-const STYLE_ID = "lunaris-theme-vars";
+const STYLE_ID = "arlen-theme-vars";
 
 /** Inject (or update) a `<style>` element with all theme CSS variables. */
 export function injectThemeVariables(cssVars: CssVariables): void {

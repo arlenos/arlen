@@ -5,24 +5,24 @@
   /// changes a control, we invoke a Tauri command in desktop-shell
   /// (`night_light_set` / `night_light_set_schedule` /
   /// `night_light_set_location`) which persists to shell.toml AND
-  /// dispatches the matching `lunaris-shell-overlay` request. The
+  /// dispatches the matching `arlen-shell-overlay` request. The
   /// compositor warms the screen within ~200ms.
   ///
   /// We read the persisted state on mount and reflect later writes
   /// from the compositor / shell via the existing
-  /// `lunaris://shell-config-changed` event the shell emits when
+  /// `arlen://shell-config-changed` event the shell emits when
   /// shell.toml is rewritten.
 
   import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { Switch } from "@lunaris/ui-kit/components/ui/switch";
+  import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { ValueSlider } from "$lib/components/ui/value-slider";
-  import { PopoverSelect } from "@lunaris/ui-kit/components/ui/popover-select";
-  import { TimeInput } from "@lunaris/ui-kit/components/ui/time-input";
-  import { NumberInput } from "@lunaris/ui-kit/components/ui/number-input";
-  import { Group } from "@lunaris/ui-kit/components/ui/group";
-  import { Row } from "@lunaris/ui-kit/components/ui/row";
+  import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
+  import { TimeInput } from "@arlen/ui-kit/components/ui/time-input";
+  import { NumberInput } from "@arlen/ui-kit/components/ui/number-input";
+  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
 
   // Mirrors `app-settings/src-tauri/src/commands/night_light.rs::NightLightState`.
   // Kept in hand-sync; if the schema grows, ts-rs would be the right
@@ -72,7 +72,7 @@
     // Watch the shared shell.toml for external writes (e.g. the
     // QuickSettings toggle in desktop-shell). Re-read instead of
     // patching because the watcher event payload is empty.
-    unlistenChanged = await listen("lunaris://shell-config-changed", () => {
+    unlistenChanged = await listen("arlen://shell-config-changed", () => {
       reloadFromDisk();
     });
   });

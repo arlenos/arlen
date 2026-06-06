@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use colored::Colorize;
-use lunaris_modules::{load_manifest, parse_manifest, validate_manifest};
+use arlen_modules::{load_manifest, parse_manifest, validate_manifest};
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -14,11 +14,11 @@ fn user_modules_dir() -> PathBuf {
         .map(PathBuf::from)
         .or_else(|_| std::env::var("HOME").map(|h| PathBuf::from(h).join(".local/share")))
         .unwrap_or_else(|_| PathBuf::from("/tmp"));
-    data.join("lunaris/modules")
+    data.join("arlen/modules")
 }
 
 fn system_modules_dir() -> PathBuf {
-    PathBuf::from("/usr/share/lunaris/modules")
+    PathBuf::from("/usr/share/arlen/modules")
 }
 
 fn modules_config_path() -> PathBuf {
@@ -26,7 +26,7 @@ fn modules_config_path() -> PathBuf {
         .map(PathBuf::from)
         .or_else(|_| std::env::var("HOME").map(|h| PathBuf::from(h).join(".config")))
         .unwrap_or_else(|_| PathBuf::from("/tmp"));
-    config.join("lunaris/modules.toml")
+    config.join("arlen/modules.toml")
 }
 
 /// Read the disabled list from modules.toml.

@@ -1,4 +1,4 @@
-# Clippy lint configuration for all Lunaris Rust crates.
+# Clippy lint configuration for all Arlen Rust crates.
 # Applied via #![warn(clippy::pedantic)] in each crate root,
 # with the exceptions listed below.
 

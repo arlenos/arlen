@@ -2,11 +2,11 @@
 //!
 //! The desktop-shell compiles its Waypointer plugins directly into the
 //! binary and exposes their metadata through the on-disk registry at
-//! `~/.local/share/lunaris/waypointer-plugins.toml`. This module reads
+//! `~/.local/share/arlen/waypointer-plugins.toml`. This module reads
 //! that file and surfaces each entry in the Extensions panel alongside
 //! filesystem modules.
 //!
-//! Toggle state is persisted in `~/.config/lunaris/modules.toml` under
+//! Toggle state is persisted in `~/.config/arlen/modules.toml` under
 //! `[waypointer] disabled_plugins`. The shell reads the same section on
 //! startup and skips disabled plugins, so toggling here requires a
 //! shell restart to take effect (the Extensions UI shows the same
@@ -44,7 +44,7 @@ fn registry_path() -> PathBuf {
     }
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris/waypointer-plugins.toml")
+        .join("arlen/waypointer-plugins.toml")
 }
 
 fn modules_config_path() -> PathBuf {
@@ -53,7 +53,7 @@ fn modules_config_path() -> PathBuf {
     }
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris/modules.toml")
+        .join("arlen/modules.toml")
 }
 
 // ---------------------------------------------------------------------------

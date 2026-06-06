@@ -2,8 +2,8 @@
   /// Notifications panel.
   ///
   /// Reads/writes:
-  ///   * `~/.config/lunaris/notifications.toml` (daemon rules)
-  ///   * `~/.config/lunaris/shell.toml [toast]` (visual rendering)
+  ///   * `~/.config/arlen/notifications.toml` (daemon rules)
+  ///   * `~/.config/arlen/shell.toml [toast]` (visual rendering)
   ///
   /// Layout: vertical stack of grouped sections matching the Appearance
   /// panel pattern. Sections use the existing Group/Row primitives plus
@@ -34,15 +34,15 @@
   } from "$lib/stores/notifications";
   import { shell, type ToastPosition, type ToastAnimation } from "$lib/stores/shell";
 
-  import { Page } from "@lunaris/ui-kit/components/ui/page";
-  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
-  import { Group } from "@lunaris/ui-kit/components/ui/group";
-  import { Row } from "@lunaris/ui-kit/components/ui/row";
-  import { Switch } from "@lunaris/ui-kit/components/ui/switch";
+  import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
+  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
+  import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { ValueSlider } from "$lib/components/ui/value-slider";
-  import { TimeInput } from "@lunaris/ui-kit/components/ui/time-input";
-  import { DaysPicker } from "@lunaris/ui-kit/components/ui/days-picker";
-  import { PositionPicker } from "@lunaris/ui-kit/components/ui/position-picker";
+  import { TimeInput } from "@arlen/ui-kit/components/ui/time-input";
+  import { DaysPicker } from "@arlen/ui-kit/components/ui/days-picker";
+  import { PositionPicker } from "@arlen/ui-kit/components/ui/position-picker";
   import AppPicker from "$lib/components/appearance/AppPicker.svelte";
   import AppRuleCard from "$lib/components/appearance/AppRuleCard.svelte";
 
@@ -264,7 +264,7 @@
 
 <Page
   title="Notifications"
-  description="Control how Lunaris delivers notifications, when to stay quiet, and which apps get special treatment."
+  description="Control how Arlen delivers notifications, when to stay quiet, and which apps get special treatment."
 >
   <SectionGrid>
   <div class="span-full notif-column">

@@ -1,4 +1,4 @@
-/// `@lunaris/module-sdk` — Tier 2 (iframe) module SDK.
+/// `@arlen/module-sdk` — Tier 2 (iframe) module SDK.
 ///
 /// Re-exports the typed postMessage protocol, the capability-gated
 /// host calls, and the `createModule` entry point. Tier 1 (WASM)

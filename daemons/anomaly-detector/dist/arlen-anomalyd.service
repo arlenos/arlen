@@ -1,17 +1,17 @@
 [Unit]
-Description=Lunaris Anomaly Detector (user service)
+Description=Arlen Anomaly Detector (user service)
 Documentation=https://github.com/lunaris-sys/anomaly-detector
 # Reads the audit log (read API) and the Event Bus, and dispatches
 # alerts via the notification daemon. All are best-effort dependencies:
 # the detector retries and degrades rather than failing if any is
 # absent, so `After=` only orders startup, it does not gate it.
-After=lunaris-auditd.service lunaris-event-bus.service lunaris-notifyd.service
+After=arlen-auditd.service arlen-event-bus.service arlen-notifyd.service
 
 [Service]
 # Type=notify: the detector calls sd_notify(READY=1) once it is wired
 # up and polling.
 Type=notify
-ExecStart=/usr/lib/lunaris/libexec/lunaris-anomalyd
+ExecStart=/usr/lib/arlen/libexec/arlen-anomalyd
 Restart=on-failure
 RestartSec=2
 
@@ -20,8 +20,8 @@ RestartSec=2
 # runtime sockets, and never the network. Tight hardening accordingly.
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/.local/share/lunaris
-ReadWritePaths=/run/user/%U/lunaris
+ReadWritePaths=%h/.local/share/arlen
+ReadWritePaths=/run/user/%U/arlen
 RestrictAddressFamilies=AF_UNIX
 PrivateTmp=yes
 PrivateDevices=yes

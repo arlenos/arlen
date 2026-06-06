@@ -1,4 +1,4 @@
-//! Prompt-injection classifier for the Lunaris AI layer.
+//! Prompt-injection classifier for the Arlen AI layer.
 //!
 //! Foundation §8.4: before external content (a PDF, a web page, a file
 //! the AI was asked to summarise) reaches the main model, it passes

@@ -14,11 +14,11 @@ use tokio::sync::broadcast;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use lunaris_modulesd::host::CapabilityContext;
-use lunaris_modulesd::manager::Manager;
-use lunaris_modulesd::manifest::{ModuleRecord, Tier};
-use lunaris_modulesd::runtime::tier2::IframeInstance;
-use lunaris_modules::{ModuleManifest, ModuleMeta, ModuleType};
+use arlen_modulesd::host::CapabilityContext;
+use arlen_modulesd::manager::Manager;
+use arlen_modulesd::manifest::{ModuleRecord, Tier};
+use arlen_modulesd::runtime::tier2::IframeInstance;
+use arlen_modules::{ModuleManifest, ModuleMeta, ModuleType};
 
 /// Helper: build a ModuleRecord that the manager will accept.
 fn record_for(id: &str) -> ModuleRecord {
@@ -47,9 +47,9 @@ fn record_for(id: &str) -> ModuleRecord {
     }
 }
 
-fn mock_capabilities(host: &str) -> lunaris_modules::ModuleCapabilities {
-    let mut caps = lunaris_modules::ModuleCapabilities::default();
-    caps.network = Some(lunaris_modules::NetworkCapability {
+fn mock_capabilities(host: &str) -> arlen_modules::ModuleCapabilities {
+    let mut caps = arlen_modules::ModuleCapabilities::default();
+    caps.network = Some(arlen_modules::NetworkCapability {
         allowed_domains: vec![host.into()],
     });
     caps

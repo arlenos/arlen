@@ -1,6 +1,6 @@
 # distro
 
-Build system, integration tests, and development tooling for Lunaris. This repo does not contain application code; it is the glue that holds everything together.
+Build system, integration tests, and development tooling for Arlen. This repo does not contain application code; it is the glue that holds everything together.
 
 ## What's here
 
@@ -59,16 +59,16 @@ cargo test     # run integration tests
 
 ## VM notes
 
-The VM runs Fedora 41 Cloud Edition. It is headless (no GUI) and accessible via SSH on port 2222. The VM image is stored in `~/vms/lunaris-ebpf/` and is not committed to this repo.
+The VM runs Fedora 41 Cloud Edition. It is headless (no GUI) and accessible via SSH on port 2222. The VM image is stored in `~/vms/arlen-ebpf/` and is not committed to this repo.
 
 If the VM disk gets corrupted or you want to start fresh:
 ```bash
-rm ~/vms/lunaris-ebpf/fedora-ebpf.qcow2
+rm ~/vms/arlen-ebpf/fedora-ebpf.qcow2
 qemu-img create -f qcow2 -F qcow2 \
-  -b ~/vms/lunaris-ebpf/fedora-base.qcow2 \
-  ~/vms/lunaris-ebpf/fedora-ebpf.qcow2 20G
+  -b ~/vms/arlen-ebpf/fedora-base.qcow2 \
+  ~/vms/arlen-ebpf/fedora-ebpf.qcow2 20G
 ```
 
 ## Part of
 
-[Lunaris](https://github.com/lunaris-sys): a Linux desktop OS built around a system-wide knowledge graph.
+[Arlen](https://github.com/lunaris-sys): a Linux desktop OS built around a system-wide knowledge graph.

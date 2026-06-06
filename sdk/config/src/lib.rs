@@ -1,8 +1,8 @@
-/// TOML configuration loader for Lunaris OS.
+/// TOML configuration loader for Arlen OS.
 ///
 /// Loads component configs from two locations:
-/// 1. System defaults: `/usr/share/lunaris/defaults/{component}.toml`
-/// 2. User overrides: `~/.config/lunaris/{component}.toml`
+/// 1. System defaults: `/usr/share/arlen/defaults/{component}.toml`
+/// 2. User overrides: `~/.config/arlen/{component}.toml`
 ///
 /// User values override system defaults via deep merge on nested tables.
 ///
@@ -21,9 +21,9 @@ use thiserror::Error;
 // Paths
 // ---------------------------------------------------------------------------
 
-const SYSTEM_DEFAULTS_DIR: &str = "/usr/share/lunaris/defaults";
+const SYSTEM_DEFAULTS_DIR: &str = "/usr/share/arlen/defaults";
 
-/// Resolve the user config directory (`~/.config/lunaris`).
+/// Resolve the user config directory (`~/.config/arlen`).
 fn user_config_dir() -> Option<PathBuf> {
     // Respect $XDG_CONFIG_HOME if set, otherwise ~/.config.
     let base = std::env::var("XDG_CONFIG_HOME")
@@ -34,7 +34,7 @@ fn user_config_dir() -> Option<PathBuf> {
                 .ok()
                 .map(|h| PathBuf::from(h).join(".config"))
         })?;
-    Some(base.join("lunaris"))
+    Some(base.join("arlen"))
 }
 
 /// Resolve the system defaults directory.
@@ -85,8 +85,8 @@ pub enum ConfigError {
 /// `T` must implement `DeserializeOwned` (typically via `#[derive(Deserialize)]`).
 ///
 /// Resolution order:
-/// 1. Load system defaults from `/usr/share/lunaris/defaults/{component}.toml`
-/// 2. Load user config from `~/.config/lunaris/{component}.toml`
+/// 1. Load system defaults from `/usr/share/arlen/defaults/{component}.toml`
+/// 2. Load user config from `~/.config/arlen/{component}.toml`
 /// 3. Deep-merge user values onto system defaults
 /// 4. Deserialize merged TOML into `T`
 ///
@@ -391,8 +391,8 @@ layout_mode = "tile"
     #[test]
     fn test_not_found() {
         let result: Result<ShellConfig, _> = load_from(
-            Some(Path::new("/tmp/lunaris-test-missing-xyz/defaults.toml")),
-            Some(Path::new("/tmp/lunaris-test-missing-xyz/user.toml")),
+            Some(Path::new("/tmp/arlen-test-missing-xyz/defaults.toml")),
+            Some(Path::new("/tmp/arlen-test-missing-xyz/user.toml")),
         );
         assert!(matches!(result, Err(ConfigError::NotFound(_))));
     }

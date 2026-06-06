@@ -1,7 +1,7 @@
 //! Picker-UI side of the daemon ↔ picker-ui IPC.
 //!
 //! Connects to the daemon's Unix socket at
-//! `$XDG_RUNTIME_DIR/lunaris/portal-picker.sock`, reads framed
+//! `$XDG_RUNTIME_DIR/arlen/portal-picker.sock`, reads framed
 //! `PickerRequest` messages, and sends back `PickerResponse`. The
 //! reader spawns one task; the writer is wrapped in a `Mutex` so the
 //! `picker_respond` Tauri command can grab it.
@@ -19,15 +19,15 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tokio::sync::Mutex;
-use xdg_portal_lunaris_protocol::codec::{decode_frame, encode_frame};
-use xdg_portal_lunaris_protocol::{PickerRequest, PickerResponse};
+use xdg_portal_arlen_protocol::codec::{decode_frame, encode_frame};
+use xdg_portal_arlen_protocol::{PickerRequest, PickerResponse};
 
 /// Socket the daemon binds. Must match `daemon/src/picker_ipc.rs`.
 fn socket_path() -> Result<PathBuf> {
     let runtime = std::env::var_os("XDG_RUNTIME_DIR")
         .context("XDG_RUNTIME_DIR is not set")?;
     let mut p = PathBuf::from(runtime);
-    p.push("lunaris");
+    p.push("arlen");
     p.push("portal-picker.sock");
     Ok(p)
 }
@@ -141,7 +141,7 @@ async fn read_loop(
                     buf.drain(..consumed);
                     handle_request(&app, &client, request).await;
                 }
-                Err(xdg_portal_lunaris_protocol::codec::CodecError::Incomplete { .. }) => break,
+                Err(xdg_portal_arlen_protocol::codec::CodecError::Incomplete { .. }) => break,
                 Err(e) => {
                     anyhow::bail!("daemon sent malformed frame: {e}");
                 }

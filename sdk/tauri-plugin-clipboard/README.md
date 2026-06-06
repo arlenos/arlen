@@ -1,14 +1,14 @@
-# tauri-plugin-lunaris-clipboard
+# tauri-plugin-arlen-clipboard
 
-Tauri plugin for the Lunaris clipboard subsystem.
+Tauri plugin for the Arlen clipboard subsystem.
 
 Wraps `os_sdk::UnixClipboardClient` and exposes
 `write` / `read` / `history` / `subscribe` / `unsubscribe`
-Tauri commands plus a `lunaris://clipboard-changed` event that
+Tauri commands plus a `arlen://clipboard-changed` event that
 the frontend can listen to for live updates.
 
 The plugin talks to the desktop-shell broker over the unix
-socket at `$XDG_RUNTIME_DIR/lunaris/clipboard.sock`, which is
+socket at `$XDG_RUNTIME_DIR/arlen/clipboard.sock`, which is
 the only process allowed to interact with the raw Wayland
 `wl_data_device` interface. Apps therefore get clipboard access
 without holding a Wayland connection of their own.
@@ -33,7 +33,7 @@ permission profile (see `sdk/permissions`):
 ```rust,ignore
 fn main() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_lunaris_clipboard::init())
+        .plugin(tauri_plugin_arlen_clipboard::init())
         .run(tauri::generate_context!())
         .expect("error running app");
 }
@@ -42,7 +42,7 @@ fn main() {
 ### TypeScript
 
 ```ts
-import { write, subscribe } from '@lunaris/tauri-plugin-clipboard';
+import { write, subscribe } from '@arlen/tauri-plugin-clipboard';
 import { listen } from '@tauri-apps/api/event';
 
 await write({
@@ -51,7 +51,7 @@ await write({
 });
 
 await subscribe();
-await listen('lunaris://clipboard-changed', (e) => {
+await listen('arlen://clipboard-changed', (e) => {
   console.log('clipboard changed:', e.payload);
 });
 ```

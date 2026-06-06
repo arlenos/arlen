@@ -1,4 +1,4 @@
-/// Lunaris Notification Daemon.
+/// Arlen Notification Daemon.
 ///
 /// Owns `org.freedesktop.Notifications` on the session D-Bus. Stores
 /// notifications in SQLite, enforces DND rules, and broadcasts to
@@ -9,19 +9,19 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use zbus::connection;
 
-use lunaris_notification_daemon::config;
-use lunaris_notification_daemon::dbus::NotificationServer;
-use lunaris_notification_daemon::events;
-use lunaris_notification_daemon::manager::NotificationManager;
-use lunaris_notification_daemon::socket::SocketServer;
-use lunaris_notification_daemon::storage::Database;
+use arlen_notification_daemon::config;
+use arlen_notification_daemon::dbus::NotificationServer;
+use arlen_notification_daemon::events;
+use arlen_notification_daemon::manager::NotificationManager;
+use arlen_notification_daemon::socket::SocketServer;
+use arlen_notification_daemon::storage::Database;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("lunaris_notification_daemon=info".parse()?),
+                .add_directive("arlen_notification_daemon=info".parse()?),
         )
         .init();
 
@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2. Init database.
     let db_dir = dirs::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-        .join("lunaris");
+        .join("arlen");
     let _ = std::fs::create_dir_all(&db_dir);
     let db_file = db_dir.join("notifications.db");
     let db_path = format!("sqlite:{}?mode=rwc", db_file.display());

@@ -1,9 +1,9 @@
 /// Clipboard history: in-memory ring buffer fed by `wl-paste --watch`.
 ///
-/// Privacy-first design: opt-in via `~/.config/lunaris/shell.toml`,
+/// Privacy-first design: opt-in via `~/.config/arlen/shell.toml`,
 /// text-only (no images, no passwords), no disk persistence. When the
 /// shell process exits, the history is gone. This matches the threat
-/// model Lunaris targets: "don't leak what the user just copied" wins
+/// model Arlen targets: "don't leak what the user just copied" wins
 /// over "preserve history across reboots".
 ///
 /// Filter chain (applied in order; any miss drops the entry):
@@ -41,7 +41,7 @@ use crate::wayland_client::WindowList;
 /// the `clipboard.read.sensitive` permission receive the entry's
 /// metadata only — the `content` is dropped. Wayland itself does
 /// not carry this label; it is enforcement-on-trust within the
-/// Lunaris SDK boundary.
+/// Arlen SDK boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Label {
@@ -111,7 +111,7 @@ pub struct ClipboardEntry {
     /// Always "text/plain" for now — we don't record anything else.
     pub mime: String,
     /// Sensitivity label set by the SDK writer or defaulted to
-    /// Normal for non-Lunaris-aware writes. Sensitive entries are
+    /// Normal for non-Arlen-aware writes. Sensitive entries are
     /// filtered at write time and never appear in history snapshots,
     /// so any entry the existing Tauri commands hand the frontend
     /// is always Normal in practice; the field is here for the SDK
@@ -439,13 +439,13 @@ pub fn shannon_entropy(s: &str) -> f32 {
         .sum()
 }
 
-/// Read `~/.config/lunaris/shell.toml` and return whether the
+/// Read `~/.config/arlen/shell.toml` and return whether the
 /// `[clipboard]` section has `enabled = true`. Missing file, missing
 /// section, or parse error all default to `false`. This is the
 /// privacy contract: clipboard history is inert unless the user has
 /// explicitly opted in.
 pub fn read_enabled_from_shell_toml() -> bool {
-    let Some(path) = dirs::config_dir().map(|p| p.join("lunaris/shell.toml")) else {
+    let Some(path) = dirs::config_dir().map(|p| p.join("arlen/shell.toml")) else {
         return false;
     };
     let Ok(content) = std::fs::read_to_string(&path) else {
@@ -562,7 +562,7 @@ fn run_watcher(
             // Frontend can watch this event to refresh the panel in
             // real time. Omitted from the MVP frontend but cheap to
             // emit regardless.
-            let _ = app.emit("lunaris://clipboard-added", &entry);
+            let _ = app.emit("arlen://clipboard-added", &entry);
         }
     }
 }
@@ -600,7 +600,7 @@ pub fn clipboard_delete_entry(
     app: AppHandle,
 ) {
     state.delete(id);
-    let _ = app.emit("lunaris://clipboard-changed", ());
+    let _ = app.emit("arlen://clipboard-changed", ());
 }
 
 /// Drop the entire history. Irreversible; no confirmation here (the
@@ -611,7 +611,7 @@ pub fn clipboard_clear_all(
     app: AppHandle,
 ) {
     state.clear();
-    let _ = app.emit("lunaris://clipboard-changed", ());
+    let _ = app.emit("arlen://clipboard-changed", ());
 }
 
 /// Report whether the watcher is active. The frontend hides the
@@ -928,7 +928,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         // Point XDG at an empty dir. `dirs::config_dir()` will prefer
         // XDG_CONFIG_HOME over HOME-derived paths, so the
-        // lunaris/shell.toml lookup returns nothing.
+        // arlen/shell.toml lookup returns nothing.
         std::env::set_var("XDG_CONFIG_HOME", tmp.path());
         assert!(!read_enabled_from_shell_toml());
         std::env::remove_var("XDG_CONFIG_HOME");
@@ -938,7 +938,7 @@ mod tests {
     fn enabled_reads_shell_toml_section() {
         let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let tmp = tempfile::tempdir().unwrap();
-        let cfg = tmp.path().join("lunaris");
+        let cfg = tmp.path().join("arlen");
         std::fs::create_dir_all(&cfg).unwrap();
         std::fs::write(
             cfg.join("shell.toml"),

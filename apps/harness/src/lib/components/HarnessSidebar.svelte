@@ -1,7 +1,7 @@
 <script lang="ts">
   /// The harness sidebar: the two primary surfaces of the AI app
   /// (ai-app.md §2) — Conversation (query mode) and Agent (pull /
-  /// observability). Built on the `@lunaris/ui-kit` sidebar canon, the
+  /// observability). Built on the `@arlen/ui-kit` sidebar canon, the
   /// same component Settings uses, so the app is structurally
   /// consistent with the rest of the OS.
   import { page } from "$app/stores";
@@ -15,7 +15,7 @@
     SidebarMenuItem,
     SidebarMenuButton,
     SidebarRail,
-  } from "@lunaris/ui-kit/components/ui/sidebar";
+  } from "@arlen/ui-kit/components/ui/sidebar";
   import { MessageSquare, Activity, Sparkles } from "@lucide/svelte";
 
   interface Surface {

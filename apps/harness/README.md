@@ -1,6 +1,6 @@
 # app-harness
 
-The Lunaris **AI Harness App** — the graphical agent/conversation and
+The Arlen **AI Harness App** — the graphical agent/conversation and
 observability surface for the AI layer. The full GUI door to the AI (the
 graphical counterpart to the terminal CLI harness): multi-turn conversation
 with streaming and visible tool calls, plus the read-only activity timeline
@@ -12,12 +12,12 @@ surface (that is Settings → AI). This app is where you *use and observe* the A
 
 ## Stack
 
-Tauri 2 + SvelteKit + Svelte 5 + `@lunaris/ui-kit`. Built entirely on the
-Lunaris Design System (single component source, no forked primitives) — a
+Tauri 2 + SvelteKit + Svelte 5 + `@arlen/ui-kit`. Built entirely on the
+Arlen Design System (single component source, no forked primitives) — a
 greenfield exemplar of the unified UI.
 
 Talks to: `ai-daemon` (query/chat, streaming), `ai-agent` over D-Bus
-(`org.lunaris.AIAgent1`; agent state, undo/compensation), the audit ledger
+(`org.arlen.AIAgent1`; agent state, undo/compensation), the audit ledger
 (activity timeline, via `audit-proto`), and the Event Bus (live activity).
 
 ## Spec / ground truth

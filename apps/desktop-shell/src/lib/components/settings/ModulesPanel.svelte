@@ -4,7 +4,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
-  import Switch from "@lunaris/ui-kit/components/ui/switch/switch.svelte";
+  import Switch from "@arlen/ui-kit/components/ui/switch/switch.svelte";
   import {
     Puzzle, AlertTriangle, RefreshCw,
     ChevronDown, ChevronUp,
@@ -47,7 +47,7 @@
 
   onMount(() => {
     loadModules();
-    const unlisten = listen("lunaris://module-auto-disabled", () => loadModules());
+    const unlisten = listen("arlen://module-auto-disabled", () => loadModules());
     return () => { unlisten.then((fn) => fn()); };
   });
 

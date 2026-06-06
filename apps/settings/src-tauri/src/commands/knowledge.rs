@@ -11,15 +11,15 @@ use std::process::Command;
 
 use serde::Serialize;
 
-const DB_PATH_DEFAULT: &str = "/var/lib/lunaris/knowledge/events.db";
-const GRAPH_DIR_DEFAULT: &str = "/var/lib/lunaris/knowledge/graph";
+const DB_PATH_DEFAULT: &str = "/var/lib/arlen/knowledge/events.db";
+const GRAPH_DIR_DEFAULT: &str = "/var/lib/arlen/knowledge/graph";
 const FUSE_MOUNT_DEFAULT: &str = "~/.timeline";
 
 /// Daemon's listen-socket path. Created on startup, removed on
 /// clean shutdown. Presence of this file is the most reliable
 /// "the daemon is currently alive" signal we can read without a
 /// token-authenticated socket round-trip.
-const DAEMON_SOCKET_DEFAULT: &str = "/run/lunaris/knowledge.sock";
+const DAEMON_SOCKET_DEFAULT: &str = "/run/arlen/knowledge.sock";
 
 /// Whole-page stats payload for the Knowledge Graph settings page.
 #[derive(Debug, Clone, Serialize)]
@@ -73,14 +73,14 @@ pub fn knowledge_stats_get() -> Result<KnowledgeStats, String> {
 
 /// Resolve the daemon socket path with the same fallback chain
 /// the desktop-shell client uses: `LUNARIS_DAEMON_SOCKET` env var
-/// (set by `start-dev.sh`), then `$XDG_RUNTIME_DIR/lunaris/...`,
-/// finally the hardcoded `/run/lunaris/...` system default.
+/// (set by `start-dev.sh`), then `$XDG_RUNTIME_DIR/arlen/...`,
+/// finally the hardcoded `/run/arlen/...` system default.
 fn daemon_socket_path() -> std::path::PathBuf {
     if let Ok(p) = std::env::var("LUNARIS_DAEMON_SOCKET") {
         return std::path::PathBuf::from(p);
     }
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
-        return std::path::PathBuf::from(xdg).join("lunaris/knowledge.sock");
+        return std::path::PathBuf::from(xdg).join("arlen/knowledge.sock");
     }
     std::path::PathBuf::from(DAEMON_SOCKET_DEFAULT)
 }
@@ -232,7 +232,7 @@ mod tests {
         }
         assert_eq!(
             daemon_socket_path(),
-            std::path::PathBuf::from("/tmp/run-test/lunaris/knowledge.sock")
+            std::path::PathBuf::from("/tmp/run-test/arlen/knowledge.sock")
         );
 
         // Restore env.

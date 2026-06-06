@@ -1,7 +1,7 @@
 {
-  "name": "lunaris-settings",
+  "name": "arlen-settings",
   "version": "0.1.0",
-  "description": "Lunaris OS system settings app",
+  "description": "Arlen OS system settings app",
   "type": "module",
   "scripts": {
     "dev": "vite dev",
@@ -14,7 +14,7 @@
   "license": "GPL-3.0-only",
   "dependencies": {
     "@lucide/svelte": "^1.8.0",
-    "@lunaris/tauri-plugin-menu": "file:../sdk/tauri-plugin-menu",
+    "@arlen/tauri-plugin-menu": "file:../sdk/tauri-plugin-menu",
     "@tauri-apps/api": "^2",
     "lucide-svelte": "^0.577.0"
   },

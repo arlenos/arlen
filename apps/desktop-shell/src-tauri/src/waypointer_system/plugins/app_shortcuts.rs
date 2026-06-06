@@ -14,7 +14,7 @@
 //! clicks). The shortcut surface emits
 //! `app.shortcut.action_invoked`; the source app's
 //! tauri-plugin-shell consumer routes it back as a
-//! `lunaris://app-action` Tauri event.
+//! `arlen://app-action` Tauri event.
 
 use crate::app_state::ShortcutsState;
 use crate::wayland_client;

@@ -20,7 +20,7 @@
         // No Tauri backend (e.g. browser dev mode), Panda already applied
       }
       // Subscribe to live theme changes
-      unlisten = await listen<SurfaceTokens>("lunaris://theme-changed", ({ payload }) => {
+      unlisten = await listen<SurfaceTokens>("arlen://theme-changed", ({ payload }) => {
         applyTokens(payload);
       });
     })();

@@ -1,13 +1,13 @@
-# Bundled Lunaris Dark theme.
+# Bundled Arlen Dark theme.
 #
-# Schema canonical at sdk/theme/src/file.rs (LunarisThemeFile).
+# Schema canonical at sdk/theme/src/file.rs (ArlenThemeFile).
 # Both compositor and desktop-shell read this same file via
 # include_str!() — single source of truth, no Rust constants
 # mirror it.
 
 [meta]
 id      = "dark"
-name    = "Lunaris Dark"
+name    = "Arlen Dark"
 variant = "dark"
 
 [color.bg]

@@ -1,7 +1,7 @@
 <script lang="ts">
   /// Client-side window decorations: minimize / maximize / close.
   /// Rendered in the titlebar because the app runs with
-  /// `decorations: false` (Lunaris CSD). App-local chrome by design —
+  /// `decorations: false` (Arlen CSD). App-local chrome by design —
   /// the SDK `WindowControls` is the shell-overlay variant and is not
   /// imported by individual apps. Token-styled so it matches the canon.
   import { Minus, Square, X } from "@lucide/svelte";

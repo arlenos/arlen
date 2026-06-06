@@ -81,7 +81,7 @@ export function initWindowListeners(): () => void {
         .catch((e) => console.warn("get_windows failed", e));
 
     const pending: Array<Promise<UnlistenFn>> = [
-        listen<WindowInfo>("lunaris://toplevel-added", (event) => {
+        listen<WindowInfo>("arlen://toplevel-added", (event) => {
             windows.update((ws) => {
                 // Guard against duplicates when a prime + live-event arrive
                 // for the same window near-simultaneously after a reload.
@@ -89,12 +89,12 @@ export function initWindowListeners(): () => void {
                 return [...ws, event.payload];
             });
         }),
-        listen<WindowInfo>("lunaris://toplevel-changed", (event) => {
+        listen<WindowInfo>("arlen://toplevel-changed", (event) => {
             windows.update((ws) =>
                 ws.map((w) => (w.id === event.payload.id ? event.payload : w))
             );
         }),
-        listen<{ id: string }>("lunaris://toplevel-removed", (event) => {
+        listen<{ id: string }>("arlen://toplevel-removed", (event) => {
             windows.update((ws) => ws.filter((w) => w.id !== event.payload.id));
         }),
     ];

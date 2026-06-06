@@ -1,10 +1,10 @@
 /**
- * @lunaris/tauri-plugin-portal
+ * @arlen/tauri-plugin-portal
  *
- * TypeScript bindings for the Lunaris portal plugin. Wraps the
+ * TypeScript bindings for the Arlen portal plugin. Wraps the
  * standard `org.freedesktop.portal.Desktop` FileChooser and
- * OpenURI interfaces — under a Lunaris session the calls are
- * served by `xdg-desktop-portal-lunaris`; under GNOME/KDE the
+ * OpenURI interfaces — under a Arlen session the calls are
+ * served by `xdg-desktop-portal-arlen`; under GNOME/KDE the
  * frontend daemon falls through to whichever backend is
  * configured for that desktop.
  *
@@ -18,7 +18,7 @@
  * # Example
  *
  * ```typescript
- * import { pickDirectory } from '@lunaris/tauri-plugin-portal';
+ * import { pickDirectory } from '@arlen/tauri-plugin-portal';
  *
  * const dir = await pickDirectory({ title: 'Choose folder' });
  * if (dir !== null) {
@@ -125,7 +125,7 @@ function defaultedDirectoryFlag(opts: PickFileOptions): PickFileOptions {
 export async function pickFile(
   options: PickFileOptions = {}
 ): Promise<string[] | null> {
-  const result = await invoke<PickerResult>("plugin:lunaris-portal|pick_file", {
+  const result = await invoke<PickerResult>("plugin:arlen-portal|pick_file", {
     options: defaultedDirectoryFlag(options),
   });
   return pickedAllUris(result);
@@ -138,7 +138,7 @@ export async function pickDirectory(
   options: PickFileOptions = {}
 ): Promise<string | null> {
   const result = await invoke<PickerResult>(
-    "plugin:lunaris-portal|pick_directory",
+    "plugin:arlen-portal|pick_directory",
     {
       options: defaultedDirectoryFlag(options),
     }
@@ -152,7 +152,7 @@ export async function pickDirectory(
 export async function saveFile(
   options: SaveFileOptions = {}
 ): Promise<string | null> {
-  const result = await invoke<PickerResult>("plugin:lunaris-portal|save_file", {
+  const result = await invoke<PickerResult>("plugin:arlen-portal|save_file", {
     options,
   });
   return pickedFirstUri(result);
@@ -166,7 +166,7 @@ export async function saveFiles(
   options: SaveFilesOptions = {}
 ): Promise<string[] | null> {
   const result = await invoke<PickerResult>(
-    "plugin:lunaris-portal|save_files",
+    "plugin:arlen-portal|save_files",
     {
       options,
     }
@@ -187,5 +187,5 @@ export async function openUri(
   uri: string,
   options: OpenUriOptions = {}
 ): Promise<void> {
-  await invoke("plugin:lunaris-portal|open_uri", { uri, options });
+  await invoke("plugin:arlen-portal|open_uri", { uri, options });
 }

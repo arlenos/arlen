@@ -6,9 +6,9 @@
 //! the [`crate::engine::Dispatcher`]; these helpers are kept pure so they
 //! are unit-testable without a provider or a graph.
 
-use lunaris_ai_core::pipeline::extract_json;
-use lunaris_ai_core::tagging::{Block, Origin, TaggedPrompt};
-use lunaris_ai_sandbox::extract_text;
+use arlen_ai_core::pipeline::extract_json;
+use arlen_ai_core::tagging::{Block, Origin, TaggedPrompt};
+use arlen_ai_sandbox::extract_text;
 use serde::Deserialize;
 
 use crate::behaviour::Behaviour;
@@ -127,7 +127,7 @@ pub fn build_agent_prompt(
         )
     };
     let instruction = format!(
-        "You are the Lunaris agent behaviour \"{name}\".\n\
+        "You are the Arlen agent behaviour \"{name}\".\n\
          Goal: {goal}\n\n\
          Instructions:\n{body}\n\n\
          Available tools: {tools}.{stop_conditions}\n\n\

@@ -9,8 +9,8 @@
   /// streaming, and the always-visible capability context come in A3.
   import { tick, onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { Input } from "@lunaris/ui-kit/components/ui/input";
-  import { Button } from "@lunaris/ui-kit/components/ui/button";
+  import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
   import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2 } from "@lucide/svelte";
   import { messages, busy, send } from "$lib/stores/conversation";
 

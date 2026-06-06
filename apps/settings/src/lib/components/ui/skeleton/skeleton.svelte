@@ -23,17 +23,17 @@
 
 <div
   data-slot="skeleton"
-  class={cn("lunaris-skeleton", className)}
+  class={cn("arlen-skeleton", className)}
   {...rest}
 ></div>
 
 <style>
-  .lunaris-skeleton {
+  .arlen-skeleton {
     background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent);
     border-radius: var(--radius-chip);
-    animation: lunaris-skeleton-pulse 1.8s ease-in-out infinite;
+    animation: arlen-skeleton-pulse 1.8s ease-in-out infinite;
   }
-  @keyframes lunaris-skeleton-pulse {
+  @keyframes arlen-skeleton-pulse {
     0%, 100% { opacity: 0.45; }
     50% { opacity: 0.85; }
   }

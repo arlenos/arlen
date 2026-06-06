@@ -1,6 +1,6 @@
 /// Notifications config store.
 ///
-/// Wraps `~/.config/lunaris/notifications.toml` via the generic
+/// Wraps `~/.config/arlen/notifications.toml` via the generic
 /// `createConfigStore` factory. The schema mirrors
 /// `notification-daemon::config::types::Config`.
 

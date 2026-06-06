@@ -300,7 +300,7 @@ mod tests {
 
     #[test]
     fn missing_model_fails_closed_as_unavailable() {
-        let c = cfg(std::path::Path::new("/nonexistent/lunaris/model/dir"));
+        let c = cfg(std::path::Path::new("/nonexistent/arlen/model/dir"));
         assert!(matches!(
             OnnxClassifier::load(&c),
             Err(ClassifierError::Unavailable(_))

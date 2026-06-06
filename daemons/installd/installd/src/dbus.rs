@@ -1,7 +1,7 @@
 /// D-Bus interface for the install daemon.
 ///
-/// Interface: org.lunaris.InstallDaemon1
-/// Object path: /org/lunaris/InstallDaemon1
+/// Interface: org.arlen.InstallDaemon1
+/// Object path: /org/arlen/InstallDaemon1
 /// Bus: Session Bus
 
 use std::sync::Arc;
@@ -23,7 +23,7 @@ impl InstallDaemon {
     }
 }
 
-#[interface(name = "org.lunaris.InstallDaemon1")]
+#[interface(name = "org.arlen.InstallDaemon1")]
 impl InstallDaemon {
     /// Install a .lunpkg package from a local file path.
     ///

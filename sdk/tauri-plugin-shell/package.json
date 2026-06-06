@@ -1,7 +1,7 @@
 {
-  "name": "@lunaris/tauri-plugin-shell",
+  "name": "@arlen/tauri-plugin-shell",
   "version": "0.1.0",
-  "description": "Tauri plugin exposing the Lunaris OS shell.* APIs (presence, timeline, spatial)",
+  "description": "Tauri plugin exposing the Arlen OS shell.* APIs (presence, timeline, spatial)",
   "license": "GPL-3.0-only",
   "main": "index.ts",
   "types": "index.ts",

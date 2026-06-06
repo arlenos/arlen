@@ -1,7 +1,7 @@
 <script lang="ts">
   /// Quick Settings panel orchestrator.
   ///
-  /// Reads the user's `~/.config/lunaris/quicksettings.toml` layout via
+  /// Reads the user's `~/.config/arlen/quicksettings.toml` layout via
   /// `qs_layout_get`, merges with the bundled-defaults catalogue, and
   /// renders the resulting tile list in a 2-column logical grid. Each
   /// tile's behaviour (toggle/popover/flyout/slider) lives inside the
@@ -9,13 +9,13 @@
   ///
   /// The panel is a popover in the global `activePopover` store. It
   /// closes on backdrop click and on `Escape` (handled by the
-  /// `focusGrid` keyboard helper from `@lunaris/ui-kit/keyboard`).
+  /// `focusGrid` keyboard helper from `@arlen/ui-kit/keyboard`).
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { toast } from "svelte-sonner";
-  import { focusGrid } from "@lunaris/ui-kit/keyboard";
+  import { focusGrid } from "@arlen/ui-kit/keyboard";
   import { resolveLayout, sizeFromWire, type LayoutEntry, type ResolvedTile, type WireSize } from "$lib/quicksettings/grid.js";
 
   interface RawTileEntry {
@@ -59,10 +59,10 @@
     // debounced scheduleReload so back-to-back saves don't cascade
     // into back-to-back full panel re-renders.
     let stops: UnlistenFn[] = [];
-    listen("lunaris://shell-config-changed", scheduleReload).then((u) =>
+    listen("arlen://shell-config-changed", scheduleReload).then((u) =>
       stops.push(u),
     );
-    listen("lunaris://qs-layout-changed", scheduleReload).then((u) =>
+    listen("arlen://qs-layout-changed", scheduleReload).then((u) =>
       stops.push(u),
     );
     return () => {

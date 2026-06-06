@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# reset-sway-portals.sh — restore standard XDG portals after Lunaris dev work.
+# reset-sway-portals.sh — restore standard XDG portals after Arlen dev work.
 #
-# After developing on Lunaris (xdg-desktop-portal-lunaris dev-mode setup,
+# After developing on Arlen (xdg-desktop-portal-arlen dev-mode setup,
 # nested compositor sessions, etc.) the user-level systemd env and D-Bus
-# state can leave Sway pointing at a non-existent or unwanted Lunaris
+# state can leave Sway pointing at a non-existent or unwanted Arlen
 # portal backend. Symptoms: file pickers don't open, screensharing fails,
 # `flatpak run` apps complain about missing portal interfaces.
 #
 # This script does the full reset:
-#   1. Kills lingering xdg-desktop-portal-lunaris processes.
+#   1. Kills lingering xdg-desktop-portal-arlen processes.
 #   2. Removes the per-user D-Bus service shim that dev-portal-setup.sh
 #      installs (mirrors dev-portal-teardown.sh).
-#   3. Backs up any user-level portal-config files that mention lunaris.
+#   3. Backs up any user-level portal-config files that mention arlen.
 #   4. Resets the polluted XDG_CURRENT_DESKTOP / XDG_DATA_DIRS values in
 #      the systemd user environment back to plain `sway`.
 #   5. Restarts xdg-desktop-portal + the gtk/wlr backends.
@@ -32,14 +32,14 @@ note()   { printf '    %s\n' "$*"; }
 step()   { printf '\n→ %s\n' "$*"; }
 
 USER_DBUS_SVC="$HOME/.local/share/dbus-1/services"
-LUNARIS_DBUS_SVC="$USER_DBUS_SVC/org.freedesktop.impl.portal.desktop.lunaris.service"
+LUNARIS_DBUS_SVC="$USER_DBUS_SVC/org.freedesktop.impl.portal.desktop.arlen.service"
 USER_PORTAL_DIR="$HOME/.config/xdg-desktop-portal"
 TS="$(date +%Y%m%d-%H%M%S)"
 
-# ── 1. Stop lingering Lunaris portal processes ─────────────────
-step "1/6  Stopping lingering Lunaris portal processes"
+# ── 1. Stop lingering Arlen portal processes ─────────────────
+step "1/6  Stopping lingering Arlen portal processes"
 killed_any=0
-for pat in 'xdg-desktop-portal-lunaris-picker' 'xdg-desktop-portal-lunaris'; do
+for pat in 'xdg-desktop-portal-arlen-picker' 'xdg-desktop-portal-arlen'; do
     if pgrep -af "$pat" >/dev/null 2>&1; then
         pgrep -af "$pat" | sed 's/^/    found: /'
         pkill -TERM -f "$pat" 2>/dev/null || true
@@ -48,8 +48,8 @@ for pat in 'xdg-desktop-portal-lunaris-picker' 'xdg-desktop-portal-lunaris'; do
 done
 if [ $killed_any -eq 1 ]; then
     sleep 1
-    pkill -KILL -f 'xdg-desktop-portal-lunaris' 2>/dev/null || true
-    green "  killed Lunaris portal binaries"
+    pkill -KILL -f 'xdg-desktop-portal-arlen' 2>/dev/null || true
+    green "  killed Arlen portal binaries"
 else
     note "(none running)"
 fi
@@ -63,21 +63,21 @@ else
     note "(none to remove)"
 fi
 
-# ── 3. Quarantine user-level portal config that references Lunaris ─
-step "3/6  Quarantining Lunaris-referencing portal configs"
+# ── 3. Quarantine user-level portal config that references Arlen ─
+step "3/6  Quarantining Arlen-referencing portal configs"
 quarantined=0
 if [ -d "$USER_PORTAL_DIR" ]; then
     for f in "$USER_PORTAL_DIR"/portals.conf \
              "$USER_PORTAL_DIR"/sway-portals.conf \
-             "$USER_PORTAL_DIR"/lunaris-portals.conf; do
+             "$USER_PORTAL_DIR"/arlen-portals.conf; do
         if [ -f "$f" ]; then
-            if grep -qi 'lunaris' "$f"; then
-                mv "$f" "${f}.lunaris-reset.${TS}.bak"
+            if grep -qi 'arlen' "$f"; then
+                mv "$f" "${f}.arlen-reset.${TS}.bak"
                 yellow "  quarantined: $f"
-                note "(backup: ${f}.lunaris-reset.${TS}.bak)"
+                note "(backup: ${f}.arlen-reset.${TS}.bak)"
                 quarantined=1
             else
-                note "kept (no lunaris reference): $f"
+                note "kept (no arlen reference): $f"
             fi
         fi
     done
@@ -96,10 +96,10 @@ note "current XDG_DATA_DIRS=${current_dirs:-(unset)}"
 
 needs_reset=0
 case "$current_xdg" in
-    *lunaris*) needs_reset=1 ;;
+    *arlen*) needs_reset=1 ;;
 esac
 case "$current_dirs" in
-    *lunaris-sys*|*xdg-desktop-portal-lunaris*) needs_reset=1 ;;
+    *lunaris-sys*|*xdg-desktop-portal-arlen*) needs_reset=1 ;;
 esac
 
 if [ $needs_reset -eq 1 ]; then
@@ -137,8 +137,8 @@ sleep 1
 
 verified=true
 
-if pgrep -f 'xdg-desktop-portal-lunaris' >/dev/null 2>&1; then
-    red "  Lunaris portal still running after kill — investigate"
+if pgrep -f 'xdg-desktop-portal-arlen' >/dev/null 2>&1; then
+    red "  Arlen portal still running after kill — investigate"
     verified=false
 fi
 

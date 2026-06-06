@@ -64,7 +64,7 @@ pub enum ProxyError {
 
 impl ProxyError {
     /// Stable kebab-case error code used in audit records and as the
-    /// `org.lunaris.AIProxy1.<Code>` D-Bus error name.
+    /// `org.arlen.AIProxy1.<Code>` D-Bus error name.
     pub fn code(&self) -> &'static str {
         match self {
             ProxyError::CallerNotAllowed { .. } => "caller-not-allowed",
@@ -137,9 +137,9 @@ impl CallerAllowlist {
         }
     }
 
-    /// The default Lunaris caller allowlist: only the AI daemons.
-    pub fn default_lunaris() -> Self {
-        Self::new(["org.lunaris.AI1", "org.lunaris.AIAgent1"])
+    /// The default Arlen caller allowlist: only the AI daemons.
+    pub fn default_arlen() -> Self {
+        Self::new(["org.arlen.AI1", "org.arlen.AIAgent1"])
     }
 
     /// Whether the caller is permitted.
@@ -415,7 +415,7 @@ mod tests {
 
     fn ai_daemon_caller() -> CallerIdentity {
         CallerIdentity {
-            well_known_bus_name: Some("org.lunaris.AI1".to_string()),
+            well_known_bus_name: Some("org.arlen.AI1".to_string()),
             unique_bus_name: ":1.42".to_string(),
         }
     }
@@ -425,9 +425,9 @@ mod tests {
         sink: Arc<CollectingAuditSink>,
     ) -> ProxyService {
         ProxyService::new(
-            Allowlist::default_lunaris(),
-            ProviderCatalog::default_lunaris(),
-            CallerAllowlist::default_lunaris(),
+            Allowlist::default_arlen(),
+            ProviderCatalog::default_arlen(),
+            CallerAllowlist::default_arlen(),
             forwarder as Arc<dyn Forwarder>,
             sink as Arc<dyn AuditSink>,
         )
@@ -607,9 +607,9 @@ mod tests {
         // forward must be refused rather than reaching upstream.
         let gate = Arc::new(tokio::sync::Notify::new());
         let svc = Arc::new(ProxyService::with_max_inflight(
-            Allowlist::default_lunaris(),
-            ProviderCatalog::default_lunaris(),
-            CallerAllowlist::default_lunaris(),
+            Allowlist::default_arlen(),
+            ProviderCatalog::default_arlen(),
+            CallerAllowlist::default_arlen(),
             Arc::new(GatedForwarder { gate: gate.clone() }) as Arc<dyn Forwarder>,
             Arc::new(CollectingAuditSink::new()) as Arc<dyn AuditSink>,
             1,
@@ -674,9 +674,9 @@ mod tests {
         })]));
         let sink = Arc::new(CollectingAuditSink::failing());
         let svc = ProxyService::new(
-            Allowlist::default_lunaris(),
-            ProviderCatalog::default_lunaris(),
-            CallerAllowlist::default_lunaris(),
+            Allowlist::default_arlen(),
+            ProviderCatalog::default_arlen(),
+            CallerAllowlist::default_arlen(),
             forwarder.clone() as Arc<dyn Forwarder>,
             sink as Arc<dyn AuditSink>,
         );

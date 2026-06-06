@@ -105,7 +105,7 @@ pub fn display_revert(
 }
 
 /// Persist the current monitor topology to
-/// `~/.config/lunaris/compositor.d/displays.toml` as a single
+/// `~/.config/arlen/compositor.d/displays.toml` as a single
 /// matching profile. The compositor itself rewrites the same file
 /// on every applied change, but Settings calls this explicitly
 /// after the user confirms the revert dialog so the persisted
@@ -205,7 +205,7 @@ pub fn display_save_current(
 fn displays_toml_path() -> Result<std::path::PathBuf, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
     Ok(std::path::PathBuf::from(home)
-        .join(".config/lunaris/compositor.d/displays.toml"))
+        .join(".config/arlen/compositor.d/displays.toml"))
 }
 
 fn transform_to_def(

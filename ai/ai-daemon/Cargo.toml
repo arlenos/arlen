@@ -1,26 +1,26 @@
 [package]
-name = "lunaris-ai-daemon"
+name = "arlen-ai-daemon"
 version = "0.1.0"
 edition = "2021"
-description = "Query daemon for the Lunaris AI layer. Exposes org.lunaris.AI1 on the session D-Bus. Coordinates the Cypher pipeline plus LLM dispatch and issues per-session authorization tokens to MCP callers."
+description = "Query daemon for the Arlen AI layer. Exposes org.arlen.AI1 on the session D-Bus. Coordinates the Cypher pipeline plus LLM dispatch and issues per-session authorization tokens to MCP callers."
 
 [[bin]]
-name = "lunaris-ai-daemon"
+name = "arlen-ai-daemon"
 path = "src/main.rs"
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-lunaris-ai-core = { path = "../ai-core" }
-lunaris-ai-providers = { path = "../ai-providers" }
+arlen-ai-core = { path = "../ai-core" }
+arlen-ai-providers = { path = "../ai-providers" }
 # System Explanation Mode (§5.8): the snapshot source + prompt builder +
 # explain() orchestration the explain_system D-Bus method drives.
-lunaris-ai-explanation = { path = "../ai-explanation" }
+arlen-ai-explanation = { path = "../ai-explanation" }
 os-sdk = { path = "../../sdk/os-sdk" }
 # MCP discovery resolves the peer of each module socket to verify it
 # is served by modulesd; identity resolution lives here.
-lunaris-permissions = { path = "../../sdk/permissions" }
+arlen-permissions = { path = "../../sdk/permissions" }
 async-trait = "0.1"
 hex = "0.4"
 rand = "0.8"

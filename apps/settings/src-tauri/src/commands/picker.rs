@@ -1,6 +1,6 @@
-//! Filesystem picker command. Prefers the Lunaris portal plugin
-//! (`tauri-plugin-lunaris-portal`) which routes through
-//! `org.freedesktop.portal.Desktop` to the Lunaris-themed picker
+//! Filesystem picker command. Prefers the Arlen portal plugin
+//! (`tauri-plugin-arlen-portal`) which routes through
+//! `org.freedesktop.portal.Desktop` to the Arlen-themed picker
 //! UI; falls back to a kdialog/zenity shell-out when the portal
 //! frontend is not available (CI, headless dev, stripped image).
 //!
@@ -11,7 +11,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use tauri_plugin_lunaris_portal::{api, PickFileOptions, PickerError, PickerResult};
+use tauri_plugin_arlen_portal::{api, PickFileOptions, PickerError, PickerResult};
 
 /// Open a directory picker and return the selected absolute path,
 /// or `None` if the user cancelled or no chooser is installed.

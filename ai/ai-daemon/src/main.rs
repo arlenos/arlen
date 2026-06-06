@@ -1,7 +1,7 @@
-//! `lunaris-ai-daemon` entry point.
+//! `arlen-ai-daemon` entry point.
 //!
 //! Wires the service core into a zbus session-bus connection and
-//! exposes `org.lunaris.AI1`. Design:
+//! exposes `org.arlen.AI1`. Design:
 //!
 //! * All outbound LLM traffic transits the proxy via
 //!   [`ProxiedProvider`] (Foundation §8.4.6). The daemon never
@@ -16,32 +16,32 @@
 
 use std::sync::Arc;
 
-use lunaris_ai_core::audit::{AuditSink, LedgerAuditSink};
-use lunaris_ai_core::capability::access_tier_from_level;
-use lunaris_ai_core::graph_query::QueryScope;
-use lunaris_ai_core::graph_schema::GraphSchema;
-use lunaris_ai_core::pipeline::{CypherPipeline, GraphQuerier, QueryRunner};
-use lunaris_ai_core::provider::AIProvider;
-use lunaris_ai_daemon::authz::AuthorizationStore;
-use lunaris_ai_daemon::config_watch;
-use lunaris_ai_daemon::graph_adapter::OsSdkGraphQuerier;
-use lunaris_ai_daemon::mcp_discovery::McpDiscovery;
-use lunaris_ai_daemon::peer::{self, PeerError};
-use lunaris_ai_daemon::registry::{AuthError, CompletionOutcome};
-use lunaris_ai_daemon::service::{AiDaemonService, ExplainError, QueryError};
-use lunaris_ai_providers::proxied::{ProxiedConfig, ProxiedProvider};
+use arlen_ai_core::audit::{AuditSink, LedgerAuditSink};
+use arlen_ai_core::capability::access_tier_from_level;
+use arlen_ai_core::graph_query::QueryScope;
+use arlen_ai_core::graph_schema::GraphSchema;
+use arlen_ai_core::pipeline::{CypherPipeline, GraphQuerier, QueryRunner};
+use arlen_ai_core::provider::AIProvider;
+use arlen_ai_daemon::authz::AuthorizationStore;
+use arlen_ai_daemon::config_watch;
+use arlen_ai_daemon::graph_adapter::OsSdkGraphQuerier;
+use arlen_ai_daemon::mcp_discovery::McpDiscovery;
+use arlen_ai_daemon::peer::{self, PeerError};
+use arlen_ai_daemon::registry::{AuthError, CompletionOutcome};
+use arlen_ai_daemon::service::{AiDaemonService, ExplainError, QueryError};
+use arlen_ai_providers::proxied::{ProxiedConfig, ProxiedProvider};
 use os_sdk::UnixEventConsumer;
 use zbus::Connection;
 
-const BUS_NAME: &str = "org.lunaris.AI1";
-const OBJECT_PATH: &str = "/org/lunaris/AI1";
+const BUS_NAME: &str = "org.arlen.AI1";
+const OBJECT_PATH: &str = "/org/arlen/AI1";
 
 /// Resolve the Knowledge Daemon query socket the same way every
-/// other Lunaris client does: an explicit
+/// other Arlen client does: an explicit
 /// `LUNARIS_DAEMON_SOCKET` override wins; otherwise the per-user
-/// runtime path `$XDG_RUNTIME_DIR/lunaris/knowledge.sock` is used
+/// runtime path `$XDG_RUNTIME_DIR/arlen/knowledge.sock` is used
 /// when it exists (the daemon listens there in an unprivileged
-/// session); the system path `/run/lunaris/knowledge.sock` is the
+/// session); the system path `/run/arlen/knowledge.sock` is the
 /// final fallback.
 fn resolve_knowledge_socket() -> String {
     if let Ok(explicit) = std::env::var("LUNARIS_DAEMON_SOCKET") {
@@ -51,13 +51,13 @@ fn resolve_knowledge_socket() -> String {
     }
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
         if !xdg.is_empty() {
-            let runtime = format!("{xdg}/lunaris/knowledge.sock");
+            let runtime = format!("{xdg}/arlen/knowledge.sock");
             if std::path::Path::new(&runtime).exists() {
                 return runtime;
             }
         }
     }
-    "/run/lunaris/knowledge.sock".to_string()
+    "/run/arlen/knowledge.sock".to_string()
 }
 
 /// Resolve the Event Bus consumer socket the same way: an explicit
@@ -72,13 +72,13 @@ fn resolve_event_consumer_socket() -> String {
     }
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
         if !xdg.is_empty() {
-            let runtime = format!("{xdg}/lunaris/event-bus-consumer.sock");
+            let runtime = format!("{xdg}/arlen/event-bus-consumer.sock");
             if std::path::Path::new(&runtime).exists() {
                 return runtime;
             }
         }
     }
-    "/run/lunaris/event-bus-consumer.sock".to_string()
+    "/run/arlen/event-bus-consumer.sock".to_string()
 }
 
 #[tokio::main]
@@ -102,7 +102,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // One session-bus connection for the daemon's whole lifetime: it
-    // owns `org.lunaris.AI1` and is also the connection the proxied
+    // owns `org.arlen.AI1` and is also the connection the proxied
     // provider forwards on. The proxy authorises a forward by the
     // calling connection owning that name, so the provider and the
     // name must live on the same connection.
@@ -135,8 +135,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // its own read-only seam, and shares the provider that the pipeline
     // forwards through. Clone both before they are moved into the
     // pipeline so the explainer can be wired onto the service below.
-    let explain_reader: Arc<dyn lunaris_ai_explanation::GraphReader> = Arc::new(
-        lunaris_ai_explanation::UnixGraphReader::new(knowledge_socket.clone()),
+    let explain_reader: Arc<dyn arlen_ai_explanation::GraphReader> = Arc::new(
+        arlen_ai_explanation::UnixGraphReader::new(knowledge_socket.clone()),
     );
     let explain_provider = provider.clone();
     let graph: Arc<dyn GraphQuerier> =
@@ -144,7 +144,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runner: Arc<dyn QueryRunner> =
         Arc::new(CypherPipeline::new(provider, graph));
 
-    // The audit sink submits to `lunaris-auditd` over its ingest
+    // The audit sink submits to `arlen-auditd` over its ingest
     // socket. It is shared: the service gates every query on a
     // dispatch entry, and the MCP discovery layer audits tool calls
     // through the same ledger.
@@ -190,7 +190,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     connection.object_server().at(OBJECT_PATH, dbus).await?;
     connection.request_name(BUS_NAME).await?;
 
-    tracing::info!(bus = BUS_NAME, path = OBJECT_PATH, "lunaris-ai-daemon serving");
+    tracing::info!(bus = BUS_NAME, path = OBJECT_PATH, "arlen-ai-daemon serving");
 
     // Discover Tier-1 module MCP servers over the Event Bus `module.`
     // namespace. `run` subscribes (retrying if the bus is late),
@@ -201,17 +201,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(discovery.run(consumer));
 
     tokio::signal::ctrl_c().await?;
-    tracing::info!("lunaris-ai-daemon shutting down");
+    tracing::info!("arlen-ai-daemon shutting down");
     Ok(())
 }
 
-/// D-Bus surface (`org.lunaris.AI1`).
+/// D-Bus surface (`org.arlen.AI1`).
 struct AiInterface {
     service: Arc<AiDaemonService>,
     authz: Arc<AuthorizationStore>,
 }
 
-#[zbus::interface(name = "org.lunaris.AI1")]
+#[zbus::interface(name = "org.arlen.AI1")]
 impl AiInterface {
     /// Submit a new query. Returns a `(query_id, retrieval_token)`
     /// pair as a JSON object. The caller must store both and present
@@ -375,8 +375,8 @@ impl AiInterface {
 /// Canonical install paths of the desktop shell binary. Only a
 /// process running one of these may answer authorization prompts.
 const TRUSTED_SHELL_BINS: &[&str] = &[
-    "/usr/bin/lunaris-desktop-shell",
-    "/usr/lib/lunaris/libexec/lunaris-desktop-shell",
+    "/usr/bin/arlen-desktop-shell",
+    "/usr/lib/arlen/libexec/arlen-desktop-shell",
 ];
 
 /// Whether `exe_path` is the trusted desktop shell.

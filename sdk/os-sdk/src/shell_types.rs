@@ -10,7 +10,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// A single event emitted over the Lunaris Event Bus.
+/// A single event emitted over the Arlen Event Bus.
 ///
 /// Sent from Rust to TypeScript when the shell needs to react to system events.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -55,7 +55,7 @@ pub struct GraphQueryResult {
     pub rows: Vec<GraphRow>,
 }
 
-/// A Lunaris config value passed from Rust to TypeScript.
+/// A Arlen config value passed from Rust to TypeScript.
 ///
 /// The TypeScript shell reads config via Tauri commands; this is the
 /// response type.
@@ -99,7 +99,7 @@ pub struct SurfaceTokens {
 impl SurfaceTokens {
     /// Returns the built-in Panda theme tokens.
     ///
-    /// Panda: dark shell, light apps. The default Lunaris theme.
+    /// Panda: dark shell, light apps. The default Arlen theme.
     pub fn panda() -> Self {
         Self {
             bg_shell:  "#1a1a2e".to_string(),

@@ -1,7 +1,7 @@
-/// TOML-based configuration system for Lunaris applications.
+/// TOML-based configuration system for Arlen applications.
 ///
-/// Each application has its own config file at `~/.config/lunaris/<app_id>.toml`.
-/// The system-wide theme lives at `~/.config/lunaris/theme.toml`.
+/// Each application has its own config file at `~/.config/arlen/<app_id>.toml`.
+/// The system-wide theme lives at `~/.config/arlen/theme.toml`.
 ///
 /// # Example
 ///
@@ -29,7 +29,7 @@ pub struct Config {
 impl Config {
     /// Load a config file for `app_id`.
     ///
-    /// Looks for `~/.config/lunaris/<app_id>.toml`. If the file does not exist,
+    /// Looks for `~/.config/arlen/<app_id>.toml`. If the file does not exist,
     /// returns an empty config (all `get` calls return `None`).
     pub fn load(app_id: &str) -> Result<Self, ConfigError> {
         let path = config_path(app_id);
@@ -187,13 +187,13 @@ impl ConfigWatcher {
 
 /// Resolve the config path for an app ID.
 ///
-/// Returns `~/.config/lunaris/<app_id>.toml`.
-/// Falls back to `/etc/lunaris/<app_id>.toml` if the home directory
+/// Returns `~/.config/arlen/<app_id>.toml`.
+/// Falls back to `/etc/arlen/<app_id>.toml` if the home directory
 /// cannot be determined.
 pub fn config_path(app_id: &str) -> PathBuf {
     let base = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("/etc"))
-        .join("lunaris");
+        .join("arlen");
     base.join(format!("{app_id}.toml"))
 }
 

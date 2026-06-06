@@ -1,4 +1,4 @@
-//! Shared infrastructure for the Lunaris AI layer.
+//! Shared infrastructure for the Arlen AI layer.
 //!
 //! Defines the [`provider::AIProvider`] trait and the surface area that
 //! both `ai-daemon` and `ai-agent` build on: the routing engine, the MCP

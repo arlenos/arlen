@@ -1,15 +1,15 @@
 <script lang="ts">
   /// Touchpad settings page — on the design-system canon (Page/SectionGrid/Group/
-  /// Row/Switch from `@lunaris/ui-kit`; FillSlider/PopoverSelect app-local).
+  /// Row/Switch from `@arlen/ui-kit`; FillSlider/PopoverSelect app-local).
 
   import { onMount } from "svelte";
-  import { FillSlider } from "@lunaris/ui-kit/components/ui/fill-slider";
-  import { PopoverSelect } from "@lunaris/ui-kit/components/ui/popover-select";
-  import { Page } from "@lunaris/ui-kit/components/ui/page";
-  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
-  import { Group } from "@lunaris/ui-kit/components/ui/group";
-  import { Row } from "@lunaris/ui-kit/components/ui/row";
-  import { Switch } from "@lunaris/ui-kit/components/ui/switch";
+  import { FillSlider } from "@arlen/ui-kit/components/ui/fill-slider";
+  import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
+  import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
+  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
+  import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { touchpad, load, set } from "$lib/stores/touchpad";
 
   const CLICK_METHODS = [

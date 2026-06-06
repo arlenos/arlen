@@ -1,8 +1,8 @@
-/// `shell.clipboard` — first-party app surface for the Lunaris
+/// `shell.clipboard` — first-party app surface for the Arlen
 /// clipboard with explicit sensitivity labels.
 ///
 /// Apps connect to the shell-side IPC socket at
-/// `$XDG_RUNTIME_DIR/lunaris/clipboard.sock`. The shell is the
+/// `$XDG_RUNTIME_DIR/arlen/clipboard.sock`. The shell is the
 /// broker for all clipboard operations; this client never touches
 /// Wayland directly. See `docs/architecture/clipboard-api.md` for
 /// the full architecture.
@@ -342,7 +342,7 @@ fn socket_path() -> Result<PathBuf, ClipboardError> {
         ClipboardError::ConnectionFailed("XDG_RUNTIME_DIR is not set".into())
     })?;
     let mut p = PathBuf::from(runtime);
-    p.push("lunaris");
+    p.push("arlen");
     p.push(SOCKET_NAME);
     Ok(p)
 }

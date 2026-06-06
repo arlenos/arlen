@@ -1,12 +1,12 @@
 [Unit]
-Description=Lunaris Module Runtime daemon (user service)
+Description=Arlen Module Runtime daemon (user service)
 Documentation=https://github.com/lunaris-sys/modulesd
 # Wait for the upstream daemons modulesd's host imports reach into.
 # If those run as user services too, this `After=` chain ensures
 # discovery doesn't race them; if they're system services, this is a
 # no-op (systemd just ignores unknown user-side dependencies).
-After=lunaris-event-bus.service lunaris-knowledge.service
-Requires=lunaris-modulesd.socket
+After=arlen-event-bus.service arlen-knowledge.service
+Requires=arlen-modulesd.socket
 
 [Service]
 # `Type=notify` lets modulesd announce readiness only after the
@@ -17,7 +17,7 @@ Type=notify
 # distro/install-modulesd.sh). Dev mode generates its own service
 # file in ~/.config/systemd/user/ pointing at the debug binary —
 # this file stays the canonical production unit.
-ExecStart=/usr/lib/lunaris/libexec/lunaris-modulesd
+ExecStart=/usr/lib/arlen/libexec/arlen-modulesd
 Restart=on-failure
 RestartSec=2
 

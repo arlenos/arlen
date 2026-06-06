@@ -2,7 +2,7 @@
 /// cross-process action dispatch.
 ///
 /// Apps connect to the shell-side IPC socket at
-/// `$XDG_RUNTIME_DIR/lunaris/intents.sock`, send a single
+/// `$XDG_RUNTIME_DIR/arlen/intents.sock`, send a single
 /// `DispatchRequest`, receive `DispatchResponse` (or
 /// `IntentError`), and the connection drops. No persistent state,
 /// no subscribe channel — the intent broker is intentionally
@@ -12,7 +12,7 @@
 /// Default is deny (foundation §7.3 explicit-grant).
 ///
 /// Long-lived "register as intent handler" is a separate surface
-/// that ships through `lunaris-modulesd` as a Tier-1 WASM module
+/// that ships through `arlen-modulesd` as a Tier-1 WASM module
 /// (Phase 7). See `docs/architecture/module-system.md` for that
 /// path. This SDK module covers only the Phase-6 dispatch case.
 ///
@@ -36,7 +36,7 @@ const SOCKET_NAME: &str = "intents.sock";
 /// and `intent-system.md` §5.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IntentType {
-    /// URL string. Forwarded to xdg-portal-lunaris OpenURI.
+    /// URL string. Forwarded to xdg-portal-arlen OpenURI.
     Url,
     /// Absolute filesystem path or `file://` URI. Forwarded to
     /// the OS file dispatcher.
@@ -114,7 +114,7 @@ pub struct UnixIntentClient {
 
 impl UnixIntentClient {
     /// Connect to the default socket at
-    /// `$XDG_RUNTIME_DIR/lunaris/intents.sock`.
+    /// `$XDG_RUNTIME_DIR/arlen/intents.sock`.
     pub fn new() -> Result<Self, IntentError> {
         let runtime = std::env::var_os("XDG_RUNTIME_DIR").ok_or_else(|| {
             IntentError::Io(std::io::Error::new(
@@ -123,7 +123,7 @@ impl UnixIntentClient {
             ))
         })?;
         let mut p = PathBuf::from(runtime);
-        p.push("lunaris");
+        p.push("arlen");
         p.push(SOCKET_NAME);
         Ok(Self { socket_path: p })
     }
@@ -232,7 +232,7 @@ mod tests {
         let c = UnixIntentClient::new().expect("client");
         assert_eq!(
             c.socket_path,
-            PathBuf::from("/run/user/1000/lunaris/intents.sock")
+            PathBuf::from("/run/user/1000/arlen/intents.sock")
         );
     }
 

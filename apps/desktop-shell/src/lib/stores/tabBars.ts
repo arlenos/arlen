@@ -34,7 +34,7 @@ export function initTabBarListeners(): () => void {
 
     const pending: Array<Promise<UnlistenFn>> = [
         listen<{ stack_id: number; x: number; y: number; width: number; height: number }>(
-        "lunaris://tab-bar-show",
+        "arlen://tab-bar-show",
         ({ payload }) => {
             tabBars.update((bars) => {
                 const existing = bars.get(payload.stack_id);
@@ -53,7 +53,7 @@ export function initTabBarListeners(): () => void {
     ),
 
     listen<{ stack_id: number }>(
-        "lunaris://tab-bar-hide",
+        "arlen://tab-bar-hide",
         ({ payload }) => {
             tabBars.update((bars) => {
                 bars.delete(payload.stack_id);
@@ -63,7 +63,7 @@ export function initTabBarListeners(): () => void {
     ),
 
     listen<{ stack_id: number; index: number; title: string; app_id: string; active: boolean }>(
-        "lunaris://tab-added",
+        "arlen://tab-added",
         ({ payload }) => {
             tabBars.update((bars) => {
                 const bar = bars.get(payload.stack_id);
@@ -94,7 +94,7 @@ export function initTabBarListeners(): () => void {
     ),
 
     listen<{ stack_id: number; index: number }>(
-        "lunaris://tab-removed",
+        "arlen://tab-removed",
         ({ payload }) => {
             tabBars.update((bars) => {
                 const bar = bars.get(payload.stack_id);
@@ -114,7 +114,7 @@ export function initTabBarListeners(): () => void {
     ),
 
     listen<{ stack_id: number; index: number }>(
-        "lunaris://tab-activated",
+        "arlen://tab-activated",
         ({ payload }) => {
             tabBars.update((bars) => {
                 const bar = bars.get(payload.stack_id);
@@ -125,7 +125,7 @@ export function initTabBarListeners(): () => void {
     ),
 
     listen<{ stack_id: number; index: number; title: string }>(
-        "lunaris://tab-title-changed",
+        "arlen://tab-title-changed",
         ({ payload }) => {
             tabBars.update((bars) => {
                 const bar = bars.get(payload.stack_id);

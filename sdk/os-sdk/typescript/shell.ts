@@ -1,5 +1,5 @@
 /**
- * `shell.*` — first-party app TypeScript surface for the Lunaris OS SDK.
+ * `shell.*` — first-party app TypeScript surface for the Arlen OS SDK.
  *
  * Mirrors the foundation §6 Shell API spec for the subset that has
  * landed: `shell.menu` is wired end-to-end against desktop-shell's
@@ -11,7 +11,7 @@
  *
  * Usage in a Tauri app:
  *
- *     import { shell } from "@lunaris/os-sdk/typescript/shell";
+ *     import { shell } from "@arlen/os-sdk/typescript/shell";
  *
  *     await shell.menu.register({ items: [...] });
  *     await shell.presence.set({ activity: "editing", subject: "x.md" });

@@ -1,10 +1,10 @@
-# Bundled Lunaris Light theme.
+# Bundled Arlen Light theme.
 #
-# Schema canonical at sdk/theme/src/file.rs (LunarisThemeFile).
+# Schema canonical at sdk/theme/src/file.rs (ArlenThemeFile).
 
 [meta]
 id      = "light"
-name    = "Lunaris Light"
+name    = "Arlen Light"
 variant = "light"
 
 [color.bg]

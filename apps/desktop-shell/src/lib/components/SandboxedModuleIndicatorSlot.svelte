@@ -1,6 +1,6 @@
 <script lang="ts">
   /// Renders Tier 2 module indicators in the top bar .slot-temp,
-  /// sourced from `lunaris-modulesd::ListModules`.
+  /// sourced from `arlen-modulesd::ListModules`.
   ///
   /// Replaces the Phase 7 `ModuleIndicatorSlot` which read its list
   /// from the in-process `extension_registry` and used file:// iframes

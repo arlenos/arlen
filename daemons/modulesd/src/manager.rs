@@ -134,7 +134,7 @@ enum SearchFailure {
 /// can express a per-call limit via the `[waypointer.search]`
 /// section (foundation §6.4 Listing 13 default of 8); absent fields
 /// fall back to `DEFAULT_MAX_RESULTS`.
-fn search_result_cap(manifest: &lunaris_modules::ModuleManifest) -> usize {
+fn search_result_cap(manifest: &arlen_modules::ModuleManifest) -> usize {
     manifest
         .waypointer
         .as_ref()
@@ -176,7 +176,7 @@ struct ModuleDispatch {
 /// Gating on it at the router-level would create a privacy split
 /// the in-process implementation does not have.
 fn route_search_all(
-    candidates: &[(String, lunaris_modules::ModuleManifest)],
+    candidates: &[(String, arlen_modules::ModuleManifest)],
     query: &str,
 ) -> Vec<ModuleDispatch> {
     let trimmed_query = query.trim();
@@ -269,10 +269,10 @@ fn cap_field(s: String) -> String {
 /// clamping in one pass.
 fn wit_to_proto_results(
     module_id: &str,
-    wit_results: Vec<crate::runtime::wit::exports::lunaris::waypointer::provider::SearchResult>,
+    wit_results: Vec<crate::runtime::wit::exports::arlen::waypointer::provider::SearchResult>,
     max_results: usize,
 ) -> Vec<SearchResult> {
-    use crate::runtime::wit::exports::lunaris::waypointer::provider::Action as WitAction;
+    use crate::runtime::wit::exports::arlen::waypointer::provider::Action as WitAction;
     use crate::socket::protocol::SearchAction;
 
     wit_results
@@ -308,8 +308,8 @@ fn wit_to_proto_results(
 /// for the guest's `execute(hit: search-result)` call.
 fn proto_to_wit_result(
     r: &SearchResult,
-) -> crate::runtime::wit::exports::lunaris::waypointer::provider::SearchResult {
-    use crate::runtime::wit::exports::lunaris::waypointer::provider::{
+) -> crate::runtime::wit::exports::arlen::waypointer::provider::SearchResult {
+    use crate::runtime::wit::exports::arlen::waypointer::provider::{
         Action as WitAction, CustomAction, SearchResult as WitResult,
     };
     use crate::socket::protocol::SearchAction;
@@ -390,13 +390,13 @@ struct McpServerEntry {
 impl Manager {
     pub fn new(events_tx: broadcast::Sender<Event>) -> crate::error::Result<Arc<Self>> {
         // S6: build the backend clients up-front. Socket paths follow
-        // the same env-fallback convention every other Lunaris client
+        // the same env-fallback convention every other Arlen client
         // uses; defaults match `os-sdk` and `installd`.
         let knowledge_socket = std::env::var("LUNARIS_KNOWLEDGE_SOCKET")
             .or_else(|_| std::env::var("LUNARIS_DAEMON_SOCKET"))
-            .unwrap_or_else(|_| "/run/lunaris/knowledge.sock".into());
+            .unwrap_or_else(|_| "/run/arlen/knowledge.sock".into());
         let producer_socket = std::env::var("LUNARIS_PRODUCER_SOCKET")
-            .unwrap_or_else(|_| "/run/lunaris/event-bus-producer.sock".into());
+            .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".into());
 
         let graph_client = Arc::new(UnixGraphClient::new(knowledge_socket.clone()));
         let event_emitter = Arc::new(UnixEventEmitter::new(producer_socket.clone()));
@@ -1101,7 +1101,7 @@ impl Manager {
         // contract: if any module owns a matching prefix it wins
         // exclusively; otherwise every non-prefix module sees the
         // query. detect_pattern is the guest's job.
-        let candidates: Vec<(String, lunaris_modules::ModuleManifest)> = {
+        let candidates: Vec<(String, arlen_modules::ModuleManifest)> = {
             let guard = self.modules.read().await;
             guard
                 .values()
@@ -1238,7 +1238,7 @@ impl Manager {
         let wit_results = tokio::time::timeout(
             SEARCH_TIMEOUT,
             inst.provider
-                .lunaris_waypointer_provider()
+                .arlen_waypointer_provider()
                 .call_search(&mut inst.store, query),
         )
         .await
@@ -1316,7 +1316,7 @@ impl Manager {
         let exec_outcome = tokio::time::timeout(
             SEARCH_TIMEOUT,
             inst.provider
-                .lunaris_waypointer_provider()
+                .arlen_waypointer_provider()
                 .call_execute(&mut inst.store, &wit_hit),
         )
         .await;
@@ -1819,7 +1819,7 @@ impl Manager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lunaris_modules::{ModuleManifest, ModuleMeta, ModuleType};
+    use arlen_modules::{ModuleManifest, ModuleMeta, ModuleType};
 
     fn record(id: &str, tier: Tier) -> ModuleRecord {
         ModuleRecord {
@@ -1982,7 +1982,7 @@ mod tests {
     async fn host_call_network_denied_when_url_outside_allowlist() {
         use crate::host::CapabilityContext;
         use crate::runtime::tier2::IframeInstance;
-        use lunaris_modules::{ModuleCapabilities, NetworkCapability};
+        use arlen_modules::{ModuleCapabilities, NetworkCapability};
 
         let (tx, _rx) = broadcast::channel(16);
         let m = Manager::new(tx).unwrap();
@@ -2029,7 +2029,7 @@ mod tests {
     async fn host_call_network_post_denied_when_url_outside_allowlist() {
         use crate::host::CapabilityContext;
         use crate::runtime::tier2::IframeInstance;
-        use lunaris_modules::{ModuleCapabilities, NetworkCapability};
+        use arlen_modules::{ModuleCapabilities, NetworkCapability};
 
         let (tx, _rx) = broadcast::channel(16);
         let m = Manager::new(tx).unwrap();
@@ -2076,7 +2076,7 @@ mod tests {
     async fn host_call_network_post_rejects_invalid_base64() {
         use crate::host::CapabilityContext;
         use crate::runtime::tier2::IframeInstance;
-        use lunaris_modules::{ModuleCapabilities, NetworkCapability};
+        use arlen_modules::{ModuleCapabilities, NetworkCapability};
 
         let (tx, _rx) = broadcast::channel(16);
         let m = Manager::new(tx).unwrap();
@@ -2125,7 +2125,7 @@ mod tests {
         // test under `tests/network_e2e.rs`.
         use crate::host::CapabilityContext;
         use crate::runtime::tier2::IframeInstance;
-        use lunaris_modules::{ModuleCapabilities, NetworkCapability};
+        use arlen_modules::{ModuleCapabilities, NetworkCapability};
 
         let (tx, _rx) = broadcast::channel(16);
         let m = Manager::new(tx).unwrap();
@@ -2181,7 +2181,7 @@ mod tests {
     async fn host_call_event_emit_gated_by_publish_allowlist() {
         use crate::host::CapabilityContext;
         use crate::runtime::tier2::IframeInstance;
-        use lunaris_modules::{EventBusCapability, ModuleCapabilities};
+        use arlen_modules::{EventBusCapability, ModuleCapabilities};
 
         let (tx, _rx) = broadcast::channel(16);
         let m = Manager::new(tx).unwrap();
@@ -2256,7 +2256,7 @@ mod tests {
     async fn host_call_graph_query_denied_for_disallowed_namespace() {
         use crate::host::CapabilityContext;
         use crate::runtime::tier2::IframeInstance;
-        use lunaris_modules::{GraphCapability, ModuleCapabilities};
+        use arlen_modules::{GraphCapability, ModuleCapabilities};
 
         let (tx, _rx) = broadcast::channel(16);
         let m = Manager::new(tx).unwrap();
@@ -2326,7 +2326,7 @@ mod tests {
         // pre-fix silent success).
         use crate::host::CapabilityContext;
         use crate::runtime::tier2::IframeInstance;
-        use lunaris_modules::{GraphCapability, ModuleCapabilities};
+        use arlen_modules::{GraphCapability, ModuleCapabilities};
 
         let (tx, _rx) = broadcast::channel(16);
         let m = Manager::new(tx).unwrap();
@@ -2597,10 +2597,10 @@ mod tests {
     fn manifest_with_search(
         prefix: Option<&str>,
         pattern: Option<&str>,
-    ) -> lunaris_modules::ModuleManifest {
+    ) -> arlen_modules::ModuleManifest {
         let mut r = record("com.example.routed", Tier::Wasm);
-        r.manifest.waypointer = Some(lunaris_modules::WaypointerConfig {
-            search: Some(lunaris_modules::WaypointerSearchConfig {
+        r.manifest.waypointer = Some(arlen_modules::WaypointerConfig {
+            search: Some(arlen_modules::WaypointerSearchConfig {
                 priority: 100,
                 prefix: prefix.map(String::from),
                 detect_pattern: pattern.map(String::from),
@@ -2725,8 +2725,8 @@ mod tests {
         let m = Manager::new(tx).unwrap();
 
         let mut r1 = record("com.example.always", Tier::Wasm);
-        r1.manifest.waypointer = Some(lunaris_modules::WaypointerConfig {
-            search: Some(lunaris_modules::WaypointerSearchConfig {
+        r1.manifest.waypointer = Some(arlen_modules::WaypointerConfig {
+            search: Some(arlen_modules::WaypointerSearchConfig {
                 priority: 100,
                 prefix: None,
                 detect_pattern: None,
@@ -2735,8 +2735,8 @@ mod tests {
             action: None,
         });
         let mut r2 = record("com.example.dollar", Tier::Wasm);
-        r2.manifest.waypointer = Some(lunaris_modules::WaypointerConfig {
-            search: Some(lunaris_modules::WaypointerSearchConfig {
+        r2.manifest.waypointer = Some(arlen_modules::WaypointerConfig {
+            search: Some(arlen_modules::WaypointerSearchConfig {
                 priority: 100,
                 prefix: Some("$".into()),
                 detect_pattern: None,
@@ -2745,8 +2745,8 @@ mod tests {
             action: None,
         });
         let mut r3 = record("com.example.equals", Tier::Wasm);
-        r3.manifest.waypointer = Some(lunaris_modules::WaypointerConfig {
-            search: Some(lunaris_modules::WaypointerSearchConfig {
+        r3.manifest.waypointer = Some(arlen_modules::WaypointerConfig {
+            search: Some(arlen_modules::WaypointerSearchConfig {
                 priority: 100,
                 prefix: Some("=".into()),
                 detect_pattern: None,
@@ -2813,8 +2813,8 @@ mod tests {
         let (tx, _rx) = broadcast::channel(16);
         let m = Manager::new(tx).unwrap();
         let mut r = record("com.example.always", Tier::Wasm);
-        r.manifest.waypointer = Some(lunaris_modules::WaypointerConfig {
-            search: Some(lunaris_modules::WaypointerSearchConfig {
+        r.manifest.waypointer = Some(arlen_modules::WaypointerConfig {
+            search: Some(arlen_modules::WaypointerSearchConfig {
                 priority: 100,
                 prefix: None,
                 detect_pattern: None,
@@ -2855,8 +2855,8 @@ mod tests {
         for i in 0..5 {
             let id = format!("com.example.m{i}");
             let mut r = record(&id, Tier::Wasm);
-            r.manifest.waypointer = Some(lunaris_modules::WaypointerConfig {
-                search: Some(lunaris_modules::WaypointerSearchConfig {
+            r.manifest.waypointer = Some(arlen_modules::WaypointerConfig {
+                search: Some(arlen_modules::WaypointerSearchConfig {
                     priority: 100,
                     prefix: None,
                     detect_pattern: None,
@@ -3037,8 +3037,8 @@ mod tests {
     #[test]
     fn search_result_cap_uses_manifest_value() {
         let mut r = record("x", Tier::Wasm);
-        r.manifest.waypointer = Some(lunaris_modules::WaypointerConfig {
-            search: Some(lunaris_modules::WaypointerSearchConfig {
+        r.manifest.waypointer = Some(arlen_modules::WaypointerConfig {
+            search: Some(arlen_modules::WaypointerSearchConfig {
                 priority: 100,
                 prefix: None,
                 detect_pattern: None,
@@ -3057,7 +3057,7 @@ mod tests {
 
     #[test]
     fn wit_to_proto_clamps_relevance_and_caps_count() {
-        use crate::runtime::wit::exports::lunaris::waypointer::provider::{
+        use crate::runtime::wit::exports::arlen::waypointer::provider::{
             Action as WitAction, SearchResult as WitResult,
         };
         // 12 results, max 3 allowed; relevance ranges into invalid space.
@@ -3079,7 +3079,7 @@ mod tests {
 
     #[test]
     fn wit_to_proto_preserves_action_variants() {
-        use crate::runtime::wit::exports::lunaris::waypointer::provider::{
+        use crate::runtime::wit::exports::arlen::waypointer::provider::{
             Action as WitAction, CustomAction, SearchResult as WitResult,
         };
         let raw = vec![

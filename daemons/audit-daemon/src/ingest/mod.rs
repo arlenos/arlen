@@ -7,9 +7,9 @@
 //! identity, never from the request, so a caller cannot misattribute.
 //!
 //! Known limitation (shared, documented): admission rests on the
-//! `app_id` that `lunaris-permissions` resolves from the peer's
+//! `app_id` that `arlen-permissions` resolves from the peer's
 //! binary. That resolver has an open same-uid gap — a user-installed
-//! app under `~/.local/share/lunaris/apps/{app_id}/` resolves to
+//! app under `~/.local/share/arlen/apps/{app_id}/` resolves to
 //! `{app_id}`, so a same-uid process could install itself as
 //! `ai-daemon` and pass [`ADMITTED`]. This is the F3 gap tracked in
 //! `docs/architecture/identity-spoof-mitigation.md`; the global fix
@@ -33,7 +33,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use audit_proto::{decode_request, encode_response, read_frame, write_frame};
-use lunaris_permissions::ConnectionAuth;
+use arlen_permissions::ConnectionAuth;
 use os_sdk::{EventEmitter, UnixEventEmitter};
 use tokio::net::UnixStream;
 use tokio::sync::Mutex;
@@ -48,14 +48,14 @@ use crate::ledger::Ledger;
 const ADMITTED: &[&str] = &["ai-daemon", "ai-proxy"];
 
 /// Resolve the ingest socket path:
-/// `$XDG_RUNTIME_DIR/lunaris/audit-ingest.sock`, falling back to
-/// `/run/lunaris/audit-ingest.sock`.
+/// `$XDG_RUNTIME_DIR/arlen/audit-ingest.sock`, falling back to
+/// `/run/arlen/audit-ingest.sock`.
 pub fn ingest_socket_path() -> PathBuf {
     let base = std::env::var_os("XDG_RUNTIME_DIR")
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/run"));
-    base.join("lunaris").join("audit-ingest.sock")
+    base.join("arlen").join("audit-ingest.sock")
 }
 
 /// The ingest server: shares the single [`Ledger`] writer across
@@ -232,16 +232,16 @@ mod tests {
         assert!(!caller_is_admitted(""));
         // Debug builds also admit cargo-run `dev.*` ids.
         assert_eq!(
-            caller_is_admitted("dev.lunaris-ai-daemon"),
+            caller_is_admitted("dev.arlen-ai-daemon"),
             cfg!(debug_assertions)
         );
     }
 
     #[test]
-    fn ingest_socket_path_is_under_lunaris() {
+    fn ingest_socket_path_is_under_arlen() {
         let p = ingest_socket_path();
         assert!(
-            p.to_string_lossy().ends_with("lunaris/audit-ingest.sock"),
+            p.to_string_lossy().ends_with("arlen/audit-ingest.sock"),
             "{}",
             p.display()
         );

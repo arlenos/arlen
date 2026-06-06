@@ -13,10 +13,10 @@ use serde::Serialize;
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemInfo {
-    /// Lunaris release tag, read from
-    /// `/usr/share/lunaris/version` (written by installd at install
+    /// Arlen release tag, read from
+    /// `/usr/share/arlen/version` (written by installd at install
     /// time). `null` on dev systems where the file isn't present.
-    pub lunaris_version: Option<String>,
+    pub arlen_version: Option<String>,
     /// `uname -r` output. `null` on systems without uname.
     pub kernel: Option<String>,
     /// `WAYLAND_DISPLAY` env var.
@@ -37,7 +37,7 @@ pub struct DaemonStatus {
 #[tauri::command]
 pub fn about_get_system_info() -> SystemInfo {
     SystemInfo {
-        lunaris_version: read_version_file(),
+        arlen_version: read_version_file(),
         kernel: kernel_release(),
         wayland_display: std::env::var("WAYLAND_DISPLAY").ok(),
         daemons: daemon_statuses(),
@@ -45,7 +45,7 @@ pub fn about_get_system_info() -> SystemInfo {
 }
 
 fn read_version_file() -> Option<String> {
-    std::fs::read_to_string("/usr/share/lunaris/version")
+    std::fs::read_to_string("/usr/share/arlen/version")
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
@@ -80,7 +80,7 @@ fn daemon_statuses() -> Vec<DaemonStatus> {
         DaemonStatus {
             name: "Event Bus".into(),
             running: event_bus_socket_exists(),
-            probe_path: "/run/lunaris/event-bus-consumer.sock".into(),
+            probe_path: "/run/arlen/event-bus-consumer.sock".into(),
         },
         DaemonStatus {
             name: "Install Daemon".into(),
@@ -97,9 +97,9 @@ fn knowledge_socket_path_string() -> String {
         return p;
     }
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
-        return format!("{xdg}/lunaris/knowledge.sock");
+        return format!("{xdg}/arlen/knowledge.sock");
     }
-    "/run/lunaris/knowledge.sock".into()
+    "/run/arlen/knowledge.sock".into()
 }
 
 fn knowledge_socket_exists() -> bool {
@@ -108,7 +108,7 @@ fn knowledge_socket_exists() -> bool {
 
 fn notification_socket_path_string() -> String {
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
-        return format!("{xdg}/lunaris/notification.sock");
+        return format!("{xdg}/arlen/notification.sock");
     }
     // No reasonable system-bus fallback for the notification
     // daemon — it's per-user.
@@ -121,14 +121,14 @@ fn notification_socket_exists() -> bool {
 }
 
 fn event_bus_socket_exists() -> bool {
-    Path::new("/run/lunaris/event-bus-consumer.sock").exists()
+    Path::new("/run/arlen/event-bus-consumer.sock").exists()
 }
 
 fn installd_socket_path_string() -> String {
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
-        return format!("{xdg}/lunaris/installd.sock");
+        return format!("{xdg}/arlen/installd.sock");
     }
-    "/run/lunaris/installd.sock".into()
+    "/run/arlen/installd.sock".into()
 }
 
 fn installd_socket_exists() -> bool {
@@ -143,7 +143,7 @@ mod tests {
     /// missing — that's the dev-system default and must not crash.
     #[test]
     fn version_file_missing_is_none() {
-        // Test runs without /usr/share/lunaris/version on most CI;
+        // Test runs without /usr/share/arlen/version on most CI;
         // we don't assert specific value, only that the call returns
         // a well-formed Option (no panics).
         let _ = read_version_file();
@@ -173,14 +173,14 @@ mod tests {
     #[test]
     fn system_info_serialises_as_camel_case() {
         let info = SystemInfo {
-            lunaris_version: Some("0.1.0".into()),
+            arlen_version: Some("0.1.0".into()),
             kernel: Some("6.0.0".into()),
             wayland_display: Some("wayland-1".into()),
             daemons: vec![],
         };
         let json = serde_json::to_string(&info).unwrap();
-        assert!(json.contains("lunarisVersion"));
+        assert!(json.contains("arlenVersion"));
         assert!(json.contains("waylandDisplay"));
-        assert!(!json.contains("lunaris_version"));
+        assert!(!json.contains("arlen_version"));
     }
 }

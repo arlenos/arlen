@@ -1,13 +1,13 @@
 //! Generic config CRUD commands.
 //!
-//! All commands operate on TOML files under `~/.config/lunaris/<file>.toml`
+//! All commands operate on TOML files under `~/.config/arlen/<file>.toml`
 //! using dot-notation keys (e.g. `theme.mode` -> `[theme] mode = ...`).
 
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-/// Logical config file name, mapped to a path under `~/.config/lunaris/`.
+/// Logical config file name, mapped to a path under `~/.config/arlen/`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ConfigFile {
@@ -28,7 +28,7 @@ pub enum ConfigFile {
     /// the generic config API.
     QuickSettings,
     /// AI layer config (`ai.toml`). Schema: `[ai] enabled, provider`.
-    /// The `lunaris-ai-daemon` watches this file: toggling `enabled`
+    /// The `arlen-ai-daemon` watches this file: toggling `enabled`
     /// switches the AI layer on/off live (Phase 9-α S7).
     Ai,
 }
@@ -50,7 +50,7 @@ impl ConfigFile {
     fn path(self) -> PathBuf {
         let dir = dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
-            .join("lunaris");
+            .join("arlen");
         let _ = std::fs::create_dir_all(&dir);
         dir.join(self.filename())
     }

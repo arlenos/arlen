@@ -12,7 +12,7 @@
 //! completions through this layer.
 
 use async_trait::async_trait;
-use lunaris_ai_core::provider::{
+use arlen_ai_core::provider::{
     AIProvider, CompletionRequest, CompletionResponse, ProviderAudit, ProviderError,
 };
 use serde::{Deserialize, Serialize};

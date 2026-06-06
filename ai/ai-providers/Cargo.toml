@@ -1,14 +1,14 @@
 [package]
-name = "lunaris-ai-providers"
+name = "arlen-ai-providers"
 version = "0.1.0"
 edition = "2021"
-description = "Provider adapters for the Lunaris AI layer (Ollama, llama.cpp, Anthropic, OpenAI). Each adapter implements the AIProvider trait defined in lunaris-ai-core."
+description = "Provider adapters for the Arlen AI layer (Ollama, llama.cpp, Anthropic, OpenAI). Each adapter implements the AIProvider trait defined in arlen-ai-core."
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-lunaris-ai-core = { path = "../ai-core" }
+arlen-ai-core = { path = "../ai-core" }
 async-trait = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }

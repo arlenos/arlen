@@ -1,5 +1,5 @@
 <script lang="ts">
-  /// Lunaris Switch — unified toggle for Shell + Settings.
+  /// Arlen Switch — unified toggle for Shell + Settings.
   /// Follows the corner radius system and uses the accent colour
   /// for the on-state. Replaces the shadcn-svelte bits-ui switch
   /// which had hardcoded colours and rounded-full.

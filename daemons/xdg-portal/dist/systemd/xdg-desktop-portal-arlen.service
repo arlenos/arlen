@@ -1,0 +1,12 @@
+[Unit]
+Description=Arlen xdg-desktop-portal backend (FileChooser, OpenURI)
+Documentation=https://github.com/lunaris-sys/xdg-desktop-portal-arlen
+PartOf=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=org.freedesktop.impl.portal.desktop.arlen
+ExecStart=/usr/lib/arlen/libexec/xdg-desktop-portal-arlen
+Restart=on-failure
+RestartSec=2
+Slice=session.slice

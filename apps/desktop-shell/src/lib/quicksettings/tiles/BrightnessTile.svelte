@@ -2,11 +2,11 @@
   /// QS tile: Display brightness slider.
   ///
   /// Reads the live hardware fraction on mount, listens for the
-  /// `lunaris://brightness-changed` event so the slider tracks the
+  /// `arlen://brightness-changed` event so the slider tracks the
   /// hardware Fn-row keys, and coalesces drag updates into 30Hz
   /// hardware writes via a 32ms timer (matches the pattern in the
   /// old QS panel).
-  import { SliderTile } from "@lunaris/ui-kit/components/quicksettings";
+  import { SliderTile } from "@arlen/ui-kit/components/quicksettings";
   import { Sun } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -36,7 +36,7 @@
 
     let stop: UnlistenFn | null = null;
     listen<{ device: string; fraction: number }>(
-      "lunaris://brightness-changed",
+      "arlen://brightness-changed",
       ({ payload }) => {
         percent = Math.round(payload.fraction * 100);
       },

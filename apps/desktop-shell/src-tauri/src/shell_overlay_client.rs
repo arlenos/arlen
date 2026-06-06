@@ -1,4 +1,4 @@
-/// Wayland client for the `lunaris-shell-overlay-v1` protocol.
+/// Wayland client for the `arlen-shell-overlay-v1` protocol.
 ///
 /// Binds the compositor's overlay global, accumulates context menu events, and
 /// emits Tauri events to Svelte. Also exposes Tauri commands so Svelte can send
@@ -19,14 +19,14 @@ mod protocol {
 
     pub mod __interfaces {
         use wayland_client::protocol::__interfaces::*;
-        wayland_scanner::generate_interfaces!("protocols/lunaris-shell-overlay.xml");
+        wayland_scanner::generate_interfaces!("protocols/arlen-shell-overlay.xml");
     }
     use self::__interfaces::*;
 
-    wayland_scanner::generate_client_code!("protocols/lunaris-shell-overlay.xml");
+    wayland_scanner::generate_client_code!("protocols/arlen-shell-overlay.xml");
 }
 
-use protocol::lunaris_shell_overlay_v1 as overlay;
+use protocol::arlen_shell_overlay_v1 as overlay;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -41,7 +41,7 @@ use wayland_client::{
 };
 
 /// Type alias for the generated proxy type.
-type OverlayProxy = overlay::LunarisShellOverlayV1;
+type OverlayProxy = overlay::ArlenShellOverlayV1;
 
 /// Describes which parts of the layer-shell surface accept pointer input.
 #[derive(Debug, Clone, Copy)]
@@ -67,7 +67,7 @@ struct HeaderRect {
 
 /// Live window-header rectangles. Updated from the Svelte side via
 /// `update_window_header_regions`. Every `set_input_region` call
-/// unions these into the final region so buttons on Lunaris-rendered
+/// unions these into the final region so buttons on Arlen-rendered
 /// window headers receive pointer input — which the Shell layer-
 /// surface would otherwise swallow click-through-wise. Empty list is
 /// the common case (no SSD windows visible → no extra union cost).
@@ -130,7 +130,7 @@ fn set_input_region(app: &tauri::AppHandle, mode: InputRegionMode) {
             }
         };
 
-        // Union in all currently-active Lunaris window headers. Each
+        // Union in all currently-active Arlen window headers. Each
         // 36px-high header sits over a client window's top; clicks on
         // those rectangles must reach the shell (Min/Max/Close
         // buttons + title-drag) while everything else stays click-
@@ -503,7 +503,7 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                          menu_id={menu_id} items={}",
                         payload.items.len()
                     );
-                    if let Err(e) = state.app_handle.emit("lunaris://context-menu-show", payload) {
+                    if let Err(e) = state.app_handle.emit("arlen://context-menu-show", payload) {
                         log::error!("shell_overlay_client: emit context-menu-show failed: {e}");
                     }
                     // Open the full window to input so menu items can receive clicks.
@@ -516,49 +516,49 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                 state.pending_menus.remove(&menu_id);
                 let _ = state
                     .app_handle
-                    .emit("lunaris://context-menu-hide", ContextMenuHidePayload { menu_id });
+                    .emit("arlen://context-menu-hide", ContextMenuHidePayload { menu_id });
                 // Restore click-through below the top bar with immediate flush.
                 set_menu_active(&state.app_handle, false);
             }
 
             overlay::Event::TabBarShow { stack_id, x, y, width, height } => {
                 let _ = state.app_handle.emit(
-                    "lunaris://tab-bar-show",
+                    "arlen://tab-bar-show",
                     TabBarShowPayload { stack_id, x, y, width, height },
                 );
             }
 
             overlay::Event::TabBarHide { stack_id } => {
                 let _ = state.app_handle.emit(
-                    "lunaris://tab-bar-hide",
+                    "arlen://tab-bar-hide",
                     TabBarHidePayload { stack_id },
                 );
             }
 
             overlay::Event::TabAdded { stack_id, index, title, app_id, active } => {
                 let _ = state.app_handle.emit(
-                    "lunaris://tab-added",
+                    "arlen://tab-added",
                     TabAddedPayload { stack_id, index, title, app_id, active: active != 0 },
                 );
             }
 
             overlay::Event::TabRemoved { stack_id, index } => {
                 let _ = state.app_handle.emit(
-                    "lunaris://tab-removed",
+                    "arlen://tab-removed",
                     TabRemovedPayload { stack_id, index },
                 );
             }
 
             overlay::Event::TabActivated { stack_id, index } => {
                 let _ = state.app_handle.emit(
-                    "lunaris://tab-activated",
+                    "arlen://tab-activated",
                     TabActivatedPayload { stack_id, index },
                 );
             }
 
             overlay::Event::TabTitleChanged { stack_id, index, title } => {
                 let _ = state.app_handle.emit(
-                    "lunaris://tab-title-changed",
+                    "arlen://tab-title-changed",
                     TabTitleChangedPayload { stack_id, index, title },
                 );
             }
@@ -569,7 +569,7 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                     wayland_client::WEnum::Unknown(v) => v,
                 };
                 let _ = state.app_handle.emit(
-                    "lunaris://indicator-show",
+                    "arlen://indicator-show",
                     IndicatorShowPayload { kind: kind_u32, edges, direction, shortcut1, shortcut2 },
                 );
             }
@@ -580,7 +580,7 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                     wayland_client::WEnum::Unknown(v) => v,
                 };
                 let _ = state.app_handle.emit(
-                    "lunaris://indicator-hide",
+                    "arlen://indicator-hide",
                     IndicatorHidePayload { kind: kind_u32 },
                 );
             }
@@ -591,7 +591,7 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                     wayland_client::WEnum::Unknown(v) => v,
                 };
                 let _ = state.app_handle.emit(
-                    "lunaris://zoom-toolbar-show",
+                    "arlen://zoom-toolbar-show",
                     ZoomToolbarShowPayload {
                         level,
                         increment,
@@ -602,13 +602,13 @@ impl Dispatch<OverlayProxy, ()> for AppData {
 
             overlay::Event::ZoomToolbarUpdate { level } => {
                 let _ = state.app_handle.emit(
-                    "lunaris://zoom-toolbar-update",
+                    "arlen://zoom-toolbar-update",
                     ZoomToolbarUpdatePayload { level },
                 );
             }
 
             overlay::Event::ZoomToolbarHide => {
-                let _ = state.app_handle.emit("lunaris://zoom-toolbar-hide", ());
+                let _ = state.app_handle.emit("arlen://zoom-toolbar-hide", ());
             }
 
             overlay::Event::WindowHeaderShow {
@@ -620,7 +620,7 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                     surface_id, stack_id, title
                 );
                 let _ = state.app_handle.emit(
-                    "lunaris://window-header-show",
+                    "arlen://window-header-show",
                     WindowHeaderShowPayload {
                         surface_id, x, y, width, height, title,
                         activated: activated != 0,
@@ -636,7 +636,7 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                 stack_id,
             } => {
                 let _ = state.app_handle.emit(
-                    "lunaris://window-header-update",
+                    "arlen://window-header-update",
                     WindowHeaderUpdatePayload {
                         surface_id, x, y, width, height, title,
                         activated: activated != 0,
@@ -647,7 +647,7 @@ impl Dispatch<OverlayProxy, ()> for AppData {
 
             overlay::Event::WindowHeaderHide { surface_id } => {
                 let _ = state.app_handle.emit(
-                    "lunaris://window-header-hide",
+                    "arlen://window-header-hide",
                     WindowHeaderHidePayload { surface_id },
                 );
             }
@@ -658,7 +658,7 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                     surface_id
                 );
                 let _ = state.app_handle.emit(
-                    "lunaris://window-drag-start",
+                    "arlen://window-drag-start",
                     serde_json::json!({ "surface_id": surface_id }),
                 );
             }
@@ -669,7 +669,7 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                     surface_id
                 );
                 let _ = state.app_handle.emit(
-                    "lunaris://window-drag-end",
+                    "arlen://window-drag-end",
                     serde_json::json!({ "surface_id": surface_id }),
                 );
             }
@@ -687,7 +687,7 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                 log::info!("shell_overlay_client: WorkspaceOverlayOpen received");
                 let _ = state
                     .app_handle
-                    .emit("lunaris://workspace-overlay-open", ());
+                    .emit("arlen://workspace-overlay-open", ());
             }
 
             overlay::Event::LayoutModeChanged { mode } => {
@@ -700,7 +700,7 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                 crate::layout::CURRENT_MODE.store(mode_u8, std::sync::atomic::Ordering::Relaxed);
                 log::info!("shell_overlay_client: layout mode changed to {mode_str}");
                 let _ = state.app_handle.emit(
-                    "lunaris://layout-mode-changed",
+                    "arlen://layout-mode-changed",
                     serde_json::json!({ "mode": mode_str }),
                 );
             }
@@ -846,7 +846,7 @@ impl ShellOverlaySender {
     }
 
     /// Returns true once the Wayland proxy has bound to the
-    /// `lunaris_shell_overlay_v1` global. Callers replaying
+    /// `arlen_shell_overlay_v1` global. Callers replaying
     /// persisted state poll this so they don't fire a request
     /// that gets silently dropped on an unbound proxy.
     pub fn is_bound(&self) -> bool {
@@ -936,13 +936,13 @@ pub fn start(app_handle: AppHandle, sender: Arc<ShellOverlaySender>) {
             Err(e) => {
                 log::warn!(
                     "shell_overlay_client: compositor does not expose \
-                     lunaris_shell_overlay_v1: {e}"
+                     arlen_shell_overlay_v1: {e}"
                 );
                 return;
             }
         };
 
-        log::info!("shell_overlay_client: lunaris_shell_overlay_v1 global bound successfully");
+        log::info!("shell_overlay_client: arlen_shell_overlay_v1 global bound successfully");
 
         // Share the proxy and connection so Tauri commands can send requests.
         *sender.proxy.lock().unwrap() = Some(overlay_proxy);

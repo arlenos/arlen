@@ -2,7 +2,7 @@
 name = "notification-proto"
 version = "0.1.0"
 edition = "2021"
-description = "Shared protobuf definitions for the Lunaris notification system"
+description = "Shared protobuf definitions for the Arlen notification system"
 
 [dependencies]
 prost = "0.13"

@@ -1,9 +1,9 @@
 <script lang="ts">
   /// Knowledge Graph settings page.
   ///
-  /// Built on the Lunaris Design System canon (docs/architecture/design-system.md):
+  /// Built on the Arlen Design System canon (docs/architecture/design-system.md):
   /// Page + SectionGrid + Group + Row + ChipList are imported directly from
-  /// `@lunaris/ui-kit` (single source, no copy). Button + NumberInput are still
+  /// `@arlen/ui-kit` (single source, no copy). Button + NumberInput are still
   /// the app-local copies (Tailwind/lucide components, pending the S-U1b @source
   /// consolidation).
   ///
@@ -24,13 +24,13 @@
     AlertCircle,
     FolderClock,
   } from "lucide-svelte";
-  import { Page } from "@lunaris/ui-kit/components/ui/page";
-  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
-  import { Group } from "@lunaris/ui-kit/components/ui/group";
-  import { Row } from "@lunaris/ui-kit/components/ui/row";
-  import { ChipList } from "@lunaris/ui-kit/components/ui/chip-list";
-  import { Button } from "@lunaris/ui-kit/components/ui/button";
-  import { NumberInput } from "@lunaris/ui-kit/components/ui/number-input";
+  import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
+  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
+  import { ChipList } from "@arlen/ui-kit/components/ui/chip-list";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { NumberInput } from "@arlen/ui-kit/components/ui/number-input";
   import { graph, PROJECTS_DEFAULTS } from "$lib/stores/projectsConfig";
 
   interface KnowledgeStats {
@@ -107,7 +107,7 @@
 
 <Page
   title="Knowledge Graph"
-  description="Lunaris keeps a private graph of the files, projects, and apps you use. Configure project detection here; browse the graph in the Knowledge app (Phase 8)."
+  description="Arlen keeps a private graph of the files, projects, and apps you use. Configure project detection here; browse the graph in the Knowledge app (Phase 8)."
 >
   <SectionGrid>
     <Group label="Status">

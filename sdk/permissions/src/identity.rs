@@ -146,18 +146,18 @@ pub fn pid_start_time(pid: u32) -> Result<u64, IdentityError> {
 /// Resolution order (every match anchored to a trusted root —
 /// no substring or filename-suffix matching, those are
 /// trivially spoofable by a same-uid attacker placing a binary
-/// at e.g. `/tmp/lunaris-ai-daemon` or
-/// `/tmp/x/.local/share/lunaris/apps/com.victim/bin/evil`):
+/// at e.g. `/tmp/arlen-ai-daemon` or
+/// `/tmp/x/.local/share/arlen/apps/com.victim/bin/evil`):
 ///
 /// 1. Canonical AI daemon install paths -> "ai-daemon"
-/// 2. `/usr/bin/lunaris-{name}` (root-only writable) -> `{name}`
+/// 2. `/usr/bin/arlen-{name}` (root-only writable) -> `{name}`
 ///    Per-binary identity, no shared `system` principal. Closes
-///    F4 (codex review): a `/usr/bin/lunaris-notifyd` no longer
-///    inherits the same profile as `/usr/bin/lunaris-knowledge`.
+///    F4 (codex review): a `/usr/bin/arlen-notifyd` no longer
+///    inherits the same profile as `/usr/bin/arlen-knowledge`.
 ///    Each canonical daemon binary loads its own
 ///    `~/.config/permissions/{name}.toml`.
-/// 3. `/usr/lib/lunaris/apps/{app_id}/...` -> app_id
-/// 4. `<home>/.local/share/lunaris/apps/{app_id}/...` -> app_id
+/// 3. `/usr/lib/arlen/apps/{app_id}/...` -> app_id
+/// 4. `<home>/.local/share/arlen/apps/{app_id}/...` -> app_id
 ///    (anchored to caller's `dirs::home_dir()`, not substring).
 ///    See `docs/architecture/identity-spoof-mitigation.md` for
 ///    the open F3 same-uid-spoof gap and the inode-keyed
@@ -168,29 +168,29 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
     let s = path.to_string_lossy();
 
     // (1) AI daemon — strict equality on the canonical install
-    // paths. `ends_with("/lunaris-ai-daemon")` would let a
-    // same-uid attacker copy any binary to /tmp/lunaris-ai-daemon
+    // paths. `ends_with("/arlen-ai-daemon")` would let a
+    // same-uid attacker copy any binary to /tmp/arlen-ai-daemon
     // and impersonate the AI daemon. Foundation §8.4.5: identity
     // resolution must come from canonical install paths only.
-    // Must run before rule (2) so `lunaris-ai-daemon` resolves
+    // Must run before rule (2) so `arlen-ai-daemon` resolves
     // to the canonical id rather than the basename "ai-daemon".
     match s.as_ref() {
-        "/usr/bin/lunaris-ai-daemon"
-        | "/usr/bin/lunaris-ai"
-        | "/usr/lib/lunaris/apps/ai-daemon/bin/lunaris-ai-daemon"
-        | "/usr/lib/lunaris/apps/ai-daemon/bin/lunaris-ai" => {
+        "/usr/bin/arlen-ai-daemon"
+        | "/usr/bin/arlen-ai"
+        | "/usr/lib/arlen/apps/ai-daemon/bin/arlen-ai-daemon"
+        | "/usr/lib/arlen/apps/ai-daemon/bin/arlen-ai" => {
             return Ok("ai-daemon".to_string());
         }
         _ => {}
     }
 
     // (2) System daemons under root-owned /usr/bin/. The basename
-    // after `lunaris-` is the app_id. Charset is restricted to
+    // after `arlen-` is the app_id. Charset is restricted to
     // `[a-z0-9._-]` so a canonical-looking but malformed path
-    // (e.g. `/usr/bin/lunaris-../etc/passwd`, theoretically only
+    // (e.g. `/usr/bin/arlen-../etc/passwd`, theoretically only
     // creatable by root but defense-in-depth) cannot escape into
     // a profile-path traversal in `profile_path()`.
-    if let Some(name) = s.strip_prefix("/usr/bin/lunaris-") {
+    if let Some(name) = s.strip_prefix("/usr/bin/arlen-") {
         if !name.is_empty()
             && name.bytes().all(|b| {
                 b.is_ascii_lowercase()
@@ -202,9 +202,9 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         }
     }
 
-    // (3) System-installed apps. /usr/lib/lunaris/apps/ is
+    // (3) System-installed apps. /usr/lib/arlen/apps/ is
     // root-owned so non-root attackers cannot plant lookalikes.
-    if let Some(rest) = s.strip_prefix("/usr/lib/lunaris/apps/") {
+    if let Some(rest) = s.strip_prefix("/usr/lib/arlen/apps/") {
         if let Some(app_id) = rest.split('/').next() {
             if !app_id.is_empty() {
                 return Ok(app_id.to_string());
@@ -215,10 +215,10 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
     // (4) User-installed apps. Anchored to the calling user's
     // actual home directory — `find()` substring matching would
     // accept attacker-controlled paths like
-    // `/tmp/x/.local/share/lunaris/apps/com.victim/bin/evil`.
+    // `/tmp/x/.local/share/arlen/apps/com.victim/bin/evil`.
     // strip_prefix against an absolute home blocks that.
     if let Some(home) = dirs::home_dir() {
-        let user_apps = home.join(".local").join("share").join("lunaris").join("apps");
+        let user_apps = home.join(".local").join("share").join("arlen").join("apps");
         if let Ok(rest) = path.strip_prefix(&user_apps) {
             if let Some(first) = rest.iter().next() {
                 let app_id = first.to_string_lossy();
@@ -285,7 +285,7 @@ mod tests {
 
     #[test]
     fn test_app_id_from_path_system_app() {
-        let path = PathBuf::from("/usr/lib/lunaris/apps/com.anki/bin/anki");
+        let path = PathBuf::from("/usr/lib/arlen/apps/com.anki/bin/anki");
         assert_eq!(path_to_app_id(&path).unwrap(), "com.anki");
     }
 
@@ -299,22 +299,22 @@ mod tests {
             return;
         };
         let path = home
-            .join(".local/share/lunaris/apps/org.zotero/bin/zotero");
+            .join(".local/share/arlen/apps/org.zotero/bin/zotero");
         assert_eq!(path_to_app_id(&path).unwrap(), "org.zotero");
     }
 
     #[test]
     fn test_app_id_from_path_ai_daemon() {
         // Strict equality on canonical install path.
-        let path = PathBuf::from("/usr/bin/lunaris-ai-daemon");
+        let path = PathBuf::from("/usr/bin/arlen-ai-daemon");
         assert_eq!(path_to_app_id(&path).unwrap(), "ai-daemon");
 
-        let path = PathBuf::from("/usr/lib/lunaris/apps/ai-daemon/bin/lunaris-ai-daemon");
+        let path = PathBuf::from("/usr/lib/arlen/apps/ai-daemon/bin/arlen-ai-daemon");
         assert_eq!(path_to_app_id(&path).unwrap(), "ai-daemon");
     }
 
     /// F1 regression: same-uid attacker placing any binary at
-    /// `/tmp/lunaris-ai-daemon` (or another writable path with
+    /// `/tmp/arlen-ai-daemon` (or another writable path with
     /// the same basename) MUST NOT be authenticated as the AI
     /// daemon. Pre-Sprint-C the resolver did `ends_with` which
     /// would have accepted this and inherited ai-daemon's
@@ -322,11 +322,11 @@ mod tests {
     #[test]
     fn test_rejects_spoofed_ai_daemon_basename() {
         for spoofed in [
-            "/tmp/lunaris-ai-daemon",
-            "/tmp/lunaris-ai",
-            "/home/attacker/lunaris-ai-daemon",
-            "/var/tmp/lunaris-ai",
-            "/dev/shm/lunaris-ai-daemon",
+            "/tmp/arlen-ai-daemon",
+            "/tmp/arlen-ai",
+            "/home/attacker/arlen-ai-daemon",
+            "/var/tmp/arlen-ai",
+            "/dev/shm/arlen-ai-daemon",
         ] {
             let path = PathBuf::from(spoofed);
             assert!(
@@ -337,7 +337,7 @@ mod tests {
     }
 
     /// F2 regression: same-uid attacker placing a binary at a
-    /// lookalike path containing `.local/share/lunaris/apps/`
+    /// lookalike path containing `.local/share/arlen/apps/`
     /// outside the caller's actual home MUST NOT impersonate
     /// the apparent app_id. Pre-Sprint-C the resolver used
     /// `find()` substring match which would have accepted any
@@ -345,10 +345,10 @@ mod tests {
     #[test]
     fn test_rejects_user_app_path_lookalike() {
         for spoofed in [
-            "/tmp/x/.local/share/lunaris/apps/com.victim/bin/evil",
-            "/var/tmp/.local/share/lunaris/apps/com.victim/bin/evil",
-            "/dev/shm/foo/.local/share/lunaris/apps/com.victim/bin/evil",
-            "/.local/share/lunaris/apps/com.victim/bin/evil",
+            "/tmp/x/.local/share/arlen/apps/com.victim/bin/evil",
+            "/var/tmp/.local/share/arlen/apps/com.victim/bin/evil",
+            "/dev/shm/foo/.local/share/arlen/apps/com.victim/bin/evil",
+            "/.local/share/arlen/apps/com.victim/bin/evil",
         ] {
             let path = PathBuf::from(spoofed);
             assert!(
@@ -358,7 +358,7 @@ mod tests {
         }
     }
 
-    /// Canonical daemons under `/usr/bin/lunaris-*` resolve to
+    /// Canonical daemons under `/usr/bin/arlen-*` resolve to
     /// per-binary app_ids, not the shared "system" principal.
     /// Closes F4 (codex adversarial review post-Sprint-D): the
     /// catch-all bucket let any canonical-looking binary inherit
@@ -367,12 +367,12 @@ mod tests {
     #[test]
     fn test_app_id_from_path_canonical_daemon_per_binary() {
         let cases = [
-            ("/usr/bin/lunaris-notifyd", "notifyd"),
-            ("/usr/bin/lunaris-knowledge", "knowledge"),
-            ("/usr/bin/lunaris-event-bus", "event-bus"),
-            ("/usr/bin/lunaris-installd", "installd"),
-            ("/usr/bin/lunaris-desktop-shell", "desktop-shell"),
-            ("/usr/bin/lunaris-modulesd", "modulesd"),
+            ("/usr/bin/arlen-notifyd", "notifyd"),
+            ("/usr/bin/arlen-knowledge", "knowledge"),
+            ("/usr/bin/arlen-event-bus", "event-bus"),
+            ("/usr/bin/arlen-installd", "installd"),
+            ("/usr/bin/arlen-desktop-shell", "desktop-shell"),
+            ("/usr/bin/arlen-modulesd", "modulesd"),
         ];
         for (path, expected) in cases {
             assert_eq!(
@@ -383,17 +383,17 @@ mod tests {
         }
     }
 
-    /// F4 regression: `/usr/bin/lunaris-*` MUST NOT bucket every
+    /// F4 regression: `/usr/bin/arlen-*` MUST NOT bucket every
     /// canonical daemon to the literal app_id "system". That
-    /// would let `lunaris-notifyd` and `lunaris-knowledge` share
+    /// would let `arlen-notifyd` and `arlen-knowledge` share
     /// one permission profile and silently inherit each other's
     /// scopes.
     #[test]
     fn test_canonical_daemon_does_not_resolve_to_system() {
         for path in [
-            "/usr/bin/lunaris-notifyd",
-            "/usr/bin/lunaris-knowledge",
-            "/usr/bin/lunaris-installd",
+            "/usr/bin/arlen-notifyd",
+            "/usr/bin/arlen-knowledge",
+            "/usr/bin/arlen-installd",
         ] {
             let id = path_to_app_id(&PathBuf::from(path)).unwrap();
             assert_ne!(id, "system", "{path} unexpectedly bucketed to system");
@@ -408,9 +408,9 @@ mod tests {
     #[test]
     fn test_canonical_daemon_rejects_path_traversal() {
         for path in [
-            "/usr/bin/lunaris-../etc/passwd",
-            "/usr/bin/lunaris-foo/bar",
-            "/usr/bin/lunaris-",
+            "/usr/bin/arlen-../etc/passwd",
+            "/usr/bin/arlen-foo/bar",
+            "/usr/bin/arlen-",
         ] {
             assert!(
                 path_to_app_id(&PathBuf::from(path)).is_err(),

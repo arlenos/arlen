@@ -15,7 +15,7 @@
   /// that the user-experiences pattern from system-actions.
   ///
   /// Persistence goes through the generic `config_*` Tauri
-  /// commands against `~/.config/lunaris/quicksettings.toml`. The
+  /// commands against `~/.config/arlen/quicksettings.toml`. The
   /// shell's file-watcher picks up changes automatically.
   ///
   /// Codex review fixes:
@@ -32,11 +32,11 @@
   import { onMount } from "svelte";
   import { RotateCcw, AlertCircle } from "@lucide/svelte";
 
-  import { Page } from "@lunaris/ui-kit/components/ui/page";
-  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
-  import { Group } from "@lunaris/ui-kit/components/ui/group";
-  import { Button } from "@lunaris/ui-kit/components/ui/button";
-  import { ConfirmDialog } from "@lunaris/ui-kit/components/ui/confirm-dialog";
+  import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
+  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import PanelPreview from "$lib/components/quicksettings/PanelPreview.svelte";
   import HiddenDrawer from "$lib/components/quicksettings/HiddenDrawer.svelte";
 

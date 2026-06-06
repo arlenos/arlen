@@ -1,6 +1,6 @@
 /// Watch configuration for project detection.
 ///
-/// Loaded from `~/.config/lunaris/graph.toml` `[projects]` section.
+/// Loaded from `~/.config/arlen/graph.toml` `[projects]` section.
 /// Falls back to defaults if the file is missing or unparseable.
 
 use serde::Deserialize;
@@ -62,10 +62,10 @@ struct GraphConfig {
 }
 
 impl WatchConfig {
-    /// Load from `~/.config/lunaris/graph.toml`.
+    /// Load from `~/.config/arlen/graph.toml`.
     /// Returns defaults if the file is missing or invalid.
     pub fn load() -> Self {
-        let Some(path) = dirs::config_dir().map(|p| p.join("lunaris/graph.toml")) else {
+        let Some(path) = dirs::config_dir().map(|p| p.join("arlen/graph.toml")) else {
             tracing::debug!("no config dir found, using defaults");
             return Self::default();
         };

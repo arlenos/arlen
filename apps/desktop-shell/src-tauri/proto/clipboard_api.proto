@@ -1,17 +1,17 @@
 syntax = "proto3";
 
 // Clipboard SDK RPC over a per-user Unix socket. Distinct from
-// `lunaris.eventbus.ClipboardOperationPayload` (which is a metadata-
+// `arlen.eventbus.ClipboardOperationPayload` (which is a metadata-
 // only event flowing through the event bus). This package is the
 // app-facing read/write/subscribe/history protocol the shell
-// brokers on behalf of Lunaris-aware callers.
-package lunaris.clipboard;
+// brokers on behalf of Arlen-aware callers.
+package arlen.clipboard;
 
 // Sensitivity label attached to clipboard content.
 //
 // `LABEL_NORMAL` is the default for any write that does not pass
 // an explicit label and for any compositor-observed write from a
-// non-Lunaris-aware caller.
+// non-Arlen-aware caller.
 //
 // `LABEL_SENSITIVE` is enforcement-on-trust: shell-side filtering
 // drops content for readers without the
@@ -25,7 +25,7 @@ enum Label {
 
 // One clipboard entry as the shell reports it. `content` is unset
 // when the reader lacks the relevant sensitivity permission, so
-// every Lunaris client must handle missing content explicitly.
+// every Arlen client must handle missing content explicitly.
 message ClipboardEntry {
   string id           = 1;  // monotonic, stable for filter/delete
   optional bytes content = 2;

@@ -1,8 +1,8 @@
 //! MCP server discovery for the AI daemon.
 //!
-//! Tier-1 `mcp.server` modules are hosted by `lunaris-modulesd`,
+//! Tier-1 `mcp.server` modules are hosted by `arlen-modulesd`,
 //! which fronts each with a Unix socket under
-//! `$XDG_RUNTIME_DIR/lunaris/mcp/modules/` and announces it on the
+//! `$XDG_RUNTIME_DIR/arlen/mcp/modules/` and announces it on the
 //! Event Bus. This module keeps the daemon's [`McpClient`] in step
 //! with that feed.
 //!
@@ -22,9 +22,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use lunaris_ai_core::audit::AuditSink;
-use lunaris_ai_core::mcp::{McpClient, ServerClass, ServerId};
-use lunaris_permissions::identity::app_id_from_pid;
+use arlen_ai_core::audit::AuditSink;
+use arlen_ai_core::mcp::{McpClient, ServerClass, ServerId};
+use arlen_permissions::identity::app_id_from_pid;
 use os_sdk::event_consumer::{EventConsumer, UnixEventConsumer};
 use os_sdk::mcp::{is_safe_module_id, mcp_module_socket_path};
 use tokio::net::UnixStream;
@@ -37,7 +37,7 @@ use tracing::{debug, info, warn};
 const MODULE_NAMESPACE: &str = "module.";
 
 /// Resolved `app_id` of the canonically-installed module runtime
-/// daemon. `lunaris-permissions` maps `/usr/bin/lunaris-modulesd` to
+/// daemon. `arlen-permissions` maps `/usr/bin/arlen-modulesd` to
 /// this; a module MCP socket served by anything else is an imposter.
 const MODULESD_APP_ID: &str = "modulesd";
 

@@ -66,7 +66,7 @@ fn log_frontend(message: String) {
 /// `app.toolbar.action_invoked` with `(app_id, window_id,
 /// action)`. The target app's tauri-plugin-shell consumer
 /// filters on its own `LUNARIS_APP_ID`, looks up the webview
-/// by `window_id`, and re-emits as `lunaris://app-action`
+/// by `window_id`, and re-emits as `arlen://app-action`
 /// scoped to that webview only — multi-window apps route the
 /// click correctly back to the originating window.
 ///
@@ -86,7 +86,7 @@ fn dispatch_app_action(app_id: String, window_id: String, action: String) {
 /// (separate from `app.toolbar.action_invoked` for audit
 /// clarity, but shape-identical). The receiving app's
 /// tauri-plugin-shell consumer routes it as
-/// `lunaris://app-action` to its webview.
+/// `arlen://app-action` to its webview.
 ///
 /// `window_id` is the focused window at click-time. Empty
 /// string falls back to app-wide broadcast on the receiver
@@ -146,7 +146,7 @@ pub fn run() {
     let plugin_mgr_state: waypointer_system::PluginManagerState = std::sync::RwLock::new(plugin_mgr);
 
     // Module Runtime daemon client. Connection is established lazily
-    // in setup() so the shell still launches if `lunaris-modulesd` is
+    // in setup() so the shell still launches if `arlen-modulesd` is
     // not running yet (e.g. on first boot before the user has any
     // third-party modules).
     let modulesd_client = modulesd_client::ModulesdClient::new(
@@ -181,7 +181,7 @@ pub fn run() {
         .manage(clipboard_state)
         .manage(Arc::clone(&modulesd_client))
         .setup(move |app| {
-            // Best-effort connect to lunaris-modulesd. Failure is
+            // Best-effort connect to arlen-modulesd. Failure is
             // non-fatal: third-party modules just stay unavailable
             // until the daemon comes up.
             let connect_client = Arc::clone(&modulesd_for_setup);
@@ -194,17 +194,17 @@ pub fn run() {
             // Initialize the new theme system (v2).
             let config_dir = dirs::config_dir()
                 .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-                .join("lunaris");
+                .join("arlen");
             let data_dir = dirs::data_dir()
                 .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-                .join("lunaris");
+                .join("arlen");
             match theme::commands::ThemeState::new(config_dir, data_dir) {
                 Ok(ts) => { app.manage(ts); }
                 Err(e) => {
                     log::warn!("theme: state init failed ({e}), using in-memory defaults");
                     let fallback = theme::commands::ThemeState::new(
-                        std::path::PathBuf::from("/tmp/lunaris-fallback"),
-                        std::path::PathBuf::from("/tmp/lunaris-fallback"),
+                        std::path::PathBuf::from("/tmp/arlen-fallback"),
+                        std::path::PathBuf::from("/tmp/arlen-fallback"),
                     ).unwrap();
                     app.manage(fallback);
                 }

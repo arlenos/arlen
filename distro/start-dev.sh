@@ -1,23 +1,23 @@
 #!/bin/bash
-# Lunaris OS Development Script
+# Arlen OS Development Script
 # Kills all running instances and launches everything in tmux
 #
 # Usage:
 #   ./start-dev.sh                  # 5-window default stack
-#   ./start-dev.sh --with-portal    # plus app-settings + xdg-portal-lunaris
+#   ./start-dev.sh --with-portal    # plus app-settings + xdg-portal-arlen
 #
-# Stop:  tmux kill-session -t lunaris
+# Stop:  tmux kill-session -t arlen
 #
 # Tmux controls:
 #   Ctrl+B, n           - Next window
 #   Ctrl+B, p           - Previous window
 #   Ctrl+B, 0-N         - Jump to window by number
 #   Ctrl+B, d           - Detach (processes keep running)
-#   tmux attach -t lunaris - Reattach
+#   tmux attach -t arlen - Reattach
 
 set -e
 
-echo "=== Lunaris Dev Environment ==="
+echo "=== Arlen Dev Environment ==="
 
 # Parse flags. `--with-portal` adds two windows for the
 # Pre-Phase-6 Sprint F portal stack (app-settings + portal-daemon)
@@ -42,17 +42,17 @@ mkdir -p "$LOG_DIR"
 # Wipe previous session logs so `tail -f` / `grep` only shows this run.
 rm -f "$LOG_DIR"/*.log
 
-# Event-Bus socket dir. Previously used /run/lunaris/ which required
+# Event-Bus socket dir. Previously used /run/arlen/ which required
 # root to create; tmux windows inherit no sudo ticket so the daemon
 # silently timed out at the password prompt and every consumer spent
 # the whole session reconnect-looping. Switched to the per-user
 # XDG_RUNTIME_DIR so the whole stack runs as the login user.
-EVENT_BUS_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/lunaris"
+EVENT_BUS_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/arlen"
 mkdir -p "$EVENT_BUS_DIR"
 export LUNARIS_PRODUCER_SOCKET="$EVENT_BUS_DIR/event-bus-producer.sock"
 export LUNARIS_CONSUMER_SOCKET="$EVENT_BUS_DIR/event-bus-consumer.sock"
 # Knowledge-daemon socket: also in XDG so no sudo needed. Without
-# this, the daemon falls back to /run/lunaris/knowledge.sock where
+# this, the daemon falls back to /run/arlen/knowledge.sock where
 # the bind() fails with EACCES and the daemon terminates.
 export LUNARIS_DAEMON_SOCKET="$EVENT_BUS_DIR/knowledge.sock"
 
@@ -72,16 +72,16 @@ fi
 
 echo "[1/$STEP_TOTAL] Killing existing processes..."
 
-# Kill Lunaris processes
+# Kill Arlen processes
 pkill -9 -f cosmic-comp 2>/dev/null || true
 pkill -9 -f "event-bus" 2>/dev/null || true
 pkill -9 -f "target/debug/knowledge" 2>/dev/null || true
-pkill -9 -f lunaris-notifyd 2>/dev/null || true
+pkill -9 -f arlen-notifyd 2>/dev/null || true
 pkill -9 -f "desktop-shell" 2>/dev/null || true
 if [ "$WITH_PORTAL" -eq 1 ]; then
-    pkill -9 -f "target/debug/lunaris-settings" 2>/dev/null || true
-    pkill -9 -f "target/debug/xdg-desktop-portal-lunaris" 2>/dev/null || true
-    pkill -9 -f xdg-desktop-portal-lunaris-picker 2>/dev/null || true
+    pkill -9 -f "target/debug/arlen-settings" 2>/dev/null || true
+    pkill -9 -f "target/debug/xdg-desktop-portal-arlen" 2>/dev/null || true
+    pkill -9 -f xdg-desktop-portal-arlen-picker 2>/dev/null || true
 fi
 
 # Kill other notification daemons that might hold D-Bus name
@@ -125,26 +125,26 @@ rm -f "$EVENT_BUS_DIR"/event-bus-*.sock \
       "$EVENT_BUS_DIR"/knowledge.sock \
       "$EVENT_BUS_DIR"/portal-picker.sock \
       2>/dev/null || true
-# Legacy /run/lunaris/ leftovers — only touch if we previously created
+# Legacy /run/arlen/ leftovers — only touch if we previously created
 # them. Silent-skip if the dir doesn't exist so we don't need sudo just
 # for the cleanup pass.
-if [ -d /run/lunaris ]; then
-    sudo rm -f /run/lunaris/event-bus-*.sock /run/lunaris/knowledge.sock 2>/dev/null || true
+if [ -d /run/arlen ]; then
+    sudo rm -f /run/arlen/event-bus-*.sock /run/arlen/knowledge.sock 2>/dev/null || true
 fi
 
 sleep 1
 
 echo "[4/$STEP_TOTAL] Killing existing tmux session..."
 
-tmux kill-session -t lunaris 2>/dev/null || true
+tmux kill-session -t arlen 2>/dev/null || true
 
 # Pre-build the picker-ui binary up front so the portal daemon's
 # spawn does not pay a 30 s+ first-pick cargo-compile penalty.
 # Skipped without --with-portal so the default workflow stays
 # fast.
 if [ "$WITH_PORTAL" -eq 1 ]; then
-    PORTAL_SRC="$LUNARIS_PATH/xdg-desktop-portal-lunaris"
-    PICKER_BIN="$PORTAL_SRC/picker-ui/src-tauri/target/debug/xdg-desktop-portal-lunaris-picker"
+    PORTAL_SRC="$LUNARIS_PATH/xdg-desktop-portal-arlen"
+    PICKER_BIN="$PORTAL_SRC/picker-ui/src-tauri/target/debug/xdg-desktop-portal-arlen-picker"
     echo "[5/$STEP_TOTAL] Pre-building portal picker-ui (warm-cache: ~2s, cold: ~30s)..."
     if [ ! -d "$PORTAL_SRC/picker-ui/node_modules" ]; then
         (cd "$PORTAL_SRC/picker-ui" && npm install >/dev/null 2>&1)
@@ -178,18 +178,18 @@ echo "[$SESSION_STEP/$STEP_TOTAL] Starting tmux session..."
 ENV_PREFIX="RUST_LOG='$RUST_LOG_FILTER' LUNARIS_PRODUCER_SOCKET='$LUNARIS_PRODUCER_SOCKET' LUNARIS_CONSUMER_SOCKET='$LUNARIS_CONSUMER_SOCKET' LUNARIS_DAEMON_SOCKET='$LUNARIS_DAEMON_SOCKET'"
 
 # Portal-mode env additions. XDG_CURRENT_DESKTOP makes the
-# frontend portal daemon match our `UseIn=lunaris;` config (kept
+# frontend portal daemon match our `UseIn=arlen;` config (kept
 # additive so wlroots-aware fallbacks still work). XDG_DATA_DIRS
 # is APPENDED — prepending would let dev portal configs shadow
 # system XDG specs and break unrelated apps.
 if [ "$WITH_PORTAL" -eq 1 ]; then
-    PORTAL_DIST="$LUNARIS_PATH/xdg-desktop-portal-lunaris/dist"
+    PORTAL_DIST="$LUNARIS_PATH/xdg-desktop-portal-arlen/dist"
     EXISTING_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
     PORTAL_DATA_DIRS="$EXISTING_DATA_DIRS:$PORTAL_DIST"
     EXISTING_DESKTOP="${XDG_CURRENT_DESKTOP:-wlroots}"
     case ":$EXISTING_DESKTOP:" in
-        *:lunaris:*) PORTAL_DESKTOP="$EXISTING_DESKTOP" ;;
-        *) PORTAL_DESKTOP="lunaris:$EXISTING_DESKTOP" ;;
+        *:arlen:*) PORTAL_DESKTOP="$EXISTING_DESKTOP" ;;
+        *) PORTAL_DESKTOP="arlen:$EXISTING_DESKTOP" ;;
     esac
     # Idle timeout extended to 30 min for dev sessions so the daemon
     # doesn't exit mid-debug while you're staring at logs. Production
@@ -208,7 +208,7 @@ if [ "$WITH_PORTAL" -eq 1 ]; then
         echo "    importing portal env into systemd user manager"
         systemctl --user import-environment XDG_CURRENT_DESKTOP XDG_DATA_DIRS \
             >/dev/null 2>&1 || \
-            echo "    WARNING: import-environment failed; frontend may not see lunaris env" >&2
+            echo "    WARNING: import-environment failed; frontend may not see arlen env" >&2
         echo "    restarting xdg-desktop-portal so it picks up the new env"
         systemctl --user restart xdg-desktop-portal >/dev/null 2>&1 || \
             echo "    WARNING: restart xdg-desktop-portal failed; check systemctl --user status xdg-desktop-portal" >&2
@@ -218,31 +218,31 @@ if [ "$WITH_PORTAL" -eq 1 ]; then
 fi
 
 # Window 0: Compositor
-tmux new-session -d -s lunaris -n compositor
-tmux send-keys -t lunaris:compositor "cd $LUNARIS_PATH/compositor && $ENV_PREFIX cargo run --bin cosmic-comp 2>&1 | tee $LOG_DIR/compositor.log" Enter
+tmux new-session -d -s arlen -n compositor
+tmux send-keys -t arlen:compositor "cd $LUNARIS_PATH/compositor && $ENV_PREFIX cargo run --bin cosmic-comp 2>&1 | tee $LOG_DIR/compositor.log" Enter
 
 # Window 1: Event Bus (user-owned socket in XDG_RUNTIME_DIR — no sudo)
-tmux new-window -t lunaris -n eventbus
-tmux send-keys -t lunaris:eventbus "sleep 2 && cd $LUNARIS_PATH/event-bus && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/event-bus.log" Enter
+tmux new-window -t arlen -n eventbus
+tmux send-keys -t arlen:eventbus "sleep 2 && cd $LUNARIS_PATH/event-bus && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/event-bus.log" Enter
 
 # Window 2: Knowledge
-tmux new-window -t lunaris -n knowledge
-tmux send-keys -t lunaris:knowledge "sleep 6 && cd $LUNARIS_PATH/knowledge && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/knowledge.log" Enter
+tmux new-window -t arlen -n knowledge
+tmux send-keys -t arlen:knowledge "sleep 6 && cd $LUNARIS_PATH/knowledge && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/knowledge.log" Enter
 
 # Window 3: Notification Daemon
-tmux new-window -t lunaris -n notifyd
-tmux send-keys -t lunaris:notifyd "sleep 7 && cd $LUNARIS_PATH/notification-daemon && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/notifyd.log" Enter
+tmux new-window -t arlen -n notifyd
+tmux send-keys -t arlen:notifyd "sleep 7 && cd $LUNARIS_PATH/notification-daemon && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/notifyd.log" Enter
 
 # Window 4: Desktop Shell (Tauri). `cargo tauri dev` also spawns the
 # Vite dev server; tee captures both.
-tmux new-window -t lunaris -n shell
-tmux send-keys -t lunaris:shell "sleep 10 && cd $LUNARIS_PATH/desktop-shell && $ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo tauri dev 2>&1 | tee $LOG_DIR/desktop-shell.log" Enter
+tmux new-window -t arlen -n shell
+tmux send-keys -t arlen:shell "sleep 10 && cd $LUNARIS_PATH/desktop-shell && $ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo tauri dev 2>&1 | tee $LOG_DIR/desktop-shell.log" Enter
 
 if [ "$WITH_PORTAL" -eq 1 ]; then
     # Window 5: app-settings (Tauri). The Settings DirectoryPicker
     # is the unconfined-side E2E test for the portal plugin.
-    tmux new-window -t lunaris -n settings
-    tmux send-keys -t lunaris:settings "sleep 12 && cd $LUNARIS_PATH/app-settings && $PORTAL_ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo tauri dev 2>&1 | tee $LOG_DIR/app-settings.log" Enter
+    tmux new-window -t arlen -n settings
+    tmux send-keys -t arlen:settings "sleep 12 && cd $LUNARIS_PATH/app-settings && $PORTAL_ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo tauri dev 2>&1 | tee $LOG_DIR/app-settings.log" Enter
 
     # Window 6: portal daemon. Spawned AFTER the picker binary
     # build (pre-build step) so the daemon's pre-warm finds it.
@@ -251,12 +251,12 @@ if [ "$WITH_PORTAL" -eq 1 ]; then
     # daemon's env. Without this, picker-ui connects to the host
     # session (whichever Wayland the dev shell is on) instead of
     # the nested cosmic-comp the rest of the stack runs against.
-    tmux new-window -t lunaris -n portal-daemon
-    tmux send-keys -t lunaris:portal-daemon "sleep 8 && cd $LUNARIS_PATH/xdg-desktop-portal-lunaris && $PORTAL_ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo run --bin xdg-desktop-portal-lunaris 2>&1 | tee $LOG_DIR/portal-daemon.log" Enter
+    tmux new-window -t arlen -n portal-daemon
+    tmux send-keys -t arlen:portal-daemon "sleep 8 && cd $LUNARIS_PATH/xdg-desktop-portal-arlen && $PORTAL_ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo run --bin xdg-desktop-portal-arlen 2>&1 | tee $LOG_DIR/portal-daemon.log" Enter
 fi
 
 # Select shell window
-tmux select-window -t lunaris:shell
+tmux select-window -t arlen:shell
 
 echo "[$SHELL_STEP/$STEP_TOTAL] Waiting for daemons to come up..."
 
@@ -271,9 +271,9 @@ pgrep -f "event-bus/target"     >/dev/null \
     || pgrep -f "target/debug/event-bus" >/dev/null \
     || MISSING+=(event-bus)
 pgrep -f "target/debug/knowledge" >/dev/null || MISSING+=(knowledge)
-pgrep -f lunaris-notifyd        >/dev/null || MISSING+=(notification-daemon)
+pgrep -f arlen-notifyd        >/dev/null || MISSING+=(notification-daemon)
 if [ "$WITH_PORTAL" -eq 1 ]; then
-    pgrep -f "target/debug/xdg-desktop-portal-lunaris$" >/dev/null \
+    pgrep -f "target/debug/xdg-desktop-portal-arlen$" >/dev/null \
         || MISSING+=(portal-daemon)
 fi
 
@@ -303,7 +303,7 @@ if [ "$WITH_PORTAL" -eq 1 ]; then
     PORTAL_BUS_OK=0
     for _ in 1 2 3; do
         if busctl --user list 2>/dev/null \
-            | grep -q org.freedesktop.impl.portal.desktop.lunaris; then
+            | grep -q org.freedesktop.impl.portal.desktop.arlen; then
             PORTAL_BUS_OK=1
             break
         fi
@@ -315,7 +315,7 @@ if [ "$WITH_PORTAL" -eq 1 ]; then
     fi
 fi
 
-echo "=== Lunaris Dev Environment Started ==="
+echo "=== Arlen Dev Environment Started ==="
 echo ""
 echo "Attaching to tmux session..."
 echo "  Ctrl+B, n       - Next window"
@@ -333,4 +333,4 @@ echo "Logs: tail -f $LOG_DIR/compositor.log"
 echo "      grep -E '...' $LOG_DIR/compositor.log"
 echo ""
 
-tmux attach -t lunaris
+tmux attach -t arlen

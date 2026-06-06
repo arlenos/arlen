@@ -1,6 +1,6 @@
 //! Notifications-specific Tauri commands.
 //!
-//! Most state lives in `~/.config/lunaris/notifications.toml` and is
+//! Most state lives in `~/.config/arlen/notifications.toml` and is
 //! managed via the generic `config_get` / `config_set` commands. This
 //! module wraps the few imperative actions that need direct access to
 //! the daemon's SQLite history file or the freedesktop `notify-send`
@@ -30,7 +30,7 @@ use serde::Serialize;
 fn notifications_db_path() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris")
+        .join("arlen")
         .join("notifications.db")
 }
 
@@ -55,7 +55,7 @@ pub fn notifications_get_known_apps() -> Result<Vec<AppHistoryEntry>, String> {
     );
     if !path.exists() {
         log::warn!(
-            "notifications_get_known_apps: db not found — is lunaris-notifyd running?"
+            "notifications_get_known_apps: db not found — is arlen-notifyd running?"
         );
         return Ok(Vec::new());
     }
@@ -145,8 +145,8 @@ pub fn notifications_test_notification(priority: String) -> Result<(), String> {
         .arg("--urgency")
         .arg(urgency)
         .arg("--app-name")
-        .arg("Lunaris Settings")
-        .arg("Lunaris Settings test")
+        .arg("Arlen Settings")
+        .arg("Arlen Settings test")
         .arg(body)
         .spawn()
         .map_err(|e| format!("spawn notify-send: {e}"))?;

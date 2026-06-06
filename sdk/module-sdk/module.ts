@@ -8,7 +8,7 @@
 /// Example
 ///
 /// ```ts
-/// import { createModule } from "@lunaris/module-sdk";
+/// import { createModule } from "@arlen/module-sdk";
 ///
 /// createModule({
 ///   id: "com.example.weather",

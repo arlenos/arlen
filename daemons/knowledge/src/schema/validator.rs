@@ -179,7 +179,7 @@ mod tests {
                 "system.Session".into(),
                 "shared.Person".into(),
             ],
-            vec!["org.lunaris.contacts".into()],
+            vec!["org.arlen.contacts".into()],
         )
     }
 

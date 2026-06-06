@@ -59,7 +59,7 @@ mod tests {
             "file:///etc/passwd",
             "javascript:alert(1)",
             "ftp://example.com",
-            "lunaris:///foo",
+            "arlen:///foo",
             "",
             "github.com/no-scheme",
         ] {

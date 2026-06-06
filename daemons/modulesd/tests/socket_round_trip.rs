@@ -9,9 +9,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tokio::sync::broadcast;
 
-use lunaris_modulesd::manager::Manager;
-use lunaris_modulesd::socket::protocol::{Request, Response};
-use lunaris_modulesd::socket::server::SocketServer;
+use arlen_modulesd::manager::Manager;
+use arlen_modulesd::socket::protocol::{Request, Response};
+use arlen_modulesd::socket::server::SocketServer;
 
 async fn write_frame(stream: &mut UnixStream, body: &[u8]) -> std::io::Result<()> {
     let len = (body.len() as u32).to_be_bytes();

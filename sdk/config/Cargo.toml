@@ -1,8 +1,8 @@
 [package]
-name = "lunaris-config"
+name = "arlen-config"
 version = "0.1.0"
 edition = "2021"
-description = "TOML config loader with default merging for Lunaris OS"
+description = "TOML config loader with default merging for Arlen OS"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

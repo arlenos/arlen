@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 pub fn default_config_path() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris/notifications.toml")
+        .join("arlen/notifications.toml")
 }
 
 /// Load config from a TOML file. Returns defaults if file is missing.

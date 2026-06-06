@@ -21,7 +21,7 @@
   import {
     Command, CommandInput, CommandList, CommandEmpty,
     CommandGroup, CommandItem, CommandSeparator, CommandShortcut,
-  } from "@lunaris/ui-kit/components/ui/command/index.js";
+  } from "@arlen/ui-kit/components/ui/command/index.js";
   import { Search, AppWindow, Calculator, ArrowRightLeft, TerminalSquare, BookOpen, Clock, Globe, Link, Skull, FolderKanban, X, Settings2 } from "lucide-svelte";
   import { activeProjects, activateFocus, deactivateFocus, isFocused, focusState, loadProjects } from "$lib/stores/projects.js";
   import {
@@ -812,10 +812,10 @@
 
         <!-- Quick Actions (DND, theme, settings shortcuts, …) from
              the `core.quick_actions` plugin. Priority 50 keeps them
-             below Apps for app-name queries, but for Lunaris-specific
+             below Apps for app-name queries, but for Arlen-specific
              keywords (DND / brightness / focus / …) Apps has nothing
              to offer so Quick-Actions surface naturally. Toast-after-
-             execute confirmation arrives via the `lunaris://toast`
+             execute confirmation arrives via the `arlen://toast`
              event bridge in `+layout.svelte`. -->
         {#if $quickActionResults.length > 0}
           <CommandGroup heading="Quick Actions">

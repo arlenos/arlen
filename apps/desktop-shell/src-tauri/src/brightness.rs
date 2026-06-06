@@ -245,14 +245,14 @@ static STEP_INFLIGHT: std::sync::atomic::AtomicBool =
 /// that lands between drain and release can never be silently lost.
 ///
 /// `direction` is an IPC-trust boundary: the compositor's
-/// `lunaris-shell-overlay` `brightness_step` event documents it as
+/// `arlen-shell-overlay` `brightness_step` event documents it as
 /// `+1` or `-1`, but the channel is an `int` and a buggy or skewed
 /// sender can put any `i32` on the wire. We reject anything that
 /// isn't exactly `±1` and log a warning so protocol mismatches are
 /// loud rather than silently writing a 50-step jump to logind.
 ///
 /// Persists the new fraction to `shell.toml` so the level survives a
-/// reboot, then emits `lunaris://brightness-changed` so the
+/// reboot, then emits `arlen://brightness-changed` so the
 /// QuickSettings + Settings sliders re-read the hardware position
 /// without polling.
 pub fn brightness_step_relative(app: tauri::AppHandle, direction: i32) {
@@ -341,7 +341,7 @@ pub fn brightness_step_relative(app: tauri::AppHandle, direction: i32) {
 
             use tauri::Emitter;
             let _ = app.emit(
-                "lunaris://brightness-changed",
+                "arlen://brightness-changed",
                 serde_json::json!({
                     "device": primary.name,
                     "fraction": new_fraction,
@@ -355,7 +355,7 @@ pub fn brightness_step_relative(app: tauri::AppHandle, direction: i32) {
     });
 }
 
-/// Update `~/.config/lunaris/shell.toml` so the new brightness is
+/// Update `~/.config/arlen/shell.toml` so the new brightness is
 /// the value `replay_persisted_brightness` reads on the next boot.
 ///
 /// Routed through `update_shell_config` so the load-modify-write is

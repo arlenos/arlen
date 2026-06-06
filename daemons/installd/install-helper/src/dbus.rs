@@ -1,9 +1,9 @@
 /// D-Bus interface for the install helper.
 ///
-/// Interface: org.lunaris.InstallHelper1
-/// Object path: /org/lunaris/InstallHelper1
+/// Interface: org.arlen.InstallHelper1
+/// Object path: /org/arlen/InstallHelper1
 ///
-/// Only lunaris-installd may invoke methods. Caller identity is verified
+/// Only arlen-installd may invoke methods. Caller identity is verified
 /// via /proc/{pid}/exe.
 
 use zbus::{interface, Connection};
@@ -12,19 +12,19 @@ use crate::install;
 
 /// Allowed caller binaries (resolved from /proc/{pid}/exe).
 const ALLOWED_CALLERS: &[&str] = &[
-    "lunaris-installd",
-    "lunaris-install-helper", // self-test
+    "arlen-installd",
+    "arlen-install-helper", // self-test
 ];
 
 /// D-Bus interface implementation.
 pub struct InstallHelper;
 
-#[interface(name = "org.lunaris.InstallHelper1")]
+#[interface(name = "org.arlen.InstallHelper1")]
 impl InstallHelper {
     /// Install an app to the system-wide location.
     ///
     /// Copies the prepared directory at `source_path` to
-    /// `/usr/lib/lunaris/apps/{app_id}/`. The source directory must
+    /// `/usr/lib/arlen/apps/{app_id}/`. The source directory must
     /// contain the app structure (bin/, lib/, share/).
     ///
     /// Returns (success, error_message).
@@ -53,7 +53,7 @@ impl InstallHelper {
 
     /// Uninstall a system-wide app.
     ///
-    /// Removes `/usr/lib/lunaris/apps/{app_id}/` and any system desktop
+    /// Removes `/usr/lib/arlen/apps/{app_id}/` and any system desktop
     /// entry for the app.
     ///
     /// Returns (success, error_message).
@@ -113,7 +113,7 @@ impl InstallHelper {
         install::validate_app_id(app_id).is_ok() && {
             let base = std::env::var("LUNARIS_SYSTEM_APPS_DIR")
                 .map(std::path::PathBuf::from)
-                .unwrap_or_else(|_| std::path::PathBuf::from("/usr/lib/lunaris/apps"));
+                .unwrap_or_else(|_| std::path::PathBuf::from("/usr/lib/arlen/apps"));
             base.join(app_id).exists()
         }
     }

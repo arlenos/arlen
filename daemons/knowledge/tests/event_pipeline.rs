@@ -22,7 +22,7 @@ use std::time::Duration;
 // Include generated protobuf types.
 // We build the proto in knowledge's build.rs so we can use them here too.
 mod proto {
-    include!(concat!(env!("OUT_DIR"), "/lunaris.eventbus.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 
 /// Locate a binary in the Cargo target directory.

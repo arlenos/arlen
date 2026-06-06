@@ -1,10 +1,10 @@
 [package]
-name = "tauri-plugin-lunaris-clipboard"
+name = "tauri-plugin-arlen-clipboard"
 version = "0.1.0"
 edition = "2021"
-description = "Tauri plugin for Lunaris clipboard read/write/subscribe/history"
+description = "Tauri plugin for Arlen clipboard read/write/subscribe/history"
 license = "GPL-3.0-only"
-links = "tauri-plugin-lunaris-clipboard"
+links = "tauri-plugin-arlen-clipboard"
 
 [dependencies]
 tauri = { version = "2", default-features = false }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  /// Lunaris Color Picker (Tier 1: HSV pad + hue slider + hex input).
+  /// Arlen Color Picker (Tier 1: HSV pad + hue slider + hex input).
   ///
   /// Replaces the native `<input type="color">` which on Wayland +
   /// Tauri opens GTK's stock chooser dialog — visually inconsistent

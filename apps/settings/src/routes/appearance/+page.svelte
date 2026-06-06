@@ -14,15 +14,15 @@
   } from "$lib/stores/theme";
   import { compositor } from "$lib/stores/compositor";
 
-  import { Page } from "@lunaris/ui-kit/components/ui/page";
-  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
-  import { Group } from "@lunaris/ui-kit/components/ui/group";
-  import { Row } from "@lunaris/ui-kit/components/ui/row";
+  import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
+  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
   import ModeToggle from "$lib/components/appearance/ModeToggle.svelte";
   import AccentPicker from "$lib/components/appearance/AccentPicker.svelte";
   import { ValueSlider } from "$lib/components/ui/value-slider";
   import FontSelect from "$lib/components/appearance/FontSelect.svelte";
-  import { Switch } from "@lunaris/ui-kit/components/ui/switch";
+  import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import BorderColorPicker from "$lib/components/appearance/BorderColorPicker.svelte";
 
   onMount(() => {

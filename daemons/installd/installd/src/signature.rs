@@ -6,8 +6,8 @@
 /// matches.
 ///
 /// Key storage:
-/// - System keys: `/etc/lunaris/trusted-keys/*.pub`
-/// - User keys:   `~/.config/lunaris/trusted-keys/*.pub`
+/// - System keys: `/etc/arlen/trusted-keys/*.pub`
+/// - User keys:   `~/.config/arlen/trusted-keys/*.pub`
 ///
 /// Key format: 32 bytes raw Ed25519 public key, or 44 characters
 /// base64-encoded (one key per `.pub` file).
@@ -40,7 +40,7 @@ pub enum SignatureError {
     Io(#[from] std::io::Error),
 }
 
-const SYSTEM_KEYS_DIR: &str = "/etc/lunaris/trusted-keys";
+const SYSTEM_KEYS_DIR: &str = "/etc/arlen/trusted-keys";
 
 /// Get the system trusted keys directory.
 fn system_keys_dir() -> PathBuf {
@@ -56,7 +56,7 @@ fn user_keys_dir() -> PathBuf {
         .unwrap_or_else(|_| {
             dirs::config_dir()
                 .unwrap_or_else(|| PathBuf::from("~/.config"))
-                .join("lunaris/trusted-keys")
+                .join("arlen/trusted-keys")
         })
 }
 

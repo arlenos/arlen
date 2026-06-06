@@ -15,10 +15,10 @@
   import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { Button } from "@lunaris/ui-kit/components/ui/button";
-  import { Input } from "@lunaris/ui-kit/components/ui/input";
-  import { Group } from "@lunaris/ui-kit/components/ui/group";
-  import { ConfirmDialog } from "@lunaris/ui-kit/components/ui/confirm-dialog";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import type { ApplyHandle, MonitorConfig } from "$lib/stores/displays";
   import { Check, Pencil, Play, Trash2 } from "lucide-svelte";
 

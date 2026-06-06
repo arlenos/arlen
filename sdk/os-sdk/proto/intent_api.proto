@@ -1,7 +1,7 @@
 // shell.intents broker wire format.
 //
 // Single-shot request/response: external Tauri apps connect to
-// $XDG_RUNTIME_DIR/lunaris/intents.sock, send one DispatchRequest,
+// $XDG_RUNTIME_DIR/arlen/intents.sock, send one DispatchRequest,
 // receive DispatchResponse or IntentError, and disconnect.
 //
 // Long-lived handler-registration goes through modulesd's
@@ -13,7 +13,7 @@
 
 syntax = "proto3";
 
-package lunaris.intents;
+package arlen.intents;
 
 // Wire-format envelope. Brokers and clients exchange one envelope
 // per direction per single-shot connection.
@@ -29,10 +29,10 @@ message IntentEnvelope {
 // `[intents] dispatch = true` permission scope.
 //
 // Phase 6 routes by `type` to a built-in handler:
-//   url   -> xdg-portal-lunaris OpenURI
-//   file  -> xdg-portal-lunaris OpenURI (file:// form)
+//   url   -> xdg-portal-arlen OpenURI
+//   file  -> xdg-portal-arlen OpenURI (file:// form)
 //   text  -> clipboard_history.write
-//   email -> xdg-portal-lunaris OpenURI (mailto:)
+//   email -> xdg-portal-arlen OpenURI (mailto:)
 //   project -> projects.activate (Focus Mode)
 //
 // Phase 7 will additionally consult modulesd-hosted

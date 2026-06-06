@@ -1,4 +1,4 @@
-/// Graph-scale benchmarks for the Lunaris knowledge daemon.
+/// Graph-scale benchmarks for the Arlen knowledge daemon.
 ///
 /// These benchmarks measure the performance of the two-layer write architecture
 /// (SQLite Write Store + Ladybug Query Store) at different data volumes.

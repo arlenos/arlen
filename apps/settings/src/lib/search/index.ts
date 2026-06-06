@@ -3,7 +3,7 @@
 /// The index is built once from `SETTINGS_REGISTRY` at app start and
 /// rebuilt whenever a new panel is registered (future: dynamic modules).
 /// The exported JSON file lives at
-///   `~/.local/share/lunaris/settings-index.json`
+///   `~/.local/share/arlen/settings-index.json`
 /// and is read by Waypointer at query time without having to start the
 /// Settings app.
 
@@ -98,7 +98,7 @@ function buildExportPayload(): SettingsIndex {
       keywords: s.keywords,
       panel: s.panel,
       section: s.section,
-      deepLink: `lunaris-settings://${s.panel}#${s.anchor}`,
+      deepLink: `arlen-settings://${s.panel}#${s.anchor}`,
       inlineAction: s.inlineAction
         ? {
             type: s.inlineAction.type,

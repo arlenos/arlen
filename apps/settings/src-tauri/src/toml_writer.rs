@@ -123,7 +123,7 @@ mod tests {
 
     fn temp_file(name: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
-        p.push(format!("lunaris-toml-writer-test-{name}.toml"));
+        p.push(format!("arlen-toml-writer-test-{name}.toml"));
         let _ = std::fs::remove_file(&p);
         p
     }

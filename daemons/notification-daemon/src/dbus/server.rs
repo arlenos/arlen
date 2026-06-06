@@ -315,8 +315,8 @@ impl NotificationServer {
     /// Return server identification.
     fn get_server_information(&self) -> (String, String, String, String) {
         (
-            "Lunaris".to_owned(),
-            "Lunaris OS".to_owned(),
+            "Arlen".to_owned(),
+            "Arlen OS".to_owned(),
             env!("CARGO_PKG_VERSION").to_owned(),
             "1.2".to_owned(),
         )
@@ -534,8 +534,8 @@ mod tests {
     fn test_server_info() {
         let (server, _rx) = NotificationServer::new();
         let (name, vendor, _version, spec) = server.get_server_information();
-        assert_eq!(name, "Lunaris");
-        assert_eq!(vendor, "Lunaris OS");
+        assert_eq!(name, "Arlen");
+        assert_eq!(vendor, "Arlen OS");
         assert_eq!(spec, "1.2");
     }
 }

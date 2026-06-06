@@ -1,6 +1,6 @@
-/// `lunaris:host/network` import implementation.
+/// `arlen:host/network` import implementation.
 ///
-/// Network access is the most-watched capability for Lunaris modules.
+/// Network access is the most-watched capability for Arlen modules.
 /// Foundation §07 mandates that modules cannot reach hosts outside
 /// their declared `network.allow` list and that denial returns a typed
 /// error rather than a panic. This module is the choke point.
@@ -17,7 +17,7 @@
 ///   * **Body size cap (10 MB) and total timeout (30 s).** Defends
 ///     against malicious or accidentally-pathological servers that
 ///     would otherwise flood RAM or wedge the daemon.
-///   * **User-Agent.** Set to `Lunaris-modulesd/<version> <module-id>`
+///   * **User-Agent.** Set to `Arlen-modulesd/<version> <module-id>`
 ///     so server-side logs can attribute requests and rate-limiters
 ///     have something to grip on.
 ///   * **Per-module concurrency cap.** A `Semaphore` of 4 concurrent
@@ -187,7 +187,7 @@ fn build_client(
         .redirect(policy)
         .timeout(TIMEOUT)
         .user_agent(format!(
-            "Lunaris-modulesd/{} {}",
+            "Arlen-modulesd/{} {}",
             env!("CARGO_PKG_VERSION"),
             module_version,
         ))
@@ -307,7 +307,7 @@ async fn perform(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lunaris_modules::{ModuleCapabilities, NetworkCapability};
+    use arlen_modules::{ModuleCapabilities, NetworkCapability};
 
     fn ctx_for(domains: &[&str]) -> Arc<CapabilityContext> {
         let mut caps = ModuleCapabilities::default();

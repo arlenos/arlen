@@ -1,6 +1,6 @@
 //! Input (keybindings, mouse, touchpad) commands.
 //!
-//! All three surfaces read and write `~/.config/lunaris/compositor.toml`.
+//! All three surfaces read and write `~/.config/arlen/compositor.toml`.
 //! The compositor hot-reloads the file via notify, so writes take effect
 //! without a restart.
 //!
@@ -33,7 +33,7 @@ fn compositor_toml_path() -> PathBuf {
         .unwrap_or_else(|_| {
             dirs::config_dir()
                 .unwrap_or_else(|| PathBuf::from("/tmp"))
-                .join("lunaris")
+                .join("arlen")
         });
     let _ = std::fs::create_dir_all(&dir);
     dir.join("compositor.toml")
@@ -621,14 +621,14 @@ pub fn keybindings_get_all() -> Result<Vec<KeybindingEntry>, String> {
     Ok(out)
 }
 
-/// Scan `~/.config/lunaris/compositor.d/keybindings.d/*.toml` and
+/// Scan `~/.config/arlen/compositor.d/keybindings.d/*.toml` and
 /// project each `"accelerator" = "action"` pair into a Settings
 /// keybinding row. Filename without the extension is used as the
 /// `module_id`, matching the convention `installd` writes to.
 fn scan_fragments() -> Vec<KeybindingEntry> {
     let dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris")
+        .join("arlen")
         .join("compositor.d")
         .join("keybindings.d");
     let Ok(read_dir) = std::fs::read_dir(&dir) else {
@@ -844,14 +844,14 @@ pub fn keybindings_reset_all_to_defaults() -> Result<(), String> {
 }
 
 /// Remove every module-shipped keybinding fragment in
-/// `~/.config/lunaris/compositor.d/keybindings.d/`. Useful as a
+/// `~/.config/arlen/compositor.d/keybindings.d/`. Useful as a
 /// panic button when a module has registered a problematic shortcut
 /// and the user cannot uninstall the module right away.
 #[tauri::command]
 pub fn keybindings_reset_module_fragments() -> Result<u32, String> {
     let dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris")
+        .join("arlen")
         .join("compositor.d")
         .join("keybindings.d");
     if !dir.exists() {
@@ -883,7 +883,7 @@ pub struct LiveConflict {
     pub existing_owner: String,
 }
 
-/// Ask `org.lunaris.InputManager1` for every dynamic registration
+/// Ask `org.arlen.InputManager1` for every dynamic registration
 /// that would collide with the given accelerator. Used by the
 /// Key-Capture modal so the user sees the full conflict picture
 /// (static catalogue + running apps) before committing.
@@ -895,7 +895,7 @@ pub struct LiveConflict {
 pub async fn keybindings_query_live_conflicts(
     binding: String,
 ) -> Result<Vec<LiveConflict>, String> {
-    use lunaris_input_client::{zbus, InputManagerClient};
+    use arlen_input_client::{zbus, InputManagerClient};
 
     let conn = match zbus::Connection::session().await {
         Ok(c) => c,
@@ -1407,7 +1407,7 @@ mod tests {
     // ── Disk-backed roundtrip tests ──────────────────────────────────
     //
     // These tests flip `LUNARIS_CONFIG_DIR` to a tempdir so the real
-    // `~/.config/lunaris/` is never touched. Because the env var is
+    // `~/.config/arlen/` is never touched. Because the env var is
     // process-global, concurrent runs would stomp on each other; the
     // `TEST_ENV_LOCK` mutex serialises just this family of tests so
     // the rest of the suite can still run in parallel. (Previously

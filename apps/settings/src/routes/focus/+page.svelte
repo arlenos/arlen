@@ -17,11 +17,11 @@
     FolderOpen as FolderOpenIcon,
     AlertTriangle,
   } from "lucide-svelte";
-  import { Page } from "@lunaris/ui-kit/components/ui/page";
-  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
-  import { Group } from "@lunaris/ui-kit/components/ui/group";
-  import { Row } from "@lunaris/ui-kit/components/ui/row";
-  import { Switch } from "@lunaris/ui-kit/components/ui/switch";
+  import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
+  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
+  import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { ValueSlider } from "$lib/components/ui/value-slider";
   import { AddRemoveList } from "$lib/components/ui/add-remove-list";
   import { DirectoryPicker } from "$lib/components/ui/directory-picker";

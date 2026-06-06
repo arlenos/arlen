@@ -1,8 +1,8 @@
 /// Toast renderer configuration store.
 ///
-/// Reads `~/.config/lunaris/shell.toml [toast]` via the `get_shell_config`
+/// Reads `~/.config/arlen/shell.toml [toast]` via the `get_shell_config`
 /// Tauri command and re-reads it whenever the backend emits
-/// `lunaris://shell-config-changed` (which fires on any external write
+/// `arlen://shell-config-changed` (which fires on any external write
 /// from the Settings app).
 
 import { writable } from "svelte/store";
@@ -60,7 +60,7 @@ export function initToastConfig(): () => void {
   load();
 
   const unlistenPromise: Promise<UnlistenFn> = listen(
-    "lunaris://shell-config-changed",
+    "arlen://shell-config-changed",
     () => {
       load();
     },

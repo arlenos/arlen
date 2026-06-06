@@ -2,21 +2,21 @@
 //!
 //! The watcher signals "something changed, re-resolve". Re-resolution
 //! (loading the bundled bytes + reading user-theme + customization
-//! files + computing the merged `LunarisTheme`) is the caller's
+//! files + computing the merged `ArlenTheme`) is the caller's
 //! responsibility — that's where the bundled bytes live (per-crate
 //! `include_str!`) and where the `appearance.toml [theme].active`
 //! lookup happens.
 //!
 //! What the watcher monitors:
 //!
-//! - `~/.config/lunaris/theme.toml` (user customization overlay)
-//! - `~/.config/lunaris/appearance.toml` (active theme, intensity)
+//! - `~/.config/arlen/theme.toml` (user customization overlay)
+//! - `~/.config/arlen/appearance.toml` (active theme, intensity)
 //!
 //! On any change to either file, the callback fires. Atomic editor
 //! renames are handled by watching the parent directory and
 //! filtering on filename.
 
-use crate::LunarisTheme;
+use crate::ArlenTheme;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -35,7 +35,7 @@ impl ThemeWatcher {
     where
         F: Fn() + Send + 'static,
     {
-        let custom = LunarisTheme::user_customization_path();
+        let custom = ArlenTheme::user_customization_path();
         let appearance = appearance_path();
         Self::start_at(vec![custom, appearance], on_change)
     }
@@ -70,7 +70,7 @@ impl ThemeWatcher {
         })?;
 
         // Watch each parent directory to catch atomic editor renames.
-        // Multiple paths may share a parent (`~/.config/lunaris/`),
+        // Multiple paths may share a parent (`~/.config/arlen/`),
         // dedup so we don't double-watch.
         let mut watched_parents: Vec<&Path> = Vec::new();
         for p in paths.iter() {
@@ -100,6 +100,6 @@ impl ThemeWatcher {
 fn appearance_path() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris")
+        .join("arlen")
         .join("appearance.toml")
 }

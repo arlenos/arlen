@@ -145,7 +145,7 @@ pub fn show(app: &AppHandle) {
             }
             log::info!("waypointer::show: gtk layer-shell setup took {:?}", t0.elapsed());
         });
-        let _ = app.emit("lunaris://waypointer-show", ());
+        let _ = app.emit("arlen://waypointer-show", ());
         log::info!("waypointer::show: event emitted at {:?}", t0.elapsed());
 
         // Focus the input immediately -- no delay. The DOM element persists
@@ -211,7 +211,7 @@ pub fn hide(app: &AppHandle) {
             }
         });
         let _ = w.hide();
-        let _ = app.emit("lunaris://waypointer-hide", ());
+        let _ = app.emit("arlen://waypointer-hide", ());
         log::info!("waypointer: hidden");
     }
 }

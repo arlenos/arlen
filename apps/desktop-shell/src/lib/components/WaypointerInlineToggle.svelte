@@ -2,7 +2,7 @@
   /// Compact inline toggle for Waypointer settings results.
   /// Uses the unified Switch component with size="sm".
 
-  import Switch from "@lunaris/ui-kit/components/ui/switch/switch.svelte";
+  import Switch from "@arlen/ui-kit/components/ui/switch/switch.svelte";
 
   let {
     checked,

@@ -26,7 +26,7 @@ pub struct LayoutState {
 /// Get the layout config path.
 fn config_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-    PathBuf::from(home).join(".config/lunaris/compositor.toml")
+    PathBuf::from(home).join(".config/arlen/compositor.toml")
 }
 
 /// Cached layout section from compositor.toml. Invalidated by TTL (5s)

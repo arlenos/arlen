@@ -1,7 +1,7 @@
 {
-  "name": "@lunaris/tauri-plugin-menu",
+  "name": "@arlen/tauri-plugin-menu",
   "version": "0.1.0",
-  "description": "Tauri plugin for the Lunaris titlebar protocol",
+  "description": "Tauri plugin for the Arlen titlebar protocol",
   "license": "GPL-3.0-only",
   "main": "index.ts",
   "types": "index.ts",

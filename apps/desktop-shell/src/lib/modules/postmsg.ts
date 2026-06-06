@@ -1,6 +1,6 @@
 /// postMessage protocol used between the desktop-shell and a Tier 2
 /// module iframe. Mirrors `modulesd-proto::HostCall` on the Rust side
-/// and `@lunaris/module-sdk/postmsg.ts` on the module-author side.
+/// and `@arlen/module-sdk/postmsg.ts` on the module-author side.
 ///
 /// The shell hosts the iframe, the daemon owns policy. Every host
 /// call goes shell → modulesd over the Unix socket and the typed

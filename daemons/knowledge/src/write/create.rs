@@ -342,7 +342,7 @@ mod tests {
     /// A token that grants exactly the File -> Project FILE_PART_OF relation.
     fn relation_token() -> CapabilityToken {
         CapabilityToken::new(
-            "org.lunaris.agent".into(),
+            "org.arlen.agent".into(),
             1234,
             vec![],
             vec![],
@@ -495,7 +495,7 @@ default = 1.0
         let (reg, _) = setup();
         // A token with no relation scope cannot create the relation.
         let token =
-            CapabilityToken::new("org.lunaris.agent".into(), 1, vec![], vec![], vec![], InstanceScope::All);
+            CapabilityToken::new("org.arlen.agent".into(), 1, vec![], vec![], vec![], InstanceScope::All);
         assert!(matches!(
             create_relation(&reg, "system.File", "f1", "system.Project", "p1", "FILE_PART_OF", &token),
             Err(CreateError::RelationDenied { .. })
@@ -526,7 +526,7 @@ default = 1.0
         let (reg, _) = setup();
         for &(from, to, rel) in BUILTIN_RELATIONS {
             let token = CapabilityToken::new(
-                "org.lunaris.agent".into(),
+                "org.arlen.agent".into(),
                 1,
                 vec![],
                 vec![],
@@ -551,7 +551,7 @@ default = 1.0
         // The token grants an exact scope, but the triple is not a real
         // (built-in) relation, so it must not create an undeclared edge.
         let token = CapabilityToken::new(
-            "org.lunaris.agent".into(),
+            "org.arlen.agent".into(),
             1,
             vec![],
             vec![],
@@ -575,7 +575,7 @@ default = 1.0
         // but only InstanceScope::Own: refused, since neither endpoint anchors
         // the relation in the caller's namespace.
         let token = CapabilityToken::new(
-            "org.lunaris.agent".into(),
+            "org.arlen.agent".into(),
             1,
             vec![],
             vec![],
@@ -641,14 +641,14 @@ default = 1.0
         // denied even with a valid op_id, so a retract cannot reach an edge the
         // caller was never allowed to write.
         let token =
-            CapabilityToken::new("org.lunaris.agent".into(), 1, vec![], vec![], vec![], InstanceScope::All);
+            CapabilityToken::new("org.arlen.agent".into(), 1, vec![], vec![], vec![], InstanceScope::All);
         assert!(matches!(
             retract_relation(&reg, "system.File", "f1", "system.Project", "p1", "FILE_PART_OF", "op-1", &token),
             Err(CreateError::RelationDenied { .. })
         ));
         // And a declared scope for a non-built-in relation is still refused.
         let token = CapabilityToken::new(
-            "org.lunaris.agent".into(),
+            "org.arlen.agent".into(),
             1,
             vec![],
             vec![],

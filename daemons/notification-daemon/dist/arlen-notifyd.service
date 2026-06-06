@@ -1,11 +1,11 @@
 [Unit]
-Description=Lunaris Notification Daemon
+Description=Arlen Notification Daemon
 Documentation=https://github.com/lunaris-sys/notification-daemon
 
 [Service]
 Type=dbus
 BusName=org.freedesktop.Notifications
-ExecStart=%h/.local/lib/lunaris/libexec/lunaris-notifyd
+ExecStart=%h/.local/lib/arlen/libexec/arlen-notifyd
 
 # Restart on crash.
 Restart=on-failure

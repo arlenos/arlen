@@ -1,6 +1,6 @@
 /// Clipboard-history results from the `core.clipboard` plugin.
 ///
-/// Privacy design: opt-in via `~/.config/lunaris/shell.toml`
+/// Privacy design: opt-in via `~/.config/arlen/shell.toml`
 /// `[clipboard] enabled = true`. The backend refuses to even spawn
 /// the `wl-paste` watcher until that flag is set, so this store stays
 /// empty and the Waypointer section is hidden by default.
@@ -104,7 +104,7 @@ export async function copyClipboardEntry(result: ClipboardResult): Promise<void>
 }
 
 /// Remove a single entry from the ring buffer. Backend refreshes
-/// affected consumers via `lunaris://clipboard-changed`.
+/// affected consumers via `arlen://clipboard-changed`.
 export async function deleteClipboardEntry(result: ClipboardResult): Promise<void> {
     const id = entryIdOf(result);
     if (id === null) return;

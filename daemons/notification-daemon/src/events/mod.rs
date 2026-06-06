@@ -2,7 +2,7 @@
 ///
 /// The in-process `SystemEvent` + `ChannelEventSource` types remain
 /// available for tests and early integration. The production path is
-/// the `consumer` submodule, which talks to `/run/lunaris/event-bus-consumer.sock`
+/// the `consumer` submodule, which talks to `/run/arlen/event-bus-consumer.sock`
 /// directly and drives the `NotificationManager` state.
 
 pub mod consumer;

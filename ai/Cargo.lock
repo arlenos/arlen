@@ -33,6 +33,155 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
+name = "arlen-ai-agent"
+version = "0.1.0"
+dependencies = [
+ "arlen-ai-classifier",
+ "arlen-ai-core",
+ "arlen-ai-providers",
+ "arlen-ai-sandbox",
+ "async-trait",
+ "audit-proto",
+ "futures",
+ "os-sdk",
+ "prost",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+ "zbus",
+]
+
+[[package]]
+name = "arlen-ai-classifier"
+version = "0.1.0"
+dependencies = [
+ "ort",
+ "thiserror 2.0.18",
+ "tokenizers",
+ "tracing",
+]
+
+[[package]]
+name = "arlen-ai-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "audit-proto",
+ "hex",
+ "rand 0.8.6",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "arlen-ai-daemon"
+version = "0.1.0"
+dependencies = [
+ "arlen-ai-core",
+ "arlen-ai-explanation",
+ "arlen-ai-providers",
+ "arlen-permissions",
+ "async-trait",
+ "audit-proto",
+ "hex",
+ "os-sdk",
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "zbus",
+]
+
+[[package]]
+name = "arlen-ai-explanation"
+version = "0.1.0"
+dependencies = [
+ "arlen-ai-core",
+ "async-trait",
+ "os-sdk",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "arlen-ai-providers"
+version = "0.1.0"
+dependencies = [
+ "arlen-ai-core",
+ "async-trait",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "wiremock",
+ "zbus",
+]
+
+[[package]]
+name = "arlen-ai-proxy"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "audit-proto",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "wiremock",
+ "zbus",
+]
+
+[[package]]
+name = "arlen-ai-sandbox"
+version = "0.1.0"
+dependencies = [
+ "landlock",
+ "libc",
+ "seccompiler",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
+name = "arlen-permissions"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "libc",
+ "notify",
+ "serde",
+ "thiserror 2.0.18",
+ "toml",
+]
+
+[[package]]
 name = "assert-json-diff"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1270,155 +1419,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
-name = "lunaris-ai-agent"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "audit-proto",
- "futures",
- "lunaris-ai-classifier",
- "lunaris-ai-core",
- "lunaris-ai-providers",
- "lunaris-ai-sandbox",
- "os-sdk",
- "prost",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "thiserror 2.0.18",
- "tokio",
- "toml",
- "tracing",
- "tracing-subscriber",
- "zbus",
-]
-
-[[package]]
-name = "lunaris-ai-classifier"
-version = "0.1.0"
-dependencies = [
- "ort",
- "thiserror 2.0.18",
- "tokenizers",
- "tracing",
-]
-
-[[package]]
-name = "lunaris-ai-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "audit-proto",
- "hex",
- "rand 0.8.6",
- "rmcp",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "toml",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "lunaris-ai-daemon"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "audit-proto",
- "hex",
- "lunaris-ai-core",
- "lunaris-ai-explanation",
- "lunaris-ai-providers",
- "lunaris-permissions",
- "os-sdk",
- "rand 0.8.6",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "zbus",
-]
-
-[[package]]
-name = "lunaris-ai-explanation"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "lunaris-ai-core",
- "os-sdk",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "lunaris-ai-providers"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "lunaris-ai-core",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "wiremock",
- "zbus",
-]
-
-[[package]]
-name = "lunaris-ai-proxy"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "audit-proto",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "url",
- "wiremock",
- "zbus",
-]
-
-[[package]]
-name = "lunaris-ai-sandbox"
-version = "0.1.0"
-dependencies = [
- "landlock",
- "libc",
- "seccompiler",
- "thiserror 2.0.18",
- "tracing",
-]
-
-[[package]]
-name = "lunaris-permissions"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "libc",
- "notify",
- "serde",
- "thiserror 2.0.18",
- "toml",
-]
-
-[[package]]
 name = "macro_rules_attribute"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1764,9 +1764,9 @@ dependencies = [
 name = "os-sdk"
 version = "0.1.0"
 dependencies = [
+ "arlen-permissions",
  "dirs",
  "libc",
- "lunaris-permissions",
  "notify",
  "prost",
  "prost-build",

@@ -3,11 +3,11 @@
   /// Rendered in the SiteHeader when the app runs without native decorations.
   ///
   /// Minimize is hidden when the compositor reports the window as tiled --
-  /// minimizing a tiled surface breaks the layout in Lunaris' tiling WM.
+  /// minimizing a tiled surface breaks the layout in Arlen' tiling WM.
 
   import { Minus, Square, X } from "lucide-svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { windowMode } from "@lunaris/tauri-plugin-menu";
+  import { windowMode } from "@arlen/tauri-plugin-menu";
 
   async function minimize() {
     await getCurrentWindow().minimize();

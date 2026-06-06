@@ -1,8 +1,8 @@
 # ui-kit
 
-The Lunaris component library. Built with Tauri, SvelteKit, Tailwind v4, and shadcn-svelte. All first-party Lunaris apps import from here to get consistent UI, theming, and window decorations.
+The Arlen component library. Built with Tauri, SvelteKit, Tailwind v4, and shadcn-svelte. All first-party Arlen apps import from here to get consistent UI, theming, and window decorations.
 
-This is not a standalone app. It is the shared foundation that desktop-shell, Waypointer, Settings, and other Lunaris apps build on top of.
+This is not a standalone app. It is the shared foundation that desktop-shell, Waypointer, Settings, and other Arlen apps build on top of.
 
 ## What's here
 
@@ -18,12 +18,12 @@ ui-kit/
 │   └── app.css               surface token definitions + Tailwind setup
 └── src-tauri/
     └── src/
-        └── theme.rs          reads ~/.config/lunaris/theme.toml
+        └── theme.rs          reads ~/.config/arlen/theme.toml
 ```
 
 ## Surface Token System
 
-Lunaris uses a two-level token system. The first level is defined in `~/.config/lunaris/theme.toml` and loaded at runtime. The second level maps those tokens to shadcn-svelte CSS variables so Shadcn components automatically use Lunaris colors.
+Arlen uses a two-level token system. The first level is defined in `~/.config/arlen/theme.toml` and loaded at runtime. The second level maps those tokens to shadcn-svelte CSS variables so Shadcn components automatically use Arlen colors.
 
 **theme.toml format:**
 
@@ -70,7 +70,7 @@ Add ui-kit as a local npm dependency:
 ```json
 {
   "dependencies": {
-    "@lunaris/ui-kit": "file:../ui-kit"
+    "@arlen/ui-kit": "file:../ui-kit"
   }
 }
 ```
@@ -79,8 +79,8 @@ Then import components and the theme loader:
 
 ```svelte
 <script>
-  import { Button } from "@lunaris/ui-kit/components/ui/button";
-  import { loadTheme } from "@lunaris/ui-kit/theme";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { loadTheme } from "@arlen/ui-kit/theme";
   import { onMount } from "svelte";
 
   onMount(() => loadTheme());
@@ -113,4 +113,4 @@ Components are copied into `src/lib/components/ui/` and can be modified freely. 
 
 ## Part of
 
-[Lunaris](https://github.com/lunaris-sys): a Linux desktop OS built around a system-wide knowledge graph.
+[Arlen](https://github.com/lunaris-sys): a Linux desktop OS built around a system-wide knowledge graph.

@@ -1,11 +1,11 @@
 [package]
-name = "lunaris-notification-daemon"
+name = "arlen-notification-daemon"
 version = "0.1.0"
 edition = "2021"
-description = "Notification daemon for Lunaris OS"
+description = "Notification daemon for Arlen OS"
 
 [[bin]]
-name = "lunaris-notifyd"
+name = "arlen-notifyd"
 path = "src/main.rs"
 
 [dependencies]

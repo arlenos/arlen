@@ -17,7 +17,7 @@
 /// One process currently active, as the event stream reports it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProcessActivity {
-    /// The process or application name (e.g. `dnf`, `org.lunaris.files`).
+    /// The process or application name (e.g. `dnf`, `org.arlen.files`).
     pub name: String,
     /// A short, human-readable note on what it is doing (e.g.
     /// `started ~2 min ago`, `indexing`), derived from recent events.

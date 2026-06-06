@@ -13,7 +13,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { togglePopover, hoverPopover, activePopover } from "$lib/stores/activePopover.js";
-  import { Applet } from "@lunaris/ui-kit/components/topbar";
+  import { Applet } from "@arlen/ui-kit/components/topbar";
   import { VolumeX, Volume, Volume1, Volume2, Headphones, Speaker, Monitor } from "lucide-svelte";
 
   interface AudioStatus {

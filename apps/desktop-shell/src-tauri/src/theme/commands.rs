@@ -2,7 +2,7 @@
 ///
 /// Provides `ThemeState` (managed Tauri state) and commands for reading,
 /// switching, and customizing themes. All commands that change the active
-/// appearance emit a `lunaris://theme-v2-changed` event with the resolved
+/// appearance emit a `arlen://theme-v2-changed` event with the resolved
 /// `CssVariables` so the frontend can update in real time.
 
 use std::path::{Path, PathBuf};
@@ -78,7 +78,7 @@ impl ThemeState {
     /// Resolve and emit the theme-changed event.
     fn resolve_and_emit(&self, app: &AppHandle) -> Result<CssVariables, ThemeError> {
         let css = self.resolve()?;
-        let _ = app.emit("lunaris://theme-v2-changed", &css);
+        let _ = app.emit("arlen://theme-v2-changed", &css);
         Ok(css)
     }
 
@@ -109,7 +109,7 @@ impl ThemeState {
 // Live-reload watcher
 // ---------------------------------------------------------------------------
 
-/// Watch `~/.config/lunaris/appearance.toml` for external writes (e.g. from
+/// Watch `~/.config/arlen/appearance.toml` for external writes (e.g. from
 /// the Settings app) and re-emit `theme-v2-changed` so the shell UI picks
 /// up the new accent / radius / fonts without needing a restart.
 ///

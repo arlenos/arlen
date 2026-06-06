@@ -1,9 +1,9 @@
-name: Publish @lunaris/module-sdk
+name: Publish @arlen/module-sdk
 
 # Triggered by tags of the form `module-sdk-v<X.Y.Z>`. The tag's version
 # must match `module-sdk/package.json` `version` exactly; the workflow
 # fails otherwise. Token: NPM_TOKEN must be configured as a repo secret
-# with publish permission to the @lunaris npm org.
+# with publish permission to the @arlen npm org.
 
 on:
   push:
@@ -39,7 +39,7 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org/'
-          scope: '@lunaris'
+          scope: '@arlen'
 
       - name: Verify tag matches package.json version
         if: github.event_name == 'push'

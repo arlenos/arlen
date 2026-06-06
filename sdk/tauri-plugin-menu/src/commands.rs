@@ -20,7 +20,7 @@ fn flush(shared: &SharedConnection) {
 /// Check that the titlebar object is bound.
 fn with_titlebar<F>(shared: &SharedConnection, f: F) -> Result<(), String>
 where
-    F: FnOnce(&crate::protocol::lunaris_titlebar_v1::LunarisTitlebarV1),
+    F: FnOnce(&crate::protocol::arlen_titlebar_v1::ArlenTitlebarV1),
 {
     let lock = shared.lock().unwrap();
     let tb = lock
@@ -56,10 +56,10 @@ pub async fn set_center_content(
 ) -> Result<(), String> {
     with_titlebar(&shared, |tb| {
         let mode = match content {
-            1 => crate::protocol::lunaris_titlebar_v1::CenterContent::Tabs,
-            2 => crate::protocol::lunaris_titlebar_v1::CenterContent::Search,
-            3 => crate::protocol::lunaris_titlebar_v1::CenterContent::Segmented,
-            _ => crate::protocol::lunaris_titlebar_v1::CenterContent::None,
+            1 => crate::protocol::arlen_titlebar_v1::CenterContent::Tabs,
+            2 => crate::protocol::arlen_titlebar_v1::CenterContent::Search,
+            3 => crate::protocol::arlen_titlebar_v1::CenterContent::Segmented,
+            _ => crate::protocol::arlen_titlebar_v1::CenterContent::None,
         };
         tb.set_center_content(mode);
     })
@@ -80,9 +80,9 @@ pub async fn add_tab(
 ) -> Result<(), String> {
     with_titlebar(&shared, |tb| {
         let status = match tab.status.unwrap_or(0) {
-            1 => crate::protocol::lunaris_titlebar_v1::TabStatus::Modified,
-            2 => crate::protocol::lunaris_titlebar_v1::TabStatus::Pinned,
-            _ => crate::protocol::lunaris_titlebar_v1::TabStatus::Normal,
+            1 => crate::protocol::arlen_titlebar_v1::TabStatus::Modified,
+            2 => crate::protocol::arlen_titlebar_v1::TabStatus::Pinned,
+            _ => crate::protocol::arlen_titlebar_v1::TabStatus::Normal,
         };
         tb.add_tab(tab.id, tab.title, tab.icon, status);
     })
@@ -105,9 +105,9 @@ pub async fn update_tab(
 ) -> Result<(), String> {
     with_titlebar(&shared, |tb| {
         let s = match status.unwrap_or(0) {
-            1 => crate::protocol::lunaris_titlebar_v1::TabStatus::Modified,
-            2 => crate::protocol::lunaris_titlebar_v1::TabStatus::Pinned,
-            _ => crate::protocol::lunaris_titlebar_v1::TabStatus::Normal,
+            1 => crate::protocol::arlen_titlebar_v1::TabStatus::Modified,
+            2 => crate::protocol::arlen_titlebar_v1::TabStatus::Pinned,
+            _ => crate::protocol::arlen_titlebar_v1::TabStatus::Normal,
         };
         tb.update_tab(id, title, s);
     })
@@ -139,8 +139,8 @@ pub async fn add_button(
 ) -> Result<(), String> {
     with_titlebar(&shared, |tb| {
         let pos = match position.unwrap_or(1) {
-            0 => crate::protocol::lunaris_titlebar_v1::ButtonPosition::Left,
-            _ => crate::protocol::lunaris_titlebar_v1::ButtonPosition::Right,
+            0 => crate::protocol::arlen_titlebar_v1::ButtonPosition::Left,
+            _ => crate::protocol::arlen_titlebar_v1::ButtonPosition::Right,
         };
         tb.add_button(id, icon, tooltip, pos);
     })

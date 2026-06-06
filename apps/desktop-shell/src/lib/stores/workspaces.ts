@@ -38,7 +38,7 @@ export const activeWorkspace = derived(primaryWorkspaces, ($ws) =>
     $ws.find((w) => w.active) ?? null
 );
 
-/// Registers the Tauri event listener for `lunaris://workspace-list`.
+/// Registers the Tauri event listener for `arlen://workspace-list`.
 /// Must be called once from +layout.svelte onMount.
 /// Counter incremented on every workspace-list event, exposed so components
 /// can verify the store is updating.
@@ -53,7 +53,7 @@ export function initWorkspaceListeners(): () => void {
 
     // Prime the store synchronously with the backend's cached
     // snapshot. Needed because the compositor only emits
-    // `lunaris://workspace-list` on state changes; after a Vite
+    // `arlen://workspace-list` on state changes; after a Vite
     // HMR full-page reload the Svelte store is reset to `[]` and
     // no event ever re-populates it, which left the
     // WorkspaceIndicator hidden (`{#if length > 0}` guard) until
@@ -70,7 +70,7 @@ export function initWorkspaceListeners(): () => void {
         .catch((e) => console.warn("get_workspaces failed", e));
 
     const pending: Array<Promise<UnlistenFn>> = [
-        listen<WorkspaceInfo[]>("lunaris://workspace-list", ({ payload }) => {
+        listen<WorkspaceInfo[]>("arlen://workspace-list", ({ payload }) => {
             workspaces.set(payload);
             wsUpdateCount.update((n) => n + 1);
         }),

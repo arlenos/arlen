@@ -28,7 +28,7 @@
     selectionSnapshot,
     pruneSelection,
   } from "$lib/stores/overlaySelection.js";
-  import * as ContextMenu from "@lunaris/ui-kit/components/ui/context-menu/index.js";
+  import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu/index.js";
   import { scale } from "svelte/transition";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -1337,7 +1337,7 @@
     // Listen returns its unsubscribe handle async; we stash it so the
     // unmount path can still call it cleanly.
     let unlistenWsOverlay: UnlistenFn | null = null;
-    listen("lunaris://workspace-overlay-open", onWorkspaceOverlayOpenEvent)
+    listen("arlen://workspace-overlay-open", onWorkspaceOverlayOpenEvent)
       .then((fn) => {
         unlistenWsOverlay = fn;
       })

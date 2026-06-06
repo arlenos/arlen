@@ -140,7 +140,7 @@ impl JobQueue {
 async fn emit_progress(conn: &Connection, job_id: &str, percent: u8, status: &str) {
     let iface_ref = conn
         .object_server()
-        .interface::<_, crate::dbus::InstallDaemon>("/org/lunaris/InstallDaemon1")
+        .interface::<_, crate::dbus::InstallDaemon>("/org/arlen/InstallDaemon1")
         .await;
     if let Ok(iface) = iface_ref {
         let ctx = iface.signal_emitter();
@@ -158,7 +158,7 @@ async fn emit_progress(conn: &Connection, job_id: &str, percent: u8, status: &st
 async fn emit_completed(conn: &Connection, job_id: &str, success: bool, error: &str) {
     let iface_ref = conn
         .object_server()
-        .interface::<_, crate::dbus::InstallDaemon>("/org/lunaris/InstallDaemon1")
+        .interface::<_, crate::dbus::InstallDaemon>("/org/arlen/InstallDaemon1")
         .await;
     if let Ok(iface) = iface_ref {
         let ctx = iface.signal_emitter();
@@ -340,17 +340,17 @@ async fn run_install_flatpak(
         install::InstallError::FlatpakFailed(e.to_string())
     })?;
 
-    // 2. Create default Lunaris permission profile.
+    // 2. Create default Arlen permission profile.
     queue.update_progress(job_id, 70, "creating permission profile");
     emit_progress(conn, job_id, 70, "creating permission profile").await;
     let profile = flatpak::default_permission_profile(app_id);
     let profile_dir = dirs::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("~/.local/share"))
-        .join("lunaris/flatpak-profiles");
+        .join("arlen/flatpak-profiles");
     let _ = std::fs::create_dir_all(&profile_dir);
     let profile_path = profile_dir.join(format!("{app_id}.toml"));
     std::fs::write(&profile_path, &profile).map_err(install::InstallError::Io)?;
-    tracing::info!("wrote Lunaris permission profile for flatpak {app_id}");
+    tracing::info!("wrote Arlen permission profile for flatpak {app_id}");
 
     Ok(())
 }
@@ -371,12 +371,12 @@ async fn run_uninstall_flatpak(
         install::InstallError::FlatpakFailed(e.to_string())
     })?;
 
-    // 2. Remove Lunaris permission profile.
+    // 2. Remove Arlen permission profile.
     queue.update_progress(job_id, 70, "removing permission profile");
     emit_progress(conn, job_id, 70, "removing permission profile").await;
     let profile_path = dirs::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("~/.local/share"))
-        .join(format!("lunaris/flatpak-profiles/{app_id}.toml"));
+        .join(format!("arlen/flatpak-profiles/{app_id}.toml"));
     if profile_path.exists() {
         let _ = std::fs::remove_file(&profile_path);
     }

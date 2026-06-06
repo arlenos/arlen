@@ -1,7 +1,7 @@
 <script lang="ts">
   /// Root layout: the AI harness shell. Sidebar (Conversation / Agent)
-  /// + a CSD titlebar, both on the `@lunaris/ui-kit` canon. The window
-  /// runs with `decorations: false` (Lunaris CSD), so the titlebar
+  /// + a CSD titlebar, both on the `@arlen/ui-kit` canon. The window
+  /// runs with `decorations: false` (Arlen CSD), so the titlebar
   /// carries the drag region and window controls.
   import "../app.css";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -9,8 +9,8 @@
     SidebarProvider,
     SidebarInset,
     SidebarTrigger,
-  } from "@lunaris/ui-kit/components/ui/sidebar";
-  import { Separator } from "@lunaris/ui-kit/components/ui/separator";
+  } from "@arlen/ui-kit/components/ui/sidebar";
+  import { Separator } from "@arlen/ui-kit/components/ui/separator";
   import HarnessSidebar from "$lib/components/HarnessSidebar.svelte";
   import WindowControls from "$lib/components/WindowControls.svelte";
 

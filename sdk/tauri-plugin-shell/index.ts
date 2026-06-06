@@ -1,8 +1,8 @@
 /**
- * @lunaris/tauri-plugin-shell
+ * @arlen/tauri-plugin-shell
  *
- * TypeScript surface for the Lunaris OS shell.* APIs. The Rust plugin
- * registers `plugin:lunaris-shell|*` commands; this module provides a
+ * TypeScript surface for the Arlen OS shell.* APIs. The Rust plugin
+ * registers `plugin:arlen-shell|*` commands; this module provides a
  * typed wrapper that mirrors foundation §6 (presence, timeline,
  * spatial). `shell.menu` is **not** here — it lives in desktop-shell
  * because menus are global state owned by the shell.
@@ -10,7 +10,7 @@
  * # Usage
  *
  * ```typescript
- * import { shell } from "@lunaris/tauri-plugin-shell";
+ * import { shell } from "@arlen/tauri-plugin-shell";
  *
  * await shell.presence.set({ activity: "editing", subject: "report.md" });
  * await shell.timeline.record({
@@ -64,10 +64,10 @@ export interface SpatialHint {
 
 // ── Plugin commands ───────────────────────────────────────────────────
 //
-// The plugin registers commands under the `lunaris-shell` namespace.
-// Tauri exposes them as `plugin:lunaris-shell|<command>`.
+// The plugin registers commands under the `arlen-shell` namespace.
+// Tauri exposes them as `plugin:arlen-shell|<command>`.
 
-const PLUGIN = "plugin:lunaris-shell";
+const PLUGIN = "plugin:arlen-shell";
 
 export const presence = {
   async set(params: PresenceParams): Promise<void> {
@@ -187,7 +187,7 @@ export const annotations = {
       `${PLUGIN}|annotation_subscribe_prepare`,
       { params },
     );
-    const eventName = `lunaris://annotation-changed/${subscriptionId}`;
+    const eventName = `arlen://annotation-changed/${subscriptionId}`;
     const unlisten: UnlistenFn = await listen<AnnotationChange>(
       eventName,
       (e) => handler(e.payload),
@@ -225,7 +225,7 @@ export interface ProgressState {
 }
 
 /**
- * Payload of the per-window `lunaris://app-action/{action}`
+ * Payload of the per-window `arlen://app-action/{action}`
  * Tauri event the shell dispatches when the user clicks a
  * Quick Action or Breadcrumb segment in the top bar.
  */
@@ -272,7 +272,7 @@ export const toolbar = {
   },
   /**
    * Subscribe to action dispatches from the shell. The shell
-   * fires `lunaris://app-action/{action}` Tauri events scoped
+   * fires `arlen://app-action/{action}` Tauri events scoped
    * to this webview when the user clicks a Quick Action or
    * Breadcrumb segment.
    *
@@ -291,7 +291,7 @@ export const toolbar = {
     // support wildcards in `listen`, so we use a single shared
     // event name and let the handler discriminate.
     const unlisten: UnlistenFn = await listen<AppActionEvent>(
-      "lunaris://app-action",
+      "arlen://app-action",
       (e) => handler(e.payload),
     );
     return () => unlisten();
@@ -346,7 +346,7 @@ export const shortcuts = {
   },
   // onAction is provided by `toolbar.onAction` — the same
   // listener handles both toolbar Quick-Action / Breadcrumb
-  // clicks and shortcut clicks (uniform `lunaris://app-action`
+  // clicks and shortcut clicks (uniform `arlen://app-action`
   // event on the receive side).
 };
 

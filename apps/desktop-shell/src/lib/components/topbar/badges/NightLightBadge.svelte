@@ -3,8 +3,8 @@
   ///
   /// Visible while the warm-tint compositor effect is active. Reads
   /// the shell-config `night_light.enabled` flag, mirrors the
-  /// `lunaris://shell-config-changed` event for live updates.
-  import { StatusBadge } from "@lunaris/ui-kit/components/topbar";
+  /// `arlen://shell-config-changed` event for live updates.
+  import { StatusBadge } from "@arlen/ui-kit/components/topbar";
   import { Sunset } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -19,7 +19,7 @@
   onMount(() => {
     refresh();
     let stop: UnlistenFn | null = null;
-    listen("lunaris://shell-config-changed", refresh).then((u) => (stop = u));
+    listen("arlen://shell-config-changed", refresh).then((u) => (stop = u));
     return () => stop?.();
   });
 

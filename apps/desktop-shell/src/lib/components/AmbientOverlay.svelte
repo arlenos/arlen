@@ -10,7 +10,7 @@
 <script lang="ts">
   import { focusedAmbient } from "$lib/stores/appStateStores";
 
-  // Ambient is globally disable-able via `~/.config/lunaris/
+  // Ambient is globally disable-able via `~/.config/arlen/
   // shell.toml [ambient] enabled = false`. The shell config
   // store would expose this; for Phase 1 we read from a
   // simple Tauri command on mount and skip render when off.

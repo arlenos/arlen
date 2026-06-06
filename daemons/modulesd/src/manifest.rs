@@ -1,12 +1,12 @@
 /// Module discovery and tier classification.
 ///
 /// Reads `manifest.toml` files from the system and user module
-/// directories using `lunaris-modules`, then classifies each module by
+/// directories using `arlen-modules`, then classifies each module by
 /// tier so the runtime knows which sandbox to apply.
 
 use std::path::{Path, PathBuf};
 
-use lunaris_modules::{load_manifest, ModuleManifest, ModuleType};
+use arlen_modules::{load_manifest, ModuleManifest, ModuleType};
 
 use crate::error::{DaemonError, Result};
 
@@ -46,7 +46,7 @@ impl ModuleRecord {
 
 /// System search path for first-party modules installed by the OS.
 pub fn system_modules_dir() -> PathBuf {
-    PathBuf::from("/usr/share/lunaris/modules")
+    PathBuf::from("/usr/share/arlen/modules")
 }
 
 /// User search path; matches `installd` write location.
@@ -56,7 +56,7 @@ pub fn user_modules_dir() -> PathBuf {
     }
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris/modules")
+        .join("arlen/modules")
 }
 
 /// Walk both module directories and load every valid manifest. Invalid

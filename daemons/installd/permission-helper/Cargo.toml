@@ -1,11 +1,11 @@
 [package]
-name = "lunaris-permission-helper"
+name = "arlen-permission-helper"
 version = "0.1.0"
 edition = "2021"
-description = "Root D-Bus service for writing Lunaris permission profiles"
+description = "Root D-Bus service for writing Arlen permission profiles"
 
 [[bin]]
-name = "lunaris-permission-helper"
+name = "arlen-permission-helper"
 path = "src/main.rs"
 
 [dependencies]

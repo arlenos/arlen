@@ -1,7 +1,7 @@
 //! Per-call audit emission.
 //!
 //! Every outbound provider call the proxy makes is recorded in the
-//! system audit ledger written by `lunaris-auditd` (foundation
+//! system audit ledger written by `arlen-auditd` (foundation
 //! §8.4.7). The service depends on the shared [`audit_proto::AuditSink`]
 //! trait — the same one the AI daemon uses, so the two components
 //! share one trust level — and the daemon binary wires
@@ -75,7 +75,7 @@ impl AuditRecord {
     /// name when the call was rejected before the host was resolved.
     /// The HTTP status, when known, is folded into the coarse
     /// `outcome` label. The capability token is deliberately dropped:
-    /// `lunaris-auditd` attributes every entry from the connection's
+    /// `arlen-auditd` attributes every entry from the connection's
     /// kernel-attested peer credentials, never from a request field.
     pub fn to_ingest_request(&self) -> audit_proto::IngestRequest {
         let outcome = match &self.outcome {

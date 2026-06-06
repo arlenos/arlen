@@ -2,11 +2,11 @@
 ///
 /// Two files cooperate:
 ///
-/// 1. `~/.config/lunaris/compositor.d/displays.toml` — owned by the
+/// 1. `~/.config/arlen/compositor.d/displays.toml` — owned by the
 ///    compositor, written via `cosmic_comp_config::output::displays_toml`.
 ///    Holds the per-output configuration arrays under
 ///    `[[profile]]` records keyed by `output_set`.
-/// 2. `~/.config/lunaris/compositor.d/displays.profiles.toml` —
+/// 2. `~/.config/arlen/compositor.d/displays.profiles.toml` —
 ///    owned by app-settings, this module. Holds user-facing
 ///    metadata: label, `last_used` timestamp.
 ///
@@ -33,7 +33,7 @@ use cosmic_comp_config::output::comp::{OutputConfig, OutputInfo};
 use cosmic_comp_config::output::displays_toml;
 use serde::{Deserialize, Serialize};
 
-const CONFIG_DIR: &str = ".config/lunaris/compositor.d";
+const CONFIG_DIR: &str = ".config/arlen/compositor.d";
 const DISPLAYS_TOML: &str = "displays.toml";
 const PROFILES_TOML: &str = "displays.profiles.toml";
 

@@ -1,6 +1,6 @@
-# Lunaris Settings
+# Arlen Settings
 
-System settings app for Lunaris OS. Tauri 2 + SvelteKit.
+System settings app for Arlen OS. Tauri 2 + SvelteKit.
 
 ## Development
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lunaris dev environment launcher.
+# Arlen dev environment launcher.
 #
 # Builds all daemons, copies them to the VM, and starts them in a tmux session.
 # The VM must be running before calling this script.
@@ -14,13 +14,13 @@ SSH_PORT=2222
 SSH_OPTS="-p $SSH_PORT -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $HOME/.ssh/id_rsa"
 VM_USER=tim
 VM_HOST=localhost
-TMUX_SESSION=lunaris-dev
+TMUX_SESSION=arlen-dev
 
-VM_PRODUCER_SOCKET="/tmp/lunaris-producer.sock"
-VM_CONSUMER_SOCKET="/tmp/lunaris-consumer.sock"
-VM_DB_PATH="/tmp/lunaris-events.db"
-VM_GRAPH_PATH="/tmp/lunaris-graph"
-VM_DAEMON_SOCKET="/tmp/lunaris-daemon.sock"
+VM_PRODUCER_SOCKET="/tmp/arlen-producer.sock"
+VM_CONSUMER_SOCKET="/tmp/arlen-consumer.sock"
+VM_DB_PATH="/tmp/arlen-events.db"
+VM_GRAPH_PATH="/tmp/arlen-graph"
+VM_DAEMON_SOCKET="/tmp/arlen-daemon.sock"
 VM_SESSION_ID="dev-session-$(date +%s)"
 
 ssh_vm() {

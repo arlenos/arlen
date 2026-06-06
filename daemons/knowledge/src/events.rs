@@ -10,7 +10,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tracing::{debug, warn};
 
-const DEFAULT_EVENT_BUS: &str = "/run/lunaris/event-bus-consumer.sock";
+const DEFAULT_EVENT_BUS: &str = "/run/arlen/event-bus-consumer.sock";
 
 /// Parsed events relevant to the Graph Daemon.
 #[derive(Debug, Clone)]

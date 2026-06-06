@@ -1,6 +1,6 @@
 /// Permission profile reader for the Settings UI.
 ///
-/// Reads profiles from `/var/lib/lunaris/permissions/{uid}/` and exposes
+/// Reads profiles from `/var/lib/arlen/permissions/{uid}/` and exposes
 /// them as Tauri commands for the frontend.
 
 use serde::{Deserialize, Serialize};
@@ -133,7 +133,7 @@ struct NotificationsSection {
 fn permissions_dir() -> PathBuf {
     std::env::var("LUNARIS_PERMISSIONS_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/var/lib/lunaris/permissions"))
+        .unwrap_or_else(|_| PathBuf::from("/var/lib/arlen/permissions"))
 }
 
 /// Get the directory for the current user's profiles.

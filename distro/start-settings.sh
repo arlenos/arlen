@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the Lunaris Settings app inside the running nested cosmic-comp
+# Start the Arlen Settings app inside the running nested cosmic-comp
 # session and pipe stdout/stderr to ~/Repositories/lunaris-sys/logs/settings.log.
 #
 # Prereqs:

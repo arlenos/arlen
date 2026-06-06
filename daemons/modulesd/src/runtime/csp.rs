@@ -25,7 +25,7 @@
 ///     standard component libraries refuse to render. This is the one
 ///     concession we make.
 
-use lunaris_modules::ModuleCapabilities;
+use arlen_modules::ModuleCapabilities;
 
 /// Build the per-module CSP header value.
 pub fn build_csp(module_id: &str, capabilities: &ModuleCapabilities) -> String {
@@ -53,7 +53,7 @@ pub fn build_csp(module_id: &str, capabilities: &ModuleCapabilities) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lunaris_modules::NetworkCapability;
+    use arlen_modules::NetworkCapability;
 
     #[test]
     fn csp_contains_module_origin_in_default_src() {

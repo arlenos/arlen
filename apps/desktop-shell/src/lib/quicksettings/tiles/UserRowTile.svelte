@@ -21,7 +21,7 @@
   onMount(() => {
     refreshTheme();
     let stop: UnlistenFn | null = null;
-    listen("lunaris://theme-changed", refreshTheme).then((u) => (stop = u));
+    listen("arlen://theme-changed", refreshTheme).then((u) => (stop = u));
     return () => stop?.();
   });
 

@@ -1,9 +1,9 @@
-/// Theme loader for Lunaris.
+/// Theme loader for Arlen.
 ///
-/// Uses the `lunaris-theme` SDK crate to load and watch `~/.config/lunaris/theme.toml`.
-/// Converts the resolved `LunarisTheme` into `SurfaceTokens` for the Tauri frontend.
+/// Uses the `arlen-theme` SDK crate to load and watch `~/.config/arlen/theme.toml`.
+/// Converts the resolved `ArlenTheme` into `SurfaceTokens` for the Tauri frontend.
 
-use lunaris_theme::LunarisTheme;
+use arlen_theme::ArlenTheme;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
@@ -40,8 +40,8 @@ fn rgba_to_hex(c: [f32; 4]) -> String {
 }
 
 impl SurfaceTokens {
-    /// Derive surface tokens from a resolved LunarisTheme.
-    pub fn from_theme(theme: &LunarisTheme) -> Self {
+    /// Derive surface tokens from a resolved ArlenTheme.
+    pub fn from_theme(theme: &ArlenTheme) -> Self {
         Self {
             bg_shell:     rgba_to_hex(theme.bg_shell),
             bg_app:       rgba_to_hex(theme.bg_app),
@@ -62,13 +62,13 @@ impl SurfaceTokens {
 
     /// Panda defaults for backward compatibility.
     pub fn panda() -> Self {
-        Self::from_theme(&LunarisTheme::panda())
+        Self::from_theme(&ArlenTheme::panda())
     }
 }
 
-/// Load surface tokens from `~/.config/lunaris/theme.toml`.
+/// Load surface tokens from `~/.config/arlen/theme.toml`.
 pub fn load_tokens() -> SurfaceTokens {
-    SurfaceTokens::from_theme(&LunarisTheme::load())
+    SurfaceTokens::from_theme(&ArlenTheme::load())
 }
 
 /// Tauri command: return current surface tokens.
@@ -81,10 +81,10 @@ pub fn get_surface_tokens() -> SurfaceTokens {
 pub fn start_watcher(app: AppHandle) {
     let app_clone = app.clone();
     // ThemeWatcher runs on a background thread internally.
-    let watcher = lunaris_theme::ThemeWatcher::start(move |theme| {
+    let watcher = arlen_theme::ThemeWatcher::start(move |theme| {
         let tokens = SurfaceTokens::from_theme(&theme);
-        if let Err(e) = app_clone.emit("lunaris://theme-changed", &tokens) {
-            eprintln!("lunaris: failed to emit theme-changed: {e}");
+        if let Err(e) = app_clone.emit("arlen://theme-changed", &tokens) {
+            eprintln!("arlen: failed to emit theme-changed: {e}");
         }
     });
 
@@ -94,7 +94,7 @@ pub fn start_watcher(app: AppHandle) {
             std::mem::forget(w);
         }
         Err(e) => {
-            eprintln!("lunaris: failed to start theme watcher: {e}");
+            eprintln!("arlen: failed to start theme watcher: {e}");
         }
     }
 }
@@ -126,7 +126,7 @@ mod tests {
 
     #[test]
     fn from_theme_roundtrips_panda_colors() {
-        let t = SurfaceTokens::from_theme(&LunarisTheme::panda());
+        let t = SurfaceTokens::from_theme(&ArlenTheme::panda());
         assert_eq!(t.bg_shell, "#09090b");
         assert_eq!(t.bg_app, "#ffffff");
         assert_eq!(t.accent, "#09090b");

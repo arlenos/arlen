@@ -13,17 +13,17 @@
 use serde::Serialize;
 
 /// AI daemon name on the session bus.
-const AI_DAEMON_NAME: &str = "org.lunaris.AI1";
+const AI_DAEMON_NAME: &str = "org.arlen.AI1";
 /// AI proxy name on the session bus.
-const AI_PROXY_NAME: &str = "org.lunaris.AIProxy1";
+const AI_PROXY_NAME: &str = "org.arlen.AIProxy1";
 
 /// Liveness of the AI layer's two daemons.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiStatus {
-    /// `org.lunaris.AI1` has an owner on the session bus.
+    /// `org.arlen.AI1` has an owner on the session bus.
     pub daemon_running: bool,
-    /// `org.lunaris.AIProxy1` has an owner on the session bus.
+    /// `org.arlen.AIProxy1` has an owner on the session bus.
     pub proxy_running: bool,
 }
 

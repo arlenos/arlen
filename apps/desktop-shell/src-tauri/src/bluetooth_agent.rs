@@ -20,7 +20,7 @@ use zbus::zvariant::{ObjectPath, OwnedObjectPath};
 use zbus::Connection;
 
 /// Object path our agent is exposed at on our unique D-Bus name.
-const AGENT_PATH: &str = "/org/lunaris/bluetooth_agent";
+const AGENT_PATH: &str = "/org/arlen/bluetooth_agent";
 
 /// Pairing capability declared to BlueZ. See architecture decision
 /// A1: `KeyboardDisplay` is the most flexible, lets BlueZ pick the

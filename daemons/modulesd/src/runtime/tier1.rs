@@ -212,7 +212,7 @@ impl Tier1Runtime {
         let init_result = tokio::time::timeout(
             INIT_TIMEOUT,
             provider
-                .lunaris_waypointer_provider()
+                .arlen_waypointer_provider()
                 .call_init(&mut store),
         )
         .await;
@@ -236,7 +236,7 @@ impl Tier1Runtime {
 
     /// Instantiate an `mcp.server` module against this runtime.
     ///
-    /// The mcp-server world reuses the same four `lunaris:host/*`
+    /// The mcp-server world reuses the same four `arlen:host/*`
     /// imports as the waypointer world, so the same populated linker
     /// satisfies it. Mirrors [`instantiate`](Self::instantiate): the
     /// guest `init()` export runs under the same wall-clock timeout
@@ -264,7 +264,7 @@ impl Tier1Runtime {
         let init_result = tokio::time::timeout(
             INIT_TIMEOUT,
             provider
-                .lunaris_waypointer_server()
+                .arlen_waypointer_server()
                 .call_init(&mut store),
         )
         .await;
@@ -307,7 +307,7 @@ impl Tier1Instance {
     pub async fn graceful_shutdown(&mut self, module_id: &str) {
         if let Err(err) = self
             .provider
-            .lunaris_waypointer_provider()
+            .arlen_waypointer_provider()
             .call_shutdown(&mut self.store)
             .await
         {
@@ -336,7 +336,7 @@ impl McpInstance {
     pub async fn graceful_shutdown(&mut self, module_id: &str) {
         if let Err(err) = self
             .provider
-            .lunaris_waypointer_server()
+            .arlen_waypointer_server()
             .call_shutdown(&mut self.store)
             .await
         {
@@ -345,7 +345,7 @@ impl McpInstance {
     }
 }
 
-/// Wire every `lunaris:host/*` interface into the linker so that any
+/// Wire every `arlen:host/*` interface into the linker so that any
 /// Tier 1 component instantiated against this engine can reach the
 /// host imports it declared in its manifest. Capability gating runs
 /// inside each host trait method (`host_bindings::*`), not here —
@@ -366,13 +366,13 @@ fn populate_linker(linker: &mut Linker<ModuleStore>) -> Result<()> {
         store
     }
 
-    wit::lunaris::host::graph::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
+    wit::arlen::host::graph::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
         .map_err(|e| DaemonError::Internal(format!("link graph: {e}")))?;
-    wit::lunaris::host::network::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
+    wit::arlen::host::network::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
         .map_err(|e| DaemonError::Internal(format!("link network: {e}")))?;
-    wit::lunaris::host::events::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
+    wit::arlen::host::events::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
         .map_err(|e| DaemonError::Internal(format!("link events: {e}")))?;
-    wit::lunaris::host::log::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
+    wit::arlen::host::log::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
         .map_err(|e| DaemonError::Internal(format!("link log: {e}")))?;
 
     Ok(())
@@ -398,8 +398,8 @@ mod tests {
         // Tests use real client constructors with throwaway socket
         // paths; the clients connect lazily so this never touches
         // the filesystem.
-        let graph = Arc::new(UnixGraphClient::new("/tmp/lunaris-test-knowledge.sock"));
-        let events = Arc::new(UnixEventEmitter::new("/tmp/lunaris-test-events.sock"));
+        let graph = Arc::new(UnixGraphClient::new("/tmp/arlen-test-knowledge.sock"));
+        let events = Arc::new(UnixEventEmitter::new("/tmp/arlen-test-events.sock"));
         let store = r.create_store(
             CapabilityContext::empty("com.example.test"),
             graph,

@@ -1,11 +1,11 @@
 [package]
-name = "lunaris-install-helper"
+name = "arlen-install-helper"
 version = "0.1.0"
 edition = "2021"
-description = "Root D-Bus service for privileged Lunaris install operations"
+description = "Root D-Bus service for privileged Arlen install operations"
 
 [[bin]]
-name = "lunaris-install-helper"
+name = "arlen-install-helper"
 path = "src/main.rs"
 
 [dependencies]

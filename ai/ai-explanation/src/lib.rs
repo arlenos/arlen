@@ -1,4 +1,4 @@
-//! System Explanation Mode for the Lunaris AI layer.
+//! System Explanation Mode for the Arlen AI layer.
 //!
 //! Implements Foundation §5.8: answers "What is my computer doing right
 //! now?" by correlating the live event stream with the Knowledge Graph
@@ -28,7 +28,7 @@
 //!    `AIProvider` seam; [`explain_system`] wires the graph-context
 //!    source for today's callers.
 //! 4. **Daemon wiring (next).** Expose it as the ai-daemon
-//!    `org.lunaris.AI1` `explain_system()` D-Bus method, assembling a
+//!    `org.arlen.AI1` `explain_system()` D-Bus method, assembling a
 //!    full snapshot once the live-moment and anomaly sources exist.
 
 #![forbid(unsafe_code)]

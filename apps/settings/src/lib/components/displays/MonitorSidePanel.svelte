@@ -16,10 +16,10 @@
     MonitorMode,
   } from "$lib/stores/displays";
   import { groupedResolutions } from "$lib/stores/displays";
-  import { Switch } from "@lunaris/ui-kit/components/ui/switch";
-  import { PopoverSelect } from "@lunaris/ui-kit/components/ui/popover-select";
-  import { Button } from "@lunaris/ui-kit/components/ui/button";
-  import { Row } from "@lunaris/ui-kit/components/ui/row";
+  import { Switch } from "@arlen/ui-kit/components/ui/switch";
+  import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
 
   interface Props {
     monitor: Monitor;

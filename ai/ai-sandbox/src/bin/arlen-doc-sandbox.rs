@@ -1,9 +1,9 @@
 //! The sandboxed document-parsing worker.
 //!
-//! Locks itself down with [`lunaris_ai_sandbox::apply_sandbox`] (no
+//! Locks itself down with [`arlen_ai_sandbox::apply_sandbox`] (no
 //! new privileges, no filesystem, no network), then reads document
 //! bytes from stdin, extracts inert text, and writes it to stdout. The
-//! parent ([`lunaris_ai_sandbox::parse_document`]) feeds it the
+//! parent ([`arlen_ai_sandbox::parse_document`]) feeds it the
 //! untrusted document and reads back only the stripped text.
 //!
 //! A non-zero exit means no trustworthy text was produced; the parent
@@ -22,7 +22,7 @@ fn main() {
 
     // Lock down before touching any untrusted input. If the sandbox
     // cannot be installed we refuse to parse rather than run exposed.
-    if let Err(e) = lunaris_ai_sandbox::apply_sandbox() {
+    if let Err(e) = arlen_ai_sandbox::apply_sandbox() {
         eprintln!("sandbox setup failed: {e}");
         std::process::exit(3);
     }
@@ -42,14 +42,14 @@ fn main() {
 
     let mut input = Vec::new();
     if let Err(e) = std::io::stdin()
-        .take((lunaris_ai_sandbox::MAX_BYTES as u64) + 1)
+        .take((arlen_ai_sandbox::MAX_BYTES as u64) + 1)
         .read_to_end(&mut input)
     {
         eprintln!("read stdin failed: {e}");
         std::process::exit(4);
     }
 
-    match lunaris_ai_sandbox::extract_text(&input) {
+    match arlen_ai_sandbox::extract_text(&input) {
         Ok(text) => {
             if std::io::stdout().write_all(text.as_bytes()).is_err() {
                 std::process::exit(6);

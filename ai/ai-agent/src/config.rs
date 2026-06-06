@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use lunaris_ai_core::capability::{access_tier_from_level, AccessTier, ActionPermissions, BaselineMode};
+use arlen_ai_core::capability::{access_tier_from_level, AccessTier, ActionPermissions, BaselineMode};
 use serde::Deserialize;
 
 use crate::loader::Provenance;
@@ -225,7 +225,7 @@ mod tests {
 enabled = true
 access_level = 2
 action_mode = "supervised"
-autonomous_apps = ["org.lunaris.files"]
+autonomous_apps = ["org.arlen.files"]
 
 [agent]
 enabled = ["auto-tag-by-project"]
@@ -233,7 +233,7 @@ enabled = ["auto-tag-by-project"]
         );
         assert_eq!(cfg.enabled.get("auto-tag-by-project"), Some(&Provenance::BuiltIn));
         assert_eq!(cfg.read_tier, AccessTier::ProjectScoped);
-        assert!(cfg.actions.is_autonomous("org.lunaris.files"));
+        assert!(cfg.actions.is_autonomous("org.arlen.files"));
         // The executor opt-in defaults off (suggest-mode) when unspecified.
         assert!(!cfg.executor_live);
     }
@@ -269,7 +269,7 @@ enabled = ["auto-tag-by-project"]
             let cfg = AgentConfig::parse(text);
             assert!(cfg.enabled.is_empty(), "AI off must enable no behaviours");
             assert_eq!(cfg.read_tier, AccessTier::Minimal);
-            assert!(!cfg.actions.is_autonomous("org.lunaris.files"));
+            assert!(!cfg.actions.is_autonomous("org.arlen.files"));
         }
     }
 

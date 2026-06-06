@@ -1,6 +1,6 @@
 /// Event Bus consumer.
 ///
-/// Connects to the Lunaris Event Bus consumer socket, subscribes to
+/// Connects to the Arlen Event Bus consumer socket, subscribes to
 /// `focus.*` (desktop-shell emits these when the user enters/leaves
 /// Focus Mode for a project) and `window.fullscreen_*` (compositor
 /// will emit these once the wiring in `compositor/src/event_bus.rs`
@@ -23,12 +23,12 @@ use crate::manager::NotificationManager;
 
 pub mod proto {
     #![allow(clippy::doc_markdown)]
-    include!(concat!(env!("OUT_DIR"), "/lunaris.eventbus.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 
 /// Default consumer-socket path matching `event-bus::main::DEFAULT_CONSUMER_SOCKET`.
 /// Override with `LUNARIS_CONSUMER_SOCKET` for dev sessions.
-pub const DEFAULT_CONSUMER_SOCKET: &str = "/run/lunaris/event-bus-consumer.sock";
+pub const DEFAULT_CONSUMER_SOCKET: &str = "/run/arlen/event-bus-consumer.sock";
 const CONSUMER_ID: &str = "notification-daemon";
 /// Prefix subscriptions. The registry supports `*` for all, exact type,
 /// or `<prefix>.` for prefix match. Using two prefixes keeps the

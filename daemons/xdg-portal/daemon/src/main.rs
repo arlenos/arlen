@@ -1,12 +1,12 @@
-//! xdg-desktop-portal-lunaris daemon entry point.
+//! xdg-desktop-portal-arlen daemon entry point.
 //!
-//! Registers `org.freedesktop.impl.portal.desktop.lunaris` on the session
+//! Registers `org.freedesktop.impl.portal.desktop.arlen` on the session
 //! bus and serves the `org.freedesktop.impl.portal.FileChooser` and
 //! `org.freedesktop.impl.portal.OpenURI` interfaces at
 //! `/org/freedesktop/portal/desktop`.
 //!
 //! Architecture decisions and edge-case handling live in
-//! `docs/architecture/xdg-desktop-portal-lunaris.md`. This file is the
+//! `docs/architecture/xdg-desktop-portal-arlen.md`. This file is the
 //! plumbing: D-Bus bind, IPC server, picker pre-warm, idle loop.
 
 mod document_portal;
@@ -29,8 +29,8 @@ use crate::state::DaemonState;
 
 /// Well-known D-Bus name we register on the session bus. The
 /// `xdg-desktop-portal` frontend dispatches to whichever backend is
-/// declared in `lunaris.portal` for `UseIn=lunaris;`.
-const BUS_NAME: &str = "org.freedesktop.impl.portal.desktop.lunaris";
+/// declared in `arlen.portal` for `UseIn=arlen;`.
+const BUS_NAME: &str = "org.freedesktop.impl.portal.desktop.arlen";
 
 /// Object path the FileChooser and OpenURI interfaces are served at.
 /// The frontend always queries this exact path.
@@ -59,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    tracing::info!("starting xdg-desktop-portal-lunaris");
+    tracing::info!("starting xdg-desktop-portal-arlen");
 
     // Bring up the picker-IPC socket FIRST so the picker subprocess
     // we spawn next finds a server to connect to. Order matters: a

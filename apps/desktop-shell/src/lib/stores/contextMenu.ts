@@ -84,7 +84,7 @@ export function initContextMenuListeners(): () => void {
     console.log("[contextMenu] initContextMenuListeners called, registering listeners");
 
     const showPromise = listen<{ menu_id: number; x: number; y: number; items: MenuItem[] }>(
-        "lunaris://context-menu-show",
+        "arlen://context-menu-show",
         ({ payload }) => {
             console.log("[contextMenu] context-menu-show received:", payload);
             contextMenu.set({ visible: true, ...payload });
@@ -97,7 +97,7 @@ export function initContextMenuListeners(): () => void {
     });
 
     const hidePromise = listen<{ menu_id: number }>(
-        "lunaris://context-menu-hide",
+        "arlen://context-menu-hide",
         ({ payload }) => {
             console.log("[contextMenu] context-menu-hide received:", payload);
             contextMenu.set(HIDDEN);

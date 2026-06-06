@@ -1,6 +1,6 @@
 /// Compositor config store.
 ///
-/// Reads/writes `~/.config/lunaris/compositor.toml`. Today the Settings
+/// Reads/writes `~/.config/arlen/compositor.toml`. Today the Settings
 /// app only uses the `[layout]` section (gaps + smart_gaps), because the
 /// compositor already has a live file watcher for that file — writing
 /// here is the same path the desktop-shell's LayoutPopover uses.

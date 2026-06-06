@@ -1,10 +1,10 @@
 /// File search plugin: surfaces files from the Knowledge Graph.
 ///
-/// The Lunaris graph tracks every `file.opened` event system-wide via
+/// The Arlen graph tracks every `file.opened` event system-wide via
 /// eBPF -> Event Bus -> Knowledge daemon, promoting them to `File`
 /// nodes with `path`, `app_id`, and `last_accessed`. This plugin turns
 /// that graph into a Waypointer section that Baloo/Spotlight cannot
-/// replicate: queries like `project:lunaris` or `app:cursor` are free
+/// replicate: queries like `project:arlen` or `app:cursor` are free
 /// because the graph already knows FILE_PART_OF and ACCESSED_BY
 /// edges.
 ///
@@ -239,9 +239,9 @@ fn knowledge_socket_path() -> String {
         return p;
     }
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
-        return format!("{xdg}/lunaris/knowledge.sock");
+        return format!("{xdg}/arlen/knowledge.sock");
     }
-    "/run/lunaris/knowledge.sock".to_string()
+    "/run/arlen/knowledge.sock".to_string()
 }
 
 /// Send a Cypher query to the Knowledge Daemon with explicit read /
@@ -526,8 +526,8 @@ mod tests {
 
     #[test]
     fn parse_mode_project() {
-        let m = QueryMode::parse("project:lunaris");
-        assert!(matches!(m, QueryMode::Project("lunaris")));
+        let m = QueryMode::parse("project:arlen");
+        assert!(matches!(m, QueryMode::Project("arlen")));
     }
 
     #[test]
@@ -539,8 +539,8 @@ mod tests {
     #[test]
     fn parse_mode_prefixed_project() {
         // `f:project:X` should still recognise the sub-mode.
-        let m = QueryMode::parse("f:project:lunaris");
-        assert!(matches!(m, QueryMode::Project("lunaris")));
+        let m = QueryMode::parse("f:project:arlen");
+        assert!(matches!(m, QueryMode::Project("arlen")));
     }
 
     #[test]
@@ -567,13 +567,13 @@ mod tests {
     #[test]
     fn score_by_project_requires_project() {
         let row = mk_row("/a", "app", 1000, None);
-        assert!(score_by_project(&row, "lunaris").is_none());
+        assert!(score_by_project(&row, "arlen").is_none());
     }
 
     #[test]
     fn score_by_project_matches() {
-        let row = mk_row("/a", "app", 1000, Some("Lunaris"));
-        assert!(score_by_project(&row, "lunaris").is_some());
+        let row = mk_row("/a", "app", 1000, Some("Arlen"));
+        assert!(score_by_project(&row, "arlen").is_some());
         assert!(score_by_project(&row, "lun").is_some());
         assert!(score_by_project(&row, "xyz").is_none());
     }
@@ -627,11 +627,11 @@ mod tests {
     fn parse_rows_handles_missing_project() {
         let raw = "f.path|f.app_id|f.last_accessed|p.name\n\
                    /a/x.md|app|1000|\n\
-                   /b/y.md|app|2000|Lunaris\n";
+                   /b/y.md|app|2000|Arlen\n";
         let out = parse_rows(raw);
         assert_eq!(out.len(), 2);
         assert!(out[0].project_name.is_none());
-        assert_eq!(out[1].project_name.as_deref(), Some("Lunaris"));
+        assert_eq!(out[1].project_name.as_deref(), Some("Arlen"));
     }
 
     #[test]
@@ -702,7 +702,7 @@ mod tests {
     fn plugin_graceful_when_daemon_unreachable() {
         // Point at a socket that can't be connected to. Plugin must
         // return empty, not panic, not error.
-        std::env::set_var("LUNARIS_DAEMON_SOCKET", "/tmp/nonexistent-lunaris-test-socket");
+        std::env::set_var("LUNARIS_DAEMON_SOCKET", "/tmp/nonexistent-arlen-test-socket");
         let p = FilesPlugin::new();
         let r = p.search("test");
         // Either empty (expected) or whatever is in a prior cache —
@@ -736,7 +736,7 @@ mod tests {
             description: None,
             icon: None,
             relevance: 1.0,
-            action: Action::Open { path: "/nonexistent/lunaris-test-path/x.md".into() },
+            action: Action::Open { path: "/nonexistent/arlen-test-path/x.md".into() },
             plugin_id: "core.files".into(),
         };
         assert!(p.execute(&r).is_err());
@@ -757,7 +757,7 @@ mod tests {
         // The pool cache is mode-independent by design: every query
         // (plain, project:, app:) shares the same Top-200 rows.
         let cache = Mutex::new(None);
-        let rows = vec![mk_row("/a/x.md", "app", 1000, Some("Lunaris"))];
+        let rows = vec![mk_row("/a/x.md", "app", 1000, Some("Arlen"))];
         store_cache(&cache, rows);
         // Any subsequent call, regardless of mode/filter, gets the hit.
         assert!(cached_rows(&cache).is_some());

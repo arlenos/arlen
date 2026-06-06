@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    lunaris_desktop_shell_lib::run()
+    arlen_desktop_shell_lib::run()
 }

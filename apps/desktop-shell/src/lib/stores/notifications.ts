@@ -1,5 +1,5 @@
 /**
- * Notification store: connects to the lunaris-notifyd daemon via Tauri
+ * Notification store: connects to the arlen-notifyd daemon via Tauri
  * events and provides reactive state for the UI.
  */
 
@@ -251,10 +251,10 @@ function installToastClickHandler(): void {
     if (target.closest("button")) return;
     // Per-toast marker class carries the notification id.
     const idClass = Array.from(toastEl.classList).find((c) =>
-      c.startsWith("lunaris-notif-"),
+      c.startsWith("arlen-notif-"),
     );
     if (!idClass) return;
-    const id = parseInt(idClass.slice("lunaris-notif-".length), 10);
+    const id = parseInt(idClass.slice("arlen-notif-".length), 10);
     if (Number.isNaN(id)) return;
     const notif = get(notifications).find((nn) => nn.id === id);
     if (!notif) return;
@@ -276,7 +276,7 @@ function fireToast(n: Notification) {
     icon: makeToastIcon(n.app_icon, n.app_name),
     // Per-toast marker class for click routing. Merged with the
     // Toaster-level default class by svelte-sonner.
-    class: `lunaris-notif-${n.id}`,
+    class: `arlen-notif-${n.id}`,
     onDismiss: onToastGone,
     onAutoClose: onToastGone,
   };

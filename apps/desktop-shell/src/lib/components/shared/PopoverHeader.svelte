@@ -3,7 +3,7 @@
 
   import { Settings } from "lucide-svelte";
   import { closePopover } from "$lib/stores/activePopover.js";
-  import Switch from "@lunaris/ui-kit/components/ui/switch/switch.svelte";
+  import Switch from "@arlen/ui-kit/components/ui/switch/switch.svelte";
 
   interface Props {
     icon: any;

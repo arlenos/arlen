@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 /// Root structure of a theme file.
 #[derive(Debug, Default, Deserialize)]
-pub struct LunarisThemeFile {
+pub struct ArlenThemeFile {
     pub meta:       Option<MetaSection>,
     pub color:      Option<ColorSection>,
     pub radius:     Option<RadiusSection>,

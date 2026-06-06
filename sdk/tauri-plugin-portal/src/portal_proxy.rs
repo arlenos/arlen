@@ -3,9 +3,9 @@
 //! These are the *frontend* interfaces that any portal client
 //! talks to — the daemon dispatches the actual work to whichever
 //! backend is registered for the current desktop. We do not call
-//! the Lunaris backend (`org.freedesktop.impl.portal.desktop.lunaris`)
+//! the Arlen backend (`org.freedesktop.impl.portal.desktop.arlen`)
 //! directly; that would skip the routing layer and break under
-//! non-Lunaris sessions.
+//! non-Arlen sessions.
 
 use std::collections::HashMap;
 

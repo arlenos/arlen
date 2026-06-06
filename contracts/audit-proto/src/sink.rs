@@ -35,7 +35,7 @@ pub trait AuditSink: Send + Sync {
     async fn submit(&self, event: IngestRequest) -> Result<u64, AuditClientError>;
 }
 
-/// Production sink: submits to `lunaris-auditd` over its ingest
+/// Production sink: submits to `arlen-auditd` over its ingest
 /// socket.
 pub struct LedgerAuditSink {
     client: AuditClient,

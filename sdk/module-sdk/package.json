@@ -1,7 +1,7 @@
 {
-  "name": "@lunaris/module-sdk",
+  "name": "@arlen/module-sdk",
   "version": "0.1.0",
-  "description": "TypeScript SDK for Lunaris OS Tier 2 (iframe) modules: postMessage protocol, capability-gated host calls, shadcn-svelte component re-exports",
+  "description": "TypeScript SDK for Arlen OS Tier 2 (iframe) modules: postMessage protocol, capability-gated host calls, shadcn-svelte component re-exports",
   "license": "GPL-3.0-only",
   "type": "module",
   "main": "./dist/index.js",
@@ -37,7 +37,7 @@
     "prepublishOnly": "npm run clean && npm run build"
   },
   "keywords": [
-    "lunaris",
+    "arlen",
     "sdk",
     "module",
     "iframe",

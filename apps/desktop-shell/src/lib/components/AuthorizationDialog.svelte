@@ -11,7 +11,7 @@
 
   import { onMount, onDestroy } from "svelte";
   import * as Dialog from "$lib/components/ui/dialog";
-  import { Button } from "@lunaris/ui-kit/components/ui/button";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
   import { current, init, dispose, respond } from "$lib/stores/aiAuthorization";
 
   onMount(() => {

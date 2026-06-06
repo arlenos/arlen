@@ -15,10 +15,10 @@ export function initWaypointerListeners(): () => void {
     started = true;
 
     const pending: Promise<UnlistenFn>[] = [
-        listen("lunaris://waypointer-show", () => {
+        listen("arlen://waypointer-show", () => {
             waypointerVisible.set(true);
         }),
-        listen("lunaris://waypointer-hide", () => {
+        listen("arlen://waypointer-hide", () => {
             waypointerVisible.set(false);
         }),
     ];

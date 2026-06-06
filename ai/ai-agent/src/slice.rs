@@ -42,7 +42,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use lunaris_ai_core::graph_schema::{FieldType, GraphSchema};
+use arlen_ai_core::graph_schema::{FieldType, GraphSchema};
 use serde_json::Value;
 
 use crate::registry::TrustedActionSchema;
@@ -1091,7 +1091,7 @@ mod tests {
     use super::*;
     use crate::seams::{GraphError, GraphHandle};
     use crate::world::{predict, CmpOp, EvalContext, Prediction, Provenance};
-    use lunaris_ai_core::capability::{
+    use arlen_ai_core::capability::{
         AccessTier, ActionKind, ActionPermissions, BaselineMode, Capability,
     };
     use std::collections::HashMap;
@@ -1209,7 +1209,7 @@ mod tests {
         EvalContext {
             capability: cap,
             action_id,
-            app_id: "org.lunaris.agent",
+            app_id: "org.arlen.agent",
             action_kind: ActionKind::Ordinary,
             external_trigger: false,
             ceiling: BaselineMode::Supervised,
@@ -1902,7 +1902,7 @@ tmpfs /tmp\\040dir tmpfs rw 0 0
     #[test]
     fn fs_resolver_rejects_a_dangling_symlink_but_resolves_a_new_file() {
         use std::os::unix::fs::symlink;
-        let base = std::env::temp_dir().join("lunaris-slice-resolver-test");
+        let base = std::env::temp_dir().join("arlen-slice-resolver-test");
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
         let resolver = FsPathResolver;

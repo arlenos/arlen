@@ -1,7 +1,7 @@
 /// 30-day staged deletion for uninstalled apps.
 ///
 /// Instead of permanently deleting app data, `stage_for_deletion` moves
-/// the app directory to `~/.local/share/lunaris/.trash/{app_id}/` with
+/// the app directory to `~/.local/share/arlen/.trash/{app_id}/` with
 /// a metadata file recording when it was deleted. After 30 days,
 /// `cleanup_trash` permanently removes expired entries.
 ///
@@ -56,7 +56,7 @@ fn trash_dir() -> PathBuf {
         .unwrap_or_else(|_| {
             dirs::data_dir()
                 .unwrap_or_else(|| PathBuf::from("~/.local/share"))
-                .join("lunaris/.trash")
+                .join("arlen/.trash")
         })
 }
 

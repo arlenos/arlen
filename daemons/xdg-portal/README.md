@@ -1,11 +1,11 @@
-# xdg-desktop-portal-lunaris
+# xdg-desktop-portal-arlen
 
-Lunaris backend for the freedesktop XDG Desktop Portal. Implements
+Arlen backend for the freedesktop XDG Desktop Portal. Implements
 `FileChooser` (file/directory pickers, save dialogs) and `OpenURI`
 (open links and files in the user's preferred handler).
 
 The full architecture spec lives at
-`../docs/architecture/xdg-desktop-portal-lunaris.md`. The
+`../docs/architecture/xdg-desktop-portal-arlen.md`. The
 end-to-end test checklist lives at [`E2E.md`](E2E.md).
 
 ## Architecture
@@ -25,7 +25,7 @@ end-to-end test checklist lives at [`E2E.md`](E2E.md).
                           │  org.freedesktop.impl.portal.*
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                xdg-desktop-portal-lunaris (this repo)            │
+│                xdg-desktop-portal-arlen (this repo)            │
 │  daemon/  ── zbus interface impls + sandbox detection            │
 │  protocol/ ── shared IPC wire types                              │
 │  picker-ui/ ── Tauri picker window (spawned per session)         │
@@ -93,7 +93,7 @@ real callers.
 ## Design notes
 
 The non-obvious bits are documented in
-`../docs/architecture/xdg-desktop-portal-lunaris.md`:
+`../docs/architecture/xdg-desktop-portal-arlen.md`:
 
 - Why a standalone backend instead of forking
   `xdg-desktop-portal-gtk` (FA1)

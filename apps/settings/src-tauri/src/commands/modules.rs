@@ -1,20 +1,20 @@
 //! Extensions panel backend.
 //!
 //! Discovers modules in:
-//!   * `/usr/share/lunaris/modules/`    — system (read-only)
-//!   * `~/.local/share/lunaris/modules/` — user-installed (removable)
+//!   * `/usr/share/arlen/modules/`    — system (read-only)
+//!   * `~/.local/share/arlen/modules/` — user-installed (removable)
 //!
-//! Enabled state is persisted in `~/.config/lunaris/modules.toml` as a
+//! Enabled state is persisted in `~/.config/arlen/modules.toml` as a
 //! flat list of disabled module IDs. This matches the shell's
 //! `ModuleLoader` (`desktop-shell/src-tauri/src/modules.rs`) so both
 //! processes see the same source of truth.
 //!
-//! Parsing uses the shared `lunaris-modules` crate so the manifest
+//! Parsing uses the shared `arlen-modules` crate so the manifest
 //! schema stays in sync with the SDK.
 
 use std::path::{Path, PathBuf};
 
-use lunaris_modules::{load_manifest, ModuleType};
+use arlen_modules::{load_manifest, ModuleType};
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -57,19 +57,19 @@ pub struct ModuleSummary {
 fn system_modules_dir() -> PathBuf {
     std::env::var("LUNARIS_SYSTEM_MODULES")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/usr/share/lunaris/modules"))
+        .unwrap_or_else(|_| PathBuf::from("/usr/share/arlen/modules"))
 }
 
 fn user_modules_dir() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris/modules")
+        .join("arlen/modules")
 }
 
 fn modules_config_path() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris/modules.toml")
+        .join("arlen/modules.toml")
 }
 
 // ---------------------------------------------------------------------------
@@ -126,7 +126,7 @@ fn module_type_str(t: ModuleType) -> &'static str {
 // Lenient manifest parser
 // ---------------------------------------------------------------------------
 
-/// Mirror of `lunaris_modules::ModuleMeta` but with every field
+/// Mirror of `arlen_modules::ModuleMeta` but with every field
 /// optional so the Settings app can show broken/incomplete manifests
 /// with warnings instead of silently hiding them. The strict SDK
 /// parser is still used for validation — this struct is only for
@@ -225,8 +225,8 @@ fn parse_lenient(
     };
 
     // Try strict SDK validation for additional warnings.
-    if let Ok(strict) = lunaris_modules::parse_manifest(content) {
-        for w in lunaris_modules::validate_manifest(&strict) {
+    if let Ok(strict) = arlen_modules::parse_manifest(content) {
+        for w in arlen_modules::validate_manifest(&strict) {
             warnings.push(format!("{}: {}", w.field, w.message));
         }
     }
@@ -491,7 +491,7 @@ priority = 50
     #[test]
     fn test_disabled_list_roundtrip() {
         let dir = tempfile::TempDir::new().unwrap();
-        let path = dir.path().join("lunaris").join("modules.toml");
+        let path = dir.path().join("arlen").join("modules.toml");
 
         // Temporarily override the config path by writing directly.
         let disabled = vec!["com.test.a".to_string(), "com.test.b".to_string()];

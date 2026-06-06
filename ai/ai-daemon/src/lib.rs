@@ -1,6 +1,6 @@
-//! Query daemon library for the Lunaris AI layer.
+//! Query daemon library for the Arlen AI layer.
 //!
-//! Hosts the D-Bus interface (`org.lunaris.AI1`), the query registry,
+//! Hosts the D-Bus interface (`org.arlen.AI1`), the query registry,
 //! the dispatch pipeline, and per-session authorization issuance for
 //! MCP callers. The binary in `main.rs` wires this library into a
 //! zbus service.

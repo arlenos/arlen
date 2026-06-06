@@ -1,7 +1,7 @@
 /// Entity Schema System for the Knowledge Graph.
 ///
 /// Apps define custom entity types via `entities.toml` in their packages.
-/// The Install Daemon validates and writes schemas to `/var/lib/lunaris/schemas/`.
+/// The Install Daemon validates and writes schemas to `/var/lib/arlen/schemas/`.
 /// The Graph Daemon loads schemas at startup and on `schema.registered` events.
 ///
 /// See `docs/architecture/ENTITY-SCHEMA-SYSTEM.md`.

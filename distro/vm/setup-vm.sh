@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Lunaris eBPF dev VM setup and start script
+# Arlen eBPF dev VM setup and start script
 # Run once: ./setup-vm.sh setup
 # Run after: ./setup-vm.sh start
 
 set -euo pipefail
 
-VM_DIR="$HOME/vms/lunaris-ebpf"
+VM_DIR="$HOME/vms/arlen-ebpf"
 DISK_IMG="$VM_DIR/fedora-ebpf.qcow2"
 CLOUD_IMG="$VM_DIR/fedora-base.qcow2"
 CLOUD_INIT_IMG="$VM_DIR/cloud-init.iso"
@@ -41,8 +41,8 @@ setup() {
         "$SCRIPT_DIR/cloud-init-user-data.yaml" > "$VM_DIR/user-data"
 
     cat > "$VM_DIR/meta-data" << 'EOF'
-instance-id: lunaris-ebpf-dev-01
-local-hostname: lunaris-ebpf-dev
+instance-id: arlen-ebpf-dev-01
+local-hostname: arlen-ebpf-dev
 EOF
 
     echo "==> Creating cloud-init ISO"
@@ -58,7 +58,7 @@ EOF
 }
 
 start() {
-    echo "==> Starting Lunaris eBPF dev VM"
+    echo "==> Starting Arlen eBPF dev VM"
     echo "    SSH will be available at: ssh -p $SSH_PORT tim@localhost"
     echo "    First boot takes ~60 seconds for cloud-init to finish"
     echo ""

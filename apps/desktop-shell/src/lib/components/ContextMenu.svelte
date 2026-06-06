@@ -103,7 +103,7 @@
 
     Submenus render as hover-activated fly-outs to the right of the parent
     row. Tree structure comes from `parent_index` + `has_submenu` in the
-    `lunaris-shell-overlay-v1` protocol.
+    `arlen-shell-overlay-v1` protocol.
 -->
 {#snippet menuLevel(nodes: MenuItemNode[])}
     {#each nodes as node (node.index)}

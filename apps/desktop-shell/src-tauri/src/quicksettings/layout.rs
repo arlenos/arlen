@@ -1,9 +1,9 @@
-/// Quick Settings layout state at `~/.config/lunaris/quicksettings.toml`.
+/// Quick Settings layout state at `~/.config/arlen/quicksettings.toml`.
 ///
 /// The layout is *user intent* — which tiles are visible, in which order,
 /// at what size. The shell composes the rendered grid by merging this
 /// file with the manifest-declared catalogue (`defaults.rs` for system-
-/// tier tiles, `lunaris-modules` manifests for module tiles).
+/// tier tiles, `arlen-modules` manifests for module tiles).
 ///
 /// Same concurrency story as `shell_config`: every write goes through
 /// `WRITE_LOCK` and the `update(|file| …)` helper. Atomic tmp+rename so
@@ -13,7 +13,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use lunaris_modules::TileSize;
+use arlen_modules::TileSize;
 use serde::{Deserialize, Serialize};
 
 static WRITE_LOCK: Mutex<()> = Mutex::new(());
@@ -55,7 +55,7 @@ fn default_visible() -> bool {
 fn config_path() -> PathBuf {
     let dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris");
+        .join("arlen");
     let _ = fs::create_dir_all(&dir);
     dir.join("quicksettings.toml")
 }
@@ -177,10 +177,10 @@ fn write_atomic(file: &LayoutFile) -> Result<(), String> {
     fs::rename(&tmp, &path).map_err(|e| format!("rename: {e}"))
 }
 
-/// Watch `~/.config/lunaris/quicksettings.toml` for external writes
+/// Watch `~/.config/arlen/quicksettings.toml` for external writes
 /// (the Settings app's QS-layout editor saves through `config_set`,
 /// which lands here as a regular file change) and emit a
-/// `lunaris://qs-layout-changed` Tauri event so the QuickSettings
+/// `arlen://qs-layout-changed` Tauri event so the QuickSettings
 /// panel reloads its tile layout without requiring a shell restart.
 ///
 /// Same notify+debounce pattern as `shell_config::start_shell_config_watcher`:
@@ -234,7 +234,7 @@ pub fn start_qs_layout_watcher(app: tauri::AppHandle) {
                     *lf = Instant::now();
                 }
                 std::thread::sleep(Duration::from_millis(30));
-                let _ = app_clone.emit("lunaris://qs-layout-changed", ());
+                let _ = app_clone.emit("arlen://qs-layout-changed", ());
             },
         ) {
             Ok(w) => w,

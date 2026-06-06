@@ -1,6 +1,6 @@
 //! Tauri commands. Thin wrappers over `os_sdk::UnixClipboardClient`
 //! plus a per-webview subscription manager that emits
-//! `lunaris://clipboard-changed` events scoped to the window that
+//! `arlen://clipboard-changed` events scoped to the window that
 //! called `subscribe`.
 
 use std::collections::HashMap;
@@ -78,7 +78,7 @@ pub async fn history(
 }
 
 /// Start a subscription scoped to the calling window. Subsequent
-/// clipboard changes are emitted as `lunaris://clipboard-changed`
+/// clipboard changes are emitted as `arlen://clipboard-changed`
 /// events to that window only — sibling windows in the same app
 /// do not receive the payload unless they call `subscribe()`
 /// themselves. Calling twice from the same window without an
@@ -103,7 +103,7 @@ pub async fn subscribe<R: Runtime>(
     let handle = tokio::spawn(async move {
         while let Some(entry) = rx.recv().await {
             let payload: ClipboardEntry = entry.into();
-            if let Err(err) = target.emit("lunaris://clipboard-changed", payload) {
+            if let Err(err) = target.emit("arlen://clipboard-changed", payload) {
                 log::warn!("clipboard subscribe emit failed: {err}");
             }
         }

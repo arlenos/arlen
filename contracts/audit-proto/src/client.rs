@@ -1,6 +1,6 @@
 //! Audit ingest client.
 //!
-//! [`AuditClient`] submits one audit event to `lunaris-auditd` and
+//! [`AuditClient`] submits one audit event to `arlen-auditd` and
 //! waits for the acknowledgement. It opens a fresh connection per
 //! submit: audit events are low-frequency, and a one-shot connection
 //! needs no reconnect or stale-socket handling.
@@ -12,7 +12,7 @@
 //! activity.
 //!
 //! Known limitation (same-uid, documented): the client trusts whatever
-//! peer is bound at the socket path to be the real `lunaris-auditd`;
+//! peer is bound at the socket path to be the real `arlen-auditd`;
 //! it does not authenticate the server. Cross-uid impersonation is
 //! already excluded — the socket lives under `$XDG_RUNTIME_DIR`
 //! (mode 0700, per-user) and the daemon's bind is a singleton guard,

@@ -8,13 +8,13 @@
 //! human-readable notes (for a `workflow` behaviour). See
 //! `docs/architecture/ai-agent-design.md` §10.
 //!
-//! **Why YAML, not Lunaris' usual TOML.** Behaviours deliberately follow
+//! **Why YAML, not Arlen' usual TOML.** Behaviours deliberately follow
 //! the Agent Skills open standard (the same `SKILL.md` + YAML frontmatter
 //! that Claude, pi, Warp and goose load from `.agents/skills/`). That
-//! portability is the whole point of adopting the standard: a Lunaris
+//! portability is the whole point of adopting the standard: a Arlen
 //! behaviour is readable as a skill by standard tooling (it ignores our
 //! extra frontmatter keys), and a foreign skill's `name`/`description`/
-//! body parse here. A Lunaris-private TOML frontmatter would break that —
+//! body parse here. A Arlen-private TOML frontmatter would break that —
 //! no standard parser could read it — so this one file format departs from
 //! the "TOML everywhere" config convention on purpose.
 //!
@@ -44,7 +44,7 @@
 
 use std::collections::BTreeMap;
 
-pub use lunaris_ai_core::capability::{AccessTier, BaselineMode};
+pub use arlen_ai_core::capability::{AccessTier, BaselineMode};
 use serde::Deserialize;
 use thiserror::Error;
 

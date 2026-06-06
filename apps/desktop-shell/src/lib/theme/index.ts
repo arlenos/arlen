@@ -1,4 +1,4 @@
-/// Barrel export for the Lunaris theme system.
+/// Barrel export for the Arlen theme system.
 
 export type { CssVariables, ThemeInfo, AppearanceConfig } from "./types.js";
 export { CSS_VARS } from "./types.js";

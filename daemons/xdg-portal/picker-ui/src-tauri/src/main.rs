@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    xdg_portal_lunaris_picker_lib::run()
+    xdg_portal_arlen_picker_lib::run()
 }

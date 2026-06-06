@@ -16,7 +16,7 @@ use crate::menu_store::AppMenuStore;
 
 /// Starts the GTK menu bridge.
 ///
-/// Listens for `lunaris://toplevel-changed` and `lunaris://toplevel-added`
+/// Listens for `arlen://toplevel-changed` and `arlen://toplevel-added`
 /// Tauri events. When the active app changes, spawns a blocking D-Bus
 /// query on a background thread and registers the result in AppMenuStore.
 pub fn start(app_handle: AppHandle, store: AppMenuStore) {
@@ -25,7 +25,7 @@ pub fn start(app_handle: AppHandle, store: AppMenuStore) {
 
     // Listener: toplevel-changed
     let tx1 = tx.clone();
-    app_handle.listen("lunaris://toplevel-changed", move |event| {
+    app_handle.listen("arlen://toplevel-changed", move |event| {
         if let Some(app_id) = extract_active_app_id(&event) {
             let _ = tx1.send(app_id);
         }
@@ -33,7 +33,7 @@ pub fn start(app_handle: AppHandle, store: AppMenuStore) {
 
     // Listener: toplevel-added (first window may be immediately active)
     let tx2 = tx.clone();
-    app_handle.listen("lunaris://toplevel-added", move |event| {
+    app_handle.listen("arlen://toplevel-added", move |event| {
         if let Some(app_id) = extract_active_app_id(&event) {
             let _ = tx2.send(app_id);
         }

@@ -1,5 +1,5 @@
 /**
- * Lunaris theme loader.
+ * Arlen theme loader.
  *
  * Fetches surface tokens from the Tauri backend (which reads theme.toml)
  * and applies them as CSS custom properties on :root. Call loadTheme()

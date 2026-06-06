@@ -88,7 +88,7 @@ impl From<std::io::Error> for FrameError {
     }
 }
 
-/// Executes read-only Cypher queries against the Lunaris Knowledge Graph.
+/// Executes read-only Cypher queries against the Arlen Knowledge Graph.
 ///
 /// Implemented by [`UnixGraphClient`] for production use and by
 /// [`crate::mock::MockGraphClient`] for testing.
@@ -122,7 +122,7 @@ pub trait GraphClient: Send + Sync {
 ///
 /// #[tokio::main]
 /// async fn main() {
-///     let client = UnixGraphClient::new("/run/lunaris/knowledge.sock");
+///     let client = UnixGraphClient::new("/run/arlen/knowledge.sock");
 ///     let rows = client
 ///         .query("MATCH (f:File) RETURN f.path LIMIT 10", HashMap::new())
 ///         .await
@@ -618,7 +618,7 @@ mod tests {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::UnixListener;
 
-        let path = std::env::temp_dir().join("lunaris-os-sdk-oversized-frame-test.sock");
+        let path = std::env::temp_dir().join("arlen-os-sdk-oversized-frame-test.sock");
         let _ = std::fs::remove_file(&path);
         let listener = UnixListener::bind(&path).unwrap();
 
@@ -653,7 +653,7 @@ mod tests {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::UnixListener;
 
-        let path = std::env::temp_dir().join("lunaris-os-sdk-write-ok-test.sock");
+        let path = std::env::temp_dir().join("arlen-os-sdk-write-ok-test.sock");
         let _ = std::fs::remove_file(&path);
         let listener = UnixListener::bind(&path).unwrap();
 
@@ -698,7 +698,7 @@ mod tests {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::UnixListener;
 
-        let path = std::env::temp_dir().join("lunaris-os-sdk-write-denied-test.sock");
+        let path = std::env::temp_dir().join("arlen-os-sdk-write-denied-test.sock");
         let _ = std::fs::remove_file(&path);
         let listener = UnixListener::bind(&path).unwrap();
 
@@ -733,7 +733,7 @@ mod tests {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::UnixListener;
 
-        let path = std::env::temp_dir().join("lunaris-os-sdk-retract-test.sock");
+        let path = std::env::temp_dir().join("arlen-os-sdk-retract-test.sock");
         let _ = std::fs::remove_file(&path);
         let listener = UnixListener::bind(&path).unwrap();
 

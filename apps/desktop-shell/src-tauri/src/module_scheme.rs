@@ -4,7 +4,7 @@
 /// asset request:
 ///
 ///   1. Parse the URL into `(module_id, asset_path, nonce)`.
-///   2. Ask `lunaris-modulesd` for the iframe meta (`IframeLookup`).
+///   2. Ask `arlen-modulesd` for the iframe meta (`IframeLookup`).
 ///      If the daemon does not know the nonce, the iframe was either
 ///      revoked or never minted; return 404.
 ///   3. Load the asset from the daemon-supplied root path. Reject any
@@ -12,7 +12,7 @@
 ///   4. Attach the per-module CSP header derived from the manifest's
 ///      `[capabilities]` block.
 ///
-/// Capability checks happen on host calls (in `lunaris-modulesd` over
+/// Capability checks happen on host calls (in `arlen-modulesd` over
 /// the postMessage proxy). Asset serving here is purely about iframe
 /// origin isolation, not about gating data access.
 
@@ -214,7 +214,7 @@ mod tests {
 
     #[test]
     fn safe_join_blocks_dotdot() {
-        let root = Path::new("/usr/share/lunaris/modules/x");
+        let root = Path::new("/usr/share/arlen/modules/x");
         assert!(safe_join(root, "../escape.txt").is_none());
         assert!(safe_join(root, "ok/path.txt").is_some());
     }

@@ -1,5 +1,5 @@
 [Unit]
-Description=Lunaris trash cleanup (daily, expires after 30 days)
+Description=Arlen trash cleanup (daily, expires after 30 days)
 
 [Timer]
 OnCalendar=daily

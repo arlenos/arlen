@@ -1,4 +1,4 @@
-/// Wire protocol between desktop-shell and `lunaris-modulesd`.
+/// Wire protocol between desktop-shell and `arlen-modulesd`.
 ///
 /// JSON over a Unix socket. Each frame is `[u32 BE length][JSON body]`.
 /// JSON instead of protobuf because the consumers are predominantly
@@ -78,7 +78,7 @@ pub enum Request {
     },
 
     /// Enable or disable a module. Persisted to
-    /// `~/.config/lunaris/modules.toml`.
+    /// `~/.config/arlen/modules.toml`.
     SetEnabled {
         id: String,
         module_id: String,

@@ -1,7 +1,7 @@
-//! Lunaris kernel-layer daemon.
+//! Arlen kernel-layer daemon.
 //!
 //! Loads the eBPF program into the kernel, reads FileOpenedEvents from the
-//! ring buffer, and forwards them to the Lunaris Event Bus.
+//! ring buffer, and forwards them to the Arlen Event Bus.
 //!
 //! Must run as root (or with CAP_BPF + CAP_PERFMON).
 
@@ -17,7 +17,7 @@ use tokio::signal;
 
 mod normalizer;
 
-const DEFAULT_PRODUCER_SOCKET: &str = "/run/lunaris/event-bus-producer.sock";
+const DEFAULT_PRODUCER_SOCKET: &str = "/run/arlen/event-bus-producer.sock";
 
 #[tokio::main]
 async fn main() -> Result<()> {

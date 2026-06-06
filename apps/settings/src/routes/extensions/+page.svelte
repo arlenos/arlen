@@ -1,9 +1,9 @@
 <script lang="ts">
   /// Extensions panel.
   ///
-  /// Lists modules discovered in `/usr/share/lunaris/modules/` (system)
-  /// and `~/.local/share/lunaris/modules/` (user), merged with the
-  /// enabled/disabled state from `~/.config/lunaris/modules.toml`.
+  /// Lists modules discovered in `/usr/share/arlen/modules/` (system)
+  /// and `~/.local/share/arlen/modules/` (user), merged with the
+  /// enabled/disabled state from `~/.config/arlen/modules.toml`.
   ///
   /// The shell reads the same `modules.toml`, so a toggle here shows a
   /// "restart required" banner — the change is persisted immediately
@@ -12,19 +12,19 @@
 
   import { onMount } from "svelte";
   import { RefreshCw, Puzzle, Info, ExternalLink } from "lucide-svelte";
-  import { Page } from "@lunaris/ui-kit/components/ui/page";
-  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
-  import { Group } from "@lunaris/ui-kit/components/ui/group";
+  import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
+  import { Group } from "@arlen/ui-kit/components/ui/group";
   import ModuleCard from "$lib/components/appearance/ModuleCard.svelte";
   import { modules, moduleGroups } from "$lib/stores/modules";
 
   /// Where installd drops bundled modules and where users can drop
   /// their own. Shown verbatim in the empty state so the user knows
   /// exactly where to put new modules.
-  const USER_MODULES_DIR = "~/.local/share/lunaris/modules/";
-  const SYSTEM_MODULES_DIR = "/usr/share/lunaris/modules/";
+  const USER_MODULES_DIR = "~/.local/share/arlen/modules/";
+  const SYSTEM_MODULES_DIR = "/usr/share/arlen/modules/";
   /// Link to the module-system spec shipped with the repo. When the
-  /// Lunaris docs site goes live this should flip to the canonical URL.
+  /// Arlen docs site goes live this should flip to the canonical URL.
   const MODULES_DOCS =
     "https://github.com/lunaris-sys/docs/blob/main/architecture/module-system.md";
 
@@ -59,7 +59,7 @@
 
 <Page
   title="Extensions"
-  description="Modules that extend the Lunaris shell. Install third-party modules by dropping them into ~/.local/share/lunaris/modules/."
+  description="Modules that extend the Arlen shell. Install third-party modules by dropping them into ~/.local/share/arlen/modules/."
 >
   <SectionGrid>
   <div class="span-full ext-column">
@@ -78,7 +78,7 @@
     <div class="banner">
       <Info size={12} strokeWidth={2.25} />
       <span>
-        Changes will take effect after the Lunaris shell restarts.
+        Changes will take effect after the Arlen shell restarts.
       </span>
       <button
         type="button"

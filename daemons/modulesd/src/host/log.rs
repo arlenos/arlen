@@ -1,4 +1,4 @@
-/// `lunaris:host/log` import implementation.
+/// `arlen:host/log` import implementation.
 ///
 /// Logging is the only host capability that is unconditionally
 /// available to every module. Output is tagged with the module ID and

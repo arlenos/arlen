@@ -1,6 +1,6 @@
 /// Minimized-windows UI backend.
 ///
-/// Lunaris shows minimized windows as per-workspace icon rows under
+/// Arlen shows minimized windows as per-workspace icon rows under
 /// the WorkspaceIndicator pills. The live state comes from the
 /// existing cosmic-toplevel-info subscription in
 /// `wayland_client.rs`, which already carries a `minimized: bool`
@@ -152,7 +152,7 @@ pub fn fullscreen_window(
 ///
 /// NOTE: cosmic-toplevel-management does NOT expose a half-tile
 /// request. A proper implementation needs a new `tile_toplevel`
-/// request in `lunaris-shell-overlay-v1` that the compositor
+/// request in `arlen-shell-overlay-v1` that the compositor
 /// resolves against its internal tiling layout. For now this
 /// command logs a warning and returns Ok — the UI surfaces the
 /// option so the wiring is ready, but the window doesn't move.
@@ -167,7 +167,7 @@ pub fn tile_window(window_id: String, direction: String) -> Result<(), String> {
     }
     log::warn!(
         "tile_window: direction={direction} id={window_id} \
-         (not yet implemented — pending lunaris-shell-overlay protocol \
+         (not yet implemented — pending arlen-shell-overlay protocol \
          extension for half-tile requests)"
     );
     Ok(())

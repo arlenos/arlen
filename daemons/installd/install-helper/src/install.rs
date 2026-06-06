@@ -1,7 +1,7 @@
 /// File system operations for system-wide app installation.
 ///
 /// All operations target root-owned directories:
-/// - `/usr/lib/lunaris/apps/{app_id}/` for app binaries and libraries
+/// - `/usr/lib/arlen/apps/{app_id}/` for app binaries and libraries
 /// - `/usr/share/applications/` for desktop entries
 
 use std::fs;
@@ -11,7 +11,7 @@ use std::process::Command;
 
 use thiserror::Error;
 
-const SYSTEM_APPS_DIR: &str = "/usr/lib/lunaris/apps";
+const SYSTEM_APPS_DIR: &str = "/usr/lib/arlen/apps";
 const SYSTEM_DESKTOP_DIR: &str = "/usr/share/applications";
 
 /// Errors from install operations.
@@ -68,7 +68,7 @@ pub fn validate_app_id(app_id: &str) -> Result<(), InstallError> {
 
 /// Install an app from a prepared source directory to the system-wide location.
 ///
-/// Copies `source_path` (directory) to `/usr/lib/lunaris/apps/{app_id}/`.
+/// Copies `source_path` (directory) to `/usr/lib/arlen/apps/{app_id}/`.
 /// The source directory should contain `bin/`, `lib/`, `share/` etc.
 pub fn install_system(app_id: &str, source_path: &str) -> Result<PathBuf, InstallError> {
     validate_app_id(app_id)?;
@@ -102,7 +102,7 @@ pub fn install_system(app_id: &str, source_path: &str) -> Result<PathBuf, Instal
 
 /// Uninstall a system-wide app.
 ///
-/// Removes `/usr/lib/lunaris/apps/{app_id}/` entirely.
+/// Removes `/usr/lib/arlen/apps/{app_id}/` entirely.
 pub fn uninstall_system(app_id: &str) -> Result<(), InstallError> {
     validate_app_id(app_id)?;
 
@@ -223,7 +223,7 @@ mod tests {
     #[test]
     fn test_validate_app_id_valid() {
         assert!(validate_app_id("com.example.app").is_ok());
-        assert!(validate_app_id("org.lunaris.contacts").is_ok());
+        assert!(validate_app_id("org.arlen.contacts").is_ok());
         assert!(validate_app_id("io.github.user.my-app_v2").is_ok());
     }
 

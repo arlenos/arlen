@@ -1,6 +1,6 @@
 /// Unix-socket server.
 ///
-/// Accepts connections at `/run/user/{uid}/lunaris/modulesd.sock`,
+/// Accepts connections at `/run/user/{uid}/arlen/modulesd.sock`,
 /// frames JSON requests as `[u32 BE length][body]`, dispatches each
 /// request to the manager, and broadcasts events to subscribed
 /// connections.
@@ -28,7 +28,7 @@ pub fn default_socket_path() -> PathBuf {
         return PathBuf::from(p);
     }
     let uid = unsafe { libc::getuid() };
-    PathBuf::from(format!("/run/user/{uid}/lunaris/modulesd.sock"))
+    PathBuf::from(format!("/run/user/{uid}/arlen/modulesd.sock"))
 }
 
 pub struct SocketServer {
@@ -219,6 +219,6 @@ mod tests {
         let p = default_socket_path();
         let s = p.to_string_lossy();
         assert!(s.contains("/run/user/"));
-        assert!(s.ends_with("/lunaris/modulesd.sock"));
+        assert!(s.ends_with("/arlen/modulesd.sock"));
     }
 }

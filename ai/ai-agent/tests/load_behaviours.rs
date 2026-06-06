@@ -7,13 +7,13 @@
 use std::fs;
 use std::path::PathBuf;
 
-use lunaris_ai_agent::behaviour::{parse, BaselineMode, BehaviourKind, Disposition, ReadScope};
+use arlen_ai_agent::behaviour::{parse, BaselineMode, BehaviourKind, Disposition, ReadScope};
 
 fn behaviours_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("behaviours")
 }
 
-fn load(name: &str) -> lunaris_ai_agent::behaviour::Behaviour {
+fn load(name: &str) -> arlen_ai_agent::behaviour::Behaviour {
     let path = behaviours_dir().join(name).join("SKILL.md");
     let content = fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));

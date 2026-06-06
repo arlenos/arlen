@@ -1,6 +1,6 @@
 /// Keybinding config parser with scoped bindings.
 ///
-/// Format: `~/.config/lunaris/keybindings.toml`
+/// Format: `~/.config/arlen/keybindings.toml`
 /// ```toml
 /// [compositor]
 /// "Super+Return" = "app:launch:terminal"

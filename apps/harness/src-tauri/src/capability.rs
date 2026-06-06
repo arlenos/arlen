@@ -2,7 +2,7 @@
 //! transparency principle #2: "capability is always visible").
 //!
 //! Reports the read tier and action mode the AI is operating under, plus
-//! whether the layer is enabled. Read from `~/.config/lunaris/ai.toml` —
+//! whether the layer is enabled. Read from `~/.config/arlen/ai.toml` —
 //! the same file the ai-daemon resolves its read scope (`access_level`)
 //! and the gate resolves its action mode from — so what the indicator
 //! shows is what the daemon actually enforces. Read-only and advisory: a
@@ -46,13 +46,13 @@ fn mode_label(mode: Option<&str>) -> String {
     }
 }
 
-/// Resolve the path to `ai.toml`: `$XDG_CONFIG_HOME/lunaris/ai.toml`
+/// Resolve the path to `ai.toml`: `$XDG_CONFIG_HOME/arlen/ai.toml`
 /// (via `dirs::config_dir`), falling back to a bare relative path if no
 /// config dir is resolvable (then the read simply misses → defaults).
 fn ai_config_path() -> std::path::PathBuf {
     dirs::config_dir()
         .unwrap_or_default()
-        .join("lunaris")
+        .join("arlen")
         .join("ai.toml")
 }
 

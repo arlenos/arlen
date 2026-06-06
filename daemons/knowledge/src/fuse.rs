@@ -659,7 +659,7 @@ pub fn mount(path: &str, graph: GraphHandle) -> Result<()> {
     let mut config = fuser::Config::default();
     config.mount_options = vec![
         MountOption::RO,
-        MountOption::FSName("lunaris-timeline".into()),
+        MountOption::FSName("arlen-timeline".into()),
     ];
 
     tracing::info!(path, "mounting timeline FUSE filesystem");

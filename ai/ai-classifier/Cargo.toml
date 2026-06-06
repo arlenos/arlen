@@ -1,8 +1,8 @@
 [package]
-name = "lunaris-ai-classifier"
+name = "arlen-ai-classifier"
 version = "0.1.0"
 edition = "2021"
-description = "ONNX-based prompt-injection classifier for the Lunaris AI layer. Phase 9-γ S17 loads a Prompt-Guard-class model and runs CPU inference."
+description = "ONNX-based prompt-injection classifier for the Arlen AI layer. Phase 9-γ S17 loads a Prompt-Guard-class model and runs CPU inference."
 
 [lib]
 path = "src/lib.rs"

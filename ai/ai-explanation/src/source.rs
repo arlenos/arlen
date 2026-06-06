@@ -306,11 +306,11 @@ mod tests {
     #[test]
     fn parse_active_project_reads_name_and_count() {
         let rows = vec![row(&[
-            ("name", Value::String("lunaris".into())),
+            ("name", Value::String("arlen".into())),
             ("file_count", Value::from(42i64)),
         ])];
         let p = parse_active_project(&rows).unwrap();
-        assert_eq!(p.name, "lunaris");
+        assert_eq!(p.name, "arlen");
         assert_eq!(p.file_count, 42);
         assert_eq!(parse_active_project(&[]), None);
     }
@@ -324,13 +324,13 @@ mod tests {
                     vec![row(&[
                         ("path", Value::String("/p/main.rs".into())),
                         ("app", Value::String("nvim".into())),
-                        ("project", Value::String("lunaris".into())),
+                        ("project", Value::String("arlen".into())),
                     ])],
                 ),
                 (
                     "WHERE p.promoted",
                     vec![row(&[
-                        ("name", Value::String("lunaris".into())),
+                        ("name", Value::String("arlen".into())),
                         ("file_count", Value::from(3i64)),
                     ])],
                 ),
@@ -340,7 +340,7 @@ mod tests {
         let snap = graph_context(&reader, 1234).await.unwrap();
         assert_eq!(snap.captured_at_unix, 1234);
         assert_eq!(snap.files.len(), 1);
-        assert_eq!(snap.active_project.as_ref().unwrap().name, "lunaris");
+        assert_eq!(snap.active_project.as_ref().unwrap().name, "arlen");
         // The graph source never fabricates the live-moment fields, and
         // marks only the graph-context coverage.
         assert!(snap.processes.is_empty());

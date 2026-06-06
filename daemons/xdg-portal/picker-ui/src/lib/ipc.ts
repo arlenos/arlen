@@ -31,7 +31,7 @@ interface Theme {
   danger: string;
 }
 
-/// Load the user's Lunaris theme and inject the colors as CSS
+/// Load the user's Arlen theme and inject the colors as CSS
 /// custom properties on `:root`. Tailwind v4's `@theme inline`
 /// resolves at build-time so runtime overrides need to override
 /// the same custom-property names from JS.

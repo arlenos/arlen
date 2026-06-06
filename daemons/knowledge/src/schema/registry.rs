@@ -1,6 +1,6 @@
 /// Schema Registry: loads, stores, and queries entity schemas.
 ///
-/// Schemas are loaded from `/var/lib/lunaris/schemas/` at startup and
+/// Schemas are loaded from `/var/lib/arlen/schemas/` at startup and
 /// reloaded when `schema.registered` events arrive from the Event Bus.
 
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ use tracing::{info, warn};
 use super::{SchemaError, SchemaFile, SchemaValidator};
 
 /// Default schema directory.
-const DEFAULT_SCHEMA_DIR: &str = "/var/lib/lunaris/schemas";
+const DEFAULT_SCHEMA_DIR: &str = "/var/lib/arlen/schemas";
 
 /// System entity types compiled into the Graph Daemon. These must match the
 /// node tables `graph.rs` creates, so a relation between them validates.

@@ -1,4 +1,4 @@
-/// Event Bus consumer for the Lunaris desktop shell.
+/// Event Bus consumer for the Arlen desktop shell.
 ///
 /// Subscribes to window and config events from the Event Bus and forwards
 /// them to the TypeScript frontend via Tauri events.
@@ -8,7 +8,7 @@ use std::os::unix::net::UnixStream;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
-const DEFAULT_CONSUMER_SOCKET: &str = "/run/lunaris/event-bus-consumer.sock";
+const DEFAULT_CONSUMER_SOCKET: &str = "/run/arlen/event-bus-consumer.sock";
 const CONSUMER_ID: &str = "desktop-shell";
 /// Subscribe to window, config, project, and the app.* state
 /// surfaces (toolbar, shortcut, badge, ambient).
@@ -99,7 +99,7 @@ fn run_consumer(
 mod proto {
     #![allow(dead_code)]
     #![allow(clippy::doc_markdown)]
-    include!(concat!(env!("OUT_DIR"), "/lunaris.eventbus.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 
 fn decode_event(buf: &[u8]) -> Result<proto::Event, prost::DecodeError> {
@@ -124,9 +124,9 @@ fn forward_to_frontend(
         };
 
         let tauri_event = match event_type {
-            "window.focused" => "lunaris://window-focused",
-            "window.opened" => "lunaris://window-opened",
-            "window.closed" => "lunaris://window-closed",
+            "window.focused" => "arlen://window-focused",
+            "window.opened" => "arlen://window-opened",
+            "window.closed" => "arlen://window-closed",
             _ => return,
         };
 
@@ -174,8 +174,8 @@ fn forward_to_frontend(
         };
 
         let tauri_event = match event_type {
-            "config.changed" => "lunaris://config-changed",
-            "config.reload_requested" => "lunaris://config-reload",
+            "config.changed" => "arlen://config-changed",
+            "config.reload_requested" => "arlen://config-reload",
             _ => return,
         };
 
@@ -232,7 +232,7 @@ fn forward_project_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
 }
 
 /// Forward `app.toolbar.*` events to the frontend. Events are
-/// re-emitted as `lunaris://toolbar-{event}` Tauri events with
+/// re-emitted as `arlen://toolbar-{event}` Tauri events with
 /// the decoded payload as JSON; the frontend keys per-app
 /// state by `app_id` and renders only the focused app's slot.
 fn forward_toolbar_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
@@ -252,7 +252,7 @@ fn forward_toolbar_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
                         "active": a.active,
                     })).collect::<Vec<_>>(),
                 });
-                let _ = app.emit("lunaris://toolbar-quick-actions", &json);
+                let _ = app.emit("arlen://toolbar-quick-actions", &json);
             }
         }
         "app.toolbar.breadcrumb" => {
@@ -265,7 +265,7 @@ fn forward_toolbar_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
                         "action": i.action,
                     })).collect::<Vec<_>>(),
                 });
-                let _ = app.emit("lunaris://toolbar-breadcrumb", &json);
+                let _ = app.emit("arlen://toolbar-breadcrumb", &json);
             }
         }
         "app.toolbar.progress" => {
@@ -276,7 +276,7 @@ fn forward_toolbar_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
                     "value": p.value,
                     "label": if p.label.is_empty() { None } else { Some(p.label) },
                 });
-                let _ = app.emit("lunaris://toolbar-progress", &json);
+                let _ = app.emit("arlen://toolbar-progress", &json);
             }
         }
         "app.toolbar.progress_cleared" => {
@@ -285,7 +285,7 @@ fn forward_toolbar_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
                     "appId": p.app_id,
                     "windowId": p.window_id,
                 });
-                let _ = app.emit("lunaris://toolbar-progress-cleared", &json);
+                let _ = app.emit("arlen://toolbar-progress-cleared", &json);
             }
         }
         "app.toolbar.cleared" => {
@@ -294,7 +294,7 @@ fn forward_toolbar_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
                     "appId": p.app_id,
                     "windowId": p.window_id,
                 });
-                let _ = app.emit("lunaris://toolbar-cleared", &json);
+                let _ = app.emit("arlen://toolbar-cleared", &json);
             }
         }
         _ => {}
@@ -344,7 +344,7 @@ fn forward_shortcut_event(
                         "confirm": if s.confirm.is_empty() { None } else { Some(s.confirm) },
                     })).collect::<Vec<_>>(),
                 });
-                let _ = app.emit("lunaris://shortcut-register", &json);
+                let _ = app.emit("arlen://shortcut-register", &json);
             }
         }
         "app.shortcut.state_changed" => {
@@ -362,14 +362,14 @@ fn forward_shortcut_event(
                     "enabled": p.enabled,
                     "badge": p.badge,
                 });
-                let _ = app.emit("lunaris://shortcut-state-changed", &json);
+                let _ = app.emit("arlen://shortcut-state-changed", &json);
             }
         }
         "app.shortcut.cleared" => {
             if let Ok(p) = proto::ShortcutClearedPayload::decode(payload) {
                 crate::app_state::apply_cleared(shortcuts_state, &p.app_id);
                 let json = serde_json::json!({ "appId": p.app_id });
-                let _ = app.emit("lunaris://shortcut-cleared", &json);
+                let _ = app.emit("arlen://shortcut-cleared", &json);
             }
         }
         _ => {}
@@ -389,13 +389,13 @@ fn forward_badge_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
                     "status": p.status,
                     "progressValue": p.progress_value,
                 });
-                let _ = app.emit("lunaris://badge-set", &json);
+                let _ = app.emit("arlen://badge-set", &json);
             }
         }
         "app.badge.cleared" => {
             if let Ok(p) = proto::BadgeClearedPayload::decode(payload) {
                 let json = serde_json::json!({ "appId": p.app_id });
-                let _ = app.emit("lunaris://badge-cleared", &json);
+                let _ = app.emit("arlen://badge-cleared", &json);
             }
         }
         _ => {}
@@ -417,13 +417,13 @@ fn forward_ambient_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
                     "reason": p.reason,
                     "autoClearMs": p.auto_clear_ms,
                 });
-                let _ = app.emit("lunaris://ambient-set", &json);
+                let _ = app.emit("arlen://ambient-set", &json);
             }
         }
         "app.ambient.cleared" => {
             if let Ok(p) = proto::AmbientClearedPayload::decode(payload) {
                 let json = serde_json::json!({ "appId": p.app_id });
-                let _ = app.emit("lunaris://ambient-cleared", &json);
+                let _ = app.emit("arlen://ambient-cleared", &json);
             }
         }
         _ => {}
@@ -439,7 +439,7 @@ fn forward_ambient_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
 fn emit_event(event_type: &str, payload: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
     use prost::Message;
     let producer_socket = std::env::var("LUNARIS_PRODUCER_SOCKET")
-        .unwrap_or_else(|_| "/run/lunaris/event-bus-producer.sock".to_string());
+        .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".to_string());
 
     let event = proto::Event {
         id: uuid::Uuid::now_v7().to_string(),
@@ -487,7 +487,7 @@ pub fn emit_toolbar_action_invoked(app_id: &str, window_id: &str, action: &str) 
 /// Same shape as [`emit_toolbar_action_invoked`] but for the
 /// shortcut surface (Waypointer-driven dispatch). Distinct
 /// event type for audit clarity; the plugin-side consumer
-/// routes both into the same `lunaris://app-action` frontend
+/// routes both into the same `arlen://app-action` frontend
 /// event.
 pub fn emit_shortcut_action_invoked(app_id: &str, window_id: &str, action: &str) {
     use prost::Message;

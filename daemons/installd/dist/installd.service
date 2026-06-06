@@ -1,15 +1,15 @@
 [Unit]
-Description=Lunaris Install Daemon (user service)
+Description=Arlen Install Daemon (user service)
 Documentation=https://github.com/lunaris-sys/installd
 
 [Service]
 Type=dbus
-BusName=org.lunaris.InstallDaemon1
-ExecStart=%h/.local/lib/lunaris/libexec/lunaris-installd
+BusName=org.arlen.InstallDaemon1
+ExecStart=%h/.local/lib/arlen/libexec/arlen-installd
 
 # Security hardening.
 ProtectSystem=strict
-ReadWritePaths=%h/.local/share/lunaris %h/.local/share/applications
+ReadWritePaths=%h/.local/share/arlen %h/.local/share/applications
 PrivateTmp=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes

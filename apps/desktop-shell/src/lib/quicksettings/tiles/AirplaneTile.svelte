@@ -4,7 +4,7 @@
   /// rfkill blocks/unblocks all radios in one go. Toggling here also
   /// affects the WiFi tile and the Bluetooth tile via their respective
   /// refresh listeners.
-  import { BaseTile } from "@lunaris/ui-kit/components/quicksettings";
+  import { BaseTile } from "@arlen/ui-kit/components/quicksettings";
   import { Plane } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -15,7 +15,7 @@
   onMount(() => {
     refresh();
     let stop: UnlistenFn | null = null;
-    listen("lunaris://airplane-changed", refresh).then((u) => (stop = u));
+    listen("arlen://airplane-changed", refresh).then((u) => (stop = u));
     return () => stop?.();
   });
 

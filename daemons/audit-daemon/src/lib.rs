@@ -1,6 +1,6 @@
-//! Lunaris Audit Daemon.
+//! Arlen Audit Daemon.
 //!
-//! `lunaris-auditd` is the sole writer of the system audit log
+//! `arlen-auditd` is the sole writer of the system audit log
 //! (foundation §8.4.7). Every Knowledge-Graph access, AI action, and
 //! permission grant or denial is recorded as one entry in an
 //! append-only, hash-chained ledger. Other components never write
@@ -36,8 +36,8 @@ pub mod read;
 
 pub use error::{AuditError, Result};
 
-/// The per-user audit data directory: `$XDG_DATA_HOME/lunaris/audit/`,
-/// else `$HOME/.local/share/lunaris/audit/`.
+/// The per-user audit data directory: `$XDG_DATA_HOME/arlen/audit/`,
+/// else `$HOME/.local/share/arlen/audit/`.
 ///
 /// The audit log is per-user (foundation §8.4.12) and the directory
 /// holds the HMAC key, a secret. There is deliberately **no** fallback
@@ -67,7 +67,7 @@ pub fn audit_data_dir() -> Result<PathBuf> {
             base.display()
         )));
     }
-    Ok(base.join("lunaris/audit"))
+    Ok(base.join("arlen/audit"))
 }
 
 /// Create `dir` (and parents) and tighten it to mode 0700, so only

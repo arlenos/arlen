@@ -36,7 +36,7 @@ const host = process.env.TAURI_DEV_HOST;
  */
 /** @type {import("vite").Plugin} */
 const skipTailwindForSvelteStyleQueries = {
-  name: "lunaris:skip-tailwind-for-svelte-style-queries",
+  name: "arlen:skip-tailwind-for-svelte-style-queries",
   enforce: "pre",
   load(/** @type {string} */ id) {
     if (

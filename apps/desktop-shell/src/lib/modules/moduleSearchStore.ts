@@ -80,7 +80,7 @@ function ensureHost(): HTMLDivElement {
   if (workerHost && workerHost.isConnected) return workerHost;
   const host = document.createElement("div");
   host.setAttribute("aria-hidden", "true");
-  host.dataset.lunarisRole = "module-worker-host";
+  host.dataset.arlenRole = "module-worker-host";
   // `position: absolute` plus a far-off-screen offset is the
   // long-established way to keep an element loadable but invisible.
   // We deliberately avoid `display: none` (would block iframe load)

@@ -3,7 +3,7 @@
 /// `modulesd-proto::HostReply` plus a few iframe-only events.
 ///
 /// The shell forwards every `ModuleToHost` message to
-/// `lunaris-modulesd` for capability gating; replies come back as
+/// `arlen-modulesd` for capability gating; replies come back as
 /// `HostToModule` messages tagged with the original `requestId`.
 
 export type HostToModule =

@@ -96,9 +96,9 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use lunaris_ai_core::audit::{behaviour_action_event, AuditSink};
-use lunaris_ai_core::capability::{ActionDecision, ActionKind, BaselineMode, Capability};
-use lunaris_ai_core::mcp::{AlwaysConfirm, AlwaysConfirmReason};
+use arlen_ai_core::audit::{behaviour_action_event, AuditSink};
+use arlen_ai_core::capability::{ActionDecision, ActionKind, BaselineMode, Capability};
+use arlen_ai_core::mcp::{AlwaysConfirm, AlwaysConfirmReason};
 
 use crate::registry;
 use crate::seams::{GateObserver, GraphHandle};
@@ -635,7 +635,7 @@ mod tests {
     use std::collections::HashMap;
 
     use audit_proto::MockAuditSink;
-    use lunaris_ai_core::capability::{AccessTier, ActionPermissions};
+    use arlen_ai_core::capability::{AccessTier, ActionPermissions};
 
     use crate::seams::{DeniedGraph, GraphError};
     use crate::slice::{FsPathResolver, SliceError, StaticMountPolicy};
@@ -731,7 +731,7 @@ mod tests {
     /// A trusted action context targeting a fixed app.
     fn ctx<'a>(external: bool, correlation_id: &'a str) -> ActionContext<'a> {
         ActionContext {
-            app_id: "org.lunaris.files",
+            app_id: "org.arlen.files",
             external_trigger: external,
             correlation_id,
         }
@@ -820,7 +820,7 @@ mod tests {
         // not a proposal claim).
         let cap = Capability::new(
             AccessTier::Full,
-            ActionPermissions::new(BaselineMode::Suggest, ["org.lunaris.files"]),
+            ActionPermissions::new(BaselineMode::Suggest, ["org.arlen.files"]),
         );
         let audit = MockAuditSink::accepting();
         let obs = Recorder::default();
@@ -874,7 +874,7 @@ mod tests {
         // executing decision to explicit confirmation.
         let cap = Capability::new(
             AccessTier::Full,
-            ActionPermissions::new(BaselineMode::Suggest, ["org.lunaris.files"]),
+            ActionPermissions::new(BaselineMode::Suggest, ["org.arlen.files"]),
         );
         let audit = MockAuditSink::accepting();
         let obs = Recorder::default();
@@ -966,7 +966,7 @@ mod tests {
     fn executing_cap() -> Capability {
         Capability::new(
             AccessTier::Full,
-            ActionPermissions::new(BaselineMode::Suggest, ["org.lunaris.files"]),
+            ActionPermissions::new(BaselineMode::Suggest, ["org.arlen.files"]),
         )
     }
 

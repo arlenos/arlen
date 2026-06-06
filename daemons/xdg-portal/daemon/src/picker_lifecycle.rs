@@ -17,12 +17,12 @@ use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
 /// Path to the picker-ui binary. In production this is
-/// `/usr/lib/lunaris/libexec/xdg-desktop-portal-lunaris-picker`. In
+/// `/usr/lib/arlen/libexec/xdg-desktop-portal-arlen-picker`. In
 /// development the dev-script overrides it via the
 /// `LUNARIS_PORTAL_PICKER_BIN` environment variable so the daemon
 /// finds the picker built at `picker-ui/src-tauri/target/debug/...`
 /// without an install step.
-const PROD_PICKER_PATH: &str = "/usr/lib/lunaris/libexec/xdg-desktop-portal-lunaris-picker";
+const PROD_PICKER_PATH: &str = "/usr/lib/arlen/libexec/xdg-desktop-portal-arlen-picker";
 const ENV_OVERRIDE: &str = "LUNARIS_PORTAL_PICKER_BIN";
 
 /// Resolve the picker-ui binary path.

@@ -3,11 +3,11 @@
 /// Unifies two sources that feed the Extensions panel:
 ///
 ///   1. Filesystem modules — discovered by `modules_list` in
-///      `/usr/share/lunaris/modules/` and `~/.local/share/lunaris/modules/`.
+///      `/usr/share/arlen/modules/` and `~/.local/share/arlen/modules/`.
 ///
 ///   2. Built-in Waypointer plugins — compiled into the desktop-shell
 ///      binary, exposed via `waypointer_list_plugins` which reads the
-///      shell-written registry at `~/.local/share/lunaris/waypointer-plugins.toml`.
+///      shell-written registry at `~/.local/share/arlen/waypointer-plugins.toml`.
 ///
 /// Both sources are normalised into the same `ModuleSummary` shape so
 /// downstream components (filter, grouping, card) don't need to know
@@ -56,7 +56,7 @@ function pluginToSummary(p: PluginSummary): ModuleSummary {
     name: p.name,
     version: "",
     description: p.description,
-    author: "Lunaris",
+    author: "Arlen",
     moduleType: "system",
     source: "builtin",
     enabled: p.enabled,

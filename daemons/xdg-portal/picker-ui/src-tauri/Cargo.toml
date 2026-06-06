@@ -4,25 +4,25 @@
 # that should not be shared with the headless daemon.
 
 [package]
-name = "xdg-portal-lunaris-picker"
+name = "xdg-portal-arlen-picker"
 version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-only"
-description = "Tauri picker UI for xdg-desktop-portal-lunaris"
+description = "Tauri picker UI for xdg-desktop-portal-arlen"
 
 [lib]
-name = "xdg_portal_lunaris_picker_lib"
+name = "xdg_portal_arlen_picker_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]
-name = "xdg-desktop-portal-lunaris-picker"
+name = "xdg-desktop-portal-arlen-picker"
 path = "src/main.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-xdg-portal-lunaris-protocol = { path = "../../protocol" }
+xdg-portal-arlen-protocol = { path = "../../protocol" }
 tauri = { version = "2", features = [] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "fs", "net", "sync", "time", "io-util"] }
 serde = { version = "1", features = ["derive"] }

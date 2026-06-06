@@ -1,7 +1,7 @@
 {
-  "name": "@lunaris/tauri-plugin-clipboard",
+  "name": "@arlen/tauri-plugin-clipboard",
   "version": "0.1.0",
-  "description": "Tauri plugin for the Lunaris clipboard subsystem",
+  "description": "Tauri plugin for the Arlen clipboard subsystem",
   "license": "GPL-3.0-only",
   "main": "index.ts",
   "types": "index.ts",

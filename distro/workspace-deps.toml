@@ -1,4 +1,4 @@
-# Shared dependency versions for all Lunaris repos.
+# Shared dependency versions for all Arlen repos.
 # All Cargo.toml files must use these versions for common crates.
 # Update here first, then run `just check-deps` to verify all repos are in sync.
 # Dependabot runs only on this file and opens follow-up PRs in affected repos.

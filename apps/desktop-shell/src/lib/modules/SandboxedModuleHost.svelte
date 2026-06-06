@@ -3,7 +3,7 @@
   ///
   /// Mounts the module as an iframe served over `module://`. The
   /// scheme handler in `module_scheme.rs` proxies the asset request
-  /// through `lunaris-modulesd` for nonce + CSP enforcement; this
+  /// through `arlen-modulesd` for nonce + CSP enforcement; this
   /// component only needs to know the URL the daemon mints.
   ///
   /// Capability-gated host calls (`graph.query`, `network.fetch`,

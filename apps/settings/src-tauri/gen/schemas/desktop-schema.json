@@ -2147,205 +2147,205 @@
         {
           "description": "Enables the activate_tab command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:allow-activate-tab",
+          "const": "arlen-menu:allow-activate-tab",
           "markdownDescription": "Enables the activate_tab command without any pre-configured scope."
         },
         {
           "description": "Enables the add_button command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:allow-add-button",
+          "const": "arlen-menu:allow-add-button",
           "markdownDescription": "Enables the add_button command without any pre-configured scope."
         },
         {
           "description": "Enables the add_tab command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:allow-add-tab",
+          "const": "arlen-menu:allow-add-tab",
           "markdownDescription": "Enables the add_tab command without any pre-configured scope."
         },
         {
           "description": "Enables the remove_button command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:allow-remove-button",
+          "const": "arlen-menu:allow-remove-button",
           "markdownDescription": "Enables the remove_button command without any pre-configured scope."
         },
         {
           "description": "Enables the remove_tab command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:allow-remove-tab",
+          "const": "arlen-menu:allow-remove-tab",
           "markdownDescription": "Enables the remove_tab command without any pre-configured scope."
         },
         {
           "description": "Enables the reorder_tabs command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:allow-reorder-tabs",
+          "const": "arlen-menu:allow-reorder-tabs",
           "markdownDescription": "Enables the reorder_tabs command without any pre-configured scope."
         },
         {
           "description": "Enables the set_breadcrumb command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:allow-set-breadcrumb",
+          "const": "arlen-menu:allow-set-breadcrumb",
           "markdownDescription": "Enables the set_breadcrumb command without any pre-configured scope."
         },
         {
           "description": "Enables the set_button_enabled command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:allow-set-button-enabled",
+          "const": "arlen-menu:allow-set-button-enabled",
           "markdownDescription": "Enables the set_button_enabled command without any pre-configured scope."
         },
         {
           "description": "Enables the set_center_content command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:allow-set-center-content",
+          "const": "arlen-menu:allow-set-center-content",
           "markdownDescription": "Enables the set_center_content command without any pre-configured scope."
         },
         {
           "description": "Enables the set_search_mode command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:allow-set-search-mode",
+          "const": "arlen-menu:allow-set-search-mode",
           "markdownDescription": "Enables the set_search_mode command without any pre-configured scope."
         },
         {
           "description": "Enables the set_title command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:allow-set-title",
+          "const": "arlen-menu:allow-set-title",
           "markdownDescription": "Enables the set_title command without any pre-configured scope."
         },
         {
           "description": "Enables the update_tab command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:allow-update-tab",
+          "const": "arlen-menu:allow-update-tab",
           "markdownDescription": "Enables the update_tab command without any pre-configured scope."
         },
         {
           "description": "Denies the activate_tab command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:deny-activate-tab",
+          "const": "arlen-menu:deny-activate-tab",
           "markdownDescription": "Denies the activate_tab command without any pre-configured scope."
         },
         {
           "description": "Denies the add_button command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:deny-add-button",
+          "const": "arlen-menu:deny-add-button",
           "markdownDescription": "Denies the add_button command without any pre-configured scope."
         },
         {
           "description": "Denies the add_tab command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:deny-add-tab",
+          "const": "arlen-menu:deny-add-tab",
           "markdownDescription": "Denies the add_tab command without any pre-configured scope."
         },
         {
           "description": "Denies the remove_button command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:deny-remove-button",
+          "const": "arlen-menu:deny-remove-button",
           "markdownDescription": "Denies the remove_button command without any pre-configured scope."
         },
         {
           "description": "Denies the remove_tab command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:deny-remove-tab",
+          "const": "arlen-menu:deny-remove-tab",
           "markdownDescription": "Denies the remove_tab command without any pre-configured scope."
         },
         {
           "description": "Denies the reorder_tabs command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:deny-reorder-tabs",
+          "const": "arlen-menu:deny-reorder-tabs",
           "markdownDescription": "Denies the reorder_tabs command without any pre-configured scope."
         },
         {
           "description": "Denies the set_breadcrumb command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:deny-set-breadcrumb",
+          "const": "arlen-menu:deny-set-breadcrumb",
           "markdownDescription": "Denies the set_breadcrumb command without any pre-configured scope."
         },
         {
           "description": "Denies the set_button_enabled command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:deny-set-button-enabled",
+          "const": "arlen-menu:deny-set-button-enabled",
           "markdownDescription": "Denies the set_button_enabled command without any pre-configured scope."
         },
         {
           "description": "Denies the set_center_content command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:deny-set-center-content",
+          "const": "arlen-menu:deny-set-center-content",
           "markdownDescription": "Denies the set_center_content command without any pre-configured scope."
         },
         {
           "description": "Denies the set_search_mode command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:deny-set-search-mode",
+          "const": "arlen-menu:deny-set-search-mode",
           "markdownDescription": "Denies the set_search_mode command without any pre-configured scope."
         },
         {
           "description": "Denies the set_title command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:deny-set-title",
+          "const": "arlen-menu:deny-set-title",
           "markdownDescription": "Denies the set_title command without any pre-configured scope."
         },
         {
           "description": "Denies the update_tab command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-menu:deny-update-tab",
+          "const": "arlen-menu:deny-update-tab",
           "markdownDescription": "Denies the update_tab command without any pre-configured scope."
         },
         {
           "description": "Enables the open_uri command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-portal:allow-open-uri",
+          "const": "arlen-portal:allow-open-uri",
           "markdownDescription": "Enables the open_uri command without any pre-configured scope."
         },
         {
           "description": "Enables the pick_directory command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-portal:allow-pick-directory",
+          "const": "arlen-portal:allow-pick-directory",
           "markdownDescription": "Enables the pick_directory command without any pre-configured scope."
         },
         {
           "description": "Enables the pick_file command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-portal:allow-pick-file",
+          "const": "arlen-portal:allow-pick-file",
           "markdownDescription": "Enables the pick_file command without any pre-configured scope."
         },
         {
           "description": "Enables the save_file command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-portal:allow-save-file",
+          "const": "arlen-portal:allow-save-file",
           "markdownDescription": "Enables the save_file command without any pre-configured scope."
         },
         {
           "description": "Enables the save_files command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-portal:allow-save-files",
+          "const": "arlen-portal:allow-save-files",
           "markdownDescription": "Enables the save_files command without any pre-configured scope."
         },
         {
           "description": "Denies the open_uri command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-portal:deny-open-uri",
+          "const": "arlen-portal:deny-open-uri",
           "markdownDescription": "Denies the open_uri command without any pre-configured scope."
         },
         {
           "description": "Denies the pick_directory command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-portal:deny-pick-directory",
+          "const": "arlen-portal:deny-pick-directory",
           "markdownDescription": "Denies the pick_directory command without any pre-configured scope."
         },
         {
           "description": "Denies the pick_file command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-portal:deny-pick-file",
+          "const": "arlen-portal:deny-pick-file",
           "markdownDescription": "Denies the pick_file command without any pre-configured scope."
         },
         {
           "description": "Denies the save_file command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-portal:deny-save-file",
+          "const": "arlen-portal:deny-save-file",
           "markdownDescription": "Denies the save_file command without any pre-configured scope."
         },
         {
           "description": "Denies the save_files command without any pre-configured scope.",
           "type": "string",
-          "const": "lunaris-portal:deny-save-files",
+          "const": "arlen-portal:deny-save-files",
           "markdownDescription": "Denies the save_files command without any pre-configured scope."
         }
       ]

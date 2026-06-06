@@ -1,7 +1,7 @@
 /// Tauri commands for the night-light backend.
 ///
 /// Each command persists the change to `shell.toml` AND dispatches
-/// the corresponding `lunaris-shell-overlay` request so the
+/// the corresponding `arlen-shell-overlay` request so the
 /// compositor's gamma engine reflects the new state without a
 /// reload. The compositor is the source of truth for "warm tint
 /// is right now active"; `shell.toml` is the source of truth for

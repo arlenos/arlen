@@ -2,7 +2,7 @@
 ///
 /// Two data sources, loaded in parallel on every Waypointer open:
 ///
-///   • **Recent Apps** — local JSON (`~/.local/share/lunaris/app-history.json`)
+///   • **Recent Apps** — local JSON (`~/.local/share/arlen/app-history.json`)
 ///     fed by `record_app_launch` every time the user launches an app
 ///     from the Waypointer. Returns `AppEntry[]` by joining the stored
 ///     `exec` keys against the live app index.

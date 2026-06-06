@@ -17,7 +17,7 @@ use std::sync::Arc;
 use tokio::net::UnixStream;
 
 use audit_proto::{read_frame, write_frame, ReadRequest, ReadResponse};
-// Re-export so `lunaris_auditd::read::read_socket_path` stays the
+// Re-export so `arlen_auditd::read::read_socket_path` stays the
 // canonical path the binary and tests use; the type lives in
 // `audit-proto` so readers (the Anomaly Detector) share it.
 pub use audit_proto::read_socket_path;
@@ -142,10 +142,10 @@ mod tests {
     }
 
     #[test]
-    fn read_socket_path_is_under_lunaris() {
+    fn read_socket_path_is_under_arlen() {
         let p = read_socket_path();
         assert!(
-            p.to_string_lossy().ends_with("lunaris/audit-read.sock"),
+            p.to_string_lossy().ends_with("arlen/audit-read.sock"),
             "{}",
             p.display()
         );

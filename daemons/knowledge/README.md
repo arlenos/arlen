@@ -1,6 +1,6 @@
 # knowledge
 
-The Lunaris knowledge daemon implements the two-layer write architecture described in the blueprint. It consumes events from the Event Bus, stores them in SQLite, promotes relevant events to Ladybug (an embedded property graph database), and exposes a Cypher query interface over a Unix socket.
+The Arlen knowledge daemon implements the two-layer write architecture described in the blueprint. It consumes events from the Event Bus, stores them in SQLite, promotes relevant events to Ladybug (an embedded property graph database), and exposes a Cypher query interface over a Unix socket.
 
 ## Architecture
 
@@ -41,10 +41,10 @@ MATCH (f:File)-[:ACCESSED_BY]->(a:App) RETURN f.path, a.name LIMIT 10
 ## Running
 
 ```bash
-LUNARIS_CONSUMER_SOCKET=/run/lunaris/event-bus-consumer.sock \
-LUNARIS_DB_PATH=/var/lib/lunaris/knowledge/events.db \
-LUNARIS_GRAPH_PATH=/var/lib/lunaris/knowledge/graph \
-LUNARIS_DAEMON_SOCKET=/run/lunaris/knowledge.sock \
+LUNARIS_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock \
+LUNARIS_DB_PATH=/var/lib/arlen/knowledge/events.db \
+LUNARIS_GRAPH_PATH=/var/lib/arlen/knowledge/graph \
+LUNARIS_DAEMON_SOCKET=/run/arlen/knowledge.sock \
 RUST_LOG=info \
 ./knowledge
 ```
@@ -53,10 +53,10 @@ RUST_LOG=info \
 
 | Variable | Default | Description |
 |---|---|---|
-| `LUNARIS_CONSUMER_SOCKET` | `/run/lunaris/event-bus-consumer.sock` | Event Bus consumer socket |
-| `LUNARIS_DB_PATH` | `/var/lib/lunaris/knowledge/events.db` | SQLite database path |
-| `LUNARIS_GRAPH_PATH` | `/var/lib/lunaris/knowledge/graph` | Ladybug database directory |
-| `LUNARIS_DAEMON_SOCKET` | `/run/lunaris/knowledge.sock` | Query interface socket |
+| `LUNARIS_CONSUMER_SOCKET` | `/run/arlen/event-bus-consumer.sock` | Event Bus consumer socket |
+| `LUNARIS_DB_PATH` | `/var/lib/arlen/knowledge/events.db` | SQLite database path |
+| `LUNARIS_GRAPH_PATH` | `/var/lib/arlen/knowledge/graph` | Ladybug database directory |
+| `LUNARIS_DAEMON_SOCKET` | `/run/arlen/knowledge.sock` | Query interface socket |
 
 ## Testing
 
@@ -68,4 +68,4 @@ cargo bench --bench graph_scale   # performance benchmarks
 
 ## Part of
 
-[Lunaris](https://github.com/lunaris-sys): a Linux desktop OS built around a system-wide knowledge graph.
+[Arlen](https://github.com/lunaris-sys): a Linux desktop OS built around a system-wide knowledge graph.

@@ -12,7 +12,7 @@
 //!
 //! See `docs/architecture/peer-auth-system.md` for the broker
 //! contract and `AUTH-CANONICAL.md` for the system canon. Long-
-//! lived handler-registration goes through `lunaris-modulesd` and
+//! lived handler-registration goes through `arlen-modulesd` and
 //! is **not** part of this broker.
 
 use std::os::unix::io::AsRawFd;
@@ -21,7 +21,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use lunaris_permissions::ConnectionAuth;
+use arlen_permissions::ConnectionAuth;
 use prost::Message;
 use tauri::{AppHandle, Manager};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -33,7 +33,7 @@ use tokio::time::timeout;
 /// `build.rs` from `proto/search_api.proto`.
 mod proto {
     #![allow(dead_code, clippy::doc_markdown)]
-    include!(concat!(env!("OUT_DIR"), "/lunaris.search.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.search.rs"));
 }
 
 const MAX_FRAME_BYTES: usize = 1024 * 1024;
@@ -125,7 +125,7 @@ fn socket_path() -> Result<PathBuf, String> {
     let runtime = std::env::var_os("XDG_RUNTIME_DIR")
         .ok_or_else(|| "XDG_RUNTIME_DIR not set".to_string())?;
     let mut p = PathBuf::from(runtime);
-    p.push("lunaris");
+    p.push("arlen");
     p.push(SOCKET_NAME);
     Ok(p)
 }
