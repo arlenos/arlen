@@ -377,8 +377,12 @@ pub async fn get_airplane_mode() -> Result<bool, String> {
 }
 
 /// Toggles airplane mode by blocking or unblocking all wireless radios.
+///
+/// Emits `arlen://airplane-changed` on success so the indicators and tiles
+/// refresh immediately instead of waiting for their periodic poll.
 #[tauri::command]
-pub async fn set_airplane_mode(enabled: bool) -> Result<(), String> {
+pub async fn set_airplane_mode(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri::Emitter;
     let action = if enabled { "block" } else { "unblock" };
     let status = tokio::process::Command::new("rfkill")
         .args([action, "all"])
@@ -388,6 +392,7 @@ pub async fn set_airplane_mode(enabled: bool) -> Result<(), String> {
     if !status.success() {
         return Err(format!("rfkill {action} all returned non-zero"));
     }
+    let _ = app.emit("arlen://airplane-changed", ());
     Ok(())
 }
 

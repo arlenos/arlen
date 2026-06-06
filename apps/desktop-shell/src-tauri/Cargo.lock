@@ -98,6 +98,89 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
+name = "arlen-desktop-shell"
+version = "0.1.0"
+dependencies = [
+ "arlen-modules",
+ "arlen-permissions",
+ "arlen-theme",
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "chrono-tz",
+ "cosmic-client-toolkit",
+ "dirs 5.0.1",
+ "env_logger",
+ "evalexpr",
+ "futures-util",
+ "glib",
+ "gtk",
+ "gtk-layer-shell",
+ "image",
+ "libc",
+ "log",
+ "meval",
+ "module-sdk",
+ "modulesd-proto",
+ "notification-proto",
+ "notify 6.1.1",
+ "prost",
+ "prost-build",
+ "serde",
+ "serde_json",
+ "smithay-client-toolkit",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 0.8.2",
+ "unicode_names2",
+ "uuid",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-scanner",
+ "wordnet-db",
+ "wordnet-morphy",
+ "wordnet-types",
+ "zbus",
+]
+
+[[package]]
+name = "arlen-modules"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 2.0.18",
+ "toml 0.8.2",
+]
+
+[[package]]
+name = "arlen-permissions"
+version = "0.1.0"
+dependencies = [
+ "dirs 5.0.1",
+ "libc",
+ "notify 6.1.1",
+ "serde",
+ "thiserror 2.0.18",
+ "toml 0.8.2",
+]
+
+[[package]]
+name = "arlen-theme"
+version = "0.1.0"
+dependencies = [
+ "dirs 5.0.1",
+ "notify 7.0.0",
+ "serde",
+ "thiserror 1.0.69",
+ "toml 0.8.2",
+]
+
+[[package]]
 name = "async-broadcast"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2403,89 +2486,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
-name = "arlen-desktop-shell"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "bytes",
- "chrono",
- "chrono-tz",
- "cosmic-client-toolkit",
- "dirs 5.0.1",
- "env_logger",
- "evalexpr",
- "futures-util",
- "glib",
- "gtk",
- "gtk-layer-shell",
- "image",
- "libc",
- "log",
- "arlen-modules",
- "arlen-permissions",
- "arlen-theme",
- "meval",
- "module-sdk",
- "modulesd-proto",
- "notification-proto",
- "notify 6.1.1",
- "prost",
- "prost-build",
- "serde",
- "serde_json",
- "smithay-client-toolkit",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "toml 0.8.2",
- "unicode_names2",
- "uuid",
- "wayland-backend",
- "wayland-client",
- "wayland-protocols",
- "wayland-scanner",
- "wordnet-db",
- "wordnet-morphy",
- "wordnet-types",
- "zbus",
-]
-
-[[package]]
-name = "arlen-modules"
-version = "0.1.0"
-dependencies = [
- "serde",
- "thiserror 2.0.18",
- "toml 0.8.2",
-]
-
-[[package]]
-name = "arlen-permissions"
-version = "0.1.0"
-dependencies = [
- "dirs 5.0.1",
- "libc",
- "notify 6.1.1",
- "serde",
- "thiserror 2.0.18",
- "toml 0.8.2",
-]
-
-[[package]]
-name = "arlen-theme"
-version = "0.1.0"
-dependencies = [
- "dirs 5.0.1",
- "notify 7.0.0",
- "serde",
- "thiserror 1.0.69",
- "toml 0.8.2",
-]
-
-[[package]]
 name = "mac"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2969,9 +2969,9 @@ dependencies = [
 name = "os-sdk"
 version = "0.1.0"
 dependencies = [
+ "arlen-permissions",
  "dirs 5.0.1",
  "libc",
- "arlen-permissions",
  "notify 6.1.1",
  "prost",
  "prost-build",
