@@ -44,5 +44,5 @@ sha2 = "0.10"
 zbus = { version = "5", default-features = false, features = ["tokio"] }
 
 [dev-dependencies]
-audit-proto = { path = "../../audit-proto", features = ["test-util"] }
+audit-proto = { path = "../../contracts/audit-proto", features = ["test-util"] }
 tokio = { version = "1", features = ["test-util"] }

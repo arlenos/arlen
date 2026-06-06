@@ -42,23 +42,23 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # Async D-Bus client for the compositor's input services. Tauri 2 ships
 # its own async runtime so we rely on zbus' `tokio` feature and invoke
 # via `#[tauri::command] async fn`.
-lunaris-input-client = { path = "../../sdk/lunaris-input-client" }
+lunaris-input-client = { path = "../../../sdk/lunaris-input-client" }
 
 # Lunaris titlebar plugin: binds lunaris-titlebar-v1 Wayland protocol when
 # running under the Lunaris compositor, no-op otherwise. The graceful
 # fallback means the Settings app still works on plain wlroots/GNOME.
-tauri-plugin-lunaris-menu = { path = "../../sdk/tauri-plugin-menu" }
+tauri-plugin-lunaris-menu = { path = "../../../sdk/tauri-plugin-menu" }
 
 # Lunaris portal plugin: wraps org.freedesktop.portal.Desktop FileChooser
 # and OpenURI. Reused by `commands::picker::pick_directory` so the
 # directory selector goes through the Lunaris-themed picker on a Lunaris
 # session and falls back to kdialog/zenity when the portal frontend is
 # not installed (CI, headless dev sessions, stripped images).
-tauri-plugin-lunaris-portal = { path = "../../sdk/tauri-plugin-portal" }
+tauri-plugin-lunaris-portal = { path = "../../../sdk/tauri-plugin-portal" }
 
 # Shared manifest parser / validator for module.toml files. The
 # Settings app and the shell use the same schema via this crate.
-lunaris-modules = { path = "../../sdk/modules" }
+lunaris-modules = { path = "../../../sdk/modules" }
 
 # Wayland client for the Display panel. We talk wlr-output-management
 # (zwlr_output_manager_v1) directly because the compositor implements
@@ -85,7 +85,7 @@ cosmic-comp-config = { path = "../../compositor/cosmic-comp-config", features = 
 # tier over the daemon's read socket via the shared ReadClient; the
 # wire types live in audit-proto so reader and daemon share one
 # definition (the same pattern the Anomaly Detector uses).
-audit-proto = { path = "../../audit-proto" }
+audit-proto = { path = "../../../contracts/audit-proto" }
 
 [dev-dependencies]
 tempfile = "3"

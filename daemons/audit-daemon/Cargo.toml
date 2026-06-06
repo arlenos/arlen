@@ -29,12 +29,12 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Shared ingest wire protocol — one definition for the daemon and
 # its clients.
-audit-proto = { path = "../audit-proto" }
+audit-proto = { path = "../../contracts/audit-proto" }
 
 # Per-connection peer authentication on the ingest socket, and the
 # Event Bus producer client for re-emitting `audit.ai.*` events.
-lunaris-permissions = { path = "../sdk/permissions" }
-os-sdk = { path = "../sdk/os-sdk" }
+lunaris-permissions = { path = "../../sdk/permissions" }
+os-sdk = { path = "../../sdk/os-sdk" }
 
 [dev-dependencies]
 tempfile = "3"
