@@ -2971,6 +2971,7 @@ version = "0.1.0"
 dependencies = [
  "dirs 5.0.1",
  "libc",
+ "lunaris-permissions",
  "notify 6.1.1",
  "prost",
  "prost-build",

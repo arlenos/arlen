@@ -10,6 +10,8 @@
 //! owns the pending prompts and the grants. This module is a thin
 //! signal-to-UI and UI-to-method relay.
 
+use std::time::Duration;
+
 use futures_util::StreamExt;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
@@ -19,6 +21,11 @@ use zbus::Connection;
 const AI_BUS_NAME: &str = "org.lunaris.AI1";
 /// AI daemon object path.
 const AI_OBJECT_PATH: &str = "/org/lunaris/AI1";
+
+/// Reconnect backoff floor after a listener cycle ends.
+const RECONNECT_MIN: Duration = Duration::from_secs(1);
+/// Reconnect backoff ceiling so a long-absent daemon is still polled.
+const RECONNECT_MAX: Duration = Duration::from_secs(30);
 
 /// Payload sent to the frontend when the daemon asks for an
 /// authorization decision.
@@ -32,17 +39,33 @@ struct AuthorizationPromptDto {
 }
 
 /// Spawn the `AuthorizationPrompt` signal listener. Survives a
-/// missing daemon: if the bus or the daemon is unavailable the
-/// listener simply logs and exits, and the shell still runs.
+/// missing daemon and a daemon restart: each listener cycle ends
+/// (bus unavailable, daemon absent, or the signal stream closing)
+/// is followed by a backoff and a fresh attempt, so authorization
+/// prompts are surfaced again once the daemon comes back. The shell
+/// runs regardless; the task lives until the shell exits.
 pub fn spawn(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        if let Err(err) = run(app).await {
-            log::warn!("[ai-authz] prompt listener stopped: {err}");
+        let mut backoff = RECONNECT_MIN;
+        loop {
+            match run(&app).await {
+                Ok(()) => {
+                    // Signal stream closed cleanly (daemon went away).
+                    // Reset the backoff and reconnect promptly.
+                    log::info!("[ai-authz] prompt stream closed, reconnecting");
+                    backoff = RECONNECT_MIN;
+                }
+                Err(err) => {
+                    log::warn!("[ai-authz] prompt listener cycle failed: {err}");
+                }
+            }
+            tokio::time::sleep(backoff).await;
+            backoff = (backoff * 2).min(RECONNECT_MAX);
         }
     });
 }
 
-async fn run(app: AppHandle) -> zbus::Result<()> {
+async fn run(app: &AppHandle) -> zbus::Result<()> {
     let connection = Connection::session().await?;
     let proxy = zbus::Proxy::new(
         &connection,
