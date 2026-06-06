@@ -1,0 +1,50 @@
+[Unit]
+Description=Lunaris Module Runtime daemon (user service)
+Documentation=https://github.com/lunaris-sys/modulesd
+# Wait for the upstream daemons modulesd's host imports reach into.
+# If those run as user services too, this `After=` chain ensures
+# discovery doesn't race them; if they're system services, this is a
+# no-op (systemd just ignores unknown user-side dependencies).
+After=lunaris-event-bus.service lunaris-knowledge.service
+Requires=lunaris-modulesd.socket
+
+[Service]
+# `Type=notify` lets modulesd announce readiness only after the
+# socket is bound + sd_notify(READY=1) fires in main.rs. Without
+# this, dependent units could connect before the daemon is ready.
+Type=notify
+# Production binary path (system-wide install via
+# distro/install-modulesd.sh). Dev mode generates its own service
+# file in ~/.config/systemd/user/ pointing at the debug binary —
+# this file stays the canonical production unit.
+ExecStart=/usr/lib/lunaris/libexec/lunaris-modulesd
+Restart=on-failure
+RestartSec=2
+
+# Tier 1 modules run in-process as WASM components; the daemon
+# itself does NOT need write access to most of the system. Tight
+# hardening: filesystem read-only except for the wasmtime cache
+# (compiled component artefacts). Modules' host imports route
+# through socket clients, not direct fs writes.
+#
+# `CacheDirectory=wasmtime` is the systemd-managed way to get a
+# writable cache dir without a pre-existing-path requirement.
+# systemd creates `$XDG_CACHE_HOME/wasmtime/` (per-user services
+# resolve `$XDG_CACHE_HOME` to `~/.cache`) before the daemon starts,
+# which is exactly the path `wasmtime::Cache::from_file(None)`
+# expects. Codex S7 review: the previous `ReadWritePaths=
+# %h/.cache/wasmtime` made the service fail on first start when
+# the dir was absent because systemd treats `ReadWritePaths=`
+# entries as required paths during namespace setup.
+ProtectSystem=strict
+ProtectHome=read-only
+CacheDirectory=wasmtime
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target
