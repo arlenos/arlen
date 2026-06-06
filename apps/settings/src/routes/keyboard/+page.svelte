@@ -14,10 +14,11 @@
   import { NumberInput } from "$lib/components/ui/number-input";
   import { PopoverSelect } from "$lib/components/ui/popover-select";
   import { Button } from "$lib/components/ui/button";
-  import Switch from "$lib/components/ui/switch/switch.svelte";
-  import SettingsPage from "$lib/components/settings/SettingsPage.svelte";
-  import SettingsGroup from "$lib/components/settings/SettingsGroup.svelte";
-  import SettingsRow from "$lib/components/settings/SettingsRow.svelte";
+  import { Switch } from "@lunaris/ui-kit/components/ui/switch";
+  import { Page } from "@lunaris/ui-kit/components/ui/page";
+  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
+  import { Group } from "@lunaris/ui-kit/components/ui/group";
+  import { Row } from "@lunaris/ui-kit/components/ui/row";
 
   /// Everything the UI needs from `[xkb_config]` except layouts + variants,
   /// which go through dedicated backend commands so the single- vs
@@ -252,16 +253,17 @@
   });
 </script>
 
-<SettingsPage
+<Page
   title="Keyboard"
   description="Layouts, options, and key-repeat behaviour. Shortcuts are managed separately."
 >
+  <SectionGrid>
   <!-- Navigation card pointing at the shortcut editor. Hash anchors
        the Keyboard category so users landing here from a `Configure
        switch shortcut` link see the relevant bindings. -->
   <a
     href="/keyboard/shortcuts#cat-keyboard"
-    class="group flex items-center gap-3 rounded-[var(--radius-input)] border border-border bg-card px-4 py-3 transition-colors hover:bg-muted/40"
+    class="span-full group flex items-center gap-3 rounded-[var(--radius-input)] border border-border bg-card px-4 py-3 transition-colors hover:bg-muted/40"
   >
     <KeyboardIcon class="h-5 w-5 text-muted-foreground" />
     <div class="flex-1">
@@ -277,13 +279,13 @@
 
   {#if lastError}
     <div
-      class="rounded-[var(--radius-chip)] border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+      class="span-full rounded-[var(--radius-chip)] border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
     >
       {lastError}
     </div>
   {/if}
 
-  <SettingsGroup label="Layouts">
+  <Group label="Layouts">
     <div class="flex flex-col divide-y divide-border">
       {#each layouts as layout, i (layout + ":" + i)}
         <div class="flex items-center gap-2 px-4 py-2.5">
@@ -356,10 +358,10 @@
         {/if}
       </div>
     </div>
-  </SettingsGroup>
+  </Group>
 
-  <SettingsGroup label="Primary variant">
-    <SettingsRow
+  <Group label="Primary variant">
+    <Row
       label="Variant"
       description="Optional variant for the primary layout, e.g. 'dvorak' or 'colemak'."
     >
@@ -383,12 +385,12 @@
           disabled={loading}
         />
       {/snippet}
-    </SettingsRow>
-  </SettingsGroup>
+    </Row>
+  </Group>
 
-  <SettingsGroup label="Options">
+  <Group label="Options">
     {#each COMMON_OPTIONS as opt (opt.value)}
-      <SettingsRow label={opt.label} description={opt.description}>
+      <Row label={opt.label} description={opt.description}>
         {#snippet control()}
           <Switch
             value={activeOptions.has(opt.value)}
@@ -396,17 +398,17 @@
             disabled={loading}
           />
         {/snippet}
-      </SettingsRow>
+      </Row>
     {/each}
-  </SettingsGroup>
+  </Group>
 
-  <SettingsGroup label="Key Repeat">
+  <Group label="Key Repeat">
     <!-- Both rows share the same NumberInput width so their triggers
          form a clean vertical grid. 180px fits the longer unit label
          ("chars/s") plus a four-digit value without cropping, and
          leaves the shorter "ms" row looking intentional rather than
          orphaned. -->
-    <SettingsRow
+    <Row
       label="Repeat rate"
       description="Characters per second after the initial delay."
     >
@@ -423,8 +425,8 @@
           onchange={setRepeatRate}
         />
       {/snippet}
-    </SettingsRow>
-    <SettingsRow
+    </Row>
+    <Row
       label="Repeat delay"
       description="Time before a held key starts repeating."
     >
@@ -441,6 +443,7 @@
           onchange={setRepeatDelay}
         />
       {/snippet}
-    </SettingsRow>
-  </SettingsGroup>
-</SettingsPage>
+    </Row>
+  </Group>
+  </SectionGrid>
+</Page>
