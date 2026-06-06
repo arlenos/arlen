@@ -173,7 +173,7 @@ fi
 echo "[$SESSION_STEP/$STEP_TOTAL] Starting tmux session..."
 
 # Each component runs with RUST_LOG=info and tees combined stdout+stderr
-# into a dedicated file under $LOG_DIR, so `tail -f ~/Repositories/arlenos/logs/compositor.log`
+# into a dedicated file under $LOG_DIR, so `tail -f ~/Repositories/arlen/logs/compositor.log`
 # works regardless of whether the user is attached to tmux.
 # All components inherit ARLEN_PRODUCER_SOCKET / ARLEN_CONSUMER_SOCKET
 # from this shell's exported environment so they agree on the socket

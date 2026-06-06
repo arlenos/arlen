@@ -6,7 +6,7 @@
 # daemon awake on first shell connection.
 #
 # Usage:
-#   cd ~/Repositories/arlenos
+#   cd ~/Repositories/arlen
 #   ./distro/install-modulesd.sh
 #
 # For dev work (no sudo, repo-local debug binary) use
@@ -16,8 +16,8 @@ set -euo pipefail
 
 # ── Configuration ──────────────────────────────────────────────
 
-ARLEN_PATH="${ARLEN_PATH:-$HOME/Repositories/arlenos}"
-SRC="$ARLEN_PATH/modulesd"
+ARLEN_PATH="${ARLEN_PATH:-$HOME/Repositories/arlen}"
+SRC="$ARLEN_PATH/daemons/modulesd"
 
 # Source artefacts. Built via:
 #   (cd "$SRC" && cargo build --release)

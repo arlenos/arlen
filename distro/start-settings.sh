@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Start the Arlen Settings app inside the running nested cosmic-comp
-# session and pipe stdout/stderr to ~/Repositories/arlenos/logs/settings.log.
+# session and pipe stdout/stderr to ~/Repositories/arlen/logs/settings.log.
 #
 # Prereqs:
 #  - `start-dev.sh` is running in tmux, so wayland-2 is up.
@@ -14,7 +14,7 @@
 
 set -e
 
-ARLEN_PATH="$HOME/Repositories/arlenos"
+ARLEN_PATH="$HOME/Repositories/arlen"
 LOG_DIR="$ARLEN_PATH/logs"
 mkdir -p "$LOG_DIR"
 
@@ -23,5 +23,5 @@ mkdir -p "$LOG_DIR"
 export WAYLAND_DISPLAY=wayland-2
 export RUST_LOG=info
 
-cd "$ARLEN_PATH/app-settings"
+cd "$ARLEN_PATH/apps/settings"
 cargo tauri dev 2>&1 | tee "$LOG_DIR/settings.log"
