@@ -505,6 +505,15 @@ fn create_schema(conn: &Connection) -> Result<()> {
         "CREATE REL TABLE IF NOT EXISTS FILE_PART_OF(FROM File TO Project, op_id STRING)",
     )
     .map_err(|e| anyhow!("create FILE_PART_OF rel: {e}"))?;
+    // Schema convergence for a store created before `op_id` existed: the
+    // `CREATE ... IF NOT EXISTS` above no-ops on an existing table and would
+    // leave it without the column, so the agent's op-id-keyed create/retract
+    // would fail at runtime. `ADD IF NOT EXISTS` is idempotent (a no-op when the
+    // column is already present, as on a fresh store), so this brings any store
+    // up to the declared schema. Not a migration shim: it is the same
+    // declarative schema, made convergent regardless of when the store was made.
+    conn.query("ALTER TABLE FILE_PART_OF ADD IF NOT EXISTS op_id STRING")
+        .map_err(|e| anyhow!("ensure FILE_PART_OF.op_id column: {e}"))?;
 
     conn.query(
         "CREATE REL TABLE IF NOT EXISTS DIR_PART_OF(FROM Directory TO Project)",
@@ -622,5 +631,39 @@ mod tests {
         // A wide row of empty strings accrues real cost.
         let row_cost: usize = (0..256).map(|_| cell_cost(&serde_json::json!(""))).sum();
         assert!(row_cost >= 256 * 8);
+    }
+
+    #[test]
+    fn create_schema_adds_op_id_to_a_pre_op_id_file_part_of() {
+        // Simulate a store created before `op_id` existed: FILE_PART_OF without
+        // the column. create_schema must converge it (via ALTER ADD IF NOT
+        // EXISTS) so the agent's op-id-keyed create/retract work, rather than
+        // leaving an old table that fails every op-id query at runtime.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("graph");
+        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+        conn.query("CREATE NODE TABLE File(id STRING, PRIMARY KEY(id))").unwrap();
+        conn.query("CREATE NODE TABLE Project(id STRING, PRIMARY KEY(id))").unwrap();
+        // The OLD shape: no op_id column.
+        conn.query("CREATE REL TABLE FILE_PART_OF(FROM File TO Project)").unwrap();
+
+        // Run the real schema setup over the old store. It must add the column.
+        create_schema(&conn).expect("create_schema converges the old store");
+        // Idempotent: a second run is a no-op, not an error.
+        create_schema(&conn).expect("create_schema is idempotent");
+
+        // The op-id-keyed write the agent relies on now works end to end.
+        conn.query("CREATE (:File {id:'f1'})").unwrap();
+        conn.query("CREATE (:Project {id:'p1'})").unwrap();
+        conn.query(
+            "MATCH (f:File {id:'f1'}),(p:Project {id:'p1'}) CREATE (f)-[:FILE_PART_OF {op_id:'op-1'}]->(p)",
+        )
+        .expect("op-id-keyed create works after convergence");
+        let mut qr = conn
+            .query("MATCH (:File)-[r:FILE_PART_OF {op_id:'op-1'}]->(:Project) RETURN count(*)")
+            .expect("op-id-keyed read works after convergence");
+        let rows = qr.by_ref().count();
+        assert_eq!(rows, 1, "the op-id edge is queryable after convergence");
     }
 }
