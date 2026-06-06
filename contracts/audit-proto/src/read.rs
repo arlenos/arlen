@@ -79,6 +79,19 @@ pub enum ReadResponse {
         /// compatible.
         #[serde(default)]
         tampered: bool,
+        /// One past the highest index among entries matching this
+        /// page's filter. For an unfiltered read this is the total
+        /// entry count (indices are contiguous from 0); for a
+        /// `project_id`-scoped read it is scoped to that project, so a
+        /// scoped read never discloses the global ledger volume.
+        /// Carried on every page so a reader that wants the *most
+        /// recent* entries can seek toward the tail
+        /// (`from = head - limit`) in one round trip, instead of paging
+        /// ascending from 0. `serde(default)` keeps old/new peers
+        /// compatible; an old daemon reports 0 (a client then falls
+        /// back to forward paging).
+        #[serde(default)]
+        head: u64,
     },
     /// The query could not be served.
     Error {
@@ -95,6 +108,13 @@ pub struct ReadPage {
     pub entries: Vec<StructuralView>,
     /// Whether the audit daemon reports its ledger as tampered.
     pub tampered: bool,
+    /// One past the highest index among entries matching the request's
+    /// filter (the total entry count for an unfiltered read; scoped to
+    /// the project for a `project_id` read, so a scoped read never
+    /// leaks the global volume). Lets a caller seek toward the tail for
+    /// the most recent entries; 0 from a daemon that predates this
+    /// field.
+    pub head: u64,
 }
 
 /// Resolve the read socket path:
