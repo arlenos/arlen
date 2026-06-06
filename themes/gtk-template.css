@@ -1,0 +1,362 @@
+/* Lunaris GTK4 Theme
+ * Generated from theme.toml by themes/generate-gtk-theme.py
+ * DO NOT EDIT MANUALLY - changes will be overwritten on theme change
+ *
+ * Targets GTK4 only. GTK3 apps get a basic dark/light fallback.
+ * Design goal: approximate shadcn/ui aesthetics as closely as GTK allows.
+ */
+
+/* ============================================================
+   Global: Font and base colors
+   ============================================================ */
+
+* {{
+  font-family: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  -gtk-icon-style: regular;
+}}
+
+window,
+.background {{
+  background-color: {bg_app};
+  color: {fg_app};
+}}
+
+/* ============================================================
+   Button - approximates shadcn Button variants
+   ============================================================ */
+
+button {{
+  background-color: {accent};
+  color: {accent_fg};
+  border: none;
+  border-radius: {radius};
+  padding: 6px 16px;
+  font-weight: 500;
+  font-size: 0.875rem;
+  transition: background 150ms ease;
+  box-shadow: none;
+  min-height: 0;
+}}
+
+button:hover {{
+  background-color: mix({accent}, black, 0.1);
+}}
+
+button:active {{
+  background-color: mix({accent}, black, 0.2);
+}}
+
+button:disabled {{
+  opacity: 0.5;
+}}
+
+/* outline variant */
+button.outline {{
+  background-color: transparent;
+  color: {fg_app};
+  border: 1px solid {border};
+}}
+
+button.outline:hover {{
+  background-color: {bg_card};
+}}
+
+/* flat/ghost variant */
+button.flat {{
+  background-color: transparent;
+  color: {fg_app};
+  border: none;
+}}
+
+button.flat:hover {{
+  background-color: {bg_card};
+}}
+
+/* destructive */
+button.destructive-action {{
+  background-color: #ef4444;
+  color: #ffffff;
+}}
+
+button.destructive-action:hover {{
+  background-color: #dc2626;
+}}
+
+/* suggested/primary */
+button.suggested-action {{
+  background-color: {accent};
+  color: {accent_fg};
+}}
+
+/* ============================================================
+   Entry (Input field) - approximates shadcn Input
+   ============================================================ */
+
+entry {{
+  background-color: {bg_input};
+  color: {fg_app};
+  border: 1px solid {border};
+  border-radius: {radius};
+  padding: 6px 12px;
+  font-size: 0.875rem;
+  box-shadow: none;
+  min-height: 0;
+}}
+
+entry:focus {{
+  border-color: {accent};
+  box-shadow: 0 0 0 2px alpha({accent}, 0.2);
+  outline: none;
+}}
+
+entry:disabled {{
+  opacity: 0.5;
+}}
+
+/* ============================================================
+   Frame / Card - approximates shadcn Card
+   ============================================================ */
+
+frame {{
+  background-color: {bg_card};
+  border: 1px solid {border};
+  border-radius: {radius};
+  padding: 0;
+}}
+
+frame > border {{
+  border: none;
+}}
+
+/* ============================================================
+   Popover / Dropdown - approximates shadcn Popover
+   ============================================================ */
+
+popover {{
+  background-color: {bg_app};
+  border: 1px solid {border};
+  border-radius: {radius};
+  box-shadow: 0 4px 16px alpha(black, 0.15);
+}}
+
+popover > arrow {{
+  background-color: {bg_app};
+  border-color: {border};
+}}
+
+/* ============================================================
+   Menu - approximates shadcn DropdownMenu
+   ============================================================ */
+
+menu,
+.menu {{
+  background-color: {bg_app};
+  border: 1px solid {border};
+  border-radius: {radius};
+  padding: 4px;
+  box-shadow: 0 4px 16px alpha(black, 0.15);
+}}
+
+menuitem {{
+  border-radius: calc({radius} - 2px);
+  padding: 6px 8px;
+  font-size: 0.875rem;
+}}
+
+menuitem:hover {{
+  background-color: {bg_card};
+}}
+
+menuitem:disabled {{
+  opacity: 0.5;
+}}
+
+/* ============================================================
+   Headerbar / Titlebar
+   Approximates shell surface (dark in Panda theme)
+   ============================================================ */
+
+headerbar {{
+  background-color: {bg_shell};
+  color: {fg_shell};
+  border-bottom: 1px solid mix({bg_shell}, white, 0.15);
+  box-shadow: none;
+  min-height: 36px;
+  padding: 0 8px;
+}}
+
+headerbar button {{
+  background-color: transparent;
+  color: {fg_shell};
+  border: none;
+}}
+
+headerbar button:hover {{
+  background-color: alpha(white, 0.1);
+}}
+
+/* ============================================================
+   Menubar (global menu bar)
+   ============================================================ */
+
+menubar {{
+  background-color: {bg_shell};
+  color: {fg_shell};
+  border: none;
+  padding: 0 4px;
+}}
+
+menubar > item {{
+  padding: 4px 8px;
+  border-radius: {radius};
+}}
+
+menubar > item:hover {{
+  background-color: alpha(white, 0.1);
+}}
+
+/* ============================================================
+   Separator
+   ============================================================ */
+
+separator {{
+  background-color: {border};
+  min-width: 1px;
+  min-height: 1px;
+}}
+
+/* ============================================================
+   Scrollbar
+   ============================================================ */
+
+scrollbar {{
+  background-color: transparent;
+}}
+
+scrollbar slider {{
+  background-color: alpha({fg_app}, 0.2);
+  border-radius: 4px;
+  min-width: 6px;
+  min-height: 6px;
+}}
+
+scrollbar slider:hover {{
+  background-color: alpha({fg_app}, 0.35);
+}}
+
+/* ============================================================
+   Switch - approximates shadcn Switch
+   ============================================================ */
+
+switch {{
+  background-color: {border};
+  border-radius: 999px;
+  border: none;
+  min-width: 40px;
+  min-height: 22px;
+}}
+
+switch:checked {{
+  background-color: {accent};
+}}
+
+switch slider {{
+  background-color: white;
+  border-radius: 999px;
+  box-shadow: 0 1px 4px alpha(black, 0.2);
+}}
+
+/* ============================================================
+   Checkbutton / Checkbox - approximates shadcn Checkbox
+   ============================================================ */
+
+checkbutton check {{
+  background-color: {bg_input};
+  border: 1px solid {border};
+  border-radius: calc({radius} / 2);
+  min-width: 16px;
+  min-height: 16px;
+}}
+
+checkbutton check:checked {{
+  background-color: {accent};
+  border-color: {accent};
+  color: {accent_fg};
+}}
+
+/* ============================================================
+   Listbox / List - approximates shadcn Table rows
+   ============================================================ */
+
+listbox {{
+  background-color: {bg_app};
+  border: 1px solid {border};
+  border-radius: {radius};
+}}
+
+listbox row {{
+  padding: 8px 12px;
+  border-bottom: 1px solid {border};
+}}
+
+listbox row:last-child {{
+  border-bottom: none;
+}}
+
+listbox row:selected {{
+  background-color: {bg_card};
+  color: {fg_app};
+}}
+
+listbox row:hover {{
+  background-color: {bg_card};
+}}
+
+/* ============================================================
+   Notebook (Tabs) - approximates shadcn Tabs
+   ============================================================ */
+
+notebook header {{
+  background-color: {bg_app};
+  border-bottom: 1px solid {border};
+}}
+
+notebook header tabs tab {{
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  color: alpha({fg_app}, 0.6);
+  border-bottom: 2px solid transparent;
+}}
+
+notebook header tabs tab:checked {{
+  color: {fg_app};
+  border-bottom-color: {accent};
+}}
+
+/* ============================================================
+   Progressbar - approximates shadcn Progress
+   ============================================================ */
+
+progressbar trough {{
+  background-color: {bg_card};
+  border-radius: 999px;
+  min-height: 8px;
+}}
+
+progressbar progress {{
+  background-color: {accent};
+  border-radius: 999px;
+}}
+
+/* ============================================================
+   Tooltip
+   ============================================================ */
+
+tooltip {{
+  background-color: {fg_app};
+  color: {bg_app};
+  border-radius: {radius};
+  font-size: 0.75rem;
+  padding: 4px 8px;
+}}
