@@ -22,6 +22,8 @@ use std::time::Duration;
 use lunaris_ai_core::audit::{self, AuditSink};
 use lunaris_ai_core::graph_query::QueryScope;
 use lunaris_ai_core::pipeline::QueryRunner;
+use lunaris_ai_core::provider::AIProvider;
+use lunaris_ai_explanation::{explain_system as run_explain, GraphReader};
 use tokio_util::sync::CancellationToken;
 
 use crate::registry::{AuthError, CompletionOutcome, CreatedQuery, QueryRegistry, QueryStatus};
@@ -100,6 +102,61 @@ impl QueryError {
             QueryError::AuditUnavailable => "audit-unavailable",
         }
     }
+}
+
+/// Errors that `explain_system()` can return.
+#[derive(Debug, thiserror::Error)]
+pub enum ExplainError {
+    /// The daemon is currently disabled.
+    #[error("ai disabled")]
+    Disabled,
+    /// No graph access is configured (Minimal tier): the explanation
+    /// reads recent activity from the graph, so it respects the user's
+    /// "AI sees almost nothing" setting and refuses rather than reading.
+    #[error("ai layer has no graph access configured")]
+    NoGraphAccess,
+    /// Explanation is not wired on this daemon (no provider/reader).
+    #[error("system explanation is not configured")]
+    NotConfigured,
+    /// Caller is at its in-flight cap.
+    #[error("too many in-flight requests for this caller")]
+    TooManyInflight,
+    /// The daemon-wide in-flight cap is reached.
+    #[error("daemon at global capacity")]
+    GlobalCapacityReached,
+    /// The audit log could not record the dispatch entry; refused
+    /// rather than run unrecorded (Foundation §8.4.6).
+    #[error("audit log unavailable")]
+    AuditUnavailable,
+    /// The snapshot read or the provider summary failed.
+    #[error("explanation failed: {0}")]
+    Failed(String),
+}
+
+impl ExplainError {
+    /// Stable kebab-case error code.
+    pub fn code(&self) -> &'static str {
+        match self {
+            ExplainError::Disabled => "ai-disabled",
+            ExplainError::NoGraphAccess => "no-graph-access",
+            ExplainError::NotConfigured => "explain-not-configured",
+            ExplainError::TooManyInflight => "too-many-inflight",
+            ExplainError::GlobalCapacityReached => "global-capacity-reached",
+            ExplainError::AuditUnavailable => "audit-unavailable",
+            ExplainError::Failed(_) => "explain-failed",
+        }
+    }
+}
+
+/// The capability backing [`AiDaemonService::explain_system`]: the
+/// provider that generates the plain-language summary and the read-only
+/// graph reader that sources the snapshot. Optional on the service so
+/// the existing query-only constructors and their tests are unchanged;
+/// the daemon binary wires it with [`AiDaemonService::with_explain`].
+#[derive(Clone)]
+struct Explainer {
+    provider: Arc<dyn AIProvider>,
+    reader: Arc<dyn GraphReader>,
 }
 
 /// Handle returned to the D-Bus surface from `query()`.
@@ -231,6 +288,10 @@ pub struct AiDaemonService {
     max_inflight_per_caller: usize,
     max_inflight_global: usize,
     max_prompt_bytes: usize,
+    /// System Explanation Mode capability (provider + graph reader).
+    /// `None` until [`Self::with_explain`] wires it; the explanation
+    /// method then refuses with [`ExplainError::NotConfigured`].
+    explain: Option<Explainer>,
 }
 
 impl AiDaemonService {
@@ -280,7 +341,22 @@ impl AiDaemonService {
             max_inflight_per_caller,
             max_inflight_global,
             max_prompt_bytes,
+            explain: None,
         }
+    }
+
+    /// Wire the System Explanation Mode capability: the provider that
+    /// generates the summary and the read-only graph reader that sources
+    /// the snapshot. Without it, [`Self::explain_system`] refuses with
+    /// [`ExplainError::NotConfigured`]. The daemon binary calls this; the
+    /// query-only tests leave it unset.
+    pub fn with_explain(
+        mut self,
+        provider: Arc<dyn AIProvider>,
+        reader: Arc<dyn GraphReader>,
+    ) -> Self {
+        self.explain = Some(Explainer { provider, reader });
+        self
     }
 
     /// Spawn the periodic sweep task. Drops terminated records older
@@ -445,6 +521,92 @@ impl AiDaemonService {
             query_id,
             retrieval_token,
         })
+    }
+
+    /// Run System Explanation Mode (Foundation §5.8): assemble a
+    /// snapshot and return a plain-language summary of what the system
+    /// is doing. Unlike [`Self::query`] the result is returned directly
+    /// (it is consumed only by the caller, not broadcast), so there is
+    /// no registry record or poll cycle.
+    ///
+    /// Gated like a query: refused when the daemon is disabled or when
+    /// no graph access is configured (the explanation reads recent
+    /// activity, so it honours the user's access-level setting). It
+    /// holds an in-flight slot for its duration (same per-caller and
+    /// global caps as queries, so it cannot be used to bypass them) and
+    /// commits a fail-closed dispatch audit entry before any provider
+    /// work, plus a best-effort completion entry after (§8.4.6).
+    ///
+    /// `now_unix` (Unix seconds) stamps the snapshot and derives its
+    /// recency window; the D-Bus layer supplies the real clock.
+    pub async fn explain_system(
+        &self,
+        caller: CallerIdentity,
+        now_unix: i64,
+    ) -> Result<String, ExplainError> {
+        let Admission { enabled, scope } = self.lock_admission().clone();
+        if !enabled {
+            return Err(ExplainError::Disabled);
+        }
+        if scope.is_empty() {
+            return Err(ExplainError::NoGraphAccess);
+        }
+        let Some(explainer) = self.explain.clone() else {
+            return Err(ExplainError::NotConfigured);
+        };
+
+        // Hold an in-flight slot for the whole explanation so it shares
+        // the query DoS caps. RAII so a dropped/cancelled future returns
+        // it.
+        let acquired = self
+            .inflight
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .try_acquire(
+                &caller.stable_id,
+                self.max_inflight_per_caller,
+                self.max_inflight_global,
+            );
+        match acquired {
+            AcquireResult::Acquired => {}
+            AcquireResult::CallerFull => return Err(ExplainError::TooManyInflight),
+            AcquireResult::GlobalFull => return Err(ExplainError::GlobalCapacityReached),
+        }
+        let _slot = InflightGuard {
+            inflight: Arc::clone(&self.inflight),
+            stable_id: caller.stable_id.clone(),
+        };
+
+        // Audit-before-action gate: commit the dispatch entry before any
+        // graph read or provider call; refuse if it cannot be recorded.
+        let explain_id = uuid::Uuid::new_v4().to_string();
+        if let Err(err) = self
+            .audit
+            .submit(audit::explain_event("dispatched", None, &explain_id))
+            .await
+        {
+            tracing::warn!("explanation refused: audit log unavailable: {err}");
+            return Err(ExplainError::AuditUnavailable);
+        }
+
+        let started = std::time::Instant::now();
+        let result = run_explain(
+            explainer.reader.as_ref(),
+            explainer.provider.as_ref(),
+            now_unix,
+        )
+        .await;
+        let outcome = if result.is_ok() { "completed" } else { "failed" };
+        let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        if let Err(err) = self
+            .audit
+            .submit(audit::explain_event(outcome, Some(duration_ms), &explain_id))
+            .await
+        {
+            tracing::warn!("explanation completion audit failed: {err}");
+        }
+
+        result.map_err(|e| ExplainError::Failed(e.to_string()))
     }
 
     /// Authorised cancel.
@@ -1123,6 +1285,195 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
         assert!(released, "dropped query future must release its in-flight slot");
+    }
+
+    // --- System Explanation Mode (explain_system) ---
+
+    use lunaris_ai_core::provider::{
+        CompletionRequest, CompletionResponse, ProviderAudit, ProviderError,
+    };
+
+    /// A provider that returns a fixed summary, for explanation tests.
+    struct ExplainProvider {
+        text: String,
+    }
+    #[async_trait]
+    impl AIProvider for ExplainProvider {
+        async fn complete(
+            &self,
+            _req: CompletionRequest,
+        ) -> Result<CompletionResponse, ProviderError> {
+            Ok(CompletionResponse {
+                text: self.text.clone(),
+                audit: ProviderAudit {
+                    provider_name: "mock".into(),
+                    model: "mock".into(),
+                    input_tokens: None,
+                    output_tokens: None,
+                },
+            })
+        }
+        async fn available(&self) -> bool {
+            true
+        }
+        fn name(&self) -> &str {
+            "mock"
+        }
+    }
+
+    /// A graph reader that returns no rows (a quiet graph). The
+    /// explanation still produces a valid graph-covered snapshot.
+    struct EmptyReader;
+    #[async_trait]
+    impl GraphReader for EmptyReader {
+        async fn query_rows(
+            &self,
+            _cypher: &str,
+        ) -> Result<Vec<HashMap<String, serde_json::Value>>, lunaris_ai_explanation::SnapshotError>
+        {
+            Ok(vec![])
+        }
+    }
+
+    fn explain_caller() -> CallerIdentity {
+        caller_id(":1.50", "/usr/bin/app-x")
+    }
+
+    #[tokio::test]
+    async fn explain_returns_summary_when_enabled_and_configured() {
+        let svc = enable(
+            AiDaemonService::new(
+                Arc::new(StubRunner {
+                    reply: Ok("unused".to_string()),
+                    gate: None,
+                }),
+                full_scope(),
+                audit_sink(),
+            )
+            .with_explain(
+                Arc::new(ExplainProvider {
+                    text: "Your computer is mostly idle.".to_string(),
+                }),
+                Arc::new(EmptyReader),
+            ),
+        );
+        let summary = svc.explain_system(explain_caller(), 1_000).await.unwrap();
+        assert_eq!(summary, "Your computer is mostly idle.");
+    }
+
+    #[tokio::test]
+    async fn explain_refused_when_disabled() {
+        let svc = AiDaemonService::new(
+            Arc::new(StubRunner {
+                reply: Ok("x".to_string()),
+                gate: None,
+            }),
+            full_scope(),
+            audit_sink(),
+        )
+        .with_explain(
+            Arc::new(ExplainProvider { text: "x".to_string() }),
+            Arc::new(EmptyReader),
+        );
+        // No enable(): fail-closed.
+        let err = svc.explain_system(explain_caller(), 1).await.unwrap_err();
+        assert_eq!(err.code(), "ai-disabled");
+    }
+
+    #[tokio::test]
+    async fn explain_refused_with_minimal_scope() {
+        let svc = enable(
+            AiDaemonService::new(
+                Arc::new(StubRunner {
+                    reply: Ok("x".to_string()),
+                    gate: None,
+                }),
+                QueryScope::new(Vec::<&str>::new()),
+                audit_sink(),
+            )
+            .with_explain(
+                Arc::new(ExplainProvider { text: "x".to_string() }),
+                Arc::new(EmptyReader),
+            ),
+        );
+        let err = svc.explain_system(explain_caller(), 1).await.unwrap_err();
+        assert_eq!(err.code(), "no-graph-access");
+    }
+
+    #[tokio::test]
+    async fn explain_refused_when_not_configured() {
+        // No with_explain(): the capability is absent.
+        let svc = enable(AiDaemonService::new(
+            Arc::new(StubRunner {
+                reply: Ok("x".to_string()),
+                gate: None,
+            }),
+            full_scope(),
+            audit_sink(),
+        ));
+        let err = svc.explain_system(explain_caller(), 1).await.unwrap_err();
+        assert_eq!(err.code(), "explain-not-configured");
+    }
+
+    #[tokio::test]
+    async fn explain_refused_when_audit_unavailable() {
+        // Foundation §8.4.6: an unrecordable dispatch fails closed.
+        let svc = enable(
+            AiDaemonService::new(
+                Arc::new(StubRunner {
+                    reply: Ok("x".to_string()),
+                    gate: None,
+                }),
+                full_scope(),
+                Arc::new(audit_proto::MockAuditSink::failing()),
+            )
+            .with_explain(
+                Arc::new(ExplainProvider { text: "x".to_string() }),
+                Arc::new(EmptyReader),
+            ),
+        );
+        let err = svc.explain_system(explain_caller(), 1).await.unwrap_err();
+        assert_eq!(err.code(), "audit-unavailable");
+        // The in-flight slot it briefly held was released.
+        assert_eq!(
+            svc.inflight
+                .lock()
+                .unwrap()
+                .by_stable_id
+                .get("/usr/bin/app-x")
+                .copied()
+                .unwrap_or(0),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn explain_audits_dispatch_and_completion() {
+        let sink = Arc::new(audit_proto::MockAuditSink::accepting());
+        let svc = enable(
+            AiDaemonService::new(
+                Arc::new(StubRunner {
+                    reply: Ok("x".to_string()),
+                    gate: None,
+                }),
+                full_scope(),
+                sink.clone(),
+            )
+            .with_explain(
+                Arc::new(ExplainProvider {
+                    text: "idle".to_string(),
+                }),
+                Arc::new(EmptyReader),
+            ),
+        );
+        let _ = svc.explain_system(explain_caller(), 1).await.unwrap();
+        let recorded = sink.recorded().await;
+        assert_eq!(recorded.len(), 2);
+        assert_eq!(recorded[0].structural.subject, "ai.explain");
+        assert_eq!(recorded[0].structural.outcome, "dispatched");
+        assert_eq!(recorded[1].structural.outcome, "completed");
+        assert!(recorded[1].structural.duration_ms.is_some());
+        assert_eq!(recorded[0].call_chain_id, recorded[1].call_chain_id);
     }
 
     #[tokio::test]

@@ -1330,6 +1330,7 @@ dependencies = [
  "audit-proto",
  "hex",
  "lunaris-ai-core",
+ "lunaris-ai-explanation",
  "lunaris-ai-providers",
  "lunaris-permissions",
  "os-sdk",
