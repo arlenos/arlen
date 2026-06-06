@@ -3242,7 +3242,9 @@ trigger:
 
     // ---- Live executor wired into the dispatch loop ----
 
-    use crate::executor::{LiveExecutor, RelationWrite, RelationWriter, WriteError, WriteOutcome};
+    use crate::executor::{
+        LiveExecutor, RelationWrite, RelationWriter, RetractOutcome, WriteError, WriteOutcome,
+    };
     use crate::slice::{PathResolver, SliceError, StaticMountPolicy};
 
     /// A graph shaped like the proof for tagging `/proj/a.rs` to `p1`, unlinked
@@ -3312,6 +3314,9 @@ trigger:
         async fn write_relation(&self, write: &RelationWrite, _op_id: &str) -> Result<WriteOutcome, WriteError> {
             self.0.lock().unwrap().push(write.clone());
             Ok(WriteOutcome::Created)
+        }
+        async fn retract_relation(&self, _write: &RelationWrite, _op_id: &str) -> Result<RetractOutcome, WriteError> {
+            Ok(RetractOutcome::Retracted)
         }
     }
 
@@ -3388,6 +3393,9 @@ trigger:
         async fn write_relation(&self, _write: &RelationWrite, _op_id: &str) -> Result<WriteOutcome, WriteError> {
             Err(WriteError::Failed("daemon unreachable".to_string()))
         }
+        async fn retract_relation(&self, _write: &RelationWrite, _op_id: &str) -> Result<RetractOutcome, WriteError> {
+            Err(WriteError::Failed("daemon unreachable".to_string()))
+        }
     }
 
     /// A writer that never returns, to exercise the write timeout end to end.
@@ -3395,6 +3403,9 @@ trigger:
     #[async_trait::async_trait]
     impl RelationWriter for HangingWriter {
         async fn write_relation(&self, _write: &RelationWrite, _op_id: &str) -> Result<WriteOutcome, WriteError> {
+            std::future::pending().await
+        }
+        async fn retract_relation(&self, _write: &RelationWrite, _op_id: &str) -> Result<RetractOutcome, WriteError> {
             std::future::pending().await
         }
     }
@@ -3431,6 +3442,9 @@ trigger:
     #[async_trait::async_trait]
     impl RelationWriter for PostSendFailWriter {
         async fn write_relation(&self, _write: &RelationWrite, _op_id: &str) -> Result<WriteOutcome, WriteError> {
+            Err(WriteError::Indeterminate("connection dropped after send".to_string()))
+        }
+        async fn retract_relation(&self, _write: &RelationWrite, _op_id: &str) -> Result<RetractOutcome, WriteError> {
             Err(WriteError::Indeterminate("connection dropped after send".to_string()))
         }
     }
