@@ -182,11 +182,12 @@ fn get_sink_form_factor(sink_name: &str) -> String {
 
 /// Sets the volume of the default audio sink (0-100).
 #[tauri::command]
-pub fn set_audio_volume(volume: u8) -> Result<(), String> {
+pub async fn set_audio_volume(volume: u8) -> Result<(), String> {
     let value = format!("{:.2}", volume as f64 / 100.0);
-    let status = std::process::Command::new("wpctl")
+    let status = tokio::process::Command::new("wpctl")
         .args(["set-volume", "@DEFAULT_AUDIO_SINK@", &value])
         .status()
+        .await
         .map_err(|e| format!("wpctl set-volume failed: {e}"))?;
 
     if !status.success() {
@@ -264,10 +265,11 @@ fn get_audio_outputs_impl() -> Result<Vec<AudioOutput>, String> {
 
 /// Sets the default audio output device by sink name.
 #[tauri::command]
-pub fn set_audio_output(id: String) -> Result<(), String> {
-    let status = std::process::Command::new("pactl")
+pub async fn set_audio_output(id: String) -> Result<(), String> {
+    let status = tokio::process::Command::new("pactl")
         .args(["set-default-sink", &id])
         .status()
+        .await
         .map_err(|e| format!("pactl set-default-sink failed: {e}"))?;
 
     if !status.success() {
@@ -343,10 +345,11 @@ fn get_audio_inputs_impl() -> Result<Vec<AudioInput>, String> {
 
 /// Sets the default audio input device.
 #[tauri::command]
-pub fn set_audio_input(id: String) -> Result<(), String> {
-    let status = std::process::Command::new("pactl")
+pub async fn set_audio_input(id: String) -> Result<(), String> {
+    let status = tokio::process::Command::new("pactl")
         .args(["set-default-source", &id])
         .status()
+        .await
         .map_err(|e| format!("pactl set-default-source failed: {e}"))?;
 
     if !status.success() {
@@ -394,11 +397,12 @@ fn get_input_volume_impl() -> Result<AudioStatus, String> {
 
 /// Sets the input (microphone) volume (0-100).
 #[tauri::command]
-pub fn set_input_volume(volume: u8) -> Result<(), String> {
+pub async fn set_input_volume(volume: u8) -> Result<(), String> {
     let value = format!("{:.2}", volume as f64 / 100.0);
-    let status = std::process::Command::new("wpctl")
+    let status = tokio::process::Command::new("wpctl")
         .args(["set-volume", "@DEFAULT_AUDIO_SOURCE@", &value])
         .status()
+        .await
         .map_err(|e| format!("wpctl: {e}"))?;
     if !status.success() {
         return Err("wpctl set-volume source failed".into());
@@ -408,10 +412,11 @@ pub fn set_input_volume(volume: u8) -> Result<(), String> {
 
 /// Toggles mute on the default audio source (microphone).
 #[tauri::command]
-pub fn toggle_input_mute() -> Result<(), String> {
-    let status = std::process::Command::new("wpctl")
+pub async fn toggle_input_mute() -> Result<(), String> {
+    let status = tokio::process::Command::new("wpctl")
         .args(["set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"])
         .status()
+        .await
         .map_err(|e| format!("wpctl: {e}"))?;
     if !status.success() {
         return Err("wpctl set-mute source failed".into());
@@ -587,14 +592,15 @@ fn get_app_volumes_legacy() -> Result<Vec<AppVolume>, String> {
 
 /// Sets the volume for a specific application (sink-input).
 #[tauri::command]
-pub fn set_app_volume(id: u32, volume: u8) -> Result<(), String> {
-    let status = std::process::Command::new("pactl")
+pub async fn set_app_volume(id: u32, volume: u8) -> Result<(), String> {
+    let status = tokio::process::Command::new("pactl")
         .args([
             "set-sink-input-volume",
             &id.to_string(),
             &format!("{volume}%"),
         ])
         .status()
+        .await
         .map_err(|e| format!("pactl: {e}"))?;
     if !status.success() {
         return Err(format!("pactl set-sink-input-volume {id} failed"));
@@ -613,10 +619,11 @@ pub fn set_dnd_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), Strin
 
 /// Toggles mute on the default audio sink.
 #[tauri::command]
-pub fn toggle_audio_mute() -> Result<(), String> {
-    let status = std::process::Command::new("wpctl")
+pub async fn toggle_audio_mute() -> Result<(), String> {
+    let status = tokio::process::Command::new("wpctl")
         .args(["set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
         .status()
+        .await
         .map_err(|e| format!("wpctl set-mute failed: {e}"))?;
 
     if !status.success() {

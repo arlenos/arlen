@@ -5,8 +5,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
-  import { Separator } from "$lib/components/ui/separator/index.js";
-  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
+  import { Separator } from "@lunaris/ui-kit/components/ui/separator/index.js";
+  import * as ContextMenu from "@lunaris/ui-kit/components/ui/context-menu/index.js";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
   import {
     Bluetooth, BluetoothOff, RefreshCw, BatteryMedium,

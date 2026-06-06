@@ -5,7 +5,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { Layers } from "lucide-svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
-  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
+  import * as ContextMenu from "@lunaris/ui-kit/components/ui/context-menu/index.js";
   import SniContextMenuContent from "$lib/components/SniContextMenuContent.svelte";
 
   interface SniItem {
@@ -64,7 +64,7 @@
       {:else if items.length === 0}
         <div class="tray-empty">No background apps</div>
       {:else}
-        <div class="tray-list">
+        <div class="tray-list themed-scroll">
           {#each items as item}
             <ContextMenu.Root>
               <ContextMenu.Trigger>
@@ -136,7 +136,7 @@
   .tray-item.attention { background: color-mix(in srgb, var(--color-fg-shell) 5%, transparent); }
 
   .tray-item-icon {
-    width: var(--control-h-sm); height: var(--control-h-sm); display: flex; align-items: center; justify-content: center;
+    width: var(--height-control-compact, 24px); height: var(--height-control-compact, 24px); display: flex; align-items: center; justify-content: center;
     background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     border-radius: var(--radius-chip); font-size: 0.625rem; font-weight: 600; flex-shrink: 0;
   }

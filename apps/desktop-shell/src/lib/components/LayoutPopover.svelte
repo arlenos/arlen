@@ -4,10 +4,11 @@
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
-  import { Separator } from "$lib/components/ui/separator/index.js";
+  import { Separator } from "@lunaris/ui-kit/components/ui/separator/index.js";
   import { Layers, LayoutPanelLeft, Maximize } from "lucide-svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
-  import Switch from "$lib/components/ui/switch/switch.svelte";
+  import Switch from "@lunaris/ui-kit/components/ui/switch/switch.svelte";
+  import { FillSlider } from "@lunaris/ui-kit/components/ui/fill-slider";
 
   interface LayoutState {
     mode: string;
@@ -122,16 +123,15 @@
       <!-- Gaps -->
       <div class="gap-row">
         <span class="gap-label">Gaps</span>
-        <div class="gap-slider" style="--value: {(state.inner_gap / 24) * 100}%">
-          <div class="gap-slider-track"></div>
-          <div class="gap-slider-fill"></div>
-          <div class="gap-slider-thumb"></div>
-          <input
-            type="range"
-            min="0"
-            max="24"
+        <div class="gap-slider-wrap">
+          <FillSlider
             value={state.inner_gap}
-            oninput={(e) => setGap(parseInt(e.currentTarget.value))}
+            min={0}
+            max={24}
+            step={1}
+            size="sm"
+            ariaLabel="Inner gap"
+            oninput={(v) => setGap(v)}
           />
         </div>
         <span class="gap-value">{state.inner_gap}px</span>
@@ -210,14 +210,21 @@
   .gap-row { display: flex; align-items: center; gap: 10px; }
   .gap-label { font-size: 0.75rem; flex-shrink: 0; }
   .gap-value { font-size: 0.6875rem; opacity: 0.5; min-width: 28px; text-align: right; }
-  .gap-slider { position: relative; flex: 1; height: 20px; display: flex; align-items: center; }
-  .gap-slider-track { position: absolute; left: 0; right: 0; height: 4px; background: color-mix(in srgb, var(--color-fg-shell) 20%, transparent); border-radius: var(--radius-chip); }
-  .gap-slider-fill { position: absolute; left: 0; width: var(--value); height: 4px; background: var(--color-accent); border-radius: var(--radius-chip); }
-  .gap-slider-thumb { position: absolute; left: var(--value); width: 14px; height: 14px; background: var(--color-fg-shell); border-radius: var(--radius-input); transform: translateX(-50%); box-shadow: var(--shadow-sm); pointer-events: none; }
-  .gap-slider input[type="range"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; appearance: none; -webkit-appearance: none; }
+  .gap-slider-wrap { flex: 1; display: flex; align-items: center; }
 
-  /* Smart gaps toggle */
-  .toggle-row { display: flex; align-items: center; justify-content: space-between; }
-  .toggle-label { font-size: 0.75rem; }
+  /* Toggle row uses the same flex+gap pattern as `.gap-row` so
+     the rhythm of "label · control" reads consistently across
+     rows. `space-between` looks fine in isolation but creates a
+     visible right-edge jitter when sibling rows have value pills
+     pinned right. */
+  .toggle-row { display: flex; align-items: center; gap: 10px; }
+  .toggle-label {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.75rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
 </style>

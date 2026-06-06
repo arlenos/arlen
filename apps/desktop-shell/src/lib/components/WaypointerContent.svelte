@@ -21,7 +21,7 @@
   import {
     Command, CommandInput, CommandList, CommandEmpty,
     CommandGroup, CommandItem, CommandSeparator, CommandShortcut,
-  } from "$lib/components/ui/command/index.js";
+  } from "@lunaris/ui-kit/components/ui/command/index.js";
   import { Search, AppWindow, Calculator, ArrowRightLeft, TerminalSquare, BookOpen, Clock, Globe, Link, Skull, FolderKanban, X, Settings2 } from "lucide-svelte";
   import { activeProjects, activateFocus, deactivateFocus, isFocused, focusState, loadProjects } from "$lib/stores/projects.js";
   import {

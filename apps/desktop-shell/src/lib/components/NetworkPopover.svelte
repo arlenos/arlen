@@ -4,8 +4,8 @@
 
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
-  import { Separator } from "$lib/components/ui/separator/index.js";
-  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
+  import { Separator } from "@lunaris/ui-kit/components/ui/separator/index.js";
+  import * as ContextMenu from "@lunaris/ui-kit/components/ui/context-menu/index.js";
   import {
     Wifi, WifiOff, Cable, Plane, Lock, Check, RefreshCw,
     ChevronRight, Shield, Trash2, Copy, Info,
@@ -66,9 +66,9 @@
   const NET_SCAN_COOLDOWN_MS = 3000;
   let lastScanAt = 0;
 
-  async function loadNetworks() {
+  async function loadNetworks(force = false) {
     const now = Date.now();
-    if (now - lastScanAt < NET_SCAN_COOLDOWN_MS) return;
+    if (!force && now - lastScanAt < NET_SCAN_COOLDOWN_MS) return;
     lastScanAt = now;
     loading = true; error = null;
     try { networks = await invoke<WifiNetwork[]>("get_wifi_networks"); } catch { error = "Could not load networks"; }
@@ -79,12 +79,12 @@
   async function handleConnect(net: WifiNetwork) {
     if (net.is_connected) {
       try { await invoke("disconnect_wifi"); } catch { error = "Disconnect failed"; }
-      await pollStatus(); await loadNetworks(); return;
+      await pollStatus(); await loadNetworks(true); return;
     }
     if (net.is_known || !net.security || net.security === "--") {
       connectingTo = net.ssid;
       try { await invoke("connect_wifi", { ssid: net.ssid }); } catch { error = "Connection failed"; }
-      connectingTo = null; await pollStatus(); await loadNetworks();
+      connectingTo = null; await pollStatus(); await loadNetworks(true);
     } else { showPasswordFor = net.ssid; passwordInput = ""; }
   }
   async function handlePasswordSubmit() {
@@ -94,7 +94,7 @@
       await invoke("connect_wifi_password", { ssid: showPasswordFor, password: passwordInput });
       showPasswordFor = null; passwordInput = "";
     } catch { error = "Authentication failed"; }
-    connectingTo = null; await pollStatus(); await loadNetworks();
+    connectingTo = null; await pollStatus(); await loadNetworks(true);
   }
   async function copyPassword(ssid: string) {
     try { const pw = await invoke<string | null>("get_saved_password", { ssid }); if (pw) await navigator.clipboard.writeText(pw); } catch {}
@@ -104,7 +104,7 @@
     try { connDetails = await invoke<ConnDetails>("get_connection_details", { ssid }); } catch { connDetails = null; }
   }
   async function forgetNetwork(ssid: string) {
-    try { await invoke("forget_network", { ssid }); await loadNetworks(); } catch { error = "Could not forget network"; }
+    try { await invoke("forget_network", { ssid }); await loadNetworks(true); } catch { error = "Could not forget network"; }
   }
   async function toggleVpn(vpn: VpnConnection) {
     try {
@@ -279,7 +279,7 @@
               <RefreshCw size={12} strokeWidth={2} />
             </button>
           </div>
-          <div class="net-list">
+          <div class="net-list themed-scroll">
             {#each otherNets as net (net.ssid)}
               {@render networkItem(net)}
             {:else}
@@ -357,7 +357,7 @@
 
   .net-section-label { font-size: 0.6875rem; opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
   .net-list-header { display: flex; align-items: center; justify-content: space-between; font-size: 0.6875rem; opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-  .net-refresh { width: var(--control-h-sm); height: var(--control-h-sm); display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-chip); color: inherit; cursor: pointer; padding: 0; }
+  .net-refresh { width: var(--height-control-compact, 24px); height: var(--height-control-compact, 24px); display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-chip); color: inherit; cursor: pointer; padding: 0; }
   .net-refresh:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
 
   .net-list { display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow-y: auto; }
@@ -370,9 +370,13 @@
   .net-item:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
   .net-item.connected { background: color-mix(in srgb, var(--color-accent) 15%, transparent); border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent); }
   .net-item.connecting { opacity: 0.5; pointer-events: none; }
-  .net-item-info { display: flex; align-items: center; gap: 8px; }
-  :global(.net-check) { color: #22c55e; }
-  .net-item-meta { display: flex; align-items: center; gap: 6px; opacity: 0.5; }
+  /* SSID can be long; flex:1 + min-width:0 lets the ellipsis on
+     the inner span actually fire instead of pushing the meta
+     cluster off the right edge. */
+  .net-item-info { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; overflow: hidden; }
+  .net-item-info :global(span) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :global(.net-check) { color: #22c55e; flex-shrink: 0; }
+  .net-item-meta { display: flex; align-items: center; gap: 6px; opacity: 0.5; flex-shrink: 0; }
   .net-empty { padding: 20px; text-align: center; opacity: 0.3; font-size: 0.75rem; }
 
   :global(.ctx-label) { opacity: 0.5; font-size: 0.625rem; min-width: 32px; text-transform: uppercase; letter-spacing: 0.03em; }

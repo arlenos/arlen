@@ -5,7 +5,7 @@
 
   import { unreadCount, dndState } from "$lib/stores/notifications.js";
   import { togglePopover } from "$lib/stores/activePopover.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import * as Tooltip from "@lunaris/ui-kit/components/ui/tooltip/index.js";
   import { Bell, BellOff } from "lucide-svelte";
 
   const tooltipClass =

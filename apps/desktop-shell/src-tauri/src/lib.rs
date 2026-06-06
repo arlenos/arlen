@@ -1,3 +1,4 @@
+mod ai_authz;
 mod app_history;
 mod app_index;
 mod app_state;
@@ -6,6 +7,7 @@ mod battery;
 mod clipboard_history;
 mod clipboard_ipc;
 mod intent_ipc;
+mod permission_watcher;
 mod search_ipc;
 mod event_bus;
 mod gtk_menu_bridge;
@@ -251,6 +253,16 @@ pub fn run() {
             clipboard_ipc::start(clipboard_for_watcher);
             search_ipc::start(app.handle().clone());
             intent_ipc::start(app.handle().clone());
+            // Permission revocation watcher: refreshes any active
+            // broker connections' ConnectionAuth when the user
+            // edits ~/.config/permissions/, plus emits
+            // `permission.changed` on the Event Bus so the
+            // knowledge daemon invalidates its token cache. See
+            // docs/architecture/peer-auth-system.md "In-flight
+            // revocation".
+            if let Some(watcher) = permission_watcher::start(app.handle().clone()) {
+                app.manage(watcher);
+            }
             sni::start(app.handle().clone(), sni_items);
             bluetooth::start_monitor(app.handle().clone());
             // Register the BlueZ Agent1 implementation so first-time
@@ -270,6 +282,9 @@ pub fn run() {
             }
             network::start_monitor(app.handle().clone());
             battery::start_monitor(app.handle().clone());
+            // Relay AI authorization prompts from the AI daemon to
+            // the shell UI. No-op if the daemon is not running.
+            ai_authz::spawn(app.handle().clone());
             audio::start_monitor(app.handle().clone());
             gtk_menu_bridge::start(app.handle().clone(), menu_store_for_bridge);
 
@@ -306,6 +321,7 @@ pub fn run() {
             log_frontend,
             dispatch_app_action,
             app_shortcut_invoke,
+            ai_authz::ai_respond_authorization,
             modulesd_commands::modulesd_list_modules,
             modulesd_commands::mint_iframe,
             modulesd_commands::module_host_call,

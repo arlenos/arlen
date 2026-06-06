@@ -1,23 +1,10 @@
-/// Component index for reference only.
+/// Reference index for shell-LOCAL ui components only.
 ///
-/// shadcn-svelte components export overlapping names (Root, Content,
-/// Trigger, Separator, etc.) across different component directories,
-/// so a flat `export *` barrel creates ambiguity. Import per-directory
-/// instead:
+/// The shared design-system canon (Button, Switch, Group, Row, popover,
+/// select, sidebar, inputs, …) lives in `sdk/ui-kit` and is imported directly
+/// via the `@lunaris/ui-kit` alias, e.g.
+///   import { Button } from "@lunaris/ui-kit/components/ui/button";
+/// Do NOT copy those here. Only shell-specific components with no ui-kit canon
+/// stay under this directory (currently: dialog).
 ///
-///   import { Button } from '$lib/components/ui/button';
-///   import { ValueSlider } from '$lib/components/ui/value-slider';
-///
-/// Consuming apps (desktop-shell, app-settings) symlink their own
-/// `src/lib/components/ui/` to this directory so the standard
-/// `$lib/components/ui/X` import path resolves here.
-
-// Re-export only the custom Lunaris components that have unique names
-// and NO app-specific store imports. Components that depend on
-// `$lib/stores/theme` etc. stay in their respective apps.
-export { DaysPicker } from "./days-picker";
-export { Group } from "./group";
-export { PositionPicker } from "./position-picker";
-export { Row } from "./row";
-export { TimeInput } from "./time-input";
-export { ValueSlider } from "./value-slider";
+/// Import per-directory (shadcn names overlap, so no flat `export *`).

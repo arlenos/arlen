@@ -32,7 +32,7 @@
   import AirplaneBadge from "$lib/components/topbar/badges/AirplaneBadge.svelte";
   import { isFocused, focusState, deactivateFocus } from "$lib/stores/projects.js";
   import { closePopover } from "$lib/stores/activePopover.js";
-  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
+  import * as ContextMenu from "@lunaris/ui-kit/components/ui/context-menu/index.js";
   import { X, FolderSearch } from "lucide-svelte";
 
   /// Focus-mode chip click → opens the Waypointer with the

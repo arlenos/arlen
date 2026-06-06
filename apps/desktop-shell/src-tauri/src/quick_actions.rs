@@ -269,9 +269,9 @@ async fn toggle_night_light(app: AppHandle) -> Result<String, String> {
 }
 
 async fn toggle_airplane(_app: AppHandle) -> Result<String, String> {
-    let current = crate::network::get_airplane_mode().unwrap_or(false);
-    crate::network::set_airplane_mode(!current)?;
-    let after = crate::network::get_airplane_mode().unwrap_or(!current);
+    let current = crate::network::get_airplane_mode().await.unwrap_or(false);
+    crate::network::set_airplane_mode(!current).await?;
+    let after = crate::network::get_airplane_mode().await.unwrap_or(!current);
     Ok(format!(
         "Airplane mode is now {}",
         if after { "on" } else { "off" }
@@ -279,9 +279,9 @@ async fn toggle_airplane(_app: AppHandle) -> Result<String, String> {
 }
 
 async fn toggle_wifi(_app: AppHandle) -> Result<String, String> {
-    let current = crate::network::get_wifi_enabled().unwrap_or(false);
-    crate::network::set_wifi_enabled(!current)?;
-    let after = crate::network::get_wifi_enabled().unwrap_or(!current);
+    let current = crate::network::get_wifi_enabled().await.unwrap_or(false);
+    crate::network::set_wifi_enabled(!current).await?;
+    let after = crate::network::get_wifi_enabled().await.unwrap_or(!current);
     Ok(format!(
         "WiFi is now {}",
         if after { "on" } else { "off" }
