@@ -1,0 +1,27 @@
+#cloud-config
+hostname: lunaris-ebpf-dev
+user: tim
+password: lunaris-dev
+chpasswd:
+  expire: false
+ssh_authorized_keys:
+  - REPLACE_WITH_YOUR_PUBLIC_KEY
+ssh_pwauth: false
+
+packages:
+  - bpftool
+  - kernel-devel
+  - kernel-headers
+  - clang
+  - llvm
+  - elfutils-libelf-devel
+  - zlib-devel
+  - git
+  - curl
+  - gcc
+
+runcmd:
+  # Install Rust
+  - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sudo -u tim sh -s -- -y
+  # Verify BTF is available
+  - ls /sys/kernel/btf/vmlinux && echo "BTF: OK" || echo "BTF: MISSING"
