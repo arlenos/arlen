@@ -28,7 +28,7 @@
     refresh();
     let stopNet: UnlistenFn | null = null;
     let stopAir: UnlistenFn | null = null;
-    listen("arlen://network-changed", refresh).then((u) => (stopNet = u));
+    listen("network-changed", refresh).then((u) => (stopNet = u));
     listen("arlen://airplane-changed", refresh).then((u) => (stopAir = u));
     const interval = setInterval(refresh, 30_000);
     return () => {

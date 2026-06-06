@@ -268,9 +268,9 @@ async fn toggle_night_light(app: AppHandle) -> Result<String, String> {
     ))
 }
 
-async fn toggle_airplane(_app: AppHandle) -> Result<String, String> {
+async fn toggle_airplane(app: AppHandle) -> Result<String, String> {
     let current = crate::network::get_airplane_mode().await.unwrap_or(false);
-    crate::network::set_airplane_mode(!current).await?;
+    crate::network::set_airplane_mode(app, !current).await?;
     let after = crate::network::get_airplane_mode().await.unwrap_or(!current);
     Ok(format!(
         "Airplane mode is now {}",
