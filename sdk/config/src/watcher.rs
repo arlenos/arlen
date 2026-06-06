@@ -269,10 +269,13 @@ mod tests {
 
         std::thread::sleep(Duration::from_millis(200));
 
-        // Rapid-fire 5 changes within 50ms.
+        // Rapid-fire 5 changes back to back. No inter-write sleep: the
+        // leading-edge debounce suppresses for DEBOUNCE_MS after it fires,
+        // so writes must land well within that window to collapse. A sleep
+        // here let CI scheduling jitter stretch a gap past the window and
+        // fire again, which made the count assertion flaky.
         for i in 1..=5 {
             write_cfg(&cfg_path, &format!("value = {i}"));
-            std::thread::sleep(Duration::from_millis(10));
         }
 
         // Wait for debounce window + processing.
