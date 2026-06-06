@@ -1,0 +1,25 @@
+/target
+*.bak
+.DS_Store
+
+# Build artifacts
+.svelte-kit/
+build/
+node_modules/
+
+# Rust
+src-tauri/target/
+src-tauri/Cargo.lock
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Env
+.env
+.env.local
+
+# Local dev notes — not committed, lives on the maintainer's machine
+# as cross-sprint reference.
+COMPONENTS.md
