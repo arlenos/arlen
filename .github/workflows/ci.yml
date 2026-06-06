@@ -35,6 +35,7 @@ jobs:
           - daemons/anomaly-detector
           - daemons/modulesd
           - daemons/installd
+          - daemons/knowledge-mcp
           - daemons/xdg-portal
           - forage
     steps:
