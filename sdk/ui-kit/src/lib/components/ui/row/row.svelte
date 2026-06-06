@@ -1,6 +1,8 @@
 <script lang="ts">
-  /// A single row inside a Group card. Label on the left, control on
-  /// the right, with an optional inline preview between them.
+  /// A single row inside a Group card. Label on the left, control on the
+  /// right, with an optional inline preview between them, and an optional
+  /// full-width `below` area for wide controls (a list, a chip editor) that
+  /// do not fit the right-aligned control slot.
   import type { Snippet } from "svelte";
 
   let {
@@ -9,6 +11,7 @@
     description,
     control,
     preview,
+    below,
   }: {
     label: string;
     /// Optional anchor id for deep-link scroll-to-setting.
@@ -16,33 +19,51 @@
     description?: string;
     control?: Snippet;
     preview?: Snippet;
+    /// Optional full-width content rendered under the label/control line.
+    below?: Snippet;
   } = $props();
 </script>
 
 <div class="row" id={rowId}>
-  <div class="label">
-    <div class="label-title">{label}</div>
-    {#if description}
-      <div class="label-desc">{description}</div>
+  <div class="row-main">
+    <div class="label">
+      <div class="label-title">{label}</div>
+      {#if description}
+        <div class="label-desc">{description}</div>
+      {/if}
+    </div>
+    {#if preview}
+      <div class="preview">
+        {@render preview()}
+      </div>
     {/if}
+    <div class="control">
+      {@render control?.()}
+    </div>
   </div>
-  {#if preview}
-    <div class="preview">
-      {@render preview()}
+  {#if below}
+    <div class="row-below">
+      {@render below()}
     </div>
   {/if}
-  <div class="control">
-    {@render control?.()}
-  </div>
 </div>
 
 <style>
   .row {
     display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .row-main {
+    display: flex;
     align-items: center;
     gap: 0.875rem;
-    padding: 0.75rem 1rem;
-    min-height: var(--height-row, 40px);
+    /* Preserve the row rhythm: the main line keeps the standard row
+       height; the .row padding is excluded here so a `below` block adds
+       under it rather than inflating the line. */
+    min-height: calc(var(--height-row, 40px) - 1.5rem);
   }
 
   .label {
@@ -74,5 +95,10 @@
   .preview,
   .control {
     flex-shrink: 0;
+  }
+
+  /* Full-width content under the row line. */
+  .row-below {
+    min-width: 0;
   }
 </style>
