@@ -15,7 +15,7 @@
   import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { Button } from "$lib/components/ui/button";
+  import { Button } from "@lunaris/ui-kit/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Group } from "@lunaris/ui-kit/components/ui/group";
   import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";

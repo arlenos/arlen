@@ -1,6 +1,6 @@
 <script lang="ts">
   import { RotateCcw, Trash2, AlertTriangle } from "lucide-svelte";
-  import { Button } from "$lib/components/ui/button";
+  import { Button } from "@lunaris/ui-kit/components/ui/button";
   import type { KeybindingEntry } from "$lib/stores/keybindings";
 
   type Props = {

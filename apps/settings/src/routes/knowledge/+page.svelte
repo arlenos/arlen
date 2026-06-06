@@ -29,7 +29,7 @@
   import { Group } from "@lunaris/ui-kit/components/ui/group";
   import { Row } from "@lunaris/ui-kit/components/ui/row";
   import { ChipList } from "@lunaris/ui-kit/components/ui/chip-list";
-  import { Button } from "$lib/components/ui/button";
+  import { Button } from "@lunaris/ui-kit/components/ui/button";
   import { NumberInput } from "$lib/components/ui/number-input";
   import { graph, PROJECTS_DEFAULTS } from "$lib/stores/projectsConfig";
 

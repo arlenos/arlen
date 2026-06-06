@@ -13,7 +13,7 @@
   import { Input } from "$lib/components/ui/input";
   import { NumberInput } from "$lib/components/ui/number-input";
   import { PopoverSelect } from "$lib/components/ui/popover-select";
-  import { Button } from "$lib/components/ui/button";
+  import { Button } from "@lunaris/ui-kit/components/ui/button";
   import { Switch } from "@lunaris/ui-kit/components/ui/switch";
   import { Page } from "@lunaris/ui-kit/components/ui/page";
   import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";

@@ -18,7 +18,7 @@
   import { groupedResolutions } from "$lib/stores/displays";
   import { Switch } from "$lib/components/ui/switch";
   import { PopoverSelect } from "$lib/components/ui/popover-select";
-  import { Button } from "$lib/components/ui/button";
+  import { Button } from "@lunaris/ui-kit/components/ui/button";
   import { Row } from "@lunaris/ui-kit/components/ui/row";
 
   interface Props {

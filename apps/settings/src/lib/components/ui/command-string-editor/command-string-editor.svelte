@@ -13,7 +13,7 @@
   /// `shell:brightness_up`, etc.).
 
   import { Pencil, Check, X, RotateCcw } from "lucide-svelte";
-  import { Button } from "$lib/components/ui/button";
+  import { Button } from "@lunaris/ui-kit/components/ui/button";
   import { Input } from "$lib/components/ui/input";
 
   let {

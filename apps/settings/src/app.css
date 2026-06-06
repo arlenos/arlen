@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
+/* Single-source: scan the ui-kit canon so Tailwind generates the utility
+   classes used by ui-kit's shadcn-derived components, which are imported via
+   the @lunaris/ui-kit alias instead of being copied into this app. See
+   docs/architecture/design-system.md §2.1. */
+@source "../../sdk/ui-kit/src/lib/components/**/*.{svelte,ts}";
 /* Canonical motion tokens + shared interaction classes.
    Single source of truth for both desktop-shell and app-settings. */
 @import "../../sdk/ui-kit/src/lib/motion.css";
