@@ -207,7 +207,7 @@
         addLabel=""
         emptyMessage="No apps configured — Focus Mode uses per-project lists only."
       >
-        {#snippet itemSnippet({ item })}
+        {#snippet itemSnippet({ item }: { item: string; index: number })}
           <span class="app-row">
             <AppWindow size={14} strokeWidth={1.5} />
             {item}
@@ -273,7 +273,7 @@
           addLabel=""
           emptyMessage="No watched directories — defaults will be used."
         >
-          {#snippet itemSnippet({ item })}
+          {#snippet itemSnippet({ item }: { item: string; index: number })}
             <span class="dir-row">
               <FolderOpenIcon size={14} strokeWidth={1.5} />
               {pathLabel(item as string)}

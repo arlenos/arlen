@@ -209,7 +209,7 @@
         addLabel="Add Rule"
         emptyMessage="No rules yet — apps follow the global tiling default."
       >
-        {#snippet itemSnippet({ item })}
+        {#snippet itemSnippet({ item }: { item: WindowRule; index: number })}
           <code class="rule-code">{ruleSummary(item as WindowRule)}</code>
         {/snippet}
       </AddRemoveList>
