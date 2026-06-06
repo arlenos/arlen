@@ -1,0 +1,96 @@
+[package]
+name = "lunaris-settings"
+version = "0.1.0"
+description = "Lunaris OS system settings app"
+authors = ["Lunaris"]
+edition = "2021"
+
+[lib]
+name = "lunaris_settings_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+# Format-preserving TOML editor for surgical writes into
+# user-authored config files (compositor.toml, shell.toml). Plain
+# `toml::to_string_pretty(&full_struct)` would lose the user's
+# comments and formatting; toml_edit keeps them.
+toml_edit = "0.22"
+# RON serialiser used to write the screen-filter state file at
+# `~/.local/state/cosmic-comp/a11y_screen_filter.ron`. The
+# compositor reads this file format; matching it lets the Settings
+# app round-trip with the same notify-watcher pipeline.
+ron = "0.8"
+dirs = "5"
+notify = "6"
+anyhow = "1"
+thiserror = "2"
+log = "0.4"
+env_logger = "0.11"
+chrono = { version = "0.4", features = ["serde"] }
+# Direct SQLite read/write of the notification daemon's history DB
+# (`~/.local/share/lunaris/notifications.db`) for the per-app picker
+# and the "clear history" action. SQLite handles concurrent access with
+# the daemon transparently via its file locking.
+rusqlite = { version = "0.32", features = ["bundled"] }
+# Async D-Bus client for the compositor's input services. Tauri 2 ships
+# its own async runtime so we rely on zbus' `tokio` feature and invoke
+# via `#[tauri::command] async fn`.
+lunaris-input-client = { path = "../../sdk/lunaris-input-client" }
+
+# Lunaris titlebar plugin: binds lunaris-titlebar-v1 Wayland protocol when
+# running under the Lunaris compositor, no-op otherwise. The graceful
+# fallback means the Settings app still works on plain wlroots/GNOME.
+tauri-plugin-lunaris-menu = { path = "../../sdk/tauri-plugin-menu" }
+
+# Lunaris portal plugin: wraps org.freedesktop.portal.Desktop FileChooser
+# and OpenURI. Reused by `commands::picker::pick_directory` so the
+# directory selector goes through the Lunaris-themed picker on a Lunaris
+# session and falls back to kdialog/zenity when the portal frontend is
+# not installed (CI, headless dev sessions, stripped images).
+tauri-plugin-lunaris-portal = { path = "../../sdk/tauri-plugin-portal" }
+
+# Shared manifest parser / validator for module.toml files. The
+# Settings app and the shell use the same schema via this crate.
+lunaris-modules = { path = "../../sdk/modules" }
+
+# Wayland client for the Display panel. We talk wlr-output-management
+# (zwlr_output_manager_v1) directly because the compositor implements
+# both wlr-output-management and cosmic-output-management on the
+# server side. wlr is the cross-compositor standard so the app stays
+# usable under plain wlroots / labwc / sway too.
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+libc = "0.2"
+# Brightness control via logind D-Bus
+# (`org.freedesktop.login1.Session.SetBrightness`). Same path as
+# desktop-shell's `brightness.rs`; the two processes can't share
+# Tauri commands so we keep a slim mirror in app-settings.
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+tokio = { version = "1", features = ["rt", "macros"] }
+
+# Output config types shared with the compositor. We reuse the
+# canonical OutputConfig + TOML schema (D0) so the apply path round-
+# trips through the same struct shape that lands on disk.
+cosmic-comp-config = { path = "../../compositor/cosmic-comp-config", features = ["output"] }
+
+# Audit ledger read API. The AI Activity view reads the Structural
+# tier over the daemon's read socket via the shared ReadClient; the
+# wire types live in audit-proto so reader and daemon share one
+# definition (the same pattern the Anomaly Detector uses).
+audit-proto = { path = "../../audit-proto" }
+
+[dev-dependencies]
+tempfile = "3"
+
+# SDK crates (git deps once the settings repo is detached):
+# os-sdk         = { git = "https://github.com/lunaris-sys/sdk", path = "os-sdk" }
+# lunaris-theme  = { git = "https://github.com/lunaris-sys/sdk", path = "theme" }
+# lunaris-config = { git = "https://github.com/lunaris-sys/sdk", path = "config" }

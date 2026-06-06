@@ -1,0 +1,279 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/inter";
+/* Single-source: scan the ui-kit canon so Tailwind generates the utility
+   classes used by ui-kit's shadcn-derived components, which are imported via
+   the @lunaris/ui-kit alias instead of being copied into this app. See
+   docs/architecture/design-system.md §2.1. */
+@source "../../sdk/ui-kit/src/lib/components/**/*.{svelte,ts}";
+/* Canonical motion tokens + shared interaction classes.
+   Single source of truth for both desktop-shell and app-settings. */
+@import "../../sdk/ui-kit/src/lib/motion.css";
+
+/* ============================================================
+   Lunaris Settings App - Dark Theme Defaults
+   Overridden at runtime by theme store from appearance.toml.
+   Mirrors desktop-shell dark.toml.
+   ============================================================ */
+:root {
+  /* Background */
+  --color-bg-shell:   #0a0a0a;
+  --color-bg-app:     #0f0f0f;
+  --color-bg-card:    #171717;
+  --color-bg-overlay: #00000080;
+  --color-bg-input:   #1a1a1a;
+
+  /* Foreground */
+  --color-fg-primary:   #fafafa;
+  --color-fg-secondary: #a1a1aa;
+  --color-fg-disabled:  #52525b;
+  --color-fg-inverse:   #0a0a0a;
+  --color-fg-shell:     var(--color-fg-primary);
+  --color-fg-app:       var(--color-fg-primary);
+
+  /* Semantic */
+  --color-accent:            #6366f1;
+  --color-accent-hover:      #818cf8;
+  --color-accent-foreground: #ffffff;
+  --color-border:         #262626;
+  --color-border-strong:  #3f3f46;
+  --color-error:          #ef4444;
+  --color-warning:        #f59e0b;
+  --color-success:        #10b981;
+
+  /* Semantic radius tokens — defaults mirror sdk/theme/themes/dark.toml
+     for first-paint correctness before the runtime theme injection
+     runs. Runtime intensity overrides come via appearance.toml
+     [overrides].radius_intensity. See docs/architecture/theme-system.md. */
+  --radius-chip:   4px;
+  --radius-button: 6px;
+  --radius-input:  8px;
+  --radius-card:   12px;
+  --radius-modal:  16px;
+  --radius-full:   9999px;
+
+  /* Sizing scale — see docs/architecture/sizing-system.md.
+     Semantic naming over t-shirt sizing. Components pick a token
+     by VISUAL ROLE. Variant props on components (sm/default/lg)
+     are ergonomic aliases; each maps internally to one of these
+     tokens. Values mirrored in `desktop-shell/src/app.css` and
+     `sdk/ui-kit/src/app.css`. */
+  --height-tag:                 20px;  /* Badges, status pills, indicators */
+  --height-control-compact:     24px;  /* Compact controls in dense rows */
+  --height-control:             28px;  /* Standard controls (most common) */
+  --height-control-prominent:   36px;  /* Prominent controls, default button */
+  --height-control-emphasized:  40px;  /* Emphasized buttons, hero inputs */
+  --height-row:                 40px;  /* Settings rows, dense list items */
+  --height-bar:                 36px;  /* Top bar, compositor SSD header */
+
+  /* Motion tokens live in sdk/ui-kit/src/lib/motion.css (imported above). */
+
+  /* Shadcn variable mapping */
+  --background:       var(--color-bg-app);
+  --foreground:       var(--color-fg-app);
+  --card:             var(--color-bg-card);
+  --card-foreground:  var(--color-fg-app);
+  --popover:          var(--color-bg-card);
+  --popover-foreground: var(--color-fg-app);
+  --primary:          var(--color-accent);
+  --primary-foreground: var(--color-accent-foreground);
+  --secondary:        var(--color-bg-card);
+  --secondary-foreground: var(--color-fg-app);
+  --muted:            var(--color-bg-card);
+  --muted-foreground: var(--color-fg-secondary);
+  --accent:           var(--color-accent);
+  --accent-foreground: var(--color-accent-foreground);
+  --destructive:      var(--color-error);
+  --border:           var(--color-border);
+  --input:            var(--color-bg-input);
+  --ring:             var(--color-accent);
+
+  --sidebar:                    var(--color-bg-shell);
+  --sidebar-foreground:         var(--color-fg-shell);
+  --sidebar-primary:            var(--color-accent);
+  --sidebar-primary-foreground: var(--color-accent-foreground);
+  --sidebar-accent:             color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
+  --sidebar-accent-foreground:  var(--color-fg-shell);
+  --sidebar-border:             color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
+  --sidebar-ring:               var(--color-accent);
+
+  color-scheme: dark;
+}
+
+/* ============================================================
+   Light mode override. Applied by applyAppearance() by setting
+   `document.documentElement.dataset.theme = "light"`. Values
+   mirror desktop-shell/src-tauri/themes/light.toml.
+   ============================================================ */
+[data-theme="light"] {
+  /* Background */
+  --color-bg-shell:   #f5f5f5;
+  --color-bg-app:     #ffffff;
+  --color-bg-card:    #fafafa;
+  --color-bg-overlay: #00000040;
+  --color-bg-input:   #f0f0f0;
+
+  /* Foreground */
+  --color-fg-primary:   #171717;
+  --color-fg-secondary: #525252;
+  --color-fg-disabled:  #a3a3a3;
+  --color-fg-inverse:   #fafafa;
+
+  /* Semantic (built-in light accent; overridden again by user
+     override + accent-foreground from applyAppearance) */
+  --color-accent:            #4f46e5;
+  --color-accent-hover:      #6366f1;
+  --color-accent-foreground: #ffffff;
+
+  /* Border */
+  --color-border-default: #e5e5e5;
+  --color-border-strong:  #d4d4d4;
+  --color-border:         var(--color-border-default);
+
+  color-scheme: light;
+}
+
+/* ============================================================
+   @theme inline block.
+
+   `@theme inline` makes Tailwind utilities emit `var(--token)`
+   references instead of resolving to literals at build time.
+   This is what we want: Tailwind classes like `bg-primary`
+   compile to `background-color: var(--primary)` and the actual
+   color comes from `:root` at runtime. Changing a CSS variable
+   via JavaScript then immediately re-colors all matching utilities.
+
+   The token names on the LEFT (`--color-primary`) are what
+   Tailwind maps to utility classes (`bg-primary`, `text-primary`).
+   The `var(--...)` on the RIGHT is the shadcn variable.
+   ============================================================ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Semantic radius tokens — see sdk/theme + theme-system.md.
+     `--radius-X` defaults are pre-loaded in :root; these
+     @theme-inline lines just expose them as Tailwind utilities
+     (rounded-chip / rounded-button / rounded-input / rounded-card
+     / rounded-modal / rounded-full). Runtime overrides come via
+     the user's appearance.toml [overrides].radius_intensity
+     multiplier applied at theme-emit time. */
+  --radius-chip:   var(--radius-chip);
+  --radius-button: var(--radius-button);
+  --radius-input:  var(--radius-input);
+  --radius-card:   var(--radius-card);
+  --radius-modal:  var(--radius-modal);
+  --radius-full:   var(--radius-full);
+
+  /* Sizing-scale utilities — see docs/architecture/sizing-system.md.
+     Generates h-tag, h-control-compact, h-control,
+     h-control-prominent, h-control-emphasized, h-row, h-bar. */
+  --height-tag:                 var(--height-tag, 20px);
+  --height-control-compact:     var(--height-control-compact, 24px);
+  --height-control:             var(--height-control, 28px);
+  --height-control-prominent:   var(--height-control-prominent, 36px);
+  --height-control-emphasized:  var(--height-control-emphasized, 40px);
+  --height-row:                 var(--height-row, 40px);
+  --height-bar:                 var(--height-bar, 36px);
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", monospace;
+
+  /* Motion tokens registered as Tailwind utilities. Values come from
+     sdk/ui-kit/src/lib/motion.css; this block only exposes them to
+     utility classes like `duration-fast`, `ease-out`. */
+  --transition-duration-micro:   var(--duration-micro);
+  --transition-duration-fast:    var(--duration-fast);
+  --transition-duration-medium:  var(--duration-medium);
+  --transition-duration-slow:    var(--duration-slow);
+  --transition-duration-instant: var(--duration-micro);
+  --ease-out:    var(--ease-out);
+  --ease-in-out: var(--ease-in-out);
+  --ease-bounce: var(--ease-bounce);
+  --ease-default: var(--ease-in-out);
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  /* App-wide default: nothing is selectable, except real text-entry
+     controls (and anything that opts back in via [data-selectable]).
+     Selecting the label of a button or pill on mouse-drag feels like
+     a bug in a settings UI. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"],
+[data-selectable] {
+  -webkit-user-select: auto;
+  user-select: auto;
+}
+
+/* Scrollbar styling — thumb follows the runtime corner radius so it
+   visually matches every other rounded surface in the app. */
+/* Deep-link highlight: the settings:navigate handler adds this class
+   to the target element. Holds a tinted background + left accent
+   border for 70% of the duration so the user has time to spot it,
+   then fades out cleanly. */
+.setting-highlight {
+  animation: setting-pulse 3s ease-out forwards !important;
+}
+@keyframes setting-pulse {
+  0%, 70% {
+    background-color: color-mix(in srgb, var(--color-accent) 20%, transparent);
+    border-left: 3px solid var(--color-accent);
+  }
+  100% {
+    background-color: transparent;
+    border-left: 3px solid transparent;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--foreground) 18%, transparent);
+  border-radius: var(--radius-input);
+  border: 2px solid var(--background);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--foreground) 30%, transparent);
+  background-clip: padding-box;
+}
