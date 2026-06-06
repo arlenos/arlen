@@ -19,7 +19,7 @@
   import { Switch } from "$lib/components/ui/switch";
   import { PopoverSelect } from "$lib/components/ui/popover-select";
   import { Button } from "$lib/components/ui/button";
-  import SettingsRow from "$lib/components/settings/SettingsRow.svelte";
+  import { Row } from "@lunaris/ui-kit/components/ui/row";
 
   interface Props {
     monitor: Monitor;
@@ -140,14 +140,14 @@
   ]);
 </script>
 
-<SettingsRow label="Active" description="{monitor.make} {monitor.model}">
+<Row label="Active" description="{monitor.make} {monitor.model}">
   {#snippet control()}
     <Switch value={isActive} onchange={setEnabled} />
   {/snippet}
-</SettingsRow>
+</Row>
 
 {#if isActive}
-  <SettingsRow label="Resolution">
+  <Row label="Resolution">
     {#snippet control()}
       <PopoverSelect
         value={currentMode ? `${currentMode.width}x${currentMode.height}` : ""}
@@ -160,9 +160,9 @@
         }}
       />
     {/snippet}
-  </SettingsRow>
+  </Row>
 
-  <SettingsRow label="Refresh Rate">
+  <Row label="Refresh Rate">
     {#snippet control()}
       <PopoverSelect
         value={currentMode ? String(currentMode.refreshMhz) : ""}
@@ -172,9 +172,9 @@
         onchange={(v) => pickRefresh(Number(v))}
       />
     {/snippet}
-  </SettingsRow>
+  </Row>
 
-  <SettingsRow label="Scale">
+  <Row label="Scale">
     {#snippet control()}
       <div class="presets">
         {#each SCALE_PRESETS as p}
@@ -189,9 +189,9 @@
         {/each}
       </div>
     {/snippet}
-  </SettingsRow>
+  </Row>
 
-  <SettingsRow label="Rotation">
+  <Row label="Rotation">
     {#snippet control()}
       <PopoverSelect
         value={draft.transform}
@@ -201,9 +201,9 @@
         onchange={(v) => setTransform(v as Transform)}
       />
     {/snippet}
-  </SettingsRow>
+  </Row>
 
-  <SettingsRow
+  <Row
     label="Adaptive Sync"
     description="Variable refresh rate (VRR / FreeSync)"
   >
@@ -216,10 +216,10 @@
         onchange={(v) => setVrr(v as VrrState)}
       />
     {/snippet}
-  </SettingsRow>
+  </Row>
 
   {#if others.length > 0}
-    <SettingsRow label="Mirror To">
+    <Row label="Mirror To">
       {#snippet control()}
         <PopoverSelect
           value={mirrorTarget ?? "__none__"}
@@ -229,7 +229,7 @@
           onchange={setMirror}
         />
       {/snippet}
-    </SettingsRow>
+    </Row>
   {/if}
 {:else}
   <div class="hint-row">

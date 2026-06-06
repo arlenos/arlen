@@ -21,8 +21,8 @@
   import { PopoverSelect } from "$lib/components/ui/popover-select";
   import { TimeInput } from "$lib/components/ui/time-input";
   import { NumberInput } from "$lib/components/ui/number-input";
-  import SettingsGroup from "$lib/components/settings/SettingsGroup.svelte";
-  import SettingsRow from "$lib/components/settings/SettingsRow.svelte";
+  import { Group } from "@lunaris/ui-kit/components/ui/group";
+  import { Row } from "@lunaris/ui-kit/components/ui/row";
 
   // Mirrors `app-settings/src-tauri/src/commands/night_light.rs::NightLightState`.
   // Kept in hand-sync; if the schema grows, ts-rs would be the right
@@ -166,17 +166,17 @@
   const locationUnset = $derived(cfg.latitude === 0 && cfg.longitude === 0);
 </script>
 
-<SettingsGroup label="Night Light">
-  <SettingsRow
+<Group label="Night Light">
+  <Row
     label="Active"
     description="Warm the screen to reduce blue light."
   >
     {#snippet control()}
       <Switch value={cfg.enabled} onchange={setEnabled} />
     {/snippet}
-  </SettingsRow>
+  </Row>
 
-  <SettingsRow
+  <Row
     label="Color Temperature"
     description="Lower is warmer (more orange)."
   >
@@ -193,9 +193,9 @@
         />
       </div>
     {/snippet}
-  </SettingsRow>
+  </Row>
 
-  <SettingsRow label="Schedule">
+  <Row label="Schedule">
     {#snippet control()}
       <PopoverSelect
         value={cfg.schedule}
@@ -205,10 +205,10 @@
         onchange={setSchedule}
       />
     {/snippet}
-  </SettingsRow>
+  </Row>
 
   {#if cfg.schedule === "custom"}
-    <SettingsRow label="Start">
+    <Row label="Start">
       {#snippet control()}
         <TimeInput
           value={formatHhmm(cfg.custom_start)}
@@ -216,8 +216,8 @@
           onchange={setCustomStart}
         />
       {/snippet}
-    </SettingsRow>
-    <SettingsRow label="End">
+    </Row>
+    <Row label="End">
       {#snippet control()}
         <TimeInput
           value={formatHhmm(cfg.custom_end)}
@@ -225,11 +225,11 @@
           onchange={setCustomEnd}
         />
       {/snippet}
-    </SettingsRow>
+    </Row>
   {/if}
 
   {#if cfg.schedule === "sunset_sunrise"}
-    <SettingsRow
+    <Row
       label="Latitude"
       description={locationUnset
         ? "Set both coordinates to enable sunset/sunrise mode."
@@ -246,8 +246,8 @@
           onchange={setLatitude}
         />
       {/snippet}
-    </SettingsRow>
-    <SettingsRow label="Longitude">
+    </Row>
+    <Row label="Longitude">
       {#snippet control()}
         <NumberInput
           value={cfg.longitude}
@@ -259,12 +259,12 @@
           onchange={setLongitude}
         />
       {/snippet}
-    </SettingsRow>
+    </Row>
   {/if}
-</SettingsGroup>
+</Group>
 
 <style>
-  /* Slider needs more horizontal room than other controls. SettingsRow
+  /* Slider needs more horizontal room than other controls. Row
      gives the control area a hard right-aligned width; the wrapper
      here lets the slider fill 220px instead of collapsing. */
   .slider-cell {

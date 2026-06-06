@@ -7,10 +7,11 @@
   /// changes up automatically — no daemon restart needed.
 
   import { onMount } from "svelte";
-  import SettingsPage from "$lib/components/settings/SettingsPage.svelte";
-  import { Group } from "$lib/components/ui/group";
-  import { Row } from "$lib/components/ui/row";
-  import { Switch } from "$lib/components/ui/switch";
+  import { Page } from "@lunaris/ui-kit/components/ui/page";
+  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
+  import { Group } from "@lunaris/ui-kit/components/ui/group";
+  import { Row } from "@lunaris/ui-kit/components/ui/row";
+  import { Switch } from "@lunaris/ui-kit/components/ui/switch";
   import { ValueSlider } from "$lib/components/ui/value-slider";
   import { PopoverSelect } from "$lib/components/ui/popover-select";
   import { AddRemoveList } from "$lib/components/ui/add-remove-list";
@@ -98,11 +99,12 @@
   ];
 </script>
 
-<SettingsPage
+<Page
   title="Workspaces & Tiling"
   description="Workspace layout direction, default tiling gaps, and per-app window rules."
 >
-  <Group label="Workspace Layout">
+  <SectionGrid>
+    <Group label="Workspace Layout">
     <Row
       label="Layout direction"
       description="Vertical stacks workspaces top-to-bottom; Horizontal arranges them left-to-right."
@@ -207,13 +209,14 @@
         addLabel="Add Rule"
         emptyMessage="No rules yet — apps follow the global tiling default."
       >
-        {#snippet itemSnippet({ item })}
+        {#snippet itemSnippet({ item }: { item: WindowRule; index: number })}
           <code class="rule-code">{ruleSummary(item as WindowRule)}</code>
         {/snippet}
       </AddRemoveList>
     </div>
   </Group>
-</SettingsPage>
+  </SectionGrid>
+</Page>
 
 <AddWindowRuleDialog
   open={addRuleOpen}

@@ -9,10 +9,11 @@
   /// notify-watcher applies the change within ~100 ms.
 
   import { onMount } from "svelte";
-  import SettingsPage from "$lib/components/settings/SettingsPage.svelte";
-  import { Group } from "$lib/components/ui/group";
-  import { Row } from "$lib/components/ui/row";
-  import { Switch } from "$lib/components/ui/switch";
+  import { Page } from "@lunaris/ui-kit/components/ui/page";
+  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
+  import { Group } from "@lunaris/ui-kit/components/ui/group";
+  import { Row } from "@lunaris/ui-kit/components/ui/row";
+  import { Switch } from "@lunaris/ui-kit/components/ui/switch";
   import { ValueSlider } from "$lib/components/ui/value-slider";
   import { PopoverSelect } from "$lib/components/ui/popover-select";
   import {
@@ -81,11 +82,12 @@
   }
 </script>
 
-<SettingsPage
+<Page
   title="Accessibility"
   description="Screen magnifier, color filters, and visual aids."
 >
-  <Group label="Screen Magnifier">
+  <SectionGrid>
+    <Group label="Screen Magnifier">
     <Row
       label="Enable mouse zoom shortcuts"
       description="Super+Scroll, Super+= and Super+- to zoom in and out."
@@ -193,5 +195,6 @@
         />
       {/snippet}
     </Row>
-  </Group>
-</SettingsPage>
+    </Group>
+  </SectionGrid>
+</Page>

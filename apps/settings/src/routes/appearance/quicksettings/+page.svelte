@@ -32,8 +32,9 @@
   import { onMount } from "svelte";
   import { RotateCcw, AlertCircle } from "@lucide/svelte";
 
-  import SettingsPage from "$lib/components/settings/SettingsPage.svelte";
-  import { Group } from "$lib/components/ui/group";
+  import { Page } from "@lunaris/ui-kit/components/ui/page";
+  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
+  import { Group } from "@lunaris/ui-kit/components/ui/group";
   import { Button } from "$lib/components/ui/button";
   import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
   import PanelPreview from "$lib/components/quicksettings/PanelPreview.svelte";
@@ -373,10 +374,12 @@
   const { unknown: unknownEntries } = $derived(partition());
 </script>
 
-<SettingsPage
+<Page
   title="Quick Settings"
   description="Reorder, hide, and resize the tiles inside the Quick Settings panel. Drag to rearrange. Right-click a tile for size and visibility controls."
 >
+  <SectionGrid>
+  <div class="span-full qs-column">
   <div class="qs-toolbar">
     <Button
       variant="ghost"
@@ -427,7 +430,9 @@
       </div>
     </Group>
   {/if}
-</SettingsPage>
+  </div>
+  </SectionGrid>
+</Page>
 
 <ConfirmDialog
   open={confirmResetOpen}
@@ -440,6 +445,13 @@
 />
 
 <style>
+  /* Single-column flow inside the grid (cap + centring from SectionGrid). */
+  .qs-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
   /* Toolbar pinned to the top-right above the groups — same
      pattern as system-actions's "Reset all to defaults". */
   .qs-toolbar {

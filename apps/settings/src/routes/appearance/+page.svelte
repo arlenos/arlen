@@ -14,8 +14,10 @@
   } from "$lib/stores/theme";
   import { compositor } from "$lib/stores/compositor";
 
-  import { Group } from "$lib/components/ui/group";
-  import { Row } from "$lib/components/ui/row";
+  import { Page } from "@lunaris/ui-kit/components/ui/page";
+  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
+  import { Group } from "@lunaris/ui-kit/components/ui/group";
+  import { Row } from "@lunaris/ui-kit/components/ui/row";
   import ModeToggle from "$lib/components/appearance/ModeToggle.svelte";
   import AccentPicker from "$lib/components/appearance/AccentPicker.svelte";
   import { ValueSlider } from "$lib/components/ui/value-slider";
@@ -99,19 +101,19 @@
   }
 </script>
 
-<div class="page">
-  <header class="head">
-    <h1>Appearance</h1>
-  </header>
-
+<Page
+  title="Appearance"
+  description="Theme, colours, fonts, and visual style."
+>
+  <SectionGrid>
   {#if $theme.loading && !$theme.data}
-    <div class="status">Loading…</div>
+    <div class="status span-full">Loading…</div>
   {:else if $theme.error && !$theme.data}
-    <div class="error">
+    <div class="error span-full">
       Failed to load appearance config: {$theme.error}
     </div>
   {:else}
-    <div class="groups">
+    <div class="groups span-full">
       <Group label="Theme">
         <Row label="Mode" id="theme-mode">
           {#snippet control()}
@@ -270,28 +272,10 @@
       </Group>
     </div>
   {/if}
-</div>
+  </SectionGrid>
+</Page>
 
 <style>
-  .page {
-    width: 100%;
-    max-width: 42rem;
-    margin: 0 auto;
-    padding: 1.25rem 1.5rem 2rem;
-  }
-
-  .head {
-    margin-bottom: 1.25rem;
-  }
-
-  h1 {
-    margin: 0;
-    font-size: 1.125rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    color: var(--foreground);
-  }
-
   .groups {
     display: flex;
     flex-direction: column;

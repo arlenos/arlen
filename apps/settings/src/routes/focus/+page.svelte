@@ -17,10 +17,11 @@
     FolderOpen as FolderOpenIcon,
     AlertTriangle,
   } from "lucide-svelte";
-  import SettingsPage from "$lib/components/settings/SettingsPage.svelte";
-  import { Group } from "$lib/components/ui/group";
-  import { Row } from "$lib/components/ui/row";
-  import { Switch } from "$lib/components/ui/switch";
+  import { Page } from "@lunaris/ui-kit/components/ui/page";
+  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
+  import { Group } from "@lunaris/ui-kit/components/ui/group";
+  import { Row } from "@lunaris/ui-kit/components/ui/row";
+  import { Switch } from "@lunaris/ui-kit/components/ui/switch";
   import { ValueSlider } from "$lib/components/ui/value-slider";
   import { AddRemoveList } from "$lib/components/ui/add-remove-list";
   import { DirectoryPicker } from "$lib/components/ui/directory-picker";
@@ -152,11 +153,12 @@
   }
 </script>
 
-<SettingsPage
+<Page
   title="Focus Mode"
   description="Project detection, default suppressed apps, and watch directories."
 >
-  <Group label="Top Bar Indicator">
+  <SectionGrid>
+    <Group label="Top Bar Indicator">
     <Row
       label="Show project name when active"
       description="Pin the active project name to the top bar while Focus Mode is on."
@@ -205,7 +207,7 @@
         addLabel=""
         emptyMessage="No apps configured — Focus Mode uses per-project lists only."
       >
-        {#snippet itemSnippet({ item })}
+        {#snippet itemSnippet({ item }: { item: string; index: number })}
           <span class="app-row">
             <AppWindow size={14} strokeWidth={1.5} />
             {item}
@@ -271,7 +273,7 @@
           addLabel=""
           emptyMessage="No watched directories — defaults will be used."
         >
-          {#snippet itemSnippet({ item })}
+          {#snippet itemSnippet({ item }: { item: string; index: number })}
             <span class="dir-row">
               <FolderOpenIcon size={14} strokeWidth={1.5} />
               {pathLabel(item as string)}
@@ -298,8 +300,9 @@
         />
       {/snippet}
     </Row>
-  </Group>
-</SettingsPage>
+    </Group>
+  </SectionGrid>
+</Page>
 
 <style>
   .meta-count {

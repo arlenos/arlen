@@ -11,9 +11,10 @@
 
   import { invoke } from "@tauri-apps/api/core";
   import { Lock, ExternalLink } from "lucide-svelte";
-  import SettingsPage from "$lib/components/settings/SettingsPage.svelte";
-  import { Group } from "$lib/components/ui/group";
-  import { Row } from "$lib/components/ui/row";
+  import { Page } from "@lunaris/ui-kit/components/ui/page";
+  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
+  import { Group } from "@lunaris/ui-kit/components/ui/group";
+  import { Row } from "@lunaris/ui-kit/components/ui/row";
   import { Button } from "$lib/components/ui/button";
 
   /// xdg-open via the `open_url` Tauri command (Codex Sprint D
@@ -28,11 +29,12 @@
   }
 </script>
 
-<SettingsPage
+<Page
   title="Privacy"
   description="Per-app permissions and data access controls."
 >
-  <Group label="Coming with Phase 8">
+  <SectionGrid>
+    <Group label="Coming with Phase 8">
     <Row
       label="Per-app permissions"
       description="Granular control over Knowledge Graph, Event Bus, filesystem, network, clipboard, camera, microphone, and location access. Arrives with the first-party apps in Phase 8 — by then app-files / app-knowledge / app-terminal will register their permission profiles for review here."
@@ -63,4 +65,5 @@
       {/snippet}
     </Row>
   </Group>
-</SettingsPage>
+  </SectionGrid>
+</Page>
