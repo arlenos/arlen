@@ -18,8 +18,8 @@
 
 set -euo pipefail
 
-ARLEN_PATH="${ARLEN_PATH:-$HOME/Repositories/arlenos}"
-SRC="$ARLEN_PATH/modulesd"
+ARLEN_PATH="${ARLEN_PATH:-$HOME/Repositories/arlen}"
+SRC="$ARLEN_PATH/daemons/modulesd"
 
 USER_SYSTEMD="$HOME/.config/systemd/user"
 DAEMON_BIN="$SRC/target/debug/arlen-modulesd"

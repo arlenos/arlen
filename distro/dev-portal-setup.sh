@@ -17,8 +17,8 @@
 
 set -euo pipefail
 
-ARLEN_PATH="${ARLEN_PATH:-$HOME/Repositories/arlenos}"
-SRC="$ARLEN_PATH/xdg-desktop-portal-arlen"
+ARLEN_PATH="${ARLEN_PATH:-$HOME/Repositories/arlen}"
+SRC="$ARLEN_PATH/daemons/xdg-portal"
 
 USER_DBUS_SVC="$HOME/.local/share/dbus-1/services"
 DBUS_SVC_NAME="org.freedesktop.impl.portal.desktop.arlen.service"

@@ -6,7 +6,7 @@
 # daemon dispatches FileChooser/OpenURI calls to Arlen.
 #
 # Usage:
-#   cd ~/Repositories/arlenos
+#   cd ~/Repositories/arlen
 #   ./distro/install-portal.sh
 #
 # This is the production path; for dev work (no sudo, repo-local
@@ -16,8 +16,8 @@ set -euo pipefail
 
 # ── Configuration ──────────────────────────────────────────────
 
-ARLEN_PATH="${ARLEN_PATH:-$HOME/Repositories/arlenos}"
-SRC="$ARLEN_PATH/xdg-desktop-portal-arlen"
+ARLEN_PATH="${ARLEN_PATH:-$HOME/Repositories/arlen}"
+SRC="$ARLEN_PATH/daemons/xdg-portal"
 
 # Source artefacts. Built via:
 #   (cd "$SRC" && cargo build --release)

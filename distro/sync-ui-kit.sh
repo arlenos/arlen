@@ -19,11 +19,11 @@
 
 set -e
 
-ROOT="$HOME/Repositories/arlenos"
+ROOT="$HOME/Repositories/arlen"
 SRC="$ROOT/sdk/ui-kit/src/lib/components/ui"
 CONSUMERS=(
-  "$ROOT/app-settings/src/lib/components/ui"
-  "$ROOT/desktop-shell/src/lib/components/ui"
+  "$ROOT/apps/settings/src/lib/components/ui"
+  "$ROOT/apps/desktop-shell/src/lib/components/ui"
 )
 
 CHECK_MODE=0
