@@ -4,7 +4,8 @@
 
   import { Input } from "$lib/components/ui/input";
   import { Button } from "$lib/components/ui/button";
-  import SettingsPage from "$lib/components/settings/SettingsPage.svelte";
+  import { Page } from "@lunaris/ui-kit/components/ui/page";
+  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
   import KeybindingRow from "$lib/components/settings/KeybindingRow.svelte";
   import ReadOnlyKeybindingRow from "$lib/components/settings/ReadOnlyKeybindingRow.svelte";
   import KeyCapture from "$lib/components/settings/KeyCapture.svelte";
@@ -229,10 +230,12 @@
   }
 </script>
 
-<SettingsPage
+<Page
   title="Shortcuts"
   description="Bindings for window management, workspaces, apps, and shell actions."
 >
+  <SectionGrid>
+  <div class="span-full sc-column">
   <div class="flex flex-wrap items-center gap-2" data-anchor="search">
     <div class="relative min-w-56 flex-1">
       <Search
@@ -365,7 +368,9 @@
       No bindings match "{query}".
     </div>
   {/if}
-</SettingsPage>
+  </div>
+  </SectionGrid>
+</Page>
 
 <KeyCapture
   open={capturing}
@@ -391,3 +396,14 @@
     onCancel={() => (pendingReset = null)}
   />
 {/if}
+
+<style>
+  /* This page is an inherently single-column flow (toolbar, conflicts,
+     category list); the span-full wrapper keeps it one readable column at
+     the grid's max width, and this provides the inter-block rhythm. */
+  .sc-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+</style>
