@@ -48,7 +48,7 @@ use lunaris_ai_core::capability::{ActionDecision, BaselineMode, Capability};
 use crate::gate::{resolved_action_kind, ActionContext, ProposedAction};
 use crate::registry::{self, TrustedActionSchema};
 use crate::seams::GraphHandle;
-use crate::slice::{build_slice_trusted, MountPolicy, PathResolver};
+use crate::slice::{build_slice_trusted, escape_cypher_literal, MountPolicy, PathResolver};
 use crate::world::{self, Effect, EvalContext, Predicate};
 
 /// Wall-clock bound on the live re-validation read (graph slice + path
@@ -61,6 +61,11 @@ const REVALIDATION_TIMEOUT: Duration = Duration::from_secs(5);
 /// block the daemon from honouring a reload or shutdown. A timed-out write fails
 /// closed (pre-audited + idempotent, so reconcilable on a later run).
 const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Wall-clock bound on a reconciliation read that resolves a commit-unknown
+/// write. Short, like the write: each is a single indexed edge query, and a
+/// stalled read must not re-introduce the hang the write timeout avoided.
+const RECONCILE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The concrete relation write a proven action would perform: the namespaced
 /// endpoint entity types, their resolved node ids, and the edge type. The
@@ -186,7 +191,14 @@ pub trait RelationWriter: Send + Sync {
     /// Persist the relation, reporting whether it created the edge or found it
     /// already present. Idempotent at the daemon (a strict conditional create),
     /// so a transport retry re-confirms (`AlreadyExists`) rather than duplicates.
-    async fn write_relation(&self, write: &RelationWrite) -> Result<WriteOutcome, WriteError>;
+    /// `op_id` is the durable operation identity persisted on the edge, so a
+    /// commit-unknown write can later be reconciled by reading whether this
+    /// op's edge exists.
+    async fn write_relation(
+        &self,
+        write: &RelationWrite,
+        op_id: &str,
+    ) -> Result<WriteOutcome, WriteError>;
 }
 
 /// A write the live executor performed: the relation and whether it was created
@@ -275,6 +287,35 @@ fn enforce_tool_scope(write: &RelationWrite, tool: &str, scope: &[String]) -> Re
         }
     }
     Ok(())
+}
+
+/// Derive a stable, collision-resistant operation id for a write, from the
+/// decision identity (the correlation id, `event.id:behaviour`) and the concrete
+/// write. A crash-replay of the *same* decision yields the same id (so the daemon
+/// can recognise it), while a genuinely new decision with the same operands does
+/// not. Length-delimited so distinct field boundaries cannot collide, hashed with
+/// SHA-256 and hex-encoded (64 chars, within the daemon's `op_id` bound).
+fn derive_op_id(correlation_id: &str, write: &RelationWrite) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    for part in [
+        correlation_id,
+        &write.from_type,
+        &write.from_id,
+        &write.to_type,
+        &write.to_id,
+        &write.relation_type,
+    ] {
+        h.update((part.len() as u64).to_le_bytes());
+        h.update(part.as_bytes());
+    }
+    let digest = h.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for b in digest {
+        use std::fmt::Write;
+        let _ = write!(hex, "{b:02x}");
+    }
+    hex
 }
 
 /// Map a bare world-model label (`File`) to the daemon's namespaced entity type
@@ -503,30 +544,110 @@ impl<'a> LiveExecutor<'a> {
             .map_err(|e| ExecError::AuditUnavailable(e.to_string()))?;
 
         // The proof still holds and the act is recorded: perform the authorised
-        // write. The outcome (created vs already-present) is carried back so only
-        // a real create is ever compensated. The write is time-bounded: a stalled
-        // knowledge socket must not park the executor (and, since the daemon's
-        // dispatch loop awaits this, the whole daemon) indefinitely. A timed-out
-        // write fails closed; it is pre-audited and the daemon's create is
-        // idempotent, so it is reconcilable on a later run.
+        // write. A durable operation id, derived from the decision identity (the
+        // correlation id) and the concrete write, is persisted on the edge, so a
+        // commit-unknown write can be reconciled by reading whether THIS op's
+        // edge exists. The outcome (created vs already-present) is carried back so
+        // only a real create is ever compensated. The write is time-bounded: a
+        // stalled knowledge socket must not park the executor (and, since the
+        // daemon's dispatch loop awaits this, the whole daemon) indefinitely. A
+        // timed-out write fails closed; it is pre-audited, so reconcilable later.
+        let op_id = derive_op_id(ctx.correlation_id, &report.write);
         let outcome = match tokio::time::timeout(
             WRITE_TIMEOUT,
-            self.writer.write_relation(&report.write),
+            self.writer.write_relation(&report.write, &op_id),
         )
         .await
         {
             Ok(Ok(o)) => o,
             // A definite no-commit (daemon rejected, or pre-send transport).
             Ok(Err(WriteError::Failed(e))) => return Err(ExecError::Write(e)),
-            // A commit-unknown transport failure (post-send) is preserved as
-            // indeterminate, never collapsed to a definite failure.
-            Ok(Err(WriteError::Indeterminate(e))) => return Err(ExecError::WriteIndeterminate(e)),
-            Err(_) => return Err(ExecError::WriteTimeout),
+            // Commit-unknown (a post-send transport failure, or a timeout that
+            // may have fired after the request reached the daemon). Reconcile by
+            // the durable op_id rather than report a failure that could discard a
+            // real commit.
+            Ok(Err(WriteError::Indeterminate(_))) | Err(_) => {
+                return self.reconcile(report.write, &op_id, graph).await
+            }
         };
         Ok(Some(ExecutedWrite {
             write: report.write,
             outcome,
         }))
+    }
+
+    /// Resolve a commit-unknown write by its durable operation id. The op_id
+    /// query is causally sound: an edge carrying THIS op_id can only have been
+    /// created by this operation's write, so its presence proves the write
+    /// committed (`Created`). If that edge is absent but the relation exists
+    /// (some other op or the promotion pipeline created it), this write was an
+    /// idempotent no-op (`AlreadyExists`). If neither holds, or a read fails, the
+    /// write's commit is genuinely unknown (`Indeterminate`): it may yet commit,
+    /// and a retry with the same op_id resolves it (its op_id edge would then be
+    /// found). Both reads are time-bounded so a stalled socket cannot hang here.
+    async fn reconcile(
+        &self,
+        write: RelationWrite,
+        op_id: &str,
+        graph: &dyn GraphHandle,
+    ) -> Result<Option<ExecutedWrite>, ExecError> {
+        // The ONLY sound positive verdict is the op_id edge being present: an
+        // edge carrying this op_id can only have been created by this write, so
+        // it proves the commit (and stays proof even if the edge is later
+        // deleted). Anything else is `Indeterminate`: the bare edge cannot
+        // prove a no-op, because `FILE_PART_OF` IS deletable (the project store
+        // unlinks files), so a present bare edge could be deleted and this
+        // still-in-flight write could then create its own op_id edge; and a
+        // missing edge may yet be created by this write. A retry with the same
+        // op_id resolves it (its op_id edge would then be observed).
+        match self.edge_exists(&write, graph, op_id).await {
+            Some(true) => Ok(Some(ExecutedWrite {
+                write,
+                outcome: WriteOutcome::Created,
+            })),
+            Some(false) => Err(ExecError::WriteIndeterminate(
+                "write unconfirmed; its op_id edge is not present".to_string(),
+            )),
+            None => Err(ExecError::WriteIndeterminate(
+                "reconciliation read failed".to_string(),
+            )),
+        }
+    }
+
+    /// Read whether this operation's edge (carrying `op_id`) is present now,
+    /// time-bounded. `Some(true)`/`Some(false)` is a definite verdict; `None`
+    /// means the read could not determine it (a failed/timed-out query, or a
+    /// malformed result). Fail-closed on a malformed shape (missing row, missing
+    /// or non-numeric `n`, negative count): a degraded or version-skewed read
+    /// becomes `None`, never a false absence that would lose a real commit. The
+    /// endpoint types are built-in system types, so the labels are the type
+    /// minus `system.`; the ids and op_id are escaped into the literal.
+    async fn edge_exists(
+        &self,
+        write: &RelationWrite,
+        graph: &dyn GraphHandle,
+        op_id: &str,
+    ) -> Option<bool> {
+        let from_label = write.from_type.strip_prefix("system.").unwrap_or(&write.from_type);
+        let to_label = write.to_type.strip_prefix("system.").unwrap_or(&write.to_type);
+        let from_lit = escape_cypher_literal(&write.from_id).ok()?;
+        let to_lit = escape_cypher_literal(&write.to_id).ok()?;
+        let op_lit = escape_cypher_literal(op_id).ok()?;
+        let cypher = format!(
+            "MATCH (a:{from_label} {{id: '{from_lit}'}})-[:{edge} {{op_id: '{op_lit}'}}]->(b:{to_label} {{id: '{to_lit}'}}) \
+             RETURN count(*) AS n",
+            edge = write.relation_type,
+        );
+        let rows = tokio::time::timeout(RECONCILE_TIMEOUT, graph.query(&cypher))
+            .await
+            .ok()?
+            .ok()?;
+        // Exactly one row with a numeric, non-negative count, else fail closed.
+        let n = rows.first()?.get("n")?.as_i64()?;
+        if n < 0 {
+            return None;
+        }
+        Some(n > 0)
     }
 }
 
@@ -611,6 +732,30 @@ mod tests {
         );
         assert_eq!(dry_run(&action, ActionDecision::Propose, &scope).unwrap(), None);
         assert_eq!(dry_run(&action, ActionDecision::Proceed, &scope).unwrap(), None);
+    }
+
+    #[test]
+    fn op_id_is_deterministic_and_distinguishes_decisions() {
+        let write = RelationWrite {
+            from_type: "system.File".into(),
+            from_id: "f1".into(),
+            to_type: "system.Project".into(),
+            to_id: "p1".into(),
+            relation_type: "FILE_PART_OF".into(),
+        };
+        // Same decision + write -> same id (so a replay is recognisable).
+        assert_eq!(derive_op_id("e1:auto-tag", &write), derive_op_id("e1:auto-tag", &write));
+        // A different decision -> a different id.
+        assert_ne!(derive_op_id("e1:auto-tag", &write), derive_op_id("e2:auto-tag", &write));
+        // A different operand -> a different id (length-delimited, no boundary
+        // collision).
+        let mut other = write.clone();
+        other.to_id = "p2".into();
+        assert_ne!(derive_op_id("e1:auto-tag", &write), derive_op_id("e1:auto-tag", &other));
+        // 64 hex chars (SHA-256), within the daemon's op_id bound.
+        let id = derive_op_id("e1:auto-tag", &write);
+        assert_eq!(id.len(), 64);
+        assert!(id.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     #[test]
@@ -746,7 +891,7 @@ mod tests {
 
     #[async_trait]
     impl RelationWriter for MockWriter {
-        async fn write_relation(&self, write: &RelationWrite) -> Result<WriteOutcome, WriteError> {
+        async fn write_relation(&self, write: &RelationWrite, _op_id: &str) -> Result<WriteOutcome, WriteError> {
             self.0.lock().unwrap().push(write.clone());
             Ok(WriteOutcome::Created)
         }
@@ -828,16 +973,19 @@ mod tests {
     struct HangingWriter;
     #[async_trait]
     impl RelationWriter for HangingWriter {
-        async fn write_relation(&self, _write: &RelationWrite) -> Result<WriteOutcome, WriteError> {
+        async fn write_relation(&self, _write: &RelationWrite, _op_id: &str) -> Result<WriteOutcome, WriteError> {
             std::future::pending().await
         }
     }
 
     #[tokio::test(start_paused = true)]
-    async fn live_executor_times_out_a_stalled_write() {
+    async fn live_executor_times_out_then_reconciles_indeterminate_when_absent() {
         let cap = executing_cap();
         let writer = HangingWriter;
         let audit = MockAuditSink::accepting();
+        // The edge is absent, so after the timeout neither the op_id edge nor any
+        // edge is found: the write may yet commit, so it stays indeterminate (a
+        // retry with the same op_id resolves it), never a false definite verdict.
         let graph = tag_graph(false);
         let (resolver, mounts) = (IdentityResolver, StaticMountPolicy::empty());
         let exec = LiveExecutor::new(&cap, &resolver, &mounts, &writer, &audit);
@@ -854,9 +1002,79 @@ mod tests {
                 BaselineMode::Supervised,
             )
             .await;
-        assert!(matches!(result, Err(ExecError::WriteTimeout)));
+        assert!(matches!(result, Err(ExecError::WriteIndeterminate(_))));
         // The act was still audited before the write was attempted.
         assert_eq!(audit.recorded().await.len(), 1);
+    }
+
+    /// A graph that reports the op_id edge present iff the queried op_id matches
+    /// `mine`. `malformed` makes every query return a degraded shape (no `n`),
+    /// to exercise fail-closed parsing.
+    struct ReconcileGraph {
+        mine: Option<String>,
+        malformed: bool,
+    }
+    #[async_trait]
+    impl GraphHandle for ReconcileGraph {
+        async fn query(
+            &self,
+            cypher: &str,
+        ) -> Result<Vec<HashMap<String, serde_json::Value>>, GraphError> {
+            if self.malformed {
+                // A row missing the `n` alias: fail-closed must treat it as None.
+                return Ok(vec![[("wrong".to_string(), serde_json::json!(0))].into_iter().collect()]);
+            }
+            let n = i64::from(self.mine.as_deref().is_some_and(|m| cypher.contains(m)));
+            Ok(vec![[("n".to_string(), serde_json::json!(n))].into_iter().collect()])
+        }
+    }
+
+    fn reconcile_executor<'a>(
+        cap: &'a Capability,
+        resolver: &'a IdentityResolver,
+        mounts: &'a StaticMountPolicy,
+        writer: &'a MockWriter,
+        audit: &'a MockAuditSink,
+    ) -> LiveExecutor<'a> {
+        LiveExecutor::new(cap, resolver, mounts, writer, audit)
+    }
+
+    #[tokio::test]
+    async fn reconcile_resolves_by_op_id() {
+        let (cap, resolver, mounts, writer, audit) = (
+            executing_cap(),
+            IdentityResolver,
+            StaticMountPolicy::empty(),
+            MockWriter::default(),
+            MockAuditSink::accepting(),
+        );
+        let exec = reconcile_executor(&cap, &resolver, &mounts, &writer, &audit);
+        let write = || RelationWrite {
+            from_type: "system.File".into(),
+            from_id: "f1".into(),
+            to_type: "system.Project".into(),
+            to_id: "p1".into(),
+            relation_type: "FILE_PART_OF".into(),
+        };
+
+        // My op_id's edge exists -> this operation created it (causally proven,
+        // the only sound positive verdict, valid even if the edge is later
+        // deleted).
+        let g = ReconcileGraph { mine: Some("op-mine".into()), malformed: false };
+        let r = exec.reconcile(write(), "op-mine", &g).await;
+        assert!(matches!(r, Ok(Some(ExecutedWrite { outcome: WriteOutcome::Created, .. }))));
+
+        // My op_id absent -> indeterminate (not AlreadyExists: FILE_PART_OF is
+        // deletable, so a bare edge cannot prove this write was a no-op, and the
+        // write may yet commit; a retry with the same op_id resolves it).
+        let g = ReconcileGraph { mine: Some("op-other".into()), malformed: false };
+        let r = exec.reconcile(write(), "op-mine", &g).await;
+        assert!(matches!(r, Err(ExecError::WriteIndeterminate(_))));
+
+        // A malformed read fails closed to indeterminate, never a false absence.
+        let g = ReconcileGraph { mine: None, malformed: true };
+        let r = exec.reconcile(write(), "op-mine", &g).await;
+        assert!(matches!(r, Err(ExecError::WriteIndeterminate(_))));
     }
 
     #[tokio::test]
