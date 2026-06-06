@@ -55,7 +55,14 @@ jobs:
       - name: check
         run: cargo check --manifest-path ${{ matrix.component }}/Cargo.toml
       - name: test
-        run: cargo test --manifest-path ${{ matrix.component }}/Cargo.toml --no-fail-fast
+        run: |
+          # installd and knowledge tests mutate process-global state (env vars,
+          # a single on-disk graph) and must run serially to avoid races.
+          extra=""
+          case "${{ matrix.component }}" in
+            daemons/installd|daemons/knowledge) extra="-- --test-threads=1" ;;
+          esac
+          cargo test --manifest-path ${{ matrix.component }}/Cargo.toml --no-fail-fast $extra
 
   lint:
     name: clippy + rustfmt
