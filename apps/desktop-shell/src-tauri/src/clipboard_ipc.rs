@@ -612,6 +612,7 @@ mod tests {
             input: Default::default(),
             search: Default::default(),
             intents: Default::default(),
+            mcp: Default::default(),
         }
     }
 

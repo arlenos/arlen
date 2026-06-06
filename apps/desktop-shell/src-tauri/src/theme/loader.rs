@@ -108,12 +108,8 @@ impl ThemeLoader {
     ///    via the `customization` arg — we read it here from the
     ///    standard path.
     pub fn load(&self, id: &str) -> Result<ArlenTheme, ThemeError> {
-        // 1. Pick the bundled bytes. If the user requested an id
-        // that isn't bundled, use dark as the floor — the user
-        // theme overlay will rebrand from there.
-        let bundled = Self::bundled_for(id).unwrap_or(DARK_TOML);
-
-        // 2. User theme overlay.
+        // 1. User theme overlay. Read first so a non-bundled theme can
+        // declare which bundled variant it extends.
         let user_overlay = if let Some(ref dir) = self.user_dir {
             let path = dir.join(format!("{id}.toml"));
             if path.exists() {
@@ -128,6 +124,21 @@ impl ThemeLoader {
             return Err(ThemeError::NotFound(id.into()));
         } else {
             None
+        };
+
+        // 2. Pick the bundled base bytes. A bundled id uses its own
+        // bytes. A user theme uses the bundled variant named by its
+        // `[meta] extends` field (default dark), so a light user theme
+        // does not inherit dark tokens for the fields it leaves unset.
+        let bundled = match Self::bundled_for(id) {
+            Some(bytes) => bytes,
+            None => {
+                let extends = user_overlay
+                    .as_deref()
+                    .and_then(extends_base)
+                    .unwrap_or_else(|| "dark".to_string());
+                Self::bundled_for(&extends).unwrap_or(DARK_TOML)
+            }
         };
 
         // 3. ~/.config/arlen/theme.toml customization.
@@ -190,6 +201,18 @@ impl ThemeLoader {
         out.sort_by(|a, b| a.name.cmp(&b.name));
         out
     }
+}
+
+/// Read the `[meta] extends` field from a user theme's TOML, naming the
+/// bundled variant it builds on. Returns `None` if the field is absent or
+/// the TOML does not parse, so the caller falls back to the dark base.
+fn extends_base(overlay: &str) -> Option<String> {
+    let value: toml::Value = overlay.parse().ok()?;
+    value
+        .get("meta")?
+        .get("extends")?
+        .as_str()
+        .map(str::to_owned)
 }
 
 // ---------------------------------------------------------------------------
@@ -362,6 +385,35 @@ mod tests {
     fn lighten_darken() {
         assert_eq!(lighten_color("#000000", 0.5), Some("#808080".into()));
         assert_eq!(darken_color("#ffffff", 0.5), Some("#808080".into()));
+    }
+
+    #[test]
+    fn extends_base_reads_meta_extends() {
+        assert_eq!(
+            extends_base("[meta]\nextends = \"light\"\n").as_deref(),
+            Some("light")
+        );
+        assert_eq!(extends_base("[meta]\nid = \"x\"\n"), None);
+        assert_eq!(extends_base("not = valid = toml ="), None);
+    }
+
+    #[test]
+    fn user_theme_extending_light_uses_the_light_base() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("mylight.toml"),
+            "[meta]\nid = \"mylight\"\nname = \"My Light\"\nvariant = \"light\"\nextends = \"light\"\n",
+        )
+        .unwrap();
+        let loader = ThemeLoader::new_with_user_dir(dir.path().to_path_buf()).unwrap();
+        // The user theme overrides no colors, so the base supplies every
+        // token. Before the fix the base was always dark; extends=light must
+        // now floor on the light bundle.
+        let resolved = loader.load("mylight").unwrap();
+        let light = loader.load("light").unwrap();
+        let dark = loader.load("dark").unwrap();
+        assert_eq!(resolved.color.bg_shell, light.color.bg_shell);
+        assert_ne!(resolved.color.bg_shell, dark.color.bg_shell);
     }
 
     #[test]
