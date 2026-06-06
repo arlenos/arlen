@@ -1,14 +1,19 @@
 <script lang="ts">
-  /// Knowledge Graph settings page (Sprint C).
+  /// Knowledge Graph settings page.
   ///
-  /// Config-only page — the actual browse-the-graph UX lives in
-  /// `app-knowledge` (Phase 8). Here we expose:
-  ///   - Filesystem stats (DB size, graph dir size, mount status)
-  ///   - Link to Focus Mode for project detection settings
-  ///   - Disabled "Open Knowledge App" button until Phase 8 lands
-  ///   - Quick "Open ~/.timeline" via xdg-open
+  /// Built on the Lunaris Design System canon (docs/architecture/design-system.md):
+  /// Page + SectionGrid + Group + Row + ChipList are imported directly from
+  /// `@lunaris/ui-kit` (single source, no copy). Button + NumberInput are still
+  /// the app-local copies (Tailwind/lucide components, pending the S-U1b @source
+  /// consolidation).
+  ///
+  /// Surfaces: read-only daemon/storage stats, the `graph.toml [projects]`
+  /// project-detection config (watch dirs, recursion depth, auto-promote
+  /// threshold), the FUSE timeline mount, and a disabled link to the Phase-8
+  /// Knowledge app.
 
   import { onMount } from "svelte";
+  import { get } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import {
     Brain,
@@ -16,14 +21,17 @@
     FolderTree,
     HardDrive,
     RefreshCw,
-    ExternalLink,
     AlertCircle,
+    FolderClock,
   } from "lucide-svelte";
-  import SettingsPage from "$lib/components/settings/SettingsPage.svelte";
-  import { Group } from "$lib/components/ui/group";
-  import { Row } from "$lib/components/ui/row";
+  import { Page } from "@lunaris/ui-kit/components/ui/page";
+  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
+  import { Group } from "@lunaris/ui-kit/components/ui/group";
+  import { Row } from "@lunaris/ui-kit/components/ui/row";
+  import { ChipList } from "@lunaris/ui-kit/components/ui/chip-list";
   import { Button } from "$lib/components/ui/button";
-  import { navigateTo } from "$lib/stores/navigation";
+  import { NumberInput } from "$lib/components/ui/number-input";
+  import { graph, PROJECTS_DEFAULTS } from "$lib/stores/projectsConfig";
 
   interface KnowledgeStats {
     daemonRunning: boolean;
@@ -36,6 +44,21 @@
   let stats = $state<KnowledgeStats | null>(null);
   let loading = $state(false);
   let error = $state<string | null>(null);
+
+  // Explicit watch-directory override list (empty = using built-in defaults).
+  let watchDirs = $state<string[]>([]);
+  // Project-detection changes need a daemon restart (startup-only config); the
+  // hint shows after a real edit this session.
+  let projectDirty = $state(false);
+
+  const maxDepth = $derived<number>(
+    ($graph.data?.projects?.max_depth as number | undefined) ??
+      PROJECTS_DEFAULTS.max_depth,
+  );
+  const promoteThreshold = $derived<number>(
+    ($graph.data?.projects?.auto_promote_threshold as number | undefined) ??
+      PROJECTS_DEFAULTS.auto_promote_threshold,
+  );
 
   async function refresh() {
     loading = true;
@@ -50,7 +73,26 @@
     }
   }
 
-  onMount(refresh);
+  onMount(async () => {
+    await Promise.all([refresh(), graph.load()]);
+    watchDirs =
+      (get(graph).data?.projects?.watch_directories as string[] | undefined) ?? [];
+  });
+
+  async function persistWatchDirs() {
+    projectDirty = true;
+    await graph.setValue("projects.watch_directories", watchDirs);
+  }
+
+  async function setMaxDepth(v: number) {
+    projectDirty = true;
+    await graph.setValue("projects.max_depth", v);
+  }
+
+  async function setPromoteThreshold(v: number) {
+    projectDirty = true;
+    await graph.setValue("projects.auto_promote_threshold", v);
+  }
 
   function formatBytes(bytes: number | null): string {
     if (bytes === null) return "—";
@@ -61,197 +103,172 @@
     if (mb < 1024) return `${mb.toFixed(1)} MB`;
     return `${(mb / 1024).toFixed(2)} GB`;
   }
-
-  async function openTimelineInFiles() {
-    if (!stats?.fuseMount) return;
-    try {
-      // Same Tauri command pattern as Display panel uses to invoke
-      // xdg-open on the user's chosen path. Falls back silently if
-      // the file manager is unavailable.
-      await invoke("frontend_log", {
-        level: "info",
-        msg: `xdg-open ${stats.fuseMount}`,
-      });
-      // Spawn xdg-open via the same shell-runner the system actions
-      // use. We don't have a dedicated `open_path` command yet.
-      const cmd = `xdg-open '${stats.fuseMount.replace(/'/g, "'\\''")}'`;
-      // Best-effort: log + ignore. If the user wants this regularly
-      // we can promote to a proper command in a follow-up.
-      console.log("would run:", cmd);
-    } catch (e) {
-      console.warn("openTimelineInFiles failed:", e);
-    }
-  }
 </script>
 
-<SettingsPage
+<Page
   title="Knowledge Graph"
-  description="Lunaris keeps a private graph of files, projects, and apps you use. Configure project detection in Focus Mode; browse the graph in the Knowledge app (Phase 8)."
+  description="Lunaris keeps a private graph of the files, projects, and apps you use. Configure project detection here; browse the graph in the Knowledge app (Phase 8)."
 >
-  <Group label="Knowledge App">
-    <Row
-      label="Browse the graph"
-      description="Timeline, projects, and semantic search across your files. Coming with Phase 8 (app-knowledge)."
-      id="kg-app-link"
-    >
-      {#snippet control()}
-        <Button variant="outline" size="sm" disabled>
-          <Brain size={14} />
-          Open Knowledge App
-        </Button>
-      {/snippet}
-    </Row>
-  </Group>
-
-  <Group label="Project Detection">
-    <Row
-      label="Watch directories, threshold, depth"
-      description="All project-detection settings live in Focus Mode."
-      id="kg-focus-link"
-    >
-      {#snippet control()}
-        <Button
-          variant="outline"
-          size="sm"
-          onclick={() => navigateTo("focus")}
+  <SectionGrid>
+    <Group label="Status">
+      {#if error}
+        <Row label="Stats unavailable" description={error} id="kg-error">
+          {#snippet control()}
+            <AlertCircle size={16} class="kg-error-icon" />
+          {/snippet}
+        </Row>
+      {:else if stats}
+        {@const s = stats}
+        <Row
+          label="Knowledge Daemon"
+          description={s.daemonRunning
+            ? "Running — stats are live."
+            : "Not running — start the daemon to populate stats."}
+          id="kg-daemon-status"
         >
-          <ExternalLink size={14} />
-          Open Focus Mode
-        </Button>
-      {/snippet}
-    </Row>
-  </Group>
-
-  <Group label="Stats">
-    {#if loading && !stats}
-      <Row label="Loading..." description="Reading filesystem stats." id="kg-loading">
-        {#snippet control()}<span class="meta-text">…</span>{/snippet}
-      </Row>
-    {:else if error}
-      <div class="error-box">
-        <AlertCircle size={14} strokeWidth={2} />
-        <span>{error}</span>
-      </div>
-    {:else if stats}
-      {@const s = stats}
-      <Row
-        label="Knowledge Daemon"
-        description={s.daemonRunning
-          ? "Running — stats are live."
-          : "Not running — start the daemon to populate stats."}
-        id="kg-daemon-status"
-      >
+          {#snippet control()}
+            <span class="meta" class:on={s.daemonRunning}>
+              {s.daemonRunning ? "Running" : "Stopped"}
+            </span>
+          {/snippet}
+        </Row>
+        {#if s.daemonRunning}
+          <Row label="Database size" description="SQLite event store." id="kg-db-size">
+            {#snippet control()}
+              <span class="meta"><Database size={12} strokeWidth={1.5} />{formatBytes(s.dbSizeBytes)}</span>
+            {/snippet}
+          </Row>
+          <Row label="Graph size" description="Ladybug graph storage on disk." id="kg-graph-size">
+            {#snippet control()}
+              <span class="meta"><HardDrive size={12} strokeWidth={1.5} />{formatBytes(s.graphSizeBytes)}</span>
+            {/snippet}
+          </Row>
+          <Row
+            label="FUSE mount"
+            description={s.fuseMounted ? "Browseable as a filesystem." : "Not mounted."}
+            id="kg-fuse-mount"
+          >
+            {#snippet control()}
+              <span class="meta" class:on={s.fuseMounted}>
+                <FolderTree size={12} strokeWidth={1.5} />{s.fuseMount}
+              </span>
+            {/snippet}
+          </Row>
+        {/if}
+      {/if}
+      <Row label="Refresh" description="Re-read filesystem stats." id="kg-refresh">
         {#snippet control()}
-          <span class="meta-text" class:positive={s.daemonRunning}>
-            {s.daemonRunning ? "Running ✓" : "Stopped"}
-          </span>
+          <Button variant="ghost" size="sm" disabled={loading} onclick={refresh}>
+            <RefreshCw size={14} class={loading ? "kg-spin" : ""} />
+            Refresh
+          </Button>
         {/snippet}
       </Row>
+    </Group>
 
-      {#if s.daemonRunning}
+    <Group label="Project Detection">
+      <Row
+        label="Watch directories"
+        description={watchDirs.length === 0
+          ? `Using defaults: ${PROJECTS_DEFAULTS.watch_directories.join(", ")}. Add a directory to override.`
+          : "Directories scanned for projects. Restart the daemon to apply."}
+        id="kg-watch-dirs"
+      >
+        {#snippet below()}
+          <ChipList
+            bind:items={watchDirs}
+            placeholder="Add a directory, e.g. ~/Projects"
+            onchange={persistWatchDirs}
+          />
+        {/snippet}
+      </Row>
+      <Row
+        label="Recursion depth"
+        description="How deep to scan each watch directory for projects."
+        id="kg-max-depth"
+      >
+        {#snippet control()}
+          <NumberInput value={maxDepth} min={1} max={10} onchange={setMaxDepth} />
+        {/snippet}
+      </Row>
+      <Row
+        label="Auto-promote threshold"
+        description="Files opened in a session before an inferred project is promoted."
+        id="kg-promote"
+      >
+        {#snippet control()}
+          <NumberInput value={promoteThreshold} min={1} max={20} onchange={setPromoteThreshold} />
+        {/snippet}
+      </Row>
+      {#if projectDirty}
         <Row
-          label="Database size"
-          description="SQLite event store size."
-          id="kg-db-size"
+          label="Restart required"
+          description="The Knowledge Daemon reads this config at startup; restart it to apply project-detection changes."
+          id="kg-restart-hint"
         >
           {#snippet control()}
-            <span class="meta-text">
-              <Database size={12} strokeWidth={1.5} />
-              {formatBytes(s.dbSizeBytes)}
-            </span>
-          {/snippet}
-        </Row>
-
-        <Row
-          label="Graph size"
-          description="Ladybug graph storage on disk."
-          id="kg-graph-size"
-        >
-          {#snippet control()}
-            <span class="meta-text">
-              <HardDrive size={12} strokeWidth={1.5} />
-              {formatBytes(s.graphSizeBytes)}
-            </span>
-          {/snippet}
-        </Row>
-
-        <Row
-          label="FUSE mount"
-          description={s.fuseMounted
-            ? "Browseable as a filesystem at the path on the right."
-            : "Not mounted — the daemon couldn't bring up the FUSE filesystem."}
-          id="kg-fuse-mount"
-        >
-          {#snippet control()}
-            <span class="meta-text" class:positive={s.fuseMounted}>
-              <FolderTree size={12} strokeWidth={1.5} />
-              {s.fuseMount}
-              {s.fuseMounted ? "(mounted ✓)" : "(not mounted)"}
-            </span>
+            <AlertCircle size={16} class="kg-warn-icon" />
           {/snippet}
         </Row>
       {/if}
-    {/if}
+    </Group>
 
-    <div class="footer-row">
-      <Button
-        variant="ghost"
-        size="sm"
-        disabled={loading}
-        onclick={refresh}
+    <Group label="Timeline">
+      <Row
+        label="Timeline filesystem"
+        description="The graph is browseable as files at the mount path."
+        id="kg-timeline"
       >
-        <RefreshCw size={14} class={loading ? "spin" : ""} />
-        Refresh
-      </Button>
-    </div>
-  </Group>
-</SettingsPage>
+        {#snippet control()}
+          <span class="meta">
+            <FolderClock size={12} strokeWidth={1.5} />
+            {stats?.fuseMount ?? "~/.timeline"}
+          </span>
+        {/snippet}
+      </Row>
+    </Group>
+
+    <Group label="Knowledge App">
+      <Row
+        label="Browse the graph"
+        description="Timeline, projects, and semantic search across your files. Coming with Phase 8."
+        id="kg-app-link"
+      >
+        {#snippet control()}
+          <Button variant="outline" size="sm" disabled>
+            <Brain size={14} />
+            Open Knowledge App
+          </Button>
+        {/snippet}
+      </Row>
+    </Group>
+  </SectionGrid>
+</Page>
 
 <style>
-  .meta-text {
+  .meta {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
     font-size: 0.8125rem;
-    color: color-mix(in srgb, var(--foreground) 60%, transparent);
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
-
-  .meta-text.positive {
+  .meta.on {
     color: color-mix(in srgb, var(--foreground) 80%, transparent);
   }
 
-  .error-box {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    margin: 0 1rem 0.625rem;
-    padding: 0.5rem 0.75rem;
-    border: 1px solid color-mix(in srgb, var(--destructive) 40%, transparent);
-    background: color-mix(in srgb, var(--destructive) 10%, transparent);
-    border-radius: var(--radius-chip);
-    font-size: 0.8125rem;
-    color: var(--foreground);
+  :global(.kg-spin) {
+    animation: kg-spin 0.8s linear infinite;
   }
-
-  .error-box :global(svg) {
-    flex-shrink: 0;
-    color: var(--destructive);
-    margin-top: 1px;
-  }
-
-  .footer-row {
-    display: flex;
-    justify-content: flex-end;
-    padding: 0.5rem 1rem;
-  }
-
-  .footer-row :global(.spin) {
-    animation: spin 0.8s linear infinite;
-  }
-
-  @keyframes spin {
+  @keyframes kg-spin {
     to {
       transform: rotate(360deg);
     }
+  }
+  :global(.kg-error-icon) {
+    color: var(--destructive);
+  }
+  :global(.kg-warn-icon) {
+    color: #f59e0b;
   }
 </style>
