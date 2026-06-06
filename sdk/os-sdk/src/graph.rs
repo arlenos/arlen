@@ -276,9 +276,14 @@ impl UnixGraphClient {
     /// maps to [`QueryError`] (a permission error to
     /// [`QueryError::PermissionDenied`], a missing endpoint to
     /// [`QueryError::InvalidQuery`]). The create never duplicates the edge, so a
-    /// retry is safe; note the outcome is per-attempt, not durable operation
-    /// identity, so a retry after a lost response reports `AlreadyExists` even if
-    /// the lost attempt is the one that created it.
+    /// retry is safe.
+    ///
+    /// `op_id` is the caller's durable operation identity, persisted on the edge
+    /// (on `FILE_PART_OF` today). The per-attempt `Created`/`AlreadyExists` flag
+    /// is not durable across a lost response, but a caller that supplies a stable
+    /// `op_id` can reconcile a commit-unknown write by reading whether its own
+    /// `op_id` edge exists. Pass an empty `op_id` to skip it (the edge's `op_id`
+    /// stays unset).
     ///
     /// [`Created`]: RelationWriteOutcome::Created
     /// [`AlreadyExists`]: RelationWriteOutcome::AlreadyExists
@@ -289,6 +294,7 @@ impl UnixGraphClient {
         to_type: &str,
         to_id: &str,
         relation_type: &str,
+        op_id: &str,
     ) -> Result<RelationWriteOutcome, QueryError> {
         let req = serde_json::json!({
             "op": "create_relation",
@@ -297,6 +303,7 @@ impl UnixGraphClient {
             "to_type": to_type,
             "to_id": to_id,
             "relation_type": relation_type,
+            "op_id": op_id,
         });
         let json = serde_json::to_vec(&req).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
 
@@ -609,7 +616,7 @@ mod tests {
 
         let client = UnixGraphClient::new(path.to_string_lossy().to_string());
         let result = client
-            .create_relation("system.File", "f1", "system.Project", "p1", "FILE_PART_OF")
+            .create_relation("system.File", "f1", "system.Project", "p1", "FILE_PART_OF", "op-test")
             .await;
         let _ = server.await;
         let _ = std::fs::remove_file(&path);
@@ -644,7 +651,7 @@ mod tests {
 
         let client = UnixGraphClient::new(path.to_string_lossy().to_string());
         let result = client
-            .create_relation("system.File", "f1", "system.Project", "p1", "FILE_PART_OF")
+            .create_relation("system.File", "f1", "system.Project", "p1", "FILE_PART_OF", "op-test")
             .await;
         let _ = server.await;
         let _ = std::fs::remove_file(&path);
