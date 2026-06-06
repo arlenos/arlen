@@ -79,6 +79,16 @@ pub enum ReadResponse {
         /// compatible.
         #[serde(default)]
         tampered: bool,
+        /// One past the highest index currently in the ledger (i.e. the
+        /// total entry count, since indices are contiguous from 0).
+        /// Carried on every page so a reader that wants the *most
+        /// recent* entries can seek directly to the tail
+        /// (`from = head - limit`) in one round trip, instead of paging
+        /// ascending from 0. `serde(default)` keeps old/new peers
+        /// compatible; an old daemon reports 0 (a client then falls
+        /// back to forward paging).
+        #[serde(default)]
+        head: u64,
     },
     /// The query could not be served.
     Error {
@@ -95,6 +105,10 @@ pub struct ReadPage {
     pub entries: Vec<StructuralView>,
     /// Whether the audit daemon reports its ledger as tampered.
     pub tampered: bool,
+    /// One past the highest index in the ledger (the total entry
+    /// count). Lets a caller seek to the tail for the most recent
+    /// entries; 0 from a daemon that predates this field.
+    pub head: u64,
 }
 
 /// Resolve the read socket path:

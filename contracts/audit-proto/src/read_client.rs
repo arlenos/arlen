@@ -94,7 +94,15 @@ impl ReadClient {
             .map_err(|e| transport(format!("decode response: {e}")))?;
 
         match response {
-            ReadResponse::Page { entries, tampered } => Ok(ReadPage { entries, tampered }),
+            ReadResponse::Page {
+                entries,
+                tampered,
+                head,
+            } => Ok(ReadPage {
+                entries,
+                tampered,
+                head,
+            }),
             ReadResponse::Error { reason } => Err(ReadClientError::Server(reason)),
         }
     }
