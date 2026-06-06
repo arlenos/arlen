@@ -6,6 +6,7 @@
 //! read, and Event Bus wiring land in A2+ (see
 //! `docs/architecture/ai-app.md` §7).
 
+mod activity;
 mod ai_client;
 
 /// Route a log line from the frontend into the Rust logger so it shows
@@ -26,7 +27,11 @@ pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![frontend_log, ai_client::ai_query])
+        .invoke_handler(tauri::generate_handler![
+            frontend_log,
+            ai_client::ai_query,
+            activity::ai_activity_recent
+        ])
         .run(tauri::generate_context!())
         .expect("error while running lunaris-harness");
 }
