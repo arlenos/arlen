@@ -8,6 +8,7 @@
 
 mod activity;
 mod ai_client;
+mod capability;
 
 /// Route a log line from the frontend into the Rust logger so it shows
 /// up in the same stdout stream as backend logs. Tauri WebView DevTools
@@ -30,7 +31,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             frontend_log,
             ai_client::ai_query,
-            activity::ai_activity_recent
+            activity::ai_activity_recent,
+            capability::ai_capability
         ])
         .run(tauri::generate_context!())
         .expect("error while running lunaris-harness");
