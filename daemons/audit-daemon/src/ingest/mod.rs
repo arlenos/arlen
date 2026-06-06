@@ -1,0 +1,373 @@
+//! Peer-authenticated ingest socket.
+//!
+//! Other components submit audit events here; the audit daemon stays
+//! the sole writer of the ledger (foundation §8.4.7). Each connection
+//! is authenticated via `SO_PEERCRED` — only the AI-layer daemons are
+//! admitted — and the entry's `actor` is set from that kernel-attested
+//! identity, never from the request, so a caller cannot misattribute.
+//!
+//! Known limitation (shared, documented): admission rests on the
+//! `app_id` that `lunaris-permissions` resolves from the peer's
+//! binary. That resolver has an open same-uid gap — a user-installed
+//! app under `~/.local/share/lunaris/apps/{app_id}/` resolves to
+//! `{app_id}`, so a same-uid process could install itself as
+//! `ai-daemon` and pass [`ADMITTED`]. This is the F3 gap tracked in
+//! `docs/architecture/identity-spoof-mitigation.md`; the global fix
+//! is the installd inode-keyed identity registry, which closes it for
+//! every peer-authenticated broker at once, not just this one. Until
+//! then a same-uid compromise can forge entries — the same trust
+//! boundary that lets a same-uid process read the HMAC key. The
+//! hardware-rooted closers (TPM, installd registry) are foundation
+//! §8.4 hardening follow-ups.
+//!
+//! The append is synchronous and acknowledged: the caller learns
+//! whether its event was recorded and, per foundation §8.4.6, fails
+//! closed if it was not. After a committed append the daemon re-emits
+//! an `audit.ai.<kind>` event on the Event Bus carrying the chain
+//! index, for the Anomaly Detector.
+
+pub use audit_proto::{IngestRequest, IngestResponse};
+
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+use audit_proto::{decode_request, encode_response, read_frame, write_frame};
+use lunaris_permissions::ConnectionAuth;
+use os_sdk::{EventEmitter, UnixEventEmitter};
+use tokio::net::UnixStream;
+use tokio::sync::Mutex;
+
+use crate::error::{AuditError, Result};
+use crate::ledger::Ledger;
+
+/// app_ids permitted to submit audit events. Phase 9 audits the AI
+/// layer; the graph daemon joins this set when graph-access auditing
+/// is wired. In debug builds every component runs from a cargo target
+/// directory and resolves to a `dev.*` id, which is admitted too.
+const ADMITTED: &[&str] = &["ai-daemon", "ai-proxy"];
+
+/// Resolve the ingest socket path:
+/// `$XDG_RUNTIME_DIR/lunaris/audit-ingest.sock`, falling back to
+/// `/run/lunaris/audit-ingest.sock`.
+pub fn ingest_socket_path() -> PathBuf {
+    let base = std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/run"));
+    base.join("lunaris").join("audit-ingest.sock")
+}
+
+/// The ingest server: shares the single [`Ledger`] writer across
+/// connections and re-emits `audit.ai.*` on the Event Bus.
+pub struct IngestServer {
+    ledger: Arc<Mutex<Ledger>>,
+    emitter: Arc<UnixEventEmitter>,
+    /// Set when startup chain verification found the ledger tampered.
+    /// While set, every append is refused with `Unavailable` so the
+    /// caller fails closed: a tampered ledger must not silently
+    /// accept new entries chaining onto a broken history.
+    tampered: Arc<AtomicBool>,
+}
+
+impl IngestServer {
+    /// Build a server over a shared ledger, an Event Bus emitter, and
+    /// the shared tamper flag. The daemon sets the flag before
+    /// serving if the chain failed startup verification.
+    pub fn new(
+        ledger: Arc<Mutex<Ledger>>,
+        emitter: Arc<UnixEventEmitter>,
+        tampered: Arc<AtomicBool>,
+    ) -> Self {
+        Self {
+            ledger,
+            emitter,
+            tampered,
+        }
+    }
+
+    /// Bind the ingest socket and serve it until the accept loop
+    /// errors. The daemon spawns this as its long-lived task.
+    pub async fn run(self: Arc<Self>, socket_path: &Path) -> Result<()> {
+        let listener = crate::bind_unix_socket(socket_path)?;
+        let caller_uid = current_uid();
+        tracing::info!(socket = %socket_path.display(), "audit ingest listening");
+        loop {
+            let (stream, _) = listener
+                .accept()
+                .await
+                .map_err(|e| AuditError::Storage(format!("ingest accept: {e}")))?;
+            let server = Arc::clone(&self);
+            tokio::spawn(async move {
+                if let Err(e) = server.handle(stream, caller_uid).await {
+                    tracing::warn!("ingest connection error: {e}");
+                }
+            });
+        }
+    }
+
+    /// Handle one connection: authenticate the peer, then field
+    /// ingest requests until it closes.
+    async fn handle(&self, mut stream: UnixStream, caller_uid: u32) -> Result<()> {
+        let auth = match ConnectionAuth::extract_from(&stream, caller_uid) {
+            Ok(auth) => auth,
+            Err(e) => {
+                tracing::warn!("ingest connection rejected: peer identity: {e}");
+                return Ok(());
+            }
+        };
+        if !caller_is_admitted(auth.app_id()) {
+            tracing::warn!(
+                caller = %auth.app_id(),
+                "ingest connection rejected: caller is not admitted"
+            );
+            return Ok(());
+        }
+        // The actor is the kernel-attested peer identity, never a
+        // request field — a caller cannot record under another name.
+        let actor = auth.app_id().to_string();
+
+        loop {
+            let body = match read_frame(&mut stream).await {
+                Ok(body) => body,
+                // A closed connection or a framing error ends the
+                // session; the peer is a trusted daemon, nothing to
+                // recover.
+                Err(_) => return Ok(()),
+            };
+            let response = self.record(&actor, &body).await;
+            let encoded = encode_response(&response)?;
+            write_frame(&mut stream, &encoded).await?;
+        }
+    }
+
+    /// Decode, append, and — on a committed append — re-emit one
+    /// audit event.
+    async fn record(&self, actor: &str, body: &[u8]) -> IngestResponse {
+        // A ledger that failed startup verification is frozen: no new
+        // entry may chain onto a broken history. The caller fails
+        // closed exactly as it would on a full disk.
+        if self.tampered.load(Ordering::SeqCst) {
+            return IngestResponse::Unavailable {
+                reason: "audit ledger failed integrity verification; \
+                         refusing new entries"
+                    .to_string(),
+            };
+        }
+        let req = match decode_request(body) {
+            Ok(req) => req,
+            Err(e) => {
+                return IngestResponse::Unavailable {
+                    reason: e.to_string(),
+                }
+            }
+        };
+        // Don't trust the caller to keep the always-recorded Structural
+        // tier coarse: reject an event whose fields exceed the size
+        // caps before it reaches the ledger (a backstop against content
+        // smuggled into the daemon-readable tier).
+        if let Err(e) = req.validate() {
+            return IngestResponse::Unavailable {
+                reason: e.to_string(),
+            };
+        }
+        let appended = {
+            let mut ledger = self.ledger.lock().await;
+            ledger
+                .append(
+                    req.kind,
+                    actor,
+                    &req.structural,
+                    req.forensic.as_ref(),
+                    req.call_chain_id.as_deref(),
+                    req.project_id.as_deref(),
+                )
+                .await
+        };
+        match appended {
+            Ok(index) => {
+                // Best-effort Event Bus notification. The ledger is
+                // the source of truth; a bus failure does not undo a
+                // committed entry, so the append is not rolled back.
+                let event_type = format!("audit.ai.{}", req.kind.as_str());
+                let payload =
+                    serde_json::to_vec(&serde_json::json!({ "index": index }))
+                        .unwrap_or_default();
+                let _ = self.emitter.emit(&event_type, payload).await;
+                IngestResponse::Appended { index }
+            }
+            // A full disk, a storage failure — anything — fails the
+            // caller closed: it must not proceed with un-audited work.
+            Err(e) => IngestResponse::Unavailable {
+                reason: e.to_string(),
+            },
+        }
+    }
+}
+
+/// Whether a resolved peer app_id may submit audit events.
+fn caller_is_admitted(app_id: &str) -> bool {
+    ADMITTED.contains(&app_id)
+        || (cfg!(debug_assertions) && app_id.starts_with("dev."))
+}
+
+/// The daemon's own uid, for `ConnectionAuth` peer extraction.
+#[allow(unsafe_code)]
+fn current_uid() -> u32 {
+    // SAFETY: getuid() has no preconditions and cannot fail.
+    unsafe { libc::getuid() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ledger::{AuditKind, StructuralRecord};
+
+    #[test]
+    fn admission_is_restricted_to_the_ai_layer() {
+        assert!(caller_is_admitted("ai-daemon"));
+        assert!(caller_is_admitted("ai-proxy"));
+        assert!(!caller_is_admitted("knowledge"));
+        assert!(!caller_is_admitted("com.example.app"));
+        assert!(!caller_is_admitted(""));
+        // Debug builds also admit cargo-run `dev.*` ids.
+        assert_eq!(
+            caller_is_admitted("dev.lunaris-ai-daemon"),
+            cfg!(debug_assertions)
+        );
+    }
+
+    #[test]
+    fn ingest_socket_path_is_under_lunaris() {
+        let p = ingest_socket_path();
+        assert!(
+            p.to_string_lossy().ends_with("lunaris/audit-ingest.sock"),
+            "{}",
+            p.display()
+        );
+    }
+
+    /// Spin up the server on a temp socket, submit one event as the
+    /// test process (a `dev.*` peer, admitted in debug), and confirm
+    /// it is appended and the ledger verifies.
+    #[tokio::test]
+    async fn an_admitted_caller_appends_through_the_socket() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("audit-ingest.sock");
+
+        let ledger = Ledger::open(&dir.path().join("ledger.db"), b"test-key".to_vec())
+            .await
+            .expect("open ledger");
+        let ledger = Arc::new(Mutex::new(ledger));
+        // The emitter points at a nonexistent socket; emits fail and
+        // are swallowed, which is the documented best-effort behaviour.
+        let emitter = Arc::new(UnixEventEmitter::new("/nonexistent/producer.sock"));
+        let server = Arc::new(IngestServer::new(
+            Arc::clone(&ledger),
+            emitter,
+            Arc::new(AtomicBool::new(false)),
+        ));
+
+        let socket_for_task = socket.clone();
+        let serving = tokio::spawn(async move {
+            let _ = server.run(&socket_for_task).await;
+        });
+
+        // Wait for the socket to bind.
+        for _ in 0..100 {
+            if socket.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let mut client = UnixStream::connect(&socket).await.expect("connect");
+        let req = IngestRequest {
+            kind: AuditKind::Query,
+            structural: StructuralRecord {
+                subject: "graph".into(),
+                node_types: vec!["File".into()],
+                relations: vec![],
+                result_count: Some(2),
+                duration_ms: Some(5),
+                outcome: "ok".into(),
+                depth: None,
+            },
+            forensic: None,
+            call_chain_id: None,
+            project_id: None,
+        };
+        let body = serde_json::to_vec(&req).unwrap();
+        write_frame(&mut client, &body).await.unwrap();
+
+        let reply = read_frame(&mut client).await.unwrap();
+        let resp: IngestResponse = serde_json::from_slice(&reply).unwrap();
+        assert_eq!(resp, IngestResponse::Appended { index: 0 });
+
+        // The entry is really in the ledger and the chain holds.
+        assert_eq!(ledger.lock().await.verify().await.unwrap(), 1);
+
+        serving.abort();
+    }
+
+    /// A server whose tamper flag is set must refuse every append:
+    /// no entry may chain onto a ledger that failed verification.
+    #[tokio::test]
+    async fn a_tampered_ledger_refuses_appends() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("audit-ingest.sock");
+
+        let ledger = Ledger::open(&dir.path().join("ledger.db"), b"test-key".to_vec())
+            .await
+            .expect("open ledger");
+        let ledger = Arc::new(Mutex::new(ledger));
+        let emitter = Arc::new(UnixEventEmitter::new("/nonexistent/producer.sock"));
+        // Tamper flag set: the daemon detected a broken chain at startup.
+        let server = Arc::new(IngestServer::new(
+            Arc::clone(&ledger),
+            emitter,
+            Arc::new(AtomicBool::new(true)),
+        ));
+
+        let socket_for_task = socket.clone();
+        let serving = tokio::spawn(async move {
+            let _ = server.run(&socket_for_task).await;
+        });
+        for _ in 0..100 {
+            if socket.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let mut client = UnixStream::connect(&socket).await.expect("connect");
+        let req = IngestRequest {
+            kind: AuditKind::Query,
+            structural: StructuralRecord {
+                subject: "graph".into(),
+                node_types: vec![],
+                relations: vec![],
+                result_count: None,
+                duration_ms: None,
+                outcome: "ok".into(),
+                depth: None,
+            },
+            forensic: None,
+            call_chain_id: None,
+            project_id: None,
+        };
+        write_frame(&mut client, &serde_json::to_vec(&req).unwrap())
+            .await
+            .unwrap();
+
+        let reply = read_frame(&mut client).await.unwrap();
+        match serde_json::from_slice::<IngestResponse>(&reply).unwrap() {
+            IngestResponse::Unavailable { .. } => {}
+            other => panic!("tampered ledger must refuse the append, got {other:?}"),
+        }
+        // Nothing was written: the ledger is still empty.
+        assert_eq!(ledger.lock().await.verify().await.unwrap(), 0);
+
+        serving.abort();
+    }
+}

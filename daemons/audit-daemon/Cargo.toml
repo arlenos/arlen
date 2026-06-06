@@ -1,0 +1,42 @@
+[package]
+name = "lunaris-auditd"
+version = "0.1.0"
+edition = "2021"
+description = "Audit Daemon: the sole writer of the Lunaris append-only, hash-chained audit log"
+
+[[bin]]
+name = "lunaris-auditd"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net", "io-util", "time", "sync"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+hmac = "0.12"
+sha2 = "0.10"
+getrandom = "0.2"
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# systemd `Type=notify` readiness signalling. A no-op when not run
+# under systemd, so it stays correct for dev runs too.
+sd-notify = "0.4"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Shared ingest wire protocol — one definition for the daemon and
+# its clients.
+audit-proto = { path = "../audit-proto" }
+
+# Per-connection peer authentication on the ingest socket, and the
+# Event Bus producer client for re-emitting `audit.ai.*` events.
+lunaris-permissions = { path = "../sdk/permissions" }
+os-sdk = { path = "../sdk/os-sdk" }
+
+[dev-dependencies]
+tempfile = "3"
+
+[workspace]
