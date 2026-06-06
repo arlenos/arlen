@@ -1351,8 +1351,12 @@ dependencies = [
 name = "lunaris-ai-explanation"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "lunaris-ai-core",
+ "os-sdk",
+ "serde_json",
  "thiserror 2.0.18",
+ "tokio",
  "tracing",
 ]
 
