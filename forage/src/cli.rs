@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "forage", about = "Lunaris OS package manager", version)]
+#[command(name = "forage", about = "Arlen OS package manager", version)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -39,7 +39,7 @@ pub enum Commands {
         #[command(subcommand)]
         action: TrashAction,
     },
-    /// Manage Lunaris modules.
+    /// Manage Arlen modules.
     Module {
         #[command(subcommand)]
         action: ModuleAction,

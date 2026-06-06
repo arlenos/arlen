@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use lunaris_permissions::ConnectionAuth;
+use arlen_permissions::ConnectionAuth;
 use prost::Message;
 use tauri::{AppHandle, Manager};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -32,7 +32,7 @@ use tokio::time::timeout;
 /// `build.rs` from `proto/intent_api.proto`.
 mod proto {
     #![allow(dead_code, clippy::doc_markdown)]
-    include!(concat!(env!("OUT_DIR"), "/lunaris.intents.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.intents.rs"));
 }
 
 const MAX_FRAME_BYTES: usize = 1024 * 1024;
@@ -105,7 +105,7 @@ fn socket_path() -> Result<PathBuf, String> {
     let runtime = std::env::var_os("XDG_RUNTIME_DIR")
         .ok_or_else(|| "XDG_RUNTIME_DIR not set".to_string())?;
     let mut p = PathBuf::from(runtime);
-    p.push("lunaris");
+    p.push("arlen");
     p.push(SOCKET_NAME);
     Ok(p)
 }
@@ -294,9 +294,9 @@ async fn handle_dispatch(
 // ---------------------------------------------------------------------------
 
 /// `url` intent → xdg-open via existing `shell_runner::open_url`.
-/// Lunaris-internal schemes rejected defensively; the OS-level
+/// Arlen-internal schemes rejected defensively; the OS-level
 /// scheme allowlist is the portal's job (xdg-desktop-portal-
-/// lunaris OpenURI; see intent-system.md §5).
+/// arlen OpenURI; see intent-system.md §5).
 async fn dispatch_url(data: &str) -> Result<String, (proto::ErrorKind, String)> {
     if data.is_empty() {
         return Err((proto::ErrorKind::ErrorInvalidData, "url is empty".into()));
@@ -316,7 +316,7 @@ async fn dispatch_url(data: &str) -> Result<String, (proto::ErrorKind, String)> 
 
 /// System directories that are always rejected for `file` intents
 /// regardless of the calling app's filesystem scope. These are
-/// either Lunaris-internal (`/run/lunaris/`) or kernel pseudo-fs
+/// either Arlen-internal (`/run/arlen/`) or kernel pseudo-fs
 /// (`/proc`, `/sys`, `/dev`) where opening with the user's default
 /// app makes no sense and would surface internal state to the
 /// xdg-mime handler resolution layer. Mirrors the eBPF normalizer's
@@ -325,7 +325,7 @@ const FILE_DISPATCH_BLOCKLIST: &[&str] = &[
     "/proc/",
     "/sys/",
     "/dev/",
-    "/run/lunaris/",
+    "/run/arlen/",
 ];
 
 /// `file` intent → xdg-open canonicalised path.
@@ -339,7 +339,7 @@ const FILE_DISPATCH_BLOCKLIST: &[&str] = &[
 /// 2. `fs::canonicalize` to resolve `..` segments + symlinks; this
 ///    is what the portal would do for sandboxed callers
 /// 3. system-directory blocklist (`/proc`, `/sys`, `/dev`,
-///    `/run/lunaris/`) — same blocklist eBPF uses
+///    `/run/arlen/`) — same blocklist eBPF uses
 /// 4. existence check (free fallout from canonicalize)
 /// 5. xdg-open the canonicalised path
 ///
@@ -519,7 +519,7 @@ fn is_rejected_scheme(s: &str) -> bool {
     let lower = scheme.to_ascii_lowercase();
     matches!(
         lower.as_str(),
-        "lunaris" | "javascript" | "data" | "vbscript" | "file"
+        "arlen" | "javascript" | "data" | "vbscript" | "file"
     )
 }
 
@@ -640,7 +640,7 @@ mod tests {
         assert!(is_rejected_scheme("javascript:alert(1)"));
         assert!(is_rejected_scheme("data:text/html,<x>"));
         assert!(is_rejected_scheme("vbscript:msgbox"));
-        assert!(is_rejected_scheme("lunaris://shell-internal"));
+        assert!(is_rejected_scheme("arlen://shell-internal"));
         // file:// rejected on url path — must use `file` intent
         // type which runs canonicalize + system-dir blocklist.
         assert!(is_rejected_scheme("file:///tmp/x"));
@@ -657,7 +657,7 @@ mod tests {
     fn is_rejected_scheme_handles_mixed_case() {
         assert!(is_rejected_scheme("JaVaScRiPt:alert(1)"));
         assert!(is_rejected_scheme("JAVASCRIPT:alert(1)"));
-        assert!(is_rejected_scheme("Lunaris://shell-internal"));
+        assert!(is_rejected_scheme("Arlen://shell-internal"));
         assert!(is_rejected_scheme("LUNARIS://shell-internal"));
         assert!(is_rejected_scheme("DATA:text/html"));
         assert!(is_rejected_scheme("VbScRiPt:foo"));
@@ -690,8 +690,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn url_rejects_lunaris_scheme() {
-        let r = dispatch_url("lunaris://shell-internal").await;
+    async fn url_rejects_arlen_scheme() {
+        let r = dispatch_url("arlen://shell-internal").await;
         assert!(matches!(r, Err((proto::ErrorKind::ErrorInvalidData, _))));
     }
 
@@ -767,7 +767,7 @@ mod tests {
         assert!(FILE_DISPATCH_BLOCKLIST.contains(&"/proc/"));
         assert!(FILE_DISPATCH_BLOCKLIST.contains(&"/sys/"));
         assert!(FILE_DISPATCH_BLOCKLIST.contains(&"/dev/"));
-        assert!(FILE_DISPATCH_BLOCKLIST.contains(&"/run/lunaris/"));
+        assert!(FILE_DISPATCH_BLOCKLIST.contains(&"/run/arlen/"));
     }
 
     #[tokio::test]

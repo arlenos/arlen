@@ -43,7 +43,7 @@ export function initMenuListeners(): () => void {
 
     const pending: Array<Promise<UnlistenFn>> = [
         listen<{ app_id: string; items: MenuGroup[] }>(
-            "lunaris://menu-registered",
+            "arlen://menu-registered",
             ({ payload }) => {
                 appMenus.update(($m) => {
                     const next = new Map($m);
@@ -53,7 +53,7 @@ export function initMenuListeners(): () => void {
             },
         ),
         listen<{ app_id: string }>(
-            "lunaris://menu-unregistered",
+            "arlen://menu-unregistered",
             ({ payload }) => {
                 appMenus.update(($m) => {
                     const next = new Map($m);

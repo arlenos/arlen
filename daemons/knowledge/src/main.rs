@@ -5,7 +5,7 @@
 mod proto {
     #![allow(dead_code)]
     #![allow(clippy::doc_markdown)]
-    include!(concat!(env!("OUT_DIR"), "/lunaris.eventbus.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 
 mod auth;
@@ -34,14 +34,14 @@ mod writer;
 use anyhow::{bail, Result};
 use tracing::{info, warn};
 
-const DEFAULT_CONSUMER_SOCKET: &str = "/run/lunaris/event-bus-consumer.sock";
-const DEFAULT_DB_PATH: &str = "/var/lib/lunaris/knowledge/events.db";
-const DEFAULT_GRAPH_PATH: &str = "/var/lib/lunaris/knowledge/graph";
-const DEFAULT_DAEMON_SOCKET: &str = "/run/lunaris/knowledge.sock";
+const DEFAULT_CONSUMER_SOCKET: &str = "/run/arlen/event-bus-consumer.sock";
+const DEFAULT_DB_PATH: &str = "/var/lib/arlen/knowledge/events.db";
+const DEFAULT_GRAPH_PATH: &str = "/var/lib/arlen/knowledge/graph";
+const DEFAULT_DAEMON_SOCKET: &str = "/run/arlen/knowledge.sock";
 const DEFAULT_TIMELINE_MOUNT: &str = ".timeline";
 
 /// Pick the daemon socket path with a graceful fallback for non-root
-/// runs. The hardcoded `/run/lunaris/` default requires write access
+/// runs. The hardcoded `/run/arlen/` default requires write access
 /// we don't have outside privileged launchers; if nothing is pinned
 /// via `LUNARIS_DAEMON_SOCKET` and XDG_RUNTIME_DIR is available, use
 /// that. The daemon itself thus starts cleanly in a normal dev
@@ -51,7 +51,7 @@ fn pick_daemon_socket() -> String {
         return p;
     }
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
-        let path = format!("{xdg}/lunaris/knowledge.sock");
+        let path = format!("{xdg}/arlen/knowledge.sock");
         if let Some(parent) = std::path::Path::new(&path).parent() {
             let _ = std::fs::create_dir_all(parent);
         }

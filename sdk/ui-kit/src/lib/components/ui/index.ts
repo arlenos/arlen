@@ -9,9 +9,9 @@
 ///   import { FillSlider } from '$lib/components/ui/fill-slider';
 ///
 /// Consumption (validated June 2026, see docs/architecture/design-system.md §2.1):
-/// consuming apps import these directly via the `@lunaris/ui-kit` SvelteKit
-/// alias (`svelte.config.js`: "@lunaris/ui-kit" -> "../sdk/ui-kit/src/lib"),
-/// e.g. `import { Page } from "@lunaris/ui-kit/components/ui/page"`. This is the
+/// consuming apps import these directly via the `@arlen/ui-kit` SvelteKit
+/// alias (`svelte.config.js`: "@arlen/ui-kit" -> "../sdk/ui-kit/src/lib"),
+/// e.g. `import { Page } from "@arlen/ui-kit/components/ui/page"`. This is the
 /// single source — do NOT copy these into apps.
 ///   - Scoped-style components (Page, SectionGrid, Group, Row, Switch,
 ///     SegmentedControl, ChipList, Toolbar, StatGrid, topbar, …) import cleanly
@@ -22,7 +22,7 @@
 ///     classes are generated; until each app adds that, those specific ones are
 ///     still copied (the S-U1b consolidation removes the copies).
 
-// Re-export only the custom Lunaris components that have unique names
+// Re-export only the custom Arlen components that have unique names
 // and NO app-specific store imports. Components that depend on
 // `$lib/stores/theme` etc. stay in their respective apps.
 export { ConfirmDialog } from "./confirm-dialog";

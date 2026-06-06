@@ -91,7 +91,7 @@ pub type SocketWriter = Arc<Mutex<Option<WriteHalf<UnixStream>>>>;
 /// Default socket path.
 pub fn default_socket_path() -> PathBuf {
     let uid = unsafe { libc::getuid() };
-    PathBuf::from(format!("/run/user/{uid}/lunaris/notification.sock"))
+    PathBuf::from(format!("/run/user/{uid}/arlen/notification.sock"))
 }
 
 /// Connect to the notification daemon and start the read loop.

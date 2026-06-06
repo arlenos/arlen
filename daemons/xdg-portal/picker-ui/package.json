@@ -1,7 +1,7 @@
 {
-  "name": "xdg-portal-lunaris-picker-ui",
+  "name": "xdg-portal-arlen-picker-ui",
   "version": "0.1.0",
-  "description": "Picker UI for xdg-desktop-portal-lunaris (FileChooser dialog)",
+  "description": "Picker UI for xdg-desktop-portal-arlen (FileChooser dialog)",
   "type": "module",
   "private": true,
   "scripts": {

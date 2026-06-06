@@ -51,7 +51,7 @@ impl Notifier {
                 Some("org.freedesktop.Notifications"),
                 "Notify",
                 &(
-                    "Lunaris Security",      // app_name
+                    "Arlen Security",      // app_name
                     0u32,                    // replaces_id
                     "dialog-warning",        // app_icon
                     alert.summary.as_str(),  // summary

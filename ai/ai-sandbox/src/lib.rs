@@ -1,4 +1,4 @@
-//! Document-parsing isolation for the Lunaris AI layer (Foundation §8.4).
+//! Document-parsing isolation for the Arlen AI layer (Foundation §8.4).
 //!
 //! Untrusted documents — a PDF, a web page, a file the user asked the AI
 //! to summarise — are parsed in a **separate, sandboxed subprocess**
@@ -13,7 +13,7 @@
 //! - the **library** the AI layer calls: [`parse_document`] spawns the
 //!   sandbox worker, feeds it bytes, and returns the extracted text (or
 //!   an error — callers fail closed and pass no text on);
-//! - the **worker binary** (`lunaris-doc-sandbox`): it calls
+//! - the **worker binary** (`arlen-doc-sandbox`): it calls
 //!   [`apply_sandbox`] to lock itself down, then reads stdin, runs
 //!   [`extract_text`], and writes stdout.
 //!
@@ -134,7 +134,7 @@ fn is_invisible_or_format(ch: char) -> bool {
 
 /// Parse a document by running the sandbox worker as a subprocess.
 ///
-/// `sandbox_bin` is the path to the `lunaris-doc-sandbox` binary. The
+/// `sandbox_bin` is the path to the `arlen-doc-sandbox` binary. The
 /// `document` bytes are written to the worker's stdin; its stdout (the
 /// extracted text) is returned. The worker is killed if it runs past
 /// the time budget, and both input and output are bounded by

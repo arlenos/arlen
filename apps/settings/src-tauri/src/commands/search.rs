@@ -36,7 +36,7 @@ pub fn get_launch_args() -> Option<LaunchTarget> {
 fn index_path() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris")
+        .join("arlen")
         .join("settings-index.json")
 }
 

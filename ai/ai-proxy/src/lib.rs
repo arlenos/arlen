@@ -1,4 +1,4 @@
-//! Outbound proxy library for the Lunaris AI layer.
+//! Outbound proxy library for the Arlen AI layer.
 //!
 //! Foundation §8.4.6 requires that AI provider traffic exit the host
 //! through a dedicated daemon. The proxy is the only component

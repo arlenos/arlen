@@ -1,4 +1,4 @@
 [portal]
-DBusName=org.freedesktop.impl.portal.desktop.lunaris
+DBusName=org.freedesktop.impl.portal.desktop.arlen
 Interfaces=org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.OpenURI;
-UseIn=lunaris;
+UseIn=arlen;

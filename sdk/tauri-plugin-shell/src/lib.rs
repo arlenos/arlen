@@ -1,4 +1,4 @@
-/// Tauri plugin exposing the Lunaris OS `shell.*` API to Tauri apps.
+/// Tauri plugin exposing the Arlen OS `shell.*` API to Tauri apps.
 ///
 /// First-party Tauri apps include this plugin once and immediately have
 /// `shell.presence`, `shell.timeline`, and `shell.spatial` available
@@ -15,7 +15,7 @@
 /// ```rust,ignore
 /// fn main() {
 ///     tauri::Builder::default()
-///         .plugin(tauri_plugin_lunaris_shell::init())
+///         .plugin(tauri_plugin_arlen_shell::init())
 ///         .run(tauri::generate_context!())
 ///         .expect("error running app");
 /// }
@@ -24,7 +24,7 @@
 /// # Usage (TypeScript)
 ///
 /// ```typescript
-/// import { shell } from "@lunaris/tauri-plugin-shell";
+/// import { shell } from "@arlen/tauri-plugin-shell";
 ///
 /// await shell.presence.set({
 ///   activity: "editing",
@@ -36,7 +36,7 @@
 ///
 /// The plugin reads `LUNARIS_APP_ID` and the producer-socket env
 /// (`LUNARIS_PRODUCER_SOCKET`, default
-/// `/run/lunaris/event-bus-producer.sock`) at init time. Apps that
+/// `/run/arlen/event-bus-producer.sock`) at init time. Apps that
 /// need to override the socket path can do so by setting the env
 /// variable before constructing the Tauri builder.
 
@@ -112,11 +112,11 @@ pub struct ShellState {
 impl ShellState {
     fn new() -> Self {
         let producer_socket = std::env::var("LUNARIS_PRODUCER_SOCKET")
-            .unwrap_or_else(|_| "/run/lunaris/event-bus-producer.sock".to_string());
+            .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".to_string());
         let consumer_socket = std::env::var("LUNARIS_CONSUMER_SOCKET")
-            .unwrap_or_else(|_| "/run/lunaris/event-bus-consumer.sock".to_string());
+            .unwrap_or_else(|_| "/run/arlen/event-bus-consumer.sock".to_string());
         let daemon_socket = std::env::var("LUNARIS_DAEMON_SOCKET")
-            .unwrap_or_else(|_| "/run/lunaris/knowledge.sock".to_string());
+            .unwrap_or_else(|_| "/run/arlen/knowledge.sock".to_string());
         let app_id =
             std::env::var("LUNARIS_APP_ID").unwrap_or_else(|_| "unknown".to_string());
 
@@ -143,7 +143,7 @@ impl ShellState {
     }
 }
 
-/// Initialise the Lunaris shell plugin.
+/// Initialise the Arlen shell plugin.
 ///
 /// Registers all shell.* Tauri commands and constructs the
 /// `ShellState` that wraps the Event Bus emitter and consumer.
@@ -153,9 +153,9 @@ impl ShellState {
 /// tasks (FA E7/E8 in `docs/architecture/annotations-api.md`).
 ///
 /// Apps include the plugin via
-/// `Tauri::Builder::plugin(tauri_plugin_lunaris_shell::init())`.
+/// `Tauri::Builder::plugin(tauri_plugin_arlen_shell::init())`.
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
-    Builder::new("lunaris-shell")
+    Builder::new("arlen-shell")
         .invoke_handler(tauri::generate_handler![
             commands::presence_set,
             commands::presence_clear,
@@ -211,7 +211,7 @@ struct ActionTuple {
 /// Subscribe to `app.toolbar.action_invoked` and
 /// `app.shortcut.action_invoked` Event Bus events and re-emit
 /// matching ones (filtered by this app's id) as per-webview
-/// `lunaris://app-action` Tauri events.
+/// `arlen://app-action` Tauri events.
 ///
 /// This is the receive side of the action-dispatch path the
 /// desktop-shell pushes when the user clicks a Quick Action or
@@ -308,7 +308,7 @@ fn spawn_action_invoked_consumer<R: Runtime, M: tauri::Manager<R>>(
                 // schema).
                 if invoked.window_id.is_empty() {
                     if let Err(e) = app_handle.emit(
-                        "lunaris://app-action",
+                        "arlen://app-action",
                         serde_json::json!({ "action": invoked.action }),
                     ) {
                         log::warn!("toolbar app-action broadcast emit failed: {e}");
@@ -322,7 +322,7 @@ fn spawn_action_invoked_consumer<R: Runtime, M: tauri::Manager<R>>(
                     continue;
                 };
                 if let Err(e) = window.emit(
-                    "lunaris://app-action",
+                    "arlen://app-action",
                     serde_json::json!({ "action": invoked.action }),
                 ) {
                     log::warn!("toolbar app-action emit failed: {e}");

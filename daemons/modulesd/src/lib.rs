@@ -1,6 +1,6 @@
-/// Lunaris Module Runtime daemon.
+/// Arlen Module Runtime daemon.
 ///
-/// `lunaris-modulesd` hosts every sandboxed module on the system in
+/// `arlen-modulesd` hosts every sandboxed module on the system in
 /// one of two tiers:
 ///
 ///   * **Tier 1 (WASM Components)** for data-only modules (Waypointer
@@ -14,7 +14,7 @@
 ///     binding, capability checks on postMessage host calls).
 ///
 /// Communication with the shell uses a length-prefixed JSON protocol
-/// over a Unix socket at `/run/user/{uid}/lunaris/modulesd.sock`.
+/// over a Unix socket at `/run/user/{uid}/arlen/modulesd.sock`.
 /// See `socket::protocol` for the wire format.
 ///
 /// Foundation reference: §07 "Apps and Modules", in particular the

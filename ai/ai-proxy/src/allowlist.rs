@@ -14,7 +14,7 @@ use url::Url;
 /// Allowlist policy.
 ///
 /// `hosts` is the canonical set of permitted hostnames. The default
-/// shipped by Lunaris covers the canonical providers in
+/// shipped by Arlen covers the canonical providers in
 /// Foundation §5.3.
 #[derive(Debug, Clone)]
 pub struct Allowlist {
@@ -33,9 +33,9 @@ impl Allowlist {
         }
     }
 
-    /// The default Lunaris allowlist. Covers Anthropic, OpenAI, and
+    /// The default Arlen allowlist. Covers Anthropic, OpenAI, and
     /// the loopback origins for local providers.
-    pub fn default_lunaris() -> Self {
+    pub fn default_arlen() -> Self {
         Self::new([
             "api.anthropic.com",
             "api.openai.com",
@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn https_to_allowlisted_host_passes() {
-        let al = Allowlist::default_lunaris();
+        let al = Allowlist::default_arlen();
         assert_eq!(
             al.check("https://api.anthropic.com/v1/messages"),
             AllowlistDecision::Allowed {
@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn http_to_localhost_passes() {
-        let al = Allowlist::default_lunaris();
+        let al = Allowlist::default_arlen();
         assert_eq!(
             al.check("http://localhost:11434/v1/chat/completions"),
             AllowlistDecision::Allowed {
@@ -157,7 +157,7 @@ mod tests {
 
     #[test]
     fn http_to_remote_host_is_rejected() {
-        let al = Allowlist::default_lunaris();
+        let al = Allowlist::default_arlen();
         match al.check("http://api.anthropic.com/v1/messages") {
             AllowlistDecision::Rejected(RejectReason::DisallowedScheme { scheme }) => {
                 assert_eq!(scheme, "http");
@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     fn file_scheme_is_rejected() {
-        let al = Allowlist::default_lunaris();
+        let al = Allowlist::default_arlen();
         match al.check("file:///etc/passwd") {
             AllowlistDecision::Rejected(RejectReason::DisallowedScheme { scheme }) => {
                 assert_eq!(scheme, "file");
@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn host_outside_allowlist_is_rejected() {
-        let al = Allowlist::default_lunaris();
+        let al = Allowlist::default_arlen();
         match al.check("https://evil.example.com/x") {
             AllowlistDecision::Rejected(RejectReason::HostNotAllowed { host }) => {
                 assert_eq!(host, "evil.example.com");
@@ -192,7 +192,7 @@ mod tests {
     fn prefix_attack_on_allowlisted_host_is_rejected() {
         // The classic SSRF payload: attacker hopes string-prefix matching
         // will accept "api.anthropic.com.attacker.example".
-        let al = Allowlist::default_lunaris();
+        let al = Allowlist::default_arlen();
         match al.check("https://api.anthropic.com.attacker.example/x") {
             AllowlistDecision::Rejected(RejectReason::HostNotAllowed { host }) => {
                 assert_eq!(host, "api.anthropic.com.attacker.example");
@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     fn host_match_is_case_insensitive() {
-        let al = Allowlist::default_lunaris();
+        let al = Allowlist::default_arlen();
         match al.check("https://API.ANTHROPIC.COM/v1/messages") {
             AllowlistDecision::Allowed { host } => assert_eq!(host, "api.anthropic.com"),
             other => panic!("unexpected decision: {other:?}"),
@@ -212,7 +212,7 @@ mod tests {
 
     #[test]
     fn invalid_url_is_rejected() {
-        let al = Allowlist::default_lunaris();
+        let al = Allowlist::default_arlen();
         assert_eq!(
             al.check("not a url"),
             AllowlistDecision::Rejected(RejectReason::InvalidUrl)
@@ -226,7 +226,7 @@ mod tests {
         // The `MissingHost` variant stays in the enum as defensive
         // coverage for any future url crate change that returns an
         // empty host string instead of an error.
-        let al = Allowlist::default_lunaris();
+        let al = Allowlist::default_arlen();
         assert_eq!(
             al.check("https://"),
             AllowlistDecision::Rejected(RejectReason::InvalidUrl)

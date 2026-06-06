@@ -37,7 +37,7 @@ pub struct Monitor {
     pub enabled: bool,
     /// Whether the output is mirroring another connector. The value
     /// is the target connector. Mutually exclusive with `enabled`'s
-    /// "true active output" reading on the wlr side; on the Lunaris
+    /// "true active output" reading on the wlr side; on the Arlen
     /// `OutputConfig` side this is encoded as
     /// `OutputState::Mirroring`.
     pub mirroring: Option<String>,
@@ -122,7 +122,7 @@ impl Default for Position {
 
 impl Transform {
     /// Convert from the wlr-output wire transform value to the
-    /// Lunaris enum. `None` for unrecognised numbers (forward-compat
+    /// Arlen enum. `None` for unrecognised numbers (forward-compat
     /// for protocols adding new transforms).
     pub fn from_wlr(t: u32) -> Option<Self> {
         Some(match t {

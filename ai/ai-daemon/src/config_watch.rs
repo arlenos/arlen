@@ -2,7 +2,7 @@
 //!
 //! The AI layer is opt-in (Foundation §5.1-5.2): the daemon starts
 //! fail-closed and only begins serving queries once Settings writes
-//! `enabled = true` into `~/.config/lunaris/ai.toml`. This module is
+//! `enabled = true` into `~/.config/arlen/ai.toml`. This module is
 //! the watcher that makes that toggle live (Phase 9-α S7).
 //!
 //! Scope of the live reload:
@@ -20,9 +20,9 @@ use std::sync::Arc;
 
 use os_sdk::config::Config;
 
-use lunaris_ai_core::capability::access_tier_from_level;
-use lunaris_ai_core::graph_query::QueryScope;
-use lunaris_ai_core::graph_schema::GraphSchema;
+use arlen_ai_core::capability::access_tier_from_level;
+use arlen_ai_core::graph_query::QueryScope;
+use arlen_ai_core::graph_schema::GraphSchema;
 
 use crate::service::AiDaemonService;
 
@@ -69,7 +69,7 @@ pub struct AiSettings {
     pub provider: ProviderSettings,
     /// Global read access level 0..=4 (Foundation §8.4 table). Decides
     /// how much of the graph the AI can see; mapped to an
-    /// `AccessTier` by `lunaris_ai_core::capability::access_tier_from_level`.
+    /// `AccessTier` by `arlen_ai_core::capability::access_tier_from_level`.
     pub access_level: u8,
 }
 

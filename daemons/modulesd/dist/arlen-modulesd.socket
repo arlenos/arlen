@@ -1,6 +1,6 @@
 [Unit]
-Description=Lunaris Module Runtime socket
-Documentation=https://github.com/lunaris-sys/modulesd
+Description=Arlen Module Runtime socket
+Documentation=https://github.com/arlenos/modulesd
 
 [Socket]
 # `%t` is the runtime directory: `/run/user/{uid}` for user services.
@@ -8,7 +8,7 @@ Documentation=https://github.com/lunaris-sys/modulesd
 # clients (desktop-shell, settings) reach the same socket whether
 # socket activation kicked the daemon awake or modulesd was launched
 # directly.
-ListenStream=%t/lunaris/modulesd.sock
+ListenStream=%t/arlen/modulesd.sock
 SocketMode=0600
 # User services run under the invoking user's session anyway, so the
 # socket is automatically owned by that user. No SocketUser= needed

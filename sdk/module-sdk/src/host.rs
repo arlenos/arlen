@@ -1,14 +1,14 @@
 /// Host imports surfaced to module authors.
 ///
 /// On the WASM side these functions are linked at component-load time
-/// against the `lunaris:host/*` interfaces defined in `wit/host.wit`;
+/// against the `arlen:host/*` interfaces defined in `wit/host.wit`;
 /// on the native side (running tests in a host crate, no WASM) they
 /// route through a thread-local mock that lets tests pre-program
 /// answers. The signatures match between both paths so the same
 /// module source compiles natively for unit tests and to WASM for
 /// production.
 ///
-/// The capability gating happens in `lunaris-modulesd`. Every host
+/// The capability gating happens in `arlen-modulesd`. Every host
 /// import returns a typed `HostError` on denial; modules are expected
 /// to handle that gracefully.
 
@@ -39,7 +39,7 @@ pub mod graph {
     pub fn query(_cypher: &str) -> Result<String, HostError> {
         #[cfg(target_arch = "wasm32")]
         {
-            // WASM path: link against lunaris:host/graph#query. The
+            // WASM path: link against arlen:host/graph#query. The
             // wit-bindgen-generated stub goes here once S5 wires it
             // up alongside the Currency-Konverter dogfood. Until
             // then this is a deliberate compile-time placeholder
@@ -90,7 +90,7 @@ pub mod network {
 pub mod events {
     use super::HostError;
 
-    /// Emit an event to the Lunaris Event Bus. Capability:
+    /// Emit an event to the Arlen Event Bus. Capability:
     /// `event_bus.publish` allowlist on the event type prefix.
     pub fn emit(_event_type: &str, _payload: &[u8]) -> Result<(), HostError> {
         #[cfg(target_arch = "wasm32")]

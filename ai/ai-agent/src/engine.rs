@@ -22,11 +22,11 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use futures::FutureExt as _;
-use lunaris_ai_core::capability::{AccessTier, ActionDecision, BaselineMode};
-use lunaris_ai_core::provider::{AIProvider, CompletionRequest};
+use arlen_ai_core::capability::{AccessTier, ActionDecision, BaselineMode};
+use arlen_ai_core::provider::{AIProvider, CompletionRequest};
 
 use crate::agentic::{build_agent_prompt, external_screen_text, parse_agent_step, AgentStep};
-use lunaris_ai_classifier::{screen, ClassifierPolicy, InjectionClassifier, Verdict};
+use arlen_ai_classifier::{screen, ClassifierPolicy, InjectionClassifier, Verdict};
 use crate::behaviour::{Behaviour, BehaviourKind, ReadScope};
 use crate::compaction::{self, CompactionPolicy, TranscriptEntry};
 use crate::gate::{ActionContext, DecisionReason, Gate, GateError, ProposedAction};
@@ -43,7 +43,7 @@ use crate::seams::{AgentEvent, Clock, DeniedGraph, GraphHandle, TriggerSource};
 /// (from the tool binding / the behaviour identity) lands later; until then
 /// the agent acts as itself, and execution is capped to confirmation
 /// regardless, so this never widens authority.
-const AGENT_APP_ID: &str = "org.lunaris.agent";
+const AGENT_APP_ID: &str = "org.arlen.agent";
 
 /// Compute the dry-run executor's plan for a gate decision, to carry on the
 /// dispatch outcome (the bin logs the successful plan from there). Suggest-mode:
@@ -1417,8 +1417,8 @@ mod tests {
     use std::path::PathBuf;
 
     use audit_proto::MockAuditSink;
-    use lunaris_ai_core::capability::{AccessTier, ActionPermissions, Capability};
-    use lunaris_ai_core::provider::{CompletionResponse, ProviderAudit, ProviderError};
+    use arlen_ai_core::capability::{AccessTier, ActionPermissions, Capability};
+    use arlen_ai_core::provider::{CompletionResponse, ProviderAudit, ProviderError};
 
     use crate::behaviour::parse;
     use crate::loader::{DisableReason, LoadedBehaviour, Provenance, Status};
@@ -2184,7 +2184,7 @@ trigger:
 
     // --- S17 injection screening of external content ---
 
-    use lunaris_ai_classifier::{ClassifierError, InjectionScore};
+    use arlen_ai_classifier::{ClassifierError, InjectionScore};
 
     /// A classifier that returns a fixed injection probability for any input.
     struct FixedClassifier(f32);

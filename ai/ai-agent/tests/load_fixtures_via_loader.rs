@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use lunaris_ai_agent::loader::{
+use arlen_ai_agent::loader::{
     load, BehaviourSource, DisableReason, LoadError, Provenance, Status, MAX_SKILL_BYTES,
 };
 
@@ -17,7 +17,7 @@ fn behaviours_dir() -> PathBuf {
 
 /// A unique, freshly-emptied temp dir for a test to plant fixtures in.
 fn temp_root(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("lunaris-loader-{}-{tag}", std::process::id()));
+    let p = std::env::temp_dir().join(format!("arlen-loader-{}-{tag}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
     std::fs::create_dir_all(&p).expect("create temp root");
     p

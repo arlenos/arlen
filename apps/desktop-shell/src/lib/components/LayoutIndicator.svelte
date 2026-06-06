@@ -9,7 +9,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { togglePopover, hoverPopover, activePopover } from "$lib/stores/activePopover.js";
-  import { Applet } from "@lunaris/ui-kit/components/topbar";
+  import { Applet } from "@arlen/ui-kit/components/topbar";
   import { Layers, LayoutPanelLeft, Maximize } from "lucide-svelte";
 
   let mode = $state("floating");
@@ -24,7 +24,7 @@
   poll();
 
   onMount(() => {
-    const unlisten = listen("lunaris://layout-mode-changed", (e: any) => {
+    const unlisten = listen("arlen://layout-mode-changed", (e: any) => {
       if (e.payload?.mode) mode = e.payload.mode;
     });
     return () => {

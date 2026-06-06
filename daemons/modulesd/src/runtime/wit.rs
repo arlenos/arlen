@@ -20,8 +20,8 @@
 //! `Cargo.toml`. The WIT files live in the central SDK so first-party
 //! and third-party modules can `wit-bindgen::generate!` against the
 //! exact same shape. Per WIT convention the dependency package
-//! `lunaris:host` lives under `deps/host/`; the world package
-//! `lunaris:waypointer` lives at the WIT root.
+//! `arlen:host` lives under `deps/host/`; the world package
+//! `arlen:waypointer` lives at the WIT root.
 
 wasmtime::component::bindgen!({
     path: "../sdk/module-sdk/wit",
@@ -38,23 +38,23 @@ wasmtime::component::bindgen!({
 
 // Re-export the most-used generated types under stable names. Callers
 // in `manager.rs` and `host/*.rs` import these instead of reaching
-// through the deep `exports::lunaris::waypointer::provider::*` path,
+// through the deep `exports::arlen::waypointer::provider::*` path,
 // so a future WIT reshuffle (e.g. moving `provider` to a different
 // package) is a one-line change here, not a scatter-shot edit.
-pub use exports::lunaris::waypointer::provider as guest_provider;
-pub use lunaris::host as host_imports;
+pub use exports::arlen::waypointer::provider as guest_provider;
+pub use arlen::host as host_imports;
 
 /// Host-side bindings for the `mcp-server` world (`mcp.wit`).
 ///
 /// Generated in its own module so the second `bindgen!` does not
-/// redefine the `lunaris:host/*` interfaces: `with` reuses the four
+/// redefine the `arlen:host/*` interfaces: `with` reuses the four
 /// host interfaces already generated for `waypointer-provider`
 /// above, so a single populated `Linker<ModuleStore>` satisfies the
 /// imports of both worlds.
 ///
 /// The `mcp.wit` file carries no package declaration and joins
-/// `lunaris:waypointer`, so the exported `server` interface lands at
-/// `mcp::exports::lunaris::waypointer::server`; `guest_server`
+/// `arlen:waypointer`, so the exported `server` interface lands at
+/// `mcp::exports::arlen::waypointer::server`; `guest_server`
 /// re-exports it under a name that reads correctly.
 pub mod mcp {
     wasmtime::component::bindgen!({
@@ -68,12 +68,12 @@ pub mod mcp {
         // carry the same bound so the two line up.
         require_store_data_send: true,
         with: {
-            "lunaris:host/graph": super::lunaris::host::graph,
-            "lunaris:host/network": super::lunaris::host::network,
-            "lunaris:host/events": super::lunaris::host::events,
-            "lunaris:host/log": super::lunaris::host::log,
+            "arlen:host/graph": super::arlen::host::graph,
+            "arlen:host/network": super::arlen::host::network,
+            "arlen:host/events": super::arlen::host::events,
+            "arlen:host/log": super::arlen::host::log,
         },
     });
 
-    pub use exports::lunaris::waypointer::server as guest_server;
+    pub use exports::arlen::waypointer::server as guest_server;
 }

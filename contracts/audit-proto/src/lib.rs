@@ -1,6 +1,6 @@
-//! Shared wire protocol for the Lunaris audit daemon.
+//! Shared wire protocol for the Arlen audit daemon.
 //!
-//! Both the audit daemon (`lunaris-auditd`) and its clients (the AI
+//! Both the audit daemon (`arlen-auditd`) and its clients (the AI
 //! daemon, the AI network proxy) depend on this crate so the ingest
 //! types have a single definition and cannot drift. The crate is
 //! deliberately thin — serde types, length-prefixed framing, and a
@@ -271,14 +271,14 @@ pub enum IngestResponse {
 }
 
 /// Resolve the ingest socket path:
-/// `$XDG_RUNTIME_DIR/lunaris/audit-ingest.sock`, falling back to
-/// `/run/lunaris/audit-ingest.sock`.
+/// `$XDG_RUNTIME_DIR/arlen/audit-ingest.sock`, falling back to
+/// `/run/arlen/audit-ingest.sock`.
 pub fn ingest_socket_path() -> PathBuf {
     let base = std::env::var_os("XDG_RUNTIME_DIR")
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/run"));
-    base.join("lunaris").join("audit-ingest.sock")
+    base.join("arlen").join("audit-ingest.sock")
 }
 
 /// Read one length-prefixed frame from `stream`.
@@ -373,7 +373,7 @@ mod tests {
         let req = IngestRequest {
             kind: AuditKind::ToolCall,
             structural: StructuralRecord {
-                subject: "com.lunaris.files".into(),
+                subject: "com.arlen.files".into(),
                 node_types: vec![],
                 relations: vec![],
                 result_count: None,

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Lunaris portal — per-user dev-mode setup.
+# Arlen portal — per-user dev-mode setup.
 #
 # Builds the daemon + picker binaries in debug mode, drops a
 # symlinked D-Bus service file into the user's local services dir
@@ -17,21 +17,21 @@
 
 set -euo pipefail
 
-LUNARIS_PATH="${LUNARIS_PATH:-$HOME/Repositories/lunaris-sys}"
-SRC="$LUNARIS_PATH/xdg-desktop-portal-lunaris"
+LUNARIS_PATH="${LUNARIS_PATH:-$HOME/Repositories/arlenos}"
+SRC="$LUNARIS_PATH/xdg-desktop-portal-arlen"
 
 USER_DBUS_SVC="$HOME/.local/share/dbus-1/services"
-DBUS_SVC_NAME="org.freedesktop.impl.portal.desktop.lunaris.service"
+DBUS_SVC_NAME="org.freedesktop.impl.portal.desktop.arlen.service"
 
-DAEMON_BIN="$SRC/target/debug/xdg-desktop-portal-lunaris"
-PICKER_BIN="$SRC/picker-ui/src-tauri/target/debug/xdg-desktop-portal-lunaris-picker"
+DAEMON_BIN="$SRC/target/debug/xdg-desktop-portal-arlen"
+PICKER_BIN="$SRC/picker-ui/src-tauri/target/debug/xdg-desktop-portal-arlen-picker"
 
-echo "=== Lunaris portal dev setup ==="
+echo "=== Arlen portal dev setup ==="
 
 # ── Build ──────────────────────────────────────────────────────
 
 echo "[1/4] Building daemon (debug)..."
-(cd "$SRC" && cargo build --bin xdg-desktop-portal-lunaris)
+(cd "$SRC" && cargo build --bin xdg-desktop-portal-arlen)
 
 echo "[2/4] Building picker UI frontend..."
 if [ ! -d "$SRC/picker-ui/node_modules" ]; then
@@ -52,7 +52,7 @@ echo "[4/4] Installing dev D-Bus service shim to $USER_DBUS_SVC"
 mkdir -p "$USER_DBUS_SVC"
 cat > "$USER_DBUS_SVC/$DBUS_SVC_NAME" <<EOF
 [D-BUS Service]
-Name=org.freedesktop.impl.portal.desktop.lunaris
+Name=org.freedesktop.impl.portal.desktop.arlen
 Exec=$DAEMON_BIN
 EOF
 
@@ -62,12 +62,12 @@ echo
 echo "=== Dev setup complete ==="
 echo
 echo "Verify (after start-dev.sh --with-portal restarts the frontend):"
-echo "  busctl --user list | grep org.freedesktop.impl.portal.desktop.lunaris"
+echo "  busctl --user list | grep org.freedesktop.impl.portal.desktop.arlen"
 echo
 echo "The dev start-dev.sh --with-portal flag handles env import +"
 echo "frontend restart automatically. If you'd rather use the dev"
 echo "service file outside the dev-script, run:"
 echo "  systemctl --user import-environment XDG_CURRENT_DESKTOP XDG_DATA_DIRS"
 echo "  systemctl --user restart xdg-desktop-portal"
-echo "with XDG_CURRENT_DESKTOP=lunaris:wlroots and the augmented"
+echo "with XDG_CURRENT_DESKTOP=arlen:wlroots and the augmented"
 echo "XDG_DATA_DIRS exported in the calling shell."

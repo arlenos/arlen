@@ -14,7 +14,7 @@
 //! block: the real delimiter is `[/GRAPH-DATA-<nonce>]`, and the nonce
 //! is unguessable. This is component one of the §8.4 injection
 //! mitigation (content tagging at prompt-construction time); the
-//! prompt-injection classifier (`lunaris-ai-classifier`, S17) is the
+//! prompt-injection classifier (`arlen-ai-classifier`, S17) is the
 //! complementary probabilistic pass over external content.
 
 use rand::RngCore;

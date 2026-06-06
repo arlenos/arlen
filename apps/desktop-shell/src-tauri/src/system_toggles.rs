@@ -73,7 +73,7 @@ pub fn toggle_caffeine(state: tauri::State<'_, ToggleState>) -> Result<bool, Str
         let child = Command::new("systemd-inhibit")
             .args([
                 "--what=idle:sleep",
-                "--who=lunaris-shell",
+                "--who=arlen-shell",
                 "--why=Caffeine mode",
                 "sleep",
                 "infinity",
@@ -91,7 +91,7 @@ pub fn toggle_caffeine(state: tauri::State<'_, ToggleState>) -> Result<bool, Str
 
 /// Toggle screen recording via wf-recorder.
 ///
-/// Starts recording to `~/Videos/lunaris-{timestamp}.mp4`.
+/// Starts recording to `~/Videos/arlen-{timestamp}.mp4`.
 /// Stops by sending SIGINT to the process.
 #[tauri::command]
 pub fn toggle_recording(state: tauri::State<'_, ToggleState>) -> Result<bool, String> {
@@ -118,7 +118,7 @@ pub fn toggle_recording(state: tauri::State<'_, ToggleState>) -> Result<bool, St
         let _ = std::fs::create_dir_all(&videos_dir);
 
         let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S");
-        let filename = format!("lunaris-{timestamp}.mp4");
+        let filename = format!("arlen-{timestamp}.mp4");
         let output = videos_dir.join(&filename);
         let output_str = output.to_string_lossy().to_string();
 

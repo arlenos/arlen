@@ -18,7 +18,7 @@ use tempfile::TempDir;
 
 mod proto {
     #![allow(dead_code)]
-    include!(concat!(env!("OUT_DIR"), "/lunaris.eventbus.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 
 /// A minimal Event Bus producer socket server that records received messages.
@@ -185,7 +185,7 @@ async fn emitter_sends_multiple_events() {
 
 #[tokio::test]
 async fn emitter_returns_error_when_socket_unavailable() {
-    let emitter = UnixEventEmitter::new("/tmp/lunaris-nonexistent-socket.sock");
+    let emitter = UnixEventEmitter::new("/tmp/arlen-nonexistent-socket.sock");
     let result = emitter.emit("file.opened", vec![]).await;
     assert!(matches!(result, Err(EmitError::ConnectionFailed(_))));
 }
@@ -290,7 +290,7 @@ async fn graph_client_returns_error_for_error_response() {
 
 #[tokio::test]
 async fn graph_client_returns_error_when_socket_unavailable() {
-    let client = UnixGraphClient::new("/tmp/lunaris-nonexistent-daemon.sock");
+    let client = UnixGraphClient::new("/tmp/arlen-nonexistent-daemon.sock");
     let result = client
         .query("MATCH (n) RETURN n", HashMap::new())
         .await;

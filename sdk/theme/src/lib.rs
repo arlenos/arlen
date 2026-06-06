@@ -1,16 +1,16 @@
-//! Lunaris theme system — single source of truth.
+//! Arlen theme system — single source of truth.
 //!
 //! Two file paths participate in theme resolution:
 //!
 //! 1. **Bundled theme** (`<crate>/themes/dark.toml` or `light.toml`,
 //!    embedded at compile-time via `include_str!` from whichever
 //!    crate consumes the schema). Provides every default value.
-//! 2. **Active user theme** (`~/.local/share/lunaris/themes/{id}.toml`).
+//! 2. **Active user theme** (`~/.local/share/arlen/themes/{id}.toml`).
 //!    Optional. When `appearance.toml [theme].active` names something
 //!    that isn't a built-in id, the loader reads this file and merges
 //!    it on top of the matching bundled variant (resolved via the
 //!    `extends` field in the theme's `[meta]` section, default `dark`).
-//! 3. **User customization** (`~/.config/lunaris/theme.toml`).
+//! 3. **User customization** (`~/.config/arlen/theme.toml`).
 //!    Optional. Loose top-of-stack overrides — any field set here
 //!    wins over both the active theme and the bundled defaults.
 //!    This is the channel a user uses to tweak the active theme
@@ -20,12 +20,12 @@
 //!
 //! 4. **`appearance.toml [overrides].radius_intensity`** — multiplier
 //!    in `0.0..=2.0` applied to all semantic radii at *emit time*
-//!    (`LunarisTheme::effective_*()`), excluding `radius.full` and
+//!    (`ArlenTheme::effective_*()`), excluding `radius.full` and
 //!    `radius.window_corners` which are categorical. The base
 //!    radii live in the theme; the multiplier is the user-only knob.
 //!
 //! Both compositor and desktop-shell read the same resolved
-//! `LunarisTheme`. The schema is grouped into per-concern substructs
+//! `ArlenTheme`. The schema is grouped into per-concern substructs
 //! (color, radius, spacing, typography, motion, depth, wm, cursor)
 //! so callers borrow the slice they care about.
 //!
@@ -37,7 +37,7 @@ mod watcher;
 
 pub use file::{
     BorderColors, ColorBgFile, ColorFgFile, ColorSection, ColorSemanticFile,
-    CursorSection, DepthSection, LunarisThemeFile, MetaSection, MotionSection,
+    CursorSection, DepthSection, ArlenThemeFile, MetaSection, MotionSection,
     RadiusSection, SoundsSection, SpacingSection, TypographySection,
     WallpaperSection, WmSection,
 };
@@ -236,10 +236,10 @@ pub struct CursorTokens {
 }
 
 /// Fully resolved theme. Both compositor and desktop-shell consume
-/// this. Construct via `LunarisTheme::resolve(...)`; do not build
+/// this. Construct via `ArlenTheme::resolve(...)`; do not build
 /// by hand outside tests.
 #[derive(Debug, Clone)]
-pub struct LunarisTheme {
+pub struct ArlenTheme {
     pub meta:       ThemeMeta,
     pub color:      ColorTokens,
     pub radius:     RadiusTokens,
@@ -268,15 +268,15 @@ pub enum ResolveError {
     Io(#[from] std::io::Error),
 }
 
-impl LunarisTheme {
+impl ArlenTheme {
     /// Resolve the active theme.
     ///
     /// `bundled` is the compile-time-embedded base theme (one of
     /// `dark.toml` / `light.toml`). `user_theme` is the optional
     /// user-installed theme file at
-    /// `~/.local/share/lunaris/themes/{active}.toml` — passed in
+    /// `~/.local/share/arlen/themes/{active}.toml` — passed in
     /// already-loaded so the file-IO is the caller's responsibility.
-    /// `customization` is the optional `~/.config/lunaris/theme.toml`
+    /// `customization` is the optional `~/.config/arlen/theme.toml`
     /// content, also caller-loaded.
     ///
     /// Merge order: `bundled` < `user_theme` (extends-resolved)
@@ -286,11 +286,11 @@ impl LunarisTheme {
         user_theme: Option<&str>,
         customization: Option<&str>,
     ) -> Result<Self, ResolveError> {
-        let bundled_file: LunarisThemeFile = toml::from_str(bundled)?;
-        let user_file: Option<LunarisThemeFile> = user_theme
+        let bundled_file: ArlenThemeFile = toml::from_str(bundled)?;
+        let user_file: Option<ArlenThemeFile> = user_theme
             .map(toml::from_str)
             .transpose()?;
-        let custom_file: Option<LunarisThemeFile> = customization
+        let custom_file: Option<ArlenThemeFile> = customization
             .map(toml::from_str)
             .transpose()?;
 
@@ -369,19 +369,19 @@ impl LunarisTheme {
         self.meta.variant == ThemeVariant::Dark
     }
 
-    /// Default config path for `~/.config/lunaris/theme.toml`.
+    /// Default config path for `~/.config/arlen/theme.toml`.
     pub fn user_customization_path() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
-            .join("lunaris")
+            .join("arlen")
             .join("theme.toml")
     }
 
-    /// Default user-theme directory (`~/.local/share/lunaris/themes/`).
+    /// Default user-theme directory (`~/.local/share/arlen/themes/`).
     pub fn user_themes_dir() -> PathBuf {
         dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
-            .join("lunaris")
+            .join("arlen")
             .join("themes")
     }
 
@@ -416,7 +416,7 @@ fn scale_radius(base: f32, intensity: f32) -> f32 {
 // File → resolved struct projection
 // ---------------------------------------------------------------------------
 
-fn from_file(f: LunarisThemeFile) -> Result<LunarisTheme, ResolveError> {
+fn from_file(f: ArlenThemeFile) -> Result<ArlenTheme, ResolveError> {
     // After merge, every required section/field falls back to a
     // sane default if absent. This lets a partial customization
     // file (e.g. user editing only the accent) resolve without
@@ -547,7 +547,7 @@ fn from_file(f: LunarisThemeFile) -> Result<LunarisTheme, ResolveError> {
         }
     };
 
-    Ok(LunarisTheme {
+    Ok(ArlenTheme {
         meta: ThemeMeta {
             id: meta.id,
             name: meta.name,
@@ -568,8 +568,8 @@ fn from_file(f: LunarisThemeFile) -> Result<LunarisTheme, ResolveError> {
 /// Field-by-field merge — every Optional in `over` that is `Some`
 /// replaces the corresponding field in `under`. Used to layer
 /// user themes / customization over the bundled defaults.
-fn merge_files(under: LunarisThemeFile, over: LunarisThemeFile) -> LunarisThemeFile {
-    LunarisThemeFile {
+fn merge_files(under: ArlenThemeFile, over: ArlenThemeFile) -> ArlenThemeFile {
+    ArlenThemeFile {
         meta: over.meta.or(under.meta),
         color: merge_color(under.color, over.color),
         radius: merge_radius(under.radius, over.radius),
@@ -681,20 +681,20 @@ merge_struct_field!(merge_cursor, CursorSection, [theme, size]);
 pub fn load_theme_from_disk(
     bundled: &str,
     active_id: &str,
-) -> Result<LunarisTheme, ResolveError> {
-    let user_path = LunarisTheme::user_theme_path(active_id);
+) -> Result<ArlenTheme, ResolveError> {
+    let user_path = ArlenTheme::user_theme_path(active_id);
     let user_theme = if user_path.exists() {
         Some(std::fs::read_to_string(&user_path)?)
     } else {
         None
     };
-    let custom_path = LunarisTheme::user_customization_path();
+    let custom_path = ArlenTheme::user_customization_path();
     let custom = if custom_path.exists() {
         Some(std::fs::read_to_string(&custom_path)?)
     } else {
         None
     };
-    LunarisTheme::resolve(bundled, user_theme.as_deref(), custom.as_deref())
+    ArlenTheme::resolve(bundled, user_theme.as_deref(), custom.as_deref())
 }
 
 // Path is currently unused at the public API level but might be in tests.
@@ -712,7 +712,7 @@ mod tests {
     const SAMPLE_BUNDLED: &str = r##"
 [meta]
 id = "dark"
-name = "Lunaris Dark"
+name = "Arlen Dark"
 variant = "dark"
 
 [color.bg]
@@ -792,7 +792,7 @@ size  = 24
 
     #[test]
     fn parses_bundled_dark() {
-        let t = LunarisTheme::from_bundled(SAMPLE_BUNDLED).expect("resolve");
+        let t = ArlenTheme::from_bundled(SAMPLE_BUNDLED).expect("resolve");
         assert_eq!(t.meta.id, "dark");
         assert_eq!(t.meta.variant, ThemeVariant::Dark);
         assert!(t.is_dark());
@@ -808,7 +808,7 @@ size  = 24
 
     #[test]
     fn intensity_scales_semantic_radii() {
-        let mut t = LunarisTheme::from_bundled(SAMPLE_BUNDLED).expect("resolve");
+        let mut t = ArlenTheme::from_bundled(SAMPLE_BUNDLED).expect("resolve");
         t.radius.intensity = 2.0;
         assert_eq!(t.effective_chip(),  8.0);
         assert_eq!(t.effective_button(), 12.0);
@@ -828,7 +828,7 @@ size  = 24
 
     #[test]
     fn intensity_zero_yields_sharp_corners() {
-        let mut t = LunarisTheme::from_bundled(SAMPLE_BUNDLED).expect("resolve");
+        let mut t = ArlenTheme::from_bundled(SAMPLE_BUNDLED).expect("resolve");
         t.radius.intensity = 0.0;
         assert_eq!(t.effective_chip(),   0.0);
         assert_eq!(t.effective_button(), 0.0);
@@ -839,14 +839,14 @@ size  = 24
 
     #[test]
     fn intensity_clamped_to_2_max() {
-        let mut t = LunarisTheme::from_bundled(SAMPLE_BUNDLED).expect("resolve");
+        let mut t = ArlenTheme::from_bundled(SAMPLE_BUNDLED).expect("resolve");
         t.radius.intensity = 5.0; // way over
         assert_eq!(t.effective_button(), 12.0); // == button(6) * 2 (clamped)
     }
 
     #[test]
     fn intensity_negative_clamped_to_zero() {
-        let mut t = LunarisTheme::from_bundled(SAMPLE_BUNDLED).expect("resolve");
+        let mut t = ArlenTheme::from_bundled(SAMPLE_BUNDLED).expect("resolve");
         t.radius.intensity = -1.0;
         assert_eq!(t.effective_button(), 0.0);
         assert_eq!(t.effective_card(),   0.0);
@@ -858,7 +858,7 @@ size  = 24
 [radius]
 button = 20
 "##;
-        let t = LunarisTheme::resolve(SAMPLE_BUNDLED, None, Some(custom)).expect("resolve");
+        let t = ArlenTheme::resolve(SAMPLE_BUNDLED, None, Some(custom)).expect("resolve");
         assert_eq!(t.radius.button, 20.0);
         // Other fields fall through to bundled.
         assert_eq!(t.radius.card, 12.0);
@@ -871,7 +871,7 @@ button = 20
 [color.semantic]
 accent = "#ff00ff"
 "##;
-        let t = LunarisTheme::resolve(SAMPLE_BUNDLED, None, Some(custom)).expect("resolve");
+        let t = ArlenTheme::resolve(SAMPLE_BUNDLED, None, Some(custom)).expect("resolve");
         // Magenta = 1.0, 0.0, 1.0
         assert!((t.color.accent[0] - 1.0).abs() < 0.01);
         assert!((t.color.accent[1] - 0.0).abs() < 0.01);
@@ -890,7 +890,7 @@ id = "minimal"
 name = "Minimal"
 variant = "dark"
 "##;
-        let t = LunarisTheme::from_bundled(minimal).expect("resolve from meta-only");
+        let t = ArlenTheme::from_bundled(minimal).expect("resolve from meta-only");
         assert_eq!(t.meta.id, "minimal");
         // Defaults must match the documented design system.
         assert_eq!(t.radius.chip, 4.0);
@@ -904,14 +904,14 @@ variant = "dark"
 [radius]
 button = 12
 "##;
-        let r = LunarisTheme::from_bundled(no_meta);
+        let r = ArlenTheme::from_bundled(no_meta);
         assert!(matches!(r, Err(ResolveError::MissingField("meta"))));
     }
 
     #[test]
     fn invalid_variant_errors() {
         let bad = SAMPLE_BUNDLED.replace(r#"variant = "dark""#, r#"variant = "purple""#);
-        let r = LunarisTheme::from_bundled(&bad);
+        let r = ArlenTheme::from_bundled(&bad);
         assert!(matches!(r, Err(ResolveError::InvalidColor { .. })));
     }
 

@@ -1,6 +1,6 @@
 //! Read-API client.
 //!
-//! [`ReadClient`] runs one range query against `lunaris-auditd`'s read
+//! [`ReadClient`] runs one range query against `arlen-auditd`'s read
 //! socket and returns a page of Structural-tier views. Like the
 //! ingest [`AuditClient`](crate::client::AuditClient) it opens a fresh
 //! connection per call — the Anomaly Detector polls at a low cadence,

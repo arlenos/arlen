@@ -5,8 +5,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
-  import { Separator } from "@lunaris/ui-kit/components/ui/separator/index.js";
-  import * as ContextMenu from "@lunaris/ui-kit/components/ui/context-menu/index.js";
+  import { Separator } from "@arlen/ui-kit/components/ui/separator/index.js";
+  import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu/index.js";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
   import {
     Bluetooth, BluetoothOff, RefreshCw, BatteryMedium,
@@ -340,7 +340,7 @@
     box-shadow: var(--shadow-lg);
     color: var(--color-fg-shell);
     display: flex; flex-direction: column;
-    animation: lunaris-popover-in var(--duration-medium) var(--ease-out) both;
+    animation: arlen-popover-in var(--duration-medium) var(--ease-out) both;
     transform-origin: top center;
   }
   .pop-bt { right: 80px; width: 280px; }

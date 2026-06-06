@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.freedesktop.impl.portal.desktop.arlen
+Exec=/usr/lib/arlen/libexec/xdg-desktop-portal-arlen
+SystemdService=xdg-desktop-portal-arlen.service

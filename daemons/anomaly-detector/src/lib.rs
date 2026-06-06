@@ -1,6 +1,6 @@
-//! Lunaris Anomaly Detector.
+//! Arlen Anomaly Detector.
 //!
-//! `lunaris-anomalyd` watches the system audit log (foundation §8.4.8)
+//! `arlen-anomalyd` watches the system audit log (foundation §8.4.8)
 //! for behavioural anomalies and raises advisory alerts. It is a
 //! standalone system daemon, deliberately separate from both the
 //! component it watches and the audit daemon it reads: foundation
@@ -32,8 +32,8 @@ pub mod source;
 pub mod state;
 
 /// The per-user data directory for the detector:
-/// `$XDG_DATA_HOME/lunaris/anomaly/`, else
-/// `$HOME/.local/share/lunaris/anomaly/`. Errors if no absolute
+/// `$XDG_DATA_HOME/arlen/anomaly/`, else
+/// `$HOME/.local/share/arlen/anomaly/`. Errors if no absolute
 /// per-user path can be resolved — the detector keeps a small state
 /// file there and must not fall back to a world-writable location.
 pub fn data_dir() -> std::io::Result<PathBuf> {
@@ -58,7 +58,7 @@ pub fn data_dir() -> std::io::Result<PathBuf> {
             format!("resolved data base {} is not absolute", base.display()),
         ));
     }
-    Ok(base.join("lunaris/anomaly"))
+    Ok(base.join("arlen/anomaly"))
 }
 
 /// Create `dir` (and parents) and tighten it to mode 0700.

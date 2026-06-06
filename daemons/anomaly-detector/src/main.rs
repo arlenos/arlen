@@ -1,4 +1,4 @@
-//! `lunaris-anomalyd` entry point.
+//! `arlen-anomalyd` entry point.
 //!
 //! Resolves the per-user data dir, loads the persisted baseline,
 //! wires the audit read client and the Event Bus consumer, and runs
@@ -8,10 +8,10 @@
 #![deny(unsafe_code)]
 
 use audit_proto::{read_socket_path, ReadClient};
-use lunaris_anomalyd::detect::DetectorConfig;
-use lunaris_anomalyd::source::Detector;
-use lunaris_anomalyd::state::State;
-use lunaris_anomalyd::{data_dir, ensure_private_dir, now_micros};
+use arlen_anomalyd::detect::DetectorConfig;
+use arlen_anomalyd::source::Detector;
+use arlen_anomalyd::state::State;
+use arlen_anomalyd::{data_dir, ensure_private_dir, now_micros};
 use os_sdk::UnixEventConsumer;
 
 /// Startup grace: the no-interaction check does not fire within this
@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    tracing::info!("lunaris-anomalyd starting");
+    tracing::info!("arlen-anomalyd starting");
 
     let dir = data_dir()?;
     ensure_private_dir(&dir)?;
@@ -56,14 +56,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Err(err) = sd_notify::notify(false, &[sd_notify::NotifyState::Ready]) {
         tracing::info!("sd_notify ready not sent ({err}); running without systemd readiness");
     }
-    tracing::info!("lunaris-anomalyd running");
+    tracing::info!("arlen-anomalyd running");
 
     // The detector loops forever; a shutdown signal cancels it. State
     // is flushed every poll cycle, so cancelling mid-run loses at most
     // the last cycle's updates (re-derived on the next start).
     tokio::select! {
         _ = detector.run(consumer) => {}
-        _ = shutdown_signal() => tracing::info!("lunaris-anomalyd: shutdown signal received"),
+        _ = shutdown_signal() => tracing::info!("arlen-anomalyd: shutdown signal received"),
     }
     Ok(())
 }
@@ -79,13 +79,13 @@ fn resolve_event_consumer_socket() -> String {
     }
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
         if !xdg.is_empty() {
-            let runtime = format!("{xdg}/lunaris/event-bus-consumer.sock");
+            let runtime = format!("{xdg}/arlen/event-bus-consumer.sock");
             if std::path::Path::new(&runtime).exists() {
                 return runtime;
             }
         }
     }
-    "/run/lunaris/event-bus-consumer.sock".to_string()
+    "/run/arlen/event-bus-consumer.sock".to_string()
 }
 
 /// Resolve on SIGTERM (systemd stop) or SIGINT (Ctrl-C).

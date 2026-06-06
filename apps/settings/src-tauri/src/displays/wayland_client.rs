@@ -10,7 +10,7 @@
 ///   * The compositor implements both server sides.
 ///   * wlr is the cross-compositor standard, so the Settings app
 ///     keeps working under labwc / sway / wayfire if a user runs
-///     it outside the Lunaris compositor.
+///     it outside the Arlen compositor.
 ///
 /// The Wayland event model is asynchronous: heads, modes, and
 /// per-head fields each arrive as separate events that batch on a
@@ -88,7 +88,7 @@ pub struct DisplayState {
 /// as "no display panel available" and degrade gracefully.
 ///
 /// The wayland connection picks up `WAYLAND_DISPLAY` by default.
-/// During development we test the panel against a nested Lunaris
+/// During development we test the panel against a nested Arlen
 /// compositor while Settings itself runs on the host compositor;
 /// in that case `LUNARIS_DISPLAY_WAYLAND=wayland-N` overrides only
 /// the output-management connection, leaving Tauri's webview on
@@ -141,7 +141,7 @@ pub fn spawn(app: AppHandle) -> Result<WaylandHandle, ConnectError> {
 
     // Move the connection + queue + manager onto the dispatch thread.
     thread::Builder::new()
-        .name("lunaris-settings-wayland".into())
+        .name("arlen-settings-wayland".into())
         .spawn(move || {
             run_loop(app, conn, queue, manager, state_for_thread, cmd_rx);
         })

@@ -50,7 +50,7 @@ export function clearQuickActionResults(): void {
 
 /// Dispatch the action by id. The id is the catalog's `qa.<name>`
 /// key — `quick_action_run` switches on it server-side, performs
-/// the work, and emits a `lunaris://toast` event for the post-
+/// the work, and emits a `arlen://toast` event for the post-
 /// state confirmation.
 export async function invokeQuickAction(id: string): Promise<void> {
   try {

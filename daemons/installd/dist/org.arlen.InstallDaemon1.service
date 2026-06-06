@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.arlen.InstallDaemon1
+Exec=%h/.local/lib/arlen/libexec/arlen-installd

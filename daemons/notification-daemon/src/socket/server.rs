@@ -26,10 +26,10 @@ impl SocketServer {
         Self { path }
     }
 
-    /// Default socket path: `/run/user/{uid}/lunaris/notification.sock`.
+    /// Default socket path: `/run/user/{uid}/arlen/notification.sock`.
     pub fn default_path() -> PathBuf {
         let uid = unsafe { libc::getuid() };
-        PathBuf::from(format!("/run/user/{uid}/lunaris/notification.sock"))
+        PathBuf::from(format!("/run/user/{uid}/arlen/notification.sock"))
     }
 
     /// Start listening for connections.
@@ -258,7 +258,7 @@ async fn handle_client(
 
 /// Map a `DndMode` to its proto wire value.
 ///
-/// Each Lunaris mode now has its own dedicated proto enum value.
+/// Each Arlen mode now has its own dedicated proto enum value.
 /// `DndOn` is no longer used by this daemon (kept in the proto for
 /// backwards compatibility with old shell builds) — new clients
 /// should expect `DndPriority` / `DndAlarms` / `DndTotal` instead.
@@ -296,6 +296,6 @@ mod tests {
         let path = SocketServer::default_path();
         let path_str = path.to_string_lossy();
         assert!(path_str.contains("/run/user/"));
-        assert!(path_str.ends_with("/lunaris/notification.sock"));
+        assert!(path_str.ends_with("/arlen/notification.sock"));
     }
 }

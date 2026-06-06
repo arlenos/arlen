@@ -1,11 +1,11 @@
 [package]
-name = "lunaris-modulesd"
+name = "arlen-modulesd"
 version = "0.1.0"
 edition = "2021"
 description = "Module Runtime daemon: hosts sandboxed third-party Waypointer/MCP/keybinding modules as WASM components, brokers Tier 2 iframe modules"
 
 [[bin]]
-name = "lunaris-modulesd"
+name = "arlen-modulesd"
 path = "src/main.rs"
 
 [lib]
@@ -46,9 +46,9 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 futures-util = "0.3"
 base64 = "0.22"
 
-# Lunaris workspace dependencies.
-lunaris-modules = { path = "../../sdk/modules" }
-lunaris-permissions = { path = "../../sdk/permissions" }
+# Arlen workspace dependencies.
+arlen-modules = { path = "../../sdk/modules" }
+arlen-permissions = { path = "../../sdk/permissions" }
 os-sdk = { path = "../../sdk/os-sdk" }
 module-sdk = { path = "../../sdk/module-sdk" }
 modulesd-proto = { path = "../../contracts/modulesd-proto" }
@@ -58,6 +58,6 @@ tempfile = "3"
 wiremock = "0.6"
 # The mcp.server dogfood test drives a hosted module through the AI
 # daemon's real MCP client, exactly the path the daemon uses.
-lunaris-ai-core = { path = "../../ai/ai-core" }
+arlen-ai-core = { path = "../../ai/ai-core" }
 
 [workspace]

@@ -1,7 +1,7 @@
 /// Install and uninstall logic for user-level apps.
 ///
 /// Handles .lunpkg extraction, manifest parsing, file installation to
-/// `~/.local/share/lunaris/apps/{app_id}/`, and desktop entry creation.
+/// `~/.local/share/arlen/apps/{app_id}/`, and desktop entry creation.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -58,7 +58,7 @@ pub struct Manifest {
     pub modules: ModuleInfo,
     /// Static keybindings the package ships. One fragment file per
     /// package is written to
-    /// `~/.config/lunaris/compositor.d/keybindings.d/<package.id>.toml`
+    /// `~/.config/arlen/compositor.d/keybindings.d/<package.id>.toml`
     /// and removed on uninstall. Empty by default; packages that do
     /// not ship shortcuts leave the section out entirely.
     #[serde(default, rename = "keybinding")]
@@ -192,7 +192,7 @@ fn user_apps_dir() -> PathBuf {
         .unwrap_or_else(|_| {
             dirs::data_dir()
                 .unwrap_or_else(|| PathBuf::from("~/.local/share"))
-                .join("lunaris/apps")
+                .join("arlen/apps")
         })
 }
 
@@ -218,7 +218,7 @@ pub fn user_keybindings_fragment_dir() -> PathBuf {
         .unwrap_or_else(|_| {
             dirs::config_dir()
                 .unwrap_or_else(|| PathBuf::from("~/.config"))
-                .join("lunaris/compositor.d/keybindings.d")
+                .join("arlen/compositor.d/keybindings.d")
         })
 }
 
@@ -240,7 +240,7 @@ fn user_modules_dir() -> PathBuf {
         .unwrap_or_else(|_| {
             dirs::data_dir()
                 .unwrap_or_else(|| PathBuf::from("~/.local/share"))
-                .join("lunaris/modules")
+                .join("arlen/modules")
         })
 }
 
@@ -274,7 +274,7 @@ pub fn extract_package(path: &str) -> Result<PathBuf, InstallError> {
     }
 
     let temp_dir = std::env::temp_dir().join(format!(
-        "lunaris-install-{}",
+        "arlen-install-{}",
         uuid::Uuid::new_v4()
     ));
     fs::create_dir_all(&temp_dir)?;
@@ -418,10 +418,10 @@ pub fn remove_schemas(manifest: &Manifest) -> Result<(), InstallError> {
     Ok(())
 }
 
-/// Install bundled Lunaris modules from the package.
+/// Install bundled Arlen modules from the package.
 ///
 /// Copies each module directory listed in `[modules].bundled` to
-/// `~/.local/share/lunaris/modules/{module_id}/`.
+/// `~/.local/share/arlen/modules/{module_id}/`.
 pub fn install_modules(
     manifest: &Manifest,
     extracted_dir: &Path,
@@ -464,12 +464,12 @@ pub fn install_modules(
         copy_dir_recursive(&src, &dest)?;
 
         // Generate the runtime permission profile from the module's
-        // own manifest. `lunaris-modulesd` reads this profile when
+        // own manifest. `arlen-modulesd` reads this profile when
         // loading the module so capability gating matches what the
         // user agreed to at install time.
         let module_manifest_path = dest.join("manifest.toml");
         if module_manifest_path.exists() {
-            match lunaris_modules::load_manifest(&module_manifest_path) {
+            match arlen_modules::load_manifest(&module_manifest_path) {
                 Ok(module_manifest) => {
                     let profile = crate::module_permissions::profile_from_manifest(&module_manifest);
                     if let Err(err) = crate::module_permissions::write_profile(&profile) {
@@ -621,7 +621,7 @@ pub fn uninstall_user(app_id: &str) -> Result<(), InstallError> {
 
 /// Write a keybinding fragment for this package.
 ///
-/// Produces `~/.config/lunaris/compositor.d/keybindings.d/<id>.toml`
+/// Produces `~/.config/arlen/compositor.d/keybindings.d/<id>.toml`
 /// containing a `[keybindings]` table of `"accelerator" = "action"`
 /// entries, one per manifest-declared binding. The compositor watcher
 /// picks it up on the next inotify tick.
@@ -821,7 +821,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), InstallError> {
 // ---------------------------------------------------------------------------
 
 // Tests use env vars for directory overrides. Run with --test-threads=1
-// to avoid races: cargo test -p lunaris-installd -- --test-threads=1
+// to avoid races: cargo test -p arlen-installd -- --test-threads=1
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3,14 +3,14 @@
 @import "@fontsource-variable/inter";
 /* Single-source: scan the ui-kit canon so Tailwind generates the utility
    classes for ui-kit's shadcn-derived components, which are imported via the
-   @lunaris/ui-kit alias instead of copied. See design-system.md §2.1. */
+   @arlen/ui-kit alias instead of copied. See design-system.md §2.1. */
 @source "../../sdk/ui-kit/src/lib/components/**/*.{svelte,ts}";
 /* Canonical motion tokens + shared interaction classes.
    Single source of truth for both desktop-shell and app-settings. */
 @import "../../sdk/ui-kit/src/lib/motion.css";
 
 /* ============================================================
-   Lunaris Dark Theme - CSS variable defaults.
+   Arlen Dark Theme - CSS variable defaults.
    Overridden at runtime by initTheme() from appearance.toml.
    Values here match themes/dark.toml so the shell renders
    correctly before the Tauri backend is ready.
@@ -174,7 +174,7 @@
 
 /* Themed scrollbar: applied to any element with `.themed-scroll`
    plus an `overflow: auto/scroll`. Uses WebKit pseudo-elements
-   (Lunaris's Tauri webview is WebKitGTK). The thumb picks up the
+   (Arlen's Tauri webview is WebKitGTK). The thumb picks up the
    surface-context foreground via cascade so it works in both
    shell-popover (light thumb on dark bg) and app-surface (dark
    thumb on light bg). */
@@ -210,7 +210,7 @@
 }
 
 
-/* Register Lunaris tokens as Tailwind v4 theme variables.
+/* Register Arlen tokens as Tailwind v4 theme variables.
    `@theme inline` with var() references makes Tailwind emit
    `var(--token)` in utility classes instead of resolving to literals
    at build time. This lets :root overrides (and shell-surface /
@@ -298,18 +298,18 @@
 /* Toast renderer overrides — driven by `shell.toml [toast]` via the
    toastConfig store. The width comes through inline style; here we
    only define the optional animation flavours. */
-.lunaris-toast-anim-fade {
+.arlen-toast-anim-fade {
   /* Fade in/out instead of svelte-sonner's default slide. */
-  animation-name: lunaris-toast-fade !important;
+  animation-name: arlen-toast-fade !important;
   transform: none !important;
 }
-.lunaris-toast-anim-none {
+.arlen-toast-anim-none {
   /* Skip animation entirely. */
   animation: none !important;
   transform: none !important;
   transition: none !important;
 }
-@keyframes lunaris-toast-fade {
+@keyframes arlen-toast-fade {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
@@ -343,7 +343,7 @@
    Row 2: actions span full width; with two buttons split 50/50.
 
    Grid (vs. sonner's default flex) gives us predictable placement
-   without touching sonner's DOM order, so `lunaris-toast-anim-*`
+   without touching sonner's DOM order, so `arlen-toast-anim-*`
    still drives in/out animation unchanged.
    ============================================================ */
 [data-sonner-toast][data-styled="true"] {

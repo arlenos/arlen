@@ -4,7 +4,7 @@
   /// Visible only while caffeine is on. Click toggles via the
   /// quick-actions dispatcher so the toast pipeline confirms the
   /// state change.
-  import { StatusBadge } from "@lunaris/ui-kit/components/topbar";
+  import { StatusBadge } from "@arlen/ui-kit/components/topbar";
   import { Coffee } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";

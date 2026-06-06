@@ -5107,7 +5107,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "xdg-portal-lunaris-picker"
+name = "xdg-portal-arlen-picker"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -5121,11 +5121,11 @@ dependencies = [
  "toml 0.8.2",
  "tracing",
  "tracing-subscriber",
- "xdg-portal-lunaris-protocol",
+ "xdg-portal-arlen-protocol",
 ]
 
 [[package]]
-name = "xdg-portal-lunaris-protocol"
+name = "xdg-portal-arlen-protocol"
 version = "0.1.0"
 dependencies = [
  "serde",

@@ -32,7 +32,7 @@
   import AirplaneBadge from "$lib/components/topbar/badges/AirplaneBadge.svelte";
   import { isFocused, focusState, deactivateFocus } from "$lib/stores/projects.js";
   import { closePopover } from "$lib/stores/activePopover.js";
-  import * as ContextMenu from "@lunaris/ui-kit/components/ui/context-menu/index.js";
+  import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu/index.js";
   import { X, FolderSearch } from "lucide-svelte";
 
   /// Focus-mode chip click → opens the Waypointer with the
@@ -109,7 +109,7 @@
   let unlistenOutputChanged: UnlistenFn | null = null;
 
   /// Re-fetch the registry entry. Called from mount, on each
-  /// `lunaris://topbar-output-changed` event, AND on a 100 ms
+  /// `arlen://topbar-output-changed` event, AND on a 100 ms
   /// retry loop until the connector is resolved (xdg-output name
   /// arrival is asynchronous and can lag the WebView mount).
   /// `accept_null_connector` is true only for the primary bar —
@@ -134,7 +134,7 @@
     // first so any change between mount and the initial fetch is
     // not missed.
     unlistenOutputChanged = await listen(
-      "lunaris://topbar-output-changed",
+      "arlen://topbar-output-changed",
       () => {
         refetchOutputInfo();
       },

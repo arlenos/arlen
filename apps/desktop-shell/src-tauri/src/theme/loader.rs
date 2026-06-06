@@ -1,6 +1,6 @@
 //! Theme loading + resolution wrapper.
 //!
-//! This module is a thin adapter around `lunaris_theme::LunarisTheme`
+//! This module is a thin adapter around `arlen_theme::ArlenTheme`
 //! (the SSoT theme schema). It handles:
 //!
 //! - Compile-time embed of bundled themes (`dark.toml`, `light.toml`)
@@ -8,9 +8,9 @@
 //!   compositor crate `include_str!`s the SAME files (cross-crate)
 //!   so both binaries observe the same canonical bytes.
 //! - User-installed-themes lookup at
-//!   `~/.local/share/lunaris/themes/{id}.toml`.
+//!   `~/.local/share/arlen/themes/{id}.toml`.
 //! - Resolution chain: bundled bytes → user theme overlay
-//!   (via `LunarisTheme::resolve(...)`) → `appearance.toml`
+//!   (via `ArlenTheme::resolve(...)`) → `appearance.toml`
 //!   `[overrides]` (accent + font_scale + radius_intensity) →
 //!   `[accessibility]` (reduce_motion).
 //!
@@ -18,7 +18,7 @@
 
 use std::path::PathBuf;
 
-use lunaris_theme::{LunarisTheme, ThemeVariant};
+use arlen_theme::{ArlenTheme, ThemeVariant};
 use thiserror::Error;
 
 use super::schema::{
@@ -36,7 +36,7 @@ pub enum ThemeError {
     #[error("resolve {path}: {source}")]
     Resolve {
         path: String,
-        source: lunaris_theme::ResolveError,
+        source: arlen_theme::ResolveError,
     },
     #[error("parse {path}: {source}")]
     Parse {
@@ -75,7 +75,7 @@ impl ThemeLoader {
     /// Create a loader with the default user-themes directory.
     pub fn new() -> Result<Self, ThemeError> {
         let user_dir = dirs::data_dir()
-            .map(|d| d.join("lunaris").join("themes"))
+            .map(|d| d.join("arlen").join("themes"))
             .filter(|d| d.is_dir());
         Ok(Self { user_dir })
     }
@@ -97,17 +97,17 @@ impl ThemeLoader {
         }
     }
 
-    /// Resolve an active theme id into a `LunarisTheme`. Layering:
+    /// Resolve an active theme id into a `ArlenTheme`. Layering:
     ///
     /// 1. Bundled bytes (matched by id; `dark` falls back if id is
     ///    unknown so a missing user theme still gives a usable shell).
     /// 2. User-installed theme overlay if present at
     ///    `{user_dir}/{id}.toml`.
-    /// 3. User customization (`~/.config/lunaris/theme.toml`) is read
-    ///    inside `lunaris_theme::resolve` itself when loaders pass it
+    /// 3. User customization (`~/.config/arlen/theme.toml`) is read
+    ///    inside `arlen_theme::resolve` itself when loaders pass it
     ///    via the `customization` arg — we read it here from the
     ///    standard path.
-    pub fn load(&self, id: &str) -> Result<LunarisTheme, ThemeError> {
+    pub fn load(&self, id: &str) -> Result<ArlenTheme, ThemeError> {
         // 1. Pick the bundled bytes. If the user requested an id
         // that isn't bundled, use dark as the floor — the user
         // theme overlay will rebrand from there.
@@ -130,15 +130,15 @@ impl ThemeLoader {
             None
         };
 
-        // 3. ~/.config/lunaris/theme.toml customization.
-        let custom_path = LunarisTheme::user_customization_path();
+        // 3. ~/.config/arlen/theme.toml customization.
+        let custom_path = ArlenTheme::user_customization_path();
         let customization = if custom_path.exists() {
             Some(std::fs::read_to_string(&custom_path)?)
         } else {
             None
         };
 
-        LunarisTheme::resolve(
+        ArlenTheme::resolve(
             bundled,
             user_overlay.as_deref(),
             customization.as_deref(),
@@ -155,7 +155,7 @@ impl ThemeLoader {
             .iter()
             .filter_map(|id| {
                 let bundled = Self::bundled_for(id)?;
-                let theme = LunarisTheme::from_bundled(bundled).ok()?;
+                let theme = ArlenTheme::from_bundled(bundled).ok()?;
                 Some(ThemeInfo {
                     id: theme.meta.id.clone(),
                     name: theme.meta.name.clone(),
@@ -171,7 +171,7 @@ impl ThemeLoader {
                     let path = entry.path();
                     if path.extension().map(|e| e == "toml").unwrap_or(false) {
                         if let Ok(content) = std::fs::read_to_string(&path) {
-                            if let Ok(theme) = LunarisTheme::from_bundled(&content) {
+                            if let Ok(theme) = ArlenTheme::from_bundled(&content) {
                                 if !out.iter().any(|t| t.id == theme.meta.id) {
                                     out.push(ThemeInfo {
                                         id: theme.meta.id.clone(),
@@ -205,7 +205,7 @@ impl ThemeLoader {
 ///
 /// Radius intensity: when `Some`, replaces the theme's
 /// `radius.intensity`. When `None`, the theme's intensity stays.
-pub fn apply_overrides(mut theme: LunarisTheme, overrides: &UserOverrides) -> LunarisTheme {
+pub fn apply_overrides(mut theme: ArlenTheme, overrides: &UserOverrides) -> ArlenTheme {
     if let Some(ref accent_raw) = overrides.accent {
         // Resolve the foreground sentinel.
         let resolved = if accent_raw == ACCENT_FOREGROUND_SENTINEL {
@@ -217,15 +217,15 @@ pub fn apply_overrides(mut theme: LunarisTheme, overrides: &UserOverrides) -> Lu
         };
 
         if let Some(hex) = resolved {
-            if let Some(rgba) = lunaris_theme::parse_hex(&hex) {
+            if let Some(rgba) = arlen_theme::parse_hex(&hex) {
                 theme.color.accent = rgba;
                 if let Some(h) = lighten_color(&hex, 0.15) {
-                    if let Some(c) = lunaris_theme::parse_hex(&h) {
+                    if let Some(c) = arlen_theme::parse_hex(&h) {
                         theme.color.accent_hover = c;
                     }
                 }
                 if let Some(d) = darken_color(&hex, 0.15) {
-                    if let Some(c) = lunaris_theme::parse_hex(&d) {
+                    if let Some(c) = arlen_theme::parse_hex(&d) {
                         theme.color.accent_pressed = c;
                     }
                 }
@@ -242,9 +242,9 @@ pub fn apply_overrides(mut theme: LunarisTheme, overrides: &UserOverrides) -> Lu
 
 /// Apply accessibility settings (reduce_motion = "0ms" durations).
 pub fn apply_accessibility(
-    mut theme: LunarisTheme,
+    mut theme: ArlenTheme,
     settings: &AccessibilitySettings,
-) -> LunarisTheme {
+) -> ArlenTheme {
     if settings.reduce_motion {
         theme.motion.duration_fast = "0ms".into();
         theme.motion.duration_normal = "0ms".into();
@@ -257,7 +257,7 @@ pub fn apply_accessibility(
 pub fn resolve_theme(
     loader: &ThemeLoader,
     config: &AppearanceConfig,
-) -> Result<LunarisTheme, ThemeError> {
+) -> Result<ArlenTheme, ThemeError> {
     let theme = loader.load(&config.theme.active)?;
     let theme = apply_overrides(theme, &config.overrides);
     let theme = apply_accessibility(theme, &config.accessibility);
@@ -277,7 +277,7 @@ pub fn is_valid_hex_color(color: &str) -> bool {
     matches!(hex.len(), 3 | 4 | 6 | 8) && hex.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-fn rgba_to_hex_string(rgba: &lunaris_theme::Rgba) -> String {
+fn rgba_to_hex_string(rgba: &arlen_theme::Rgba) -> String {
     let r = (rgba[0] * 255.0).round().clamp(0.0, 255.0) as u8;
     let g = (rgba[1] * 255.0).round().clamp(0.0, 255.0) as u8;
     let b = (rgba[2] * 255.0).round().clamp(0.0, 255.0) as u8;

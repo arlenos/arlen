@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    lunaris_ui_kit_lib::run()
+    arlen_ui_kit_lib::run()
 }

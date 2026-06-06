@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Lunaris GTK4 theme generator.
+Arlen GTK4 theme generator.
 
-Reads ~/.config/lunaris/theme.toml (or a custom path) and generates
+Reads ~/.config/arlen/theme.toml (or a custom path) and generates
 ~/.config/gtk-4.0/gtk.css using the GTK template.
 
 Usage:
@@ -46,7 +46,7 @@ PANDA_DEFAULTS = {
 
 def default_theme_path() -> Path:
     config = os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))
-    return Path(config) / "lunaris" / "theme.toml"
+    return Path(config) / "arlen" / "theme.toml"
 
 
 def default_output_path() -> Path:
@@ -172,12 +172,12 @@ def _watch_inotify(theme_file: Path, output_file: Path) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Lunaris GTK4 theme generator")
+    parser = argparse.ArgumentParser(description="Arlen GTK4 theme generator")
     parser.add_argument(
         "--theme-file",
         type=Path,
         default=default_theme_path(),
-        help="Path to theme.toml (default: ~/.config/lunaris/theme.toml)",
+        help="Path to theme.toml (default: ~/.config/arlen/theme.toml)",
     )
     parser.add_argument(
         "--output",

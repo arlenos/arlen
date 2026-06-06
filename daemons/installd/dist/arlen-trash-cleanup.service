@@ -1,0 +1,6 @@
+[Unit]
+Description=Arlen trash cleanup (removes expired uninstalled apps)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/busctl --user call org.arlen.InstallDaemon1 /org/arlen/InstallDaemon1 org.arlen.InstallDaemon1 CleanupTrash

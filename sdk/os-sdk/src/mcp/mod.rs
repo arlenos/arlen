@@ -1,11 +1,11 @@
 //! MCP server boilerplate for first-party apps.
 //!
-//! A Lunaris app exposes its capabilities as MCP tools. The tool
+//! A Arlen app exposes its capabilities as MCP tools. The tool
 //! definitions and handlers are written with `rmcp`'s `#[tool]` /
 //! `#[tool_router]` / `#[tool_handler]` macros, which this module
 //! re-exports so an app does not depend on `rmcp` directly. What
 //! this module adds is the socket side: it places the per-app MCP
-//! socket under `$XDG_RUNTIME_DIR/lunaris/mcp/`, binds it with the
+//! socket under `$XDG_RUNTIME_DIR/arlen/mcp/`, binds it with the
 //! right mode, peer-authenticates every connection, and serves a
 //! fresh handler instance on each admitted one.
 //!
@@ -39,19 +39,19 @@
 //! impl ServerHandler for Files {}
 //!
 //! // in the app's async runtime:
-//! serve_mcp("com.lunaris.files", Files::new).await?;
+//! serve_mcp("com.arlen.files", Files::new).await?;
 //! ```
 
 pub use rmcp;
 
 use std::path::{Path, PathBuf};
 
-use lunaris_permissions::ConnectionAuth;
+use arlen_permissions::ConnectionAuth;
 use rmcp::ServiceExt;
 use tokio::net::UnixListener;
 
 /// Resolved `app_id` of the canonically-installed AI daemon, the
-/// sole MCP client in Phase 9. `lunaris-permissions` maps the
+/// sole MCP client in Phase 9. `arlen-permissions` maps the
 /// daemon's install path to this id; see `identity::path_to_app_id`.
 const AI_DAEMON_APP_ID: &str = "ai-daemon";
 
@@ -82,15 +82,15 @@ pub enum McpServeError {
 }
 
 /// Resolve the per-app MCP socket path:
-/// `$XDG_RUNTIME_DIR/lunaris/mcp/{app_id}.sock`, falling back to
-/// `/run/lunaris/mcp/{app_id}.sock` when the runtime dir is unset.
+/// `$XDG_RUNTIME_DIR/arlen/mcp/{app_id}.sock`, falling back to
+/// `/run/arlen/mcp/{app_id}.sock` when the runtime dir is unset.
 pub fn mcp_socket_path(app_id: &str) -> PathBuf {
     mcp_runtime_dir().join(format!("{app_id}.sock"))
 }
 
 /// Resolve the per-*module* MCP socket path:
-/// `$XDG_RUNTIME_DIR/lunaris/mcp/modules/{module_id}.sock`. Tier-1
-/// `mcp.server` modules hosted by `lunaris-modulesd` live one
+/// `$XDG_RUNTIME_DIR/arlen/mcp/modules/{module_id}.sock`. Tier-1
+/// `mcp.server` modules hosted by `arlen-modulesd` live one
 /// directory below first-party app sockets so the two namespaces
 /// can never collide. Both modulesd (which binds the socket) and the
 /// AI daemon (which connects to it) resolve the path through here so
@@ -123,15 +123,15 @@ pub fn is_safe_module_id(module_id: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
 }
 
-/// `$XDG_RUNTIME_DIR/lunaris/mcp/`, falling back to
-/// `/run/lunaris/mcp/` when the runtime dir is unset.
+/// `$XDG_RUNTIME_DIR/arlen/mcp/`, falling back to
+/// `/run/arlen/mcp/` when the runtime dir is unset.
 fn mcp_runtime_dir() -> PathBuf {
     let base = std::env::var("XDG_RUNTIME_DIR")
         .ok()
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/run"));
-    base.join("lunaris").join("mcp")
+    base.join("arlen").join("mcp")
 }
 
 /// Bind the app's MCP socket and serve it. Convenience wrapper over
@@ -284,10 +284,10 @@ mod tests {
 
     #[test]
     fn socket_path_uses_runtime_dir() {
-        // The path joins the per-app sock under lunaris/mcp/.
+        // The path joins the per-app sock under arlen/mcp/.
         let p = mcp_socket_path("com.example.files");
         let s = p.to_string_lossy();
-        assert!(s.ends_with("lunaris/mcp/com.example.files.sock"), "{s}");
+        assert!(s.ends_with("arlen/mcp/com.example.files.sock"), "{s}");
     }
 
     #[test]
@@ -295,14 +295,14 @@ mod tests {
         let s = mcp_module_socket_path("com.example.notes")
             .to_string_lossy()
             .into_owned();
-        assert!(s.ends_with("lunaris/mcp/modules/com.example.notes.sock"), "{s}");
+        assert!(s.ends_with("arlen/mcp/modules/com.example.notes.sock"), "{s}");
     }
 
     #[test]
     fn is_safe_module_id_rejects_path_escapes() {
         // Reverse-domain ids are accepted.
         assert!(is_safe_module_id("com.example.notes"));
-        assert!(is_safe_module_id("org.lunaris.knowledge-mcp"));
+        assert!(is_safe_module_id("org.arlen.knowledge-mcp"));
         // Anything that could escape the modules directory is not.
         assert!(!is_safe_module_id(""));
         assert!(!is_safe_module_id("."));
@@ -345,7 +345,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let dir = std::env::temp_dir()
-            .join(format!("lunaris-mcp-srv-{}-{unique}", std::process::id()));
+            .join(format!("arlen-mcp-srv-{}-{unique}", std::process::id()));
         let socket = dir.join("demo.sock");
 
         let socket_for_task = socket.clone();
@@ -390,7 +390,7 @@ mod tests {
         assert!(!caller_is_admitted(""));
         // Debug builds additionally admit cargo-run `dev.*` ids so a
         // local dev session works; release builds admit none of them.
-        assert_eq!(caller_is_admitted("dev.lunaris-ai-daemon"), cfg!(debug_assertions));
+        assert_eq!(caller_is_admitted("dev.arlen-ai-daemon"), cfg!(debug_assertions));
     }
 
     /// A unique, non-existent socket path under a fresh temp dir.
@@ -400,7 +400,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir()
-            .join(format!("lunaris-mcp-{tag}-{}-{unique}", std::process::id()))
+            .join(format!("arlen-mcp-{tag}-{}-{unique}", std::process::id()))
             .join("demo.sock")
     }
 

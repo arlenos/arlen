@@ -20,7 +20,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path};
 
-use lunaris_ai_core::capability::{ActionDecision, ActionKind, BaselineMode, Capability};
+use arlen_ai_core::capability::{ActionDecision, ActionKind, BaselineMode, Capability};
 
 /// A node in the world state: a labelled entity with string fields,
 /// identified by an opaque id.
@@ -729,7 +729,7 @@ fn apply_effects(effects: &[Effect], b: &Bindings, state: &WorldState) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lunaris_ai_core::capability::{AccessTier, ActionPermissions, Capability};
+    use arlen_ai_core::capability::{AccessTier, ActionPermissions, Capability};
 
     fn bindings(pairs: &[(&str, &str)]) -> Bindings {
         pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
@@ -739,7 +739,7 @@ mod tests {
         EvalContext {
             capability: cap,
             action_id,
-            app_id: "org.lunaris.agent",
+            app_id: "org.arlen.agent",
             action_kind: ActionKind::Ordinary,
             external_trigger: false,
             ceiling: BaselineMode::Supervised,

@@ -11,11 +11,11 @@
 
   import { invoke } from "@tauri-apps/api/core";
   import { Lock, ExternalLink } from "lucide-svelte";
-  import { Page } from "@lunaris/ui-kit/components/ui/page";
-  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
-  import { Group } from "@lunaris/ui-kit/components/ui/group";
-  import { Row } from "@lunaris/ui-kit/components/ui/row";
-  import { Button } from "@lunaris/ui-kit/components/ui/button";
+  import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
+  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
 
   /// xdg-open via the `open_url` Tauri command (Codex Sprint D
   /// review MEDIUM 2 — the prior `window.__TAURI__.opener` path
@@ -56,7 +56,7 @@
           size="sm"
           onclick={() =>
             openUrl(
-              "https://github.com/lunaris-sys/docs/blob/main/architecture/permission-system.md",
+              "https://github.com/arlenos/docs/blob/main/architecture/permission-system.md",
             )}
         >
           <ExternalLink size={14} />

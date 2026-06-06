@@ -2074,7 +2074,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
-name = "lunaris-theme"
+name = "arlen-theme"
 version = "0.1.0"
 dependencies = [
  "dirs 5.0.1",
@@ -2084,10 +2084,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "lunaris-ui-kit"
+name = "arlen-ui-kit"
 version = "0.1.0"
 dependencies = [
- "lunaris-theme",
+ "arlen-theme",
  "serde",
  "serde_json",
  "tauri",

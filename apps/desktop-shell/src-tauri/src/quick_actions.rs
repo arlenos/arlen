@@ -4,7 +4,7 @@
 //! plugin lands here as a `quick_action_run(id)` Tauri call. We do
 //! the actual work (read-modify-write of the relevant state),
 //! re-read the post-state for an honest confirmation, and emit a
-//! `lunaris://toast` event so the main-window's toast pipeline
+//! `arlen://toast` event so the main-window's toast pipeline
 //! shows the user what happened.
 //!
 //! The post-state read is what makes "Toggle DND" honest under
@@ -33,7 +33,7 @@ pub enum ToastKind {
     Error,
 }
 
-const TOAST_EVENT: &str = "lunaris://toast";
+const TOAST_EVENT: &str = "arlen://toast";
 
 fn emit_toast(app: &AppHandle, kind: ToastKind, message: impl Into<String>) {
     let _ = app.emit(
@@ -342,7 +342,7 @@ fn set_theme(app: AppHandle, id: &str) -> Result<String, String> {
 // ── Settings launcher ──────────────────────────────────────────────
 
 fn open_settings(panel: Option<&str>) -> Result<String, String> {
-    let mut cmd = std::process::Command::new("lunaris-settings");
+    let mut cmd = std::process::Command::new("arlen-settings");
     if let Some(panel) = panel {
         cmd.args(["--panel", panel]);
     }
@@ -352,7 +352,7 @@ fn open_settings(panel: Option<&str>) -> Result<String, String> {
         .map_err(|e| {
             // Most-likely cause on dev systems: binary not in PATH
             // (`cargo tauri dev` doesn't install). Surface a hint.
-            format!("could not launch lunaris-settings: {e}")
+            format!("could not launch arlen-settings: {e}")
         })?;
     Ok(match panel {
         Some(p) => format!("Opening Settings: {p}"),

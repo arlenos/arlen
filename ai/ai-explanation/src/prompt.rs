@@ -12,7 +12,7 @@
 //! derived from the system (process names, paths, hosts, anomaly
 //! descriptions) lives inside the tagged block.
 
-use lunaris_ai_core::tagging::{Block, Origin, TaggedPrompt};
+use arlen_ai_core::tagging::{Block, Origin, TaggedPrompt};
 
 use crate::snapshot::SystemSnapshot;
 
@@ -190,7 +190,7 @@ mod tests {
                 FileActivity {
                     path: "/home/u/p/main.rs".into(),
                     app: "nvim".into(),
-                    project: Some("lunaris".into()),
+                    project: Some("arlen".into()),
                 },
                 FileActivity {
                     path: "/tmp/scratch".into(),
@@ -204,7 +204,7 @@ mod tests {
                 within_declared_permissions: true,
             }],
             active_project: Some(ProjectContext {
-                name: "lunaris".into(),
+                name: "arlen".into(),
                 file_count: 42,
             }),
             anomalies: vec![Anomaly {
@@ -258,10 +258,10 @@ mod tests {
     fn busy_snapshot_renders_every_section() {
         let rendered = render_snapshot(&busy_snapshot());
         assert!(rendered.contains("dnf: started ~2 min ago"));
-        assert!(rendered.contains("/home/u/p/main.rs (by nvim, project: lunaris)"));
+        assert!(rendered.contains("/home/u/p/main.rs (by nvim, project: arlen)"));
         assert!(rendered.contains("/tmp/scratch (by bash)"));
         assert!(rendered.contains("mirrors.fedoraproject.org (within declared permissions)"));
-        assert!(rendered.contains("Active project: lunaris (42 files)"));
+        assert!(rendered.contains("Active project: arlen (42 files)"));
         assert!(rendered.contains("[undeclared-network-destination] weatherapp connected"));
     }
 

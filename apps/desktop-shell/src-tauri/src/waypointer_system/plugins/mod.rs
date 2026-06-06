@@ -27,12 +27,12 @@ use super::registry;
 
 /// Register all built-in plugins with the manager.
 ///
-/// Plugins listed in `~/.config/lunaris/modules.toml` under
+/// Plugins listed in `~/.config/arlen/modules.toml` under
 /// `[waypointer] disabled_plugins` are skipped entirely (no trait
 /// methods called, not even `search` — so they don't contribute to
 /// results and don't cost anything at runtime). After registration
 /// the current roster is written to
-/// `~/.local/share/lunaris/waypointer-plugins.toml` so the Settings
+/// `~/.local/share/arlen/waypointer-plugins.toml` so the Settings
 /// app can display it.
 ///
 /// Plugins that need shared state receive cloned Arc references.

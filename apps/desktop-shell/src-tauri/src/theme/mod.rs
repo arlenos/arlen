@@ -1,4 +1,4 @@
-/// Theme system for Lunaris.
+/// Theme system for Arlen.
 ///
 /// `schema` defines the full token hierarchy. `loader` handles resolution
 /// from built-in TOML files, user overrides, and accessibility settings.
@@ -7,7 +7,7 @@
 ///
 /// The legacy `SurfaceTokens` / `load_tokens` / `start_watcher` API was
 /// removed -- all theme data flows through `ThemeState` + `CssVariables`
-/// now. The single event is `lunaris://theme-v2-changed`.
+/// now. The single event is `arlen://theme-v2-changed`.
 
 pub mod commands;
 pub mod css;

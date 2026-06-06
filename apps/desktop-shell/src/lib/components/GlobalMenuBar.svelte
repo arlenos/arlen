@@ -5,7 +5,7 @@
   import {
     Root, Trigger, Content, Item, Separator, CheckboxItem, Shortcut,
     Sub, SubTrigger, SubContent,
-  } from "@lunaris/ui-kit/components/ui/dropdown-menu/index.js";
+  } from "@arlen/ui-kit/components/ui/dropdown-menu/index.js";
   import { getContext } from "svelte";
   import type { Readable } from "svelte/store";
   const shellColors =
@@ -69,7 +69,7 @@
 <div class="menubar">
   {#if visibleWindowExists}
     <span class="menubar-appname">
-      {$activeAppName || "Lunaris"}
+      {$activeAppName || "Arlen"}
       {#if $focusedBadge}
         {@const b = $focusedBadge as BadgeRender}
         <span

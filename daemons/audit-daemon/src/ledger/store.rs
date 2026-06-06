@@ -568,7 +568,7 @@ mod tests {
 
     fn structural(outcome: &str) -> StructuralRecord {
         StructuralRecord {
-            subject: "com.lunaris.files".into(),
+            subject: "com.arlen.files".into(),
             node_types: vec!["File".into()],
             relations: vec![],
             result_count: Some(3),

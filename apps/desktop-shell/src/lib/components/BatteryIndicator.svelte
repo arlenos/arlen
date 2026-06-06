@@ -18,7 +18,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { togglePopover, hoverPopover, activePopover } from "$lib/stores/activePopover.js";
-  import { Applet, type AppletState } from "@lunaris/ui-kit/components/topbar";
+  import { Applet, type AppletState } from "@arlen/ui-kit/components/topbar";
   import {
     BatteryCharging,
     BatteryFull,

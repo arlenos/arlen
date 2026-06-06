@@ -1,8 +1,8 @@
 [package]
-name = "lunaris-ai-core"
+name = "arlen-ai-core"
 version = "0.1.0"
 edition = "2021"
-description = "Shared library for the Lunaris AI layer. Defines the AIProvider trait, routing engine, MCP client wrapper, audit log producer, capability gate, content-origin tagging, and the two-step Cypher pipeline."
+description = "Shared library for the Arlen AI layer. Defines the AIProvider trait, routing engine, MCP client wrapper, audit log producer, capability gate, content-origin tagging, and the two-step Cypher pipeline."
 
 [lib]
 path = "src/lib.rs"

@@ -16,7 +16,7 @@
     hoverPopover,
   } from "$lib/stores/activePopover.js";
   import { unreadCount } from "$lib/stores/notifications.js";
-  import { Applet, AppletBadge } from "@lunaris/ui-kit/components/topbar";
+  import { Applet, AppletBadge } from "@arlen/ui-kit/components/topbar";
   import { Bell, BellRing } from "lucide-svelte";
 
   const hasUnread = $derived($unreadCount > 0);

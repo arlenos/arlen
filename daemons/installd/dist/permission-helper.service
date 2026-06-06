@@ -1,17 +1,17 @@
 [Unit]
-Description=Lunaris Permission Helper
-Documentation=https://github.com/lunaris-sys/installd
+Description=Arlen Permission Helper
+Documentation=https://github.com/arlenos/installd
 
 [Service]
 Type=dbus
-BusName=org.lunaris.PermissionHelper1
-ExecStart=/usr/lib/lunaris/permission-helper
+BusName=org.arlen.PermissionHelper1
+ExecStart=/usr/lib/arlen/permission-helper
 User=root
 
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/lunaris/permissions
+ReadWritePaths=/var/lib/arlen/permissions
 ProtectHome=true
 PrivateTmp=true
 

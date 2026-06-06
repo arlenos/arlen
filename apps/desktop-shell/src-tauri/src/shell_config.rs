@@ -1,4 +1,4 @@
-/// Shell state persistence via `~/.config/lunaris/shell.toml`.
+/// Shell state persistence via `~/.config/arlen/shell.toml`.
 ///
 /// Stores Quick Settings state (night light, brightness, layout mode) so they
 /// survive across reboots.
@@ -116,7 +116,7 @@ pub struct NightLightConfig {
 }
 
 /// Schedule mode mirrored from the compositor's
-/// `lunaris-shell-overlay::night_light_schedule` enum. Kept as a
+/// `arlen-shell-overlay::night_light_schedule` enum. Kept as a
 /// string in TOML so the file is readable; the dispatcher converts
 /// to the protocol uint at the boundary.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -135,7 +135,7 @@ impl Default for NightLightSchedule {
 
 impl NightLightSchedule {
     /// Encode to the wire-protocol uint. Mirrors the
-    /// `night_light_schedule` enum in `lunaris-shell-overlay.xml`.
+    /// `night_light_schedule` enum in `arlen-shell-overlay.xml`.
     pub fn to_protocol(self) -> u32 {
         match self {
             NightLightSchedule::Manual => 0,
@@ -215,7 +215,7 @@ impl Default for LayoutConfig {
 fn config_path() -> PathBuf {
     let config_dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris");
+        .join("arlen");
     let _ = fs::create_dir_all(&config_dir);
     config_dir.join("shell.toml")
 }
@@ -290,8 +290,8 @@ fn write_atomic(cfg: &ShellConfig) -> Result<(), String> {
     fs::rename(&tmp, &path).map_err(|e| format!("rename: {e}"))
 }
 
-/// Watch `~/.config/lunaris/shell.toml` for external writes (e.g. from
-/// the Settings app) and emit a `lunaris://shell-config-changed` Tauri
+/// Watch `~/.config/arlen/shell.toml` for external writes (e.g. from
+/// the Settings app) and emit a `arlen://shell-config-changed` Tauri
 /// event so the frontend can re-read its config and re-render.
 ///
 /// Same notify+debounce pattern as `theme::commands::start_appearance_watcher`.
@@ -339,7 +339,7 @@ pub fn start_shell_config_watcher(app: tauri::AppHandle) {
                     *lf = Instant::now();
                 }
                 std::thread::sleep(Duration::from_millis(30));
-                let _ = app_clone.emit("lunaris://shell-config-changed", ());
+                let _ = app_clone.emit("arlen://shell-config-changed", ());
                 // Cross-app night-light flow: app-settings writes
                 // shell.toml's [night_light] section directly (it
                 // can't reach desktop-shell's Tauri commands across

@@ -4,8 +4,8 @@
 
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
-  import { Separator } from "@lunaris/ui-kit/components/ui/separator/index.js";
-  import * as ContextMenu from "@lunaris/ui-kit/components/ui/context-menu/index.js";
+  import { Separator } from "@arlen/ui-kit/components/ui/separator/index.js";
+  import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu/index.js";
   import {
     Wifi, WifiOff, Cable, Plane, Lock, Check, RefreshCw,
     ChevronRight, Shield, Trash2, Copy, Info,
@@ -335,7 +335,7 @@
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     box-shadow: var(--shadow-lg); color: var(--color-fg-shell);
     display: flex; flex-direction: column;
-    animation: lunaris-popover-in var(--duration-medium) var(--ease-out) both;
+    animation: arlen-popover-in var(--duration-medium) var(--ease-out) both;
     transform-origin: top center;
   }
   .pop-network { right: 110px; width: 280px; }

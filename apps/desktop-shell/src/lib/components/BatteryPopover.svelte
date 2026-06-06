@@ -3,7 +3,7 @@
 
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
-  import { Separator } from "@lunaris/ui-kit/components/ui/separator/index.js";
+  import { Separator } from "@arlen/ui-kit/components/ui/separator/index.js";
   import { Zap, Battery, Leaf, Scale } from "lucide-svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
 
@@ -111,7 +111,7 @@
     box-shadow: var(--shadow-lg);
     color: var(--color-fg-shell); padding: 12px;
     display: flex; flex-direction: column; gap: 8px;
-    animation: lunaris-popover-in var(--duration-medium) var(--ease-out) both;
+    animation: arlen-popover-in var(--duration-medium) var(--ease-out) both;
     transform-origin: top center;
   }
   .pop-battery { right: 50px; width: 240px; padding: 0; }

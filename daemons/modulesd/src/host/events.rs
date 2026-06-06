@@ -1,4 +1,4 @@
-/// `lunaris:host/events` import implementation.
+/// `arlen:host/events` import implementation.
 ///
 /// Modules call `events::emit(event_type, payload)` to send events to
 /// the system Event Bus. The host gates by event-type prefix
@@ -32,7 +32,7 @@ pub fn check_subscribe(ctx: &CapabilityContext, event_type: &str) -> Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lunaris_modules::{EventBusCapability, ModuleCapabilities};
+    use arlen_modules::{EventBusCapability, ModuleCapabilities};
 
     fn ctx(publish: Vec<&str>, subscribe: Vec<&str>) -> CapabilityContext {
         let mut caps = ModuleCapabilities::default();

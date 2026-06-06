@@ -1,4 +1,4 @@
-/// forage - Lunaris OS package manager CLI.
+/// forage - Arlen OS package manager CLI.
 ///
 /// See `docs/architecture/module-system.md` and
 /// `docs/architecture/distro-package-management.md`.
@@ -62,7 +62,7 @@ async fn cmd_install(target: String) {
             eprintln!("{} {e}", "error:".red().bold());
             eprintln!(
                 "{}",
-                "is lunaris-installd running? (systemctl --user start installd)"
+                "is arlen-installd running? (systemctl --user start installd)"
                     .dimmed()
             );
             std::process::exit(1);

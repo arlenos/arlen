@@ -8,7 +8,7 @@
 //! Document Portal integration for sandboxed callers (FA8) is not
 //! yet wired here — that lands as a follow-up when the picker UI
 //! returns real paths instead of placeholder paths. For unconfined
-//! callers and Lunaris-native apps the raw `file://` URIs in the
+//! callers and Arlen-native apps the raw `file://` URIs in the
 //! response are correct as-is.
 //!
 //! Spec:
@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use zbus::interface;
 use zbus::zvariant::{ObjectPath, OwnedValue, Value};
-use xdg_portal_lunaris_protocol::{FileFilter, PickerRequest, PickerResponse};
+use xdg_portal_arlen_protocol::{FileFilter, PickerRequest, PickerResponse};
 
 use crate::document_portal;
 use crate::interfaces::options;
@@ -297,7 +297,7 @@ fn success_results(
 fn error_results(message: &str) -> HashMap<String, OwnedValue> {
     let mut map = HashMap::new();
     if let Ok(owned) = Value::new(message.to_string()).try_to_owned() {
-        map.insert("lunaris-error".to_string(), owned);
+        map.insert("arlen-error".to_string(), owned);
     }
     map
 }

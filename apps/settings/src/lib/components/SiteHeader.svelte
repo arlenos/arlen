@@ -5,8 +5,8 @@
   /// `startDragging()` rather than `data-tauri-drag-region`, because
   /// the attribute-based path is unreliable on Wayland in Tauri v2.
   import { breadcrumbs } from "$lib/stores/navigation";
-  import { SidebarTrigger } from "@lunaris/ui-kit/components/ui/sidebar";
-  import { Separator } from "@lunaris/ui-kit/components/ui/separator";
+  import { SidebarTrigger } from "@arlen/ui-kit/components/ui/sidebar";
+  import { Separator } from "@arlen/ui-kit/components/ui/separator";
   import WindowControls from "./WindowControls.svelte";
   import { ChevronRight } from "lucide-svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -29,10 +29,10 @@
   }
 </script>
 
-<!-- Right-click on the titlebar is currently a no-op. The Lunaris
+<!-- Right-click on the titlebar is currently a no-op. The Arlen
      compositor owns the canonical window menu for native Wayland
      toplevels; ultimately the titlebar plugin should request it via a
-     new `show_window_menu` message on `lunaris-titlebar-v1`, so CSD
+     new `show_window_menu` message on `arlen-titlebar-v1`, so CSD
      apps get the exact same menu (Move to Workspace submenu included)
      rather than a divergent copy. Until that lands, no menu on
      right-click is better than two different ones. -->

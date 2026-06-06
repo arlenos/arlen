@@ -27,13 +27,13 @@ the event and find related files, notes, and past meetings in the
 Knowledge Graph; assemble a compact prep suggestion.
 
 Security note (validated in the dry-run): the event's title/description is
-**external content** — anyone can send a calendar invite, so it is a prompt-
+**external content** - anyone can send a calendar invite, so it is a prompt-
 injection vector. It enters tagged as `EXTERNAL-CONTENT` (S18-A), is
-screened by the S17 classifier, and — because this behaviour is Suggest-
-only — it can never act on injected instructions; any future variant that
+screened by the S17 classifier, and - because this behaviour is Suggest-
+only - it can never act on injected instructions; any future variant that
 could act would hit the hardcoded external-content confirmation rule.
 
-Surfacing: `nothing_relevant_found` is `silent` (the P3 value floor — do not
+Surfacing: `nothing_relevant_found` is `silent` (the P3 value floor - do not
 announce having found nothing); a real result pushes, subject to timing and
 an expiry (a meeting-prep suggestion is worthless once the meeting starts,
 gap F10). Needs `project`-scoped read; if the global read level is lower

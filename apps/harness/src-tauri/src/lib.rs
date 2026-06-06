@@ -1,4 +1,4 @@
-//! Lunaris AI harness app backend.
+//! Arlen AI harness app backend.
 //!
 //! Tauri entry point for the GUI door to the AI layer (conversation +
 //! agent observability). A1 is the skeleton: a runnable window and the
@@ -35,5 +35,5 @@ pub fn run() {
             capability::ai_capability
         ])
         .run(tauri::generate_context!())
-        .expect("error while running lunaris-harness");
+        .expect("error while running arlen-harness");
 }

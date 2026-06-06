@@ -1,9 +1,9 @@
 /// Waypointer plugin registry.
 ///
-/// Written by the shell at startup to `~/.local/share/lunaris/waypointer-plugins.toml`
+/// Written by the shell at startup to `~/.local/share/arlen/waypointer-plugins.toml`
 /// so the Settings app can list built-in plugins in its Extensions
 /// panel without needing cross-process Tauri IPC. The user's disabled
-/// list lives in `~/.config/lunaris/modules.toml` under `[waypointer]`,
+/// list lives in `~/.config/arlen/modules.toml` under `[waypointer]`,
 /// shared between the shell (filters at startup) and Settings (toggles
 /// on click).
 
@@ -24,7 +24,7 @@ pub fn registry_path() -> PathBuf {
     }
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris/waypointer-plugins.toml")
+        .join("arlen/waypointer-plugins.toml")
 }
 
 /// The shared modules config. We read `[waypointer].disabled_plugins`
@@ -36,7 +36,7 @@ pub fn modules_config_path() -> PathBuf {
     }
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris/modules.toml")
+        .join("arlen/modules.toml")
 }
 
 // ── Registry file schema ────────────────────────────────────────────────

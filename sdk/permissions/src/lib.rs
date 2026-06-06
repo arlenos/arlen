@@ -1,4 +1,4 @@
-/// Permission profile types for Lunaris OS.
+/// Permission profile types for Arlen OS.
 ///
 /// Each app has a TOML profile at `~/.config/permissions/{app_id}.toml`
 /// defining what it can access: Knowledge Graph, Event Bus, filesystem,
@@ -54,9 +54,9 @@ pub enum AppTier {
 /// Detect tier from the executable path.
 pub fn detect_tier(exe_path: &Path) -> AppTier {
     let s = exe_path.to_string_lossy();
-    if s.starts_with("/usr/lib/lunaris/") || s.starts_with("/usr/bin/lunaris-") {
+    if s.starts_with("/usr/lib/arlen/") || s.starts_with("/usr/bin/arlen-") {
         AppTier::System
-    } else if s.contains("/lunaris/first-party/") || s.starts_with("/usr/lib/lunaris-first-party/") {
+    } else if s.contains("/arlen/first-party/") || s.starts_with("/usr/lib/arlen-first-party/") {
         AppTier::FirstParty
     } else {
         AppTier::ThirdParty
@@ -341,7 +341,7 @@ pub struct IntentsPermissions {
 /// Input subsystem permissions. Module manifests request these via
 /// `[permissions].input = [...]`; the install daemon copies the
 /// matching flags into the runtime profile stored under
-/// `/var/lib/lunaris/permissions/`.
+/// `/var/lib/arlen/permissions/`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InputPermissions {
     /// Register keybindings that fire only while the module's own
@@ -607,11 +607,11 @@ always_confirm_overrides = ["empty_trash"]
     #[test]
     fn test_detect_tier_system() {
         assert_eq!(
-            detect_tier(Path::new("/usr/lib/lunaris/apps/system-monitor/bin/sm")),
+            detect_tier(Path::new("/usr/lib/arlen/apps/system-monitor/bin/sm")),
             AppTier::System
         );
         assert_eq!(
-            detect_tier(Path::new("/usr/bin/lunaris-graph-daemon")),
+            detect_tier(Path::new("/usr/bin/arlen-graph-daemon")),
             AppTier::System
         );
     }

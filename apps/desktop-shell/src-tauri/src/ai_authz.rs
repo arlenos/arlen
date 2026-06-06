@@ -2,7 +2,7 @@
 //!
 //! When the AI daemon needs the user to authorize an MCP action
 //! scope it emits an `AuthorizationPrompt` signal on
-//! `org.lunaris.AI1`. This module listens for that signal, relays it
+//! `org.arlen.AI1`. This module listens for that signal, relays it
 //! to the shell UI as a Tauri event, and relays the user's decision
 //! back to the daemon through the `respond_authorization` method.
 //!
@@ -18,9 +18,9 @@ use tauri::{AppHandle, Emitter};
 use zbus::Connection;
 
 /// AI daemon bus name.
-const AI_BUS_NAME: &str = "org.lunaris.AI1";
+const AI_BUS_NAME: &str = "org.arlen.AI1";
 /// AI daemon object path.
-const AI_OBJECT_PATH: &str = "/org/lunaris/AI1";
+const AI_OBJECT_PATH: &str = "/org/arlen/AI1";
 
 /// Reconnect backoff floor after a listener cycle ends.
 const RECONNECT_MIN: Duration = Duration::from_secs(1);

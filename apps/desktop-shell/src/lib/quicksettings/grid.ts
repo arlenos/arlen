@@ -9,7 +9,7 @@
 import { lookupTile, SYSTEM_TILES, type TileRegistration } from "./registry";
 
 /// Wire-side size enum produced by Rust serde (`TileSize` in
-/// `lunaris-modules`). One of `"one_by_one"`, `"two_by_one"`,
+/// `arlen-modules`). One of `"one_by_one"`, `"two_by_one"`,
 /// `"two_by_two"`.
 export type WireSize = "one_by_one" | "two_by_one" | "two_by_two";
 

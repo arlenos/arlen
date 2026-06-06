@@ -18,7 +18,7 @@
 
   import type { Snippet } from "svelte";
   import { X, Plus } from "lucide-svelte";
-  import { Button } from "@lunaris/ui-kit/components/ui/button";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
 
   let {
     items,

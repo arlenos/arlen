@@ -1,4 +1,4 @@
-/// Async client to `lunaris-modulesd`.
+/// Async client to `arlen-modulesd`.
 ///
 /// Speaks the JSON-over-UnixSocket protocol defined in
 /// `modulesd-proto`. Multiple in-flight requests are correlated by
@@ -66,7 +66,7 @@ impl ModulesdClient {
             return PathBuf::from(p);
         }
         let uid = unsafe { libc::getuid() };
-        PathBuf::from(format!("/run/user/{uid}/lunaris/modulesd.sock"))
+        PathBuf::from(format!("/run/user/{uid}/arlen/modulesd.sock"))
     }
 
     /// Subscribe to lifecycle events. Each call returns a fresh

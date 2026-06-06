@@ -185,7 +185,7 @@ fn run_watcher<T, F>(
 
 fn tracing_or_eprintln(msg: &str) {
     // If tracing is available, use it; otherwise fall back to stderr.
-    eprintln!("[lunaris-config] {msg}");
+    eprintln!("[arlen-config] {msg}");
 }
 
 // ---------------------------------------------------------------------------

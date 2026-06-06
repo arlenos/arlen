@@ -6,7 +6,7 @@
   ///
   /// `available_when = "bluetooth-adapter"`: the orchestrator hides
   /// the tile entirely when no BlueZ adapter exists.
-  import { BaseTile } from "@lunaris/ui-kit/components/quicksettings";
+  import { BaseTile } from "@arlen/ui-kit/components/quicksettings";
   import { Bluetooth, BluetoothOff } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -35,7 +35,7 @@
   onMount(() => {
     refresh();
     let stop: UnlistenFn | null = null;
-    listen("lunaris://bluetooth-changed", refresh).then((u) => (stop = u));
+    listen("arlen://bluetooth-changed", refresh).then((u) => (stop = u));
     return () => stop?.();
   });
 

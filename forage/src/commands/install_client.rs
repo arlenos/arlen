@@ -1,4 +1,4 @@
-/// D-Bus client for org.lunaris.InstallDaemon1.
+/// D-Bus client for org.arlen.InstallDaemon1.
 ///
 /// Connects to the session bus, calls methods, and subscribes to
 /// progress signals for the terminal UI.
@@ -7,9 +7,9 @@ use colored::Colorize;
 use futures_util::StreamExt;
 use zbus::Connection;
 
-const BUS_NAME: &str = "org.lunaris.InstallDaemon1";
-const OBJECT_PATH: &str = "/org/lunaris/InstallDaemon1";
-const INTERFACE: &str = "org.lunaris.InstallDaemon1";
+const BUS_NAME: &str = "org.arlen.InstallDaemon1";
+const OBJECT_PATH: &str = "/org/arlen/InstallDaemon1";
+const INTERFACE: &str = "org.arlen.InstallDaemon1";
 
 /// Connect to the install daemon on the session bus.
 pub async fn connect() -> Result<Connection, String> {
@@ -285,14 +285,14 @@ pub async fn which_app(app_id: &str) -> Result<(), String> {
     // Check user apps.
     let user_dir = dirs::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("~/.local/share"))
-        .join(format!("lunaris/apps/{app_id}"));
+        .join(format!("arlen/apps/{app_id}"));
     if user_dir.exists() {
         println!("{}", user_dir.display());
         return Ok(());
     }
 
     // Check system apps.
-    let sys_dir = std::path::PathBuf::from(format!("/usr/lib/lunaris/apps/{app_id}"));
+    let sys_dir = std::path::PathBuf::from(format!("/usr/lib/arlen/apps/{app_id}"));
     if sys_dir.exists() {
         println!("{}", sys_dir.display());
         return Ok(());
@@ -317,7 +317,7 @@ pub async fn which_app(app_id: &str) -> Result<(), String> {
 pub async fn info_app(app_id: &str) -> Result<(), String> {
     let user_dir = dirs::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("~/.local/share"))
-        .join(format!("lunaris/apps/{app_id}"));
+        .join(format!("arlen/apps/{app_id}"));
 
     let manifest_path = user_dir.join("manifest.toml");
     if manifest_path.exists() {

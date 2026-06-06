@@ -1,5 +1,5 @@
 <script lang="ts">
-  /// Lunaris fill-bar slider.
+  /// Arlen fill-bar slider.
   ///
   /// 24px-tall rounded rectangle. The accent-tinted fill anchored at
   /// the left represents the value; there is no thumb circle. Reads

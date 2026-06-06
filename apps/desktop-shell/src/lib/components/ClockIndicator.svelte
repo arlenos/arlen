@@ -7,7 +7,7 @@
   /// Updates every minute, synced to the minute boundary to avoid
   /// drift.
 
-  import { Applet } from "@lunaris/ui-kit/components/topbar";
+  import { Applet } from "@arlen/ui-kit/components/topbar";
 
   let time = $state("");
   let weekday = $state("");

@@ -42,8 +42,8 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use lunaris_ai_core::audit::{behaviour_action_event, AuditSink};
-use lunaris_ai_core::capability::{ActionDecision, BaselineMode, Capability};
+use arlen_ai_core::audit::{behaviour_action_event, AuditSink};
+use arlen_ai_core::capability::{ActionDecision, BaselineMode, Capability};
 
 use crate::gate::{resolved_action_kind, ActionContext, ProposedAction};
 use crate::registry::{self, TrustedActionSchema};
@@ -1162,7 +1162,7 @@ mod tests {
     use crate::seams::GraphError;
     use crate::slice::{SliceError, StaticMountPolicy};
     use audit_proto::MockAuditSink;
-    use lunaris_ai_core::capability::{AccessTier, ActionPermissions};
+    use arlen_ai_core::capability::{AccessTier, ActionPermissions};
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -1230,7 +1230,7 @@ mod tests {
     fn executing_cap() -> Capability {
         Capability::new(
             AccessTier::Full,
-            ActionPermissions::new(BaselineMode::Suggest, ["org.lunaris.files"]),
+            ActionPermissions::new(BaselineMode::Suggest, ["org.arlen.files"]),
         )
     }
 
@@ -1256,7 +1256,7 @@ mod tests {
     /// The trusted per-call context the dispatcher supplies (never the proposal).
     fn ctx() -> ActionContext<'static> {
         ActionContext {
-            app_id: "org.lunaris.files",
+            app_id: "org.arlen.files",
             external_trigger: false,
             correlation_id: "run-x",
         }

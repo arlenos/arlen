@@ -1,4 +1,4 @@
-//! `lunaris-ai-agent` daemon entry point.
+//! `arlen-ai-agent` daemon entry point.
 //!
 //! Wires the library into a running daemon. The daemon does nothing, and
 //! exits, unless at least one behaviour is enabled (Foundation §5.5).
@@ -21,33 +21,33 @@ use std::time::Duration;
 
 use tokio::sync::watch;
 
-use lunaris_ai_agent::behaviour::{BehaviourKind, ReadScope};
-use lunaris_ai_agent::config::{AgentConfig, ProviderSettings};
-use lunaris_ai_agent::engine::{
+use arlen_ai_agent::behaviour::{BehaviourKind, ReadScope};
+use arlen_ai_agent::config::{AgentConfig, ProviderSettings};
+use arlen_ai_agent::engine::{
     reads_satisfied, DispatchOutcome, Dispatcher, ExecutionResult, ScreeningMode,
 };
-use lunaris_ai_agent::gate::Gate;
-use lunaris_ai_agent::slice::{FsPathResolver, ProcMountsPolicy};
-use lunaris_ai_agent::executor::LiveExecutor;
-use lunaris_ai_agent::graph::{UnixGraph, UnixRelationWriter, DEFAULT_GRAPH_SOCKET};
-use lunaris_ai_agent::handlers::builtin_handlers;
-use lunaris_ai_agent::loader::{load, BehaviourSource};
-use lunaris_ai_agent::seams::{AgentEvent, NullObserver, SystemClock, TriggerSource};
-use lunaris_ai_agent::source::{subscription_types, EventBusSource, DEFAULT_CONSUMER_SOCKET};
+use arlen_ai_agent::gate::Gate;
+use arlen_ai_agent::slice::{FsPathResolver, ProcMountsPolicy};
+use arlen_ai_agent::executor::LiveExecutor;
+use arlen_ai_agent::graph::{UnixGraph, UnixRelationWriter, DEFAULT_GRAPH_SOCKET};
+use arlen_ai_agent::handlers::builtin_handlers;
+use arlen_ai_agent::loader::{load, BehaviourSource};
+use arlen_ai_agent::seams::{AgentEvent, NullObserver, SystemClock, TriggerSource};
+use arlen_ai_agent::source::{subscription_types, EventBusSource, DEFAULT_CONSUMER_SOCKET};
 use std::sync::Arc;
 
-use lunaris_ai_classifier::{ClassifierPolicy, InjectionClassifier};
-use lunaris_ai_core::audit::LedgerAuditSink;
-use lunaris_ai_core::capability::{AccessTier, Capability};
-use lunaris_ai_core::provider::AIProvider;
-use lunaris_ai_providers::proxied::{ProxiedConfig, ProxiedProvider};
+use arlen_ai_classifier::{ClassifierPolicy, InjectionClassifier};
+use arlen_ai_core::audit::LedgerAuditSink;
+use arlen_ai_core::capability::{AccessTier, Capability};
+use arlen_ai_core::provider::AIProvider;
+use arlen_ai_providers::proxied::{ProxiedConfig, ProxiedProvider};
 use os_sdk::config::{Config, ConfigWatcher};
 use zbus::Connection;
 
 /// The well-known D-Bus name the agent owns so `ai-proxy` peer-authorises its
 /// completion forwards (Foundation §8.4.6: outbound LLM traffic transits the
 /// proxy, which checks the caller owns this name).
-const AGENT_BUS_NAME: &str = "org.lunaris.AIAgent1";
+const AGENT_BUS_NAME: &str = "org.arlen.AIAgent1";
 
 /// Backoff bounds for the initial Event Bus subscription retry.
 const SUBSCRIBE_BACKOFF_INITIAL: Duration = Duration::from_millis(500);
@@ -163,7 +163,7 @@ enum ClassifierProvision {
     // The config is read only in the `onnx` build (to load the model); the
     // default build matches the variant for the fail-closed decision but never
     // reads it.
-    Configured(#[cfg_attr(not(feature = "onnx"), allow(dead_code))] lunaris_ai_classifier::ClassifierConfig),
+    Configured(#[cfg_attr(not(feature = "onnx"), allow(dead_code))] arlen_ai_classifier::ClassifierConfig),
     Invalid,
     Absent,
 }
@@ -173,7 +173,7 @@ enum ClassifierProvision {
 /// parse error rather than a silently-ignored default, so a broken classifier
 /// config fails closed instead of quietly running a weaker screen.
 fn parse_classifier_config(ai_text: &str) -> ClassifierProvision {
-    use lunaris_ai_classifier::ClassifierConfig;
+    use arlen_ai_classifier::ClassifierConfig;
 
     // `benign_label_index` is deliberately NOT a config field. The ONNX scorer
     // computes injection probability as `1 - softmax[benign_index]`, so a wrong
@@ -264,7 +264,7 @@ fn parse_classifier_config(ai_text: &str) -> ClassifierProvision {
 /// screening mode from another (a config-race fail-open).
 #[cfg(feature = "onnx")]
 fn build_screening(ai_text: &str) -> ProvisionedScreening {
-    use lunaris_ai_classifier::onnx::OnnxClassifier;
+    use arlen_ai_classifier::onnx::OnnxClassifier;
 
     let config = match parse_classifier_config(ai_text) {
         ClassifierProvision::Absent => return ProvisionedScreening::NotConfigured,
@@ -456,7 +456,7 @@ fn agent_needs_provider(
 /// Grouped so [`run`]'s signature stays small as the set grows; all fields are
 /// cheap shared references, so the struct is passed by value.
 struct Collaborators<'a> {
-    handlers: &'a lunaris_ai_agent::engine::HandlerRegistry,
+    handlers: &'a arlen_ai_agent::engine::HandlerRegistry,
     audit: &'a LedgerAuditSink,
     observer: &'a NullObserver,
     graph: &'a UnixGraph,
@@ -1034,16 +1034,16 @@ fn ai_config_path() -> PathBuf {
         return PathBuf::from(path);
     }
     let home = std::env::var("HOME").unwrap_or_default();
-    PathBuf::from(home).join(".config/lunaris/ai.toml")
+    PathBuf::from(home).join(".config/arlen/ai.toml")
 }
 
 /// The behaviour source directories: the system (built-in) directory and the
 /// user directory.
 fn behaviour_sources() -> Vec<BehaviourSource> {
-    let mut sources = vec![BehaviourSource::builtin("/usr/share/lunaris/agent/behaviours")];
+    let mut sources = vec![BehaviourSource::builtin("/usr/share/arlen/agent/behaviours")];
     if let Ok(home) = std::env::var("HOME") {
         sources.push(BehaviourSource::user(format!(
-            "{home}/.local/share/lunaris/agent/behaviours"
+            "{home}/.local/share/arlen/agent/behaviours"
         )));
     }
     // Dev-only: stand in for the not-yet-installed system directory when

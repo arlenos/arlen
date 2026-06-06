@@ -66,7 +66,7 @@ impl SnapperIntegration {
             "--description".into(),
             description.into(),
             "--userdata".into(),
-            format!("lunaris-backup={}", Utc::now().to_rfc3339()),
+            format!("arlen-backup={}", Utc::now().to_rfc3339()),
             "--print-number".into(),
         ]
     }
@@ -120,7 +120,7 @@ mod tests {
         assert!(cmd.contains(&"home".to_string()));
         assert!(cmd.contains(&"create".to_string()));
         assert!(cmd.contains(&"daily backup".to_string()));
-        assert!(cmd.iter().any(|s| s.starts_with("lunaris-backup=")));
+        assert!(cmd.iter().any(|s| s.starts_with("arlen-backup=")));
     }
 
     #[test]

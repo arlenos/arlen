@@ -83,10 +83,10 @@ pub struct QuotaConfig {
 }
 
 impl QuotaConfig {
-    /// Load from TOML file (returns the Lunaris default if missing).
+    /// Load from TOML file (returns the Arlen default if missing).
     pub fn load(path: &Path) -> Result<Self, std::io::Error> {
         if !path.exists() {
-            return Ok(Self::lunaris_default());
+            return Ok(Self::arlen_default());
         }
         let content = std::fs::read_to_string(path)?;
         toml::from_str(&content)
@@ -97,7 +97,7 @@ impl QuotaConfig {
     /// `graph.toml` quota section is present.
     ///
     /// The canonical identity resolver yields bare ids for system
-    /// binaries (`ai-daemon`, `ai-agent`) rather than `org.lunaris.*`,
+    /// binaries (`ai-daemon`, `ai-agent`) rather than `org.arlen.*`,
     /// so they must be named here to receive the AI layer's higher
     /// (FirstParty, 1000 qps) limit — foundation §8.4: "the AI daemon
     /// has a higher sustained limit." Without this they would fall to
@@ -106,7 +106,7 @@ impl QuotaConfig {
     /// user-installed lookalike of the same id) shares the F3 identity
     /// gap's future fix (the installd inode registry); a `graph.toml`
     /// may extend `first_party_apps` for other first-party apps.
-    pub fn lunaris_default() -> Self {
+    pub fn arlen_default() -> Self {
         Self {
             first_party_apps: vec!["ai-daemon".to_string(), "ai-agent".to_string()],
             overrides: HashMap::new(),
@@ -118,7 +118,7 @@ impl QuotaConfig {
         if app_id == "system" || app_id.starts_with("system.") {
             AppTier::System
         } else if self.first_party_apps.contains(&app_id.to_string())
-            || app_id.starts_with("org.lunaris.")
+            || app_id.starts_with("org.arlen.")
         {
             AppTier::FirstParty
         } else {
@@ -145,7 +145,7 @@ mod tests {
 
     fn config() -> QuotaConfig {
         QuotaConfig {
-            first_party_apps: vec!["org.lunaris.contacts".into(), "com.partner".into()],
+            first_party_apps: vec!["org.arlen.contacts".into(), "com.partner".into()],
             overrides: HashMap::new(),
         }
     }
@@ -160,8 +160,8 @@ mod tests {
     #[test]
     fn test_tier_first_party() {
         let c = config();
-        assert_eq!(c.tier_for_app("org.lunaris.contacts"), AppTier::FirstParty);
-        assert_eq!(c.tier_for_app("org.lunaris.calendar"), AppTier::FirstParty);
+        assert_eq!(c.tier_for_app("org.arlen.contacts"), AppTier::FirstParty);
+        assert_eq!(c.tier_for_app("org.arlen.calendar"), AppTier::FirstParty);
         assert_eq!(c.tier_for_app("com.partner"), AppTier::FirstParty);
     }
 

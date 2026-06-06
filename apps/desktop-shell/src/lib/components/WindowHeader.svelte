@@ -160,7 +160,7 @@
            workspace-map=120, context-menu=300, drag-ghost=10001,
            toast=sonner-default). A Kitty-style ServerSide app can
            span the whole width of the screen, and at z=7000 its
-           Lunaris header used to paint over shell popovers that
+           Arlen header used to paint over shell popovers that
            intersected its geometry — which looked, from the user's
            perspective, like the bar itself was in front of the
            popover. 50 keeps SSD headers visible normally and makes
@@ -294,7 +294,7 @@
         /*
           Micro-duration transforms + fast background/color fades.
           Matches the feel of .control-btn in WindowControls.svelte
-          so native Lunaris windows and compositor-decorated windows
+          so native Arlen windows and compositor-decorated windows
           present identical interaction feedback. Baseline
           `scale(1)` primes the GPU layer.
         */

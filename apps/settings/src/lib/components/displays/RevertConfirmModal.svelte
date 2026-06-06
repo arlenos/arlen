@@ -19,7 +19,7 @@
     lastApplyResult,
     type MonitorConfig,
   } from "$lib/stores/displays";
-  import { Button } from "@lunaris/ui-kit/components/ui/button";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
 
   interface Props {
     /** When true, the modal is visible and the countdown runs. */

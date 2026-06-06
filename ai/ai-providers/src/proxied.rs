@@ -20,7 +20,7 @@
 //! trust boundary, not to flex every backend's native API.
 
 use async_trait::async_trait;
-use lunaris_ai_core::provider::{
+use arlen_ai_core::provider::{
     AIProvider, CompletionRequest, CompletionResponse, ProviderAudit, ProviderError,
 };
 use serde::{Deserialize, Serialize};
@@ -47,7 +47,7 @@ pub struct ProxiedConfig {
     pub context_window: u32,
 }
 
-/// D-Bus client for `org.lunaris.AIProxy1`.
+/// D-Bus client for `org.arlen.AIProxy1`.
 ///
 /// Cheap to clone (`zbus::Proxy` is internally reference-counted).
 pub struct ProxyAIClient {
@@ -59,15 +59,15 @@ impl ProxyAIClient {
     ///
     /// The caller must pass the same connection it owns its
     /// well-known bus name on. The proxy authorises a forward by
-    /// checking that the calling connection owns `org.lunaris.AI1`
-    /// (or `org.lunaris.AIAgent1`); a forward sent from a second,
+    /// checking that the calling connection owns `org.arlen.AI1`
+    /// (or `org.arlen.AIAgent1`); a forward sent from a second,
     /// nameless connection of the same process would be rejected.
     pub async fn with_connection(connection: &Connection) -> Result<Self, ProviderError> {
         let proxy = zbus::Proxy::new(
             connection,
-            "org.lunaris.AIProxy1",
-            "/org/lunaris/AIProxy1",
-            "org.lunaris.AIProxy1",
+            "org.arlen.AIProxy1",
+            "/org/arlen/AIProxy1",
+            "org.arlen.AIProxy1",
         )
         .await
         .map_err(|err| ProviderError::Unavailable(format!("ai-proxy proxy: {err}")))?;
@@ -77,7 +77,7 @@ impl ProxyAIClient {
     /// Open a fresh session-bus connection and build the proxy on it.
     ///
     /// Only safe for a caller that does not own a well-known name it
-    /// must forward as. A daemon that owns `org.lunaris.AI1` must use
+    /// must forward as. A daemon that owns `org.arlen.AI1` must use
     /// [`with_connection`](Self::with_connection) with that same
     /// connection instead.
     pub async fn connect() -> Result<Self, ProviderError> {
@@ -237,7 +237,7 @@ fn chat_body_json(
 }
 
 fn map_zbus_error(err: zbus::Error) -> ProviderError {
-    // `org.lunaris.AIProxy1.<Code>`-style errors are surfaced through
+    // `org.arlen.AIProxy1.<Code>`-style errors are surfaced through
     // zbus::fdo::Error. We map them onto the AIProvider error taxonomy
     // so the caller does not need to know about D-Bus specifics.
     if let zbus::Error::FDO(ref fdo_err) = err {

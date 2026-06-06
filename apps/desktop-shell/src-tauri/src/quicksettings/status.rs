@@ -7,7 +7,7 @@
 /// single namespaced Tauri event-bus channel and the backends publish
 /// updates onto it as they happen.
 ///
-/// Wire format: Tauri event named `lunaris://qs/status/<channel>`
+/// Wire format: Tauri event named `arlen://qs/status/<channel>`
 /// carrying `StatusUpdate { active, status_text, since_ms? }`. The
 /// `<channel>` segment matches the manifest's
 /// `quicksettings.tile.status_channel` field — system-tier tile names
@@ -47,7 +47,7 @@ impl StatusUpdate {
 
 /// Build the full event name for a channel.
 pub fn event_name(channel: &str) -> String {
-    format!("lunaris://qs/status/{channel}")
+    format!("arlen://qs/status/{channel}")
 }
 
 /// Publish `update` on `channel`. All windows/webviews receive it
@@ -64,7 +64,7 @@ mod tests {
 
     #[test]
     fn event_name_uses_qs_namespace() {
-        assert_eq!(event_name("system.network"), "lunaris://qs/status/system.network");
+        assert_eq!(event_name("system.network"), "arlen://qs/status/system.network");
     }
 
     #[test]

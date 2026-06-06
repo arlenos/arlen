@@ -1,10 +1,10 @@
 [package]
-name = "tauri-plugin-lunaris-shell"
+name = "tauri-plugin-arlen-shell"
 version = "0.1.0"
 edition = "2021"
-description = "Tauri plugin exposing the Lunaris OS shell API to Tauri apps"
+description = "Tauri plugin exposing the Arlen OS shell API to Tauri apps"
 license = "GPL-3.0-only"
-links = "tauri-plugin-lunaris-shell"
+links = "tauri-plugin-arlen-shell"
 
 [dependencies]
 tauri = { version = "2", default-features = false }

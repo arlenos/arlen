@@ -1,4 +1,4 @@
-/// Module manifest parser and validation for Lunaris OS.
+/// Module manifest parser and validation for Arlen OS.
 ///
 /// Modules extend the shell via well-defined extension points (Waypointer
 /// search, top bar indicators, settings panels, etc.). Each module has a
@@ -60,7 +60,7 @@ impl ModuleType {
 // Manifest
 // ---------------------------------------------------------------------------
 
-/// Parsed `manifest.toml` for a Lunaris module.
+/// Parsed `manifest.toml` for a Arlen module.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModuleManifest {
     pub module: ModuleMeta,
@@ -77,7 +77,7 @@ pub struct ModuleManifest {
     pub settings: Option<SettingsConfig>,
     /// MCP server extension point. The module exposes a set of MCP
     /// tools the AI daemon can list and call. Tier 1 (WASM) only;
-    /// `lunaris-modulesd` fronts the component with a Unix-socket MCP
+    /// `arlen-modulesd` fronts the component with a Unix-socket MCP
     /// endpoint. See `docs/architecture/mcp-server-layer.md`.
     #[serde(default)]
     pub mcp: Option<McpConfig>,
@@ -88,7 +88,7 @@ pub struct ModuleManifest {
     #[serde(default)]
     pub permissions: ModulePermissions,
     /// Static keybindings the module ships. Written to
-    /// `~/.config/lunaris/compositor.d/keybindings.d/<module-id>.toml`
+    /// `~/.config/arlen/compositor.d/keybindings.d/<module-id>.toml`
     /// at install time; removed on uninstall.
     #[serde(default, rename = "keybinding")]
     pub keybindings: Vec<ModuleKeybinding>,
@@ -155,7 +155,7 @@ impl ModulePermissions {
 // ---------------------------------------------------------------------------
 
 /// A single keybinding shipped by a module. Translated into a TOML
-/// fragment under `~/.config/lunaris/compositor.d/keybindings.d/` at
+/// fragment under `~/.config/arlen/compositor.d/keybindings.d/` at
 /// install time.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ModuleKeybinding {
@@ -264,7 +264,7 @@ pub struct TopbarAppletConfig {
 /// Quick Settings tile extension point.
 ///
 /// A module declares a tile via `[quicksettings.tile]`. The shell merges
-/// declared tiles with the user's `~/.config/lunaris/quicksettings.toml`
+/// declared tiles with the user's `~/.config/arlen/quicksettings.toml`
 /// layout to compute the rendered grid. See
 /// `docs/architecture/quicksettings-system.md` for the full spec.
 #[derive(Debug, Clone, Deserialize)]
@@ -303,7 +303,7 @@ pub struct QuickSettingsTileConfig {
     #[serde(default = "default_tile_click")]
     pub click: TileClick,
     /// Status channel the tile subscribes to. The shell publishes
-    /// `lunaris://qs/status/<channel>` events with `StatusUpdate { active,
+    /// `arlen://qs/status/<channel>` events with `StatusUpdate { active,
     /// status_text }`. Empty disables status subscription.
     #[serde(default)]
     pub status_channel: String,
@@ -393,7 +393,7 @@ pub struct SettingsPanelConfig {
 ///
 /// Declared as `[mcp.server]` in the manifest. A module with this
 /// section exposes MCP tools that the AI daemon can discover and
-/// call. The runtime hosting lives in `lunaris-modulesd`.
+/// call. The runtime hosting lives in `arlen-modulesd`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct McpConfig {
     #[serde(default)]
@@ -434,7 +434,7 @@ fn default_polling() -> u32 {
 
 /// Module capability requests (subset of full PermissionProfile).
 ///
-/// Used by `lunaris-modulesd` to decide which host imports a Tier 1
+/// Used by `arlen-modulesd` to decide which host imports a Tier 1
 /// WASM module sees and which postMessage actions a Tier 2 iframe is
 /// allowed to perform. Mirrors the `[capabilities]` block defined in
 /// Foundation §07 module manifest spec.
@@ -901,7 +901,7 @@ version = "1.0.0"
     fn test_system_module() {
         let toml = r#"
 [module]
-id = "org.lunaris.core-search"
+id = "org.arlen.core-search"
 name = "Core Search"
 version = "1.0.0"
 type = "system"
@@ -1008,7 +1008,7 @@ entry = "dist/index.js"
     #[test]
     fn test_is_reverse_domain() {
         assert!(is_reverse_domain("com.example.app"));
-        assert!(is_reverse_domain("org.lunaris.core"));
+        assert!(is_reverse_domain("org.arlen.core"));
         assert!(is_reverse_domain("com.my-app.v2"));
         assert!(!is_reverse_domain("app"));
         assert!(!is_reverse_domain(""));
@@ -1086,7 +1086,7 @@ version = "1.0.0"
     fn test_first_party_type() {
         let toml = r#"
 [module]
-id = "org.lunaris.search"
+id = "org.arlen.search"
 name = "Search"
 version = "1.0.0"
 type = "first-party"

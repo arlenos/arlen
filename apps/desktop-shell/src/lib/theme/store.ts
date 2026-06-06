@@ -57,7 +57,7 @@ export async function initTheme(): Promise<void> {
   themeLoading.set(false);
 
   // Live updates from Rust (theme switch, accent change, etc.).
-  listen<CssVariables>("lunaris://theme-v2-changed", ({ payload }) => {
+  listen<CssVariables>("arlen://theme-v2-changed", ({ payload }) => {
     injectThemeVariables(payload);
     themeVars.set(payload);
   });

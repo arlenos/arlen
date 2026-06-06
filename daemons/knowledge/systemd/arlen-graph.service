@@ -1,0 +1,26 @@
+[Unit]
+Description=Arlen Graph Daemon
+Documentation=https://github.com/arlenos/knowledge
+After=arlen-event-bus.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/arlen-graph-daemon
+Restart=on-failure
+RestartSec=1
+
+# Paths
+Environment=LUNARIS_DAEMON_SOCKET=/run/user/%U/arlen/graph.sock
+Environment=LUNARIS_GRAPH_DB=%h/.local/share/arlen/graph
+Environment=LUNARIS_DB_PATH=%h/.local/share/arlen/events.db
+Environment=RUST_LOG=info
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/arlen
+ReadWritePaths=/run/user/%U/arlen
+
+[Install]
+WantedBy=default.target

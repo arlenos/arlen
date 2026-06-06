@@ -2,7 +2,7 @@
 name = "modulesd-proto"
 version = "0.1.0"
 edition = "2021"
-description = "Wire protocol types shared between lunaris-modulesd and its clients (desktop-shell, settings, forage)"
+description = "Wire protocol types shared between arlen-modulesd and its clients (desktop-shell, settings, forage)"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

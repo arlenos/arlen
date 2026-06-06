@@ -21,9 +21,9 @@
 //! `PickerResponse::Cancelled` so the FileChooser handler can return
 //! a real error to the caller (FA6, edge case E11).
 //!
-//! The Unix socket lives at `$XDG_RUNTIME_DIR/lunaris/portal-picker.sock`.
+//! The Unix socket lives at `$XDG_RUNTIME_DIR/arlen/portal-picker.sock`.
 //! A unique runtime path was chosen over `$XDG_RUNTIME_DIR/portal-picker.sock`
-//! to keep all Lunaris-specific runtime files under one prefix and to
+//! to keep all Arlen-specific runtime files under one prefix and to
 //! avoid colliding with other portal backends a user might have
 //! installed in parallel.
 
@@ -38,8 +38,8 @@ use anyhow::{Context, Result};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{oneshot, Mutex, Notify};
-use xdg_portal_lunaris_protocol::codec::{decode_frame, encode_frame};
-use xdg_portal_lunaris_protocol::{PickerRequest, PickerResponse};
+use xdg_portal_arlen_protocol::codec::{decode_frame, encode_frame};
+use xdg_portal_arlen_protocol::{PickerRequest, PickerResponse};
 
 /// Per-handle correlation slot. The FileChooser method handler
 /// inserts itself before sending the request and removes itself when
@@ -83,7 +83,7 @@ impl PickerIpcHandle {
         let runtime = std::env::var_os("XDG_RUNTIME_DIR")
             .context("XDG_RUNTIME_DIR is not set; cannot derive socket path")?;
         let mut p = PathBuf::from(runtime);
-        p.push("lunaris");
+        p.push("arlen");
         std::fs::create_dir_all(&p)
             .with_context(|| format!("failed to create {}", p.display()))?;
         p.push("portal-picker.sock");
@@ -317,7 +317,7 @@ async fn connection_task(stream: UnixStream, handle: PickerIpcHandle) {
                     buf.drain(..consumed);
                     deliver_response(&handle, response).await;
                 }
-                Err(xdg_portal_lunaris_protocol::codec::CodecError::Incomplete { .. }) => break,
+                Err(xdg_portal_arlen_protocol::codec::CodecError::Incomplete { .. }) => break,
                 Err(e) => {
                     tracing::error!("picker-ui sent malformed frame: {e}");
                     // A malformed frame is unrecoverable for this

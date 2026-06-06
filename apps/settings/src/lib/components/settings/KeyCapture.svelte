@@ -14,7 +14,7 @@
   /// fire while the modal is open. Escape always cancels.
 
   import { AlertTriangle } from "lucide-svelte";
-  import { Button } from "@lunaris/ui-kit/components/ui/button";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
   import {
     queryLiveConflicts,
     type LiveConflict,

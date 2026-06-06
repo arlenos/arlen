@@ -1,7 +1,7 @@
 //! Audit-log producer helpers for the AI layer.
 //!
 //! Every AI action — a natural-language query, an MCP tool call — is
-//! recorded in the system audit ledger written by `lunaris-auditd`
+//! recorded in the system audit ledger written by `arlen-auditd`
 //! (foundation §8.4.7). The [`AuditSink`] trait, the production
 //! [`LedgerAuditSink`], and the test [`MockAuditSink`] all live in the
 //! shared `audit-proto` crate so this crate and `ai-proxy` use one

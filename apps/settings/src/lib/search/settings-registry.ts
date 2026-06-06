@@ -26,7 +26,7 @@ export interface SelectOption {
 export interface InlineAction {
   type: InlineActionType;
   /// Config file basename (e.g. `"appearance"`) — resolved against
-  /// `~/.config/lunaris/{file}.toml` at execution time.
+  /// `~/.config/arlen/{file}.toml` at execution time.
   configFile: string;
   /// Dot-notation key within the TOML file.
   configKey: string;
@@ -1102,12 +1102,12 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   // ── About (Sprint D coverage) ──────────────────────────────────────
   {
     id: "about.version",
-    title: "Lunaris Version",
+    title: "Arlen Version",
     description: "Release tag and kernel version",
     keywords: ["about", "version", "release", "kernel"],
     panel: "about",
-    section: "Lunaris OS",
-    anchor: "lunaris-version",
+    section: "Arlen OS",
+    anchor: "arlen-version",
   },
   {
     id: "about.daemons",

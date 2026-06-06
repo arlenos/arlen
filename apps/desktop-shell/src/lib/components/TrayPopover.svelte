@@ -5,7 +5,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { Layers } from "lucide-svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
-  import * as ContextMenu from "@lunaris/ui-kit/components/ui/context-menu/index.js";
+  import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu/index.js";
   import SniContextMenuContent from "$lib/components/SniContextMenuContent.svelte";
 
   interface SniItem {
@@ -115,7 +115,7 @@
     box-shadow: var(--shadow-lg);
     color: var(--color-fg-shell);
     display: flex; flex-direction: column;
-    animation: lunaris-popover-in var(--duration-medium) var(--ease-out) both;
+    animation: arlen-popover-in var(--duration-medium) var(--ease-out) both;
     transform-origin: top center;
   }
   .pop-tray { right: 140px; width: 260px; }

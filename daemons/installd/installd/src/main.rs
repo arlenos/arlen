@@ -1,6 +1,6 @@
-/// Lunaris Install Daemon -- user-level D-Bus service.
+/// Arlen Install Daemon -- user-level D-Bus service.
 ///
-/// Provides `org.lunaris.InstallDaemon1` on the session bus. Handles
+/// Provides `org.arlen.InstallDaemon1` on the session bus. Handles
 /// `.lunpkg` installation, uninstallation, and app listing. Delegates
 /// privileged operations (system-wide installs) to `install-helper`
 /// via the system bus.
@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("lunaris_installd=info".parse()?),
+                .add_directive("arlen_installd=info".parse()?),
         )
         .init();
 
@@ -43,8 +43,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let daemon = dbus::InstallDaemon::new(job_queue.clone());
 
     let conn = connection::Builder::session()?
-        .name("org.lunaris.InstallDaemon1")?
-        .serve_at("/org/lunaris/InstallDaemon1", daemon)?
+        .name("org.arlen.InstallDaemon1")?
+        .serve_at("/org/arlen/InstallDaemon1", daemon)?
         .build()
         .await?;
 
@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         jobs::run_worker(worker_queue, worker_conn).await;
     });
 
-    tracing::info!("D-Bus service ready on org.lunaris.InstallDaemon1");
+    tracing::info!("D-Bus service ready on org.arlen.InstallDaemon1");
 
     tokio::signal::ctrl_c().await?;
     tracing::info!("shutting down");

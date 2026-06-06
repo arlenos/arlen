@@ -1,6 +1,6 @@
 /// AI layer config store.
 ///
-/// Reads/writes `~/.config/lunaris/ai.toml`. The `lunaris-ai-daemon`
+/// Reads/writes `~/.config/arlen/ai.toml`. The `arlen-ai-daemon`
 /// watches this file: toggling `[ai] enabled` switches the AI layer
 /// on/off live. `[ai] provider` is read by the daemon at startup, so
 /// the AI page surfaces a restart hint for provider changes, the

@@ -7,7 +7,7 @@
   /// (`value`, `unit`, `onchange`); the bar look comes from the
   /// shared component so future tweaks land in one place.
 
-  import { FillSlider } from "@lunaris/ui-kit/components/ui/fill-slider";
+  import { FillSlider } from "@arlen/ui-kit/components/ui/fill-slider";
 
   let {
     value,

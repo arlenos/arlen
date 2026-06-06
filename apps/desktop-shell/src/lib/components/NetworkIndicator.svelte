@@ -11,7 +11,7 @@
 
   import { invoke } from "@tauri-apps/api/core";
   import { togglePopover, hoverPopover, activePopover } from "$lib/stores/activePopover.js";
-  import { Applet, AppletBadge } from "@lunaris/ui-kit/components/topbar";
+  import { Applet, AppletBadge } from "@arlen/ui-kit/components/topbar";
   import { Wifi, WifiOff, Cable, Shield, Plane } from "lucide-svelte";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";

@@ -163,7 +163,7 @@ export async function resetToBuiltinDefaults(): Promise<void> {
 }
 
 /// Delete every fragment file under
-/// `~/.config/lunaris/compositor.d/keybindings.d/`. Returns the
+/// `~/.config/arlen/compositor.d/keybindings.d/`. Returns the
 /// number of files removed.
 export async function resetModuleFragments(): Promise<number> {
   try {

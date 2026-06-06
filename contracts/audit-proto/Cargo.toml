@@ -2,7 +2,7 @@
 name = "audit-proto"
 version = "0.1.0"
 edition = "2021"
-description = "Shared wire protocol and client for the Lunaris audit daemon"
+description = "Shared wire protocol and client for the Arlen audit daemon"
 
 [features]
 # Exposes `MockAuditSink`, an in-memory accepting/failing sink for

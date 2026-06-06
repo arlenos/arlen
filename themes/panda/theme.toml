@@ -1,7 +1,7 @@
-# Lunaris Theme: Panda (Default)
+# Arlen Theme: Panda (Default)
 #
-# Reference implementation of the Lunaris theme format (Blueprint Section 6.13).
-# Copy this file to ~/.config/lunaris/theme.toml and edit to customize.
+# Reference implementation of the Arlen theme format (Blueprint Section 6.13).
+# Copy this file to ~/.config/arlen/theme.toml and edit to customize.
 #
 # Schema overview:
 #   [color]         Surface and semantic colors as hex strings (#RRGGBB or #RRGGBBAA)
@@ -14,7 +14,7 @@
 #   [sounds]        System sound file paths (relative to theme package)
 #
 # All fields are optional. Missing fields fall back to the built-in Panda
-# defaults compiled into lunaris-theme. A theme that sets only [color.accent]
+# defaults compiled into arlen-theme. A theme that sets only [color.accent]
 # inherits everything else from Panda.
 #
 # Design: dark shell (#09090b), light apps (#ffffff). The shell recedes;

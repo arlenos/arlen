@@ -7,7 +7,7 @@
 use std::path::Path;
 use std::process::Command;
 
-const BIN: &str = env!("CARGO_BIN_EXE_lunaris-doc-sandbox");
+const BIN: &str = env!("CARGO_BIN_EXE_arlen-doc-sandbox");
 
 #[test]
 fn sandbox_denies_filesystem_access() {
@@ -81,7 +81,7 @@ fn sandbox_denies_path_truncation() {
     // works it stays intact; the worst case if it were broken is this
     // disposable file being emptied, never a real one.
     let path = std::env::temp_dir().join(format!(
-        "lunaris-trunc-probe-{}",
+        "arlen-trunc-probe-{}",
         std::process::id()
     ));
     std::fs::write(&path, b"keep me intact").expect("write probe file");
@@ -104,7 +104,7 @@ fn sandbox_denies_path_truncation() {
 #[test]
 fn parse_document_extracts_and_sanitises_through_the_subprocess() {
     let raw = b"Meeting notes:\nbudget approved.\x1b[31m hidden ansi \x1b[0m\x07 done.";
-    let text = lunaris_ai_sandbox::parse_document(Path::new(BIN), raw)
+    let text = arlen_ai_sandbox::parse_document(Path::new(BIN), raw)
         .expect("parse should succeed");
     assert!(!text.contains('\x1b'), "ANSI escapes must be stripped");
     assert!(!text.contains('\x07'), "control chars must be stripped");
@@ -115,6 +115,6 @@ fn parse_document_extracts_and_sanitises_through_the_subprocess() {
 
 #[test]
 fn parse_document_handles_empty_input() {
-    let text = lunaris_ai_sandbox::parse_document(Path::new(BIN), b"").expect("ok");
+    let text = arlen_ai_sandbox::parse_document(Path::new(BIN), b"").expect("ok");
     assert_eq!(text, "");
 }

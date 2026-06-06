@@ -13,7 +13,7 @@
 //! no policy decision about which provider runs; it calls the one it is
 //! given.
 
-use lunaris_ai_core::provider::{AIProvider, CompletionRequest};
+use arlen_ai_core::provider::{AIProvider, CompletionRequest};
 
 use crate::prompt::build_explanation_prompt;
 use crate::snapshot::SystemSnapshot;
@@ -73,7 +73,7 @@ pub async fn explain_system(
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use lunaris_ai_core::provider::{CompletionResponse, ProviderAudit, ProviderError};
+    use arlen_ai_core::provider::{CompletionResponse, ProviderAudit, ProviderError};
     use std::sync::Mutex;
 
     /// A provider that records the prompt it received and returns a

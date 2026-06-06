@@ -1,6 +1,6 @@
-//! Routing engine for the Lunaris AI layer.
+//! Routing engine for the Arlen AI layer.
 //!
-//! Loads `~/.config/lunaris/ai-routing.toml` and resolves each request
+//! Loads `~/.config/arlen/ai-routing.toml` and resolves each request
 //! to a provider name using first-match-wins semantics
 //! (Foundation §5.3). The Settings UI is the authoritative editor for
 //! this file; the engine stays a pure consumer and never writes back.
@@ -524,7 +524,7 @@ mod tests {
                 RuleSpec {
                     name: "settings-local".to_string(),
                     matcher: MatchSpec {
-                        caller_app_id: Some("lunaris-app-settings".to_string()),
+                        caller_app_id: Some("arlen-app-settings".to_string()),
                         ..MatchSpec::default()
                     },
                     provider: "local".to_string(),
@@ -541,7 +541,7 @@ mod tests {
         );
         let route = engine
             .resolve(&RoutingContext {
-                caller_app_id: Some("lunaris-app-settings".to_string()),
+                caller_app_id: Some("arlen-app-settings".to_string()),
                 ..RoutingContext::default()
             })
             .unwrap();

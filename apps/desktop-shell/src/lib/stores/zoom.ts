@@ -29,7 +29,7 @@ export function initZoomListeners(): () => void {
 
     const pending: Promise<UnlistenFn>[] = [
         listen<{ level: number; increment: number; movement: number }>(
-            "lunaris://zoom-toolbar-show",
+            "arlen://zoom-toolbar-show",
             ({ payload }) => {
                 zoom.set({
                     visible: true,
@@ -40,12 +40,12 @@ export function initZoomListeners(): () => void {
             },
         ),
         listen<{ level: number }>(
-            "lunaris://zoom-toolbar-update",
+            "arlen://zoom-toolbar-update",
             ({ payload }) => {
                 zoom.update((z) => ({ ...z, level: payload.level }));
             },
         ),
-        listen("lunaris://zoom-toolbar-hide", () => {
+        listen("arlen://zoom-toolbar-hide", () => {
             zoom.set(INITIAL);
         }),
     ];

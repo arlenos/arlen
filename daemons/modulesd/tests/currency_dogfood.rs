@@ -18,7 +18,7 @@ use std::sync::Arc;
 use modulesd_proto::{ErrorCode, HostCall, HostReply, Request, Response};
 use tokio::sync::broadcast;
 
-use lunaris_modulesd::manager::Manager;
+use arlen_modulesd::manager::Manager;
 
 fn copy_dir_recursive(src: &Path, dst: &Path) {
     std::fs::create_dir_all(dst).unwrap();
@@ -121,8 +121,8 @@ async fn currency_module_discoverable_after_copy_and_capabilities_enforced() {
     //    `api.exchangerate.host`; on offline / firewalled CI the
     //    30 s timeout would block the suite. Wiremock-driven
     //    end-to-end coverage lives in `network_e2e.rs`.
-    use lunaris_modulesd::host::{network::check_fetch, CapabilityContext};
-    use lunaris_modules::{ModuleCapabilities, NetworkCapability};
+    use arlen_modulesd::host::{network::check_fetch, CapabilityContext};
+    use arlen_modules::{ModuleCapabilities, NetworkCapability};
     let mut caps = ModuleCapabilities::default();
     caps.network = Some(NetworkCapability {
         allowed_domains: vec!["api.exchangerate.host".into()],

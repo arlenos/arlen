@@ -10,7 +10,7 @@
   import {
     SidebarProvider,
     SidebarInset,
-  } from "@lunaris/ui-kit/components/ui/sidebar";
+  } from "@arlen/ui-kit/components/ui/sidebar";
   import {
     syncFromRoute,
     breadcrumbs,
@@ -49,18 +49,18 @@
     });
   });
 
-  // Push breadcrumb updates to the Lunaris titlebar plugin. Under the
-  // Lunaris compositor this renders segments in the global top bar.
+  // Push breadcrumb updates to the Arlen titlebar plugin. Under the
+  // Arlen compositor this renders segments in the global top bar.
   // Under other compositors the plugin is a no-op and we fall back to
   // the in-app breadcrumb in SiteHeader.
   $effect(() => {
     const segments = $breadcrumbs.map((label) => ({ label }));
-    invoke("plugin:lunaris-menu|set_breadcrumb", {
+    invoke("plugin:arlen-menu|set_breadcrumb", {
       segmentsJson: JSON.stringify(segments),
     }).catch(() => {});
   });
 
-  /// Suppress the webview's native right-click menu globally. Lunaris
+  /// Suppress the webview's native right-click menu globally. Arlen
   /// apps render their own context menus (see `WindowContextMenu` on
   /// the titlebar, row-level ContextMenus on lists, etc.); the
   /// browser's "Back / Forward / Reload / Inspect" menu is noise.
@@ -82,7 +82,7 @@
     document.addEventListener("contextmenu", suppressBrowserContextMenu);
 
     // Export the settings search index so Waypointer always has an
-    // up-to-date copy at ~/.local/share/lunaris/settings-index.json.
+    // up-to-date copy at ~/.local/share/arlen/settings-index.json.
     exportSettingsIndex();
 
     // Show the window now that the DOM is rendered with the correct

@@ -2,7 +2,7 @@
 ///
 /// The AI daemon asks the user to authorize an MCP action scope by
 /// emitting a `ai://authorization-prompt` event (relayed from the
-/// `org.lunaris.AI1` D-Bus signal by `ai_authz.rs`). This store
+/// `org.arlen.AI1` D-Bus signal by `ai_authz.rs`). This store
 /// holds the active prompt and relays the user's decision back via
 /// the `ai_respond_authorization` command.
 

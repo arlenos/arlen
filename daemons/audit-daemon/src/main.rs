@@ -1,4 +1,4 @@
-//! `lunaris-auditd` entry point.
+//! `arlen-auditd` entry point.
 //!
 //! The daemon opens the append-only ledger, verifies its hash chain,
 //! and serves two sockets: the peer-authenticated ingest socket and
@@ -20,11 +20,11 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use lunaris_auditd::checkpoint::{self, Checkpoint, StartupCheck};
-use lunaris_auditd::ingest::{ingest_socket_path, IngestServer};
-use lunaris_auditd::ledger::{Ledger, LedgerReader};
-use lunaris_auditd::read::{read_socket_path, ReadServer};
-use lunaris_auditd::{audit_data_dir, key, AuditError};
+use arlen_auditd::checkpoint::{self, Checkpoint, StartupCheck};
+use arlen_auditd::ingest::{ingest_socket_path, IngestServer};
+use arlen_auditd::ledger::{Ledger, LedgerReader};
+use arlen_auditd::read::{read_socket_path, ReadServer};
+use arlen_auditd::{audit_data_dir, key, AuditError};
 use os_sdk::{EventEmitter, UnixEventEmitter};
 use tokio::sync::Mutex;
 
@@ -42,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if std::env::var_os("LUNARIS_APP_ID").is_none() {
         std::env::set_var("LUNARIS_APP_ID", "audit-daemon");
     }
-    tracing::info!("lunaris-auditd starting");
+    tracing::info!("arlen-auditd starting");
 
     let ledger_path = audit_data_dir()?.join("ledger.db");
 
@@ -57,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The Event Bus producer client. Created before verification so a
     // tamper alert can be emitted the moment it is detected.
     let producer_socket = std::env::var("LUNARIS_PRODUCER_SOCKET")
-        .unwrap_or_else(|_| "/run/lunaris/event-bus-producer.sock".to_string());
+        .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".to_string());
     let emitter = Arc::new(UnixEventEmitter::new(producer_socket));
 
     // Startup integrity witness 1: the HMAC hash chain.
@@ -162,7 +162,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "sd_notify ready not sent ({err}); running without systemd readiness"
         );
     }
-    tracing::info!("lunaris-auditd serving (ingest + read sockets)");
+    tracing::info!("arlen-auditd serving (ingest + read sockets)");
 
     // Serve both sockets until an accept loop fails or a shutdown
     // signal arrives.
@@ -170,7 +170,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         r = ingest.run(&ingest_path) => r?,
         r = read.run(&read_path) => r?,
         _ = shutdown_signal() => {
-            tracing::info!("lunaris-auditd: shutdown signal received");
+            tracing::info!("arlen-auditd: shutdown signal received");
         }
     }
 

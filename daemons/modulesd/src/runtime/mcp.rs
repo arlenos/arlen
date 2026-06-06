@@ -8,7 +8,7 @@
 //! waypointer dispatch path uses.
 //!
 //! The rmcp JSON-RPC socket bridge that fronts a host with a Unix
-//! socket under `$XDG_RUNTIME_DIR/lunaris/mcp/modules/` is layered
+//! socket under `$XDG_RUNTIME_DIR/arlen/mcp/modules/` is layered
 //! on top of this module.
 
 use std::borrow::Cow;
@@ -217,7 +217,7 @@ impl McpModuleHost {
         let outcome = tokio::time::timeout(
             MCP_CALL_TIMEOUT,
             inst.provider
-                .lunaris_waypointer_server()
+                .arlen_waypointer_server()
                 .call_list_tools(&mut inst.store),
         )
         .await;
@@ -260,7 +260,7 @@ impl McpModuleHost {
         let outcome = tokio::time::timeout(
             MCP_CALL_TIMEOUT,
             inst.provider
-                .lunaris_waypointer_server()
+                .arlen_waypointer_server()
                 .call_call_tool(&mut inst.store, name, arguments_json),
         )
         .await;
@@ -304,7 +304,7 @@ fn tool_def_to_rmcp(def: McpToolDef) -> Tool {
 
 /// An rmcp `ServerHandler` that fronts one [`McpModuleHost`] with a
 /// standard MCP server. modulesd binds one of these per `mcp.server`
-/// module on a Unix socket under `$XDG_RUNTIME_DIR/lunaris/mcp/modules/`.
+/// module on a Unix socket under `$XDG_RUNTIME_DIR/arlen/mcp/modules/`.
 ///
 /// `tools/list` and `tools/call` are forwarded to the WASM guest. A
 /// guest trap or timeout is reported to the module's supervisor over
@@ -337,7 +337,7 @@ impl ServerHandler for ModuleMcpBridge {
         // build it through the constructor rather than a literal.
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_instructions(format!(
-                "MCP tools exported by the Lunaris module {}.",
+                "MCP tools exported by the Arlen module {}.",
                 self.host.module_id()
             ))
     }

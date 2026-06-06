@@ -4,7 +4,7 @@
 /// Order matches the spec in `docs/architecture/quicksettings-system.md`
 /// §"Phase-1 tile inventory".
 
-use lunaris_modules::TileSize;
+use arlen_modules::TileSize;
 use serde::Serialize;
 
 use super::layout::{LayoutFile, TileEntry};

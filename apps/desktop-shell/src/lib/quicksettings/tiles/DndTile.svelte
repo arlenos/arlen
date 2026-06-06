@@ -4,7 +4,7 @@
   /// Toggles `dnd_mode` between `off` and `on` via the notifications
   /// daemon. `scheduled` mode is set from the Settings app — clicking
   /// the tile while in scheduled mode flips to `on` (manual override).
-  import { BaseTile } from "@lunaris/ui-kit/components/quicksettings";
+  import { BaseTile } from "@arlen/ui-kit/components/quicksettings";
   import { BellOff, Bell } from "lucide-svelte";
   import { dndState, setDnd } from "$lib/stores/notifications.js";
 

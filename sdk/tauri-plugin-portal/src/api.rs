@@ -30,8 +30,8 @@ const RESPONSE_SUCCESS: u32 = 0;
 /// as a backend failure.
 const RESPONSE_CANCELLED: u32 = 1;
 
-/// URI schemes the plugin's `open_uri` accepts. The Lunaris
-/// backend has its own allow-list (`xdg-desktop-portal-lunaris`
+/// URI schemes the plugin's `open_uri` accepts. The Arlen
+/// backend has its own allow-list (`xdg-desktop-portal-arlen`
 /// `daemon/src/interfaces/open_uri.rs::classify_scheme`), but
 /// other backends (xdg-desktop-portal-gtk, -kde) may accept
 /// additional schemes — Codex review flagged that contract drift
@@ -103,7 +103,7 @@ pub async fn save_files(
 /// the plugin only forwards http(s), mailto, tel, sms, xmpp, ftps
 /// and file://, regardless of which backend the frontend daemon
 /// dispatches to. Validating locally means a permissive non-
-/// Lunaris backend cannot widen the scheme set.
+/// Arlen backend cannot widen the scheme set.
 pub async fn open_uri(
     uri: &str,
     options: OpenUriOptions,
@@ -242,7 +242,7 @@ fn extract_uris(results: &HashMap<String, OwnedValue>) -> Result<Vec<String>, Pi
 /// Look for any of the well-known error keys our backend (and
 /// xdg-desktop-portal-gtk) put into the results dict on failure.
 fn extract_error_message(results: &HashMap<String, OwnedValue>) -> Option<String> {
-    for key in ["lunaris-error", "error", "message"] {
+    for key in ["arlen-error", "error", "message"] {
         if let Some(v) = results.get(key) {
             let val: Value = v.try_clone().ok()?.into();
             if let Ok(s) = String::try_from(val) {
@@ -514,7 +514,7 @@ mod tests {
         for uri in [
             "javascript:alert(1)",
             "data:text/html,...",
-            "lunaris:foo",
+            "arlen:foo",
             "ftp://example.com",
             "x-scheme-handler/foo",
             "not-a-uri",

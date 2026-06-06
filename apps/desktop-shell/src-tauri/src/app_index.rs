@@ -154,7 +154,7 @@ fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
     }
 
     if let Some(only_show) = fields.get("OnlyShowIn") {
-        if !only_show.contains("Lunaris") {
+        if !only_show.contains("Arlen") {
             return None;
         }
     }

@@ -1,11 +1,11 @@
 [package]
-name = "lunaris-ai-proxy"
+name = "arlen-ai-proxy"
 version = "0.1.0"
 edition = "2021"
-description = "Outbound network proxy daemon for the Lunaris AI layer. The only component permitted to make connections to AI provider endpoints (Foundation §8.4.6). Enforces an endpoint allowlist and emits per-call audit log entries."
+description = "Outbound network proxy daemon for the Arlen AI layer. The only component permitted to make connections to AI provider endpoints (Foundation §8.4.6). Enforces an endpoint allowlist and emits per-call audit log entries."
 
 [[bin]]
-name = "lunaris-ai-proxy"
+name = "arlen-ai-proxy"
 path = "src/main.rs"
 
 [lib]

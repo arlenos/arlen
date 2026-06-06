@@ -1,4 +1,4 @@
-/// `lunaris:host/graph` import implementation.
+/// `arlen:host/graph` import implementation.
 ///
 /// Graph access policy: every Cypher query is scoped to a namespace
 /// that the daemon extracts at parse time and matches against the
@@ -172,7 +172,7 @@ pub fn check_query(ctx: &CapabilityContext, cypher: &str) -> Result<QueryKind> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lunaris_modules::{GraphCapability, ModuleCapabilities};
+    use arlen_modules::{GraphCapability, ModuleCapabilities};
 
     fn ctx(read: Vec<&str>, write: Vec<&str>) -> CapabilityContext {
         let mut caps = ModuleCapabilities::default();

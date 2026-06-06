@@ -1,6 +1,6 @@
 /// Most-Recently-Used app history for the Waypointer "Recent Apps"
 /// section. Persists a rolling buffer of `exec` strings to
-/// `~/.local/share/lunaris/app-history.json`.
+/// `~/.local/share/arlen/app-history.json`.
 ///
 /// Design rationale — why file-based and not the Knowledge Graph:
 ///
@@ -60,7 +60,7 @@ fn history_path() -> PathBuf {
     }
     dirs::data_local_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris/app-history.json")
+        .join("arlen/app-history.json")
 }
 
 fn read_history(path: &std::path::Path) -> HistoryFile {

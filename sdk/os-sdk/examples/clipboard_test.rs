@@ -36,7 +36,7 @@ async fn main() {
             eprintln!("connect failed: {e}");
             eprintln!(
                 "hint: is the desktop-shell running? socket lives at \
-                 $XDG_RUNTIME_DIR/lunaris/clipboard.sock"
+                 $XDG_RUNTIME_DIR/arlen/clipboard.sock"
             );
             std::process::exit(2);
         }

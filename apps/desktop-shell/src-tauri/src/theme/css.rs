@@ -1,4 +1,4 @@
-//! CSS variable generation from a resolved `LunarisTheme`.
+//! CSS variable generation from a resolved `ArlenTheme`.
 //!
 //! Maps the canonical token hierarchy into a flat
 //! `BTreeMap<String, String>` of CSS custom properties (without
@@ -6,14 +6,14 @@
 //! string.
 //!
 //! Radius emission applies the user's intensity multiplier via
-//! `LunarisTheme::effective_*()` so the variables observed by the
+//! `ArlenTheme::effective_*()` so the variables observed by the
 //! webview are already-scaled. `--radius-full` and the (unset
 //! today) per-corner-window-radius are categorical and bypass
 //! intensity.
 
 use std::collections::BTreeMap;
 
-use lunaris_theme::{LunarisTheme, ThemeVariant};
+use arlen_theme::{ArlenTheme, ThemeVariant};
 use serde::{Deserialize, Serialize};
 
 use super::schema::UserOverrides;
@@ -30,7 +30,7 @@ pub struct CssVariables {
 }
 
 /// Convert a resolved theme + user overrides to a flat CSS-var map.
-pub fn to_css_variables(theme: &LunarisTheme, overrides: &UserOverrides) -> CssVariables {
+pub fn to_css_variables(theme: &ArlenTheme, overrides: &UserOverrides) -> CssVariables {
     let mut vars = BTreeMap::new();
 
     // ── Colors ──
@@ -128,7 +128,7 @@ pub fn to_css_string(css_vars: &CssVariables) -> String {
 
 /// Format an `[r, g, b, a]` (each `0.0..=1.0`) as a CSS color
 /// string. Uses `#rrggbb` for opaque, `rgba(...)` for translucent.
-fn rgba_to_css(rgba: &lunaris_theme::Rgba) -> String {
+fn rgba_to_css(rgba: &arlen_theme::Rgba) -> String {
     let r = (rgba[0] * 255.0).round().clamp(0.0, 255.0) as u8;
     let g = (rgba[1] * 255.0).round().clamp(0.0, 255.0) as u8;
     let b = (rgba[2] * 255.0).round().clamp(0.0, 255.0) as u8;

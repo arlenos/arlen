@@ -86,7 +86,7 @@ pub enum PluginError {
 /// Trait for Waypointer search plugins.
 ///
 /// Phase 2: Compiled into the shell binary. Phase 3 will extract these
-/// into loadable modules under `/usr/share/lunaris/modules/`.
+/// into loadable modules under `/usr/share/arlen/modules/`.
 ///
 /// Third-party modules implement this trait via `module-sdk` so they
 /// can participate in Waypointer search without depending on

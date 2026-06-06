@@ -1,9 +1,9 @@
 <script lang="ts">
-  /// AI settings page — configures `~/.config/lunaris/ai.toml`.
+  /// AI settings page — configures `~/.config/arlen/ai.toml`.
   ///
   /// Built on the design-system canon (docs/architecture/settings-app.md §0.3):
   /// Page/SectionGrid/Group/Row/Switch/SegmentedControl/ChipList from
-  /// `@lunaris/ui-kit`; Button/Input/NumberInput/PopoverSelect are app-local
+  /// `@arlen/ui-kit`; Button/Input/NumberInput/PopoverSelect are app-local
   /// (Tailwind/lucide) until the @source consolidation (S-U1b).
   ///
   /// Sections built here are the confirmed config keys, daemon status, and the
@@ -15,17 +15,17 @@
   import { get } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { Sparkles, RefreshCw, AlertCircle, ShieldAlert, History } from "lucide-svelte";
-  import { Page } from "@lunaris/ui-kit/components/ui/page";
-  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
-  import { Group } from "@lunaris/ui-kit/components/ui/group";
-  import { Row } from "@lunaris/ui-kit/components/ui/row";
-  import { Switch } from "@lunaris/ui-kit/components/ui/switch";
-  import { SegmentedControl } from "@lunaris/ui-kit/components/ui/segmented-control";
-  import { ChipList } from "@lunaris/ui-kit/components/ui/chip-list";
-  import { Button } from "@lunaris/ui-kit/components/ui/button";
-  import { Input } from "@lunaris/ui-kit/components/ui/input";
-  import { NumberInput } from "@lunaris/ui-kit/components/ui/number-input";
-  import { PopoverSelect } from "@lunaris/ui-kit/components/ui/popover-select";
+  import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
+  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
+  import { Switch } from "@arlen/ui-kit/components/ui/switch";
+  import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
+  import { ChipList } from "@arlen/ui-kit/components/ui/chip-list";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { NumberInput } from "@arlen/ui-kit/components/ui/number-input";
+  import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { ai } from "$lib/stores/ai";
 
   interface AiStatus {
@@ -294,7 +294,7 @@
         {#snippet below()}
           <ChipList
             bind:items={autonomousApps}
-            placeholder="Add an app id, e.g. org.lunaris.files"
+            placeholder="Add an app id, e.g. org.arlen.files"
             onchange={persistAutonomousApps}
           />
         {/snippet}

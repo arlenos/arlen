@@ -11,7 +11,7 @@
   ///
   /// No strip / no statusText — the tile is purely informational and
   /// clicks straight into Settings → Knowledge.
-  import { BaseTile } from "@lunaris/ui-kit/components/quicksettings";
+  import { BaseTile } from "@arlen/ui-kit/components/quicksettings";
   import { Brain } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";

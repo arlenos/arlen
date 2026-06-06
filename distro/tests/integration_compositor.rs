@@ -18,7 +18,7 @@ use std::time::Duration;
 
 mod proto {
     #![allow(dead_code)]
-    include!(concat!(env!("OUT_DIR"), "/lunaris.eventbus.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 
 /// Locate a binary in its repo's target/debug directory.

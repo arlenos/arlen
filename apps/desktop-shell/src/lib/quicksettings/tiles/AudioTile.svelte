@@ -3,7 +3,7 @@
   ///
   /// Slider is inline. The leading icon button opens the existing
   /// AudioPopover for output picker / per-app mixer / mute / input.
-  import { SliderTile } from "@lunaris/ui-kit/components/quicksettings";
+  import { SliderTile } from "@arlen/ui-kit/components/quicksettings";
   import { Volume2, VolumeX, Volume1, Headphones, Speaker } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -22,7 +22,7 @@
   onMount(() => {
     refresh();
     let stop: UnlistenFn | null = null;
-    listen("lunaris://audio-changed", refresh).then((u) => (stop = u));
+    listen("arlen://audio-changed", refresh).then((u) => (stop = u));
     const interval = setInterval(refresh, 5_000);
     return () => {
       clearInterval(interval);

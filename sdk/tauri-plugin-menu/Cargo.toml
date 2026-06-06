@@ -1,10 +1,10 @@
 [package]
-name = "tauri-plugin-lunaris-menu"
+name = "tauri-plugin-arlen-menu"
 version = "0.1.0"
 edition = "2021"
-description = "Tauri plugin for the Lunaris titlebar protocol"
+description = "Tauri plugin for the Arlen titlebar protocol"
 license = "GPL-3.0-only"
-links = "tauri-plugin-lunaris-menu"
+links = "tauri-plugin-arlen-menu"
 
 [dependencies]
 tauri = { version = "2", default-features = false }

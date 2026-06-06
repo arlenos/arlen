@@ -16,7 +16,7 @@ pub mod spatial;
 pub mod timeline;
 pub mod toolbar;
 
-/// The Event Bus wire types (the `lunaris.eventbus` protobuf package).
+/// The Event Bus wire types (the `arlen.eventbus` protobuf package).
 ///
 /// Public so an event *consumer* can decode the type-specific payload of a
 /// subscribed [`Event`] (the `subscribe()` channel yields envelopes; the
@@ -26,25 +26,25 @@ pub mod toolbar;
 pub mod proto {
     #![allow(dead_code)]
     #![allow(clippy::doc_markdown)]
-    include!(concat!(env!("OUT_DIR"), "/lunaris.eventbus.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 
 pub(crate) mod proto_clipboard {
     #![allow(dead_code)]
     #![allow(clippy::doc_markdown)]
-    include!(concat!(env!("OUT_DIR"), "/lunaris.clipboard.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.clipboard.rs"));
 }
 
 pub(crate) mod proto_search {
     #![allow(dead_code)]
     #![allow(clippy::doc_markdown)]
-    include!(concat!(env!("OUT_DIR"), "/lunaris.search.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.search.rs"));
 }
 
 pub(crate) mod proto_intents {
     #![allow(dead_code)]
     #![allow(clippy::doc_markdown)]
-    include!(concat!(env!("OUT_DIR"), "/lunaris.intents.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.intents.rs"));
 }
 
 pub use annotations::{

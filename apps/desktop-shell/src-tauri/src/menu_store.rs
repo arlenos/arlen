@@ -41,14 +41,14 @@ pub fn store_register(
     items: serde_json::Value,
 ) {
     store.lock().unwrap().insert(app_id.clone(), items.clone());
-    let _ = app.emit("lunaris://menu-registered", MenuRegisteredPayload { app_id, items });
+    let _ = app.emit("arlen://menu-registered", MenuRegisteredPayload { app_id, items });
 }
 
 /// Remove a menu from the store and emit the unregistration event.
 pub fn store_unregister(app: &AppHandle, store: &AppMenuStore, app_id: &str) {
     store.lock().unwrap().remove(app_id);
     let _ = app.emit(
-        "lunaris://menu-unregistered",
+        "arlen://menu-unregistered",
         MenuUnregisteredPayload {
             app_id: app_id.to_string(),
         },
@@ -64,7 +64,7 @@ pub fn register_menu(
     items: serde_json::Value,
 ) {
     store.lock().unwrap().insert(app_id.clone(), items.clone());
-    let _ = app.emit("lunaris://menu-registered", MenuRegisteredPayload { app_id, items });
+    let _ = app.emit("arlen://menu-registered", MenuRegisteredPayload { app_id, items });
 }
 
 /// Remove the menu for an app.
@@ -75,7 +75,7 @@ pub fn unregister_menu(
     app_id: String,
 ) {
     store.lock().unwrap().remove(&app_id);
-    let _ = app.emit("lunaris://menu-unregistered", MenuUnregisteredPayload { app_id });
+    let _ = app.emit("arlen://menu-unregistered", MenuUnregisteredPayload { app_id });
 }
 
 /// Dispatch a menu action.
@@ -96,7 +96,7 @@ pub fn dispatch_menu_action(app: AppHandle, app_id: String, action: String) {
         });
     }
     // Always emit the event (frontend may want to track it).
-    let _ = app.emit("lunaris://menu-action", MenuActionPayload { app_id, action });
+    let _ = app.emit("arlen://menu-action", MenuActionPayload { app_id, action });
 }
 
 /// Get the current menu for a given app_id (used on initial load).
@@ -105,7 +105,7 @@ pub fn get_menu(store: tauri::State<AppMenuStore>, app_id: String) -> Option<ser
     store.lock().unwrap().get(&app_id).cloned()
 }
 
-/// Payload emitted on `lunaris://menu-state-updated` when an item state
+/// Payload emitted on `arlen://menu-state-updated` when an item state
 /// changes via `shell.menu.setState`.
 #[derive(Clone, Serialize)]
 struct MenuStateUpdatedPayload {
@@ -189,7 +189,7 @@ pub fn set_menu_state(
     let items = store.lock().unwrap().get(&app_id).cloned();
     if let Some(items) = items {
         let _ = app.emit(
-            "lunaris://menu-registered",
+            "arlen://menu-registered",
             MenuRegisteredPayload {
                 app_id: app_id.clone(),
                 items,
@@ -200,7 +200,7 @@ pub fn set_menu_state(
     // Also fire a targeted event so listeners that only care about state
     // deltas can avoid re-rendering the whole menu.
     let _ = app.emit(
-        "lunaris://menu-state-updated",
+        "arlen://menu-state-updated",
         MenuStateUpdatedPayload {
             app_id,
             action,

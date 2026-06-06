@@ -312,7 +312,7 @@ fn sync_bars(
     // hadn't arrived yet) re-fetch and pick up the resolved
     // connector. Without this the secondary bar would remain
     // permanently in the legacy primary-only fallback.
-    let _ = app.emit("lunaris://topbar-output-changed", ());
+    let _ = app.emit("arlen://topbar-output-changed", ());
 }
 
 fn create_secondary_bar(
@@ -322,7 +322,7 @@ fn create_secondary_bar(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let window =
         WebviewWindowBuilder::new(app, label, WebviewUrl::App("/".into()))
-            .title("Lunaris Top Bar")
+            .title("Arlen Top Bar")
             .visible(false)
             .decorations(false)
             .transparent(true)

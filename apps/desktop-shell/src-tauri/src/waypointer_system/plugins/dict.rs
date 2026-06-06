@@ -10,7 +10,7 @@
 ///
 /// 1. `LUNARIS_WORDNET_DIR` env var (explicit override, primarily for
 ///    tests and packaging).
-/// 2. `~/.local/share/lunaris/dictionaries/wordnet-en/`
+/// 2. `~/.local/share/arlen/dictionaries/wordnet-en/`
 /// 3. `/usr/share/wordnet/` and `/usr/share/wordnet/en/` (system
 ///    packages on Debian/Arch/Fedora drop it at slightly different
 ///    paths).
@@ -18,7 +18,7 @@
 /// If none of the above hold a WordNet dump, the plugin silently
 /// returns zero results. No toast, no log spam — the dictionary is an
 /// optional capability, not a failure mode. Install it via forage
-/// (`forage install lunaris.dict-en` once that package exists) or
+/// (`forage install arlen.dict-en` once that package exists) or
 /// manually symlink a system dump to the expected path.
 ///
 /// German (or any non-English) support is intentionally deferred. The
@@ -179,7 +179,7 @@ fn resolve_data_dir() -> Option<PathBuf> {
         }
     }
     if let Some(home) = dirs::data_dir() {
-        let p = home.join("lunaris/dictionaries/wordnet-en");
+        let p = home.join("arlen/dictionaries/wordnet-en");
         if data_files_exist(&p) {
             return Some(p);
         }
@@ -363,7 +363,7 @@ mod tests {
         // they're absent.
         std::env::set_var(
             "LUNARIS_WORDNET_DIR",
-            "/tmp/nonexistent-lunaris-wordnet-xyz",
+            "/tmp/nonexistent-arlen-wordnet-xyz",
         );
         assert!(resolve_data_dir().is_none() || {
             // If the user really has /usr/share/wordnet/... this test
@@ -402,7 +402,7 @@ mod tests {
         // Data dir must NOT resolve. Force it.
         std::env::set_var(
             "LUNARIS_WORDNET_DIR",
-            "/tmp/nonexistent-lunaris-wordnet-empty",
+            "/tmp/nonexistent-arlen-wordnet-empty",
         );
         let p = DictPlugin::new();
         assert!(p.search("happy").is_empty());

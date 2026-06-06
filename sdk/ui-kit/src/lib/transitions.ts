@@ -1,4 +1,4 @@
-/// Lunaris shared Svelte transitions.
+/// Arlen shared Svelte transitions.
 ///
 /// Mirrors the CSS animation classes in motion.css so JS-driven
 /// mount/unmount animations use the same timings and easings as

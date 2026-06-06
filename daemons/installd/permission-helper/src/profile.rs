@@ -1,6 +1,6 @@
 /// Profile writing and validation logic.
 ///
-/// Writes permission profiles to `/var/lib/lunaris/permissions/{uid}/{app_id}.toml`.
+/// Writes permission profiles to `/var/lib/arlen/permissions/{uid}/{app_id}.toml`.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-const DEFAULT_BASE: &str = "/var/lib/lunaris/permissions";
+const DEFAULT_BASE: &str = "/var/lib/arlen/permissions";
 
 /// Errors from profile operations.
 #[derive(Debug, Error)]
@@ -146,7 +146,7 @@ documents = true
     #[test]
     fn test_validate_app_id_valid() {
         assert!(validate_app_id("com.example.app").is_ok());
-        assert!(validate_app_id("org.lunaris.contacts").is_ok());
+        assert!(validate_app_id("org.arlen.contacts").is_ok());
         assert!(validate_app_id("my-app_v2").is_ok());
     }
 
@@ -197,11 +197,11 @@ documents = true
 
     #[test]
     fn test_profile_path_format() {
-        let base = Path::new("/var/lib/lunaris/permissions");
+        let base = Path::new("/var/lib/arlen/permissions");
         let p = profile_path_in(base, 1000, "com.app");
         assert_eq!(
             p,
-            PathBuf::from("/var/lib/lunaris/permissions/1000/com.app.toml")
+            PathBuf::from("/var/lib/arlen/permissions/1000/com.app.toml")
         );
     }
 

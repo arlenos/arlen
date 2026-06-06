@@ -65,7 +65,7 @@ pub type WindowList = Arc<Mutex<Vec<ToplevelPayload>>>;
 
 // ── Workspace payloads ────────────────────────────────────────────────────────
 
-/// A single workspace entry emitted as part of `lunaris://workspace-list`.
+/// A single workspace entry emitted as part of `arlen://workspace-list`.
 #[derive(Clone, Serialize)]
 pub struct WorkspaceInfo {
     /// Stable string ID derived from the Wayland object ID.
@@ -158,7 +158,7 @@ pub struct ToplevelSender {
     workspace_handles:
         Mutex<HashMap<String, ext_workspace_handle_v1::ExtWorkspaceHandleV1>>,
     /// First output of the workspace's group, keyed by workspace id.
-    /// One output per workspace is sufficient because lunaris currently
+    /// One output per workspace is sufficient because arlen currently
     /// assumes workspaces belong to exactly one output (single-output
     /// group model). Multi-output groups would need a different policy.
     workspace_outputs: Mutex<HashMap<String, wl_output::WlOutput>>,
@@ -426,7 +426,7 @@ impl AppData {
         self.republish_workspaces();
     }
 
-    /// Re-emit `lunaris://toplevel-changed` for every known
+    /// Re-emit `arlen://toplevel-changed` for every known
     /// toplevel. The freshly-built payloads carry the now-resolved
     /// `output_connectors` so the frontend's per-output
     /// `activeWindowForOutput` filter starts seeing the correct
@@ -465,11 +465,11 @@ impl AppData {
             }
             let _ = self
                 .app_handle
-                .emit("lunaris://toplevel-changed", payload);
+                .emit("arlen://toplevel-changed", payload);
         }
     }
 
-    /// Recompute and re-emit `lunaris://workspace-list` from the
+    /// Recompute and re-emit `arlen://workspace-list` from the
     /// current `workspace_state`. Mirrors the work
     /// `WorkspaceHandler::done` does on every compositor batch,
     /// minus the manager-handle bookkeeping (unchanged here).
@@ -498,7 +498,7 @@ impl AppData {
             }
         }
         *self.workspace_list.lock().unwrap() = infos.clone();
-        let _ = self.app_handle.emit("lunaris://workspace-list", infos);
+        let _ = self.app_handle.emit("arlen://workspace-list", infos);
     }
 }
 
@@ -568,7 +568,7 @@ impl ToplevelInfoHandler for AppData {
                 wl.retain(|w| w.id != payload.id);
                 wl.push(payload.clone());
             }
-            let _ = self.app_handle.emit("lunaris://toplevel-added", payload);
+            let _ = self.app_handle.emit("arlen://toplevel-added", payload);
         }
     }
 
@@ -610,7 +610,7 @@ impl ToplevelInfoHandler for AppData {
                     wl[pos] = payload.clone();
                 }
             }
-            let _ = self.app_handle.emit("lunaris://toplevel-changed", payload);
+            let _ = self.app_handle.emit("arlen://toplevel-changed", payload);
         }
     }
 
@@ -632,7 +632,7 @@ impl ToplevelInfoHandler for AppData {
                 id: info.identifier.clone(),
             };
             self.window_list.lock().unwrap().retain(|w| w.id != payload.id);
-            let _ = self.app_handle.emit("lunaris://toplevel-removed", payload);
+            let _ = self.app_handle.emit("arlen://toplevel-removed", payload);
         }
     }
 }
@@ -723,7 +723,7 @@ impl WorkspaceHandler for AppData {
         // both consumers the same snapshot.
         *self.workspace_list.lock().unwrap() = infos.clone();
 
-        if let Err(e) = self.app_handle.emit("lunaris://workspace-list", infos) {
+        if let Err(e) = self.app_handle.emit("arlen://workspace-list", infos) {
             log::error!("wayland_client: workspace-list emit failed: {e}");
         }
     }
@@ -887,7 +887,7 @@ pub fn get_windows(state: tauri::State<WindowList>) -> Vec<ToplevelPayload> {
 
 /// Returns the current list of workspaces. Called by the Svelte
 /// `initWorkspaceListeners` to prime the store on mount — the
-/// compositor only emits `lunaris://workspace-list` on state
+/// compositor only emits `arlen://workspace-list` on state
 /// changes, so without this priming call a HMR full-page reload
 /// would leave the frontend store stuck at `[]` until the user
 /// did something that caused the compositor to re-emit (switch

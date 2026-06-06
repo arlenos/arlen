@@ -2,7 +2,7 @@
   /// Top-bar Airplane Mode badge.
   ///
   /// Visible while rfkill has all radios blocked.
-  import { StatusBadge } from "@lunaris/ui-kit/components/topbar";
+  import { StatusBadge } from "@arlen/ui-kit/components/topbar";
   import { Plane } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -13,7 +13,7 @@
   onMount(() => {
     refresh();
     let stop: UnlistenFn | null = null;
-    listen("lunaris://airplane-changed", refresh).then((u) => (stop = u));
+    listen("arlen://airplane-changed", refresh).then((u) => (stop = u));
     return () => stop?.();
   });
 

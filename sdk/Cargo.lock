@@ -1730,7 +1730,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
-name = "lunaris-config"
+name = "arlen-config"
 version = "0.1.0"
 dependencies = [
  "notify 7.0.0",
@@ -1742,7 +1742,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lunaris-input-client"
+name = "arlen-input-client"
 version = "0.1.0"
 dependencies = [
  "futures-util",
@@ -1753,7 +1753,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lunaris-modules"
+name = "arlen-modules"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -1763,7 +1763,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lunaris-permissions"
+name = "arlen-permissions"
 version = "0.1.0"
 dependencies = [
  "dirs 5.0.1",
@@ -1776,7 +1776,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lunaris-theme"
+name = "arlen-theme"
 version = "0.1.0"
 dependencies = [
  "dirs 5.0.1",
@@ -2089,7 +2089,7 @@ version = "0.1.0"
 dependencies = [
  "dirs 5.0.1",
  "libc",
- "lunaris-permissions",
+ "arlen-permissions",
  "notify 6.1.1",
  "prost",
  "prost-build",
@@ -3432,7 +3432,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-plugin-lunaris-clipboard"
+name = "tauri-plugin-arlen-clipboard"
 version = "0.1.0"
 dependencies = [
  "log",
@@ -3446,7 +3446,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-plugin-lunaris-menu"
+name = "tauri-plugin-arlen-menu"
 version = "0.1.0"
 dependencies = [
  "log",
@@ -3461,7 +3461,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-plugin-lunaris-portal"
+name = "tauri-plugin-arlen-portal"
 version = "0.1.0"
 dependencies = [
  "futures-util",
@@ -3477,7 +3477,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-plugin-lunaris-shell"
+name = "tauri-plugin-arlen-shell"
 version = "0.1.0"
 dependencies = [
  "log",

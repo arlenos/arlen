@@ -41,7 +41,7 @@ export async function headerAction(surfaceId: number, action: number): Promise<v
 /// Sync the current header rectangles to the Rust side so the
 /// GTK layer-surface's input-region can include them. Without this,
 /// the shell layer is click-through everywhere outside the top-bar
-/// and buttons on Lunaris-rendered window headers wouldn't receive
+/// and buttons on Arlen-rendered window headers wouldn't receive
 /// pointer events. Debounced via microtask so a batch of show/
 /// update/hide events produces ONE backend call.
 ///
@@ -112,7 +112,7 @@ export function initWindowHeaderListeners(): () => void {
             title: string; activated: boolean; has_minimize: boolean; has_maximize: boolean;
             stack_id: number;
         }>(
-            "lunaris://window-header-show",
+            "arlen://window-header-show",
             ({ payload }) => {
                 windowHeaders.update((m) => {
                     m.set(payload.surface_id, payload);
@@ -126,7 +126,7 @@ export function initWindowHeaderListeners(): () => void {
             surface_id: number; x: number; y: number; width: number; height: number;
             title: string; activated: boolean; stack_id: number;
         }>(
-            "lunaris://window-header-update",
+            "arlen://window-header-update",
             ({ payload }) => {
                 windowHeaders.update((m) => {
                     const existing = m.get(payload.surface_id);
@@ -149,7 +149,7 @@ export function initWindowHeaderListeners(): () => void {
             },
         ),
         listen<{ surface_id: number }>(
-            "lunaris://window-header-hide",
+            "arlen://window-header-hide",
             ({ payload }) => {
                 windowHeaders.update((m) => {
                     m.delete(payload.surface_id);
@@ -172,7 +172,7 @@ export function initWindowHeaderListeners(): () => void {
             },
         ),
         listen<{ surface_id: number }>(
-            "lunaris://window-drag-start",
+            "arlen://window-drag-start",
             ({ payload }) => {
                 draggingSurfaces.update((s) => {
                     const next = new Set(s);
@@ -182,7 +182,7 @@ export function initWindowHeaderListeners(): () => void {
             },
         ),
         listen<{ surface_id: number }>(
-            "lunaris://window-drag-end",
+            "arlen://window-drag-end",
             ({ payload }) => {
                 draggingSurfaces.update((s) => {
                     if (s.has(payload.surface_id)) {

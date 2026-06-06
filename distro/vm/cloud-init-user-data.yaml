@@ -1,7 +1,7 @@
 #cloud-config
-hostname: lunaris-ebpf-dev
+hostname: arlen-ebpf-dev
 user: tim
-password: lunaris-dev
+password: arlen-dev
 chpasswd:
   expire: false
 ssh_authorized_keys:

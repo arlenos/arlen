@@ -1,18 +1,18 @@
 [package]
-name = "xdg-desktop-portal-lunaris"
+name = "xdg-desktop-portal-arlen"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Lunaris backend for xdg-desktop-portal (FileChooser, OpenURI)"
+description = "Arlen backend for xdg-desktop-portal (FileChooser, OpenURI)"
 
 [[bin]]
-name = "xdg-desktop-portal-lunaris"
+name = "xdg-desktop-portal-arlen"
 path = "src/main.rs"
 
 [dependencies]
-xdg-portal-lunaris-protocol = { path = "../protocol" }
+xdg-portal-arlen-protocol = { path = "../protocol" }
 zbus = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

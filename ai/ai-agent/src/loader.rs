@@ -39,7 +39,7 @@ use crate::behaviour::{parse, Behaviour, BehaviourError};
 /// the loader from the source directory, never self-declared by the file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Provenance {
-    /// Shipped with Lunaris (the system behaviour directory).
+    /// Shipped with Arlen (the system behaviour directory).
     BuiltIn,
     /// Authored by the user (the user behaviour directory).
     User,
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn missing_source_root_is_not_an_error() {
-        let sources = [BehaviourSource::user("/nonexistent/lunaris/behaviours")];
+        let sources = [BehaviourSource::user("/nonexistent/arlen/behaviours")];
         let outcome = load(&sources, &BTreeMap::new());
         assert!(outcome.loaded.is_empty());
         assert!(outcome.errors.is_empty());

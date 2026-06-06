@@ -32,7 +32,7 @@ impl ConfigEventEmitter {
     pub fn new() -> Self {
         let socket_path = std::env::var("LUNARIS_PRODUCER_SOCKET")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/run/lunaris/event-bus-producer.sock"));
+            .unwrap_or_else(|_| PathBuf::from("/run/arlen/event-bus-producer.sock"));
         let session_id = std::env::var("LUNARIS_SESSION_ID")
             .unwrap_or_else(|_| "unknown".into());
         Self {
@@ -169,7 +169,7 @@ mod tests {
     fn test_config_changed_payload() {
         let p = ConfigChangedPayload {
             component: "shell".into(),
-            path: "/home/user/.config/lunaris/shell.toml".into(),
+            path: "/home/user/.config/arlen/shell.toml".into(),
         };
         let json = serde_json::to_string(&p).unwrap();
         assert!(json.contains("shell"));

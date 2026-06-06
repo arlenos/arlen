@@ -342,23 +342,23 @@ export const focusedAmbient: Readable<AmbientRender | null> = derived(
 export function initAppStateStores(): () => void {
   const unlistens: UnlistenFn[] = [];
   const tasks = [
-    listen<ShortcutRegisterEvent>("lunaris://shortcut-register", (e) =>
+    listen<ShortcutRegisterEvent>("arlen://shortcut-register", (e) =>
       applyShortcutRegister(e.payload),
     ),
-    listen<ShortcutStateEvent>("lunaris://shortcut-state-changed", (e) =>
+    listen<ShortcutStateEvent>("arlen://shortcut-state-changed", (e) =>
       applyShortcutStateChanged(e.payload),
     ),
-    listen<ShortcutClearedEvent>("lunaris://shortcut-cleared", (e) =>
+    listen<ShortcutClearedEvent>("arlen://shortcut-cleared", (e) =>
       applyShortcutCleared(e.payload),
     ),
-    listen<BadgeSetEvent>("lunaris://badge-set", (e) => applyBadgeSet(e.payload)),
-    listen<BadgeClearedEvent>("lunaris://badge-cleared", (e) =>
+    listen<BadgeSetEvent>("arlen://badge-set", (e) => applyBadgeSet(e.payload)),
+    listen<BadgeClearedEvent>("arlen://badge-cleared", (e) =>
       applyBadgeCleared(e.payload),
     ),
-    listen<AmbientSetEvent>("lunaris://ambient-set", (e) =>
+    listen<AmbientSetEvent>("arlen://ambient-set", (e) =>
       applyAmbientSet(e.payload),
     ),
-    listen<AmbientClearedEvent>("lunaris://ambient-cleared", (e) =>
+    listen<AmbientClearedEvent>("arlen://ambient-cleared", (e) =>
       applyAmbientCleared(e.payload),
     ),
   ];

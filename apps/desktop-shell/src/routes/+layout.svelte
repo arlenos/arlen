@@ -176,6 +176,6 @@
   offset={toasterOffset}
   toastOptions={{
     style: `width: ${$toastConfig.width}px;`,
-    class: `lunaris-toast lunaris-toast-anim-${$toastConfig.animation}`,
+    class: `arlen-toast arlen-toast-anim-${$toastConfig.animation}`,
   }}
 />

@@ -1,6 +1,6 @@
 # sdk
 
-The Lunaris SDK is the library that first-party applications and system components use to interact with the Lunaris platform. It provides a stable interface over the underlying Unix socket protocols so that application code does not need to speak raw protobuf.
+The Arlen SDK is the library that first-party applications and system components use to interact with the Arlen platform. It provides a stable interface over the underlying Unix socket protocols so that application code does not need to speak raw protobuf.
 
 ## Crates
 
@@ -12,10 +12,10 @@ The system-facing SDK. Applications import this to emit events, query the knowle
 use os_sdk::{UnixEventEmitter, EventEmitter, UnixGraphClient, GraphClient};
 use std::collections::HashMap;
 
-let emitter = UnixEventEmitter::new("/run/lunaris/event-bus-producer.sock");
+let emitter = UnixEventEmitter::new("/run/arlen/event-bus-producer.sock");
 emitter.emit("app.action", payload_bytes).await?;
 
-let client = UnixGraphClient::new("/run/lunaris/knowledge.sock");
+let client = UnixGraphClient::new("/run/arlen/knowledge.sock");
 let rows = client.query(
     "MATCH (f:File) WHERE f.app_id = $app RETURN f.path LIMIT 10",
     HashMap::new(),
@@ -24,7 +24,7 @@ let rows = client.query(
 
 Both `UnixEventEmitter` and `UnixGraphClient` reconnect automatically if the daemon restarts.
 
-The clipboard client talks to the desktop-shell broker (`$XDG_RUNTIME_DIR/lunaris/clipboard.sock`):
+The clipboard client talks to the desktop-shell broker (`$XDG_RUNTIME_DIR/arlen/clipboard.sock`):
 
 ```rust
 use os_sdk::{UnixClipboardClient, WriteParams, ClipboardLabel};
@@ -51,7 +51,7 @@ Apps can subscribe to annotation changes with the consumer-side Event Bus client
 use os_sdk::{Annotations, AnnotationChange, AnnotationTarget,
              UnixEventConsumer, UnixEventEmitter, UnixGraphClient};
 
-let consumer = UnixEventConsumer::new("/run/lunaris/event-bus-consumer.sock");
+let consumer = UnixEventConsumer::new("/run/arlen/event-bus-consumer.sock");
 let ann = Annotations::new(emitter, graph, "com.example.editor");
 
 let mut sub = ann.on_changed(
@@ -112,4 +112,4 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 ## Part of
 
-[Lunaris](https://github.com/lunaris-sys): a Linux desktop OS built around a system-wide knowledge graph.
+[Arlen](https://github.com/arlenos): a Linux desktop OS built around a system-wide knowledge graph.

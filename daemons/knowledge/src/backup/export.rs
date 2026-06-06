@@ -110,7 +110,7 @@ impl Exporter {
     ) -> String {
         let doc = serde_json::json!({
             "@context": {
-                "@vocab": "https://lunaris.dev/schema/",
+                "@vocab": "https://arlen.dev/schema/",
                 "id": "@id",
                 "type": "@type",
             },

@@ -60,7 +60,7 @@ impl ProjectsState {
 
 // ── Graph Query Client ──────────────────────────────────────────────────
 
-const KNOWLEDGE_SOCKET: &str = "/run/lunaris/knowledge.sock";
+const KNOWLEDGE_SOCKET: &str = "/run/arlen/knowledge.sock";
 /// Hard ceiling on graph round-trips from a Tauri command. When the
 /// daemon is hung or paused, we don't want the UI to freeze — return
 /// empty and log at debug level instead.
@@ -69,16 +69,16 @@ const GRAPH_QUERY_TIMEOUT_MS: u64 = 200;
 /// Resolve the knowledge-daemon socket path with the same fallback
 /// logic the daemon itself uses. If `LUNARIS_DAEMON_SOCKET` is set
 /// (normal path via `start-dev.sh`), use it. Otherwise fall back to
-/// `$XDG_RUNTIME_DIR/lunaris/knowledge.sock` so the shell works when
+/// `$XDG_RUNTIME_DIR/arlen/knowledge.sock` so the shell works when
 /// launched ad-hoc without the launcher exporting the env var. Last
-/// resort: the hardcoded `/run/lunaris/` default (historically
+/// resort: the hardcoded `/run/arlen/` default (historically
 /// root-only; kept as a fourth fallback for completeness).
 fn knowledge_socket_path() -> String {
     if let Ok(p) = std::env::var("LUNARIS_DAEMON_SOCKET") {
         return p;
     }
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
-        return format!("{xdg}/lunaris/knowledge.sock");
+        return format!("{xdg}/arlen/knowledge.sock");
     }
     KNOWLEDGE_SOCKET.to_string()
 }
@@ -482,10 +482,10 @@ pub async fn get_focus_state(
 
 mod proto {
     #![allow(dead_code, clippy::doc_markdown)]
-    include!(concat!(env!("OUT_DIR"), "/lunaris.eventbus.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 
-const PRODUCER_SOCKET: &str = "/run/lunaris/event-bus-producer.sock";
+const PRODUCER_SOCKET: &str = "/run/arlen/event-bus-producer.sock";
 
 fn emit_to_event_bus(event_type: &str, payload: Vec<u8>) {
     let socket = std::env::var("LUNARIS_PRODUCER_SOCKET")
@@ -575,7 +575,7 @@ fn load_suppress_list(root_path: &str) -> Vec<String> {
 // ── Persistence (shell.toml [focus] section) ────────────────────────────
 
 fn shell_toml_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|p| p.join("lunaris/shell.toml"))
+    dirs::config_dir().map(|p| p.join("arlen/shell.toml"))
 }
 
 fn save_focus_to_shell_toml(fs: &FocusState) {

@@ -1,0 +1,15 @@
+[Unit]
+Description=Arlen Notification Daemon
+Documentation=https://github.com/arlenos/notification-daemon
+
+[Service]
+Type=dbus
+BusName=org.freedesktop.Notifications
+ExecStart=%h/.local/lib/arlen/libexec/arlen-notifyd
+
+# Restart on crash.
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

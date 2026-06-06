@@ -33,7 +33,7 @@
 </script>
 
 <!--
-  WindowControls: Client-Side Decoration window controls for Lunaris.
+  WindowControls: Client-Side Decoration window controls for Arlen.
 
   Used by desktop-shell to render window controls as an overlay.
   NOT imported by individual apps directly.
@@ -42,7 +42,7 @@
   anywhere that is not a button.
 -->
 <div
-  class="lunaris-window-controls shell-surface {className}"
+  class="arlen-window-controls shell-surface {className}"
   data-tauri-drag-region
 >
   <div class="drag-region" data-tauri-drag-region></div>
@@ -83,7 +83,7 @@
 </div>
 
 <style>
-  .lunaris-window-controls {
+  .arlen-window-controls {
     display: flex;
     align-items: center;
     height: 36px;

@@ -1,8 +1,8 @@
 # event-bus
 
-The Lunaris Event Bus is a Unix socket daemon that routes structured events between system components. Producers send events; consumers subscribe to event types and receive matching events.
+The Arlen Event Bus is a Unix socket daemon that routes structured events between system components. Producers send events; consumers subscribe to event types and receive matching events.
 
-This is the central nervous system of the Lunaris data pipeline. Every component that wants to record or react to system activity goes through here.
+This is the central nervous system of the Arlen data pipeline. Every component that wants to record or react to system activity goes through here.
 
 ## What it does
 
@@ -32,8 +32,8 @@ Event type filters support:
 ## Running
 
 ```bash
-LUNARIS_PRODUCER_SOCKET=/run/lunaris/event-bus-producer.sock \
-LUNARIS_CONSUMER_SOCKET=/run/lunaris/event-bus-consumer.sock \
+LUNARIS_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock \
+LUNARIS_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock \
 RUST_LOG=info \
 ./event-bus
 ```
@@ -42,8 +42,8 @@ RUST_LOG=info \
 
 | Variable | Default | Description |
 |---|---|---|
-| `LUNARIS_PRODUCER_SOCKET` | `/run/lunaris/event-bus-producer.sock` | Producer socket path |
-| `LUNARIS_CONSUMER_SOCKET` | `/run/lunaris/event-bus-consumer.sock` | Consumer socket path |
+| `LUNARIS_PRODUCER_SOCKET` | `/run/arlen/event-bus-producer.sock` | Producer socket path |
+| `LUNARIS_CONSUMER_SOCKET` | `/run/arlen/event-bus-consumer.sock` | Consumer socket path |
 
 ## Testing
 
@@ -54,4 +54,4 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 ## Part of
 
-[Lunaris](https://github.com/lunaris-sys): a Linux desktop OS built around a system-wide knowledge graph.
+[Arlen](https://github.com/arlenos): a Linux desktop OS built around a system-wide knowledge graph.

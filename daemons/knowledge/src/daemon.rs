@@ -36,7 +36,7 @@ use crate::utils::escape_cypher;
 use crate::write::{create_relation, retract_relation, RelationResult};
 
 /// Producer socket default (overridable via `LUNARIS_PRODUCER_SOCKET`).
-const DEFAULT_PRODUCER_SOCKET: &str = "/run/lunaris/event-bus-producer.sock";
+const DEFAULT_PRODUCER_SOCKET: &str = "/run/arlen/event-bus-producer.sock";
 
 /// One `graph.rate_limited` event per app at most this often, so a
 /// query flood does not hammer the Event Bus producer.
@@ -57,7 +57,7 @@ struct RateState {
 impl RateState {
     fn new() -> Self {
         Self {
-            limiter: RateLimiter::new(QuotaConfig::lunaris_default()),
+            limiter: RateLimiter::new(QuotaConfig::arlen_default()),
             last_emit: HashMap::new(),
         }
     }
@@ -646,8 +646,8 @@ async fn handle_client(
     // the strictest tier via the `unknown` sentinel (ThirdParty).
     //
     // Known limitation (same-uid, F3): the tier is derived from the
-    // resolved `app_id`, and `lunaris-permissions` maps a user-
-    // installed `~/.local/share/lunaris/apps/{id}/` binary to `{id}`.
+    // resolved `app_id`, and `arlen-permissions` maps a user-
+    // installed `~/.local/share/arlen/apps/{id}/` binary to `{id}`.
     // So a same-uid attacker could squat a reserved id (`system` →
     // unlimited, `ai-daemon` → FirstParty) to escape ThirdParty. This
     // does not regress vs. pre-S15 (which rate-limited no one) and is
@@ -715,7 +715,7 @@ async fn handle_client(
             // is refused before any token work. This does not by itself defeat
             // same-uid app_id spoofing (see `handle_write_request`), but it
             // keeps the system-relation write path off-limits to ordinary apps.
-            let tier = QuotaConfig::lunaris_default().tier_for_app(&app_id);
+            let tier = QuotaConfig::arlen_default().tier_for_app(&app_id);
             if tier == AppTier::ThirdParty {
                 warn!(app_id = %app_id, "graph write refused for non-first-party caller");
                 let response = "ERROR: write mode not permitted for this caller";
@@ -1190,7 +1190,7 @@ mod tests {
     }
 
     #[test]
-    fn lunaris_default_throttles_apps_but_not_the_ai_daemon() {
+    fn arlen_default_throttles_apps_but_not_the_ai_daemon() {
         // A normal (ThirdParty) caller bursting past its 200-token
         // burst is rate-limited; the AI daemon's higher FirstParty
         // limit (2000 burst) is not tripped by the same burst.

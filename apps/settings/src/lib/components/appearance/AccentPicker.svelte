@@ -4,7 +4,7 @@
   /// an outer ring and an inset check icon.
   import { Check, Pipette, Contrast } from "lucide-svelte";
   import { ACCENT_PRESETS, MONO_SENTINEL } from "$lib/stores/theme";
-  import { ColorPicker } from "@lunaris/ui-kit/components/ui/color-picker";
+  import { ColorPicker } from "@arlen/ui-kit/components/ui/color-picker";
 
   let {
     value,

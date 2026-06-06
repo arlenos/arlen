@@ -37,7 +37,7 @@ pub fn subscription_types(behaviours: &[LoadedBehaviour]) -> Vec<String> {
 
 /// The Event Bus consumer socket. The daemon resolves the real path from
 /// `LUNARIS_CONSUMER_SOCKET` (with this as the fallback).
-pub const DEFAULT_CONSUMER_SOCKET: &str = "/run/lunaris/event-bus-consumer.sock";
+pub const DEFAULT_CONSUMER_SOCKET: &str = "/run/arlen/event-bus-consumer.sock";
 
 /// A [`TriggerSource`] backed by an Event Bus subscription.
 pub struct EventBusSource {
@@ -109,7 +109,7 @@ mod tests {
     fn encoded_file_opened(path: &str) -> Vec<u8> {
         FileOpenedPayload {
             path: path.to_string(),
-            app_id: "org.lunaris.editor".to_string(),
+            app_id: "org.arlen.editor".to_string(),
             flags: 0,
         }
         .encode_to_vec()
@@ -127,7 +127,7 @@ mod tests {
         let agent_event = decode_event(ev);
         assert_eq!(agent_event.event_type, "file.opened");
         assert_eq!(agent_event.fields.get("path").unwrap(), "~/Repositories/foo.rs");
-        assert_eq!(agent_event.fields.get("app_id").unwrap(), "org.lunaris.editor");
+        assert_eq!(agent_event.fields.get("app_id").unwrap(), "org.arlen.editor");
     }
 
     #[test]

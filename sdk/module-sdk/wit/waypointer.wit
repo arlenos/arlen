@@ -2,8 +2,8 @@
 ///
 /// `provider` modules return search results for arbitrary queries.
 /// `action` modules execute named commands. Both run inside Tier 1 WASM
-/// components hosted by `lunaris-modulesd`.
-package lunaris:waypointer@0.1.0;
+/// components hosted by `arlen-modulesd`.
+package arlen:waypointer@0.1.0;
 
 interface provider {
     record search-result {
@@ -75,17 +75,17 @@ interface action {
 }
 
 world waypointer-provider {
-    import lunaris:host/graph@0.1.0;
-    import lunaris:host/network@0.1.0;
-    import lunaris:host/events@0.1.0;
-    import lunaris:host/log@0.1.0;
+    import arlen:host/graph@0.1.0;
+    import arlen:host/network@0.1.0;
+    import arlen:host/events@0.1.0;
+    import arlen:host/log@0.1.0;
     export provider;
 }
 
 world waypointer-action {
-    import lunaris:host/graph@0.1.0;
-    import lunaris:host/network@0.1.0;
-    import lunaris:host/events@0.1.0;
-    import lunaris:host/log@0.1.0;
+    import arlen:host/graph@0.1.0;
+    import arlen:host/network@0.1.0;
+    import arlen:host/events@0.1.0;
+    import arlen:host/log@0.1.0;
     export action;
 }

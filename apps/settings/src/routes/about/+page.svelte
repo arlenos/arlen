@@ -1,19 +1,19 @@
 <script lang="ts">
   /// About settings page.
   ///
-  /// Read-only system info: Lunaris version, kernel, daemon statuses. On the
-  /// design-system canon: Page/SectionGrid/Group/Row from `@lunaris/ui-kit`
+  /// Read-only system info: Arlen version, kernel, daemon statuses. On the
+  /// design-system canon: Page/SectionGrid/Group/Row from `@arlen/ui-kit`
   /// (Button stays app-local until the @source consolidation). Stats source is
   /// socket-existence probes (no token-authenticated daemon round-trips).
 
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { RefreshCw, ExternalLink, Info, Bug, FileText } from "lucide-svelte";
-  import { Page } from "@lunaris/ui-kit/components/ui/page";
-  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
-  import { Group } from "@lunaris/ui-kit/components/ui/group";
-  import { Row } from "@lunaris/ui-kit/components/ui/row";
-  import { Button } from "@lunaris/ui-kit/components/ui/button";
+  import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
+  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
 
   interface DaemonStatus {
     name: string;
@@ -22,7 +22,7 @@
   }
 
   interface SystemInfo {
-    lunarisVersion: string | null;
+    arlenVersion: string | null;
     kernel: string | null;
     waylandDisplay: string | null;
     daemons: DaemonStatus[];
@@ -58,10 +58,10 @@
   description="System information and daemon status. Read-only — no settings to change here."
 >
   <SectionGrid>
-    <Group label="Lunaris OS">
-      <Row label="Version" id="lunaris-version">
+    <Group label="Arlen OS">
+      <Row label="Version" id="arlen-version">
         {#snippet control()}
-          <span class="meta">{info?.lunarisVersion ?? "—"}</span>
+          <span class="meta">{info?.arlenVersion ?? "—"}</span>
         {/snippet}
       </Row>
       <Row label="Kernel" id="kernel">
@@ -109,7 +109,7 @@
     <Group label="Resources">
       <Row label="Documentation" id="link-docs">
         {#snippet control()}
-          <Button variant="outline" size="sm" onclick={() => openUrl("https://github.com/lunaris-sys/docs")}>
+          <Button variant="outline" size="sm" onclick={() => openUrl("https://github.com/arlenos/docs")}>
             <FileText size={14} />
             Open
             <ExternalLink size={12} />
@@ -118,7 +118,7 @@
       </Row>
       <Row label="GitHub organisation" id="link-github">
         {#snippet control()}
-          <Button variant="outline" size="sm" onclick={() => openUrl("https://github.com/lunaris-sys")}>
+          <Button variant="outline" size="sm" onclick={() => openUrl("https://github.com/arlenos")}>
             <Info size={14} />
             Open
             <ExternalLink size={12} />
@@ -130,7 +130,7 @@
           <Button
             variant="outline"
             size="sm"
-            onclick={() => openUrl("https://github.com/lunaris-sys/desktop-shell/issues/new")}
+            onclick={() => openUrl("https://github.com/arlenos/desktop-shell/issues/new")}
           >
             <Bug size={14} />
             Open

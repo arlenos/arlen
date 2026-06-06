@@ -2,8 +2,8 @@
 //!
 //! `serde(rename_all = "camelCase")` plus
 //! `rename_all_fields = "camelCase"` on enums match the rest of
-//! Lunaris's Tauri-DTO convention so the JS side never has to
-//! bridge naming. See `xdg-portal-lunaris-protocol` for the
+//! Arlen's Tauri-DTO convention so the JS side never has to
+//! bridge naming. See `xdg-portal-arlen-protocol` for the
 //! daemon-side mirror — these types are deliberately separate
 //! because the public API smooths over D-Bus shapes the wire
 //! types preserve verbatim.

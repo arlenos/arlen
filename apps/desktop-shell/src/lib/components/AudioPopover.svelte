@@ -3,13 +3,13 @@
 
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
-  import { Separator } from "@lunaris/ui-kit/components/ui/separator/index.js";
-  import { PopoverSelect } from "@lunaris/ui-kit/components/ui/popover-select";
+  import { Separator } from "@arlen/ui-kit/components/ui/separator/index.js";
+  import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import {
     Volume2, VolumeX, Mic, MicOff, ChevronRight,
   } from "lucide-svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
-  import { FillSlider } from "@lunaris/ui-kit/components/ui/fill-slider";
+  import { FillSlider } from "@arlen/ui-kit/components/ui/fill-slider";
 
   interface AudioDevice { id: string; name: string; is_default: boolean; }
   interface AppVol { id: number; name: string; volume: number; icon_data: string | null; }
@@ -225,7 +225,7 @@
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     box-shadow: var(--shadow-lg); color: var(--color-fg-shell);
     display: flex; flex-direction: column;
-    animation: lunaris-popover-in var(--duration-medium) var(--ease-out) both;
+    animation: arlen-popover-in var(--duration-medium) var(--ease-out) both;
     transform-origin: top center;
   }
   .pop-audio { right: 80px; width: 280px; }

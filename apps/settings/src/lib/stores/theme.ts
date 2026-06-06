@@ -1,6 +1,6 @@
 /// Theme/Appearance store.
 ///
-/// Writes the `~/.config/lunaris/appearance.toml` file the desktop-shell
+/// Writes the `~/.config/arlen/appearance.toml` file the desktop-shell
 /// theme watcher reads. The accent override lives in `[overrides].accent`
 /// (this is what the shell reads -- `[colors].accent` is ignored by the
 /// shell and therefore must NOT be used for the accent).
@@ -80,11 +80,11 @@ export const theme: ConfigStore<AppearanceConfig> =
 
 // ── Theme built-in accents ──────────────────────────────────────────────
 
-/// Built-in accent for the Lunaris dark theme.
+/// Built-in accent for the Arlen dark theme.
 /// Matches `desktop-shell/src-tauri/themes/dark.toml`.
 export const DARK_ACCENT = "#6366f1";
 
-/// Built-in accent for the Lunaris light theme.
+/// Built-in accent for the Arlen light theme.
 /// Matches `desktop-shell/src-tauri/themes/light.toml`.
 export const LIGHT_ACCENT = "#4f46e5";
 
@@ -150,10 +150,10 @@ const DEFAULT_FONT_MONO = "JetBrains Mono";
 const DEFAULT_FONT_SIZE = 14;
 
 // Semantic radius base values. Mirror sdk/theme bundled defaults +
-// the LunarisTheme::scale_radius math (intensity × base, clamped to
+// the ArlenTheme::scale_radius math (intensity × base, clamped to
 // [0.0, 2.0], rounded to integer pixels). Theme switching does not
 // change these — they're per-token defaults that the theme author
-// can override via `~/.config/lunaris/theme.toml [radius]`. The
+// can override via `~/.config/arlen/theme.toml [radius]`. The
 // per-user multiplier is read from `appearance.toml [overrides]
 // .radius_intensity` and applied here so app-settings's CSD chrome
 // (WindowControls + cards + popovers) respects the same intensity
@@ -168,7 +168,7 @@ const RADIUS_DEFAULTS = {
 } as const;
 
 /// `effective_X = round(base × clamp(intensity, 0, 2))` — same math
-/// as `LunarisTheme::scale_radius` in sdk/theme.
+/// as `ArlenTheme::scale_radius` in sdk/theme.
 function effectiveRadius(base: number, intensity: number): number {
   const i = Math.max(0, Math.min(2, intensity));
   return Math.round(base * i);
@@ -199,7 +199,7 @@ export function applyAppearance(config: AppearanceConfig | null): void {
 
   // Radius intensity → 6 semantic CSS vars. `full` and the per-corner
   // window outline are categorical and never scaled (mirrors
-  // LunarisTheme::effective_full / effective_window_corners).
+  // ArlenTheme::effective_full / effective_window_corners).
   // Codex post-Sprint review HIGH-3 + companion app-settings-side
   // intensity-injection bug.
   const intensity = config?.overrides?.radius_intensity ?? 1.0;

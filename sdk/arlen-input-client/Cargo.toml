@@ -1,8 +1,8 @@
 [package]
-name = "lunaris-input-client"
+name = "arlen-input-client"
 version = "0.1.0"
 edition = "2021"
-description = "Rust client for the Lunaris compositor input services (org.lunaris.App1 and org.lunaris.InputManager1)"
+description = "Rust client for the Arlen compositor input services (org.arlen.App1 and org.arlen.InputManager1)"
 license = "GPL-3.0-only"
 
 [dependencies]

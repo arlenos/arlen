@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use crate::proto::Event;
 
-const DEFAULT_PRODUCER_SOCKET: &str = "/run/lunaris/event-bus-producer.sock";
+const DEFAULT_PRODUCER_SOCKET: &str = "/run/arlen/event-bus-producer.sock";
 
 /// Emits project events to the Event Bus.
 pub struct ProjectEmitter {

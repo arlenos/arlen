@@ -22,7 +22,7 @@ export function initIndicatorListeners(): () => void {
 
     const pending: Array<Promise<UnlistenFn>> = [
         listen<{ kind: number; edges: number; direction: number; shortcut1: string; shortcut2: string }>(
-            "lunaris://indicator-show",
+            "arlen://indicator-show",
             ({ payload }) => {
                 indicators.update((m) => {
                     m.set(payload.kind, payload);
@@ -31,7 +31,7 @@ export function initIndicatorListeners(): () => void {
             },
         ),
         listen<{ kind: number }>(
-            "lunaris://indicator-hide",
+            "arlen://indicator-hide",
             ({ payload }) => {
                 indicators.update((m) => {
                     m.delete(payload.kind);

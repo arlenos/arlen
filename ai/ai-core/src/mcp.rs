@@ -1,15 +1,15 @@
 //! MCP client for the AI layer.
 //!
-//! Lunaris exposes application capabilities as MCP tools. This module
+//! Arlen exposes application capabilities as MCP tools. This module
 //! is the consuming side: a single [`McpClient`], embedded in the AI
 //! daemon, holds one connection per MCP server and dispatches
 //! `tools/list` and `tools/call` over it.
 //!
 //! The protocol itself is `rmcp`, the upstream MCP SDK. Local servers
 //! are reached over a Unix socket; `rmcp` carries JSON-RPC over the
-//! stream and Lunaris does not extend the wire format.
+//! stream and Arlen does not extend the wire format.
 //!
-//! On top of `rmcp` this module adds the two Lunaris-specific guards
+//! On top of `rmcp` this module adds the two Arlen-specific guards
 //! from the foundation:
 //!
 //! * **Call-chain depth.** Every call carries a [`CallChain`]; a call
@@ -683,7 +683,7 @@ mod tests {
     /// task handle.
     async fn spawn_test_server() -> (String, tokio::task::JoinHandle<()>) {
         let dir = std::env::temp_dir()
-            .join(format!("lunaris-mcp-test-{}", Uuid::new_v4()));
+            .join(format!("arlen-mcp-test-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("temp dir");
         let socket = dir.join("server.sock");
         let listener = UnixListener::bind(&socket).expect("bind socket");
@@ -766,7 +766,7 @@ mod tests {
         let err = client
             .connect(
                 ServerId("gone".to_string()),
-                "/run/lunaris/mcp/nope.sock",
+                "/run/arlen/mcp/nope.sock",
                 ServerClass::ReadOnly,
             )
             .await

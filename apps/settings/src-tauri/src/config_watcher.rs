@@ -1,4 +1,4 @@
-//! File watcher for `~/.config/lunaris/*.toml`.
+//! File watcher for `~/.config/arlen/*.toml`.
 //!
 //! Emits one event per file:
 //!   * `config:appearance:changed`
@@ -30,10 +30,10 @@ const WATCHED: &[(&str, &str)] = &[
 fn config_dir() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris")
+        .join("arlen")
 }
 
-/// Start the multi-file Lunaris config watcher in a background thread.
+/// Start the multi-file Arlen config watcher in a background thread.
 /// The old name is kept for backwards-compat with `lib.rs::setup`.
 pub fn start_appearance_watcher(app: AppHandle) {
     std::thread::Builder::new()
@@ -58,7 +58,7 @@ fn run(app: AppHandle) -> notify::Result<()> {
         notify::Config::default(),
     )?;
     watcher.watch(&dir, RecursiveMode::NonRecursive)?;
-    log::info!("watching {} for Lunaris config changes", dir.display());
+    log::info!("watching {} for Arlen config changes", dir.display());
 
     let mut last_fired: HashMap<&'static str, Instant> = HashMap::new();
 

@@ -17,7 +17,7 @@ mod tests {
     use tempfile::tempdir;
 
     mod proto {
-        include!(concat!(env!("OUT_DIR"), "/lunaris.eventbus.rs"));
+        include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
     }
 
     fn make_open_event(pid: u32, path: &str) -> FileOpenedEvent {

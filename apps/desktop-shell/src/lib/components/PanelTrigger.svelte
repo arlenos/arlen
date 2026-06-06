@@ -9,7 +9,7 @@
     togglePopover,
     hoverPopover,
   } from "$lib/stores/activePopover.js";
-  import { Applet } from "@lunaris/ui-kit/components/topbar";
+  import { Applet } from "@arlen/ui-kit/components/topbar";
   import { Square } from "lucide-svelte";
 
   const isOpen = $derived($activePopover === "quick-settings");

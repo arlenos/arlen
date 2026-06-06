@@ -6,10 +6,10 @@
   /// Undo (A5), and anomaly notices stay as honest placeholders.
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { Page } from "@lunaris/ui-kit/components/ui/page";
-  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
-  import { Group } from "@lunaris/ui-kit/components/ui/group";
-  import { Button } from "@lunaris/ui-kit/components/ui/button";
+  import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
+  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Activity, History, Bell, RefreshCw, ShieldAlert } from "@lucide/svelte";
 
   interface ActivityEntry {

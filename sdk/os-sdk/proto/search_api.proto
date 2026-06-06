@@ -1,7 +1,7 @@
 // shell.search broker wire format.
 //
 // Single-shot request/response: external Tauri apps connect to
-// $XDG_RUNTIME_DIR/lunaris/search.sock, send one OpenRequest,
+// $XDG_RUNTIME_DIR/arlen/search.sock, send one OpenRequest,
 // receive OpenResponse or SearchError, and disconnect.
 //
 // Long-lived handler-registration (Phase 7) goes through modulesd
@@ -9,7 +9,7 @@
 
 syntax = "proto3";
 
-package lunaris.search;
+package arlen.search;
 
 // Wire-format envelope. Brokers and clients exchange one envelope
 // per direction per single-shot connection.

@@ -26,7 +26,7 @@ impl std::fmt::Display for EmitError {
 
 impl std::error::Error for EmitError {}
 
-/// Emits structured events onto the Lunaris Event Bus.
+/// Emits structured events onto the Arlen Event Bus.
 ///
 /// Implemented by [`UnixEventEmitter`] for production use and by
 /// [`crate::mock::MockEventEmitter`] for testing.
@@ -58,7 +58,7 @@ pub trait EventEmitter: Send + Sync {
 ///
 /// #[tokio::main]
 /// async fn main() {
-///     let emitter = UnixEventEmitter::new("/run/lunaris/event-bus-producer.sock");
+///     let emitter = UnixEventEmitter::new("/run/arlen/event-bus-producer.sock");
 ///     emitter.emit("app.action", vec![]).await.unwrap();
 /// }
 /// ```

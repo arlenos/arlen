@@ -1,11 +1,11 @@
 //! Tauri plugin wrapping `org.freedesktop.portal.Desktop` for
-//! first-party Lunaris apps.
+//! first-party Arlen apps.
 //!
 //! The frontend daemon (`xdg-desktop-portal`) routes calls to
 //! whichever backend is registered for the current desktop. On
-//! Lunaris that is `xdg-desktop-portal-lunaris`; on other sessions
+//! Arlen that is `xdg-desktop-portal-arlen`; on other sessions
 //! the plugin falls through gracefully because we never call the
-//! Lunaris backend directly — only the standard frontend.
+//! Arlen backend directly — only the standard frontend.
 //!
 //! # Public API
 //!
@@ -18,7 +18,7 @@
 //! ```rust,ignore
 //! fn main() {
 //!     tauri::Builder::default()
-//!         .plugin(tauri_plugin_lunaris_portal::init())
+//!         .plugin(tauri_plugin_arlen_portal::init())
 //!         .run(tauri::generate_context!())
 //!         .expect("error running app");
 //! }
@@ -44,11 +44,11 @@ use tauri::{
     Runtime,
 };
 
-/// Initialise the Lunaris portal plugin. Registers all five Tauri
+/// Initialise the Arlen portal plugin. Registers all five Tauri
 /// commands (`pick_file`, `pick_directory`, `save_file`,
 /// `save_files`, `open_uri`).
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
-    Builder::new("lunaris-portal")
+    Builder::new("arlen-portal")
         .invoke_handler(tauri::generate_handler![
             commands::pick_file,
             commands::pick_directory,

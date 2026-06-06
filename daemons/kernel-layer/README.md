@@ -1,6 +1,6 @@
 # kernel-layer
 
-Lunaris kernel-layer is the eBPF-based event source for the Lunaris data pipeline. It attaches a tracepoint to `sys_enter_openat`, reads file access events from the kernel via a ring buffer, and forwards them to the Lunaris Event Bus as protobuf messages.
+Arlen kernel-layer is the eBPF-based event source for the Arlen data pipeline. It attaches a tracepoint to `sys_enter_openat`, reads file access events from the kernel via a ring buffer, and forwards them to the Arlen Event Bus as protobuf messages.
 
 This is the component that gives the knowledge graph its raw data. Without kernel-layer, the graph only knows what applications explicitly report. With it, the graph sees every file access system-wide.
 
@@ -16,7 +16,7 @@ normalizer (dedup, path filter, UUID assignment)
 Event Bus → Knowledge Daemon → SQLite + Ladybug
 ```
 
-The eBPF program runs in kernel context with a panic handler and a `Dual MIT/GPL` license declaration required by the kernel. The user-space daemon loads the compiled eBPF binary and bridges it to the rest of the Lunaris stack.
+The eBPF program runs in kernel context with a panic handler and a `Dual MIT/GPL` license declaration required by the kernel. The user-space daemon loads the compiled eBPF binary and bridges it to the rest of the Arlen stack.
 
 ## Workspace structure
 
@@ -50,8 +50,8 @@ cargo build -p kernel-layer
 Must run as root or with `CAP_BPF` + `CAP_PERFMON`.
 
 ```bash
-LUNARIS_PRODUCER_SOCKET=/run/lunaris/event-bus-producer.sock \
-LUNARIS_SESSION_ID=$(cat /run/lunaris/session-id) \
+LUNARIS_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock \
+LUNARIS_SESSION_ID=$(cat /run/arlen/session-id) \
 RUST_LOG=info \
 sudo ./kernel-layer
 ```
@@ -60,7 +60,7 @@ sudo ./kernel-layer
 
 | Variable | Default | Description |
 |---|---|---|
-| `LUNARIS_PRODUCER_SOCKET` | `/run/lunaris/event-bus-producer.sock` | Event Bus producer socket |
+| `LUNARIS_PRODUCER_SOCKET` | `/run/arlen/event-bus-producer.sock` | Event Bus producer socket |
 | `LUNARIS_SESSION_ID` | generated UUID v7 | Session ID attached to all events |
 
 ## Normalizer
@@ -93,4 +93,4 @@ The normalizer tests cover protobuf encoding, path filtering, path extraction fr
 
 ## Part of
 
-[Lunaris](https://github.com/lunaris-sys): a Linux desktop OS built around a system-wide knowledge graph.
+[Arlen](https://github.com/arlenos): a Linux desktop OS built around a system-wide knowledge graph.

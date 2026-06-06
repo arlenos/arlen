@@ -8,10 +8,10 @@
 <div class="p-8 max-w-2xl mx-auto space-y-8">
 
   <div>
-    <h1 class="text-2xl font-semibold tracking-tight">Lunaris ui-kit</h1>
+    <h1 class="text-2xl font-semibold tracking-tight">Arlen ui-kit</h1>
     <p class="text-muted-foreground mt-1">
-      Shared component library for Lunaris first-party apps.
-      Built with shadcn-svelte, Tailwind v4, and Lunaris Surface Tokens.
+      Shared component library for Arlen first-party apps.
+      Built with shadcn-svelte, Tailwind v4, and Arlen Surface Tokens.
     </p>
   </div>
 
@@ -71,7 +71,7 @@
         <CardHeader>
           <CardTitle>Panda Theme</CardTitle>
           <CardDescription>
-            Dark shell, light apps. The default Lunaris theme.
+            Dark shell, light apps. The default Arlen theme.
           </CardDescription>
         </CardHeader>
         <CardContent class="space-y-2">

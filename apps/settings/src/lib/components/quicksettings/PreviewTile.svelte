@@ -20,7 +20,7 @@
   /// orchestrator (PanelPreview) owns the drag-state machine and
   /// passes the relevant handlers as props.
   import { Skeleton } from "$lib/components/ui/skeleton";
-  import * as ContextMenu from "@lunaris/ui-kit/components/ui/context-menu";
+  import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu";
   import {
     Brain,
     Folder,

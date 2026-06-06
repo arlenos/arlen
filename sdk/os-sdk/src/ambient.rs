@@ -5,7 +5,7 @@
 //! Foundation §6.4 Listing 17, p55. Only token-system colors
 //! permitted, intensity hard-capped at 0.5 — both enforced
 //! SDK-side. The user can disable all ambient effects globally
-//! via `~/.config/lunaris/shell.toml [ambient] enabled = false`.
+//! via `~/.config/arlen/shell.toml [ambient] enabled = false`.
 
 use std::future::Future;
 

@@ -21,7 +21,7 @@ use std::sync::Arc;
 use modulesd_proto::{ModuleTier, Request, Response};
 use tokio::sync::broadcast;
 
-use lunaris_modulesd::manager::Manager;
+use arlen_modulesd::manager::Manager;
 
 fn copy_dir_recursive(src: &Path, dst: &Path) {
     std::fs::create_dir_all(dst).unwrap();

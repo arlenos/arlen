@@ -4,15 +4,15 @@ use crate::token::CapabilityToken;
 
 /// Apps allowed to create/write shared entities.
 const SHARED_WRITERS: &[&str] = &[
-    "org.lunaris.contacts",
-    "org.lunaris.calendar",
-    "org.lunaris.places",
+    "org.arlen.contacts",
+    "org.arlen.calendar",
+    "org.arlen.places",
     "system",
 ];
 
 /// Whether an app can write (create/update/delete) shared entities.
 pub fn can_write_shared(app_id: &str) -> bool {
-    SHARED_WRITERS.contains(&app_id) || app_id.starts_with("org.lunaris.")
+    SHARED_WRITERS.contains(&app_id) || app_id.starts_with("org.arlen.")
 }
 
 /// Whether a token allows reading a shared entity type.
@@ -89,9 +89,9 @@ mod tests {
 
     #[test]
     fn test_can_write_shared_first_party() {
-        assert!(can_write_shared("org.lunaris.contacts"));
-        assert!(can_write_shared("org.lunaris.calendar"));
-        assert!(can_write_shared("org.lunaris.places"));
+        assert!(can_write_shared("org.arlen.contacts"));
+        assert!(can_write_shared("org.arlen.calendar"));
+        assert!(can_write_shared("org.arlen.places"));
         assert!(can_write_shared("system"));
     }
 
@@ -118,7 +118,7 @@ mod tests {
     #[test]
     fn test_can_read_sensitive_first_party() {
         let mut token = read_token(vec!["shared.Person"]);
-        token.app_id = "org.lunaris.contacts".into();
+        token.app_id = "org.arlen.contacts".into();
         assert!(can_read_sensitive(&token, "shared.Person"));
     }
 
@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn test_filter_sensitive_first_party_sees_all() {
         let mut token = read_token(vec!["shared.Person"]);
-        token.app_id = "org.lunaris.contacts".into();
+        token.app_id = "org.arlen.contacts".into();
         let mut data = serde_json::Map::new();
         data.insert("email".into(), serde_json::json!("alice@test.com"));
 

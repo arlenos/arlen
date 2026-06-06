@@ -24,7 +24,7 @@
 //!   alone, since there is no sandbox boundary to honour.
 //!
 //! The cgroup is read from `/proc/<pid>/cgroup`, which exists on every
-//! Linux ≥ 2.6.24 with cgroups enabled (always true on Lunaris).
+//! Linux ≥ 2.6.24 with cgroups enabled (always true on Arlen).
 
 use std::fs;
 use std::path::Path;

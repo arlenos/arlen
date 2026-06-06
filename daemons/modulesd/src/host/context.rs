@@ -7,7 +7,7 @@
 /// they did not declare always observe a structured failure rather
 /// than a panic, so they can fall back gracefully.
 
-use lunaris_modules::ModuleCapabilities;
+use arlen_modules::ModuleCapabilities;
 
 /// Snapshot of a module's declared capabilities, taken at load time.
 /// Capabilities never expand at runtime (Foundation §625): an
@@ -125,7 +125,7 @@ fn host_from_url(url: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lunaris_modules::{
+    use arlen_modules::{
         EventBusCapability, GraphCapability, NetworkCapability,
     };
 

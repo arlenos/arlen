@@ -45,7 +45,7 @@ const PASSTHROUGH_SCHEMES: &[&str] = &[
 /// Schemes we explicitly reject. Listed for readability and for the
 /// rejection log lines; `classify_scheme` returns `Rejected` for
 /// anything not in `PASSTHROUGH_SCHEMES` or starting with `file://`.
-const REJECTED_SCHEMES: &[&str] = &["javascript:", "data:", "vbscript:", "lunaris:"];
+const REJECTED_SCHEMES: &[&str] = &["javascript:", "data:", "vbscript:", "arlen:"];
 
 /// Document Portal mount root as a filesystem path.
 /// `/run/user/<uid>/doc/`. Sandboxed callers can only OpenURI
@@ -130,7 +130,7 @@ enum SchemeClass {
     Passthrough,
     /// `file://` — needs caller-identity-aware validation.
     File,
-    /// Explicitly rejected scheme (javascript:, data:, lunaris:, ...).
+    /// Explicitly rejected scheme (javascript:, data:, arlen:, ...).
     Rejected,
 }
 
@@ -234,7 +234,7 @@ impl OpenUri {
 fn error_results(message: &str) -> HashMap<String, OwnedValue> {
     let mut map = HashMap::new();
     if let Ok(owned) = Value::new(message.to_string()).try_to_owned() {
-        map.insert("lunaris-error".to_string(), owned);
+        map.insert("arlen-error".to_string(), owned);
     }
     map
 }
@@ -449,7 +449,7 @@ mod tests {
 
     /// Anything outside the allow-list classifies as Rejected.
     /// Notable: javascript: (XSS via opener), data: (data exfil),
-    /// lunaris: (no-op), and bare strings (no scheme).
+    /// arlen: (no-op), and bare strings (no scheme).
     #[test]
     fn classify_rejected_schemes() {
         assert_eq!(
@@ -457,7 +457,7 @@ mod tests {
             SchemeClass::Rejected
         );
         assert_eq!(classify_scheme("data:text/html,..."), SchemeClass::Rejected);
-        assert_eq!(classify_scheme("lunaris:foo"), SchemeClass::Rejected);
+        assert_eq!(classify_scheme("arlen:foo"), SchemeClass::Rejected);
         assert_eq!(classify_scheme("ftp://example.com"), SchemeClass::Rejected);
         assert_eq!(classify_scheme("not-a-uri"), SchemeClass::Rejected);
         assert_eq!(classify_scheme(""), SchemeClass::Rejected);

@@ -327,23 +327,23 @@ mod tests {
 
     #[test]
     fn autonomous_is_per_app_not_global() {
-        let perms = ActionPermissions::new(BaselineMode::Supervised, ["org.lunaris.files"]);
-        assert_eq!(perms.mode_for("org.lunaris.files"), ActionMode::Autonomous);
-        assert_eq!(perms.mode_for("org.lunaris.mail"), ActionMode::Supervised);
-        assert!(perms.is_autonomous("org.lunaris.files"));
-        assert!(!perms.is_autonomous("org.lunaris.mail"));
+        let perms = ActionPermissions::new(BaselineMode::Supervised, ["org.arlen.files"]);
+        assert_eq!(perms.mode_for("org.arlen.files"), ActionMode::Autonomous);
+        assert_eq!(perms.mode_for("org.arlen.mail"), ActionMode::Supervised);
+        assert!(perms.is_autonomous("org.arlen.files"));
+        assert!(!perms.is_autonomous("org.arlen.mail"));
     }
 
     #[test]
     fn high_impact_actions_always_confirm_even_when_autonomous() {
         let cap = Capability::new(
             AccessTier::Full,
-            ActionPermissions::new(BaselineMode::Supervised, ["org.lunaris.files"]),
+            ActionPermissions::new(BaselineMode::Supervised, ["org.arlen.files"]),
         );
-        // org.lunaris.files is autonomous, but a permanent delete still
+        // org.arlen.files is autonomous, but a permanent delete still
         // requires confirmation.
         assert_eq!(
-            cap.decide("org.lunaris.files", ActionKind::PermanentDelete, false),
+            cap.decide("org.arlen.files", ActionKind::PermanentDelete, false),
             ActionDecision::RequireConfirmation
         );
         for kind in [
@@ -356,7 +356,7 @@ mod tests {
         ] {
             assert!(kind.always_requires_confirmation());
             assert_eq!(
-                cap.decide("org.lunaris.files", kind, false),
+                cap.decide("org.arlen.files", kind, false),
                 ActionDecision::RequireConfirmation
             );
         }
@@ -366,12 +366,12 @@ mod tests {
     fn external_content_forces_confirmation_regardless_of_mode() {
         let cap = Capability::new(
             AccessTier::Full,
-            ActionPermissions::new(BaselineMode::Supervised, ["org.lunaris.files"]),
+            ActionPermissions::new(BaselineMode::Supervised, ["org.arlen.files"]),
         );
         // Ordinary action in an autonomous app would normally Proceed,
         // but external-content provenance forces confirmation.
         assert_eq!(
-            cap.decide("org.lunaris.files", ActionKind::Ordinary, true),
+            cap.decide("org.arlen.files", ActionKind::Ordinary, true),
             ActionDecision::RequireConfirmation
         );
     }
@@ -380,7 +380,7 @@ mod tests {
     fn ordinary_actions_follow_the_configured_mode() {
         let suggest = Capability::new(AccessTier::Full, ActionPermissions::suggest_only());
         assert_eq!(
-            suggest.decide("org.lunaris.files", ActionKind::Ordinary, false),
+            suggest.decide("org.arlen.files", ActionKind::Ordinary, false),
             ActionDecision::Propose
         );
 
@@ -389,16 +389,16 @@ mod tests {
             ActionPermissions::new(BaselineMode::Supervised, Vec::<String>::new()),
         );
         assert_eq!(
-            supervised.decide("org.lunaris.files", ActionKind::Ordinary, false),
+            supervised.decide("org.arlen.files", ActionKind::Ordinary, false),
             ActionDecision::PreviewThenExecute
         );
 
         let autonomous = Capability::new(
             AccessTier::Full,
-            ActionPermissions::new(BaselineMode::Suggest, ["org.lunaris.files"]),
+            ActionPermissions::new(BaselineMode::Suggest, ["org.arlen.files"]),
         );
         assert_eq!(
-            autonomous.decide("org.lunaris.files", ActionKind::Ordinary, false),
+            autonomous.decide("org.arlen.files", ActionKind::Ordinary, false),
             ActionDecision::Proceed
         );
     }
@@ -408,9 +408,9 @@ mod tests {
         // The app is granted Autonomous.
         let cap = Capability::new(
             AccessTier::Full,
-            ActionPermissions::new(BaselineMode::Suggest, ["org.lunaris.files"]),
+            ActionPermissions::new(BaselineMode::Suggest, ["org.arlen.files"]),
         );
-        let app = "org.lunaris.files";
+        let app = "org.arlen.files";
 
         // A Supervised-ceiling behaviour caps the autonomous app to a
         // preview-then-execute, never Proceed.

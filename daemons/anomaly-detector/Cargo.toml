@@ -1,11 +1,11 @@
 [package]
-name = "lunaris-anomalyd"
+name = "arlen-anomalyd"
 version = "0.1.0"
 edition = "2021"
-description = "Anomaly Detector: watches the Lunaris audit log and Event Bus for behavioural anomalies and raises advisory alerts"
+description = "Anomaly Detector: watches the Arlen audit log and Event Bus for behavioural anomalies and raises advisory alerts"
 
 [[bin]]
-name = "lunaris-anomalyd"
+name = "arlen-anomalyd"
 path = "src/main.rs"
 
 [lib]

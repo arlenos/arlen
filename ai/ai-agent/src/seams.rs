@@ -20,19 +20,19 @@
 //! defines the seams whose shape is already settled and concretely useful
 //! — [`Clock`] (so no engine code ever calls `SystemTime::now()` directly)
 //! and [`GateObserver`] (it observes the existing
-//! [`lunaris_ai_core::capability::ActionDecision`]). `TriggerSource` and
+//! [`arlen_ai_core::capability::ActionDecision`]). `TriggerSource` and
 //! `GraphHandle` are intentionally *not* defined here yet: their method
 //! shape is determined by their first consumer (the router in B1, the
 //! engine in B2), and inventing trait signatures with no caller is
 //! speculative generality. They land with that consumer, behind this same
 //! discipline. The provider seam already exists as
-//! [`lunaris_ai_core::provider::AIProvider`] and is reused as-is.
+//! [`arlen_ai_core::provider::AIProvider`] and is reused as-is.
 
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
 use std::time::SystemTime;
 
-use lunaris_ai_core::capability::ActionDecision;
+use arlen_ai_core::capability::ActionDecision;
 
 /// A source of wall-clock time. The engine reads time only through this,
 /// so tests can pin or advance it ([`ManualClock`]) and idle/timing

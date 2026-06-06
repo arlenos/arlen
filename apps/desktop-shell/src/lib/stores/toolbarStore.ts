@@ -120,28 +120,28 @@ interface KeyOnlyEvent {
 export function initToolbarStore(): () => void {
   const unlistens: UnlistenFn[] = [];
   const tasks = [
-    listen<QuickActionsEvent>("lunaris://toolbar-quick-actions", (e) => {
+    listen<QuickActionsEvent>("arlen://toolbar-quick-actions", (e) => {
       updateKey(e.payload.appId, e.payload.windowId, {
         kind: "quick-actions",
         actions: e.payload.actions,
       });
     }),
-    listen<BreadcrumbEvent>("lunaris://toolbar-breadcrumb", (e) => {
+    listen<BreadcrumbEvent>("arlen://toolbar-breadcrumb", (e) => {
       updateKey(e.payload.appId, e.payload.windowId, {
         kind: "breadcrumb",
         items: e.payload.items,
       });
     }),
-    listen<ProgressEvent>("lunaris://toolbar-progress", (e) => {
+    listen<ProgressEvent>("arlen://toolbar-progress", (e) => {
       updateKey(e.payload.appId, e.payload.windowId, {
         kind: "progress",
         progress: { value: e.payload.value, label: e.payload.label ?? null },
       });
     }),
-    listen<KeyOnlyEvent>("lunaris://toolbar-progress-cleared", (e) => {
+    listen<KeyOnlyEvent>("arlen://toolbar-progress-cleared", (e) => {
       clearProgress(e.payload.appId, e.payload.windowId);
     }),
-    listen<KeyOnlyEvent>("lunaris://toolbar-cleared", (e) => {
+    listen<KeyOnlyEvent>("arlen://toolbar-cleared", (e) => {
       updateKey(e.payload.appId, e.payload.windowId, { kind: "none" });
     }),
   ];

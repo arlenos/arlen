@@ -3,9 +3,9 @@
 /// Settings runs in its own Tauri process and can't reach
 /// desktop-shell's `night_light_*` commands directly. Instead we
 /// surgically write the `[night_light]` section of
-/// `~/.config/lunaris/shell.toml` and let desktop-shell's existing
+/// `~/.config/arlen/shell.toml` and let desktop-shell's existing
 /// shell-config watcher pick up the change and replay the state to
-/// the compositor via the `lunaris-shell-overlay` protocol. Same
+/// the compositor via the `arlen-shell-overlay` protocol. Same
 /// pattern the rest of the cross-app config uses.
 ///
 /// We deliberately do NOT deserialize the full `ShellConfig`
@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 fn shell_toml_path() -> Result<PathBuf, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
-    Ok(PathBuf::from(home).join(".config/lunaris/shell.toml"))
+    Ok(PathBuf::from(home).join(".config/arlen/shell.toml"))
 }
 
 /// Read the existing shell.toml as a generic table so app-settings

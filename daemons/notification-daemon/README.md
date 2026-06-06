@@ -1,6 +1,6 @@
-# lunaris-notifyd
+# arlen-notifyd
 
-Notification daemon for Lunaris OS. Implements the [Desktop Notifications Specification](https://specifications.freedesktop.org/notification-spec/notification-spec-latest.html) (1.2).
+Notification daemon for Arlen OS. Implements the [Desktop Notifications Specification](https://specifications.freedesktop.org/notification-spec/notification-spec-latest.html) (1.2).
 
 ## Features
 
@@ -52,7 +52,7 @@ notify-send --action="open=Open" "Download" "file.zip complete"
 
 ## Configuration
 
-Config file: `~/.config/lunaris/notifications.toml`
+Config file: `~/.config/arlen/notifications.toml`
 
 ```toml
 [general]
@@ -85,7 +85,7 @@ priority = "high"
 
 ## Socket Protocol
 
-The daemon communicates with the desktop shell via a Unix socket at `/run/user/{uid}/lunaris/notification.sock`. Messages use length-prefixed protobuf framing (4-byte BE length + protobuf body).
+The daemon communicates with the desktop shell via a Unix socket at `/run/user/{uid}/arlen/notification.sock`. Messages use length-prefixed protobuf framing (4-byte BE length + protobuf body).
 
 See `proto/notification.proto` for the full schema.
 

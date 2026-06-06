@@ -1,6 +1,6 @@
 /// Configuration types for the notification daemon.
 ///
-/// Loaded from `~/.config/lunaris/notifications.toml`.
+/// Loaded from `~/.config/arlen/notifications.toml`.
 
 use std::collections::HashMap;
 

@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use lunaris_ai_core::pipeline::{GraphQuerier, GraphQueryError, GraphRow};
+use arlen_ai_core::pipeline::{GraphQuerier, GraphQueryError, GraphRow};
 use os_sdk::graph::{GraphClient, QueryError, UnixGraphClient};
 
 /// [`GraphQuerier`] backed by the os-sdk Unix-socket graph client.

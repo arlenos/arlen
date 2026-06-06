@@ -15,7 +15,7 @@ use crate::seams::{GraphError, GraphHandle};
 
 /// The knowledge daemon's query socket. The daemon resolves the real path
 /// from `LUNARIS_KNOWLEDGE_SOCKET` (with this as the fallback).
-pub const DEFAULT_GRAPH_SOCKET: &str = "/run/lunaris/knowledge.sock";
+pub const DEFAULT_GRAPH_SOCKET: &str = "/run/arlen/knowledge.sock";
 
 /// A [`GraphHandle`] backed by the knowledge daemon's read-only Cypher
 /// socket.

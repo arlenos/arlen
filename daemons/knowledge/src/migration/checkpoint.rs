@@ -39,7 +39,7 @@ impl MigrationCheckpoint {
     pub fn path_for(app_id: &str) -> PathBuf {
         dirs::data_local_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("lunaris/graph/migrations")
+            .join("arlen/graph/migrations")
             .join(format!("{app_id}.checkpoint.json"))
     }
 

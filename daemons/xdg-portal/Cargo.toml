@@ -9,8 +9,8 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-only"
-repository = "https://github.com/lunaris-sys/xdg-desktop-portal-lunaris"
-authors = ["Tim Kicker <tim@lunaris-sys.org>"]
+repository = "https://github.com/arlenos/xdg-desktop-portal-arlen"
+authors = ["Tim Kicker <tim@arlenos.org>"]
 
 [workspace.dependencies]
 zbus = { version = "5", default-features = false, features = ["tokio"] }

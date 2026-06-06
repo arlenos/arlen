@@ -1,4 +1,4 @@
-//! Lunaris Settings App backend.
+//! Arlen Settings App backend.
 //!
 //! Tauri entry point. Registers the managed state for the config watcher
 //! and wires up all command handlers.
@@ -18,8 +18,8 @@ pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_lunaris_menu::init())
-        .plugin(tauri_plugin_lunaris_portal::init())
+        .plugin(tauri_plugin_arlen_menu::init())
+        .plugin(tauri_plugin_arlen_portal::init())
         .setup(|app| {
             // Spawn the multi-file config watcher. It emits
             // `config:{file}:changed` Tauri events to the frontend.
@@ -33,7 +33,7 @@ pub fn run() {
 
             // Spawn the wlr-output-management Wayland client on a
             // dedicated thread. Failure is non-fatal: under non-
-            // Lunaris compositors the protocol may be missing and
+            // Arlen compositors the protocol may be missing and
             // the Display panel just shows an empty list. Settings
             // still launches.
             match displays::wayland_client::spawn(app.handle().clone()) {

@@ -1,3 +1,0 @@
-[D-BUS Service]
-Name=org.lunaris.InstallDaemon1
-Exec=%h/.local/lib/lunaris/libexec/lunaris-installd

@@ -205,9 +205,9 @@ mod tests {
         assert!(!f.eval(&fields(&[])));
         assert!(!f.eval(&fields(&[("app_id", "x")]))); // wrong field present
 
-        assert!(Filter::parse("app_id eq org.lunaris.files")
+        assert!(Filter::parse("app_id eq org.arlen.files")
             .unwrap()
-            .eval(&fields(&[("app_id", "org.lunaris.files")])));
+            .eval(&fields(&[("app_id", "org.arlen.files")])));
     }
 
     #[test]

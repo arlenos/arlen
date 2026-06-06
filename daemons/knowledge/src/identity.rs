@@ -7,6 +7,6 @@
 //!
 //! See `docs/architecture/AUTH-CANONICAL.md` section 4.
 
-pub use lunaris_permissions::identity::{
+pub use arlen_permissions::identity::{
     app_id_from_pid, path_to_app_id, pid_start_time, process_alive, IdentityError,
 };

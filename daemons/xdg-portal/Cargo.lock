@@ -1013,7 +1013,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "xdg-desktop-portal-lunaris"
+name = "xdg-desktop-portal-arlen"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1026,12 +1026,12 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "xdg-portal-lunaris-protocol",
+ "xdg-portal-arlen-protocol",
  "zbus",
 ]
 
 [[package]]
-name = "xdg-portal-lunaris-protocol"
+name = "xdg-portal-arlen-protocol"
 version = "0.1.0"
 dependencies = [
  "serde",

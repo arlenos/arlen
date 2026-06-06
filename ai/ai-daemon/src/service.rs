@@ -19,11 +19,11 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use lunaris_ai_core::audit::{self, AuditSink};
-use lunaris_ai_core::graph_query::QueryScope;
-use lunaris_ai_core::pipeline::QueryRunner;
-use lunaris_ai_core::provider::AIProvider;
-use lunaris_ai_explanation::{explain_system as run_explain, GraphReader};
+use arlen_ai_core::audit::{self, AuditSink};
+use arlen_ai_core::graph_query::QueryScope;
+use arlen_ai_core::pipeline::QueryRunner;
+use arlen_ai_core::provider::AIProvider;
+use arlen_ai_explanation::{explain_system as run_explain, GraphReader};
 use tokio_util::sync::CancellationToken;
 
 use crate::registry::{AuthError, CompletionOutcome, CreatedQuery, QueryRegistry, QueryStatus};
@@ -565,7 +565,7 @@ impl AiDaemonService {
         // (Session/Project/Time, which each grant only a subset) would
         // leak labels it does not allow. Checked before any graph read,
         // so the reader never touches a forbidden label.
-        if !lunaris_ai_explanation::REQUIRED_GRAPH_LABELS
+        if !arlen_ai_explanation::REQUIRED_GRAPH_LABELS
             .iter()
             .all(|label| scope.permits(label))
         {
@@ -748,7 +748,7 @@ impl AiDaemonService {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use lunaris_ai_core::pipeline::RunFailure;
+    use arlen_ai_core::pipeline::RunFailure;
     use std::time::Duration;
     use tokio::sync::Notify;
 
@@ -808,9 +808,9 @@ mod tests {
     /// Full-access scope for service tests. These tests exercise
     /// dispatch / caps / registry behaviour; scope enforcement is
     /// covered in `ai-core`'s `graph_query` tests.
-    fn full_scope() -> lunaris_ai_core::graph_query::QueryScope {
-        lunaris_ai_core::graph_query::QueryScope::full(
-            &lunaris_ai_core::graph_schema::GraphSchema::knowledge_graph(),
+    fn full_scope() -> arlen_ai_core::graph_query::QueryScope {
+        arlen_ai_core::graph_query::QueryScope::full(
+            &arlen_ai_core::graph_schema::GraphSchema::knowledge_graph(),
         )
     }
 
@@ -990,8 +990,8 @@ mod tests {
         // An enabled daemon with the Minimal (empty) scope must
         // reject synchronously, not burn a provider call on a query
         // that would always fail.
-        use lunaris_ai_core::graph_query::{AccessTier, QueryScope};
-        use lunaris_ai_core::graph_schema::GraphSchema;
+        use arlen_ai_core::graph_query::{AccessTier, QueryScope};
+        use arlen_ai_core::graph_schema::GraphSchema;
 
         let minimal = QueryScope::for_tier(
             AccessTier::Minimal,
@@ -1254,8 +1254,8 @@ mod tests {
     impl AuditSink for GatedAuditSink {
         async fn submit(
             &self,
-            _event: lunaris_ai_core::audit::IngestRequest,
-        ) -> Result<u64, lunaris_ai_core::audit::AuditClientError> {
+            _event: arlen_ai_core::audit::IngestRequest,
+        ) -> Result<u64, arlen_ai_core::audit::AuditClientError> {
             self.gate.notified().await;
             Ok(0)
         }
@@ -1309,7 +1309,7 @@ mod tests {
 
     // --- System Explanation Mode (explain_system) ---
 
-    use lunaris_ai_core::provider::{
+    use arlen_ai_core::provider::{
         CompletionRequest, CompletionResponse, ProviderAudit, ProviderError,
     };
 
@@ -1349,7 +1349,7 @@ mod tests {
         async fn query_rows(
             &self,
             _cypher: &str,
-        ) -> Result<Vec<HashMap<String, serde_json::Value>>, lunaris_ai_explanation::SnapshotError>
+        ) -> Result<Vec<HashMap<String, serde_json::Value>>, arlen_ai_explanation::SnapshotError>
         {
             Ok(vec![])
         }
@@ -1426,8 +1426,8 @@ mod tests {
         // labels the explanation reads (File/App/Project/ACCESSED_BY/
         // FILE_PART_OF), so each must refuse rather than read a label it
         // does not permit. Only Full grants all of them.
-        use lunaris_ai_core::graph_query::AccessTier;
-        use lunaris_ai_core::graph_schema::GraphSchema;
+        use arlen_ai_core::graph_query::AccessTier;
+        use arlen_ai_core::graph_schema::GraphSchema;
         for tier in [
             AccessTier::SessionScoped,
             AccessTier::ProjectScoped,

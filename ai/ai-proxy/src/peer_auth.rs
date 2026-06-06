@@ -1,7 +1,7 @@
 //! Peer-credential resolution for proxy callers.
 //!
 //! Trusting any session-bus process that happens to currently own
-//! `org.lunaris.AI1` or `org.lunaris.AIAgent1` is not enough: a
+//! `org.arlen.AI1` or `org.arlen.AIAgent1` is not enough: a
 //! well-known name is claimable. If the real daemon is absent, a
 //! same-session attacker can grab the name and POST through the
 //! proxy with a catalogued URL.
@@ -13,7 +13,7 @@
 //! executables (the production installation paths) plus an optional
 //! env-overrideable dev allowlist.
 //!
-//! D-Bus session policy (`<allow own="org.lunaris.AI1"/>` in the
+//! D-Bus session policy (`<allow own="org.arlen.AI1"/>` in the
 //! shipped XML) remains the first layer of defence. Peer-cred
 //! verification is the second: even if name-ownership policy is
 //! mis-installed or relaxed, only processes running the actual
@@ -25,9 +25,9 @@ use std::path::{Path, PathBuf};
 use crate::service::CallerIdentity;
 
 /// Canonical production paths for the two AI daemons.
-pub const CANONICAL_AI_DAEMON_BIN: &str = "/usr/lib/lunaris/libexec/lunaris-ai-daemon";
+pub const CANONICAL_AI_DAEMON_BIN: &str = "/usr/lib/arlen/libexec/arlen-ai-daemon";
 /// Canonical production path for the autonomous-agent daemon.
-pub const CANONICAL_AI_AGENT_BIN: &str = "/usr/lib/lunaris/libexec/lunaris-ai-agent";
+pub const CANONICAL_AI_AGENT_BIN: &str = "/usr/lib/arlen/libexec/arlen-ai-agent";
 
 /// Env var that lets developers extend the executable allowlist for
 /// dev installs (colon-separated paths). Production deploys leave it
@@ -43,7 +43,7 @@ pub struct PeerAuthMap {
 
 impl Default for PeerAuthMap {
     fn default() -> Self {
-        Self::default_lunaris()
+        Self::default_arlen()
     }
 }
 
@@ -55,16 +55,16 @@ impl PeerAuthMap {
     /// repo-relative binaries (colon-separated `<exe-path>=<name>`
     /// pairs). The override is compiled out of release builds: an
     /// env-readable override would otherwise let a local process
-    /// register its own binary as `org.lunaris.AI1`, turning a dev
+    /// register its own binary as `org.arlen.AI1`, turning a dev
     /// convenience into part of the production trust boundary.
     /// Release builds therefore trust only the two canonical
     /// install paths.
-    pub fn default_lunaris() -> Self {
+    pub fn default_arlen() -> Self {
         let mut by_exe = BTreeMap::new();
-        by_exe.insert(PathBuf::from(CANONICAL_AI_DAEMON_BIN), "org.lunaris.AI1".to_string());
+        by_exe.insert(PathBuf::from(CANONICAL_AI_DAEMON_BIN), "org.arlen.AI1".to_string());
         by_exe.insert(
             PathBuf::from(CANONICAL_AI_AGENT_BIN),
-            "org.lunaris.AIAgent1".to_string(),
+            "org.arlen.AIAgent1".to_string(),
         );
         #[cfg(debug_assertions)]
         if let Ok(extras) = std::env::var(EXTRA_BINS_ENV) {
@@ -205,7 +205,7 @@ mod tests {
 
     #[test]
     fn default_map_contains_canonical_paths() {
-        let m = PeerAuthMap::default_lunaris();
+        let m = PeerAuthMap::default_arlen();
         let paths: Vec<&str> = m
             .allowed_paths()
             .map(|p| p.to_str().expect("utf-8"))
@@ -216,20 +216,20 @@ mod tests {
 
     #[test]
     fn lookup_canonical_paths_returns_well_known_names() {
-        let m = PeerAuthMap::default_lunaris();
+        let m = PeerAuthMap::default_arlen();
         assert_eq!(
             m.lookup(Path::new(CANONICAL_AI_DAEMON_BIN)),
-            Some("org.lunaris.AI1")
+            Some("org.arlen.AI1")
         );
         assert_eq!(
             m.lookup(Path::new(CANONICAL_AI_AGENT_BIN)),
-            Some("org.lunaris.AIAgent1")
+            Some("org.arlen.AIAgent1")
         );
     }
 
     #[test]
     fn lookup_unknown_path_returns_none() {
-        let m = PeerAuthMap::default_lunaris();
+        let m = PeerAuthMap::default_arlen();
         assert!(m.lookup(Path::new("/usr/bin/bash")).is_none());
     }
 
@@ -238,16 +238,16 @@ mod tests {
         let prev = std::env::var(EXTRA_BINS_ENV).ok();
         std::env::set_var(
             EXTRA_BINS_ENV,
-            "/tmp/debug-bin=org.lunaris.AI1:/tmp/agent=org.lunaris.AIAgent1",
+            "/tmp/debug-bin=org.arlen.AI1:/tmp/agent=org.arlen.AIAgent1",
         );
-        let m = PeerAuthMap::default_lunaris();
+        let m = PeerAuthMap::default_arlen();
         assert_eq!(
             m.lookup(Path::new("/tmp/debug-bin")),
-            Some("org.lunaris.AI1")
+            Some("org.arlen.AI1")
         );
         assert_eq!(
             m.lookup(Path::new("/tmp/agent")),
-            Some("org.lunaris.AIAgent1")
+            Some("org.arlen.AIAgent1")
         );
         // Restore env state for subsequent tests.
         match prev {

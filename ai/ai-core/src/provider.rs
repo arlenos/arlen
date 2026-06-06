@@ -1,6 +1,6 @@
 //! Provider-agnostic AI completion interface.
 //!
-//! Mirrors Foundation §5.3 Listing 5. The Lunaris AI daemon stays
+//! Mirrors Foundation §5.3 Listing 5. The Arlen AI daemon stays
 //! unaware of the concrete backend in use; the routing engine maps a
 //! request onto a provider, and the provider handles the actual call.
 

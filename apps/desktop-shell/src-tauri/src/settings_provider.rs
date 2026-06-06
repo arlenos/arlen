@@ -1,6 +1,6 @@
 /// Settings search provider for the Waypointer.
 ///
-/// Reads `~/.local/share/lunaris/settings-index.json` (exported by the
+/// Reads `~/.local/share/arlen/settings-index.json` (exported by the
 /// Settings app on startup), searches it by query, and provides generic
 /// config read/write commands so inline actions can toggle settings
 /// without opening the Settings app.
@@ -74,7 +74,7 @@ static INDEX: Mutex<Option<Vec<IndexedSetting>>> = Mutex::new(None);
 fn index_path() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris")
+        .join("arlen")
         .join("settings-index.json")
 }
 
@@ -110,7 +110,7 @@ fn ensure_index() -> Vec<IndexedSetting> {
 fn config_dir() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("lunaris")
+        .join("arlen")
 }
 
 /// Map a logical config file name to the actual filename.
@@ -319,7 +319,7 @@ pub fn settings_set_value(
 /// Open the Settings app with a deep-link to a specific panel/anchor.
 #[tauri::command]
 pub fn settings_open_deep_link(panel: String, anchor: Option<String>) -> Result<(), String> {
-    let mut cmd = std::process::Command::new("lunaris-settings");
+    let mut cmd = std::process::Command::new("arlen-settings");
     cmd.arg("--panel").arg(&panel);
     if let Some(ref a) = anchor {
         cmd.arg("--section").arg(a);
@@ -345,7 +345,7 @@ mod tests {
                 keywords: vec!["dark".into(), "light".into(), "theme".into()],
                 panel: "appearance".into(),
                 section: "Theme".into(),
-                deep_link: "lunaris-settings://appearance#theme-mode".into(),
+                deep_link: "arlen-settings://appearance#theme-mode".into(),
                 inline_action: Some(InlineAction {
                     action_type: "select".into(),
                     config_file: "appearance".into(),
@@ -363,7 +363,7 @@ mod tests {
                 keywords: vec!["dnd".into(), "quiet".into(), "silent".into()],
                 panel: "notifications".into(),
                 section: "Do Not Disturb".into(),
-                deep_link: "lunaris-settings://notifications#dnd-mode".into(),
+                deep_link: "arlen-settings://notifications#dnd-mode".into(),
                 inline_action: None,
             },
             IndexedSetting {
@@ -373,7 +373,7 @@ mod tests {
                 keywords: vec!["font".into(), "size".into(), "text".into()],
                 panel: "appearance".into(),
                 section: "Typography".into(),
-                deep_link: "lunaris-settings://appearance#font-size".into(),
+                deep_link: "arlen-settings://appearance#font-size".into(),
                 inline_action: None,
             },
         ]

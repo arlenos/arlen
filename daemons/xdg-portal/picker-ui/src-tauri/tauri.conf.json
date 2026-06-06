@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Lunaris File Picker",
+  "productName": "Arlen File Picker",
   "version": "0.1.0",
-  "identifier": "org.lunaris.portal.picker",
+  "identifier": "org.arlen.portal.picker",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "picker",
-        "title": "Lunaris File Picker",
+        "title": "Arlen File Picker",
         "width": 800,
         "height": 600,
         "minWidth": 480,

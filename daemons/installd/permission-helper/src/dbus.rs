@@ -1,7 +1,7 @@
 /// D-Bus interface for the permission helper.
 ///
-/// Interface: org.lunaris.PermissionHelper1
-/// Object path: /org/lunaris/PermissionHelper1
+/// Interface: org.arlen.PermissionHelper1
+/// Object path: /org/arlen/PermissionHelper1
 ///
 /// Only authorized callers (installd, settings) may invoke methods.
 
@@ -11,15 +11,15 @@ use crate::profile;
 
 /// Allowed caller binaries (resolved from /proc/{pid}/exe).
 const ALLOWED_CALLERS: &[&str] = &[
-    "lunaris-installd",
-    "lunaris-settings",
-    "lunaris-permission-helper", // self-test
+    "arlen-installd",
+    "arlen-settings",
+    "arlen-permission-helper", // self-test
 ];
 
 /// D-Bus interface implementation.
 pub struct PermissionHelper;
 
-#[interface(name = "org.lunaris.PermissionHelper1")]
+#[interface(name = "org.arlen.PermissionHelper1")]
 impl PermissionHelper {
     /// Write a permission profile for an app.
     async fn write_profile(

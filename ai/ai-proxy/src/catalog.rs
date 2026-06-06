@@ -40,7 +40,7 @@ impl ProviderCatalog {
         Self { entries }
     }
 
-    /// The default Lunaris catalog.
+    /// The default Arlen catalog.
     ///
     /// Phase 9-α ships only the local Ollama provider. The cloud
     /// providers (OpenAI, Anthropic) are deliberately absent: the
@@ -50,7 +50,7 @@ impl ProviderCatalog {
     /// in Phase 9-β/γ together with keyring-backed credentials. A
     /// half-working cloud entry would violate the "no stubs, no
     /// for-now" project rule, so it stays out until it functions.
-    pub fn default_lunaris() -> Self {
+    pub fn default_arlen() -> Self {
         let mut entries = HashMap::new();
         entries.insert(
             "ollama-default".to_string(),
@@ -82,14 +82,14 @@ mod tests {
     fn default_catalog_ships_only_the_local_provider() {
         // Phase 9-α: cloud providers are intentionally absent until
         // keyring-backed auth lands.
-        let cat = ProviderCatalog::default_lunaris();
+        let cat = ProviderCatalog::default_arlen();
         let names: Vec<&str> = cat.names().collect();
         assert_eq!(names, vec!["ollama-default"]);
     }
 
     #[test]
     fn lookup_returns_full_url() {
-        let cat = ProviderCatalog::default_lunaris();
+        let cat = ProviderCatalog::default_arlen();
         let entry = cat.get("ollama-default").unwrap();
         assert_eq!(entry.endpoint_url, "http://localhost:11434/v1/chat/completions");
         assert_eq!(entry.backend, "ollama");
@@ -97,7 +97,7 @@ mod tests {
 
     #[test]
     fn unknown_provider_returns_none() {
-        let cat = ProviderCatalog::default_lunaris();
+        let cat = ProviderCatalog::default_arlen();
         assert!(cat.get("missing-provider").is_none());
     }
 }

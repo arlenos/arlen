@@ -1,7 +1,7 @@
 <script lang="ts">
   /// Permissions panel: lists apps and their permission scopes.
   /// Currently read-only. Write support requires D-Bus integration
-  /// with org.lunaris.PermissionHelper1.
+  /// with org.arlen.PermissionHelper1.
 
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";

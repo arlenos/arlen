@@ -5,7 +5,7 @@
 mod proto {
     #![allow(dead_code)]
     #![allow(clippy::doc_markdown)]
-    include!(concat!(env!("OUT_DIR"), "/lunaris.eventbus.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 
 mod registry;
@@ -16,8 +16,8 @@ use anyhow::Result;
 use registry::ConsumerRegistry;
 use tracing::info;
 
-const DEFAULT_PRODUCER_SOCKET: &str = "/run/lunaris/event-bus-producer.sock";
-const DEFAULT_CONSUMER_SOCKET: &str = "/run/lunaris/event-bus-consumer.sock";
+const DEFAULT_PRODUCER_SOCKET: &str = "/run/arlen/event-bus-producer.sock";
+const DEFAULT_CONSUMER_SOCKET: &str = "/run/arlen/event-bus-consumer.sock";
 
 #[tokio::main]
 async fn main() -> Result<()> {

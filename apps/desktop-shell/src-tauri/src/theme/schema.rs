@@ -1,25 +1,25 @@
 //! Desktop-shell-specific theme schema.
 //!
-//! The full token hierarchy lives in `lunaris-theme` (sdk/theme) and
+//! The full token hierarchy lives in `arlen-theme` (sdk/theme) and
 //! is re-exported here for callers that previously imported from
 //! this module. The types defined HERE are desktop-shell-side
 //! configuration concerns:
 //!
-//! - `AppearanceConfig` / sub-structs: `~/.config/lunaris/appearance.toml`
+//! - `AppearanceConfig` / sub-structs: `~/.config/arlen/appearance.toml`
 //!   schema (theme selection + accessibility prefs + radius_intensity)
 //! - `ThemeInfo`: lightweight summary for the Settings theme picker
 //!
 //! The `[radius]` and color tokens themselves are NEVER defined here
-//! — they live in the canonical `lunaris-theme` schema. This module
+//! — they live in the canonical `arlen-theme` schema. This module
 //! only configures *which* theme is active and *how* the user
 //! overlay layers on top.
 
 use serde::{Deserialize, Serialize};
 
 // Re-exports: callers that used to `use crate::theme::schema::ThemeTokens`
-// transparently switch to the canonical `lunaris-theme` types.
-pub use lunaris_theme::{
-    ColorTokens, CursorTokens, DepthTokens, LunarisTheme, MotionTokens, RadiusTokens,
+// transparently switch to the canonical `arlen-theme` types.
+pub use arlen_theme::{
+    ColorTokens, CursorTokens, DepthTokens, ArlenTheme, MotionTokens, RadiusTokens,
     SpacingTokens, ThemeMeta, ThemeVariant, TypographyTokens, WmTokens,
 };
 
@@ -27,10 +27,10 @@ pub use lunaris_theme::{
 // User config (appearance.toml)
 // ---------------------------------------------------------------------------
 
-/// Top-level appearance config (`~/.config/lunaris/appearance.toml`).
+/// Top-level appearance config (`~/.config/arlen/appearance.toml`).
 ///
-/// Distinct from `~/.config/lunaris/theme.toml` (the full theme
-/// customization overlay handled by `lunaris_theme`): this file
+/// Distinct from `~/.config/arlen/theme.toml` (the full theme
+/// customization overlay handled by `arlen_theme`): this file
 /// captures *preferences* like which theme is active, accessibility
 /// options, and the user's radius-intensity multiplier. It does
 /// **not** define theme data itself.
@@ -56,7 +56,7 @@ pub struct AppearanceConfig {
 pub struct ThemeSelection {
     /// Theme id to activate. Must match one of the bundled themes
     /// (`dark`, `light`) or a user theme at
-    /// `~/.local/share/lunaris/themes/{id}.toml`.
+    /// `~/.local/share/arlen/themes/{id}.toml`.
     #[serde(default = "default_theme_active")]
     pub active: String,
 }
@@ -75,7 +75,7 @@ impl Default for ThemeSelection {
 
 /// `[overrides]` section. The `accent` and `font_scale` fields layer
 /// on top of the active theme; `radius_intensity` is the user's
-/// global radius multiplier (see `LunarisTheme::effective_*`).
+/// global radius multiplier (see `ArlenTheme::effective_*`).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UserOverrides {
     /// Custom accent color (`#rrggbb`) or the sentinel

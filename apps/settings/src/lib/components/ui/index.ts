@@ -2,8 +2,8 @@
 ///
 /// The shared design-system canon (Page, SectionGrid, Group, Row, Button,
 /// Switch, inputs, …) now lives in `sdk/ui-kit` and is imported directly via
-/// the `@lunaris/ui-kit` alias, e.g.
-///   import { Button } from "@lunaris/ui-kit/components/ui/button";
+/// the `@arlen/ui-kit` alias, e.g.
+///   import { Button } from "@arlen/ui-kit/components/ui/button";
 /// Do NOT copy those here. Only app-specific components that have no ui-kit
 /// canon stay under this directory (add-remove-list, command-string-editor,
 /// directory-picker, skeleton, value-slider) plus the complex multi-file

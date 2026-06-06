@@ -655,7 +655,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "113b30b4cd05f7c06868fdb2854f66a7b9fece9a48425351cd532e810d74024f"
 
 [[package]]
-name = "lunaris-anomalyd"
+name = "arlen-anomalyd"
 version = "0.1.0"
 dependencies = [
  "async-trait",
@@ -673,7 +673,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lunaris-permissions"
+name = "arlen-permissions"
 version = "0.1.0"
 dependencies = [
  "dirs",
@@ -802,7 +802,7 @@ version = "0.1.0"
 dependencies = [
  "dirs",
  "libc",
- "lunaris-permissions",
+ "arlen-permissions",
  "notify",
  "prost",
  "prost-build",

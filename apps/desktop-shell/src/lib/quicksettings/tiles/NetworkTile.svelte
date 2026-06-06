@@ -5,7 +5,7 @@
   /// the user). Right-click opens the existing NetworkPopover for
   /// network picking, VPN, connection details. Slider-style sub-
   /// states (signal strength, security) live in the popover.
-  import { BaseTile } from "@lunaris/ui-kit/components/quicksettings";
+  import { BaseTile } from "@arlen/ui-kit/components/quicksettings";
   import { Wifi, WifiOff, Cable, Plane } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -28,8 +28,8 @@
     refresh();
     let stopNet: UnlistenFn | null = null;
     let stopAir: UnlistenFn | null = null;
-    listen("lunaris://network-changed", refresh).then((u) => (stopNet = u));
-    listen("lunaris://airplane-changed", refresh).then((u) => (stopAir = u));
+    listen("arlen://network-changed", refresh).then((u) => (stopNet = u));
+    listen("arlen://airplane-changed", refresh).then((u) => (stopAir = u));
     const interval = setInterval(refresh, 30_000);
     return () => {
       clearInterval(interval);

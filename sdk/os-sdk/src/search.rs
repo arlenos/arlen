@@ -3,7 +3,7 @@
 /// routing hint.
 ///
 /// Apps connect to the shell-side IPC socket at
-/// `$XDG_RUNTIME_DIR/lunaris/search.sock`, send a single
+/// `$XDG_RUNTIME_DIR/arlen/search.sock`, send a single
 /// `OpenRequest`, receive `OpenResponse` (or `SearchError`), and
 /// the connection drops. No persistent state, no subscribe
 /// channel — the search broker is intentionally single-shot.
@@ -12,7 +12,7 @@
 /// is deny (foundation §7.3 explicit-grant).
 ///
 /// Long-lived "register as a search-result provider" is a separate
-/// surface that ships through `lunaris-modulesd` as a Tier-1 WASM
+/// surface that ships through `arlen-modulesd` as a Tier-1 WASM
 /// module (Phase 7). See `docs/architecture/module-system.md` for
 /// that path. This SDK module covers only the open-and-prefill
 /// case.
@@ -92,7 +92,7 @@ pub struct UnixSearchClient {
 
 impl UnixSearchClient {
     /// Connect to the default socket at
-    /// `$XDG_RUNTIME_DIR/lunaris/search.sock`.
+    /// `$XDG_RUNTIME_DIR/arlen/search.sock`.
     pub fn new() -> Result<Self, SearchError> {
         let runtime = std::env::var_os("XDG_RUNTIME_DIR").ok_or_else(|| {
             SearchError::Io(std::io::Error::new(
@@ -101,7 +101,7 @@ impl UnixSearchClient {
             ))
         })?;
         let mut p = PathBuf::from(runtime);
-        p.push("lunaris");
+        p.push("arlen");
         p.push(SOCKET_NAME);
         Ok(Self { socket_path: p })
     }
@@ -201,7 +201,7 @@ mod tests {
         let c = UnixSearchClient::new().expect("client");
         assert_eq!(
             c.socket_path,
-            PathBuf::from("/run/user/1000/lunaris/search.sock")
+            PathBuf::from("/run/user/1000/arlen/search.sock")
         );
     }
 

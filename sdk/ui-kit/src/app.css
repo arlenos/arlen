@@ -3,9 +3,9 @@
 @import "@fontsource-variable/inter";
 
 /* ============================================================
-   Lunaris Surface Tokens - Panda Theme (default)
+   Arlen Surface Tokens - Panda Theme (default)
    Dark shell, light apps. Injected by the theme loader at
-   runtime from ~/.config/lunaris/theme.toml.
+   runtime from ~/.config/arlen/theme.toml.
    These values are the built-in fallbacks.
    ============================================================ */
 :root {
@@ -51,7 +51,7 @@
      Interaction Design System - Animation Timing Tokens
      Blueprint Section 6.13 (Motion tokens), Listing 31.
 
-     Every transition in Lunaris must use one of these durations.
+     Every transition in Arlen must use one of these durations.
      No ad-hoc ms values anywhere.
 
      State rules for every interactive element:
@@ -118,7 +118,7 @@
 }
 
 
-/* Register Lunaris tokens as Tailwind v4 theme variables */
+/* Register Arlen tokens as Tailwind v4 theme variables */
 @theme inline {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
 

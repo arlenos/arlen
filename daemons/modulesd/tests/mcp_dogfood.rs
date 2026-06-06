@@ -13,9 +13,9 @@
 
 use std::path::Path;
 
-use lunaris_ai_core::mcp::{CallChain, McpClient, ServerClass, ServerId};
-use lunaris_modulesd::manager::Manager;
-use lunaris_modulesd::runtime::mcp::mcp_module_socket_path;
+use arlen_ai_core::mcp::{CallChain, McpClient, ServerClass, ServerId};
+use arlen_modulesd::manager::Manager;
+use arlen_modulesd::runtime::mcp::mcp_module_socket_path;
 use tokio::sync::broadcast;
 
 fn copy_dir_recursive(src: &Path, dst: &Path) {
@@ -101,13 +101,13 @@ async fn mcp_demo_module_lists_and_calls_echo() {
         .call_tool(
             &id,
             "echo",
-            serde_json::json!({ "text": "lunaris" }),
+            serde_json::json!({ "text": "arlen" }),
             &chain,
         )
         .await
         .expect("call echo");
     assert!(
-        result.contains("lunaris"),
+        result.contains("arlen"),
         "echo result did not carry the input: {result}"
     );
 

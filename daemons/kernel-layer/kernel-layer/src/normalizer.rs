@@ -32,7 +32,7 @@ struct DedupEntry {
 }
 
 mod proto {
-    include!(concat!(env!("OUT_DIR"), "/lunaris.eventbus.rs"));
+    include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 
 /// Run the normalizer loop. Blocks until the ring buffers are dropped.

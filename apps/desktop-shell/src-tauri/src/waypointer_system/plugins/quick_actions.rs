@@ -120,7 +120,7 @@ const ACTIONS: &[QuickAction] = &[
     QuickAction {
         id: "qa.open_settings",
         title: "Open Settings",
-        description: "Launch the Lunaris Settings app",
+        description: "Launch the Arlen Settings app",
         icon: "settings",
         keywords: &["settings", "preferences", "config"],
     },
@@ -175,7 +175,7 @@ impl WaypointerPlugin for QuickActionsPlugin {
     /// `Settings.app` wins over `Open Settings` for the "settings"
     /// query — the user's expectation when typing an app name is
     /// to launch that app. Quick Actions still surface for
-    /// Lunaris-specific keywords (DND, brightness, …) where Apps
+    /// Arlen-specific keywords (DND, brightness, …) where Apps
     /// has nothing to offer (compositor #29 sprint D plan).
     fn priority(&self) -> u32 {
         50

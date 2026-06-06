@@ -1,6 +1,6 @@
-//! Minimal Lunaris theme loader for the picker UI.
+//! Minimal Arlen theme loader for the picker UI.
 //!
-//! Reads `~/.config/lunaris/appearance.toml`, picks dark or light
+//! Reads `~/.config/arlen/appearance.toml`, picks dark or light
 //! defaults, and applies the `[overrides]` table on top. Token
 //! references like `accent = "$foreground"` resolve against the
 //! base theme.
@@ -68,7 +68,7 @@ pub fn load_theme() -> Theme {
     let Some(config_root) = dirs::config_dir() else {
         return Theme::dark_defaults();
     };
-    let path = config_root.join("lunaris").join("appearance.toml");
+    let path = config_root.join("arlen").join("appearance.toml");
     let contents = match std::fs::read_to_string(&path) {
         Ok(s) => s,
         Err(_) => return Theme::dark_defaults(),

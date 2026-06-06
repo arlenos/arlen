@@ -1,7 +1,7 @@
 /// Bridge for backend-emitted toasts.
 ///
 /// Tauri-side code (e.g. `quick_action_run`) emits
-/// `lunaris://toast` events with a kind + message payload. This
+/// `arlen://toast` events with a kind + message payload. This
 /// listener routes them through svelte-sonner so the user sees the
 /// confirmation regardless of which window invoked the underlying
 /// action — the Toaster mounted in `+layout.svelte` exists in both
@@ -22,7 +22,7 @@ interface ToastPayload {
 export function initToastBridge(): () => void {
   let unlisten: UnlistenFn | null = null;
 
-  listen<ToastPayload>("lunaris://toast", ({ payload }) => {
+  listen<ToastPayload>("arlen://toast", ({ payload }) => {
     const message = payload?.message ?? "";
     if (!message) return;
     switch (payload.kind) {

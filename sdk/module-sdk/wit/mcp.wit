@@ -2,7 +2,7 @@
 ///
 /// An `mcp.server` module exposes a set of MCP tools that the AI
 /// daemon can list and call. The module runs as a Tier 1 WASM
-/// component hosted by `lunaris-modulesd`; modulesd fronts it with a
+/// component hosted by `arlen-modulesd`; modulesd fronts it with a
 /// Unix-socket MCP (JSON-RPC 2.0) endpoint that the AI daemon's
 /// `McpClient` connects to.
 ///
@@ -12,7 +12,7 @@
 /// modulesd passes it through without reshaping it.
 ///
 /// This file carries no `package` declaration: it joins the
-/// `lunaris:waypointer` package declared in `waypointer.wit`, the
+/// `arlen:waypointer` package declared in `waypointer.wit`, the
 /// same way that file already hosts more than one world.
 
 interface server {
@@ -55,9 +55,9 @@ interface server {
 }
 
 world mcp-server {
-    import lunaris:host/graph@0.1.0;
-    import lunaris:host/network@0.1.0;
-    import lunaris:host/events@0.1.0;
-    import lunaris:host/log@0.1.0;
+    import arlen:host/graph@0.1.0;
+    import arlen:host/network@0.1.0;
+    import arlen:host/events@0.1.0;
+    import arlen:host/log@0.1.0;
     export server;
 }
