@@ -32,8 +32,15 @@ for arg in "$@"; do
     esac
 done
 
-# Base path
-ARLEN_PATH="${ARLEN_PATH:-$HOME/Repositories/arlenos}"
+# Base path: the monorepo root. Daemons live under daemons/, apps under
+# apps/. Override ARLEN_PATH from the calling shell for a non-default
+# checkout.
+ARLEN_PATH="${ARLEN_PATH:-$HOME/Repositories/arlen}"
+
+# The compositor is a cosmic-comp fork kept in its own repo (it is not
+# part of the monorepo), so it has its own path. Defaults to the original
+# checkout until it is published under the arlenos org.
+COMPOSITOR_PATH="${COMPOSITOR_PATH:-$HOME/Repositories/lunaris-sys/compositor}"
 
 # Log directory. Every component tees its stdout+stderr to a fresh file
 # so the user can grep without opening DevTools / scrolling tmux history.
@@ -76,6 +83,7 @@ echo "[1/$STEP_TOTAL] Killing existing processes..."
 pkill -9 -f cosmic-comp 2>/dev/null || true
 pkill -9 -f "event-bus" 2>/dev/null || true
 pkill -9 -f "target/debug/knowledge" 2>/dev/null || true
+pkill -9 -f "arlen-knowledge-mcp" 2>/dev/null || true
 pkill -9 -f arlen-notifyd 2>/dev/null || true
 pkill -9 -f "desktop-shell" 2>/dev/null || true
 if [ "$WITH_PORTAL" -eq 1 ]; then
@@ -143,7 +151,7 @@ tmux kill-session -t arlen 2>/dev/null || true
 # Skipped without --with-portal so the default workflow stays
 # fast.
 if [ "$WITH_PORTAL" -eq 1 ]; then
-    PORTAL_SRC="$ARLEN_PATH/xdg-desktop-portal-arlen"
+    PORTAL_SRC="$ARLEN_PATH/daemons/xdg-portal"
     PICKER_BIN="$PORTAL_SRC/picker-ui/src-tauri/target/debug/xdg-desktop-portal-arlen-picker"
     echo "[5/$STEP_TOTAL] Pre-building portal picker-ui (warm-cache: ~2s, cold: ~30s)..."
     if [ ! -d "$PORTAL_SRC/picker-ui/node_modules" ]; then
@@ -183,7 +191,7 @@ ENV_PREFIX="RUST_LOG='$RUST_LOG_FILTER' ARLEN_PRODUCER_SOCKET='$ARLEN_PRODUCER_S
 # is APPENDED — prepending would let dev portal configs shadow
 # system XDG specs and break unrelated apps.
 if [ "$WITH_PORTAL" -eq 1 ]; then
-    PORTAL_DIST="$ARLEN_PATH/xdg-desktop-portal-arlen/dist"
+    PORTAL_DIST="$ARLEN_PATH/daemons/xdg-portal/dist"
     EXISTING_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
     PORTAL_DATA_DIRS="$EXISTING_DATA_DIRS:$PORTAL_DIST"
     EXISTING_DESKTOP="${XDG_CURRENT_DESKTOP:-wlroots}"
@@ -219,30 +227,36 @@ fi
 
 # Window 0: Compositor
 tmux new-session -d -s arlen -n compositor
-tmux send-keys -t arlen:compositor "cd $ARLEN_PATH/compositor && $ENV_PREFIX cargo run --bin cosmic-comp 2>&1 | tee $LOG_DIR/compositor.log" Enter
+tmux send-keys -t arlen:compositor "cd $COMPOSITOR_PATH && $ENV_PREFIX cargo run --bin cosmic-comp 2>&1 | tee $LOG_DIR/compositor.log" Enter
 
 # Window 1: Event Bus (user-owned socket in XDG_RUNTIME_DIR — no sudo)
 tmux new-window -t arlen -n eventbus
-tmux send-keys -t arlen:eventbus "sleep 2 && cd $ARLEN_PATH/event-bus && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/event-bus.log" Enter
+tmux send-keys -t arlen:eventbus "sleep 2 && cd $ARLEN_PATH/daemons/event-bus && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/event-bus.log" Enter
 
 # Window 2: Knowledge
 tmux new-window -t arlen -n knowledge
-tmux send-keys -t arlen:knowledge "sleep 6 && cd $ARLEN_PATH/knowledge && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/knowledge.log" Enter
+tmux send-keys -t arlen:knowledge "sleep 6 && cd $ARLEN_PATH/daemons/knowledge && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/knowledge.log" Enter
+
+# Window 2b: Knowledge MCP server. Bridges the knowledge read socket to an
+# MCP socket for the AI daemon. Honours ARLEN_DAEMON_SOCKET, so it connects
+# to the same dev socket the knowledge daemon binds.
+tmux new-window -t arlen -n knowledge-mcp
+tmux send-keys -t arlen:knowledge-mcp "sleep 9 && cd $ARLEN_PATH/daemons/knowledge-mcp && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/knowledge-mcp.log" Enter
 
 # Window 3: Notification Daemon
 tmux new-window -t arlen -n notifyd
-tmux send-keys -t arlen:notifyd "sleep 7 && cd $ARLEN_PATH/notification-daemon && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/notifyd.log" Enter
+tmux send-keys -t arlen:notifyd "sleep 7 && cd $ARLEN_PATH/daemons/notification-daemon && $ENV_PREFIX cargo run 2>&1 | tee $LOG_DIR/notifyd.log" Enter
 
 # Window 4: Desktop Shell (Tauri). `cargo tauri dev` also spawns the
 # Vite dev server; tee captures both.
 tmux new-window -t arlen -n shell
-tmux send-keys -t arlen:shell "sleep 10 && cd $ARLEN_PATH/desktop-shell && $ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo tauri dev 2>&1 | tee $LOG_DIR/desktop-shell.log" Enter
+tmux send-keys -t arlen:shell "sleep 10 && cd $ARLEN_PATH/apps/desktop-shell && $ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo tauri dev 2>&1 | tee $LOG_DIR/desktop-shell.log" Enter
 
 if [ "$WITH_PORTAL" -eq 1 ]; then
     # Window 5: app-settings (Tauri). The Settings DirectoryPicker
     # is the unconfined-side E2E test for the portal plugin.
     tmux new-window -t arlen -n settings
-    tmux send-keys -t arlen:settings "sleep 12 && cd $ARLEN_PATH/app-settings && $PORTAL_ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo tauri dev 2>&1 | tee $LOG_DIR/app-settings.log" Enter
+    tmux send-keys -t arlen:settings "sleep 12 && cd $ARLEN_PATH/apps/settings && $PORTAL_ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo tauri dev 2>&1 | tee $LOG_DIR/app-settings.log" Enter
 
     # Window 6: portal daemon. Spawned AFTER the picker binary
     # build (pre-build step) so the daemon's pre-warm finds it.
@@ -252,7 +266,7 @@ if [ "$WITH_PORTAL" -eq 1 ]; then
     # session (whichever Wayland the dev shell is on) instead of
     # the nested cosmic-comp the rest of the stack runs against.
     tmux new-window -t arlen -n portal-daemon
-    tmux send-keys -t arlen:portal-daemon "sleep 8 && cd $ARLEN_PATH/xdg-desktop-portal-arlen && $PORTAL_ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo run --bin xdg-desktop-portal-arlen 2>&1 | tee $LOG_DIR/portal-daemon.log" Enter
+    tmux send-keys -t arlen:portal-daemon "sleep 8 && cd $ARLEN_PATH/daemons/xdg-portal && $PORTAL_ENV_PREFIX WAYLAND_DISPLAY=wayland-2 cargo run --bin xdg-desktop-portal-arlen 2>&1 | tee $LOG_DIR/portal-daemon.log" Enter
 fi
 
 # Select shell window
@@ -324,9 +338,9 @@ echo "  Ctrl+B, 0-N     - Jump to window"
 echo "  Ctrl+B, d       - Detach"
 echo ""
 if [ "$WITH_PORTAL" -eq 1 ]; then
-    echo "Windows: 0:compositor  1:eventbus  2:knowledge  3:notifyd  4:shell  5:settings  6:portal-daemon"
+    echo "Windows: 0:compositor  1:eventbus  2:knowledge  3:knowledge-mcp  4:notifyd  5:shell  6:settings  7:portal-daemon"
 else
-    echo "Windows: 0:compositor  1:eventbus  2:knowledge  3:notifyd  4:shell"
+    echo "Windows: 0:compositor  1:eventbus  2:knowledge  3:knowledge-mcp  4:notifyd  5:shell"
 fi
 echo ""
 echo "Logs: tail -f $LOG_DIR/compositor.log"
