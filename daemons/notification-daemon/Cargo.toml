@@ -1,0 +1,49 @@
+[package]
+name = "lunaris-notification-daemon"
+version = "0.1.0"
+edition = "2021"
+description = "Notification daemon for Lunaris OS"
+
+[[bin]]
+name = "lunaris-notifyd"
+path = "src/main.rs"
+
+[dependencies]
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "net", "io-util"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+uuid = { version = "1", features = ["v4"] }
+dirs = "6"
+toml = "0.8"
+notify = "7"
+prost = "0.13"
+bytes = "1"
+libc = "0.2"
+# HTML sanitisation for notification bodies. We do not support markup
+# rendering, so the allowlist is empty — this strips every tag while
+# keeping text content.
+ammonia = "4"
+# Decodes HTML entities (&amp;, &lt;, numeric, etc.) back to plain
+# unicode after ammonia has stripped tags.
+html-escape = "0.2"
+# PNG re-encoding for the `image-data` hint (Chromium/Firefox/modern
+# apps ship per-notification icons as raw pixels). Only the PNG codec
+# is needed; default features pull in every codec, so we trim down.
+image = { version = "0.25", default-features = false, features = ["png"] }
+# Base64 encoding for the `data:image/png;base64,...` URI we set as
+# app_icon after converting image-data to PNG.
+base64 = "0.22"
+notification-proto = { path = "../notification-proto" }
+
+[build-dependencies]
+prost-build = "0.13"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3"
