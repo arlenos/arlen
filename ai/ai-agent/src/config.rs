@@ -44,6 +44,50 @@ pub struct AgentConfig {
     /// The LLM provider for `kind: agent` behaviours, if one is configured
     /// and AI is enabled. `None` means agent behaviours cannot run.
     pub provider: Option<ProviderSettings>,
+    /// Whether the agent may **execute** proven workflow decisions (write to
+    /// the Knowledge Graph), not just surface them. Default `false`:
+    /// suggest-mode, where a decision is gated, audited, and reported but never
+    /// acted on. Opt in with `[agent] executor_live = true`; the write still
+    /// passes the full predict -> gate -> re-validate -> audit chain.
+    ///
+    /// Status of the deployment prerequisites (it defaults off and nothing flips
+    /// it yet): (1) the execution semantics are decided, (2) the cancellation
+    /// behaviour is bounded and accepted, and only (3) full proof atomicity
+    /// remains as a hard blocker. Detail:
+    ///
+    /// 1. **Execution semantics (decided).** The executor fires on a proven
+    ///    `PreviewThenExecute`, which in the capability model is the *Supervised*
+    ///    lift ("preview with a cancellation window, then execute"). For a safe,
+    ///    reversible, invisible curation action via a *deterministic workflow*
+    ///    (auto-tag's `FILE_PART_OF`), it executes **silently and immediately**,
+    ///    with no per-action prompt: per-file confirmation is annoying, and these
+    ///    workflows make no LLM call so they cost no tokens. The user inspects
+    ///    what was curated after the fact via the read-only activity view (the
+    ///    `silent curator + pull` interaction model), not a pre-action window.
+    ///    This deliberately overrides the literal Supervised window for safe
+    ///    workflow curation; it does NOT extend to `kind: agent` LLM behaviours
+    ///    (which are not wired to execute) or to high-impact / external-triggered
+    ///    actions (which always confirm regardless).
+    /// 2. **Cancellation (bounded, accepted).** The dispatch loop stays
+    ///    cancellable (a reload/shutdown can drop an in-flight dispatch), kept on
+    ///    purpose: it aborts a long `kind: agent` loop promptly, and for the
+    ///    workflow write a *drop is the correct revocation behaviour* (a config
+    ///    change removing the grant means the write should not be forced through;
+    ///    a dropped write is not re-authorised on the next run). The write is
+    ///    pre-audited and idempotent, so if its request was already sent it is
+    ///    durably recorded and reconcilable, never lost. The write also has its
+    ///    own timeout, so a stalled knowledge socket cannot park the dispatch
+    ///    (and the daemon) waiting on it. Residual: an already-sent write can
+    ///    still commit under a just-revoked grant (the bounded D-2 class, at most
+    ///    the one in-flight event). A narrower per-write completion shield is
+    ///    possible but not clearly more correct, since forcing the write through
+    ///    a revocation is the opposite of what a revocation wants.
+    /// 3. **Proof atomicity.** The executor re-validates the full proof, then
+    ///    performs a separate write; the daemon enforces only endpoint existence
+    ///    and edge absence atomically, not the gate's `PathUnderField`. A fact
+    ///    outside the write predicate can change in between (gap A2, needs a
+    ///    graph snapshot/version).
+    pub executor_live: bool,
 }
 
 #[derive(Deserialize, Default)]
@@ -66,6 +110,8 @@ struct RawAi {
 struct RawAgent {
     #[serde(default)]
     enabled: Vec<String>,
+    #[serde(default)]
+    executor_live: bool,
 }
 
 #[derive(Deserialize, Default)]
@@ -108,6 +154,7 @@ impl AgentConfig {
             read_tier: AccessTier::Minimal,
             actions: ActionPermissions::suggest_only(),
             provider: None,
+            executor_live: false,
         }
     }
 
@@ -161,6 +208,7 @@ impl AgentConfig {
             read_tier: access_tier_from_level(raw.ai.access_level),
             actions: ActionPermissions::new(baseline, raw.ai.autonomous_apps),
             provider,
+            executor_live: raw.agent.executor_live,
         }
     }
 }
@@ -186,6 +234,18 @@ enabled = ["auto-tag-by-project"]
         assert_eq!(cfg.enabled.get("auto-tag-by-project"), Some(&Provenance::BuiltIn));
         assert_eq!(cfg.read_tier, AccessTier::ProjectScoped);
         assert!(cfg.actions.is_autonomous("org.lunaris.files"));
+        // The executor opt-in defaults off (suggest-mode) when unspecified.
+        assert!(!cfg.executor_live);
+    }
+
+    #[test]
+    fn executor_live_is_opt_in() {
+        let cfg = AgentConfig::parse(
+            "[ai]\nenabled = true\n[agent]\nexecutor_live = true\n",
+        );
+        assert!(cfg.executor_live, "[agent] executor_live = true opts into executing");
+        // Fail-closed config never executes.
+        assert!(!AgentConfig::fail_closed().executor_live);
     }
 
     #[test]
