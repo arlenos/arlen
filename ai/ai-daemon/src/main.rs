@@ -427,6 +427,9 @@ fn map_explain_error(err: ExplainError) -> zbus::fdo::Error {
         ExplainError::NoGraphAccess => zbus::fdo::Error::NotSupported(
             "ai layer has no graph access configured".to_string(),
         ),
+        ExplainError::InsufficientScope => zbus::fdo::Error::NotSupported(
+            "read tier does not permit system explanation".to_string(),
+        ),
         ExplainError::NotConfigured => {
             zbus::fdo::Error::NotSupported("system explanation is not configured".to_string())
         }

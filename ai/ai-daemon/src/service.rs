@@ -115,6 +115,13 @@ pub enum ExplainError {
     /// "AI sees almost nothing" setting and refuses rather than reading.
     #[error("ai layer has no graph access configured")]
     NoGraphAccess,
+    /// The configured read tier permits some graph access but not every
+    /// label the explanation reads. The explanation correlates files,
+    /// apps, and projects, so it requires a read tier that grants all of
+    /// them (effectively Full); a narrower tier refuses rather than
+    /// reading labels it does not permit.
+    #[error("read tier does not permit system explanation")]
+    InsufficientScope,
     /// Explanation is not wired on this daemon (no provider/reader).
     #[error("system explanation is not configured")]
     NotConfigured,
@@ -139,6 +146,7 @@ impl ExplainError {
         match self {
             ExplainError::Disabled => "ai-disabled",
             ExplainError::NoGraphAccess => "no-graph-access",
+            ExplainError::InsufficientScope => "insufficient-scope",
             ExplainError::NotConfigured => "explain-not-configured",
             ExplainError::TooManyInflight => "too-many-inflight",
             ExplainError::GlobalCapacityReached => "global-capacity-reached",
@@ -550,6 +558,18 @@ impl AiDaemonService {
         }
         if scope.is_empty() {
             return Err(ExplainError::NoGraphAccess);
+        }
+        // Label-level scope enforcement: the explanation reads a fixed set
+        // of labels (File, App, Project, ACCESSED_BY, FILE_PART_OF). The
+        // captured scope must permit every one, or a narrower tier
+        // (Session/Project/Time, which each grant only a subset) would
+        // leak labels it does not allow. Checked before any graph read,
+        // so the reader never touches a forbidden label.
+        if !lunaris_ai_explanation::REQUIRED_GRAPH_LABELS
+            .iter()
+            .all(|label| scope.permits(label))
+        {
+            return Err(ExplainError::InsufficientScope);
         }
         let Some(explainer) = self.explain.clone() else {
             return Err(ExplainError::NotConfigured);
@@ -1398,6 +1418,43 @@ mod tests {
         );
         let err = svc.explain_system(explain_caller(), 1).await.unwrap_err();
         assert_eq!(err.code(), "no-graph-access");
+    }
+
+    #[tokio::test]
+    async fn explain_refused_when_tier_lacks_a_required_label() {
+        // Session/Project/Time tiers each grant only a subset of the
+        // labels the explanation reads (File/App/Project/ACCESSED_BY/
+        // FILE_PART_OF), so each must refuse rather than read a label it
+        // does not permit. Only Full grants all of them.
+        use lunaris_ai_core::graph_query::AccessTier;
+        use lunaris_ai_core::graph_schema::GraphSchema;
+        for tier in [
+            AccessTier::SessionScoped,
+            AccessTier::ProjectScoped,
+            AccessTier::TimeScoped,
+        ] {
+            let scope = QueryScope::for_tier(tier, &GraphSchema::knowledge_graph());
+            let svc = enable(
+                AiDaemonService::new(
+                    Arc::new(StubRunner {
+                        reply: Ok("x".to_string()),
+                        gate: None,
+                    }),
+                    scope,
+                    audit_sink(),
+                )
+                .with_explain(
+                    Arc::new(ExplainProvider { text: "x".to_string() }),
+                    Arc::new(EmptyReader),
+                ),
+            );
+            let err = svc.explain_system(explain_caller(), 1).await.unwrap_err();
+            assert_eq!(
+                err.code(),
+                "insufficient-scope",
+                "tier {tier:?} must refuse explanation"
+            );
+        }
     }
 
     #[tokio::test]

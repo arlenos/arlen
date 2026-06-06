@@ -45,4 +45,6 @@ pub use snapshot::{
     Anomaly, AnomalyKind, Coverage, FileActivity, NetworkActivity, ProcessActivity,
     ProjectContext, SystemSnapshot,
 };
-pub use source::{graph_context, GraphReader, SnapshotError, UnixGraphReader};
+pub use source::{
+    graph_context, GraphReader, SnapshotError, UnixGraphReader, REQUIRED_GRAPH_LABELS,
+};
