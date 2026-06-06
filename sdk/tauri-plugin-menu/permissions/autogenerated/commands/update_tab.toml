@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-update-tab"
+description = "Enables the update_tab command without any pre-configured scope."
+commands.allow = ["update_tab"]
+
+[[permission]]
+identifier = "deny-update-tab"
+description = "Denies the update_tab command without any pre-configured scope."
+commands.deny = ["update_tab"]

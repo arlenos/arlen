@@ -1,0 +1,57 @@
+// shell.search broker wire format.
+//
+// Single-shot request/response: external Tauri apps connect to
+// $XDG_RUNTIME_DIR/lunaris/search.sock, send one OpenRequest,
+// receive OpenResponse or SearchError, and disconnect.
+//
+// Long-lived handler-registration (Phase 7) goes through modulesd
+// instead and is NOT covered by this proto.
+
+syntax = "proto3";
+
+package lunaris.search;
+
+// Wire-format envelope. Brokers and clients exchange one envelope
+// per direction per single-shot connection.
+message SearchEnvelope {
+  oneof message {
+    OpenRequest open_request = 1;
+    OpenResponse open_response = 2;
+    SearchError error = 3;
+  }
+}
+
+// Programmatic Waypointer-open with optional prefilled query and
+// routing-hint mode. Apps require the `[search] open = true`
+// permission scope.
+message OpenRequest {
+  // Prefilled query string. Bounded to 4096 bytes after UTF-8
+  // validation. Control characters (ASCII 0x00-0x1F minus tab,
+  // and 0x7F) are stripped silently by the broker; an audit log
+  // line records the strip count.
+  string query = 1;
+
+  // Optional routing hint: empty string = no mode. Allowlist:
+  // "ai", "files", "apps". Unknown values are silently mapped to
+  // empty (forward-compat, no error). Mode is injected as a
+  // `"<mode>: "` prefix so plugins that opt in can match.
+  string mode = 2;
+}
+
+// Successful open. The broker has handed the prefilled query to
+// the Waypointer launcher; the window is shown (or already was).
+// Empty payload by convention.
+message OpenResponse {}
+
+message SearchError {
+  ErrorKind kind = 1;
+  string detail = 2;
+}
+
+enum ErrorKind {
+  ERROR_UNKNOWN = 0;
+  ERROR_PERMISSION_DENIED = 1;
+  ERROR_QUERY_TOO_LARGE = 2;
+  ERROR_WINDOW_NOT_READY = 3;
+  ERROR_INTERNAL = 99;
+}

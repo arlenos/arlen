@@ -1,0 +1,93 @@
+/* ============================================================
+   Lunaris Motion System - Single Source of Truth
+
+   Canonical animation tokens and shared interaction classes for
+   every Lunaris UI surface. Both desktop-shell and app-settings
+   import this file via relative path from their app.css:
+
+     @import "../../sdk/ui-kit/src/lib/motion.css";
+
+   Do not duplicate these tokens in per-app stylesheets; override
+   them on specific elements if a component needs a different feel.
+   ============================================================ */
+
+:root {
+  /* Durations */
+  --duration-micro:  100ms; /* tap/click feedback, scale-down */
+  --duration-fast:   150ms; /* hover bg-shift, small transitions */
+  --duration-medium: 250ms; /* popover entry, overlay fade */
+  --duration-slow:   350ms; /* page transitions, larger moves */
+
+  /* Easings */
+  --ease-out:    cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0.0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Legacy aliases kept so existing components keep compiling while
+     they migrate. New code should use the names above. */
+  --duration-normal:  var(--duration-medium);
+  --duration-instant: var(--duration-micro);
+  --easing-default:   var(--ease-in-out);
+  --easing-enter:     var(--ease-out);
+  --easing-exit:      var(--ease-in-out);
+  --easing-spring:    var(--ease-bounce);
+  --ease-default:     var(--ease-in-out);
+  --ease-enter:       var(--ease-out);
+  --ease-exit:        var(--ease-in-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-micro:  0ms;
+    --duration-fast:   0ms;
+    --duration-medium: 0ms;
+    --duration-slow:   0ms;
+  }
+}
+
+/* ============================================================
+   Shared Interaction Classes
+   ============================================================ */
+
+/* Clickable chrome element: hover-tint + tactile press feedback.
+   Apply to indicators, trigger buttons, row buttons. */
+.interactive {
+  transition:
+    transform var(--duration-micro) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.interactive:hover {
+  background-color: color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+.interactive:active {
+  transform: scale(0.96);
+}
+
+/* Popover / panel entry animation. Attach to the popover root. */
+.shell-popover-anim {
+  animation: lunaris-popover-in var(--duration-medium) var(--ease-out) both;
+  transform-origin: top center;
+}
+@keyframes lunaris-popover-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+/* One-shot pulse when a toggle flips state. */
+.toggle-pulse {
+  animation: lunaris-toggle-pulse var(--duration-fast) var(--ease-bounce);
+}
+@keyframes lunaris-toggle-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.08); }
+}
+
+/* Badge entry (unread counters becoming non-zero, etc.). */
+.badge-pop {
+  animation: lunaris-badge-in var(--duration-fast) var(--ease-bounce);
+}
+@keyframes lunaris-badge-in {
+  from { transform: scale(0); }
+  to   { transform: scale(1); }
+}

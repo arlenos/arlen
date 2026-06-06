@@ -1,0 +1,72 @@
+name: Publish @lunaris/module-sdk
+
+# Triggered by tags of the form `module-sdk-v<X.Y.Z>`. The tag's version
+# must match `module-sdk/package.json` `version` exactly; the workflow
+# fails otherwise. Token: NPM_TOKEN must be configured as a repo secret
+# with publish permission to the @lunaris npm org.
+
+on:
+  push:
+    tags:
+      - 'module-sdk-v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Skip the actual `npm publish` and only build + pack'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: module-sdk
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org/'
+          scope: '@lunaris'
+
+      - name: Verify tag matches package.json version
+        if: github.event_name == 'push'
+        run: |
+          TAG="${GITHUB_REF#refs/tags/module-sdk-v}"
+          PKG=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::Tag version ($TAG) does not match package.json ($PKG)"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm install --no-package-lock --include=dev
+
+      - name: Type-check sources
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+      - name: Inspect built package
+        run: |
+          ls -la dist/
+          npm pack --dry-run
+
+      - name: Publish (provenance)
+        if: github.event_name == 'push' || inputs.dry_run == 'false'
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

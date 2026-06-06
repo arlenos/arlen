@@ -1,0 +1,63 @@
+/// MCP server extension-point interface.
+///
+/// An `mcp.server` module exposes a set of MCP tools that the AI
+/// daemon can list and call. The module runs as a Tier 1 WASM
+/// component hosted by `lunaris-modulesd`; modulesd fronts it with a
+/// Unix-socket MCP (JSON-RPC 2.0) endpoint that the AI daemon's
+/// `McpClient` connects to.
+///
+/// Tool arguments and results cross the WIT boundary as JSON strings.
+/// WIT has no dynamic JSON type, and the MCP wire protocol is JSON on
+/// both ends, so the module and the AI daemon agree on JSON and
+/// modulesd passes it through without reshaping it.
+///
+/// This file carries no `package` declaration: it joins the
+/// `lunaris:waypointer` package declared in `waypointer.wit`, the
+/// same way that file already hosts more than one world.
+
+interface server {
+    /// One callable tool. `input-schema` is a JSON Schema document,
+    /// encoded as a JSON string, describing the tool's argument
+    /// object. An empty string means the tool takes no arguments.
+    record tool-def {
+        name: string,
+        description: string,
+        input-schema: string,
+    }
+
+    /// Why a `call-tool` invocation failed.
+    variant tool-error {
+        /// The arguments did not match the tool's input schema.
+        invalid-input(string),
+        /// No tool with the given name is exported.
+        not-found(string),
+        /// The tool ran but failed.
+        execution-failed(string),
+    }
+
+    /// Called once at module load. Failure marks the module dead; the
+    /// daemon will not retry.
+    init: func() -> result<_, string>;
+
+    /// The module's tool catalogue, returned when the AI daemon issues
+    /// `tools/list`. Expected to be stable for the module's lifetime.
+    list-tools: func() -> list<tool-def>;
+
+    /// Invoke a tool by name. `arguments-json` is the JSON-encoded
+    /// argument object; the success value is the JSON-encoded tool
+    /// result. Must return within the daemon's per-call fuel budget,
+    /// like every other guest export.
+    call-tool: func(name: string, arguments-json: string)
+        -> result<string, tool-error>;
+
+    /// Called when the daemon is shutting the module down. Best-effort.
+    shutdown: func();
+}
+
+world mcp-server {
+    import lunaris:host/graph@0.1.0;
+    import lunaris:host/network@0.1.0;
+    import lunaris:host/events@0.1.0;
+    import lunaris:host/log@0.1.0;
+    export server;
+}

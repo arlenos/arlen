@@ -1,0 +1,175 @@
+//! TOML file schema for theme files (bundled + user-installed +
+//! customization overlay). All fields are `Option` so partial files
+//! merge cleanly via `merge_files()` in `lib.rs`.
+//!
+//! The required-vs-optional split lives in the resolver (`from_file`):
+//! after the merge, certain sections must be present (color,
+//! radius, spacing, typography, motion, depth) while others
+//! (wm, cursor, wallpaper, sounds) are fully optional with code-
+//! side defaults.
+
+use serde::Deserialize;
+
+/// Root structure of a theme file.
+#[derive(Debug, Default, Deserialize)]
+pub struct LunarisThemeFile {
+    pub meta:       Option<MetaSection>,
+    pub color:      Option<ColorSection>,
+    pub radius:     Option<RadiusSection>,
+    pub spacing:    Option<SpacingSection>,
+    pub typography: Option<TypographySection>,
+    pub motion:     Option<MotionSection>,
+    pub depth:      Option<DepthSection>,
+    pub wm:         Option<WmSection>,
+    pub cursor:     Option<CursorSection>,
+    pub wallpaper:  Option<WallpaperSection>,
+    pub sounds:     Option<SoundsSection>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MetaSection {
+    pub id:      String,
+    pub name:    String,
+    pub variant: String,
+    /// Optional parent-theme id. The user-theme resolver loads the
+    /// named theme as the base before applying this file.
+    pub extends: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ColorSection {
+    pub bg:       Option<ColorBgFile>,
+    pub fg:       Option<ColorFgFile>,
+    pub semantic: Option<ColorSemanticFile>,
+    pub border:   Option<BorderColors>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ColorBgFile {
+    pub shell:   Option<String>,
+    pub app:     Option<String>,
+    pub card:    Option<String>,
+    pub overlay: Option<String>,
+    pub input:   Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ColorFgFile {
+    pub primary:   Option<String>,
+    pub secondary: Option<String>,
+    pub disabled:  Option<String>,
+    pub inverse:   Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ColorSemanticFile {
+    pub accent:         Option<String>,
+    pub accent_hover:   Option<String>,
+    pub accent_pressed: Option<String>,
+    pub success:        Option<String>,
+    pub warning:        Option<String>,
+    pub error:          Option<String>,
+    pub info:           Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct BorderColors {
+    pub default: Option<String>,
+    pub strong:  Option<String>,
+}
+
+/// Border-radius tokens. Numeric (in logical pixels) — no unit
+/// suffix in the TOML. The resolver formats them with `px` for
+/// CSS emission. `intensity` is the user-multiplier default
+/// (theme authors can ship a non-1.0 baseline).
+///
+/// `window_corners` is a 4-tuple `[top-left, top-right,
+/// bottom-right, bottom-left]` for the compositor-rendered window
+/// outline shape.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct RadiusSection {
+    pub chip:           Option<f32>,
+    pub button:         Option<f32>,
+    pub input:          Option<f32>,
+    pub card:           Option<f32>,
+    pub modal:          Option<f32>,
+    pub full:           Option<f32>,
+    pub window_corners: Option<[f32; 4]>,
+    pub intensity:      Option<f32>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SpacingSection {
+    pub xs: Option<String>,
+    pub sm: Option<String>,
+    pub md: Option<String>,
+    pub lg: Option<String>,
+    pub xl: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct TypographySection {
+    pub font_sans:     Option<String>,
+    pub font_mono:     Option<String>,
+    pub size_base:     Option<String>,
+    pub line_height:   Option<String>,
+    pub weight_normal: Option<u32>,
+    pub weight_medium: Option<u32>,
+    pub weight_bold:   Option<u32>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct MotionSection {
+    pub duration_fast:   Option<String>,
+    pub duration_normal: Option<String>,
+    pub duration_slow:   Option<String>,
+    pub easing_default:  Option<String>,
+    pub easing_spring:   Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct DepthSection {
+    pub shadow_sm:    Option<String>,
+    pub shadow_md:    Option<String>,
+    pub shadow_lg:    Option<String>,
+    pub blur_enabled: Option<bool>,
+}
+
+/// Window-manager tokens (compositor-only).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct WmSection {
+    pub active_hint: Option<u32>,
+    pub gaps_inner:  Option<u32>,
+    pub gaps_outer:  Option<u32>,
+    /// Optional accent override for the window outline; empty
+    /// string falls through to `[color.semantic].accent`.
+    pub window_hint: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct CursorSection {
+    pub theme: Option<String>,
+    pub size:  Option<u32>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct WallpaperSection {
+    pub r#type:    Option<String>,
+    pub file:      Option<String>,
+    pub dawn:      Option<String>,
+    pub morning:   Option<String>,
+    pub day:       Option<String>,
+    pub evening:   Option<String>,
+    pub night:     Option<String>,
+    pub r#loop:    Option<bool>,
+    pub fps:       Option<u32>,
+    pub fallback:  Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SoundsSection {
+    pub notification: Option<String>,
+    pub error:        Option<String>,
+    pub warning:      Option<String>,
+    pub action:       Option<String>,
+}

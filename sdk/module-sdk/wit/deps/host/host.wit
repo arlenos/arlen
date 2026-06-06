@@ -1,0 +1,86 @@
+/// Host imports surfaced to Tier 1 WASM modules.
+///
+/// Every function here is capability-gated: the host (`lunaris-modulesd`)
+/// only links the imports a module's manifest declares in
+/// `[capabilities]`. An undeclared capability is not just runtime-denied,
+/// the import is missing and the link step rejects the module before it
+/// runs. This is the strongest form of capability enforcement: what is
+/// not declared, does not exist.
+package lunaris:host@0.1.0;
+
+interface graph {
+    /// Read-only Cypher query against the Knowledge Graph.
+    /// Capability: `graph.read = [...]` (allowlist of namespaces).
+    query: func(cypher: string) -> result<string, error>;
+
+    /// Write to the Knowledge Graph.
+    /// Capability: `graph.write = [...]` (allowlist of namespaces).
+    /// The host enforces namespace scoping before executing.
+    write: func(cypher: string) -> result<string, error>;
+
+    record error {
+        code: error-code,
+        message: string,
+    }
+
+    enum error-code {
+        denied,
+        invalid-query,
+        timeout,
+        internal,
+    }
+}
+
+interface network {
+    /// HTTP GET. Returns response body on success.
+    /// Capability: `network.allow = [domain, ...]`. Host rejects URLs
+    /// whose host does not match any allowlist entry.
+    fetch: func(url: string, headers: list<tuple<string, string>>)
+        -> result<list<u8>, error>;
+
+    /// HTTP POST with JSON body.
+    post: func(
+        url: string,
+        body: list<u8>,
+        headers: list<tuple<string, string>>,
+    ) -> result<list<u8>, error>;
+
+    record error {
+        code: error-code,
+        message: string,
+    }
+
+    enum error-code {
+        denied,
+        not-allowed,
+        timeout,
+        connection-failed,
+        invalid-response,
+    }
+}
+
+interface events {
+    /// Emit an event to the Lunaris Event Bus.
+    /// Capability: `event_bus.publish = [namespace, ...]`. The host
+    /// rejects event types whose namespace prefix does not match.
+    emit: func(event-type: string, payload: list<u8>) -> result<_, error>;
+
+    record error {
+        code: error-code,
+        message: string,
+    }
+
+    enum error-code {
+        denied,
+        invalid-payload,
+        bus-disconnected,
+    }
+}
+
+interface log {
+    /// Logging is unconditionally allowed. Goes to the daemon's stderr
+    /// tagged with the module ID; the user can read it in Settings.
+    info:  func(message: string);
+    warn:  func(message: string);
+    error: func(message: string);
+}

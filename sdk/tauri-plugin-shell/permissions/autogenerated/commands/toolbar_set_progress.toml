@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-toolbar-set-progress"
+description = "Enables the toolbar_set_progress command without any pre-configured scope."
+commands.allow = ["toolbar_set_progress"]
+
+[[permission]]
+identifier = "deny-toolbar-set-progress"
+description = "Denies the toolbar_set_progress command without any pre-configured scope."
+commands.deny = ["toolbar_set_progress"]
