@@ -11,3 +11,12 @@ path = "src/lib.rs"
 lunaris-ai-core = { path = "../ai-core" }
 thiserror = "2"
 tracing = "0.1"
+async-trait = "0.1"
+serde_json = "1"
+# Read-only Knowledge Graph access for the snapshot's context half
+# (recent files + active project) via the daemon's typed structured-row
+# mode. The same client the agent reads through.
+os-sdk = { path = "../../sdk/os-sdk" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }

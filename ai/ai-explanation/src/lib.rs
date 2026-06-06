@@ -16,11 +16,14 @@
 //!    [`prompt::build_explanation_prompt`] turns it into a single
 //!    content-origin-tagged prompt (S18-A `GRAPH-DATA`), pure and
 //!    model-free.
-//! 2. **Graph/event adapters (next).** Fill a `SystemSnapshot` from the
-//!    Knowledge Graph (recent activity, project context, anomaly
-//!    signals) behind a seam, with a real implementation over the
-//!    os-sdk graph client.
-//! 3. **Orchestration + daemon wiring (after).** `explain_system()`
+//! 2. **Graph context source (this increment).**
+//!    [`source::graph_context`] fills the graph-derivable half of a
+//!    `SystemSnapshot` (recent files + active project) behind a
+//!    read-only [`source::GraphReader`] seam, with
+//!    [`source::UnixGraphReader`] over the os-sdk graph client. The
+//!    live-moment fields (processes, network) and anomalies have their
+//!    own sources, folded in by the caller.
+//! 3. **Orchestration + daemon wiring (next).** `explain_system()`
 //!    over the `AIProvider` seam, exposed as the ai-daemon
 //!    `org.lunaris.AI1` D-Bus method.
 
@@ -29,9 +32,11 @@
 
 pub mod prompt;
 pub mod snapshot;
+pub mod source;
 
 pub use prompt::{build_explanation_prompt, render_snapshot};
 pub use snapshot::{
     Anomaly, AnomalyKind, FileActivity, NetworkActivity, ProcessActivity, ProjectContext,
     SystemSnapshot,
 };
+pub use source::{graph_context, GraphReader, SnapshotError, UnixGraphReader};
