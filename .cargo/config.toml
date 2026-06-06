@@ -1,0 +1,7 @@
+# lbug (Kuzu graph engine) vendors thrift C++ that relies on transitive
+# includes for uint32_t/uint8_t, which newer GCC no longer provides, so the
+# knowledge daemon fails to build with "uint32_t does not name a type".
+# Forcing <cstdint> into every C++ translation unit fixes it. Applied here so
+# a plain `cargo build` works everywhere; CI sets the same in its env.
+[env]
+CXXFLAGS = "-include cstdint"
