@@ -25,12 +25,24 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::snapshot::{FileActivity, ProjectContext, SystemSnapshot};
+use crate::snapshot::{Coverage, FileActivity, ProjectContext, SystemSnapshot};
 
 /// How many recent file accesses to include in the snapshot. A small
 /// cap keeps the prompt bounded; the explanation summarises rather than
 /// enumerates.
 pub const RECENT_FILES_LIMIT: usize = 12;
+
+/// The recency horizon for "current" file activity, in seconds. The
+/// question is "what is my computer doing right *now*", so the snapshot
+/// only includes files accessed within this window; older graph entries
+/// are historical context, not current activity, and must not be
+/// rendered as if they were happening now.
+pub const RECENT_WINDOW_SECS: i64 = 6 * 3600;
+
+/// Graph timestamps (`File.last_accessed`) are stored in **microseconds**
+/// since the Unix epoch (producers stamp events with `as_micros()`), so
+/// a `now_unix` in seconds is scaled to micros for the cutoff comparison.
+const MICROS_PER_SEC: i64 = 1_000_000;
 
 /// An error reading the graph for a snapshot.
 #[derive(Debug, thiserror::Error)]
@@ -50,12 +62,14 @@ pub trait GraphReader: Send + Sync {
     async fn query_rows(&self, cypher: &str) -> Result<Vec<HashMap<String, Value>>, SnapshotError>;
 }
 
-/// The Cypher for recent file activity: the most recently accessed
-/// files with their app and (optional) owning project. The limit is a
-/// fixed integer constant, so inlining it is injection-safe.
-fn recent_files_query() -> String {
+/// The Cypher for recent file activity: files accessed within the
+/// recency window, most recent first, with their app and (optional)
+/// owning project. Both the cutoff (a derived integer) and the limit (a
+/// fixed constant) are inlined integers, so the query is injection-safe.
+fn recent_files_query(cutoff_micros: i64) -> String {
     format!(
         "MATCH (f:File)-[:ACCESSED_BY]->(a:App) \
+         WHERE f.last_accessed >= {cutoff_micros} \
          OPTIONAL MATCH (f)-[:FILE_PART_OF]->(p:Project) \
          RETURN f.path AS path, a.name AS app, p.name AS project, \
                 f.last_accessed AS last_accessed \
@@ -63,13 +77,17 @@ fn recent_files_query() -> String {
     )
 }
 
-/// The Cypher for the active project: the most recently accessed
-/// promoted project and how many files the graph associates with it.
-/// "Active" here is the KG proxy (most recently accessed), distinct
-/// from the shell's Focus-Mode project.
-const ACTIVE_PROJECT_QUERY: &str = "MATCH (p:Project) WHERE p.promoted = true \
+/// The Cypher for the active project: the most recently accessed project
+/// that is both promoted and `active` (an archived project stays
+/// promoted, so the status filter is required to avoid reporting it as
+/// current), and how many distinct files the graph associates with it.
+/// "Active" here is the KG proxy (most recently accessed), distinct from
+/// the shell's Focus-Mode project.
+const ACTIVE_PROJECT_QUERY: &str =
+    "MATCH (p:Project) WHERE p.promoted = true AND p.status = 'active' \
      OPTIONAL MATCH (f:File)-[:FILE_PART_OF]->(p) \
-     RETURN p.name AS name, p.last_accessed AS last_accessed, count(f) AS file_count \
+     RETURN p.name AS name, p.last_accessed AS last_accessed, \
+            count(DISTINCT f) AS file_count \
      ORDER BY last_accessed DESC LIMIT 1";
 
 /// Read a string cell, treating a missing or non-string value (e.g. a
@@ -118,21 +136,36 @@ fn parse_active_project(rows: &[HashMap<String, Value>]) -> Option<ProjectContex
     })
 }
 
-/// Build the **graph-context half** of a snapshot: `files` and
-/// `active_project`, read through `reader`. `now_unix` stamps the
-/// snapshot (supplied by the caller so this stays clock-free and
-/// testable). The `processes`, `network`, and `anomalies` fields are
-/// left empty here for their own sources to fill.
+/// Build the **graph-context half** of a snapshot: `files` (accessed
+/// within [`RECENT_WINDOW_SECS`] of `now_unix`) and `active_project`,
+/// read through `reader`. `now_unix` (Unix **seconds**) stamps the
+/// snapshot and derives the recency cutoff, supplied by the caller so
+/// this stays clock-free and testable. The returned snapshot's
+/// [`Coverage::graph_context`] is set; `processes`, `network`, and
+/// `anomalies` are left empty with their coverage flags false, for their
+/// own sources to fill.
 pub async fn graph_context(
     reader: &dyn GraphReader,
     now_unix: i64,
 ) -> Result<SystemSnapshot, SnapshotError> {
-    let file_rows = reader.query_rows(&recent_files_query()).await?;
+    // Files older than the window are historical context, not current
+    // activity. A non-positive cutoff (clock at/before the epoch) floors
+    // at 0, which matches everything rather than excluding everything.
+    let cutoff_micros = now_unix
+        .saturating_mul(MICROS_PER_SEC)
+        .saturating_sub(RECENT_WINDOW_SECS.saturating_mul(MICROS_PER_SEC))
+        .max(0);
+    let file_rows = reader.query_rows(&recent_files_query(cutoff_micros)).await?;
     let project_rows = reader.query_rows(ACTIVE_PROJECT_QUERY).await?;
     Ok(SystemSnapshot {
         captured_at_unix: now_unix,
         files: parse_files(&file_rows),
         active_project: parse_active_project(&project_rows),
+        coverage: Coverage {
+            graph_context: true,
+            live_processes: false,
+            anomalies: false,
+        },
         ..Default::default()
     })
 }
@@ -281,10 +314,46 @@ mod tests {
         assert_eq!(snap.captured_at_unix, 1234);
         assert_eq!(snap.files.len(), 1);
         assert_eq!(snap.active_project.as_ref().unwrap().name, "lunaris");
-        // The graph source never fabricates the live-moment fields.
+        // The graph source never fabricates the live-moment fields, and
+        // marks only the graph-context coverage.
         assert!(snap.processes.is_empty());
         assert!(snap.network.is_empty());
         assert!(snap.anomalies.is_empty());
+        assert!(snap.coverage.graph_context);
+        assert!(!snap.coverage.live_processes);
+        assert!(!snap.coverage.anomalies);
+        assert!(!snap.coverage.is_complete());
+    }
+
+    #[tokio::test]
+    async fn graph_context_queries_apply_recency_and_active_status() {
+        let reader = MockReader {
+            responses: vec![],
+            seen: Mutex::new(vec![]),
+        };
+        // now = 10_000 s; window 6h => cutoff = (10_000 - 21_600) s, floored
+        // at 0 micros (clock before the window start).
+        let _ = graph_context(&reader, 10_000).await.unwrap();
+        let seen = reader.seen.lock().unwrap().clone();
+        let files_q = seen.iter().find(|q| q.contains("ACCESSED_BY")).unwrap();
+        assert!(files_q.contains("f.last_accessed >= 0"), "{files_q}");
+        let project_q = seen.iter().find(|q| q.contains("p.promoted")).unwrap();
+        assert!(project_q.contains("p.status = 'active'"), "{project_q}");
+        assert!(project_q.contains("count(DISTINCT f)"), "{project_q}");
+    }
+
+    #[tokio::test]
+    async fn recency_cutoff_is_in_microseconds_past_the_window() {
+        let reader = MockReader {
+            responses: vec![],
+            seen: Mutex::new(vec![]),
+        };
+        // now = 100_000 s, window 6h (21_600 s) => cutoff = 78_400 s in micros.
+        let _ = graph_context(&reader, 100_000).await.unwrap();
+        let seen = reader.seen.lock().unwrap().clone();
+        let files_q = seen.iter().find(|q| q.contains("ACCESSED_BY")).unwrap();
+        let expected = (100_000i64 - RECENT_WINDOW_SECS) * 1_000_000;
+        assert!(files_q.contains(&format!("f.last_accessed >= {expected}")), "{files_q}");
     }
 
     #[tokio::test]

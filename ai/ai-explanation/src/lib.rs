@@ -42,7 +42,7 @@ pub mod source;
 pub use explain::{explain, explain_system, ExplainError};
 pub use prompt::{build_explanation_prompt, render_snapshot};
 pub use snapshot::{
-    Anomaly, AnomalyKind, FileActivity, NetworkActivity, ProcessActivity, ProjectContext,
-    SystemSnapshot,
+    Anomaly, AnomalyKind, Coverage, FileActivity, NetworkActivity, ProcessActivity,
+    ProjectContext, SystemSnapshot,
 };
 pub use source::{graph_context, GraphReader, SnapshotError, UnixGraphReader};

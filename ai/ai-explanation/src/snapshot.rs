@@ -92,11 +92,42 @@ pub struct Anomaly {
     pub description: String,
 }
 
+/// Which sources actually contributed to a snapshot. The explanation
+/// must not present a partial snapshot as a complete picture: an empty
+/// `processes` list means "no process source was consulted" when
+/// [`Coverage::live_processes`] is false, not "no processes are
+/// running". The prompt renders this so the model qualifies its answer
+/// and only calls the system idle when every source was checked and all
+/// were empty. Default is all-false: nothing checked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Coverage {
+    /// Recent files and the active project were read from the Knowledge
+    /// Graph.
+    pub graph_context: bool,
+    /// Current processes and open network connections were read from the
+    /// live event stream / system state.
+    pub live_processes: bool,
+    /// The Anomaly Detector's findings were consulted.
+    pub anomalies: bool,
+}
+
+impl Coverage {
+    /// Whether every source was consulted, so an empty snapshot can be
+    /// honestly reported as a genuinely idle system rather than an
+    /// unobserved one.
+    pub fn is_complete(self) -> bool {
+        self.graph_context && self.live_processes && self.anomalies
+    }
+}
+
 /// The assembled point-in-time view the explanation summarises: the
-/// current moment (processes, files, network) plus graph context
-/// (active project, anomalies). Built by the (future) graph/event
-/// adapters and consumed by the prompt builder; nothing here performs
-/// I/O.
+/// current moment (processes, network) plus graph context (recent
+/// files, active project, anomalies). Built by the source adapters and
+/// consumed by the prompt builder; nothing here performs I/O.
+///
+/// [`SystemSnapshot::coverage`] records which sources actually ran, so
+/// the prompt can distinguish "nothing is happening" from "this source
+/// was not consulted".
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SystemSnapshot {
     /// When the snapshot was taken, Unix seconds. Lets the model phrase
@@ -110,16 +141,20 @@ pub struct SystemSnapshot {
     pub network: Vec<NetworkActivity>,
     /// The active project, when one is in focus.
     pub active_project: Option<ProjectContext>,
-    /// Anomalies the graph flagged against past behaviour and declared
-    /// permissions.
+    /// Anomalies flagged against past behaviour and declared
+    /// permissions (the Anomaly Detector's findings).
     pub anomalies: Vec<Anomaly>,
+    /// Which sources actually contributed to this snapshot.
+    pub coverage: Coverage,
 }
 
 impl SystemSnapshot {
-    /// Whether the snapshot has no activity at all: a genuinely quiet
-    /// system. The summary says so explicitly rather than inventing
-    /// activity.
-    pub fn is_quiet(&self) -> bool {
+    /// Whether the snapshot holds no activity in any field. On its own
+    /// this does NOT mean the system is idle: combine it with
+    /// [`Coverage::is_complete`] before concluding idleness, since an
+    /// empty snapshot from a partial set of sources is unobserved, not
+    /// quiet.
+    pub fn has_no_activity(&self) -> bool {
         self.processes.is_empty()
             && self.files.is_empty()
             && self.network.is_empty()
