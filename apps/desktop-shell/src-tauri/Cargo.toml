@@ -1,0 +1,66 @@
+[package]
+name = "lunaris-desktop-shell"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "lunaris_desktop_shell_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+prost-build = "0.13"
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+base64 = "0.22"
+chrono = "0.4"
+chrono-tz = "0.9"
+evalexpr = "11"
+libc = "0.2"
+unicode_names2 = "2"
+meval = "0.2"
+notify = "6"
+dirs = "5"
+toml = "0.8"
+prost = "0.13"
+uuid = { version = "1", features = ["v7"] }
+serde_json = "1"
+log = "0.4"
+env_logger = "0.11"
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+wayland-client = "0.31"
+wayland-backend = "0.3"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+wayland-scanner = "0.31"
+cosmic-client-toolkit = { git = "https://github.com/pop-os/cosmic-protocols", branch = "main" }
+smithay-client-toolkit = "0.20"
+gtk = "0.18"
+gtk-layer-shell = { version = "0.8", features = ["v0_6"] }
+glib = "0.18"
+futures-util = "0.3"
+thiserror = "2"
+image = { version = "0.25", default-features = false, features = ["png"] }
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+tokio = { version = "1", features = ["net", "io-util", "sync", "macros", "rt", "time"] }
+notification-proto = { path = "../../notification-proto" }
+module-sdk = { path = "../../sdk/module-sdk" }
+lunaris-modules = { path = "../../sdk/modules" }
+modulesd-proto = { path = "../../modulesd-proto" }
+lunaris-permissions = { path = "../../sdk/permissions" }
+lunaris-theme = { path = "../../sdk/theme" }
+bytes = "1"
+wordnet-db = "0.1"
+wordnet-morphy = "0.1"
+wordnet-types = "0.1"
+
+[dev-dependencies]
+tempfile = "3"

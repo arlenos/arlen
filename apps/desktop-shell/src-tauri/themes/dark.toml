@@ -1,0 +1,87 @@
+# Bundled Lunaris Dark theme.
+#
+# Schema canonical at sdk/theme/src/file.rs (LunarisThemeFile).
+# Both compositor and desktop-shell read this same file via
+# include_str!() — single source of truth, no Rust constants
+# mirror it.
+
+[meta]
+id      = "dark"
+name    = "Lunaris Dark"
+variant = "dark"
+
+[color.bg]
+shell   = "#0a0a0a"
+app     = "#0f0f0f"
+card    = "#171717"
+overlay = "#00000080"
+input   = "#1a1a1a"
+
+[color.fg]
+primary   = "#fafafa"
+secondary = "#a1a1aa"
+disabled  = "#52525b"
+inverse   = "#0a0a0a"
+
+[color.semantic]
+accent         = "#6366f1"
+accent_hover   = "#818cf8"
+accent_pressed = "#4f46e5"
+success        = "#22c55e"
+warning        = "#eab308"
+error          = "#ef4444"
+info           = "#3b82f6"
+
+[color.border]
+default = "#27272a"
+strong  = "#3f3f46"
+
+[radius]
+# Semantic tokens. Numeric (logical pixels) — resolver formats to
+# "Npx" for CSS emission. See docs/architecture/theme-system.md.
+chip           = 4
+button         = 6
+input          = 8
+card           = 12
+modal          = 16
+full           = 9999
+window_corners = [12, 12, 12, 12]
+intensity      = 1.0
+
+[spacing]
+xs = "4px"
+sm = "8px"
+md = "16px"
+lg = "24px"
+xl = "32px"
+
+[typography]
+font_sans     = "\"Inter Variable\", ui-sans-serif, system-ui, sans-serif"
+font_mono     = "\"JetBrains Mono\", ui-monospace, monospace"
+size_base     = "14px"
+line_height   = "1.5"
+weight_normal = 400
+weight_medium = 500
+weight_bold   = 600
+
+[motion]
+duration_fast    = "100ms"
+duration_normal  = "200ms"
+duration_slow    = "400ms"
+easing_default   = "cubic-bezier(0.4, 0, 0.2, 1)"
+easing_spring    = "cubic-bezier(0.34, 1.56, 0.64, 1)"
+
+[depth]
+shadow_sm    = "0 1px 2px rgba(0, 0, 0, 0.3)"
+shadow_md    = "0 4px 12px rgba(0, 0, 0, 0.4)"
+shadow_lg    = "0 8px 24px rgba(0, 0, 0, 0.5)"
+blur_enabled = true
+
+[wm]
+active_hint = 1
+gaps_inner  = 4
+gaps_outer  = 4
+
+[cursor]
+theme = "default"
+size  = 24

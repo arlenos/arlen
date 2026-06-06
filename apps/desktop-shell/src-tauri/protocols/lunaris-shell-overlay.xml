@@ -1,0 +1,513 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="lunaris_shell_overlay">
+  <copyright>
+    SPDX-License-Identifier: GPL-2.0-or-later
+  </copyright>
+
+  <description summary="Lunaris shell overlay protocol">
+    This protocol allows the Lunaris compositor to delegate rendering of
+    shell overlay elements (context menus, tab bars, indicators) to the
+    desktop-shell process.
+
+    The compositor acts as the server; the desktop-shell binds this global
+    and receives overlay events. The desktop-shell sends back user actions.
+  </description>
+
+  <interface name="lunaris_shell_overlay_v1" version="1">
+    <description summary="shell overlay manager">
+      Singleton global. The desktop-shell binds this interface once at
+      startup to receive overlay events from the compositor.
+    </description>
+
+    <!-- ===== Context Menu ===== -->
+
+    <event name="context_menu_begin">
+      <description summary="begin a context menu sequence">
+        Sent before any context_menu_item or context_menu_separator events.
+        x and y are global compositor coordinates where the menu should appear.
+        menu_id uniquely identifies this menu instance.
+      </description>
+      <arg name="menu_id" type="uint" summary="unique menu instance id"/>
+      <arg name="x" type="int" summary="x position in compositor global coordinates"/>
+      <arg name="y" type="int" summary="y position in compositor global coordinates"/>
+    </event>
+
+    <event name="context_menu_item">
+      <description summary="a single context menu item">
+        Sent once per item after context_menu_begin, before context_menu_done.
+        index is used when the shell sends activate back to the compositor.
+        shortcut may be an empty string if no shortcut is defined.
+        toggled and disabled are boolean (0 or 1).
+
+        Tree structure: parent_index is the index of the parent submenu item
+        this entry belongs to, or 0xFFFFFFFF (u32::MAX) if the entry is
+        top-level. label is the display string; when empty the shell derives
+        it from action. has_submenu is 1 for entries that open a submenu
+        (their action is ignored on activate); children of such an entry
+        follow in the flat stream with parent_index set to this item's index.
+      </description>
+      <arg name="menu_id" type="uint" summary="menu instance id"/>
+      <arg name="index" type="uint" summary="item index, used for activation"/>
+      <arg name="action" type="uint" enum="window_action" summary="the action this item triggers (ignored if has_submenu=1)"/>
+      <arg name="toggled" type="uint" summary="1 if item is in toggled/checked state"/>
+      <arg name="disabled" type="uint" summary="1 if item is disabled/grayed out"/>
+      <arg name="shortcut" type="string" summary="keyboard shortcut label, may be empty"/>
+      <arg name="parent_index" type="uint" summary="index of parent submenu item, or 0xFFFFFFFF if top-level"/>
+      <arg name="label" type="string" summary="display label; empty string means derive from action"/>
+      <arg name="has_submenu" type="uint" summary="1 if this item opens a submenu"/>
+    </event>
+
+    <event name="context_menu_separator">
+      <description summary="a separator in the context menu">
+        Sent in place of context_menu_item for visual separators.
+        index is incremented as normal so subsequent item indices remain stable.
+        parent_index follows the same semantics as on context_menu_item.
+      </description>
+      <arg name="menu_id" type="uint" summary="menu instance id"/>
+      <arg name="index" type="uint" summary="separator index"/>
+      <arg name="parent_index" type="uint" summary="index of parent submenu item, or 0xFFFFFFFF if top-level"/>
+    </event>
+
+    <event name="context_menu_done">
+      <description summary="end of context menu item sequence">
+        Sent after all items have been sent. The shell should display the menu
+        after receiving this event.
+      </description>
+      <arg name="menu_id" type="uint" summary="menu instance id"/>
+    </event>
+
+    <event name="context_menu_closed">
+      <description summary="compositor closed the context menu">
+        Sent when the compositor dismisses the menu (e.g. focus lost, window
+        closed). The shell must hide the menu without sending activate or dismiss.
+      </description>
+      <arg name="menu_id" type="uint" summary="menu instance id"/>
+    </event>
+
+    <request name="activate">
+      <description summary="user activated a menu item">
+        Sent by the shell when the user clicks a menu item.
+        The compositor looks up index in the pending callback list and
+        invokes the corresponding action.
+      </description>
+      <arg name="menu_id" type="uint" summary="menu instance id"/>
+      <arg name="index" type="uint" summary="index of the activated item"/>
+    </request>
+
+    <request name="dismiss">
+      <description summary="user dismissed the menu without activating an item">
+        Sent when the user closes the menu without selecting anything.
+      </description>
+      <arg name="menu_id" type="uint" summary="menu instance id"/>
+    </request>
+
+    <!-- ===== Tab Bar ===== -->
+
+    <event name="tab_bar_show">
+      <description summary="a window stack tab bar should be displayed">
+        Sent when a window stack becomes visible or changes geometry.
+        The shell should render a tab bar at the given position.
+      </description>
+      <arg name="stack_id" type="uint" summary="unique stack instance id"/>
+      <arg name="x" type="int" summary="x position in compositor global coordinates"/>
+      <arg name="y" type="int" summary="y position in compositor global coordinates"/>
+      <arg name="width" type="int" summary="tab bar width in logical pixels"/>
+      <arg name="height" type="int" summary="tab bar height in logical pixels"/>
+    </event>
+
+    <event name="tab_bar_hide">
+      <description summary="a window stack tab bar should be hidden">
+        Sent when a window stack is destroyed or no longer visible.
+      </description>
+      <arg name="stack_id" type="uint" summary="stack instance id"/>
+    </event>
+
+    <event name="tab_added">
+      <description summary="a tab was added to a stack">
+        Sent when a window is added to a stack. index is the position in the
+        tab list. active is 1 if this tab is now the active tab.
+      </description>
+      <arg name="stack_id" type="uint" summary="stack instance id"/>
+      <arg name="index" type="uint" summary="position in tab list"/>
+      <arg name="title" type="string" summary="window title"/>
+      <arg name="app_id" type="string" summary="application id"/>
+      <arg name="active" type="uint" summary="1 if this tab is now active"/>
+    </event>
+
+    <event name="tab_removed">
+      <description summary="a tab was removed from a stack">
+        Sent when a window is removed from a stack.
+      </description>
+      <arg name="stack_id" type="uint" summary="stack instance id"/>
+      <arg name="index" type="uint" summary="index of the removed tab"/>
+    </event>
+
+    <event name="tab_activated">
+      <description summary="the active tab in a stack changed">
+        Sent when a different tab becomes active in a stack.
+      </description>
+      <arg name="stack_id" type="uint" summary="stack instance id"/>
+      <arg name="index" type="uint" summary="index of the newly active tab"/>
+    </event>
+
+    <event name="tab_title_changed">
+      <description summary="a tab title was updated">
+        Sent when the title of a window in a stack changes.
+      </description>
+      <arg name="stack_id" type="uint" summary="stack instance id"/>
+      <arg name="index" type="uint" summary="index of the tab"/>
+      <arg name="title" type="string" summary="new window title"/>
+    </event>
+
+    <request name="tab_activate">
+      <description summary="user activated a tab">
+        Sent by the shell when the user clicks a tab in the tab bar.
+      </description>
+      <arg name="stack_id" type="uint" summary="stack instance id"/>
+      <arg name="index" type="uint" summary="index of the tab to activate"/>
+    </request>
+
+    <!-- ===== Indicators ===== -->
+
+    <enum name="indicator_kind">
+      <description summary="visual indicator types"/>
+      <entry name="stack_hover" value="1" summary="drop target for window stacking"/>
+      <entry name="swap"        value="2" summary="swap mode active"/>
+      <entry name="resize"      value="3" summary="keyboard resize mode active"/>
+    </enum>
+
+    <event name="indicator_show">
+      <description summary="show or update a visual indicator">
+        Sent when the compositor enters a mode that requires a visual indicator.
+        Desktop-shell positions the indicator itself based on kind.
+        edges and direction are only meaningful for kind=resize.
+      </description>
+      <arg name="kind" type="uint" enum="indicator_kind" summary="indicator type"/>
+      <arg name="edges" type="uint" summary="active resize edges bitflags (1=top 2=bottom 4=left 8=right)"/>
+      <arg name="direction" type="uint" summary="resize direction (0=none 1=outwards 2=inwards)"/>
+      <arg name="shortcut1" type="string" summary="keyboard shortcut hint 1"/>
+      <arg name="shortcut2" type="string" summary="keyboard shortcut hint 2"/>
+    </event>
+
+    <event name="indicator_hide">
+      <description summary="hide a visual indicator">
+        Sent when the compositor leaves the mode that required the indicator.
+      </description>
+      <arg name="kind" type="uint" enum="indicator_kind" summary="indicator type to hide"/>
+    </event>
+
+    <!-- ===== Zoom Toolbar ===== -->
+
+    <enum name="zoom_movement">
+      <description summary="zoom viewport movement mode"/>
+      <entry name="continuously" value="1" summary="viewport follows cursor continuously"/>
+      <entry name="on_edge"      value="2" summary="viewport pans when cursor reaches edge"/>
+      <entry name="centered"     value="3" summary="viewport centers on cursor"/>
+    </enum>
+
+    <event name="zoom_toolbar_show">
+      <description summary="show the zoom toolbar">
+        Sent when accessibility zoom is activated. The shell should render
+        a toolbar showing the current zoom level and controls.
+      </description>
+      <arg name="level" type="fixed" summary="current zoom level (1.0 = no zoom)"/>
+      <arg name="increment" type="uint" summary="zoom step percentage (e.g. 25 = 25%)"/>
+      <arg name="movement" type="uint" enum="zoom_movement" summary="viewport movement mode"/>
+    </event>
+
+    <event name="zoom_toolbar_update">
+      <description summary="update the zoom level display">
+        Sent when the zoom level changes while the toolbar is visible.
+      </description>
+      <arg name="level" type="fixed" summary="new zoom level"/>
+    </event>
+
+    <event name="zoom_toolbar_hide">
+      <description summary="hide the zoom toolbar">
+        Sent when zoom is deactivated (level returns to 1.0).
+      </description>
+    </event>
+
+    <request name="zoom_increase">
+      <description summary="user pressed zoom in"/>
+    </request>
+
+    <request name="zoom_decrease">
+      <description summary="user pressed zoom out"/>
+    </request>
+
+    <request name="zoom_close">
+      <description summary="user pressed close on zoom toolbar"/>
+    </request>
+
+    <request name="zoom_set_increment">
+      <description summary="user selected a zoom increment"/>
+      <arg name="value" type="uint" summary="increment percentage"/>
+    </request>
+
+    <request name="zoom_set_movement">
+      <description summary="user selected a viewport movement mode"/>
+      <arg name="mode" type="uint" enum="zoom_movement" summary="new movement mode"/>
+    </request>
+
+    <!-- ===== Window Header ===== -->
+
+    <enum name="window_header_action_type">
+      <description summary="actions available on a window header bar"/>
+      <entry name="minimize" value="1" summary="minimize the window"/>
+      <entry name="maximize" value="2" summary="toggle maximize"/>
+      <entry name="close"    value="3" summary="close the window"/>
+      <entry name="move"     value="4" summary="start interactive move"/>
+    </enum>
+
+    <event name="window_header_show">
+      <description summary="show a window header bar">
+        Sent when a window with server-side decorations becomes visible.
+        The shell should render a header bar at the given position.
+
+        If stack_id is non-zero the header belongs to a CosmicStack
+        and the shell should render tabs inside the header (left of
+        the title / window-control buttons). The shell correlates
+        the stack's tabs via the existing `tab_added` / `tab_removed`
+        / `tab_activated` events on that same stack_id. A stack_id
+        value of 0 means "not a stack" and the shell renders the
+        header with a simple title only.
+      </description>
+      <arg name="surface_id" type="uint" summary="unique surface identifier"/>
+      <arg name="x" type="int" summary="x position in compositor global coordinates"/>
+      <arg name="y" type="int" summary="y position in compositor global coordinates"/>
+      <arg name="width" type="int" summary="header width in logical pixels"/>
+      <arg name="height" type="int" summary="header height in logical pixels"/>
+      <arg name="title" type="string" summary="window title"/>
+      <arg name="activated" type="uint" summary="1 if the window is focused"/>
+      <arg name="has_minimize" type="uint" summary="1 if minimize button should be shown"/>
+      <arg name="has_maximize" type="uint" summary="1 if maximize button should be shown"/>
+      <arg name="stack_id" type="uint" summary="stack id (0 = not a stack; &gt;0 = render tabs for this stack)"/>
+    </event>
+
+    <event name="window_header_update">
+      <description summary="update a window header bar">
+        Sent when a header bar's geometry, title, or activation state changes.
+        `stack_id` keeps the same semantics as in `window_header_show`.
+      </description>
+      <arg name="surface_id" type="uint" summary="surface identifier"/>
+      <arg name="x" type="int" summary="x position"/>
+      <arg name="y" type="int" summary="y position"/>
+      <arg name="width" type="int" summary="header width"/>
+      <arg name="height" type="int" summary="header height"/>
+      <arg name="title" type="string" summary="window title"/>
+      <arg name="activated" type="uint" summary="1 if focused"/>
+      <arg name="stack_id" type="uint" summary="stack id (0 = not a stack)"/>
+    </event>
+
+    <event name="window_header_hide">
+      <description summary="hide a window header bar">
+        Sent when the window is unmapped or switches to client-side decorations.
+      </description>
+      <arg name="surface_id" type="uint" summary="surface identifier"/>
+    </event>
+
+    <event name="window_header_content">
+      <description summary="titlebar content update from the lunaris-titlebar-v1 protocol">
+        Sent when an application updates its declared titlebar content
+        (tabs, buttons, breadcrumbs, search mode). The payload is a JSON
+        object matching the TitlebarState schema. The shell uses this to
+        render rich titlebar content for the given window.
+      </description>
+      <arg name="surface_id" type="uint" summary="surface identifier"/>
+      <arg name="content_json" type="string" summary="JSON-serialized TitlebarState"/>
+    </event>
+
+    <event name="window_drag_start">
+      <description summary="interactive drag or resize just started">
+        Sent once, at the moment the compositor installs a move or
+        resize grab on the given window. During the drag the shell
+        will receive a burst of `window_header_update` events at
+        pointer-motion rate; this event lets it prepare — disable
+        CSS transitions on that header, switch its Svelte store to
+        synchronous writes, etc. Exactly one `window_drag_end` will
+        follow, even if the grab ends abnormally (window closed,
+        client crash, etc.).
+      </description>
+      <arg name="surface_id" type="uint" summary="surface identifier of the window being dragged"/>
+    </event>
+
+    <event name="window_drag_end">
+      <description summary="interactive drag or resize just ended">
+        Sent once, as the pointer/touch grab releases. The shell
+        restores its normal update path.
+      </description>
+      <arg name="surface_id" type="uint" summary="surface identifier of the window no longer being dragged"/>
+    </event>
+
+    <request name="window_header_action">
+      <description summary="user interacted with a header bar button">
+        Sent by the shell when the user clicks a header bar button.
+      </description>
+      <arg name="surface_id" type="uint" summary="surface identifier"/>
+      <arg name="action" type="uint" enum="window_header_action_type" summary="which button was pressed"/>
+    </request>
+
+    <!-- ===== Layout Mode ===== -->
+
+    <enum name="layout_mode_type">
+      <entry name="floating" value="0" summary="normal floating windows"/>
+      <entry name="tiling" value="1" summary="BSP tiling"/>
+      <entry name="monocle" value="2" summary="monocle (maximized, stacked)"/>
+    </enum>
+
+    <request name="set_layout_mode">
+      <description summary="set the layout mode for the active workspace">
+        Sent by the shell to change the layout mode of the currently
+        active workspace on the given output.
+      </description>
+      <arg name="mode" type="uint" enum="layout_mode_type" summary="desired layout mode"/>
+    </request>
+
+    <event name="layout_mode_changed">
+      <description summary="layout mode changed on a workspace">
+        Sent when the layout mode changes (via keybinding, shell request,
+        or workspace switch).
+      </description>
+      <arg name="mode" type="uint" enum="layout_mode_type" summary="new layout mode"/>
+    </event>
+
+    <!-- ===== Fullscreen Titlebar Reveal ===== -->
+
+    <event name="fullscreen_titlebar_reveal">
+      <description summary="fullscreen window: show the titlebar">
+        Sent when the pointer reaches the top edge of the screen while a
+        fullscreen window is active. The shell should animate the top bar
+        sliding in (200ms). The bar must remain visible until
+        fullscreen_titlebar_hide is received.
+      </description>
+      <arg name="surface_id" type="uint" summary="fullscreen surface identifier"/>
+    </event>
+
+    <event name="fullscreen_titlebar_hide">
+      <description summary="fullscreen window: hide the titlebar">
+        Sent after the pointer has left the titlebar area for 300ms. The
+        shell should animate the top bar sliding out (200ms).
+      </description>
+      <arg name="surface_id" type="uint" summary="fullscreen surface identifier"/>
+    </event>
+
+    <!-- ===== Workspace Overview ===== -->
+
+    <event name="workspace_overlay_open">
+      <description summary="open the Workspace Overview overlay">
+        Sent when the user requests the workspace overview by keyboard
+        (Super+Tab by default). The desktop-shell should open the
+        overlay with keyboard focus on the currently active window.
+        If the overlay is already open, the shell may use this event
+        to cycle keyboard focus to the next window.
+      </description>
+    </event>
+
+    <!-- ===== Waypointer ===== -->
+
+    <event name="waypointer_open">
+      <description summary="open the Waypointer launcher overlay">
+        Sent when the user taps the Super key (press and release without
+        any other key in between). The desktop-shell should open the
+        Waypointer overlay.
+      </description>
+    </event>
+
+    <!-- ===== Hardware brightness keys ===== -->
+
+    <event name="brightness_step">
+      <description summary="user pressed XF86MonBrightnessUp/Down">
+        Emitted when the compositor catches a hardware brightness key
+        press (XF86MonBrightnessUp / Down on a laptop's Fn-row).
+        The shell reads the current backlight value via logind and
+        steps it in the indicated direction; step size and clamping
+        live entirely on the shell side so the compositor stays
+        free of brightness state. Repeat events fire while the key
+        is held — the shell coalesces to ~30Hz to avoid flooding
+        logind D-Bus.
+      </description>
+      <arg name="direction" type="int" summary="+1 for brighter, -1 for darker"/>
+    </event>
+
+    <!-- ===== Window Actions Enum ===== -->
+
+    <enum name="window_action">
+      <description summary="window management actions for context menu items"/>
+      <entry name="none"                 value="0"  summary="no action (submenu header or placeholder)"/>
+      <entry name="minimize"             value="1"  summary="minimize the window"/>
+      <entry name="maximize"             value="2"  summary="toggle maximize"/>
+      <entry name="fullscreen"           value="3"  summary="toggle fullscreen"/>
+      <entry name="tiled"                value="4"  summary="toggle tiled mode"/>
+      <entry name="move"                 value="5"  summary="start interactive move"/>
+      <entry name="resize_top"           value="6"  summary="start resize from top edge"/>
+      <entry name="resize_left"          value="7"  summary="start resize from left edge"/>
+      <entry name="resize_right"         value="8"  summary="start resize from right edge"/>
+      <entry name="resize_bottom"        value="9"  summary="start resize from bottom edge"/>
+      <entry name="stack"                value="10" summary="stack this window"/>
+      <entry name="unstack"              value="11" summary="unstack this tab from its stack"/>
+      <entry name="unstack_all"          value="12" summary="unstack all tabs"/>
+      <entry name="screenshot"           value="13" summary="take a screenshot of the window"/>
+      <entry name="move_prev_workspace"  value="14" summary="move window to previous workspace"/>
+      <entry name="move_next_workspace"  value="15" summary="move window to next workspace"/>
+      <entry name="sticky"               value="16" summary="toggle sticky (show on all workspaces)"/>
+      <entry name="close"                value="17" summary="close the window"/>
+      <entry name="close_all"            value="18" summary="close all windows in a stack"/>
+    </enum>
+
+    <!-- ===== Night Light ===== -->
+
+    <enum name="night_light_schedule">
+      <description summary="when night light should be active"/>
+      <entry name="manual"          value="0" summary="user-controlled on/off"/>
+      <entry name="sunset_sunrise"  value="1" summary="active from sunset to sunrise (requires location)"/>
+      <entry name="custom"          value="2" summary="active during a custom time window (custom_start..custom_end, minutes since midnight)"/>
+    </enum>
+
+    <request name="set_night_light">
+      <description summary="enable or disable night light and set its target temperature">
+        Sent by the shell to flip the night-light gamma engine on or off
+        and to update its target colour temperature. Temperature is in
+        Kelvin and the compositor clamps to the supported warm-tint
+        range (typically 1000–6500K). When enabled is 0 the temperature
+        argument is preserved as the manual target but a neutral 6500K
+        ramp is written to hardware (identity LUT).
+      </description>
+      <arg name="enabled"     type="uint" summary="non-zero to activate the warm tint"/>
+      <arg name="temperature" type="uint" summary="target colour temperature in Kelvin"/>
+    </request>
+
+    <request name="set_night_light_schedule">
+      <description summary="configure when night light flips on and off">
+        Sent by the shell to set the schedule mode. For mode `manual`,
+        custom_start and custom_end are ignored. For mode `custom`, the
+        compositor activates night light when the local clock is in
+        [custom_start, custom_end), with wrap-around for overnight
+        windows (e.g. start=1320 (22:00), end=420 (07:00)). For mode
+        `sunset_sunrise`, the compositor uses the location set via
+        `set_night_light_location` to compute the activation window
+        from solar position; if no location has been set the schedule
+        is treated as manual.
+      </description>
+      <arg name="mode"         type="uint" enum="night_light_schedule" summary="new schedule mode"/>
+      <arg name="custom_start" type="uint" summary="custom-mode start in minutes since midnight"/>
+      <arg name="custom_end"   type="uint" summary="custom-mode end in minutes since midnight"/>
+    </request>
+
+    <request name="set_night_light_location">
+      <description summary="set the user's geographic location">
+        Sent by the shell to configure the location used by the
+        sunset_sunrise schedule mode. Latitude and longitude are
+        passed as signed micro-degrees (degrees × 1_000_000) so the
+        protocol can carry them in `int` args without IEEE float
+        ambiguity. Zero on both axes is treated as "unset" by the
+        compositor. The Settings panel writes this on every change
+        to the location inputs.
+      </description>
+      <arg name="latitude_udeg"  type="int" summary="latitude in micro-degrees, range [-90_000_000, 90_000_000]"/>
+      <arg name="longitude_udeg" type="int" summary="longitude in micro-degrees, range [-180_000_000, 180_000_000]"/>
+    </request>
+
+  </interface>
+
+</protocol>
