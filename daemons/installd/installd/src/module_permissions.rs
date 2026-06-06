@@ -68,6 +68,9 @@ pub fn profile_from_manifest(manifest: &ModuleManifest) -> PermissionProfile {
         clipboard: clipboard_from(&manifest.capabilities),
         system: Default::default(),
         input: Default::default(),
+        search: Default::default(),
+        intents: Default::default(),
+        mcp: Default::default(),
     }
 }
 
