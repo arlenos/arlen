@@ -4,7 +4,7 @@
 
   import { onMount } from "svelte";
   import { FillSlider } from "@lunaris/ui-kit/components/ui/fill-slider";
-  import { PopoverSelect } from "$lib/components/ui/popover-select";
+  import { PopoverSelect } from "@lunaris/ui-kit/components/ui/popover-select";
   import { Page } from "@lunaris/ui-kit/components/ui/page";
   import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
   import { Group } from "@lunaris/ui-kit/components/ui/group";

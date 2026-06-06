@@ -5,7 +5,7 @@
   /// `startDragging()` rather than `data-tauri-drag-region`, because
   /// the attribute-based path is unreliable on Wayland in Tauri v2.
   import { breadcrumbs } from "$lib/stores/navigation";
-  import { SidebarTrigger } from "$lib/components/ui/sidebar";
+  import { SidebarTrigger } from "@lunaris/ui-kit/components/ui/sidebar";
   import { Separator } from "@lunaris/ui-kit/components/ui/separator";
   import WindowControls from "./WindowControls.svelte";
   import { ChevronRight } from "lucide-svelte";

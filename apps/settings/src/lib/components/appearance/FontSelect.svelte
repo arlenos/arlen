@@ -10,7 +10,7 @@
   import {
     PopoverSelect,
     type PopoverSelectOption,
-  } from "$lib/components/ui/popover-select";
+  } from "@lunaris/ui-kit/components/ui/popover-select";
 
   let {
     value,

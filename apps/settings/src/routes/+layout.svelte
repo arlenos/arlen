@@ -10,7 +10,7 @@
   import {
     SidebarProvider,
     SidebarInset,
-  } from "$lib/components/ui/sidebar";
+  } from "@lunaris/ui-kit/components/ui/sidebar";
   import {
     syncFromRoute,
     breadcrumbs,

@@ -25,7 +25,7 @@
   import { Button } from "@lunaris/ui-kit/components/ui/button";
   import { Input } from "@lunaris/ui-kit/components/ui/input";
   import { NumberInput } from "@lunaris/ui-kit/components/ui/number-input";
-  import { PopoverSelect } from "$lib/components/ui/popover-select";
+  import { PopoverSelect } from "@lunaris/ui-kit/components/ui/popover-select";
   import { ai } from "$lib/stores/ai";
 
   interface AiStatus {

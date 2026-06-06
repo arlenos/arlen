@@ -13,7 +13,7 @@
   import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { ValueSlider } from "$lib/components/ui/value-slider";
-  import { PopoverSelect } from "$lib/components/ui/popover-select";
+  import { PopoverSelect } from "@lunaris/ui-kit/components/ui/popover-select";
   import { Group } from "@lunaris/ui-kit/components/ui/group";
   import { Row } from "@lunaris/ui-kit/components/ui/row";
 
