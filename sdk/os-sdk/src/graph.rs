@@ -270,11 +270,18 @@ impl UnixGraphClient {
     /// MATCH/MERGE. Endpoint types are the namespaced graph types (e.g.
     /// `system.File`, `system.Project`) and the ids are the concrete node ids.
     ///
-    /// Returns `Ok(())` only on a definitive `OK` (the edge is committed). A
-    /// daemon `ERROR:` maps to [`QueryError`] (a permission error to
-    /// [`QueryError::PermissionDenied`]). The daemon's MERGE is idempotent, so
-    /// retrying after a transport failure re-confirms the edge rather than
-    /// duplicating it.
+    /// On success returns whether the edge was newly [`Created`] or
+    /// [`AlreadyExists`]ed (the daemon's conditional create is atomic and reports
+    /// which for a single attempt, and never double-creates). A daemon `ERROR:`
+    /// maps to [`QueryError`] (a permission error to
+    /// [`QueryError::PermissionDenied`], a missing endpoint to
+    /// [`QueryError::InvalidQuery`]). The create never duplicates the edge, so a
+    /// retry is safe; note the outcome is per-attempt, not durable operation
+    /// identity, so a retry after a lost response reports `AlreadyExists` even if
+    /// the lost attempt is the one that created it.
+    ///
+    /// [`Created`]: RelationWriteOutcome::Created
+    /// [`AlreadyExists`]: RelationWriteOutcome::AlreadyExists
     pub async fn create_relation(
         &self,
         from_type: &str,
@@ -282,7 +289,7 @@ impl UnixGraphClient {
         to_type: &str,
         to_id: &str,
         relation_type: &str,
-    ) -> Result<(), QueryError> {
+    ) -> Result<RelationWriteOutcome, QueryError> {
         let req = serde_json::json!({
             "op": "create_relation",
             "from_type": from_type,
@@ -303,14 +310,24 @@ impl UnixGraphClient {
         // fine here (unlike the typed-row path).
         let response = String::from_utf8_lossy(&bytes);
         Self::check_error(&response)?;
-        if response.trim() == "OK" {
-            Ok(())
-        } else {
-            Err(QueryError::InvalidQuery(format!(
-                "unexpected daemon write response: {response}"
-            )))
+        match response.trim() {
+            "OK: created" => Ok(RelationWriteOutcome::Created),
+            "OK: exists" => Ok(RelationWriteOutcome::AlreadyExists),
+            other => Err(QueryError::InvalidQuery(format!(
+                "unexpected daemon write response: {other}"
+            ))),
         }
     }
+}
+
+/// The outcome of a successful [`create_relation`](UnixGraphClient::create_relation):
+/// whether this call created the edge or found it already present.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RelationWriteOutcome {
+    /// This call created the edge (it was absent before).
+    Created,
+    /// The edge already existed; the call was an idempotent no-op.
+    AlreadyExists,
 }
 
 /// Parse the daemon's structured `{"columns": [...], "rows": [[..], ..]}`
@@ -585,7 +602,7 @@ mod tests {
             assert_eq!(body["to_id"], "p1");
             assert_eq!(body["relation_type"], "FILE_PART_OF");
 
-            let ok = b"OK";
+            let ok = b"OK: created";
             conn.write_all(&(ok.len() as u32).to_be_bytes()).await.unwrap();
             conn.write_all(ok).await.unwrap();
         });
@@ -597,7 +614,10 @@ mod tests {
         let _ = server.await;
         let _ = std::fs::remove_file(&path);
 
-        assert!(result.is_ok(), "an OK status must map to Ok(()), got {result:?}");
+        assert!(
+            matches!(result, Ok(RelationWriteOutcome::Created)),
+            "an `OK: created` status must map to Created, got {result:?}"
+        );
     }
 
     #[tokio::test]
