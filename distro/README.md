@@ -1,6 +1,6 @@
 # distro
 
-Build system, integration tests, and development tooling for Arlen. This repo does not contain application code; it is the glue that holds everything together.
+Build system, integration tests, and development tooling for Arlen. This directory holds no application code; it is the glue that wires the rest of the monorepo into a running system and a bootable image.
 
 ## What's here
 
