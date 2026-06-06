@@ -348,6 +348,7 @@ mod tests {
             self.pages.lock().await.pop_front().unwrap_or(Ok(ReadPage {
                 entries: vec![],
                 tampered: false,
+                head: 0,
             }))
         }
     }
@@ -374,7 +375,12 @@ mod tests {
     }
 
     fn page(entries: Vec<StructuralView>, tampered: bool) -> Result<ReadPage, ReadClientError> {
-        Ok(ReadPage { entries, tampered })
+        let head = entries.last().map_or(0, |e| e.index + 1);
+        Ok(ReadPage {
+            entries,
+            tampered,
+            head,
+        })
     }
 
     fn detector(state: State, cfg: DetectorConfig, src: MockSource, grace_until: i64) -> Detector {
