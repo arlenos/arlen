@@ -1,0 +1,12 @@
+[workspace]
+members = [
+    "ai-core",
+    "ai-providers",
+    "ai-classifier",
+    "ai-explanation",
+    "ai-proxy",
+    "ai-daemon",
+    "ai-agent",
+    "ai-sandbox",
+]
+resolver = "2"

@@ -1,0 +1,22 @@
+[package]
+name = "lunaris-ai-explanation"
+version = "0.1.0"
+edition = "2021"
+description = "System Explanation Mode library for the Lunaris AI layer. Correlates the event stream with the Knowledge Graph snapshot and summarises current system state in plain language via the configured AI provider."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+lunaris-ai-core = { path = "../ai-core" }
+thiserror = "2"
+tracing = "0.1"
+async-trait = "0.1"
+serde_json = "1"
+# Read-only Knowledge Graph access for the snapshot's context half
+# (recent files + active project) via the daemon's typed structured-row
+# mode. The same client the agent reads through.
+os-sdk = { path = "../../sdk/os-sdk" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }
