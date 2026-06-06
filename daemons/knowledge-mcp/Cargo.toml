@@ -1,0 +1,21 @@
+[package]
+name = "arlen-knowledge-mcp"
+version = "0.1.0"
+edition = "2021"
+description = "Knowledge Graph read-only MCP server: exposes the graph query interface to the AI daemon over a peer-authenticated MCP socket"
+
+[[bin]]
+name = "arlen-knowledge-mcp"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+os-sdk = { path = "../../sdk/os-sdk" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net", "time", "io-util"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[workspace]
