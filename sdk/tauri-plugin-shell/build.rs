@@ -1,0 +1,27 @@
+fn main() {
+    tauri_plugin::Builder::new(&[
+        "presence_set",
+        "presence_clear",
+        "timeline_record",
+        "spatial_hint",
+        "annotation_set",
+        "annotation_clear",
+        "annotation_get",
+        "annotation_subscribe_prepare",
+        "annotation_subscribe_start",
+        "annotation_unsubscribe",
+        "toolbar_set_quick_actions",
+        "toolbar_set_breadcrumb",
+        "toolbar_set_progress",
+        "toolbar_clear_progress",
+        "toolbar_clear",
+        "shortcuts_register",
+        "shortcuts_set_state",
+        "shortcuts_clear",
+        "badges_set",
+        "badges_clear",
+        "ambient_set",
+        "ambient_clear",
+    ])
+    .build();
+}

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-ambient-set"
+description = "Enables the ambient_set command without any pre-configured scope."
+commands.allow = ["ambient_set"]
+
+[[permission]]
+identifier = "deny-ambient-set"
+description = "Denies the ambient_set command without any pre-configured scope."
+commands.deny = ["ambient_set"]

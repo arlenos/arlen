@@ -1,0 +1,67 @@
+{
+  "name": "@lunaris/module-sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for Lunaris OS Tier 2 (iframe) modules: postMessage protocol, capability-gated host calls, shadcn-svelte component re-exports",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./postmsg": {
+      "types": "./dist/postmsg.d.ts",
+      "import": "./dist/postmsg.js"
+    },
+    "./host": {
+      "types": "./dist/host.d.ts",
+      "import": "./dist/host.js"
+    },
+    "./module": {
+      "types": "./dist/module.d.ts",
+      "import": "./dist/module.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "keywords": [
+    "lunaris",
+    "sdk",
+    "module",
+    "iframe",
+    "postmessage",
+    "desktop",
+    "linux"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lunaris-sys/sdk.git",
+    "directory": "module-sdk"
+  },
+  "homepage": "https://github.com/lunaris-sys/sdk/tree/master/module-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/lunaris-sys/sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2"
+  }
+}

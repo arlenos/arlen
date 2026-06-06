@@ -1,0 +1,11 @@
+node_modules
+src
+wit
+Cargo.toml
+*.rs
+tsconfig.json
+tsconfig.build.json
+package-lock.json
+.npmignore
+.git
+.github
