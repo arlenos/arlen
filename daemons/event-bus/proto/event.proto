@@ -217,3 +217,31 @@ message AnnotationClearPayload {
   string target_type = 3;
   string target_id   = 4;
 }
+
+// ── Permission events ──────────────────────────────────────────────────
+
+// Emitted when a permission profile under `~/.config/permissions/`
+// has been created, modified, or deleted. Consumers (brokers like
+// clipboard_ipc / search_ipc / intent_ipc, plus the knowledge daemon)
+// react by reloading the profile for that app_id or invalidating
+// their per-app token cache. Foundation §7.3 in-flight-revocation.
+//
+// Sources:
+//   - `sdk/permissions::ProfileWatcher` (file-watcher on the
+//     permissions directory, debounced)
+//   - `installd` (after writing a fresh profile on app/module install)
+//
+// `app_id` field MUST be present at index 1 so the knowledge daemon's
+// raw-bytes `extract_app_id_from_payload` decoder (which uses the
+// shared "field 1 = string app_id" convention with
+// SchemaRegisteredPayload) keeps working.
+//
+// Event type: "permission.changed"
+message PermissionChangedPayload {
+  string app_id = 1;
+  // Whether the profile still exists on disk after this change. False
+  // for a delete (revoke-all); true for create/modify. Brokers use
+  // this to decide between "reload + re-check scopes" vs "drop all
+  // connections from this app_id".
+  bool exists = 2;
+}
