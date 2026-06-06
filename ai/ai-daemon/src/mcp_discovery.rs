@@ -19,6 +19,7 @@
 //! treated as an action server until it carries a Security Audit
 //! Badge, so every module is registered with [`ServerClass::Action`].
 
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -26,7 +27,7 @@ use arlen_ai_core::audit::AuditSink;
 use arlen_ai_core::mcp::{McpClient, ServerClass, ServerId};
 use arlen_permissions::identity::app_id_from_pid;
 use os_sdk::event_consumer::{EventConsumer, UnixEventConsumer};
-use os_sdk::mcp::{is_safe_module_id, mcp_module_socket_path};
+use os_sdk::mcp::{is_safe_module_id, mcp_module_socket_path, mcp_socket_path};
 use tokio::net::UnixStream;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
@@ -49,6 +50,29 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 /// after the daemon during a normal boot; discovery keeps retrying
 /// rather than disabling itself permanently.
 const SUBSCRIBE_RETRY: Duration = Duration::from_secs(5);
+
+/// Well-known system MCP servers connected at startup. Unlike Tier-1
+/// module servers (discovered dynamically over the Event Bus), the
+/// Arlen-shipped servers live at fixed socket ids and are read-only
+/// (`mcp-server-layer.md` §2, §4.1 default-permit). Each entry is the
+/// socket id and the `app_id` the server's process must resolve to.
+const SYSTEM_SERVERS: &[(&str, &str)] = &[("system.knowledge", KNOWLEDGE_MCP_APP_ID)];
+
+/// Resolved `app_id` of the canonically-installed Knowledge Graph MCP
+/// server. `arlen-permissions` maps `/usr/bin/arlen-knowledge-mcp` to
+/// this; a `system.knowledge` socket served by anything else is an
+/// imposter and is refused.
+const KNOWLEDGE_MCP_APP_ID: &str = "knowledge-mcp";
+
+/// Backoff between attempts to reach a system server that has not come
+/// up yet. System daemons can start after the AI daemon during boot.
+const SYSTEM_CONNECT_RETRY: Duration = Duration::from_secs(5);
+
+/// Interval between liveness checks on a connected system server. A
+/// server that is restarted (update, crash recovery) leaves a dead
+/// transport behind; the supervisor notices on the next check and
+/// reconnects, so the AI daemon never needs a restart to recover.
+const SYSTEM_HEALTH_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Keeps the daemon's [`McpClient`] connected to the set of
 /// currently-hosted Tier-1 module MCP servers.
@@ -80,6 +104,16 @@ impl McpDiscovery {
     /// re-established if the feed later closes; an existing-socket
     /// reconciliation runs on every (re)subscribe. Runs forever.
     pub async fn run(self: Arc<Self>, consumer: UnixEventConsumer) {
+        // Connect the well-known system servers concurrently with module
+        // discovery. They retry independently until reachable, so a system
+        // daemon that starts after this one is still picked up.
+        for &(server_id, expected_app_id) in SYSTEM_SERVERS {
+            let this = Arc::clone(&self);
+            tokio::spawn(async move {
+                this.connect_system_server_with_retry(server_id, expected_app_id)
+                    .await;
+            });
+        }
         loop {
             let mut rx = match consumer
                 .subscribe(vec![MODULE_NAMESPACE.to_string()])
@@ -228,6 +262,109 @@ impl McpDiscovery {
         }
     }
 
+    /// Supervise one well-known system server for the daemon's lifetime.
+    ///
+    /// Connects (retrying while the server is not yet up, so a daemon that
+    /// starts after this one is still picked up), then health-checks the
+    /// live connection on an interval. If the server is restarted the
+    /// transport goes dead; the check notices, drops the stale connection,
+    /// and the loop reconnects, so the AI daemon recovers without a restart.
+    /// Runs forever.
+    async fn connect_system_server_with_retry(
+        self: Arc<Self>,
+        server_id: &str,
+        expected_app_id: &str,
+    ) {
+        let id = ServerId(server_id.to_string());
+        let path = mcp_socket_path(server_id);
+        loop {
+            let connected = self.client.lock().await.server_class(&id).is_some();
+            if !connected {
+                self.connect_system_server(server_id, expected_app_id, &path)
+                    .await;
+                tokio::time::sleep(SYSTEM_CONNECT_RETRY).await;
+                continue;
+            }
+            // Connected: wait, then verify the transport is still alive with
+            // a cheap tools listing. A failure means the server went away.
+            // Bounded by a timeout so a hung transport cannot hold the client
+            // lock indefinitely.
+            tokio::time::sleep(SYSTEM_HEALTH_INTERVAL).await;
+            let healthy = {
+                let client = self.client.lock().await;
+                matches!(
+                    tokio::time::timeout(CONNECT_TIMEOUT, client.list_tools(&id)).await,
+                    Ok(Ok(_))
+                )
+            };
+            if !healthy {
+                self.client.lock().await.disconnect(&id);
+                warn!(
+                    server = server_id,
+                    "mcp discovery: system server connection lost; reconnecting"
+                );
+            }
+        }
+    }
+
+    /// Connect the client to one well-known system server, after
+    /// verifying the socket is served by the expected daemon. System
+    /// servers are read-only (default-permit). Returns whether the
+    /// connection was established. Any failure is logged, not fatal.
+    async fn connect_system_server(
+        &self,
+        server_id: &str,
+        expected_app_id: &str,
+        path: &Path,
+    ) -> bool {
+        // Open the stream directly so the server peer can be checked
+        // before the rmcp handshake runs.
+        let stream = match tokio::time::timeout(CONNECT_TIMEOUT, UnixStream::connect(path)).await {
+            Ok(Ok(stream)) => stream,
+            Ok(Err(_)) => return false, // not up yet; the caller retries
+            Err(_elapsed) => {
+                warn!(server = server_id, "mcp discovery: system connect timed out");
+                return false;
+            }
+        };
+
+        // Authenticate the server end. A socket planted by another
+        // same-uid process is served by that process, not the system
+        // daemon, and is refused.
+        if !peer_is_app(&stream, expected_app_id) {
+            warn!(
+                server = server_id,
+                "mcp discovery: socket is not served by {expected_app_id}; refusing"
+            );
+            return false;
+        }
+
+        let mut client = self.client.lock().await;
+        match tokio::time::timeout(
+            CONNECT_TIMEOUT,
+            client.connect_stream(
+                ServerId(server_id.to_string()),
+                stream,
+                ServerClass::ReadOnly,
+            ),
+        )
+        .await
+        {
+            Ok(Ok(())) => {
+                info!(server = server_id, "mcp discovery: system server connected");
+                true
+            }
+            Ok(Err(err)) => {
+                warn!(server = server_id, "mcp discovery: handshake failed: {err}");
+                false
+            }
+            Err(_elapsed) => {
+                warn!(server = server_id, "mcp discovery: handshake timed out");
+                false
+            }
+        }
+    }
+
     /// Drop the client's connection to one module.
     async fn disconnect_module(&self, module_id: &str) {
         self.client
@@ -245,6 +382,16 @@ impl McpDiscovery {
 /// path swap. In debug builds every component runs from a cargo
 /// target directory and resolves to a `dev.*` id, so those pass too.
 fn peer_is_modulesd(stream: &UnixStream) -> bool {
+    peer_is_app(stream, MODULESD_APP_ID)
+}
+
+/// Whether the peer that bound `stream`'s server end resolves to
+/// `expected_app_id`.
+///
+/// Uses `SO_PEERCRED` on the live connection so it cannot be spoofed by
+/// a path swap. In debug builds every component runs from a cargo
+/// target directory and resolves to a `dev.*` id, so those pass too.
+fn peer_is_app(stream: &UnixStream, expected_app_id: &str) -> bool {
     let Ok(cred) = stream.peer_cred() else {
         return false;
     };
@@ -257,6 +404,82 @@ fn peer_is_modulesd(stream: &UnixStream) -> bool {
     let Ok(app_id) = app_id_from_pid(pid as u32) else {
         return false;
     };
-    app_id == MODULESD_APP_ID
+    app_id == expected_app_id
         || (cfg!(debug_assertions) && app_id.starts_with("dev."))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use audit_proto::MockAuditSink;
+    use os_sdk::mcp::rmcp;
+    use os_sdk::mcp::serve_mcp_at;
+    use rmcp::ServerHandler;
+    use std::path::PathBuf;
+
+    /// Minimal MCP server: the default handler is enough to complete the
+    /// initialize handshake, which is all the connect path needs.
+    #[derive(Clone)]
+    struct TestServer;
+    impl ServerHandler for TestServer {}
+
+    fn discovery() -> Arc<McpDiscovery> {
+        Arc::new(McpDiscovery::new(Arc::new(MockAuditSink::accepting())))
+    }
+
+    fn temp_socket(tag: &str) -> PathBuf {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir()
+            .join(format!("arlen-sysmcp-{tag}-{}-{unique}", std::process::id()))
+            .join("s.sock")
+    }
+
+    #[tokio::test]
+    async fn connect_system_server_refuses_an_absent_socket() {
+        // Nothing is listening: the connect attempt fails cleanly and the
+        // supervisor retries rather than registering a dead connection.
+        let disc = discovery();
+        let ok = disc
+            .connect_system_server("system.knowledge", KNOWLEDGE_MCP_APP_ID, &temp_socket("absent"))
+            .await;
+        assert!(!ok);
+        assert!(disc.client().lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn connect_system_server_connects_and_registers_read_only() {
+        let socket = temp_socket("live");
+        let socket_for_task = socket.clone();
+        let server = tokio::spawn(async move {
+            let _ = serve_mcp_at(&socket_for_task, || TestServer).await;
+        });
+        // Wait for the server to bind.
+        for _ in 0..200 {
+            if socket.exists() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(socket.exists(), "test server did not bind");
+
+        // The server runs in this same test process, so its peer identity
+        // resolves to a `dev.*` id, which the connect path admits in debug.
+        let disc = discovery();
+        let ok = disc
+            .connect_system_server("system.knowledge", KNOWLEDGE_MCP_APP_ID, &socket)
+            .await;
+        assert!(ok, "should connect to a live peer-authed server");
+
+        let id = ServerId("system.knowledge".to_string());
+        assert_eq!(
+            disc.client().lock().await.server_class(&id),
+            Some(ServerClass::ReadOnly),
+            "system server must register as read-only (default-permit)"
+        );
+
+        server.abort();
+    }
 }
