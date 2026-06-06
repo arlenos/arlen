@@ -17,7 +17,7 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
-  import SettingsGroup from "$lib/components/settings/SettingsGroup.svelte";
+  import { Group } from "@lunaris/ui-kit/components/ui/group";
   import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
   import type { ApplyHandle, MonitorConfig } from "$lib/stores/displays";
   import { Check, Pencil, Play, Trash2 } from "lucide-svelte";
@@ -171,7 +171,7 @@
   }
 </script>
 
-<SettingsGroup label="Saved Layouts">
+<Group label="Saved Layouts">
   {#if profiles.length === 0}
     <div class="empty">
       No saved layouts yet. Save your current arrangement below to
@@ -252,7 +252,7 @@
       Save current
     </Button>
   </form>
-</SettingsGroup>
+</Group>
 
 <ConfirmDialog
   open={!!deleteCandidate}

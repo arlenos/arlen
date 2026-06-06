@@ -14,8 +14,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { ValueSlider } from "$lib/components/ui/value-slider";
   import { PopoverSelect } from "$lib/components/ui/popover-select";
-  import SettingsGroup from "$lib/components/settings/SettingsGroup.svelte";
-  import SettingsRow from "$lib/components/settings/SettingsRow.svelte";
+  import { Group } from "@lunaris/ui-kit/components/ui/group";
+  import { Row } from "@lunaris/ui-kit/components/ui/row";
 
   interface BacklightDevice {
     name: string;
@@ -108,7 +108,7 @@
   );
 </script>
 
-<SettingsGroup label="Brightness">
+<Group label="Brightness">
   {#if snapshots.length === 0}
     <div class="empty">
       No backlight-controllable display detected. External monitors
@@ -117,7 +117,7 @@
     </div>
   {:else}
     {#if snapshots.length > 1}
-      <SettingsRow
+      <Row
         label="Display"
         description="Pick which panel the slider controls."
       >
@@ -130,10 +130,10 @@
             onchange={selectDevice}
           />
         {/snippet}
-      </SettingsRow>
+      </Row>
     {/if}
 
-    <SettingsRow
+    <Row
       label="Brightness"
       description="Lower for dim rooms, higher for daylight."
     >
@@ -150,9 +150,9 @@
           />
         </div>
       {/snippet}
-    </SettingsRow>
+    </Row>
   {/if}
-</SettingsGroup>
+</Group>
 
 <style>
   .slider-cell {
