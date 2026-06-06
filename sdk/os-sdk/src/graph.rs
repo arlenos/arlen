@@ -325,6 +325,61 @@ impl UnixGraphClient {
             ))),
         }
     }
+
+    /// Retract (compensate) a relation this caller previously created, deleting
+    /// only the edge that carries `op_id`, via the daemon's write socket.
+    ///
+    /// This is the inverse of [`create_relation`](Self::create_relation): it
+    /// undoes exactly the edge a prior create stamped with the same `op_id`, so
+    /// the create grant alone authorises the undo (the daemon never deletes a
+    /// bare edge here). `op_id` is therefore **mandatory and must be non-empty**;
+    /// an empty id is rejected by the daemon. Only relations that carry the
+    /// `op_id` column (`FILE_PART_OF` today) can be retracted.
+    ///
+    /// Deletion is idempotent: a retract that matches no edge (already gone, or
+    /// never created) succeeds as [`Absent`]. A retract that removed the edge
+    /// returns [`Retracted`]. A daemon `ERROR:` maps to [`QueryError`] (a
+    /// permission error to [`QueryError::PermissionDenied`]). The idempotency
+    /// makes a retry safe.
+    ///
+    /// [`Retracted`]: RelationRetractOutcome::Retracted
+    /// [`Absent`]: RelationRetractOutcome::Absent
+    pub async fn retract_relation(
+        &self,
+        from_type: &str,
+        from_id: &str,
+        to_type: &str,
+        to_id: &str,
+        relation_type: &str,
+        op_id: &str,
+    ) -> Result<RelationRetractOutcome, QueryError> {
+        let req = serde_json::json!({
+            "op": "retract_relation",
+            "from_type": from_type,
+            "from_id": from_id,
+            "to_type": to_type,
+            "to_id": to_id,
+            "relation_type": relation_type,
+            "op_id": op_id,
+        });
+        let json = serde_json::to_vec(&req).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+
+        // A leading 0x02 byte selects the daemon's structured write mode.
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x02);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_WRITE_RESPONSE_BYTES).await?;
+        let response = String::from_utf8_lossy(&bytes);
+        Self::check_error(&response)?;
+        match response.trim() {
+            "OK: retracted" => Ok(RelationRetractOutcome::Retracted),
+            "OK: absent" => Ok(RelationRetractOutcome::Absent),
+            other => Err(QueryError::InvalidQuery(format!(
+                "unexpected daemon write response: {other}"
+            ))),
+        }
+    }
 }
 
 /// The outcome of a successful [`create_relation`](UnixGraphClient::create_relation):
@@ -335,6 +390,17 @@ pub enum RelationWriteOutcome {
     Created,
     /// The edge already existed; the call was an idempotent no-op.
     AlreadyExists,
+}
+
+/// The outcome of a successful [`retract_relation`](UnixGraphClient::retract_relation):
+/// whether this call removed the op-id-keyed edge or found nothing to remove.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RelationRetractOutcome {
+    /// This call deleted the edge carrying the given `op_id`.
+    Retracted,
+    /// No edge carried the given `op_id` (already gone, or never created); the
+    /// call was an idempotent no-op.
+    Absent,
 }
 
 /// Parse the daemon's structured `{"columns": [...], "rows": [[..], ..]}`
@@ -660,5 +726,51 @@ mod tests {
             matches!(result, Err(QueryError::PermissionDenied)),
             "a permission ERROR must map to PermissionDenied, got {result:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn retract_relation_sends_a_tagged_request_and_maps_both_outcomes() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("lunaris-os-sdk-retract-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        // The fake daemon answers the first request `OK: retracted` and the
+        // second `OK: absent`, asserting the request shape on each. Both are
+        // served on one connection, matching the client's stream caching.
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            for reply in [b"OK: retracted".as_slice(), b"OK: absent".as_slice()] {
+                let mut len_buf = [0u8; 4];
+                conn.read_exact(&mut len_buf).await.unwrap();
+                let req_len = u32::from_be_bytes(len_buf) as usize;
+                let mut req = vec![0u8; req_len];
+                conn.read_exact(&mut req).await.unwrap();
+
+                assert_eq!(req[0], 0x02, "write requests carry the 0x02 prefix");
+                let body: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
+                assert_eq!(body["op"], "retract_relation");
+                assert_eq!(body["relation_type"], "FILE_PART_OF");
+                assert_eq!(body["op_id"], "op-test");
+
+                conn.write_all(&(reply.len() as u32).to_be_bytes()).await.unwrap();
+                conn.write_all(reply).await.unwrap();
+            }
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let first = client
+            .retract_relation("system.File", "f1", "system.Project", "p1", "FILE_PART_OF", "op-test")
+            .await;
+        let second = client
+            .retract_relation("system.File", "f1", "system.Project", "p1", "FILE_PART_OF", "op-test")
+            .await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        assert!(matches!(first, Ok(RelationRetractOutcome::Retracted)), "got {first:?}");
+        assert!(matches!(second, Ok(RelationRetractOutcome::Absent)), "got {second:?}");
     }
 }
