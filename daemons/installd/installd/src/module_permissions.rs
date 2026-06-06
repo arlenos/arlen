@@ -3,7 +3,8 @@
 /// When `installd` installs a sandboxed module (Tier 1 WASM or
 /// Tier 2 iframe), it derives the runtime `PermissionProfile`
 /// (`sdk/permissions`) from the manifest's `[capabilities]` block
-/// and writes it to `~/.config/lunaris/permissions/{module_id}.toml`.
+/// and writes it to `~/.config/permissions/{module_id}.toml` (per
+/// `AUTH-CANONICAL.md` §2; no `lunaris/` sub-dir).
 /// `lunaris-modulesd` reads that profile when loading the module so
 /// the runtime gating matches what the user agreed to at install
 /// time.
