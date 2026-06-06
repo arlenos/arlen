@@ -15,7 +15,7 @@
   import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
   import { Group } from "@lunaris/ui-kit/components/ui/group";
   import { Row } from "@lunaris/ui-kit/components/ui/row";
-  import { Button } from "$lib/components/ui/button";
+  import { Button } from "@lunaris/ui-kit/components/ui/button";
 
   /// xdg-open via the `open_url` Tauri command (Codex Sprint D
   /// review MEDIUM 2 — the prior `window.__TAURI__.opener` path

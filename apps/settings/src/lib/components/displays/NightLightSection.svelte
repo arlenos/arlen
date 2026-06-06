@@ -16,11 +16,11 @@
   import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { Switch } from "$lib/components/ui/switch";
+  import { Switch } from "@lunaris/ui-kit/components/ui/switch";
   import { ValueSlider } from "$lib/components/ui/value-slider";
-  import { PopoverSelect } from "$lib/components/ui/popover-select";
-  import { TimeInput } from "$lib/components/ui/time-input";
-  import { NumberInput } from "$lib/components/ui/number-input";
+  import { PopoverSelect } from "@lunaris/ui-kit/components/ui/popover-select";
+  import { TimeInput } from "@lunaris/ui-kit/components/ui/time-input";
+  import { NumberInput } from "@lunaris/ui-kit/components/ui/number-input";
   import { Group } from "@lunaris/ui-kit/components/ui/group";
   import { Row } from "@lunaris/ui-kit/components/ui/row";
 

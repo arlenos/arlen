@@ -15,7 +15,7 @@
   import { Row } from "@lunaris/ui-kit/components/ui/row";
   import { Switch } from "@lunaris/ui-kit/components/ui/switch";
   import { ValueSlider } from "$lib/components/ui/value-slider";
-  import { PopoverSelect } from "$lib/components/ui/popover-select";
+  import { PopoverSelect } from "@lunaris/ui-kit/components/ui/popover-select";
   import {
     compositor,
     screenFilter,

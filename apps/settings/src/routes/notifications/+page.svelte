@@ -40,9 +40,9 @@
   import { Row } from "@lunaris/ui-kit/components/ui/row";
   import { Switch } from "@lunaris/ui-kit/components/ui/switch";
   import { ValueSlider } from "$lib/components/ui/value-slider";
-  import { TimeInput } from "$lib/components/ui/time-input";
-  import { DaysPicker } from "$lib/components/ui/days-picker";
-  import { PositionPicker } from "$lib/components/ui/position-picker";
+  import { TimeInput } from "@lunaris/ui-kit/components/ui/time-input";
+  import { DaysPicker } from "@lunaris/ui-kit/components/ui/days-picker";
+  import { PositionPicker } from "@lunaris/ui-kit/components/ui/position-picker";
   import AppPicker from "$lib/components/appearance/AppPicker.svelte";
   import AppRuleCard from "$lib/components/appearance/AppRuleCard.svelte";
 

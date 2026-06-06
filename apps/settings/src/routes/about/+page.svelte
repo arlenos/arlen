@@ -13,7 +13,7 @@
   import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
   import { Group } from "@lunaris/ui-kit/components/ui/group";
   import { Row } from "@lunaris/ui-kit/components/ui/row";
-  import { Button } from "$lib/components/ui/button";
+  import { Button } from "@lunaris/ui-kit/components/ui/button";
 
   interface DaemonStatus {
     name: string;

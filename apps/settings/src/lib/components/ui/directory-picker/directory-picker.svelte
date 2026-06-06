@@ -14,7 +14,7 @@
 
   import { invoke } from "@tauri-apps/api/core";
   import { FolderOpen } from "lucide-svelte";
-  import { Button } from "$lib/components/ui/button";
+  import { Button } from "@lunaris/ui-kit/components/ui/button";
 
   let {
     onpick,

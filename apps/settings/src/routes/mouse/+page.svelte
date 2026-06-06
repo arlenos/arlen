@@ -3,7 +3,7 @@
   /// Row/Switch from `@lunaris/ui-kit`; FillSlider app-local for now).
 
   import { onMount } from "svelte";
-  import { FillSlider } from "$lib/components/ui/fill-slider";
+  import { FillSlider } from "@lunaris/ui-kit/components/ui/fill-slider";
   import { Page } from "@lunaris/ui-kit/components/ui/page";
   import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
   import { Group } from "@lunaris/ui-kit/components/ui/group";

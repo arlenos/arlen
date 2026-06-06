@@ -11,7 +11,7 @@
     SidebarMenuItem,
     SidebarRail,
     useSidebar,
-  } from "$lib/components/ui/sidebar";
+  } from "@lunaris/ui-kit/components/ui/sidebar";
   import { tick } from "svelte";
   import { PANELS, navigateTo } from "$lib/stores/navigation";
   import { search, type SearchResult } from "$lib/search/index";

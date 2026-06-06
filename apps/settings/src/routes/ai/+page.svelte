@@ -22,10 +22,10 @@
   import { Switch } from "@lunaris/ui-kit/components/ui/switch";
   import { SegmentedControl } from "@lunaris/ui-kit/components/ui/segmented-control";
   import { ChipList } from "@lunaris/ui-kit/components/ui/chip-list";
-  import { Button } from "$lib/components/ui/button";
-  import { Input } from "$lib/components/ui/input";
-  import { NumberInput } from "$lib/components/ui/number-input";
-  import { PopoverSelect } from "$lib/components/ui/popover-select";
+  import { Button } from "@lunaris/ui-kit/components/ui/button";
+  import { Input } from "@lunaris/ui-kit/components/ui/input";
+  import { NumberInput } from "@lunaris/ui-kit/components/ui/number-input";
+  import { PopoverSelect } from "@lunaris/ui-kit/components/ui/popover-select";
   import { ai } from "$lib/stores/ai";
 
   interface AiStatus {

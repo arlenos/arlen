@@ -6,7 +6,7 @@
   /// hide, or click "Show" in the chip's right-click menu to
   /// append at the end.
   import { ChevronDown, Eye } from "@lucide/svelte";
-  import * as ContextMenu from "$lib/components/ui/context-menu";
+  import * as ContextMenu from "@lunaris/ui-kit/components/ui/context-menu";
   import {
     Brain,
     Folder,

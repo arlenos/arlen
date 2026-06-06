@@ -10,9 +10,9 @@
   /// so the user can't ship an unparseable pattern that crashes
   /// the compositor's window-rule loop.
 
-  import { Button } from "$lib/components/ui/button";
-  import { Input } from "$lib/components/ui/input";
-  import { Switch } from "$lib/components/ui/switch";
+  import { Button } from "@lunaris/ui-kit/components/ui/button";
+  import { Input } from "@lunaris/ui-kit/components/ui/input";
+  import { Switch } from "@lunaris/ui-kit/components/ui/switch";
   import type { WindowRule, WindowRuleAction } from "$lib/stores/workspaces";
 
   let {
