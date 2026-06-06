@@ -2,6 +2,7 @@
 
 pub mod about;
 pub mod accessibility;
+pub mod activity;
 pub mod ai;
 pub mod brightness;
 pub mod config;

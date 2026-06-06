@@ -1147,6 +1147,15 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     section: "Daemon Status",
     anchor: "ai-daemon-status",
   },
+  {
+    id: "ai.activity",
+    title: "AI activity",
+    description: "What the assistant has done, from the audit ledger",
+    keywords: ["ai", "activity", "audit", "log", "history", "ledger", "what did"],
+    panel: "ai",
+    section: "Activity",
+    anchor: "ai-activity",
+  },
 
   // Privacy panel intentionally NOT in the registry: it's
   // disabled in navigation until Phase 8 ships the

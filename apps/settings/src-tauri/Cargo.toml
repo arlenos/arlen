@@ -81,6 +81,12 @@ tokio = { version = "1", features = ["rt", "macros"] }
 # trips through the same struct shape that lands on disk.
 cosmic-comp-config = { path = "../../compositor/cosmic-comp-config", features = ["output"] }
 
+# Audit ledger read API. The AI Activity view reads the Structural
+# tier over the daemon's read socket via the shared ReadClient; the
+# wire types live in audit-proto so reader and daemon share one
+# definition (the same pattern the Anomaly Detector uses).
+audit-proto = { path = "../../audit-proto" }
+
 [dev-dependencies]
 tempfile = "3"
 
