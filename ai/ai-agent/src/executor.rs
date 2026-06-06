@@ -62,10 +62,28 @@ const REVALIDATION_TIMEOUT: Duration = Duration::from_secs(5);
 /// closed (pre-audited + idempotent, so reconcilable on a later run).
 const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Wall-clock bound on a reconciliation read that resolves a commit-unknown
-/// write. Short, like the write: each is a single indexed edge query, and a
-/// stalled read must not re-introduce the hang the write timeout avoided.
+/// Wall-clock bound on a single reconciliation read that resolves a
+/// commit-unknown write. Short, like the write: each is a single indexed edge
+/// query, and a stalled read must not re-introduce the hang the write timeout
+/// avoided.
 const RECONCILE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// How many times the reconciler reads the op-id edge before giving up. A
+/// commit-unknown write may land slightly *after* the immediate post-write read
+/// (the daemon's queued CREATE runs on its serial graph thread, which can be
+/// briefly behind), so a single read would too often report indeterminate for a
+/// write that commits a moment later. Polling a few times with backoff catches
+/// that late commit; the total added latency stays bounded (see
+/// [`reconcile_backoff`]) so a never-landing write still resolves promptly to
+/// indeterminate with its key preserved for the next organic reconcile.
+const RECONCILE_ATTEMPTS: u32 = 4;
+
+/// Backoff before the `attempt`-th reconciliation read (1-based; no wait before
+/// the first). Grows so the cheap early reads catch a fast commit while the
+/// total bound stays small (250 + 500 + 750 ms = 1.5 s across the retries).
+fn reconcile_backoff(attempt: u32) -> Duration {
+    Duration::from_millis(250 * u64::from(attempt))
+}
 
 /// The concrete relation write a proven action would perform: the namespaced
 /// endpoint entity types, their resolved node ids, and the edge type. The
@@ -835,9 +853,12 @@ impl<'a> LiveExecutor<'a> {
         let pending = || {
             PendingWrite::new(write.clone(), op_id.to_string(), correlation_id.to_string())
         };
-        match self.edge_exists(write, graph, op_id).await {
-            Some(false) => Ok(CompensationOutcome::Retracted),
-            Some(true) => Err(ExecError::WriteIndeterminate {
+        // Poll for the edge becoming ABSENT (target = not present): the retract
+        // may land slightly after the immediate read, so a few backed-off reads
+        // catch it before reporting indeterminate.
+        match self.poll_for(write, op_id, graph, false).await {
+            Some(true) => Ok(CompensationOutcome::Retracted),
+            Some(false) => Err(ExecError::WriteIndeterminate {
                 pending: pending(),
                 reason: "retract unconfirmed; this op's edge is still present".to_string(),
             }),
@@ -873,16 +894,20 @@ impl<'a> LiveExecutor<'a> {
         // still-in-flight write could then create its own op_id edge; and a
         // missing edge may yet be created by this write. A retry with the same
         // op_id resolves it (its op_id edge would then be observed).
-        match self.edge_exists(&write, graph, &op_id).await {
+        // Poll for the op-id edge becoming PRESENT (target = present): a commit
+        // that lands just after the write timed out is caught by the backed-off
+        // retries instead of being reported indeterminate prematurely.
+        match self.poll_for(&write, &op_id, graph, true).await {
             Some(true) => Ok(Some(ExecutedWrite::new(
                 write,
                 WriteOutcome::Created,
                 op_id,
                 correlation_id.to_string(),
             ))),
-            // Indeterminate: carry the key out, so a write that commits AFTER
-            // this read (the daemon's queued CREATE may run later) is not left
-            // with its op-id edge in the graph and no receipt to undo it.
+            // Still not confirmed after the poll budget. Carry the key out, so a
+            // write that commits even LATER (the daemon's queued CREATE may run
+            // beyond the budget) is not left with its op-id edge in the graph and
+            // no receipt to undo it; the next organic reconcile resolves it.
             Some(false) => Err(ExecError::WriteIndeterminate {
                 pending: PendingWrite::new(write, op_id, correlation_id.to_string()),
                 reason: "write unconfirmed; its op_id edge is not present".to_string(),
@@ -928,6 +953,50 @@ impl<'a> LiveExecutor<'a> {
             return None;
         }
         Some(n > 0)
+    }
+
+    /// Reconciler: poll [`edge_exists`] up to [`RECONCILE_ATTEMPTS`] times with
+    /// backoff, stopping as soon as the edge reaches `target_present` (present
+    /// for a create's confirmation, absent for a retract's). This is the bounded
+    /// "read repeatedly until confirmed" job: a commit (or delete) that lands a
+    /// moment after the immediate read is caught instead of being reported
+    /// indeterminate too early.
+    ///
+    /// Returns `Some(true)` once it observes the target state (a definite,
+    /// sound verdict — for a create, op-id-present can only be this write; for a
+    /// retract, op-id-absent is terminal by the same monotonicity); `Some(false)`
+    /// if every definite read disagreed across the whole budget (still
+    /// unresolved, the key is preserved for the next organic reconcile); `None`
+    /// if no read ever succeeded (a persistently failing/stalled socket). It
+    /// never blocks unbounded: a never-landing write resolves to `Some(false)`
+    /// after the fixed budget rather than waiting forever.
+    async fn poll_for(
+        &self,
+        write: &RelationWrite,
+        op_id: &str,
+        graph: &dyn GraphHandle,
+        target_present: bool,
+    ) -> Option<bool> {
+        let mut had_definite_read = false;
+        for attempt in 0..RECONCILE_ATTEMPTS {
+            if attempt > 0 {
+                tokio::time::sleep(reconcile_backoff(attempt)).await;
+            }
+            if let Some(present) = self.edge_exists(write, graph, op_id).await {
+                had_definite_read = true;
+                if present == target_present {
+                    return Some(true);
+                }
+            }
+        }
+        // Never reached the target. Distinguish "definitely never matched" (we
+        // got at least one good read) from "could not read at all" (None), so a
+        // read outage is not mistaken for a definite disagreement.
+        if had_definite_read {
+            Some(false)
+        } else {
+            None
+        }
     }
 }
 
@@ -1340,7 +1409,7 @@ mod tests {
         LiveExecutor::new(cap, resolver, mounts, writer, audit)
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn reconcile_resolves_by_op_id() {
         let (cap, resolver, mounts, writer, audit) = (
             executing_cap(),
@@ -1376,6 +1445,56 @@ mod tests {
         let g = ReconcileGraph { mine: None, malformed: true };
         let r = exec.reconcile(write(), "op-mine".to_string(), "run-x", &g).await;
         assert!(matches!(r, Err(ExecError::WriteIndeterminate { .. })));
+    }
+
+    /// A graph whose op-id edge is ABSENT until the `present_from`-th read, then
+    /// PRESENT — a write that commits a moment after the immediate read. The
+    /// reconciler's polling must catch it instead of reporting indeterminate.
+    struct LateCommitGraph {
+        calls: std::sync::atomic::AtomicU32,
+        present_from: u32,
+    }
+    #[async_trait]
+    impl GraphHandle for LateCommitGraph {
+        async fn query(
+            &self,
+            _cypher: &str,
+        ) -> Result<Vec<HashMap<String, serde_json::Value>>, GraphError> {
+            let n = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let present = i64::from(n + 1 >= self.present_from);
+            Ok(vec![[("n".to_string(), serde_json::json!(present))].into_iter().collect()])
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn reconcile_catches_a_commit_that_lands_after_the_first_read() {
+        let (cap, resolver, mounts, writer, audit) = (
+            executing_cap(),
+            IdentityResolver,
+            StaticMountPolicy::empty(),
+            MockWriter::default(),
+            MockAuditSink::accepting(),
+        );
+        let exec = reconcile_executor(&cap, &resolver, &mounts, &writer, &audit);
+        let write = RelationWrite {
+            from_type: "system.File".into(),
+            from_id: "f1".into(),
+            to_type: "system.Project".into(),
+            to_id: "p1".into(),
+            relation_type: "FILE_PART_OF".into(),
+        };
+        // Absent on the first two reads, present on the third: within the poll
+        // budget, so the reconciler confirms the late commit as Created rather
+        // than giving up after the immediate read.
+        let g = LateCommitGraph {
+            calls: std::sync::atomic::AtomicU32::new(0),
+            present_from: 3,
+        };
+        let r = exec.reconcile(write, "op-late".to_string(), "run-x", &g).await;
+        assert!(
+            matches!(r, Ok(Some(ExecutedWrite { outcome: WriteOutcome::Created, .. }))),
+            "a commit landing within the poll budget is caught, got {r:?}"
+        );
     }
 
     #[tokio::test]
