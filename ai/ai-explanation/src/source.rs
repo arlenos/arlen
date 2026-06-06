@@ -32,6 +32,17 @@ use crate::snapshot::{Coverage, FileActivity, ProjectContext, SystemSnapshot};
 /// enumerates.
 pub const RECENT_FILES_LIMIT: usize = 12;
 
+/// The graph node and edge labels [`graph_context`] reads. A caller
+/// that enforces a capability scope (the ai-daemon) must check that its
+/// scope permits **every** one of these before invoking the
+/// explanation, and fail closed otherwise: the fixed queries below
+/// touch all of them, so a narrower read tier that omits any one would
+/// otherwise leak labels it does not grant. Kept here, next to the
+/// queries, so the list cannot drift from what they actually read (a
+/// drift-guard test asserts each label appears in a query).
+pub const REQUIRED_GRAPH_LABELS: &[&str] =
+    &["File", "App", "Project", "ACCESSED_BY", "FILE_PART_OF"];
+
 /// The recency horizon for "current" file activity, in seconds. The
 /// question is "what is my computer doing right *now*", so the snapshot
 /// only includes files accessed within this window; older graph entries
@@ -229,6 +240,22 @@ mod tests {
 
     fn row(pairs: &[(&str, Value)]) -> HashMap<String, Value> {
         pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
+    }
+
+    #[test]
+    fn required_labels_match_what_the_queries_read() {
+        // Drift guard: every declared required label must actually
+        // appear in one of the queries, so the scope check the daemon
+        // runs against this list cannot silently under-cover a label the
+        // queries read.
+        let files = recent_files_query(0);
+        let combined = format!("{files} {ACTIVE_PROJECT_QUERY}");
+        for label in REQUIRED_GRAPH_LABELS {
+            assert!(
+                combined.contains(label),
+                "required label {label} is not referenced by any query"
+            );
+        }
     }
 
     #[test]

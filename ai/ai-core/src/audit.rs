@@ -54,6 +54,38 @@ pub fn query_event(
     }
 }
 
+/// Build the audit event for one System Explanation Mode request
+/// (Foundation §5.8). It is an AI query of the system's own state, so
+/// it classifies as [`AuditKind::Query`].
+///
+/// Content-free by construction: `subject` is the fixed label
+/// `ai.explain` (never the snapshot or the generated summary).
+/// `outcome` is a coarse label (`dispatched`, `completed`, `failed`);
+/// `duration_ms` is set only on the completion entry. `explain_id` is
+/// the call-chain id so the dispatch and completion entries link in the
+/// ledger.
+pub fn explain_event(
+    outcome: impl Into<String>,
+    duration_ms: Option<u64>,
+    explain_id: &str,
+) -> IngestRequest {
+    IngestRequest {
+        kind: AuditKind::Query,
+        structural: StructuralRecord {
+            subject: "ai.explain".to_string(),
+            node_types: Vec::new(),
+            relations: Vec::new(),
+            result_count: None,
+            duration_ms,
+            outcome: outcome.into(),
+            depth: None,
+        },
+        forensic: None,
+        call_chain_id: Some(explain_id.to_string()),
+        project_id: None,
+    }
+}
+
 /// Build the audit event for one MCP tool call.
 ///
 /// A `depth-exceeded` outcome is a refused call and classifies as a
@@ -189,6 +221,17 @@ mod tests {
         assert_eq!(ev.structural.outcome, "dispatched");
         assert_eq!(ev.structural.duration_ms, None);
         assert_eq!(ev.call_chain_id.as_deref(), Some("chain-1"));
+        assert!(ev.forensic.is_none());
+    }
+
+    #[test]
+    fn explain_event_is_content_free_and_a_query() {
+        let ev = explain_event("completed", Some(120), "explain-1");
+        assert_eq!(ev.kind, AuditKind::Query);
+        assert_eq!(ev.structural.subject, "ai.explain");
+        assert_eq!(ev.structural.outcome, "completed");
+        assert_eq!(ev.structural.duration_ms, Some(120));
+        assert_eq!(ev.call_chain_id.as_deref(), Some("explain-1"));
         assert!(ev.forensic.is_none());
     }
 

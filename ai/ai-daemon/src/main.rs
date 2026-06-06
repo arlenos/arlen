@@ -28,7 +28,7 @@ use lunaris_ai_daemon::graph_adapter::OsSdkGraphQuerier;
 use lunaris_ai_daemon::mcp_discovery::McpDiscovery;
 use lunaris_ai_daemon::peer::{self, PeerError};
 use lunaris_ai_daemon::registry::{AuthError, CompletionOutcome};
-use lunaris_ai_daemon::service::{AiDaemonService, QueryError};
+use lunaris_ai_daemon::service::{AiDaemonService, ExplainError, QueryError};
 use lunaris_ai_providers::proxied::{ProxiedConfig, ProxiedProvider};
 use os_sdk::UnixEventConsumer;
 use zbus::Connection;
@@ -131,6 +131,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // executes it here, then formats the result back to NL.
     let knowledge_socket = resolve_knowledge_socket();
     tracing::info!(socket = %knowledge_socket, "knowledge daemon socket");
+    // System Explanation Mode reads the same knowledge socket through
+    // its own read-only seam, and shares the provider that the pipeline
+    // forwards through. Clone both before they are moved into the
+    // pipeline so the explainer can be wired onto the service below.
+    let explain_reader: Arc<dyn lunaris_ai_explanation::GraphReader> = Arc::new(
+        lunaris_ai_explanation::UnixGraphReader::new(knowledge_socket.clone()),
+    );
+    let explain_provider = provider.clone();
     let graph: Arc<dyn GraphQuerier> =
         Arc::new(OsSdkGraphQuerier::new(knowledge_socket));
     let runner: Arc<dyn QueryRunner> =
@@ -150,11 +158,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // on every change. Starting fail-closed means there is no window in
     // which a stale startup snapshot serves access before the watcher is
     // live. The Settings tier slider that writes `access_level` is S24.
-    let service = Arc::new(AiDaemonService::new(
-        runner,
-        QueryScope::for_tier(access_tier_from_level(0), &GraphSchema::knowledge_graph()),
-        audit.clone(),
-    ));
+    let service = Arc::new(
+        AiDaemonService::new(
+            runner,
+            QueryScope::for_tier(access_tier_from_level(0), &GraphSchema::knowledge_graph()),
+            audit.clone(),
+        )
+        .with_explain(explain_provider, explain_reader),
+    );
     config_watch::spawn_config_watch(service.clone());
 
     // Auto-sweep terminal records once per minute. The handle is
@@ -244,6 +255,33 @@ impl AiInterface {
                 "audit log unavailable; query refused".to_string(),
             )),
         }
+    }
+
+    /// Run System Explanation Mode (Foundation §5.8): return a
+    /// plain-language summary of what the computer is doing right now.
+    /// The summary is returned directly to the caller (not broadcast),
+    /// so unlike `query` there is no id/token or poll cycle. Gated like a
+    /// query (enabled + graph access), audited, and bounded by the same
+    /// in-flight caps keyed on the caller's executable identity.
+    async fn explain_system(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &Connection,
+    ) -> zbus::fdo::Result<String> {
+        let caller = peer::resolve(&header, connection)
+            .await
+            .map_err(map_peer_error)?;
+        // Unix seconds; the snapshot uses it for its recency window. A
+        // pre-epoch clock floors at 0 (the source treats that as "match
+        // everything", never a panic).
+        let now_unix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        self.service
+            .explain_system(caller, now_unix)
+            .await
+            .map_err(map_explain_error)
     }
 
     /// Poll a query for completion. Returns a JSON envelope of the
@@ -378,6 +416,35 @@ fn map_peer_error(err: PeerError) -> zbus::fdo::Error {
         PeerError::ExeLookup { pid, error } => zbus::fdo::Error::AccessDenied(format!(
             "caller exe lookup failed for pid {pid}: {error}"
         )),
+    }
+}
+
+fn map_explain_error(err: ExplainError) -> zbus::fdo::Error {
+    match err {
+        ExplainError::Disabled => {
+            zbus::fdo::Error::AccessDenied("ai layer is disabled".to_string())
+        }
+        ExplainError::NoGraphAccess => zbus::fdo::Error::NotSupported(
+            "ai layer has no graph access configured".to_string(),
+        ),
+        ExplainError::InsufficientScope => zbus::fdo::Error::NotSupported(
+            "read tier does not permit system explanation".to_string(),
+        ),
+        ExplainError::NotConfigured => {
+            zbus::fdo::Error::NotSupported("system explanation is not configured".to_string())
+        }
+        ExplainError::TooManyInflight => zbus::fdo::Error::LimitsExceeded(
+            "too many in-flight requests for this caller".to_string(),
+        ),
+        ExplainError::GlobalCapacityReached => {
+            zbus::fdo::Error::LimitsExceeded("daemon at global capacity".to_string())
+        }
+        ExplainError::AuditUnavailable => zbus::fdo::Error::Failed(
+            "audit log unavailable; explanation refused".to_string(),
+        ),
+        ExplainError::Failed(detail) => {
+            zbus::fdo::Error::Failed(format!("explanation failed: {detail}"))
+        }
     }
 }
 

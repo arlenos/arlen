@@ -14,6 +14,9 @@ path = "src/lib.rs"
 [dependencies]
 lunaris-ai-core = { path = "../ai-core" }
 lunaris-ai-providers = { path = "../ai-providers" }
+# System Explanation Mode (§5.8): the snapshot source + prompt builder +
+# explain() orchestration the explain_system D-Bus method drives.
+lunaris-ai-explanation = { path = "../ai-explanation" }
 os-sdk = { path = "../../sdk/os-sdk" }
 # MCP discovery resolves the peer of each module socket to verify it
 # is served by modulesd; identity resolution lives here.
