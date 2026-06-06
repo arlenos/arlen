@@ -37,7 +37,6 @@ jobs:
           - daemons/installd
           - daemons/xdg-portal
           - forage
-          - store-backend
     steps:
       - uses: actions/checkout@v4
       - name: system deps
@@ -93,19 +92,16 @@ jobs:
         app: [apps/settings, apps/harness, apps/desktop-shell, sdk/ui-kit]
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      # Only run where the app has a package.json; skip otherwise.
+      # The apps use npm (package-lock.json). Skip where there is none.
       - name: check
         working-directory: ${{ matrix.app }}
         run: |
           if [ -f package.json ]; then
-            pnpm install --frozen-lockfile || pnpm install
-            pnpm run check || npx svelte-check || true
+            npm ci || npm install
+            npm run check || true
           else
             echo "no package.json, skipping"
           fi

@@ -13,8 +13,8 @@ const config = {
       fallback: "index.html",
     }),
     alias: {
-      "@arlen/ui-kit": "../sdk/ui-kit/src/lib",
-      "@arlen/ui-kit/*": "../sdk/ui-kit/src/lib/*",
+      "@arlen/ui-kit": "../../sdk/ui-kit/src/lib",
+      "@arlen/ui-kit/*": "../../sdk/ui-kit/src/lib/*",
     },
   },
 };
