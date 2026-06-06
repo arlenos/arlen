@@ -340,6 +340,29 @@ impl LedgerReader {
         Ok(Self { pool })
     }
 
+    /// One past the highest index among entries matching the same
+    /// filter as the page, so a client can seek to the tail for the
+    /// most recent entries. Returns 0 when nothing matches.
+    ///
+    /// The head is scoped to `project_id` (when set) for the same
+    /// reason the page is: a project-scoped read must not disclose the
+    /// global ledger volume. For an unfiltered read this is the global
+    /// `MAX(idx) + 1` (the total entry count, since indices are
+    /// contiguous from 0).
+    pub async fn head(&self, project_id: Option<&str>) -> Result<u64> {
+        let row = sqlx::query(
+            "SELECT MAX(idx) AS max_idx FROM audit_entries
+             WHERE (?1 IS NULL OR project_id = ?1)",
+        )
+        .bind(project_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(map_sqlx)?;
+        // `MAX(idx)` is NULL when no row matches; map that to head 0.
+        let max_idx: Option<i64> = row.try_get("max_idx").map_err(map_sqlx)?;
+        Ok(max_idx.map_or(0, |m| m as u64 + 1))
+    }
+
     /// Read a page of entries as Structural-tier views.
     ///
     /// Returns entries with index in `[from, to)`, ascending, capped
@@ -895,6 +918,53 @@ mod tests {
         let page = reader.read_structural(1, 4, 100, None).await.unwrap();
         let indices: Vec<u64> = page.iter().map(|e| e.index).collect();
         assert_eq!(indices, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn head_is_one_past_the_highest_index_unfiltered() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let mut ledger = open_temp(dir.path(), key()).await;
+            append_n(&mut ledger, 4, None).await;
+        }
+        let reader = LedgerReader::open(&dir.path().join("ledger.db"))
+            .await
+            .unwrap();
+        assert_eq!(reader.head(None).await.unwrap(), 4);
+    }
+
+    #[tokio::test]
+    async fn head_is_zero_for_an_empty_ledger() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            // Touch the ledger so the db file exists, append nothing.
+            let _ = open_temp(dir.path(), key()).await;
+        }
+        let reader = LedgerReader::open(&dir.path().join("ledger.db"))
+            .await
+            .unwrap();
+        assert_eq!(reader.head(None).await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn head_is_scoped_to_the_project_filter() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let mut ledger = open_temp(dir.path(), key()).await;
+            // Indices 0,1 belong to project "p"; 2,3,4 are unscoped.
+            append_n(&mut ledger, 2, Some("p")).await;
+            append_n(&mut ledger, 3, None).await;
+        }
+        let reader = LedgerReader::open(&dir.path().join("ledger.db"))
+            .await
+            .unwrap();
+        // Unfiltered head sees the whole ledger.
+        assert_eq!(reader.head(None).await.unwrap(), 5);
+        // Project-scoped head is one past the highest matching index
+        // (1), never disclosing the global volume.
+        assert_eq!(reader.head(Some("p")).await.unwrap(), 2);
+        // A project with no entries reports head 0, not the global count.
+        assert_eq!(reader.head(Some("absent")).await.unwrap(), 0);
     }
 
     #[tokio::test]

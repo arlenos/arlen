@@ -95,10 +95,28 @@ impl ReadServer {
             .read_structural(req.from, req.to, req.limit, req.project_id.as_deref())
             .await
         {
-            Ok(entries) => ReadResponse::Page {
-                entries,
-                tampered: self.tampered.load(std::sync::atomic::Ordering::SeqCst),
-            },
+            Ok(entries) => {
+                // `head` reflects the SAME filter as the page (a
+                // project-scoped read must not leak the global volume)
+                // and is read after the page, so it is at least the
+                // highest index returned. On a head-probe failure it
+                // degrades to `last returned index + 1` rather than an
+                // impossible 0 under a populated page, preserving the
+                // invariant `head >= max(returned index) + 1`.
+                let fallback_head = entries.last().map_or(0, |e| e.index + 1);
+                let head = match self.reader.head(req.project_id.as_deref()).await {
+                    Ok(h) => h.max(fallback_head),
+                    Err(e) => {
+                        tracing::warn!("read head probe failed: {e}");
+                        fallback_head
+                    }
+                };
+                ReadResponse::Page {
+                    entries,
+                    tampered: self.tampered.load(std::sync::atomic::Ordering::SeqCst),
+                    head,
+                }
+            }
             Err(e) => ReadResponse::Error {
                 reason: e.to_string(),
             },
@@ -184,13 +202,18 @@ mod tests {
         let reply = read_frame(&mut client).await.unwrap();
         let resp: ReadResponse = serde_json::from_slice(&reply).unwrap();
         match resp {
-            ReadResponse::Page { entries, tampered } => {
+            ReadResponse::Page {
+                entries,
+                tampered,
+                head,
+            } => {
                 assert_eq!(entries.len(), 3);
                 assert_eq!(entries[0].index, 0);
                 assert_eq!(entries[2].index, 2);
                 assert_eq!(entries[0].actor, "ai-daemon");
                 assert_eq!(entries[0].entry_hash_hex.len(), 64);
                 assert!(!tampered, "untampered ledger reports tampered=false");
+                assert_eq!(head, 3, "head is one past the highest index");
             }
             ReadResponse::Error { reason } => panic!("read failed: {reason}"),
         }
