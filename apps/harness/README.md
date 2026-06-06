@@ -1,6 +1,6 @@
-# app-harness
+# harness
 
-The Arlen **AI Harness App** - the graphical agent/conversation and
+The Arlen **AI Harness App**, the graphical agent/conversation and
 observability surface for the AI layer. The full GUI door to the AI (the
 graphical counterpart to the terminal CLI harness): multi-turn conversation
 with streaming and visible tool calls, plus the read-only activity timeline
@@ -31,8 +31,12 @@ Read before building:
 - `docs/architecture/ai-agent-design.md` - the AI layer, interaction model
   (silent curator + pull), capability model.
 
-(Those docs live in the shared `arlenos/docs/` folder.)
+(Those docs live in the monorepo `docs/architecture/` folder.)
 
 ## Status
 
-Scaffold pending (build phase A1). This repo currently holds only the bootstrap.
+Early build. The Tauri shell plus the backend pieces for conversation
+(`ai_client`), the capability indicator (`capability`), and the read-only
+activity timeline (`activity`, reading the audit ledger through `audit-proto`)
+are in place and tested. The undo/compensation wiring and the richer
+conversation UI are the next steps (build phases A5 to A6).
