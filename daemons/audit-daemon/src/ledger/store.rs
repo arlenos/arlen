@@ -340,6 +340,20 @@ impl LedgerReader {
         Ok(Self { pool })
     }
 
+    /// One past the highest index in the ledger, i.e. the total entry
+    /// count (indices are contiguous from 0). Returns 0 for an empty
+    /// ledger. The read API reports this so a client can seek to the
+    /// tail for the most recent entries.
+    pub async fn head(&self) -> Result<u64> {
+        let row = sqlx::query("SELECT MAX(idx) AS max_idx FROM audit_entries")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(map_sqlx)?;
+        // `MAX(idx)` is NULL on an empty table; map that to head 0.
+        let max_idx: Option<i64> = row.try_get("max_idx").map_err(map_sqlx)?;
+        Ok(max_idx.map_or(0, |m| m as u64 + 1))
+    }
+
     /// Read a page of entries as Structural-tier views.
     ///
     /// Returns entries with index in `[from, to)`, ascending, capped
