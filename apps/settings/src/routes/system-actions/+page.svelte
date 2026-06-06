@@ -13,9 +13,10 @@
   import { onMount } from "svelte";
   import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
   import { Button } from "$lib/components/ui/button";
-  import SettingsPage from "$lib/components/settings/SettingsPage.svelte";
-  import { Group } from "$lib/components/ui/group";
-  import { Row } from "$lib/components/ui/row";
+  import { Page } from "@lunaris/ui-kit/components/ui/page";
+  import { SectionGrid } from "@lunaris/ui-kit/components/ui/section-grid";
+  import { Group } from "@lunaris/ui-kit/components/ui/group";
+  import { Row } from "@lunaris/ui-kit/components/ui/row";
   import { CommandStringEditor } from "$lib/components/ui/command-string-editor";
   import {
     compositor,
@@ -75,12 +76,13 @@
   });
 </script>
 
-<SettingsPage
+<Page
   title="System Actions"
   description="Commands triggered by hardware Fn-row keys and system shortcuts. Edit a command to override the default; reset clears the override."
 >
+  <SectionGrid>
   {#if modifiedCount > 0}
-    <div class="header-actions">
+    <div class="header-actions span-full">
       <span class="modified-badge">
         {modifiedCount}
         {modifiedCount === 1 ? "override" : "overrides"} active
@@ -117,7 +119,7 @@
     </Group>
   {/each}
 
-  <div class="footer-note">
+  <div class="footer-note span-full">
     <strong>Command grammar:</strong>
     <code>shell:event_name</code> dispatches a shell-overlay event
     (e.g. <code>shell:brightness_up</code>),
@@ -125,7 +127,8 @@
     are also accepted and run via <code>/bin/sh -c</code> for
     compatibility.
   </div>
-</SettingsPage>
+  </SectionGrid>
+</Page>
 
 <ConfirmDialog
   open={resetAllOpen}
