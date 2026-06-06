@@ -1,7 +1,7 @@
 # E2E test checklist
 
 Manual scenarios for `xdg-desktop-portal-arlen`. None of these are
-automated — they need a Wayland session, a Arlen compositor, and
+automated - they need a Wayland session, a Arlen compositor, and
 real apps that exercise the portal interfaces. Walk this list after
 shipping any Sprint F changes.
 
@@ -30,7 +30,7 @@ flatpak install --user flathub org.kde.kdenlive
 
 ## Scenarios
 
-### S1 — Settings DirectoryPicker (unconfined caller, file://)
+### S1 - Settings DirectoryPicker (unconfined caller, file://)
 
 1. Open the **Settings → Knowledge** panel.
 2. Click "Browse" next to "Project Watch Path".
@@ -41,7 +41,7 @@ flatpak install --user flathub org.kde.kdenlive
 6. Repeat, click "Cancel" instead.
 7. **Expect:** no toml change, picker closes silently.
 
-### S2 — Flatpak File Open (sandboxed caller, Document Portal)
+### S2 - Flatpak File Open (sandboxed caller, Document Portal)
 
 1. Run any installed Flatpak app, e.g. `flatpak run --user org.kde.kdenlive`.
 2. Trigger its file-open dialog (File → Open Project, or similar).
@@ -53,10 +53,10 @@ flatpak install --user flathub org.kde.kdenlive
    `flatpak permission-show desktop-used-apps` should list the
    caller's app id against the picked file.
 
-### S3 — Flatpak File Save (sandboxed caller, AddNamedFull)
+### S3 - Flatpak File Save (sandboxed caller, AddNamedFull)
 
 1. In the same Flatpak app, trigger File → Save As (or its
-   equivalent — Kdenlive: File → Save Project As; gedit: Save As).
+   equivalent - Kdenlive: File → Save Project As; gedit: Save As).
 2. Name the file something new (does NOT exist yet).
 3. **Expect:** picker accepts the new filename, save succeeds.
 4. Verify the file exists at the picked location.
@@ -64,7 +64,7 @@ flatpak install --user flathub org.kde.kdenlive
    path failed with ENOENT for non-existent targets; this
    test is the proof that `AddNamedFull` is wired.
 
-### S4 — OpenURI passthrough (http(s))
+### S4 - OpenURI passthrough (http(s))
 
 ```bash
 busctl --user call org.freedesktop.portal.Desktop \
@@ -77,7 +77,7 @@ busctl --user call org.freedesktop.portal.Desktop \
 **Expect:** browser opens example.com. Daemon log shows
 "OpenURI passthrough" with redacted URI (`https://example.com/...`).
 
-### S5 — OpenURI scheme rejection
+### S5 - OpenURI scheme rejection
 
 ```bash
 busctl --user call org.freedesktop.portal.Desktop \
@@ -90,7 +90,7 @@ busctl --user call org.freedesktop.portal.Desktop \
 **Expect:** D-Bus call returns response code 2 (OTHER) with
 an error message. Daemon log shows "OpenURI rejected scheme".
 
-### S6 — Sandboxed file:// path-traversal rejection (Codex Sprint F regression)
+### S6 - Sandboxed file:// path-traversal rejection (Codex Sprint F regression)
 
 Real Flatpak sandboxes don't ship `busctl` so this scenario is
 covered by unit tests rather than an end-to-end run:
@@ -107,7 +107,7 @@ proper Document Portal access on legitimate paths, S2 above
 (real File Open + `flatpak permission-show desktop-used-apps`)
 is the load-bearing test.
 
-### S7 — User cancels mid-pick (E11)
+### S7 - User cancels mid-pick (E11)
 
 1. Trigger any picker (Settings DirectoryPicker is easiest).
 2. Wait until the picker is showing.
@@ -115,7 +115,7 @@ is the load-bearing test.
 4. **Expect:** picker closes, caller sees a Cancelled
    response (no error toast, no log warning).
 
-### S8 — Picker crash mid-pick (E11 disambiguation)
+### S8 - Picker crash mid-pick (E11 disambiguation)
 
 1. Trigger any picker.
 2. While the picker is open, find its PID:

@@ -13,7 +13,7 @@ end-to-end test checklist lives at [`E2E.md`](E2E.md).
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         CALLER (any app)                         │
-│   GTK / Qt / Tauri / Flatpak — calls the standard portal API     │
+│   GTK / Qt / Tauri / Flatpak - calls the standard portal API     │
 └─────────────────────────┬───────────────────────────────────────┘
                           │  org.freedesktop.portal.FileChooser
                           │  org.freedesktop.portal.OpenURI

@@ -30,7 +30,7 @@ Safety notes (from the dry-run):
 
 - Take a Snapper snapshot before the batch so the whole move set is
   reversible at once (gap B1); a `move` onto an occupied destination is an
-  irreversible overwrite, so its precondition is "destination empty" — if
+  irreversible overwrite, so its precondition is "destination empty" - if
   not, treat as high-impact and confirm, never overwrite silently (gap F4).
 - The cadence above is weekly; actual firing is gated to an idle window by
   the idle scheduler (B3). The B0 schema only expresses the interval; the

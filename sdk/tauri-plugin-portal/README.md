@@ -53,7 +53,7 @@ await openUri('https://example.com');
 ## Cancellation vs. error
 
 The picker functions return `null` when the user dismisses the
-dialog. Errors throw — they are reserved for actual failures
+dialog. Errors throw - they are reserved for actual failures
 (portal frontend not installed, scheme rejected, backend failure).
 
 ```typescript
