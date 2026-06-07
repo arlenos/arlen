@@ -7,10 +7,10 @@
 #
 # Usage:
 #   cd ~/Repositories/arlen
-#   ./distro/install-modulesd.sh
+#   dev/scripts/install-modulesd.sh
 #
 # For dev work (no sudo, repo-local debug binary) use
-# ./distro/dev-modulesd-setup.sh instead.
+# dev/scripts/dev-modulesd-setup.sh instead.
 
 set -euo pipefail
 

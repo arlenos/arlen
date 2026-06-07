@@ -65,23 +65,23 @@ picker-ui src-tauri (5).
 
 ## Install
 
-Production (system-wide, requires sudo):
+Production (system-wide, requires sudo), from the repo root:
 
 ```bash
-../distro/install-portal.sh
+dev/scripts/install-portal.sh
 ```
 
-Development (per-user symlinks, no sudo):
+Development (per-user symlinks, no sudo), from the repo root:
 
 ```bash
-../distro/dev-portal-setup.sh
-./distro/start-dev.sh --with-portal
+dev/scripts/dev-portal-setup.sh
+(cd dev && just dev --profile portal)
 ```
 
 Teardown:
 
 ```bash
-../distro/dev-portal-teardown.sh
+dev/scripts/dev-portal-teardown.sh
 ```
 
 ## Testing

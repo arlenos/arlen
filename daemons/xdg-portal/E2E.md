@@ -7,8 +7,8 @@ shipping any Sprint F changes.
 
 ## Prerequisites
 
-- `./distro/dev-portal-setup.sh` succeeded (see repo root README).
-- `./distro/start-dev.sh --with-portal` is running.
+- `dev/scripts/dev-portal-setup.sh` succeeded (see repo root README).
+- `just dev --profile portal` (from `dev/`) is running.
 - `busctl --user list | grep org.freedesktop.impl.portal.desktop.arlen`
   prints the bus name. If not, `tail -f logs/portal-daemon.log`.
 
@@ -127,6 +127,6 @@ is the load-bearing test.
 
 ## Cleanup
 
-`./distro/dev-portal-teardown.sh` removes the per-user D-Bus
+`dev/scripts/dev-portal-teardown.sh` removes the per-user D-Bus
 service shim. `target/` build artefacts stay so the next dev
 session is fast.

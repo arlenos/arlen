@@ -73,14 +73,14 @@ Before forwarding to the Event Bus, every event goes through the normalizer:
 
 ## Development
 
-eBPF programs cannot be tested on the host without risk. All development and testing happens inside a QEMU VM. See [distro/vm/](../distro/vm/) for scripts to set up the VM and start the full dev environment.
+eBPF programs cannot be tested on the host without risk. All development and testing happens inside a QEMU VM. See [dev/vm/](../../dev/vm/) for scripts to set up the VM and start the full dev environment.
 
 ```bash
 # Run all tests (no eBPF required)
 cargo test -p kernel-layer
 
-# Start full stack in VM
-cd ../distro && just dev
+# Start the eBPF kernel-layer in the VM
+cd ../../dev && just vm
 ```
 
 ## Testing

@@ -137,7 +137,7 @@ async fn main() -> Result<()> {
                     "FUSE: path already mounted — skipping remount. \
                      Stale mount from a previous run? Fix with \
                      `fusermount -u {fuse_mount_path}` or use \
-                     `distro/start-dev.sh` which handles this automatically",
+                     `just dev` which handles this automatically",
                 );
                 return;
             }

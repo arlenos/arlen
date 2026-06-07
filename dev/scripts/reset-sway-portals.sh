@@ -21,7 +21,7 @@
 # (no sudo).
 #
 # Usage:
-#   ./distro/reset-sway-portals.sh
+#   dev/scripts/reset-sway-portals.sh
 
 set -euo pipefail
 
