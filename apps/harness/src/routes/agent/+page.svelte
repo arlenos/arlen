@@ -43,6 +43,10 @@
     disabledReason: string | null;
     reads: string;
   }
+  interface BehaviourReport {
+    behaviours: BehaviourStatus[];
+    errors: string[];
+  }
 
   /// Human label + semantic tone per audit kind.
   const KIND_META: Record<string, { label: string; tone: string }> = {
@@ -58,7 +62,7 @@
   let activity = $state<ActivityPage | null>(null);
   let loading = $state(false);
   let error = $state<string | null>(null);
-  let behaviours = $state<BehaviourStatus[] | null>(null);
+  let behaviours = $state<BehaviourReport | null>(null);
 
   function relativeTime(micros: number): string {
     const then = micros / 1000;
@@ -81,7 +85,7 @@
     // best-effort so an audit-daemon outage does not blank the behaviour
     // list, and vice versa.
     try {
-      behaviours = await invoke<BehaviourStatus[]>("ai_behaviours");
+      behaviours = await invoke<BehaviourReport>("ai_behaviours");
     } catch {
       behaviours = null;
     }
@@ -165,15 +169,26 @@
     <Group label="Behaviours">
       {#if !behaviours}
         <p class="empty">Behaviour status unavailable.</p>
-      {:else if behaviours.length === 0}
+      {:else if behaviours.behaviours.length === 0 && behaviours.errors.length === 0}
         <p class="empty">No agent behaviours are installed.</p>
       {:else}
         <p class="bh-hint">
           <Activity size={14} strokeWidth={1.75} />
           The set the agent would act on. Enabling and disabling stays in Settings → AI.
         </p>
+        {#if behaviours.errors.length > 0}
+          <div class="banner">
+            <ShieldAlert size={16} />
+            <div>
+              {behaviours.errors.length} behaviour director{behaviours.errors.length === 1 ? "y" : "ies"} failed to load:
+              <ul class="bh-errors">
+                {#each behaviours.errors as err}<li>{err}</li>{/each}
+              </ul>
+            </div>
+          </div>
+        {/if}
         <ul class="bh-list">
-          {#each behaviours as b (b.name)}
+          {#each behaviours.behaviours as b (b.name)}
             <li class="bh-item">
               <span class="badge" data-tone={b.enabled ? "ok" : "neutral"}>
                 {b.enabled ? "enabled" : "disabled"}
@@ -376,6 +391,11 @@
     flex-shrink: 0;
     font-size: 0.6875rem;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
+  }
+  .bh-errors {
+    margin: 0.25rem 0 0;
+    padding-left: 1rem;
+    font-size: 0.75rem;
   }
   :global(.spin) {
     animation: spin 0.8s linear infinite;

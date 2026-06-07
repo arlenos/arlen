@@ -1,4 +1,0 @@
-cargo:rerun-if-changed=proto/event.proto
-cargo:rerun-if-changed=proto/clipboard_api.proto
-cargo:rerun-if-changed=proto/search_api.proto
-cargo:rerun-if-changed=proto/intent_api.proto

@@ -52,11 +52,24 @@ fn disabled_reason_label(reason: &DisableReason) -> &'static str {
     }
 }
 
-/// List every discoverable agent behaviour with its enablement and trust,
-/// exactly as the agent daemon resolves them. Read-only.
+/// The behaviour set plus any directories that failed to load. A failed
+/// directory is reported, not silently dropped: a permission error or a broken
+/// `SKILL.md` makes a behaviour fail closed, and the operator needs to see why.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BehaviourReport {
+    /// Behaviours that loaded, each with its enablement and trust.
+    behaviours: Vec<BehaviourStatus>,
+    /// Load failures, each a complete message naming the directory and reason.
+    errors: Vec<String>,
+}
+
+/// List every discoverable agent behaviour with its enablement and trust, plus
+/// any load failures, exactly as the agent daemon resolves them. Read-only.
 #[tauri::command]
-pub fn ai_behaviours() -> Vec<BehaviourStatus> {
-    load_configured()
+pub fn ai_behaviours() -> BehaviourReport {
+    let outcome = load_configured();
+    let behaviours = outcome
         .loaded
         .iter()
         .map(|b| {
@@ -76,5 +89,7 @@ pub fn ai_behaviours() -> Vec<BehaviourStatus> {
                 reads: format!("{:?}", b.behaviour.manifest.reads),
             }
         })
-        .collect()
+        .collect();
+    let errors = outcome.errors.iter().map(|e| e.to_string()).collect();
+    BehaviourReport { behaviours, errors }
 }

@@ -118,6 +118,15 @@ pub fn is_safe_module_id(module_id: &str) -> bool {
         && module_id.len() <= 128
         && module_id != "."
         && module_id != ".."
+        // The `system.` prefix is reserved for Arlen-shipped system MCP
+        // servers (e.g. `system.knowledge`). A module is registered in the
+        // AI daemon's client under its raw id, and a new connection replaces
+        // any existing one for that id, so a module allowed to claim
+        // `system.knowledge` could shadow the authenticated read-only system
+        // server. Reject the namespace here, where both the host (modulesd,
+        // which binds the socket) and the AI daemon (which connects to it)
+        // validate the id.
+        && !module_id.starts_with("system.")
         && module_id
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
@@ -312,6 +321,10 @@ mod tests {
         assert!(!is_safe_module_id("com.example/../escape"));
         assert!(!is_safe_module_id("has space"));
         assert!(!is_safe_module_id(&"x".repeat(200)));
+        // The system.* namespace is reserved for Arlen system servers, so a
+        // module can never claim a well-known system id and shadow it.
+        assert!(!is_safe_module_id("system.knowledge"));
+        assert!(!is_safe_module_id("system.anything"));
     }
 
     #[derive(Clone)]
