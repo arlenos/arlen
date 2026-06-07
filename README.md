@@ -4,7 +4,7 @@ Arlen is a capability-based, event-driven Linux desktop, built from scratch on t
 
 The core ideas are three. A system-wide knowledge graph that the whole desktop reads and writes, treated as real infrastructure rather than a per-app database. Capability tokens for every cross-component access, so a component only reaches what it was granted. And a modern shell that replaces the usual Linux desktop pieces, meant to be usable by non-technical people, with no telemetry and no lock-in.
 
-The full architecture is written up in the technical report under `foundation/` (also published with a DOI). Read it before making architectural decisions, it is the ground truth. Author: Tim Kicker, University of Innsbruck.
+The full architecture is written up in the technical report (its own repo, also published with a DOI). Read it before making architectural decisions, it is the ground truth. Author: Tim Kicker, University of Innsbruck.
 
 ## Layout
 
@@ -20,7 +20,7 @@ arlen/
   forage/      CLI package manager
   store-backend/  app store backend
   themes/      GTK theme generator
-  dev/         build, test, and dev tooling (justfile, process-compose, vm)
+  dev/         build, test and dev tooling (justfile, process-compose, vm)
   docs/        architecture specs (shared across the tree)
 ```
 
@@ -31,7 +31,7 @@ The daemons are the spine of the system:
 - `kernel-layer` normalizes eBPF tracepoints into events.
 - `notification-daemon` is the D-Bus notification server.
 - `modulesd` hosts sandboxed extension modules.
-- `installd` installs packages, modules, and Flatpaks.
+- `installd` installs packages, modules and Flatpaks.
 - `audit-daemon` is the append-only audit ledger.
 - `anomaly-detector` is an advisory watcher that informs, never blocks.
 - `xdg-portal` is the xdg-desktop-portal backend.
@@ -47,8 +47,8 @@ cargo test  --manifest-path sdk/Cargo.toml
 
 The frontend apps use Tauri 2 with SvelteKit and Svelte 5. They share the UI kit under `sdk/ui-kit` through the `@arlen/ui-kit` alias, so components are never copied between apps.
 
-CI runs a per-crate check and test matrix, clippy and rustfmt, and svelte-check on the apps. The compositor is checked out and pinned separately when building a full image.
+CI runs a per-crate check and test matrix plus clippy, rustfmt and svelte-check on the apps. The compositor is checked out and pinned separately when building a full image.
 
 ## Status
 
-Pre-alpha. The daemons, the SDK, the shell, and the AI layer exist and build, and large parts are covered by tests, but this is not something to run as a daily driver yet. Expect breaking changes without migration shims.
+Pre-alpha. The daemons, the SDK, the shell and the AI layer exist and build, and large parts are covered by tests, but this is not something to run as a daily driver yet. Expect breaking changes without migration shims.

@@ -1,8 +1,8 @@
 # ui-kit
 
-The Arlen component library. Built with Tauri, SvelteKit, Tailwind v4, and shadcn-svelte. All first-party Arlen apps import from here to get consistent UI, theming, and window decorations.
+The Arlen component library. Built with Tauri, SvelteKit, Tailwind v4 and shadcn-svelte. All first-party Arlen apps import from here to get consistent UI, theming and window decorations.
 
-This is not a standalone app. It is the shared foundation that desktop-shell, Waypointer, Settings, and other Arlen apps build on top of.
+This is not a standalone app. It is the shared foundation that desktop-shell, Waypointer, Settings and other Arlen apps build on top of.
 
 ## What's here
 
@@ -46,7 +46,7 @@ border = "#e2e2e8"    # separators, input outlines
 radius = "0.5rem"
 ```
 
-If `theme.toml` does not exist or cannot be parsed, the built-in **Panda** theme is used (dark shell, light apps).
+If `theme.toml` does not exist or cannot be parsed, the built-in default is used: a monochrome dark shell (`dark.toml`), with `light.toml` as the light counterpart.
 
 **CSS Custom Properties:**
 
@@ -54,7 +54,7 @@ All tokens are available as CSS custom properties: `--color-bg-shell`, `--color-
 
 **Shell surface context:**
 
-Components inside a `.shell-surface` element automatically get shell colors instead of app colors. Use this for panel, launcher, and other shell chrome:
+Components inside a `.shell-surface` element automatically get shell colors instead of app colors. Use this for panel, launcher and other shell chrome:
 
 ```svelte
 <div class="shell-surface">

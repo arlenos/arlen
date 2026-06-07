@@ -1,10 +1,12 @@
 # dev
 
-Developer tooling for Arlen: build, test, and run the system locally. No
+Developer tooling for Arlen: build, test and run the system locally. No
 application code, this is the glue that turns the monorepo into a running stack.
-The bootable image / distribution (mkosi, Fedora base, packaging) is separate
+The bootable image / distribution (mkosi, Debian base, packaging) is separate
 future work and gets its own `distro/` directory when it exists; until then the
-`build-iso` recipe here is a stub.
+`build-iso` recipe here is a stub. The eBPF dev VM below is a separate thing: a
+throwaway kernel host for tracepoint testing, not the product base, so it runs a
+Fedora cloud image regardless of the Debian target.
 
 ## What's here
 
@@ -34,7 +36,7 @@ just vm               # eBPF kernel-layer in QEMU
 `process-compose` models the real start order: `event-bus` creates its sockets,
 `knowledge` waits on them (a readiness probe), the AI layer waits on knowledge,
 and so on. It replaces the old hand-rolled tmux script with dependency-aware
-startup, health checks, per-process logs, restart-on-crash, and a TUI. One-time
+startup, health checks, per-process logs, restart-on-crash and a TUI. One-time
 install: `just setup` (downloads the static binary into `~/.local/bin`, no sudo).
 For scripted/detached use, `just dev -D` runs headless; reattach with
 `process-compose attach`.
