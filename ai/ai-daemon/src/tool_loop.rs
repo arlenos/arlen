@@ -219,10 +219,17 @@ pub async fn gated_dispatch(
     if let Some(blocked) = outcome_for_blocked(decision) {
         return blocked;
     }
-    // Allowed. Parse the arguments; a malformed argument string degrades to an
-    // empty object rather than failing the dispatch outright.
-    let args: serde_json::Value =
-        serde_json::from_str(arguments).unwrap_or_else(|_| serde_json::json!({}));
+    // Allowed. Parse and validate the arguments. A malformed or non-object
+    // argument string fails the call closed: it must NOT silently become an
+    // empty object, which for a tool with optional or defaulted parameters
+    // could dispatch a broader or different request than the model produced.
+    let args = match serde_json::from_str::<serde_json::Value>(arguments) {
+        Ok(v) if v.is_object() => v,
+        Ok(_) => {
+            return DispatchOutcome::Failed("tool arguments must be a JSON object".to_string())
+        }
+        Err(e) => return DispatchOutcome::Failed(format!("invalid tool arguments: {e}")),
+    };
     match client.call_tool(&id, tool, args, chain).await {
         Ok(result) => DispatchOutcome::Result(result),
         Err(e) => DispatchOutcome::Failed(e.to_string()),
@@ -536,6 +543,44 @@ mod tests {
 
             let outcome = run_tool_loop(&client, &provider, "what notes do I have?", 5).await;
             assert_eq!(outcome, LoopOutcome::Answer("you have 1 note".to_string()));
+
+            server.abort();
+        }
+
+        #[tokio::test]
+        async fn malformed_arguments_fail_closed_without_calling_the_tool() {
+            let socket = temp_socket();
+            let socket_for_task = socket.clone();
+            let server = tokio::spawn(async move {
+                let _ = serve_mcp_at(&socket_for_task, QueryServer::new).await;
+            });
+            for _ in 0..200 {
+                if socket.exists() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert!(socket.exists(), "test server did not bind");
+            let mut client = McpClient::new();
+            client
+                .connect(
+                    ServerId("test".into()),
+                    socket.to_str().unwrap(),
+                    ServerClass::ReadOnly,
+                )
+                .await
+                .expect("connect to test server");
+
+            // The gate allows (read-only), but the arguments are not valid
+            // JSON, so the call fails closed; the tool is never invoked (a
+            // Result would carry the server's query output).
+            let bad = gated_dispatch(&client, "test", "query", "not json", false, &CallChain::root())
+                .await;
+            assert!(matches!(bad, DispatchOutcome::Failed(_)), "got {bad:?}");
+            // A valid-JSON non-object is also rejected, not coerced.
+            let arr = gated_dispatch(&client, "test", "query", "[1,2]", false, &CallChain::root())
+                .await;
+            assert!(matches!(arr, DispatchOutcome::Failed(_)), "got {arr:?}");
 
             server.abort();
         }
