@@ -51,7 +51,7 @@ pub fn theme_set_mode(mode: ThemeMode) -> Result<(), String> {
     Ok(())
 }
 
-/// Set the accent color (hex string like `#6366f1`).
+/// Set the accent color (hex string like `#3b82f6`).
 #[tauri::command]
 pub fn theme_set_accent(color: String) -> Result<(), String> {
     config_set(
