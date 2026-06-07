@@ -22,3 +22,4 @@ pub mod mcp_discovery;
 pub mod peer;
 pub mod registry;
 pub mod service;
+pub mod tool_loop;

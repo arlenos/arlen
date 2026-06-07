@@ -21,12 +21,14 @@ use std::time::Duration;
 
 use arlen_ai_core::audit::{self, AuditSink};
 use arlen_ai_core::graph_query::QueryScope;
-use arlen_ai_core::pipeline::QueryRunner;
+use arlen_ai_core::mcp::McpClient;
+use arlen_ai_core::pipeline::{QueryRunner, RunFailure};
 use arlen_ai_core::provider::AIProvider;
 use arlen_ai_explanation::{explain_system as run_explain, GraphReader};
 use tokio_util::sync::CancellationToken;
 
 use crate::registry::{AuthError, CompletionOutcome, CreatedQuery, QueryRegistry, QueryStatus};
+use crate::tool_loop::{loop_outcome_to_answer, run_tool_loop};
 
 /// Per-caller in-flight cap. Matches the modulesd network host's
 /// per-module concurrency budget for symmetry.
@@ -300,6 +302,25 @@ pub struct AiDaemonService {
     /// `None` until [`Self::with_explain`] wires it; the explanation
     /// method then refuses with [`ExplainError::NotConfigured`].
     explain: Option<Explainer>,
+    /// Interactive MCP tool-use capability. `None` unless
+    /// `ai.tool_routing` is enabled and [`Self::with_tool_routing`] wired
+    /// it; when present, `dispatch` runs the query through the bounded
+    /// tool-use loop instead of the single-shot graph-query runner
+    /// (`docs/architecture/ai-tool-routing.md`).
+    tool_loop: Option<ToolLoop>,
+}
+
+/// The wired interactive tool-use capability: the MCP client (shared with
+/// discovery), the provider to drive the loop, and the step budget.
+#[derive(Clone)]
+struct ToolLoop {
+    /// The MCP client, shared with the discovery layer (an async mutex, held
+    /// briefly across the loop's tool calls).
+    client: Arc<tokio::sync::Mutex<McpClient>>,
+    /// The provider the loop prompts each step.
+    provider: Arc<dyn AIProvider>,
+    /// Maximum loop steps before giving up.
+    max_steps: u32,
 }
 
 impl AiDaemonService {
@@ -350,6 +371,7 @@ impl AiDaemonService {
             max_inflight_global,
             max_prompt_bytes,
             explain: None,
+            tool_loop: None,
         }
     }
 
@@ -364,6 +386,28 @@ impl AiDaemonService {
         reader: Arc<dyn GraphReader>,
     ) -> Self {
         self.explain = Some(Explainer { provider, reader });
+        self
+    }
+
+    /// Wire the interactive MCP tool-use loop. When `enabled` (from
+    /// `ai.tool_routing`), `dispatch` routes queries through the bounded
+    /// tool-use loop against the connected MCP servers instead of the
+    /// single-shot graph-query runner. When `enabled` is false this is a
+    /// no-op, so the proven runner path stays the default.
+    pub fn with_tool_routing(
+        mut self,
+        enabled: bool,
+        client: Arc<tokio::sync::Mutex<McpClient>>,
+        provider: Arc<dyn AIProvider>,
+        max_steps: u32,
+    ) -> Self {
+        if enabled {
+            self.tool_loop = Some(ToolLoop {
+                client,
+                provider,
+                max_steps,
+            });
+        }
         self
     }
 
@@ -676,20 +720,46 @@ impl AiDaemonService {
         self.registry.mark_in_progress(&query_id).await;
 
         let started = std::time::Instant::now();
-        let runner_call = self.runner.run_query(&prompt, &scope);
 
-        let result = tokio::select! {
-            biased;
-            _ = cancel.cancelled() => {
-                // Cancelled while the runner was still going. `cancel()`
-                // already set the registry to Cancelled; record the
-                // terminal entry so the ledger shows the query did not
-                // run to completion, then abandon the runner.
-                self.audit_completion(&query_id, "cancelled", started.elapsed())
-                    .await;
-                return;
+        // Tool-routing path (ai.tool_routing on): run the bounded MCP tool-use
+        // loop. Otherwise the proven single-shot graph-query runner. Both yield
+        // a `Result<String, RunFailure>` so the terminal handling below is
+        // shared, and both honour cancellation through the same select.
+        let result = if let Some(tl) = &self.tool_loop {
+            // Held across the loop's tool calls; discovery's periodic
+            // health-check waits briefly, which is acceptable for an
+            // interactive query (see ai-tool-routing.md).
+            let client = tl.client.lock().await;
+            let loop_call = run_tool_loop(&client, tl.provider.as_ref(), &prompt, tl.max_steps);
+            tokio::select! {
+                biased;
+                _ = cancel.cancelled() => {
+                    self.audit_completion(&query_id, "cancelled", started.elapsed())
+                        .await;
+                    return;
+                }
+                outcome = loop_call => loop_outcome_to_answer(outcome).map_err(|reason| {
+                    RunFailure {
+                        code: "tool-loop-failed".to_string(),
+                        reason,
+                    }
+                }),
             }
-            res = runner_call => res,
+        } else {
+            let runner_call = self.runner.run_query(&prompt, &scope);
+            tokio::select! {
+                biased;
+                _ = cancel.cancelled() => {
+                    // Cancelled while the runner was still going. `cancel()`
+                    // already set the registry to Cancelled; record the
+                    // terminal entry so the ledger shows the query did not
+                    // run to completion, then abandon the runner.
+                    self.audit_completion(&query_id, "cancelled", started.elapsed())
+                        .await;
+                    return;
+                }
+                res = runner_call => res,
+            }
         };
 
         // The runner finished. Claim the terminal state in the

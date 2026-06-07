@@ -71,6 +71,12 @@ pub struct AiSettings {
     /// how much of the graph the AI can see; mapped to an
     /// `AccessTier` by `arlen_ai_core::capability::access_tier_from_level`.
     pub access_level: u8,
+    /// Whether queries run through the interactive MCP tool-use loop
+    /// (`tool_loop`) instead of the single-shot graph-query pipeline.
+    /// Default off: the proven `QueryRunner` path stays the default until
+    /// the loop is wired and verified end to end
+    /// (`docs/architecture/ai-tool-routing.md`).
+    pub tool_routing: bool,
 }
 
 /// Catalogued provider when `ai.provider` is absent: the local Ollama backend.
@@ -168,6 +174,7 @@ pub fn load_ai_settings() -> AiSettings {
             enabled: cfg.get::<bool>("ai.enabled").unwrap_or(false),
             provider: read_provider(&cfg),
             access_level: read_access_level(&cfg),
+            tool_routing: cfg.get::<bool>("ai.tool_routing").unwrap_or(false),
         },
         Err(err) => {
             tracing::warn!(error = %err, "ai.toml unreadable, defaulting to disabled");
