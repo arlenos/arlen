@@ -17,7 +17,19 @@ use arlen_ai_core::pipeline::{extract_json, QueryRunner};
 use arlen_ai_core::provider::{AIProvider, CompletionRequest};
 use arlen_ai_core::tagging::{Block, Origin, TaggedPrompt};
 use serde::Deserialize;
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
+
+/// Upper bound on recording a raw-knowledge policy violation before the loop
+/// resolves its denial. Bounds how long a slow or stuck audit sink can hold the
+/// query (and its in-flight slot) on this rare, anomalous path, without losing
+/// the record to a cancel: the submit is awaited (not raced against cancel) up
+/// to this bound. Past it the query fails closed (audit-unavailable), so the
+/// evidence is never silently dropped. Production ledger clients also carry
+/// their own timeout; this is the loop-side backstop for any sink.
+const DENIAL_AUDIT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Reserved server id of the internal, scope-enforcing graph tool. Graph
 /// access in the interactive loop goes only through here, never through the
@@ -270,6 +282,9 @@ pub enum LoopOutcome {
     /// ordinary transient tool error, which is fed back for the model to
     /// adjust.
     Denied(String),
+    /// The caller cancelled the query; the loop stopped cooperatively without
+    /// starting further provider or tool work.
+    Cancelled,
     /// The step budget ran out before a final answer.
     Exhausted,
     /// The loop could not proceed: a provider error or an unparseable reply.
@@ -325,39 +340,84 @@ fn extract_graph_question(arguments: &str) -> Result<String, String> {
 ///
 /// The shared [`McpClient`] is taken as a `&Mutex` and locked only around the
 /// individual client operations (catalogue assembly and each tool call), never
-/// across the provider completion. Holding the lock across the whole loop would
-/// stall discovery's health/reconnect work and, worse, would block other
-/// dispatch tasks on lock acquisition where they could not observe their own
-/// cancellation. Locking per operation keeps the loop's `await` points free for
-/// the caller's `select!` to fire a cancellation even while a tool call is
-/// in flight.
+/// across the provider completion, so the client stays free for discovery's
+/// health/reconnect work.
+///
+/// Cancellation is **cooperative**: the `cancel` token is checked at the top of
+/// each step (so a query cancelled before, or between, steps starts no provider
+/// or tool work) and the in-flight provider call and tool dispatch are raced
+/// against it (so a cancel interrupts a slow call promptly). Because the loop
+/// owns its own cancellation it always returns a definite [`LoopOutcome`] and is
+/// never dropped mid-flight by an outer select; the dispatch caller awaits it
+/// rather than racing it.
+///
+/// **Every** await is cancel-aware so a cancel cannot pin the dispatch task or
+/// hold the shared MCP mutex under a degraded dependency: the catalogue
+/// assembly, the provider call, each graph/MCP audit submit, the graph read,
+/// and each MCP lock + tool call are all raced against the token. The provider
+/// race is provider-biased so a reply that has *already arrived* is processed
+/// even if a cancel is also ready, so a model-produced raw-knowledge probe is
+/// recorded rather than discarded. That policy-violation record is submitted on
+/// a detached task: it neither blocks the loop's return (a hung audit sink
+/// cannot wedge the terminal transition) nor is lost if the caller cancels.
+// The loop's collaborators are each distinct (client, runner, scope, audit,
+// cancel, provider) and threaded as borrows; grouping them into a context
+// struct used by this one function would be ceremony, not clarity.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_tool_loop(
     client: &Mutex<McpClient>,
     runner: &dyn QueryRunner,
     scope: &QueryScope,
-    audit: &dyn AuditSink,
+    audit: Arc<dyn AuditSink>,
+    query_id: &str,
+    cancel: &CancellationToken,
     provider: &dyn AIProvider,
     question: &str,
     max_steps: u32,
 ) -> LoopOutcome {
-    let raw_catalogue = client.lock().await.tool_catalogue().await;
+    if cancel.is_cancelled() {
+        return LoopOutcome::Cancelled;
+    }
+    // Catalogue assembly touches the shared MCP client; race it against cancel
+    // so a contended lock or a stuck tool listing cannot pin the task.
+    let raw_catalogue = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => return LoopOutcome::Cancelled,
+        c = async { client.lock().await.tool_catalogue().await } => c,
+    };
     let catalogue = interactive_catalogue(raw_catalogue);
-    let chain = CallChain::root();
+    // Seed the call chain from the query id so every tool entry in this loop
+    // (MCP tools via call_tool, and the internal graph reads below) joins the
+    // query's own dispatch/completion audit records under one correlation id.
+    // The query id is a v4 UUID string; fall back to a fresh id if it is ever
+    // not parseable rather than failing the loop.
+    let chain = CallChain {
+        id: uuid::Uuid::parse_str(query_id).unwrap_or_else(|_| uuid::Uuid::new_v4()),
+        depth: 1,
+    };
     let mut transcript: Vec<ToolStep> = Vec::new();
 
     for _ in 0..max_steps {
+        // Cooperative cancellation: a query cancelled before or between steps
+        // starts no further provider or tool work.
+        if cancel.is_cancelled() {
+            return LoopOutcome::Cancelled;
+        }
         let prompt = build_tool_prompt(question, &catalogue, &transcript);
-        // Provider completion runs unlocked: it is the slow, network-bound
-        // step, and the MCP client is not touched here.
-        let reply = match provider
-            .complete(CompletionRequest {
+        // Provider completion runs unlocked (the slow, network-bound step).
+        // Provider-biased: an already-arrived reply is taken even if cancel is
+        // also ready, so a produced raw-knowledge probe is not discarded; while
+        // the call is still in flight a ready cancel interrupts it.
+        let reply = tokio::select! {
+            biased;
+            r = provider.complete(CompletionRequest {
                 prompt,
                 extras: serde_json::json!({}),
-            })
-            .await
-        {
-            Ok(r) => r.text,
-            Err(e) => return LoopOutcome::Failed(format!("provider error: {e}")),
+            }) => match r {
+                Ok(r) => r.text,
+                Err(e) => return LoopOutcome::Failed(format!("provider error: {e}")),
+            },
+            _ = cancel.cancelled() => return LoopOutcome::Cancelled,
         };
         match parse_loop_step(&reply) {
             Ok(LoopStep::Answer { text }) => return LoopOutcome::Answer(text),
@@ -383,39 +443,49 @@ pub async fn run_tool_loop(
                                 // outcome entry. A read inside an already
                                 // admitted query is still recorded per call, so
                                 // a mid-loop ledger outage is caught and the
-                                // activity surface sees every graph access.
-                                if audit
-                                    .submit(audit::mcp_event(
+                                // activity surface sees every graph access. Both
+                                // submits are raced against cancel so a stuck
+                                // sink cannot pin the task.
+                                let dispatched = tokio::select! {
+                                    biased;
+                                    _ = cancel.cancelled() => return LoopOutcome::Cancelled,
+                                    r = audit.submit(audit::mcp_event(
                                         GRAPH_TOOL_SERVER,
                                         "dispatched",
                                         chain.depth,
                                         &chain.id.to_string(),
                                         true,
-                                    ))
-                                    .await
-                                    .is_err()
-                                {
+                                    )) => r,
+                                };
+                                if dispatched.is_err() {
                                     return LoopOutcome::Failed(
                                         "graph query refused: audit log unavailable".to_string(),
                                     );
                                 }
-                                let outcome = match runner.run_query(&q, scope).await {
-                                    Ok(answer) => DispatchOutcome::Result(answer),
-                                    Err(f) => DispatchOutcome::Failed(f.reason),
+                                // The read can be slow; race it against cancel.
+                                let outcome = tokio::select! {
+                                    biased;
+                                    _ = cancel.cancelled() => return LoopOutcome::Cancelled,
+                                    r = runner.run_query(&q, scope) => match r {
+                                        Ok(answer) => DispatchOutcome::Result(answer),
+                                        Err(f) => DispatchOutcome::Failed(f.reason),
+                                    },
                                 };
                                 let label = match &outcome {
                                     DispatchOutcome::Result(_) => "ok",
                                     _ => "failed",
                                 };
-                                let _ = audit
-                                    .submit(audit::mcp_event(
+                                tokio::select! {
+                                    biased;
+                                    _ = cancel.cancelled() => return LoopOutcome::Cancelled,
+                                    _ = audit.submit(audit::mcp_event(
                                         GRAPH_TOOL_SERVER,
                                         label,
                                         chain.depth,
                                         &chain.id.to_string(),
                                         true,
-                                    ))
-                                    .await;
+                                    )) => {}
+                                }
                                 outcome
                             }
                             Err(e) => DispatchOutcome::Failed(e),
@@ -425,30 +495,70 @@ pub async fn run_tool_loop(
                     // Refuse raw-Cypher graph access in the interactive loop:
                     // it cannot carry the per-tier label scope. This is a
                     // trust-boundary hit (likely hallucinated or
-                    // injection-driven), so record it as a policy violation
-                    // and end the loop denied, rather than feeding the error
-                    // back where the model could continue and mask it behind a
-                    // fabricated answer. Recording is best-effort: the refusal
-                    // itself is the protection.
-                    let _ = audit
-                        .submit(audit::mcp_event(
+                    // injection-driven), so record it as a policy violation and
+                    // end the loop denied, rather than feeding the error back
+                    // where the model could continue and mask it behind a
+                    // fabricated answer. The record is awaited inline (not raced
+                    // against cancel, so a cancel cannot lose this trust-boundary
+                    // evidence), committed before the denial is returned, and
+                    // bounded by DENIAL_AUDIT_TIMEOUT so a stuck sink cannot pin
+                    // the query. It is FAIL-CLOSED (foundation §8.4.6, matching
+                    // the dispatch-audit gate): if the PolicyViolation cannot be
+                    // committed (sink error or timeout) the query fails as
+                    // audit-unavailable rather than returning a denial whose
+                    // evidence was silently dropped — a degraded ledger must not
+                    // turn the highest-signal trust-boundary event into a bare
+                    // query failure indistinguishable from an ordinary one.
+                    let recorded = tokio::time::timeout(
+                        DENIAL_AUDIT_TIMEOUT,
+                        audit.submit(audit::mcp_event(
                             RAW_KNOWLEDGE_SERVER,
                             "policy-denied",
                             chain.depth,
                             &chain.id.to_string(),
                             true,
-                        ))
-                        .await;
-                    return LoopOutcome::Denied(format!(
-                        "{RAW_KNOWLEDGE_SERVER} is not callable directly; \
-                         use {GRAPH_TOOL_SERVER}/{GRAPH_TOOL_NAME}"
-                    ));
+                        )),
+                    )
+                    .await;
+                    match recorded {
+                        Ok(Ok(_)) => {
+                            return LoopOutcome::Denied(format!(
+                                "{RAW_KNOWLEDGE_SERVER} is not callable directly; \
+                                 use {GRAPH_TOOL_SERVER}/{GRAPH_TOOL_NAME}"
+                            ));
+                        }
+                        Ok(Err(e)) => {
+                            tracing::warn!("raw-knowledge policy-violation audit failed: {e}");
+                            return LoopOutcome::Failed(
+                                "raw-knowledge call refused: policy-violation audit unavailable"
+                                    .to_string(),
+                            );
+                        }
+                        Err(_) => {
+                            tracing::warn!(
+                                "raw-knowledge policy-violation audit timed out after {:?}",
+                                DENIAL_AUDIT_TIMEOUT
+                            );
+                            return LoopOutcome::Failed(
+                                "raw-knowledge call refused: policy-violation audit unavailable"
+                                    .to_string(),
+                            );
+                        }
+                    }
                 } else {
                     // No per-session action grant in the interactive loop yet,
                     // so action servers surface as Blocked; other read-only
-                    // servers are default-permit. Lock only for the call.
-                    let guard = client.lock().await;
-                    gated_dispatch(&guard, &server, &tool, &arguments, false, &chain).await
+                    // servers are default-permit. Lock only for the call, with
+                    // the lock acquisition itself inside the cancel race so a
+                    // contended mutex cannot pin the task.
+                    tokio::select! {
+                        biased;
+                        _ = cancel.cancelled() => return LoopOutcome::Cancelled,
+                        o = async {
+                            let guard = client.lock().await;
+                            gated_dispatch(&guard, &server, &tool, &arguments, false, &chain).await
+                        } => o,
+                    }
                 };
                 match outcome {
                     DispatchOutcome::Result(result) => transcript.push(ToolStep {
@@ -480,10 +590,13 @@ pub async fn run_tool_loop(
 }
 
 /// Reduce a [`LoopOutcome`] to the single answer string the query path
-/// returns, or an error for a genuine failure. A blocked tool call or an
-/// exhausted budget is not an error: it becomes a plain-language answer
-/// explaining why the assistant stopped, so the user gets a response rather
-/// than an opaque failure. Only `Failed` maps to `Err`.
+/// returns, or an error for a non-success outcome. A blocked tool call (needs
+/// confirmation or authorization) or an exhausted budget is not an error: it
+/// becomes a plain-language answer explaining why the assistant stopped, so
+/// the user gets a response. A `Denied` outcome is a trust-boundary policy
+/// violation, not a normal stop: it maps to `Err` so the query is recorded as
+/// **failed**, never `completed` — a denial must not be indistinguishable from
+/// a successful query in the ledger or to the caller. `Failed` is also `Err`.
 pub fn loop_outcome_to_answer(outcome: LoopOutcome) -> Result<String, String> {
     match outcome {
         LoopOutcome::Answer(text) => Ok(text),
@@ -493,9 +606,11 @@ pub fn loop_outcome_to_answer(outcome: LoopOutcome) -> Result<String, String> {
         LoopOutcome::Blocked(_) => Ok("Answering that needs an action I cannot take from a \
              question alone (it requires confirmation or authorization)."
             .to_string()),
-        LoopOutcome::Denied(reason) => Ok(format!(
-            "I stopped because a step was not permitted: {reason}"
-        )),
+        LoopOutcome::Denied(reason) => Err(format!("policy denied: {reason}")),
+        // The dispatch caller handles Cancelled before reaching here (it records
+        // the cancelled completion); mapping it defensively keeps the function
+        // total.
+        LoopOutcome::Cancelled => Err("cancelled".to_string()),
         LoopOutcome::Failed(reason) => Err(reason),
     }
 }
@@ -654,7 +769,7 @@ mod tests {
         use rmcp::handler::server::router::tool::ToolRouter;
         use rmcp::{tool, tool_handler, tool_router, ServerHandler};
         use std::path::PathBuf;
-        use std::sync::Mutex;
+        use std::sync::{Arc, Mutex};
         use std::time::Duration;
 
         /// A provider that replays a fixed script of replies, one per call.
@@ -733,6 +848,10 @@ mod tests {
             QueryScope::for_tier(AccessTier::Full, &GraphSchema::knowledge_graph())
         }
 
+        /// A fixed v4 UUID standing in for the query id the daemon passes, so
+        /// the loop's audit entries correlate to one query.
+        const TEST_QUERY_ID: &str = "11111111-1111-4111-8111-111111111111";
+
         #[derive(Clone)]
         struct QueryServer {
             tool_router: ToolRouter<Self>,
@@ -795,13 +914,15 @@ mod tests {
                 r#"{"action":"answer","text":"you have 1 note"}"#,
             ]);
             let runner = StubRunner::ok("(unused)");
-            let audit = MockAuditSink::accepting();
+            let audit = Arc::new(MockAuditSink::accepting());
 
             let outcome = run_tool_loop(
                 &client,
                 &runner,
                 &test_scope(),
-                &audit,
+                audit.clone(),
+                TEST_QUERY_ID,
+                &CancellationToken::new(),
                 &provider,
                 "what notes do I have?",
                 5,
@@ -820,7 +941,7 @@ mod tests {
             // scope-enforcing tool, which must route through the QueryRunner.
             let client = tokio::sync::Mutex::new(McpClient::new());
             let runner = StubRunner::ok("you opened 3 files today");
-            let audit = MockAuditSink::accepting();
+            let audit = Arc::new(MockAuditSink::accepting());
             let provider = ScriptedProvider::new(vec![
                 r#"{"action":"call_tool","server":"system.graph","tool":"query","arguments":{"question":"what did I open?"}}"#,
                 r#"{"action":"answer","text":"3 files"}"#,
@@ -830,7 +951,9 @@ mod tests {
                 &client,
                 &runner,
                 &test_scope(),
-                &audit,
+                audit.clone(),
+                TEST_QUERY_ID,
+                &CancellationToken::new(),
                 &provider,
                 "what did I open today?",
                 5,
@@ -838,8 +961,24 @@ mod tests {
             .await;
             assert_eq!(outcome, LoopOutcome::Answer("3 files".to_string()));
             // The runner saw the model's question, under the passed scope.
-            let seen = runner.seen.lock().unwrap();
-            assert_eq!(seen.as_slice(), &["what did I open?".to_string()]);
+            // (Scoped so the std guard is dropped before the await below.)
+            {
+                let seen = runner.seen.lock().unwrap();
+                assert_eq!(seen.as_slice(), &["what did I open?".to_string()]);
+            }
+            // The graph read was audited (dispatched + outcome), content-free,
+            // correlated to the query id.
+            let recorded = audit.recorded().await;
+            let graph: Vec<_> = recorded
+                .iter()
+                .filter(|e| e.structural.subject == "system.graph")
+                .collect();
+            assert_eq!(graph.len(), 2, "dispatched + outcome");
+            assert!(graph
+                .iter()
+                .all(|e| e.call_chain_id.as_deref() == Some(TEST_QUERY_ID)));
+            assert!(graph.iter().any(|e| e.structural.outcome == "dispatched"));
+            assert!(graph.iter().any(|e| e.structural.outcome == "ok"));
         }
 
         #[tokio::test]
@@ -848,7 +987,7 @@ mod tests {
             // recorded (foundation §8.4.6): no un-audited AI activity.
             let client = tokio::sync::Mutex::new(McpClient::new());
             let runner = StubRunner::ok("should never run");
-            let audit = MockAuditSink::failing();
+            let audit = Arc::new(MockAuditSink::failing());
             let provider = ScriptedProvider::new(vec![
                 r#"{"action":"call_tool","server":"system.graph","tool":"query","arguments":{"question":"what did I open?"}}"#,
             ]);
@@ -857,7 +996,9 @@ mod tests {
                 &client,
                 &runner,
                 &test_scope(),
-                &audit,
+                audit.clone(),
+                TEST_QUERY_ID,
+                &CancellationToken::new(),
                 &provider,
                 "what did I open today?",
                 5,
@@ -894,7 +1035,7 @@ mod tests {
             .expect("connect knowledge server");
             let client = tokio::sync::Mutex::new(raw);
             let runner = StubRunner::ok("(unused)");
-            let audit = MockAuditSink::accepting();
+            let audit = Arc::new(MockAuditSink::accepting());
             // Step 1: try the raw server directly. The model scripts an answer
             // after, but the loop must never reach it: the denial is terminal.
             let provider = ScriptedProvider::new(vec![
@@ -906,7 +1047,9 @@ mod tests {
                 &client,
                 &runner,
                 &test_scope(),
-                &audit,
+                audit.clone(),
+                TEST_QUERY_ID,
+                &CancellationToken::new(),
                 &provider,
                 "read everything",
                 5,
@@ -917,8 +1060,158 @@ mod tests {
             // raw Cypher reached the server, and the runner was not used.
             assert!(matches!(outcome, LoopOutcome::Denied(_)), "got {outcome:?}");
             assert!(runner.seen.lock().unwrap().is_empty());
+            // It maps to a non-success query outcome (Err), so it is never
+            // marked completed.
+            assert!(loop_outcome_to_answer(outcome).is_err());
+            // The denial is recorded as a policy violation, correlated to the
+            // query id, and committed inline before the loop returns.
+            let recorded = audit.recorded().await;
+            assert!(recorded.iter().any(|e| {
+                e.kind == audit_proto::AuditKind::PolicyViolation
+                    && e.structural.subject == "system.knowledge"
+                    && e.call_chain_id.as_deref() == Some(TEST_QUERY_ID)
+            }));
 
             server.abort();
+        }
+
+        /// An audit sink whose `submit` never returns, to prove a stuck ledger
+        /// cannot wedge the loop's terminal transition.
+        struct HangingSink;
+        #[async_trait]
+        impl AuditSink for HangingSink {
+            async fn submit(
+                &self,
+                _event: audit_proto::IngestRequest,
+            ) -> Result<u64, arlen_ai_core::audit::AuditClientError> {
+                std::future::pending().await
+            }
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn a_hung_audit_sink_fails_the_raw_denial_closed_without_wedging() {
+            // The raw-knowledge denial audit is bounded by DENIAL_AUDIT_TIMEOUT,
+            // so even a sink that never returns cannot pin the loop: the timeout
+            // fires and the query fails closed (audit-unavailable) rather than
+            // returning a denial whose PolicyViolation was silently dropped.
+            // With paused time the bound elapses in virtual time, so the test is
+            // fast; if the audit were unbounded there would be no timer to
+            // advance and the test would hang, flagging the regression.
+            let client = tokio::sync::Mutex::new(McpClient::new());
+            let runner = StubRunner::ok("(unused)");
+            let audit: Arc<dyn AuditSink> = Arc::new(HangingSink);
+            let provider = ScriptedProvider::new(vec![
+                r#"{"action":"call_tool","server":"system.knowledge","tool":"query","arguments":{"cypher":"MATCH (n) RETURN n"}}"#,
+            ]);
+            let scope = test_scope();
+
+            let outcome = run_tool_loop(
+                &client,
+                &runner,
+                &scope,
+                audit.clone(),
+                TEST_QUERY_ID,
+                &CancellationToken::new(),
+                &provider,
+                "read everything",
+                5,
+            )
+            .await;
+            assert!(matches!(outcome, LoopOutcome::Failed(_)), "got {outcome:?}");
+            assert!(loop_outcome_to_answer(outcome).is_err());
+        }
+
+        #[tokio::test]
+        async fn a_failing_audit_sink_fails_the_raw_denial_closed() {
+            // A sink that rejects the policy-violation submit: the query fails
+            // closed (audit-unavailable), never a denial without its record.
+            let client = tokio::sync::Mutex::new(McpClient::new());
+            let runner = StubRunner::ok("(unused)");
+            let audit: Arc<dyn AuditSink> = Arc::new(MockAuditSink::failing());
+            let provider = ScriptedProvider::new(vec![
+                r#"{"action":"call_tool","server":"system.knowledge","tool":"query","arguments":{"cypher":"MATCH (n) RETURN n"}}"#,
+            ]);
+            let scope = test_scope();
+
+            let outcome = run_tool_loop(
+                &client,
+                &runner,
+                &scope,
+                audit.clone(),
+                TEST_QUERY_ID,
+                &CancellationToken::new(),
+                &provider,
+                "read everything",
+                5,
+            )
+            .await;
+            assert!(matches!(outcome, LoopOutcome::Failed(_)), "got {outcome:?}");
+        }
+
+        /// A provider that records how many times it was asked, to prove the
+        /// loop started no model work.
+        struct CountingProvider {
+            calls: std::sync::atomic::AtomicUsize,
+        }
+        #[async_trait]
+        impl AIProvider for CountingProvider {
+            async fn complete(
+                &self,
+                _req: CompletionRequest,
+            ) -> Result<CompletionResponse, ProviderError> {
+                self.calls
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(CompletionResponse {
+                    text: r#"{"action":"answer","text":"x"}"#.to_string(),
+                    audit: ProviderAudit {
+                        provider_name: "counting".into(),
+                        model: "counting".into(),
+                        input_tokens: None,
+                        output_tokens: None,
+                    },
+                })
+            }
+            async fn available(&self) -> bool {
+                true
+            }
+            fn name(&self) -> &str {
+                "counting"
+            }
+        }
+
+        #[tokio::test]
+        async fn an_already_cancelled_token_starts_no_provider_work() {
+            // Cooperative cancellation: a query cancelled before the loop runs
+            // returns Cancelled and never calls the provider. This is the
+            // guarantee that makes the loop safe to await directly (rather than
+            // race) in dispatch.
+            let client = tokio::sync::Mutex::new(McpClient::new());
+            let runner = StubRunner::ok("(unused)");
+            let audit = Arc::new(MockAuditSink::accepting());
+            let provider = CountingProvider {
+                calls: std::sync::atomic::AtomicUsize::new(0),
+            };
+            let cancel = CancellationToken::new();
+            cancel.cancel();
+
+            let outcome = run_tool_loop(
+                &client,
+                &runner,
+                &test_scope(),
+                audit.clone(),
+                TEST_QUERY_ID,
+                &cancel,
+                &provider,
+                "anything",
+                5,
+            )
+            .await;
+            assert_eq!(outcome, LoopOutcome::Cancelled);
+            assert_eq!(
+                provider.calls.load(std::sync::atomic::Ordering::SeqCst),
+                0,
+                "a cancelled query must not call the provider"
+            );
         }
 
         #[tokio::test]
@@ -972,11 +1265,12 @@ mod tests {
             DispatchOutcome::NeedsAuthorization
         ))
         .is_ok());
-        // A denial surfaces its reason as an answer (not masked, not an error).
+        // A policy denial is a non-success outcome: it maps to Err so the
+        // query is recorded as failed, never completed, and carries the reason.
         let denied = loop_outcome_to_answer(LoopOutcome::Denied("not allowed".into()));
-        assert!(denied.is_ok());
-        assert!(denied.unwrap().contains("not allowed"));
-        // Only a genuine failure is an error.
+        assert!(denied.is_err());
+        assert!(denied.unwrap_err().contains("not allowed"));
+        // A genuine failure is also an error.
         assert_eq!(
             loop_outcome_to_answer(LoopOutcome::Failed("provider down".into())),
             Err("provider down".to_string())
