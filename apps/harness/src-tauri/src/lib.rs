@@ -35,6 +35,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             frontend_log,
             ai_client::ai_query,
+            ai_client::ai_explain,
             activity::ai_activity_recent,
             capability::ai_capability,
             behaviours::ai_behaviours,

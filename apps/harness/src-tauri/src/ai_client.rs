@@ -204,6 +204,26 @@ pub async fn ai_query(prompt: String) -> Result<QueryReply, String> {
     }
 }
 
+/// Run System Explanation Mode (Foundation §5.8): ask the daemon for a
+/// plain-language summary of what the computer is doing right now. A single
+/// bounded call, no poll cycle, since the daemon returns the summary directly.
+/// Errors (daemon down, disabled, insufficient scope, timeout) come back as a
+/// readable string the UI shows.
+#[tauri::command]
+pub async fn ai_explain() -> Result<String, String> {
+    let connection = Connection::session()
+        .await
+        .map_err(|e| format!("session bus: {e}"))?;
+    let proxy = Proxy::new(&connection, AI_BUS_NAME, AI_OBJECT_PATH, AI_BUS_NAME)
+        .await
+        .map_err(|e| format!("ai daemon unavailable: {e}"))?;
+    let deadline = Instant::now() + QUERY_TIMEOUT;
+    match timeout_at(deadline, proxy.call::<_, _, String>("explain_system", &())).await {
+        Ok(r) => r.map_err(map_call_error),
+        Err(_) => Err(TIMEOUT_MSG.to_string()),
+    }
+}
+
 /// Best-effort cancel, itself time-bounded so cancellation cannot become
 /// the hang. Errors are ignored: the turn is already being abandoned.
 async fn bounded_cancel(proxy: &Proxy<'_>, query_id: &str, token: &str) {
