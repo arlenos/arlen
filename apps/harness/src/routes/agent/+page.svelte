@@ -10,7 +10,7 @@
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { Activity, History, Bell, RefreshCw, ShieldAlert } from "@lucide/svelte";
+  import { Activity, History, Bell, RefreshCw, ShieldAlert, Eye, Sparkles, PowerOff } from "@lucide/svelte";
 
   interface ActivityEntry {
     index: number;
@@ -54,6 +54,14 @@
     critical: boolean;
     tsMicros: number;
   }
+  interface Capability {
+    enabled: boolean;
+    tier: string;
+    actionMode: string;
+    provider?: string | null;
+    model?: string | null;
+    executorLive: boolean;
+  }
 
   /// Human label + semantic tone per audit kind.
   const KIND_META: Record<string, { label: string; tone: string }> = {
@@ -71,6 +79,7 @@
   let error = $state<string | null>(null);
   let behaviours = $state<BehaviourReport | null>(null);
   let notices = $state<Notice[] | null>(null);
+  let capability = $state<Capability | null>(null);
 
   function relativeTime(micros: number): string {
     const then = micros / 1000;
@@ -102,6 +111,13 @@
     } catch {
       notices = null;
     }
+    // The acting posture (executor_live) is config, not ledger state, so
+    // it loads independently and a daemon outage never blanks it.
+    try {
+      capability = await invoke<Capability>("ai_capability");
+    } catch {
+      capability = null;
+    }
     try {
       activity = await invoke<ActivityPage>("ai_activity_recent", { limit: 100 });
     } catch (e) {
@@ -119,6 +135,34 @@
   title="Agent"
   description="What the assistant has done on your behalf. Read-only, from the tamper-evident audit ledger — review each curated action and undo it if you want."
 >
+  {#if capability}
+    {#if !capability.enabled}
+      <div class="posture" data-mode="off">
+        <PowerOff size={16} strokeWidth={1.75} />
+        <div>
+          <span class="posture-title">AI layer disabled</span>
+          <span class="posture-sub">The agent does nothing until it is enabled in Settings → AI.</span>
+        </div>
+      </div>
+    {:else if capability.executorLive}
+      <div class="posture" data-mode="act">
+        <Sparkles size={16} strokeWidth={1.75} />
+        <div>
+          <span class="posture-title">Acting</span>
+          <span class="posture-sub">The agent writes safe, reversible curation automatically. Review each action below and undo it if you want.</span>
+        </div>
+      </div>
+    {:else}
+      <div class="posture" data-mode="suggest">
+        <Eye size={16} strokeWidth={1.75} />
+        <div>
+          <span class="posture-title">Suggest-only</span>
+          <span class="posture-sub">The agent computes and proposes curation but writes nothing yet. The activity below is what it observed; turn on the executor in Settings → AI to let it act.</span>
+        </div>
+      </div>
+    {/if}
+  {/if}
+
   <SectionGrid>
     <Group label="Activity" class="span-full">
       <div class="activity-head">
@@ -188,6 +232,10 @@
         <p class="bh-hint">
           <Activity size={14} strokeWidth={1.75} />
           The set the agent would act on. Enabling and disabling stays in Settings → AI.
+        </p>
+        <p class="bh-legend">
+          <span><span class="bh-kind">workflow</span> runs deterministically with no LLM call.</span>
+          <span><span class="bh-kind">agent</span> runs a bounded LLM loop.</span>
         </p>
         {#if behaviours.errors.length > 0}
           <div class="banner">
@@ -438,5 +486,54 @@
     to {
       transform: rotate(360deg);
     }
+  }
+  .posture {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.7rem 0.85rem;
+    margin-bottom: 1rem;
+    border-radius: 0.6rem;
+    border: 1px solid var(--color-border);
+    background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  }
+  .posture :global(svg) {
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+    color: color-mix(in srgb, var(--foreground) 60%, transparent);
+  }
+  .posture[data-mode="act"] {
+    border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  }
+  .posture[data-mode="act"] :global(svg) {
+    color: var(--color-accent);
+  }
+  .posture > div {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+  .posture-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--foreground);
+  }
+  .posture-sub {
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: color-mix(in srgb, var(--foreground) 60%, transparent);
+  }
+  .bh-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    margin: -0.25rem 0 0.6rem;
+    font-size: 0.75rem;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+  }
+  .bh-legend .bh-kind {
+    font-family: var(--font-mono, monospace);
+    color: color-mix(in srgb, var(--foreground) 70%, transparent);
   }
 </style>

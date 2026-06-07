@@ -26,6 +26,25 @@ pub struct Capability {
     pub provider: Option<String>,
     /// The configured model (`[provider].model`), when set.
     pub model: Option<String>,
+    /// Whether the agent's executor is live (`[agent] executor_live`). When
+    /// false (the default), the agent computes and proposes curation but
+    /// writes nothing; when true, proven reversible curation is written
+    /// automatically and shown as activity to review and undo. This is the
+    /// "what may the agent actually do right now" posture, surfaced on the
+    /// agent dashboard. Fail-closed to false.
+    pub executor_live: bool,
+}
+
+/// Read the `[agent] executor_live` flag from the parsed config. Absent,
+/// non-boolean, or a missing `[agent]` table all read as `false` — the same
+/// fail-closed default the agent daemon uses, so the posture shown matches
+/// what the daemon enforces. Pure, so it is unit-tested without a config file.
+fn executor_live(doc: &toml::Table) -> bool {
+    doc.get("agent")
+        .and_then(toml::Value::as_table)
+        .and_then(|t| t.get("executor_live"))
+        .and_then(toml::Value::as_bool)
+        .unwrap_or(false)
 }
 
 /// Extract the provider name (`ai.provider`) and model (`[provider].model`)
@@ -91,6 +110,7 @@ pub async fn ai_capability() -> Capability {
         action_mode: mode_label(None),
         provider: None,
         model: None,
+        executor_live: false,
     };
 
     let Ok(text) = std::fs::read_to_string(ai_config_path()) else {
@@ -120,6 +140,7 @@ pub async fn ai_capability() -> Capability {
         action_mode: mode_label(mode),
         provider,
         model,
+        executor_live: executor_live(&doc),
     }
 }
 
@@ -161,5 +182,18 @@ mod tests {
     fn provider_and_model_absent_are_none() {
         let doc = "[ai]\nenabled = true\n".parse::<toml::Table>().unwrap();
         assert_eq!(provider_and_model(&doc), (None, None));
+    }
+
+    #[test]
+    fn executor_live_reads_the_agent_flag_and_fails_closed() {
+        let on = "[agent]\nexecutor_live = true\n".parse::<toml::Table>().unwrap();
+        assert!(executor_live(&on));
+        let off = "[agent]\nexecutor_live = false\n".parse::<toml::Table>().unwrap();
+        assert!(!executor_live(&off));
+        // Missing [agent], missing key, and a non-bool all read as false.
+        let absent = "[ai]\nenabled = true\n".parse::<toml::Table>().unwrap();
+        assert!(!executor_live(&absent));
+        let wrong_type = "[agent]\nexecutor_live = \"yes\"\n".parse::<toml::Table>().unwrap();
+        assert!(!executor_live(&wrong_type));
     }
 }
