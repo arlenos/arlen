@@ -10,7 +10,7 @@
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { Activity, History, Bell, RefreshCw, ShieldAlert, Eye, Sparkles, PowerOff } from "@lucide/svelte";
+  import { Activity, History, Bell, RefreshCw, ShieldAlert, Eye, Sparkles, PowerOff, Telescope } from "@lucide/svelte";
   import AgentFilters from "$lib/components/AgentFilters.svelte";
 
   interface ActivityEntry {
@@ -81,6 +81,25 @@
   let behaviours = $state<BehaviourReport | null>(null);
   let notices = $state<Notice[] | null>(null);
   let capability = $state<Capability | null>(null);
+
+  // System Explanation Mode (Foundation §5.8): an on-demand plain-language
+  // summary of what the computer is doing now, from the daemon's explain path.
+  let explanation = $state<string | null>(null);
+  let explainError = $state<string | null>(null);
+  let explaining = $state(false);
+
+  async function runExplain() {
+    explaining = true;
+    explainError = null;
+    try {
+      explanation = await invoke<string>("ai_explain");
+    } catch (e) {
+      explainError = String(e);
+      explanation = null;
+    } finally {
+      explaining = false;
+    }
+  }
 
   // Activity-timeline filters (A7 inc 3). User-driven `$state` (not an IPC
   // callback), so plain reactivity is reliable here.
@@ -353,6 +372,26 @@
         </ul>
       {/if}
     </Group>
+
+    <Group label="What's happening now">
+      <div class="explain">
+        <p class="explain-hint">
+          <Telescope size={14} strokeWidth={1.75} />
+          A plain-language summary of what your computer is doing right now,
+          grounded in the knowledge graph, live processes and any flagged
+          anomalies. Generated on demand.
+        </p>
+        <Button variant="outline" size="sm" disabled={explaining} onclick={runExplain}>
+          <Sparkles size={14} class={explaining ? "spin" : ""} />
+          {explaining ? "Thinking…" : "Explain"}
+        </Button>
+        {#if explainError}
+          <p class="explain-error">{explainError}</p>
+        {:else if explanation}
+          <p class="explain-text">{explanation}</p>
+        {/if}
+      </div>
+    </Group>
   </SectionGrid>
 </Page>
   </div>
@@ -597,5 +636,37 @@
   .bh-legend .bh-kind {
     font-family: var(--font-mono, monospace);
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
+  }
+  .explain {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.25rem 0 0;
+  }
+  .explain-hint {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: color-mix(in srgb, var(--foreground) 60%, transparent);
+  }
+  .explain-hint :global(svg) {
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+  }
+  .explain-text {
+    margin: 0;
+    font-size: 0.875rem;
+    line-height: 1.55;
+    color: var(--foreground);
+    white-space: pre-wrap;
+  }
+  .explain-error {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--color-error);
   }
 </style>
