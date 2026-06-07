@@ -12,6 +12,7 @@
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Activity, History, Bell, RefreshCw, ShieldAlert, Eye, Sparkles, PowerOff, Telescope } from "@lucide/svelte";
   import AgentFilters from "$lib/components/AgentFilters.svelte";
+  import { renderMarkdown } from "$lib/markdown";
 
   interface ActivityEntry {
     index: number;
@@ -388,7 +389,9 @@
         {#if explainError}
           <p class="explain-error">{explainError}</p>
         {:else if explanation}
-          <p class="explain-text">{explanation}</p>
+          <!-- The explanation is model prose (markdown); render it the same
+               sanitized way as chat answers. -->
+          <div class="explain-text markdown">{@html renderMarkdown(explanation)}</div>
         {/if}
       </div>
     </Group>
