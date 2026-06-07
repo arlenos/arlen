@@ -1,11 +1,11 @@
-/// Permission profile types for Arlen OS.
-///
-/// Each app has a TOML profile at `~/.config/permissions/{app_id}.toml`
-/// defining what it can access: Knowledge Graph, Event Bus, filesystem,
-/// network, clipboard, notifications, etc. The user owns this file
-/// (foundation §7.3 — sole source of truth).
-///
-/// See `docs/architecture/AUTH-CANONICAL.md`.
+//! Permission profile types for Arlen OS.
+//!
+//! Each app has a TOML profile at `~/.config/permissions/{app_id}.toml`
+//! defining what it can access: Knowledge Graph, Event Bus, filesystem,
+//! network, clipboard, notifications, etc. The user owns this file
+//! (foundation §7.3 — sole source of truth).
+//!
+//! See `docs/architecture/AUTH-CANONICAL.md`.
 
 pub mod connection_auth;
 pub mod identity;

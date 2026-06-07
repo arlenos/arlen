@@ -224,9 +224,8 @@ impl ProfileWatcher {
                     let due_keys: Vec<String> = guard
                         .pending
                         .iter()
-                        .filter_map(|(k, t)| {
-                            (now.duration_since(*t) >= debounce).then(|| k.clone())
-                        })
+                        .filter(|(_, t)| now.duration_since(**t) >= debounce)
+                        .map(|(k, _)| k.clone())
                         .collect();
                     for k in &due_keys {
                         guard.pending.remove(k);
