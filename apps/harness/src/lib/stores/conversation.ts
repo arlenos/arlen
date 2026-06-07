@@ -179,6 +179,23 @@ export function selectSession(id: string): void {
   activeSessionId.set(id);
 }
 
+/// Rename a conversation. A non-empty title is taken verbatim (trimmed) and
+/// becomes sticky: because it is no longer the placeholder, `updateSession`
+/// stops re-deriving the title from the first message, so the user's name wins.
+/// An empty title resets to the auto-derived title (the first message, or the
+/// placeholder when there is none), so clearing a custom name hands control back
+/// to the automatic one.
+export function renameSession(id: string, title: string): void {
+  const next = title.trim();
+  sessions.update((list) =>
+    list.map((s) =>
+      s.id === id
+        ? { ...s, title: next.length > 0 ? next : titleFrom(s.messages) }
+        : s,
+    ),
+  );
+}
+
 /// Delete a conversation. If it was the active one, fall back to the newest
 /// remaining session (or none). The debounced disk save then drops it.
 export function deleteSession(id: string): void {

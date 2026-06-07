@@ -11,9 +11,26 @@
     newSession,
     selectSession,
     deleteSession,
+    renameSession,
   } from "$lib/stores/conversation";
 
   let query = $state("");
+  // The conversation being renamed inline, and the draft title. `null` when no
+  // rename is in progress. Double-clicking a title opens the editor on that row.
+  let editingId = $state<string | null>(null);
+  let draft = $state("");
+
+  function beginRename(id: string, current: string): void {
+    editingId = id;
+    draft = current;
+  }
+  function commitRename(): void {
+    if (editingId !== null) renameSession(editingId, draft);
+    editingId = null;
+  }
+  function cancelRename(): void {
+    editingId = null;
+  }
   // Sessions whose title matches the search, case-insensitive. Empty query
   // matches everything.
   const filtered = $derived(
@@ -56,25 +73,43 @@
       <ul class="rail-list">
         {#each filtered as s (s.id)}
           <li class="rail-row" class:active={s.id === $activeSessionId}>
-            <button
-              class="rail-item"
-              onclick={() => selectSession(s.id)}
-              title={s.title}
-            >
-              <MessageSquare size={13} strokeWidth={1.75} />
-              <span class="rail-item-title">{s.title}</span>
-            </button>
-            <button
-              class="rail-del"
-              aria-label="Delete conversation"
-              title="Delete conversation"
-              onclick={(e) => {
-                e.stopPropagation();
-                deleteSession(s.id);
-              }}
-            >
-              <X size={13} strokeWidth={2} />
-            </button>
+            {#if editingId === s.id}
+              <input
+                class="rail-edit"
+                bind:value={draft}
+                aria-label="Rename conversation"
+                onblur={commitRename}
+                onkeydown={(e) => {
+                  if (e.key === "Enter") commitRename();
+                  else if (e.key === "Escape") cancelRename();
+                }}
+                {@attach (node) => {
+                  node.focus();
+                  node.select();
+                }}
+              />
+            {:else}
+              <button
+                class="rail-item"
+                onclick={() => selectSession(s.id)}
+                ondblclick={() => beginRename(s.id, s.title)}
+                title={s.title}
+              >
+                <MessageSquare size={13} strokeWidth={1.75} />
+                <span class="rail-item-title">{s.title}</span>
+              </button>
+              <button
+                class="rail-del"
+                aria-label="Delete conversation"
+                title="Delete conversation"
+                onclick={(e) => {
+                  e.stopPropagation();
+                  deleteSession(s.id);
+                }}
+              >
+                <X size={13} strokeWidth={2} />
+              </button>
+            {/if}
           </li>
         {/each}
       </ul>
@@ -219,6 +254,20 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* Inline rename editor: fills the row like the title it replaces, so the row
+     does not jump when editing starts. */
+  .rail-edit {
+    flex: 1;
+    min-width: 0;
+    margin: 0.15rem 0.35rem;
+    padding: 0.25rem 0.35rem;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 50%, transparent);
+    border-radius: var(--radius-chip);
+    background: var(--color-bg-card);
+    color: var(--foreground);
+    font-size: 0.8rem;
+    outline: none;
   }
   /* On a narrow window the rail yields so the chat keeps usable width. */
   @media (max-width: 52rem) {
