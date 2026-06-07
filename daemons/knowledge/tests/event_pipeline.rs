@@ -122,7 +122,7 @@ async fn event_lands_in_sqlite() {
 
     // Start the knowledge daemon.
     let _knowledge = KillOnDrop(
-        Command::new(binary_path("knowledge"))
+        Command::new(binary_path("arlen-graph-daemon"))
             .env("ARLEN_CONSUMER_SOCKET", consumer_socket_str)
             .env("ARLEN_DB_PATH", db_path_str)
             .env("ARLEN_GRAPH_PATH", tmp.path().join("graph").to_str().unwrap())

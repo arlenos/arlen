@@ -1,0 +1,10 @@
+[package]
+name = "arlen-graph-schema"
+version = "0.1.0"
+edition = "2021"
+description = "Static description of the Arlen Knowledge Graph schema (node and edge tables), shared by the AI layer and the knowledge MCP server"
+
+[lib]
+path = "src/lib.rs"
+
+[workspace]
