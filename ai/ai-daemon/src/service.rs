@@ -28,7 +28,7 @@ use arlen_ai_explanation::{explain_system as run_explain, GraphReader};
 use tokio_util::sync::CancellationToken;
 
 use crate::registry::{AuthError, CompletionOutcome, CreatedQuery, QueryRegistry, QueryStatus};
-use crate::tool_loop::{loop_outcome_to_answer, run_tool_loop};
+use crate::tool_loop::{loop_outcome_to_answer, run_tool_loop, ToolStep};
 
 /// Per-caller in-flight cap. Matches the modulesd network host's
 /// per-module concurrency budget for symmetry.
@@ -716,6 +716,35 @@ impl AiDaemonService {
             .await
     }
 
+    /// Authorised trace retrieval for tool-routing queries.
+    ///
+    /// Returns the per-step tool-call transcript produced by the interactive
+    /// loop for the given query. The trace is the caller's own query
+    /// working-data: authorisation is identical to [`take_result`](Self::take_result)
+    /// (the submitting connection and the retrieval token both checked), so no
+    /// other caller can read it.
+    ///
+    /// The trace is available as soon as the query terminates; it can be
+    /// fetched at any time while the query record exists, including after
+    /// [`take_result`](Self::take_result) has drained the answer. An empty
+    /// trace is returned for queries that ran through the single-shot
+    /// [`QueryRunner`](arlen_ai_core::pipeline::QueryRunner) path (no tool
+    /// loop), and for in-flight queries (no steps completed yet).
+    ///
+    /// Unlike [`take_result`](Self::take_result) the trace is not consumed
+    /// on retrieval: a caller may fetch it more than once while the record
+    /// exists.
+    pub async fn take_trace(
+        &self,
+        query_id: &str,
+        caller_unique_bus_name: &str,
+        retrieval_token: &str,
+    ) -> Result<Vec<ToolStep>, AuthError> {
+        self.registry
+            .take_trace(query_id, caller_unique_bus_name, retrieval_token)
+            .await
+    }
+
     async fn dispatch(
         &self,
         query_id: String,
@@ -731,6 +760,11 @@ impl AiDaemonService {
         // loop. Otherwise the proven single-shot graph-query runner. Both yield
         // a `Result<String, RunFailure>` so the terminal handling below is
         // shared, and both honour cancellation through the same select.
+        // The tool-loop transcript, attached to the record only when the
+        // terminal transition below wins (see mark_completed / mark_failed), so
+        // it is never exposed for an in-flight or cancelled query. Empty for the
+        // single-shot runner path.
+        let mut tool_trace: Vec<ToolStep> = Vec::new();
         let result = if let Some(tl) = &self.tool_loop {
             // The loop locks the shared MCP client per operation (see
             // run_tool_loop); the lock is acquired inside the future the
@@ -742,7 +776,7 @@ impl AiDaemonService {
             // raw-knowledge probe is recorded: the loop is never dropped
             // mid-flight by an outer select, and it checks the token at safe
             // points and races its own in-flight calls (see run_tool_loop).
-            let outcome = run_tool_loop(
+            let (outcome, trace) = run_tool_loop(
                 &tl.client,
                 self.runner.as_ref(),
                 &scope,
@@ -758,6 +792,16 @@ impl AiDaemonService {
                 self.audit_completion(&query_id, "cancelled", started.elapsed())
                     .await;
                 return;
+            }
+            // Expose the transcript only for a real final answer. Exhausted and
+            // Blocked map to Ok below (so the caller gets a reason string) but
+            // are not answers; carrying their trace would turn a step-budget
+            // exit or a blocked action into a raw-tool-output channel. The trace
+            // is then attached only if the terminal transition wins, so a cancel
+            // that beats it leaves none. It is the caller's own query
+            // working-data, held in-process and kept out of the audit ledger.
+            if matches!(outcome, crate::tool_loop::LoopOutcome::Answer(_)) {
+                tool_trace = trace;
             }
             loop_outcome_to_answer(outcome).map_err(|reason| RunFailure {
                 code: "tool-loop-failed".to_string(),
@@ -788,13 +832,21 @@ impl AiDaemonService {
         // the ledger must agree with the user-visible outcome.
         let outcome = match result {
             Ok(answer) => {
-                if self.registry.mark_completed(&query_id, answer).await {
+                if self
+                    .registry
+                    .mark_completed(&query_id, answer, tool_trace)
+                    .await
+                {
                     "completed"
                 } else {
                     "cancelled"
                 }
             }
             Err(failure) => {
+                // A failed query exposes no trace: mark_failed takes none, so a
+                // provider, parse, or policy failure cannot become a raw-tool
+                // -output retrieval channel. `tool_trace` is dropped here.
+                let _ = tool_trace;
                 if self
                     .registry
                     .mark_failed(&query_id, &failure.code, &failure.reason)
@@ -1897,4 +1949,276 @@ mod tests {
         // Release the gate so the abandoned runner future unwinds.
         gate.notify_one();
     }
+
+    // --- take_trace: tool-routing transcript retrieval ---
+
+    /// A provider that immediately answers without calling any tool, so the
+    /// loop completes in one step with an empty transcript.
+    struct ImmediateAnswerProvider;
+    #[async_trait]
+    impl AIProvider for ImmediateAnswerProvider {
+        async fn complete(
+            &self,
+            _req: CompletionRequest,
+        ) -> Result<CompletionResponse, ProviderError> {
+            Ok(CompletionResponse {
+                text: r#"{"action":"answer","text":"no tools needed"}"#.to_string(),
+                audit: ProviderAudit {
+                    provider_name: "immediate".into(),
+                    model: "immediate".into(),
+                    input_tokens: None,
+                    output_tokens: None,
+                },
+            })
+        }
+        async fn available(&self) -> bool {
+            true
+        }
+        fn name(&self) -> &str {
+            "immediate"
+        }
+    }
+
+    #[tokio::test]
+    async fn single_shot_runner_path_yields_empty_trace() {
+        // A query dispatched through the single-shot QueryRunner (no
+        // with_tool_routing) must return an empty trace to the authorised
+        // caller; the runner path carries no transcript.
+        let svc = enable(AiDaemonService::new(
+            Arc::new(StubRunner {
+                reply: Ok("hello".to_string()),
+                gate: None,
+            }),
+            full_scope(),
+            audit_sink(),
+        ));
+        let h = svc
+            .query("hi".to_string(), caller_id(":1.42", "/usr/bin/app-a"))
+            .await
+            .unwrap();
+        let _ = wait_for_terminal(&svc, &h, ":1.42").await;
+
+        let trace = svc
+            .take_trace(&h.query_id, ":1.42", &h.retrieval_token)
+            .await
+            .expect("auth ok");
+        assert!(trace.is_empty(), "single-shot runner path must yield empty trace");
+    }
+
+    /// Calls the scoped graph tool on the first step, then returns an
+    /// unparseable reply so the loop fails after one completed tool call.
+    struct SucceedThenFailProvider {
+        calls: std::sync::atomic::AtomicUsize,
+    }
+    #[async_trait]
+    impl AIProvider for SucceedThenFailProvider {
+        async fn complete(
+            &self,
+            _req: CompletionRequest,
+        ) -> Result<CompletionResponse, ProviderError> {
+            let n = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let text = if n == 0 {
+                r#"{"action":"call_tool","server":"system.graph","tool":"query","arguments":{"question":"x"}}"#
+            } else {
+                "not a valid step"
+            };
+            Ok(CompletionResponse {
+                text: text.to_string(),
+                audit: ProviderAudit {
+                    provider_name: "stf".into(),
+                    model: "stf".into(),
+                    input_tokens: None,
+                    output_tokens: None,
+                },
+            })
+        }
+        async fn available(&self) -> bool {
+            true
+        }
+        fn name(&self) -> &str {
+            "stf"
+        }
+    }
+
+    #[tokio::test]
+    async fn a_failed_tool_routing_query_exposes_no_trace() {
+        // The graph tool call succeeds (one completed step), then the next step
+        // fails to parse, so the query is Failed. The prior tool result must NOT
+        // be retrievable: a failure is not a raw-tool-output channel.
+        let client = Arc::new(tokio::sync::Mutex::new(
+            arlen_ai_core::mcp::McpClient::new(),
+        ));
+        let svc = enable(
+            AiDaemonService::new(
+                Arc::new(StubRunner {
+                    reply: Ok("graph data".to_string()),
+                    gate: None,
+                }),
+                full_scope(),
+                audit_sink(),
+            )
+            .with_tool_routing(
+                true,
+                client,
+                Arc::new(SucceedThenFailProvider {
+                    calls: std::sync::atomic::AtomicUsize::new(0),
+                }),
+                4,
+            ),
+        );
+        let caller = caller_id(":1.42", "/usr/bin/app-a");
+        let h = svc
+            .query("q".to_string(), caller.clone())
+            .await
+            .unwrap();
+        let outcome = wait_for_terminal(&svc, &h, ":1.42").await;
+        assert!(matches!(outcome, CompletionOutcome::Failed { .. }), "got {outcome:?}");
+        let trace = svc
+            .take_trace(&h.query_id, ":1.42", &h.retrieval_token)
+            .await
+            .expect("auth ok");
+        assert!(trace.is_empty(), "a failed query exposes no tool trace");
+    }
+
+    /// Always calls the scoped graph tool, never answers, so the loop runs to
+    /// its step budget (Exhausted) with a non-empty transcript.
+    struct AlwaysCallToolProvider;
+    #[async_trait]
+    impl AIProvider for AlwaysCallToolProvider {
+        async fn complete(
+            &self,
+            _req: CompletionRequest,
+        ) -> Result<CompletionResponse, ProviderError> {
+            Ok(CompletionResponse {
+                text: r#"{"action":"call_tool","server":"system.graph","tool":"query","arguments":{"question":"x"}}"#.to_string(),
+                audit: ProviderAudit {
+                    provider_name: "loop".into(),
+                    model: "loop".into(),
+                    input_tokens: None,
+                    output_tokens: None,
+                },
+            })
+        }
+        async fn available(&self) -> bool {
+            true
+        }
+        fn name(&self) -> &str {
+            "loop"
+        }
+    }
+
+    #[tokio::test]
+    async fn an_exhausted_tool_routing_query_exposes_no_trace() {
+        // The loop runs tools to its step budget without ever answering. That
+        // is not a final answer, so the prior tool results must not be
+        // retrievable through take_trace.
+        let client = Arc::new(tokio::sync::Mutex::new(
+            arlen_ai_core::mcp::McpClient::new(),
+        ));
+        let svc = enable(
+            AiDaemonService::new(
+                Arc::new(StubRunner {
+                    reply: Ok("graph data".to_string()),
+                    gate: None,
+                }),
+                full_scope(),
+                audit_sink(),
+            )
+            .with_tool_routing(true, client, Arc::new(AlwaysCallToolProvider), 2),
+        );
+        let caller = caller_id(":1.42", "/usr/bin/app-a");
+        let h = svc.query("q".to_string(), caller.clone()).await.unwrap();
+        let _ = wait_for_terminal(&svc, &h, ":1.42").await;
+        let trace = svc
+            .take_trace(&h.query_id, ":1.42", &h.retrieval_token)
+            .await
+            .expect("auth ok");
+        assert!(trace.is_empty(), "an exhausted (non-answer) query exposes no tool trace");
+    }
+
+    #[tokio::test]
+    async fn tool_routing_path_trace_reachable_by_authorised_caller() {
+        // A query dispatched through the tool-routing loop must make the
+        // loop's transcript (even when empty, because the provider answered
+        // immediately with no tool calls) reachable to the authorised caller.
+        let client = Arc::new(tokio::sync::Mutex::new(
+            arlen_ai_core::mcp::McpClient::new(),
+        ));
+        let svc = enable(
+            AiDaemonService::new(
+                Arc::new(StubRunner {
+                    reply: Ok("unused".to_string()),
+                    gate: None,
+                }),
+                full_scope(),
+                audit_sink(),
+            )
+            .with_tool_routing(true, client, Arc::new(ImmediateAnswerProvider), 4),
+        );
+        let h = svc
+            .query("anything".to_string(), caller_id(":1.42", "/usr/bin/app-a"))
+            .await
+            .unwrap();
+        let _ = wait_for_terminal(&svc, &h, ":1.42").await;
+
+        // Authorised caller can read the trace.
+        let trace = svc
+            .take_trace(&h.query_id, ":1.42", &h.retrieval_token)
+            .await
+            .expect("auth ok");
+        // Provider answered immediately with no tool call, so the trace is empty.
+        assert!(
+            trace.is_empty(),
+            "immediate-answer loop yields an empty but present trace"
+        );
+    }
+
+    #[tokio::test]
+    async fn take_trace_rejects_wrong_caller() {
+        // An unauthorised caller (different unique bus name) cannot read
+        // the trace, same rule as take_result.
+        let svc = enable(AiDaemonService::new(
+            Arc::new(StubRunner {
+                reply: Ok("hello".to_string()),
+                gate: None,
+            }),
+            full_scope(),
+            audit_sink(),
+        ));
+        let h = svc
+            .query("hi".to_string(), caller_id(":1.42", "/usr/bin/app-a"))
+            .await
+            .unwrap();
+        let _ = wait_for_terminal(&svc, &h, ":1.42").await;
+
+        let err = svc
+            .take_trace(&h.query_id, ":1.99", &h.retrieval_token)
+            .await
+            .expect_err("wrong caller must be rejected");
+        assert_eq!(err, crate::registry::AuthError::CallerMismatch);
+    }
+
+    #[tokio::test]
+    async fn take_trace_rejects_wrong_token() {
+        let svc = enable(AiDaemonService::new(
+            Arc::new(StubRunner {
+                reply: Ok("hello".to_string()),
+                gate: None,
+            }),
+            full_scope(),
+            audit_sink(),
+        ));
+        let h = svc
+            .query("hi".to_string(), caller_id(":1.42", "/usr/bin/app-a"))
+            .await
+            .unwrap();
+        let _ = wait_for_terminal(&svc, &h, ":1.42").await;
+
+        let err = svc
+            .take_trace(&h.query_id, ":1.42", "deadbeef")
+            .await
+            .expect_err("wrong token must be rejected");
+        assert_eq!(err, crate::registry::AuthError::TokenMismatch);
+    }
+
 }
