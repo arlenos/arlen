@@ -15,10 +15,21 @@ use std::process::Command;
 
 const ALLOWED_SCHEMES: &[&str] = &["https://", "http://", "mailto:"];
 
+/// Whether `url`'s scheme is on the allowlist. URI schemes are
+/// case-insensitive, and the markdown sanitizer accepts them that way, so the
+/// check lowercases the prefix to match (the original `url`, with its real
+/// path/query casing, is what gets opened). Kept in lockstep with the
+/// sanitizer's `ALLOWED_URI_REGEXP` so a rendered link never reaches here only
+/// to be rejected.
+fn scheme_allowed(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    ALLOWED_SCHEMES.iter().any(|s| lower.starts_with(s))
+}
+
 /// Open `url` in the user's default handler, if its scheme is allowed.
 #[tauri::command]
 pub fn open_url(url: String) -> Result<(), String> {
-    if !ALLOWED_SCHEMES.iter().any(|s| url.starts_with(s)) {
+    if !scheme_allowed(&url) {
         return Err(format!(
             "rejected URL with disallowed scheme: {url}; only http(s) and mailto are supported"
         ));
@@ -36,19 +47,20 @@ pub fn open_url(url: String) -> Result<(), String> {
 mod tests {
     use super::*;
 
-    fn allowed(url: &str) -> bool {
-        ALLOWED_SCHEMES.iter().any(|s| url.starts_with(s))
-    }
-
     #[test]
-    fn allowed_schemes_pass() {
+    fn allowed_schemes_pass_case_insensitively() {
         for url in [
             "https://github.com/arlenos",
             "http://example.com",
             "https://example.com/p?q=1",
             "mailto:someone@example.com",
+            // Schemes are case-insensitive (the sanitizer accepts these too),
+            // and the original casing of the path/query is preserved on open.
+            "HTTPS://example.com/PaTh",
+            "HtTp://example.com",
+            "MAILTO:someone@example.com",
         ] {
-            assert!(allowed(url), "expected {url} to pass");
+            assert!(scheme_allowed(url), "expected {url} to pass");
         }
     }
 
@@ -60,8 +72,12 @@ mod tests {
             "data:text/html,<script>1</script>",
             "ftp://example.com",
             "  https://leading-space.example",
+            // http(s) must carry `//`, matching the sanitizer; a bare
+            // `https:` is not a navigable link.
+            "https:no-slashes.example",
+            "http:also-bad",
         ] {
-            assert!(!allowed(url), "expected {url} to be rejected");
+            assert!(!scheme_allowed(url), "expected {url} to be rejected");
         }
     }
 }
