@@ -24,6 +24,17 @@ export interface ToolCall {
   result: string;
 }
 
+/// A file the user attached to a turn via the composer's `@`-mention picker
+/// (ai-app.md §2.1). The text is read and capped backend-side; it is prepended
+/// to the prompt the daemon sees, while the user bubble shows only the typed
+/// message plus the attachment names.
+export interface MentionContent {
+  path: string;
+  name: string;
+  content: string;
+  truncated: boolean;
+}
+
 export interface Message {
   id: number;
   role: Role;
@@ -36,6 +47,24 @@ export interface Message {
   /// True when the tool trace could not be retrieved (distinct from an
   /// empty trace), so the UI says so rather than implying no tools ran.
   traceUnavailable?: boolean;
+  /// Names of files the user attached to this turn (user turns only), shown
+  /// as chips on the bubble so the transcript records what was supplemented.
+  mentions?: string[];
+}
+
+/// Build the prompt actually sent to the daemon: the attached files as a
+/// labelled, fenced context block, then the user's message. Each file is
+/// wrapped so the model can tell where one ends and the message begins. The
+/// user's typed text always comes last so it reads as the live instruction.
+function buildPrompt(text: string, mentions: MentionContent[]): string {
+  if (mentions.length === 0) return text;
+  const blocks = mentions
+    .map((m) => {
+      const trunc = m.truncated ? " (truncated)" : "";
+      return `--- ${m.path}${trunc} ---\n${m.content}`;
+    })
+    .join("\n\n");
+  return `Referenced files:\n${blocks}\n\n${text}`;
 }
 
 let nextId = 0;
@@ -47,11 +76,17 @@ export const busy = writable(false);
 /// Submit a prompt and resolve when the turn settles. Pushes the user
 /// message and a pending assistant placeholder synchronously, then fills
 /// the placeholder with the answer or replaces it with an error.
-export async function send(prompt: string): Promise<void> {
+export async function send(prompt: string, mentions: MentionContent[] = []): Promise<void> {
   const text = prompt.trim();
-  if (!text) return;
+  // A turn with no typed text but attached files is still meaningful; only an
+  // entirely empty submission is dropped.
+  if (!text && mentions.length === 0) return;
 
-  messages.update((m) => [...m, { id: nextId++, role: "user", text }]);
+  const names = mentions.map((m) => m.name);
+  messages.update((m) => [
+    ...m,
+    { id: nextId++, role: "user", text, mentions: names.length ? names : undefined },
+  ]);
   const pendingId = nextId++;
   messages.update((m) => [...m, { id: pendingId, role: "assistant", text: "", pending: true }]);
   busy.set(true);
@@ -61,7 +96,7 @@ export async function send(prompt: string): Promise<void> {
       answer: string;
       toolCalls: ToolCall[];
       traceUnavailable: boolean;
-    }>("ai_query", { prompt: text });
+    }>("ai_query", { prompt: buildPrompt(text, mentions) });
     messages.update((m) =>
       m.map((msg) =>
         msg.id === pendingId

@@ -10,6 +10,7 @@ mod activity;
 mod ai_client;
 mod behaviours;
 mod capability;
+mod mention;
 mod notices;
 
 /// Route a log line from the frontend into the Rust logger so it shows
@@ -36,7 +37,9 @@ pub fn run() {
             activity::ai_activity_recent,
             capability::ai_capability,
             behaviours::ai_behaviours,
-            notices::ai_notices
+            notices::ai_notices,
+            mention::list_files,
+            mention::read_mention_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-harness");

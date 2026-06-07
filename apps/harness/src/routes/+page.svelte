@@ -9,11 +9,18 @@
   /// the daemon made while answering, as collapsible cards. Graph-data
   /// citations and token streaming come later.
   import { tick, onMount } from "svelte";
+  import { writable } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2, Wrench, Cpu } from "@lucide/svelte";
-  import { messages, busy, send } from "$lib/stores/conversation";
+  import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2, Wrench, Cpu, File as FileIcon, Folder, Paperclip, X } from "@lucide/svelte";
+  import { messages, busy, send, type MentionContent } from "$lib/stores/conversation";
+
+  interface FileSuggestion {
+    path: string;
+    name: string;
+    isDir: boolean;
+  }
 
   interface Capability {
     enabled: boolean;
@@ -26,6 +33,92 @@
   let draft = $state("");
   let scrollEl = $state<HTMLDivElement | null>(null);
   let capability = $state<Capability | null>(null);
+
+  // `@`-mention state. The popover's contents come from a Tauri call, and this
+  // codebase's Svelte-5 caveat is that `$state` mutated from an IPC callback
+  // does not reliably re-render — so the picker's reactive data lives in
+  // `writable` stores (which do render via `$`-subscription), while `draft`
+  // (user-driven, bound to the input) stays `$state`.
+  const suggestions = writable<FileSuggestion[]>([]);
+  const mentionOpen = writable(false);
+  const mentionIndex = writable(0);
+  // Files the user has attached to the next turn, read and capped backend-side.
+  const attached = writable<MentionContent[]>([]);
+  // Where in `draft` the active `@token` starts, for replacing it on select.
+  let mentionAt = -1;
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /// The active `@`-mention being typed: the run from the last `@` to the end
+  /// of the draft, but only when that `@` sits at a word boundary and the run
+  /// holds no whitespace (so a completed mention or a stray `@` mid-word does
+  /// not reopen the picker). Returns the `@` offset and the query after it.
+  function activeMention(s: string): { at: number; query: string } | null {
+    const at = s.lastIndexOf("@");
+    if (at === -1) return null;
+    if (at > 0 && !/\s/.test(s[at - 1])) return null;
+    const query = s.slice(at + 1);
+    if (/\s/.test(query)) return null;
+    return { at, query };
+  }
+
+  // Detect the active mention as the draft changes and fetch suggestions,
+  // debounced. Reading `draft` (a `$state`) makes this effect re-run on every
+  // keystroke; the async results land in the stores above.
+  $effect(() => {
+    const m = activeMention(draft);
+    if (!m) {
+      mentionOpen.set(false);
+      suggestions.set([]);
+      mentionAt = -1;
+      return;
+    }
+    mentionAt = m.at;
+    const q = m.query;
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(async () => {
+      try {
+        const res = await invoke<FileSuggestion[]>("list_files", { query: q });
+        suggestions.set(res);
+        mentionIndex.set(0);
+        mentionOpen.set(res.length > 0);
+      } catch {
+        suggestions.set([]);
+        mentionOpen.set(false);
+      }
+    }, 120);
+  });
+
+  function closeMention() {
+    mentionOpen.set(false);
+    suggestions.set([]);
+    mentionAt = -1;
+  }
+
+  async function selectSuggestion(s: FileSuggestion) {
+    if (mentionAt < 0) return;
+    if (s.isDir) {
+      // Descend: replace the `@token` with the directory path and a trailing
+      // slash, which keeps the picker open and lists that directory next.
+      draft = draft.slice(0, mentionAt) + "@" + s.path + "/";
+      return;
+    }
+    // Attach the file: read its (capped) text, add a chip, and strip the
+    // `@token` from the draft so the typed message stays clean.
+    try {
+      const content = await invoke<MentionContent>("read_mention_file", { path: s.path });
+      attached.update((list) =>
+        list.some((m) => m.path === content.path) ? list : [...list, content],
+      );
+    } catch (e) {
+      console.error("read_mention_file failed", e);
+    }
+    draft = draft.slice(0, mentionAt);
+    closeMention();
+  }
+
+  function removeAttached(path: string) {
+    attached.update((list) => list.filter((m) => m.path !== path));
+  }
 
   // Always-visible capability context (ai-app.md §2.1): the read tier
   // and action mode the AI operates under, from ai.toml (what the daemon
@@ -44,9 +137,12 @@
 
   async function submit() {
     const text = draft.trim();
-    if (!text || $busy) return;
+    const mentions = $attached;
+    if ((!text && mentions.length === 0) || $busy) return;
     draft = "";
-    const turn = send(text); // pushes user + pending synchronously
+    attached.set([]);
+    closeMention();
+    const turn = send(text, mentions); // pushes user + pending synchronously
     await tick();
     scrollToBottom();
     await turn;
@@ -55,6 +151,32 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
+    // While the `@` picker is open, the arrow keys / Enter / Escape drive it
+    // instead of the composer, so a mention is chosen without leaving the input.
+    if ($mentionOpen) {
+      const list = $suggestions;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        mentionIndex.update((i) => (i + 1) % list.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        mentionIndex.update((i) => (i - 1 + list.length) % list.length);
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const chosen = list[$mentionIndex];
+        if (chosen) selectSuggestion(chosen);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeMention();
+        return;
+      }
+    }
     // Enter sends; Shift+Enter is a newline (for future multiline).
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -140,7 +262,16 @@
                 {:else if msg.traceUnavailable}
                   <p class="trace-note">Tool trace unavailable for this turn.</p>
                 {/if}
-                <div class="bubble bubble-{msg.role}">{msg.text}</div>
+                {#if msg.text}
+                  <div class="bubble bubble-{msg.role}">{msg.text}</div>
+                {/if}
+                {#if msg.mentions && msg.mentions.length > 0}
+                  <div class="msg-mentions">
+                    {#each msg.mentions as name (name)}
+                      <span class="mention-chip"><Paperclip size={11} strokeWidth={2} />{name}</span>
+                    {/each}
+                  </div>
+                {/if}
               </div>
             {/if}
           </div>
@@ -149,17 +280,55 @@
     {/if}
   </div>
 
-  <div class="composer">
-    <Input
-      bind:value={draft}
-      onkeydown={onKeydown}
-      placeholder="Ask about your files, projects, activity…"
-      disabled={$busy}
-      aria-label="Message"
-    />
-    <Button size="icon" variant="default" onclick={submit} disabled={$busy || draft.trim() === ""} aria-label="Send">
-      <ArrowUp size={16} strokeWidth={2} />
-    </Button>
+  <div class="composer-wrap">
+    {#if $attached.length > 0}
+      <div class="attached">
+        {#each $attached as m (m.path)}
+          <span class="attach-chip" title={m.path}>
+            <Paperclip size={11} strokeWidth={2} />
+            <span class="attach-name">{m.name}{m.truncated ? " (truncated)" : ""}</span>
+            <button class="attach-x" onclick={() => removeAttached(m.path)} aria-label={`Remove ${m.name}`}>
+              <X size={11} strokeWidth={2.5} />
+            </button>
+          </span>
+        {/each}
+      </div>
+    {/if}
+
+    {#if $mentionOpen}
+      <div class="mention-popover" role="listbox" aria-label="File suggestions">
+        {#each $suggestions as s, i (s.path)}
+          <button
+            class="mention-item"
+            class:active={i === $mentionIndex}
+            role="option"
+            aria-selected={i === $mentionIndex}
+            onmouseenter={() => mentionIndex.set(i)}
+            onclick={() => selectSuggestion(s)}
+          >
+            {#if s.isDir}
+              <Folder size={13} strokeWidth={1.75} />
+            {:else}
+              <FileIcon size={13} strokeWidth={1.75} />
+            {/if}
+            <span class="mention-name">{s.name}{s.isDir ? "/" : ""}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
+
+    <div class="composer">
+      <Input
+        bind:value={draft}
+        onkeydown={onKeydown}
+        placeholder="Ask about your files, projects, activity… (@ to attach a file)"
+        disabled={$busy}
+        aria-label="Message"
+      />
+      <Button size="icon" variant="default" onclick={submit} disabled={$busy || (draft.trim() === "" && $attached.length === 0)} aria-label="Send">
+        <ArrowUp size={16} strokeWidth={2} />
+      </Button>
+    </div>
   </div>
   {#if $messages.length > 0}
     <p class="turn-note">Each question is answered independently — no conversation memory yet.</p>
@@ -338,6 +507,9 @@
     border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
     color: var(--color-error);
   }
+  .composer-wrap {
+    position: relative;
+  }
   .composer {
     display: flex;
     align-items: center;
@@ -347,6 +519,99 @@
   }
   .composer :global(input) {
     flex: 1;
+  }
+  .attached {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    padding: 0.5rem 1rem 0;
+  }
+  .attach-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.3rem 0.15rem 0.5rem;
+    border-radius: var(--radius-chip);
+    border: 1px solid var(--color-border);
+    background: color-mix(in srgb, var(--color-bg-card) 60%, transparent);
+    font-size: 0.75rem;
+    max-width: 18rem;
+  }
+  .attach-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .attach-x {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.1rem;
+    border: none;
+    background: transparent;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .attach-x:hover {
+    color: var(--foreground);
+    background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  }
+  .mention-popover {
+    position: absolute;
+    bottom: 100%;
+    left: 1rem;
+    right: 1rem;
+    max-height: 14rem;
+    overflow-y: auto;
+    margin-bottom: 0.25rem;
+    padding: 0.25rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    background: var(--color-bg-card);
+    box-shadow: var(--shadow-lg, 0 10px 30px rgba(0, 0, 0, 0.3));
+    z-index: 20;
+  }
+  .mention-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.35rem 0.5rem;
+    border: none;
+    background: transparent;
+    color: var(--foreground);
+    font-size: 0.8125rem;
+    text-align: left;
+    cursor: pointer;
+    border-radius: var(--radius-chip);
+  }
+  .mention-item.active {
+    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  }
+  .mention-item :global(svg) {
+    flex-shrink: 0;
+    color: color-mix(in srgb, var(--foreground) 60%, transparent);
+  }
+  .mention-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .msg-mentions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+  .mention-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--radius-chip);
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    font-size: 0.7rem;
+    color: color-mix(in srgb, var(--foreground) 70%, transparent);
   }
   .turn-note {
     margin: 0;

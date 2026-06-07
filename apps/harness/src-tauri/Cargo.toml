@@ -36,3 +36,9 @@ dirs = "5"
 # Reuses the daemon's own loader so the harness shows exactly the set the
 # agent would act on, no duplicated wiring.
 arlen-ai-agent = { path = "../../../ai/ai-agent" }
+
+[dev-dependencies]
+# Temp directories for the mention file-listing/read tests, and the tokio
+# test macro for the async command tests.
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt"] }
