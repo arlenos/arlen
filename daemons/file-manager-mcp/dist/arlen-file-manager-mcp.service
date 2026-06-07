@@ -1,0 +1,40 @@
+[Unit]
+Description=Arlen File Manager MCP Server (user service)
+Documentation=https://github.com/arlenos/arlen
+# Serves read-only directory listings and file metadata, within a configured
+# scope, on an MCP socket the AI daemon connects to. It depends on nothing: it
+# reads the filesystem directly and binds its own socket.
+
+[Service]
+Type=simple
+# Installed at /usr/bin/arlen-file-manager-mcp on purpose. The AI daemon
+# peer-authenticates this server by resolving its binary path to the app id
+# "file-manager-mcp" (arlen-permissions maps /usr/bin/arlen-<name> to <name>);
+# a different install path would change the id and the AI daemon would refuse
+# the socket as an imposter.
+ExecStart=/usr/bin/arlen-file-manager-mcp
+Restart=on-failure
+RestartSec=2
+
+Environment=RUST_LOG=info
+
+# Pure reader: it reads the filesystem (read-only) within the configured scope
+# and serves one Unix socket. It never writes outside the runtime dir, and
+# never uses the network. ProtectHome=read-only still lets it read home; the
+# scope allowlist is the real boundary, this is defence in depth.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/run/user/%U/arlen
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target
