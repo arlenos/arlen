@@ -82,7 +82,7 @@ echo "[1/$STEP_TOTAL] Killing existing processes..."
 # Kill Arlen processes
 pkill -9 -f cosmic-comp 2>/dev/null || true
 pkill -9 -f "event-bus" 2>/dev/null || true
-pkill -9 -f "target/debug/knowledge" 2>/dev/null || true
+pkill -9 -f "target/debug/arlen-graph-daemon" 2>/dev/null || true
 pkill -9 -f "arlen-knowledge-mcp" 2>/dev/null || true
 pkill -9 -f arlen-notifyd 2>/dev/null || true
 pkill -9 -f "desktop-shell" 2>/dev/null || true
@@ -284,7 +284,7 @@ pgrep -f cosmic-comp            >/dev/null || MISSING+=(compositor)
 pgrep -f "event-bus/target"     >/dev/null \
     || pgrep -f "target/debug/event-bus" >/dev/null \
     || MISSING+=(event-bus)
-pgrep -f "target/debug/knowledge" >/dev/null || MISSING+=(knowledge)
+pgrep -f "target/debug/arlen-graph-daemon" >/dev/null || MISSING+=(knowledge)
 pgrep -f arlen-notifyd        >/dev/null || MISSING+=(notification-daemon)
 if [ "$WITH_PORTAL" -eq 1 ]; then
     pgrep -f "target/debug/xdg-desktop-portal-arlen$" >/dev/null \

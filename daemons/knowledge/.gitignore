@@ -1,4 +1,4 @@
 /target
 *.bak
-target/debug/knowledge
+target/debug/arlen-graph-daemon
 CLAUDE.md

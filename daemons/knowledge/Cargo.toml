@@ -4,7 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "knowledge"
+# The installed daemon binary. Named arlen-graph-daemon to match the
+# convention every other daemon follows (arlen-notifyd, arlen-anomalyd, ...)
+# and the name the systemd unit, the docs, and the permissions tier-detection
+# already expect. The package stays "knowledge".
+name = "arlen-graph-daemon"
 path = "src/main.rs"
 
 [dependencies]
