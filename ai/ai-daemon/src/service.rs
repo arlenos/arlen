@@ -735,6 +735,7 @@ impl AiDaemonService {
                 self.runner.as_ref(),
                 &scope,
                 self.audit.as_ref(),
+                &query_id,
                 tl.provider.as_ref(),
                 &prompt,
                 tl.max_steps,

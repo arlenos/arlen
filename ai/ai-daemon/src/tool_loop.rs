@@ -336,13 +336,22 @@ pub async fn run_tool_loop(
     runner: &dyn QueryRunner,
     scope: &QueryScope,
     audit: &dyn AuditSink,
+    query_id: &str,
     provider: &dyn AIProvider,
     question: &str,
     max_steps: u32,
 ) -> LoopOutcome {
     let raw_catalogue = client.lock().await.tool_catalogue().await;
     let catalogue = interactive_catalogue(raw_catalogue);
-    let chain = CallChain::root();
+    // Seed the call chain from the query id so every tool entry in this loop
+    // (MCP tools via call_tool, and the internal graph reads below) joins the
+    // query's own dispatch/completion audit records under one correlation id.
+    // The query id is a v4 UUID string; fall back to a fresh id if it is ever
+    // not parseable rather than failing the loop.
+    let chain = CallChain {
+        id: uuid::Uuid::parse_str(query_id).unwrap_or_else(|_| uuid::Uuid::new_v4()),
+        depth: 1,
+    };
     let mut transcript: Vec<ToolStep> = Vec::new();
 
     for _ in 0..max_steps {
@@ -480,10 +489,13 @@ pub async fn run_tool_loop(
 }
 
 /// Reduce a [`LoopOutcome`] to the single answer string the query path
-/// returns, or an error for a genuine failure. A blocked tool call or an
-/// exhausted budget is not an error: it becomes a plain-language answer
-/// explaining why the assistant stopped, so the user gets a response rather
-/// than an opaque failure. Only `Failed` maps to `Err`.
+/// returns, or an error for a non-success outcome. A blocked tool call (needs
+/// confirmation or authorization) or an exhausted budget is not an error: it
+/// becomes a plain-language answer explaining why the assistant stopped, so
+/// the user gets a response. A `Denied` outcome is a trust-boundary policy
+/// violation, not a normal stop: it maps to `Err` so the query is recorded as
+/// **failed**, never `completed` — a denial must not be indistinguishable from
+/// a successful query in the ledger or to the caller. `Failed` is also `Err`.
 pub fn loop_outcome_to_answer(outcome: LoopOutcome) -> Result<String, String> {
     match outcome {
         LoopOutcome::Answer(text) => Ok(text),
@@ -493,9 +505,7 @@ pub fn loop_outcome_to_answer(outcome: LoopOutcome) -> Result<String, String> {
         LoopOutcome::Blocked(_) => Ok("Answering that needs an action I cannot take from a \
              question alone (it requires confirmation or authorization)."
             .to_string()),
-        LoopOutcome::Denied(reason) => Ok(format!(
-            "I stopped because a step was not permitted: {reason}"
-        )),
+        LoopOutcome::Denied(reason) => Err(format!("policy denied: {reason}")),
         LoopOutcome::Failed(reason) => Err(reason),
     }
 }
@@ -733,6 +743,10 @@ mod tests {
             QueryScope::for_tier(AccessTier::Full, &GraphSchema::knowledge_graph())
         }
 
+        /// A fixed v4 UUID standing in for the query id the daemon passes, so
+        /// the loop's audit entries correlate to one query.
+        const TEST_QUERY_ID: &str = "11111111-1111-4111-8111-111111111111";
+
         #[derive(Clone)]
         struct QueryServer {
             tool_router: ToolRouter<Self>,
@@ -802,6 +816,7 @@ mod tests {
                 &runner,
                 &test_scope(),
                 &audit,
+                TEST_QUERY_ID,
                 &provider,
                 "what notes do I have?",
                 5,
@@ -831,6 +846,7 @@ mod tests {
                 &runner,
                 &test_scope(),
                 &audit,
+                TEST_QUERY_ID,
                 &provider,
                 "what did I open today?",
                 5,
@@ -840,6 +856,19 @@ mod tests {
             // The runner saw the model's question, under the passed scope.
             let seen = runner.seen.lock().unwrap();
             assert_eq!(seen.as_slice(), &["what did I open?".to_string()]);
+            // The graph read was audited (dispatched + outcome), content-free,
+            // correlated to the query id.
+            let recorded = audit.recorded().await;
+            let graph: Vec<_> = recorded
+                .iter()
+                .filter(|e| e.structural.subject == "system.graph")
+                .collect();
+            assert_eq!(graph.len(), 2, "dispatched + outcome");
+            assert!(graph
+                .iter()
+                .all(|e| e.call_chain_id.as_deref() == Some(TEST_QUERY_ID)));
+            assert!(graph.iter().any(|e| e.structural.outcome == "dispatched"));
+            assert!(graph.iter().any(|e| e.structural.outcome == "ok"));
         }
 
         #[tokio::test]
@@ -858,6 +887,7 @@ mod tests {
                 &runner,
                 &test_scope(),
                 &audit,
+                TEST_QUERY_ID,
                 &provider,
                 "what did I open today?",
                 5,
@@ -907,6 +937,7 @@ mod tests {
                 &runner,
                 &test_scope(),
                 &audit,
+                TEST_QUERY_ID,
                 &provider,
                 "read everything",
                 5,
@@ -917,6 +948,16 @@ mod tests {
             // raw Cypher reached the server, and the runner was not used.
             assert!(matches!(outcome, LoopOutcome::Denied(_)), "got {outcome:?}");
             assert!(runner.seen.lock().unwrap().is_empty());
+            // The denial was recorded as a policy violation, correlated to the
+            // query id. And it maps to a non-success query outcome (Err), so it
+            // is never marked completed.
+            let recorded = audit.recorded().await;
+            assert!(recorded.iter().any(|e| {
+                e.kind == audit_proto::AuditKind::PolicyViolation
+                    && e.structural.subject == "system.knowledge"
+                    && e.call_chain_id.as_deref() == Some(TEST_QUERY_ID)
+            }));
+            assert!(loop_outcome_to_answer(outcome).is_err());
 
             server.abort();
         }
@@ -972,11 +1013,12 @@ mod tests {
             DispatchOutcome::NeedsAuthorization
         ))
         .is_ok());
-        // A denial surfaces its reason as an answer (not masked, not an error).
+        // A policy denial is a non-success outcome: it maps to Err so the
+        // query is recorded as failed, never completed, and carries the reason.
         let denied = loop_outcome_to_answer(LoopOutcome::Denied("not allowed".into()));
-        assert!(denied.is_ok());
-        assert!(denied.unwrap().contains("not allowed"));
-        // Only a genuine failure is an error.
+        assert!(denied.is_err());
+        assert!(denied.unwrap_err().contains("not allowed"));
+        // A genuine failure is also an error.
         assert_eq!(
             loop_outcome_to_answer(LoopOutcome::Failed("provider down".into())),
             Err("provider down".to_string())
