@@ -13,7 +13,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2, Wrench, Cpu, File as FileIcon, Folder, Paperclip, X } from "@lucide/svelte";
+  import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2, Wrench, Cpu, File as FileIcon, Folder, Paperclip, X, Copy, Check } from "@lucide/svelte";
   import { messages, busy, send, initSessions, type MentionContent } from "$lib/stores/conversation";
   import ConversationRail from "$lib/components/ConversationRail.svelte";
   import { renderMarkdown } from "$lib/markdown";
@@ -36,6 +36,26 @@
   let draft = $state("");
   let scrollEl = $state<HTMLDivElement | null>(null);
   let capability = $state<Capability | null>(null);
+
+  // The message whose copy button was just pressed, so its button can flash a
+  // check for a moment. Reset by a timer; `null` when no copy is pending.
+  let copiedId = $state<number | null>(null);
+
+  // Copy a message's raw text to the clipboard. Copies the source the user sees
+  // (the markdown for an assistant turn, the typed text for a user turn), not
+  // the rendered HTML. Fails silently: a copy that does not land is a minor
+  // annoyance, not worth an error bubble.
+  async function copyMessage(id: number, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      copiedId = id;
+      setTimeout(() => {
+        if (copiedId === id) copiedId = null;
+      }, 1200);
+    } catch {
+      // Clipboard unavailable (locked-down webview); nothing to surface.
+    }
+  }
 
   // `@`-mention state. The popover's contents come from a Tauri call, and this
   // codebase's Svelte-5 caveat is that `$state` mutated from an IPC callback
@@ -285,6 +305,22 @@
                     {/each}
                   </div>
                 {/if}
+                {#if msg.text}
+                  <div class="msg-actions">
+                    <button
+                      class="msg-copy"
+                      aria-label="Copy message"
+                      title="Copy message"
+                      onclick={() => copyMessage(msg.id, msg.text)}
+                    >
+                      {#if copiedId === msg.id}
+                        <Check size={13} strokeWidth={2} /><span>Copied</span>
+                      {:else}
+                        <Copy size={13} strokeWidth={2} /><span>Copy</span>
+                      {/if}
+                    </button>
+                  </div>
+                {/if}
               </div>
             {/if}
           </div>
@@ -439,6 +475,36 @@
     flex-direction: column;
     gap: 0.4rem;
     max-width: 80%;
+  }
+  /* Per-message copy, revealed on hover of the message (or on keyboard focus),
+     aligned to the bubble's side. */
+  .msg-actions {
+    display: flex;
+  }
+  .msg-user .msg-actions {
+    justify-content: flex-end;
+  }
+  .msg-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.1rem 0.35rem;
+    border: none;
+    background: transparent;
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    font-size: 0.7rem;
+    border-radius: var(--radius-chip);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+  .msg:hover .msg-copy,
+  .msg-copy:focus-visible {
+    opacity: 1;
+  }
+  .msg-copy:hover {
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    color: var(--foreground);
   }
   .tool-calls {
     display: flex;
