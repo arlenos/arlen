@@ -17,6 +17,7 @@ use arlen_ai_core::pipeline::{extract_json, QueryRunner};
 use arlen_ai_core::provider::{AIProvider, CompletionRequest};
 use arlen_ai_core::tagging::{Block, Origin, TaggedPrompt};
 use serde::Deserialize;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
 /// Reserved server id of the internal, scope-enforcing graph tool. Graph
@@ -335,7 +336,7 @@ pub async fn run_tool_loop(
     client: &Mutex<McpClient>,
     runner: &dyn QueryRunner,
     scope: &QueryScope,
-    audit: &dyn AuditSink,
+    audit: Arc<dyn AuditSink>,
     query_id: &str,
     provider: &dyn AIProvider,
     question: &str,
@@ -434,20 +435,37 @@ pub async fn run_tool_loop(
                     // Refuse raw-Cypher graph access in the interactive loop:
                     // it cannot carry the per-tier label scope. This is a
                     // trust-boundary hit (likely hallucinated or
-                    // injection-driven), so record it as a policy violation
-                    // and end the loop denied, rather than feeding the error
-                    // back where the model could continue and mask it behind a
-                    // fabricated answer. Recording is best-effort: the refusal
-                    // itself is the protection.
-                    let _ = audit
-                        .submit(audit::mcp_event(
-                            RAW_KNOWLEDGE_SERVER,
-                            "policy-denied",
-                            chain.depth,
-                            &chain.id.to_string(),
-                            true,
-                        ))
-                        .await;
+                    // injection-driven), so record it as a policy violation and
+                    // end the loop denied, rather than feeding the error back
+                    // where the model could continue and mask it behind a
+                    // fabricated answer.
+                    //
+                    // The record is made DURABLE against a concurrent
+                    // cancellation: the dispatch select races this loop future
+                    // against the caller's cancel token, and a cancel can drop
+                    // this future at the await below. Submitting on a spawned
+                    // task means the policy-violation entry still lands even if
+                    // this future is dropped (a tokio task is not cancelled
+                    // when its JoinHandle is dropped), so a caller cannot hide a
+                    // boundary probe by cancelling. Awaiting the handle keeps
+                    // the normal (uncancelled) path ordered and deterministic.
+                    let recorder = {
+                        let audit = audit.clone();
+                        let chain_id = chain.id.to_string();
+                        let depth = chain.depth;
+                        tokio::spawn(async move {
+                            audit
+                                .submit(audit::mcp_event(
+                                    RAW_KNOWLEDGE_SERVER,
+                                    "policy-denied",
+                                    depth,
+                                    &chain_id,
+                                    true,
+                                ))
+                                .await
+                        })
+                    };
+                    let _ = recorder.await;
                     return LoopOutcome::Denied(format!(
                         "{RAW_KNOWLEDGE_SERVER} is not callable directly; \
                          use {GRAPH_TOOL_SERVER}/{GRAPH_TOOL_NAME}"
@@ -664,7 +682,7 @@ mod tests {
         use rmcp::handler::server::router::tool::ToolRouter;
         use rmcp::{tool, tool_handler, tool_router, ServerHandler};
         use std::path::PathBuf;
-        use std::sync::Mutex;
+        use std::sync::{Arc, Mutex};
         use std::time::Duration;
 
         /// A provider that replays a fixed script of replies, one per call.
@@ -809,13 +827,13 @@ mod tests {
                 r#"{"action":"answer","text":"you have 1 note"}"#,
             ]);
             let runner = StubRunner::ok("(unused)");
-            let audit = MockAuditSink::accepting();
+            let audit = Arc::new(MockAuditSink::accepting());
 
             let outcome = run_tool_loop(
                 &client,
                 &runner,
                 &test_scope(),
-                &audit,
+                audit.clone(),
                 TEST_QUERY_ID,
                 &provider,
                 "what notes do I have?",
@@ -835,7 +853,7 @@ mod tests {
             // scope-enforcing tool, which must route through the QueryRunner.
             let client = tokio::sync::Mutex::new(McpClient::new());
             let runner = StubRunner::ok("you opened 3 files today");
-            let audit = MockAuditSink::accepting();
+            let audit = Arc::new(MockAuditSink::accepting());
             let provider = ScriptedProvider::new(vec![
                 r#"{"action":"call_tool","server":"system.graph","tool":"query","arguments":{"question":"what did I open?"}}"#,
                 r#"{"action":"answer","text":"3 files"}"#,
@@ -845,7 +863,7 @@ mod tests {
                 &client,
                 &runner,
                 &test_scope(),
-                &audit,
+                audit.clone(),
                 TEST_QUERY_ID,
                 &provider,
                 "what did I open today?",
@@ -877,7 +895,7 @@ mod tests {
             // recorded (foundation §8.4.6): no un-audited AI activity.
             let client = tokio::sync::Mutex::new(McpClient::new());
             let runner = StubRunner::ok("should never run");
-            let audit = MockAuditSink::failing();
+            let audit = Arc::new(MockAuditSink::failing());
             let provider = ScriptedProvider::new(vec![
                 r#"{"action":"call_tool","server":"system.graph","tool":"query","arguments":{"question":"what did I open?"}}"#,
             ]);
@@ -886,7 +904,7 @@ mod tests {
                 &client,
                 &runner,
                 &test_scope(),
-                &audit,
+                audit.clone(),
                 TEST_QUERY_ID,
                 &provider,
                 "what did I open today?",
@@ -924,7 +942,7 @@ mod tests {
             .expect("connect knowledge server");
             let client = tokio::sync::Mutex::new(raw);
             let runner = StubRunner::ok("(unused)");
-            let audit = MockAuditSink::accepting();
+            let audit = Arc::new(MockAuditSink::accepting());
             // Step 1: try the raw server directly. The model scripts an answer
             // after, but the loop must never reach it: the denial is terminal.
             let provider = ScriptedProvider::new(vec![
@@ -936,7 +954,7 @@ mod tests {
                 &client,
                 &runner,
                 &test_scope(),
-                &audit,
+                audit.clone(),
                 TEST_QUERY_ID,
                 &provider,
                 "read everything",
@@ -960,6 +978,79 @@ mod tests {
             assert!(loop_outcome_to_answer(outcome).is_err());
 
             server.abort();
+        }
+
+        /// A recording sink whose `submit` signals entry and then parks until
+        /// released, so a test can drop the loop future while a submit is in
+        /// flight and check the entry still lands.
+        struct GateRecordSink {
+            entered: tokio::sync::Notify,
+            release: tokio::sync::Notify,
+            recorded: tokio::sync::Mutex<Vec<audit_proto::IngestRequest>>,
+        }
+        #[async_trait]
+        impl AuditSink for GateRecordSink {
+            async fn submit(
+                &self,
+                event: audit_proto::IngestRequest,
+            ) -> Result<u64, arlen_ai_core::audit::AuditClientError> {
+                self.entered.notify_one();
+                self.release.notified().await;
+                self.recorded.lock().await.push(event);
+                Ok(0)
+            }
+        }
+
+        #[tokio::test]
+        async fn raw_denial_audit_survives_the_loop_future_being_dropped() {
+            // The dispatch select races this loop against the caller's cancel,
+            // and a cancel drops the loop future. The policy-violation record
+            // must still land: it is submitted on a spawned task that a dropped
+            // JoinHandle does not cancel. Here we drop the loop future while its
+            // denial submit is parked, then release and assert the entry lands.
+            let client = tokio::sync::Mutex::new(McpClient::new());
+            let runner = StubRunner::ok("(unused)");
+            let audit = Arc::new(GateRecordSink {
+                entered: tokio::sync::Notify::new(),
+                release: tokio::sync::Notify::new(),
+                recorded: tokio::sync::Mutex::new(Vec::new()),
+            });
+            let provider = ScriptedProvider::new(vec![
+                r#"{"action":"call_tool","server":"system.knowledge","tool":"query","arguments":{"cypher":"MATCH (n) RETURN n"}}"#,
+            ]);
+            let scope = test_scope();
+
+            let loop_fut = run_tool_loop(
+                &client,
+                &runner,
+                &scope,
+                audit.clone(),
+                TEST_QUERY_ID,
+                &provider,
+                "read everything",
+                5,
+            );
+            // Drop the loop future the moment its denial submit is in flight.
+            tokio::select! {
+                _ = loop_fut => panic!("loop should still be parked in the submit"),
+                _ = audit.entered.notified() => {}
+            }
+            // The loop future is dropped; the spawned recorder task is not.
+            audit.release.notify_waiters();
+            // The policy-violation entry lands despite the dropped loop.
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            loop {
+                if !audit.recorded.lock().await.is_empty() {
+                    break;
+                }
+                if std::time::Instant::now() > deadline {
+                    panic!("denial audit was lost when the loop future was dropped");
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            let recorded = audit.recorded.lock().await;
+            assert_eq!(recorded[0].kind, audit_proto::AuditKind::PolicyViolation);
+            assert_eq!(recorded[0].structural.subject, "system.knowledge");
         }
 
         #[tokio::test]

@@ -734,7 +734,7 @@ impl AiDaemonService {
                 &tl.client,
                 self.runner.as_ref(),
                 &scope,
-                self.audit.as_ref(),
+                self.audit.clone(),
                 &query_id,
                 tl.provider.as_ref(),
                 &prompt,
