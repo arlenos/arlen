@@ -167,19 +167,30 @@ pub fn pid_start_time(pid: u32) -> Result<u64, IdentityError> {
 pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
     let s = path.to_string_lossy();
 
-    // (1) AI daemon — strict equality on the canonical install
+    // (1) AI layer daemons — strict equality on the canonical install
     // paths. `ends_with("/arlen-ai-daemon")` would let a
     // same-uid attacker copy any binary to /tmp/arlen-ai-daemon
     // and impersonate the AI daemon. Foundation §8.4.5: identity
     // resolution must come from canonical install paths only.
     // Must run before rule (2) so `arlen-ai-daemon` resolves
     // to the canonical id rather than the basename "ai-daemon".
+    // The `/usr/lib/arlen/libexec/` entries are the canonical binaries
+    // `ai-proxy::peer_auth` already trusts (CANONICAL_AI_DAEMON_BIN /
+    // CANONICAL_AI_AGENT_BIN); identity resolution must agree with peer-auth so
+    // the knowledge write socket loads the right profile for each. In
+    // particular the agent resolves to `ai-agent`, the app id its go-live
+    // permission profile (`ai-agent.toml`) is keyed under; without this the
+    // production agent would resolve as unknown and its write grant never load.
     match s.as_ref() {
         "/usr/bin/arlen-ai-daemon"
         | "/usr/bin/arlen-ai"
+        | "/usr/lib/arlen/libexec/arlen-ai-daemon"
         | "/usr/lib/arlen/apps/ai-daemon/bin/arlen-ai-daemon"
         | "/usr/lib/arlen/apps/ai-daemon/bin/arlen-ai" => {
             return Ok("ai-daemon".to_string());
+        }
+        "/usr/lib/arlen/libexec/arlen-ai-agent" => {
+            return Ok("ai-agent".to_string());
         }
         _ => {}
     }
@@ -311,6 +322,31 @@ mod tests {
 
         let path = PathBuf::from("/usr/lib/arlen/apps/ai-daemon/bin/arlen-ai-daemon");
         assert_eq!(path_to_app_id(&path).unwrap(), "ai-daemon");
+
+        // The libexec canonical path ai-proxy trusts must resolve too, or the
+        // production daemon would authenticate to the proxy yet resolve as
+        // unknown to the graph socket.
+        let path = PathBuf::from("/usr/lib/arlen/libexec/arlen-ai-daemon");
+        assert_eq!(path_to_app_id(&path).unwrap(), "ai-daemon");
+    }
+
+    #[test]
+    fn test_app_id_from_path_ai_agent_canonical_libexec() {
+        // The agent's canonical production binary (ai-proxy
+        // CANONICAL_AI_AGENT_BIN) must resolve to `ai-agent`, the app id its
+        // executor go-live permission profile is keyed under. Without this the
+        // knowledge write socket never loads `ai-agent.toml` and the grant is
+        // inert.
+        let path = PathBuf::from("/usr/lib/arlen/libexec/arlen-ai-agent");
+        assert_eq!(path_to_app_id(&path).unwrap(), "ai-agent");
+
+        // A same-basename binary in a writable location is still rejected.
+        for spoofed in ["/tmp/arlen-ai-agent", "/home/attacker/arlen-ai-agent"] {
+            assert!(
+                path_to_app_id(&PathBuf::from(spoofed)).is_err(),
+                "spoofed agent path {spoofed} must be rejected"
+            );
+        }
     }
 
     /// F1 regression: same-uid attacker placing any binary at

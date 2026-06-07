@@ -12,11 +12,17 @@
 # is what bounds the blast radius of that flip.
 
 [graph]
-# The two node types the auto-tag behaviour reasons about: it reads a File and
-# the Project it might belong to, then proves the file lies under the project
-# root before proposing the link. Type-level reads of just these two; nothing
-# else is legible to the agent.
-read = ["system.File", "system.Project"]
+# The exact fields the auto-tag proof reads: a File's id and path, a Project's
+# id and root_path. That is all the predicate needs (the file exists, the
+# project exists, and the file path lies under the project root). Field-level,
+# not the whole node, so no other File or Project metadata is legible to the
+# agent even once read scopes are enforced at the query boundary.
+read = [
+    "system.File.id",
+    "system.File.path",
+    "system.Project.id",
+    "system.Project.root_path",
+]
 
 # The single relation the agent may create: File -[FILE_PART_OF]-> Project.
 # FILE_PART_OF is a built-in relation the knowledge daemon allows; this is the

@@ -179,9 +179,14 @@ instance_scope = "own"
     /// The shipped `ai-agent` profile is the executor go-live grant: it must
     /// authorise exactly the one relation the auto-tag workflow writes
     /// (File -[FILE_PART_OF]-> Project) and nothing more. This loads the real
-    /// deployed artifact and mints a token from it through the same path the
-    /// daemon uses, so the grant the agent receives at go-live cannot silently
-    /// drift from what is shipped.
+    /// deployed artifact and asserts its normalized scopes whole, not by a few
+    /// `can_*` spot checks: a spot check would miss an added relation, an extra
+    /// read, or a stray write scope, and since the grant carries the token-wide
+    /// `InstanceScope::All` an unnoticed extra relation would become a
+    /// privileged all-instances graph write. (The canonical agent binary path
+    /// resolving to the app id `ai-agent` is covered separately by the identity
+    /// resolver's `test_app_id_from_path_ai_agent_canonical_libexec`, so the two
+    /// tests together cover binary -> app id -> exact grant.)
     #[test]
     fn shipped_ai_agent_profile_grants_exactly_the_file_part_of_link() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -192,41 +197,70 @@ instance_scope = "own"
             profile.has_graph_access(),
             "the agent needs graph access to write the link"
         );
+        let graph = profile.graph.as_ref().expect("the profile has a [graph] section");
 
-        let mut auth = Authenticator::new();
-        let token = auth
-            .issue_token_from_profile("ai-agent", std::process::id(), &profile)
-            .unwrap();
+        // Exactly one relation scope, the FILE_PART_OF link, and no other.
+        let relations = profile.to_relation_scopes();
+        assert_eq!(relations.len(), 1, "exactly one relation may be granted");
+        assert_eq!(relations[0].from, "system.File");
+        assert_eq!(relations[0].to, "system.Project");
+        assert_eq!(relations[0].relation_type, "FILE_PART_OF");
 
-        // The one relation it may create.
+        // No node-create (write) scope at all: the agent writes a relation, not
+        // a node.
         assert!(
-            token.can_create_relation("system.File", "system.Project", "FILE_PART_OF"),
-            "the agent must be able to write the FILE_PART_OF link it auto-tags"
+            profile.to_write_scopes().is_empty(),
+            "the agent must hold no node write scope"
         );
-        // No other relation, even between system nodes the daemon otherwise knows.
-        assert!(
-            !token.can_create_relation("system.File", "system.App", "ACCESSED_BY"),
-            "the grant must not extend to other relations"
+
+        // Reads exactly File.{id,path} and Project.{id,root_path}, field-level
+        // (fields: Some), with no exclusions and nothing else readable.
+        let reads = profile.to_read_scopes();
+        assert_eq!(reads.len(), 2, "exactly the two node types it proves over");
+        let mut by_type: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+        for scope in &reads {
+            assert!(
+                scope.exclude_fields.is_empty(),
+                "no exclude_fields expected on the grant"
+            );
+            let mut fields = scope
+                .fields
+                .clone()
+                .expect("a field-level grant, not a whole-node read");
+            fields.sort();
+            by_type.insert(scope.entity_type.clone(), fields);
+        }
+        assert_eq!(
+            by_type.get("system.File"),
+            Some(&vec!["id".to_string(), "path".to_string()])
         );
+        assert_eq!(
+            by_type.get("system.Project"),
+            Some(&vec!["id".to_string(), "root_path".to_string()])
+        );
+
+        // No sensitive-field reads in the grant.
         assert!(
-            !token.can_create_relation("system.Directory", "system.Project", "DIR_PART_OF"),
-            "the grant must not extend to other relations"
+            graph.read_sensitive.is_empty(),
+            "the grant must read no sensitive fields"
         );
 
         // Linking two unowned system nodes is unanchored, so it needs the
         // privileged all-instances scope; the daemon would refuse it otherwise.
         assert_eq!(
-            token.instance_scope,
+            profile.to_instance_scope(),
             InstanceScope::All,
             "the File->Project link is unanchored, so it needs InstanceScope::All"
         );
 
-        // It reads the two node types it reasons about and writes no node type.
-        assert!(token.can_read("system.File"));
-        assert!(token.can_read("system.Project"));
-        assert!(!token.can_read("system.Session"));
-        assert!(!token.can_write("system.File"));
-        assert!(!token.can_write("system.Project"));
+        // End-to-end coherence: the same path the daemon uses mints a token
+        // that can create the link and nothing adjacent.
+        let mut auth = Authenticator::new();
+        let token = auth
+            .issue_token_from_profile("ai-agent", std::process::id(), &profile)
+            .unwrap();
+        assert!(token.can_create_relation("system.File", "system.Project", "FILE_PART_OF"));
+        assert!(!token.can_create_relation("system.File", "system.App", "ACCESSED_BY"));
     }
 
     #[test]
