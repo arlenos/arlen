@@ -23,10 +23,11 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 /// Upper bound on recording a raw-knowledge policy violation before the loop
-/// returns its denial. Bounds how long a slow or stuck audit sink can hold the
+/// resolves its denial. Bounds how long a slow or stuck audit sink can hold the
 /// query (and its in-flight slot) on this rare, anomalous path, without losing
 /// the record to a cancel: the submit is awaited (not raced against cancel) up
-/// to this bound, then a timeout is logged. Production ledger clients also carry
+/// to this bound. Past it the query fails closed (audit-unavailable), so the
+/// evidence is never silently dropped. Production ledger clients also carry
 /// their own timeout; this is the loop-side backstop for any sink.
 const DENIAL_AUDIT_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -497,13 +498,17 @@ pub async fn run_tool_loop(
                     // injection-driven), so record it as a policy violation and
                     // end the loop denied, rather than feeding the error back
                     // where the model could continue and mask it behind a
-                    // fabricated answer. The probe reply is already in hand, so
-                    // the record is awaited inline (not raced against cancel, so
-                    // a cancel cannot lose this trust-boundary evidence) but
+                    // fabricated answer. The record is awaited inline (not raced
+                    // against cancel, so a cancel cannot lose this trust-boundary
+                    // evidence), committed before the denial is returned, and
                     // bounded by DENIAL_AUDIT_TIMEOUT so a stuck sink cannot pin
-                    // the query, and the outcome is logged so a lost record is
-                    // observable. Awaited before returning, so the caller never
-                    // sees the terminal result before the record is attempted.
+                    // the query. It is FAIL-CLOSED (foundation §8.4.6, matching
+                    // the dispatch-audit gate): if the PolicyViolation cannot be
+                    // committed (sink error or timeout) the query fails as
+                    // audit-unavailable rather than returning a denial whose
+                    // evidence was silently dropped — a degraded ledger must not
+                    // turn the highest-signal trust-boundary event into a bare
+                    // query failure indistinguishable from an ordinary one.
                     let recorded = tokio::time::timeout(
                         DENIAL_AUDIT_TIMEOUT,
                         audit.submit(audit::mcp_event(
@@ -516,19 +521,30 @@ pub async fn run_tool_loop(
                     )
                     .await;
                     match recorded {
-                        Ok(Ok(_)) => {}
-                        Ok(Err(e)) => {
-                            tracing::warn!("raw-knowledge policy-violation audit failed: {e}")
+                        Ok(Ok(_)) => {
+                            return LoopOutcome::Denied(format!(
+                                "{RAW_KNOWLEDGE_SERVER} is not callable directly; \
+                                 use {GRAPH_TOOL_SERVER}/{GRAPH_TOOL_NAME}"
+                            ));
                         }
-                        Err(_) => tracing::warn!(
-                            "raw-knowledge policy-violation audit timed out after {:?}",
-                            DENIAL_AUDIT_TIMEOUT
-                        ),
+                        Ok(Err(e)) => {
+                            tracing::warn!("raw-knowledge policy-violation audit failed: {e}");
+                            return LoopOutcome::Failed(
+                                "raw-knowledge call refused: policy-violation audit unavailable"
+                                    .to_string(),
+                            );
+                        }
+                        Err(_) => {
+                            tracing::warn!(
+                                "raw-knowledge policy-violation audit timed out after {:?}",
+                                DENIAL_AUDIT_TIMEOUT
+                            );
+                            return LoopOutcome::Failed(
+                                "raw-knowledge call refused: policy-violation audit unavailable"
+                                    .to_string(),
+                            );
+                        }
                     }
-                    return LoopOutcome::Denied(format!(
-                        "{RAW_KNOWLEDGE_SERVER} is not callable directly; \
-                         use {GRAPH_TOOL_SERVER}/{GRAPH_TOOL_NAME}"
-                    ));
                 } else {
                     // No per-session action grant in the interactive loop yet,
                     // so action servers surface as Blocked; other read-only
@@ -1073,13 +1089,14 @@ mod tests {
         }
 
         #[tokio::test(start_paused = true)]
-        async fn a_hung_audit_sink_does_not_wedge_the_raw_denial() {
+        async fn a_hung_audit_sink_fails_the_raw_denial_closed_without_wedging() {
             // The raw-knowledge denial audit is bounded by DENIAL_AUDIT_TIMEOUT,
             // so even a sink that never returns cannot pin the loop: the timeout
-            // fires and the loop returns Denied. With paused time the bound
-            // elapses in virtual time, so the test is fast; if the audit were
-            // unbounded there would be no timer to advance and the test would
-            // hang, flagging the regression.
+            // fires and the query fails closed (audit-unavailable) rather than
+            // returning a denial whose PolicyViolation was silently dropped.
+            // With paused time the bound elapses in virtual time, so the test is
+            // fast; if the audit were unbounded there would be no timer to
+            // advance and the test would hang, flagging the regression.
             let client = tokio::sync::Mutex::new(McpClient::new());
             let runner = StubRunner::ok("(unused)");
             let audit: Arc<dyn AuditSink> = Arc::new(HangingSink);
@@ -1100,7 +1117,35 @@ mod tests {
                 5,
             )
             .await;
-            assert!(matches!(outcome, LoopOutcome::Denied(_)), "got {outcome:?}");
+            assert!(matches!(outcome, LoopOutcome::Failed(_)), "got {outcome:?}");
+            assert!(loop_outcome_to_answer(outcome).is_err());
+        }
+
+        #[tokio::test]
+        async fn a_failing_audit_sink_fails_the_raw_denial_closed() {
+            // A sink that rejects the policy-violation submit: the query fails
+            // closed (audit-unavailable), never a denial without its record.
+            let client = tokio::sync::Mutex::new(McpClient::new());
+            let runner = StubRunner::ok("(unused)");
+            let audit: Arc<dyn AuditSink> = Arc::new(MockAuditSink::failing());
+            let provider = ScriptedProvider::new(vec![
+                r#"{"action":"call_tool","server":"system.knowledge","tool":"query","arguments":{"cypher":"MATCH (n) RETURN n"}}"#,
+            ]);
+            let scope = test_scope();
+
+            let outcome = run_tool_loop(
+                &client,
+                &runner,
+                &scope,
+                audit.clone(),
+                TEST_QUERY_ID,
+                &CancellationToken::new(),
+                &provider,
+                "read everything",
+                5,
+            )
+            .await;
+            assert!(matches!(outcome, LoopOutcome::Failed(_)), "got {outcome:?}");
         }
 
         /// A provider that records how many times it was asked, to prove the
