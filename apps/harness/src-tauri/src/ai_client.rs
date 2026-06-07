@@ -17,7 +17,7 @@
 
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::time::{timeout, timeout_at, Instant};
 use zbus::{Connection, Proxy};
@@ -33,8 +33,28 @@ const QUERY_TIMEOUT: Duration = Duration::from_secs(90);
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
 /// Bound on the best-effort cancel so cancellation itself cannot hang.
 const CANCEL_TIMEOUT: Duration = Duration::from_secs(5);
+/// Fresh budget for fetching the tool trace after the answer arrives. Its
+/// own timeout, not the (possibly near-expired) query deadline, so a slow
+/// tool-using turn still gets a fair chance to retrieve its trace.
+const TRACE_TIMEOUT: Duration = Duration::from_secs(5);
 /// User-facing message when the turn exceeds [`QUERY_TIMEOUT`].
 const TIMEOUT_MSG: &str = "the assistant took too long to respond";
+
+/// One tool call the daemon made while answering, as the trace records it
+/// (A3, ai-app.md §2.1). Fields are the daemon's `take_trace` shape; the
+/// frontend renders each as a collapsible card so no action is hidden.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCall {
+    /// The MCP server the tool belongs to (e.g. `system.graph`).
+    pub server: String,
+    /// The tool name (e.g. `query`).
+    pub tool: String,
+    /// The arguments the model passed, as recorded (already capped daemon-side).
+    pub arguments: String,
+    /// The tool result the model saw (already capped daemon-side).
+    pub result: String,
+}
 
 /// The outcome of a conversation turn, returned to the frontend.
 #[derive(Debug, Serialize)]
@@ -42,6 +62,23 @@ const TIMEOUT_MSG: &str = "the assistant took too long to respond";
 pub struct QueryReply {
     /// The assistant's answer text.
     pub answer: String,
+    /// The tool calls made while answering, oldest first. Empty when the
+    /// query took the direct path (no tool loop): the trace was fetched and
+    /// was genuinely empty.
+    pub tool_calls: Vec<ToolCall>,
+    /// True when the trace could not be retrieved (fetch failed, timed out,
+    /// or was malformed) as opposed to being genuinely empty. The UI says so
+    /// rather than implying no tools ran, so a slow tool-using turn cannot
+    /// masquerade as a direct answer (transparency-first).
+    pub trace_unavailable: bool,
+}
+
+/// The result of fetching the tool trace: the calls plus whether retrieval
+/// failed. A direct-path answer yields `{ calls: [], unavailable: false }`;
+/// a failed/timed-out/malformed fetch yields `{ calls: [], unavailable: true }`.
+struct Trace {
+    calls: Vec<ToolCall>,
+    unavailable: bool,
 }
 
 /// The classification of one `take_result` poll envelope.
@@ -138,7 +175,18 @@ pub async fn ai_query(prompt: String) -> Result<QueryReply, String> {
             .map_err(|e| format!("malformed result envelope: {e}"))?;
 
         match classify(&outcome) {
-            Poll::Completed(answer) => return Ok(QueryReply { answer }),
+            Poll::Completed(answer) => {
+                // The answer is in hand; fetching the tool-call trace is
+                // best-effort (it never fails the turn) but its failure is
+                // surfaced, not hidden, so a slow tool-using turn is never
+                // shown as a direct answer.
+                let trace = fetch_trace(&proxy, &query_id, &token).await;
+                return Ok(QueryReply {
+                    answer,
+                    tool_calls: trace.calls,
+                    trace_unavailable: trace.unavailable,
+                });
+            }
             Poll::Failed(reason) => return Err(reason),
             Poll::Cancelled => return Err("the query was cancelled".to_string()),
             Poll::Drained => return Err("the result was already consumed".to_string()),
@@ -163,6 +211,45 @@ async fn bounded_cancel(proxy: &Proxy<'_>, query_id: &str, token: &str) {
         let _: Result<bool, zbus::Error> = proxy.call("cancel", &(query_id, token)).await;
     })
     .await;
+}
+
+/// Fetch the tool-call transcript for a completed query via `take_trace`
+/// (single-shot, authorised by the submitting connection like `take_result`),
+/// on its own [`TRACE_TIMEOUT`] budget so a near-deadline answer still gets a
+/// fair attempt. A successful empty array means the query took the direct path
+/// (no tools, `unavailable: false`); a failed, timed-out, or malformed fetch
+/// is reported `unavailable: true` so the UI never implies no tools ran when it
+/// simply could not read the trace.
+///
+/// Residual (accepted, not a defect here): `take_trace` is single-shot server
+/// side (`std::mem::take`), so if the call reaches the daemon and the trace is
+/// moved out but the response is lost to this timeout, a retry returns empty.
+/// The timeout is kept deliberately: it must not let a stalled fetch block the
+/// already-computed answer from reaching the UI. The trace is daemon-capped and
+/// the server op is in-memory and instant, so this timeout effectively only
+/// fires on a wedged bus, where the turn itself already failed. Full retry
+/// safety would need a peek-until-ack daemon API (a separate change to the
+/// settled take_trace contract), not this rendering increment.
+async fn fetch_trace(proxy: &Proxy<'_>, query_id: &str, token: &str) -> Trace {
+    // Bind the args so the tuple outlives the borrowed call future; pin the
+    // reply type to String so the deserialize target is known.
+    let args = (query_id, token);
+    let json = match timeout(TRACE_TIMEOUT, proxy.call::<_, _, String>("take_trace", &args)).await {
+        Ok(Ok(json)) => json,
+        _ => return Trace { calls: Vec::new(), unavailable: true },
+    };
+    match parse_trace(&json) {
+        Some(calls) => Trace { calls, unavailable: false },
+        None => Trace { calls: Vec::new(), unavailable: true },
+    }
+}
+
+/// Parse the `take_trace` JSON array into tool calls. Pure, so the shape
+/// mapping is unit-tested without a live daemon. `Some(vec)` (possibly empty)
+/// is a readable array; `None` is a malformed/non-array payload, which the
+/// caller treats as the trace being unavailable, distinct from empty.
+fn parse_trace(json: &str) -> Option<Vec<ToolCall>> {
+    serde_json::from_str::<Vec<ToolCall>>(json).ok()
 }
 
 /// Map a zbus method-call error to a readable message. The daemon
@@ -218,5 +305,31 @@ mod tests {
             classify(&json!({"status": "failed"})),
             Poll::Failed("the query failed".to_string())
         );
+    }
+
+    #[test]
+    fn parse_trace_reads_the_tool_calls_in_order() {
+        let json = json!([
+            {"server": "system.graph", "tool": "query", "arguments": "MATCH ...", "result": "rows"},
+            {"server": "system.knowledge", "tool": "describe_schema", "arguments": "", "result": "schema"}
+        ])
+        .to_string();
+        let calls = parse_trace(&json).expect("valid array parses");
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].server, "system.graph");
+        assert_eq!(calls[0].tool, "query");
+        assert_eq!(calls[1].tool, "describe_schema");
+    }
+
+    #[test]
+    fn parse_trace_distinguishes_empty_from_unavailable() {
+        // A valid empty array is genuinely "no tools" (Some, the direct
+        // path); malformed / non-array / missing-field payloads are
+        // unavailable (None), so the UI can say so instead of implying no
+        // tools ran. This is the transparency distinction.
+        assert_eq!(parse_trace("[]"), Some(Vec::new()));
+        assert_eq!(parse_trace("not json"), None);
+        assert_eq!(parse_trace(r#"{"status":"ok"}"#), None);
+        assert_eq!(parse_trace(r#"[{"server":"s","tool":"t"}]"#), None);
     }
 }
