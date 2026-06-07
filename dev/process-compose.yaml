@@ -63,6 +63,13 @@ processes:
     availability:
       restart: "on_failure"
 
+  system-monitor-mcp:
+    command: "cargo run --manifest-path daemons/system-monitor-mcp/Cargo.toml"
+    depends_on:
+      runtime-dir: { condition: process_completed_successfully }
+    availability:
+      restart: "on_failure"
+
   audit-daemon:
     command: "cargo run --manifest-path daemons/audit-daemon/Cargo.toml"
     depends_on:
