@@ -56,6 +56,13 @@ const CONTEXT_HEADROOM: u32 = 2_048;
 /// bytes-as-tokens upper bound (a token is at least one byte).
 const TRUNCATED_RESULT_CAP: usize = 512;
 
+/// Hard cap applied to a tool result the moment it enters the transcript, so a
+/// single very large result never materialises a huge prompt String before the
+/// window fit gets a chance to compact it. This is a memory-safety bound at
+/// ingestion; the window fit (to [`TRUNCATED_RESULT_CAP`]) is the separate,
+/// smaller prompt bound.
+const MAX_TOOL_RESULT_BYTES: usize = 32 * 1024;
+
 /// One completed step of the loop: a tool call and the result it returned.
 /// The result is treated as data (an origin-tagged block), never instructions.
 #[derive(Debug, Clone)]
@@ -449,9 +456,8 @@ pub async fn run_tool_loop(
     // prompt is kept under it minus headroom by compacting the transcript; a
     // conservative provider default forces early compaction rather than an
     // overflow of a real backend.
-    let threshold = provider
-        .context_window()
-        .saturating_sub(CONTEXT_HEADROOM) as usize;
+    let window = provider.context_window();
+    let threshold = window.saturating_sub(CONTEXT_HEADROOM) as usize;
     // Seed the call chain from the query id so every tool entry in this loop
     // (MCP tools via call_tool, and the internal graph reads below) joins the
     // query's own dispatch/completion audit records under one correlation id.
@@ -480,6 +486,12 @@ pub async fn run_tool_loop(
                 )
             }
         };
+        // Reserve the rest of the window for the response: cap output at
+        // `window - input` so input + output cannot exceed the model window.
+        // Forwarded as `max_tokens` (the provider stack honours extras), the
+        // same way the agent loop bounds output; without it the upstream would
+        // use its default allowance and the reserved headroom would not hold.
+        let output_cap = window.saturating_sub(prompt.len() as u32);
         // Provider completion runs unlocked (the slow, network-bound step).
         // Provider-biased: an already-arrived reply is taken even if cancel is
         // also ready, so a produced raw-knowledge probe is not discarded; while
@@ -488,7 +500,7 @@ pub async fn run_tool_loop(
             biased;
             r = provider.complete(CompletionRequest {
                 prompt,
-                extras: serde_json::json!({}),
+                extras: serde_json::json!({ "max_tokens": output_cap }),
             }) => match r {
                 Ok(r) => r.text,
                 Err(e) => return LoopOutcome::Failed(format!("provider error: {e}")),
@@ -637,12 +649,18 @@ pub async fn run_tool_loop(
                     }
                 };
                 match outcome {
-                    DispatchOutcome::Result(result) => transcript.push(ToolStep {
-                        server,
-                        tool,
-                        arguments,
-                        result,
-                    }),
+                    DispatchOutcome::Result(mut result) => {
+                        // Bound the result the moment it enters the transcript so
+                        // a single very large tool output never materialises a
+                        // huge prompt before the window fit can compact it.
+                        truncate_in_place(&mut result, MAX_TOOL_RESULT_BYTES);
+                        transcript.push(ToolStep {
+                            server,
+                            tool,
+                            arguments,
+                            result,
+                        });
+                    }
                     blocked @ (DispatchOutcome::NeedsConfirmation(_)
                     | DispatchOutcome::NeedsAuthorization) => {
                         return LoopOutcome::Blocked(blocked)
@@ -1338,6 +1356,72 @@ mod tests {
                 0,
                 "a cancelled query must not call the provider"
             );
+        }
+
+        /// A provider that records the `max_tokens` it was sent, to prove the
+        /// loop reserves the window's remainder for the response.
+        struct CaptureMaxTokens {
+            seen: Mutex<Option<u64>>,
+            window: u32,
+        }
+        #[async_trait]
+        impl AIProvider for CaptureMaxTokens {
+            async fn complete(
+                &self,
+                req: CompletionRequest,
+            ) -> Result<CompletionResponse, ProviderError> {
+                *self.seen.lock().unwrap() =
+                    req.extras.get("max_tokens").and_then(|v| v.as_u64());
+                Ok(CompletionResponse {
+                    text: r#"{"action":"answer","text":"done"}"#.to_string(),
+                    audit: ProviderAudit {
+                        provider_name: "cap".into(),
+                        model: "cap".into(),
+                        input_tokens: None,
+                        output_tokens: None,
+                    },
+                })
+            }
+            async fn available(&self) -> bool {
+                true
+            }
+            fn name(&self) -> &str {
+                "cap"
+            }
+            fn context_window(&self) -> u32 {
+                self.window
+            }
+        }
+
+        #[tokio::test]
+        async fn the_loop_reserves_the_window_remainder_as_max_tokens() {
+            let client = tokio::sync::Mutex::new(McpClient::new());
+            let runner = StubRunner::ok("(unused)");
+            let audit = Arc::new(MockAuditSink::accepting());
+            let provider = CaptureMaxTokens {
+                seen: Mutex::new(None),
+                window: 8192,
+            };
+            let scope = test_scope();
+
+            let outcome = run_tool_loop(
+                &client,
+                &runner,
+                &scope,
+                audit.clone(),
+                TEST_QUERY_ID,
+                &CancellationToken::new(),
+                &provider,
+                "hi",
+                5,
+            )
+            .await;
+            assert_eq!(outcome, LoopOutcome::Answer("done".to_string()));
+            let cap = provider.seen.lock().unwrap().expect("max_tokens forwarded");
+            // The cap leaves room within the window and reserves at least the
+            // headroom: input + output cannot exceed the model window.
+            assert!(cap > 0 && cap <= 8192, "cap {cap} within window");
+            assert!(cap >= CONTEXT_HEADROOM as u64, "at least the headroom is reserved");
         }
 
         #[tokio::test]
