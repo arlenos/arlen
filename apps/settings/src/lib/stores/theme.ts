@@ -80,41 +80,27 @@ export const theme: ConfigStore<AppearanceConfig> =
 
 // ── Theme built-in accents ──────────────────────────────────────────────
 
-/// Built-in accent for the Arlen dark theme.
-/// Matches `desktop-shell/src-tauri/themes/dark.toml`.
-export const DARK_ACCENT = "#6366f1";
-
-/// Built-in accent for the Arlen light theme.
-/// Matches `desktop-shell/src-tauri/themes/light.toml`.
-export const LIGHT_ACCENT = "#4f46e5";
-
-/// Monochrome foreground values per mode. When the user picks the
-/// "Monochrome" swatch we store `MONO_SENTINEL` so the effective colour
-/// follows the active theme mode instead of freezing a single hex.
+/// Monochrome foreground values per mode. The default accent is monochrome: it
+/// follows the active theme's foreground rather than freezing a single hex, so
+/// it flips with dark/light. The `$foreground` sentinel records an explicit
+/// monochrome pick; an absent override resolves to the same thing. There is no
+/// built-in colour default, a colour appears only when the user picks a swatch.
 export const MONO_DARK = "#fafafa";
 export const MONO_LIGHT = "#171717";
 export const MONO_SENTINEL = "$foreground";
-
-/// Resolve the built-in default accent color for a theme mode.
-/// This is what the shell renders when no override is set.
-export function getThemeDefaultAccent(mode: string | undefined): string {
-  return mode === "light" ? LIGHT_ACCENT : DARK_ACCENT;
-}
 
 export function getMonochromeAccent(mode: string | undefined): string {
   return mode === "light" ? MONO_LIGHT : MONO_DARK;
 }
 
-/// Resolve the current effective accent from a loaded config.
-///   1. `overrides.accent` (user override, highest priority)
-///      - `$foreground` sentinel -> mode-dependent monochrome
-///   2. Theme default based on `theme.active`
+/// Resolve the current effective accent from a loaded config. A picked swatch
+/// (`overrides.accent`) wins, except the `$foreground` sentinel which means
+/// monochrome; with no override the accent is the monochrome default.
 export function resolveAccent(config: AppearanceConfig | null): string {
-  if (!config) return DARK_ACCENT;
-  const override = config.overrides?.accent;
-  if (override === MONO_SENTINEL) return getMonochromeAccent(config.theme?.active);
-  if (override) return override;
-  return getThemeDefaultAccent(config.theme?.active);
+  const mode = config?.theme?.active;
+  const override = config?.overrides?.accent;
+  if (!override || override === MONO_SENTINEL) return getMonochromeAccent(mode);
+  return override;
 }
 
 /// Parse a `#rrggbb` string into its RGB components (0-255).

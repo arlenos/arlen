@@ -22,7 +22,9 @@
   let pickerOpen = $state(false);
   let pickerWrap = $state<HTMLDivElement | null>(null);
 
-  const isMono = $derived(rawOverride === MONO_SENTINEL);
+  // Monochrome is the default, so an unset override reads as monochrome too,
+  // not as a custom colour.
+  const isMono = $derived(!rawOverride || rawOverride === MONO_SENTINEL);
   const activePreset = $derived(
     isMono
       ? undefined
