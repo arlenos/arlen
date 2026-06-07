@@ -45,6 +45,14 @@ pub const DEFAULT_MAX_INFLIGHT_GLOBAL: usize = 32;
 /// provider, so larger inputs are out of scope.
 pub const DEFAULT_MAX_PROMPT_BYTES: usize = 64 * 1024;
 
+/// Upper bound on the best-effort query-completion audit submit. It runs at the
+/// tail of the spawned dispatch task while the in-flight slot is still held, so
+/// an unbounded await on a stuck audit sink would leak slots and exhaust
+/// admission. Past the bound the completion entry is dropped (logged) and the
+/// slot is released. The fail-closed dispatch entry at admission is the audit
+/// guarantee; this tail entry is best-effort.
+const COMPLETION_AUDIT_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Identity of a query submitter, resolved by the D-Bus layer.
 ///
 /// The two fields serve two distinct security purposes and must not
@@ -662,13 +670,11 @@ impl AiDaemonService {
         .await;
         let outcome = if result.is_ok() { "completed" } else { "failed" };
         let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-        if let Err(err) = self
-            .audit
-            .submit(audit::explain_event(outcome, Some(duration_ms), &explain_id))
-            .await
-        {
-            tracing::warn!("explanation completion audit failed: {err}");
-        }
+        self.submit_completion_audit(
+            audit::explain_event(outcome, Some(duration_ms), &explain_id),
+            "explanation",
+        )
+        .await;
 
         result.map_err(|e| ExplainError::Failed(e.to_string()))
     }
@@ -820,8 +826,24 @@ impl AiDaemonService {
     ) {
         let duration_ms = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
         let event = audit::query_event(outcome, Some(duration_ms), query_id);
-        if let Err(err) = self.audit.submit(event).await {
-            tracing::warn!("query completion audit failed: {err}");
+        self.submit_completion_audit(event, "query").await;
+    }
+
+    /// Submit a best-effort terminal audit entry, bounded so a stuck sink
+    /// cannot pin the caller. Both the query and the explanation paths run their
+    /// completion audit at the tail of a flow that still holds an in-flight
+    /// slot, so an unbounded await on a degraded sink would leak slots and
+    /// exhaust admission. The fail-closed dispatch entry at admission is the
+    /// §8.4.6 audit guarantee; this tail entry is best-effort, so past the bound
+    /// it is dropped (logged) and the slot is released.
+    async fn submit_completion_audit(&self, event: audit::IngestRequest, context: &str) {
+        match tokio::time::timeout(COMPLETION_AUDIT_TIMEOUT, self.audit.submit(event)).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(err)) => tracing::warn!("{context} completion audit failed: {err}"),
+            Err(_) => tracing::warn!(
+                "{context} completion audit timed out after {:?}",
+                COMPLETION_AUDIT_TIMEOUT
+            ),
         }
     }
 }
@@ -1343,6 +1365,66 @@ mod tests {
         }
     }
 
+    /// An audit sink that accepts the dispatch entry but hangs forever on any
+    /// completion entry, to prove the bounded completion audit releases the slot.
+    struct HangOnCompletionSink;
+    #[async_trait]
+    impl AuditSink for HangOnCompletionSink {
+        async fn submit(
+            &self,
+            event: arlen_ai_core::audit::IngestRequest,
+        ) -> Result<u64, arlen_ai_core::audit::AuditClientError> {
+            if event.structural.outcome == "dispatched" {
+                return Ok(0);
+            }
+            std::future::pending().await
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_hung_completion_audit_releases_the_inflight_slot() {
+        // The query is admitted (dispatch entry accepted) and runs, then its
+        // completion audit hangs. The bounded completion audit must time out and
+        // let the dispatch task return so its in-flight slot is released, rather
+        // than pinning capacity under a degraded sink. Paused time fires the
+        // bound without a real wait.
+        let svc = enable(AiDaemonService::new(
+            Arc::new(StubRunner {
+                reply: Ok("x".to_string()),
+                gate: None,
+            }),
+            full_scope(),
+            Arc::new(HangOnCompletionSink),
+        ));
+        let _h = svc
+            .query("hi".to_string(), caller_id(":1.9", "/usr/bin/app-a"))
+            .await
+            .unwrap();
+        // Let the dispatch task run the query and park in the completion audit.
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            svc.inflight.lock().unwrap().global,
+            1,
+            "slot held while the completion audit is in flight"
+        );
+        // Fire the completion-audit timeout, then let the task return.
+        tokio::time::advance(COMPLETION_AUDIT_TIMEOUT + Duration::from_secs(1)).await;
+        let mut released = false;
+        for _ in 0..50 {
+            if svc.inflight.lock().unwrap().global == 0 {
+                released = true;
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert!(
+            released,
+            "a hung completion audit must not pin the in-flight slot"
+        );
+    }
+
     #[tokio::test]
     async fn inflight_slot_released_when_query_future_dropped_mid_audit() {
         // The audit gate parks; the `query()` future is then dropped
@@ -1556,6 +1638,56 @@ mod tests {
         );
         let summary = svc.explain_system(explain_caller(), 1_000).await.unwrap();
         assert_eq!(summary, "Your computer is mostly idle.");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_hung_explanation_completion_audit_releases_the_inflight_slot() {
+        // System Explanation Mode runs its best-effort completion audit while
+        // still holding an in-flight slot, so a stuck sink must not pin it —
+        // same bounded behavior as the query path, via the shared helper.
+        let svc = enable(
+            AiDaemonService::new(
+                Arc::new(StubRunner {
+                    reply: Ok("unused".to_string()),
+                    gate: None,
+                }),
+                full_scope(),
+                Arc::new(HangOnCompletionSink),
+            )
+            .with_explain(
+                Arc::new(ExplainProvider {
+                    text: "idle".to_string(),
+                }),
+                Arc::new(EmptyReader),
+            ),
+        );
+        let svc2 = svc.clone();
+        let task = tokio::spawn(async move { svc2.explain_system(explain_caller(), 1_000).await });
+        // Let the explanation run and park in its completion audit (slot held).
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            svc.inflight.lock().unwrap().global,
+            1,
+            "slot held while the explanation completion audit is in flight"
+        );
+        // Fire the completion-audit timeout, then let the task return.
+        tokio::time::advance(COMPLETION_AUDIT_TIMEOUT + Duration::from_secs(1)).await;
+        let mut released = false;
+        for _ in 0..50 {
+            if svc.inflight.lock().unwrap().global == 0 {
+                released = true;
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert!(
+            released,
+            "a hung explanation completion audit must not pin the in-flight slot"
+        );
+        // The explanation still returns its summary.
+        assert_eq!(task.await.unwrap().unwrap(), "idle");
     }
 
     #[tokio::test]

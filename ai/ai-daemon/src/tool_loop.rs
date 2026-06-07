@@ -46,6 +46,23 @@ const GRAPH_TOOL_NAME: &str = "query";
 /// all graph access is routed through the scoped [`GRAPH_TOOL_SERVER`].
 const RAW_KNOWLEDGE_SERVER: &str = "system.knowledge";
 
+/// Tokens reserved below the model's context window for the response and any
+/// growth between the fit check and the call, so the loop compacts before the
+/// window is actually full. Mirrors the agent loop's compaction headroom.
+const CONTEXT_HEADROOM: u32 = 2_048;
+
+/// Cap a truncated tool-result body shrinks to when the transcript is compacted
+/// to fit the window. Aggressive because the fit estimate is a conservative
+/// bytes-as-tokens upper bound (a token is at least one byte).
+const TRUNCATED_RESULT_CAP: usize = 512;
+
+/// Hard cap applied to a tool result the moment it enters the transcript, so a
+/// single very large result never materialises a huge prompt String before the
+/// window fit gets a chance to compact it. This is a memory-safety bound at
+/// ingestion; the window fit (to [`TRUNCATED_RESULT_CAP`]) is the separate,
+/// smaller prompt bound.
+const MAX_TOOL_RESULT_BYTES: usize = 32 * 1024;
+
 /// One completed step of the loop: a tool call and the result it returned.
 /// The result is treated as data (an origin-tagged block), never instructions.
 #[derive(Debug, Clone)]
@@ -328,6 +345,55 @@ fn extract_graph_question(arguments: &str) -> Result<String, String> {
     }
 }
 
+/// Truncate a string in place to at most `cap` bytes, on a UTF-8 char boundary,
+/// appending a marker that records how much was dropped. A no-op if already
+/// within `cap`.
+fn truncate_in_place(s: &mut String, cap: usize) {
+    if s.len() <= cap {
+        return;
+    }
+    let mut idx = cap;
+    while idx > 0 && !s.is_char_boundary(idx) {
+        idx -= 1;
+    }
+    let dropped = s.len() - idx;
+    s.truncate(idx);
+    s.push_str(&format!("...[{dropped} bytes truncated]"));
+}
+
+/// Build the step prompt, compacting the transcript to fit `threshold` bytes if
+/// needed. The conservative fit estimate is bytes-as-tokens (a token is at
+/// least one byte), so the prompt cannot overflow the model's real input
+/// window. Compaction is deterministic and model-free: tool-result bodies are
+/// truncated **oldest first**, so the most recent results (most relevant to the
+/// next step) keep their detail longest. The truncation is persistent on the
+/// transcript, so the prompt cannot grow back across steps. Returns `None` only
+/// when even a fully truncated transcript does not fit (the fixed instructions,
+/// tool catalogue, and question alone exceed the window), so the caller fails
+/// closed rather than sending an over-window prompt.
+fn fit_prompt(
+    question: &str,
+    catalogue: &[CatalogueTool],
+    transcript: &mut [ToolStep],
+    threshold: usize,
+) -> Option<String> {
+    let prompt = build_tool_prompt(question, catalogue, transcript);
+    if prompt.len() <= threshold {
+        return Some(prompt);
+    }
+    for i in 0..transcript.len() {
+        if transcript[i].result.len() > TRUNCATED_RESULT_CAP {
+            truncate_in_place(&mut transcript[i].result, TRUNCATED_RESULT_CAP);
+            let prompt = build_tool_prompt(question, catalogue, transcript);
+            if prompt.len() <= threshold {
+                return Some(prompt);
+            }
+        }
+    }
+    let prompt = build_tool_prompt(question, catalogue, transcript);
+    (prompt.len() <= threshold).then_some(prompt)
+}
+
 /// Run the bounded interactive tool-use loop: assemble the tool catalogue, then
 /// repeatedly prompt the model, parse its step, and either answer or gate and
 /// dispatch one tool call, feeding the result back, until a final answer or the
@@ -386,6 +452,12 @@ pub async fn run_tool_loop(
         c = async { client.lock().await.tool_catalogue().await } => c,
     };
     let catalogue = interactive_catalogue(raw_catalogue);
+    // The model's input window, read once (it does not change mid-loop). The
+    // prompt is kept under it minus headroom by compacting the transcript; a
+    // conservative provider default forces early compaction rather than an
+    // overflow of a real backend.
+    let window = provider.context_window();
+    let threshold = window.saturating_sub(CONTEXT_HEADROOM) as usize;
     // Seed the call chain from the query id so every tool entry in this loop
     // (MCP tools via call_tool, and the internal graph reads below) joins the
     // query's own dispatch/completion audit records under one correlation id.
@@ -403,7 +475,23 @@ pub async fn run_tool_loop(
         if cancel.is_cancelled() {
             return LoopOutcome::Cancelled;
         }
-        let prompt = build_tool_prompt(question, &catalogue, &transcript);
+        // Keep the prompt within the model window, compacting the transcript if
+        // needed; fail closed if even a fully compacted transcript cannot fit.
+        let prompt = match fit_prompt(question, &catalogue, &mut transcript, threshold) {
+            Some(p) => p,
+            None => {
+                return LoopOutcome::Failed(
+                    "context window exceeded: the request needs more context than the model allows"
+                        .to_string(),
+                )
+            }
+        };
+        // Reserve the rest of the window for the response: cap output at
+        // `window - input` so input + output cannot exceed the model window.
+        // Forwarded as `max_tokens` (the provider stack honours extras), the
+        // same way the agent loop bounds output; without it the upstream would
+        // use its default allowance and the reserved headroom would not hold.
+        let output_cap = window.saturating_sub(prompt.len() as u32);
         // Provider completion runs unlocked (the slow, network-bound step).
         // Provider-biased: an already-arrived reply is taken even if cancel is
         // also ready, so a produced raw-knowledge probe is not discarded; while
@@ -412,7 +500,7 @@ pub async fn run_tool_loop(
             biased;
             r = provider.complete(CompletionRequest {
                 prompt,
-                extras: serde_json::json!({}),
+                extras: serde_json::json!({ "max_tokens": output_cap }),
             }) => match r {
                 Ok(r) => r.text,
                 Err(e) => return LoopOutcome::Failed(format!("provider error: {e}")),
@@ -561,12 +649,18 @@ pub async fn run_tool_loop(
                     }
                 };
                 match outcome {
-                    DispatchOutcome::Result(result) => transcript.push(ToolStep {
-                        server,
-                        tool,
-                        arguments,
-                        result,
-                    }),
+                    DispatchOutcome::Result(mut result) => {
+                        // Bound the result the moment it enters the transcript so
+                        // a single very large tool output never materialises a
+                        // huge prompt before the window fit can compact it.
+                        truncate_in_place(&mut result, MAX_TOOL_RESULT_BYTES);
+                        transcript.push(ToolStep {
+                            server,
+                            tool,
+                            arguments,
+                            result,
+                        });
+                    }
                     blocked @ (DispatchOutcome::NeedsConfirmation(_)
                     | DispatchOutcome::NeedsAuthorization) => {
                         return LoopOutcome::Blocked(blocked)
@@ -574,11 +668,15 @@ pub async fn run_tool_loop(
                     DispatchOutcome::Failed(e) => {
                         // Record the failure so the model can adjust on the next
                         // step rather than aborting the loop on one tool error.
+                        // Bounded at ingestion like a successful result: a tool
+                        // error can carry a large server-supplied payload.
+                        let mut result = format!("error: {e}");
+                        truncate_in_place(&mut result, MAX_TOOL_RESULT_BYTES);
                         transcript.push(ToolStep {
                             server,
                             tool,
                             arguments,
-                            result: format!("error: {e}"),
+                            result,
                         });
                     }
                 }
@@ -739,6 +837,56 @@ mod tests {
         assert!(shaped.iter().all(|t| t.server.0 != "system.knowledge"));
         // Unrelated servers survive.
         assert!(shaped.iter().any(|t| t.server.0 == "module.notes"));
+    }
+
+    #[test]
+    fn truncate_in_place_respects_char_boundaries_and_marks_drop() {
+        let mut s = "héllo wörld this is a long string".to_string();
+        let original = s.len();
+        truncate_in_place(&mut s, 6);
+        assert!(s.contains("bytes truncated"));
+        // The kept prefix is valid UTF-8 (no panic) and shorter than the input.
+        assert!(s.len() < original + 40);
+        // A short string is untouched.
+        let mut short = "ok".to_string();
+        truncate_in_place(&mut short, 512);
+        assert_eq!(short, "ok");
+    }
+
+    fn step_with_result(result: &str) -> ToolStep {
+        ToolStep {
+            server: "system.graph".into(),
+            tool: "query".into(),
+            arguments: "{}".into(),
+            result: result.into(),
+        }
+    }
+
+    #[test]
+    fn fit_prompt_compacts_old_results_to_fit() {
+        // Two large results; a threshold that the full transcript exceeds but a
+        // compacted one fits. The oldest result is truncated first.
+        let mut transcript = vec![
+            step_with_result(&"A".repeat(4000)),
+            step_with_result(&"B".repeat(200)),
+        ];
+        let full = build_tool_prompt("q", &[], &transcript).len();
+        let threshold = full - 2000; // forces compaction of the big old result
+        let fitted = fit_prompt("q", &[], &mut transcript, threshold);
+        assert!(fitted.is_some(), "should fit after truncating the old result");
+        assert!(fitted.unwrap().len() <= threshold);
+        // The oldest (large) result was truncated; the recent small one kept.
+        assert!(transcript[0].result.contains("bytes truncated"));
+        assert_eq!(transcript[1].result, "B".repeat(200));
+    }
+
+    #[test]
+    fn fit_prompt_fails_closed_when_fixed_parts_exceed_the_window() {
+        // The question alone blows the threshold; no transcript truncation can
+        // help, so fit_prompt returns None and the caller fails closed.
+        let mut transcript: Vec<ToolStep> = Vec::new();
+        let question = "x".repeat(5000);
+        assert!(fit_prompt(&question, &[], &mut transcript, 1000).is_none());
     }
 
     #[test]
@@ -1211,6 +1359,106 @@ mod tests {
                 provider.calls.load(std::sync::atomic::Ordering::SeqCst),
                 0,
                 "a cancelled query must not call the provider"
+            );
+        }
+
+        /// A provider that records the `max_tokens` it was sent, to prove the
+        /// loop reserves the window's remainder for the response.
+        struct CaptureMaxTokens {
+            seen: Mutex<Option<u64>>,
+            window: u32,
+        }
+        #[async_trait]
+        impl AIProvider for CaptureMaxTokens {
+            async fn complete(
+                &self,
+                req: CompletionRequest,
+            ) -> Result<CompletionResponse, ProviderError> {
+                *self.seen.lock().unwrap() =
+                    req.extras.get("max_tokens").and_then(|v| v.as_u64());
+                Ok(CompletionResponse {
+                    text: r#"{"action":"answer","text":"done"}"#.to_string(),
+                    audit: ProviderAudit {
+                        provider_name: "cap".into(),
+                        model: "cap".into(),
+                        input_tokens: None,
+                        output_tokens: None,
+                    },
+                })
+            }
+            async fn available(&self) -> bool {
+                true
+            }
+            fn name(&self) -> &str {
+                "cap"
+            }
+            fn context_window(&self) -> u32 {
+                self.window
+            }
+        }
+
+        #[tokio::test]
+        async fn the_loop_reserves_the_window_remainder_as_max_tokens() {
+            let client = tokio::sync::Mutex::new(McpClient::new());
+            let runner = StubRunner::ok("(unused)");
+            let audit = Arc::new(MockAuditSink::accepting());
+            let provider = CaptureMaxTokens {
+                seen: Mutex::new(None),
+                window: 8192,
+            };
+            let scope = test_scope();
+
+            let outcome = run_tool_loop(
+                &client,
+                &runner,
+                &scope,
+                audit.clone(),
+                TEST_QUERY_ID,
+                &CancellationToken::new(),
+                &provider,
+                "hi",
+                5,
+            )
+            .await;
+            assert_eq!(outcome, LoopOutcome::Answer("done".to_string()));
+            let cap = provider.seen.lock().unwrap().expect("max_tokens forwarded");
+            // The cap leaves room within the window and reserves at least the
+            // headroom: input + output cannot exceed the model window.
+            assert!(cap > 0 && cap <= 8192, "cap {cap} within window");
+            assert!(cap >= CONTEXT_HEADROOM as u64, "at least the headroom is reserved");
+        }
+
+        #[tokio::test]
+        async fn an_over_window_question_fails_closed_before_the_provider() {
+            // A question that alone exceeds the model window: the loop fails
+            // closed rather than sending an over-window prompt, and never calls
+            // the provider.
+            let client = tokio::sync::Mutex::new(McpClient::new());
+            let runner = StubRunner::ok("(unused)");
+            let audit = Arc::new(MockAuditSink::accepting());
+            let provider = CountingProvider {
+                calls: std::sync::atomic::AtomicUsize::new(0),
+            };
+            let huge_question = "x".repeat(20_000); // exceeds the 8192 default
+            let scope = test_scope();
+
+            let outcome = run_tool_loop(
+                &client,
+                &runner,
+                &scope,
+                audit.clone(),
+                TEST_QUERY_ID,
+                &CancellationToken::new(),
+                &provider,
+                &huge_question,
+                5,
+            )
+            .await;
+            assert!(matches!(outcome, LoopOutcome::Failed(_)), "got {outcome:?}");
+            assert_eq!(
+                provider.calls.load(std::sync::atomic::Ordering::SeqCst),
+                0,
+                "an over-window prompt must not be sent to the provider"
             );
         }
 
