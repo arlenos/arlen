@@ -87,6 +87,16 @@ pub struct AgentConfig {
     ///    and edge absence atomically, not the gate's `PathUnderField`. A fact
     ///    outside the write predicate can change in between (gap A2, needs a
     ///    graph snapshot/version).
+    /// 4. **Authorisation grant (provisioned).** The write only succeeds if the
+    ///    agent's permission profile is installed at
+    ///    `~/.config/permissions/ai-agent.toml`: the knowledge daemon mints the
+    ///    write token from it. The shipped template
+    ///    (`ai/ai-agent/dist/permissions/ai-agent.toml`) grants exactly the one
+    ///    `FILE_PART_OF` relation the auto-tag workflow writes, with the
+    ///    all-instances scope that unowned system-to-system link requires, and
+    ///    nothing else. Going live is: install that file, then set
+    ///    `executor_live = true`. Without the profile the agent stays in
+    ///    suggest-mode in effect (every write is refused for lack of a grant).
     pub executor_live: bool,
 }
 

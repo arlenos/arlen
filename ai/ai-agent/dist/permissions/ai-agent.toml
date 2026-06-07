@@ -1,0 +1,34 @@
+# Permission profile for the AI agent daemon (app id: ai-agent).
+#
+# Deploy to ~/.config/permissions/ai-agent.toml. The knowledge daemon loads it
+# by app id when the agent connects to the graph write socket and mints a token
+# from these scopes (Foundation §7.3: the user owns this file, it is the sole
+# source of truth for what the agent may touch).
+#
+# This is the executor go-live grant. The agent's only write is the auto-tag
+# workflow linking a file to the project it lives under, so the profile grants
+# exactly that one relation and nothing more. Going live is flipping
+# `executor_live = true` in ai.toml once this file is in place; the grant here
+# is what bounds the blast radius of that flip.
+
+[graph]
+# The two node types the auto-tag behaviour reasons about: it reads a File and
+# the Project it might belong to, then proves the file lies under the project
+# root before proposing the link. Type-level reads of just these two; nothing
+# else is legible to the agent.
+read = ["system.File", "system.Project"]
+
+# The single relation the agent may create: File -[FILE_PART_OF]-> Project.
+# FILE_PART_OF is a built-in relation the knowledge daemon allows; this is the
+# one edge the deterministic auto-tag workflow writes.
+relations = [
+    { from = "system.File", to = "system.Project", type = "FILE_PART_OF" },
+]
+
+# Both endpoints are system-owned nodes the agent does not own, so linking them
+# needs the privileged all-instances scope. Without this the write socket
+# refuses the relation as unanchored (it has no caller-owned endpoint). This is
+# the deliberate privilege the grant rests on, kept narrow by the single-relation
+# allowlist above: all-instances applies only to FILE_PART_OF between File and
+# Project, not to writes in general.
+instance_scope = "all"
