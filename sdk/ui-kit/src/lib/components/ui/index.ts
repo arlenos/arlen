@@ -25,6 +25,14 @@
 // Re-export only the custom Arlen components that have unique names
 // and NO app-specific store imports. Components that depend on
 // `$lib/stores/theme` etc. stay in their respective apps.
+export { ChipList } from "./chip-list";
+// Collapsible re-exports all three named parts so consumers can import from
+// a single path: `import { Collapsible, CollapsibleTrigger, CollapsibleContent }`
+export {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "./collapsible";
 export { ConfirmDialog } from "./confirm-dialog";
 export { DaysPicker } from "./days-picker";
 export { FillSlider } from "./fill-slider";
@@ -33,7 +41,6 @@ export { NumberInput } from "./number-input";
 export { Page } from "./page";
 export { PopoverSelect, type PopoverSelectOption } from "./popover-select";
 export { PositionPicker } from "./position-picker";
-export { ChipList } from "./chip-list";
 export { Row } from "./row";
 export { SectionGrid } from "./section-grid";
 export { SegmentedControl } from "./segmented-control";

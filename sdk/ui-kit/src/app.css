@@ -78,6 +78,23 @@
   --easing-exit:    cubic-bezier(0.4, 0.0, 1.0, 1);
   --easing-spring:  cubic-bezier(0.34, 1.56, 0.64, 1); /* snap/bounce feedback */
 
+  /* Semantic radius tokens, see docs/architecture/design-system.md §3.
+     Named by the component role that defines the rounding step.
+     The generic --radius-sm/md/lg/xl aliases above map to these too
+     (kept for backwards compat in the shadcn-derived components). */
+  --radius-chip:   4px;   /* Tags, inline badges, chip list items */
+  --radius-button: 6px;   /* Buttons (between chip and input) */
+  --radius-input:  8px;   /* Text inputs, selects, segmented controls */
+  --radius-card:   12px;  /* Group/section cards, stat tiles */
+  --radius-modal:  16px;  /* Dialogs, large overlay sheets */
+
+  /* Spacing tokens, centralise layout rhythm so section/row gaps
+     and page padding are one definition. See design-system.md §3.
+     Components reference these; apps may override in :root. */
+  --space-row:     0.75rem;  /* Internal row padding (within a section card) */
+  --space-section: 1.5rem;   /* Gap between sections / SectionGrid column gap */
+  --space-page:    1.5rem;   /* Page horizontal + top padding */
+
   /* ============================================================
      Shadcn/ui variable mapping (app surface context)
      Components default to app-surface colors unless inside
@@ -163,6 +180,13 @@
   --radius-3xl: var(--radius-3xl, 32px);
   --radius-full: var(--radius-full, 9999px);
   --radius: var(--radius-md, 8px);
+  /* Semantic radius utilities (rounded-chip, rounded-button, rounded-input,
+     rounded-card, rounded-modal), matching the design-system.md §3 token set. */
+  --radius-chip: var(--radius-chip, 4px);
+  --radius-button: var(--radius-button, 6px);
+  --radius-input: var(--radius-input, 8px);
+  --radius-card: var(--radius-card, 12px);
+  --radius-modal: var(--radius-modal, 16px);
 
   /* Sizing-scale utilities — see docs/architecture/sizing-system.md.
      Generates h-tag, h-control-compact, h-control,

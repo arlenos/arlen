@@ -53,7 +53,9 @@
     display: flex;
     flex-direction: column;
     gap: 0.625rem;
-    padding: 0.75rem 1rem;
+    /* Top/bottom uses the row spacing token; horizontal stays fixed at 1rem
+       to give the label a reliable left edge regardless of token overrides. */
+    padding: var(--space-row, 0.75rem) 1rem;
   }
 
   .row-main {

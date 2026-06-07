@@ -17,7 +17,9 @@
 <style>
   .section-grid {
     display: grid;
-    gap: 1.5rem;
+    /* Use the shared spacing token; the fallback matches the design-system
+       spec value so this works even before the token is set in :root. */
+    gap: var(--space-section, 1.5rem);
     /* `min(100%, 28rem)` keeps each card readable (~448px) while collapsing to
        a single column below that width instead of overflowing. `auto-fit`
        yields two columns once the container can hold them. */
