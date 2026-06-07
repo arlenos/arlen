@@ -5,10 +5,9 @@
 /// (this is what the shell reads -- `[colors].accent` is ignored by the
 /// shell and therefore must NOT be used for the accent).
 ///
-/// When no override is set, the accent defaults to the active theme's
-/// built-in value from `desktop-shell/src-tauri/themes/{dark,light}.toml`:
-///   - dark:  #6366f1
-///   - light: #4f46e5
+/// When no override is set, the accent is monochrome: it follows the active
+/// theme's foreground, so it flips with dark/light and ships no colour. A
+/// colour appears only when the user picks a swatch.
 
 import { createConfigStore, type ConfigStore } from "./config";
 
