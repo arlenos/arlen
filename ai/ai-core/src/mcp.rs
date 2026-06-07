@@ -59,6 +59,40 @@ pub struct ToolDef {
     pub description: Option<String>,
 }
 
+/// One tool in the assembled catalogue: a [`ToolDef`] tagged with the server
+/// it belongs to and that server's permission class, so the routing layer can
+/// present it to the model and apply the read-only-vs-action gate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogueTool {
+    /// The server that exposes this tool.
+    pub server: ServerId,
+    /// The server's permission class (read-only servers are default-permit).
+    pub class: ServerClass,
+    /// Tool name (the `tools/call` target on `server`).
+    pub name: String,
+    /// Human-readable description, if any.
+    pub description: Option<String>,
+}
+
+/// Flatten per-server tool listings into a single catalogue. Pure, so the
+/// shaping is tested without a live server; the RPC fan-out lives in
+/// [`McpClient::tool_catalogue`].
+fn flatten_catalogue(
+    per_server: Vec<(ServerId, ServerClass, Vec<ToolDef>)>,
+) -> Vec<CatalogueTool> {
+    per_server
+        .into_iter()
+        .flat_map(|(server, class, tools)| {
+            tools.into_iter().map(move |t| CatalogueTool {
+                server: server.clone(),
+                class,
+                name: t.name,
+                description: t.description,
+            })
+        })
+        .collect()
+}
+
 /// Tracks one MCP call chain.
 ///
 /// A chain starts at depth 1 with [`CallChain::root`]. When an MCP
@@ -352,6 +386,25 @@ impl McpClient {
                 description: t.description.map(|d| d.to_string()),
             })
             .collect())
+    }
+
+    /// Assemble the tool catalogue across every connected server: one entry
+    /// per tool, tagged with its server and the server's permission class, for
+    /// presenting the available tools to the model. Best-effort: a server
+    /// whose tool listing fails is skipped rather than blanking the catalogue,
+    /// so one unreachable server does not hide the rest.
+    pub async fn tool_catalogue(&self) -> Vec<CatalogueTool> {
+        let ids: Vec<ServerId> = self.servers.keys().cloned().collect();
+        let mut per_server = Vec::with_capacity(ids.len());
+        for id in ids {
+            let Some(class) = self.server_class(&id) else {
+                continue;
+            };
+            if let Ok(tools) = self.list_tools(&id).await {
+                per_server.push((id, class, tools));
+            }
+        }
+        flatten_catalogue(per_server)
     }
 
     /// Call a tool on a connected server.
@@ -648,6 +701,35 @@ mod tests {
     use rmcp::handler::server::router::tool::ToolRouter;
     use rmcp::{tool, tool_handler, tool_router, ServerHandler};
     use tokio::net::UnixListener;
+
+    #[test]
+    fn flatten_catalogue_tags_each_tool_with_its_server_and_class() {
+        let tool = |n: &str| ToolDef {
+            name: n.to_string(),
+            description: None,
+        };
+        let cat = flatten_catalogue(vec![
+            (
+                ServerId("system.knowledge".into()),
+                ServerClass::ReadOnly,
+                vec![tool("query"), tool("describe_schema")],
+            ),
+            (
+                ServerId("com.example.notes".into()),
+                ServerClass::Action,
+                vec![tool("create_note")],
+            ),
+        ]);
+        assert_eq!(cat.len(), 3, "every tool from every server is listed");
+        // Read-only server's tools carry its id and class.
+        let q = cat.iter().find(|c| c.name == "query").unwrap();
+        assert_eq!(q.server, ServerId("system.knowledge".into()));
+        assert_eq!(q.class, ServerClass::ReadOnly);
+        // The action server's tool is tagged Action so the gate can require
+        // confirmation before dispatch.
+        let n = cat.iter().find(|c| c.name == "create_note").unwrap();
+        assert_eq!(n.class, ServerClass::Action);
+    }
 
     #[derive(Clone)]
     struct TestServer {
