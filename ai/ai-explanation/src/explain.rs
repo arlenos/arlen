@@ -17,7 +17,9 @@ use arlen_ai_core::provider::{AIProvider, CompletionRequest};
 
 use crate::prompt::build_explanation_prompt;
 use crate::snapshot::SystemSnapshot;
-use crate::source::{graph_context, GraphReader, SnapshotError};
+use crate::source::{
+    anomaly_context, graph_context, merge_snapshots, AnomalyReader, GraphReader, SnapshotError,
+};
 
 /// Advisory cap on the summary length. The explanation is a few
 /// sentences; bounding the output keeps it concise and the cost (on a
@@ -66,6 +68,22 @@ pub async fn explain_system(
     now_unix: i64,
 ) -> Result<String, ExplainError> {
     let snapshot = graph_context(reader, now_unix).await?;
+    explain(&snapshot, provider).await
+}
+
+/// Assemble the graph half and the anomaly half, [`merge_snapshots`] them,
+/// and [`explain`] the result. This is the fuller convenience the daemon
+/// uses once an anomaly source is wired; the live-moment process source
+/// folds in here the same way when it lands. `now_unix` stamps the snapshot.
+pub async fn explain_with_sources(
+    graph_reader: &dyn GraphReader,
+    anomaly_reader: &dyn AnomalyReader,
+    provider: &dyn AIProvider,
+    now_unix: i64,
+) -> Result<String, ExplainError> {
+    let graph = graph_context(graph_reader, now_unix).await?;
+    let anomalies = anomaly_context(anomaly_reader, now_unix)?;
+    let snapshot = merge_snapshots(graph, anomalies);
     explain(&snapshot, provider).await
 }
 
@@ -146,5 +164,40 @@ mod tests {
         let provider = MockProvider::err(ProviderError::Unavailable("no daemon".into()));
         let err = explain(&quiet(), &provider).await.unwrap_err();
         assert!(matches!(err, ExplainError::Provider(_)));
+    }
+
+    struct EmptyGraph;
+    #[async_trait]
+    impl GraphReader for EmptyGraph {
+        async fn query_rows(
+            &self,
+            _cypher: &str,
+        ) -> Result<Vec<std::collections::HashMap<String, serde_json::Value>>, SnapshotError> {
+            Ok(Vec::new())
+        }
+    }
+
+    struct OneAnomaly;
+    impl AnomalyReader for OneAnomaly {
+        fn read_anomalies(
+            &self,
+        ) -> Result<Vec<crate::snapshot::Anomaly>, SnapshotError> {
+            Ok(vec![crate::snapshot::Anomaly {
+                kind: crate::snapshot::AnomalyKind::UnusualForContext,
+                description: "a surprising rate spike".into(),
+            }])
+        }
+    }
+
+    #[tokio::test]
+    async fn explain_with_sources_folds_anomalies_into_the_prompt() {
+        let provider = MockProvider::ok("ok");
+        let summary = explain_with_sources(&EmptyGraph, &OneAnomaly, &provider, 1)
+            .await
+            .unwrap();
+        assert_eq!(summary, "ok");
+        // The anomaly the source returned reaches the prompt the model sees.
+        let prompt = provider.seen_prompt.lock().unwrap().clone().unwrap();
+        assert!(prompt.contains("a surprising rate spike"));
     }
 }
