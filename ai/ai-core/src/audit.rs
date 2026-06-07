@@ -88,10 +88,12 @@ pub fn explain_event(
 
 /// Build the audit event for one MCP tool call.
 ///
-/// A `depth-exceeded` outcome is a refused call and classifies as a
-/// [`AuditKind::PolicyViolation`]; every other outcome is a
-/// [`AuditKind::ToolCall`]. Tool arguments are deliberately excluded
-/// (foundation §8.4.7: PII risk).
+/// A refused call classifies as a [`AuditKind::PolicyViolation`]: a
+/// `depth-exceeded` (the chain bound) or a `policy-denied` (a
+/// trust-boundary refusal, e.g. a direct raw-Cypher knowledge call the
+/// interactive tool loop routes through its scoped graph tool instead).
+/// Every other outcome is a [`AuditKind::ToolCall`]. Tool arguments are
+/// deliberately excluded (foundation §8.4.7: PII risk).
 ///
 /// The Structural subject is **content-free by construction**: it is
 /// only ever a fixed label or a discovery-attested server id, never a
@@ -117,7 +119,7 @@ pub fn mcp_event(
     call_chain_id: &str,
     resolved: bool,
 ) -> IngestRequest {
-    let kind = if outcome == "depth-exceeded" {
+    let kind = if matches!(outcome, "depth-exceeded" | "policy-denied") {
         AuditKind::PolicyViolation
     } else {
         AuditKind::ToolCall
@@ -248,6 +250,10 @@ mod tests {
         assert_eq!(ok.kind, AuditKind::ToolCall);
         assert_eq!(ok.structural.subject, "srv");
         assert_eq!(ok.structural.depth, Some(1));
+        // A trust-boundary refusal (e.g. a direct raw-knowledge call the
+        // interactive loop reroutes) is a policy violation, not a tool call.
+        let denied = mcp_event("system.knowledge", "policy-denied", 1, "c", true);
+        assert_eq!(denied.kind, AuditKind::PolicyViolation);
     }
 
     #[test]

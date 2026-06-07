@@ -726,11 +726,19 @@ impl AiDaemonService {
         // a `Result<String, RunFailure>` so the terminal handling below is
         // shared, and both honour cancellation through the same select.
         let result = if let Some(tl) = &self.tool_loop {
-            // Held across the loop's tool calls; discovery's periodic
-            // health-check waits briefly, which is acceptable for an
-            // interactive query (see ai-tool-routing.md).
-            let client = tl.client.lock().await;
-            let loop_call = run_tool_loop(&client, tl.provider.as_ref(), &prompt, tl.max_steps);
+            // The loop locks the shared MCP client per operation (see
+            // run_tool_loop); the lock is acquired inside the future the
+            // select polls, so a cancellation fires even while the loop is
+            // waiting on the client lock or a tool call is in flight.
+            let loop_call = run_tool_loop(
+                &tl.client,
+                self.runner.as_ref(),
+                &scope,
+                self.audit.as_ref(),
+                tl.provider.as_ref(),
+                &prompt,
+                tl.max_steps,
+            );
             tokio::select! {
                 biased;
                 _ = cancel.cancelled() => {
