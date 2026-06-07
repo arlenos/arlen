@@ -12,6 +12,7 @@ use arlen_ai_core::mcp::{
     AlwaysConfirmReason, CallChain, CallDecision, CatalogueTool, McpClient, ServerId,
 };
 use arlen_ai_core::pipeline::extract_json;
+use arlen_ai_core::provider::{AIProvider, CompletionRequest};
 use arlen_ai_core::tagging::{Block, Origin, TaggedPrompt};
 use serde::Deserialize;
 
@@ -226,6 +227,91 @@ pub async fn gated_dispatch(
         Ok(result) => DispatchOutcome::Result(result),
         Err(e) => DispatchOutcome::Failed(e.to_string()),
     }
+}
+
+/// The outcome of running the interactive tool-use loop.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LoopOutcome {
+    /// The model produced a final answer.
+    Answer(String),
+    /// A tool call was blocked by the gate (needs confirmation or
+    /// authorization); the loop stops and surfaces it rather than proceeding.
+    Blocked(DispatchOutcome),
+    /// The step budget ran out before a final answer.
+    Exhausted,
+    /// The loop could not proceed: a provider error or an unparseable reply.
+    Failed(String),
+}
+
+/// Run the bounded interactive tool-use loop: assemble the tool catalogue, then
+/// repeatedly prompt the model, parse its step, and either answer or gate and
+/// dispatch one tool call, feeding the result back, until a final answer or the
+/// step budget. Read-only servers are default-permit; an action server with no
+/// grant surfaces as `Blocked` instead of being called.
+///
+/// This is the orchestration of the loop's building blocks. It is additive and
+/// not yet wired into the daemon's query path; that wiring lands behind a
+/// default-off flag with an integration test and a Codex pass
+/// (`docs/architecture/ai-tool-routing.md`).
+pub async fn run_tool_loop(
+    client: &McpClient,
+    provider: &dyn AIProvider,
+    question: &str,
+    max_steps: u32,
+) -> LoopOutcome {
+    let catalogue = client.tool_catalogue().await;
+    let chain = CallChain::root();
+    let mut transcript: Vec<ToolStep> = Vec::new();
+
+    for _ in 0..max_steps {
+        let prompt = build_tool_prompt(question, &catalogue, &transcript);
+        let reply = match provider
+            .complete(CompletionRequest {
+                prompt,
+                extras: serde_json::json!({}),
+            })
+            .await
+        {
+            Ok(r) => r.text,
+            Err(e) => return LoopOutcome::Failed(format!("provider error: {e}")),
+        };
+        match parse_loop_step(&reply) {
+            Ok(LoopStep::Answer { text }) => return LoopOutcome::Answer(text),
+            Ok(LoopStep::CallTool {
+                server,
+                tool,
+                arguments,
+            }) => {
+                // No per-session action grant in the interactive loop yet, so
+                // action servers surface as Blocked; read-only servers (the
+                // knowledge graph) are default-permit.
+                match gated_dispatch(client, &server, &tool, &arguments, false, &chain).await {
+                    DispatchOutcome::Result(result) => transcript.push(ToolStep {
+                        server,
+                        tool,
+                        arguments,
+                        result,
+                    }),
+                    blocked @ (DispatchOutcome::NeedsConfirmation(_)
+                    | DispatchOutcome::NeedsAuthorization) => {
+                        return LoopOutcome::Blocked(blocked)
+                    }
+                    DispatchOutcome::Failed(e) => {
+                        // Record the failure so the model can adjust on the next
+                        // step rather than aborting the loop on one tool error.
+                        transcript.push(ToolStep {
+                            server,
+                            tool,
+                            arguments,
+                            result: format!("error: {e}"),
+                        });
+                    }
+                }
+            }
+            Err(e) => return LoopOutcome::Failed(format!("unparseable step: {e}")),
+        }
+    }
+    LoopOutcome::Exhausted
 }
 
 #[cfg(test)]
