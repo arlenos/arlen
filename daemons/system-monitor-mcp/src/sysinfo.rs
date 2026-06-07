@@ -95,6 +95,50 @@ fn parse_meminfo(text: &str) -> (Option<u64>, Option<u64>) {
     (total, available)
 }
 
+/// Disk usage of one filesystem.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DiskUsage {
+    /// The path queried (the filesystem containing it is reported).
+    pub path: String,
+    /// Total and available bytes on that filesystem.
+    pub total_bytes: u64,
+    pub available_bytes: u64,
+}
+
+/// Total and available bytes from raw `statvfs` block counts and fragment
+/// size. Pure (and overflow-guarded), so the arithmetic is unit-tested without
+/// the syscall. `available` uses `f_bavail` (blocks free to unprivileged
+/// users), the number that matters for "can I still write here".
+fn bytes_from_statvfs(blocks: u64, bavail: u64, frsize: u64) -> (u64, u64) {
+    (
+        blocks.saturating_mul(frsize),
+        bavail.saturating_mul(frsize),
+    )
+}
+
+/// Disk usage of the filesystem containing `path` (e.g. `/`), via `statvfs`.
+/// Returns `None` if the path is unrepresentable or the syscall fails.
+pub fn disk_usage(path: &str) -> Option<DiskUsage> {
+    let c_path = std::ffi::CString::new(path).ok()?;
+    // SAFETY: `statvfs` fills a caller-owned, zeroed buffer and reports success
+    // via its return code, which is checked before any field is read.
+    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+    let rc = unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) };
+    if rc != 0 {
+        return None;
+    }
+    let (total_bytes, available_bytes) = bytes_from_statvfs(
+        stat.f_blocks as u64,
+        stat.f_bavail as u64,
+        stat.f_frsize as u64,
+    );
+    Some(DiskUsage {
+        path: path.to_string(),
+        total_bytes,
+        available_bytes,
+    })
+}
+
 /// Reads `/proc` (root configurable for tests). All reads are local and fast,
 /// and a vanished PID or missing file is just skipped, never an error.
 pub struct ProcReader {
@@ -207,6 +251,24 @@ mod tests {
         let text = "MemTotal:       16334072 kB\nMemFree:  100 kB\nMemAvailable:    9000000 kB\n";
         assert_eq!(parse_meminfo(text), (Some(16_334_072), Some(9_000_000)));
         assert_eq!(parse_meminfo("nothing useful"), (None, None));
+    }
+
+    #[test]
+    fn bytes_from_statvfs_multiplies_and_guards_overflow() {
+        assert_eq!(bytes_from_statvfs(100, 40, 4096), (409_600, 163_840));
+        // Overflow saturates rather than wrapping.
+        assert_eq!(bytes_from_statvfs(u64::MAX, u64::MAX, 4096), (u64::MAX, u64::MAX));
+    }
+
+    #[test]
+    fn disk_usage_reads_the_root_filesystem() {
+        // "/" exists on any build/CI host, so this exercises the real syscall.
+        let usage = disk_usage("/").expect("root filesystem statvfs");
+        assert_eq!(usage.path, "/");
+        assert!(usage.total_bytes > 0);
+        assert!(usage.available_bytes <= usage.total_bytes);
+        // A nonexistent path fails cleanly to None.
+        assert!(disk_usage("/no/such/path/here/at/all").is_none());
     }
 
     #[test]

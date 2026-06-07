@@ -42,6 +42,7 @@ dependencies = [
 name = "arlen-system-monitor-mcp"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "os-sdk",
  "serde",
  "serde_json",

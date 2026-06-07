@@ -37,6 +37,9 @@ pub const LIST_TOOL: &str = "list_processes";
 /// Resource-usage tool (load average, memory).
 pub const RES_TOOL: &str = "resource_usage";
 
+/// Disk-usage tool (root filesystem total/available).
+pub const DISK_TOOL: &str = "disk_usage";
+
 /// Per-call wall budget. `/proc` reads are local and fast, so this is just a
 /// backstop against a pathological stall; on timeout the call returns a tool
 /// error rather than hanging the caller.
@@ -90,6 +93,10 @@ impl ServerHandler for SystemMonitorMcp {
                 RES_TOOL,
                 "Return load average (1/5/15 min) and memory (total/available kB). Read-only, no arguments.",
             ),
+            Self::no_arg_tool(
+                DISK_TOOL,
+                "Return root filesystem disk usage (total/available bytes). Read-only, no arguments.",
+            ),
         ]))
     }
 
@@ -99,17 +106,18 @@ impl ServerHandler for SystemMonitorMcp {
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let tool = request.name.to_string();
-        if tool != LIST_TOOL && tool != RES_TOOL {
+        if tool != LIST_TOOL && tool != RES_TOOL && tool != DISK_TOOL {
             return Err(McpError::invalid_request(format!("unknown tool: {tool}"), None));
         }
 
-        // Read off the async runtime (sync `/proc` reads), under a wall budget.
+        // Read off the async runtime (sync `/proc` + `statvfs`), under a wall
+        // budget.
         let work = tokio::task::spawn_blocking(move || {
             let reader = sysinfo::ProcReader::new();
-            if tool == LIST_TOOL {
-                serde_json::to_value(reader.list_processes())
-            } else {
-                serde_json::to_value(reader.resource_usage())
+            match tool.as_str() {
+                LIST_TOOL => serde_json::to_value(reader.list_processes()),
+                RES_TOOL => serde_json::to_value(reader.resource_usage()),
+                _ => serde_json::to_value(sysinfo::disk_usage("/")),
             }
         });
 
