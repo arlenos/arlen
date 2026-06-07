@@ -23,7 +23,12 @@ pub enum Commands {
         app_id: String,
     },
     /// List all installed apps (lunpkg + flatpak).
-    List,
+    List {
+        /// Output a JSON array instead of the formatted table (for scripts
+        /// and other tools, e.g. the store app).
+        #[arg(long)]
+        json: bool,
+    },
     /// Show details for an installed app.
     Info {
         /// App ID.

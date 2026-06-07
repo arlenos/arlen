@@ -144,8 +144,27 @@ pub async fn uninstall_flatpak(conn: &Connection, app_id: &str) -> Result<(), St
     call_and_wait(conn, "UninstallFlatpak", &(app_id.to_string(),)).await
 }
 
-/// List all installed apps.
-pub async fn list_installed(conn: &Connection) -> Result<(), String> {
+/// Serialize the installed-app tuples `(id, name, version, source)` as a JSON
+/// array of objects, for `--json`. Pure, so the wire shape is unit-tested
+/// without a daemon; an empty list renders as `[]`.
+pub fn apps_to_json(apps: &[(String, String, String, String)]) -> String {
+    let array: Vec<serde_json::Value> = apps
+        .iter()
+        .map(|(id, name, version, source)| {
+            serde_json::json!({
+                "id": id,
+                "name": name,
+                "version": version,
+                "source": source,
+            })
+        })
+        .collect();
+    serde_json::to_string_pretty(&serde_json::Value::Array(array))
+        .unwrap_or_else(|_| "[]".to_string())
+}
+
+/// List all installed apps: a formatted table, or a JSON array when `json`.
+pub async fn list_installed(conn: &Connection, json: bool) -> Result<(), String> {
     let iface = zbus::names::InterfaceName::try_from(INTERFACE).unwrap();
     let bus = zbus::names::BusName::try_from(BUS_NAME).unwrap();
     let path = zbus::zvariant::ObjectPath::try_from(OBJECT_PATH).unwrap();
@@ -159,6 +178,13 @@ pub async fn list_installed(conn: &Connection) -> Result<(), String> {
         .body()
         .deserialize()
         .map_err(|e| format!("failed to parse response: {e}"))?;
+
+    // Machine-readable output: just the JSON array, no decorations, and `[]`
+    // when empty so a consumer can parse unconditionally.
+    if json {
+        println!("{}", apps_to_json(&apps));
+        return Ok(());
+    }
 
     if apps.is_empty() {
         println!("{}", "no apps installed".dimmed());
@@ -369,4 +395,31 @@ pub async fn info_app(app_id: &str) -> Result<(), String> {
     }
 
     Err(format!("{app_id} not found"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::apps_to_json;
+
+    #[test]
+    fn empty_list_is_an_empty_json_array() {
+        assert_eq!(apps_to_json(&[]), "[]");
+    }
+
+    #[test]
+    fn apps_serialize_to_objects_with_the_expected_keys() {
+        let apps = vec![(
+            "com.example.app".to_string(),
+            "Example".to_string(),
+            "1.2.3".to_string(),
+            "lunpkg".to_string(),
+        )];
+        let json = apps_to_json(&apps);
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let first = &parsed[0];
+        assert_eq!(first["id"], "com.example.app");
+        assert_eq!(first["name"], "Example");
+        assert_eq!(first["version"], "1.2.3");
+        assert_eq!(first["source"], "lunpkg");
+    }
 }
