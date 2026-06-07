@@ -17,6 +17,7 @@ use arlen_ai_core::pipeline::{extract_json, QueryRunner};
 use arlen_ai_core::provider::{AIProvider, CompletionRequest};
 use arlen_ai_core::tagging::{Block, Origin, TaggedPrompt};
 use serde::Deserialize;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
@@ -338,10 +339,17 @@ fn extract_graph_question(arguments: &str) -> Result<String, String> {
 /// against it (so a cancel interrupts a slow call promptly). Because the loop
 /// owns its own cancellation it always returns a definite [`LoopOutcome`] and is
 /// never dropped mid-flight by an outer select; the dispatch caller awaits it
-/// rather than racing it. The provider race is provider-biased so that a reply
-/// that has *already arrived* is processed even if a cancel is also ready: a
-/// model-produced raw-knowledge probe is then recorded as a policy violation
-/// rather than silently discarded by the cancel.
+/// rather than racing it.
+///
+/// **Every** await is cancel-aware so a cancel cannot pin the dispatch task or
+/// hold the shared MCP mutex under a degraded dependency: the catalogue
+/// assembly, the provider call, each graph/MCP audit submit, the graph read,
+/// and each MCP lock + tool call are all raced against the token. The provider
+/// race is provider-biased so a reply that has *already arrived* is processed
+/// even if a cancel is also ready, so a model-produced raw-knowledge probe is
+/// recorded rather than discarded. That policy-violation record is submitted on
+/// a detached task: it neither blocks the loop's return (a hung audit sink
+/// cannot wedge the terminal transition) nor is lost if the caller cancels.
 // The loop's collaborators are each distinct (client, runner, scope, audit,
 // cancel, provider) and threaded as borrows; grouping them into a context
 // struct used by this one function would be ceremony, not clarity.
@@ -350,7 +358,7 @@ pub async fn run_tool_loop(
     client: &Mutex<McpClient>,
     runner: &dyn QueryRunner,
     scope: &QueryScope,
-    audit: &dyn AuditSink,
+    audit: Arc<dyn AuditSink>,
     query_id: &str,
     cancel: &CancellationToken,
     provider: &dyn AIProvider,
@@ -360,7 +368,13 @@ pub async fn run_tool_loop(
     if cancel.is_cancelled() {
         return LoopOutcome::Cancelled;
     }
-    let raw_catalogue = client.lock().await.tool_catalogue().await;
+    // Catalogue assembly touches the shared MCP client; race it against cancel
+    // so a contended lock or a stuck tool listing cannot pin the task.
+    let raw_catalogue = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => return LoopOutcome::Cancelled,
+        c = async { client.lock().await.tool_catalogue().await } => c,
+    };
     let catalogue = interactive_catalogue(raw_catalogue);
     // Seed the call chain from the query id so every tool entry in this loop
     // (MCP tools via call_tool, and the internal graph reads below) joins the
@@ -419,18 +433,21 @@ pub async fn run_tool_loop(
                                 // outcome entry. A read inside an already
                                 // admitted query is still recorded per call, so
                                 // a mid-loop ledger outage is caught and the
-                                // activity surface sees every graph access.
-                                if audit
-                                    .submit(audit::mcp_event(
+                                // activity surface sees every graph access. Both
+                                // submits are raced against cancel so a stuck
+                                // sink cannot pin the task.
+                                let dispatched = tokio::select! {
+                                    biased;
+                                    _ = cancel.cancelled() => return LoopOutcome::Cancelled,
+                                    r = audit.submit(audit::mcp_event(
                                         GRAPH_TOOL_SERVER,
                                         "dispatched",
                                         chain.depth,
                                         &chain.id.to_string(),
                                         true,
-                                    ))
-                                    .await
-                                    .is_err()
-                                {
+                                    )) => r,
+                                };
+                                if dispatched.is_err() {
                                     return LoopOutcome::Failed(
                                         "graph query refused: audit log unavailable".to_string(),
                                     );
@@ -448,15 +465,17 @@ pub async fn run_tool_loop(
                                     DispatchOutcome::Result(_) => "ok",
                                     _ => "failed",
                                 };
-                                let _ = audit
-                                    .submit(audit::mcp_event(
+                                tokio::select! {
+                                    biased;
+                                    _ = cancel.cancelled() => return LoopOutcome::Cancelled,
+                                    _ = audit.submit(audit::mcp_event(
                                         GRAPH_TOOL_SERVER,
                                         label,
                                         chain.depth,
                                         &chain.id.to_string(),
                                         true,
-                                    ))
-                                    .await;
+                                    )) => {}
+                                }
                                 outcome
                             }
                             Err(e) => DispatchOutcome::Failed(e),
@@ -469,19 +488,26 @@ pub async fn run_tool_loop(
                     // injection-driven), so record it as a policy violation and
                     // end the loop denied, rather than feeding the error back
                     // where the model could continue and mask it behind a
-                    // fabricated answer. The reply is already in hand, so the
-                    // record runs inline (not raced against cancel): the loop
-                    // owns its cancellation and is not dropped, and a produced
-                    // probe must be recorded regardless of a racing cancel.
-                    let _ = audit
-                        .submit(audit::mcp_event(
-                            RAW_KNOWLEDGE_SERVER,
-                            "policy-denied",
-                            chain.depth,
-                            &chain.id.to_string(),
-                            true,
-                        ))
-                        .await;
+                    // fabricated answer. The probe reply is already in hand, so
+                    // the record is submitted on a DETACHED task and the loop
+                    // returns Denied immediately: a hung audit sink cannot wedge
+                    // the terminal transition, and the record is not lost if the
+                    // caller cancels (a detached task is not cancelled when the
+                    // loop returns).
+                    let audit_for_record = Arc::clone(&audit);
+                    let chain_id = chain.id.to_string();
+                    let depth = chain.depth;
+                    tokio::spawn(async move {
+                        let _ = audit_for_record
+                            .submit(audit::mcp_event(
+                                RAW_KNOWLEDGE_SERVER,
+                                "policy-denied",
+                                depth,
+                                &chain_id,
+                                true,
+                            ))
+                            .await;
+                    });
                     return LoopOutcome::Denied(format!(
                         "{RAW_KNOWLEDGE_SERVER} is not callable directly; \
                          use {GRAPH_TOOL_SERVER}/{GRAPH_TOOL_NAME}"
@@ -489,13 +515,16 @@ pub async fn run_tool_loop(
                 } else {
                     // No per-session action grant in the interactive loop yet,
                     // so action servers surface as Blocked; other read-only
-                    // servers are default-permit. Lock only for the call, and
-                    // race the (possibly slow) call against cancel.
-                    let guard = client.lock().await;
+                    // servers are default-permit. Lock only for the call, with
+                    // the lock acquisition itself inside the cancel race so a
+                    // contended mutex cannot pin the task.
                     tokio::select! {
                         biased;
                         _ = cancel.cancelled() => return LoopOutcome::Cancelled,
-                        o = gated_dispatch(&guard, &server, &tool, &arguments, false, &chain) => o,
+                        o = async {
+                            let guard = client.lock().await;
+                            gated_dispatch(&guard, &server, &tool, &arguments, false, &chain).await
+                        } => o,
                     }
                 };
                 match outcome {
@@ -858,7 +887,7 @@ mod tests {
                 &client,
                 &runner,
                 &test_scope(),
-                audit.as_ref(),
+                audit.clone(),
                 TEST_QUERY_ID,
                 &CancellationToken::new(),
                 &provider,
@@ -889,7 +918,7 @@ mod tests {
                 &client,
                 &runner,
                 &test_scope(),
-                audit.as_ref(),
+                audit.clone(),
                 TEST_QUERY_ID,
                 &CancellationToken::new(),
                 &provider,
@@ -934,7 +963,7 @@ mod tests {
                 &client,
                 &runner,
                 &test_scope(),
-                audit.as_ref(),
+                audit.clone(),
                 TEST_QUERY_ID,
                 &CancellationToken::new(),
                 &provider,
@@ -985,7 +1014,7 @@ mod tests {
                 &client,
                 &runner,
                 &test_scope(),
-                audit.as_ref(),
+                audit.clone(),
                 TEST_QUERY_ID,
                 &CancellationToken::new(),
                 &provider,
@@ -998,18 +1027,74 @@ mod tests {
             // raw Cypher reached the server, and the runner was not used.
             assert!(matches!(outcome, LoopOutcome::Denied(_)), "got {outcome:?}");
             assert!(runner.seen.lock().unwrap().is_empty());
-            // The denial was recorded as a policy violation, correlated to the
-            // query id. And it maps to a non-success query outcome (Err), so it
-            // is never marked completed.
-            let recorded = audit.recorded().await;
-            assert!(recorded.iter().any(|e| {
-                e.kind == audit_proto::AuditKind::PolicyViolation
-                    && e.structural.subject == "system.knowledge"
-                    && e.call_chain_id.as_deref() == Some(TEST_QUERY_ID)
-            }));
+            // It maps to a non-success query outcome (Err), so it is never
+            // marked completed.
             assert!(loop_outcome_to_answer(outcome).is_err());
+            // The denial is recorded as a policy violation, correlated to the
+            // query id. The record runs on a detached task (so a hung sink
+            // cannot wedge the loop), so poll for it.
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            loop {
+                let recorded = audit.recorded().await;
+                if recorded.iter().any(|e| {
+                    e.kind == audit_proto::AuditKind::PolicyViolation
+                        && e.structural.subject == "system.knowledge"
+                        && e.call_chain_id.as_deref() == Some(TEST_QUERY_ID)
+                }) {
+                    break;
+                }
+                if std::time::Instant::now() > deadline {
+                    panic!("denial was not recorded as a policy violation");
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
 
             server.abort();
+        }
+
+        /// An audit sink whose `submit` never returns, to prove a stuck ledger
+        /// cannot wedge the loop's terminal transition.
+        struct HangingSink;
+        #[async_trait]
+        impl AuditSink for HangingSink {
+            async fn submit(
+                &self,
+                _event: audit_proto::IngestRequest,
+            ) -> Result<u64, arlen_ai_core::audit::AuditClientError> {
+                std::future::pending().await
+            }
+        }
+
+        #[tokio::test]
+        async fn a_hung_audit_sink_does_not_wedge_the_raw_denial() {
+            // The raw-knowledge denial records on a detached task, so even if
+            // the audit sink hangs forever the loop still returns Denied
+            // promptly rather than pinning the dispatch task.
+            let client = tokio::sync::Mutex::new(McpClient::new());
+            let runner = StubRunner::ok("(unused)");
+            let audit: Arc<dyn AuditSink> = Arc::new(HangingSink);
+            let provider = ScriptedProvider::new(vec![
+                r#"{"action":"call_tool","server":"system.knowledge","tool":"query","arguments":{"cypher":"MATCH (n) RETURN n"}}"#,
+            ]);
+            let scope = test_scope();
+
+            let outcome = tokio::time::timeout(
+                Duration::from_secs(2),
+                run_tool_loop(
+                    &client,
+                    &runner,
+                    &scope,
+                    audit.clone(),
+                    TEST_QUERY_ID,
+                    &CancellationToken::new(),
+                    &provider,
+                    "read everything",
+                    5,
+                ),
+            )
+            .await
+            .expect("loop wedged on a hung audit sink");
+            assert!(matches!(outcome, LoopOutcome::Denied(_)), "got {outcome:?}");
         }
 
         /// A provider that records how many times it was asked, to prove the
@@ -1051,7 +1136,7 @@ mod tests {
             // race) in dispatch.
             let client = tokio::sync::Mutex::new(McpClient::new());
             let runner = StubRunner::ok("(unused)");
-            let audit = MockAuditSink::accepting();
+            let audit = Arc::new(MockAuditSink::accepting());
             let provider = CountingProvider {
                 calls: std::sync::atomic::AtomicUsize::new(0),
             };
@@ -1062,7 +1147,7 @@ mod tests {
                 &client,
                 &runner,
                 &test_scope(),
-                &audit,
+                audit.clone(),
                 TEST_QUERY_ID,
                 &cancel,
                 &provider,
