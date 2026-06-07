@@ -1,0 +1,134 @@
+# Full Arlen daemon stack for local development.
+#   just dev                 the headless daemon core (TUI)
+#   just dev -D              detached (scriptable, for verification)
+#   just dev --profile shell add the nested compositor + desktop-shell
+#
+# Run via `just dev`, which sets the working directory to the repo root so the
+# relative --manifest-path values resolve. Each daemon's dependents wait on a
+# readiness probe (the socket it creates) where one exists, otherwise on the
+# dependency having started, so start order matches the real dependency graph.
+version: "0.5"
+
+environment:
+  - "ARLEN_RUNTIME_DIR=${XDG_RUNTIME_DIR}/arlen"
+  - "ARLEN_PRODUCER_SOCKET=${XDG_RUNTIME_DIR}/arlen/event-bus-producer.sock"
+  - "ARLEN_CONSUMER_SOCKET=${XDG_RUNTIME_DIR}/arlen/event-bus-consumer.sock"
+  - "ARLEN_DAEMON_SOCKET=${XDG_RUNTIME_DIR}/arlen/knowledge.sock"
+  # lbug (Kuzu) vendors thrift C++ that misses <cstdint> on newer GCC.
+  - "CXXFLAGS=-include cstdint"
+
+processes:
+  runtime-dir:
+    command: "mkdir -p ${XDG_RUNTIME_DIR}/arlen"
+    availability:
+      restart: "no"
+
+  event-bus:
+    command: "cargo run --manifest-path daemons/event-bus/Cargo.toml"
+    depends_on:
+      runtime-dir: { condition: process_completed_successfully }
+    readiness_probe:
+      exec:
+        command: "test -S ${ARLEN_PRODUCER_SOCKET} && test -S ${ARLEN_CONSUMER_SOCKET}"
+      initial_delay_seconds: 2
+      period_seconds: 2
+      failure_threshold: 30
+    availability:
+      restart: "on_failure"
+
+  knowledge:
+    command: "cargo run --manifest-path daemons/knowledge/Cargo.toml"
+    depends_on:
+      event-bus: { condition: process_healthy }
+    readiness_probe:
+      exec:
+        command: "test -S ${ARLEN_DAEMON_SOCKET}"
+      initial_delay_seconds: 3
+      period_seconds: 2
+      failure_threshold: 60
+    availability:
+      restart: "on_failure"
+
+  knowledge-mcp:
+    command: "cargo run --manifest-path daemons/knowledge-mcp/Cargo.toml"
+    depends_on:
+      knowledge: { condition: process_healthy }
+    availability:
+      restart: "on_failure"
+
+  audit-daemon:
+    command: "cargo run --manifest-path daemons/audit-daemon/Cargo.toml"
+    depends_on:
+      runtime-dir: { condition: process_completed_successfully }
+    availability:
+      restart: "on_failure"
+
+  notification-daemon:
+    command: "cargo run --manifest-path daemons/notification-daemon/Cargo.toml"
+    availability:
+      restart: "on_failure"
+
+  anomaly-detector:
+    command: "cargo run --manifest-path daemons/anomaly-detector/Cargo.toml"
+    depends_on:
+      event-bus: { condition: process_healthy }
+      audit-daemon: { condition: process_started }
+    availability:
+      restart: "on_failure"
+
+  modulesd:
+    command: "cargo run --manifest-path daemons/modulesd/Cargo.toml"
+    depends_on:
+      event-bus: { condition: process_healthy }
+    availability:
+      restart: "on_failure"
+
+  ai-daemon:
+    command: "cargo run --manifest-path ai/ai-daemon/Cargo.toml"
+    depends_on:
+      knowledge: { condition: process_healthy }
+      audit-daemon: { condition: process_started }
+    availability:
+      restart: "on_failure"
+
+  ai-agent:
+    command: "cargo run --manifest-path ai/ai-agent/Cargo.toml"
+    depends_on:
+      knowledge: { condition: process_healthy }
+      audit-daemon: { condition: process_started }
+    availability:
+      restart: "on_failure"
+
+  # Graphical layer: only with `--profile shell`. The compositor is a separate
+  # repo (COMPOSITOR_PATH); DISPLAY="" forces the Wayland backend so
+  # wlr-layer-shell is advertised, and the shell attaches to its nested display.
+  compositor:
+    command: 'cd "${COMPOSITOR_PATH:-../compositor}" && DISPLAY="" WAYLAND_DISPLAY=wayland-2 cargo run --bin cosmic-comp'
+    profiles: ["shell"]
+    availability:
+      restart: "on_failure"
+
+  desktop-shell:
+    command: 'WAYLAND_DISPLAY=wayland-2 cargo tauri dev'
+    working_dir: "apps/desktop-shell"
+    profiles: ["shell"]
+    depends_on:
+      compositor: { condition: process_started }
+    availability:
+      restart: "on_failure"
+
+  # Portal stack: only with `--profile portal` (the old start-dev --with-portal).
+  # The portal daemon spawns its picker UI on the nested display.
+  portal-daemon:
+    command: 'WAYLAND_DISPLAY=wayland-2 cargo run --bin xdg-desktop-portal-arlen'
+    working_dir: "daemons/xdg-portal"
+    profiles: ["portal"]
+    availability:
+      restart: "on_failure"
+
+  settings:
+    command: 'WAYLAND_DISPLAY=wayland-2 cargo tauri dev'
+    working_dir: "apps/settings"
+    profiles: ["portal"]
+    availability:
+      restart: "on_failure"
