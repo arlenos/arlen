@@ -83,11 +83,16 @@ jobs:
           fi
 
           changed_json="$(printf '%s' "$changed" | jq -R . | jq -cs .)"
+          # sdk/ui-kit lives under sdk/ but is a frontend component, not part of
+          # the sdk rust workspace, so it must not pull in the sdk rust leg. The
+          # rust subset matches against the change list with ui-kit paths removed.
+          changed_rust="$(printf '%s' "$changed" | grep -vE '^sdk/ui-kit/' || true)"
+          changed_rust_json="$(printf '%s' "$changed_rust" | jq -R . | jq -cs .)"
 
           if [ "$rust_full" = "1" ]; then
             rust="$RUST_ALL"
           else
-            rust="$(jq -cn --argjson all "$RUST_ALL" --argjson ch "$changed_json" \
+            rust="$(jq -cn --argjson all "$RUST_ALL" --argjson ch "$changed_rust_json" \
               '$all | map(select(. as $c | $ch | any(startswith($c + "/"))))')"
           fi
           if [ "$frontend_full" = "1" ]; then
