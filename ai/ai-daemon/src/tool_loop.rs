@@ -15,6 +15,7 @@ use arlen_ai_core::pipeline::extract_json;
 use arlen_ai_core::provider::{AIProvider, CompletionRequest};
 use arlen_ai_core::tagging::{Block, Origin, TaggedPrompt};
 use serde::Deserialize;
+use tokio::sync::Mutex;
 
 /// One completed step of the loop: a tool call and the result it returned.
 /// The result is treated as data (an origin-tagged block), never instructions.
@@ -257,21 +258,31 @@ pub enum LoopOutcome {
 /// grant surfaces as `Blocked` instead of being called.
 ///
 /// This is the orchestration of the loop's building blocks. It is additive and
-/// not yet wired into the daemon's query path; that wiring lands behind a
-/// default-off flag with an integration test and a Codex pass
+/// wired into the daemon's query path behind a default-off flag
 /// (`docs/architecture/ai-tool-routing.md`).
+///
+/// The shared [`McpClient`] is taken as a `&Mutex` and locked only around the
+/// individual client operations (catalogue assembly and each tool call), never
+/// across the provider completion. Holding the lock across the whole loop would
+/// stall discovery's health/reconnect work and, worse, would block other
+/// dispatch tasks on lock acquisition where they could not observe their own
+/// cancellation. Locking per operation keeps the loop's `await` points free for
+/// the caller's `select!` to fire a cancellation even while a tool call is
+/// in flight.
 pub async fn run_tool_loop(
-    client: &McpClient,
+    client: &Mutex<McpClient>,
     provider: &dyn AIProvider,
     question: &str,
     max_steps: u32,
 ) -> LoopOutcome {
-    let catalogue = client.tool_catalogue().await;
+    let catalogue = client.lock().await.tool_catalogue().await;
     let chain = CallChain::root();
     let mut transcript: Vec<ToolStep> = Vec::new();
 
     for _ in 0..max_steps {
         let prompt = build_tool_prompt(question, &catalogue, &transcript);
+        // Provider completion runs unlocked: it is the slow, network-bound
+        // step, and the MCP client is not touched here.
         let reply = match provider
             .complete(CompletionRequest {
                 prompt,
@@ -291,8 +302,12 @@ pub async fn run_tool_loop(
             }) => {
                 // No per-session action grant in the interactive loop yet, so
                 // action servers surface as Blocked; read-only servers (the
-                // knowledge graph) are default-permit.
-                match gated_dispatch(client, &server, &tool, &arguments, false, &chain).await {
+                // knowledge graph) are default-permit. Lock only for the call.
+                let outcome = {
+                    let guard = client.lock().await;
+                    gated_dispatch(&guard, &server, &tool, &arguments, false, &chain).await
+                };
+                match outcome {
                     DispatchOutcome::Result(result) => transcript.push(ToolStep {
                         server,
                         tool,
@@ -552,6 +567,8 @@ mod tests {
                 )
                 .await
                 .expect("connect to test server");
+            // The loop takes the client behind a Mutex (shared with discovery).
+            let client = tokio::sync::Mutex::new(client);
 
             // Step 1: call the tool. Step 2: answer.
             let provider = ScriptedProvider::new(vec![
