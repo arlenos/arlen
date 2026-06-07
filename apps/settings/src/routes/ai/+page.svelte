@@ -509,8 +509,8 @@
     background: color-mix(in srgb, var(--destructive) 14%, transparent);
   }
   .activity-badge[data-tone="info"] {
-    color: var(--accent, #6366f1);
-    background: color-mix(in srgb, var(--accent, #6366f1) 14%, transparent);
+    color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
   }
   .activity-body {
     flex: 1;

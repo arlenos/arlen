@@ -31,10 +31,12 @@
   --color-fg-shell:     var(--color-fg-primary);
   --color-fg-app:       var(--color-fg-primary);
 
-  /* Semantic */
-  --color-accent:            #6366f1;
-  --color-accent-hover:      #818cf8;
-  --color-accent-foreground: #ffffff;
+  /* Semantic. The default accent is monochrome: it follows the foreground,
+     so it flips with the theme mode and there is no hardcoded colour. A user
+     who picks a coloured swatch overrides --color-accent at runtime. */
+  --color-accent:            var(--color-fg-primary);
+  --color-accent-hover:      var(--color-fg-secondary);
+  --color-accent-foreground: var(--color-fg-inverse);
   --color-border:         #262626;
   --color-border-strong:  #3f3f46;
   --color-error:          #ef4444;
@@ -119,11 +121,8 @@
   --color-fg-disabled:  #a3a3a3;
   --color-fg-inverse:   #fafafa;
 
-  /* Semantic (built-in light accent; overridden again by user
-     override + accent-foreground from applyAppearance) */
-  --color-accent:            #4f46e5;
-  --color-accent-hover:      #6366f1;
-  --color-accent-foreground: #ffffff;
+  /* Accent follows the foreground (see :root), so the monochrome default
+     flips to the light foreground here with no separate literal. */
 
   /* Border */
   --color-border-default: #e5e5e5;
