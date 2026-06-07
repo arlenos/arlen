@@ -8,7 +8,9 @@
 //! dispatch, budget) lands in later slices behind a default-off flag; this
 //! slice is the pure, testable prompt builder.
 
-use arlen_ai_core::mcp::CatalogueTool;
+use arlen_ai_core::mcp::{
+    AlwaysConfirmReason, CallChain, CallDecision, CatalogueTool, McpClient, ServerId,
+};
 use arlen_ai_core::pipeline::extract_json;
 use arlen_ai_core::tagging::{Block, Origin, TaggedPrompt};
 use serde::Deserialize;
@@ -164,6 +166,68 @@ pub fn parse_loop_step(text: &str) -> Result<LoopStep, String> {
     }
 }
 
+/// The outcome of trying to dispatch one tool call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DispatchOutcome {
+    /// The tool ran; here is its result text.
+    Result(String),
+    /// Blocked: the tool is in the hardcoded always-confirm set and needs
+    /// explicit user confirmation (`mcp-server-layer.md` §4.3).
+    NeedsConfirmation(AlwaysConfirmReason),
+    /// Blocked: an action server with no per-session authorization grant.
+    NeedsAuthorization,
+    /// The call was attempted but failed (unknown server, depth exceeded,
+    /// transport or server error).
+    Failed(String),
+}
+
+/// Map a non-allowing gate decision to its blocked outcome. `Allow` returns
+/// `None`: the caller dispatches. Pure, so the gate-to-outcome mapping is
+/// tested without a live server.
+fn outcome_for_blocked(decision: CallDecision) -> Option<DispatchOutcome> {
+    match decision {
+        CallDecision::Allow => None,
+        CallDecision::NeedsConfirmation(reason) => {
+            Some(DispatchOutcome::NeedsConfirmation(reason))
+        }
+        CallDecision::NeedsAuthorization => Some(DispatchOutcome::NeedsAuthorization),
+    }
+}
+
+/// Gate one tool call, then dispatch it if allowed.
+///
+/// Applies `McpClient::decide` (the read-only-vs-action gate plus the §4.3
+/// always-confirm list); a non-allowing decision returns the blocked outcome
+/// without touching the server. An allowed call is dispatched via `call_tool`
+/// (which audits content-free and enforces the call-chain depth). A blocked
+/// call must not be silently dropped: the loop surfaces it for confirmation or
+/// authorization.
+pub async fn gated_dispatch(
+    client: &McpClient,
+    server: &str,
+    tool: &str,
+    arguments: &str,
+    has_grant: bool,
+    chain: &CallChain,
+) -> DispatchOutcome {
+    let id = ServerId(server.to_string());
+    let decision = match client.decide(&id, tool, has_grant) {
+        Ok(d) => d,
+        Err(e) => return DispatchOutcome::Failed(e.to_string()),
+    };
+    if let Some(blocked) = outcome_for_blocked(decision) {
+        return blocked;
+    }
+    // Allowed. Parse the arguments; a malformed argument string degrades to an
+    // empty object rather than failing the dispatch outright.
+    let args: serde_json::Value =
+        serde_json::from_str(arguments).unwrap_or_else(|_| serde_json::json!({}));
+    match client.call_tool(&id, tool, args, chain).await {
+        Ok(result) => DispatchOutcome::Result(result),
+        Err(e) => DispatchOutcome::Failed(e.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,6 +326,25 @@ mod tests {
                 tool: "t".to_string(),
                 arguments: "{}".to_string(),
             }
+        );
+    }
+
+    #[test]
+    fn allow_dispatches_blocked_decisions_surface() {
+        // Allow means the caller proceeds to dispatch.
+        assert_eq!(outcome_for_blocked(CallDecision::Allow), None);
+        // A blocked decision is surfaced, never silently dropped.
+        assert_eq!(
+            outcome_for_blocked(CallDecision::NeedsAuthorization),
+            Some(DispatchOutcome::NeedsAuthorization)
+        );
+        assert_eq!(
+            outcome_for_blocked(CallDecision::NeedsConfirmation(
+                AlwaysConfirmReason::FileDeletion
+            )),
+            Some(DispatchOutcome::NeedsConfirmation(
+                AlwaysConfirmReason::FileDeletion
+            ))
         );
     }
 }
