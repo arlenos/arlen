@@ -20,3 +20,4 @@ os-sdk = { path = "../../sdk/os-sdk" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }
+tempfile = "3"
