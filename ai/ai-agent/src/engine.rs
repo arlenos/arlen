@@ -101,6 +101,18 @@ const MAX_SCREEN_BYTES: usize = 64 * 1024;
 /// first sighting (here: same key, again, again -> stop on the third).
 const MAX_NO_PROGRESS_REPEATS: u32 = 2;
 
+/// Maximum times one `(tool, summary)` proposal may appear across the whole
+/// loop before stopping for repetition (technique adapted from goose's
+/// `RepetitionInspector`, Apache-2.0). The consecutive `no_progress` guard
+/// above only catches a key repeated back-to-back; a model that alternates
+/// between two proposals (A, B, A, B, ...) never repeats consecutively yet
+/// makes no progress and burns the budget. This counts each distinct proposal
+/// across the run and stops once any one exceeds the bound, regardless of what
+/// was proposed in between. The bound is generous so genuinely iterative work
+/// is not cut short; its job is to break an unproductive cycle, not to ration
+/// legitimate reuse of a tool.
+const MAX_TOTAL_TOOL_REPEATS: u32 = 3;
+
 /// Upper bound on one injection-screen scoring call. ONNX inference on bounded
 /// input is milliseconds, so this is generous headroom; its job is to stop a
 /// wedged or pathologically slow classifier from pinning the dispatch loop (and
@@ -1003,6 +1015,10 @@ impl<'a> Dispatcher<'a> {
         // burning the budget for nothing.
         let mut last_progress_key: Option<ProgressKey> = None;
         let mut repeated_no_progress: u32 = 0;
+        // Cross-loop repetition guard (B-toolguard): total occurrences of each
+        // `(tool, summary)` proposal over the whole run, so an alternating
+        // cycle the consecutive guard misses is still bounded.
+        let mut tool_call_counts: HashMap<(String, String), u32> = HashMap::new();
         // The model's input window, from the wired provider, so the
         // context-window guard tracks the real backend rather than a guess.
         let window = provider.context_window();
@@ -1190,6 +1206,10 @@ impl<'a> Dispatcher<'a> {
                     // outcome, so the no-progress guard can key on it after.
                     let tool_name = action.tool.clone();
                     let summary_text = action.summary.clone();
+                    // The cross-loop guard keys on the full (tool, summary)
+                    // proposal regardless of how the gate decided it, so a
+                    // refused-then-reproposed action is also bounded.
+                    let repeat_key = (tool_name.clone(), summary_text.clone());
                     let progress_key = match self
                         .gate
                         .decide_action(&behaviour, m.mode, &m.tools, &action, &ctx, graph)
@@ -1264,6 +1284,19 @@ impl<'a> Dispatcher<'a> {
                         outcomes.push(DispatchOutcome::Terminal {
                             behaviour,
                             outcome: "no_progress".to_string(),
+                        });
+                        return outcomes;
+                    }
+                    // Cross-loop guard: count this proposal over the whole run
+                    // and stop once any one (tool, summary) exceeds the bound,
+                    // catching the alternating cycle the consecutive guard above
+                    // cannot. The outcome for this step is already recorded.
+                    let total = tool_call_counts.entry(repeat_key).or_insert(0);
+                    *total += 1;
+                    if *total > MAX_TOTAL_TOOL_REPEATS {
+                        outcomes.push(DispatchOutcome::Terminal {
+                            behaviour,
+                            outcome: "repeated_tool_call".to_string(),
                         });
                         return outcomes;
                     }
@@ -2682,6 +2715,51 @@ trigger:
             outcomes.last().unwrap(),
             DispatchOutcome::Terminal { outcome, .. } if outcome == "done"
         ));
+    }
+
+    #[tokio::test]
+    async fn alternating_proposals_stop_for_repeated_tool_call() {
+        // The model alternates between two distinct proposals (A, B, A, B, ...).
+        // No two consecutive steps share a key, so the consecutive no-progress
+        // guard never trips and each step looks like progress — but neither
+        // proposal advances anything, and the cross-loop guard stops the cycle
+        // once one (tool, summary) exceeds its bound, before the step budget.
+        let behaviours = [loaded(&agent_skill(10, 1_000_000, 60_000), Status::Enabled)];
+        let handlers = registry(Box::new(StubPropose));
+        let cap = Capability::new(AccessTier::Full, ActionPermissions::suggest_only());
+        let audit = MockAuditSink::accepting();
+        let obs = NullObserver;
+        let graph = EmptyGraph;
+        let provider = MockProvider::new(vec![
+            propose_summary("graph.write", "tag file a"),
+            propose_summary("graph.write", "tag file b"),
+            propose_summary("graph.write", "tag file a"),
+            propose_summary("graph.write", "tag file b"),
+            propose_summary("graph.write", "tag file a"),
+            propose_summary("graph.write", "tag file b"),
+            propose_summary("graph.write", "tag file a"),
+            propose_summary("graph.write", "tag file b"),
+        ]);
+        let d = Dispatcher::new(
+            &behaviours,
+            &handlers,
+            &graph,
+            AccessTier::Full,
+            gate(&audit, &obs, &cap),
+            Some(&provider),
+            &TEST_CLOCK,
+        );
+
+        let outcomes = d.dispatch(&event("~/foo.rs")).await;
+        assert!(
+            !outcomes.iter().any(|o| matches!(o, DispatchOutcome::Terminal { outcome, .. } if outcome == "no_progress")),
+            "an alternating cycle never repeats consecutively, so the no-progress guard must not be what stops it"
+        );
+        assert!(matches!(
+            outcomes.last().unwrap(),
+            DispatchOutcome::Terminal { outcome, .. } if outcome == "repeated_tool_call"
+        ));
+        assert!(outcomes.len() < 10, "stopped before the step budget");
     }
 
     #[tokio::test]
