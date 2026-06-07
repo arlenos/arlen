@@ -16,6 +16,8 @@ os-sdk = { path = "../../sdk/os-sdk" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net", "time", "io-util"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# statvfs for the disk-usage tool (no portable std API for free space).
+libc = "0.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
