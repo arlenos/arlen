@@ -34,8 +34,10 @@
   .page {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
-    padding: 1.5rem;
+    /* Use the spacing tokens so apps can override in :root without
+       hunting for literal values across components. */
+    gap: var(--space-section, 1.5rem);
+    padding: var(--space-page, 1.5rem);
   }
 
   /* The header shares the grid's max-width + centring so the title lines up
