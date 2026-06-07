@@ -17,8 +17,8 @@ use arlen_ai_core::pipeline::{extract_json, QueryRunner};
 use arlen_ai_core::provider::{AIProvider, CompletionRequest};
 use arlen_ai_core::tagging::{Block, Origin, TaggedPrompt};
 use serde::Deserialize;
-use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 
 /// Reserved server id of the internal, scope-enforcing graph tool. Graph
 /// access in the interactive loop goes only through here, never through the
@@ -271,6 +271,9 @@ pub enum LoopOutcome {
     /// ordinary transient tool error, which is fed back for the model to
     /// adjust.
     Denied(String),
+    /// The caller cancelled the query; the loop stopped cooperatively without
+    /// starting further provider or tool work.
+    Cancelled,
     /// The step budget ran out before a final answer.
     Exhausted,
     /// The loop could not proceed: a provider error or an unparseable reply.
@@ -326,22 +329,37 @@ fn extract_graph_question(arguments: &str) -> Result<String, String> {
 ///
 /// The shared [`McpClient`] is taken as a `&Mutex` and locked only around the
 /// individual client operations (catalogue assembly and each tool call), never
-/// across the provider completion. Holding the lock across the whole loop would
-/// stall discovery's health/reconnect work and, worse, would block other
-/// dispatch tasks on lock acquisition where they could not observe their own
-/// cancellation. Locking per operation keeps the loop's `await` points free for
-/// the caller's `select!` to fire a cancellation even while a tool call is
-/// in flight.
+/// across the provider completion, so the client stays free for discovery's
+/// health/reconnect work.
+///
+/// Cancellation is **cooperative**: the `cancel` token is checked at the top of
+/// each step (so a query cancelled before, or between, steps starts no provider
+/// or tool work) and the in-flight provider call and tool dispatch are raced
+/// against it (so a cancel interrupts a slow call promptly). Because the loop
+/// owns its own cancellation it always returns a definite [`LoopOutcome`] and is
+/// never dropped mid-flight by an outer select; the dispatch caller awaits it
+/// rather than racing it. The provider race is provider-biased so that a reply
+/// that has *already arrived* is processed even if a cancel is also ready: a
+/// model-produced raw-knowledge probe is then recorded as a policy violation
+/// rather than silently discarded by the cancel.
+// The loop's collaborators are each distinct (client, runner, scope, audit,
+// cancel, provider) and threaded as borrows; grouping them into a context
+// struct used by this one function would be ceremony, not clarity.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_tool_loop(
     client: &Mutex<McpClient>,
     runner: &dyn QueryRunner,
     scope: &QueryScope,
-    audit: Arc<dyn AuditSink>,
+    audit: &dyn AuditSink,
     query_id: &str,
+    cancel: &CancellationToken,
     provider: &dyn AIProvider,
     question: &str,
     max_steps: u32,
 ) -> LoopOutcome {
+    if cancel.is_cancelled() {
+        return LoopOutcome::Cancelled;
+    }
     let raw_catalogue = client.lock().await.tool_catalogue().await;
     let catalogue = interactive_catalogue(raw_catalogue);
     // Seed the call chain from the query id so every tool entry in this loop
@@ -356,18 +374,26 @@ pub async fn run_tool_loop(
     let mut transcript: Vec<ToolStep> = Vec::new();
 
     for _ in 0..max_steps {
+        // Cooperative cancellation: a query cancelled before or between steps
+        // starts no further provider or tool work.
+        if cancel.is_cancelled() {
+            return LoopOutcome::Cancelled;
+        }
         let prompt = build_tool_prompt(question, &catalogue, &transcript);
-        // Provider completion runs unlocked: it is the slow, network-bound
-        // step, and the MCP client is not touched here.
-        let reply = match provider
-            .complete(CompletionRequest {
+        // Provider completion runs unlocked (the slow, network-bound step).
+        // Provider-biased: an already-arrived reply is taken even if cancel is
+        // also ready, so a produced raw-knowledge probe is not discarded; while
+        // the call is still in flight a ready cancel interrupts it.
+        let reply = tokio::select! {
+            biased;
+            r = provider.complete(CompletionRequest {
                 prompt,
                 extras: serde_json::json!({}),
-            })
-            .await
-        {
-            Ok(r) => r.text,
-            Err(e) => return LoopOutcome::Failed(format!("provider error: {e}")),
+            }) => match r {
+                Ok(r) => r.text,
+                Err(e) => return LoopOutcome::Failed(format!("provider error: {e}")),
+            },
+            _ = cancel.cancelled() => return LoopOutcome::Cancelled,
         };
         match parse_loop_step(&reply) {
             Ok(LoopStep::Answer { text }) => return LoopOutcome::Answer(text),
@@ -409,9 +435,14 @@ pub async fn run_tool_loop(
                                         "graph query refused: audit log unavailable".to_string(),
                                     );
                                 }
-                                let outcome = match runner.run_query(&q, scope).await {
-                                    Ok(answer) => DispatchOutcome::Result(answer),
-                                    Err(f) => DispatchOutcome::Failed(f.reason),
+                                // The read can be slow; race it against cancel.
+                                let outcome = tokio::select! {
+                                    biased;
+                                    _ = cancel.cancelled() => return LoopOutcome::Cancelled,
+                                    r = runner.run_query(&q, scope) => match r {
+                                        Ok(answer) => DispatchOutcome::Result(answer),
+                                        Err(f) => DispatchOutcome::Failed(f.reason),
+                                    },
                                 };
                                 let label = match &outcome {
                                     DispatchOutcome::Result(_) => "ok",
@@ -438,34 +469,19 @@ pub async fn run_tool_loop(
                     // injection-driven), so record it as a policy violation and
                     // end the loop denied, rather than feeding the error back
                     // where the model could continue and mask it behind a
-                    // fabricated answer.
-                    //
-                    // The record is made DURABLE against a concurrent
-                    // cancellation: the dispatch select races this loop future
-                    // against the caller's cancel token, and a cancel can drop
-                    // this future at the await below. Submitting on a spawned
-                    // task means the policy-violation entry still lands even if
-                    // this future is dropped (a tokio task is not cancelled
-                    // when its JoinHandle is dropped), so a caller cannot hide a
-                    // boundary probe by cancelling. Awaiting the handle keeps
-                    // the normal (uncancelled) path ordered and deterministic.
-                    let recorder = {
-                        let audit = audit.clone();
-                        let chain_id = chain.id.to_string();
-                        let depth = chain.depth;
-                        tokio::spawn(async move {
-                            audit
-                                .submit(audit::mcp_event(
-                                    RAW_KNOWLEDGE_SERVER,
-                                    "policy-denied",
-                                    depth,
-                                    &chain_id,
-                                    true,
-                                ))
-                                .await
-                        })
-                    };
-                    let _ = recorder.await;
+                    // fabricated answer. The reply is already in hand, so the
+                    // record runs inline (not raced against cancel): the loop
+                    // owns its cancellation and is not dropped, and a produced
+                    // probe must be recorded regardless of a racing cancel.
+                    let _ = audit
+                        .submit(audit::mcp_event(
+                            RAW_KNOWLEDGE_SERVER,
+                            "policy-denied",
+                            chain.depth,
+                            &chain.id.to_string(),
+                            true,
+                        ))
+                        .await;
                     return LoopOutcome::Denied(format!(
                         "{RAW_KNOWLEDGE_SERVER} is not callable directly; \
                          use {GRAPH_TOOL_SERVER}/{GRAPH_TOOL_NAME}"
@@ -473,9 +489,14 @@ pub async fn run_tool_loop(
                 } else {
                     // No per-session action grant in the interactive loop yet,
                     // so action servers surface as Blocked; other read-only
-                    // servers are default-permit. Lock only for the call.
+                    // servers are default-permit. Lock only for the call, and
+                    // race the (possibly slow) call against cancel.
                     let guard = client.lock().await;
-                    gated_dispatch(&guard, &server, &tool, &arguments, false, &chain).await
+                    tokio::select! {
+                        biased;
+                        _ = cancel.cancelled() => return LoopOutcome::Cancelled,
+                        o = gated_dispatch(&guard, &server, &tool, &arguments, false, &chain) => o,
+                    }
                 };
                 match outcome {
                     DispatchOutcome::Result(result) => transcript.push(ToolStep {
@@ -524,6 +545,10 @@ pub fn loop_outcome_to_answer(outcome: LoopOutcome) -> Result<String, String> {
              question alone (it requires confirmation or authorization)."
             .to_string()),
         LoopOutcome::Denied(reason) => Err(format!("policy denied: {reason}")),
+        // The dispatch caller handles Cancelled before reaching here (it records
+        // the cancelled completion); mapping it defensively keeps the function
+        // total.
+        LoopOutcome::Cancelled => Err("cancelled".to_string()),
         LoopOutcome::Failed(reason) => Err(reason),
     }
 }
@@ -833,8 +858,9 @@ mod tests {
                 &client,
                 &runner,
                 &test_scope(),
-                audit.clone(),
+                audit.as_ref(),
                 TEST_QUERY_ID,
+                &CancellationToken::new(),
                 &provider,
                 "what notes do I have?",
                 5,
@@ -863,8 +889,9 @@ mod tests {
                 &client,
                 &runner,
                 &test_scope(),
-                audit.clone(),
+                audit.as_ref(),
                 TEST_QUERY_ID,
+                &CancellationToken::new(),
                 &provider,
                 "what did I open today?",
                 5,
@@ -872,8 +899,11 @@ mod tests {
             .await;
             assert_eq!(outcome, LoopOutcome::Answer("3 files".to_string()));
             // The runner saw the model's question, under the passed scope.
-            let seen = runner.seen.lock().unwrap();
-            assert_eq!(seen.as_slice(), &["what did I open?".to_string()]);
+            // (Scoped so the std guard is dropped before the await below.)
+            {
+                let seen = runner.seen.lock().unwrap();
+                assert_eq!(seen.as_slice(), &["what did I open?".to_string()]);
+            }
             // The graph read was audited (dispatched + outcome), content-free,
             // correlated to the query id.
             let recorded = audit.recorded().await;
@@ -904,8 +934,9 @@ mod tests {
                 &client,
                 &runner,
                 &test_scope(),
-                audit.clone(),
+                audit.as_ref(),
                 TEST_QUERY_ID,
+                &CancellationToken::new(),
                 &provider,
                 "what did I open today?",
                 5,
@@ -954,8 +985,9 @@ mod tests {
                 &client,
                 &runner,
                 &test_scope(),
-                audit.clone(),
+                audit.as_ref(),
                 TEST_QUERY_ID,
+                &CancellationToken::new(),
                 &provider,
                 "read everything",
                 5,
@@ -980,77 +1012,70 @@ mod tests {
             server.abort();
         }
 
-        /// A recording sink whose `submit` signals entry and then parks until
-        /// released, so a test can drop the loop future while a submit is in
-        /// flight and check the entry still lands.
-        struct GateRecordSink {
-            entered: tokio::sync::Notify,
-            release: tokio::sync::Notify,
-            recorded: tokio::sync::Mutex<Vec<audit_proto::IngestRequest>>,
+        /// A provider that records how many times it was asked, to prove the
+        /// loop started no model work.
+        struct CountingProvider {
+            calls: std::sync::atomic::AtomicUsize,
         }
         #[async_trait]
-        impl AuditSink for GateRecordSink {
-            async fn submit(
+        impl AIProvider for CountingProvider {
+            async fn complete(
                 &self,
-                event: audit_proto::IngestRequest,
-            ) -> Result<u64, arlen_ai_core::audit::AuditClientError> {
-                self.entered.notify_one();
-                self.release.notified().await;
-                self.recorded.lock().await.push(event);
-                Ok(0)
+                _req: CompletionRequest,
+            ) -> Result<CompletionResponse, ProviderError> {
+                self.calls
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(CompletionResponse {
+                    text: r#"{"action":"answer","text":"x"}"#.to_string(),
+                    audit: ProviderAudit {
+                        provider_name: "counting".into(),
+                        model: "counting".into(),
+                        input_tokens: None,
+                        output_tokens: None,
+                    },
+                })
+            }
+            async fn available(&self) -> bool {
+                true
+            }
+            fn name(&self) -> &str {
+                "counting"
             }
         }
 
         #[tokio::test]
-        async fn raw_denial_audit_survives_the_loop_future_being_dropped() {
-            // The dispatch select races this loop against the caller's cancel,
-            // and a cancel drops the loop future. The policy-violation record
-            // must still land: it is submitted on a spawned task that a dropped
-            // JoinHandle does not cancel. Here we drop the loop future while its
-            // denial submit is parked, then release and assert the entry lands.
+        async fn an_already_cancelled_token_starts_no_provider_work() {
+            // Cooperative cancellation: a query cancelled before the loop runs
+            // returns Cancelled and never calls the provider. This is the
+            // guarantee that makes the loop safe to await directly (rather than
+            // race) in dispatch.
             let client = tokio::sync::Mutex::new(McpClient::new());
             let runner = StubRunner::ok("(unused)");
-            let audit = Arc::new(GateRecordSink {
-                entered: tokio::sync::Notify::new(),
-                release: tokio::sync::Notify::new(),
-                recorded: tokio::sync::Mutex::new(Vec::new()),
-            });
-            let provider = ScriptedProvider::new(vec![
-                r#"{"action":"call_tool","server":"system.knowledge","tool":"query","arguments":{"cypher":"MATCH (n) RETURN n"}}"#,
-            ]);
-            let scope = test_scope();
+            let audit = MockAuditSink::accepting();
+            let provider = CountingProvider {
+                calls: std::sync::atomic::AtomicUsize::new(0),
+            };
+            let cancel = CancellationToken::new();
+            cancel.cancel();
 
-            let loop_fut = run_tool_loop(
+            let outcome = run_tool_loop(
                 &client,
                 &runner,
-                &scope,
-                audit.clone(),
+                &test_scope(),
+                &audit,
                 TEST_QUERY_ID,
+                &cancel,
                 &provider,
-                "read everything",
+                "anything",
                 5,
+            )
+            .await;
+            assert_eq!(outcome, LoopOutcome::Cancelled);
+            assert_eq!(
+                provider.calls.load(std::sync::atomic::Ordering::SeqCst),
+                0,
+                "a cancelled query must not call the provider"
             );
-            // Drop the loop future the moment its denial submit is in flight.
-            tokio::select! {
-                _ = loop_fut => panic!("loop should still be parked in the submit"),
-                _ = audit.entered.notified() => {}
-            }
-            // The loop future is dropped; the spawned recorder task is not.
-            audit.release.notify_waiters();
-            // The policy-violation entry lands despite the dropped loop.
-            let deadline = std::time::Instant::now() + Duration::from_secs(2);
-            loop {
-                if !audit.recorded.lock().await.is_empty() {
-                    break;
-                }
-                if std::time::Instant::now() > deadline {
-                    panic!("denial audit was lost when the loop future was dropped");
-                }
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
-            let recorded = audit.recorded.lock().await;
-            assert_eq!(recorded[0].kind, audit_proto::AuditKind::PolicyViolation);
-            assert_eq!(recorded[0].structural.subject, "system.knowledge");
         }
 
         #[tokio::test]

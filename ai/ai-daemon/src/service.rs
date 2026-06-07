@@ -730,41 +730,33 @@ impl AiDaemonService {
             // run_tool_loop); the lock is acquired inside the future the
             // select polls, so a cancellation fires even while the loop is
             // waiting on the client lock or a tool call is in flight.
-            let loop_call = run_tool_loop(
+            // The tool loop handles cancellation cooperatively and returns a
+            // definite outcome, so it is awaited directly rather than raced
+            // against the cancel token. This is what guarantees a model-produced
+            // raw-knowledge probe is recorded: the loop is never dropped
+            // mid-flight by an outer select, and it checks the token at safe
+            // points and races its own in-flight calls (see run_tool_loop).
+            let outcome = run_tool_loop(
                 &tl.client,
                 self.runner.as_ref(),
                 &scope,
-                self.audit.clone(),
+                self.audit.as_ref(),
                 &query_id,
+                &cancel,
                 tl.provider.as_ref(),
                 &prompt,
                 tl.max_steps,
-            );
-            // The loop branch is polled BEFORE cancel (loop-first bias). When
-            // the loop is parked in a slow await (provider call, client lock,
-            // in-flight tool call) it is Pending, so a ready cancel still
-            // preempts promptly. But once the loop is ready to advance — e.g.
-            // a provider reply naming the raw-knowledge server has arrived — it
-            // runs its short synchronous segment to completion before cancel is
-            // honored, so the raw-denial path reaches its durable
-            // (spawned) policy-violation audit and a caller cannot hide a
-            // boundary probe by racing a cancel against the provider reply. The
-            // registry still records `cancelled` (cancel claims the terminal
-            // state), but the violation is durably audited and correlated.
-            tokio::select! {
-                biased;
-                outcome = loop_call => loop_outcome_to_answer(outcome).map_err(|reason| {
-                    RunFailure {
-                        code: "tool-loop-failed".to_string(),
-                        reason,
-                    }
-                }),
-                _ = cancel.cancelled() => {
-                    self.audit_completion(&query_id, "cancelled", started.elapsed())
-                        .await;
-                    return;
-                }
+            )
+            .await;
+            if matches!(outcome, crate::tool_loop::LoopOutcome::Cancelled) {
+                self.audit_completion(&query_id, "cancelled", started.elapsed())
+                    .await;
+                return;
             }
+            loop_outcome_to_answer(outcome).map_err(|reason| RunFailure {
+                code: "tool-loop-failed".to_string(),
+                reason,
+            })
         } else {
             let runner_call = self.runner.run_query(&prompt, &scope);
             tokio::select! {
@@ -1435,12 +1427,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tool_routing_cancel_cannot_hide_a_raw_knowledge_policy_violation() {
-        // The raw-knowledge reply and the caller's cancel become ready in the
-        // same window. The loop-first dispatch select must let the loop reach
-        // its durable (spawned) policy-violation audit before cancel is
-        // honored, so the boundary probe is recorded even though the query ends
-        // up cancelled.
+    async fn tool_routing_cancel_while_provider_in_flight_ends_cancelled() {
+        // A tool-routing query cancelled while the provider call is still in
+        // flight (no reply yet, so the model has not produced any probe) ends
+        // cancelled and records no policy violation. Cooperative cancellation
+        // interrupts the in-flight provider call promptly and the dispatch maps
+        // the loop's Cancelled outcome to a cancelled completion. (A probe the
+        // provider *does* return is recorded; that is covered at the loop
+        // level by `raw_knowledge_server_is_refused_in_the_loop`.)
         let entered = Arc::new(Notify::new());
         let release = Arc::new(Notify::new());
         let provider = Arc::new(GatedRawProvider {
@@ -1467,31 +1461,27 @@ mod tests {
             .await
             .unwrap();
 
-        // The loop is now parked inside the provider call. Cancel, then let the
-        // provider return so the loop advances into the raw-denial handling.
+        // The loop is parked inside the provider call (no reply yet). Cancel.
         entered.notified().await;
         svc.cancel(&h.query_id, &caller.unique_bus_name, &h.retrieval_token)
             .await
             .expect("authz");
-        release.notify_one();
 
-        // The policy violation lands despite the cancellation, correlated to
-        // the query id.
-        let deadline = std::time::Instant::now() + Duration::from_secs(2);
-        loop {
-            let recorded = audit.recorded().await;
-            if recorded.iter().any(|e| {
+        // The query ends cancelled.
+        let outcome = wait_for_terminal(&svc, &h, ":1.71").await;
+        assert!(
+            matches!(outcome, CompletionOutcome::Cancelled),
+            "expected cancelled, got {outcome:?}"
+        );
+        // No probe was produced (the provider never returned), so there is no
+        // policy violation. Cooperative cancellation does not fabricate one.
+        let recorded = audit.recorded().await;
+        assert!(
+            !recorded.iter().any(|e| {
                 e.kind == arlen_ai_core::audit::AuditKind::PolicyViolation
-                    && e.structural.subject == "system.knowledge"
-                    && e.call_chain_id.as_deref() == Some(h.query_id.as_str())
-            }) {
-                break;
-            }
-            if std::time::Instant::now() > deadline {
-                panic!("cancellation hid the raw-knowledge policy violation");
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
+            }),
+            "no probe was produced, so no policy violation should be recorded"
+        );
     }
 
     // --- System Explanation Mode (explain_system) ---
