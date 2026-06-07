@@ -12,7 +12,7 @@ COMPOSITOR_PATH := env_var_or_default("COMPOSITOR_PATH", ROOT / "../compositor")
 export CXXFLAGS := "-include cstdint"
 
 # The rust crates CI builds, in rough dependency order. Mirrors the CI matrix.
-RUST_CRATES := "contracts/audit-proto contracts/notification-proto contracts/modulesd-proto contracts/graph-schema sdk ai daemons/event-bus daemons/knowledge daemons/knowledge-mcp daemons/notification-daemon daemons/audit-daemon daemons/anomaly-detector daemons/modulesd daemons/installd daemons/xdg-portal forage"
+RUST_CRATES := "contracts/audit-proto contracts/notification-proto contracts/modulesd-proto contracts/graph-schema sdk ai daemons/event-bus daemons/knowledge daemons/knowledge-mcp daemons/file-manager-mcp daemons/notification-daemon daemons/audit-daemon daemons/anomaly-detector daemons/modulesd daemons/installd daemons/xdg-portal forage"
 
 # The SvelteKit frontends CI svelte-checks.
 FRONTENDS := "apps/settings apps/harness apps/desktop-shell sdk/ui-kit"
