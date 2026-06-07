@@ -212,8 +212,7 @@ fn so_peercred(fd: libc::c_int) -> std::io::Result<(u32, u32)> {
         return Err(std::io::Error::last_os_error());
     }
     if cred.pid <= 0 {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        return Err(std::io::Error::other(
             "SO_PEERCRED returned non-positive pid",
         ));
     }

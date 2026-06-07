@@ -1,9 +1,9 @@
-/// Permission token system: issue, validate, revoke.
-///
-/// Tokens are bound to a PID and validated against `/proc/{pid}/exe`.
-/// PID reuse is caught by checking that the exe path still matches.
-///
-/// See `docs/architecture/permission-system.md` (Token section).
+//! Permission token system: issue, validate, revoke.
+//!
+//! Tokens are bound to a PID and validated against `/proc/{pid}/exe`.
+//! PID reuse is caught by checking that the exe path still matches.
+//!
+//! See `docs/architecture/permission-system.md` (Token section).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -42,6 +42,12 @@ pub struct PermissionToken {
 /// Stores and validates active tokens.
 pub struct TokenStore {
     tokens: HashMap<String, PermissionToken>,
+}
+
+impl Default for TokenStore {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TokenStore {
