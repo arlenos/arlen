@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 # Cancel superseded runs on the same ref.
 concurrency:
@@ -29,7 +30,8 @@ jobs:
   # manifest, the toolchain, .cargo, .github, contracts/, or any sdk/ crate
   # except sdk/ui-kit; frontend goes full on .github or sdk/ui-kit (the shared
   # component library). When the diff base is unknown (a new branch, a
-  # force-push, the first run) both go full, which is the safe default.
+  # force-push, the first run) or the run was triggered manually both go full,
+  # which is the safe default.
   changes:
     name: detect changed components
     runs-on: ubuntu-latest
@@ -59,8 +61,10 @@ jobs:
           fi
 
           base_unknown=0
+          # A manual dispatch has no diff base; run the full matrix.
+          [ "$EVENT_NAME" = "workflow_dispatch" ] && base_unknown=1
           changed=""
-          if [ -z "$base" ] || echo "$base" | grep -qE '^0+$'; then
+          if [ "$base_unknown" = "1" ] || [ -z "$base" ] || echo "$base" | grep -qE '^0+$'; then
             base_unknown=1
           else
             changed="$(git diff --name-only "$base" "$head" 2>/dev/null || true)"
