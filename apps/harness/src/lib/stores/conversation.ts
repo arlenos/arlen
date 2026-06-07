@@ -82,6 +82,10 @@ function buildPrompt(text: string, mentions: MentionContent[]): string {
 
 let nextMsgId = 0;
 
+/// Most recent conversations kept on disk. Sessions are newest-first, so the
+/// persisted store is capped to this many and older ones fall off.
+const MAX_SESSIONS = 100;
+
 /// All conversations this run, newest first.
 export const sessions = writable<Session[]>([]);
 /// The conversation currently shown; `null` before the first one exists.
@@ -132,7 +136,8 @@ export async function initSessions(): Promise<void> {
     saveTimer = setTimeout(() => {
       const clean = list
         .map((s) => ({ ...s, messages: s.messages.filter((m) => !m.pending) }))
-        .filter((s) => s.messages.length > 0);
+        .filter((s) => s.messages.length > 0)
+        .slice(0, MAX_SESSIONS);
       invoke("harness_sessions_save", { sessions: clean }).catch(() => {});
     }, 500);
   });
