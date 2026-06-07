@@ -88,8 +88,12 @@ pub fn render_snapshot(snapshot: &SystemSnapshot) -> String {
         coverage_label(snapshot.coverage.graph_context)
     ));
     out.push_str(&format!(
-        "  - live processes and network: {}\n",
+        "  - live processes: {}\n",
         coverage_label(snapshot.coverage.live_processes)
+    ));
+    out.push_str(&format!(
+        "  - network connections: {}\n",
+        coverage_label(snapshot.coverage.live_network)
     ));
     out.push_str(&format!(
         "  - anomaly detection: {}\n",
@@ -214,6 +218,7 @@ mod tests {
             coverage: crate::snapshot::Coverage {
                 graph_context: true,
                 live_processes: true,
+                live_network: true,
                 anomalies: true,
             },
         }
@@ -232,7 +237,8 @@ mod tests {
         let rendered = render_snapshot(&snap);
         assert!(!rendered.to_lowercase().contains("idle"), "{rendered}");
         assert!(rendered.contains("knowledge graph (recent files, active project): NOT checked"));
-        assert!(rendered.contains("live processes and network: NOT checked"));
+        assert!(rendered.contains("live processes: NOT checked"));
+        assert!(rendered.contains("network connections: NOT checked"));
         // Sections are still present and explicitly empty.
         assert!(rendered.contains("Active processes:\n  (none)"));
     }
@@ -244,6 +250,7 @@ mod tests {
             coverage: crate::snapshot::Coverage {
                 graph_context: true,
                 live_processes: false,
+                live_network: false,
                 anomalies: false,
             },
             ..Default::default()
@@ -251,7 +258,7 @@ mod tests {
         let rendered = render_snapshot(&snap);
         assert!(rendered
             .contains("knowledge graph (recent files, active project): checked"));
-        assert!(rendered.contains("live processes and network: NOT checked"));
+        assert!(rendered.contains("live processes: NOT checked"));
     }
 
     #[test]
