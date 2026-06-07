@@ -15,7 +15,7 @@
 //!   session start does not kill the daemon: the initial subscription retries
 //!   with backoff until the bus appears (or a shutdown signal arrives).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::mpsc::TryRecvError;
 use std::time::Duration;
 
@@ -31,7 +31,7 @@ use arlen_ai_agent::slice::{FsPathResolver, ProcMountsPolicy};
 use arlen_ai_agent::executor::LiveExecutor;
 use arlen_ai_agent::graph::{UnixGraph, UnixRelationWriter, DEFAULT_GRAPH_SOCKET};
 use arlen_ai_agent::handlers::builtin_handlers;
-use arlen_ai_agent::loader::{load, BehaviourSource};
+use arlen_ai_agent::loader::{ai_config_path, behaviour_sources, load};
 use arlen_ai_agent::seams::{AgentEvent, NullObserver, SystemClock, TriggerSource};
 use arlen_ai_agent::source::{subscription_types, EventBusSource, DEFAULT_CONSUMER_SOCKET};
 use std::sync::Arc;
@@ -1026,36 +1026,6 @@ async fn sleep_or_shutdown(dur: Duration, shutdown_rx: &mut watch::Receiver<bool
 /// already has, and also if the signal plumbing is gone (fail toward stop).
 async fn shutdown_requested(shutdown_rx: &mut watch::Receiver<bool>) {
     let _ = shutdown_rx.wait_for(|&stop| stop).await;
-}
-
-/// The path to `ai.toml` (`ARLEN_AI_CONFIG` overrides the default).
-fn ai_config_path() -> PathBuf {
-    if let Ok(path) = std::env::var("ARLEN_AI_CONFIG") {
-        return PathBuf::from(path);
-    }
-    let home = std::env::var("HOME").unwrap_or_default();
-    PathBuf::from(home).join(".config/arlen/ai.toml")
-}
-
-/// The behaviour source directories: the system (built-in) directory and the
-/// user directory.
-fn behaviour_sources() -> Vec<BehaviourSource> {
-    let mut sources = vec![BehaviourSource::builtin("/usr/share/arlen/agent/behaviours")];
-    if let Ok(home) = std::env::var("HOME") {
-        sources.push(BehaviourSource::user(format!(
-            "{home}/.local/share/arlen/agent/behaviours"
-        )));
-    }
-    // Dev-only: stand in for the not-yet-installed system directory when
-    // running from a checkout. Compiled out of release builds so an
-    // environment variable can never inject built-in-provenance behaviours
-    // into a deployed system (it would otherwise satisfy a built-in-only
-    // config approval from an attacker-controllable path).
-    #[cfg(debug_assertions)]
-    if let Ok(dir) = std::env::var("ARLEN_AGENT_BEHAVIOURS") {
-        sources.push(BehaviourSource::builtin(dir));
-    }
-    sources
 }
 
 fn consumer_socket() -> String {
