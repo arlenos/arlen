@@ -8,6 +8,7 @@
 //! dispatch, budget) lands in later slices behind a default-off flag; this
 //! slice is the pure, testable prompt builder.
 
+use arlen_ai_core::audit::{self, AuditSink};
 use arlen_ai_core::graph_query::QueryScope;
 use arlen_ai_core::mcp::{
     AlwaysConfirmReason, CallChain, CallDecision, CatalogueTool, McpClient, ServerClass, ServerId,
@@ -261,6 +262,14 @@ pub enum LoopOutcome {
     /// A tool call was blocked by the gate (needs confirmation or
     /// authorization); the loop stops and surfaces it rather than proceeding.
     Blocked(DispatchOutcome),
+    /// A trust-boundary or policy denial: the model addressed a path it is
+    /// not permitted to take (e.g. the raw-Cypher knowledge server directly,
+    /// instead of the scoped graph tool). Terminal: the loop stops and
+    /// surfaces the denial, so a hallucinated or injection-driven boundary
+    /// hit cannot be masked behind a fabricated final answer. Distinct from an
+    /// ordinary transient tool error, which is fed back for the model to
+    /// adjust.
+    Denied(String),
     /// The step budget ran out before a final answer.
     Exhausted,
     /// The loop could not proceed: a provider error or an unparseable reply.
@@ -326,6 +335,7 @@ pub async fn run_tool_loop(
     client: &Mutex<McpClient>,
     runner: &dyn QueryRunner,
     scope: &QueryScope,
+    audit: &dyn AuditSink,
     provider: &dyn AIProvider,
     question: &str,
     max_steps: u32,
@@ -366,21 +376,73 @@ pub async fn run_tool_loop(
                         ))
                     } else {
                         match extract_graph_question(&arguments) {
-                            Ok(q) => match runner.run_query(&q, scope).await {
-                                Ok(answer) => DispatchOutcome::Result(answer),
-                                Err(f) => DispatchOutcome::Failed(f.reason),
-                            },
+                            Ok(q) => {
+                                // Audit-before-action (foundation §8.4.6),
+                                // matching the MCP path: a fail-closed dispatch
+                                // entry before the read, then a best-effort
+                                // outcome entry. A read inside an already
+                                // admitted query is still recorded per call, so
+                                // a mid-loop ledger outage is caught and the
+                                // activity surface sees every graph access.
+                                if audit
+                                    .submit(audit::mcp_event(
+                                        GRAPH_TOOL_SERVER,
+                                        "dispatched",
+                                        chain.depth,
+                                        &chain.id.to_string(),
+                                        true,
+                                    ))
+                                    .await
+                                    .is_err()
+                                {
+                                    return LoopOutcome::Failed(
+                                        "graph query refused: audit log unavailable".to_string(),
+                                    );
+                                }
+                                let outcome = match runner.run_query(&q, scope).await {
+                                    Ok(answer) => DispatchOutcome::Result(answer),
+                                    Err(f) => DispatchOutcome::Failed(f.reason),
+                                };
+                                let label = match &outcome {
+                                    DispatchOutcome::Result(_) => "ok",
+                                    _ => "failed",
+                                };
+                                let _ = audit
+                                    .submit(audit::mcp_event(
+                                        GRAPH_TOOL_SERVER,
+                                        label,
+                                        chain.depth,
+                                        &chain.id.to_string(),
+                                        true,
+                                    ))
+                                    .await;
+                                outcome
+                            }
                             Err(e) => DispatchOutcome::Failed(e),
                         }
                     }
                 } else if server == RAW_KNOWLEDGE_SERVER {
                     // Refuse raw-Cypher graph access in the interactive loop:
-                    // it cannot carry the per-tier label scope. Route graph
-                    // queries through the scoped tool instead.
-                    DispatchOutcome::Failed(format!(
+                    // it cannot carry the per-tier label scope. This is a
+                    // trust-boundary hit (likely hallucinated or
+                    // injection-driven), so record it as a policy violation
+                    // and end the loop denied, rather than feeding the error
+                    // back where the model could continue and mask it behind a
+                    // fabricated answer. Recording is best-effort: the refusal
+                    // itself is the protection.
+                    let _ = audit
+                        .submit(audit::mcp_event(
+                            RAW_KNOWLEDGE_SERVER,
+                            "policy-denied",
+                            chain.depth,
+                            &chain.id.to_string(),
+                            true,
+                        ))
+                        .await;
+                    return LoopOutcome::Denied(format!(
                         "{RAW_KNOWLEDGE_SERVER} is not callable directly; \
                          use {GRAPH_TOOL_SERVER}/{GRAPH_TOOL_NAME}"
-                    ))
+                    ));
                 } else {
                     // No per-session action grant in the interactive loop yet,
                     // so action servers surface as Blocked; other read-only
@@ -431,6 +493,9 @@ pub fn loop_outcome_to_answer(outcome: LoopOutcome) -> Result<String, String> {
         LoopOutcome::Blocked(_) => Ok("Answering that needs an action I cannot take from a \
              question alone (it requires confirmation or authorization)."
             .to_string()),
+        LoopOutcome::Denied(reason) => Ok(format!(
+            "I stopped because a step was not permitted: {reason}"
+        )),
         LoopOutcome::Failed(reason) => Err(reason),
     }
 }
@@ -579,6 +644,7 @@ mod tests {
     mod loop_integration {
         use super::super::*;
         use arlen_ai_core::mcp::{McpClient, ServerClass, ServerId};
+        use audit_proto::MockAuditSink;
         use arlen_ai_core::provider::{
             AIProvider, CompletionRequest, CompletionResponse, ProviderAudit, ProviderError,
         };
@@ -729,11 +795,13 @@ mod tests {
                 r#"{"action":"answer","text":"you have 1 note"}"#,
             ]);
             let runner = StubRunner::ok("(unused)");
+            let audit = MockAuditSink::accepting();
 
             let outcome = run_tool_loop(
                 &client,
                 &runner,
                 &test_scope(),
+                &audit,
                 &provider,
                 "what notes do I have?",
                 5,
@@ -752,6 +820,7 @@ mod tests {
             // scope-enforcing tool, which must route through the QueryRunner.
             let client = tokio::sync::Mutex::new(McpClient::new());
             let runner = StubRunner::ok("you opened 3 files today");
+            let audit = MockAuditSink::accepting();
             let provider = ScriptedProvider::new(vec![
                 r#"{"action":"call_tool","server":"system.graph","tool":"query","arguments":{"question":"what did I open?"}}"#,
                 r#"{"action":"answer","text":"3 files"}"#,
@@ -761,6 +830,7 @@ mod tests {
                 &client,
                 &runner,
                 &test_scope(),
+                &audit,
                 &provider,
                 "what did I open today?",
                 5,
@@ -770,6 +840,32 @@ mod tests {
             // The runner saw the model's question, under the passed scope.
             let seen = runner.seen.lock().unwrap();
             assert_eq!(seen.as_slice(), &["what did I open?".to_string()]);
+        }
+
+        #[tokio::test]
+        async fn graph_tool_fails_closed_when_the_audit_log_is_unavailable() {
+            // The graph read must not run if its dispatch entry cannot be
+            // recorded (foundation §8.4.6): no un-audited AI activity.
+            let client = tokio::sync::Mutex::new(McpClient::new());
+            let runner = StubRunner::ok("should never run");
+            let audit = MockAuditSink::failing();
+            let provider = ScriptedProvider::new(vec![
+                r#"{"action":"call_tool","server":"system.graph","tool":"query","arguments":{"question":"what did I open?"}}"#,
+            ]);
+
+            let outcome = run_tool_loop(
+                &client,
+                &runner,
+                &test_scope(),
+                &audit,
+                &provider,
+                "what did I open today?",
+                5,
+            )
+            .await;
+            assert!(matches!(outcome, LoopOutcome::Failed(_)), "got {outcome:?}");
+            // The runner was never reached: the read did not happen unaudited.
+            assert!(runner.seen.lock().unwrap().is_empty());
         }
 
         #[tokio::test]
@@ -798,7 +894,9 @@ mod tests {
             .expect("connect knowledge server");
             let client = tokio::sync::Mutex::new(raw);
             let runner = StubRunner::ok("(unused)");
-            // Step 1: try the raw server directly. Step 2: answer.
+            let audit = MockAuditSink::accepting();
+            // Step 1: try the raw server directly. The model scripts an answer
+            // after, but the loop must never reach it: the denial is terminal.
             let provider = ScriptedProvider::new(vec![
                 r#"{"action":"call_tool","server":"system.knowledge","tool":"query","arguments":{"cypher":"MATCH (n) RETURN n"}}"#,
                 r#"{"action":"answer","text":"done"}"#,
@@ -808,15 +906,16 @@ mod tests {
                 &client,
                 &runner,
                 &test_scope(),
+                &audit,
                 &provider,
                 "read everything",
                 5,
             )
             .await;
-            // The raw call was refused (recorded as an error, not dispatched);
-            // the loop continued to the model's answer. The runner was not
-            // used, and no raw Cypher reached the server through the loop.
-            assert_eq!(outcome, LoopOutcome::Answer("done".to_string()));
+            // The raw call is a trust-boundary hit: terminal Denied, not a
+            // recoverable error masked by the model's fabricated "done". No
+            // raw Cypher reached the server, and the runner was not used.
+            assert!(matches!(outcome, LoopOutcome::Denied(_)), "got {outcome:?}");
             assert!(runner.seen.lock().unwrap().is_empty());
 
             server.abort();
@@ -873,6 +972,10 @@ mod tests {
             DispatchOutcome::NeedsAuthorization
         ))
         .is_ok());
+        // A denial surfaces its reason as an answer (not masked, not an error).
+        let denied = loop_outcome_to_answer(LoopOutcome::Denied("not allowed".into()));
+        assert!(denied.is_ok());
+        assert!(denied.unwrap().contains("not allowed"));
         // Only a genuine failure is an error.
         assert_eq!(
             loop_outcome_to_answer(LoopOutcome::Failed("provider down".into())),
