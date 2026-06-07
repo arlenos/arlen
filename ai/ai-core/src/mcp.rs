@@ -576,14 +576,35 @@ impl McpClient {
 /// Flatten an MCP content list to a plain string. Text parts are
 /// concatenated; non-text parts are noted by kind so the caller
 /// still sees that something was returned.
+/// Upper bound on the flattened text returned for one tool call. A tool result
+/// (or a tool-error payload) larger than this is almost never useful to inline
+/// and would only pressure caller memory, so concatenation stops here with a
+/// marker. This bounds what `call_tool` returns regardless of how much a
+/// degraded or malicious server sends.
+const MAX_FLATTENED_CONTENT_BYTES: usize = 32 * 1024;
+
 fn flatten_content(content: &[rmcp::model::Content]) -> String {
     let mut out = String::new();
     for part in content {
+        if out.len() >= MAX_FLATTENED_CONTENT_BYTES {
+            out.push_str("...[tool output truncated]");
+            break;
+        }
         if let Some(text) = part.as_text() {
             out.push_str(&text.text);
         } else {
             out.push_str("[non-text content]");
         }
+    }
+    // A single oversized text part can still overshoot the cap; trim to a char
+    // boundary and mark it so the returned string is bounded either way.
+    if out.len() > MAX_FLATTENED_CONTENT_BYTES {
+        let mut idx = MAX_FLATTENED_CONTENT_BYTES;
+        while idx > 0 && !out.is_char_boundary(idx) {
+            idx -= 1;
+        }
+        out.truncate(idx);
+        out.push_str("...[tool output truncated]");
     }
     out
 }
@@ -701,6 +722,26 @@ mod tests {
     use rmcp::handler::server::router::tool::ToolRouter;
     use rmcp::{tool, tool_handler, tool_router, ServerHandler};
     use tokio::net::UnixListener;
+
+    #[test]
+    fn flatten_content_bounds_a_huge_tool_output() {
+        // A single oversized text part is trimmed to the cap plus a marker, so
+        // call_tool cannot return an unbounded string to its caller.
+        let huge = rmcp::model::Content::text("z".repeat(MAX_FLATTENED_CONTENT_BYTES * 4));
+        let out = flatten_content(std::slice::from_ref(&huge));
+        assert!(out.ends_with("...[tool output truncated]"));
+        assert!(
+            out.len() <= MAX_FLATTENED_CONTENT_BYTES + 40,
+            "flattened output stays bounded, got {}",
+            out.len()
+        );
+        // Many small parts also stop at the cap.
+        let parts: Vec<_> = (0..10_000)
+            .map(|_| rmcp::model::Content::text("abcdefgh"))
+            .collect();
+        let out = flatten_content(&parts);
+        assert!(out.len() <= MAX_FLATTENED_CONTENT_BYTES + 40);
+    }
 
     #[test]
     fn flatten_catalogue_tags_each_tool_with_its_server_and_class() {

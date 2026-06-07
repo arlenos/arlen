@@ -668,11 +668,15 @@ pub async fn run_tool_loop(
                     DispatchOutcome::Failed(e) => {
                         // Record the failure so the model can adjust on the next
                         // step rather than aborting the loop on one tool error.
+                        // Bounded at ingestion like a successful result: a tool
+                        // error can carry a large server-supplied payload.
+                        let mut result = format!("error: {e}");
+                        truncate_in_place(&mut result, MAX_TOOL_RESULT_BYTES);
                         transcript.push(ToolStep {
                             server,
                             tool,
                             arguments,
-                            result: format!("error: {e}"),
+                            result,
                         });
                     }
                 }
