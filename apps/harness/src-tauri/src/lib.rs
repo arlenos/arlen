@@ -10,6 +10,7 @@ mod activity;
 mod ai_client;
 mod behaviours;
 mod capability;
+mod notices;
 
 /// Route a log line from the frontend into the Rust logger so it shows
 /// up in the same stdout stream as backend logs. Tauri WebView DevTools
@@ -34,7 +35,8 @@ pub fn run() {
             ai_client::ai_query,
             activity::ai_activity_recent,
             capability::ai_capability,
-            behaviours::ai_behaviours
+            behaviours::ai_behaviours,
+            notices::ai_notices
         ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-harness");

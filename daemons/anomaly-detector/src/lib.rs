@@ -26,6 +26,7 @@
 
 use std::path::{Path, PathBuf};
 
+pub mod alert_log;
 pub mod detect;
 pub mod notify;
 pub mod source;
