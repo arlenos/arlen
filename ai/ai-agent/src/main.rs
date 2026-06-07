@@ -23,6 +23,9 @@ use tokio::sync::watch;
 
 use arlen_ai_agent::behaviour::{BehaviourKind, ReadScope};
 use arlen_ai_agent::config::{AgentConfig, ProviderSettings};
+use arlen_ai_agent::dbus::{
+    new_status_handle, set_status, AgentInterface, LoopStatus, StatusHandle, AGENT_OBJECT_PATH,
+};
 use arlen_ai_agent::engine::{
     reads_satisfied, DispatchOutcome, Dispatcher, ExecutionResult, ScreeningMode,
 };
@@ -70,6 +73,11 @@ enum EpochEnd {
     /// and dispatcher, keeping the existing subscription (and its buffered
     /// events) so re-arming agent behaviours never drops delivered work.
     RearmProvider,
+    /// The singleton name `org.arlen.AIAgent1` is owned by another instance:
+    /// stop the daemon. This instance must not subscribe or dispatch, or it
+    /// would duplicate triggers (and, with the executor live, duplicate audited
+    /// graph writes) against the real owner.
+    Superseded,
 }
 
 #[tokio::main]
@@ -105,6 +113,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // the next config change rather than disabling agent behaviours forever.
     let mut connection: Option<Connection> = None;
 
+    // Shared cell for the live loop status the D-Bus interface reports.
+    // Initialised Idle; the dispatch loop flips it to Busy while handling an
+    // event and back to Idle while waiting.
+    let status = new_status_handle();
+
     run(
         Collaborators {
             handlers: &handlers,
@@ -112,6 +125,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             observer: &observer,
             graph: &graph,
             ai_path: &ai_path,
+            status: &status,
         },
         &mut connection,
         shutdown_rx,
@@ -302,38 +316,73 @@ fn build_screening(ai_text: &str) -> ProvisionedScreening {
     }
 }
 
-/// Open a session-bus connection and own [`AGENT_BUS_NAME`] as the sole,
-/// non-replaceable owner. Returns `None` (with a log line) when no session bus
-/// is reachable or the name is already owned, so a provider simply cannot be
-/// built and agent behaviours stay skipped rather than the daemon failing.
+/// The outcome of trying to own `org.arlen.AIAgent1` and serve its interface.
 ///
-/// The name is requested with `DoNotQueue` and *without* `AllowReplacement`,
-/// so this owner cannot later be displaced and the daemon never queues behind
-/// another owner. Only primary ownership counts; anything else (the name is
-/// already taken) means a second instance, and that instance must not run a
-/// provider whose forwards the proxy would attribute to the real owner.
-async fn establish_agent_connection() -> Option<Connection> {
+/// The two failure modes are deliberately distinct: a missing session bus is
+/// recoverable (run workflow behaviours best-effort and retry in the
+/// background), but the name being owned by *another* instance is fatal to this
+/// instance, which must not dispatch at all or it would duplicate triggers
+/// against the real owner. Collapsing both to a single `None` (the prior bug)
+/// let a losing instance keep dispatching workflows.
+enum AgentConnection {
+    /// Connected and the sole owner of the singleton name. Serve and dispatch.
+    Owned(Connection),
+    /// No session bus right now. Best-effort: keep running workflow behaviours
+    /// and retry the bus in the background.
+    BusUnavailable,
+    /// The singleton name is owned by another instance. This instance must stop.
+    NameTaken,
+}
+
+/// Open a session-bus connection, register the `org.arlen.AIAgent1` interface
+/// object, and own the well-known name as the sole, non-replaceable owner.
+///
+/// The interface is registered *before* the name is claimed so a caller that
+/// resolves the name always finds an object behind it. The name is requested
+/// with `DoNotQueue` and without `AllowReplacement`, so this owner cannot be
+/// displaced and the daemon never queues behind another owner. Only primary
+/// ownership counts; anything else means a second instance that must not run.
+///
+/// `status` is the live-status cell the interface reads from. It is updated by
+/// the dispatch loop; before the first event it reads `Subscribing`, the
+/// correct view of a daemon that is up but not yet receiving triggers.
+async fn establish_agent_connection(status: StatusHandle) -> AgentConnection {
     use zbus::fdo::{RequestNameFlags, RequestNameReply};
 
     let connection = match Connection::session().await {
         Ok(c) => c,
         Err(e) => {
             tracing::warn!(error = %e, "no session bus; agent (LLM) behaviours will not run");
-            return None;
+            return AgentConnection::BusUnavailable;
         }
     };
+    // Register the interface before claiming the name.
+    let iface = AgentInterface { status };
+    if let Err(e) = connection.object_server().at(AGENT_OBJECT_PATH, iface).await {
+        tracing::warn!(error = %e, path = AGENT_OBJECT_PATH, "could not register agent interface; D-Bus behaviour status will not be available");
+        // Non-fatal: LLM behaviours can still run, only the status method is
+        // unavailable. Do not bail here or a D-Bus registration failure would
+        // silently disable the provider.
+    }
     match connection
         .request_name_with_flags(AGENT_BUS_NAME, RequestNameFlags::DoNotQueue.into())
         .await
     {
-        Ok(RequestNameReply::PrimaryOwner) | Ok(RequestNameReply::AlreadyOwner) => Some(connection),
-        Ok(other) => {
-            tracing::warn!(name = AGENT_BUS_NAME, ?other, "agent bus name is already owned; agent (LLM) behaviours will not run");
-            None
+        Ok(RequestNameReply::PrimaryOwner) | Ok(RequestNameReply::AlreadyOwner) => {
+            tracing::info!(bus = AGENT_BUS_NAME, path = AGENT_OBJECT_PATH, "agent interface registered");
+            AgentConnection::Owned(connection)
         }
+        // The name is held by another connection (InQueue/Exists under
+        // DoNotQueue): another instance is authoritative. This one must stop.
+        Ok(other) => {
+            tracing::warn!(name = AGENT_BUS_NAME, ?other, "org.arlen.AIAgent1 is owned by another instance; this instance will stop to avoid duplicate dispatch");
+            AgentConnection::NameTaken
+        }
+        // A bus-level error talking to the name registry: treat as a bus
+        // outage (recoverable), not a name collision.
         Err(e) => {
-            tracing::warn!(error = %e, name = AGENT_BUS_NAME, "could not own the agent bus name; agent (LLM) behaviours will not run");
-            None
+            tracing::warn!(error = %e, name = AGENT_BUS_NAME, "could not reach the bus to own the agent name; will retry");
+            AgentConnection::BusUnavailable
         }
     }
 }
@@ -349,13 +398,16 @@ async fn establish_agent_connection() -> Option<Connection> {
 /// builds a provider; its forwards then fail per call and surface as `Failed`
 /// loop outcomes, not a build error.) `None` thus always leaves the connection
 /// unset, which the caller reads as a recoverable bus outage.
+///
+/// The connection is established and the singleton name owned elsewhere (the
+/// epoch-top eager establish, or the background recovery): a `None` connection
+/// here means the session bus is unavailable, so no provider is built and the
+/// caller leaves recovery to re-establish it. This function therefore never
+/// claims the name itself, keeping the singleton decision in one place.
 async fn build_provider(
     settings: &ProviderSettings,
     connection: &mut Option<Connection>,
 ) -> Option<ProxiedProvider> {
-    if connection.is_none() {
-        *connection = establish_agent_connection().await;
-    }
     // Build off the borrow, then act on the result so a failure can clear the
     // connection without overlapping the borrow.
     let built = match connection.as_ref() {
@@ -378,10 +430,13 @@ async fn build_provider(
 
 /// Retry establishing the agent's session-bus connection with backoff until it
 /// succeeds, so a configured provider whose bus was late or briefly down comes
-/// online without the user touching anything. Returns once the connection is
-/// owned; the caller then rebuilds the provider and dispatcher in place
-/// (`RearmProvider`), keeping the subscription, so agent behaviours re-arm
-/// without dropping buffered events. Polled before the event source each
+/// online without the user touching anything. Returns `true` once the
+/// connection is owned (the caller then rebuilds the provider and dispatcher in
+/// place via `RearmProvider`, keeping the subscription so agent behaviours
+/// re-arm without dropping buffered events). Returns `false` if, during the
+/// outage, another instance claimed the singleton name: this instance lost the
+/// race and must stop rather than resume dispatching against the new owner.
+/// Polled before the event source each
 /// iteration (see [`next_dispatch_step`]), so a steady event stream does not
 /// starve it. Runs concurrently with dispatch (or idle waiting) and is
 /// cancelled by being dropped when a config change, shutdown, or event-driven
@@ -398,15 +453,23 @@ async fn build_provider(
 /// until a config reload or supervisor restart. A liveness monitor that
 /// re-arms on a dead session connection mid-run needs a connection/proxy
 /// liveness probe that does not exist yet, a follow-up.
-async fn recover_connection(connection: &mut Option<Connection>) {
+async fn recover_connection(connection: &mut Option<Connection>, status: StatusHandle) -> bool {
     let mut backoff = SUBSCRIBE_BACKOFF_INITIAL;
     loop {
         tokio::time::sleep(backoff).await;
-        if connection.is_none() {
-            *connection = establish_agent_connection().await;
-        }
         if connection.is_some() {
-            return;
+            return true;
+        }
+        match establish_agent_connection(Arc::clone(&status)).await {
+            AgentConnection::Owned(conn) => {
+                *connection = Some(conn);
+                return true;
+            }
+            // Another instance took the singleton name while we were down: we
+            // are now the loser and must stop, not resume dispatch.
+            AgentConnection::NameTaken => return false,
+            // Still no bus: keep retrying with backoff.
+            AgentConnection::BusUnavailable => {}
         }
         backoff = (backoff * 2).min(SUBSCRIBE_BACKOFF_MAX);
     }
@@ -461,6 +524,9 @@ struct Collaborators<'a> {
     observer: &'a NullObserver,
     graph: &'a UnixGraph,
     ai_path: &'a Path,
+    /// Live loop-status cell the D-Bus interface reports and the dispatch loop
+    /// updates.
+    status: &'a StatusHandle,
 }
 
 /// The epoch loop. Each iteration is one config epoch: load settings and
@@ -476,6 +542,7 @@ async fn run(
         observer,
         graph,
         ai_path,
+        status,
     } = collab;
     // Process-lived single-flight gate for classifier scoring (S17), shared
     // into every dispatcher rebuild (config reload / provider rearm) so a
@@ -484,6 +551,14 @@ async fn run(
     // each spawn a new scorer and exhaust the blocking pool.
     let screen_gate = Arc::new(tokio::sync::Semaphore::new(1));
     loop {
+        // At the very top of every epoch, before any (possibly slow) config
+        // load, classifier provisioning, or resubscribe, report `subscribing`:
+        // the daemon cannot receive triggers until the subscription below is
+        // re-established. This resets a stale `idle`/`busy` from the epoch that
+        // just ended (reload / source-closed), so a poller never reads a
+        // healthy-looking `idle` while the daemon is mid-rebuild.
+        set_status(status, LoopStatus::Subscribing);
+
         // Arm the config watch *before* reading the config, so no settings
         // change can slip through the gap between resolving the config and
         // registering the watch (S16 startup-gap closure). A change that
@@ -581,6 +656,43 @@ async fn run(
             return Ok(());
         }
 
+        // Establish the session-bus connection eagerly here, before subscribing
+        // and independent of whether any agent behaviour needs an LLM provider,
+        // so the read-only status interface (org.arlen.AIAgent1) is reachable
+        // for every running config. A workflow-only epoch and a daemon still
+        // retrying the Event Bus subscription both reach this point with no
+        // provider; if the connection were established only inside
+        // `build_provider` (gated on `needs_provider`) the status method would
+        // have no owner to answer while behaviours are loaded and running. Do
+        // NOT re-gate this on `needs_provider`. Best-effort: a missing session
+        // bus leaves the interface unregistered (a later provider build or a
+        // reload re-attempts it) but never blocks workflow dispatch. A name
+        // collision is fatal, though: if another instance already owns
+        // org.arlen.AIAgent1 this one must stop before subscribing, or both
+        // would dispatch the same triggers (and, with the executor live,
+        // duplicate audited graph writes).
+        if connection.is_none() {
+            match establish_agent_connection(Arc::clone(status)).await {
+                AgentConnection::Owned(conn) => *connection = Some(conn),
+                // No bus yet: leave the connection unset; recovery re-attempts
+                // it in the background while workflow behaviours run. The
+                // singleton guard is the D-Bus name, so during a session-bus
+                // outage it cannot engage: two instances started while the bus
+                // is down would both dispatch until one loses the name on
+                // recovery. In the real deployment this does not arise (a
+                // systemd user singleton runs one instance, and a dead session
+                // bus means the session itself is not up), and the only path to
+                // a duplicated *write* (executor_live) is default-off and
+                // human-gated. A bus-independent process lock (flock) is the
+                // robust closure and belongs to single-instance hardening, not
+                // here; keeping workflows running without a bus is deliberate.
+                AgentConnection::BusUnavailable => {}
+                // Another instance is authoritative: do not subscribe or
+                // dispatch. Exit cleanly (the supervisor keeps the real owner).
+                AgentConnection::NameTaken => return Ok(()),
+            }
+        }
+
         // Subscribe to exactly the event types the enabled behaviours need.
         // The subscription is config-scoped: a provider recovery rebuilds the
         // dispatcher in place (below) without dropping it, so buffered events
@@ -589,7 +701,10 @@ async fn run(
         let mut source =
             match subscribe_with_retry(consumer_socket(), types, &watcher, &mut shutdown_rx).await {
                 Ok(s) => s,
-                Err(EpochEnd::Shutdown) => return Ok(()),
+                // Subscription waits only on config/shutdown, so it never
+                // yields Superseded; exit on Shutdown (and, defensively,
+                // Superseded), reload otherwise.
+                Err(EpochEnd::Shutdown | EpochEnd::Superseded) => return Ok(()),
                 Err(EpochEnd::Reload | EpochEnd::RearmProvider) => continue,
             };
 
@@ -693,13 +808,23 @@ async fn run(
             // recovery is generally undesirable. Buffering and replaying agent
             // events across an outage (split workflow/agent subscriptions) is a
             // follow-up if a behaviour ever wants it.
-            let end = if pending_provider {
+            // Drive a background reconnect whenever the session bus connection
+            // is missing, not only when an agent provider is pending: a
+            // workflow-only config with the bus down at epoch start would
+            // otherwise never (re)register `org.arlen.AIAgent1`, hiding the live
+            // status from the dashboard for the whole epoch even after the bus
+            // comes back. Recovery is raced against events inside the dispatch
+            // loop, so workflow dispatch is never blocked; when it resolves the
+            // epoch re-arms with the status interface registered.
+            let needs_reconnect = pending_provider || connection.is_none();
+            let end = if needs_reconnect {
                 dispatch_until_change(
                     &dispatcher,
                     &mut source,
                     &watcher,
                     &mut shutdown_rx,
-                    recover_connection(connection),
+                    status,
+                    recover_connection(connection, Arc::clone(status)),
                 )
                 .await
             } else {
@@ -708,7 +833,8 @@ async fn run(
                     &mut source,
                     &watcher,
                     &mut shutdown_rx,
-                    std::future::pending(),
+                    status,
+                    std::future::pending::<bool>(),
                 )
                 .await
             };
@@ -725,6 +851,10 @@ async fn run(
         match epoch_end {
             EpochEnd::Shutdown => {
                 tracing::info!("shutdown signal received, stopping");
+                return Ok(());
+            }
+            EpochEnd::Superseded => {
+                tracing::warn!("another instance owns org.arlen.AIAgent1; stopping to avoid duplicate dispatch");
                 return Ok(());
             }
             EpochEnd::Reload => {
@@ -760,13 +890,20 @@ enum DispatchStep {
 /// without a live event source.
 async fn next_dispatch_step(
     config_change: impl std::future::Future<Output = EpochEnd>,
-    recovery: impl std::future::Future<Output = ()>,
+    recovery: impl std::future::Future<Output = bool>,
     next_event: impl std::future::Future<Output = Option<AgentEvent>>,
 ) -> DispatchStep {
     tokio::select! {
         biased;
         end = config_change => DispatchStep::End(end),
-        _ = recovery => DispatchStep::Recovered,
+        // `recovery` resolves `true` when the bus is back and owned (re-arm), or
+        // `false` when another instance took the singleton name during the
+        // outage (this instance must stop).
+        owned = recovery => if owned {
+            DispatchStep::Recovered
+        } else {
+            DispatchStep::End(EpochEnd::Superseded)
+        },
         maybe = next_event => match maybe {
             Some(event) => DispatchStep::Event(event),
             None => DispatchStep::SourceClosed,
@@ -792,10 +929,13 @@ async fn dispatch_until_change(
     source: &mut EventBusSource,
     watcher: &ConfigWatcher,
     shutdown_rx: &mut watch::Receiver<bool>,
-    recovery: impl std::future::Future<Output = ()>,
+    status: &StatusHandle,
+    recovery: impl std::future::Future<Output = bool>,
 ) -> EpochEnd {
     tokio::pin!(recovery);
     loop {
+        // Idle while blocked waiting for the next trigger.
+        set_status(status, LoopStatus::Idle);
         // Wait for the next event, ending the epoch on a config change,
         // shutdown, or provider recovery before any further dispatch.
         let event = match next_dispatch_step(
@@ -826,6 +966,10 @@ async fn dispatch_until_change(
         if matches!(watcher.try_recv(), Ok(()) | Err(TryRecvError::Disconnected)) {
             return EpochEnd::Reload;
         }
+        // Busy while handling the event: matching, screening, and (for a
+        // `kind: agent` behaviour) the whole bounded loop happen inside the
+        // dispatch below.
+        set_status(status, LoopStatus::Busy);
         // Race the dispatch (which, for a `kind: agent` behaviour, may run a
         // whole bounded loop) against a config change or shutdown, so a
         // revocation aborts an in-flight agent loop at its next await rather
@@ -839,6 +983,10 @@ async fn dispatch_until_change(
         )
         .await
         {
+            // Aborting mid-dispatch ends the epoch. Leave status as-is: the
+            // outer loop resets it to `subscribing` at its top before any
+            // rebuild, which is the honest state for a daemon about to
+            // resubscribe (setting `idle` here would be the stale-idle bug).
             return end;
         }
     }
@@ -1211,7 +1359,7 @@ mod tests {
         // event is still delivered after the rebuild.
         let step = next_dispatch_step(
             pending::<EpochEnd>(),
-            ready(()),
+            ready(true),
             ready(Some(an_event())),
         )
         .await;
@@ -1223,7 +1371,7 @@ mod tests {
         use std::future::{pending, ready};
         let step = next_dispatch_step(
             pending::<EpochEnd>(),
-            pending::<()>(),
+            pending::<bool>(),
             ready(Some(an_event())),
         )
         .await;
@@ -1237,10 +1385,25 @@ mod tests {
         // buffered event.
         let step = next_dispatch_step(
             ready(EpochEnd::Reload),
-            ready(()),
+            ready(true),
             ready(Some(an_event())),
         )
         .await;
         assert!(matches!(step, DispatchStep::End(EpochEnd::Reload)));
+    }
+
+    #[tokio::test]
+    async fn a_lost_name_race_during_recovery_supersedes_the_epoch() {
+        use std::future::{pending, ready};
+        // recover_connection resolves `false` when another instance took the
+        // singleton name during the bus outage: the epoch must end as
+        // Superseded (the daemon then exits) rather than re-arm or dispatch.
+        let step = next_dispatch_step(
+            pending::<EpochEnd>(),
+            ready(false),
+            ready(Some(an_event())),
+        )
+        .await;
+        assert!(matches!(step, DispatchStep::End(EpochEnd::Superseded)));
     }
 }
