@@ -25,7 +25,9 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::snapshot::{Coverage, FileActivity, ProjectContext, SystemSnapshot};
+use crate::snapshot::{
+    Anomaly, AnomalyKind, Coverage, FileActivity, ProjectContext, SystemSnapshot,
+};
 
 /// How many recent file accesses to include in the snapshot. A small
 /// cap keeps the prompt bounded; the explanation summarises rather than
@@ -55,12 +57,16 @@ pub const RECENT_WINDOW_SECS: i64 = 6 * 3600;
 /// a `now_unix` in seconds is scaled to micros for the cutoff comparison.
 const MICROS_PER_SEC: i64 = 1_000_000;
 
-/// An error reading the graph for a snapshot.
+/// An error reading a source for a snapshot.
 #[derive(Debug, thiserror::Error)]
 pub enum SnapshotError {
     /// The graph read failed at the transport or query level.
     #[error("graph read failed: {0}")]
     GraphRead(String),
+    /// The anomaly source failed at the I/O level (a malformed or missing
+    /// findings file is not an error; it reads as no anomalies).
+    #[error("anomaly read failed: {0}")]
+    AnomalyRead(String),
 }
 
 /// Read-only, typed Knowledge Graph access: one map per row keyed by
@@ -206,6 +212,235 @@ impl GraphReader for UnixGraphReader {
             .query_rows(cypher)
             .await
             .map_err(|e| SnapshotError::GraphRead(e.to_string()))
+    }
+}
+
+/// Reads flagged anomalies for the explanation (Foundation §5.8, the
+/// "is this normal" half the Anomaly Detector owns). Behind a seam so the
+/// snapshot stays testable with a mock and decoupled from the detector's
+/// on-disk format.
+pub trait AnomalyReader: Send + Sync {
+    /// Return the currently-flagged anomalies, or empty if none. A missing
+    /// or unreadable findings store is not an error, it is no anomalies.
+    fn read_anomalies(&self) -> Result<Vec<Anomaly>, SnapshotError>;
+}
+
+/// Map an Anomaly Detector finding (its stable `kind` string plus summary)
+/// onto the explanation's typed anomaly. The detector's kinds are broader
+/// than Foundation's two named ones, so anything that is not clearly a
+/// novel-node or undeclared-network finding maps to `UnusualForContext`,
+/// the catch-all "unusual for this machine" bucket, rather than being
+/// dropped. Pure, so the mapping is unit-tested.
+fn anomaly_from_alert(kind: &str, summary: &str) -> Anomaly {
+    let k = kind.to_ascii_lowercase();
+    let mapped = if k.contains("novel") || k.contains("node") {
+        AnomalyKind::NovelNodeAccess
+    } else if k.contains("network") || k.contains("destination") {
+        AnomalyKind::UndeclaredNetworkDestination
+    } else {
+        AnomalyKind::UnusualForContext
+    };
+    Anomaly {
+        kind: mapped,
+        description: summary.to_string(),
+    }
+}
+
+/// Build the **anomaly half** of a snapshot through `reader`. Sets
+/// [`Coverage::anomalies`]; the graph and live fields are left empty for
+/// their own sources, to be combined with [`merge_snapshots`].
+pub fn anomaly_context(
+    reader: &dyn AnomalyReader,
+    now_unix: i64,
+) -> Result<SystemSnapshot, SnapshotError> {
+    Ok(SystemSnapshot {
+        captured_at_unix: now_unix,
+        anomalies: reader.read_anomalies()?,
+        coverage: Coverage {
+            graph_context: false,
+            live_processes: false,
+            anomalies: true,
+        },
+        ..Default::default()
+    })
+}
+
+/// Production [`AnomalyReader`] over the Anomaly Detector's persisted
+/// findings file (`alerts.json`, a `{ "alerts": [ { kind, summary, .. } ] }`
+/// document). The path is supplied by the caller rather than resolved here,
+/// so the crate stays free of environment assumptions. The file is parsed
+/// liberally: a missing file, a parse error, or an entry without a `kind`
+/// yields no (or one fewer) anomaly rather than failing the explanation,
+/// since the source is advisory.
+pub struct FileAnomalyReader {
+    path: String,
+}
+
+impl FileAnomalyReader {
+    /// Build a reader for the given findings-file path.
+    pub fn new(path: impl Into<String>) -> Self {
+        Self { path: path.into() }
+    }
+}
+
+impl AnomalyReader for FileAnomalyReader {
+    fn read_anomalies(&self) -> Result<Vec<Anomaly>, SnapshotError> {
+        let text = match std::fs::read_to_string(&self.path) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(SnapshotError::AnomalyRead(e.to_string())),
+        };
+        // A malformed file is advisory-degraded to no anomalies, not an error.
+        let Ok(value) = serde_json::from_str::<Value>(&text) else {
+            return Ok(Vec::new());
+        };
+        let Some(alerts) = value.get("alerts").and_then(Value::as_array) else {
+            return Ok(Vec::new());
+        };
+        Ok(alerts
+            .iter()
+            .filter_map(|a| {
+                let kind = a.get("kind").and_then(Value::as_str)?;
+                let summary = a.get("summary").and_then(Value::as_str).unwrap_or("");
+                Some(anomaly_from_alert(kind, summary))
+            })
+            .collect())
+    }
+}
+
+/// Combine two partial snapshots (e.g. the graph half and the anomaly half)
+/// into one. Lists are concatenated, the active project prefers the first
+/// present one, the capture time is the later of the two, and each coverage
+/// flag is the OR of the inputs. This is how the daemon assembles the
+/// per-source snapshots into the picture the explanation reasons over.
+pub fn merge_snapshots(a: SystemSnapshot, b: SystemSnapshot) -> SystemSnapshot {
+    let mut files = a.files;
+    files.extend(b.files);
+    let mut processes = a.processes;
+    processes.extend(b.processes);
+    let mut network = a.network;
+    network.extend(b.network);
+    let mut anomalies = a.anomalies;
+    anomalies.extend(b.anomalies);
+    SystemSnapshot {
+        captured_at_unix: a.captured_at_unix.max(b.captured_at_unix),
+        files,
+        processes,
+        network,
+        anomalies,
+        active_project: a.active_project.or(b.active_project),
+        coverage: Coverage {
+            graph_context: a.coverage.graph_context || b.coverage.graph_context,
+            live_processes: a.coverage.live_processes || b.coverage.live_processes,
+            anomalies: a.coverage.anomalies || b.coverage.anomalies,
+        },
+    }
+}
+
+#[cfg(test)]
+mod anomaly_tests {
+    use super::*;
+
+    struct MockAnomalies(Vec<Anomaly>);
+    impl AnomalyReader for MockAnomalies {
+        fn read_anomalies(&self) -> Result<Vec<Anomaly>, SnapshotError> {
+            Ok(self.0.clone())
+        }
+    }
+
+    #[test]
+    fn alert_kind_maps_to_the_typed_anomaly() {
+        assert_eq!(
+            anomaly_from_alert("novel_node_type", "x").kind,
+            AnomalyKind::NovelNodeAccess
+        );
+        assert_eq!(
+            anomaly_from_alert("undeclared_network_destination", "x").kind,
+            AnomalyKind::UndeclaredNetworkDestination
+        );
+        // Anything else (rate spike, AI-action-without-interaction, tampering)
+        // is kept, not dropped, as the catch-all bucket.
+        assert_eq!(
+            anomaly_from_alert("query_rate_spike", "x").kind,
+            AnomalyKind::UnusualForContext
+        );
+        assert_eq!(anomaly_from_alert("anything", "the summary").description, "the summary");
+    }
+
+    #[test]
+    fn anomaly_context_sets_only_its_coverage_flag() {
+        let reader = MockAnomalies(vec![Anomaly {
+            kind: AnomalyKind::UnusualForContext,
+            description: "spike".into(),
+        }]);
+        let snap = anomaly_context(&reader, 99).unwrap();
+        assert_eq!(snap.captured_at_unix, 99);
+        assert_eq!(snap.anomalies.len(), 1);
+        assert!(snap.coverage.anomalies);
+        assert!(!snap.coverage.graph_context);
+        assert!(!snap.coverage.live_processes);
+        assert!(snap.files.is_empty());
+    }
+
+    #[test]
+    fn file_reader_parses_alerts_and_maps_them() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("alerts.json");
+        std::fs::write(
+            &path,
+            r#"{ "alerts": [
+                { "kind": "novel_node_type", "summary": "new node type", "body": "", "critical": false, "ts_micros": 1 },
+                { "kind": "query_rate_spike", "summary": "rate spike", "body": "", "critical": true, "ts_micros": 2 }
+            ] }"#,
+        )
+        .unwrap();
+        let got = FileAnomalyReader::new(path.to_string_lossy().into_owned())
+            .read_anomalies()
+            .unwrap();
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].kind, AnomalyKind::NovelNodeAccess);
+        assert_eq!(got[0].description, "new node type");
+        assert_eq!(got[1].kind, AnomalyKind::UnusualForContext);
+    }
+
+    #[test]
+    fn file_reader_treats_missing_or_malformed_as_no_anomalies() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("none.json");
+        assert!(FileAnomalyReader::new(missing.to_string_lossy().into_owned())
+            .read_anomalies()
+            .unwrap()
+            .is_empty());
+
+        let bad = tmp.path().join("bad.json");
+        std::fs::write(&bad, b"{ not json").unwrap();
+        assert!(FileAnomalyReader::new(bad.to_string_lossy().into_owned())
+            .read_anomalies()
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn merge_concatenates_and_ors_coverage() {
+        let graph = SystemSnapshot {
+            captured_at_unix: 10,
+            active_project: Some(ProjectContext { name: "p".into(), file_count: 3 }),
+            coverage: Coverage { graph_context: true, live_processes: false, anomalies: false },
+            ..Default::default()
+        };
+        let anomalies = SystemSnapshot {
+            captured_at_unix: 20,
+            anomalies: vec![Anomaly { kind: AnomalyKind::UnusualForContext, description: "x".into() }],
+            coverage: Coverage { graph_context: false, live_processes: false, anomalies: true },
+            ..Default::default()
+        };
+        let merged = merge_snapshots(graph, anomalies);
+        assert_eq!(merged.captured_at_unix, 20);
+        assert!(merged.active_project.is_some());
+        assert_eq!(merged.anomalies.len(), 1);
+        assert!(merged.coverage.graph_context);
+        assert!(merged.coverage.anomalies);
+        assert!(!merged.coverage.live_processes);
     }
 }
 
