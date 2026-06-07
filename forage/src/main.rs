@@ -110,7 +110,7 @@ async fn cmd_remove(app_id: String) {
         }
     };
 
-    if let Err(e) = client::uninstall(&conn, &app_id).await {
+    if let Err(e) = client::uninstall_routed(&conn, &app_id).await {
         eprintln!("{} {e}", "error:".red().bold());
         std::process::exit(1);
     }

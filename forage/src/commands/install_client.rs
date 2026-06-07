@@ -163,8 +163,12 @@ pub fn apps_to_json(apps: &[(String, String, String, String)]) -> String {
         .unwrap_or_else(|_| "[]".to_string())
 }
 
-/// List all installed apps: a formatted table, or a JSON array when `json`.
-pub async fn list_installed(conn: &Connection, json: bool) -> Result<(), String> {
+/// Fetch the installed apps from the daemon as `(id, name, version, source)`
+/// tuples. Shared by the list view and the uninstall router (which needs each
+/// app's source to pick the right removal path).
+pub async fn fetch_installed(
+    conn: &Connection,
+) -> Result<Vec<(String, String, String, String)>, String> {
     let iface = zbus::names::InterfaceName::try_from(INTERFACE).unwrap();
     let bus = zbus::names::BusName::try_from(BUS_NAME).unwrap();
     let path = zbus::zvariant::ObjectPath::try_from(OBJECT_PATH).unwrap();
@@ -174,10 +178,39 @@ pub async fn list_installed(conn: &Connection, json: bool) -> Result<(), String>
         .await
         .map_err(|e| format!("ListInstalled failed: {e}"))?;
 
-    let apps: Vec<(String, String, String, String)> = reply
+    reply
         .body()
         .deserialize()
-        .map_err(|e| format!("failed to parse response: {e}"))?;
+        .map_err(|e| format!("failed to parse response: {e}"))
+}
+
+/// Whether an app with the given installed `source` should be removed through
+/// the Flatpak path. Pure, so the routing decision is unit-tested without a
+/// daemon. An unknown or absent source falls back to the lunpkg path, whose
+/// daemon call reports the authoritative error if the app is not installed.
+pub fn should_uninstall_as_flatpak(source: Option<&str>) -> bool {
+    source == Some("flatpak")
+}
+
+/// Remove an installed app, routing to the Flatpak or lunpkg removal path by
+/// the source the daemon reports for it. Without this, `forage remove` always
+/// took the lunpkg path and could not remove a Flatpak app.
+pub async fn uninstall_routed(conn: &Connection, app_id: &str) -> Result<(), String> {
+    let source = fetch_installed(conn)
+        .await?
+        .into_iter()
+        .find(|(id, ..)| id == app_id)
+        .map(|(_, _, _, source)| source);
+    if should_uninstall_as_flatpak(source.as_deref()) {
+        uninstall_flatpak(conn, app_id).await
+    } else {
+        uninstall(conn, app_id).await
+    }
+}
+
+/// List all installed apps: a formatted table, or a JSON array when `json`.
+pub async fn list_installed(conn: &Connection, json: bool) -> Result<(), String> {
+    let apps = fetch_installed(conn).await?;
 
     // Machine-readable output: just the JSON array, no decorations, and `[]`
     // when empty so a consumer can parse unconditionally.
@@ -454,7 +487,17 @@ pub async fn info_app(app_id: &str, json: bool) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{app_info_to_json, apps_to_json};
+    use super::{app_info_to_json, apps_to_json, should_uninstall_as_flatpak};
+
+    #[test]
+    fn uninstall_routes_flatpak_by_source() {
+        assert!(should_uninstall_as_flatpak(Some("flatpak")));
+        // lunpkg and an unknown/absent source both take the lunpkg path, which
+        // reports the authoritative error if the app is not installed.
+        assert!(!should_uninstall_as_flatpak(Some("lunpkg")));
+        assert!(!should_uninstall_as_flatpak(None));
+        assert!(!should_uninstall_as_flatpak(Some("snap")));
+    }
 
     #[test]
     fn empty_list_is_an_empty_json_array() {
