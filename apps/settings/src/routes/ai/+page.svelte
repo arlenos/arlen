@@ -93,6 +93,25 @@
   let statusLoading = $state(false);
   let statusError = $state<string | null>(null);
 
+  // System Explanation Mode (Foundation §5.8): an on-demand plain-language
+  // summary of what the computer is doing now, from the AI daemon.
+  let explanation = $state<string | null>(null);
+  let explainError = $state<string | null>(null);
+  let explaining = $state(false);
+
+  async function runExplain() {
+    explaining = true;
+    explainError = null;
+    try {
+      explanation = await invoke<string>("ai_explain");
+    } catch (e) {
+      explainError = String(e);
+      explanation = null;
+    } finally {
+      explaining = false;
+    }
+  }
+
   let enabled = $state(false);
   let provider = $state("ollama-default");
   let providerAtLoad = $state("ollama-default");
@@ -340,6 +359,28 @@
       </Row>
     </Group>
 
+    <Group label="What's happening now">
+      <Row
+        label="Explain my system"
+        description="A plain-language summary of what your computer is doing right now, grounded in the knowledge graph, live processes and any flagged anomalies. Needs the Full read tier."
+        id="ai-explain"
+      >
+        {#snippet control()}
+          <Button variant="outline" size="sm" disabled={explaining} onclick={runExplain}>
+            <Sparkles size={14} class={explaining ? "ai-spin" : ""} />
+            {explaining ? "Thinking…" : "Explain"}
+          </Button>
+        {/snippet}
+        {#snippet below()}
+          {#if explainError}
+            <p class="explain-error">{explainError}</p>
+          {:else if explanation}
+            <p class="explain-text">{explanation}</p>
+          {/if}
+        {/snippet}
+      </Row>
+    </Group>
+
     <Group label="Activity" class="span-full">
       <div class="activity-head" id="ai-activity">
         <div class="activity-head-text">
@@ -554,5 +595,17 @@
     font-size: 0.75rem;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
     white-space: nowrap;
+  }
+  .explain-text {
+    margin: 0.5rem 0 0;
+    font-size: 0.875rem;
+    line-height: 1.55;
+    color: var(--foreground);
+    white-space: pre-wrap;
+  }
+  .explain-error {
+    margin: 0.5rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--color-error);
   }
 </style>
