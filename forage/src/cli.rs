@@ -33,6 +33,10 @@ pub enum Commands {
     Info {
         /// App ID.
         app_id: String,
+        /// Output a JSON object instead of the formatted details (for scripts
+        /// and other tools, e.g. the store app's detail view).
+        #[arg(long)]
+        json: bool,
     },
     /// Show the install path of an app.
     Which {
