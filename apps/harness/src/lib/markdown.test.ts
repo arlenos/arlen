@@ -16,6 +16,19 @@ describe("renderMarkdown", () => {
     expect(html.toLowerCase()).not.toContain("target=");
   });
 
+  it("accepts a link's scheme case-insensitively", () => {
+    // Matches the backend open_url allowlist, which also compares
+    // case-insensitively, so a rendered link is never rejected on open.
+    const html = renderMarkdown("[ok](HTTPS://example.com)");
+    expect(html).toContain('href="HTTPS://example.com"');
+  });
+
+  it("drops a bare http(s) scheme without //", () => {
+    // `https:foo` is not a navigable link; both layers require the slashes.
+    const html = renderMarkdown("[x](https:no-slashes)");
+    expect(html).not.toContain("href");
+  });
+
   // Security regression cases: untrusted model output must not inject active
   // content, overlay CSS, or smuggle data/script through the {@html} sink.
   it("strips <script>", () => {

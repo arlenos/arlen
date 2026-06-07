@@ -45,8 +45,11 @@ const ALLOWED_ATTR = ["href"];
 
 /// Link schemes the renderer trusts. `javascript:` and `data:` are excluded, so
 /// a crafted link cannot execute script or smuggle a data payload; a link with
-/// any other scheme keeps its text but loses its href (inert).
-const ALLOWED_URI_REGEXP = /^(?:https?|mailto):/i;
+/// any other scheme keeps its text but loses its href (inert). http(s) must
+/// carry `//` (a bare `https:foo` is not a real navigable link), and this must
+/// stay in lockstep with the backend `open_url` allowlist that the click
+/// handler forwards to, so a rendered link never opens to a silent rejection.
+const ALLOWED_URI_REGEXP = /^(?:https?:\/\/|mailto:)/i;
 
 /// Parse `text` as GitHub-flavoured markdown and return strictly-sanitized HTML.
 export function renderMarkdown(text: string): string {
