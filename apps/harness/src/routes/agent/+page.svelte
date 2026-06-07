@@ -11,6 +11,7 @@
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Activity, History, Bell, RefreshCw, ShieldAlert, Eye, Sparkles, PowerOff } from "@lucide/svelte";
+  import AgentFilters from "$lib/components/AgentFilters.svelte";
 
   interface ActivityEntry {
     index: number;
@@ -81,6 +82,46 @@
   let notices = $state<Notice[] | null>(null);
   let capability = $state<Capability | null>(null);
 
+  // Activity-timeline filters (A7 inc 3). User-driven `$state` (not an IPC
+  // callback), so plain reactivity is reliable here.
+  let selectedKind = $state<string | null>(null);
+  let selectedOutcome = $state<string | null>(null);
+  let timeWindow = $state("all");
+
+  // Filter options are derived from the loaded entries, not hardcoded, so only
+  // what the ledger actually contains is offered.
+  const kindOptions = $derived(
+    [...new Set((activity?.entries ?? []).map((e) => e.kind))]
+      .sort()
+      .map((k) => ({ value: k, label: KIND_META[k]?.label ?? k })),
+  );
+  const outcomeOptions = $derived(
+    [...new Set((activity?.entries ?? []).map((e) => e.outcome))]
+      .sort()
+      .map((o) => ({ value: o, label: o })),
+  );
+
+  const WINDOW_MS: Record<string, number | null> = {
+    all: null,
+    "1h": 3_600_000,
+    "24h": 86_400_000,
+    "7d": 604_800_000,
+  };
+
+  // The visible timeline after applying the filters. Time compares against the
+  // wall clock; entry timestamps are microseconds, the window is milliseconds.
+  const filteredEntries = $derived.by(() => {
+    const entries = activity?.entries ?? [];
+    const windowMs = WINDOW_MS[timeWindow] ?? null;
+    const now = Date.now();
+    return entries.filter(
+      (e) =>
+        (selectedKind === null || e.kind === selectedKind) &&
+        (selectedOutcome === null || e.outcome === selectedOutcome) &&
+        (windowMs === null || now - e.timestampMicros / 1000 <= windowMs),
+    );
+  });
+
   function relativeTime(micros: number): string {
     const then = micros / 1000;
     const diffSec = Math.max(0, (Date.now() - then) / 1000);
@@ -131,6 +172,15 @@
   onMount(load);
 </script>
 
+<div class="agent-shell">
+  <AgentFilters
+    kinds={kindOptions}
+    outcomes={outcomeOptions}
+    bind:selectedKind
+    bind:selectedOutcome
+    bind:timeWindow
+  />
+  <div class="agent-main">
 <Page
   title="Agent"
   description="What the assistant has done on your behalf. Read-only, from the tamper-evident audit ledger — review each curated action and undo it if you want."
@@ -192,9 +242,11 @@
         <p class="empty">The audit daemon is not running, so there is no activity to show yet.</p>
       {:else if activity.entries.length === 0}
         <p class="empty">No AI activity recorded yet.</p>
+      {:else if filteredEntries.length === 0}
+        <p class="empty">No activity matches the current filters.</p>
       {:else}
         <ul class="timeline">
-          {#each activity.entries as entry (entry.entryRef)}
+          {#each filteredEntries as entry (entry.entryRef)}
             {@const meta = KIND_META[entry.kind] ?? { label: entry.kind, tone: "neutral" }}
             <li class="item">
               <span class="badge" data-tone={meta.tone}>{meta.label}</span>
@@ -303,8 +355,18 @@
     </Group>
   </SectionGrid>
 </Page>
+  </div>
+</div>
 
 <style>
+  .agent-shell {
+    display: flex;
+    min-height: 100%;
+  }
+  .agent-main {
+    flex: 1;
+    min-width: 0;
+  }
   .activity-head {
     display: flex;
     align-items: center;
