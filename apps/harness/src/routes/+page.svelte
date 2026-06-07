@@ -14,7 +14,7 @@
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2, Wrench, Cpu, File as FileIcon, Folder, Paperclip, X } from "@lucide/svelte";
-  import { messages, busy, send, type MentionContent } from "$lib/stores/conversation";
+  import { messages, busy, send, initSessions, type MentionContent } from "$lib/stores/conversation";
   import ConversationRail from "$lib/components/ConversationRail.svelte";
 
   interface FileSuggestion {
@@ -125,6 +125,8 @@
   // and action mode the AI operates under, from ai.toml (what the daemon
   // enforces). Refreshed each mount so a Settings change is reflected.
   onMount(async () => {
+    // Load persisted conversations so the history rail is populated on open.
+    initSessions();
     try {
       capability = await invoke<Capability>("ai_capability");
     } catch {

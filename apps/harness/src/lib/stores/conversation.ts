@@ -81,7 +81,6 @@ function buildPrompt(text: string, mentions: MentionContent[]): string {
 }
 
 let nextMsgId = 0;
-let nextSessionId = 0;
 
 /// All conversations this run, newest first.
 export const sessions = writable<Session[]>([]);
@@ -97,6 +96,48 @@ export const messages = derived(
   ([$sessions, $id]) => $sessions.find((s) => s.id === $id)?.messages ?? [],
 );
 
+let initialized = false;
+
+/// Load persisted sessions on startup and keep the store mirrored to disk.
+/// Sessions are in-memory until this runs; call it once when the app mounts.
+/// Loading and saving both fail soft, so a persistence problem never breaks the
+/// conversation, the rail just falls back to in-memory.
+export async function initSessions(): Promise<void> {
+  if (initialized) return;
+  initialized = true;
+
+  try {
+    const stored = await invoke<Session[]>("harness_sessions_load");
+    if (Array.isArray(stored) && stored.length > 0) {
+      sessions.set(stored);
+      activeSessionId.set(stored[0]?.id ?? null);
+      // Continue message ids past the highest loaded one, so a new turn in a
+      // restored session never collides with an existing keyed message.
+      const maxId = Math.max(
+        -1,
+        ...stored.flatMap((s) => s.messages.map((m) => m.id)),
+      );
+      nextMsgId = maxId + 1;
+    }
+  } catch {
+    // No persisted history; start fresh.
+  }
+
+  // Mirror changes to disk, debounced. Drop in-flight (pending) turns and empty
+  // sessions so the stored history stays clean and never freezes a "thinking"
+  // placeholder.
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  sessions.subscribe((list) => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      const clean = list
+        .map((s) => ({ ...s, messages: s.messages.filter((m) => !m.pending) }))
+        .filter((s) => s.messages.length > 0);
+      invoke("harness_sessions_save", { sessions: clean }).catch(() => {});
+    }, 500);
+  });
+}
+
 const DEFAULT_TITLE = "New conversation";
 
 /// A session's title is the first non-empty user message, truncated; until then
@@ -110,7 +151,9 @@ function titleFrom(msgs: Message[]): string {
 
 /// Create a new, empty conversation and make it active.
 export function newSession(): string {
-  const id = `s${++nextSessionId}`;
+  // A UUID, not a per-run counter, so a session restored from a previous run
+  // can never collide with a new one.
+  const id = crypto.randomUUID();
   sessions.update((list) => [
     { id, title: DEFAULT_TITLE, messages: [], createdAt: Date.now() },
     ...list,
