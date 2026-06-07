@@ -740,19 +740,30 @@ impl AiDaemonService {
                 &prompt,
                 tl.max_steps,
             );
+            // The loop branch is polled BEFORE cancel (loop-first bias). When
+            // the loop is parked in a slow await (provider call, client lock,
+            // in-flight tool call) it is Pending, so a ready cancel still
+            // preempts promptly. But once the loop is ready to advance — e.g.
+            // a provider reply naming the raw-knowledge server has arrived — it
+            // runs its short synchronous segment to completion before cancel is
+            // honored, so the raw-denial path reaches its durable
+            // (spawned) policy-violation audit and a caller cannot hide a
+            // boundary probe by racing a cancel against the provider reply. The
+            // registry still records `cancelled` (cancel claims the terminal
+            // state), but the violation is durably audited and correlated.
             tokio::select! {
                 biased;
-                _ = cancel.cancelled() => {
-                    self.audit_completion(&query_id, "cancelled", started.elapsed())
-                        .await;
-                    return;
-                }
                 outcome = loop_call => loop_outcome_to_answer(outcome).map_err(|reason| {
                     RunFailure {
                         code: "tool-loop-failed".to_string(),
                         reason,
                     }
                 }),
+                _ = cancel.cancelled() => {
+                    self.audit_completion(&query_id, "cancelled", started.elapsed())
+                        .await;
+                    return;
+                }
             }
         } else {
             let runner_call = self.runner.run_query(&prompt, &scope);
@@ -1384,6 +1395,103 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
         assert!(released, "dropped query future must release its in-flight slot");
+    }
+
+    // --- Tool-routing dispatch: cancel cannot hide a policy violation ---
+
+    /// A provider whose first `complete` parks until released, then returns a
+    /// reply that names the raw-knowledge server. Lets a test open the
+    /// concurrent-cancel window deterministically: the loop is held inside the
+    /// provider call while the test cancels, then released so the loop can
+    /// advance to its raw-denial handling.
+    struct GatedRawProvider {
+        entered: Arc<Notify>,
+        release: Arc<Notify>,
+    }
+    #[async_trait]
+    impl AIProvider for GatedRawProvider {
+        async fn complete(
+            &self,
+            _req: CompletionRequest,
+        ) -> Result<CompletionResponse, ProviderError> {
+            self.entered.notify_one();
+            self.release.notified().await;
+            Ok(CompletionResponse {
+                text: r#"{"action":"call_tool","server":"system.knowledge","tool":"query","arguments":{"cypher":"MATCH (n) RETURN n"}}"#.to_string(),
+                audit: ProviderAudit {
+                    provider_name: "gated".into(),
+                    model: "gated".into(),
+                    input_tokens: None,
+                    output_tokens: None,
+                },
+            })
+        }
+        async fn available(&self) -> bool {
+            true
+        }
+        fn name(&self) -> &str {
+            "gated"
+        }
+    }
+
+    #[tokio::test]
+    async fn tool_routing_cancel_cannot_hide_a_raw_knowledge_policy_violation() {
+        // The raw-knowledge reply and the caller's cancel become ready in the
+        // same window. The loop-first dispatch select must let the loop reach
+        // its durable (spawned) policy-violation audit before cancel is
+        // honored, so the boundary probe is recorded even though the query ends
+        // up cancelled.
+        let entered = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let provider = Arc::new(GatedRawProvider {
+            entered: entered.clone(),
+            release: release.clone(),
+        });
+        let audit = Arc::new(audit_proto::MockAuditSink::accepting());
+        let client = Arc::new(tokio::sync::Mutex::new(McpClient::new()));
+        let svc = enable(
+            AiDaemonService::new(
+                Arc::new(StubRunner {
+                    reply: Ok("unused".to_string()),
+                    gate: None,
+                }),
+                full_scope(),
+                audit.clone(),
+            )
+            .with_tool_routing(true, client, provider, 4),
+        );
+
+        let caller = caller_id(":1.71", "/usr/bin/app-a");
+        let h = svc
+            .query("read everything".to_string(), caller.clone())
+            .await
+            .unwrap();
+
+        // The loop is now parked inside the provider call. Cancel, then let the
+        // provider return so the loop advances into the raw-denial handling.
+        entered.notified().await;
+        svc.cancel(&h.query_id, &caller.unique_bus_name, &h.retrieval_token)
+            .await
+            .expect("authz");
+        release.notify_one();
+
+        // The policy violation lands despite the cancellation, correlated to
+        // the query id.
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            let recorded = audit.recorded().await;
+            if recorded.iter().any(|e| {
+                e.kind == arlen_ai_core::audit::AuditKind::PolicyViolation
+                    && e.structural.subject == "system.knowledge"
+                    && e.call_chain_id.as_deref() == Some(h.query_id.as_str())
+            }) {
+                break;
+            }
+            if std::time::Instant::now() > deadline {
+                panic!("cancellation hid the raw-knowledge policy violation");
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
     }
 
     // --- System Explanation Mode (explain_system) ---
