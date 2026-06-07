@@ -22,29 +22,95 @@ env:
   CARGO_PROFILE_DEV_DEBUG: "0"
 
 jobs:
+  # Decide which components actually need building. The common case (editing one
+  # crate) then runs only that crate's leg instead of all of them. A change to
+  # anything shared falls back to the full matrix so a contract or lockfile
+  # change still rebuilds every dependent: rust goes full on a Cargo lockfile/
+  # manifest, the toolchain, .cargo, .github, contracts/, or any sdk/ crate
+  # except sdk/ui-kit; frontend goes full on .github or sdk/ui-kit (the shared
+  # component library). When the diff base is unknown (a new branch, a
+  # force-push, the first run) both go full, which is the safe default.
+  changes:
+    name: detect changed components
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.detect.outputs.rust }}
+      frontend: ${{ steps.detect.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          RUST_ALL='["contracts/audit-proto","contracts/notification-proto","contracts/modulesd-proto","contracts/graph-schema","sdk","ai","daemons/event-bus","daemons/knowledge","daemons/notification-daemon","daemons/audit-daemon","daemons/anomaly-detector","daemons/modulesd","daemons/installd","daemons/knowledge-mcp","daemons/xdg-portal","forage"]'
+          FRONT_ALL='["apps/settings","apps/harness","apps/desktop-shell","sdk/ui-kit"]'
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="$PR_BASE"; head="$PR_HEAD"
+          else
+            base="$BEFORE"; head="$SHA"
+          fi
+
+          base_unknown=0
+          changed=""
+          if [ -z "$base" ] || echo "$base" | grep -qE '^0+$'; then
+            base_unknown=1
+          else
+            changed="$(git diff --name-only "$base" "$head" 2>/dev/null || true)"
+            [ -z "$changed" ] && base_unknown=1
+          fi
+
+          rust_full=$base_unknown
+          frontend_full=$base_unknown
+          if [ "$base_unknown" = "0" ]; then
+            if echo "$changed" | grep -qE '^(Cargo\.(lock|toml)|rust-toolchain|\.cargo/|\.github/|contracts/)'; then
+              rust_full=1
+            fi
+            # any sdk/ change except under sdk/ui-kit/ is a shared rust change
+            if echo "$changed" | grep -E '^sdk/' | grep -qvE '^sdk/ui-kit/'; then
+              rust_full=1
+            fi
+            if echo "$changed" | grep -qE '^(\.github/|sdk/ui-kit/)'; then
+              frontend_full=1
+            fi
+          fi
+
+          changed_json="$(printf '%s' "$changed" | jq -R . | jq -cs .)"
+
+          if [ "$rust_full" = "1" ]; then
+            rust="$RUST_ALL"
+          else
+            rust="$(jq -cn --argjson all "$RUST_ALL" --argjson ch "$changed_json" \
+              '$all | map(select(. as $c | $ch | any(startswith($c + "/"))))')"
+          fi
+          if [ "$frontend_full" = "1" ]; then
+            frontend="$FRONT_ALL"
+          else
+            frontend="$(jq -cn --argjson all "$FRONT_ALL" --argjson ch "$changed_json" \
+              '$all | map(select(. as $c | $ch | any(startswith($c + "/"))))')"
+          fi
+
+          echo "rust=$rust" >> "$GITHUB_OUTPUT"
+          echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
+          echo "rust components: $rust"
+          echo "frontend apps: $frontend"
+
   rust:
     name: rust check + test
+    needs: changes
+    if: ${{ needs.changes.outputs.rust != '[]' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        component:
-          - contracts/audit-proto
-          - contracts/notification-proto
-          - contracts/modulesd-proto
-          - contracts/graph-schema
-          - sdk
-          - ai
-          - daemons/event-bus
-          - daemons/knowledge
-          - daemons/notification-daemon
-          - daemons/audit-daemon
-          - daemons/anomaly-detector
-          - daemons/modulesd
-          - daemons/installd
-          - daemons/knowledge-mcp
-          - daemons/xdg-portal
-          - forage
+        component: ${{ fromJSON(needs.changes.outputs.rust) }}
     steps:
       - uses: actions/checkout@v4
       - name: free disk space
@@ -82,6 +148,8 @@ jobs:
 
   lint:
     name: clippy + rustfmt
+    needs: changes
+    if: ${{ needs.changes.outputs.rust != '[]' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -108,11 +176,13 @@ jobs:
 
   frontend:
     name: frontend svelte-check
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend != '[]' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        app: [apps/settings, apps/harness, apps/desktop-shell, sdk/ui-kit]
+        app: ${{ fromJSON(needs.changes.outputs.frontend) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
