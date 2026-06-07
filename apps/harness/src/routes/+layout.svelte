@@ -14,14 +14,19 @@
   import { Separator } from "@arlen/ui-kit/components/ui/separator";
   import HarnessSidebar from "$lib/components/HarnessSidebar.svelte";
   import WindowControls from "$lib/components/WindowControls.svelte";
+  import { activeTitle } from "$lib/stores/conversation";
 
   let { children } = $props();
 
   // The header carried only a drag region + window controls (dead centre).
-  // Name the active surface there, like Settings' breadcrumb slot, so the
-  // titlebar gives the user their place in the app.
+  // Name the place there, like Settings' breadcrumb slot. On the conversation
+  // route it shows the active conversation's title, so the user has their
+  // bearings even when the history rail is hidden on a narrow window; the agent
+  // route and an empty conversation fall back to the surface name.
   const viewTitle = $derived(
-    $page.url.pathname.startsWith("/agent") ? "Agent" : "Conversation",
+    $page.url.pathname.startsWith("/agent")
+      ? "Agent"
+      : $activeTitle || "Conversation",
   );
 
   // Window drag via explicit pointerdown + startDragging(), because the
