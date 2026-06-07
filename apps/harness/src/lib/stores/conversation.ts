@@ -179,6 +179,15 @@ export function selectSession(id: string): void {
   activeSessionId.set(id);
 }
 
+/// Delete a conversation. If it was the active one, fall back to the newest
+/// remaining session (or none). The debounced disk save then drops it.
+export function deleteSession(id: string): void {
+  sessions.update((list) => list.filter((s) => s.id !== id));
+  if (get(activeSessionId) === id) {
+    activeSessionId.set(get(sessions)[0]?.id ?? null);
+  }
+}
+
 /// "New chat" affordance: start a fresh conversation.
 export function reset(): void {
   newSession();
