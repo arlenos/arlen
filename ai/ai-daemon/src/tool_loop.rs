@@ -415,6 +415,132 @@ mod tests {
         );
     }
 
+    // Full-loop integration: a live read-only MCP server with a `query` tool,
+    // a mock provider scripted to call it and then answer. Verifies the loop
+    // composes catalogue + prompt + parse + gate + dispatch end to end.
+    mod loop_integration {
+        use super::super::*;
+        use arlen_ai_core::mcp::{McpClient, ServerClass, ServerId};
+        use arlen_ai_core::provider::{
+            AIProvider, CompletionRequest, CompletionResponse, ProviderAudit, ProviderError,
+        };
+        use async_trait::async_trait;
+        use os_sdk::mcp::rmcp;
+        use os_sdk::mcp::serve_mcp_at;
+        use rmcp::handler::server::router::tool::ToolRouter;
+        use rmcp::{tool, tool_handler, tool_router, ServerHandler};
+        use std::path::PathBuf;
+        use std::sync::Mutex;
+        use std::time::Duration;
+
+        /// A provider that replays a fixed script of replies, one per call.
+        struct ScriptedProvider {
+            replies: Mutex<std::collections::VecDeque<String>>,
+        }
+        impl ScriptedProvider {
+            fn new(replies: Vec<&str>) -> Self {
+                Self {
+                    replies: Mutex::new(replies.into_iter().map(String::from).collect()),
+                }
+            }
+        }
+        #[async_trait]
+        impl AIProvider for ScriptedProvider {
+            async fn complete(
+                &self,
+                _req: CompletionRequest,
+            ) -> Result<CompletionResponse, ProviderError> {
+                let text = self
+                    .replies
+                    .lock()
+                    .unwrap()
+                    .pop_front()
+                    .unwrap_or_else(|| r#"{"action":"answer","text":"(script exhausted)"}"#.into());
+                Ok(CompletionResponse {
+                    text,
+                    audit: ProviderAudit {
+                        provider_name: "scripted".into(),
+                        model: "scripted".into(),
+                        input_tokens: None,
+                        output_tokens: None,
+                    },
+                })
+            }
+            async fn available(&self) -> bool {
+                true
+            }
+            fn name(&self) -> &str {
+                "scripted"
+            }
+        }
+
+        #[derive(Clone)]
+        struct QueryServer {
+            tool_router: ToolRouter<Self>,
+        }
+        #[tool_router(router = tool_router)]
+        impl QueryServer {
+            fn new() -> Self {
+                Self {
+                    tool_router: Self::tool_router(),
+                }
+            }
+            #[tool(name = "query")]
+            async fn query(&self) -> Result<String, String> {
+                Ok(r#"[{"path":"/notes.txt"}]"#.to_string())
+            }
+        }
+        #[tool_handler(router = self.tool_router)]
+        impl ServerHandler for QueryServer {}
+
+        fn temp_socket() -> PathBuf {
+            let unique = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            std::env::temp_dir()
+                .join(format!("arlen-toolloop-{}-{unique}", std::process::id()))
+                .join("s.sock")
+        }
+
+        #[tokio::test]
+        async fn loop_calls_a_tool_then_answers() {
+            let socket = temp_socket();
+            let socket_for_task = socket.clone();
+            let server = tokio::spawn(async move {
+                let _ = serve_mcp_at(&socket_for_task, QueryServer::new).await;
+            });
+            for _ in 0..200 {
+                if socket.exists() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert!(socket.exists(), "test server did not bind");
+
+            let mut client = McpClient::new();
+            client
+                .connect(
+                    ServerId("test".into()),
+                    socket.to_str().unwrap(),
+                    ServerClass::ReadOnly,
+                )
+                .await
+                .expect("connect to test server");
+
+            // Step 1: call the tool. Step 2: answer.
+            let provider = ScriptedProvider::new(vec![
+                r#"{"action":"call_tool","server":"test","tool":"query","arguments":{}}"#,
+                r#"{"action":"answer","text":"you have 1 note"}"#,
+            ]);
+
+            let outcome = run_tool_loop(&client, &provider, "what notes do I have?", 5).await;
+            assert_eq!(outcome, LoopOutcome::Answer("you have 1 note".to_string()));
+
+            server.abort();
+        }
+    }
+
     #[test]
     fn allow_dispatches_blocked_decisions_surface() {
         // Allow means the caller proceeds to dispatch.
