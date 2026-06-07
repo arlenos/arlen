@@ -1,13 +1,17 @@
 /// Conversation state for the query surface (ai-app.md §2.1).
 ///
-/// A2 MVP: a transcript of turns backed by the `ai_query` Tauri command
-/// (submit → poll → answer). Each turn is independent — only the current
-/// prompt is sent; the daemon query path carries no conversation memory
-/// yet, so the UI says so and prior turns are not threaded in. One turn
-/// is in flight at a time (`busy`). Tool-call parts, citations, and
-/// streaming come later; here a message is plain text plus a pending flag.
-/// A3 adds the visible tool calls the daemon made while answering.
-import { writable } from "svelte/store";
+/// Each turn is independent against the `ai_query` path (submit → poll →
+/// answer); the daemon carries no conversation memory yet, so prior turns are
+/// not threaded into the prompt and the UI says so. One turn is in flight at a
+/// time (`busy`).
+///
+/// A8 inc 1: the surface now holds **multiple sessions** (the history rail), not
+/// one transcript. This increment keeps them in memory for the run; disk
+/// persistence (resumable across restarts) is the next sub-increment, at which
+/// point the store decision in `ai-app.md` §8 is made. The page renders the
+/// active session through the derived `messages` view, so nothing downstream
+/// changed shape.
+import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 
 /// Who produced a message. `error` is a turn that failed (daemon down,
@@ -52,6 +56,15 @@ export interface Message {
   mentions?: string[];
 }
 
+/// One conversation: an ordered transcript plus a display title and creation
+/// time (newest sessions sort first in the rail).
+export interface Session {
+  id: string;
+  title: string;
+  messages: Message[];
+  createdAt: number;
+}
+
 /// Build the prompt actually sent to the daemon: the attached files as a
 /// labelled, fenced context block, then the user's message. Each file is
 /// wrapped so the model can tell where one ends and the message begins. The
@@ -67,28 +80,93 @@ function buildPrompt(text: string, mentions: MentionContent[]): string {
   return `Referenced files:\n${blocks}\n\n${text}`;
 }
 
-let nextId = 0;
+let nextMsgId = 0;
+let nextSessionId = 0;
 
-export const messages = writable<Message[]>([]);
+/// All conversations this run, newest first.
+export const sessions = writable<Session[]>([]);
+/// The conversation currently shown; `null` before the first one exists.
+export const activeSessionId = writable<string | null>(null);
 /// True while a turn is in flight; the composer disables itself.
 export const busy = writable(false);
 
-/// Submit a prompt and resolve when the turn settles. Pushes the user
-/// message and a pending assistant placeholder synchronously, then fills
-/// the placeholder with the answer or replaces it with an error.
+/// The active session's transcript, as a read-only view the page renders. Turns
+/// are appended through `send`, never by mutating this directly.
+export const messages = derived(
+  [sessions, activeSessionId],
+  ([$sessions, $id]) => $sessions.find((s) => s.id === $id)?.messages ?? [],
+);
+
+const DEFAULT_TITLE = "New conversation";
+
+/// A session's title is the first non-empty user message, truncated; until then
+/// it is the placeholder, so the rail reads meaningfully as soon as one is sent.
+function titleFrom(msgs: Message[]): string {
+  const firstUser = msgs.find((m) => m.role === "user" && m.text.trim().length > 0);
+  if (!firstUser) return DEFAULT_TITLE;
+  const t = firstUser.text.trim();
+  return t.length > 48 ? `${t.slice(0, 48)}…` : t;
+}
+
+/// Create a new, empty conversation and make it active.
+export function newSession(): string {
+  const id = `s${++nextSessionId}`;
+  sessions.update((list) => [
+    { id, title: DEFAULT_TITLE, messages: [], createdAt: Date.now() },
+    ...list,
+  ]);
+  activeSessionId.set(id);
+  return id;
+}
+
+/// Switch to an existing conversation.
+export function selectSession(id: string): void {
+  activeSessionId.set(id);
+}
+
+/// "New chat" affordance: start a fresh conversation.
+export function reset(): void {
+  newSession();
+}
+
+/// The active session id, creating one lazily so the first message does not
+/// need an explicit "New chat" first.
+function ensureActive(): string {
+  const id = get(activeSessionId);
+  if (id && get(sessions).some((s) => s.id === id)) return id;
+  return newSession();
+}
+
+/// Apply `fn` to one session's messages and refresh its (still-default) title.
+function updateSession(id: string, fn: (msgs: Message[]) => Message[]): void {
+  sessions.update((list) =>
+    list.map((s) => {
+      if (s.id !== id) return s;
+      const msgs = fn(s.messages);
+      const title = s.title === DEFAULT_TITLE ? titleFrom(msgs) : s.title;
+      return { ...s, messages: msgs, title };
+    }),
+  );
+}
+
+/// Submit a prompt and resolve when the turn settles. Pushes the user message
+/// and a pending assistant placeholder synchronously into the active session,
+/// then fills the placeholder with the answer or replaces it with an error. The
+/// turn targets the session it was asked in even if the user switches mid-flight.
 export async function send(prompt: string, mentions: MentionContent[] = []): Promise<void> {
   const text = prompt.trim();
   // A turn with no typed text but attached files is still meaningful; only an
   // entirely empty submission is dropped.
   if (!text && mentions.length === 0) return;
 
+  const id = ensureActive();
   const names = mentions.map((m) => m.name);
-  messages.update((m) => [
+  updateSession(id, (m) => [
     ...m,
-    { id: nextId++, role: "user", text, mentions: names.length ? names : undefined },
+    { id: nextMsgId++, role: "user", text, mentions: names.length ? names : undefined },
   ]);
-  const pendingId = nextId++;
-  messages.update((m) => [...m, { id: pendingId, role: "assistant", text: "", pending: true }]);
+  const pendingId = nextMsgId++;
+  updateSession(id, (m) => [...m, { id: pendingId, role: "assistant", text: "", pending: true }]);
   busy.set(true);
 
   try {
@@ -97,7 +175,7 @@ export async function send(prompt: string, mentions: MentionContent[] = []): Pro
       toolCalls: ToolCall[];
       traceUnavailable: boolean;
     }>("ai_query", { prompt: buildPrompt(text, mentions) });
-    messages.update((m) =>
+    updateSession(id, (m) =>
       m.map((msg) =>
         msg.id === pendingId
           ? {
@@ -111,7 +189,7 @@ export async function send(prompt: string, mentions: MentionContent[] = []): Pro
       ),
     );
   } catch (e) {
-    messages.update((m) =>
+    updateSession(id, (m) =>
       m.map((msg) =>
         msg.id === pendingId
           ? { id: msg.id, role: "error" as const, text: String(e), pending: false }
@@ -121,9 +199,4 @@ export async function send(prompt: string, mentions: MentionContent[] = []): Pro
   } finally {
     busy.set(false);
   }
-}
-
-/// Clear the conversation (new chat).
-export function reset(): void {
-  messages.set([]);
 }
