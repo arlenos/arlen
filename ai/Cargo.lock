@@ -71,6 +71,7 @@ dependencies = [
 name = "arlen-ai-core"
 version = "0.1.0"
 dependencies = [
+ "arlen-graph-schema",
  "async-trait",
  "audit-proto",
  "hex",
@@ -168,6 +169,10 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
 ]
+
+[[package]]
+name = "arlen-graph-schema"
+version = "0.1.0"
 
 [[package]]
 name = "arlen-permissions"

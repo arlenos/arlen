@@ -27,7 +27,7 @@ use rmcp::model::{
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer, ServerHandler};
 
-use arlen_ai_core::graph_schema::GraphSchema;
+use arlen_graph_schema::GraphSchema;
 
 /// The well-known socket id for the system Knowledge Graph server. Resolves to
 /// `$XDG_RUNTIME_DIR/arlen/mcp/system.knowledge.sock` via the `os-sdk` path

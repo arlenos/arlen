@@ -9,6 +9,7 @@ path = "src/lib.rs"
 
 [dependencies]
 async-trait = "0.1"
+arlen-graph-schema = { path = "../../contracts/graph-schema" }
 audit-proto = { path = "../../contracts/audit-proto" }
 hex = "0.4"
 rand = "0.8"

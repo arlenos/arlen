@@ -13,7 +13,11 @@ pub mod audit;
 pub mod capability;
 pub mod cypher;
 pub mod graph_query;
-pub mod graph_schema;
+// The graph schema lives in its own light, zero-dep crate so the knowledge
+// MCP server (and other consumers) can use it without pulling the whole AI
+// core. Re-exported here so existing `arlen_ai_core::graph_schema::*` paths
+// keep working.
+pub use arlen_graph_schema as graph_schema;
 pub mod mcp;
 pub mod pipeline;
 pub mod provider;

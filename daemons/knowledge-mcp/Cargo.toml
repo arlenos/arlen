@@ -13,11 +13,10 @@ path = "src/lib.rs"
 
 [dependencies]
 os-sdk = { path = "../../sdk/os-sdk" }
-# The canonical graph schema (node/edge labels + field types) lives here; the
+# The canonical graph schema (node/edge labels + field types); the
 # describe_schema tool renders it so it never drifts from the daemon's tables.
-# Follow-up: hoist the schema into a lighter shared crate so this daemon does
-# not pull the whole AI core.
-arlen-ai-core = { path = "../../ai/ai-core" }
+# A light, zero-dep crate, so the daemon does not pull the whole AI core.
+arlen-graph-schema = { path = "../../contracts/graph-schema" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net", "time", "io-util"] }
 serde_json = "1"
 tracing = "0.1"
