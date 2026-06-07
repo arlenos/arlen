@@ -4,6 +4,7 @@
   /// runs with `decorations: false` (Arlen CSD), so the titlebar
   /// carries the drag region and window controls.
   import "../app.css";
+  import { page } from "$app/stores";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import {
     SidebarProvider,
@@ -15,6 +16,13 @@
   import WindowControls from "$lib/components/WindowControls.svelte";
 
   let { children } = $props();
+
+  // The header carried only a drag region + window controls (dead centre).
+  // Name the active surface there, like Settings' breadcrumb slot, so the
+  // titlebar gives the user their place in the app.
+  const viewTitle = $derived(
+    $page.url.pathname.startsWith("/agent") ? "Agent" : "Conversation",
+  );
 
   // Window drag via explicit pointerdown + startDragging(), because the
   // `data-tauri-drag-region` attribute is unreliable on Wayland in
@@ -45,6 +53,7 @@
     >
       <SidebarTrigger class="-ml-1" />
       <Separator orientation="vertical" class="mr-1 h-4" />
+      <span class="view-title">{viewTitle}</span>
       <div class="flex-1"></div>
       <WindowControls />
     </header>
@@ -60,5 +69,10 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+  }
+  .view-title {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--foreground);
   }
 </style>
