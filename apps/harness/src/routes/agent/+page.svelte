@@ -47,6 +47,13 @@
     behaviours: BehaviourStatus[];
     errors: string[];
   }
+  interface Notice {
+    kind: string;
+    summary: string;
+    body: string;
+    critical: boolean;
+    tsMicros: number;
+  }
 
   /// Human label + semantic tone per audit kind.
   const KIND_META: Record<string, { label: string; tone: string }> = {
@@ -63,6 +70,7 @@
   let loading = $state(false);
   let error = $state<string | null>(null);
   let behaviours = $state<BehaviourReport | null>(null);
+  let notices = $state<Notice[] | null>(null);
 
   function relativeTime(micros: number): string {
     const then = micros / 1000;
@@ -88,6 +96,11 @@
       behaviours = await invoke<BehaviourReport>("ai_behaviours");
     } catch {
       behaviours = null;
+    }
+    try {
+      notices = await invoke<Notice[]>("ai_notices");
+    } catch {
+      notices = null;
     }
     try {
       activity = await invoke<ActivityPage>("ai_activity_recent", { limit: 100 });
@@ -213,11 +226,32 @@
     </Group>
 
     <Group label="Notices">
-      <div class="placeholder">
-        <Bell size={20} strokeWidth={1.5} />
-        <p>Rare, important warnings from the Anomaly Detector surface here —
-          the agent itself never pushes.</p>
-      </div>
+      {#if !notices || notices.length === 0}
+        <div class="placeholder">
+          <Bell size={20} strokeWidth={1.5} />
+          <p>Rare, important warnings from the Anomaly Detector surface here.
+            The agent itself never pushes. Nothing to show right now.</p>
+        </div>
+      {:else}
+        <ul class="bh-list">
+          {#each notices as n (n.tsMicros + n.summary)}
+            <li class="item">
+              <span class="badge" data-tone={n.critical ? "warn" : "info"}>
+                {n.critical ? "critical" : "notice"}
+              </span>
+              <div class="body">
+                <div class="line">
+                  <span class="subject">{n.summary}</span>
+                </div>
+                <div class="detail">
+                  {#if n.body}<span>{n.body}</span>{/if}
+                </div>
+              </div>
+              <time class="time">{relativeTime(n.tsMicros)}</time>
+            </li>
+          {/each}
+        </ul>
+      {/if}
     </Group>
   </SectionGrid>
 </Page>
