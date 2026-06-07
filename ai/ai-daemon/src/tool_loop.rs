@@ -321,6 +321,24 @@ pub async fn run_tool_loop(
     LoopOutcome::Exhausted
 }
 
+/// Reduce a [`LoopOutcome`] to the single answer string the query path
+/// returns, or an error for a genuine failure. A blocked tool call or an
+/// exhausted budget is not an error: it becomes a plain-language answer
+/// explaining why the assistant stopped, so the user gets a response rather
+/// than an opaque failure. Only `Failed` maps to `Err`.
+pub fn loop_outcome_to_answer(outcome: LoopOutcome) -> Result<String, String> {
+    match outcome {
+        LoopOutcome::Answer(text) => Ok(text),
+        LoopOutcome::Exhausted => {
+            Ok("I could not finish answering within the allowed number of steps.".to_string())
+        }
+        LoopOutcome::Blocked(_) => Ok("Answering that needs an action I cannot take from a \
+             question alone (it requires confirmation or authorization)."
+            .to_string()),
+        LoopOutcome::Failed(reason) => Err(reason),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -584,6 +602,25 @@ mod tests {
 
             server.abort();
         }
+    }
+
+    #[test]
+    fn loop_outcome_maps_to_answer_or_error() {
+        assert_eq!(
+            loop_outcome_to_answer(LoopOutcome::Answer("hi".into())),
+            Ok("hi".to_string())
+        );
+        // Exhausted and Blocked are answers, not errors: the user gets a reason.
+        assert!(loop_outcome_to_answer(LoopOutcome::Exhausted).is_ok());
+        assert!(loop_outcome_to_answer(LoopOutcome::Blocked(
+            DispatchOutcome::NeedsAuthorization
+        ))
+        .is_ok());
+        // Only a genuine failure is an error.
+        assert_eq!(
+            loop_outcome_to_answer(LoopOutcome::Failed("provider down".into())),
+            Err("provider down".to_string())
+        );
     }
 
     #[test]
