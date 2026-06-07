@@ -278,7 +278,14 @@ impl McpDiscovery {
         let id = ServerId(server_id.to_string());
         let path = mcp_socket_path(server_id);
         loop {
-            let connected = self.client.lock().await.server_class(&id).is_some();
+            // Only a read-only registration counts as *our* system server.
+            // If some other connection occupied this id (it should not, system
+            // ids are reserved from module discovery), it is not the system
+            // server, so reconnect to restore the authenticated read-only one.
+            let connected = matches!(
+                self.client.lock().await.server_class(&id),
+                Some(ServerClass::ReadOnly)
+            );
             if !connected {
                 self.connect_system_server(server_id, expected_app_id, &path)
                     .await;
