@@ -1,119 +1,99 @@
-# Arlen top-level task runner
-# Requires: just, cargo, qemu, mkosi
+# Arlen task runner. Run from anywhere; paths resolve against the repo root.
+#   just            list recipes
+#   just dev        full daemon stack (process-compose)
+#   just dev-ui harness   one Tauri app, fast UI loop
+#   just check      local mirror of CI (all rust crates + frontend svelte-check)
+# The compositor is a separate repo; point COMPOSITOR_PATH at it for `just compositor`.
 
-REPOS := "../event-bus ../sdk ../knowledge"
+ROOT := justfile_directory() / ".."
+COMPOSITOR_PATH := env_var_or_default("COMPOSITOR_PATH", ROOT / "../compositor")
 
-# Build all components in dependency order
-build:
-    cargo build --manifest-path ../event-bus/Cargo.toml
-    cargo build --manifest-path ../sdk/Cargo.toml
-    cargo build --manifest-path ../knowledge/Cargo.toml
+# lbug (Kuzu) vendors thrift C++ that misses <cstdint> on newer GCC.
+export CXXFLAGS := "-include cstdint"
 
-# Run all tests across all repos in dependency order
-test: build
-    cargo test --manifest-path ../event-bus/Cargo.toml
-    cargo test --manifest-path ../sdk/Cargo.toml
-    cargo test --manifest-path ../knowledge/Cargo.toml
-    cargo test --manifest-path ../knowledge/Cargo.toml --test event_pipeline
+# The rust crates CI builds, in rough dependency order. Mirrors the CI matrix.
+RUST_CRATES := "contracts/audit-proto contracts/notification-proto contracts/modulesd-proto contracts/graph-schema sdk ai daemons/event-bus daemons/knowledge daemons/knowledge-mcp daemons/notification-daemon daemons/audit-daemon daemons/anomaly-detector daemons/modulesd daemons/installd daemons/xdg-portal forage"
 
-# Run clippy across all repos
-lint:
-    cargo clippy --manifest-path ../event-bus/Cargo.toml --all-targets --all-features -- -D warnings
-    cargo clippy --manifest-path ../sdk/Cargo.toml --all-targets --all-features -- -D warnings
-    cargo clippy --manifest-path ../knowledge/Cargo.toml --all-targets --all-features -- -D warnings
+# The SvelteKit frontends CI svelte-checks.
+FRONTENDS := "apps/settings apps/harness apps/desktop-shell sdk/ui-kit"
 
-# Check dependency versions are in sync with workspace-deps.toml
-check-deps:
-    echo "TODO: implement dependency drift check against workspace-deps.toml"
+# List recipes (default).
+default:
+    @just --list
 
-# Start Event Bus and Graph Daemon in the current session
-dev:
-    vm/dev.sh run
-
-# Build production ISO via mkosi
-build-iso:
-    echo "TODO: mkosi build"
-
-# Build developer ISO with SSH and debug symbols
-build-dev:
-    echo "TODO: mkosi build --target developer"
-
-# Boot the developer ISO in QEMU with KVM acceleration
-vm:
-    echo "TODO: qemu launch"
-
-# Run the shell inside the current Wayland session (no VM)
-vm-nested:
-    echo "TODO: nested compositor launch"
-
-# Boot with GDB server exposed on port 1234
-vm-debug:
-    echo "TODO: qemu launch with -s -S"
-
-# Run graph-scale benchmarks against synthetic datasets
-bench:
-    cargo bench --manifest-path ../knowledge/Cargo.toml
-
-# Run upstream cosmic-comp rebase check
-compositor-rebase-check:
-    echo "TODO: git fetch upstream && git rebase upstream/main"
-
-# DISPLAY="" forces the Winit/Wayland backend; the X11 backend does not
-# advertise zwlr_layer_shell_v1 to gtk-layer-shell so the shell would lose
-# its top-bar surface.
-# Start compositor nested in current Wayland session.
-compositor:
-    cd ../compositor && DISPLAY="" WAYLAND_DISPLAY=wayland-1 cargo run --bin cosmic-comp
-
-# Start desktop-shell against a running compositor (auto-detects WAYLAND_DISPLAY).
-shell:
+# One-time: install process-compose into ~/.local/bin (no sudo).
+setup:
     #!/usr/bin/env bash
     set -euo pipefail
-    socket=$(ls -t "$XDG_RUNTIME_DIR"/wayland-* 2>/dev/null | grep -v '\.lock$' | head -1)
-    if [ -z "$socket" ]; then
-        echo "no wayland-* socket in $XDG_RUNTIME_DIR — start the compositor first ('just compositor')" >&2
-        exit 1
-    fi
-    display=$(basename "$socket")
-    echo "using WAYLAND_DISPLAY=$display"
-    cd ../desktop-shell && WAYLAND_DISPLAY="$display" cargo tauri dev
+    if command -v process-compose >/dev/null 2>&1; then echo "process-compose already installed: $(command -v process-compose)"; exit 0; fi
+    mkdir -p "$HOME/.local/bin"
+    ver="v1.40.1"
+    url="https://github.com/F1bonacc1/process-compose/releases/download/${ver}/process-compose_linux_amd64.tar.gz"
+    echo "downloading process-compose ${ver}"
+    tmp="$(mktemp -d)"
+    curl -fsSL "$url" -o "$tmp/pc.tar.gz"
+    tar -xzf "$tmp/pc.tar.gz" -C "$tmp"
+    install -m755 "$tmp/process-compose" "$HOME/.local/bin/process-compose"
+    rm -rf "$tmp"
+    echo "installed to $HOME/.local/bin/process-compose (ensure ~/.local/bin is on PATH)"
 
-# Logs land in ../logs/. Detach with Ctrl+B d, reattach with
-# `tmux attach -t arlen`.
-# Full-stack dev on host (event-bus + knowledge + notifyd + compositor + shell) in tmux.
-dev-stack:
-    bash start-dev.sh
+# Full daemon stack via process-compose (TUI). Pass extra args through, e.g. -D for detached.
+dev *ARGS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v process-compose >/dev/null 2>&1; then echo "process-compose missing; run 'just setup'" >&2; exit 1; fi
+    process-compose -f "{{justfile_directory()}}/process-compose.yaml" up {{ARGS}}
 
-# Use --lib only because the test-client binary has optional deps.
-# Run compositor library tests.
-test-compositor:
-    cd ../compositor && cargo test --lib
+# Quick loop: one Tauri app via cargo tauri dev (needs a running compositor).
+dev-ui app:
+    cd "{{ROOT}}/apps/{{app}}" && cargo tauri dev
 
-# Run desktop-shell rust + svelte checks.
-test-shell:
-    cd ../desktop-shell/src-tauri && cargo test
-    cd ../desktop-shell && npx svelte-check --threshold error --no-tsconfig
+# eBPF kernel-layer in QEMU (off-host, by design).
+vm:
+    bash "{{justfile_directory()}}/vm/dev.sh" run
 
-# Format all Rust crates.
-fmt:
-    cargo fmt --manifest-path ../event-bus/Cargo.toml --all
-    cargo fmt --manifest-path ../sdk/Cargo.toml --all
-    cargo fmt --manifest-path ../knowledge/Cargo.toml --all
-    cargo fmt --manifest-path ../compositor/Cargo.toml --all
-    cargo fmt --manifest-path ../notification-daemon/Cargo.toml --all
-    cargo fmt --manifest-path ../desktop-shell/src-tauri/Cargo.toml --all
-    cargo fmt --manifest-path ../installd/Cargo.toml --all
-    cargo fmt --manifest-path ../forage/Cargo.toml --all
-    cargo fmt --manifest-path ../kernel-layer/Cargo.toml --all || echo "kernel-layer fmt skipped (eBPF target needs nightly)"
+# Build one crate (e.g. `just build daemons/knowledge`) or all in order.
+build crate="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "{{crate}}" ]; then cargo build --manifest-path "{{ROOT}}/{{crate}}/Cargo.toml"; exit 0; fi
+    for c in {{RUST_CRATES}}; do echo "== build $c =="; cargo build --manifest-path "{{ROOT}}/$c/Cargo.toml"; done
 
-# Compositor uses --lib because the test-client binary has optional deps.
-# Cheap typecheck across all crates.
+# Test one crate or the whole matrix.
+test crate="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "{{crate}}" ]; then cargo test --manifest-path "{{ROOT}}/{{crate}}/Cargo.toml"; exit 0; fi
+    for c in {{RUST_CRATES}}; do echo "== test $c =="; cargo test --manifest-path "{{ROOT}}/$c/Cargo.toml"; done
+
+# Cheap local mirror of CI: cargo check every rust crate + svelte-check every frontend.
 check:
-    cargo check --manifest-path ../event-bus/Cargo.toml
-    cargo check --manifest-path ../sdk/Cargo.toml
-    cargo check --manifest-path ../knowledge/Cargo.toml
-    cargo check --manifest-path ../compositor/Cargo.toml --lib
-    cargo check --manifest-path ../notification-daemon/Cargo.toml
-    cargo check --manifest-path ../desktop-shell/src-tauri/Cargo.toml
-    cargo check --manifest-path ../installd/Cargo.toml
-    cargo check --manifest-path ../forage/Cargo.toml
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for c in {{RUST_CRATES}}; do echo "== check $c =="; cargo check --manifest-path "{{ROOT}}/$c/Cargo.toml"; done
+    for f in {{FRONTENDS}}; do echo "== svelte-check $f =="; (cd "{{ROOT}}/$f" && npx svelte-check --threshold error); done
+
+# Clippy, warnings as errors, across all rust crates.
+lint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for c in {{RUST_CRATES}}; do echo "== clippy $c =="; cargo clippy --manifest-path "{{ROOT}}/$c/Cargo.toml" --all-targets -- -D warnings; done
+
+# Format all rust crates.
+fmt:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for c in {{RUST_CRATES}}; do cargo fmt --manifest-path "{{ROOT}}/$c/Cargo.toml" --all; done
+
+# The cross-daemon integration tests.
+integration:
+    cargo test --manifest-path "{{justfile_directory()}}/integration/Cargo.toml"
+
+# Compositor nested in the current Wayland session (separate repo).
+# DISPLAY="" forces the Winit/Wayland backend so wlr-layer-shell is advertised.
+compositor:
+    cd "{{COMPOSITOR_PATH}}" && DISPLAY="" WAYLAND_DISPLAY=wayland-1 cargo run --bin cosmic-comp
+
+# Build the bootable image. TODO (Phase 10, real distro/ with mkosi).
+build-iso:
+    @echo "TODO: mkosi image build (Phase 10)"
