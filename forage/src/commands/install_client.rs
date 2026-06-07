@@ -340,7 +340,31 @@ pub async fn which_app(app_id: &str) -> Result<(), String> {
 }
 
 /// Show info about an installed app (reads manifest from install dir).
-pub async fn info_app(app_id: &str) -> Result<(), String> {
+/// Serialise an installed lunpkg app's details to a stable JSON object. The key
+/// set is fixed (description and author are empty strings when absent) so a
+/// consumer can parse unconditionally, mirroring `apps_to_json`.
+pub fn app_info_to_json(
+    id: &str,
+    name: &str,
+    version: &str,
+    description: &str,
+    author: &str,
+    source: &str,
+    path: &str,
+) -> String {
+    serde_json::to_string_pretty(&serde_json::json!({
+        "id": id,
+        "name": name,
+        "version": version,
+        "description": description,
+        "author": author,
+        "source": source,
+        "path": path,
+    }))
+    .unwrap_or_else(|_| "{}".to_string())
+}
+
+pub async fn info_app(app_id: &str, json: bool) -> Result<(), String> {
     let user_dir = dirs::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("~/.local/share"))
         .join(format!("arlen/apps/{app_id}"));
@@ -368,6 +392,22 @@ pub async fn info_app(app_id: &str) -> Result<(), String> {
         let m: Manifest = toml::from_str(&content)
             .map_err(|e| format!("invalid manifest: {e}"))?;
 
+        if json {
+            println!(
+                "{}",
+                app_info_to_json(
+                    &m.package.id,
+                    &m.package.name,
+                    &m.package.version,
+                    &m.package.description,
+                    &m.package.author,
+                    "lunpkg",
+                    &user_dir.display().to_string(),
+                )
+            );
+            return Ok(());
+        }
+
         println!("{:<12} {}", "ID:".bold(), m.package.id);
         println!("{:<12} {}", "Name:".bold(), m.package.name);
         println!("{:<12} {}", "Version:".bold(), m.package.version);
@@ -388,6 +428,21 @@ pub async fn info_app(app_id: &str) -> Result<(), String> {
         .output();
     if let Ok(o) = output {
         if o.status.success() {
+            // Flatpak's `info` output is unstructured text, so the JSON form
+            // reports only what is known for certain: the id and the source.
+            // It does not pretend to parse flatpak's fields into the lunpkg
+            // schema, which would be guessy and brittle.
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "id": app_id,
+                        "source": "flatpak",
+                    }))
+                    .unwrap_or_else(|_| "{}".to_string())
+                );
+                return Ok(());
+            }
             println!("{:<12} {}", "Source:".bold(), "flatpak".blue());
             print!("{}", String::from_utf8_lossy(&o.stdout));
             return Ok(());
@@ -399,11 +454,47 @@ pub async fn info_app(app_id: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::apps_to_json;
+    use super::{app_info_to_json, apps_to_json};
 
     #[test]
     fn empty_list_is_an_empty_json_array() {
         assert_eq!(apps_to_json(&[]), "[]");
+    }
+
+    #[test]
+    fn app_info_serializes_with_the_full_stable_key_set() {
+        let json = app_info_to_json(
+            "com.example.app",
+            "Example",
+            "1.2.3",
+            "An example app",
+            "Jane Doe",
+            "lunpkg",
+            "/home/u/.local/share/arlen/apps/com.example.app",
+        );
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["id"], "com.example.app");
+        assert_eq!(parsed["name"], "Example");
+        assert_eq!(parsed["version"], "1.2.3");
+        assert_eq!(parsed["description"], "An example app");
+        assert_eq!(parsed["author"], "Jane Doe");
+        assert_eq!(parsed["source"], "lunpkg");
+        assert_eq!(
+            parsed["path"],
+            "/home/u/.local/share/arlen/apps/com.example.app"
+        );
+    }
+
+    #[test]
+    fn app_info_keeps_empty_optional_fields_as_keys() {
+        // A consumer can parse unconditionally: description and author are
+        // always present, empty when the manifest omits them.
+        let json = app_info_to_json("com.x", "X", "0.1", "", "", "lunpkg", "/p");
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["description"], "");
+        assert_eq!(parsed["author"], "");
+        assert!(parsed.get("description").is_some());
+        assert!(parsed.get("author").is_some());
     }
 
     #[test]
