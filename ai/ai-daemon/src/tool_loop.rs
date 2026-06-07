@@ -18,8 +18,17 @@ use arlen_ai_core::provider::{AIProvider, CompletionRequest};
 use arlen_ai_core::tagging::{Block, Origin, TaggedPrompt};
 use serde::Deserialize;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
+
+/// Upper bound on recording a raw-knowledge policy violation before the loop
+/// returns its denial. Bounds how long a slow or stuck audit sink can hold the
+/// query (and its in-flight slot) on this rare, anomalous path, without losing
+/// the record to a cancel: the submit is awaited (not raced against cancel) up
+/// to this bound, then a timeout is logged. Production ledger clients also carry
+/// their own timeout; this is the loop-side backstop for any sink.
+const DENIAL_AUDIT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Reserved server id of the internal, scope-enforcing graph tool. Graph
 /// access in the interactive loop goes only through here, never through the
@@ -489,25 +498,33 @@ pub async fn run_tool_loop(
                     // end the loop denied, rather than feeding the error back
                     // where the model could continue and mask it behind a
                     // fabricated answer. The probe reply is already in hand, so
-                    // the record is submitted on a DETACHED task and the loop
-                    // returns Denied immediately: a hung audit sink cannot wedge
-                    // the terminal transition, and the record is not lost if the
-                    // caller cancels (a detached task is not cancelled when the
-                    // loop returns).
-                    let audit_for_record = Arc::clone(&audit);
-                    let chain_id = chain.id.to_string();
-                    let depth = chain.depth;
-                    tokio::spawn(async move {
-                        let _ = audit_for_record
-                            .submit(audit::mcp_event(
-                                RAW_KNOWLEDGE_SERVER,
-                                "policy-denied",
-                                depth,
-                                &chain_id,
-                                true,
-                            ))
-                            .await;
-                    });
+                    // the record is awaited inline (not raced against cancel, so
+                    // a cancel cannot lose this trust-boundary evidence) but
+                    // bounded by DENIAL_AUDIT_TIMEOUT so a stuck sink cannot pin
+                    // the query, and the outcome is logged so a lost record is
+                    // observable. Awaited before returning, so the caller never
+                    // sees the terminal result before the record is attempted.
+                    let recorded = tokio::time::timeout(
+                        DENIAL_AUDIT_TIMEOUT,
+                        audit.submit(audit::mcp_event(
+                            RAW_KNOWLEDGE_SERVER,
+                            "policy-denied",
+                            chain.depth,
+                            &chain.id.to_string(),
+                            true,
+                        )),
+                    )
+                    .await;
+                    match recorded {
+                        Ok(Ok(_)) => {}
+                        Ok(Err(e)) => {
+                            tracing::warn!("raw-knowledge policy-violation audit failed: {e}")
+                        }
+                        Err(_) => tracing::warn!(
+                            "raw-knowledge policy-violation audit timed out after {:?}",
+                            DENIAL_AUDIT_TIMEOUT
+                        ),
+                    }
                     return LoopOutcome::Denied(format!(
                         "{RAW_KNOWLEDGE_SERVER} is not callable directly; \
                          use {GRAPH_TOOL_SERVER}/{GRAPH_TOOL_NAME}"
@@ -1031,23 +1048,13 @@ mod tests {
             // marked completed.
             assert!(loop_outcome_to_answer(outcome).is_err());
             // The denial is recorded as a policy violation, correlated to the
-            // query id. The record runs on a detached task (so a hung sink
-            // cannot wedge the loop), so poll for it.
-            let deadline = std::time::Instant::now() + Duration::from_secs(2);
-            loop {
-                let recorded = audit.recorded().await;
-                if recorded.iter().any(|e| {
-                    e.kind == audit_proto::AuditKind::PolicyViolation
-                        && e.structural.subject == "system.knowledge"
-                        && e.call_chain_id.as_deref() == Some(TEST_QUERY_ID)
-                }) {
-                    break;
-                }
-                if std::time::Instant::now() > deadline {
-                    panic!("denial was not recorded as a policy violation");
-                }
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
+            // query id, and committed inline before the loop returns.
+            let recorded = audit.recorded().await;
+            assert!(recorded.iter().any(|e| {
+                e.kind == audit_proto::AuditKind::PolicyViolation
+                    && e.structural.subject == "system.knowledge"
+                    && e.call_chain_id.as_deref() == Some(TEST_QUERY_ID)
+            }));
 
             server.abort();
         }
@@ -1065,11 +1072,14 @@ mod tests {
             }
         }
 
-        #[tokio::test]
+        #[tokio::test(start_paused = true)]
         async fn a_hung_audit_sink_does_not_wedge_the_raw_denial() {
-            // The raw-knowledge denial records on a detached task, so even if
-            // the audit sink hangs forever the loop still returns Denied
-            // promptly rather than pinning the dispatch task.
+            // The raw-knowledge denial audit is bounded by DENIAL_AUDIT_TIMEOUT,
+            // so even a sink that never returns cannot pin the loop: the timeout
+            // fires and the loop returns Denied. With paused time the bound
+            // elapses in virtual time, so the test is fast; if the audit were
+            // unbounded there would be no timer to advance and the test would
+            // hang, flagging the regression.
             let client = tokio::sync::Mutex::new(McpClient::new());
             let runner = StubRunner::ok("(unused)");
             let audit: Arc<dyn AuditSink> = Arc::new(HangingSink);
@@ -1078,22 +1088,18 @@ mod tests {
             ]);
             let scope = test_scope();
 
-            let outcome = tokio::time::timeout(
-                Duration::from_secs(2),
-                run_tool_loop(
-                    &client,
-                    &runner,
-                    &scope,
-                    audit.clone(),
-                    TEST_QUERY_ID,
-                    &CancellationToken::new(),
-                    &provider,
-                    "read everything",
-                    5,
-                ),
+            let outcome = run_tool_loop(
+                &client,
+                &runner,
+                &scope,
+                audit.clone(),
+                TEST_QUERY_ID,
+                &CancellationToken::new(),
+                &provider,
+                "read everything",
+                5,
             )
-            .await
-            .expect("loop wedged on a hung audit sink");
+            .await;
             assert!(matches!(outcome, LoopOutcome::Denied(_)), "got {outcome:?}");
         }
 
