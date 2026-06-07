@@ -3,15 +3,16 @@
   /// human-initiated, multi-turn conversation against the ai-daemon
   /// query path.
   ///
-  /// A2 MVP: real round-trips through the `ai_query` command (submit →
-  /// poll → answer), plain-text message bubbles, a pending state, and
-  /// honest error rendering. Visible tool calls, graph-data citations,
-  /// streaming, and the always-visible capability context come in A3.
+  /// Real round-trips through the `ai_query` command (submit → poll →
+  /// answer), plain-text bubbles, a pending state, honest error rendering,
+  /// the always-visible capability context, and (A3) the visible tool calls
+  /// the daemon made while answering, as collapsible cards. Graph-data
+  /// citations and token streaming come later.
   import { tick, onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2 } from "@lucide/svelte";
+  import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2, Wrench } from "@lucide/svelte";
   import { messages, busy, send } from "$lib/stores/conversation";
 
   interface Capability {
@@ -101,7 +102,37 @@
                 </span>
               </div>
             {:else}
-              <div class="bubble bubble-{msg.role}">{msg.text}</div>
+              <div class="msg-body">
+                {#if msg.toolCalls && msg.toolCalls.length > 0}
+                  <div class="tool-calls">
+                    {#each msg.toolCalls ?? [] as call, i (i)}
+                      <details class="tool-call">
+                        <summary>
+                          <Wrench size={11} strokeWidth={2} />
+                          <span class="tc-name">{call.server}/{call.tool}</span>
+                        </summary>
+                        <div class="tc-detail">
+                          {#if call.arguments}
+                            <div class="tc-section">
+                              <span class="tc-label">arguments</span>
+                              <pre>{call.arguments}</pre>
+                            </div>
+                          {/if}
+                          {#if call.result}
+                            <div class="tc-section">
+                              <span class="tc-label">result</span>
+                              <pre>{call.result}</pre>
+                            </div>
+                          {/if}
+                        </div>
+                      </details>
+                    {/each}
+                  </div>
+                {:else if msg.traceUnavailable}
+                  <p class="trace-note">Tool trace unavailable for this turn.</p>
+                {/if}
+                <div class="bubble bubble-{msg.role}">{msg.text}</div>
+              </div>
             {/if}
           </div>
         {/each}
@@ -203,6 +234,72 @@
   .msg-assistant,
   .msg-error {
     justify-content: flex-start;
+  }
+  .msg-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    max-width: 80%;
+  }
+  .tool-calls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .tool-call {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-chip);
+    background: color-mix(in srgb, var(--color-bg-card) 60%, transparent);
+    font-size: 0.78rem;
+  }
+  .tool-call summary {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.5rem;
+    cursor: pointer;
+    color: color-mix(in srgb, var(--foreground) 70%, transparent);
+    list-style: none;
+  }
+  .tool-call summary::-webkit-details-marker {
+    display: none;
+  }
+  .tc-name {
+    font-family: var(--font-mono, monospace);
+  }
+  .tc-detail {
+    padding: 0 0.5rem 0.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .tc-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .tc-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+  }
+  .trace-note {
+    margin: 0;
+    font-size: 0.7rem;
+    font-style: italic;
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+  }
+  .tc-detail pre {
+    margin: 0;
+    padding: 0.35rem 0.45rem;
+    background: var(--color-bg-card);
+    border-radius: var(--radius-chip);
+    font-size: 0.72rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
   }
   .bubble {
     max-width: 80%;
