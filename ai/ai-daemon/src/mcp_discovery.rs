@@ -56,13 +56,24 @@ const SUBSCRIBE_RETRY: Duration = Duration::from_secs(5);
 /// Arlen-shipped servers live at fixed socket ids and are read-only
 /// (`mcp-server-layer.md` §2, §4.1 default-permit). Each entry is the
 /// socket id and the `app_id` the server's process must resolve to.
-const SYSTEM_SERVERS: &[(&str, &str)] = &[("system.knowledge", KNOWLEDGE_MCP_APP_ID)];
+const SYSTEM_SERVERS: &[(&str, &str)] = &[
+    ("system.knowledge", KNOWLEDGE_MCP_APP_ID),
+    ("system.monitor", SYSTEM_MONITOR_MCP_APP_ID),
+];
 
 /// Resolved `app_id` of the canonically-installed Knowledge Graph MCP
 /// server. `arlen-permissions` maps `/usr/bin/arlen-knowledge-mcp` to
 /// this; a `system.knowledge` socket served by anything else is an
 /// imposter and is refused.
 const KNOWLEDGE_MCP_APP_ID: &str = "knowledge-mcp";
+
+/// Resolved `app_id` of the canonically-installed System Monitor MCP
+/// server (`/usr/bin/arlen-system-monitor-mcp`). It is read-only and
+/// exposes only system-wide public info (process list, load, memory,
+/// disk), so unlike the File Manager it carries no per-query scope to
+/// bypass and is safe to register as a default-permit `ReadOnly` server.
+/// A `system.monitor` socket served by anything else is an imposter.
+const SYSTEM_MONITOR_MCP_APP_ID: &str = "system-monitor-mcp";
 
 /// Backoff between attempts to reach a system server that has not come
 /// up yet. System daemons can start after the AI daemon during boot.
@@ -442,6 +453,15 @@ mod tests {
         std::env::temp_dir()
             .join(format!("arlen-sysmcp-{tag}-{}-{unique}", std::process::id()))
             .join("s.sock")
+    }
+
+    #[test]
+    fn system_servers_include_the_monitor_with_its_canonical_app_id() {
+        // The monitor is wired for discovery, and its expected peer app id is
+        // the one its `/usr/bin/arlen-system-monitor-mcp` install path resolves
+        // to (the imposter check rejects any other server on that socket).
+        assert!(SYSTEM_SERVERS.contains(&("system.monitor", SYSTEM_MONITOR_MCP_APP_ID)));
+        assert_eq!(SYSTEM_MONITOR_MCP_APP_ID, "system-monitor-mcp");
     }
 
     #[tokio::test]

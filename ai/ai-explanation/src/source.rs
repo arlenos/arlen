@@ -185,6 +185,7 @@ pub async fn graph_context(
         coverage: Coverage {
             graph_context: true,
             live_processes: false,
+            live_network: false,
             anomalies: false,
         },
         ..Default::default()
@@ -263,6 +264,7 @@ pub fn anomaly_context(
         coverage: Coverage {
             graph_context: false,
             live_processes: false,
+            live_network: false,
             anomalies: true,
         },
         ..Default::default()
@@ -272,10 +274,17 @@ pub fn anomaly_context(
 /// Production [`AnomalyReader`] over the Anomaly Detector's persisted
 /// findings file (`alerts.json`, a `{ "alerts": [ { kind, summary, .. } ] }`
 /// document). The path is supplied by the caller rather than resolved here,
-/// so the crate stays free of environment assumptions. The file is parsed
-/// liberally: a missing file, a parse error, or an entry without a `kind`
-/// yields no (or one fewer) anomaly rather than failing the explanation,
-/// since the source is advisory.
+/// so the crate stays free of environment assumptions.
+///
+/// Distinguishing "checked, none" from "could not check" matters here: a
+/// **missing** file (the detector may be down or not yet started), an
+/// **unreadable** file, **malformed** JSON, or a document **without an
+/// `alerts` array** all return an error, so the fail-soft compose marks
+/// anomaly coverage as *not checked* rather than reporting "no anomalies". A
+/// down or corrupt detector must not read as an all-clear. Only a valid,
+/// parsed document (even with an empty `alerts` array) yields `Ok` and lets
+/// the caller claim coverage; within it, an entry missing a `kind` is the only
+/// thing dropped silently.
 pub struct FileAnomalyReader {
     path: String,
 }
@@ -289,18 +298,14 @@ impl FileAnomalyReader {
 
 impl AnomalyReader for FileAnomalyReader {
     fn read_anomalies(&self) -> Result<Vec<Anomaly>, SnapshotError> {
-        let text = match std::fs::read_to_string(&self.path) {
-            Ok(t) => t,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(SnapshotError::AnomalyRead(e.to_string())),
-        };
-        // A malformed file is advisory-degraded to no anomalies, not an error.
-        let Ok(value) = serde_json::from_str::<Value>(&text) else {
-            return Ok(Vec::new());
-        };
-        let Some(alerts) = value.get("alerts").and_then(Value::as_array) else {
-            return Ok(Vec::new());
-        };
+        let text = std::fs::read_to_string(&self.path)
+            .map_err(|e| SnapshotError::AnomalyRead(format!("{}: {e}", self.path)))?;
+        let value: Value = serde_json::from_str(&text).map_err(|e| {
+            SnapshotError::AnomalyRead(format!("malformed findings file: {e}"))
+        })?;
+        let alerts = value.get("alerts").and_then(Value::as_array).ok_or_else(|| {
+            SnapshotError::AnomalyRead("findings file has no 'alerts' array".to_string())
+        })?;
         Ok(alerts
             .iter()
             .filter_map(|a| {
@@ -336,6 +341,7 @@ pub fn merge_snapshots(a: SystemSnapshot, b: SystemSnapshot) -> SystemSnapshot {
         coverage: Coverage {
             graph_context: a.coverage.graph_context || b.coverage.graph_context,
             live_processes: a.coverage.live_processes || b.coverage.live_processes,
+            live_network: a.coverage.live_network || b.coverage.live_network,
             anomalies: a.coverage.anomalies || b.coverage.anomalies,
         },
     }
@@ -403,6 +409,9 @@ pub fn live_context(
         coverage: Coverage {
             graph_context: false,
             live_processes: true,
+            // The process source does not look at sockets; network stays
+            // not-checked so the prompt cannot imply it was.
+            live_network: false,
             anomalies: false,
         },
         ..Default::default()
@@ -612,17 +621,31 @@ mod anomaly_tests {
     }
 
     #[test]
-    fn file_reader_treats_missing_or_malformed_as_no_anomalies() {
+    fn file_reader_errors_on_missing_or_malformed_so_coverage_stays_unchecked() {
         let tmp = tempfile::tempdir().unwrap();
+        // Missing file: the detector may be down, so this is "not checked"
+        // (error), not "no anomalies".
         let missing = tmp.path().join("none.json");
         assert!(FileAnomalyReader::new(missing.to_string_lossy().into_owned())
             .read_anomalies()
-            .unwrap()
-            .is_empty());
+            .is_err());
 
+        // Malformed JSON and a missing 'alerts' array both error.
         let bad = tmp.path().join("bad.json");
         std::fs::write(&bad, b"{ not json").unwrap();
         assert!(FileAnomalyReader::new(bad.to_string_lossy().into_owned())
+            .read_anomalies()
+            .is_err());
+        let noarray = tmp.path().join("noarray.json");
+        std::fs::write(&noarray, br#"{"other":1}"#).unwrap();
+        assert!(FileAnomalyReader::new(noarray.to_string_lossy().into_owned())
+            .read_anomalies()
+            .is_err());
+
+        // A valid but empty document IS a successful check (Ok, no anomalies).
+        let empty = tmp.path().join("empty.json");
+        std::fs::write(&empty, br#"{"alerts":[]}"#).unwrap();
+        assert!(FileAnomalyReader::new(empty.to_string_lossy().into_owned())
             .read_anomalies()
             .unwrap()
             .is_empty());
@@ -633,13 +656,13 @@ mod anomaly_tests {
         let graph = SystemSnapshot {
             captured_at_unix: 10,
             active_project: Some(ProjectContext { name: "p".into(), file_count: 3 }),
-            coverage: Coverage { graph_context: true, live_processes: false, anomalies: false },
+            coverage: Coverage { graph_context: true, live_processes: false, live_network: false, anomalies: false },
             ..Default::default()
         };
         let anomalies = SystemSnapshot {
             captured_at_unix: 20,
             anomalies: vec![Anomaly { kind: AnomalyKind::UnusualForContext, description: "x".into() }],
-            coverage: Coverage { graph_context: false, live_processes: false, anomalies: true },
+            coverage: Coverage { graph_context: false, live_processes: false, live_network: false, anomalies: true },
             ..Default::default()
         };
         let merged = merge_snapshots(graph, anomalies);

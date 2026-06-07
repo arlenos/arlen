@@ -104,10 +104,20 @@ pub struct Coverage {
     /// Recent files and the active project were read from the Knowledge
     /// Graph.
     pub graph_context: bool,
-    /// Current processes and open network connections were read from the
-    /// live event stream / system state.
+    /// Current processes were read from the live system state (`/proc`).
+    /// Tracked separately from [`Coverage::live_network`]: a process source
+    /// that does not look at sockets must not let the prompt imply network
+    /// activity was checked.
     pub live_processes: bool,
-    /// The Anomaly Detector's findings were consulted.
+    /// Open network connections were read from the live system state. There
+    /// is no network source yet (its "within declared permissions" needs the
+    /// permission context, not a bare `/proc/net` read), so this is currently
+    /// always false, and the prompt says network was not checked rather than
+    /// rendering an empty list as "no connections".
+    pub live_network: bool,
+    /// The Anomaly Detector's findings were consulted (a valid findings
+    /// document was parsed; a missing or malformed file leaves this false so a
+    /// down/corrupt detector is not reported as "no anomalies").
     pub anomalies: bool,
 }
 
@@ -116,7 +126,7 @@ impl Coverage {
     /// honestly reported as a genuinely idle system rather than an
     /// unobserved one.
     pub fn is_complete(self) -> bool {
-        self.graph_context && self.live_processes && self.anomalies
+        self.graph_context && self.live_processes && self.live_network && self.anomalies
     }
 }
 
