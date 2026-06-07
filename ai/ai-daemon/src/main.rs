@@ -36,6 +36,11 @@ use zbus::Connection;
 const BUS_NAME: &str = "org.arlen.AI1";
 const OBJECT_PATH: &str = "/org/arlen/AI1";
 
+/// Step budget for the interactive tool-routing loop. Bounds how many
+/// tool calls one query may chain before the loop must produce a final
+/// answer (or report exhaustion). Mirrors the agent loop's bounded shape.
+const TOOL_LOOP_MAX_STEPS: u32 = 6;
+
 /// Resolve the Knowledge Daemon query socket the same way every
 /// other Arlen client does: an explicit
 /// `ARLEN_DAEMON_SOCKET` override wins; otherwise the per-user
@@ -139,6 +144,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         arlen_ai_explanation::UnixGraphReader::new(knowledge_socket.clone()),
     );
     let explain_provider = provider.clone();
+    // The tool-routing loop (default-off) drives the same provider as the
+    // pipeline; clone before `provider` is moved into the pipeline.
+    let tool_provider = provider.clone();
     let graph: Arc<dyn GraphQuerier> =
         Arc::new(OsSdkGraphQuerier::new(knowledge_socket));
     let runner: Arc<dyn QueryRunner> =
@@ -158,13 +166,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // on every change. Starting fail-closed means there is no window in
     // which a stale startup snapshot serves access before the watcher is
     // live. The Settings tier slider that writes `access_level` is S24.
+    // MCP server discovery owns the daemon's `McpClient`. It is built
+    // before the service so the tool-routing loop can share the same
+    // client handle that discovery keeps connected.
+    let discovery = Arc::new(McpDiscovery::new(audit.clone()));
+
     let service = Arc::new(
         AiDaemonService::new(
             runner,
             QueryScope::for_tier(access_tier_from_level(0), &GraphSchema::knowledge_graph()),
             audit.clone(),
         )
-        .with_explain(explain_provider, explain_reader),
+        .with_explain(explain_provider, explain_reader)
+        .with_tool_routing(
+            settings.tool_routing,
+            discovery.client(),
+            tool_provider,
+            TOOL_LOOP_MAX_STEPS,
+        ),
     );
     config_watch::spawn_config_watch(service.clone());
 
@@ -196,7 +215,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // namespace. `run` subscribes (retrying if the bus is late),
     // reconciles against the sockets already on disk, and tracks
     // installs and removals for the rest of the session.
-    let discovery = Arc::new(McpDiscovery::new(audit.clone()));
     let consumer = UnixEventConsumer::new(resolve_event_consumer_socket());
     tokio::spawn(discovery.run(consumer));
 
