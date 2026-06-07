@@ -100,6 +100,13 @@ export const messages = derived(
   ([$sessions, $id]) => $sessions.find((s) => s.id === $id)?.messages ?? [],
 );
 
+/// The active session's title, for the titlebar. Empty when no session is
+/// active (the titlebar then falls back to the generic surface name).
+export const activeTitle = derived(
+  [sessions, activeSessionId],
+  ([$sessions, $id]) => $sessions.find((s) => s.id === $id)?.title ?? "",
+);
+
 let initialized = false;
 
 /// Load persisted sessions on startup and keep the store mirrored to disk.
