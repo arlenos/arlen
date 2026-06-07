@@ -730,8 +730,14 @@ impl AiDaemonService {
             // run_tool_loop); the lock is acquired inside the future the
             // select polls, so a cancellation fires even while the loop is
             // waiting on the client lock or a tool call is in flight.
-            let loop_call =
-                run_tool_loop(&tl.client, tl.provider.as_ref(), &prompt, tl.max_steps);
+            let loop_call = run_tool_loop(
+                &tl.client,
+                self.runner.as_ref(),
+                &scope,
+                tl.provider.as_ref(),
+                &prompt,
+                tl.max_steps,
+            );
             tokio::select! {
                 biased;
                 _ = cancel.cancelled() => {

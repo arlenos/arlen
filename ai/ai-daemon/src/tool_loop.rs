@@ -8,14 +8,30 @@
 //! dispatch, budget) lands in later slices behind a default-off flag; this
 //! slice is the pure, testable prompt builder.
 
+use arlen_ai_core::graph_query::QueryScope;
 use arlen_ai_core::mcp::{
-    AlwaysConfirmReason, CallChain, CallDecision, CatalogueTool, McpClient, ServerId,
+    AlwaysConfirmReason, CallChain, CallDecision, CatalogueTool, McpClient, ServerClass, ServerId,
 };
-use arlen_ai_core::pipeline::extract_json;
+use arlen_ai_core::pipeline::{extract_json, QueryRunner};
 use arlen_ai_core::provider::{AIProvider, CompletionRequest};
 use arlen_ai_core::tagging::{Block, Origin, TaggedPrompt};
 use serde::Deserialize;
 use tokio::sync::Mutex;
+
+/// Reserved server id of the internal, scope-enforcing graph tool. Graph
+/// access in the interactive loop goes only through here, never through the
+/// raw-Cypher knowledge MCP server: this tool routes through the validated
+/// [`QueryRunner`], which checks every query against the caller's
+/// [`QueryScope`] (the per-tier label scope derived from `access_level`). The
+/// `system.` namespace is reserved from module ids, so no module can shadow it.
+const GRAPH_TOOL_SERVER: &str = "system.graph";
+/// The internal graph tool's only tool name: a natural-language question.
+const GRAPH_TOOL_NAME: &str = "query";
+/// The raw-Cypher knowledge MCP server. Its `query` tool accepts arbitrary
+/// Cypher and cannot carry the per-tier label scope, so it is withheld from
+/// the interactive catalogue AND refused if the model addresses it directly:
+/// all graph access is routed through the scoped [`GRAPH_TOOL_SERVER`].
+const RAW_KNOWLEDGE_SERVER: &str = "system.knowledge";
 
 /// One completed step of the loop: a tool call and the result it returned.
 /// The result is treated as data (an origin-tagged block), never instructions.
@@ -251,6 +267,43 @@ pub enum LoopOutcome {
     Failed(String),
 }
 
+/// Shape the catalogue the model sees in the interactive loop: prepend the
+/// internal scope-enforcing graph tool and drop the raw-Cypher knowledge
+/// server's tools. The model reaches the Knowledge Graph only through the
+/// scoped tool; the raw server is never offered (and is refused at dispatch
+/// even if the model addresses it directly), so a non-Minimal caller cannot
+/// read labels outside their tier by writing raw Cypher.
+fn interactive_catalogue(raw: Vec<CatalogueTool>) -> Vec<CatalogueTool> {
+    let mut out = Vec::with_capacity(raw.len() + 1);
+    out.push(CatalogueTool {
+        server: ServerId(GRAPH_TOOL_SERVER.to_string()),
+        class: ServerClass::ReadOnly,
+        name: GRAPH_TOOL_NAME.to_string(),
+        description: Some(
+            "Ask a natural-language question of the Knowledge Graph. Returns an \
+             answer scoped to your access tier. Argument: {\"question\": string}."
+                .to_string(),
+        ),
+    });
+    out.extend(
+        raw.into_iter()
+            .filter(|t| t.server.0 != RAW_KNOWLEDGE_SERVER),
+    );
+    out
+}
+
+/// Pull the natural-language `question` string out of the internal graph
+/// tool's arguments. Fails closed: a missing, non-string, or malformed
+/// argument is an error, never a silent empty question.
+fn extract_graph_question(arguments: &str) -> Result<String, String> {
+    let value: serde_json::Value = serde_json::from_str(arguments)
+        .map_err(|e| format!("invalid graph tool arguments: {e}"))?;
+    match value.get("question").and_then(|q| q.as_str()) {
+        Some(q) if !q.trim().is_empty() => Ok(q.to_string()),
+        _ => Err("graph tool requires a non-empty string argument 'question'".to_string()),
+    }
+}
+
 /// Run the bounded interactive tool-use loop: assemble the tool catalogue, then
 /// repeatedly prompt the model, parse its step, and either answer or gate and
 /// dispatch one tool call, feeding the result back, until a final answer or the
@@ -271,11 +324,14 @@ pub enum LoopOutcome {
 /// in flight.
 pub async fn run_tool_loop(
     client: &Mutex<McpClient>,
+    runner: &dyn QueryRunner,
+    scope: &QueryScope,
     provider: &dyn AIProvider,
     question: &str,
     max_steps: u32,
 ) -> LoopOutcome {
-    let catalogue = client.lock().await.tool_catalogue().await;
+    let raw_catalogue = client.lock().await.tool_catalogue().await;
+    let catalogue = interactive_catalogue(raw_catalogue);
     let chain = CallChain::root();
     let mut transcript: Vec<ToolStep> = Vec::new();
 
@@ -300,10 +356,35 @@ pub async fn run_tool_loop(
                 tool,
                 arguments,
             }) => {
-                // No per-session action grant in the interactive loop yet, so
-                // action servers surface as Blocked; read-only servers (the
-                // knowledge graph) are default-permit. Lock only for the call.
-                let outcome = {
+                let outcome = if server == GRAPH_TOOL_SERVER {
+                    // The scope-enforcing graph tool: route through the
+                    // validated QueryRunner so every query is checked against
+                    // the caller's per-tier QueryScope.
+                    if tool != GRAPH_TOOL_NAME {
+                        DispatchOutcome::Failed(format!(
+                            "unknown tool '{tool}' on {GRAPH_TOOL_SERVER}"
+                        ))
+                    } else {
+                        match extract_graph_question(&arguments) {
+                            Ok(q) => match runner.run_query(&q, scope).await {
+                                Ok(answer) => DispatchOutcome::Result(answer),
+                                Err(f) => DispatchOutcome::Failed(f.reason),
+                            },
+                            Err(e) => DispatchOutcome::Failed(e),
+                        }
+                    }
+                } else if server == RAW_KNOWLEDGE_SERVER {
+                    // Refuse raw-Cypher graph access in the interactive loop:
+                    // it cannot carry the per-tier label scope. Route graph
+                    // queries through the scoped tool instead.
+                    DispatchOutcome::Failed(format!(
+                        "{RAW_KNOWLEDGE_SERVER} is not callable directly; \
+                         use {GRAPH_TOOL_SERVER}/{GRAPH_TOOL_NAME}"
+                    ))
+                } else {
+                    // No per-session action grant in the interactive loop yet,
+                    // so action servers surface as Blocked; other read-only
+                    // servers are default-permit. Lock only for the call.
                     let guard = client.lock().await;
                     gated_dispatch(&guard, &server, &tool, &arguments, false, &chain).await
                 };
@@ -455,6 +536,43 @@ mod tests {
         );
     }
 
+    #[test]
+    fn interactive_catalogue_adds_scoped_graph_tool_and_drops_raw_knowledge() {
+        let raw = vec![
+            CatalogueTool {
+                server: ServerId("system.knowledge".into()),
+                class: ServerClass::ReadOnly,
+                name: "query".into(),
+                description: None,
+            },
+            CatalogueTool {
+                server: ServerId("module.notes".into()),
+                class: ServerClass::ReadOnly,
+                name: "list".into(),
+                description: None,
+            },
+        ];
+        let shaped = interactive_catalogue(raw);
+        // The raw knowledge server is gone; the scoped graph tool leads.
+        assert_eq!(shaped[0].server.0, "system.graph");
+        assert_eq!(shaped[0].name, "query");
+        assert!(shaped.iter().all(|t| t.server.0 != "system.knowledge"));
+        // Unrelated servers survive.
+        assert!(shaped.iter().any(|t| t.server.0 == "module.notes"));
+    }
+
+    #[test]
+    fn extract_graph_question_fails_closed() {
+        assert_eq!(
+            extract_graph_question(r#"{"question":"what did I open?"}"#).unwrap(),
+            "what did I open?"
+        );
+        assert!(extract_graph_question(r#"{"question":""}"#).is_err());
+        assert!(extract_graph_question(r#"{"question":42}"#).is_err());
+        assert!(extract_graph_question(r#"{"q":"x"}"#).is_err());
+        assert!(extract_graph_question("not json").is_err());
+    }
+
     // Full-loop integration: a live read-only MCP server with a `query` tool,
     // a mock provider scripted to call it and then answer. Verifies the loop
     // composes catalogue + prompt + parse + gate + dispatch end to end.
@@ -512,6 +630,41 @@ mod tests {
             fn name(&self) -> &str {
                 "scripted"
             }
+        }
+
+        use arlen_ai_core::graph_query::{AccessTier, QueryScope};
+        use arlen_ai_core::graph_schema::GraphSchema;
+        use arlen_ai_core::pipeline::{QueryRunner, RunFailure};
+
+        /// A QueryRunner that records the prompt it was asked and replays a
+        /// fixed answer, so a test can assert the scoped graph tool routed
+        /// through it (rather than the raw MCP server).
+        struct StubRunner {
+            answer: Result<String, RunFailure>,
+            seen: Mutex<Vec<String>>,
+        }
+        impl StubRunner {
+            fn ok(answer: &str) -> Self {
+                Self {
+                    answer: Ok(answer.to_string()),
+                    seen: Mutex::new(Vec::new()),
+                }
+            }
+        }
+        #[async_trait]
+        impl QueryRunner for StubRunner {
+            async fn run_query(
+                &self,
+                prompt: &str,
+                _scope: &QueryScope,
+            ) -> Result<String, RunFailure> {
+                self.seen.lock().unwrap().push(prompt.to_string());
+                self.answer.clone()
+            }
+        }
+
+        fn test_scope() -> QueryScope {
+            QueryScope::for_tier(AccessTier::Full, &GraphSchema::knowledge_graph())
         }
 
         #[derive(Clone)]
@@ -575,9 +728,96 @@ mod tests {
                 r#"{"action":"call_tool","server":"test","tool":"query","arguments":{}}"#,
                 r#"{"action":"answer","text":"you have 1 note"}"#,
             ]);
+            let runner = StubRunner::ok("(unused)");
 
-            let outcome = run_tool_loop(&client, &provider, "what notes do I have?", 5).await;
+            let outcome = run_tool_loop(
+                &client,
+                &runner,
+                &test_scope(),
+                &provider,
+                "what notes do I have?",
+                5,
+            )
+            .await;
             assert_eq!(outcome, LoopOutcome::Answer("you have 1 note".to_string()));
+            // The "test" MCP tool was used, not the graph runner.
+            assert!(runner.seen.lock().unwrap().is_empty());
+
+            server.abort();
+        }
+
+        #[tokio::test]
+        async fn graph_tool_routes_through_the_scoped_runner() {
+            // No MCP server connected: the only graph access is the internal
+            // scope-enforcing tool, which must route through the QueryRunner.
+            let client = tokio::sync::Mutex::new(McpClient::new());
+            let runner = StubRunner::ok("you opened 3 files today");
+            let provider = ScriptedProvider::new(vec![
+                r#"{"action":"call_tool","server":"system.graph","tool":"query","arguments":{"question":"what did I open?"}}"#,
+                r#"{"action":"answer","text":"3 files"}"#,
+            ]);
+
+            let outcome = run_tool_loop(
+                &client,
+                &runner,
+                &test_scope(),
+                &provider,
+                "what did I open today?",
+                5,
+            )
+            .await;
+            assert_eq!(outcome, LoopOutcome::Answer("3 files".to_string()));
+            // The runner saw the model's question, under the passed scope.
+            let seen = runner.seen.lock().unwrap();
+            assert_eq!(seen.as_slice(), &["what did I open?".to_string()]);
+        }
+
+        #[tokio::test]
+        async fn raw_knowledge_server_is_refused_in_the_loop() {
+            // The raw-Cypher knowledge server is connected, but the loop must
+            // refuse a direct call to it: it cannot carry the per-tier scope.
+            let socket = temp_socket();
+            let socket_for_task = socket.clone();
+            let server = tokio::spawn(async move {
+                let _ = serve_mcp_at(&socket_for_task, QueryServer::new).await;
+            });
+            for _ in 0..200 {
+                if socket.exists() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert!(socket.exists(), "test server did not bind");
+            let mut raw = McpClient::new();
+            raw.connect(
+                ServerId("system.knowledge".into()),
+                socket.to_str().unwrap(),
+                ServerClass::ReadOnly,
+            )
+            .await
+            .expect("connect knowledge server");
+            let client = tokio::sync::Mutex::new(raw);
+            let runner = StubRunner::ok("(unused)");
+            // Step 1: try the raw server directly. Step 2: answer.
+            let provider = ScriptedProvider::new(vec![
+                r#"{"action":"call_tool","server":"system.knowledge","tool":"query","arguments":{"cypher":"MATCH (n) RETURN n"}}"#,
+                r#"{"action":"answer","text":"done"}"#,
+            ]);
+
+            let outcome = run_tool_loop(
+                &client,
+                &runner,
+                &test_scope(),
+                &provider,
+                "read everything",
+                5,
+            )
+            .await;
+            // The raw call was refused (recorded as an error, not dispatched);
+            // the loop continued to the model's answer. The runner was not
+            // used, and no raw Cypher reached the server through the loop.
+            assert_eq!(outcome, LoopOutcome::Answer("done".to_string()));
+            assert!(runner.seen.lock().unwrap().is_empty());
 
             server.abort();
         }
