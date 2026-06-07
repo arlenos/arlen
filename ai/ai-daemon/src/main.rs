@@ -144,6 +144,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         arlen_ai_explanation::UnixGraphReader::new(knowledge_socket.clone()),
     );
     let explain_provider = provider.clone();
+    // The anomaly source for the explanation: the Anomaly Detector's findings
+    // file under the data dir (`$XDG_DATA_HOME` or `~/.local/share`). Resolved
+    // here without a `dirs` dependency; a missing path or file just reads as no
+    // anomalies (the reader is fail-soft), so the explanation degrades to
+    // graph-only rather than failing.
+    let explain_anomaly_reader: Option<Arc<dyn arlen_ai_explanation::AnomalyReader>> =
+        std::env::var_os("XDG_DATA_HOME")
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("HOME")
+                    .map(|h| std::path::PathBuf::from(h).join(".local/share"))
+            })
+            .map(|base| {
+                Arc::new(arlen_ai_explanation::FileAnomalyReader::new(
+                    base.join("arlen/anomaly/alerts.json")
+                        .to_string_lossy()
+                        .into_owned(),
+                )) as Arc<dyn arlen_ai_explanation::AnomalyReader>
+            });
     // The tool-routing loop (default-off) drives the same provider as the
     // pipeline; clone before `provider` is moved into the pipeline.
     let tool_provider = provider.clone();
@@ -178,6 +197,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             audit.clone(),
         )
         .with_explain(explain_provider, explain_reader)
+        .with_explanation_anomalies(explain_anomaly_reader)
         .with_tool_routing(
             settings.tool_routing,
             discovery.client(),

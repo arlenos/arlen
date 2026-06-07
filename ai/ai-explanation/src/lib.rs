@@ -39,7 +39,7 @@ pub mod prompt;
 pub mod snapshot;
 pub mod source;
 
-pub use explain::{explain, explain_system, ExplainError};
+pub use explain::{explain, explain_system, explain_with_sources, ExplainError};
 pub use prompt::{build_explanation_prompt, render_snapshot};
 pub use snapshot::{
     Anomaly, AnomalyKind, Coverage, FileActivity, NetworkActivity, ProcessActivity,

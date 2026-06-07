@@ -24,7 +24,9 @@ use arlen_ai_core::graph_query::QueryScope;
 use arlen_ai_core::mcp::McpClient;
 use arlen_ai_core::pipeline::{QueryRunner, RunFailure};
 use arlen_ai_core::provider::AIProvider;
-use arlen_ai_explanation::{explain_system as run_explain, GraphReader};
+use arlen_ai_explanation::{
+    explain_system as run_explain, explain_with_sources, AnomalyReader, GraphReader,
+};
 use tokio_util::sync::CancellationToken;
 
 use crate::registry::{AuthError, CompletionOutcome, CreatedQuery, QueryRegistry, QueryStatus};
@@ -175,6 +177,11 @@ impl ExplainError {
 struct Explainer {
     provider: Arc<dyn AIProvider>,
     reader: Arc<dyn GraphReader>,
+    /// Optional anomaly source. When set, the explanation folds the Anomaly
+    /// Detector's findings into the snapshot; when `None` it is graph-only
+    /// (the query-only tests, which never wire it). Added through
+    /// [`AiDaemonService::with_explanation_anomalies`] after `with_explain`.
+    anomaly: Option<Arc<dyn AnomalyReader>>,
 }
 
 /// Handle returned to the D-Bus surface from `query()`.
@@ -393,7 +400,24 @@ impl AiDaemonService {
         provider: Arc<dyn AIProvider>,
         reader: Arc<dyn GraphReader>,
     ) -> Self {
-        self.explain = Some(Explainer { provider, reader });
+        self.explain = Some(Explainer {
+            provider,
+            reader,
+            anomaly: None,
+        });
+        self
+    }
+
+    /// Add the anomaly source to the explanation capability (chained after
+    /// [`Self::with_explain`]). With it, `explain_system` folds the Anomaly
+    /// Detector's findings into the snapshot; without it the explanation is
+    /// graph-only. Takes an `Option` so the binary can pass an unresolved
+    /// source as `None` and the call stays in the fluent builder chain; a
+    /// no-op if `with_explain` was not called first or the reader is `None`.
+    pub fn with_explanation_anomalies(mut self, reader: Option<Arc<dyn AnomalyReader>>) -> Self {
+        if let (Some(explainer), Some(reader)) = (self.explain.as_mut(), reader) {
+            explainer.anomaly = Some(reader);
+        }
         self
     }
 
@@ -662,12 +686,29 @@ impl AiDaemonService {
         }
 
         let started = std::time::Instant::now();
-        let result = run_explain(
-            explainer.reader.as_ref(),
-            explainer.provider.as_ref(),
-            now_unix,
-        )
-        .await;
+        // Fold the anomaly source in when wired (additive: the graph-label
+        // scope gate above is unchanged, and anomalies are advisory findings
+        // from a file, not a graph read, so they only ride along at the Full
+        // tier this method already requires).
+        let result = match explainer.anomaly.as_ref() {
+            Some(anomaly) => {
+                explain_with_sources(
+                    explainer.reader.as_ref(),
+                    anomaly.as_ref(),
+                    explainer.provider.as_ref(),
+                    now_unix,
+                )
+                .await
+            }
+            None => {
+                run_explain(
+                    explainer.reader.as_ref(),
+                    explainer.provider.as_ref(),
+                    now_unix,
+                )
+                .await
+            }
+        };
         let outcome = if result.is_ok() { "completed" } else { "failed" };
         let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         self.submit_completion_audit(
