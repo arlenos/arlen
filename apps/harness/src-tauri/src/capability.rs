@@ -21,6 +21,30 @@ pub struct Capability {
     pub tier: String,
     /// Action mode label (`Suggest`, `Supervised`).
     pub action_mode: String,
+    /// The configured provider name (`ai.provider`), when set. Shown so the
+    /// user can see which backend is answering without opening Settings.
+    pub provider: Option<String>,
+    /// The configured model (`[provider].model`), when set.
+    pub model: Option<String>,
+}
+
+/// Extract the provider name (`ai.provider`) and model (`[provider].model`)
+/// from the parsed config. Either may be absent; both are display-only.
+/// Pure, so the lookup is unit-tested without a config file.
+fn provider_and_model(doc: &toml::Table) -> (Option<String>, Option<String>) {
+    let provider = doc
+        .get("ai")
+        .and_then(toml::Value::as_table)
+        .and_then(|t| t.get("provider"))
+        .and_then(toml::Value::as_str)
+        .map(str::to_string);
+    let model = doc
+        .get("provider")
+        .and_then(toml::Value::as_table)
+        .and_then(|t| t.get("model"))
+        .and_then(toml::Value::as_str)
+        .map(str::to_string);
+    (provider, model)
 }
 
 /// Map the `ai.access_level` integer (0..=4, Foundation §8.4) to its
@@ -65,6 +89,8 @@ pub async fn ai_capability() -> Capability {
         enabled: false,
         tier: tier_label(0).to_string(),
         action_mode: mode_label(None),
+        provider: None,
+        model: None,
     };
 
     let Ok(text) = std::fs::read_to_string(ai_config_path()) else {
@@ -86,11 +112,14 @@ pub async fn ai_capability() -> Capability {
     let mode = ai
         .and_then(|t| t.get("action_mode"))
         .and_then(toml::Value::as_str);
+    let (provider, model) = provider_and_model(&doc);
 
     Capability {
         enabled,
         tier: tier_label(level).to_string(),
         action_mode: mode_label(mode),
+        provider,
+        model,
     }
 }
 
@@ -113,5 +142,24 @@ mod tests {
         assert_eq!(mode_label(Some("suggest")), "Suggest");
         assert_eq!(mode_label(Some("autonomous")), "Suggest");
         assert_eq!(mode_label(None), "Suggest");
+    }
+
+    #[test]
+    fn provider_and_model_read_from_their_keys() {
+        let doc = r#"
+            [ai]
+            provider = "ollama"
+            [provider]
+            model = "llama3:8b"
+        "#
+        .parse::<toml::Table>()
+        .unwrap();
+        assert_eq!(provider_and_model(&doc), (Some("ollama".into()), Some("llama3:8b".into())));
+    }
+
+    #[test]
+    fn provider_and_model_absent_are_none() {
+        let doc = "[ai]\nenabled = true\n".parse::<toml::Table>().unwrap();
+        assert_eq!(provider_and_model(&doc), (None, None));
     }
 }

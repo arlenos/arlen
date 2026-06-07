@@ -12,13 +12,15 @@
   import { invoke } from "@tauri-apps/api/core";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2, Wrench } from "@lucide/svelte";
+  import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2, Wrench, Cpu } from "@lucide/svelte";
   import { messages, busy, send } from "$lib/stores/conversation";
 
   interface Capability {
     enabled: boolean;
     tier: string;
     actionMode: string;
+    provider?: string | null;
+    model?: string | null;
   }
 
   let draft = $state("");
@@ -72,6 +74,13 @@
       <span class="cap"><Eye size={12} strokeWidth={1.75} />Reads: {capability.tier}</span>
       <span class="cap-sep">·</span>
       <span class="cap"><Wand2 size={12} strokeWidth={1.75} />{capability.actionMode}</span>
+      {#if capability.provider || capability.model}
+        <span class="cap-sep">·</span>
+        <span class="cap" title="The configured AI provider and model">
+          <Cpu size={12} strokeWidth={1.75} />
+          {[capability.provider, capability.model].filter(Boolean).join(" · ")}
+        </span>
+      {/if}
     </div>
   {/if}
   <div class="messages" bind:this={scrollEl}>
