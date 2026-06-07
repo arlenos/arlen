@@ -27,13 +27,19 @@ use rmcp::model::{
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer, ServerHandler};
 
+use arlen_ai_core::graph_schema::GraphSchema;
+
 /// The well-known socket id for the system Knowledge Graph server. Resolves to
 /// `$XDG_RUNTIME_DIR/arlen/mcp/system.knowledge.sock` via the `os-sdk` path
 /// helper (`mcp-server-layer.md` §6.2).
 pub const SERVER_ID: &str = "system.knowledge";
 
-/// The single read-only tool this server exposes.
+/// Read-only Cypher query tool.
 pub const QUERY_TOOL: &str = "query";
+
+/// Schema-description tool: lists the queryable node and edge types so a caller
+/// can write valid Cypher without guessing labels.
+pub const SCHEMA_TOOL: &str = "describe_schema";
 
 /// System fallback path of the knowledge daemon's read-query socket, used
 /// when no env override and no per-user runtime dir is available.
@@ -115,6 +121,49 @@ impl KnowledgeMcp {
             Arc::new(schema),
         )
     }
+
+    /// The MCP tool definition for the schema description. Takes no arguments.
+    fn schema_tool() -> Tool {
+        let schema: JsonObject = serde_json::from_value(serde_json::json!({
+            "type": "object",
+            "properties": {}
+        }))
+        .expect("the static schema-tool input is a valid JSON object");
+        Tool::new_with_raw(
+            SCHEMA_TOOL.to_owned(),
+            Some(Cow::Borrowed(
+                "Describe the Knowledge Graph schema: the queryable node labels with their fields and the edge types with their endpoints. Use this to write valid Cypher.",
+            )),
+            Arc::new(schema),
+        )
+    }
+}
+
+/// Render the canonical graph schema as JSON: node labels with their typed
+/// fields, and edge labels with their from/to endpoints. Sourced from the
+/// shared `arlen_ai_core::graph_schema` so it cannot drift from the daemon's
+/// actual tables. Pure, so it is testable without an MCP transport.
+fn schema_json() -> serde_json::Value {
+    let schema = GraphSchema::knowledge_graph();
+    let nodes: Vec<serde_json::Value> = schema
+        .node_labels()
+        .filter_map(|label| schema.node(label))
+        .map(|n| {
+            serde_json::json!({
+                "label": n.label,
+                "fields": n.fields.iter().map(|(name, ty)| serde_json::json!({
+                    "name": name,
+                    "type": format!("{ty:?}"),
+                })).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    let edges: Vec<serde_json::Value> = schema
+        .edge_labels()
+        .filter_map(|label| schema.edge(label))
+        .map(|e| serde_json::json!({ "label": e.label, "from": e.from, "to": e.to }))
+        .collect();
+    serde_json::json!({ "nodes": nodes, "edges": edges })
 }
 
 /// Pull the required `cypher` string out of a `tools/call` argument object.
@@ -138,7 +187,7 @@ impl ServerHandler for KnowledgeMcp {
         // through the constructor rather than a struct literal.
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_instructions(
-                "Read-only access to the Arlen Knowledge Graph. The 'query' tool runs a read Cypher query and returns the matching rows.",
+                "Read-only access to the Arlen Knowledge Graph. 'describe_schema' lists the queryable node and edge types; 'query' runs a read Cypher query and returns the matching rows.",
             )
     }
 
@@ -147,7 +196,10 @@ impl ServerHandler for KnowledgeMcp {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
-        Ok(ListToolsResult::with_all_items(vec![Self::query_tool()]))
+        Ok(ListToolsResult::with_all_items(vec![
+            Self::query_tool(),
+            Self::schema_tool(),
+        ]))
     }
 
     async fn call_tool(
@@ -155,26 +207,33 @@ impl ServerHandler for KnowledgeMcp {
         request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
-        if request.name != QUERY_TOOL {
-            return Err(McpError::invalid_request(
-                format!("unknown tool: {}", request.name),
-                None,
-            ));
-        }
-        let cypher = extract_cypher(request.arguments.as_ref())?;
-        match self.graph.query_rows(cypher).await {
-            Ok(rows) => {
-                // Rows are already JSON-typed cells; serialise the set.
-                let json = serde_json::to_string(&rows)
-                    .unwrap_or_else(|_| "[]".to_string());
+        match request.name.as_ref() {
+            SCHEMA_TOOL => {
+                let json = serde_json::to_string(&schema_json())
+                    .unwrap_or_else(|_| "{}".to_string());
                 Ok(CallToolResult::success(vec![Content::text(json)]))
             }
-            // A rejected or failed query (including a write the read socket
-            // refuses) is a clean tool error, not a transport error: the
-            // caller sees the reason and the connection stays up.
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "query failed: {err}"
-            ))])),
+            QUERY_TOOL => {
+                let cypher = extract_cypher(request.arguments.as_ref())?;
+                match self.graph.query_rows(cypher).await {
+                    Ok(rows) => {
+                        // Rows are already JSON-typed cells; serialise the set.
+                        let json = serde_json::to_string(&rows)
+                            .unwrap_or_else(|_| "[]".to_string());
+                        Ok(CallToolResult::success(vec![Content::text(json)]))
+                    }
+                    // A rejected or failed query (including a write the read
+                    // socket refuses) is a clean tool error, not a transport
+                    // error: the caller sees the reason and the connection stays up.
+                    Err(err) => Ok(CallToolResult::error(vec![Content::text(format!(
+                        "query failed: {err}"
+                    ))])),
+                }
+            }
+            other => Err(McpError::invalid_request(
+                format!("unknown tool: {other}"),
+                None,
+            )),
         }
     }
 }
@@ -182,6 +241,27 @@ impl ServerHandler for KnowledgeMcp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn schema_tool_is_named() {
+        assert_eq!(KnowledgeMcp::schema_tool().name, SCHEMA_TOOL);
+    }
+
+    #[test]
+    fn schema_json_lists_every_node_and_edge() {
+        let v = schema_json();
+        let nodes = v["nodes"].as_array().expect("nodes array");
+        let edges = v["edges"].as_array().expect("edges array");
+        // Mirrors the counts asserted in ai-core's graph_schema tests, so a
+        // schema change there surfaces here too.
+        assert_eq!(nodes.len(), 10, "all node labels rendered");
+        assert_eq!(edges.len(), 7, "all edge labels rendered");
+        assert!(nodes.iter().any(|n| n["label"] == "File"), "File node present");
+        assert!(
+            edges.iter().all(|e| e["from"].is_string() && e["to"].is_string()),
+            "every edge has from/to endpoints"
+        );
+    }
 
     #[test]
     fn socket_resolution_precedence() {
