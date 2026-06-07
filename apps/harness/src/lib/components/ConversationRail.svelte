@@ -1,13 +1,20 @@
 <script lang="ts">
   /// Conversation history rail (ai-app.md §2.0, chat archetype's contextual
-  /// second column): "New chat" plus the list of conversations, click to switch.
-  ///
-  /// A8 inc 1: sessions are in-memory for the run (the store holds them); disk
-  /// persistence so they survive a restart is the next sub-increment. The frame
-  /// and wiring are already what persistence will fill.
+  /// second column): "New chat", a title search, and the list of conversations,
+  /// click to switch. Sessions persist to disk (A8), so the list survives a
+  /// restart.
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { Plus, MessageSquare } from "@lucide/svelte";
+  import { Plus, MessageSquare, Search } from "@lucide/svelte";
   import { sessions, activeSessionId, newSession, selectSession } from "$lib/stores/conversation";
+
+  let query = $state("");
+  // Sessions whose title matches the search, case-insensitive. Empty query
+  // matches everything.
+  const filtered = $derived(
+    $sessions.filter((s) =>
+      s.title.toLowerCase().includes(query.trim().toLowerCase()),
+    ),
+  );
 </script>
 
 <aside class="rail" aria-label="Conversations">
@@ -17,6 +24,17 @@
       New chat
     </Button>
   </div>
+  {#if $sessions.length > 0}
+    <div class="rail-search">
+      <Search size={13} strokeWidth={2} />
+      <input
+        type="text"
+        bind:value={query}
+        placeholder="Search conversations"
+        aria-label="Search conversations"
+      />
+    </div>
+  {/if}
   <div class="rail-body">
     {#if $sessions.length === 0}
       <div class="rail-empty">
@@ -24,9 +42,13 @@
         <span>No conversations yet.</span>
         <span class="rail-empty-sub">Ask something to start one.</span>
       </div>
+    {:else if filtered.length === 0}
+      <div class="rail-empty">
+        <span>No conversations match.</span>
+      </div>
     {:else}
       <ul class="rail-list">
-        {#each $sessions as s (s.id)}
+        {#each filtered as s (s.id)}
           <li>
             <button
               class="rail-item"
@@ -64,6 +86,29 @@
     width: 100%;
     justify-content: flex-start;
     gap: 0.4rem;
+  }
+  .rail-search {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid var(--color-border);
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+  }
+  .rail-search :global(svg) {
+    flex-shrink: 0;
+  }
+  .rail-search input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    color: var(--foreground);
+    font-size: 0.8rem;
+    outline: none;
+  }
+  .rail-search input::placeholder {
+    color: color-mix(in srgb, var(--foreground) 40%, transparent);
   }
   .rail-body {
     flex: 1;
