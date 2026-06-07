@@ -17,6 +17,7 @@
   import { messages, busy, send, initSessions, type MentionContent } from "$lib/stores/conversation";
   import ConversationRail from "$lib/components/ConversationRail.svelte";
   import { renderMarkdown } from "$lib/markdown";
+  import { externalLinks } from "$lib/externalLinks";
 
   interface FileSuggestion {
     path: string;
@@ -272,7 +273,7 @@
                   {#if msg.role === "assistant"}
                     <!-- Assistant answers are markdown; renderMarkdown parses
                          and sanitizes them (DOMPurify) before this {@html}. -->
-                    <div class="bubble bubble-assistant markdown">{@html renderMarkdown(msg.text)}</div>
+                    <div class="bubble bubble-assistant markdown" use:externalLinks>{@html renderMarkdown(msg.text)}</div>
                   {:else}
                     <div class="bubble bubble-{msg.role}">{msg.text}</div>
                   {/if}

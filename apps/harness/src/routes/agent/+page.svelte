@@ -13,6 +13,7 @@
   import { Activity, History, Bell, RefreshCw, ShieldAlert, Eye, Sparkles, PowerOff, Telescope } from "@lucide/svelte";
   import AgentFilters from "$lib/components/AgentFilters.svelte";
   import { renderMarkdown } from "$lib/markdown";
+  import { externalLinks } from "$lib/externalLinks";
 
   interface ActivityEntry {
     index: number;
@@ -391,7 +392,7 @@
         {:else if explanation}
           <!-- The explanation is model prose (markdown); render it the same
                sanitized way as chat answers. -->
-          <div class="explain-text markdown">{@html renderMarkdown(explanation)}</div>
+          <div class="explain-text markdown" use:externalLinks>{@html renderMarkdown(explanation)}</div>
         {/if}
       </div>
     </Group>

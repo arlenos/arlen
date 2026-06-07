@@ -13,6 +13,7 @@ mod capability;
 mod mention;
 mod notices;
 mod sessions;
+mod url;
 
 /// Route a log line from the frontend into the Rust logger so it shows
 /// up in the same stdout stream as backend logs. Tauri WebView DevTools
@@ -43,7 +44,8 @@ pub fn run() {
             mention::list_files,
             mention::read_mention_file,
             sessions::harness_sessions_load,
-            sessions::harness_sessions_save
+            sessions::harness_sessions_save,
+            url::open_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-harness");
