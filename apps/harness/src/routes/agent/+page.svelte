@@ -34,6 +34,15 @@
     tampered: boolean;
     total: number;
   }
+  interface BehaviourStatus {
+    name: string;
+    description: string;
+    kind: string;
+    provenance: string;
+    enabled: boolean;
+    disabledReason: string | null;
+    reads: string;
+  }
 
   /// Human label + semantic tone per audit kind.
   const KIND_META: Record<string, { label: string; tone: string }> = {
@@ -49,6 +58,7 @@
   let activity = $state<ActivityPage | null>(null);
   let loading = $state(false);
   let error = $state<string | null>(null);
+  let behaviours = $state<BehaviourStatus[] | null>(null);
 
   function relativeTime(micros: number): string {
     const then = micros / 1000;
@@ -67,6 +77,14 @@
   async function load() {
     loading = true;
     error = null;
+    // Behaviour status is independent of the audit ledger: load it
+    // best-effort so an audit-daemon outage does not blank the behaviour
+    // list, and vice versa.
+    try {
+      behaviours = await invoke<BehaviourStatus[]>("ai_behaviours");
+    } catch {
+      behaviours = null;
+    }
     try {
       activity = await invoke<ActivityPage>("ai_activity_recent", { limit: 100 });
     } catch (e) {
@@ -145,11 +163,38 @@
     </Group>
 
     <Group label="Behaviours">
-      <div class="placeholder">
-        <Activity size={20} strokeWidth={1.5} />
-        <p>Live behaviour status (enabled, kind, last runs, crash/retry) lands in A6.
-          Enabling and disabling stays in Settings → AI.</p>
-      </div>
+      {#if !behaviours}
+        <p class="empty">Behaviour status unavailable.</p>
+      {:else if behaviours.length === 0}
+        <p class="empty">No agent behaviours are installed.</p>
+      {:else}
+        <p class="bh-hint">
+          <Activity size={14} strokeWidth={1.75} />
+          The set the agent would act on. Enabling and disabling stays in Settings → AI.
+        </p>
+        <ul class="bh-list">
+          {#each behaviours as b (b.name)}
+            <li class="bh-item">
+              <span class="badge" data-tone={b.enabled ? "ok" : "neutral"}>
+                {b.enabled ? "enabled" : "disabled"}
+              </span>
+              <div class="body">
+                <div class="line">
+                  <span class="subject">{b.name}</span>
+                  <span class="bh-kind">{b.kind}</span>
+                  <span class="bh-prov">{b.provenance}</span>
+                </div>
+                <div class="detail">
+                  {#if b.description}<span>{b.description}</span>{/if}
+                  {#if !b.enabled && b.disabledReason}
+                    <span class="sep">·</span><span class="outcome" data-outcome="denied">{b.disabledReason}</span>
+                  {/if}
+                </div>
+              </div>
+            </li>
+          {/each}
+        </ul>
+      {/if}
     </Group>
 
     <Group label="Notices">
@@ -297,6 +342,40 @@
   }
   .placeholder p {
     margin: 0;
+  }
+  .bh-hint {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.5rem;
+    font-size: 0.8125rem;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+  .bh-hint :global(svg) {
+    flex-shrink: 0;
+  }
+  .bh-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .bh-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.625rem 0;
+    border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+  }
+  .bh-item:first-child {
+    border-top: none;
+  }
+  .bh-kind,
+  .bh-prov {
+    flex-shrink: 0;
+    font-size: 0.6875rem;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   :global(.spin) {
     animation: spin 0.8s linear infinite;
