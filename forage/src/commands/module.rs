@@ -1,4 +1,4 @@
-/// Module subcommands: register, list, info, remove, enable, disable.
+//! Module subcommands: register, list, info, remove, enable, disable.
 
 use std::path::{Path, PathBuf};
 

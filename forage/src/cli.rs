@@ -1,4 +1,4 @@
-/// CLI argument definitions via clap derive.
+//! CLI argument definitions via clap derive.
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;

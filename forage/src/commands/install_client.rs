@@ -1,7 +1,7 @@
-/// D-Bus client for org.arlen.InstallDaemon1.
-///
-/// Connects to the session bus, calls methods, and subscribes to
-/// progress signals for the terminal UI.
+//! D-Bus client for org.arlen.InstallDaemon1.
+//!
+//! Connects to the session bus, calls methods, and subscribes to
+//! progress signals for the terminal UI.
 
 use colored::Colorize;
 use futures_util::StreamExt;
