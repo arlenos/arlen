@@ -16,6 +16,7 @@ use audit_proto::{AuditKind, ReadClient, ReadClientError, ReadPage, StructuralVi
 use os_sdk::event_consumer::{EventConsumer, UnixEventConsumer};
 use tokio::time::MissedTickBehavior;
 
+use crate::alert_log::AlertLog;
 use crate::detect::{check_no_user_interaction, Alert, DetectorConfig};
 use crate::notify::Notifier;
 use crate::state::State;
@@ -67,6 +68,10 @@ pub struct Detector {
     notify: bool,
     state_path: PathBuf,
     grace_until_micros: i64,
+    /// Persisted recent-alert log the harness observability view reads.
+    alert_log: AlertLog,
+    /// Where the alert log is written: `alerts.json` beside `state.json`.
+    alert_log_path: PathBuf,
 }
 
 impl Detector {
@@ -80,6 +85,11 @@ impl Detector {
         grace_until_micros: i64,
         notify: bool,
     ) -> Self {
+        let alert_log_path = state_path
+            .parent()
+            .map(|p| p.join("alerts.json"))
+            .unwrap_or_else(|| PathBuf::from("alerts.json"));
+        let alert_log = AlertLog::load(&alert_log_path);
         Self {
             state,
             cfg,
@@ -88,6 +98,8 @@ impl Detector {
             notify,
             state_path,
             grace_until_micros,
+            alert_log,
+            alert_log_path,
         }
     }
 
@@ -238,6 +250,12 @@ impl Detector {
         // Record the cooldown regardless: the alert was logged, and
         // this prevents attempt-spam if the notifier is unavailable.
         self.state.record_raised(alert, now_micros);
+        // Append to the recent-alert log the harness reads. Advisory: a
+        // write failure is logged, not fatal.
+        self.alert_log.record(alert, now_micros);
+        if let Err(e) = self.alert_log.save(&self.alert_log_path) {
+            tracing::warn!("recent-alert log save failed: {e}");
+        }
     }
 
     /// Handle one Event Bus event.
