@@ -16,7 +16,7 @@ fn main() {
     match cli.command {
         Commands::Install { target } => run_async(cmd_install(target)),
         Commands::Remove { app_id } => run_async(cmd_remove(app_id)),
-        Commands::List => run_async(cmd_list()),
+        Commands::List { json } => run_async(cmd_list(json)),
         Commands::Info { app_id } => run_async(cmd_info(app_id)),
         Commands::Which { app_id } => run_async(cmd_which(app_id)),
         Commands::Trash { action } => run_async(cmd_trash(action)),
@@ -116,7 +116,7 @@ async fn cmd_remove(app_id: String) {
     }
 }
 
-async fn cmd_list() {
+async fn cmd_list(json: bool) {
     use commands::install_client as client;
 
     let conn = match client::connect().await {
@@ -127,7 +127,7 @@ async fn cmd_list() {
         }
     };
 
-    if let Err(e) = client::list_installed(&conn).await {
+    if let Err(e) = client::list_installed(&conn, json).await {
         eprintln!("{} {e}", "error:".red().bold());
         std::process::exit(1);
     }
