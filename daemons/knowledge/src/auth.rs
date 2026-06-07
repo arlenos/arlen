@@ -176,6 +176,59 @@ instance_scope = "own"
         assert!(auth.signer().verify(&token));
     }
 
+    /// The shipped `ai-agent` profile is the executor go-live grant: it must
+    /// authorise exactly the one relation the auto-tag workflow writes
+    /// (File -[FILE_PART_OF]-> Project) and nothing more. This loads the real
+    /// deployed artifact and mints a token from it through the same path the
+    /// daemon uses, so the grant the agent receives at go-live cannot silently
+    /// drift from what is shipped.
+    #[test]
+    fn shipped_ai_agent_profile_grants_exactly_the_file_part_of_link() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../ai/ai-agent/dist/permissions/ai-agent.toml");
+        let profile =
+            PermissionProfile::load_from(&path).expect("the shipped ai-agent profile must parse");
+        assert!(
+            profile.has_graph_access(),
+            "the agent needs graph access to write the link"
+        );
+
+        let mut auth = Authenticator::new();
+        let token = auth
+            .issue_token_from_profile("ai-agent", std::process::id(), &profile)
+            .unwrap();
+
+        // The one relation it may create.
+        assert!(
+            token.can_create_relation("system.File", "system.Project", "FILE_PART_OF"),
+            "the agent must be able to write the FILE_PART_OF link it auto-tags"
+        );
+        // No other relation, even between system nodes the daemon otherwise knows.
+        assert!(
+            !token.can_create_relation("system.File", "system.App", "ACCESSED_BY"),
+            "the grant must not extend to other relations"
+        );
+        assert!(
+            !token.can_create_relation("system.Directory", "system.Project", "DIR_PART_OF"),
+            "the grant must not extend to other relations"
+        );
+
+        // Linking two unowned system nodes is unanchored, so it needs the
+        // privileged all-instances scope; the daemon would refuse it otherwise.
+        assert_eq!(
+            token.instance_scope,
+            InstanceScope::All,
+            "the File->Project link is unanchored, so it needs InstanceScope::All"
+        );
+
+        // It reads the two node types it reasons about and writes no node type.
+        assert!(token.can_read("system.File"));
+        assert!(token.can_read("system.Project"));
+        assert!(!token.can_read("system.Session"));
+        assert!(!token.can_write("system.File"));
+        assert!(!token.can_write("system.Project"));
+    }
+
     #[test]
     fn test_no_graph_permission() {
         let profile = load_profile(
