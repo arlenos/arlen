@@ -4,8 +4,14 @@
   /// click to switch. Sessions persist to disk (A8), so the list survives a
   /// restart.
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { Plus, MessageSquare, Search } from "@lucide/svelte";
-  import { sessions, activeSessionId, newSession, selectSession } from "$lib/stores/conversation";
+  import { Plus, MessageSquare, Search, X } from "@lucide/svelte";
+  import {
+    sessions,
+    activeSessionId,
+    newSession,
+    selectSession,
+    deleteSession,
+  } from "$lib/stores/conversation";
 
   let query = $state("");
   // Sessions whose title matches the search, case-insensitive. Empty query
@@ -49,15 +55,25 @@
     {:else}
       <ul class="rail-list">
         {#each filtered as s (s.id)}
-          <li>
+          <li class="rail-row" class:active={s.id === $activeSessionId}>
             <button
               class="rail-item"
-              class:active={s.id === $activeSessionId}
               onclick={() => selectSession(s.id)}
               title={s.title}
             >
               <MessageSquare size={13} strokeWidth={1.75} />
               <span class="rail-item-title">{s.title}</span>
+            </button>
+            <button
+              class="rail-del"
+              aria-label="Delete conversation"
+              title="Delete conversation"
+              onclick={(e) => {
+                e.stopPropagation();
+                deleteSession(s.id);
+              }}
+            >
+              <X size={13} strokeWidth={2} />
             </button>
           </li>
         {/each}
@@ -138,33 +154,66 @@
     flex-direction: column;
     gap: 0.1rem;
   }
+  /* Row holds the select button and the hover-revealed delete button as
+     siblings; the row carries the hover/active background so both sit on it. */
+  .rail-row {
+    display: flex;
+    align-items: center;
+    border-radius: var(--radius-chip);
+  }
+  .rail-row:hover {
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  }
+  .rail-row.active {
+    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  }
   .rail-item {
     display: flex;
     align-items: center;
     gap: 0.45rem;
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     padding: 0.4rem 0.5rem;
     border: none;
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 78%, transparent);
     font-size: 0.8rem;
     text-align: left;
-    border-radius: var(--radius-chip);
     cursor: pointer;
   }
   .rail-item :global(svg) {
     flex-shrink: 0;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
-  .rail-item:hover {
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
-  }
-  .rail-item.active {
-    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  .rail-row.active .rail-item {
     color: var(--foreground);
   }
-  .rail-item.active :global(svg) {
+  .rail-row.active .rail-item :global(svg) {
     color: var(--color-accent);
+  }
+  /* Hidden until the row is hovered or its conversation is active, so the rail
+     stays calm; always shown on keyboard focus for accessibility. */
+  .rail-del {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    padding: 0.3rem;
+    margin-right: 0.25rem;
+    border: none;
+    background: transparent;
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    border-radius: var(--radius-chip);
+    cursor: pointer;
+    opacity: 0;
+  }
+  .rail-row:hover .rail-del,
+  .rail-row.active .rail-del,
+  .rail-del:focus-visible {
+    opacity: 1;
+  }
+  .rail-del:hover {
+    background: color-mix(in srgb, var(--foreground) 12%, transparent);
+    color: var(--foreground);
   }
   .rail-item-title {
     overflow: hidden;
