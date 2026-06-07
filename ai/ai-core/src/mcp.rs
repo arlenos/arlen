@@ -586,25 +586,29 @@ const MAX_FLATTENED_CONTENT_BYTES: usize = 32 * 1024;
 fn flatten_content(content: &[rmcp::model::Content]) -> String {
     let mut out = String::new();
     for part in content {
-        if out.len() >= MAX_FLATTENED_CONTENT_BYTES {
+        let remaining = MAX_FLATTENED_CONTENT_BYTES.saturating_sub(out.len());
+        if remaining == 0 {
+            // More content than the cap allows: mark and stop without copying.
             out.push_str("...[tool output truncated]");
-            break;
+            return out;
         }
-        if let Some(text) = part.as_text() {
-            out.push_str(&text.text);
+        let piece: &str = match part.as_text() {
+            Some(text) => &text.text,
+            None => "[non-text content]",
+        };
+        if piece.len() <= remaining {
+            out.push_str(piece);
         } else {
-            out.push_str("[non-text content]");
+            // Append only up to the remaining budget, on a UTF-8 boundary, so a
+            // single oversized part is never copied wholesale into memory.
+            let mut idx = remaining;
+            while idx > 0 && !piece.is_char_boundary(idx) {
+                idx -= 1;
+            }
+            out.push_str(&piece[..idx]);
+            out.push_str("...[tool output truncated]");
+            return out;
         }
-    }
-    // A single oversized text part can still overshoot the cap; trim to a char
-    // boundary and mark it so the returned string is bounded either way.
-    if out.len() > MAX_FLATTENED_CONTENT_BYTES {
-        let mut idx = MAX_FLATTENED_CONTENT_BYTES;
-        while idx > 0 && !out.is_char_boundary(idx) {
-            idx -= 1;
-        }
-        out.truncate(idx);
-        out.push_str("...[tool output truncated]");
     }
     out
 }
