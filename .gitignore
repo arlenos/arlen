@@ -4,3 +4,6 @@ docs/
 
 # Local build logs
 logs/
+
+# Local-only working context for Claude Code (never committed).
+CLAUDE.md
