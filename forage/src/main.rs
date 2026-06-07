@@ -1,7 +1,7 @@
-/// forage - Arlen OS package manager CLI.
-///
-/// See `docs/architecture/module-system.md` and
-/// `docs/architecture/distro-package-management.md`.
+//! forage - Arlen OS package manager CLI.
+//!
+//! See `docs/architecture/module-system.md` and
+//! `docs/architecture/distro-package-management.md`.
 
 mod cli;
 mod commands;
