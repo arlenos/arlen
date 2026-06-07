@@ -20,7 +20,7 @@ arlen/
   forage/      CLI package manager
   store-backend/  app store backend
   themes/      GTK theme generator
-  distro/      VM setup and dev environment
+  dev/         build, test, and dev tooling (justfile, process-compose, vm)
   docs/        architecture specs (shared across the tree)
 ```
 

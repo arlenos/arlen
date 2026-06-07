@@ -9,7 +9,7 @@
 # Idempotent: re-runs are safe.
 #
 # Usage:
-#   ./distro/dev-modulesd-setup.sh
+#   dev/scripts/dev-modulesd-setup.sh
 #
 # Teardown:
 #   systemctl --user disable --now arlen-modulesd.socket

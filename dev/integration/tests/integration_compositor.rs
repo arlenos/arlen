@@ -10,7 +10,7 @@
 ///   cargo build --manifest-path ../compositor/Cargo.toml
 ///
 /// Run with:
-///   cargo test --manifest-path distro/Cargo.toml --test integration_compositor
+///   cargo test --manifest-path dev/integration/Cargo.toml --test integration_compositor
 use sqlx::sqlite::SqlitePoolOptions;
 use std::path::PathBuf;
 use std::process::{Child, Command};

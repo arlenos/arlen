@@ -1,74 +1,73 @@
-# distro
+# dev
 
-Build system, integration tests, and development tooling for Arlen. This directory holds no application code; it is the glue that wires the rest of the monorepo into a running system and a bootable image.
+Developer tooling for Arlen: build, test, and run the system locally. No
+application code, this is the glue that turns the monorepo into a running stack.
+The bootable image / distribution (mkosi, Fedora base, packaging) is separate
+future work and gets its own `distro/` directory when it exists; until then the
+`build-iso` recipe here is a stub.
 
 ## What's here
 
 ```
-distro/
-├── justfile              build, test, lint recipes for the whole project
-├── vm/
-│   ├── setup-vm.sh       download Fedora Cloud image and create QEMU VM
-│   ├── dev.sh            build all daemons, copy to VM, start tmux dev session
-│   ├── test-vm.sh        smoke test: verify eBPF events land in SQLite
-│   ├── install-aya-toolchain.sh  one-time host setup for eBPF development
-│   └── cloud-init-user-data.yaml  VM provisioning config
-└── tests/
-    ├── event_pipeline.rs      integration test: synthetic event → SQLite
-    └── integration_compositor.rs  integration test: compositor → Event Bus → SQLite
+dev/
+├── justfile              the one task entrypoint (run from anywhere)
+├── process-compose.yaml  declarative full daemon-stack runner
+├── scripts/              dev/install helpers (portal, modulesd, settings, ui-kit sync)
+├── vm/                   eBPF kernel-layer QEMU VM (off-host, by design)
+├── integration/          cross-daemon integration test crate (arlen-integration)
+└── workspace-deps.toml   shared dependency version reference
 ```
 
-## Development workflow
+## The three tiers
 
-The eBPF component (kernel-layer) must run in a VM because kernel bugs can destabilize the host. The VM also serves as the simulated target system: all daemons run together in the VM, mirroring the production setup.
-
-**First time setup:**
+The dev loop is not one size. One `just` entrypoint, three tiers:
 
 ```bash
-# Install QEMU
-sudo pacman -S qemu-system-x86 qemu-img cdrtools  # Arch/EndeavourOS
-
-# Install aya toolchain (for eBPF development)
-./vm/install-aya-toolchain.sh
-
-# Create and start VM
-./vm/setup-vm.sh setup
-./vm/setup-vm.sh start
+just                  # list recipes
+just dev              # full daemon stack via process-compose (TUI)
+just dev --profile shell    # + nested compositor + desktop-shell
+just dev --profile portal   # + xdg-portal + settings (the old --with-portal)
+just dev-ui harness   # quick: one Tauri app via cargo tauri dev (fast UI loop)
+just vm               # eBPF kernel-layer in QEMU
 ```
 
-**Daily development:**
+`process-compose` models the real start order: `event-bus` creates its sockets,
+`knowledge` waits on them (a readiness probe), the AI layer waits on knowledge,
+and so on. It replaces the old hand-rolled tmux script with dependency-aware
+startup, health checks, per-process logs, restart-on-crash, and a TUI. One-time
+install: `just setup` (downloads the static binary into `~/.local/bin`, no sudo).
+For scripted/detached use, `just dev -D` runs headless; reattach with
+`process-compose attach`.
+
+The eBPF component (kernel-layer) runs only in the VM: a kernel bug must not
+destabilise the host.
+
+## Build / test / verify
 
 ```bash
-just dev       # build everything, copy to VM, open tmux session with all daemons
-just test      # run all tests across all repos
-just lint      # clippy across all repos
+just check            # local mirror of CI: cargo check every crate + svelte-check every frontend
+just build [crate]    # build one crate (e.g. just build daemons/knowledge) or all
+just test [crate]     # test one crate or the whole matrix
+just lint             # clippy -D warnings across all crates
+just fmt              # cargo fmt across all crates
+just integration      # the cross-daemon integration tests (arlen-integration)
 ```
 
-Inside the tmux session: left pane is event-bus, top-right is knowledge, bottom-right is kernel-layer. Detach with `Ctrl-B D`. Reattach with `just dev attach`.
-
-## Integration tests
-
-The tests in `tests/` start real daemon processes as subprocesses and verify end-to-end behaviour. They are slower than unit tests and require the binaries to be built first.
-
-```bash
-just build     # build all binaries
-cargo test     # run integration tests
-```
-
-`integration_compositor.rs` additionally requires a running X11 or Wayland session.
+`just check` is the fastest way to confirm a change the way CI will before
+pushing. `CXXFLAGS=-include cstdint` is set for the knowledge/lbug build.
 
 ## VM notes
 
-The VM runs Fedora 41 Cloud Edition. It is headless (no GUI) and accessible via SSH on port 2222. The VM image is stored in `~/vms/arlen-ebpf/` and is not committed to this repo.
+The VM runs Fedora Cloud, headless, SSH on port 2222, image under
+`~/vms/arlen-ebpf/` (not committed). First-time setup:
 
-If the VM disk gets corrupted or you want to start fresh:
 ```bash
-rm ~/vms/arlen-ebpf/fedora-ebpf.qcow2
-qemu-img create -f qcow2 -F qcow2 \
-  -b ~/vms/arlen-ebpf/fedora-base.qcow2 \
-  ~/vms/arlen-ebpf/fedora-ebpf.qcow2 20G
+sudo pacman -S qemu-system-x86 qemu-img cdrtools   # Arch/EndeavourOS
+dev/vm/install-aya-toolchain.sh
+dev/vm/setup-vm.sh setup && dev/vm/setup-vm.sh start
 ```
 
 ## Part of
 
-[Arlen](https://github.com/arlenos): a Linux desktop OS built around a system-wide knowledge graph.
+[Arlen](https://github.com/arlenos): a Linux desktop OS built around a
+system-wide knowledge graph.

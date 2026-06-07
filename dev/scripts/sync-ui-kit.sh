@@ -9,8 +9,8 @@
 # script is the drift firewall.
 #
 # Usage:
-#   ./distro/sync-ui-kit.sh           # copy canonical → consumers
-#   ./distro/sync-ui-kit.sh --check   # diff only, exit 1 on drift
+#   dev/scripts/sync-ui-kit.sh           # copy canonical → consumers
+#   dev/scripts/sync-ui-kit.sh --check   # diff only, exit 1 on drift
 #
 # The list of tracked primitives is the intersection of the three
 # `src/lib/components/ui/` directories. New primitives in sdk/ui-kit

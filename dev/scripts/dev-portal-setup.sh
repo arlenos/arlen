@@ -10,10 +10,10 @@
 # Idempotent: re-runs are safe.
 #
 # Usage:
-#   ./distro/dev-portal-setup.sh
+#   dev/scripts/dev-portal-setup.sh
 #
 # Teardown:
-#   ./distro/dev-portal-teardown.sh
+#   dev/scripts/dev-portal-teardown.sh
 
 set -euo pipefail
 

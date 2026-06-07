@@ -7,7 +7,7 @@
 #  - Compositor + desktop-shell are already alive.
 #
 # Usage:
-#   ./distro/start-settings.sh
+#   dev/scripts/start-settings.sh
 #
 # `cargo tauri dev` blocks; Ctrl+C to stop. The Vite dev server and the
 # Rust binary both share the log file via `tee`.

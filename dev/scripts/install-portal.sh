@@ -7,10 +7,10 @@
 #
 # Usage:
 #   cd ~/Repositories/arlen
-#   ./distro/install-portal.sh
+#   dev/scripts/install-portal.sh
 #
 # This is the production path; for dev work (no sudo, repo-local
-# binaries) use ./distro/dev-portal-setup.sh instead.
+# binaries) use dev/scripts/dev-portal-setup.sh instead.
 
 set -euo pipefail
 
@@ -148,4 +148,4 @@ echo "       busctl --user list | grep org.freedesktop.impl.portal.desktop.arlen
 echo "  4. Log out / log back in so the environment generator runs"
 echo "     and \$XDG_CURRENT_DESKTOP includes 'arlen'."
 echo
-echo "Uninstall: see distro/uninstall-portal.sh (not yet shipped)."
+echo "Uninstall: see dev/scripts/uninstall-portal.sh (not yet shipped)."
