@@ -23,10 +23,12 @@ secondary = "#a1a1aa"
 disabled  = "#52525b"
 inverse   = "#0a0a0a"
 
+# Monochrome default: the accent matches the foreground, so the desktop ships
+# colourless until the user picks an accent. Not indigo.
 [color.semantic]
-accent         = "#6366f1"
-accent_hover   = "#818cf8"
-accent_pressed = "#4f46e5"
+accent         = "#fafafa"
+accent_hover   = "#a1a1aa"
+accent_pressed = "#d4d4d8"
 success        = "#22c55e"
 warning        = "#eab308"
 error          = "#ef4444"

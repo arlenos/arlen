@@ -20,7 +20,7 @@
     onchange?: (hex: string) => void;
   }
 
-  let { value = $bindable("#6366f1"), onchange }: Props = $props();
+  let { value = $bindable("#808080"), onchange }: Props = $props();
 
   // Internal HSV state. Synced to/from `value` (hex) on each change.
   let h = $state(0); // 0..360
@@ -294,6 +294,6 @@
   }
 
   .cp-hex:focus {
-    border-color: var(--color-accent, #6366f1);
+    border-color: var(--color-accent);
   }
 </style>
