@@ -97,6 +97,32 @@ pub struct AgentConfig {
     ///    nothing else. Going live is: install that file, then set
     ///    `executor_live = true`. Without the profile the agent stays in
     ///    suggest-mode in effect (every write is refused for lack of a grant).
+    ///    The agent's canonical binary `/usr/lib/arlen/libexec/arlen-ai-agent`
+    ///    resolves to the `ai-agent` app id (the profile key) in
+    ///    `arlen_permissions::identity`, so the grant loads for the installed
+    ///    daemon, not only in tests.
+    /// 5. **Read-scope enforcement (not yet at the read boundary).** The profile
+    ///    declares field-level reads (`File.{id,path}`, `Project.{id,root_path}`),
+    ///    but the knowledge read socket does not yet enforce per-query read scope:
+    ///    it rate-limits and rejects write verbs, then runs the Cypher. The
+    ///    executor's own re-validation reads stay within the declared fields by
+    ///    construction, so the *grant* is honest, but a compromised agent process
+    ///    could read more until per-query read-scope enforcement lands
+    ///    (token-authenticated reads + label/field whitelisting, the knowledge
+    ///    daemon's S16 read-path hardening). This bounds confidentiality, not the
+    ///    write blast radius (the write path does enforce the relation scope), and
+    ///    the agent already reads File/Project in suggest-mode today.
+    /// 6. **Same-uid provenance (F3, documented).** The write tier is keyed on the
+    ///    resolved app id (`daemon.rs` `tier_for_app`), and both the identity
+    ///    resolver's user-app path rule and the user-writable profile dir mean a
+    ///    same-uid process can present as `ai-agent` from a non-canonical path and
+    ///    obtain this grant. Adding the canonical-path mapping does not close that
+    ///    boundary; a hard canonical-path write gate is deliberately not added
+    ///    because it would refuse the dev agent running from a `target/` tree. F3
+    ///    is closed by installd's inode-keyed identity registry plus root-owned
+    ///    profiles (a cross-component hardening sprint, root-owned packaging is
+    ///    Tim's call). The blast radius a same-uid spoof gains here is exactly the
+    ///    one reversible `FILE_PART_OF` curation link, no wider.
     pub executor_live: bool,
 }
 
