@@ -26,7 +26,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::snapshot::{
-    Anomaly, AnomalyKind, Coverage, FileActivity, ProjectContext, SystemSnapshot,
+    Anomaly, AnomalyKind, Coverage, FileActivity, ProcessActivity, ProjectContext, SystemSnapshot,
 };
 
 /// How many recent file accesses to include in the snapshot. A small
@@ -67,6 +67,10 @@ pub enum SnapshotError {
     /// findings file is not an error; it reads as no anomalies).
     #[error("anomaly read failed: {0}")]
     AnomalyRead(String),
+    /// The live process source could not enumerate the process table (a
+    /// process vanishing mid-scan is not an error; that PID is skipped).
+    #[error("process read failed: {0}")]
+    ProcessRead(String),
 }
 
 /// Read-only, typed Knowledge Graph access: one map per row keyed by
@@ -334,6 +338,210 @@ pub fn merge_snapshots(a: SystemSnapshot, b: SystemSnapshot) -> SystemSnapshot {
             live_processes: a.coverage.live_processes || b.coverage.live_processes,
             anomalies: a.coverage.anomalies || b.coverage.anomalies,
         },
+    }
+}
+
+/// How many active processes to surface. The explanation summarises "what is
+/// my computer doing now", so a short list of the genuinely-active processes is
+/// the point, not the full process table.
+const MAX_PROCESSES: usize = 20;
+
+/// Reads the currently-active processes for the explanation's live-moment half.
+/// Behind a seam so the snapshot is testable with a mock and decoupled from the
+/// `/proc` read. (Network connections are a separate future source: their
+/// "within declared permissions" classification needs the permission context, a
+/// bare `/proc/net` read cannot decide it.)
+pub trait ProcessReader: Send + Sync {
+    /// Return the active processes worth surfacing, or empty if none.
+    fn read_processes(&self) -> Result<Vec<ProcessActivity>, SnapshotError>;
+}
+
+/// The process state character from a `/proc/<pid>/stat` line. The format is
+/// `pid (comm) state ...`, and `comm` can itself contain spaces and parentheses,
+/// so the state is the first non-space character after the **last** `)`. Pure.
+fn proc_state(stat: &str) -> Option<char> {
+    let close = stat.rfind(')')?;
+    stat[close + 1..].trim_start().chars().next()
+}
+
+/// Decide whether a process is "active right now" and worth surfacing, from its
+/// `/proc` files. Kernel threads (empty `cmdline`) are skipped as noise, and
+/// only Running or uninterruptible-I/O-wait processes count as active; the rest
+/// are idle/sleeping and would just pad the list. Returns the activity, or
+/// `None` to skip. Pure, so the selection heuristic is unit-tested.
+fn select_process(comm: &str, cmdline: &str, stat: &str) -> Option<ProcessActivity> {
+    // A kernel thread has no command line; it is not "what the user's computer
+    // is doing" in any meaningful sense.
+    if cmdline.trim().is_empty() {
+        return None;
+    }
+    let detail = match proc_state(stat)? {
+        'R' => "running",
+        'D' => "waiting on I/O",
+        _ => return None,
+    };
+    let name = comm.trim();
+    if name.is_empty() {
+        return None;
+    }
+    Some(ProcessActivity {
+        name: name.to_string(),
+        detail: detail.to_string(),
+    })
+}
+
+/// Build the **live process half** of a snapshot through `reader`. Sets
+/// [`Coverage::live_processes`]; the graph and anomaly fields are left empty for
+/// their own sources, to be combined with [`merge_snapshots`].
+pub fn live_context(
+    reader: &dyn ProcessReader,
+    now_unix: i64,
+) -> Result<SystemSnapshot, SnapshotError> {
+    Ok(SystemSnapshot {
+        captured_at_unix: now_unix,
+        processes: reader.read_processes()?,
+        coverage: Coverage {
+            graph_context: false,
+            live_processes: true,
+            anomalies: false,
+        },
+        ..Default::default()
+    })
+}
+
+/// Production [`ProcessReader`] over `/proc`. Enumerates the process table,
+/// reads each PID's `comm`, `cmdline`, and `stat`, and keeps the active ones up
+/// to [`MAX_PROCESSES`]. A process vanishing mid-scan (a read miss) is skipped,
+/// not an error. The `/proc` root is configurable so the enumeration is testable
+/// against a fixture tree.
+pub struct ProcProcessReader {
+    root: std::path::PathBuf,
+}
+
+impl ProcProcessReader {
+    /// A reader over the real `/proc`.
+    pub fn new() -> Self {
+        Self {
+            root: std::path::PathBuf::from("/proc"),
+        }
+    }
+
+    /// A reader over an alternate root (for tests with a fixture tree).
+    pub fn with_root(root: impl Into<std::path::PathBuf>) -> Self {
+        Self { root: root.into() }
+    }
+}
+
+impl Default for ProcProcessReader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ProcessReader for ProcProcessReader {
+    fn read_processes(&self) -> Result<Vec<ProcessActivity>, SnapshotError> {
+        let entries =
+            std::fs::read_dir(&self.root).map_err(|e| SnapshotError::ProcessRead(e.to_string()))?;
+        let mut out = Vec::new();
+        for entry in entries.flatten() {
+            if out.len() >= MAX_PROCESSES {
+                break;
+            }
+            // Only numeric directory names are process entries.
+            let file_name = entry.file_name();
+            let Some(pid) = file_name
+                .to_str()
+                .filter(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
+            else {
+                continue;
+            };
+            let dir = self.root.join(pid);
+            // A process can exit between enumeration and read; a missing file
+            // just means that PID is skipped, never an error.
+            let comm = std::fs::read_to_string(dir.join("comm")).unwrap_or_default();
+            let cmdline = std::fs::read(dir.join("cmdline")).unwrap_or_default();
+            let cmdline = String::from_utf8_lossy(&cmdline);
+            let stat = std::fs::read_to_string(dir.join("stat")).unwrap_or_default();
+            if let Some(p) = select_process(&comm, &cmdline, &stat) {
+                out.push(p);
+            }
+        }
+        Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod process_tests {
+    use super::*;
+
+    #[test]
+    fn proc_state_reads_the_char_after_the_last_paren() {
+        assert_eq!(proc_state("123 (bash) R 1 123 123 0 -1 ..."), Some('R'));
+        // comm with spaces and parens: the state is after the LAST ')'.
+        assert_eq!(proc_state("99 (weird (proc) name) S 1 ..."), Some('S'));
+        assert_eq!(proc_state("garbage with no paren"), None);
+    }
+
+    #[test]
+    fn select_keeps_active_user_processes_and_skips_the_rest() {
+        // Running, with a command line: kept, detailed as running.
+        let p = select_process("bash\n", "bash\0-i\0", "1 (bash) R 0 ...").unwrap();
+        assert_eq!(p.name, "bash");
+        assert_eq!(p.detail, "running");
+        // Uninterruptible I/O wait: kept.
+        assert_eq!(
+            select_process("dd\n", "dd\0", "2 (dd) D 0 ...").unwrap().detail,
+            "waiting on I/O"
+        );
+        // Sleeping: skipped (idle, not "doing something now").
+        assert!(select_process("bash\n", "bash\0", "3 (bash) S 0 ...").is_none());
+        // Kernel thread (empty cmdline): skipped.
+        assert!(select_process("kworker\n", "", "4 (kworker) R 0 ...").is_none());
+    }
+
+    #[test]
+    fn proc_reader_enumerates_a_fixture_tree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // An active user process.
+        let p1 = root.join("100");
+        std::fs::create_dir(&p1).unwrap();
+        std::fs::write(p1.join("comm"), "myapp\n").unwrap();
+        std::fs::write(p1.join("cmdline"), "myapp\0--flag\0").unwrap();
+        std::fs::write(p1.join("stat"), "100 (myapp) R 1 ...").unwrap();
+        // A kernel thread (empty cmdline) and a non-numeric dir: both ignored.
+        let p2 = root.join("200");
+        std::fs::create_dir(&p2).unwrap();
+        std::fs::write(p2.join("comm"), "kthreadd\n").unwrap();
+        std::fs::write(p2.join("cmdline"), "").unwrap();
+        std::fs::write(p2.join("stat"), "200 (kthreadd) R 0 ...").unwrap();
+        std::fs::create_dir(root.join("self")).unwrap();
+
+        let got = ProcProcessReader::with_root(root)
+            .read_processes()
+            .unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].name, "myapp");
+        assert_eq!(got[0].detail, "running");
+    }
+
+    #[test]
+    fn live_context_sets_only_its_coverage_flag() {
+        struct One;
+        impl ProcessReader for One {
+            fn read_processes(&self) -> Result<Vec<ProcessActivity>, SnapshotError> {
+                Ok(vec![ProcessActivity {
+                    name: "x".into(),
+                    detail: "running".into(),
+                }])
+            }
+        }
+        let snap = live_context(&One, 7).unwrap();
+        assert_eq!(snap.captured_at_unix, 7);
+        assert_eq!(snap.processes.len(), 1);
+        assert!(snap.coverage.live_processes);
+        assert!(!snap.coverage.graph_context);
+        assert!(!snap.coverage.anomalies);
     }
 }
 

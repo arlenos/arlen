@@ -46,6 +46,7 @@ pub use snapshot::{
     ProjectContext, SystemSnapshot,
 };
 pub use source::{
-    anomaly_context, graph_context, merge_snapshots, AnomalyReader, FileAnomalyReader,
-    GraphReader, SnapshotError, UnixGraphReader, REQUIRED_GRAPH_LABELS,
+    anomaly_context, graph_context, live_context, merge_snapshots, AnomalyReader,
+    FileAnomalyReader, GraphReader, ProcProcessReader, ProcessReader, SnapshotError,
+    UnixGraphReader, REQUIRED_GRAPH_LABELS,
 };
