@@ -16,6 +16,7 @@
   import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2, Wrench, Cpu, File as FileIcon, Folder, Paperclip, X } from "@lucide/svelte";
   import { messages, busy, send, initSessions, type MentionContent } from "$lib/stores/conversation";
   import ConversationRail from "$lib/components/ConversationRail.svelte";
+  import { renderMarkdown } from "$lib/markdown";
 
   interface FileSuggestion {
     path: string;
@@ -268,7 +269,13 @@
                   <p class="trace-note">Tool trace unavailable for this turn.</p>
                 {/if}
                 {#if msg.text}
-                  <div class="bubble bubble-{msg.role}">{msg.text}</div>
+                  {#if msg.role === "assistant"}
+                    <!-- Assistant answers are markdown; renderMarkdown parses
+                         and sanitizes them (DOMPurify) before this {@html}. -->
+                    <div class="bubble bubble-assistant markdown">{@html renderMarkdown(msg.text)}</div>
+                  {:else}
+                    <div class="bubble bubble-{msg.role}">{msg.text}</div>
+                  {/if}
                 {/if}
                 {#if msg.mentions && msg.mentions.length > 0}
                   <div class="msg-mentions">
@@ -511,6 +518,55 @@
     color: var(--foreground);
     border: 1px solid var(--color-border);
     border-bottom-left-radius: var(--radius-chip);
+  }
+  /* Rendered-markdown elements inside an assistant bubble. The content comes
+     from {@html} (sanitized), so component-scoped CSS does not reach it;
+     :global is required. Tight margins so a one-line answer stays compact. */
+  .markdown :global(p) {
+    margin: 0 0 0.5rem;
+  }
+  .markdown :global(p:last-child) {
+    margin-bottom: 0;
+  }
+  .markdown :global(ul),
+  .markdown :global(ol) {
+    margin: 0 0 0.5rem;
+    padding-left: 1.25rem;
+  }
+  .markdown :global(li) {
+    margin: 0.1rem 0;
+  }
+  .markdown :global(code) {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.85em;
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    padding: 0.1em 0.3em;
+    border-radius: var(--radius-chip);
+  }
+  .markdown :global(pre) {
+    margin: 0 0 0.5rem;
+    padding: 0.5rem 0.6rem;
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    border-radius: var(--radius-chip);
+    overflow-x: auto;
+  }
+  .markdown :global(pre code) {
+    background: none;
+    padding: 0;
+  }
+  .markdown :global(a) {
+    color: var(--color-accent);
+    text-decoration: underline;
+  }
+  .markdown :global(h1),
+  .markdown :global(h2),
+  .markdown :global(h3) {
+    margin: 0.4rem 0 0.3rem;
+    font-size: 1em;
+    font-weight: 600;
+  }
+  .markdown :global(:first-child) {
+    margin-top: 0;
   }
   .bubble-error {
     display: flex;
