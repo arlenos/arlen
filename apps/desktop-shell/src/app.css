@@ -51,10 +51,11 @@
   --color-fg-shell:     var(--color-fg-primary);
   --color-fg-app:       var(--color-fg-primary);
 
-  /* Semantic */
-  --color-accent:         #6366f1;
-  --color-accent-hover:   #818cf8;
-  --color-accent-pressed: #4f46e5;
+  /* Semantic. Monochrome default: the accent follows the foreground (first
+     paint, before the Rust theme injection), so there is no hardcoded colour. */
+  --color-accent:         var(--color-fg-primary);
+  --color-accent-hover:   var(--color-fg-secondary);
+  --color-accent-pressed: var(--color-fg-secondary);
   --color-success:        #22c55e;
   --color-warning:        #eab308;
   --color-error:          #ef4444;

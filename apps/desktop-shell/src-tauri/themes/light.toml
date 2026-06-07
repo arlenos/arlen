@@ -21,9 +21,10 @@ disabled  = "#a3a3a3"
 inverse   = "#fafafa"
 
 [color.semantic]
-accent         = "#4f46e5"
-accent_hover   = "#6366f1"
-accent_pressed = "#4338ca"
+# Monochrome default: accent matches the light foreground, not indigo.
+accent         = "#171717"
+accent_hover   = "#525252"
+accent_pressed = "#3f3f46"
 success        = "#16a34a"
 warning        = "#ca8a04"
 error          = "#dc2626"

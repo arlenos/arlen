@@ -443,9 +443,11 @@ fn from_file(f: ArlenThemeFile) -> Result<ArlenTheme, ResolveError> {
         fg_disabled:  color_or(fg.disabled,  "fg.disabled",  "#52525b")?,
         fg_inverse:   color_or(fg.inverse,   "fg.inverse",   "#0a0a0a")?,
 
-        accent:         color_or(sem.accent,         "semantic.accent",         "#6366f1")?,
-        accent_hover:   color_or(sem.accent_hover,   "semantic.accent_hover",   "#818cf8")?,
-        accent_pressed: color_or(sem.accent_pressed, "semantic.accent_pressed", "#4f46e5")?,
+        // Monochrome fallback (matches the foreground), used only if a theme
+        // omits the field. Not indigo.
+        accent:         color_or(sem.accent,         "semantic.accent",         "#fafafa")?,
+        accent_hover:   color_or(sem.accent_hover,   "semantic.accent_hover",   "#a1a1aa")?,
+        accent_pressed: color_or(sem.accent_pressed, "semantic.accent_pressed", "#d4d4d8")?,
         success:        color_or(sem.success,        "semantic.success",        "#22c55e")?,
         warning:        color_or(sem.warning,        "semantic.warning",        "#eab308")?,
         error:          color_or(sem.error,          "semantic.error",          "#ef4444")?,
