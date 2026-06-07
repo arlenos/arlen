@@ -18,7 +18,8 @@ use arlen_ai_core::provider::{AIProvider, CompletionRequest};
 use crate::prompt::build_explanation_prompt;
 use crate::snapshot::SystemSnapshot;
 use crate::source::{
-    anomaly_context, graph_context, merge_snapshots, AnomalyReader, GraphReader, SnapshotError,
+    anomaly_context, graph_context, live_context, merge_snapshots, AnomalyReader, GraphReader,
+    ProcessReader, SnapshotError,
 };
 
 /// Advisory cap on the summary length. The explanation is a few
@@ -77,13 +78,26 @@ pub async fn explain_system(
 /// folds in here the same way when it lands. `now_unix` stamps the snapshot.
 pub async fn explain_with_sources(
     graph_reader: &dyn GraphReader,
-    anomaly_reader: &dyn AnomalyReader,
+    anomaly_reader: Option<&dyn AnomalyReader>,
+    process_reader: Option<&dyn ProcessReader>,
     provider: &dyn AIProvider,
     now_unix: i64,
 ) -> Result<String, ExplainError> {
-    let graph = graph_context(graph_reader, now_unix).await?;
-    let anomalies = anomaly_context(anomaly_reader, now_unix)?;
-    let snapshot = merge_snapshots(graph, anomalies);
+    // The graph is the core source; its failure fails the explanation. The
+    // anomaly and live-process sources are advisory enrichment, so a failure
+    // there degrades to "that source did not contribute" (its coverage flag
+    // stays false) rather than failing the whole answer.
+    let mut snapshot = graph_context(graph_reader, now_unix).await?;
+    if let Some(reader) = anomaly_reader {
+        if let Ok(anomalies) = anomaly_context(reader, now_unix) {
+            snapshot = merge_snapshots(snapshot, anomalies);
+        }
+    }
+    if let Some(reader) = process_reader {
+        if let Ok(live) = live_context(reader, now_unix) {
+            snapshot = merge_snapshots(snapshot, live);
+        }
+    }
     explain(&snapshot, provider).await
 }
 
@@ -192,7 +206,7 @@ mod tests {
     #[tokio::test]
     async fn explain_with_sources_folds_anomalies_into_the_prompt() {
         let provider = MockProvider::ok("ok");
-        let summary = explain_with_sources(&EmptyGraph, &OneAnomaly, &provider, 1)
+        let summary = explain_with_sources(&EmptyGraph, Some(&OneAnomaly), None, &provider, 1)
             .await
             .unwrap();
         assert_eq!(summary, "ok");

@@ -25,7 +25,7 @@ use arlen_ai_core::mcp::McpClient;
 use arlen_ai_core::pipeline::{QueryRunner, RunFailure};
 use arlen_ai_core::provider::AIProvider;
 use arlen_ai_explanation::{
-    explain_system as run_explain, explain_with_sources, AnomalyReader, GraphReader,
+    explain_with_sources, AnomalyReader, GraphReader, ProcessReader,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -178,10 +178,15 @@ struct Explainer {
     provider: Arc<dyn AIProvider>,
     reader: Arc<dyn GraphReader>,
     /// Optional anomaly source. When set, the explanation folds the Anomaly
-    /// Detector's findings into the snapshot; when `None` it is graph-only
-    /// (the query-only tests, which never wire it). Added through
+    /// Detector's findings into the snapshot. Added through
     /// [`AiDaemonService::with_explanation_anomalies`] after `with_explain`.
     anomaly: Option<Arc<dyn AnomalyReader>>,
+    /// Optional live process source. When set, the explanation folds the
+    /// currently-active processes (from `/proc`) into the snapshot. Added
+    /// through [`AiDaemonService::with_explanation_processes`]. When both this
+    /// and `anomaly` are `None` the explanation is graph-only (the query-only
+    /// tests, which never wire either).
+    process: Option<Arc<dyn ProcessReader>>,
 }
 
 /// Handle returned to the D-Bus surface from `query()`.
@@ -404,19 +409,31 @@ impl AiDaemonService {
             provider,
             reader,
             anomaly: None,
+            process: None,
         });
         self
     }
 
     /// Add the anomaly source to the explanation capability (chained after
-    /// [`Self::with_explain`]). With it, `explain_system` folds the Anomaly
-    /// Detector's findings into the snapshot; without it the explanation is
-    /// graph-only. Takes an `Option` so the binary can pass an unresolved
-    /// source as `None` and the call stays in the fluent builder chain; a
-    /// no-op if `with_explain` was not called first or the reader is `None`.
+    /// [`Self::with_explain`]). With it, the explanation folds the Anomaly
+    /// Detector's findings into the snapshot; without it that half is empty.
+    /// Takes an `Option` so the binary can pass an unresolved source as `None`
+    /// and the call stays in the fluent builder chain; a no-op if
+    /// `with_explain` was not called first or the reader is `None`.
     pub fn with_explanation_anomalies(mut self, reader: Option<Arc<dyn AnomalyReader>>) -> Self {
         if let (Some(explainer), Some(reader)) = (self.explain.as_mut(), reader) {
             explainer.anomaly = Some(reader);
+        }
+        self
+    }
+
+    /// Add the live process source to the explanation capability (chained after
+    /// [`Self::with_explain`]). With it, the explanation folds the
+    /// currently-active processes into the snapshot. A no-op if `with_explain`
+    /// was not called first or the reader is `None`.
+    pub fn with_explanation_processes(mut self, reader: Option<Arc<dyn ProcessReader>>) -> Self {
+        if let (Some(explainer), Some(reader)) = (self.explain.as_mut(), reader) {
+            explainer.process = Some(reader);
         }
         self
     }
@@ -686,29 +703,19 @@ impl AiDaemonService {
         }
 
         let started = std::time::Instant::now();
-        // Fold the anomaly source in when wired (additive: the graph-label
-        // scope gate above is unchanged, and anomalies are advisory findings
-        // from a file, not a graph read, so they only ride along at the Full
-        // tier this method already requires).
-        let result = match explainer.anomaly.as_ref() {
-            Some(anomaly) => {
-                explain_with_sources(
-                    explainer.reader.as_ref(),
-                    anomaly.as_ref(),
-                    explainer.provider.as_ref(),
-                    now_unix,
-                )
-                .await
-            }
-            None => {
-                run_explain(
-                    explainer.reader.as_ref(),
-                    explainer.provider.as_ref(),
-                    now_unix,
-                )
-                .await
-            }
-        };
+        // Fold the anomaly and live-process sources in when wired (additive:
+        // the graph-label scope gate above is unchanged, and both are advisory
+        // sources outside the graph, so they only ride along at the Full tier
+        // this method already requires). Each is fail-soft inside
+        // `explain_with_sources`, so a degraded source never fails the answer.
+        let result = explain_with_sources(
+            explainer.reader.as_ref(),
+            explainer.anomaly.as_deref(),
+            explainer.process.as_deref(),
+            explainer.provider.as_ref(),
+            now_unix,
+        )
+        .await;
         let outcome = if result.is_ok() { "completed" } else { "failed" };
         let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         self.submit_completion_audit(

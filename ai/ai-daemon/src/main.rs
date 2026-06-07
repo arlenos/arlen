@@ -198,6 +198,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .with_explain(explain_provider, explain_reader)
         .with_explanation_anomalies(explain_anomaly_reader)
+        .with_explanation_processes(Some(Arc::new(
+            arlen_ai_explanation::ProcProcessReader::new(),
+        )))
         .with_tool_routing(
             settings.tool_routing,
             discovery.client(),
