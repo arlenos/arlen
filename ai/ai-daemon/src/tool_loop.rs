@@ -63,6 +63,13 @@ const TRUNCATED_RESULT_CAP: usize = 512;
 /// smaller prompt bound.
 const MAX_TOOL_RESULT_BYTES: usize = 32 * 1024;
 
+/// Hard cap on the stored arguments of a transcript step. The real tool call
+/// already used the full arguments before this point; this only bounds the copy
+/// kept in the transcript (shown to the model on later steps and handed to the
+/// caller as the trace), so a model-produced argument string cannot grow the
+/// retained transcript without bound.
+const MAX_TOOL_ARGS_BYTES: usize = 4 * 1024;
+
 /// One completed step of the loop: a tool call and the result it returned.
 /// The result is treated as data (an origin-tagged block), never instructions.
 #[derive(Debug, Clone)]
@@ -361,36 +368,41 @@ fn truncate_in_place(s: &mut String, cap: usize) {
     s.push_str(&format!("...[{dropped} bytes truncated]"));
 }
 
-/// Build the step prompt, compacting the transcript to fit `threshold` bytes if
-/// needed. The conservative fit estimate is bytes-as-tokens (a token is at
-/// least one byte), so the prompt cannot overflow the model's real input
-/// window. Compaction is deterministic and model-free: tool-result bodies are
-/// truncated **oldest first**, so the most recent results (most relevant to the
-/// next step) keep their detail longest. The truncation is persistent on the
-/// transcript, so the prompt cannot grow back across steps. Returns `None` only
-/// when even a fully truncated transcript does not fit (the fixed instructions,
-/// tool catalogue, and question alone exceed the window), so the caller fails
-/// closed rather than sending an over-window prompt.
+/// Build the step prompt, compacting to fit `threshold` bytes if needed. The
+/// conservative fit estimate is bytes-as-tokens (a token is at least one byte),
+/// so the prompt cannot overflow the model's real input window. Compaction is
+/// deterministic and model-free: tool-result bodies are truncated **oldest
+/// first**, so the most recent results (most relevant to the next step) keep
+/// their detail longest. Returns `None` only when even a fully truncated
+/// transcript does not fit (the fixed instructions, tool catalogue, and
+/// question alone exceed the window), so the caller fails closed rather than
+/// sending an over-window prompt.
+///
+/// Compaction works on a COPY: the canonical `transcript` is left intact, so
+/// the exposed tool-loop trace keeps each step's full ingestion-capped result
+/// rather than the smaller prompt-fitting truncation. Only the prompt the model
+/// sees is compacted.
 fn fit_prompt(
     question: &str,
     catalogue: &[CatalogueTool],
-    transcript: &mut [ToolStep],
+    transcript: &[ToolStep],
     threshold: usize,
 ) -> Option<String> {
     let prompt = build_tool_prompt(question, catalogue, transcript);
     if prompt.len() <= threshold {
         return Some(prompt);
     }
-    for i in 0..transcript.len() {
-        if transcript[i].result.len() > TRUNCATED_RESULT_CAP {
-            truncate_in_place(&mut transcript[i].result, TRUNCATED_RESULT_CAP);
-            let prompt = build_tool_prompt(question, catalogue, transcript);
+    let mut compacted = transcript.to_vec();
+    for i in 0..compacted.len() {
+        if compacted[i].result.len() > TRUNCATED_RESULT_CAP {
+            truncate_in_place(&mut compacted[i].result, TRUNCATED_RESULT_CAP);
+            let prompt = build_tool_prompt(question, catalogue, &compacted);
             if prompt.len() <= threshold {
                 return Some(prompt);
             }
         }
     }
-    let prompt = build_tool_prompt(question, catalogue, transcript);
+    let prompt = build_tool_prompt(question, catalogue, &compacted);
     (prompt.len() <= threshold).then_some(prompt)
 }
 
@@ -399,6 +411,14 @@ fn fit_prompt(
 /// dispatch one tool call, feeding the result back, until a final answer or the
 /// step budget. Read-only servers are default-permit; an action server with no
 /// grant surfaces as `Blocked` instead of being called.
+///
+/// Returns the [`LoopOutcome`] and the accumulated [`ToolStep`] transcript so
+/// the caller can store and expose the per-step working trace. The transcript
+/// covers all completed tool calls up to the point the loop stopped; on an
+/// early exit (cancelled, denied, failed) it contains whatever steps ran before
+/// the terminal condition. It is the caller's own query working-data and must
+/// not go into the audit ledger (the audit stays content-free with fixed
+/// subjects).
 ///
 /// This is the orchestration of the loop's building blocks. It is additive and
 /// wired into the daemon's query path behind a default-off flag
@@ -440,15 +460,15 @@ pub async fn run_tool_loop(
     provider: &dyn AIProvider,
     question: &str,
     max_steps: u32,
-) -> LoopOutcome {
+) -> (LoopOutcome, Vec<ToolStep>) {
     if cancel.is_cancelled() {
-        return LoopOutcome::Cancelled;
+        return (LoopOutcome::Cancelled, Vec::new());
     }
     // Catalogue assembly touches the shared MCP client; race it against cancel
     // so a contended lock or a stuck tool listing cannot pin the task.
     let raw_catalogue = tokio::select! {
         biased;
-        _ = cancel.cancelled() => return LoopOutcome::Cancelled,
+        _ = cancel.cancelled() => return (LoopOutcome::Cancelled, Vec::new()),
         c = async { client.lock().await.tool_catalogue().await } => c,
     };
     let catalogue = interactive_catalogue(raw_catalogue);
@@ -473,16 +493,19 @@ pub async fn run_tool_loop(
         // Cooperative cancellation: a query cancelled before or between steps
         // starts no further provider or tool work.
         if cancel.is_cancelled() {
-            return LoopOutcome::Cancelled;
+            return (LoopOutcome::Cancelled, transcript);
         }
         // Keep the prompt within the model window, compacting the transcript if
         // needed; fail closed if even a fully compacted transcript cannot fit.
-        let prompt = match fit_prompt(question, &catalogue, &mut transcript, threshold) {
+        let prompt = match fit_prompt(question, &catalogue, &transcript, threshold) {
             Some(p) => p,
             None => {
-                return LoopOutcome::Failed(
-                    "context window exceeded: the request needs more context than the model allows"
-                        .to_string(),
+                return (
+                    LoopOutcome::Failed(
+                        "context window exceeded: the request needs more context than the model allows"
+                            .to_string(),
+                    ),
+                    transcript,
                 )
             }
         };
@@ -503,12 +526,12 @@ pub async fn run_tool_loop(
                 extras: serde_json::json!({ "max_tokens": output_cap }),
             }) => match r {
                 Ok(r) => r.text,
-                Err(e) => return LoopOutcome::Failed(format!("provider error: {e}")),
+                Err(e) => return (LoopOutcome::Failed(format!("provider error: {e}")), transcript),
             },
-            _ = cancel.cancelled() => return LoopOutcome::Cancelled,
+            _ = cancel.cancelled() => return (LoopOutcome::Cancelled, transcript),
         };
         match parse_loop_step(&reply) {
-            Ok(LoopStep::Answer { text }) => return LoopOutcome::Answer(text),
+            Ok(LoopStep::Answer { text }) => return (LoopOutcome::Answer(text), transcript),
             Ok(LoopStep::CallTool {
                 server,
                 tool,
@@ -536,7 +559,7 @@ pub async fn run_tool_loop(
                                 // sink cannot pin the task.
                                 let dispatched = tokio::select! {
                                     biased;
-                                    _ = cancel.cancelled() => return LoopOutcome::Cancelled,
+                                    _ = cancel.cancelled() => return (LoopOutcome::Cancelled, transcript),
                                     r = audit.submit(audit::mcp_event(
                                         GRAPH_TOOL_SERVER,
                                         "dispatched",
@@ -546,14 +569,18 @@ pub async fn run_tool_loop(
                                     )) => r,
                                 };
                                 if dispatched.is_err() {
-                                    return LoopOutcome::Failed(
-                                        "graph query refused: audit log unavailable".to_string(),
+                                    return (
+                                        LoopOutcome::Failed(
+                                            "graph query refused: audit log unavailable"
+                                                .to_string(),
+                                        ),
+                                        transcript,
                                     );
                                 }
                                 // The read can be slow; race it against cancel.
                                 let outcome = tokio::select! {
                                     biased;
-                                    _ = cancel.cancelled() => return LoopOutcome::Cancelled,
+                                    _ = cancel.cancelled() => return (LoopOutcome::Cancelled, transcript),
                                     r = runner.run_query(&q, scope) => match r {
                                         Ok(answer) => DispatchOutcome::Result(answer),
                                         Err(f) => DispatchOutcome::Failed(f.reason),
@@ -565,7 +592,7 @@ pub async fn run_tool_loop(
                                 };
                                 tokio::select! {
                                     biased;
-                                    _ = cancel.cancelled() => return LoopOutcome::Cancelled,
+                                    _ = cancel.cancelled() => return (LoopOutcome::Cancelled, transcript),
                                     _ = audit.submit(audit::mcp_event(
                                         GRAPH_TOOL_SERVER,
                                         label,
@@ -610,16 +637,22 @@ pub async fn run_tool_loop(
                     .await;
                     match recorded {
                         Ok(Ok(_)) => {
-                            return LoopOutcome::Denied(format!(
-                                "{RAW_KNOWLEDGE_SERVER} is not callable directly; \
-                                 use {GRAPH_TOOL_SERVER}/{GRAPH_TOOL_NAME}"
-                            ));
+                            return (
+                                LoopOutcome::Denied(format!(
+                                    "{RAW_KNOWLEDGE_SERVER} is not callable directly; \
+                                     use {GRAPH_TOOL_SERVER}/{GRAPH_TOOL_NAME}"
+                                )),
+                                transcript,
+                            );
                         }
                         Ok(Err(e)) => {
                             tracing::warn!("raw-knowledge policy-violation audit failed: {e}");
-                            return LoopOutcome::Failed(
-                                "raw-knowledge call refused: policy-violation audit unavailable"
-                                    .to_string(),
+                            return (
+                                LoopOutcome::Failed(
+                                    "raw-knowledge call refused: policy-violation audit unavailable"
+                                        .to_string(),
+                                ),
+                                transcript,
                             );
                         }
                         Err(_) => {
@@ -627,9 +660,12 @@ pub async fn run_tool_loop(
                                 "raw-knowledge policy-violation audit timed out after {:?}",
                                 DENIAL_AUDIT_TIMEOUT
                             );
-                            return LoopOutcome::Failed(
-                                "raw-knowledge call refused: policy-violation audit unavailable"
-                                    .to_string(),
+                            return (
+                                LoopOutcome::Failed(
+                                    "raw-knowledge call refused: policy-violation audit unavailable"
+                                        .to_string(),
+                                ),
+                                transcript,
                             );
                         }
                     }
@@ -641,7 +677,7 @@ pub async fn run_tool_loop(
                     // contended mutex cannot pin the task.
                     tokio::select! {
                         biased;
-                        _ = cancel.cancelled() => return LoopOutcome::Cancelled,
+                        _ = cancel.cancelled() => return (LoopOutcome::Cancelled, transcript),
                         o = async {
                             let guard = client.lock().await;
                             gated_dispatch(&guard, &server, &tool, &arguments, false, &chain).await
@@ -650,10 +686,13 @@ pub async fn run_tool_loop(
                 };
                 match outcome {
                     DispatchOutcome::Result(mut result) => {
-                        // Bound the result the moment it enters the transcript so
-                        // a single very large tool output never materialises a
-                        // huge prompt before the window fit can compact it.
+                        // Bound the result and arguments the moment they enter
+                        // the transcript so a single very large tool output, or
+                        // a large model-produced argument string, never grows
+                        // the retained transcript or the prompt without bound.
                         truncate_in_place(&mut result, MAX_TOOL_RESULT_BYTES);
+                        let mut arguments = arguments;
+                        truncate_in_place(&mut arguments, MAX_TOOL_ARGS_BYTES);
                         transcript.push(ToolStep {
                             server,
                             tool,
@@ -663,7 +702,7 @@ pub async fn run_tool_loop(
                     }
                     blocked @ (DispatchOutcome::NeedsConfirmation(_)
                     | DispatchOutcome::NeedsAuthorization) => {
-                        return LoopOutcome::Blocked(blocked)
+                        return (LoopOutcome::Blocked(blocked), transcript);
                     }
                     DispatchOutcome::Failed(e) => {
                         // Record the failure so the model can adjust on the next
@@ -672,6 +711,8 @@ pub async fn run_tool_loop(
                         // error can carry a large server-supplied payload.
                         let mut result = format!("error: {e}");
                         truncate_in_place(&mut result, MAX_TOOL_RESULT_BYTES);
+                        let mut arguments = arguments;
+                        truncate_in_place(&mut arguments, MAX_TOOL_ARGS_BYTES);
                         transcript.push(ToolStep {
                             server,
                             tool,
@@ -681,10 +722,10 @@ pub async fn run_tool_loop(
                     }
                 }
             }
-            Err(e) => return LoopOutcome::Failed(format!("unparseable step: {e}")),
+            Err(e) => return (LoopOutcome::Failed(format!("unparseable step: {e}")), transcript),
         }
     }
-    LoopOutcome::Exhausted
+    (LoopOutcome::Exhausted, transcript)
 }
 
 /// Reduce a [`LoopOutcome`] to the single answer string the query path
@@ -865,18 +906,23 @@ mod tests {
     #[test]
     fn fit_prompt_compacts_old_results_to_fit() {
         // Two large results; a threshold that the full transcript exceeds but a
-        // compacted one fits. The oldest result is truncated first.
-        let mut transcript = vec![
+        // compacted one fits. The returned prompt fits, and the canonical
+        // transcript is left intact (compaction happens on a copy), so the
+        // exposed trace keeps the full results.
+        let transcript = vec![
             step_with_result(&"A".repeat(4000)),
             step_with_result(&"B".repeat(200)),
         ];
         let full = build_tool_prompt("q", &[], &transcript).len();
         let threshold = full - 2000; // forces compaction of the big old result
-        let fitted = fit_prompt("q", &[], &mut transcript, threshold);
+        let fitted = fit_prompt("q", &[], &transcript, threshold);
         assert!(fitted.is_some(), "should fit after truncating the old result");
-        assert!(fitted.unwrap().len() <= threshold);
-        // The oldest (large) result was truncated; the recent small one kept.
-        assert!(transcript[0].result.contains("bytes truncated"));
+        let prompt = fitted.unwrap();
+        assert!(prompt.len() <= threshold);
+        // The compacted prompt dropped the old result body.
+        assert!(prompt.contains("bytes truncated"));
+        // The canonical transcript is untouched: both results keep full length.
+        assert_eq!(transcript[0].result, "A".repeat(4000));
         assert_eq!(transcript[1].result, "B".repeat(200));
     }
 
@@ -884,9 +930,9 @@ mod tests {
     fn fit_prompt_fails_closed_when_fixed_parts_exceed_the_window() {
         // The question alone blows the threshold; no transcript truncation can
         // help, so fit_prompt returns None and the caller fails closed.
-        let mut transcript: Vec<ToolStep> = Vec::new();
+        let transcript: Vec<ToolStep> = Vec::new();
         let question = "x".repeat(5000);
-        assert!(fit_prompt(&question, &[], &mut transcript, 1000).is_none());
+        assert!(fit_prompt(&question, &[], &transcript, 1000).is_none());
     }
 
     #[test]
@@ -1064,7 +1110,7 @@ mod tests {
             let runner = StubRunner::ok("(unused)");
             let audit = Arc::new(MockAuditSink::accepting());
 
-            let outcome = run_tool_loop(
+            let (outcome, _trace) = run_tool_loop(
                 &client,
                 &runner,
                 &test_scope(),
@@ -1084,6 +1130,103 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn oversized_tool_arguments_are_capped_in_the_trace() {
+            let socket = temp_socket();
+            let socket_for_task = socket.clone();
+            let server = tokio::spawn(async move {
+                let _ = serve_mcp_at(&socket_for_task, QueryServer::new).await;
+            });
+            for _ in 0..200 {
+                if socket.exists() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert!(socket.exists(), "test server did not bind");
+            let mut client = McpClient::new();
+            client
+                .connect(
+                    ServerId("test".into()),
+                    socket.to_str().unwrap(),
+                    ServerClass::ReadOnly,
+                )
+                .await
+                .expect("connect to test server");
+            let client = tokio::sync::Mutex::new(client);
+
+            // The model produces a tool call with a huge argument blob; the real
+            // call still ran with it, but the copy kept in the transcript (and
+            // handed to the caller as the trace) must be capped.
+            let big = "x".repeat(20_000);
+            let call =
+                format!(r#"{{"action":"call_tool","server":"test","tool":"query","arguments":{{"blob":"{big}"}}}}"#);
+            let provider =
+                ScriptedProvider::new(vec![call.as_str(), r#"{"action":"answer","text":"done"}"#]);
+            let runner = StubRunner::ok("(unused)");
+            let audit = Arc::new(MockAuditSink::accepting());
+
+            let (outcome, trace) = run_tool_loop(
+                &client,
+                &runner,
+                &test_scope(),
+                audit.clone(),
+                TEST_QUERY_ID,
+                &CancellationToken::new(),
+                &provider,
+                "q",
+                5,
+            )
+            .await;
+            assert_eq!(outcome, LoopOutcome::Answer("done".to_string()));
+            assert_eq!(trace.len(), 1, "the tool call is in the returned transcript");
+            assert!(
+                trace[0].arguments.len() <= MAX_TOOL_ARGS_BYTES + 40,
+                "arguments capped at ingestion, got {}",
+                trace[0].arguments.len()
+            );
+
+            server.abort();
+        }
+
+        #[tokio::test]
+        async fn the_trace_keeps_full_results_even_when_the_prompt_is_compacted() {
+            // A graph result large enough to force prompt-window compaction. The
+            // prompt the model sees gets compacted to fit the window, but the
+            // exposed trace must keep the full ingestion-capped result, not the
+            // smaller prompt-fitting truncation.
+            let client = tokio::sync::Mutex::new(McpClient::new());
+            let big = "Z".repeat(10_000);
+            let runner = StubRunner::ok(&big);
+            let audit = Arc::new(MockAuditSink::accepting());
+            let provider = ScriptedProvider::new(vec![
+                r#"{"action":"call_tool","server":"system.graph","tool":"query","arguments":{"question":"what?"}}"#,
+                r#"{"action":"answer","text":"done"}"#,
+            ]);
+
+            let (outcome, trace) = run_tool_loop(
+                &client,
+                &runner,
+                &test_scope(),
+                audit.clone(),
+                TEST_QUERY_ID,
+                &CancellationToken::new(),
+                &provider,
+                "q",
+                5,
+            )
+            .await;
+            assert_eq!(outcome, LoopOutcome::Answer("done".to_string()));
+            assert_eq!(trace.len(), 1);
+            assert_eq!(trace[0].server, "system.graph");
+            assert!(
+                trace[0].result.len() > TRUNCATED_RESULT_CAP,
+                "trace keeps the full result, not the prompt truncation, got {}",
+                trace[0].result.len()
+            );
+            assert!(trace[0].result.starts_with("ZZZ"));
+        }
+
+        #[tokio::test]
         async fn graph_tool_routes_through_the_scoped_runner() {
             // No MCP server connected: the only graph access is the internal
             // scope-enforcing tool, which must route through the QueryRunner.
@@ -1095,7 +1238,7 @@ mod tests {
                 r#"{"action":"answer","text":"3 files"}"#,
             ]);
 
-            let outcome = run_tool_loop(
+            let (outcome, _trace) = run_tool_loop(
                 &client,
                 &runner,
                 &test_scope(),
@@ -1140,7 +1283,7 @@ mod tests {
                 r#"{"action":"call_tool","server":"system.graph","tool":"query","arguments":{"question":"what did I open?"}}"#,
             ]);
 
-            let outcome = run_tool_loop(
+            let (outcome, _trace) = run_tool_loop(
                 &client,
                 &runner,
                 &test_scope(),
@@ -1191,7 +1334,7 @@ mod tests {
                 r#"{"action":"answer","text":"done"}"#,
             ]);
 
-            let outcome = run_tool_loop(
+            let (outcome, _trace) = run_tool_loop(
                 &client,
                 &runner,
                 &test_scope(),
@@ -1253,7 +1396,7 @@ mod tests {
             ]);
             let scope = test_scope();
 
-            let outcome = run_tool_loop(
+            let (outcome, _trace) = run_tool_loop(
                 &client,
                 &runner,
                 &scope,
@@ -1281,7 +1424,7 @@ mod tests {
             ]);
             let scope = test_scope();
 
-            let outcome = run_tool_loop(
+            let (outcome, _trace) = run_tool_loop(
                 &client,
                 &runner,
                 &scope,
@@ -1342,7 +1485,7 @@ mod tests {
             let cancel = CancellationToken::new();
             cancel.cancel();
 
-            let outcome = run_tool_loop(
+            let (outcome, _trace) = run_tool_loop(
                 &client,
                 &runner,
                 &test_scope(),
@@ -1408,7 +1551,7 @@ mod tests {
             };
             let scope = test_scope();
 
-            let outcome = run_tool_loop(
+            let (outcome, _trace) = run_tool_loop(
                 &client,
                 &runner,
                 &scope,
@@ -1442,7 +1585,7 @@ mod tests {
             let huge_question = "x".repeat(20_000); // exceeds the 8192 default
             let scope = test_scope();
 
-            let outcome = run_tool_loop(
+            let (outcome, _trace) = run_tool_loop(
                 &client,
                 &runner,
                 &scope,

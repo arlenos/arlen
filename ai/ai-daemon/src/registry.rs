@@ -43,6 +43,8 @@ use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
+use crate::tool_loop::ToolStep;
+
 /// Retention for terminated records that still hold an unretrieved
 /// result (`Completed`). Generous so a slow or suspended caller that
 /// polls infrequently does not lose an expensive answer.
@@ -126,6 +128,11 @@ struct QueryRecord {
     token_hash: [u8; 32],
     result: Option<String>,
     terminated_at: Option<Instant>,
+    /// Tool-call transcript from the interactive loop, stored by the
+    /// dispatcher after the loop returns. Empty for single-shot runner
+    /// queries and for in-flight queries where the loop has not yet
+    /// produced any completed steps. Never written to the audit ledger.
+    trace: Vec<ToolStep>,
 }
 
 /// Thread-safe registry.
@@ -207,6 +214,7 @@ impl QueryRegistry {
             token_hash,
             result: None,
             terminated_at: None,
+            trace: Vec::new(),
         };
         self.inner.lock().await.insert(query_id.clone(), record);
         CreatedQuery {
@@ -237,13 +245,23 @@ impl QueryRegistry {
     /// record was already terminal (a concurrent cancel won) or gone.
     /// The dispatcher uses this to audit the *actual* terminal
     /// outcome rather than the one it assumed before the race.
-    pub async fn mark_completed(&self, query_id: &str, result: String) -> bool {
+    /// `trace` is the tool-loop transcript (empty for the single-shot runner
+    /// path). It is attached atomically with the terminal transition and only
+    /// when this call wins, so a record that loses to a concurrent cancel never
+    /// carries a trace and an in-flight record never exposes one.
+    pub async fn mark_completed(
+        &self,
+        query_id: &str,
+        result: String,
+        trace: Vec<ToolStep>,
+    ) -> bool {
         if let Some(rec) = self.inner.lock().await.get_mut(query_id) {
             if !is_in_flight(&rec.status) {
                 return false;
             }
             rec.status = QueryStatus::Completed;
             rec.result = Some(result);
+            rec.trace = trace;
             rec.terminated_at = Some(Instant::now());
             return true;
         }
@@ -252,7 +270,10 @@ impl QueryRegistry {
 
     /// Mark the record as failed with a stable error code. Same
     /// terminal-status guard and return contract as
-    /// [`mark_completed`](Self::mark_completed).
+    /// [`mark_completed`](Self::mark_completed). It deliberately takes no
+    /// trace: only a successfully completed tool-routing query exposes its
+    /// transcript, so a provider, parse, or policy failure is never a
+    /// raw-tool-output retrieval channel.
     pub async fn mark_failed(&self, query_id: &str, code: &str, reason: &str) -> bool {
         if let Some(rec) = self.inner.lock().await.get_mut(query_id) {
             if !is_in_flight(&rec.status) {
@@ -338,6 +359,36 @@ impl QueryRegistry {
         Ok(outcome)
     }
 
+
+    /// Authorised trace retrieval. Validates the caller and retrieval token
+    /// (identical to [`take_result`](Self::take_result)), then hands back the
+    /// stored tool-call transcript.
+    ///
+    /// The trace is attached only by a winning `mark_completed` transition, so
+    /// only a successfully completed tool-routing query exposes one: an
+    /// in-flight query, a failed query, a query that lost to a cancel, and the
+    /// single-shot runner path all return an empty `Vec`.
+    ///
+    /// Single-shot, the same model as [`take_result`](Self::take_result) (which
+    /// the AG-toolsteps spec requires): the trace is moved out of the record on
+    /// the first authorised fetch and a second fetch returns empty, so raw tool
+    /// output is not left retrievable as a reusable side channel if the token
+    /// later leaks. The consumer fetches it once after the query terminates and
+    /// holds it client-side, exactly as it does the answer. The move is cheap
+    /// and never copies under the lock; the transcript is held in-process and
+    /// never written to the audit ledger.
+    pub async fn take_trace(
+        &self,
+        query_id: &str,
+        caller_unique_bus_name: &str,
+        retrieval_token: &str,
+    ) -> Result<Vec<ToolStep>, AuthError> {
+        let mut guard = self.inner.lock().await;
+        let rec = guard.get_mut(query_id).ok_or(AuthError::UnknownQuery)?;
+        check_authz(rec, caller_unique_bus_name, retrieval_token)?;
+        Ok(std::mem::take(&mut rec.trace))
+    }
+
     /// Drop terminated records once their retention window expires.
     ///
     /// `Completed` records still hold an unretrieved result and use
@@ -346,6 +397,14 @@ impl QueryRegistry {
     /// terminal status has no payload left and uses the short
     /// [`drained_retention`](Self::drained_retention) window.
     /// In-flight records (`terminated_at == None`) are never swept.
+    ///
+    /// The tool-loop trace shares its record's lifetime, so it stays retrievable
+    /// for exactly as long as the answer is: a slow poller that fetches the
+    /// answer an hour later can still fetch the matching trace. The trace is
+    /// bounded per query by the ingestion caps, so it adds only bounded
+    /// per-record memory on top of the answer the record already holds; a
+    /// registry-wide record cap bounding both is a separate concern shared with
+    /// the answer retention, not specific to traces.
     pub async fn sweep(&self) {
         let now = Instant::now();
         self.inner.lock().await.retain(|_, rec| {
@@ -425,7 +484,7 @@ mod tests {
         let reg = QueryRegistry::new();
         let c = reg.create(caller().to_string()).await;
         reg.mark_in_progress(&c.query_id).await;
-        reg.mark_completed(&c.query_id, "42".to_string()).await;
+        reg.mark_completed(&c.query_id, "42".to_string(), Vec::new()).await;
         let first = reg
             .take_result(&c.query_id, caller(), &c.retrieval_token)
             .await
@@ -442,7 +501,7 @@ mod tests {
     async fn other_caller_cannot_retrieve_result() {
         let reg = QueryRegistry::new();
         let c = reg.create(caller().to_string()).await;
-        reg.mark_completed(&c.query_id, "secret".to_string()).await;
+        reg.mark_completed(&c.query_id, "secret".to_string(), Vec::new()).await;
         let err = reg
             .take_result(&c.query_id, ":1.99", &c.retrieval_token)
             .await
@@ -454,7 +513,7 @@ mod tests {
     async fn wrong_token_is_rejected_even_for_correct_caller() {
         let reg = QueryRegistry::new();
         let c = reg.create(caller().to_string()).await;
-        reg.mark_completed(&c.query_id, "secret".to_string()).await;
+        reg.mark_completed(&c.query_id, "secret".to_string(), Vec::new()).await;
         let err = reg
             .take_result(&c.query_id, caller(), "deadbeef")
             .await
@@ -526,7 +585,7 @@ mod tests {
             .await
             .unwrap());
         // Provider future resolves after cancel.
-        reg.mark_completed(&c.query_id, "leaked".to_string()).await;
+        reg.mark_completed(&c.query_id, "leaked".to_string(), Vec::new()).await;
         // Status still Cancelled, result not retrievable.
         let outcome = reg
             .take_result(&c.query_id, caller(), &c.retrieval_token)
@@ -556,7 +615,7 @@ mod tests {
     async fn sweep_keeps_recent_terminated_records() {
         let reg = QueryRegistry::new();
         let c = reg.create(caller().to_string()).await;
-        reg.mark_completed(&c.query_id, "x".to_string()).await;
+        reg.mark_completed(&c.query_id, "x".to_string(), Vec::new()).await;
         reg.sweep().await;
         assert_eq!(reg.len().await, 1);
     }
@@ -568,7 +627,7 @@ mod tests {
         // caller has not had a chance to poll yet.
         let reg = QueryRegistry::with_retention(Duration::from_secs(3600), Duration::ZERO);
         let c = reg.create(caller().to_string()).await;
-        reg.mark_completed(&c.query_id, "expensive answer".to_string()).await;
+        reg.mark_completed(&c.query_id, "expensive answer".to_string(), Vec::new()).await;
         reg.sweep().await;
         assert_eq!(reg.len().await, 1, "completed result must not be swept");
         // Caller finally drains it; now it is eligible for the short
@@ -592,5 +651,128 @@ mod tests {
             .unwrap();
         reg.sweep().await;
         assert_eq!(reg.len().await, 0, "failed + cancelled swept immediately");
+    }
+
+    #[tokio::test]
+    async fn trace_survives_sweep_while_the_completed_answer_is_retained() {
+        // A completed, undrained query keeps its trace for as long as its answer
+        // is retained, so a slow poller fetching the answer later can still
+        // fetch the matching trace (not a false empty transcript).
+        let reg = QueryRegistry::with_retention(Duration::from_secs(3600), Duration::ZERO);
+        let c = reg.create(caller().to_string()).await;
+        reg.mark_completed(
+            &c.query_id,
+            "ans".to_string(),
+            vec![make_step("system.graph", "query")],
+        )
+        .await;
+        reg.sweep().await;
+        assert_eq!(reg.len().await, 1, "completed answer is retained");
+        let trace = reg
+            .take_trace(&c.query_id, caller(), &c.retrieval_token)
+            .await
+            .unwrap();
+        assert_eq!(trace.len(), 1, "trace survives as long as the completed answer");
+    }
+
+    fn make_step(server: &str, tool: &str) -> ToolStep {
+        ToolStep {
+            server: server.to_string(),
+            tool: tool.to_string(),
+            arguments: "{}".to_string(),
+            result: "ok".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn trace_is_stored_and_returned_to_authorised_caller() {
+        let reg = QueryRegistry::new();
+        let c = reg.create(caller().to_string()).await;
+        let steps = vec![
+            make_step("system.graph", "query"),
+            make_step("module.notes", "list"),
+        ];
+        reg.mark_completed(&c.query_id, "ans".to_string(), steps.clone())
+            .await;
+
+        let got = reg
+            .take_trace(&c.query_id, caller(), &c.retrieval_token)
+            .await
+            .unwrap();
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].server, "system.graph");
+        assert_eq!(got[1].server, "module.notes");
+    }
+
+    #[tokio::test]
+    async fn trace_is_single_shot_and_freed_on_first_fetch() {
+        let reg = QueryRegistry::new();
+        let c = reg.create(caller().to_string()).await;
+        reg.mark_completed(
+            &c.query_id,
+            "ans".to_string(),
+            vec![make_step("system.graph", "query")],
+        )
+        .await;
+
+        let first = reg
+            .take_trace(&c.query_id, caller(), &c.retrieval_token)
+            .await
+            .unwrap();
+        let second = reg
+            .take_trace(&c.query_id, caller(), &c.retrieval_token)
+            .await
+            .unwrap();
+        assert_eq!(first.len(), 1);
+        assert!(second.is_empty(), "single-shot: the transcript is consumed on the first fetch");
+    }
+
+    #[tokio::test]
+    async fn trace_empty_before_store() {
+        // A completed query that produced no tool steps (the single-shot runner
+        // path) returns an empty trace without error.
+        let reg = QueryRegistry::new();
+        let c = reg.create(caller().to_string()).await;
+        reg.mark_completed(&c.query_id, "answer".to_string(), Vec::new()).await;
+
+        let trace = reg
+            .take_trace(&c.query_id, caller(), &c.retrieval_token)
+            .await
+            .unwrap();
+        assert!(trace.is_empty(), "runner path yields empty trace");
+    }
+
+    #[tokio::test]
+    async fn trace_unauthorised_caller_is_rejected() {
+        let reg = QueryRegistry::new();
+        let c = reg.create(caller().to_string()).await;
+        reg.mark_completed(
+            &c.query_id,
+            "ans".to_string(),
+            vec![make_step("system.graph", "query")],
+        )
+        .await;
+
+        let err = reg
+            .take_trace(&c.query_id, ":1.99", &c.retrieval_token)
+            .await
+            .expect_err("wrong caller must be rejected");
+        assert_eq!(err, AuthError::CallerMismatch);
+
+        let err = reg
+            .take_trace(&c.query_id, caller(), "deadbeef")
+            .await
+            .expect_err("wrong token must be rejected");
+        assert_eq!(err, AuthError::TokenMismatch);
+    }
+
+    #[tokio::test]
+    async fn trace_unknown_query_returns_error() {
+        let reg = QueryRegistry::new();
+        let err = reg
+            .take_trace("missing", caller(), "deadbeef")
+            .await
+            .expect_err("unknown query");
+        assert_eq!(err, AuthError::UnknownQuery);
     }
 }

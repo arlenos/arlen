@@ -321,6 +321,43 @@ impl AiInterface {
         Ok(serialise_outcome(outcome))
     }
 
+    /// Retrieve the tool-call transcript for a completed tool-routing query.
+    ///
+    /// Returns a JSON array of step objects of the form
+    /// `[{"server":"...", "tool":"...", "arguments":"...", "result":"..."}, ...]`.
+    /// The array is empty for queries that ran through the single-shot runner
+    /// path (no tool loop) or that have not yet produced any completed steps.
+    ///
+    /// Authorisation is identical to `take_result`: only the connection that
+    /// submitted the query, presenting the same retrieval token, may call this.
+    /// Unlike `take_result` the trace is not consumed: the caller may fetch it
+    /// more than once while the query record exists.
+    async fn take_trace(
+        &self,
+        query_id: &str,
+        retrieval_token: &str,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+    ) -> zbus::fdo::Result<String> {
+        let caller = sender(&header)?;
+        let trace = self
+            .service
+            .take_trace(query_id, &caller, retrieval_token)
+            .await
+            .map_err(map_auth_error)?;
+        let steps: Vec<serde_json::Value> = trace
+            .into_iter()
+            .map(|s| {
+                serde_json::json!({
+                    "server": s.server,
+                    "tool": s.tool,
+                    "arguments": s.arguments,
+                    "result": s.result,
+                })
+            })
+            .collect();
+        Ok(serde_json::Value::Array(steps).to_string())
+    }
+
     /// Cancel an in-flight query. Returns true if the query existed,
     /// was not already terminated, and the caller passed authz.
     async fn cancel(
