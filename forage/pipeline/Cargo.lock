@@ -27,7 +27,9 @@ version = "0.1.0"
 dependencies = [
  "arlen-confiner",
  "arlen-forage-recipe",
+ "libc",
  "thiserror",
+ "wait-timeout",
 ]
 
 [[package]]

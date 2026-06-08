@@ -227,6 +227,24 @@ mod tests {
         }
     }
 
+    /// A runner that records the environment of the command it is handed and
+    /// also writes the declared artifact so the pipeline completes.
+    struct EnvCapturingRunner {
+        rel: String,
+        env: std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, String>>>,
+    }
+    impl StepRunner for EnvCapturingRunner {
+        fn run(&self, cmd: &BuildCommand, source_root: &Path) -> Result<(), BuildError> {
+            *self.env.lock().unwrap() = cmd.env.clone();
+            let out = source_root.join(&self.rel);
+            if let Some(p) = out.parent() {
+                std::fs::create_dir_all(p).unwrap();
+            }
+            std::fs::write(out, b"BUILT-BINARY").unwrap();
+            Ok(())
+        }
+    }
+
     fn source_tarball() -> Vec<u8> {
         let mut b = tar::Builder::new(Vec::new());
         let mut h = tar::Header::new_gnu();
@@ -358,5 +376,43 @@ mod tests {
         .await
         .unwrap_err();
         assert!(matches!(err, PipelineError::NoBuild));
+    }
+
+    #[tokio::test]
+    async fn pipeline_wires_the_real_build_dir_into_the_remap_flag() {
+        // The reproducibility path-remap is only useful if the pipeline sets the
+        // physical build directory (known only at run time) into the context.
+        // Capture the command env the runner receives and assert the remap flag
+        // names a real absolute path mapped to the canonical mount.
+        let store_dir = tempfile::tempdir().unwrap();
+        let store = Store::open(store_dir.path()).unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let tarball = source_tarball();
+        let sha = ContentHash::of(&tarball);
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(std::collections::BTreeMap::new()));
+        build_recipe(
+            &recipe_for(sha.as_str()),
+            &store,
+            &CannedDownloader(tarball),
+            &UnusedGit,
+            &UnusedResolver,
+            &EnvCapturingRunner { rel: "app".into(), env: captured.clone() },
+            // The caller's hint is None; the pipeline overrides it with the real path.
+            &BuildContext { source_date_epoch: 0, jobs: 1, build_dir: None },
+            &SigningKey::from_bytes(&[9u8; 32]),
+            out.path(),
+            &PipelineLimits::default(),
+        )
+        .await
+        .expect("pipeline succeeds");
+
+        let env = captured.lock().unwrap();
+        let rustflags = env.get("RUSTFLAGS").expect("remap flag injected by the pipeline");
+        let prefix = rustflags
+            .strip_prefix("--remap-path-prefix=")
+            .expect("the remap flag form");
+        let (from, to) = prefix.split_once('=').expect("from=to");
+        assert!(Path::new(from).is_absolute(), "the real build dir is absolute: {from}");
+        assert_eq!(to, "/build", "mapped to the canonical mount");
     }
 }
