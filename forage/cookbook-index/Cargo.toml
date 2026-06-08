@@ -1,0 +1,16 @@
+[package]
+name = "arlen-cookbook-index"
+version = "0.1.0"
+edition = "2021"
+description = "The human-authored forage cookbook manifest (cookbook.toml): the TUF targets payload, parsed and validated"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+arlen-forage-recipe = { path = "../../contracts/forage-recipe" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+thiserror = "2"
+
+[workspace]
