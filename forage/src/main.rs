@@ -73,6 +73,46 @@ fn run_async(fut: impl std::future::Future<Output = ()>) {
 async fn cmd_install(target: String) {
     use commands::install_client as client;
 
+    // `git+<url>[#<ref>]`: clone the recipe repo, build it (always sandboxed,
+    // since a remote recipe is untrusted), then install the produced package
+    // through the normal path below.
+    if let Some(spec) = target.strip_prefix("git+") {
+        let (url, git_ref) = match spec.split_once('#') {
+            Some((u, r)) => (u, Some(r)),
+            None => (spec, None),
+        };
+        let clone_dir = match tempfile::tempdir() {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("{} scratch dir: {e}", "error:".red().bold());
+                std::process::exit(1);
+            }
+        };
+        if let Err(e) = arlen_forage_fetch::clone_recipe_repo(
+            url,
+            git_ref,
+            clone_dir.path(),
+            arlen_forage_fetch::DEFAULT_RECIPE_REPO_BYTES,
+        )
+        .await
+        {
+            eprintln!("{} cloning {url}: {e}", "error:".red().bold());
+            std::process::exit(1);
+        }
+        let Some(recipe_path) = commands::recipe::resolve_recipe_path(clone_dir.path()) else {
+            std::process::exit(1);
+        };
+        // Untrusted remote recipe: never build it unconfined.
+        let lunpkg = match commands::build::build_recipe_at(&recipe_path, false).await {
+            Ok(p) => p,
+            Err(()) => std::process::exit(1),
+        };
+        // The package is written to the out dir (not the clone), so it outlives
+        // the scratch clone; install it via the normal local-file path.
+        Box::pin(cmd_install(lunpkg.to_string_lossy().into_owned())).await;
+        return;
+    }
+
     let conn = match client::connect().await {
         Ok(c) => c,
         Err(e) => {

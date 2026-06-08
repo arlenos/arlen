@@ -44,18 +44,35 @@ pub async fn run(path: PathBuf, unsafe_no_sandbox: bool, install: bool) {
     let Some(recipe_path) = recipe::resolve_recipe_path(&path) else {
         exit(1);
     };
-    let content = match std::fs::read_to_string(&recipe_path) {
+    let lunpkg = match build_recipe_at(&recipe_path, unsafe_no_sandbox).await {
+        Ok(p) => p,
+        Err(()) => exit(1),
+    };
+    println!("{} {}", "built".green().bold(), lunpkg.display());
+    if install {
+        install_package(&lunpkg).await;
+    }
+}
+
+/// Build the recipe file at `recipe_path` into a signed `.lunpkg`, returning its
+/// path. `unsafe_no_sandbox` runs the build unconfined on the host (dev only,
+/// for a recipe the user trusts); otherwise it runs inside the configured base
+/// platform. Prints diagnostics and returns `Err(())` on any failure. Shared by
+/// `forage build` and the `git+URL` install path, which always builds confined
+/// because the remote recipe is untrusted.
+pub async fn build_recipe_at(recipe_path: &Path, unsafe_no_sandbox: bool) -> Result<PathBuf, ()> {
+    let content = match std::fs::read_to_string(recipe_path) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("{} could not read {}: {e}", "error:".red(), recipe_path.display());
-            exit(1);
+            return Err(());
         }
     };
     let recipe = match parse(&content) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("{} {e}", "parse error:".red().bold());
-            exit(1);
+            return Err(());
         }
     };
     let errors = validate_schema(&recipe);
@@ -66,7 +83,7 @@ pub async fn run(path: PathBuf, unsafe_no_sandbox: bool, install: bool) {
         for e in &errors {
             eprintln!("{} {}: {}", "error:".red(), e.field, e.message);
         }
-        exit(1);
+        return Err(());
     }
     let recipe_dir = recipe_path.parent().unwrap_or_else(|| Path::new(".")).to_path_buf();
 
@@ -78,32 +95,32 @@ pub async fn run(path: PathBuf, unsafe_no_sandbox: bool, install: bool) {
         .is_some_and(|s| matches!(s.source_type, SourceType::GithubRelease))
     {
         eprintln!(
-            "{} github-release sources are not yet buildable from `forage build` (roadmap D7); \
+            "{} github-release sources are not yet buildable (roadmap D7); \
              use a tarball or git source.",
             "error:".red().bold()
         );
-        exit(1);
+        return Err(());
     }
 
     let cfg = match ForageBuildConfig::load() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("{} {e}", "error:".red().bold());
-            exit(1);
+            return Err(());
         }
     };
     let key = match BuilderKey::load_or_create(&builder_key_path()) {
         Ok(k) => k,
         Err(e) => {
             eprintln!("{} {e}", "error:".red().bold());
-            exit(1);
+            return Err(());
         }
     };
     let store = match Store::open(store_root()) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("{} opening the store: {e}", "error:".red().bold());
-            exit(1);
+            return Err(());
         }
     };
 
@@ -121,7 +138,7 @@ pub async fn run(path: PathBuf, unsafe_no_sandbox: bool, install: bool) {
             Err(e) => {
                 eprintln!("{} {e}", "error:".red().bold());
                 eprintln!("  (or pass --unsafe-no-sandbox to build on the host for local testing)");
-                exit(1);
+                return Err(());
             }
         }
     };
@@ -153,15 +170,10 @@ pub async fn run(path: PathBuf, unsafe_no_sandbox: bool, install: bool) {
     )
     .await
     {
-        Ok(outcome) => {
-            println!("{} {}", "built".green().bold(), outcome.lunpkg.display());
-            if install {
-                install_package(&outcome.lunpkg).await;
-            }
-        }
+        Ok(outcome) => Ok(outcome.lunpkg),
         Err(e) => {
             eprintln!("{} {e}", "error:".red().bold());
-            exit(1);
+            Err(())
         }
     }
 }
