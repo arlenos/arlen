@@ -132,6 +132,12 @@ pub struct Source {
     /// Content-address for a tarball or release asset.
     #[serde(default)]
     pub sha256: Option<String>,
+    /// Crate version for a `crate` source (e.g. `"1.2.3"`); when omitted it
+    /// defaults to the recipe's own `version`, so a recipe that packages exactly
+    /// one crate need not repeat it. Lets a recipe pin a vendored crate at a
+    /// version independent of the package version (decision D6).
+    #[serde(default)]
+    pub version: Option<String>,
     /// `github-release` asset template, e.g. `{version}-{target}`.
     #[serde(default)]
     pub asset: Option<String>,

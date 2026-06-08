@@ -8,10 +8,11 @@
 //! output is verified against a pre-pinned hash, allowing network here is safe
 //! (a fixed-output derivation); after this phase the build runs with no network.
 //!
-//! This slice handles `tarball` sources (HTTP GET + sha256) and `git` sources
-//! (clone pinned to a commit, deterministic `git archive`). `github-release`,
-//! `crate` and `local` sources are follow-up slices and return
-//! [`FetchError::Unsupported`] for now.
+//! All declared source kinds are handled: `tarball` (HTTP GET + sha256), `git`
+//! (clone pinned to a commit, deterministic `git archive`), `github-release`
+//! (tag-resolve via the API then download + lock the asset), `crate` (the
+//! direct crates.io download URL + sha256) and `local` (a deterministic archive
+//! of an on-disk path).
 //!
 //! ## Git SSRF model
 //!
@@ -46,9 +47,6 @@ pub const DEFAULT_MAX_BYTES: u64 = 1024 * 1024 * 1024;
 /// A failure fetching or storing a source.
 #[derive(Debug, thiserror::Error)]
 pub enum FetchError {
-    /// The source kind is not yet fetchable by this slice.
-    #[error("unsupported source type: {0:?}")]
-    Unsupported(SourceType),
     /// A field required for this source kind is missing.
     #[error("source is missing required field: {0}")]
     MissingField(&'static str),
@@ -77,6 +75,10 @@ pub enum FetchError {
     /// A `local` source could not be read or archived.
     #[error("local source: {0}")]
     Local(String),
+    /// A `crate` source had a name or version outside the crates.io character
+    /// set (rejected before it is interpolated into the download URL).
+    #[error("invalid crate source: {0}")]
+    InvalidCrate(String),
 }
 
 /// Fetches the bytes at a URL, capped at `max_bytes`. Behind a trait so the
@@ -246,7 +248,45 @@ pub async fn fetch_source(
             let hash = store.put_referenced(&bytes, owner)?;
             Ok(hash)
         }
-        other => Err(FetchError::Unsupported(other)),
+        SourceType::Crate => {
+            // `url` is the bare crate name; `version` is the source-level crate
+            // version (the pipeline defaults it to `recipe.version`); `sha256`
+            // pins the content (decision D6).
+            let name = source
+                .url
+                .as_deref()
+                .filter(|u| !u.is_empty())
+                .ok_or(FetchError::MissingField("url"))?;
+            let version = source
+                .version
+                .as_deref()
+                .filter(|v| !v.is_empty())
+                .ok_or(FetchError::MissingField("version"))?;
+            let sha = source
+                .sha256
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .ok_or(FetchError::MissingField("sha256"))?;
+            let expected =
+                ContentHash::parse(sha).map_err(|_| FetchError::InvalidHash(sha.to_string()))?;
+            // Name and version are interpolated into the download URL path, so
+            // restrict them to the crates.io character set: a crafted value
+            // (`/`, `?`, `..`, whitespace) could otherwise inject extra path or
+            // query segments into the request.
+            if !is_crate_name(name) {
+                return Err(FetchError::InvalidCrate(format!("name {name:?}")));
+            }
+            if !is_crate_version(version) {
+                return Err(FetchError::InvalidCrate(format!("version {version:?}")));
+            }
+            // The direct, redirect-free crates.io download URL; the downloader
+            // pins the resolved host against SSRF and the store verifies the
+            // bytes against the pinned sha256 before rooting them.
+            let url = format!("https://static.crates.io/crates/{name}/{name}-{version}.crate");
+            let bytes = downloader.get(&url, max_bytes).await?;
+            let hash = store.put_verified_referenced(&bytes, &expected, owner)?;
+            Ok(hash)
+        }
     }
 }
 
@@ -520,6 +560,29 @@ impl GitFetcher for ProcessGitFetcher {
         // pinned-but-huge tree cannot exhaust memory.
         self.git(dest, &["archive", "--format=tar", commit], Some(max_bytes))
     }
+}
+
+/// Whether `name` is a valid crates.io crate name: non-empty, at most 64 chars
+/// (the registry limit), and only `[A-Za-z0-9_-]`, so it is a safe single URL
+/// path segment.
+fn is_crate_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+/// Whether `version` is a safe crate version segment: non-empty, bounded, and
+/// only semver characters `[A-Za-z0-9.+-]` (no `/`, `..`, whitespace, or
+/// URL-special characters that could warp the download URL).
+fn is_crate_version(version: &str) -> bool {
+    !version.is_empty()
+        && version.len() <= 64
+        && version != ".."
+        && version
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'+' | b'-'))
 }
 
 /// The default cap on a cloned recipe repository's working tree, so a hostile
@@ -1036,6 +1099,7 @@ mod tests {
             sha256: sha256.map(|s| s.into()),
             asset: Some(asset.into()),
             tag: None,
+            version: None,
             patches: Vec::new(),
         }
     }
@@ -1230,6 +1294,7 @@ mod tests {
             sha256: None,
             asset: None,
             tag: None,
+            version: None,
             patches: Vec::new(),
         }
     }
@@ -1320,6 +1385,7 @@ mod tests {
             sha256: sha256.map(|s| s.to_string()),
             asset: None,
             tag: None,
+            version: None,
             patches: Vec::new(),
         }
     }
@@ -1332,7 +1398,69 @@ mod tests {
             sha256: None,
             asset: None,
             tag: None,
+            version: None,
             patches: Vec::new(),
+        }
+    }
+
+    fn crate_src(name: &str, version: Option<&str>, sha256: Option<&str>) -> Source {
+        Source {
+            source_type: SourceType::Crate,
+            url: Some(name.to_string()),
+            commit: None,
+            sha256: sha256.map(|s| s.to_string()),
+            asset: None,
+            tag: None,
+            version: version.map(|s| s.to_string()),
+            patches: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn matching_crate_is_downloaded_and_rooted() {
+        let (_d, s) = store();
+        let body = b"the .crate tarball bytes";
+        let sha = ContentHash::of(body);
+        let src = crate_src("serde", Some("1.0.0"), Some(sha.as_str()));
+        let dl = MockDownloader::ok(body);
+        let h = fetch_source(
+            &src,
+            "org.example.app",
+            &s,
+            &dl,
+            &MockGitFetcher::never(),
+            &no_resolver(),
+            DEFAULT_MAX_BYTES,
+        )
+        .await
+        .unwrap();
+        assert_eq!(h, sha);
+        assert_eq!(s.read(&h).unwrap(), body);
+    }
+
+    #[tokio::test]
+    async fn crate_without_a_version_is_rejected() {
+        let (_d, s) = store();
+        let src = crate_src("serde", None, Some(ContentHash::of(b"x").as_str()));
+        let err = fetch_source(&src, "o", &s, &MockDownloader::ok(b"x"), &MockGitFetcher::never(), &no_resolver(), DEFAULT_MAX_BYTES)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FetchError::MissingField("version")), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn crate_name_or_version_outside_the_charset_is_refused() {
+        let (_d, s) = store();
+        let sha = ContentHash::of(b"x");
+        // A crafted name that would inject extra URL path segments.
+        for src in [
+            crate_src("../evil", Some("1.0.0"), Some(sha.as_str())),
+            crate_src("serde", Some("1.0/../../etc"), Some(sha.as_str())),
+        ] {
+            let err = fetch_source(&src, "o", &s, &MockDownloader::ok(b"x"), &MockGitFetcher::never(), &no_resolver(), DEFAULT_MAX_BYTES)
+                .await
+                .unwrap_err();
+            assert!(matches!(err, FetchError::InvalidCrate(_)), "got {err:?}");
         }
     }
 
@@ -1398,24 +1526,6 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
-    async fn unsupported_source_type() {
-        let (_d, s) = store();
-        let mut src = tarball("https://example.org/x", Some(&"a".repeat(64)));
-        src.source_type = SourceType::Crate;
-        let dl = MockDownloader::ok(b"x");
-        assert!(matches!(
-            fetch_source(
-                &src,
-                "o",
-                &s,
-                &dl,
-                &MockGitFetcher::never(), &no_resolver(), DEFAULT_MAX_BYTES
-            )
-            .await,
-            Err(FetchError::Unsupported(SourceType::Crate))
-        ));
-    }
 
     #[tokio::test]
     async fn download_error_propagates_and_stores_nothing() {
