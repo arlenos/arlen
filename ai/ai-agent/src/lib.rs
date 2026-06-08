@@ -19,6 +19,7 @@ pub mod gate;
 pub mod graph;
 pub mod handlers;
 pub mod loader;
+pub mod receipt_store;
 mod registry;
 pub mod router;
 pub mod seams;
