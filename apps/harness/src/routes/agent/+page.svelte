@@ -157,9 +157,22 @@
     return new Date(then).toLocaleDateString();
   }
 
+  // Monotonic token for live refreshes. A manual `load()` and each background
+  // poll bump it; a poll applies its result only if still the latest, so a slow
+  // poll can never overwrite newer state (a manual reload, or a later poll).
+  let refreshSeq = 0;
+  // True when the last live poll could not reach a source, so the activity /
+  // notices on screen may be stale. Surfaced in the UI, since silently showing
+  // old data on an observability surface could hide a daemon outage or a missed
+  // critical notice.
+  let liveStale = $state(false);
+
   async function load() {
     loading = true;
     error = null;
+    // Invalidate any in-flight background poll so its (older) result cannot land
+    // after this authoritative reload.
+    refreshSeq++;
     // Behaviour status is independent of the audit ledger: load it
     // best-effort so an audit-daemon outage does not blank the behaviour
     // list, and vice versa.
@@ -182,6 +195,7 @@
     }
     try {
       activity = await invoke<ActivityPage>("ai_activity_recent", { limit: 100 });
+      liveStale = false;
     } catch (e) {
       error = String(e);
       activity = null;
@@ -198,17 +212,33 @@
   // everything (including the rarely-changing behaviour and capability panels).
   async function refreshLive() {
     if (loading) return;
+    const seq = ++refreshSeq;
+    let failed = false;
+    let nextActivity: ActivityPage | null = null;
+    let nextNotices: Notice[] | null = null;
     try {
-      activity = await invoke<ActivityPage>("ai_activity_recent", { limit: 100 });
+      nextActivity = await invoke<ActivityPage>("ai_activity_recent", { limit: 100 });
+    } catch {
+      failed = true;
+    }
+    try {
+      nextNotices = await invoke<Notice[]>("ai_notices");
+    } catch {
+      failed = true;
+    }
+    // Latest-wins: drop this result if a newer poll or a manual reload started
+    // while it was in flight, so an older response cannot clobber newer state.
+    if (seq !== refreshSeq || loading) return;
+    if (nextActivity !== null) {
+      activity = nextActivity;
       error = null;
-    } catch {
-      // keep the existing activity
     }
-    try {
-      notices = await invoke<Notice[]>("ai_notices");
-    } catch {
-      // keep the existing notices
+    if (nextNotices !== null) {
+      notices = nextNotices;
     }
+    // A failed poll means what is on screen may be stale; surface that rather
+    // than letting old data look current. A later good poll clears it.
+    liveStale = failed;
   }
 
   const REFRESH_MS = 10_000;
@@ -274,6 +304,11 @@
           <span>
             Trigger → gate → act → audit, newest first.{#if activity && activity.total > 0}
               <span class="activity-count">{activity.total} total</span>{/if}
+            {#if liveStale}
+              <span class="live-stale" title="A background refresh failed; showing the last known data. Use Refresh.">
+                <ShieldAlert size={12} strokeWidth={2} />live updates interrupted
+              </span>
+            {/if}
           </span>
         </div>
         <Button variant="ghost" size="sm" disabled={loading} onclick={load}>
@@ -464,6 +499,16 @@
   .activity-count {
     margin-left: 0.375rem;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
+  }
+  .live-stale {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: 0.5rem;
+    color: var(--color-error);
+  }
+  .live-stale :global(svg) {
+    flex-shrink: 0;
   }
   .banner {
     display: flex;
