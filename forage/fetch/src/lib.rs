@@ -797,7 +797,10 @@ impl ReleaseResolver for GitHubReleaseResolver {
 fn parse_github_repo(url: &str) -> Result<(String, String), FetchError> {
     let u = reqwest::Url::parse(url)
         .map_err(|e| FetchError::Network(format!("parse repo url: {e}")))?;
-    if u.host_str() != Some("github.com") {
+    // Accept the absolute-FQDN spelling `github.com.` (a single trailing dot)
+    // by normalising it away before the exact host comparison.
+    let host = u.host_str().map(|h| h.strip_suffix('.').unwrap_or(h));
+    if host != Some("github.com") {
         return Err(FetchError::Network(format!(
             "github-release url must be on github.com: {url}"
         )));
@@ -949,9 +952,14 @@ mod tests {
             parse_github_repo("https://github.com/o/r.git").unwrap(),
             ("o".into(), "r".into())
         );
-        // Only github.com.
+        // Only github.com (lookalikes rejected), but the trailing-dot FQDN ok.
         assert!(parse_github_repo("https://gitlab.com/o/r").is_err());
+        assert!(parse_github_repo("https://github.com.evil/o/r").is_err());
         assert!(parse_github_repo("https://github.com/o").is_err());
+        assert_eq!(
+            parse_github_repo("https://github.com./o/r").unwrap(),
+            ("o".into(), "r".into())
+        );
         assert_eq!(
             substitute_asset("zed-{version}-{target}.tar.gz", "v0.1", "x86_64-linux"),
             "zed-v0.1-x86_64-linux.tar.gz"
