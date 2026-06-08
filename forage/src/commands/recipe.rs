@@ -13,17 +13,28 @@ use colored::Colorize;
 /// Resolve a recipe path: a directory resolves to its `recipe.toml`, a file is
 /// used as-is. Returns `None` (after printing an error) when nothing is found.
 pub fn resolve_recipe_path(path: &Path) -> Option<PathBuf> {
-    let candidate = if path.is_dir() {
-        path.join("recipe.toml")
-    } else {
-        path.to_path_buf()
-    };
-    if candidate.exists() {
-        Some(candidate)
-    } else {
-        eprintln!("{} no recipe found at {}", "error:".red(), candidate.display());
-        None
+    // A file path is used directly; a directory is searched via the in-repo
+    // discovery ladder (forage-recipes.md §6): `recipe.toml` at the root, then
+    // `.forage/recipe.toml`.
+    if !path.is_dir() {
+        if path.exists() {
+            return Some(path.to_path_buf());
+        }
+        eprintln!("{} no recipe found at {}", "error:".red(), path.display());
+        return None;
     }
+    for rel in ["recipe.toml", ".forage/recipe.toml"] {
+        let candidate = path.join(rel);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    eprintln!(
+        "{} no recipe.toml or .forage/recipe.toml in {}",
+        "error:".red(),
+        path.display()
+    );
+    None
 }
 
 /// Scaffold a `recipe.toml` in the current directory.
@@ -161,6 +172,47 @@ network = []
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolves_recipe_at_directory_root() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("recipe.toml"), "x").unwrap();
+        let got = resolve_recipe_path(dir.path());
+        assert_eq!(got, Some(dir.path().join("recipe.toml")));
+    }
+
+    #[test]
+    fn falls_back_to_dot_forage_subdir() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join(".forage")).unwrap();
+        std::fs::write(dir.path().join(".forage/recipe.toml"), "x").unwrap();
+        let got = resolve_recipe_path(dir.path());
+        assert_eq!(got, Some(dir.path().join(".forage/recipe.toml")));
+    }
+
+    #[test]
+    fn prefers_root_over_dot_forage() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("recipe.toml"), "x").unwrap();
+        std::fs::create_dir(dir.path().join(".forage")).unwrap();
+        std::fs::write(dir.path().join(".forage/recipe.toml"), "x").unwrap();
+        let got = resolve_recipe_path(dir.path());
+        assert_eq!(got, Some(dir.path().join("recipe.toml")));
+    }
+
+    #[test]
+    fn empty_directory_resolves_to_none() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(resolve_recipe_path(dir.path()), None);
+    }
+
+    #[test]
+    fn explicit_file_path_used_directly() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("custom.toml");
+        std::fs::write(&file, "x").unwrap();
+        assert_eq!(resolve_recipe_path(&file), Some(file));
+    }
 
     #[test]
     fn scaffolded_template_flags_only_the_unset_pin() {
