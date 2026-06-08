@@ -42,6 +42,10 @@ pub enum Commands {
     Which {
         /// App ID.
         app_id: String,
+        /// Output a JSON object instead of the bare path (for scripts and
+        /// other tools, e.g. the store app).
+        #[arg(long)]
+        json: bool,
     },
     /// Manage the 30-day trash.
     Trash {

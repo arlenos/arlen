@@ -364,20 +364,41 @@ pub async fn cleanup_trash(conn: &Connection) -> Result<(), String> {
 }
 
 /// Show the install location of an app.
-pub async fn which_app(app_id: &str) -> Result<(), String> {
+/// Serialise a `which` result (id, resolved path, and source) as a JSON object,
+/// for `which --json`. Pure, so the wire shape is unit-tested without touching
+/// the filesystem.
+pub fn which_to_json(app_id: &str, path: &str, source: &str) -> String {
+    serde_json::to_string_pretty(&serde_json::json!({
+        "id": app_id,
+        "path": path,
+        "source": source,
+    }))
+    .unwrap_or_else(|_| "{}".to_string())
+}
+
+pub async fn which_app(app_id: &str, json: bool) -> Result<(), String> {
+    // Print the resolved path: a bare line, or a JSON object when `json`.
+    let emit = |path: &str, source: &str| {
+        if json {
+            println!("{}", which_to_json(app_id, path, source));
+        } else {
+            println!("{path}");
+        }
+    };
+
     // Check user apps.
     let user_dir = dirs::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("~/.local/share"))
         .join(format!("arlen/apps/{app_id}"));
     if user_dir.exists() {
-        println!("{}", user_dir.display());
+        emit(&user_dir.display().to_string(), "lunpkg");
         return Ok(());
     }
 
     // Check system apps.
     let sys_dir = std::path::PathBuf::from(format!("/usr/lib/arlen/apps/{app_id}"));
     if sys_dir.exists() {
-        println!("{}", sys_dir.display());
+        emit(&sys_dir.display().to_string(), "system");
         return Ok(());
     }
 
@@ -388,7 +409,7 @@ pub async fn which_app(app_id: &str) -> Result<(), String> {
     if let Ok(o) = output {
         if o.status.success() {
             let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            println!("{path}");
+            emit(&path, "flatpak");
             return Ok(());
         }
     }
@@ -511,7 +532,19 @@ pub async fn info_app(app_id: &str, json: bool) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{app_info_to_json, apps_to_json, should_uninstall_as_flatpak, trashed_to_json};
+    use super::{
+        app_info_to_json, apps_to_json, should_uninstall_as_flatpak, trashed_to_json, which_to_json,
+    };
+
+    #[test]
+    fn which_serializes_id_path_and_source() {
+        let parsed: serde_json::Value =
+            serde_json::from_str(&which_to_json("com.example.app", "/usr/lib/arlen/apps/com.example.app", "system"))
+                .unwrap();
+        assert_eq!(parsed["id"], "com.example.app");
+        assert_eq!(parsed["path"], "/usr/lib/arlen/apps/com.example.app");
+        assert_eq!(parsed["source"], "system");
+    }
 
     #[test]
     fn empty_trash_is_an_empty_json_array() {
