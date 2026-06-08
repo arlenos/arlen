@@ -1184,7 +1184,7 @@ impl<'a> Dispatcher<'a> {
                     });
                     return outcomes;
                 }
-                AgentStep::Propose { tool, summary } => {
+                AgentStep::Propose { tool, summary, arguments } => {
                     // One distinct correlation id per step, so each step's
                     // gate/audit entry is a separate, ordered ledger record.
                     let correlation_id = format!("{}:{}:step-{step}", event.id, behaviour);
@@ -1193,14 +1193,15 @@ impl<'a> Dispatcher<'a> {
                         external_trigger: event.external_content,
                         correlation_id: &correlation_id,
                     };
-                    // The model does not yet propose structured operands, so a
-                    // loop-proposed action carries none and can only be
-                    // suggested, never proven for an execution-cap lift. Typed
-                    // model operands land with the real agent behaviour.
+                    // The model's stated operands are untrusted: they prove
+                    // nothing on their own, but they let the predict-before-act
+                    // gate validate them against the action's trusted schema and
+                    // the real graph, so a loop proposal can now be proven (and
+                    // its cap lifted) rather than only ever suggested.
                     let action = ProposedAction {
                         tool,
                         summary,
-                        arguments: Default::default(),
+                        arguments,
                     };
                     // Capture the identity before `action` is moved into the
                     // outcome, so the no-progress guard can key on it after.

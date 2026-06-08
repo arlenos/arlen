@@ -27,6 +27,12 @@ pub enum AgentStep {
         tool: String,
         /// One-line, human-facing description of the action.
         summary: String,
+        /// The action's operands as parameter-name to value (a node id or path
+        /// literal). **Untrusted** — the model states them — so they prove
+        /// nothing on their own; the predict-before-act gate validates them
+        /// against the action's trusted schema and the real graph before any
+        /// execution cap is lifted. Empty when the model states no operands.
+        arguments: std::collections::BTreeMap<String, String>,
     },
     /// Stop the loop on a declared terminal condition. The loop validates
     /// `terminal` against the behaviour's declared `terminal` conditions, so
@@ -49,6 +55,10 @@ struct RawStep {
     tool: Option<String>,
     #[serde(default)]
     summary: Option<String>,
+    /// Operands for a propose step; absent or non-string values fail the parse
+    /// and are fed back to the model rather than silently coerced.
+    #[serde(default)]
+    arguments: std::collections::BTreeMap<String, String>,
     #[serde(default)]
     terminal: Option<String>,
     #[serde(default)]
@@ -72,6 +82,7 @@ pub fn parse_agent_step(text: &str) -> Result<AgentStep, String> {
             Ok(AgentStep::Propose {
                 tool,
                 summary: raw.summary.unwrap_or_default(),
+                arguments: raw.arguments,
             })
         }
         "stop" => {
@@ -235,9 +246,34 @@ mod tests {
             parse_agent_step(text).unwrap(),
             AgentStep::Propose {
                 tool: "graph.write".to_string(),
-                summary: "tag foo".to_string()
+                summary: "tag foo".to_string(),
+                arguments: BTreeMap::new(),
             }
         );
+    }
+
+    #[test]
+    fn parses_propose_operands_into_arguments() {
+        let text = r#"{"action":"propose","tool":"graph.write","summary":"tag","arguments":{"file":"f1","project":"p1"}}"#;
+        assert_eq!(
+            parse_agent_step(text).unwrap(),
+            AgentStep::Propose {
+                tool: "graph.write".to_string(),
+                summary: "tag".to_string(),
+                arguments: BTreeMap::from([
+                    ("file".to_string(), "f1".to_string()),
+                    ("project".to_string(), "p1".to_string()),
+                ]),
+            }
+        );
+    }
+
+    #[test]
+    fn non_string_operand_values_fail_the_parse() {
+        // A numeric operand value is rejected (fed back to the model) rather
+        // than silently coerced, so the gate only ever sees string operands.
+        let text = r#"{"action":"propose","tool":"t","summary":"s","arguments":{"n":42}}"#;
+        assert!(parse_agent_step(text).is_err());
     }
 
     #[test]
