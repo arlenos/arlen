@@ -145,6 +145,17 @@ pub fn format_uptime(seconds: u64) -> String {
     parts.join(" ")
 }
 
+/// Operating-system identity, from `/proc/sys/kernel/`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct OsInfo {
+    /// Kernel name, e.g. `"Linux"` (`/proc/sys/kernel/ostype`).
+    pub kernel: String,
+    /// Kernel release, e.g. `"6.9.3-arch1-1"` (`/proc/sys/kernel/osrelease`).
+    pub kernel_release: String,
+    /// Hostname (`/proc/sys/kernel/hostname`).
+    pub hostname: String,
+}
+
 /// Disk usage of one filesystem.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DiskUsage {
@@ -273,6 +284,22 @@ impl ProcReader {
             human: format_uptime(seconds),
         })
     }
+
+    /// OS identity (kernel name, release, hostname) from `/proc/sys/kernel/`.
+    /// A missing or unreadable field reads as empty rather than failing; this is
+    /// the same system-wide public information `uname` shows.
+    pub fn os_info(&self) -> OsInfo {
+        let read = |name: &str| {
+            std::fs::read_to_string(self.root.join("sys/kernel").join(name))
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default()
+        };
+        OsInfo {
+            kernel: read("ostype"),
+            kernel_release: read("osrelease"),
+            hostname: read("hostname"),
+        }
+    }
 }
 
 impl Default for ProcReader {
@@ -342,6 +369,28 @@ mod tests {
         assert_eq!(format_uptime(2 * 86_400 + 4 * 3600 + 5 * 60), "2d 4h 5m");
         // A whole-hour boundary still shows the (zero) minutes.
         assert_eq!(format_uptime(3600), "1h 0m");
+    }
+
+    #[test]
+    fn reader_reads_os_info_from_proc_sys_kernel() {
+        let tmp = tempfile::tempdir().unwrap();
+        let k = tmp.path().join("sys/kernel");
+        std::fs::create_dir_all(&k).unwrap();
+        std::fs::write(k.join("ostype"), "Linux\n").unwrap();
+        std::fs::write(k.join("osrelease"), "6.9.3-arch1-1\n").unwrap();
+        std::fs::write(k.join("hostname"), "arlen-box\n").unwrap();
+        let info = ProcReader::with_root(tmp.path()).os_info();
+        assert_eq!(info.kernel, "Linux");
+        assert_eq!(info.kernel_release, "6.9.3-arch1-1");
+        assert_eq!(info.hostname, "arlen-box");
+    }
+
+    #[test]
+    fn os_info_missing_fields_read_empty_not_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let info = ProcReader::with_root(tmp.path()).os_info();
+        assert_eq!(info.kernel, "");
+        assert_eq!(info.hostname, "");
     }
 
     #[test]
