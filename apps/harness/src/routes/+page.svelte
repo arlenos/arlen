@@ -13,7 +13,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2, Wrench, Cpu, File as FileIcon, Folder, Paperclip, X, Copy, Check, RotateCcw, PowerOff } from "@lucide/svelte";
+  import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2, Wrench, Cpu, File as FileIcon, Folder, Paperclip, X, Copy, Check, RotateCcw, PowerOff, ChevronDown } from "@lucide/svelte";
   import { messages, busy, send, regenerate, initSessions, type MentionContent, type Message } from "$lib/stores/conversation";
   import { planRegenerate } from "$lib/regenerate";
   import ConversationRail from "$lib/components/ConversationRail.svelte";
@@ -211,6 +211,15 @@
     scrollEl?.scrollTo({ top: scrollEl.scrollHeight, behavior: "smooth" });
   }
 
+  // Whether the conversation is scrolled (near) the bottom. Drives the
+  // jump-to-latest button: in a long conversation, scrolling up to re-read
+  // older turns should not strand the user away from the newest reply.
+  let atBottom = $state(true);
+  function onMessagesScroll() {
+    if (!scrollEl) return;
+    atBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 80;
+  }
+
   async function submit() {
     const text = draft.trim();
     const mentions = $attached;
@@ -310,7 +319,7 @@
       {/if}
     </div>
   {/if}
-  <div class="messages" bind:this={scrollEl}>
+  <div class="messages" bind:this={scrollEl} onscroll={onMessagesScroll}>
     {#if $messages.length === 0}
       <div class="empty-state">
         <MessageSquare size={28} strokeWidth={1.5} />
@@ -429,6 +438,17 @@
     {/if}
   </div>
 
+  {#if !atBottom && $messages.length > 0}
+    <button
+      class="jump-bottom"
+      aria-label="Jump to latest"
+      title="Jump to latest"
+      onclick={scrollToBottom}
+    >
+      <ChevronDown size={18} strokeWidth={2} />
+    </button>
+  {/if}
+
   <div class="composer-wrap">
     {#if $attached.length > 0}
       <div class="attached">
@@ -505,6 +525,31 @@
     min-width: 0;
     height: 100%;
     min-height: 0;
+    position: relative;
+  }
+  /* Floating jump-to-latest, anchored above the composer. Shown only when the
+     user has scrolled up from the bottom of a conversation. */
+  .jump-bottom {
+    position: absolute;
+    right: 1.25rem;
+    bottom: 4.75rem;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: var(--color-bg-card);
+    color: color-mix(in srgb, var(--foreground) 75%, transparent);
+    box-shadow: var(--shadow-lg, 0 4px 12px rgba(0, 0, 0, 0.25));
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+  }
+  .jump-bottom:hover {
+    background: color-mix(in srgb, var(--foreground) 8%, var(--color-bg-card));
+    color: var(--foreground);
   }
   .context-bar {
     display: flex;
