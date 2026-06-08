@@ -222,6 +222,17 @@
     scrollToBottom();
   }
 
+  // Regenerate, scrolling the fresh answer into view the same way `submit`
+  // does: once when the placeholder appears, once when the answer lands.
+  async function doRegenerate() {
+    const turn = regenerate();
+    await tick();
+    scrollToBottom();
+    await turn;
+    await tick();
+    scrollToBottom();
+  }
+
   function onKeydown(e: KeyboardEvent) {
     // While the `@` picker is open, the arrow keys / Enter / Escape drive it
     // instead of the composer, so a mention is chosen without leaving the input.
@@ -332,7 +343,7 @@
                   aria-label="Regenerate response"
                   title="Regenerate response"
                   disabled={$busy}
-                  onclick={() => regenerate()}
+                  onclick={doRegenerate}
                 >
                   <RotateCcw size={13} strokeWidth={2} /><span>Regenerate</span>
                 </button>
