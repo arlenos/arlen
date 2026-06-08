@@ -79,7 +79,7 @@ tokio = { version = "1", features = ["rt", "macros"] }
 # Output config types shared with the compositor. We reuse the
 # canonical OutputConfig + TOML schema (D0) so the apply path round-
 # trips through the same struct shape that lands on disk.
-cosmic-comp-config = { path = "../../compositor/cosmic-comp-config", features = ["output"] }
+cosmic-comp-config = { git = "https://github.com/arlenos/compositor", features = ["output"] }
 
 # Audit ledger read API. The AI Activity view reads the Structural
 # tier over the daemon's read socket via the shared ReadClient; the
