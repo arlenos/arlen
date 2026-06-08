@@ -95,6 +95,39 @@ fn parse_meminfo(text: &str) -> (Option<u64>, Option<u64>) {
     (total, available)
 }
 
+/// System uptime since boot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Uptime {
+    /// Whole seconds since boot.
+    pub seconds: u64,
+    /// A coarse human-readable form, e.g. `"3d 4h 12m"`.
+    pub human: String,
+}
+
+/// Parse the uptime in seconds: the first whitespace-separated float of
+/// `/proc/uptime` (`"12345.67 9876.54"`, uptime then idle). Pure.
+fn parse_uptime(text: &str) -> Option<f64> {
+    text.split_whitespace().next()?.parse().ok()
+}
+
+/// Format whole seconds as a coarse `"Nd Nh Nm"` string. Days and hours are
+/// shown only when non-zero; minutes are always shown, so an uptime under a
+/// minute reads as `"0m"`. Pure.
+pub fn format_uptime(seconds: u64) -> String {
+    let days = seconds / 86_400;
+    let hours = (seconds % 86_400) / 3_600;
+    let mins = (seconds % 3_600) / 60;
+    let mut parts = Vec::new();
+    if days > 0 {
+        parts.push(format!("{days}d"));
+    }
+    if hours > 0 {
+        parts.push(format!("{hours}h"));
+    }
+    parts.push(format!("{mins}m"));
+    parts.join(" ")
+}
+
 /// Disk usage of one filesystem.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DiskUsage {
@@ -207,6 +240,18 @@ impl ProcReader {
             mem_available_kb: available.unwrap_or(0),
         }
     }
+
+    /// System uptime, or `None` if `/proc/uptime` is unreadable or unparseable.
+    pub fn uptime(&self) -> Option<Uptime> {
+        let secs = std::fs::read_to_string(self.root.join("uptime"))
+            .ok()
+            .and_then(|t| parse_uptime(&t))?;
+        let seconds = secs.max(0.0) as u64;
+        Some(Uptime {
+            seconds,
+            human: format_uptime(seconds),
+        })
+    }
 }
 
 impl Default for ProcReader {
@@ -251,6 +296,36 @@ mod tests {
         let text = "MemTotal:       16334072 kB\nMemFree:  100 kB\nMemAvailable:    9000000 kB\n";
         assert_eq!(parse_meminfo(text), (Some(16_334_072), Some(9_000_000)));
         assert_eq!(parse_meminfo("nothing useful"), (None, None));
+    }
+
+    #[test]
+    fn parse_uptime_reads_the_first_float() {
+        assert_eq!(parse_uptime("12345.67 9876.54"), Some(12345.67));
+        assert_eq!(parse_uptime("bad"), None);
+    }
+
+    #[test]
+    fn format_uptime_is_coarse_and_always_shows_minutes() {
+        assert_eq!(format_uptime(0), "0m");
+        assert_eq!(format_uptime(59), "0m");
+        assert_eq!(format_uptime(90), "1m");
+        assert_eq!(format_uptime(3 * 3600 + 12 * 60), "3h 12m");
+        assert_eq!(format_uptime(2 * 86_400 + 4 * 3600 + 5 * 60), "2d 4h 5m");
+        // A whole-hour boundary still shows the (zero) minutes.
+        assert_eq!(format_uptime(3600), "1h 0m");
+    }
+
+    #[test]
+    fn reader_reads_uptime_from_proc() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::write(root.join("uptime"), "9000.42 5000.00\n").unwrap();
+        let up = ProcReader::with_root(root).uptime().unwrap();
+        assert_eq!(up.seconds, 9000);
+        assert_eq!(up.human, "2h 30m");
+        // No uptime file -> None.
+        let tmp2 = tempfile::tempdir().unwrap();
+        assert!(ProcReader::with_root(tmp2.path()).uptime().is_none());
     }
 
     #[test]

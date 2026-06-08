@@ -1,11 +1,12 @@
 //! System Monitor read-only MCP server (`mcp-server-layer.md` §4.1, §2 system
 //! server, default-permit).
 //!
-//! Exposes two read-only, argument-free tools to the AI daemon over MCP:
-//! `list_processes` (the currently-active processes) and `resource_usage`
-//! (load average and memory). It reads `/proc` directly and holds no state.
-//! Like the Knowledge and File Manager servers it is a thin, separate process
-//! so the `rmcp` surface stays out of the apps.
+//! Exposes read-only, argument-free tools to the AI daemon over MCP:
+//! `list_processes` (the currently-active processes), `resource_usage`
+//! (load average and memory), `disk_usage` (root filesystem), and `uptime`
+//! (seconds since boot). It reads `/proc` directly and holds no state. Like the
+//! Knowledge and File Manager servers it is a thin, separate process so the
+//! `rmcp` surface stays out of the apps.
 //!
 //! There is no per-path scope to enforce: this is the same system-wide
 //! information `ps`/`top`/`uptime` show any user. Read-only means there is no
@@ -39,6 +40,9 @@ pub const RES_TOOL: &str = "resource_usage";
 
 /// Disk-usage tool (root filesystem total/available).
 pub const DISK_TOOL: &str = "disk_usage";
+
+/// Uptime tool (seconds since boot plus a human-readable form).
+pub const UPTIME_TOOL: &str = "uptime";
 
 /// Per-call wall budget. `/proc` reads are local and fast, so this is just a
 /// backstop against a pathological stall; on timeout the call returns a tool
@@ -75,7 +79,7 @@ impl SystemMonitorMcp {
 impl ServerHandler for SystemMonitorMcp {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
-            "Read-only system status. 'list_processes' returns the currently-active processes (name + state); 'resource_usage' returns the load average and memory. The same information ps/top/uptime show; no arguments.",
+            "Read-only system status. 'list_processes' returns the currently-active processes (name + state); 'resource_usage' returns the load average and memory; 'disk_usage' returns the root filesystem total/available; 'uptime' returns seconds since boot plus a human-readable form. The same information ps/top/df/uptime show; no arguments.",
         )
     }
 
@@ -97,6 +101,10 @@ impl ServerHandler for SystemMonitorMcp {
                 DISK_TOOL,
                 "Return root filesystem disk usage (total/available bytes). Read-only, no arguments.",
             ),
+            Self::no_arg_tool(
+                UPTIME_TOOL,
+                "Return system uptime (seconds since boot and a human-readable form). Read-only, no arguments.",
+            ),
         ]))
     }
 
@@ -106,7 +114,7 @@ impl ServerHandler for SystemMonitorMcp {
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let tool = request.name.to_string();
-        if tool != LIST_TOOL && tool != RES_TOOL && tool != DISK_TOOL {
+        if tool != LIST_TOOL && tool != RES_TOOL && tool != DISK_TOOL && tool != UPTIME_TOOL {
             return Err(McpError::invalid_request(format!("unknown tool: {tool}"), None));
         }
 
@@ -117,6 +125,7 @@ impl ServerHandler for SystemMonitorMcp {
             match tool.as_str() {
                 LIST_TOOL => serde_json::to_value(reader.list_processes()),
                 RES_TOOL => serde_json::to_value(reader.resource_usage()),
+                UPTIME_TOOL => serde_json::to_value(reader.uptime()),
                 _ => serde_json::to_value(sysinfo::disk_usage("/")),
             }
         });
