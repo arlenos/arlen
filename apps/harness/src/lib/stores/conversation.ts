@@ -297,8 +297,13 @@ export async function regenerate(): Promise<void> {
   if (!plan) return;
 
   const pendingId = nextMsgId++;
-  updateSession(id, () => [
-    ...plan.keep,
+  // Keep the existing transcript and append a placeholder, rather than
+  // truncating to `plan.keep` up front. The previous answer (and its tool
+  // calls / trace) stay visible and persisted until a replacement actually
+  // succeeds, so a daemon error, a hang, or the app closing mid-regenerate
+  // never loses it (the disk save only drops the pending placeholder).
+  updateSession(id, (m) => [
+    ...m,
     { id: pendingId, role: "assistant", text: "", pending: true },
   ]);
   busy.set(true);
@@ -311,20 +316,23 @@ export async function regenerate(): Promise<void> {
       toolCalls: ToolCall[];
       traceUnavailable: boolean;
     }>("ai_query", { prompt: plan.prompt });
-    updateSession(id, (m) =>
-      m.map((msg) =>
-        msg.id === pendingId
-          ? {
-              ...msg,
-              text: reply.answer,
-              pending: false,
-              toolCalls: reply.toolCalls,
-              traceUnavailable: reply.traceUnavailable,
-            }
-          : msg,
-      ),
-    );
+    // Success: atomically swap to the kept prefix plus the fresh answer,
+    // dropping the old response and the placeholder in one update.
+    updateSession(id, () => [
+      ...plan.keep,
+      {
+        id: pendingId,
+        role: "assistant",
+        text: reply.answer,
+        pending: false,
+        toolCalls: reply.toolCalls,
+        traceUnavailable: reply.traceUnavailable,
+      },
+    ]);
   } catch (e) {
+    // Failure: keep the old response, turn only the placeholder into an error
+    // turn. The previous answer is preserved above it, and the trailing error
+    // is itself regeneratable, so the user can retry.
     updateSession(id, (m) =>
       m.map((msg) =>
         msg.id === pendingId

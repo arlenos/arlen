@@ -38,6 +38,14 @@ describe("conversationToMarkdown", () => {
     expect(md).toBe("**You:**\n\nSummarise these\n\n_Attached: a.md, b.md_");
   });
 
+  it("keeps an attachment-only user turn (no typed text)", () => {
+    const md = conversationToMarkdown([
+      msg({ id: 1, role: "user", text: "", mentions: ["report.md"] }),
+      msg({ id: 2, role: "assistant", text: "Summary." }),
+    ]);
+    expect(md).toBe("**You:**\n\n_Attached: report.md_\n\n**Assistant:**\n\nSummary.");
+  });
+
   it("is empty for an empty or all-pending conversation", () => {
     expect(conversationToMarkdown([])).toBe("");
     expect(conversationToMarkdown([msg({ id: 1, role: "assistant", text: "", pending: true })])).toBe("");

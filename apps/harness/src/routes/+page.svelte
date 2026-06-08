@@ -14,7 +14,7 @@
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2, Wrench, Cpu, File as FileIcon, Folder, Paperclip, X, Copy, Check, RotateCcw } from "@lucide/svelte";
-  import { messages, busy, send, regenerate, initSessions, type MentionContent } from "$lib/stores/conversation";
+  import { messages, busy, send, regenerate, initSessions, type MentionContent, type Message } from "$lib/stores/conversation";
   import { planRegenerate } from "$lib/regenerate";
   import ConversationRail from "$lib/components/ConversationRail.svelte";
   import { renderMarkdown } from "$lib/markdown";
@@ -305,12 +305,44 @@
       </div>
     {:else}
       <div class="thread">
+        {#snippet messageActions(msg: Message)}
+          {#if msg.text}
+            <div class="msg-actions">
+              <button
+                class="msg-copy"
+                aria-label="Copy message"
+                title="Copy message"
+                onclick={() => copyMessage(msg.id, msg.text)}
+              >
+                {#if copiedId === msg.id}
+                  <Check size={13} strokeWidth={2} /><span>Copied</span>
+                {:else}
+                  <Copy size={13} strokeWidth={2} /><span>Copy</span>
+                {/if}
+              </button>
+              {#if msg.id === lastMessageId && canRegenerate}
+                <button
+                  class="msg-copy"
+                  aria-label="Regenerate response"
+                  title="Regenerate response"
+                  disabled={$busy}
+                  onclick={() => regenerate()}
+                >
+                  <RotateCcw size={13} strokeWidth={2} /><span>Regenerate</span>
+                </button>
+              {/if}
+            </div>
+          {/if}
+        {/snippet}
         {#each $messages as msg (msg.id)}
           <div class="msg msg-{msg.role}">
             {#if msg.role === "error"}
-              <div class="bubble bubble-error">
-                <AlertCircle size={14} strokeWidth={2} />
-                <span>{msg.text}</span>
+              <div class="msg-body">
+                <div class="bubble bubble-error">
+                  <AlertCircle size={14} strokeWidth={2} />
+                  <span>{msg.text}</span>
+                </div>
+                {@render messageActions(msg)}
               </div>
             {:else if msg.pending}
               <div class="bubble bubble-assistant">
@@ -364,33 +396,7 @@
                     {/each}
                   </div>
                 {/if}
-                {#if msg.text}
-                  <div class="msg-actions">
-                    <button
-                      class="msg-copy"
-                      aria-label="Copy message"
-                      title="Copy message"
-                      onclick={() => copyMessage(msg.id, msg.text)}
-                    >
-                      {#if copiedId === msg.id}
-                        <Check size={13} strokeWidth={2} /><span>Copied</span>
-                      {:else}
-                        <Copy size={13} strokeWidth={2} /><span>Copy</span>
-                      {/if}
-                    </button>
-                    {#if msg.id === lastMessageId && canRegenerate}
-                      <button
-                        class="msg-copy"
-                        aria-label="Regenerate response"
-                        title="Regenerate response"
-                        disabled={$busy}
-                        onclick={() => regenerate()}
-                      >
-                        <RotateCcw size={13} strokeWidth={2} /><span>Regenerate</span>
-                      </button>
-                    {/if}
-                  </div>
-                {/if}
+                {@render messageActions(msg)}
               </div>
             {/if}
           </div>
