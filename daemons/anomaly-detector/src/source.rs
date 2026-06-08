@@ -479,8 +479,10 @@ mod tests {
 
     #[tokio::test]
     async fn tamper_flag_on_a_poll_raises_a_critical_alert() {
-        let mut state = State::default();
-        state.bootstrapped = true; // past bootstrap
+        let state = State {
+            bootstrapped: true, // past bootstrap
+            ..Default::default()
+        };
         let src = MockSource::new(vec![page(vec![], true)]);
         let mut d = detector(state, DetectorConfig::default(), src, 0);
         d.poll().await;
@@ -492,8 +494,10 @@ mod tests {
 
     #[tokio::test]
     async fn graph_rate_limited_event_raises_a_rate_limit_alert() {
-        let mut state = State::default();
-        state.bootstrapped = true;
+        let state = State {
+            bootstrapped: true,
+            ..Default::default()
+        };
         let mut d = detector(state, DetectorConfig::default(), MockSource::new(vec![]), 0);
         d.handle_event("graph.rate_limited", b"com.evil.app").await;
         assert!(
@@ -516,8 +520,10 @@ mod tests {
             warmup_entries: 1,
             ..DetectorConfig::default()
         };
-        let mut state = State::default();
-        state.hwm_index = 2; // mid-bootstrap progress, bootstrapped == false
+        let state = State {
+            hwm_index: 2, // mid-bootstrap progress, bootstrapped == false
+            ..Default::default()
+        };
         // The unprocessed historical tail includes a never-seen type.
         let src = MockSource::new(vec![page(
             vec![entry(2, AuditKind::Query, 3000, &["HistoricalType"])],
@@ -540,9 +546,11 @@ mod tests {
 
     #[tokio::test]
     async fn a_read_error_does_not_advance_or_crash() {
-        let mut state = State::default();
-        state.bootstrapped = true;
-        state.hwm_index = 7;
+        let state = State {
+            bootstrapped: true,
+            hwm_index: 7,
+            ..Default::default()
+        };
         let src = MockSource::new(vec![Err(ReadClientError::Transport("down".into()))]);
         let mut d = detector(state, DetectorConfig::default(), src, 0);
         d.poll().await; // must not panic
