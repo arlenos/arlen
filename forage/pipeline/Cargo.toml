@@ -1,0 +1,26 @@
+[package]
+name = "arlen-forage-pipeline"
+version = "0.1.0"
+edition = "2021"
+description = "Forage build pipeline: compose fetch -> extract -> build -> collect -> sign into a .lunpkg"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+arlen-forage-recipe = { path = "../../contracts/forage-recipe" }
+arlen-forage-fetch = { path = "../fetch" }
+arlen-forage-store = { path = "../store" }
+arlen-forage-extract = { path = "../extract" }
+arlen-forage-build = { path = "../build" }
+arlen-forage-package = { path = "../package" }
+ed25519-dalek = { version = "2", features = ["std"] }
+thiserror = "2"
+tempfile = "3"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
+tar = "0.4"
+async-trait = "0.1"
+
+[workspace]
