@@ -116,6 +116,9 @@ fn build_client(
             env!("CARGO_PKG_VERSION"),
             module_version,
         ))
+        // Ignore environment proxies: a proxy would be contacted without the
+        // SSRF resolve-and-pin check, bypassing the destination guard.
+        .no_proxy()
         .https_only(true);
 
     if let Some((host, addr)) = pin_resolution {
