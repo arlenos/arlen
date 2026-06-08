@@ -44,6 +44,9 @@ pub const DISK_TOOL: &str = "disk_usage";
 /// Uptime tool (seconds since boot plus a human-readable form).
 pub const UPTIME_TOOL: &str = "uptime";
 
+/// The OS-identity tool name (kernel, release, hostname).
+pub const OS_TOOL: &str = "os_info";
+
 /// Per-call wall budget. `/proc` reads are local and fast, so this is just a
 /// backstop against a pathological stall; on timeout the call returns a tool
 /// error rather than hanging the caller.
@@ -105,6 +108,10 @@ impl ServerHandler for SystemMonitorMcp {
                 UPTIME_TOOL,
                 "Return system uptime (seconds since boot and a human-readable form). Read-only, no arguments.",
             ),
+            Self::no_arg_tool(
+                OS_TOOL,
+                "Return OS identity: kernel name, kernel release and hostname. Read-only, no arguments.",
+            ),
         ]))
     }
 
@@ -114,7 +121,12 @@ impl ServerHandler for SystemMonitorMcp {
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let tool = request.name.to_string();
-        if tool != LIST_TOOL && tool != RES_TOOL && tool != DISK_TOOL && tool != UPTIME_TOOL {
+        if tool != LIST_TOOL
+            && tool != RES_TOOL
+            && tool != DISK_TOOL
+            && tool != UPTIME_TOOL
+            && tool != OS_TOOL
+        {
             return Err(McpError::invalid_request(format!("unknown tool: {tool}"), None));
         }
 
@@ -126,6 +138,7 @@ impl ServerHandler for SystemMonitorMcp {
                 LIST_TOOL => serde_json::to_value(reader.list_processes()),
                 RES_TOOL => serde_json::to_value(reader.resource_usage()),
                 UPTIME_TOOL => serde_json::to_value(reader.uptime()),
+                OS_TOOL => serde_json::to_value(reader.os_info()),
                 _ => serde_json::to_value(sysinfo::disk_usage("/")),
             }
         });
