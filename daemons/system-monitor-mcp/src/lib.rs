@@ -47,6 +47,9 @@ pub const UPTIME_TOOL: &str = "uptime";
 /// The OS-identity tool name (kernel, release, hostname).
 pub const OS_TOOL: &str = "os_info";
 
+/// The network-interfaces tool name (names + cumulative rx/tx bytes).
+pub const NET_TOOL: &str = "network_interfaces";
+
 /// Per-call wall budget. `/proc` reads are local and fast, so this is just a
 /// backstop against a pathological stall; on timeout the call returns a tool
 /// error rather than hanging the caller.
@@ -112,6 +115,10 @@ impl ServerHandler for SystemMonitorMcp {
                 OS_TOOL,
                 "Return OS identity: kernel name, kernel release and hostname. Read-only, no arguments.",
             ),
+            Self::no_arg_tool(
+                NET_TOOL,
+                "List network interfaces with cumulative received/transmitted bytes. Read-only, no arguments.",
+            ),
         ]))
     }
 
@@ -126,6 +133,7 @@ impl ServerHandler for SystemMonitorMcp {
             && tool != DISK_TOOL
             && tool != UPTIME_TOOL
             && tool != OS_TOOL
+            && tool != NET_TOOL
         {
             return Err(McpError::invalid_request(format!("unknown tool: {tool}"), None));
         }
@@ -139,6 +147,7 @@ impl ServerHandler for SystemMonitorMcp {
                 RES_TOOL => serde_json::to_value(reader.resource_usage()),
                 UPTIME_TOOL => serde_json::to_value(reader.uptime()),
                 OS_TOOL => serde_json::to_value(reader.os_info()),
+                NET_TOOL => serde_json::to_value(reader.network_interfaces()),
                 _ => serde_json::to_value(sysinfo::disk_usage("/")),
             }
         });
