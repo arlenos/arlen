@@ -9,6 +9,7 @@ path = "src/lib.rs"
 
 [dependencies]
 arlen-forage-recipe = { path = "../../contracts/forage-recipe" }
+arlen-confiner = { path = "../../sdk/confiner" }
 thiserror = "2"
 
 [dev-dependencies]
