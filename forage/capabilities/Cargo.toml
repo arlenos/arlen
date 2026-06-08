@@ -1,0 +1,17 @@
+[package]
+name = "arlen-forage-capabilities"
+version = "0.1.0"
+edition = "2021"
+description = "Map a forage recipe's [capabilities] to an enforceable PermissionProfile"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+arlen-forage-recipe = { path = "../../contracts/forage-recipe" }
+arlen-permissions = { path = "../../sdk/permissions" }
+
+[dev-dependencies]
+toml = "0.8"
+
+[workspace]
