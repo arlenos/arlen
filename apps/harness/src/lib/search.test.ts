@@ -30,4 +30,21 @@ describe("sessionMatches", () => {
     const s = session("Trip planning", ["Book a hotel in Vienna"]);
     expect(sessionMatches(s, "kubernetes")).toBe(false);
   });
+
+  it("does not throw on a corrupt persisted record", () => {
+    // Old/partial records from the schema-agnostic sessions file: a message
+    // with a non-string text, a non-array messages, a non-string title.
+    const corrupt = {
+      id: "x",
+      title: undefined,
+      createdAt: 0,
+      messages: [{ id: 1, role: "user", text: undefined }],
+    } as unknown as Session;
+    expect(() => sessionMatches(corrupt, "hi")).not.toThrow();
+    expect(sessionMatches(corrupt, "hi")).toBe(false);
+
+    const noArray = { id: "y", title: "ok", createdAt: 0, messages: null } as unknown as Session;
+    expect(() => sessionMatches(noArray, "ok")).not.toThrow();
+    expect(sessionMatches(noArray, "ok")).toBe(true); // title still matches
+  });
 });

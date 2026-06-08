@@ -8,6 +8,13 @@ import type { Session } from "$lib/stores/conversation";
 export function sessionMatches(session: Session, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (q.length === 0) return true;
-  if (session.title.toLowerCase().includes(q)) return true;
-  return session.messages.some((m) => m.text.toLowerCase().includes(q));
+  // The sessions file is persisted as schema-agnostic JSON, so an old or
+  // partially corrupted record may carry a non-string title or a message with
+  // a missing/non-string `text`, or even a non-array `messages`. Search must
+  // not throw over that (it would break the rail for every session), so coerce
+  // defensively and treat anything unexpected as empty.
+  const text = (v: unknown): string => (typeof v === "string" ? v : "");
+  if (text(session.title).toLowerCase().includes(q)) return true;
+  const messages = Array.isArray(session.messages) ? session.messages : [];
+  return messages.some((m) => text(m?.text).toLowerCase().includes(q));
 }

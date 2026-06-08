@@ -68,6 +68,10 @@
   // dead box where every send would just fail; a notice points at Settings.
   // While capability is still loading (null) the composer stays usable.
   const aiDisabled = $derived(capability !== null && !capability.enabled);
+  // AI is confirmed usable: capability has loaded and the master switch is on.
+  // Regenerate (which mutates an existing transcript) requires this, so it
+  // never fires while AI is disabled OR still unknown.
+  const aiReady = $derived(capability?.enabled === true);
 
   // Copy a message's raw text to the clipboard. Copies the source the user sees
   // (the markdown for an assistant turn, the typed text for a user turn), not
@@ -225,6 +229,9 @@
   // Regenerate, scrolling the fresh answer into view the same way `submit`
   // does: once when the placeholder appears, once when the answer lands.
   async function doRegenerate() {
+    // No AI action may mutate the transcript unless AI is confirmed usable.
+    // The button is already hidden otherwise; this guards the path too.
+    if (!aiReady) return;
     const turn = regenerate();
     await tick();
     scrollToBottom();
@@ -337,7 +344,7 @@
                   <Copy size={13} strokeWidth={2} /><span>Copy</span>
                 {/if}
               </button>
-              {#if msg.id === lastMessageId && canRegenerate}
+              {#if msg.id === lastMessageId && canRegenerate && aiReady}
                 <button
                   class="msg-copy"
                   aria-label="Regenerate response"
