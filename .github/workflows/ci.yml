@@ -51,7 +51,7 @@ jobs:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          RUST_ALL='["contracts/audit-proto","contracts/notification-proto","contracts/modulesd-proto","contracts/graph-schema","contracts/forage-recipe","sdk","ai","daemons/event-bus","daemons/knowledge","daemons/notification-daemon","daemons/audit-daemon","daemons/anomaly-detector","daemons/modulesd","daemons/installd","daemons/knowledge-mcp","daemons/file-manager-mcp","daemons/system-monitor-mcp","daemons/xdg-portal","forage","forage/store","forage/fetch","forage/build","forage/package","forage/extract","forage/pipeline","forage/signing","forage/patch","forage/capabilities","forage/cookbook-index"]'
+          RUST_ALL='["contracts/audit-proto","contracts/notification-proto","contracts/modulesd-proto","contracts/graph-schema","contracts/forage-recipe","sdk","ai","daemons/event-bus","daemons/knowledge","daemons/notification-daemon","daemons/audit-daemon","daemons/anomaly-detector","daemons/modulesd","daemons/installd","daemons/knowledge-mcp","daemons/file-manager-mcp","daemons/system-monitor-mcp","daemons/xdg-portal","forage","forage/store","forage/fetch","forage/build","forage/package","forage/extract","forage/pipeline","forage/signing","forage/patch","forage/capabilities","forage/cookbook-index","forage/cookbook-sign"]'
           FRONT_ALL='["apps/settings","apps/harness","apps/desktop-shell","sdk/ui-kit"]'
 
           if [ "$EVENT_NAME" = "pull_request" ]; then
@@ -131,10 +131,12 @@ jobs:
             /opt/hostedtoolcache/CodeQL /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
           df -h /
       - name: system deps
+        # cmake + nasm build AWS-LC, which aws-lc-rs (pulled in by the tough TUF
+        # library, used by forage/cookbook-sign) compiles from C source.
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            protobuf-compiler build-essential pkg-config \
+            protobuf-compiler build-essential pkg-config cmake nasm \
             libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
             libssl-dev libdbus-1-dev fuse3 libfuse3-dev
       - uses: dtolnay/rust-toolchain@stable
