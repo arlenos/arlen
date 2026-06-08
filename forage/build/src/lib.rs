@@ -88,6 +88,9 @@ pub enum BuildError {
         /// Why it failed (spawn error or non-zero exit).
         reason: String,
     },
+    /// Constructing the confinement for a confined step failed.
+    #[error("confinement: {0}")]
+    Confinement(String),
 }
 
 /// Environment variables the runner controls; a recipe may not set them
@@ -339,6 +342,84 @@ impl StepRunner for ProcessRunner {
     }
 }
 
+/// A [`StepRunner`] that runs each step inside the shared bubblewrap confiner's
+/// build profile (`arlen-confiner`): the pinned base platform as a read-only
+/// `/`, the source root (the build dir) writable at the fixed `/build`, no
+/// network, a deterministic environment. Build state persists between steps
+/// through the read-write `/build` bind (each step is its own `bwrap`
+/// invocation, so a step's `workdir` becomes the in-sandbox working directory).
+///
+/// [`confined_argv`](ConfinedStepRunner::confined_argv) is the pure, tested
+/// argument-vector construction. `run` spawns `bwrap` with it — that spawn is
+/// the on-kernel part (it needs `bwrap` and unprivileged user namespaces) and
+/// is verified on a real machine, not in unit tests.
+///
+/// Not yet attached: the build-appropriate **seccomp** allowlist (the next
+/// hardening layer, passed as `bwrap --seccomp <fd>`); until then confinement
+/// is by namespaces + `no_new_privs` + the read-only/no-network mounts.
+#[derive(Debug, Clone)]
+pub struct ConfinedStepRunner {
+    /// The pinned base platform mounted read-only as `/` (roadmap D2).
+    base_platform: std::path::PathBuf,
+    /// The `bwrap` binary (default `bwrap` from PATH).
+    bwrap: std::path::PathBuf,
+}
+
+impl ConfinedStepRunner {
+    /// A confined runner using `base_platform` as the read-only root and the
+    /// `bwrap` binary from PATH.
+    pub fn new(base_platform: impl Into<std::path::PathBuf>) -> Self {
+        ConfinedStepRunner {
+            base_platform: base_platform.into(),
+            bwrap: std::path::PathBuf::from("bwrap"),
+        }
+    }
+
+    /// Build the `bwrap` argument vector (everything after the `bwrap` program)
+    /// for `cmd` against the build directory `source_root`: the confiner's build
+    /// profile, the per-step working directory under `/build`, then
+    /// `-- <tool> <args>`. Pure and deterministic.
+    pub fn confined_argv(
+        &self,
+        cmd: &BuildCommand,
+        source_root: &Path,
+    ) -> Result<Vec<String>, BuildError> {
+        let conf = arlen_confiner::build_profile(&self.base_platform, source_root, cmd.env.clone())
+            .map_err(|e| BuildError::Confinement(e.to_string()))?;
+        // The step's workdir is relative and contained (validated at planning);
+        // map it under the fixed in-sandbox build mount.
+        let chdir = match &cmd.workdir {
+            Some(w) => format!("{}/{}", arlen_confiner::BUILD_MOUNT, w),
+            None => arlen_confiner::BUILD_MOUNT.to_string(),
+        };
+        let mut argv = conf.with_chdir(chdir).bwrap_args();
+        argv.push("--".into());
+        argv.push(cmd.tool.clone());
+        argv.extend(cmd.args.iter().cloned());
+        Ok(argv)
+    }
+}
+
+impl StepRunner for ConfinedStepRunner {
+    fn run(&self, cmd: &BuildCommand, source_root: &Path) -> Result<(), BuildError> {
+        let argv = self.confined_argv(cmd, source_root)?;
+        let status = std::process::Command::new(&self.bwrap)
+            .args(&argv)
+            .status()
+            .map_err(|e| BuildError::CommandFailed {
+                tool: cmd.tool.clone(),
+                reason: format!("spawn bwrap: {e}"),
+            })?;
+        if !status.success() {
+            return Err(BuildError::CommandFailed {
+                tool: cmd.tool.clone(),
+                reason: format!("confined exit {status}"),
+            });
+        }
+        Ok(())
+    }
+}
+
 /// Convenience: the recipe step list as `BuildStep`s, for callers assembling a
 /// custom build programmatically.
 pub fn steps_to_commands(
@@ -545,6 +626,49 @@ mod tests {
                 Err(BuildError::UnsupportedSystem(_))
             ));
         }
+    }
+
+    #[test]
+    fn confined_argv_wraps_the_step_in_the_build_profile() {
+        let runner = ConfinedStepRunner::new("/opt/arlen/platform");
+        let cmd = BuildCommand {
+            tool: "cargo".into(),
+            args: vec!["build".into(), "--release".into()],
+            workdir: Some("crate".into()),
+            env: BTreeMap::from([("SOURCE_DATE_EPOCH".to_string(), "0".to_string())]),
+        };
+        let argv = runner.confined_argv(&cmd, Path::new("/var/tmp/work")).unwrap();
+        // Confinement flags from the build profile.
+        assert!(argv.contains(&"--unshare-net".to_string()));
+        // Base platform read-only at /, build dir read-write at the fixed /build.
+        assert!(argv
+            .windows(3)
+            .any(|w| w[0] == "--ro-bind" && w[1] == "/opt/arlen/platform" && w[2] == "/"));
+        assert!(argv
+            .windows(3)
+            .any(|w| w[0] == "--bind" && w[1] == "/var/tmp/work" && w[2] == "/build"));
+        // The step's workdir lands under /build.
+        let chdir = argv.iter().position(|a| a == "--chdir").unwrap();
+        assert_eq!(argv[chdir + 1], "/build/crate");
+        // The tool + args follow a `--` separator, in order, at the end.
+        let sep = argv.iter().position(|a| a == "--").unwrap();
+        assert_eq!(&argv[sep + 1..], &["cargo", "build", "--release"]);
+    }
+
+    #[test]
+    fn confined_argv_rejects_a_build_dir_inside_the_platform() {
+        let runner = ConfinedStepRunner::new("/opt/arlen/platform");
+        let cmd = BuildCommand {
+            tool: "make".into(),
+            args: vec![],
+            workdir: None,
+            env: BTreeMap::new(),
+        };
+        // Overlap is rejected by the confiner and surfaced as a build error.
+        assert!(matches!(
+            runner.confined_argv(&cmd, Path::new("/opt/arlen/platform/work")),
+            Err(BuildError::Confinement(_))
+        ));
     }
 
     #[test]
