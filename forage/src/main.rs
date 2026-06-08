@@ -229,10 +229,29 @@ async fn install_by_name(name: String) {
         std::process::exit(1);
     }
 
-    // The cookbook's capability cap (resolved.capability_cap) is a curated upper
-    // bound the recipe's declared capabilities must stay within. Enforcing it
-    // here is a follow-up (it needs the capability subset check); the recipe's
-    // own declared capabilities still gate at install and run time meanwhile.
+    // Enforce the cookbook's capability cap: the recipe may declare at most the
+    // capabilities the cookbook signed (section 7a). A recipe exceeding the
+    // curated upper bound is refused. When the cookbook set no cap, the recipe's
+    // own declaration stands (and still gates downstream at install and run).
+    if let Some(cap) = &resolved.capability_cap {
+        let recipe = match arlen_forage_recipe::parse(&String::from_utf8_lossy(&recipe_bytes)) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("{} parsing recipe: {e}", "error:".red().bold());
+                std::process::exit(1);
+            }
+        };
+        let declared = recipe.capabilities.unwrap_or_default();
+        let over = arlen_forage_capabilities::cap_exceeded(&declared, cap);
+        if !over.is_empty() {
+            eprintln!(
+                "{} recipe exceeds the cookbook's capability cap: {}",
+                "error:".red().bold(),
+                over.join(", ")
+            );
+            std::process::exit(1);
+        }
+    }
 
     // Untrusted remote recipe: never build it unconfined.
     let lunpkg = match commands::build::build_recipe_at(&recipe_path, false).await {

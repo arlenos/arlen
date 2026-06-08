@@ -311,6 +311,54 @@ fn diff_flag(
     }
 }
 
+/// The capabilities a recipe declares that exceed a curated cap.
+///
+/// A cookbook may sign a capability cap, a curated upper bound on what the
+/// in-repo recipe is allowed to declare (forage-recipes.md section 7a: "the
+/// recipe may declare at most these capabilities"). This returns every declared
+/// capability that is not within the cap; an empty result means the recipe is
+/// within bounds. The check is a strict subset (not the consent heuristic):
+/// each allowlist entry must be present in the cap, each requested boolean must
+/// be granted by the cap, and each `extra` category must match the cap's value
+/// exactly. The caller refuses an install whose recipe exceeds the cap.
+pub fn cap_exceeded(recipe: &Capabilities, cap: &Capabilities) -> Vec<String> {
+    let mut over = Vec::new();
+    for host in &recipe.network {
+        if !cap.network.contains(host) {
+            over.push(format!("network {host}"));
+        }
+    }
+    for scope in &recipe.filesystem {
+        if !cap.filesystem.contains(scope) {
+            over.push(format!("filesystem {scope}"));
+        }
+    }
+    for g in &recipe.graph {
+        if !cap.graph.contains(g) {
+            over.push(format!("graph {g}"));
+        }
+    }
+    if recipe.notifications && !cap.notifications {
+        over.push("notifications".to_string());
+    }
+    if recipe.clipboard && !cap.clipboard {
+        over.push("clipboard".to_string());
+    }
+    if recipe.audio && !cap.audio {
+        over.push("audio".to_string());
+    }
+    // An unknown `extra` category counts as exceeding unless the cap declares it
+    // with the same value: an unrecognised category cannot be proven within an
+    // upper bound, so it fails closed.
+    for (key, value) in &recipe.extra {
+        match cap.extra.get(key) {
+            Some(cap_value) if cap_value == value => {}
+            _ => over.push(format!("extra.{key}")),
+        }
+    }
+    over
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -500,5 +548,59 @@ mod tests {
         assert!(!m.profile.notifications.enabled);
         assert!(!m.profile.clipboard.read);
         assert_eq!(m.profile.info.app_id, "org.example.app");
+    }
+
+    #[test]
+    fn a_recipe_within_the_cap_does_not_exceed_it() {
+        let cap = Capabilities {
+            network: vec!["api.example.com:443".into(), "cdn.example.com:443".into()],
+            filesystem: vec!["home".into()],
+            notifications: true,
+            ..Default::default()
+        };
+        let recipe = Capabilities {
+            network: vec!["api.example.com:443".into()],
+            filesystem: vec!["home".into()],
+            ..Default::default()
+        };
+        assert!(cap_exceeded(&recipe, &cap).is_empty());
+    }
+
+    #[test]
+    fn a_network_host_outside_the_cap_is_flagged() {
+        let cap = Capabilities {
+            network: vec!["api.example.com:443".into()],
+            ..Default::default()
+        };
+        let recipe = Capabilities {
+            network: vec!["api.example.com:443".into(), "evil.example.net:443".into()],
+            ..Default::default()
+        };
+        let over = cap_exceeded(&recipe, &cap);
+        assert_eq!(over, vec!["network evil.example.net:443".to_string()]);
+    }
+
+    #[test]
+    fn a_boolean_capability_the_cap_withholds_is_flagged() {
+        let cap = Capabilities::default();
+        let recipe = Capabilities {
+            clipboard: true,
+            ..Default::default()
+        };
+        assert_eq!(cap_exceeded(&recipe, &cap), vec!["clipboard".to_string()]);
+    }
+
+    #[test]
+    fn an_extra_category_absent_from_the_cap_fails_closed() {
+        let mut recipe = Capabilities::default();
+        recipe
+            .extra
+            .insert("usb".to_string(), toml::Value::Boolean(true));
+        let over = cap_exceeded(&recipe, &Capabilities::default());
+        assert_eq!(over, vec!["extra.usb".to_string()]);
+        // The same category, same value, declared in the cap is within bounds.
+        let mut cap = Capabilities::default();
+        cap.extra.insert("usb".to_string(), toml::Value::Boolean(true));
+        assert!(cap_exceeded(&recipe, &cap).is_empty());
     }
 }

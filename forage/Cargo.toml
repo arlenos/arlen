@@ -18,6 +18,7 @@ arlen-forage-fetch = { path = "fetch" }
 arlen-forage-store = { path = "store" }
 arlen-forage-signing = { path = "signing" }
 arlen-cookbook-resolve = { path = "cookbook-resolve" }
+arlen-forage-capabilities = { path = "capabilities" }
 colored = "2"
 sha2 = "0.10"
 serde = { version = "1", features = ["derive"] }
