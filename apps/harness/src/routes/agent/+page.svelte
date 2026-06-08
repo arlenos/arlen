@@ -190,11 +190,13 @@
     }
   }
 
-  // Silent background refresh of just the activity timeline (the live ledger
-  // element). No spinner flicker, and a transient poll failure keeps the
-  // current view rather than blanking it or surfacing a blip; the manual
-  // Refresh button is what reports real errors and reloads everything.
-  async function refreshActivity() {
+  // Silent background refresh of the live elements: the activity timeline (new
+  // audit entries) and the notices (anomaly warnings, which are time-sensitive
+  // and should not wait for a manual refresh). No spinner flicker, and a
+  // transient poll failure keeps the current view rather than blanking it or
+  // surfacing a blip; the manual Refresh button reports real errors and reloads
+  // everything (including the rarely-changing behaviour and capability panels).
+  async function refreshLive() {
     if (loading) return;
     try {
       activity = await invoke<ActivityPage>("ai_activity_recent", { limit: 100 });
@@ -202,17 +204,22 @@
     } catch {
       // keep the existing activity
     }
+    try {
+      notices = await invoke<Notice[]>("ai_notices");
+    } catch {
+      // keep the existing notices
+    }
   }
 
   const REFRESH_MS = 10_000;
 
   onMount(() => {
     load();
-    // Poll the activity timeline so a live system's new audit entries appear
-    // without a manual refresh. Paused while the window is hidden, so an
-    // unseen tab does not poll; the next visible tick catches up.
+    // Poll the live elements so a running system's new audit entries and
+    // anomaly notices appear without a manual refresh. Paused while the window
+    // is hidden, so an unseen tab does not poll; the next visible tick catches up.
     const timer = setInterval(() => {
-      if (!document.hidden) refreshActivity();
+      if (!document.hidden) refreshLive();
     }, REFRESH_MS);
     return () => clearInterval(timer);
   });
