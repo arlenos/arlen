@@ -25,6 +25,7 @@ use std::path::{Path, PathBuf};
 
 use arlen_forage_build::{execute_plan, plan_build, BuildContext, BuildError, StepRunner};
 use arlen_forage_extract::{extract_tar, ExtractError, ExtractLimits};
+use arlen_forage_patch::{apply_patches, PatchError, PatchLimits};
 use arlen_forage_fetch::{fetch_source, Downloader, FetchError, GitFetcher, ReleaseResolver};
 use arlen_forage_package::{
     collect_artifacts, synthesize_manifest, write_lunpkg, Collection, ManifestError, PackageError,
@@ -42,6 +43,8 @@ pub struct PipelineLimits {
     pub fetch_max_bytes: u64,
     /// Bounds on extracting the source archive.
     pub extract: ExtractLimits,
+    /// Bounds on applying source patches.
+    pub patch: PatchLimits,
 }
 
 impl Default for PipelineLimits {
@@ -49,6 +52,7 @@ impl Default for PipelineLimits {
         PipelineLimits {
             fetch_max_bytes: arlen_forage_fetch::DEFAULT_MAX_BYTES,
             extract: ExtractLimits::default(),
+            patch: PatchLimits::default(),
         }
     }
 }
@@ -74,6 +78,9 @@ pub enum PipelineError {
     /// The extract phase failed.
     #[error("extract: {0}")]
     Extract(#[from] ExtractError),
+    /// Applying a source patch failed.
+    #[error("patch: {0}")]
+    Patch(#[from] PatchError),
     /// The build phase failed.
     #[error("build: {0}")]
     Build(#[from] BuildError),
@@ -110,9 +117,14 @@ pub struct BuildOutcome {
 /// redirect-following `downloader` (`RedirectingHttpDownloader`); the plain
 /// `HttpDownloader` would fail such a fetch. The fetched source is rooted in the
 /// store under the recipe id.
+///
+/// `recipe_dir` is the directory the recipe was read from; the primary source's
+/// declared `patches` are resolved relative to it and applied to the extracted
+/// tree before the build.
 #[allow(clippy::too_many_arguments)]
 pub async fn build_recipe(
     recipe: &Recipe,
+    recipe_dir: &Path,
     store: &Store,
     downloader: &dyn Downloader,
     git_fetcher: &dyn GitFetcher,
@@ -144,6 +156,12 @@ pub async fn build_recipe(
     let build_dir = tempfile::tempdir()?;
     let source_bytes = store.read(&source_hash)?;
     extract_tar(&source_bytes, build_dir.path(), &limits.extract)?;
+
+    // 2b. Apply the primary source's declared patches (relative to the recipe
+    //     directory) to the extracted tree, before the build sees it.
+    if !source.patches.is_empty() {
+        apply_patches(build_dir.path(), recipe_dir, &source.patches, &limits.patch)?;
+    }
 
     // 3. Plan and run the build (through the runner seam) in the build dir. The
     //    physical build path is known only here, so the reproducibility
@@ -245,6 +263,24 @@ mod tests {
         }
     }
 
+    /// A runner that copies a (possibly patched) source file into the artifact
+    /// path, so the produced package reflects the source the build actually saw.
+    struct SourceCopyingRunner {
+        from: String,
+        to: String,
+    }
+    impl StepRunner for SourceCopyingRunner {
+        fn run(&self, _cmd: &BuildCommand, source_root: &Path) -> Result<(), BuildError> {
+            let content = std::fs::read(source_root.join(&self.from)).unwrap();
+            let out = source_root.join(&self.to);
+            if let Some(p) = out.parent() {
+                std::fs::create_dir_all(p).unwrap();
+            }
+            std::fs::write(out, content).unwrap();
+            Ok(())
+        }
+    }
+
     fn source_tarball() -> Vec<u8> {
         let mut b = tar::Builder::new(Vec::new());
         let mut h = tar::Header::new_gnu();
@@ -320,6 +356,7 @@ mod tests {
 
         let outcome = build_recipe(
             &recipe,
+            out.path(),
             &store,
             &CannedDownloader(tarball),
             &UnusedGit,
@@ -363,6 +400,7 @@ mod tests {
         recipe.build = None;
         let err = build_recipe(
             &recipe,
+            out.path(),
             &store,
             &CannedDownloader(Vec::new()),
             &UnusedGit,
@@ -379,6 +417,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn pipeline_applies_source_patches_before_build() {
+        let store_dir = tempfile::tempdir().unwrap();
+        let store = Store::open(store_dir.path()).unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let recipe_dir = tempfile::tempdir().unwrap();
+
+        // A source tree with a line the patch will rewrite.
+        let tarball = {
+            let mut b = tar::Builder::new(Vec::new());
+            let data = b"the source\n";
+            let mut h = tar::Header::new_gnu();
+            h.set_size(data.len() as u64);
+            h.set_mode(0o644);
+            h.set_entry_type(tar::EntryType::Regular);
+            b.append_data(&mut h, "src/main.rs", &data[..]).unwrap();
+            b.into_inner().unwrap()
+        };
+        let sha = ContentHash::of(&tarball);
+
+        std::fs::write(
+            recipe_dir.path().join("edit.patch"),
+            "--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-the source\n+patched source\n",
+        )
+        .unwrap();
+
+        let mut recipe = recipe_for(sha.as_str());
+        recipe.source[0].patches = vec![PathBuf::from("edit.patch")];
+
+        build_recipe(
+            &recipe,
+            recipe_dir.path(),
+            &store,
+            &CannedDownloader(tarball),
+            &UnusedGit,
+            &UnusedResolver,
+            &SourceCopyingRunner { from: "src/main.rs".into(), to: "app".into() },
+            &BuildContext { source_date_epoch: 0, jobs: 1, build_dir: None },
+            &SigningKey::from_bytes(&[9u8; 32]),
+            out.path(),
+            &PipelineLimits::default(),
+        )
+        .await
+        .expect("pipeline with a patch succeeds");
+
+        // The package's artifact carries the patched content, proving the patch
+        // was applied to the source the build saw.
+        let bytes = std::fs::read(out.path().join("org.example.demo.lunpkg")).unwrap();
+        let extracted = tempfile::tempdir().unwrap();
+        extract_tar(&bytes, extracted.path(), &ExtractLimits::default()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(extracted.path().join("bin/app")).unwrap(),
+            "patched source\n"
+        );
+    }
+
+    #[tokio::test]
     async fn pipeline_wires_the_real_build_dir_into_the_remap_flag() {
         // The reproducibility path-remap is only useful if the pipeline sets the
         // physical build directory (known only at run time) into the context.
@@ -392,6 +486,7 @@ mod tests {
         let captured = std::sync::Arc::new(std::sync::Mutex::new(std::collections::BTreeMap::new()));
         build_recipe(
             &recipe_for(sha.as_str()),
+            out.path(),
             &store,
             &CannedDownloader(tarball),
             &UnusedGit,
