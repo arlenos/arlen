@@ -32,6 +32,10 @@ pub struct ResourceUsage {
     /// Total and available memory, in kibibytes (as `/proc/meminfo` reports).
     pub mem_total_kb: u64,
     pub mem_available_kb: u64,
+    /// Coarse human-readable forms of the two memory figures (e.g. `"15.6 GiB"`),
+    /// so a consumer can show memory without re-deriving units from the raw kB.
+    pub mem_total_human: String,
+    pub mem_available_human: String,
 }
 
 /// The process state character from a `/proc/<pid>/stat` line. The format is
@@ -93,6 +97,19 @@ fn parse_meminfo(text: &str) -> (Option<u64>, Option<u64>) {
         }
     }
     (total, available)
+}
+
+/// Format a kibibyte count (as `/proc/meminfo` reports) as a coarse
+/// human-readable size: GiB to one decimal at or above 1 GiB, whole MiB below.
+/// Pure.
+pub fn format_kib(kib: u64) -> String {
+    const MIB: u64 = 1024;
+    const GIB: u64 = 1024 * 1024;
+    if kib >= GIB {
+        format!("{:.1} GiB", kib as f64 / GIB as f64)
+    } else {
+        format!("{} MiB", kib / MIB)
+    }
 }
 
 /// System uptime since boot.
@@ -232,12 +249,16 @@ impl ProcReader {
             .ok()
             .map(|t| parse_meminfo(&t))
             .unwrap_or((None, None));
+        let mem_total_kb = total.unwrap_or(0);
+        let mem_available_kb = available.unwrap_or(0);
         ResourceUsage {
             load1: load.0,
             load5: load.1,
             load15: load.2,
-            mem_total_kb: total.unwrap_or(0),
-            mem_available_kb: available.unwrap_or(0),
+            mem_total_kb,
+            mem_available_kb,
+            mem_total_human: format_kib(mem_total_kb),
+            mem_available_human: format_kib(mem_available_kb),
         }
     }
 
@@ -296,6 +317,14 @@ mod tests {
         let text = "MemTotal:       16334072 kB\nMemFree:  100 kB\nMemAvailable:    9000000 kB\n";
         assert_eq!(parse_meminfo(text), (Some(16_334_072), Some(9_000_000)));
         assert_eq!(parse_meminfo("nothing useful"), (None, None));
+    }
+
+    #[test]
+    fn format_kib_is_coarse_gib_or_mib() {
+        assert_eq!(format_kib(16_334_072), "15.6 GiB");
+        assert_eq!(format_kib(1024 * 1024), "1.0 GiB");
+        assert_eq!(format_kib(512 * 1024), "512 MiB");
+        assert_eq!(format_kib(0), "0 MiB");
     }
 
     #[test]
