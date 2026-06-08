@@ -12,6 +12,7 @@ arlen-forage-recipe = { path = "../../contracts/forage-recipe" }
 arlen-forage-fetch = { path = "../fetch" }
 arlen-forage-store = { path = "../store" }
 arlen-forage-extract = { path = "../extract" }
+arlen-forage-patch = { path = "../patch" }
 arlen-forage-build = { path = "../build" }
 arlen-forage-package = { path = "../package" }
 ed25519-dalek = { version = "2", features = ["std"] }
