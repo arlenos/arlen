@@ -4,6 +4,7 @@ members = [
     "arlen-input-client",
     "os-sdk",
     "module-sdk",
+    "confiner",
     "modules",
     "net-guard",
     "permissions",
