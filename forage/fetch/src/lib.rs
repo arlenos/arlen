@@ -37,6 +37,7 @@ use arlen_forage_recipe::{Source, SourceType};
 use arlen_forage_store::{ContentHash, Store, StoreError};
 use arlen_net_guard::{resolve_and_pin, GuardError};
 use async_trait::async_trait;
+use serde::Deserialize;
 
 /// Default cap on a single downloaded source artifact (1 GiB). Source tarballs
 /// are larger than module fetches; a recipe-specific override can come later.
@@ -119,12 +120,14 @@ pub trait GitFetcher: Send + Sync {
 /// against the pinned `commit`, then the deterministic archive bytes are
 /// stored and rooted with [`Store::put_referenced`] (the commit is the
 /// integrity pin, so there is no sha256 to verify the archive against).
+#[allow(clippy::too_many_arguments)]
 pub async fn fetch_source(
     source: &Source,
     owner: &str,
     store: &Store,
     downloader: &dyn Downloader,
     git_fetcher: &dyn GitFetcher,
+    release_resolver: &dyn ReleaseResolver,
     max_bytes: u64,
 ) -> Result<ContentHash, FetchError> {
     match source.source_type {
@@ -192,6 +195,36 @@ pub async fn fetch_source(
             // so a mismatch stores nothing, and roots atomically on a match.
             let hash = store.put_verified_referenced(&bytes, &expected, owner)?;
             Ok(hash)
+        }
+        SourceType::GithubRelease => {
+            // Follows tags: resolve the release (latest or the pinned tag) and
+            // the asset url via the GitHub API, then download it through the
+            // redirect-following downloader (the asset 302s to a CDN). A recipe
+            // that pins a sha256 (the cookbook path) is verified; without one
+            // (a direct install) the resolved content address is the value to
+            // lock (TOFU-then-locked, forage-recipes.md §7a/§17a, decision D3).
+            let url = source
+                .url
+                .as_deref()
+                .filter(|u| !u.is_empty())
+                .ok_or(FetchError::MissingField("url"))?;
+            let asset_template = source
+                .asset
+                .as_deref()
+                .filter(|a| !a.is_empty())
+                .ok_or(FetchError::MissingField("asset"))?;
+            let resolved = release_resolver
+                .resolve(url, source.tag.as_deref(), asset_template)
+                .await?;
+            let bytes = downloader.get(&resolved.asset_url, max_bytes).await?;
+            match source.sha256.as_deref().filter(|s| !s.is_empty()) {
+                Some(sha) => {
+                    let expected = ContentHash::parse(sha)
+                        .map_err(|_| FetchError::InvalidHash(sha.to_string()))?;
+                    Ok(store.put_verified_referenced(&bytes, &expected, owner)?)
+                }
+                None => Ok(store.put_referenced(&bytes, owner)?),
+            }
         }
         SourceType::Local => {
             // A local path (development source): not content-addressable across
@@ -668,6 +701,127 @@ impl Downloader for RedirectingHttpDownloader {
     }
 }
 
+/// A resolved GitHub release: the concrete version (the tag) and the download
+/// URL of the matched asset.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedRelease {
+    /// The release tag (substituted for `{version}`).
+    pub version: String,
+    /// The asset download URL (which typically 3xx-redirects to a CDN).
+    pub asset_url: String,
+}
+
+/// Resolves a `github-release` source to a concrete asset URL. Behind a trait
+/// so the fetch logic is tested without hitting the GitHub API.
+#[async_trait]
+pub trait ReleaseResolver: Send + Sync {
+    /// Resolve the repo at `repo_url` (a `github.com/{owner}/{repo}` URL): the
+    /// release is the pinned `tag` or the latest, and the asset is the one whose
+    /// name matches `asset_template` (with `{version}`/`{target}` substituted).
+    async fn resolve(
+        &self,
+        repo_url: &str,
+        tag: Option<&str>,
+        asset_template: &str,
+    ) -> Result<ResolvedRelease, FetchError>;
+}
+
+/// The production [`ReleaseResolver`]: queries the GitHub releases API over the
+/// SSRF-pinned, redirect-following path for a fixed platform `target`.
+#[derive(Debug, Clone)]
+pub struct GitHubReleaseResolver {
+    target: String,
+}
+
+impl GitHubReleaseResolver {
+    /// Resolve for the given platform target (used to substitute `{target}`).
+    pub fn new(target: impl Into<String>) -> Self {
+        Self {
+            target: target.into(),
+        }
+    }
+
+    /// The running platform's target string, e.g. `x86_64-linux`.
+    pub fn host_target() -> String {
+        format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS)
+    }
+}
+
+#[derive(Deserialize)]
+struct GhRelease {
+    tag_name: String,
+    #[serde(default)]
+    assets: Vec<GhAsset>,
+}
+
+#[derive(Deserialize)]
+struct GhAsset {
+    name: String,
+    browser_download_url: String,
+}
+
+#[async_trait]
+impl ReleaseResolver for GitHubReleaseResolver {
+    async fn resolve(
+        &self,
+        repo_url: &str,
+        tag: Option<&str>,
+        asset_template: &str,
+    ) -> Result<ResolvedRelease, FetchError> {
+        let (owner, repo) = parse_github_repo(repo_url)?;
+        let api = match tag {
+            Some(t) => format!("https://api.github.com/repos/{owner}/{repo}/releases/tags/{t}"),
+            None => format!("https://api.github.com/repos/{owner}/{repo}/releases/latest"),
+        };
+        // The API response is small JSON; cap it well below a source artifact.
+        let body = follow_redirects(&PinnedSingleRequest, &api, 4 * 1024 * 1024).await?;
+        let release: GhRelease = serde_json::from_slice(&body)
+            .map_err(|e| FetchError::Network(format!("github api json: {e}")))?;
+        let want = substitute_asset(asset_template, &release.tag_name, &self.target);
+        let asset = release
+            .assets
+            .iter()
+            .find(|a| a.name == want)
+            .ok_or_else(|| {
+                FetchError::Network(format!("no asset `{want}` in release {}", release.tag_name))
+            })?;
+        Ok(ResolvedRelease {
+            version: release.tag_name,
+            asset_url: asset.browser_download_url.clone(),
+        })
+    }
+}
+
+/// Parse a `github.com/{owner}/{repo}` URL into its owner and repo. Only the
+/// `github.com` host is accepted (the API is GitHub-specific).
+fn parse_github_repo(url: &str) -> Result<(String, String), FetchError> {
+    let u = reqwest::Url::parse(url)
+        .map_err(|e| FetchError::Network(format!("parse repo url: {e}")))?;
+    if u.host_str() != Some("github.com") {
+        return Err(FetchError::Network(format!(
+            "github-release url must be on github.com: {url}"
+        )));
+    }
+    let mut segs = u.path_segments().into_iter().flatten();
+    let owner = segs
+        .next()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| FetchError::Network(format!("github url missing owner: {url}")))?;
+    let repo = segs
+        .next()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| FetchError::Network(format!("github url missing repo: {url}")))?
+        .trim_end_matches(".git");
+    Ok((owner.to_string(), repo.to_string()))
+}
+
+/// Substitute `{version}` and `{target}` in an asset name template.
+fn substitute_asset(template: &str, version: &str, target: &str) -> String {
+    template
+        .replace("{version}", version)
+        .replace("{target}", target)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -745,6 +899,121 @@ mod tests {
         MockDownloader {
             result: std::sync::Mutex::new(None),
         }
+    }
+
+    /// A release resolver that must not be called (non-github-release paths).
+    struct NoResolver;
+    #[async_trait]
+    impl ReleaseResolver for NoResolver {
+        async fn resolve(&self, _: &str, _: Option<&str>, _: &str) -> Result<ResolvedRelease, FetchError> {
+            panic!("release resolver must not be used for this source type")
+        }
+    }
+    fn no_resolver() -> NoResolver {
+        NoResolver
+    }
+
+    /// A resolver that returns a canned asset url.
+    struct MockResolver {
+        asset_url: String,
+    }
+    #[async_trait]
+    impl ReleaseResolver for MockResolver {
+        async fn resolve(&self, _: &str, _: Option<&str>, _: &str) -> Result<ResolvedRelease, FetchError> {
+            Ok(ResolvedRelease {
+                version: "v1.2.3".into(),
+                asset_url: self.asset_url.clone(),
+            })
+        }
+    }
+
+    fn release(url: &str, asset: &str, sha256: Option<&str>) -> Source {
+        Source {
+            source_type: SourceType::GithubRelease,
+            url: Some(url.into()),
+            commit: None,
+            sha256: sha256.map(|s| s.into()),
+            asset: Some(asset.into()),
+            tag: None,
+            patches: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn parse_github_repo_and_substitute() {
+        assert_eq!(
+            parse_github_repo("https://github.com/zed-industries/zed").unwrap(),
+            ("zed-industries".into(), "zed".into())
+        );
+        assert_eq!(
+            parse_github_repo("https://github.com/o/r.git").unwrap(),
+            ("o".into(), "r".into())
+        );
+        // Only github.com.
+        assert!(parse_github_repo("https://gitlab.com/o/r").is_err());
+        assert!(parse_github_repo("https://github.com/o").is_err());
+        assert_eq!(
+            substitute_asset("zed-{version}-{target}.tar.gz", "v0.1", "x86_64-linux"),
+            "zed-v0.1-x86_64-linux.tar.gz"
+        );
+    }
+
+    #[tokio::test]
+    async fn github_release_pinned_sha_is_verified_and_stored() {
+        let (_d, s) = store();
+        let body = b"released asset bytes";
+        let sha = ContentHash::of(body);
+        let src = release("https://github.com/o/r", "app-{version}.tar.gz", Some(sha.as_str()));
+        let resolver = MockResolver {
+            asset_url: "https://example.org/asset".into(),
+        };
+        let h = fetch_source(&src, "org.example.app", &s, &MockDownloader::ok(body), &MockGitFetcher::never(), &resolver, DEFAULT_MAX_BYTES)
+            .await
+            .unwrap();
+        assert_eq!(h, sha);
+        assert_eq!(s.refcount(&h).unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn github_release_tofu_stores_and_returns_the_resolved_hash() {
+        let (_d, s) = store();
+        let body = b"asset without a pinned sha";
+        let src = release("https://github.com/o/r", "app-{version}.tar.gz", None);
+        let resolver = MockResolver {
+            asset_url: "https://example.org/asset".into(),
+        };
+        let h = fetch_source(&src, "org.example.app", &s, &MockDownloader::ok(body), &MockGitFetcher::never(), &resolver, DEFAULT_MAX_BYTES)
+            .await
+            .unwrap();
+        // TOFU: the returned content address is the value to lock.
+        assert_eq!(h, ContentHash::of(body));
+        assert_eq!(s.refcount(&h).unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn github_release_sha_mismatch_stores_nothing() {
+        let (_d, s) = store();
+        let declared = ContentHash::of(b"what the cookbook pinned");
+        let src = release("https://github.com/o/r", "app-{version}.tar.gz", Some(declared.as_str()));
+        let resolver = MockResolver {
+            asset_url: "https://example.org/asset".into(),
+        };
+        let err = fetch_source(&src, "o", &s, &MockDownloader::ok(b"server served something else"), &MockGitFetcher::never(), &resolver, DEFAULT_MAX_BYTES)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FetchError::Store(StoreError::Mismatch { .. })));
+        assert!(!s.has(&declared));
+    }
+
+    #[tokio::test]
+    async fn github_release_missing_asset_template_is_rejected() {
+        let (_d, s) = store();
+        let mut src = release("https://github.com/o/r", "x", None);
+        src.asset = None;
+        let err = fetch_source(&src, "o", &s, &no_dl(), &MockGitFetcher::never(), &no_resolver(), DEFAULT_MAX_BYTES)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FetchError::MissingField("asset")));
     }
 
     #[test]
@@ -869,7 +1138,7 @@ mod tests {
         fs::write(src_dir.path().join("Cargo.toml"), b"[package]").unwrap();
 
         let src = local(src_dir.path().to_str().unwrap());
-        let h = fetch_source(&src, "org.example.app", &s, &no_dl(), &MockGitFetcher::never(), DEFAULT_MAX_BYTES)
+        let h = fetch_source(&src, "org.example.app", &s, &no_dl(), &MockGitFetcher::never(), &no_resolver(), DEFAULT_MAX_BYTES)
             .await
             .unwrap();
         assert_eq!(s.refcount(&h).unwrap(), 1);
@@ -881,7 +1150,7 @@ mod tests {
         assert_eq!(fs::read(out.path().join("src/main.rs")).unwrap(), b"fn main(){}");
 
         // Determinism: archiving the same tree again yields the same address.
-        let h2 = fetch_source(&src, "org.example.app", &s, &no_dl(), &MockGitFetcher::never(), DEFAULT_MAX_BYTES)
+        let h2 = fetch_source(&src, "org.example.app", &s, &no_dl(), &MockGitFetcher::never(), &no_resolver(), DEFAULT_MAX_BYTES)
             .await
             .unwrap();
         assert_eq!(h, h2);
@@ -897,7 +1166,7 @@ mod tests {
         symlink("/etc/passwd", src_dir.path().join("link")).unwrap();
         let src = local(src_dir.path().to_str().unwrap());
         assert!(matches!(
-            fetch_source(&src, "o", &s, &no_dl(), &MockGitFetcher::never(), DEFAULT_MAX_BYTES).await,
+            fetch_source(&src, "o", &s, &no_dl(), &MockGitFetcher::never(), &no_resolver(), DEFAULT_MAX_BYTES).await,
             Err(FetchError::Local(_))
         ));
     }
@@ -906,11 +1175,11 @@ mod tests {
     async fn local_source_missing_or_relative_path_rejected() {
         let (_d, s) = store();
         assert!(matches!(
-            fetch_source(&local(""), "o", &s, &no_dl(), &MockGitFetcher::never(), DEFAULT_MAX_BYTES).await,
+            fetch_source(&local(""), "o", &s, &no_dl(), &MockGitFetcher::never(), &no_resolver(), DEFAULT_MAX_BYTES).await,
             Err(FetchError::MissingField("url"))
         ));
         assert!(matches!(
-            fetch_source(&local("relative/path"), "o", &s, &no_dl(), &MockGitFetcher::never(), DEFAULT_MAX_BYTES).await,
+            fetch_source(&local("relative/path"), "o", &s, &no_dl(), &MockGitFetcher::never(), &no_resolver(), DEFAULT_MAX_BYTES).await,
             Err(FetchError::Local(_))
         ));
     }
@@ -922,7 +1191,7 @@ mod tests {
             let src = git(Some(url), Some(&"a".repeat(40)));
             assert!(
                 matches!(
-                    fetch_source(&src, "o", &s, &no_dl(), &MockGitFetcher::never(), DEFAULT_MAX_BYTES)
+                    fetch_source(&src, "o", &s, &no_dl(), &MockGitFetcher::never(), &no_resolver(), DEFAULT_MAX_BYTES)
                         .await,
                     Err(FetchError::Network(_))
                 ),
@@ -976,8 +1245,7 @@ mod tests {
             "org.example.app",
             &s,
             &dl,
-            &MockGitFetcher::never(),
-            DEFAULT_MAX_BYTES,
+            &MockGitFetcher::never(), &no_resolver(), DEFAULT_MAX_BYTES,
         )
         .await
         .unwrap();
@@ -997,8 +1265,7 @@ mod tests {
             "org.example.app",
             &s,
             &dl,
-            &MockGitFetcher::never(),
-            DEFAULT_MAX_BYTES,
+            &MockGitFetcher::never(), &no_resolver(), DEFAULT_MAX_BYTES,
         )
         .await
         .unwrap_err();
@@ -1018,8 +1285,7 @@ mod tests {
                 "o",
                 &s,
                 &dl,
-                &MockGitFetcher::never(),
-                DEFAULT_MAX_BYTES
+                &MockGitFetcher::never(), &no_resolver(), DEFAULT_MAX_BYTES
             )
             .await,
             Err(FetchError::MissingField("sha256"))
@@ -1038,8 +1304,7 @@ mod tests {
                 "o",
                 &s,
                 &dl,
-                &MockGitFetcher::never(),
-                DEFAULT_MAX_BYTES
+                &MockGitFetcher::never(), &no_resolver(), DEFAULT_MAX_BYTES
             )
             .await,
             Err(FetchError::Unsupported(SourceType::Crate))
@@ -1058,8 +1323,7 @@ mod tests {
                 "o",
                 &s,
                 &dl,
-                &MockGitFetcher::never(),
-                DEFAULT_MAX_BYTES
+                &MockGitFetcher::never(), &no_resolver(), DEFAULT_MAX_BYTES
             )
             .await,
             Err(FetchError::TooLarge { limit: 10 })
@@ -1078,8 +1342,7 @@ mod tests {
             "org.example.app",
             &s,
             &no_dl(),
-            &gf,
-            DEFAULT_MAX_BYTES,
+            &gf, &no_resolver(), DEFAULT_MAX_BYTES,
         )
         .await
         .unwrap();
@@ -1102,8 +1365,7 @@ mod tests {
                 "o",
                 &s,
                 &no_dl(),
-                &MockGitFetcher::never(),
-                DEFAULT_MAX_BYTES
+                &MockGitFetcher::never(), &no_resolver(), DEFAULT_MAX_BYTES
             )
             .await,
             Err(FetchError::MissingField("url"))
@@ -1120,8 +1382,7 @@ mod tests {
                 "o",
                 &s,
                 &no_dl(),
-                &MockGitFetcher::never(),
-                DEFAULT_MAX_BYTES
+                &MockGitFetcher::never(), &no_resolver(), DEFAULT_MAX_BYTES
             )
             .await,
             Err(FetchError::MissingField("commit"))
@@ -1133,7 +1394,7 @@ mod tests {
         let (_d, s) = store();
         let src = git(Some("https://example.org/repo.git"), Some(COMMIT));
         let gf = MockGitFetcher::err(FetchError::Git("checkout mismatch".into()));
-        let err = fetch_source(&src, "o", &s, &no_dl(), &gf, DEFAULT_MAX_BYTES)
+        let err = fetch_source(&src, "o", &s, &no_dl(), &gf, &no_resolver(), DEFAULT_MAX_BYTES)
             .await
             .unwrap_err();
         assert!(matches!(err, FetchError::Git(_)), "got {err:?}");
