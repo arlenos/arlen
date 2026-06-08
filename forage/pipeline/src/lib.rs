@@ -145,8 +145,14 @@ pub async fn build_recipe(
     let source_bytes = store.read(&source_hash)?;
     extract_tar(&source_bytes, build_dir.path(), &limits.extract)?;
 
-    // 3. Plan and run the build (through the runner seam) in the build dir.
-    let plan = plan_build(build, ctx)?;
+    // 3. Plan and run the build (through the runner seam) in the build dir. The
+    //    physical build path is known only here, so the reproducibility
+    //    path-remap target is set on a local copy of the context (the caller's
+    //    `build_dir` hint is advisory and overridden). A non-UTF-8 path leaves
+    //    it unset (no remap) rather than emitting a lossy, mismatched flag.
+    let mut ctx = ctx.clone();
+    ctx.build_dir = build_dir.path().to_str().map(str::to_string);
+    let plan = plan_build(build, &ctx)?;
     execute_plan(&plan, runner, build_dir.path())?;
 
     // 4. Collect only the declared artifacts into a fresh staging tree (a
@@ -304,6 +310,7 @@ mod tests {
             &BuildContext {
                 source_date_epoch: 0,
                 jobs: 1,
+                build_dir: None,
             },
             &SigningKey::from_bytes(&[9u8; 32]),
             out.path(),
@@ -343,7 +350,7 @@ mod tests {
             &UnusedGit,
             &UnusedResolver,
             &ArtifactWritingRunner { rel: "app".into() },
-            &BuildContext { source_date_epoch: 0, jobs: 1 },
+            &BuildContext { source_date_epoch: 0, jobs: 1, build_dir: None },
             &SigningKey::from_bytes(&[9u8; 32]),
             out.path(),
             &PipelineLimits::default(),
