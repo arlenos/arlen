@@ -35,6 +35,19 @@
   }
 
   let draft = $state("");
+
+  // Starter prompts shown on the empty conversation, grounded in what the
+  // Knowledge-Graph-backed assistant can actually answer. Clicking one fills
+  // the composer (rather than sending immediately) so the user can edit first.
+  const STARTERS = [
+    "What did I work on today?",
+    "Which files are part of my current project?",
+    "What is my computer doing right now?",
+    "Summarise my recent activity.",
+  ];
+  function useStarter(text: string) {
+    draft = text;
+  }
   let scrollEl = $state<HTMLDivElement | null>(null);
   let capability = $state<Capability | null>(null);
 
@@ -276,6 +289,11 @@
           read tier. Each question is answered on its own for now —
           conversation memory comes later.
         </p>
+        <div class="starters">
+          {#each STARTERS as s (s)}
+            <button class="starter" onclick={() => useStarter(s)}>{s}</button>
+          {/each}
+        </div>
       </div>
     {:else}
       <div class="thread">
@@ -504,6 +522,29 @@
     max-width: 26rem;
     font-size: 0.85rem;
     line-height: 1.5;
+  }
+  .starters {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.4rem;
+    max-width: 30rem;
+    margin-top: 0.75rem;
+  }
+  .starter {
+    padding: 0.4rem 0.7rem;
+    border: 1px solid var(--color-border);
+    background: color-mix(in srgb, var(--color-bg-card) 50%, transparent);
+    color: color-mix(in srgb, var(--foreground) 75%, transparent);
+    font-size: 0.8rem;
+    border-radius: var(--radius-chip);
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
+  }
+  .starter:hover {
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    color: var(--foreground);
+    border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
   }
   .thread {
     display: flex;
