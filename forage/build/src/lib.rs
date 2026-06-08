@@ -364,20 +364,34 @@ pub struct BuildLimits {
     pub wall_clock: Option<std::time::Duration>,
 }
 
-/// On Unix, make the spawned process a group leader (`setpgid(0, 0)` in the
-/// forked child before `exec`) so its descendants share its process group and
-/// can be killed as a unit on timeout.
+/// The reproducible build umask. `022` masks group and other write bits, so a
+/// file the build creates with a permissive request lands at a fixed mode
+/// regardless of the builder's ambient umask. The `.lunpkg` writer already
+/// normalises every archived mode, so this does not change the package output;
+/// it makes the build itself deterministic for the narrow case where a build
+/// embeds file modes into an artifact it produces (forage-recipes.md section
+/// 13, "fixed umask and PATH").
 #[cfg(unix)]
-fn lead_process_group(command: &mut std::process::Command) {
+const BUILD_UMASK: libc::mode_t = 0o022;
+
+/// On Unix, prepare the forked child before `exec`: make it a process-group
+/// leader (`setpgid(0, 0)`) so its descendants share its group and can be killed
+/// as a unit on timeout, and pin the reproducible build umask. Under the
+/// confined runner the spawned process is `bwrap`, which inherits this umask and
+/// carries it into the sandbox.
+#[cfg(unix)]
+fn prepare_child(command: &mut std::process::Command) {
     use std::os::unix::process::CommandExt;
-    // SAFETY: the closure runs in the forked child before exec. `setpgid` is
-    // async-signal-safe and only changes the child's own process group; it
-    // reads or writes no parent state and allocates nothing.
+    // SAFETY: the closure runs in the forked child before exec. `setpgid` and
+    // `umask` are both async-signal-safe and touch only the child's own state
+    // (its process group and file-mode mask); they read or write no parent state
+    // and allocate nothing.
     unsafe {
         command.pre_exec(|| {
             if libc::setpgid(0, 0) != 0 {
                 return Err(std::io::Error::last_os_error());
             }
+            libc::umask(BUILD_UMASK);
             Ok(())
         });
     }
@@ -385,7 +399,7 @@ fn lead_process_group(command: &mut std::process::Command) {
 
 /// Kill the build's whole process group with `SIGKILL` (uncatchable, so a
 /// wedged build cannot ignore it). The child leads its own group (see
-/// [`lead_process_group`]), so negating its pid signals every descendant that
+/// [`prepare_child`]), so negating its pid signals every descendant that
 /// did not fork into a new group of its own; the leader is also signalled
 /// directly in case the group setup lost a race with a fast-spawning child.
 #[cfg(unix)]
@@ -399,7 +413,7 @@ fn kill_process_group(child: &std::process::Child) {
 }
 
 #[cfg(not(unix))]
-fn lead_process_group(_command: &mut std::process::Command) {}
+fn prepare_child(_command: &mut std::process::Command) {}
 #[cfg(not(unix))]
 fn kill_process_group(child: &std::process::Child) {
     let _ = child;
@@ -414,7 +428,7 @@ fn run_command(
     tool: &str,
     limits: &BuildLimits,
 ) -> Result<(), BuildError> {
-    lead_process_group(&mut command);
+    prepare_child(&mut command);
     let mut child = command.spawn().map_err(|e| BuildError::CommandFailed {
         tool: tool.to_string(),
         reason: format!("spawn: {e}"),
