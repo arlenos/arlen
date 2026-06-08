@@ -145,6 +145,46 @@ pub fn format_uptime(seconds: u64) -> String {
     parts.join(" ")
 }
 
+/// One network interface and its cumulative traffic counters.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NetworkInterface {
+    /// Interface name, e.g. `"eth0"` / `"lo"`.
+    pub name: String,
+    /// Cumulative received bytes since boot.
+    pub rx_bytes: u64,
+    /// Cumulative transmitted bytes since boot.
+    pub tx_bytes: u64,
+}
+
+/// Parse `/proc/net/dev`: two header lines, then one line per interface
+/// (`"  name: rx_bytes rx_packets ... tx_bytes tx_packets ..."`). The rx byte
+/// count is the first stat field and the tx byte count is the ninth. A
+/// malformed line is skipped, never an error. Pure.
+fn parse_net_dev(text: &str) -> Vec<NetworkInterface> {
+    let mut out = Vec::new();
+    for line in text.lines().skip(2) {
+        let Some((name, rest)) = line.split_once(':') else {
+            continue;
+        };
+        let name = name.trim();
+        if name.is_empty() {
+            continue;
+        }
+        let fields: Vec<&str> = rest.split_whitespace().collect();
+        if fields.len() < 9 {
+            continue;
+        }
+        let rx_bytes = fields[0].parse().unwrap_or(0);
+        let tx_bytes = fields[8].parse().unwrap_or(0);
+        out.push(NetworkInterface {
+            name: name.to_string(),
+            rx_bytes,
+            tx_bytes,
+        });
+    }
+    out
+}
+
 /// Operating-system identity, from `/proc/sys/kernel/`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OsInfo {
@@ -285,6 +325,15 @@ impl ProcReader {
         })
     }
 
+    /// Network interfaces and their cumulative traffic counters, from
+    /// `/proc/net/dev`. Empty if the file cannot be read; the same system-wide
+    /// public information `ip -s link` shows.
+    pub fn network_interfaces(&self) -> Vec<NetworkInterface> {
+        std::fs::read_to_string(self.root.join("net/dev"))
+            .map(|t| parse_net_dev(&t))
+            .unwrap_or_default()
+    }
+
     /// OS identity (kernel name, release, hostname) from `/proc/sys/kernel/`.
     /// A missing or unreadable field reads as empty rather than failing; this is
     /// the same system-wide public information `uname` shows.
@@ -369,6 +418,35 @@ mod tests {
         assert_eq!(format_uptime(2 * 86_400 + 4 * 3600 + 5 * 60), "2d 4h 5m");
         // A whole-hour boundary still shows the (zero) minutes.
         assert_eq!(format_uptime(3600), "1h 0m");
+    }
+
+    #[test]
+    fn parse_net_dev_reads_interfaces_and_byte_counters() {
+        let text = "Inter-|   Receive                          |  Transmit\n \
+                    face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets\n  \
+                    lo:    1000     10    0    0    0     0          0         0      1000      10\n  \
+                    eth0:  50000    400   0    0    0     0          0         0     20000     300\n";
+        let ifaces = parse_net_dev(text);
+        assert_eq!(ifaces.len(), 2);
+        assert_eq!(ifaces[0].name, "lo");
+        assert_eq!(ifaces[1].name, "eth0");
+        assert_eq!(ifaces[1].rx_bytes, 50000);
+        assert_eq!(ifaces[1].tx_bytes, 20000);
+    }
+
+    #[test]
+    fn reader_reads_network_interfaces_from_proc() {
+        let tmp = tempfile::tempdir().unwrap();
+        let net = tmp.path().join("net");
+        std::fs::create_dir_all(&net).unwrap();
+        std::fs::write(
+            net.join("dev"),
+            "h1\nh2\n  lo: 5 1 0 0 0 0 0 0 5 1\n",
+        )
+        .unwrap();
+        let ifaces = ProcReader::with_root(tmp.path()).network_interfaces();
+        assert_eq!(ifaces.len(), 1);
+        assert_eq!(ifaces[0].name, "lo");
     }
 
     #[test]
