@@ -23,6 +23,13 @@ struct Cookbook {
     name: String,
     /// `git+<https url>` for a cloned cookbook, or a local directory path.
     source: String,
+    /// The sha256 (lowercase hex) of the cookbook's TUF `metadata/root.json`,
+    /// pinned on `add` (trust on first use). `None` for an unsigned cookbook,
+    /// which resolution refuses to install from. Pinning the hash rather than a
+    /// path means a later tampering of the on-disk root is caught at resolve
+    /// time, when the file is re-read and checked against this pin.
+    #[serde(default)]
+    pinned_root_sha256: Option<String>,
 }
 
 /// The tracked-cookbook registry, ordered by precedence (first = highest).
@@ -74,6 +81,24 @@ fn clone_dir(name: &str) -> PathBuf {
         .join(name)
 }
 
+/// Compute the trust pin for a cookbook: the sha256 (lowercase hex) of its
+/// `metadata/root.json`. Returns `None` if the cookbook has no such root (it is
+/// unsigned), reading via `symlink_metadata` discipline left to the caller's
+/// tracked, owned clone directory.
+fn root_pin(metadata_dir: &Path) -> Option<String> {
+    let root = metadata_dir.join("root.json");
+    let bytes = std::fs::read(&root).ok()?;
+    Some(sha256_hex(&bytes))
+}
+
+/// Lowercase-hex sha256 of `bytes`.
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(bytes);
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
 /// Whether `name` is safe as a single path component: non-empty, no separators,
 /// not a relative special, only `[A-Za-z0-9._-]`, and not `.`/`..`.
 fn is_valid_name(name: &str) -> bool {
@@ -106,7 +131,8 @@ pub async fn add(name: String, source: String) {
         exit(1);
     }
 
-    if let Some(url) = source.strip_prefix("git+") {
+    // The cookbook's signed metadata lives at `<root>/metadata/` (section 7a).
+    let metadata_dir = if let Some(url) = source.strip_prefix("git+") {
         // Clone the cookbook repo's working tree into its tracked location.
         let dest = clone_dir(&name);
         if let Some(parent) = dest.parent() {
@@ -120,6 +146,7 @@ pub async fn add(name: String, source: String) {
             let _ = std::fs::remove_dir_all(&dest);
             exit(1);
         }
+        dest.join("metadata")
     } else {
         // A local cookbook directory: it must exist; it is referenced in place.
         if !Path::new(&source).is_dir() {
@@ -129,11 +156,30 @@ pub async fn add(name: String, source: String) {
             );
             exit(1);
         }
-    }
+        Path::new(&source).join("metadata")
+    };
+
+    // Pin the root on first use. A cookbook with no signed metadata is still
+    // tracked (so it lists and supports future in-repo discovery), but it is
+    // recorded unsigned and resolution refuses to install from it.
+    let pinned_root_sha256 = match root_pin(&metadata_dir) {
+        Some(hash) => {
+            println!("{} root {}", "pinned".green().bold(), &hash[..16.min(hash.len())]);
+            Some(hash)
+        }
+        None => {
+            eprintln!(
+                "{} cookbook '{name}' has no signed metadata/root.json; it is tracked but not install-resolvable until signed",
+                "warning:".yellow().bold()
+            );
+            None
+        }
+    };
 
     registry.cookbook.push(Cookbook {
         name: name.clone(),
         source,
+        pinned_root_sha256,
     });
     if let Err(e) = registry.save() {
         eprintln!("{} {e}", "error:".red().bold());
@@ -227,10 +273,12 @@ mod tests {
                 Cookbook {
                     name: "personal".into(),
                     source: "/home/me/tap".into(),
+                    pinned_root_sha256: Some("a".repeat(64)),
                 },
                 Cookbook {
                     name: "official".into(),
                     source: "git+https://x/o".into(),
+                    pinned_root_sha256: None,
                 },
             ],
         };
@@ -238,6 +286,28 @@ mod tests {
         let back: Registry = toml::from_str(&text).unwrap();
         assert_eq!(back.cookbook, r.cookbook);
         assert_eq!(back.cookbook[0].name, "personal");
+        assert_eq!(back.cookbook[0].pinned_root_sha256.as_deref(), Some(&"a".repeat(64)[..]));
+    }
+
+    #[test]
+    fn root_pin_hashes_present_root_and_is_none_when_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let md = dir.path().join("metadata");
+        std::fs::create_dir_all(&md).unwrap();
+        // No root.json yet: unsigned.
+        assert!(root_pin(&md).is_none());
+        // With a root.json: the pin is its sha256.
+        std::fs::write(md.join("root.json"), b"root-bytes").unwrap();
+        assert_eq!(root_pin(&md), Some(sha256_hex(b"root-bytes")));
+    }
+
+    #[test]
+    fn an_old_registry_without_the_pin_field_still_parses() {
+        // Registries written before pinning existed have no pinned_root_sha256.
+        let back: Registry =
+            toml::from_str("[[cookbook]]\nname = \"x\"\nsource = \"/t\"\n").unwrap();
+        assert_eq!(back.cookbook.len(), 1);
+        assert!(back.cookbook[0].pinned_root_sha256.is_none());
     }
 
     #[test]
