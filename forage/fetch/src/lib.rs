@@ -73,6 +73,9 @@ pub enum FetchError {
     /// Storing or verifying the fetched bytes failed (includes a hash mismatch).
     #[error("store: {0}")]
     Store(#[from] StoreError),
+    /// A `local` source could not be read or archived.
+    #[error("local source: {0}")]
+    Local(String),
 }
 
 /// Fetches the bytes at a URL, capped at `max_bytes`. Behind a trait so the
@@ -190,8 +193,102 @@ pub async fn fetch_source(
             let hash = store.put_verified_referenced(&bytes, &expected, owner)?;
             Ok(hash)
         }
+        SourceType::Local => {
+            // A local path (development source): not content-addressable across
+            // machines, so it is build-locally-only (forage-recipes.md §17a).
+            // Archive it deterministically and root it; no hash pin.
+            let path = source
+                .url
+                .as_deref()
+                .filter(|u| !u.is_empty())
+                .ok_or(FetchError::MissingField("url"))?;
+            let root = Path::new(path);
+            if !root.is_absolute() {
+                return Err(FetchError::Local(format!("path must be absolute: {path}")));
+            }
+            if !root.exists() {
+                return Err(FetchError::Local(format!("path not found: {path}")));
+            }
+            let bytes = archive_local_path(root)?;
+            let hash = store.put_referenced(&bytes, owner)?;
+            Ok(hash)
+        }
         other => Err(FetchError::Unsupported(other)),
     }
+}
+
+/// Deterministically archive a local path (directory or file) into a tar the
+/// store can hold and [`arlen_forage_extract`] can later unpack. Entries are
+/// walked in sorted order with zeroed mtime and normalised modes, so the same
+/// tree yields the same bytes. Symlinks and special files are rejected (they
+/// would not survive the safe extraction and could point outside the tree).
+fn archive_local_path(root: &Path) -> Result<Vec<u8>, FetchError> {
+    let mut entries: Vec<(String, std::path::PathBuf, bool)> = Vec::new();
+    collect_sorted(root, root, &mut entries)?;
+
+    let mut builder = tar::Builder::new(Vec::new());
+    builder.mode(tar::HeaderMode::Deterministic);
+    for (rel, abs, is_dir) in entries {
+        let mut header = tar::Header::new_gnu();
+        header.set_mtime(0);
+        header.set_uid(0);
+        header.set_gid(0);
+        if is_dir {
+            header.set_entry_type(tar::EntryType::Directory);
+            header.set_mode(0o755);
+            header.set_size(0);
+            builder
+                .append_data(&mut header, &rel, std::io::empty())
+                .map_err(|e| FetchError::Local(e.to_string()))?;
+        } else {
+            let data = std::fs::read(&abs).map_err(|e| FetchError::Local(e.to_string()))?;
+            header.set_entry_type(tar::EntryType::Regular);
+            header.set_mode(0o644);
+            header.set_size(data.len() as u64);
+            builder
+                .append_data(&mut header, &rel, &data[..])
+                .map_err(|e| FetchError::Local(e.to_string()))?;
+        }
+    }
+    builder.into_inner().map_err(|e| FetchError::Local(e.to_string()))
+}
+
+/// Recurse `dir`, collecting `(relative_path, absolute_path, is_dir)` entries
+/// sorted by name at each level. Rejects symlinks and special files.
+fn collect_sorted(
+    root: &Path,
+    dir: &Path,
+    out: &mut Vec<(String, std::path::PathBuf, bool)>,
+) -> Result<(), FetchError> {
+    let mut names: Vec<_> = std::fs::read_dir(dir)
+        .map_err(|e| FetchError::Local(e.to_string()))?
+        .map(|e| e.map(|e| e.file_name()))
+        .collect::<Result<_, _>>()
+        .map_err(|e| FetchError::Local(e.to_string()))?;
+    names.sort();
+    for name in names {
+        let abs = dir.join(&name);
+        let meta = std::fs::symlink_metadata(&abs).map_err(|e| FetchError::Local(e.to_string()))?;
+        let ft = meta.file_type();
+        let rel = abs
+            .strip_prefix(root)
+            .map_err(|_| FetchError::Local("path escaped local root".into()))?
+            .to_str()
+            .ok_or_else(|| FetchError::Local("non-UTF8 path in local source".into()))?
+            .to_string();
+        if ft.is_symlink() {
+            return Err(FetchError::Local(format!("symlink not supported: {rel}")));
+        }
+        if ft.is_dir() {
+            out.push((rel, abs.clone(), true));
+            collect_sorted(root, &abs, out)?;
+        } else if ft.is_file() {
+            out.push((rel, abs, false));
+        } else {
+            return Err(FetchError::Local(format!("unsupported file type: {rel}")));
+        }
+    }
+    Ok(())
 }
 
 /// The production [`Downloader`]: reqwest over rustls, HTTPS only, no redirects,
@@ -520,6 +617,74 @@ mod tests {
         // No cap: reads everything.
         let mut all = std::io::Cursor::new(vec![1u8; 300]);
         assert_eq!(read_capped(&mut all, None).unwrap().len(), 300);
+    }
+
+    fn local(path: &str) -> Source {
+        Source {
+            source_type: SourceType::Local,
+            url: Some(path.into()),
+            commit: None,
+            sha256: None,
+            asset: None,
+            tag: None,
+            patches: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn local_source_is_archived_and_rooted() {
+        use std::fs;
+        let (_d, s) = store();
+        let src_dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(src_dir.path().join("src")).unwrap();
+        fs::write(src_dir.path().join("src/main.rs"), b"fn main(){}").unwrap();
+        fs::write(src_dir.path().join("Cargo.toml"), b"[package]").unwrap();
+
+        let src = local(src_dir.path().to_str().unwrap());
+        let h = fetch_source(&src, "org.example.app", &s, &no_dl(), &MockGitFetcher::never(), DEFAULT_MAX_BYTES)
+            .await
+            .unwrap();
+        assert_eq!(s.refcount(&h).unwrap(), 1);
+
+        // The stored archive is a deterministic tar the extractor accepts.
+        let bytes = s.read(&h).unwrap();
+        let out = tempfile::tempdir().unwrap();
+        arlen_forage_extract::extract_tar(&bytes, out.path(), &Default::default()).unwrap();
+        assert_eq!(fs::read(out.path().join("src/main.rs")).unwrap(), b"fn main(){}");
+
+        // Determinism: archiving the same tree again yields the same address.
+        let h2 = fetch_source(&src, "org.example.app", &s, &no_dl(), &MockGitFetcher::never(), DEFAULT_MAX_BYTES)
+            .await
+            .unwrap();
+        assert_eq!(h, h2);
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn local_source_rejects_symlinks() {
+        use std::os::unix::fs::symlink;
+        let (_d, s) = store();
+        let src_dir = tempfile::tempdir().unwrap();
+        std::fs::write(src_dir.path().join("real"), b"x").unwrap();
+        symlink("/etc/passwd", src_dir.path().join("link")).unwrap();
+        let src = local(src_dir.path().to_str().unwrap());
+        assert!(matches!(
+            fetch_source(&src, "o", &s, &no_dl(), &MockGitFetcher::never(), DEFAULT_MAX_BYTES).await,
+            Err(FetchError::Local(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn local_source_missing_or_relative_path_rejected() {
+        let (_d, s) = store();
+        assert!(matches!(
+            fetch_source(&local(""), "o", &s, &no_dl(), &MockGitFetcher::never(), DEFAULT_MAX_BYTES).await,
+            Err(FetchError::MissingField("url"))
+        ));
+        assert!(matches!(
+            fetch_source(&local("relative/path"), "o", &s, &no_dl(), &MockGitFetcher::never(), DEFAULT_MAX_BYTES).await,
+            Err(FetchError::Local(_))
+        ));
     }
 
     #[tokio::test]
