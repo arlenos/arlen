@@ -340,8 +340,8 @@ pub struct IntentsPermissions {
 
 /// Input subsystem permissions. Module manifests request these via
 /// `[permissions].input = [...]`; the install daemon copies the
-/// matching flags into the runtime profile stored under
-/// `/var/lib/arlen/permissions/`.
+/// matching flags into the runtime profile at
+/// `~/.config/permissions/{module_id}.toml` (the path the runtime reads).
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InputPermissions {
     /// Register keybindings that fire only while the module's own
