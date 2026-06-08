@@ -17,6 +17,7 @@
   import { messages, busy, send, initSessions, type MentionContent } from "$lib/stores/conversation";
   import ConversationRail from "$lib/components/ConversationRail.svelte";
   import { renderMarkdown } from "$lib/markdown";
+  import { conversationToMarkdown } from "$lib/export";
   import { externalLinks } from "$lib/externalLinks";
 
   interface FileSuggestion {
@@ -54,6 +55,25 @@
       }, 1200);
     } catch {
       // Clipboard unavailable (locked-down webview); nothing to surface.
+    }
+  }
+
+  // Whether the whole-conversation copy just fired, to flash the button.
+  let convCopied = $state(false);
+
+  // Copy the active conversation to the clipboard as a Markdown transcript.
+  // Same fail-silent clipboard handling as a single message.
+  async function copyConversation() {
+    const md = conversationToMarkdown($messages);
+    if (md.length === 0) return;
+    try {
+      await navigator.clipboard.writeText(md);
+      convCopied = true;
+      setTimeout(() => {
+        convCopied = false;
+      }, 1200);
+    } catch {
+      // Clipboard unavailable; nothing to surface.
     }
   }
 
@@ -229,6 +249,19 @@
           <Cpu size={12} strokeWidth={1.75} />
           {[capability.provider, capability.model].filter(Boolean).join(" · ")}
         </span>
+      {/if}
+      {#if $messages.length > 0}
+        <button
+          class="conv-export"
+          title="Copy the conversation as Markdown"
+          onclick={copyConversation}
+        >
+          {#if convCopied}
+            <Check size={12} strokeWidth={2} />Copied
+          {:else}
+            <Copy size={12} strokeWidth={2} />Copy chat
+          {/if}
+        </button>
       {/if}
     </div>
   {/if}
@@ -407,6 +440,25 @@
     border-bottom: 1px solid var(--color-border);
     font-size: 0.72rem;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+  /* Pushed to the right edge of the context bar. */
+  .conv-export {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.45rem;
+    border: 1px solid var(--color-border);
+    background: transparent;
+    color: color-mix(in srgb, var(--foreground) 60%, transparent);
+    font-size: 0.7rem;
+    border-radius: var(--radius-chip);
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+  }
+  .conv-export:hover {
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    color: var(--foreground);
   }
   .cap {
     display: inline-flex;
