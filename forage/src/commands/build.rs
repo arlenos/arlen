@@ -40,7 +40,7 @@ fn store_root() -> PathBuf {
 /// Build the recipe at `path` into a signed `.lunpkg`, printing the path on
 /// success. Exits non-zero on any failure; a zero exit means a real package was
 /// produced.
-pub async fn run(path: PathBuf, unsafe_no_sandbox: bool) {
+pub async fn run(path: PathBuf, unsafe_no_sandbox: bool, install: bool) {
     let Some(recipe_path) = recipe::resolve_recipe_path(&path) else {
         exit(1);
     };
@@ -155,7 +155,37 @@ pub async fn run(path: PathBuf, unsafe_no_sandbox: bool) {
     {
         Ok(outcome) => {
             println!("{} {}", "built".green().bold(), outcome.lunpkg.display());
+            if install {
+                install_package(&outcome.lunpkg).await;
+            }
         }
+        Err(e) => {
+            eprintln!("{} {e}", "error:".red().bold());
+            exit(1);
+        }
+    }
+}
+
+/// Install the just-built `.lunpkg` through installd, the same path as
+/// `forage install <file>`. Exits non-zero if the daemon is unreachable or the
+/// install fails, so `--install` reports an honest overall result.
+async fn install_package(lunpkg: &Path) {
+    use crate::commands::install_client as client;
+
+    let conn = match client::connect().await {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("{} {e}", "error:".red().bold());
+            eprintln!(
+                "{}",
+                "is arlen-installd running? (systemctl --user start installd)".dimmed()
+            );
+            exit(1);
+        }
+    };
+    let path = lunpkg.to_str().unwrap_or_default();
+    match client::install_package(&conn, path).await {
+        Ok(()) => println!("{} {}", "installed".green().bold(), lunpkg.display()),
         Err(e) => {
             eprintln!("{} {e}", "error:".red().bold());
             exit(1);

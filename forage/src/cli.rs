@@ -75,6 +75,10 @@ pub enum Commands {
         /// platform, which must be configured.
         #[arg(long = "unsafe-no-sandbox")]
         unsafe_no_sandbox: bool,
+        /// After a successful build, install the produced `.lunpkg` through
+        /// installd (the same path as `forage install <file>`).
+        #[arg(long)]
+        install: bool,
     },
     /// Manage cookbooks (recipe indexes / taps, forage-recipes.md section 7).
     Cookbook {
