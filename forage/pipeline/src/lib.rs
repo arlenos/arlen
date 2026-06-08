@@ -104,8 +104,11 @@ pub struct BuildOutcome {
 
 /// Build `recipe` into a signed `.lunpkg` under `out_dir`, returning the path.
 ///
-/// `runner` is the build seam (production wraps it in the sandbox). `downloader`
-/// and `git_fetcher` are the fetch seams. The fetched source is rooted in the
+/// `runner` is the build seam (production wraps it in the sandbox). `downloader`,
+/// `git_fetcher` and `release_resolver` are the fetch seams. A `github-release`
+/// source's asset 3xx-redirects to a CDN, so the production caller must pass a
+/// redirect-following `downloader` (`RedirectingHttpDownloader`); the plain
+/// `HttpDownloader` would fail such a fetch. The fetched source is rooted in the
 /// store under the recipe id.
 #[allow(clippy::too_many_arguments)]
 pub async fn build_recipe(
