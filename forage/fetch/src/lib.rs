@@ -522,6 +522,104 @@ impl GitFetcher for ProcessGitFetcher {
     }
 }
 
+/// The default cap on a cloned recipe repository's working tree, so a hostile
+/// `git+URL` cannot fill the disk. Recipe repos are small (a `recipe.toml` and a
+/// handful of patches); 64 MiB is generous.
+pub const DEFAULT_RECIPE_REPO_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Shallow-clone a recipe repository's working tree into `dest` (an existing,
+/// empty directory) for `forage install git+URL`. Unlike
+/// [`ProcessGitFetcher::fetch_commit`], which archives a *pinned source* commit,
+/// this checks out the repo's files (the recipe and its patches) at an optional
+/// branch or tag, or the default branch.
+///
+/// Hardened like the source git fetch: https-only, an SSRF pre-check on the
+/// resolved host, the sanitized environment and timeout of [`ProcessGitFetcher`],
+/// and `--depth 1`. After the clone, the working tree is size-checked against
+/// `max_bytes`. Residual: the cap is enforced only after the clone has written
+/// to disk, so the transient peak is bounded by `--depth 1` rather than the cap;
+/// recipe repos are small and `dest` is a caller-owned temporary removed on
+/// failure. The SSRF pin is best-effort (git re-resolves DNS), matching the
+/// pinned-source caveat in the module docs.
+pub async fn clone_recipe_repo(
+    url: &str,
+    git_ref: Option<&str>,
+    dest: &Path,
+    max_bytes: u64,
+) -> Result<(), FetchError> {
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|e| FetchError::Network(format!("parse git url: {e}")))?;
+    if parsed.scheme() != "https" {
+        return Err(FetchError::Network(format!("non-https git url: {url}")));
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| FetchError::Network(format!("git url has no host: {url}")))?;
+    let port = parsed.port_or_known_default().unwrap_or(443);
+    match resolve_and_pin(host, port).await {
+        Ok(_addr) => {}
+        Err(blocked @ GuardError::Blocked { .. }) => {
+            return Err(FetchError::Blocked(blocked.to_string()))
+        }
+        Err(e) => return Err(FetchError::Network(e.to_string())),
+    }
+
+    let cwd = dest.parent().unwrap_or_else(|| Path::new("."));
+    let dest_str = dest
+        .to_str()
+        .ok_or_else(|| FetchError::Git("clone destination is not valid UTF-8".into()))?;
+
+    // `--` terminates option parsing so the url or dest can never be read as a
+    // flag. The ref is passed as a single `--branch=<ref>` token (not a separate
+    // value) so a ref beginning with `-` can never be parsed as its own option,
+    // independent of git's positional-consumption behaviour. `--branch` accepts
+    // a branch or a tag. No `--recurse-submodules`: submodules are neither
+    // fetched nor executed, and the cloned tree's hooks/filters never run
+    // (a fresh clone uses local hook samples, and config is neutralised).
+    let branch_arg: String;
+    let mut args: Vec<&str> = vec!["clone", "--depth", "1", "--no-tags", "--quiet"];
+    if let Some(r) = git_ref {
+        branch_arg = format!("--branch={r}");
+        args.push(&branch_arg);
+    }
+    args.push("--");
+    args.push(url);
+    args.push(dest_str);
+    ProcessGitFetcher.git(cwd, &args, None)?;
+
+    let size = dir_size(dest)?;
+    if size > max_bytes {
+        return Err(FetchError::TooLarge { limit: max_bytes });
+    }
+    Ok(())
+}
+
+/// Sum the byte size of every regular file under `root`, not following
+/// symlinks, for the post-clone size guard.
+fn dir_size(root: &Path) -> Result<u64, FetchError> {
+    let mut total = 0u64;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries =
+            std::fs::read_dir(&dir).map_err(|e| FetchError::Git(format!("read clone dir: {e}")))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| FetchError::Git(format!("clone dir entry: {e}")))?;
+            let meta = entry
+                .path()
+                .symlink_metadata()
+                .map_err(|e| FetchError::Git(format!("clone stat: {e}")))?;
+            let ft = meta.file_type();
+            if ft.is_dir() {
+                stack.push(entry.path());
+            } else if ft.is_file() {
+                total = total.saturating_add(meta.len());
+            }
+            // Symlinks contribute nothing and are not followed.
+        }
+    }
+    Ok(total)
+}
+
 /// Read `src` to EOF, returning its bytes, but fail with [`FetchError::TooLarge`]
 /// if it exceeds `cap`. When the cap is hit, the rest is drained and discarded
 /// (so the producer is not left blocked on a full pipe) and `TooLarge` is
@@ -1408,5 +1506,38 @@ mod tests {
         assert!(matches!(err, FetchError::Git(_)), "got {err:?}");
         // No object made it into the store.
         assert_eq!(s.gc().unwrap().removed, vec![]);
+    }
+
+    #[tokio::test]
+    async fn clone_recipe_repo_rejects_non_https_transports() {
+        let dest = tempfile::tempdir().unwrap();
+        // Every non-https transport is refused before any git process spawns, so
+        // the SSRF guard cannot be sidestepped via git://, ssh://, or file://.
+        for url in [
+            "http://example.org/r",
+            "git://example.org/r",
+            "ssh://example.org/r",
+            "file:///etc",
+        ] {
+            let err = clone_recipe_repo(url, None, dest.path(), DEFAULT_RECIPE_REPO_BYTES)
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(err, FetchError::Network(_)),
+                "`{url}` must be refused as non-https, got {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn dir_size_sums_regular_files_only() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a"), b"12345").unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("sub/b"), b"678").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("a", dir.path().join("link")).unwrap();
+        // 5 + 3 bytes; the symlink contributes nothing.
+        assert_eq!(dir_size(dir.path()).unwrap(), 8);
     }
 }
