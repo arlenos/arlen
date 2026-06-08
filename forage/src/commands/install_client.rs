@@ -247,8 +247,27 @@ pub async fn list_installed(conn: &Connection, json: bool) -> Result<(), String>
     Ok(())
 }
 
-/// List apps in the 30-day trash.
-pub async fn list_trashed(conn: &Connection) -> Result<(), String> {
+/// Serialise the trashed-app tuples `(id, name, version, deleted_at)` as a JSON
+/// array of objects, for `trash list --json`. Pure, so the wire shape is
+/// unit-tested without a daemon; an empty trash renders as `[]`.
+pub fn trashed_to_json(entries: &[(String, String, String, String)]) -> String {
+    let array: Vec<serde_json::Value> = entries
+        .iter()
+        .map(|(id, name, version, deleted_at)| {
+            serde_json::json!({
+                "id": id,
+                "name": name,
+                "version": version,
+                "deleted_at": deleted_at,
+            })
+        })
+        .collect();
+    serde_json::to_string_pretty(&serde_json::Value::Array(array))
+        .unwrap_or_else(|_| "[]".to_string())
+}
+
+/// List apps in the 30-day trash: a formatted table, or a JSON array when `json`.
+pub async fn list_trashed(conn: &Connection, json: bool) -> Result<(), String> {
     let iface = zbus::names::InterfaceName::try_from(INTERFACE).unwrap();
     let bus = zbus::names::BusName::try_from(BUS_NAME).unwrap();
     let path = zbus::zvariant::ObjectPath::try_from(OBJECT_PATH).unwrap();
@@ -262,6 +281,11 @@ pub async fn list_trashed(conn: &Connection) -> Result<(), String> {
         .body()
         .deserialize()
         .map_err(|e| format!("failed to parse response: {e}"))?;
+
+    if json {
+        println!("{}", trashed_to_json(&entries));
+        return Ok(());
+    }
 
     if entries.is_empty() {
         println!("{}", "trash is empty".dimmed());
@@ -487,7 +511,28 @@ pub async fn info_app(app_id: &str, json: bool) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{app_info_to_json, apps_to_json, should_uninstall_as_flatpak};
+    use super::{app_info_to_json, apps_to_json, should_uninstall_as_flatpak, trashed_to_json};
+
+    #[test]
+    fn empty_trash_is_an_empty_json_array() {
+        assert_eq!(trashed_to_json(&[]), "[]");
+    }
+
+    #[test]
+    fn trashed_entries_serialize_with_the_deleted_at_key() {
+        let entries = vec![(
+            "com.example.app".to_string(),
+            "Example".to_string(),
+            "1.2.3".to_string(),
+            "2026-06-01T10:00:00Z".to_string(),
+        )];
+        let parsed: serde_json::Value = serde_json::from_str(&trashed_to_json(&entries)).unwrap();
+        let first = &parsed[0];
+        assert_eq!(first["id"], "com.example.app");
+        assert_eq!(first["name"], "Example");
+        assert_eq!(first["version"], "1.2.3");
+        assert_eq!(first["deleted_at"], "2026-06-01T10:00:00Z");
+    }
 
     #[test]
     fn uninstall_routes_flatpak_by_source() {
