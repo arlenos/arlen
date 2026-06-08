@@ -11,6 +11,7 @@ use std::process::exit;
 
 use colored::Colorize;
 
+use crate::commands::build_config::ForageBuildConfig;
 use crate::commands::recipe;
 
 /// Validate the recipe at `path`, then report that the build pipeline is
@@ -20,10 +21,24 @@ use crate::commands::recipe;
 /// never mistake this for a completed build.
 pub fn build(path: &Path) {
     recipe::validate(path);
-    eprintln!(
-        "{} the build pipeline is not yet implemented (forage-recipes.md R1); \
-         the recipe above is schema-valid and ready for it, but no package was produced.",
-        "note:".yellow().bold()
-    );
+
+    // Surface the one remaining prerequisite precisely: the build runs inside a
+    // pinned base platform, and where that lives is deployment state read from
+    // config. Report whether it is ready so the user knows exactly what is
+    // missing rather than a generic "not implemented".
+    match ForageBuildConfig::load() {
+        Ok(cfg) => match cfg.require_base_platform() {
+            Ok(platform) => eprintln!(
+                "{} base platform {} is ready and packages would be written to {}; \
+                 the sandboxed build-execution wiring is the next step, so no package \
+                 was produced.",
+                "note:".yellow().bold(),
+                platform.display(),
+                cfg.out_dir().display()
+            ),
+            Err(e) => eprintln!("{} {e}", "note:".yellow().bold()),
+        },
+        Err(e) => eprintln!("{} {e}", "error:".red().bold()),
+    }
     exit(1);
 }
