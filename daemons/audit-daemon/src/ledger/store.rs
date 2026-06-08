@@ -847,7 +847,7 @@ mod tests {
     async fn probe_reports_an_absent_ledger_as_empty() {
         let dir = tempfile::tempdir().unwrap();
         let missing = dir.path().join("ledger.db");
-        assert_eq!(Ledger::probe_has_entries(&missing).await.unwrap(), false);
+        assert!(!Ledger::probe_has_entries(&missing).await.unwrap());
     }
 
     #[tokio::test]
@@ -857,7 +857,7 @@ mod tests {
         let _ledger = open_temp(dir.path(), key()).await;
         drop(_ledger);
         let db = dir.path().join("ledger.db");
-        assert_eq!(Ledger::probe_has_entries(&db).await.unwrap(), false);
+        assert!(!Ledger::probe_has_entries(&db).await.unwrap());
     }
 
     #[tokio::test]
@@ -871,7 +871,7 @@ mod tests {
                 .unwrap();
         }
         let db = dir.path().join("ledger.db");
-        assert_eq!(Ledger::probe_has_entries(&db).await.unwrap(), true);
+        assert!(Ledger::probe_has_entries(&db).await.unwrap());
     }
 
     #[tokio::test]
