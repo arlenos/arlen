@@ -59,15 +59,13 @@ impl NoticesResult {
     }
 }
 
-/// Read the recent anomaly notices (newest first). A missing log or no data dir
-/// is a readable "nothing yet" (`available = true`, empty); a present-but-
-/// unreadable or malformed log is `available = false` so the UI can flag it.
-#[tauri::command]
-pub fn ai_notices() -> NoticesResult {
-    let Some(path) = dirs::data_dir().map(|d| d.join("arlen/anomaly/alerts.json")) else {
-        return NoticesResult::ok(Vec::new());
-    };
-    let bytes = match std::fs::read(&path) {
+/// Read the recent anomaly notices from a specific alert-log path. A missing
+/// file is a readable "nothing yet" (`available = true`, empty); a present-but-
+/// unreadable or malformed file is `available = false` so the UI can flag it.
+/// Pure of the data-dir lookup, so the available/degraded distinction is
+/// unit-tested against real files.
+fn read_notices_at(path: &std::path::Path) -> NoticesResult {
+    let bytes = match std::fs::read(path) {
         Ok(b) => b,
         // Not written yet / detector not installed: a normal empty state.
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return NoticesResult::ok(Vec::new()),
@@ -89,4 +87,57 @@ pub fn ai_notices() -> NoticesResult {
             })
             .collect(),
     )
+}
+
+/// Read the recent anomaly notices (newest first). A missing log or no data dir
+/// is a readable "nothing yet" (`available = true`, empty); a present-but-
+/// unreadable or malformed log is `available = false` so the UI can flag it.
+#[tauri::command]
+pub fn ai_notices() -> NoticesResult {
+    let Some(path) = dirs::data_dir().map(|d| d.join("arlen/anomaly/alerts.json")) else {
+        return NoticesResult::ok(Vec::new());
+    };
+    read_notices_at(&path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_missing_log_is_available_and_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let r = read_notices_at(&dir.path().join("absent.json"));
+        assert!(r.available, "a never-written log is a normal empty state");
+        assert!(r.notices.is_empty());
+    }
+
+    #[test]
+    fn a_valid_log_parses_its_alerts() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("alerts.json");
+        std::fs::write(
+            &path,
+            r#"{"alerts":[{"kind":"rate_limit","summary":"s","body":"b","critical":true,"ts_micros":42}]}"#,
+        )
+        .unwrap();
+        let r = read_notices_at(&path);
+        assert!(r.available);
+        assert_eq!(r.notices.len(), 1);
+        assert_eq!(r.notices[0].summary, "s");
+        assert!(r.notices[0].critical);
+    }
+
+    #[test]
+    fn a_malformed_log_is_degraded_not_all_clear() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("alerts.json");
+        std::fs::write(&path, "not json at all").unwrap();
+        let r = read_notices_at(&path);
+        assert!(
+            !r.available,
+            "a present-but-corrupt log must report degraded, not empty/all-clear"
+        );
+        assert!(r.notices.is_empty());
+    }
 }
