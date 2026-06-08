@@ -167,8 +167,10 @@ mod tests {
     fn save_then_load_round_trips() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("state.json");
-        let mut s = State::default();
-        s.hwm_index = 42;
+        let mut s = State {
+            hwm_index: 42,
+            ..Default::default()
+        };
         s.note_user_activity(1_000);
         s.record_raised(&tampered(), 5_000);
         s.save(&path).unwrap();
