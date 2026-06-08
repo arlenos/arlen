@@ -519,9 +519,21 @@ fn validate_source(source: &Source, i: usize, errors: &mut Vec<ValidationError>)
         SourceType::GithubRelease => {
             // A github-release follows tags (version is omitted, the asset is a
             // `{version}` template), so its content-address is resolved and
-            // locked per release at fetch time, not pinned in the recipe. Hence
-            // only the asset template is required here, matching the minimal
-            // release example in forage-recipes.md section 5.
+            // locked per release at fetch time, not pinned in the recipe. The
+            // repo `url` is required and must be a `github.com/{owner}/{repo}`
+            // url (decision D7): an explicit, host-checkable repo beats deriving
+            // owner/repo from another field, and the fetch host-checks the same.
+            match &source.url {
+                u if !present(u) => errors.push(err(
+                    &at("url"),
+                    "github-release source requires a url (github.com/{owner}/{repo})",
+                )),
+                Some(u) if !is_github_repo_url(u) => errors.push(err(
+                    &at("url"),
+                    "github-release url must be a github.com/{owner}/{repo} repository",
+                )),
+                _ => {}
+            }
             if !present(&source.asset) {
                 errors.push(err(
                     &at("asset"),
@@ -530,8 +542,21 @@ fn validate_source(source: &Source, i: usize, errors: &mut Vec<ValidationError>)
             }
         }
         SourceType::Crate => {
+            // `url` is the bare crate name; `sha256` pins the downloaded `.crate`
+            // (decision D6). `version` is optional (it defaults to the recipe
+            // version), so it is not required here.
             if !present(&source.url) {
-                errors.push(err(&at("url"), "crate source requires a url"));
+                errors.push(err(&at("url"), "crate source requires a url (the crate name)"));
+            }
+            match &source.sha256 {
+                s if !present(s) => {
+                    errors.push(err(&at("sha256"), "crate source requires a sha256"))
+                }
+                Some(s) if !is_sha256(s) => errors.push(err(
+                    &at("sha256"),
+                    "sha256 must be a 64-character hex content-address",
+                )),
+                _ => {}
             }
         }
         SourceType::Local => {
@@ -664,6 +689,25 @@ fn is_git_commit(s: &str) -> bool {
 /// Whether a string is a 64-character hex sha256 content-address.
 fn is_sha256(s: &str) -> bool {
     is_hex_len(s, 64)
+}
+
+/// Whether `url` is a `github.com/{owner}/{repo}` repository url (optionally
+/// scheme-prefixed), the form a `github-release` source requires (D7). A loose
+/// validate-time check; the fetch resolves and pins the same host.
+fn is_github_repo_url(url: &str) -> bool {
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .unwrap_or(url);
+    let Some(path) = rest
+        .strip_prefix("github.com/")
+        .or_else(|| rest.strip_prefix("github.com./"))
+    else {
+        return false;
+    };
+    // Require at least an owner and a repo path segment.
+    let mut segs = path.trim_end_matches('/').split('/').filter(|s| !s.is_empty());
+    segs.next().is_some() && segs.next().is_some()
 }
 
 /// Whether a hex object id is the git null id (all zeros), used as an "unset"
@@ -863,7 +907,26 @@ sha256 = "abc123"
     }
 
     #[test]
-    fn github_release_needs_asset_not_sha256() {
+    fn github_release_needs_a_repo_url_and_asset_not_sha256() {
+        // D7: an explicit github.com/{owner}/{repo} url plus an asset template;
+        // no sha256 (the asset is resolved-and-locked per release at fetch time).
+        let toml = r#"
+[recipe]
+id = "dev.zed.Zed"
+name = "Zed"
+maintainer = "key:abc"
+
+[[source]]
+type = "github-release"
+url = "github.com/zed-industries/zed"
+asset = "zed-{version}-{target}.tar.gz"
+"#;
+        let errors = validate(&parse(toml).unwrap());
+        assert!(errors.is_empty(), "a release with url + asset is valid: {errors:?}");
+    }
+
+    #[test]
+    fn github_release_without_a_url_is_fatal() {
         let toml = r#"
 [recipe]
 id = "dev.zed.Zed"
@@ -876,8 +939,28 @@ asset = "zed-{version}-{target}.tar.gz"
 "#;
         let errors = validate(&parse(toml).unwrap());
         assert!(
-            errors.is_empty(),
-            "a tag-following release needs only an asset template: {errors:?}"
+            errors.iter().any(|e| e.field == "source[0].url"),
+            "a github-release without a url is fatal (D7): {errors:?}"
+        );
+    }
+
+    #[test]
+    fn github_release_with_a_non_github_url_is_fatal() {
+        let toml = r#"
+[recipe]
+id = "dev.zed.Zed"
+name = "Zed"
+maintainer = "key:abc"
+
+[[source]]
+type = "github-release"
+url = "https://gitlab.com/zed/zed"
+asset = "zed-{version}-{target}.tar.gz"
+"#;
+        let errors = validate(&parse(toml).unwrap());
+        assert!(
+            errors.iter().any(|e| e.field == "source[0].url"),
+            "a non-github-release repo url is fatal: {errors:?}"
         );
     }
 
