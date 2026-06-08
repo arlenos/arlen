@@ -153,6 +153,164 @@ fn map_graph(scopes: &[String], unmapped: &mut Vec<String>) -> GraphPermissions 
     g
 }
 
+/// One capability that changed between an installed recipe and an update.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapabilityChange {
+    /// Human description, e.g. `network host api.example.com`.
+    pub description: String,
+    /// Whether this addition is high-impact and must block on explicit consent
+    /// before the update proceeds (the S16 "high-impact always confirm"
+    /// doctrine applied to capability changes). Low-impact additions are granted
+    /// at the ceiling and prompt on first use instead.
+    pub high_impact: bool,
+}
+
+/// The capability delta of an upgrade: declared additions (some consent-gated)
+/// and removals (narrowing, applied freely).
+#[derive(Debug, Clone, Default)]
+pub struct CapabilityDiff {
+    /// Capabilities the new version declares that the old did not.
+    pub added: Vec<CapabilityChange>,
+    /// Capabilities the old version declared that the new dropped (narrowing).
+    pub removed: Vec<String>,
+}
+
+impl CapabilityDiff {
+    /// Whether the upgrade must block on explicit consent: any high-impact
+    /// addition (a new network host, new filesystem access, or a new graph
+    /// write) requires confirmation before the update proceeds.
+    pub fn requires_consent(&self) -> bool {
+        self.added.iter().any(|c| c.high_impact)
+    }
+
+    /// Whether nothing changed.
+    pub fn is_empty(&self) -> bool {
+        self.added.is_empty() && self.removed.is_empty()
+    }
+}
+
+/// Diff two declared capability sets (the installed recipe vs an update,
+/// forage-recipes.md section 11). Additions are classified high-impact per the
+/// S16 doctrine: a new network host, any new filesystem access, and a new graph
+/// write block on consent; new graph reads and the notification/clipboard/audio
+/// flags are low-impact (prompt-on-use). Removals always narrow freely. The
+/// classification errs toward high-impact, so the gate can only over-prompt,
+/// never silently admit a privilege widening.
+pub fn diff_capabilities(old: &Capabilities, new: &Capabilities) -> CapabilityDiff {
+    let mut added = Vec::new();
+    let mut removed = Vec::new();
+
+    diff_list(&old.network, &new.network, "network host", true, &mut added, &mut removed);
+    diff_list(&old.filesystem, &new.filesystem, "filesystem", true, &mut added, &mut removed);
+    diff_graph(&old.graph, &new.graph, &mut added, &mut removed);
+
+    diff_flag(old.notifications, new.notifications, "notifications", &mut added, &mut removed);
+    diff_flag(old.clipboard, new.clipboard, "clipboard", &mut added, &mut removed);
+    diff_flag(old.audio, new.audio, "audio", &mut added, &mut removed);
+
+    // Unrecognised `extra` categories: a newly-declared one is conservatively
+    // high-impact (its reach is unknown, so it cannot be assessed as safe) and
+    // must not bypass the consent gate by being unmodelled. Removal narrows.
+    for key in new.extra.keys() {
+        if !old.extra.contains_key(key) {
+            added.push(CapabilityChange {
+                description: format!("capability {key}"),
+                high_impact: true,
+            });
+        }
+    }
+    for key in old.extra.keys() {
+        if !new.extra.contains_key(key) {
+            removed.push(format!("capability {key}"));
+        }
+    }
+
+    CapabilityDiff { added, removed }
+}
+
+/// Diff a string-list capability category with a fixed impact for additions.
+fn diff_list(
+    old: &[String],
+    new: &[String],
+    label: &str,
+    high_impact: bool,
+    added: &mut Vec<CapabilityChange>,
+    removed: &mut Vec<String>,
+) {
+    for s in new {
+        if old.contains(s) {
+            continue;
+        }
+        let description = format!("{label} {s}");
+        if !added.iter().any(|c| c.description == description) {
+            added.push(CapabilityChange { description, high_impact });
+        }
+    }
+    for s in old {
+        if !new.contains(s) {
+            let description = format!("{label} {s}");
+            if !removed.contains(&description) {
+                removed.push(description);
+            }
+        }
+    }
+}
+
+/// Diff graph scopes: a new `write:` is high-impact, anything else (a read, or a
+/// malformed scope that grants nothing) is low-impact.
+fn diff_graph(
+    old: &[String],
+    new: &[String],
+    added: &mut Vec<CapabilityChange>,
+    removed: &mut Vec<String>,
+) {
+    for s in new {
+        if old.contains(s) {
+            continue;
+        }
+        let description = format!("graph {s}");
+        if !added.iter().any(|c| c.description == description) {
+            added.push(CapabilityChange {
+                description,
+                // Deliberately the same case-sensitive `write:` test that
+                // `map_graph` uses to grant a write. The two must stay coupled:
+                // anything the diff treats as not-a-write, the mapper also
+                // refuses to grant as a write, so a `"WRITE:"` typo grants
+                // nothing and correctly needs no write consent. Do not make one
+                // side case-insensitive without the other.
+                high_impact: s.starts_with("write:"),
+            });
+        }
+    }
+    for s in old {
+        if !new.contains(s) {
+            let description = format!("graph {s}");
+            if !removed.contains(&description) {
+                removed.push(description);
+            }
+        }
+    }
+}
+
+/// Diff a boolean capability flag. A newly-true flag is a low-impact addition
+/// (prompt-on-use); a newly-false flag is a removal.
+fn diff_flag(
+    old: bool,
+    new: bool,
+    label: &str,
+    added: &mut Vec<CapabilityChange>,
+    removed: &mut Vec<String>,
+) {
+    match (old, new) {
+        (false, true) => added.push(CapabilityChange {
+            description: label.to_string(),
+            high_impact: false,
+        }),
+        (true, false) => removed.push(label.to_string()),
+        _ => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -248,6 +406,87 @@ mod tests {
         let m = map(&c);
         assert!(m.unmapped.contains(&"audio".to_string()));
         assert!(m.unmapped.contains(&"bluetooth".to_string()));
+    }
+
+    #[test]
+    fn identical_capabilities_diff_empty_and_need_no_consent() {
+        let mut c = caps();
+        c.network = vec!["api.example.com:443".into()];
+        c.notifications = true;
+        let d = diff_capabilities(&c, &c.clone());
+        assert!(d.is_empty());
+        assert!(!d.requires_consent());
+    }
+
+    #[test]
+    fn a_new_network_host_requires_consent() {
+        let mut old = caps();
+        old.network = vec!["a.example.com:443".into()];
+        let mut new = caps();
+        new.network = vec!["a.example.com:443".into(), "b.evil.com:443".into()];
+        let d = diff_capabilities(&old, &new);
+        assert!(d.requires_consent(), "a new network host is high-impact");
+        assert!(d
+            .added
+            .iter()
+            .any(|c| c.description == "network host b.evil.com:443" && c.high_impact));
+    }
+
+    #[test]
+    fn a_new_filesystem_scope_requires_consent() {
+        let mut new = caps();
+        new.filesystem = vec!["home".into()];
+        let d = diff_capabilities(&caps(), &new);
+        assert!(d.requires_consent());
+        assert!(d.added.iter().any(|c| c.description == "filesystem home" && c.high_impact));
+    }
+
+    #[test]
+    fn graph_write_is_high_impact_read_is_not() {
+        let mut new = caps();
+        new.graph = vec!["read:File".into(), "write:Tag".into()];
+        let d = diff_capabilities(&caps(), &new);
+        assert!(d.requires_consent(), "a new graph write blocks");
+        let read = d.added.iter().find(|c| c.description == "graph read:File").unwrap();
+        let write = d.added.iter().find(|c| c.description == "graph write:Tag").unwrap();
+        assert!(!read.high_impact);
+        assert!(write.high_impact);
+    }
+
+    #[test]
+    fn low_impact_flag_additions_do_not_block() {
+        let mut new = caps();
+        new.notifications = true;
+        new.clipboard = true;
+        let d = diff_capabilities(&caps(), &new);
+        assert!(!d.requires_consent(), "notifications/clipboard prompt on use, not block");
+        assert_eq!(d.added.len(), 2);
+    }
+
+    #[test]
+    fn a_new_unknown_extra_capability_requires_consent() {
+        let mut new = caps();
+        new.extra.insert("bluetooth".into(), toml::Value::Boolean(true));
+        let d = diff_capabilities(&caps(), &new);
+        // An unmodelled capability must not slip past the gate by being unknown.
+        assert!(d.requires_consent());
+        assert!(d
+            .added
+            .iter()
+            .any(|c| c.description == "capability bluetooth" && c.high_impact));
+    }
+
+    #[test]
+    fn removals_narrow_freely_without_consent() {
+        let mut old = caps();
+        old.network = vec!["a.example.com:443".into()];
+        old.notifications = true;
+        let new = caps();
+        let d = diff_capabilities(&old, &new);
+        assert!(!d.requires_consent(), "narrowing never needs consent");
+        assert!(d.added.is_empty());
+        assert!(d.removed.contains(&"network host a.example.com:443".to_string()));
+        assert!(d.removed.contains(&"notifications".to_string()));
     }
 
     #[test]
