@@ -1,0 +1,19 @@
+[package]
+name = "arlen-forage-extract"
+version = "0.1.0"
+edition = "2021"
+description = "Safe extraction of a fetched source archive into a build directory (path-traversal, symlink and zip-bomb defended)"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+tar = "0.4"
+flate2 = "1"
+zstd = "0.13"
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[workspace]
