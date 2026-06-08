@@ -330,11 +330,13 @@
           read tier. Each question is answered on its own for now —
           conversation memory comes later.
         </p>
-        <div class="starters">
-          {#each STARTERS as s (s)}
-            <button class="starter" onclick={() => useStarter(s)}>{s}</button>
-          {/each}
-        </div>
+        {#if aiReady}
+          <div class="starters">
+            {#each STARTERS as s (s)}
+              <button class="starter" onclick={() => useStarter(s)}>{s}</button>
+            {/each}
+          </div>
+        {/if}
       </div>
     {:else}
       <div class="thread">
