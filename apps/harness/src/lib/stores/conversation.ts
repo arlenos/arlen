@@ -110,6 +110,42 @@ export const activeTitle = derived(
 
 let initialized = false;
 
+/// Coerce one record loaded from the schema-agnostic sessions file into a
+/// well-formed [`Session`], or return `null` to drop it. Unknown roles,
+/// non-string text, non-array messages, and missing ids are all handled, so a
+/// stale or corrupted record can never enter the store and break id-recovery,
+/// the save mirror, or the rail. A pending flag is never restored (placeholders
+/// are dropped before save; a loaded "pending" turn would otherwise freeze).
+export function sanitizeSession(raw: unknown): Session | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  const id = typeof r.id === "string" && r.id.length > 0 ? r.id : null;
+  if (id === null) return null;
+  const title = typeof r.title === "string" ? r.title : DEFAULT_TITLE;
+  const createdAt = typeof r.createdAt === "number" ? r.createdAt : 0;
+  const rawMsgs = Array.isArray(r.messages) ? r.messages : [];
+  const messages: Message[] = [];
+  for (const item of rawMsgs) {
+    if (typeof item !== "object" || item === null) continue;
+    const m = item as Record<string, unknown>;
+    if (typeof m.id !== "number") continue;
+    if (m.role !== "user" && m.role !== "assistant" && m.role !== "error") continue;
+    const msg: Message = {
+      id: m.id,
+      role: m.role as Role,
+      text: typeof m.text === "string" ? m.text : "",
+    };
+    if (Array.isArray(m.mentions)) {
+      const names = m.mentions.filter((x): x is string => typeof x === "string");
+      if (names.length > 0) msg.mentions = names;
+    }
+    if (Array.isArray(m.toolCalls)) msg.toolCalls = m.toolCalls as ToolCall[];
+    if (typeof m.traceUnavailable === "boolean") msg.traceUnavailable = m.traceUnavailable;
+    messages.push(msg);
+  }
+  return { id, title, createdAt, messages };
+}
+
 /// Load persisted sessions on startup and keep the store mirrored to disk.
 /// Sessions are in-memory until this runs; call it once when the app mounts.
 /// Loading and saving both fail soft, so a persistence problem never breaks the
@@ -119,17 +155,28 @@ export async function initSessions(): Promise<void> {
   initialized = true;
 
   try {
-    const stored = await invoke<Session[]>("harness_sessions_load");
+    const stored = await invoke<unknown[]>("harness_sessions_load");
     if (Array.isArray(stored) && stored.length > 0) {
-      sessions.set(stored);
-      activeSessionId.set(stored[0]?.id ?? null);
-      // Continue message ids past the highest loaded one, so a new turn in a
-      // restored session never collides with an existing keyed message.
-      const maxId = Math.max(
-        -1,
-        ...stored.flatMap((s) => s.messages.map((m) => m.id)),
-      );
-      nextMsgId = maxId + 1;
+      // The sessions file is schema-agnostic JSON owned by the frontend, so a
+      // record may predate the current shape or be partially corrupted.
+      // Sanitize before anything touches it: the store, the id-recovery below,
+      // and the save mirror all assume well-formed sessions with array
+      // messages, so an unsanitized `messages: null` (or similar) would throw
+      // here and keep destabilizing the rail.
+      const clean = stored
+        .map(sanitizeSession)
+        .filter((s): s is Session => s !== null);
+      if (clean.length > 0) {
+        sessions.set(clean);
+        activeSessionId.set(clean[0].id);
+        // Continue message ids past the highest loaded one, so a new turn in a
+        // restored session never collides with an existing keyed message.
+        const maxId = Math.max(
+          -1,
+          ...clean.flatMap((s) => s.messages.map((m) => m.id)),
+        );
+        nextMsgId = maxId + 1;
+      }
     }
   } catch {
     // No persisted history; start fresh.
