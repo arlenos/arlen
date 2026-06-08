@@ -13,7 +13,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2, Wrench, Cpu, File as FileIcon, Folder, Paperclip, X, Copy, Check, RotateCcw } from "@lucide/svelte";
+  import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2, Wrench, Cpu, File as FileIcon, Folder, Paperclip, X, Copy, Check, RotateCcw, PowerOff } from "@lucide/svelte";
   import { messages, busy, send, regenerate, initSessions, type MentionContent, type Message } from "$lib/stores/conversation";
   import { planRegenerate } from "$lib/regenerate";
   import ConversationRail from "$lib/components/ConversationRail.svelte";
@@ -62,6 +62,12 @@
   // agree on what is regenerable.
   const canRegenerate = $derived(planRegenerate($messages) !== null);
   const lastMessageId = $derived($messages[$messages.length - 1]?.id);
+
+  // The AI master switch is off (loaded capability, but not enabled). The
+  // composer is disabled in this state so the user is not left typing into a
+  // dead box where every send would just fail; a notice points at Settings.
+  // While capability is still loading (null) the composer stays usable.
+  const aiDisabled = $derived(capability !== null && !capability.enabled);
 
   // Copy a message's raw text to the clipboard. Copies the source the user sees
   // (the markdown for an assistant turn, the typed text for a user turn), not
@@ -442,15 +448,22 @@
       </div>
     {/if}
 
+    {#if aiDisabled}
+      <p class="composer-notice">
+        <PowerOff size={13} strokeWidth={1.75} />
+        The AI layer is disabled. Enable it in Settings → AI to ask questions.
+      </p>
+    {/if}
+
     <div class="composer">
       <Input
         bind:value={draft}
         onkeydown={onKeydown}
-        placeholder="Ask about your files, projects, activity… (@ to attach a file)"
-        disabled={$busy}
+        placeholder={aiDisabled ? "AI is disabled" : "Ask about your files, projects, activity… (@ to attach a file)"}
+        disabled={$busy || aiDisabled}
         aria-label="Message"
       />
-      <Button size="icon" variant="default" onclick={submit} disabled={$busy || (draft.trim() === "" && $attached.length === 0)} aria-label="Send">
+      <Button size="icon" variant="default" onclick={submit} disabled={$busy || aiDisabled || (draft.trim() === "" && $attached.length === 0)} aria-label="Send">
         <ArrowUp size={16} strokeWidth={2} />
       </Button>
     </div>
@@ -720,6 +733,20 @@
   }
   .composer-wrap {
     position: relative;
+  }
+  .composer-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0.5rem 1rem;
+    border-top: 1px solid var(--color-border);
+    font-size: 0.8rem;
+    color: color-mix(in srgb, var(--foreground) 65%, transparent);
+    background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  }
+  .composer-notice :global(svg) {
+    flex-shrink: 0;
   }
   .composer {
     display: flex;
