@@ -58,7 +58,12 @@ pub enum Commands {
 #[derive(Subcommand)]
 pub enum TrashAction {
     /// List apps in the 30-day trash.
-    List,
+    List {
+        /// Output a JSON array instead of the formatted table (for scripts
+        /// and other tools, e.g. the store app's trash view).
+        #[arg(long)]
+        json: bool,
+    },
     /// Restore an app from trash.
     Restore {
         /// App ID.

@@ -151,7 +151,7 @@ async fn cmd_trash(action: TrashAction) {
     use commands::install_client as client;
 
     match action {
-        TrashAction::List => {
+        TrashAction::List { json } => {
             let conn = match client::connect().await {
                 Ok(c) => c,
                 Err(e) => {
@@ -159,7 +159,7 @@ async fn cmd_trash(action: TrashAction) {
                     std::process::exit(1);
                 }
             };
-            if let Err(e) = client::list_trashed(&conn).await {
+            if let Err(e) = client::list_trashed(&conn, json).await {
                 eprintln!("{} {e}", "error:".red().bold());
                 std::process::exit(1);
             }
