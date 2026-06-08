@@ -112,6 +112,22 @@ pub enum TranscriptEntry {
         /// The re-prompt text after the `step {n}: ` prefix.
         detail: String,
     },
+    /// A tool result observed and fed back into the loop (the design's observe
+    /// step). The full result persists in the store/KG at `result_ref` (P8);
+    /// the transcript holds only a bounded, already-inert-and-screened `preview`
+    /// plus that reference, so one verbose result never blows the window. The
+    /// `preview` is the only part tighten may drop (the model can re-fetch the
+    /// full result by its reference); the tool and reference are load-bearing.
+    Observation {
+        /// The loop step that produced this entry.
+        step: u32,
+        /// The tool whose result this is (a load-bearing fact, never dropped).
+        tool: String,
+        /// A bounded, inert-text preview of the result (dropped when tightened).
+        preview: String,
+        /// The store/KG reference to the full result (never dropped).
+        result_ref: String,
+    },
 }
 
 impl TranscriptEntry {
@@ -139,6 +155,18 @@ impl TranscriptEntry {
                 format!("step {step}: action refused ({reason})")
             }
             TranscriptEntry::Nag { step, detail } => format!("step {step}: {detail}"),
+            TranscriptEntry::Observation {
+                step,
+                tool,
+                preview,
+                result_ref,
+            } => {
+                if preview.is_empty() {
+                    format!("step {step}: observed {tool} -> [full result {result_ref}]")
+                } else {
+                    format!("step {step}: observed {tool} -> {preview} [full result {result_ref}]")
+                }
+            }
         }
     }
 }
@@ -174,10 +202,13 @@ pub fn prune(transcript: &mut Vec<TranscriptEntry>) -> bool {
     transcript.len() != before
 }
 
-/// Model-free tighten: drop the rationale prose from every `Proposed` entry
-/// older than the kept tail, keeping the tool and the gate decision verbatim.
-/// Refusals and the recent tail are untouched. This shrinks the prompt without
-/// losing any load-bearing fact. Returns whether anything was tightened.
+/// Model-free tighten: drop the droppable prose from entries older than the
+/// kept tail, keeping every load-bearing fact verbatim. For a `Proposed` entry
+/// that is the rationale; for an `Observation` it is the result preview (the
+/// full result survives at its reference, so the model can re-fetch it). The
+/// tool, gate decision, refusals, references, and the recent tail are untouched.
+/// This shrinks the prompt without losing any load-bearing fact. Returns whether
+/// anything was tightened.
 pub fn tighten(transcript: &mut [TranscriptEntry], keep_recent: usize) -> bool {
     let len = transcript.len();
     if len <= keep_recent {
@@ -185,11 +216,16 @@ pub fn tighten(transcript: &mut [TranscriptEntry], keep_recent: usize) -> bool {
     }
     let mut changed = false;
     for entry in &mut transcript[..len - keep_recent] {
-        if let TranscriptEntry::Proposed { summary, .. } = entry {
-            if !summary.is_empty() {
+        match entry {
+            TranscriptEntry::Proposed { summary, .. } if !summary.is_empty() => {
                 summary.clear();
                 changed = true;
             }
+            TranscriptEntry::Observation { preview, .. } if !preview.is_empty() => {
+                preview.clear();
+                changed = true;
+            }
+            _ => {}
         }
     }
     changed
@@ -205,6 +241,14 @@ mod tests {
             tool: "graph.write".to_string(),
             summary: format!("tag file {step}"),
             decision: "RequireConfirmation".to_string(),
+        }
+    }
+    fn observation(step: u32) -> TranscriptEntry {
+        TranscriptEntry::Observation {
+            step,
+            tool: "graph.query".to_string(),
+            preview: format!("rows: file-{step}"),
+            result_ref: format!("blob:{step}"),
         }
     }
     fn refused(step: u32) -> TranscriptEntry {
@@ -301,6 +345,41 @@ mod tests {
         assert_eq!(t[1], refused(1));
         assert_eq!(t[3], proposed(3));
         assert_eq!(t[4], proposed(4));
+    }
+
+    #[test]
+    fn observation_renders_preview_then_drops_it_keeping_the_reference() {
+        let full = observation(2).render();
+        assert_eq!(
+            full,
+            "step 2: observed graph.query -> rows: file-2 [full result blob:2]"
+        );
+        // After its preview is dropped, the tool and the result reference remain
+        // so the model can still re-fetch the full result.
+        let elided = TranscriptEntry::Observation {
+            step: 2,
+            tool: "graph.query".to_string(),
+            preview: String::new(),
+            result_ref: "blob:2".to_string(),
+        }
+        .render();
+        assert_eq!(elided, "step 2: observed graph.query -> [full result blob:2]");
+    }
+
+    #[test]
+    fn tighten_drops_old_observation_previews_keeping_tool_and_reference() {
+        let mut t = vec![observation(0), observation(1), observation(2)];
+        assert!(tighten(&mut t, 1)); // keep the last observation in full
+        match &t[0] {
+            TranscriptEntry::Observation { preview, tool, result_ref, .. } => {
+                assert!(preview.is_empty(), "old preview dropped");
+                assert_eq!(tool, "graph.query", "tool kept");
+                assert_eq!(result_ref, "blob:0", "reference kept so the result is re-fetchable");
+            }
+            other => panic!("expected a tightened observation, got {other:?}"),
+        }
+        // The recent tail keeps its preview.
+        assert_eq!(t[2], observation(2));
     }
 
     #[test]
