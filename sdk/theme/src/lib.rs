@@ -45,6 +45,14 @@ pub use watcher::ThemeWatcher;
 
 use std::path::{Path, PathBuf};
 
+/// The canonical bundled default themes, embedded at compile time. This crate
+/// is the single source: every consumer (the shell, the compositor) reads the
+/// same bytes through these constants instead of reaching into another crate's
+/// tree, so the two binaries cannot drift on their defaults.
+pub const DARK_TOML: &str = include_str!("../themes/dark.toml");
+/// The bundled light default theme. See [`DARK_TOML`].
+pub const LIGHT_TOML: &str = include_str!("../themes/light.toml");
+
 /// Parsed hex color as RGBA with components in `0.0..=1.0`.
 pub type Rgba = [f32; 4];
 

@@ -53,8 +53,10 @@ pub enum ThemeError {
 // Bundled themes (compile-time embedded)
 // ---------------------------------------------------------------------------
 
-const DARK_TOML: &str = include_str!("../../themes/dark.toml");
-const LIGHT_TOML: &str = include_str!("../../themes/light.toml");
+// The bundled defaults live in the shared arlen-theme crate (single source for
+// the shell and the compositor), not in this app's tree.
+const DARK_TOML: &str = arlen_theme::DARK_TOML;
+const LIGHT_TOML: &str = arlen_theme::LIGHT_TOML;
 
 /// Sentinel value in `[overrides].accent` that binds the accent to
 /// the active theme's primary foreground color. Lets users pick a
