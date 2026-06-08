@@ -48,7 +48,8 @@ fn main() {
         Commands::Build {
             path,
             unsafe_no_sandbox,
-        } => run_async(commands::build::run(path, unsafe_no_sandbox)),
+            install,
+        } => run_async(commands::build::run(path, unsafe_no_sandbox, install)),
         Commands::Cookbook { action } => match action {
             CookbookAction::Add { name, url } => commands::cookbook::add(&name, &url),
             CookbookAction::Remove { name } => commands::cookbook::remove(&name),
