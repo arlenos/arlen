@@ -31,10 +31,10 @@ use arlen_ai_agent::engine::{
 };
 use arlen_ai_agent::gate::Gate;
 use arlen_ai_agent::slice::{FsPathResolver, ProcMountsPolicy};
-use arlen_ai_agent::executor::{ExecutedWrite, LiveExecutor};
+use arlen_ai_agent::executor::LiveExecutor;
 use arlen_ai_agent::graph::{UnixGraph, UnixRelationWriter, DEFAULT_GRAPH_SOCKET};
 use arlen_ai_agent::handlers::builtin_handlers;
-use arlen_ai_agent::receipt_store::ReceiptStore;
+use arlen_ai_agent::receipt_store::{ReceiptStore, RetainedReceipt};
 use arlen_ai_agent::loader::{ai_config_path, behaviour_sources, load};
 use arlen_ai_agent::seams::{AgentEvent, NullObserver, SystemClock, TriggerSource};
 use arlen_ai_agent::source::{subscription_types, EventBusSource, DEFAULT_CONSUMER_SOCKET};
@@ -561,7 +561,7 @@ async fn run(
     // re-arms and config reloads) so a later compensate can find the write to
     // undo by its decision correlation id. Populated as Written outcomes are
     // surfaced; read by the compensate path (a following increment).
-    let receipts: std::sync::Mutex<ReceiptStore<ExecutedWrite>> =
+    let receipts: std::sync::Mutex<ReceiptStore<RetainedReceipt>> =
         std::sync::Mutex::new(ReceiptStore::new(RECEIPT_CAPACITY));
     loop {
         // At the very top of every epoch, before any (possibly slow) config
@@ -946,7 +946,7 @@ async fn dispatch_until_change(
     watcher: &ConfigWatcher,
     shutdown_rx: &mut watch::Receiver<bool>,
     status: &StatusHandle,
-    receipts: &std::sync::Mutex<ReceiptStore<ExecutedWrite>>,
+    receipts: &std::sync::Mutex<ReceiptStore<RetainedReceipt>>,
     recovery: impl std::future::Future<Output = bool>,
 ) -> EpochEnd {
     tokio::pin!(recovery);
@@ -1027,7 +1027,7 @@ async fn dispatch_until_change(
 async fn dispatch_or_reload(
     dispatch: impl std::future::Future<Output = Vec<DispatchOutcome>>,
     abort: impl std::future::Future<Output = EpochEnd>,
-    receipts: &std::sync::Mutex<ReceiptStore<ExecutedWrite>>,
+    receipts: &std::sync::Mutex<ReceiptStore<RetainedReceipt>>,
 ) -> Option<EpochEnd> {
     tokio::select! {
         biased;
@@ -1049,16 +1049,23 @@ async fn dispatch_or_reload(
 /// poisoned lock is ignored: losing a receipt only forgoes an undo, never
 /// corrupts state.
 fn retain_receipt(
-    receipts: &std::sync::Mutex<ReceiptStore<ExecutedWrite>>,
+    receipts: &std::sync::Mutex<ReceiptStore<RetainedReceipt>>,
     outcome: &DispatchOutcome,
 ) {
     if let DispatchOutcome::Decided {
+        behaviour,
         executed: Some(ExecutionResult::Written(receipt)),
         ..
     } = outcome
     {
         if let Ok(mut store) = receipts.lock() {
-            store.record(receipt.correlation_id().to_string(), receipt.clone());
+            store.record(
+                receipt.correlation_id().to_string(),
+                RetainedReceipt {
+                    write: receipt.clone(),
+                    behaviour: behaviour.clone(),
+                },
+            );
         }
     }
 }
@@ -1362,7 +1369,7 @@ mod tests {
     async fn a_config_change_aborts_an_in_flight_dispatch() {
         // A never-completing dispatch (stands in for a long agent loop) is
         // abandoned the moment a config change is observed.
-        let receipts = std::sync::Mutex::new(ReceiptStore::<ExecutedWrite>::new(8));
+        let receipts = std::sync::Mutex::new(ReceiptStore::<RetainedReceipt>::new(8));
         let result = dispatch_or_reload(
             std::future::pending::<Vec<DispatchOutcome>>(),
             std::future::ready(EpochEnd::Reload),
@@ -1376,7 +1383,7 @@ mod tests {
     async fn a_completed_dispatch_continues_the_epoch() {
         // With no config change pending, the dispatch completes and the epoch
         // continues (no abort).
-        let receipts = std::sync::Mutex::new(ReceiptStore::<ExecutedWrite>::new(8));
+        let receipts = std::sync::Mutex::new(ReceiptStore::<RetainedReceipt>::new(8));
         let result = dispatch_or_reload(
             std::future::ready(Vec::<DispatchOutcome>::new()),
             std::future::pending::<EpochEnd>(),

@@ -17,6 +17,20 @@
 
 use std::collections::{HashMap, VecDeque};
 
+use crate::executor::ExecutedWrite;
+
+/// A retained execution receipt together with the behaviour that produced it.
+/// A later compensate audits the undo under the original behaviour's identity
+/// (the audit links the retract to the write's decision), which the bare
+/// [`ExecutedWrite`] receipt does not carry, so it is kept alongside here.
+#[derive(Debug, Clone)]
+pub struct RetainedReceipt {
+    /// The execution receipt (write, op_id, correlation id, outcome).
+    pub write: ExecutedWrite,
+    /// The behaviour whose decision produced the write.
+    pub behaviour: String,
+}
+
 /// A bounded, correlation-id-keyed store with first-in-first-out eviction.
 /// Re-recording an existing key refreshes its recency rather than evicting
 /// another entry.
