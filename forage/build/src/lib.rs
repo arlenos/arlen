@@ -30,13 +30,24 @@ use arlen_forage_recipe::{Build, BuildStep, BuildSystem};
 use thiserror::Error;
 
 /// Inputs the executor needs that are not in the recipe: the source commit
-/// timestamp (for `SOURCE_DATE_EPOCH`) and the deterministic job count.
+/// timestamp (for `SOURCE_DATE_EPOCH`), the deterministic job count, and the
+/// physical build directory whose path is rewritten out of emitted artifacts.
 #[derive(Debug, Clone)]
 pub struct BuildContext {
     /// Seconds since the epoch of the source commit; pins `SOURCE_DATE_EPOCH`.
     pub source_date_epoch: i64,
     /// Deterministic parallelism; a fixed value keeps the build reproducible.
     pub jobs: u32,
+    /// The physical build-directory path to rewrite out of emitted artifacts
+    /// (debug info, `__FILE__`, panic paths), mapped to the canonical
+    /// [`arlen_confiner::BUILD_MOUNT`] via `--remap-path-prefix` /
+    /// `-ffile-prefix-map`. `None` skips the path-remap flags (the rest of the
+    /// reproducibility environment is still injected). The unconfined runner
+    /// passes its real working directory so the machine-specific path does not
+    /// leak; the confined runner already builds at the canonical mount, so the
+    /// map is a harmless no-op there (the embedded paths are `/build/...`
+    /// regardless).
+    pub build_dir: Option<String>,
 }
 
 /// One planned command: a tool and its arguments, never a shell line.
@@ -169,7 +180,45 @@ fn build_env(build: &Build, ctx: &BuildContext) -> BTreeMap<String, String> {
     env.insert("LC_ALL".into(), "C".into());
     env.insert("LANG".into(), "C".into());
     env.insert("TZ".into(), "UTC".into());
+    if let Some(from) = &ctx.build_dir {
+        inject_path_prefix_map(&mut env, from);
+    }
     env
+}
+
+/// Append the build-path remapping flags (forage-recipes.md section 13,
+/// "normalise the build"): tell the Rust and C/C++ toolchains to rewrite the
+/// physical build directory `from` to the canonical
+/// [`arlen_confiner::BUILD_MOUNT`], so an emitted artifact embeds `/build/...`
+/// rather than the machine-specific path. `-ffile-prefix-map` is the superset
+/// of `-fdebug-prefix-map` + `-fmacro-prefix-map`. The flags are appended to
+/// any recipe-supplied `RUSTFLAGS` / `CFLAGS` / `CXXFLAGS` so the recipe's own
+/// flags survive (path maps are additive in the compilers).
+fn inject_path_prefix_map(env: &mut BTreeMap<String, String>, from: &str) {
+    // A `=` in the source path makes the `old=new` flag ambiguous. Forage owns
+    // the build directory and never creates one containing `=`, so this guard
+    // cannot fire for a real build, but it keeps a malformed flag from ever
+    // being emitted rather than corrupting the build invocation.
+    if from.contains('=') {
+        return;
+    }
+    let to = arlen_confiner::BUILD_MOUNT;
+    append_flag(env, "RUSTFLAGS", format!("--remap-path-prefix={from}={to}"));
+    let file_map = format!("-ffile-prefix-map={from}={to}");
+    append_flag(env, "CFLAGS", file_map.clone());
+    append_flag(env, "CXXFLAGS", file_map);
+}
+
+/// Append `flag` to `env[key]`, space-separated, preserving any existing value.
+fn append_flag(env: &mut BTreeMap<String, String>, key: &str, flag: String) {
+    env.entry(key.to_string())
+        .and_modify(|v| {
+            if !v.is_empty() {
+                v.push(' ');
+            }
+            v.push_str(&flag);
+        })
+        .or_insert(flag);
 }
 
 /// Turn a recipe's `[build]` into an ordered, shell-free command plan.
@@ -445,6 +494,7 @@ mod tests {
         BuildContext {
             source_date_epoch: 1_700_000_000,
             jobs: 4,
+            build_dir: None,
         }
     }
 
@@ -482,6 +532,58 @@ mod tests {
         assert_eq!(env.get("TZ").unwrap(), "UTC");
         assert_eq!(env.get("SOURCE_DATE_EPOCH").unwrap(), "1700000000");
         assert_eq!(env.get("MYVAR").unwrap(), "1", "recipe env still passes through");
+    }
+
+    #[test]
+    fn path_prefix_map_rewrites_the_build_dir_to_the_canonical_mount() {
+        let mut c = ctx();
+        c.build_dir = Some("/var/tmp/forage-build-xyz".into());
+        let plan = plan_build(&build(Some(BuildSystem::Cargo)), &c).unwrap();
+        let env = &plan.commands[0].env;
+        let to = arlen_confiner::BUILD_MOUNT;
+        assert_eq!(
+            env.get("RUSTFLAGS").unwrap(),
+            &format!("--remap-path-prefix=/var/tmp/forage-build-xyz={to}")
+        );
+        let file_map = format!("-ffile-prefix-map=/var/tmp/forage-build-xyz={to}");
+        assert_eq!(env.get("CFLAGS").unwrap(), &file_map);
+        assert_eq!(env.get("CXXFLAGS").unwrap(), &file_map);
+    }
+
+    #[test]
+    fn path_prefix_map_is_appended_to_recipe_flags() {
+        let mut b = build(Some(BuildSystem::Make));
+        b.env.insert("RUSTFLAGS".into(), "-Ctarget-cpu=native".into());
+        b.env.insert("CFLAGS".into(), "-O2".into());
+        let mut c = ctx();
+        c.build_dir = Some("/build".into());
+        let plan = plan_build(&b, &c).unwrap();
+        let env = &plan.commands[0].env;
+        // The recipe's own flag survives, ours follows it, space-separated.
+        assert_eq!(
+            env.get("RUSTFLAGS").unwrap(),
+            "-Ctarget-cpu=native --remap-path-prefix=/build=/build"
+        );
+        assert_eq!(env.get("CFLAGS").unwrap(), "-O2 -ffile-prefix-map=/build=/build");
+    }
+
+    #[test]
+    fn no_build_dir_means_no_remap_flags() {
+        let plan = plan_build(&build(Some(BuildSystem::Cargo)), &ctx()).unwrap();
+        let env = &plan.commands[0].env;
+        assert!(env.get("RUSTFLAGS").is_none());
+        assert!(env.get("CFLAGS").is_none());
+        // The rest of the reproducibility env is still present.
+        assert_eq!(env.get("SOURCE_DATE_EPOCH").unwrap(), "1700000000");
+    }
+
+    #[test]
+    fn build_dir_with_equals_skips_the_ambiguous_flag() {
+        let mut c = ctx();
+        c.build_dir = Some("/var/tmp/a=b".into());
+        let plan = plan_build(&build(Some(BuildSystem::Cargo)), &c).unwrap();
+        // A `=` in the path would make `old=new` ambiguous, so no flag is emitted.
+        assert!(plan.commands[0].env.get("RUSTFLAGS").is_none());
     }
 
     #[test]
