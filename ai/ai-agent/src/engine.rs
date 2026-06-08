@@ -25,7 +25,10 @@ use futures::FutureExt as _;
 use arlen_ai_core::capability::{AccessTier, ActionDecision, BaselineMode};
 use arlen_ai_core::provider::{AIProvider, CompletionRequest};
 
-use crate::agentic::{build_agent_prompt, external_screen_text, parse_agent_step, AgentStep};
+use crate::agentic::{
+    build_agent_prompt, external_screen_text, observation_preview, parse_agent_step, AgentStep,
+    OBSERVATION_PREVIEW_CAP,
+};
 use arlen_ai_classifier::{screen, ClassifierPolicy, InjectionClassifier, Verdict};
 use crate::behaviour::{Behaviour, BehaviourKind, ReadScope};
 use crate::compaction::{self, CompactionPolicy, TranscriptEntry};
@@ -710,13 +713,22 @@ impl<'a> Dispatcher<'a> {
     /// `await` here is that preemption point; a timeout or a panic in the
     /// blocking task fails closed (block).
     async fn screen_external(&self, event: &AgentEvent) -> Verdict {
+        self.screen_text(&external_screen_text(event)).await
+    }
+
+    /// Screen arbitrary already-sanitised text through the injection classifier
+    /// (S17), with the same discipline as [`screen_external`]: `Off` allows,
+    /// `FailClosed` blocks, `On` scores on a single-flight blocking task bounded
+    /// by [`SCREEN_TIMEOUT`], failing closed on a timeout, panic, oversize, or a
+    /// busy scorer. Reused for an external event's content and for a tool-result
+    /// observation (D9) before it re-enters the prompt.
+    async fn screen_text(&self, text: &str) -> Verdict {
         match &self.screening {
             ScreeningMode::Off => Verdict::Allow,
             ScreeningMode::FailClosed => Verdict::Block,
             ScreeningMode::On(classifier, policy) => {
-                let text = external_screen_text(event);
-                // Refuse (block) external content past the cap rather than run
-                // unbounded inference windows on a hostile oversized payload.
+                // Refuse (block) content past the cap rather than run unbounded
+                // inference windows on a hostile oversized payload.
                 if text.len() > MAX_SCREEN_BYTES {
                     return Verdict::Block;
                 }
@@ -730,6 +742,7 @@ impl<'a> Dispatcher<'a> {
                 };
                 let classifier = Arc::clone(classifier);
                 let policy = *policy;
+                let text = text.to_string();
                 let scored = tokio::time::timeout(
                     SCREEN_TIMEOUT,
                     tokio::task::spawn_blocking(move || {
@@ -1211,7 +1224,68 @@ impl<'a> Dispatcher<'a> {
                     // proposal regardless of how the gate decided it, so a
                     // refused-then-reproposed action is also bounded.
                     let repeat_key = (tool_name.clone(), summary_text.clone());
-                    let progress_key = match self
+                    // D9(a): a declared read tool is a gate-exempt *observation*,
+                    // not a gated action - the action-gate governs mutation and
+                    // external effect, which a read lacks. It executes through
+                    // the behaviour-scoped graph (the coarse read-tier bound; the
+                    // per-query label allowlist is the B-golive-prep gap), its
+                    // result is sanitised (S18-B `observation_preview`) and
+                    // screened (S17 `screen_text`) before re-entering the prompt,
+                    // and it is recorded as an `Observation`. An undeclared read
+                    // falls through to the gate, which refuses it out-of-scope,
+                    // so scope is still enforced. The no-progress / repeated-tool
+                    // guards below still apply (an identical re-read is the same
+                    // key, so a stuck re-reading loop is bounded).
+                    let progress_key = if is_read_tool(&action.tool)
+                        && m.tools.contains_key(&action.tool)
+                    {
+                        let query =
+                            action.arguments.get("query").map(String::as_str).unwrap_or("");
+                        if query.is_empty() {
+                            transcript.push(TranscriptEntry::Nag {
+                                step,
+                                detail: format!(
+                                    "a {} step needs a non-empty 'query' operand",
+                                    action.tool
+                                ),
+                            });
+                            ProgressKey::Refused(tool_name)
+                        } else {
+                            match graph.query(query).await {
+                                Ok(rows) => {
+                                    let raw = observation_preview(&rows, OBSERVATION_PREVIEW_CAP);
+                                    let result_ref = observation_ref(&rows);
+                                    // Screen the sanitised preview before it
+                                    // enters the transcript; a Block withholds the
+                                    // content (the model observes that, not it).
+                                    let preview = if self.screen_text(&raw).await == Verdict::Block {
+                                        "(result withheld: failed injection screening)".to_string()
+                                    } else {
+                                        raw
+                                    };
+                                    tokens_spent = tokens_spent
+                                        .saturating_add(estimate_tokens(None, preview.len()));
+                                    transcript.push(TranscriptEntry::Observation {
+                                        step,
+                                        tool: action.tool.clone(),
+                                        preview,
+                                        result_ref,
+                                    });
+                                    ProgressKey::Accepted(tool_name, summary_text)
+                                }
+                                Err(e) => {
+                                    // A read error is recoverable: feed it back so
+                                    // the model can adjust its next step.
+                                    transcript.push(TranscriptEntry::Nag {
+                                        step,
+                                        detail: format!("{} failed: {e}", action.tool),
+                                    });
+                                    ProgressKey::Refused(tool_name)
+                                }
+                            }
+                        }
+                    } else {
+                        match self
                         .gate
                         .decide_action(&behaviour, m.mode, &m.tools, &action, &ctx, graph)
                         .await
@@ -1269,6 +1343,7 @@ impl<'a> Dispatcher<'a> {
                             });
                             ProgressKey::Refused(tool_name)
                         }
+                    }
                     };
                     // No-progress guard: the identical key repeated (a refused
                     // action re-proposed even reworded, or an exact duplicate
@@ -1369,6 +1444,27 @@ fn agent_skip_reason(
 /// used only when it is at least the estimate. So a provider that omits
 /// usage, or reports an implausibly low count, cannot bypass the token
 /// budget — the estimate always applies as a lower bound.
+/// Whether `tool` is a read-only graph query the loop executes and observes
+/// directly (D9), not a gated action. Conservative: only the internal
+/// scope-checked graph read for now; MCP read tools join once the loop carries
+/// an MCP client.
+fn is_read_tool(tool: &str) -> bool {
+    tool == "graph.query"
+}
+
+/// A content-address for a tool result's rows: a stable identity for the
+/// `Observation`'s reference. The full result is not yet persisted, so the
+/// reference is an identity rather than a fetch handle; a dropped preview is
+/// recovered by re-issuing the read, and persistence-by-reference (P8) is the
+/// follow-up.
+fn observation_ref(rows: &[HashMap<String, serde_json::Value>]) -> String {
+    use sha2::{Digest, Sha256};
+    let serialized = serde_json::to_vec(rows).unwrap_or_default();
+    let mut hasher = Sha256::new();
+    hasher.update(&serialized);
+    format!("sha256:{:x}", hasher.finalize())
+}
+
 fn estimate_tokens(reported: Option<u32>, text_len: usize) -> u32 {
     let estimate = (text_len / 4) as u32;
     reported.map_or(estimate, |r| r.max(estimate))
@@ -1551,6 +1647,34 @@ tools:
         ) -> Result<Vec<HashMap<String, serde_json::Value>>, GraphError> {
             Ok(Vec::new())
         }
+    }
+
+    /// A graph that records the queries it received and returns one row, to
+    /// check the observe step executes a read (D9).
+    struct RecordingGraph {
+        queries: std::sync::Mutex<Vec<String>>,
+    }
+    #[async_trait::async_trait]
+    impl GraphHandle for RecordingGraph {
+        async fn query(
+            &self,
+            cypher: &str,
+        ) -> Result<Vec<HashMap<String, serde_json::Value>>, GraphError> {
+            self.queries.lock().unwrap().push(cypher.to_string());
+            Ok(vec![[("name".to_string(), serde_json::json!("foo.rs"))]
+                .into_iter()
+                .collect()])
+        }
+    }
+
+    /// An agent behaviour that declares the `graph.query` read tool and a
+    /// project read scope, so the observe step can run it.
+    fn agent_read_skill() -> String {
+        "---\nname: demo-reader\ndescription: read and observe\nkind: agent\n\
+         trigger:\n  type: event\n  event: file.opened\nreads: project\n\
+         tools:\n  graph.query: []\nbudget:\n  max_steps: 5\n  max_tokens: 1000000\n  \
+         max_wall_ms: 60000\nterminal:\n  done: silent\n---\nbody\n"
+            .to_string()
     }
 
     struct StubPropose;
@@ -2179,6 +2303,55 @@ trigger:
     }
     fn stop() -> Result<String, ProviderError> {
         Ok("{\"action\":\"stop\",\"terminal\":\"done\",\"note\":\"finished\"}".to_string())
+    }
+    fn propose_query(tool: &str, query: &str) -> Result<String, ProviderError> {
+        Ok(format!(
+            "{{\"action\":\"propose\",\"tool\":\"{tool}\",\"summary\":\"read\",\"arguments\":{{\"query\":\"{query}\"}}}}"
+        ))
+    }
+
+    #[tokio::test]
+    async fn agent_loop_executes_and_observes_a_read_without_gating_it() {
+        let behaviours = [loaded(&agent_read_skill(), Status::Enabled)];
+        let handlers = registry(Box::new(StubPropose));
+        let cap = Capability::new(AccessTier::Full, ActionPermissions::suggest_only());
+        let audit = MockAuditSink::accepting();
+        let obs = NullObserver;
+        let graph = RecordingGraph {
+            queries: std::sync::Mutex::new(Vec::new()),
+        };
+        let provider = MockProvider::new(vec![
+            propose_query("graph.query", "MATCH (f:File) RETURN f"),
+            stop(),
+        ]);
+        let d = Dispatcher::new(
+            &behaviours,
+            &handlers,
+            &graph,
+            AccessTier::Full,
+            gate(&audit, &obs, &cap),
+            Some(&provider),
+            &TEST_CLOCK,
+        );
+
+        let outcomes = d.dispatch(&event("~/foo.rs")).await;
+        // The read was executed against the graph (observed), with the model's
+        // operand as the query.
+        let queries = graph.queries.lock().unwrap();
+        assert_eq!(queries.len(), 1);
+        assert!(queries[0].contains("MATCH (f:File)"));
+        // D9: a read is gate-exempt — no gated Decided/Refused outcome and
+        // nothing audited (a read is an observation, not an action); the loop
+        // just continues to its terminal stop.
+        assert!(!outcomes.iter().any(|o| matches!(
+            o,
+            DispatchOutcome::Decided { .. } | DispatchOutcome::Refused { .. }
+        )));
+        assert!(matches!(
+            outcomes.last(),
+            Some(DispatchOutcome::Terminal { outcome, .. }) if outcome == "done"
+        ));
+        assert!(audit.recorded().await.is_empty(), "a read observation is not audited");
     }
 
     #[tokio::test]
