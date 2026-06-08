@@ -13,6 +13,7 @@
     deleteSession,
     renameSession,
   } from "$lib/stores/conversation";
+  import { sessionMatches } from "$lib/search";
 
   let query = $state("");
   // The conversation being renamed inline, and the draft title. `null` when no
@@ -31,13 +32,9 @@
   function cancelRename(): void {
     editingId = null;
   }
-  // Sessions whose title matches the search, case-insensitive. Empty query
-  // matches everything.
-  const filtered = $derived(
-    $sessions.filter((s) =>
-      s.title.toLowerCase().includes(query.trim().toLowerCase()),
-    ),
-  );
+  // Sessions whose title or message content matches the search,
+  // case-insensitive. Empty query matches everything.
+  const filtered = $derived($sessions.filter((s) => sessionMatches(s, query)));
 </script>
 
 <aside class="rail" aria-label="Conversations">
