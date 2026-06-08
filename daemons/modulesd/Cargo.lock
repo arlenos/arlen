@@ -51,6 +51,7 @@ checksum = "c3d036a3c4ab069c7b410a2ce876bd74808d2d0888a82667669f8e783a898bf1"
 name = "arlen-ai-core"
 version = "0.1.0"
 dependencies = [
+ "arlen-graph-schema",
  "async-trait",
  "audit-proto",
  "hex",
@@ -64,6 +65,10 @@ dependencies = [
  "tracing",
  "uuid",
 ]
+
+[[package]]
+name = "arlen-graph-schema"
+version = "0.1.0"
 
 [[package]]
 name = "arlen-modules"
@@ -80,6 +85,7 @@ version = "0.1.0"
 dependencies = [
  "arlen-ai-core",
  "arlen-modules",
+ "arlen-net-guard",
  "arlen-permissions",
  "async-trait",
  "base64",
@@ -103,6 +109,14 @@ dependencies = [
  "tracing-subscriber",
  "wasmtime",
  "wiremock",
+]
+
+[[package]]
+name = "arlen-net-guard"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]

@@ -5,6 +5,7 @@ members = [
     "os-sdk",
     "module-sdk",
     "modules",
+    "net-guard",
     "permissions",
     "tauri-plugin-clipboard",
     "tauri-plugin-menu",
