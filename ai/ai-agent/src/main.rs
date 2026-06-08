@@ -31,9 +31,10 @@ use arlen_ai_agent::engine::{
 };
 use arlen_ai_agent::gate::Gate;
 use arlen_ai_agent::slice::{FsPathResolver, ProcMountsPolicy};
-use arlen_ai_agent::executor::LiveExecutor;
+use arlen_ai_agent::executor::{ExecutedWrite, LiveExecutor};
 use arlen_ai_agent::graph::{UnixGraph, UnixRelationWriter, DEFAULT_GRAPH_SOCKET};
 use arlen_ai_agent::handlers::builtin_handlers;
+use arlen_ai_agent::receipt_store::ReceiptStore;
 use arlen_ai_agent::loader::{ai_config_path, behaviour_sources, load};
 use arlen_ai_agent::seams::{AgentEvent, NullObserver, SystemClock, TriggerSource};
 use arlen_ai_agent::source::{subscription_types, EventBusSource, DEFAULT_CONSUMER_SOCKET};
@@ -51,6 +52,12 @@ use zbus::Connection;
 /// completion forwards (Foundation §8.4.6: outbound LLM traffic transits the
 /// proxy, which checks the caller owns this name).
 const AGENT_BUS_NAME: &str = "org.arlen.AIAgent1";
+
+/// How many execution receipts the live-session undo store retains. Beyond
+/// this the oldest writes age out of undo-ability (a persisted receipt log is
+/// the separate undo-log increment); bounded so a long-running daemon's memory
+/// stays flat.
+const RECEIPT_CAPACITY: usize = 256;
 
 /// Backoff bounds for the initial Event Bus subscription retry.
 const SUBSCRIBE_BACKOFF_INITIAL: Duration = Duration::from_millis(500);
@@ -550,6 +557,12 @@ async fn run(
     // actually finishes. A fresh per-dispatcher gate would let repeated rearms
     // each spawn a new scorer and exhaust the blocking pool.
     let screen_gate = Arc::new(tokio::sync::Semaphore::new(1));
+    // Execution receipts retained for the daemon's lifetime (across provider
+    // re-arms and config reloads) so a later compensate can find the write to
+    // undo by its decision correlation id. Populated as Written outcomes are
+    // surfaced; read by the compensate path (a following increment).
+    let receipts: std::sync::Mutex<ReceiptStore<ExecutedWrite>> =
+        std::sync::Mutex::new(ReceiptStore::new(RECEIPT_CAPACITY));
     loop {
         // At the very top of every epoch, before any (possibly slow) config
         // load, classifier provisioning, or resubscribe, report `subscribing`:
@@ -824,6 +837,7 @@ async fn run(
                     &watcher,
                     &mut shutdown_rx,
                     status,
+                    &receipts,
                     recover_connection(connection, Arc::clone(status)),
                 )
                 .await
@@ -834,6 +848,7 @@ async fn run(
                     &watcher,
                     &mut shutdown_rx,
                     status,
+                    &receipts,
                     std::future::pending::<bool>(),
                 )
                 .await
@@ -924,12 +939,14 @@ async fn next_dispatch_step(
 /// at the event boundary, never against an active dispatch, so a bus recovery
 /// (unlike a revocation, not a safety reason to abort) cannot drop an in-flight
 /// workflow event.
+#[allow(clippy::too_many_arguments)]
 async fn dispatch_until_change(
     dispatcher: &Dispatcher<'_>,
     source: &mut EventBusSource,
     watcher: &ConfigWatcher,
     shutdown_rx: &mut watch::Receiver<bool>,
     status: &StatusHandle,
+    receipts: &std::sync::Mutex<ReceiptStore<ExecutedWrite>>,
     recovery: impl std::future::Future<Output = bool>,
 ) -> EpochEnd {
     tokio::pin!(recovery);
@@ -980,6 +997,7 @@ async fn dispatch_until_change(
         if let Some(end) = dispatch_or_reload(
             dispatcher.dispatch(&event),
             wait_config_change(watcher, shutdown_rx),
+            receipts,
         )
         .await
         {
@@ -1009,6 +1027,7 @@ async fn dispatch_until_change(
 async fn dispatch_or_reload(
     dispatch: impl std::future::Future<Output = Vec<DispatchOutcome>>,
     abort: impl std::future::Future<Output = EpochEnd>,
+    receipts: &std::sync::Mutex<ReceiptStore<ExecutedWrite>>,
 ) -> Option<EpochEnd> {
     tokio::select! {
         biased;
@@ -1016,8 +1035,30 @@ async fn dispatch_or_reload(
         outcomes = dispatch => {
             for outcome in &outcomes {
                 log_dispatch_outcome(outcome);
+                retain_receipt(receipts, outcome);
             }
             None
+        }
+    }
+}
+
+/// Retain the execution receipt of a real write, keyed by the decision's
+/// correlation id, so a later compensate can find the write to undo. Only a
+/// `Written` outcome carries a receipt; a failed or indeterminate write does
+/// not (an indeterminate one is reconciled on the next run, not undone). A
+/// poisoned lock is ignored: losing a receipt only forgoes an undo, never
+/// corrupts state.
+fn retain_receipt(
+    receipts: &std::sync::Mutex<ReceiptStore<ExecutedWrite>>,
+    outcome: &DispatchOutcome,
+) {
+    if let DispatchOutcome::Decided {
+        executed: Some(ExecutionResult::Written(receipt)),
+        ..
+    } = outcome
+    {
+        if let Ok(mut store) = receipts.lock() {
+            store.record(receipt.correlation_id().to_string(), receipt.clone());
         }
     }
 }
@@ -1321,9 +1362,11 @@ mod tests {
     async fn a_config_change_aborts_an_in_flight_dispatch() {
         // A never-completing dispatch (stands in for a long agent loop) is
         // abandoned the moment a config change is observed.
+        let receipts = std::sync::Mutex::new(ReceiptStore::<ExecutedWrite>::new(8));
         let result = dispatch_or_reload(
             std::future::pending::<Vec<DispatchOutcome>>(),
             std::future::ready(EpochEnd::Reload),
+            &receipts,
         )
         .await;
         assert!(matches!(result, Some(EpochEnd::Reload)));
@@ -1333,9 +1376,11 @@ mod tests {
     async fn a_completed_dispatch_continues_the_epoch() {
         // With no config change pending, the dispatch completes and the epoch
         // continues (no abort).
+        let receipts = std::sync::Mutex::new(ReceiptStore::<ExecutedWrite>::new(8));
         let result = dispatch_or_reload(
             std::future::ready(Vec::<DispatchOutcome>::new()),
             std::future::pending::<EpochEnd>(),
+            &receipts,
         )
         .await;
         assert!(result.is_none());
