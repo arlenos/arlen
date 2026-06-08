@@ -1,8 +1,10 @@
 //! Build subcommand.
 //!
-//! The build pipeline (content-addressed store, fetch, sandbox, package, sign)
-//! lands in forage-recipes.md R1. For now `build` validates the recipe against
-//! the schema so the recipe is known-good before the pipeline exists.
+//! The build crates (content-addressed store, fetch, sandbox, package, sign)
+//! exist; wiring them into this command is gated on the pinned base platform
+//! (roadmap D2) and on-kernel sandbox verification. Until that lands, `build`
+//! validates the recipe against the schema so it is known-good and ready for the
+//! pipeline.
 
 use std::path::Path;
 use std::process::exit;
