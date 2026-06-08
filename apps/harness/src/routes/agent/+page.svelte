@@ -57,6 +57,10 @@
     critical: boolean;
     tsMicros: number;
   }
+  interface NoticesResult {
+    available: boolean;
+    notices: Notice[];
+  }
   interface Capability {
     enabled: boolean;
     tier: string;
@@ -182,7 +186,7 @@
       behaviours = null;
     }
     try {
-      notices = await invoke<Notice[]>("ai_notices");
+      notices = (await invoke<NoticesResult>("ai_notices")).notices;
     } catch {
       notices = null;
     }
@@ -217,12 +221,21 @@
     let nextActivity: ActivityPage | null = null;
     let nextNotices: Notice[] | null = null;
     try {
-      nextActivity = await invoke<ActivityPage>("ai_activity_recent", { limit: 100 });
+      const a = await invoke<ActivityPage>("ai_activity_recent", { limit: 100 });
+      // A successful call can still report the audit daemon unreachable
+      // (available=false). That is a degraded poll, not fresh data: keep the
+      // last-known timeline and flag staleness rather than blanking it.
+      if (a.available) nextActivity = a;
+      else failed = true;
     } catch {
       failed = true;
     }
     try {
-      nextNotices = await invoke<Notice[]>("ai_notices");
+      const n = await invoke<NoticesResult>("ai_notices");
+      // Likewise, an unreadable/malformed alert log returns available=false;
+      // do not clear a shown notice and present a degraded source as all-clear.
+      if (n.available) nextNotices = n.notices;
+      else failed = true;
     } catch {
       failed = true;
     }

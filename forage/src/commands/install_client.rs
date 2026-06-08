@@ -376,6 +376,27 @@ pub fn which_to_json(app_id: &str, path: &str, source: &str) -> String {
     .unwrap_or_else(|_| "{}".to_string())
 }
 
+/// Whether a user app directory holds a valid lunpkg manifest (a parseable
+/// `manifest.toml` with a package id). A bare or corrupted directory is not a
+/// lunpkg install, so `which` must not claim `lunpkg` for it (matching how
+/// `ListInstalled` classifies the same case as `unknown`).
+fn user_app_manifest_valid(dir: &std::path::Path) -> bool {
+    #[derive(serde::Deserialize)]
+    struct M {
+        #[allow(dead_code)]
+        package: P,
+    }
+    #[derive(serde::Deserialize)]
+    struct P {
+        #[allow(dead_code)]
+        id: String,
+    }
+    std::fs::read_to_string(dir.join("manifest.toml"))
+        .ok()
+        .and_then(|s| toml::from_str::<M>(&s).ok())
+        .is_some()
+}
+
 pub async fn which_app(app_id: &str, json: bool) -> Result<(), String> {
     // Print the resolved path: a bare line, or a JSON object when `json`.
     let emit = |path: &str, source: &str| {
@@ -391,7 +412,14 @@ pub async fn which_app(app_id: &str, json: bool) -> Result<(), String> {
         .unwrap_or_else(|| std::path::PathBuf::from("~/.local/share"))
         .join(format!("arlen/apps/{app_id}"));
     if user_dir.exists() {
-        emit(&user_dir.display().to_string(), "lunpkg");
+        // Only call it a lunpkg install if the manifest backs that up; a bare or
+        // corrupted directory is reported as `unknown`, not a false claim.
+        let source = if user_app_manifest_valid(&user_dir) {
+            "lunpkg"
+        } else {
+            "unknown"
+        };
+        emit(&user_dir.display().to_string(), source);
         return Ok(());
     }
 
