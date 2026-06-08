@@ -18,7 +18,7 @@ fn main() {
         Commands::Remove { app_id } => run_async(cmd_remove(app_id)),
         Commands::List { json } => run_async(cmd_list(json)),
         Commands::Info { app_id, json } => run_async(cmd_info(app_id, json)),
-        Commands::Which { app_id } => run_async(cmd_which(app_id)),
+        Commands::Which { app_id, json } => run_async(cmd_which(app_id, json)),
         Commands::Trash { action } => run_async(cmd_trash(action)),
         Commands::Module { action } => match action {
             ModuleAction::Register { path, force } => {
@@ -140,8 +140,8 @@ async fn cmd_info(app_id: String, json: bool) {
     }
 }
 
-async fn cmd_which(app_id: String) {
-    if let Err(e) = commands::install_client::which_app(&app_id).await {
+async fn cmd_which(app_id: String, json: bool) {
+    if let Err(e) = commands::install_client::which_app(&app_id, json).await {
         eprintln!("{} {e}", "error:".red().bold());
         std::process::exit(1);
     }
