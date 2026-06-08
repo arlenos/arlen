@@ -13,6 +13,7 @@
 /// changed shape.
 import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { planRegenerate } from "$lib/regenerate";
 
 /// Who produced a message. `error` is a turn that failed (daemon down,
 /// disabled, query error) — rendered distinctly, never as an answer.
@@ -256,6 +257,60 @@ export async function send(prompt: string, mentions: MentionContent[] = []): Pro
       toolCalls: ToolCall[];
       traceUnavailable: boolean;
     }>("ai_query", { prompt: buildPrompt(text, mentions) });
+    updateSession(id, (m) =>
+      m.map((msg) =>
+        msg.id === pendingId
+          ? {
+              ...msg,
+              text: reply.answer,
+              pending: false,
+              toolCalls: reply.toolCalls,
+              traceUnavailable: reply.traceUnavailable,
+            }
+          : msg,
+      ),
+    );
+  } catch (e) {
+    updateSession(id, (m) =>
+      m.map((msg) =>
+        msg.id === pendingId
+          ? { id: msg.id, role: "error" as const, text: String(e), pending: false }
+          : msg,
+      ),
+    );
+  } finally {
+    busy.set(false);
+  }
+}
+
+/// Regenerate the active conversation's last response: drop it and re-ask the
+/// same question. A no-op when the conversation cannot be regenerated (see
+/// `planRegenerate`), so a caller can wire it to a button gated on the same
+/// check. The fresh answer replaces the dropped one in place; the turn targets
+/// the session it was asked in even if the user switches mid-flight.
+export async function regenerate(): Promise<void> {
+  const id = get(activeSessionId);
+  if (!id) return;
+  const session = get(sessions).find((s) => s.id === id);
+  if (!session) return;
+  const plan = planRegenerate(session.messages);
+  if (!plan) return;
+
+  const pendingId = nextMsgId++;
+  updateSession(id, () => [
+    ...plan.keep,
+    { id: pendingId, role: "assistant", text: "", pending: true },
+  ]);
+  busy.set(true);
+
+  try {
+    // The plan only regenerates attachment-free turns, so the prompt is the
+    // user's text verbatim (no referenced-files block to rebuild).
+    const reply = await invoke<{
+      answer: string;
+      toolCalls: ToolCall[];
+      traceUnavailable: boolean;
+    }>("ai_query", { prompt: plan.prompt });
     updateSession(id, (m) =>
       m.map((msg) =>
         msg.id === pendingId

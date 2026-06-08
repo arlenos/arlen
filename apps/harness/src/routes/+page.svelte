@@ -13,8 +13,9 @@
   import { invoke } from "@tauri-apps/api/core";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2, Wrench, Cpu, File as FileIcon, Folder, Paperclip, X, Copy, Check } from "@lucide/svelte";
-  import { messages, busy, send, initSessions, type MentionContent } from "$lib/stores/conversation";
+  import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2, Wrench, Cpu, File as FileIcon, Folder, Paperclip, X, Copy, Check, RotateCcw } from "@lucide/svelte";
+  import { messages, busy, send, regenerate, initSessions, type MentionContent } from "$lib/stores/conversation";
+  import { planRegenerate } from "$lib/regenerate";
   import ConversationRail from "$lib/components/ConversationRail.svelte";
   import { renderMarkdown } from "$lib/markdown";
   import { conversationToMarkdown } from "$lib/export";
@@ -54,6 +55,13 @@
   // The message whose copy button was just pressed, so its button can flash a
   // check for a moment. Reset by a timer; `null` when no copy is pending.
   let copiedId = $state<number | null>(null);
+
+  // Whether the conversation can be regenerated, and the id of the last
+  // message (the regenerate affordance shows only there). Derived from the
+  // same pure planner the store action uses, so the button and the action
+  // agree on what is regenerable.
+  const canRegenerate = $derived(planRegenerate($messages) !== null);
+  const lastMessageId = $derived($messages[$messages.length - 1]?.id);
 
   // Copy a message's raw text to the clipboard. Copies the source the user sees
   // (the markdown for an assistant turn, the typed text for a user turn), not
@@ -370,6 +378,17 @@
                         <Copy size={13} strokeWidth={2} /><span>Copy</span>
                       {/if}
                     </button>
+                    {#if msg.id === lastMessageId && canRegenerate}
+                      <button
+                        class="msg-copy"
+                        aria-label="Regenerate response"
+                        title="Regenerate response"
+                        disabled={$busy}
+                        onclick={() => regenerate()}
+                      >
+                        <RotateCcw size={13} strokeWidth={2} /><span>Regenerate</span>
+                      </button>
+                    {/if}
                   </div>
                 {/if}
               </div>
@@ -598,6 +617,10 @@
   .msg-copy:hover {
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
     color: var(--foreground);
+  }
+  .msg-copy:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
   .tool-calls {
     display: flex;
