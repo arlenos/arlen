@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 
 use arlen_forage_build::{execute_plan, plan_build, BuildContext, BuildError, StepRunner};
 use arlen_forage_extract::{extract_tar, ExtractError, ExtractLimits};
-use arlen_forage_fetch::{fetch_source, Downloader, FetchError, GitFetcher};
+use arlen_forage_fetch::{fetch_source, Downloader, FetchError, GitFetcher, ReleaseResolver};
 use arlen_forage_package::{
     collect_artifacts, synthesize_manifest, write_lunpkg, Collection, ManifestError, PackageError,
     WriteError,
@@ -113,6 +113,7 @@ pub async fn build_recipe(
     store: &Store,
     downloader: &dyn Downloader,
     git_fetcher: &dyn GitFetcher,
+    release_resolver: &dyn ReleaseResolver,
     runner: &dyn StepRunner,
     ctx: &BuildContext,
     signing_key: &SigningKey,
@@ -131,6 +132,7 @@ pub async fn build_recipe(
         store,
         downloader,
         git_fetcher,
+        release_resolver,
         limits.fetch_max_bytes,
     )
     .await?;
@@ -183,6 +185,20 @@ mod tests {
     impl GitFetcher for UnusedGit {
         fn fetch_commit(&self, _u: &str, _c: &str, _d: &Path, _m: u64) -> Result<Vec<u8>, FetchError> {
             panic!("git fetcher must not be used for a tarball source")
+        }
+    }
+
+    /// A release resolver that is never called on the tarball path.
+    struct UnusedResolver;
+    #[async_trait]
+    impl ReleaseResolver for UnusedResolver {
+        async fn resolve(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: &str,
+        ) -> Result<arlen_forage_fetch::ResolvedRelease, FetchError> {
+            panic!("release resolver must not be used for a tarball source")
         }
     }
 
@@ -280,6 +296,7 @@ mod tests {
             &store,
             &CannedDownloader(tarball),
             &UnusedGit,
+            &UnusedResolver,
             &ArtifactWritingRunner { rel: "app".into() },
             &BuildContext {
                 source_date_epoch: 0,
@@ -321,6 +338,7 @@ mod tests {
             &store,
             &CannedDownloader(Vec::new()),
             &UnusedGit,
+            &UnusedResolver,
             &ArtifactWritingRunner { rel: "app".into() },
             &BuildContext { source_date_epoch: 0, jobs: 1 },
             &SigningKey::from_bytes(&[9u8; 32]),
