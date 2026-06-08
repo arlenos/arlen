@@ -57,6 +57,73 @@ pub enum Commands {
         #[command(subcommand)]
         action: ModuleAction,
     },
+    /// Work with `recipe.toml` build recipes.
+    Recipe {
+        #[command(subcommand)]
+        action: RecipeAction,
+    },
+    /// Build a recipe into a `.lunpkg` (build pipeline, forage-recipes.md R1).
+    Build {
+        /// Path to the recipe or a directory containing `recipe.toml`
+        /// (defaults to the current directory).
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
+    /// Manage cookbooks (recipe indexes / taps, forage-recipes.md section 7).
+    Cookbook {
+        #[command(subcommand)]
+        action: CookbookAction,
+    },
+    /// Challenge a build's reproducibility (forage-recipes.md section 8a).
+    Challenge {
+        /// App ID or recipe id to challenge.
+        target: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum RecipeAction {
+    /// Scaffold a `recipe.toml` in the current directory.
+    Init {
+        /// Overwrite an existing `recipe.toml`.
+        #[arg(short, long)]
+        force: bool,
+    },
+    /// Scaffold a `recipe.toml` for a given reverse-DNS id.
+    New {
+        /// Reverse-DNS id, e.g. `org.example.hello`.
+        id: String,
+        /// Destination directory (defaults to the id's last segment).
+        #[arg(short, long)]
+        dir: Option<PathBuf>,
+    },
+    /// Parse and validate a `recipe.toml`, reporting errors and warnings.
+    Validate {
+        /// Path to the recipe or a directory containing `recipe.toml`
+        /// (defaults to the current directory).
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum CookbookAction {
+    /// Add a cookbook by name and git URL.
+    Add {
+        /// Local name for the cookbook.
+        name: String,
+        /// Git URL of the cookbook index.
+        url: String,
+    },
+    /// Remove a cookbook by name.
+    Remove {
+        /// Local name of the cookbook.
+        name: String,
+    },
+    /// List configured cookbooks.
+    List,
+    /// Update cookbook indexes from their remotes.
+    Update,
 }
 
 #[derive(Subcommand)]

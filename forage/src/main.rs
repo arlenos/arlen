@@ -7,7 +7,7 @@ mod cli;
 mod commands;
 
 use clap::Parser;
-use cli::{Cli, Commands, ModuleAction, TrashAction};
+use cli::{Cli, Commands, CookbookAction, ModuleAction, RecipeAction, TrashAction};
 use colored::Colorize;
 
 fn main() {
@@ -40,6 +40,19 @@ fn main() {
                 commands::module::disable(&id);
             }
         },
+        Commands::Recipe { action } => match action {
+            RecipeAction::Init { force } => commands::recipe::init(force),
+            RecipeAction::New { id, dir } => commands::recipe::new(&id, dir.as_deref()),
+            RecipeAction::Validate { path } => commands::recipe::validate(&path),
+        },
+        Commands::Build { path } => commands::build::build(&path),
+        Commands::Cookbook { action } => match action {
+            CookbookAction::Add { name, url } => commands::cookbook::add(&name, &url),
+            CookbookAction::Remove { name } => commands::cookbook::remove(&name),
+            CookbookAction::List => commands::cookbook::list(),
+            CookbookAction::Update => commands::cookbook::update(),
+        },
+        Commands::Challenge { target } => commands::challenge::challenge(&target),
     }
 }
 
