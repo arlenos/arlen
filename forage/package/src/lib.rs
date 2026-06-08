@@ -25,6 +25,12 @@ use std::path::{Component, Path, PathBuf};
 use arlen_forage_recipe::Artifacts;
 use thiserror::Error;
 
+mod writer;
+
+pub use writer::{
+    synthesize_manifest, write_lunpkg, ManifestError, WriteError, MANIFEST_FILE, SIGNATURE_FILE,
+};
+
 /// A failure collecting declared artifacts.
 #[derive(Debug, Error)]
 pub enum PackageError {
