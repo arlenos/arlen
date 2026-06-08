@@ -76,8 +76,14 @@ pub fn validate(manifest: &CookbookManifest) -> Vec<ValidationError> {
     if manifest.recipe.is_empty() {
         errors.push(err("recipe", "a cookbook must index at least one recipe"));
     }
+    let mut seen = std::collections::HashSet::new();
     for (i, entry) in manifest.recipe.iter().enumerate() {
         let at = |field: &str| format!("recipe[{i}].{field}");
+        // The canonical index is keyed by recipe name, so a repeat is fatal: the
+        // second entry would silently shadow the first once normalised.
+        if !seen.insert(entry.name.as_str()) {
+            errors.push(err(&at("name"), "duplicate recipe name in the cookbook"));
+        }
         if !is_valid_id(&entry.name) {
             errors.push(err(
                 &at("name"),
@@ -216,4 +222,26 @@ recipe_hash = "tooshort"
         let toml = format!("{VALID}surprise = true\n");
         assert!(parse(&toml).is_err(), "deny_unknown_fields catches typos");
     }
+
+    #[test]
+    fn duplicate_recipe_names_are_fatal() {
+        let toml = r#"
+[[recipe]]
+name = "dev.zed.Zed"
+git_url = "github.com/zed-industries/zed"
+commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+recipe_hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+[[recipe]]
+name = "dev.zed.Zed"
+git_url = "github.com/zed-industries/zed"
+commit = "beefbeefbeefbeefbeefbeefbeefbeefbeefbeef"
+recipe_hash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+"#;
+        let errors = validate(&parse(toml).unwrap());
+        assert!(errors
+            .iter()
+            .any(|e| e.field == "recipe[1].name" && e.message.contains("duplicate")));
+    }
+
 }
