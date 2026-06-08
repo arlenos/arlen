@@ -352,12 +352,145 @@ pub fn execute_plan(
     Ok(())
 }
 
+/// Bounds on a single build command's execution (forage-recipes.md section 13,
+/// "the build is bounded"). The wall-clock timeout is enforced here in the
+/// runner without privilege: a hung or looping build is killed and its whole
+/// process group reaped. The memory and disk caps are a cgroup concern applied
+/// on a privileged host with the confined runner and are deliberately not part
+/// of this unprivileged limit; `None` leaves the wall-clock unbounded.
+#[derive(Debug, Clone, Default)]
+pub struct BuildLimits {
+    /// Maximum wall-clock time for one command; `None` is unbounded.
+    pub wall_clock: Option<std::time::Duration>,
+}
+
+/// On Unix, make the spawned process a group leader (`setpgid(0, 0)` in the
+/// forked child before `exec`) so its descendants share its process group and
+/// can be killed as a unit on timeout.
+#[cfg(unix)]
+fn lead_process_group(command: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    // SAFETY: the closure runs in the forked child before exec. `setpgid` is
+    // async-signal-safe and only changes the child's own process group; it
+    // reads or writes no parent state and allocates nothing.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setpgid(0, 0) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+}
+
+/// Kill the build's whole process group with `SIGKILL` (uncatchable, so a
+/// wedged build cannot ignore it). The child leads its own group (see
+/// [`lead_process_group`]), so negating its pid signals every descendant that
+/// did not fork into a new group of its own; the leader is also signalled
+/// directly in case the group setup lost a race with a fast-spawning child.
+#[cfg(unix)]
+fn kill_process_group(child: &std::process::Child) {
+    let pid = child.id() as libc::pid_t;
+    // SAFETY: `kill` is a direct syscall wrapper with no memory effects.
+    unsafe {
+        libc::kill(-pid, libc::SIGKILL);
+        libc::kill(pid, libc::SIGKILL);
+    }
+}
+
+#[cfg(not(unix))]
+fn lead_process_group(_command: &mut std::process::Command) {}
+#[cfg(not(unix))]
+fn kill_process_group(child: &std::process::Child) {
+    let _ = child;
+}
+
+/// Spawn `command` (already fully configured), enforce the wall-clock limit,
+/// and map the result to a [`BuildError`]. On timeout the whole process group
+/// is killed and the direct child reaped, reported as a timeout (not a generic
+/// non-zero exit) so the caller can tell a hung build from a failed one.
+fn run_command(
+    mut command: std::process::Command,
+    tool: &str,
+    limits: &BuildLimits,
+) -> Result<(), BuildError> {
+    lead_process_group(&mut command);
+    let mut child = command.spawn().map_err(|e| BuildError::CommandFailed {
+        tool: tool.to_string(),
+        reason: format!("spawn: {e}"),
+    })?;
+
+    let status = match limits.wall_clock {
+        None => child.wait().map_err(|e| BuildError::CommandFailed {
+            tool: tool.to_string(),
+            reason: format!("wait: {e}"),
+        })?,
+        Some(dur) => {
+            use wait_timeout::ChildExt;
+            let waited = match child.wait_timeout(dur) {
+                Ok(w) => w,
+                Err(e) => {
+                    // A wait failure leaves the build running; kill it rather
+                    // than leak a process before surfacing the error.
+                    kill_process_group(&child);
+                    let _ = child.wait();
+                    return Err(BuildError::CommandFailed {
+                        tool: tool.to_string(),
+                        reason: format!("wait: {e}"),
+                    });
+                }
+            };
+            match waited {
+                Some(status) => status,
+                None => {
+                    // The build has not exited, so `Child` still holds its
+                    // unreaped slot; that pins both the pid and the process
+                    // group id against reuse until the `child.wait()` below, so
+                    // `kill(-pid)` cannot land on an unrelated recycled group.
+                    kill_process_group(&child);
+                    // Reap the now-killed direct child so it is not left a zombie.
+                    let _ = child.wait();
+                    return Err(BuildError::CommandFailed {
+                        tool: tool.to_string(),
+                        reason: format!("wall-clock timeout after {}s", dur.as_secs()),
+                    });
+                }
+            }
+        }
+    };
+
+    if !status.success() {
+        return Err(BuildError::CommandFailed {
+            tool: tool.to_string(),
+            reason: format!("exit {status}"),
+        });
+    }
+    Ok(())
+}
+
 /// The production runner: spawns each command with `std::process::Command`,
 /// passing arguments explicitly (never a shell), with a controlled environment
 /// (the command's planned env plus a fixed minimal `PATH`) and the relative
-/// workdir resolved under the source root.
-#[derive(Debug, Default)]
-pub struct ProcessRunner;
+/// workdir resolved under the source root. The configured [`BuildLimits`] bound
+/// each command's wall-clock time.
+///
+/// This runner offers **no containment** of a process that deliberately detaches
+/// itself: build code that calls `setsid` / `setpgid` to leave its process group
+/// survives the timeout kill, because without a pid namespace the group is the
+/// only handle. Run untrusted recipes through [`ConfinedStepRunner`] (bwrap
+/// `--unshare-pid`), where killing `bwrap` tears down the whole pid namespace and
+/// nothing can escape. The unconfined runner is the dev / test path.
+#[derive(Debug, Clone, Default)]
+pub struct ProcessRunner {
+    limits: BuildLimits,
+}
+
+impl ProcessRunner {
+    /// A runner that enforces `limits` on every command.
+    pub fn with_limits(limits: BuildLimits) -> Self {
+        ProcessRunner { limits }
+    }
+}
 
 impl StepRunner for ProcessRunner {
     fn run(&self, cmd: &BuildCommand, source_root: &Path) -> Result<(), BuildError> {
@@ -377,17 +510,7 @@ impl StepRunner for ProcessRunner {
         };
         command.current_dir(dir);
 
-        let status = command.status().map_err(|e| BuildError::CommandFailed {
-            tool: cmd.tool.clone(),
-            reason: format!("spawn: {e}"),
-        })?;
-        if !status.success() {
-            return Err(BuildError::CommandFailed {
-                tool: cmd.tool.clone(),
-                reason: format!("exit {status}"),
-            });
-        }
-        Ok(())
+        run_command(command, &cmd.tool, &self.limits)
     }
 }
 
@@ -412,16 +535,26 @@ pub struct ConfinedStepRunner {
     base_platform: std::path::PathBuf,
     /// The `bwrap` binary (default `bwrap` from PATH).
     bwrap: std::path::PathBuf,
+    /// Execution limits enforced around the `bwrap` invocation. Killing the
+    /// `bwrap` process tears down its pid namespace, reaping the build tree.
+    limits: BuildLimits,
 }
 
 impl ConfinedStepRunner {
     /// A confined runner using `base_platform` as the read-only root and the
-    /// `bwrap` binary from PATH.
+    /// `bwrap` binary from PATH, with no wall-clock limit.
     pub fn new(base_platform: impl Into<std::path::PathBuf>) -> Self {
         ConfinedStepRunner {
             base_platform: base_platform.into(),
             bwrap: std::path::PathBuf::from("bwrap"),
+            limits: BuildLimits::default(),
         }
+    }
+
+    /// Set the execution limits enforced around each confined step.
+    pub fn with_limits(mut self, limits: BuildLimits) -> Self {
+        self.limits = limits;
+        self
     }
 
     /// Build the `bwrap` argument vector (everything after the `bwrap` program)
@@ -452,20 +585,9 @@ impl ConfinedStepRunner {
 impl StepRunner for ConfinedStepRunner {
     fn run(&self, cmd: &BuildCommand, source_root: &Path) -> Result<(), BuildError> {
         let argv = self.confined_argv(cmd, source_root)?;
-        let status = std::process::Command::new(&self.bwrap)
-            .args(&argv)
-            .status()
-            .map_err(|e| BuildError::CommandFailed {
-                tool: cmd.tool.clone(),
-                reason: format!("spawn bwrap: {e}"),
-            })?;
-        if !status.success() {
-            return Err(BuildError::CommandFailed {
-                tool: cmd.tool.clone(),
-                reason: format!("confined exit {status}"),
-            });
-        }
-        Ok(())
+        let mut command = std::process::Command::new(&self.bwrap);
+        command.args(&argv);
+        run_command(command, &cmd.tool, &self.limits)
     }
 }
 
@@ -571,8 +693,8 @@ mod tests {
     fn no_build_dir_means_no_remap_flags() {
         let plan = plan_build(&build(Some(BuildSystem::Cargo)), &ctx()).unwrap();
         let env = &plan.commands[0].env;
-        assert!(env.get("RUSTFLAGS").is_none());
-        assert!(env.get("CFLAGS").is_none());
+        assert!(!env.contains_key("RUSTFLAGS"));
+        assert!(!env.contains_key("CFLAGS"));
         // The rest of the reproducibility env is still present.
         assert_eq!(env.get("SOURCE_DATE_EPOCH").unwrap(), "1700000000");
     }
@@ -583,7 +705,7 @@ mod tests {
         c.build_dir = Some("/var/tmp/a=b".into());
         let plan = plan_build(&build(Some(BuildSystem::Cargo)), &c).unwrap();
         // A `=` in the path would make `old=new` ambiguous, so no flag is emitted.
-        assert!(plan.commands[0].env.get("RUSTFLAGS").is_none());
+        assert!(!plan.commands[0].env.contains_key("RUSTFLAGS"));
     }
 
     #[test]
@@ -786,7 +908,7 @@ mod tests {
                 env: BTreeMap::new(),
             }],
         };
-        execute_plan(&plan, &ProcessRunner, dir.path()).unwrap();
+        execute_plan(&plan, &ProcessRunner::default(), dir.path()).unwrap();
         assert!(dir.path().join("marker;not-a-shell").exists());
         // No shell ran, so no file named by the part after `;` exists.
         assert!(!dir.path().join("not-a-shell").exists());
@@ -804,8 +926,88 @@ mod tests {
             }],
         };
         assert!(matches!(
-            execute_plan(&plan, &ProcessRunner, dir.path()),
+            execute_plan(&plan, &ProcessRunner::default(), dir.path()),
             Err(BuildError::CommandFailed { .. })
         ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn process_runner_kills_a_hung_build_on_timeout() {
+        use std::time::{Duration, Instant};
+        let dir = tempfile::tempdir().unwrap();
+        let runner = ProcessRunner::with_limits(BuildLimits {
+            wall_clock: Some(Duration::from_millis(300)),
+        });
+        let plan = BuildPlan {
+            commands: vec![BuildCommand {
+                tool: "sleep".into(),
+                args: vec!["60".into()],
+                workdir: None,
+                env: BTreeMap::new(),
+            }],
+        };
+        let start = Instant::now();
+        let err = execute_plan(&plan, &runner, dir.path()).unwrap_err();
+        // It returns well before the 60s sleep, reported as a timeout.
+        assert!(start.elapsed() < Duration::from_secs(5), "killed promptly");
+        match err {
+            BuildError::CommandFailed { reason, .. } => {
+                assert!(reason.contains("timeout"), "reported as a timeout: {reason}");
+            }
+            other => panic!("expected a timeout failure, got {other:?}"),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn timeout_reaps_the_whole_process_tree() {
+        use std::time::Duration;
+        // The build spawns a grandchild via a long-lived process tree. On
+        // timeout the process group kill must take the grandchild down too, not
+        // just the direct child. The grandchild writes a marker only if it
+        // survives long enough; with the group reaped it never does.
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("survived");
+        // `sh` is rejected as a build tool by plan_build, so construct the plan
+        // directly: this is a runner test, not a planning test. The child runs a
+        // small tree: sleep, then touch the marker. A reaped tree never touches.
+        let plan = BuildPlan {
+            commands: vec![BuildCommand {
+                tool: "sh".into(),
+                args: vec![
+                    "-c".into(),
+                    format!("sleep 30 && touch {}", marker.display()),
+                ],
+                workdir: None,
+                env: BTreeMap::new(),
+            }],
+        };
+        let runner = ProcessRunner::with_limits(BuildLimits {
+            wall_clock: Some(Duration::from_millis(300)),
+        });
+        let _ = execute_plan(&plan, &runner, dir.path());
+        // Give any unreaped descendant well over its sleep to (wrongly) fire.
+        std::thread::sleep(Duration::from_millis(800));
+        assert!(!marker.exists(), "the reaped process tree never touched the marker");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn no_timeout_lets_a_quick_build_finish() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner = ProcessRunner::with_limits(BuildLimits {
+            wall_clock: Some(std::time::Duration::from_secs(30)),
+        });
+        let plan = BuildPlan {
+            commands: vec![BuildCommand {
+                tool: "true".into(),
+                args: Vec::new(),
+                workdir: None,
+                env: BTreeMap::new(),
+            }],
+        };
+        // A fast command under a generous limit succeeds normally.
+        execute_plan(&plan, &runner, dir.path()).unwrap();
     }
 }
