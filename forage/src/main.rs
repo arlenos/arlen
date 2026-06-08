@@ -115,6 +115,18 @@ async fn cmd_install(target: String) {
         return;
     }
 
+    // A bare reverse-DNS recipe name (not a package file or existing path):
+    // resolve it through the tracked cookbooks. `flatpak:`/url forms fail
+    // is_valid_id (its charset excludes `:` and `/`), so only the .lunpkg and
+    // existing-path cases need excluding explicitly.
+    if arlen_forage_recipe::is_valid_id(&target)
+        && !target.ends_with(".lunpkg")
+        && !std::path::Path::new(&target).exists()
+    {
+        Box::pin(install_by_name(target)).await;
+        return;
+    }
+
     let conn = match client::connect().await {
         Ok(c) => c,
         Err(e) => {
@@ -145,7 +157,7 @@ async fn cmd_install(target: String) {
         std::process::exit(1);
     } else {
         eprintln!(
-            "{} cannot resolve '{}'. Expected a .lunpkg file, URL, or flatpak:{{app_id}}",
+            "{} cannot resolve '{}'. Expected a recipe name, a .lunpkg file, URL, or flatpak:{{app_id}}",
             "error:".red().bold(),
             target
         );
@@ -156,6 +168,102 @@ async fn cmd_install(target: String) {
         eprintln!("{} {e}", "error:".red().bold());
         std::process::exit(1);
     }
+}
+
+/// Install a recipe by its reverse-DNS name through the cookbook system: resolve
+/// and verify the pointer against the pinned cookbook root, clone the recipe at
+/// the pinned commit, check the cloned `recipe.toml` against the cookbook's
+/// signed hash, then build (always sandboxed, the remote recipe is untrusted)
+/// and install. Any verification failure aborts.
+async fn install_by_name(name: String) {
+    use arlen_forage_fetch::{GitFetcher, ProcessGitFetcher, DEFAULT_RECIPE_REPO_BYTES};
+
+    let resolved = match commands::cookbook::resolve_in_cookbooks(&name).await {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("{} {e}", "error:".red().bold());
+            std::process::exit(1);
+        }
+    };
+
+    let url = match clone_url(&resolved.git_url) {
+        Ok(u) => u,
+        Err(e) => {
+            eprintln!("{} {e}", "error:".red().bold());
+            std::process::exit(1);
+        }
+    };
+
+    let clone = match tempfile::tempdir() {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("{} scratch dir: {e}", "error:".red().bold());
+            std::process::exit(1);
+        }
+    };
+    // fetch_commit verifies the checkout is exactly the pinned commit.
+    if let Err(e) =
+        ProcessGitFetcher.fetch_commit(&url, &resolved.commit, clone.path(), DEFAULT_RECIPE_REPO_BYTES)
+    {
+        eprintln!("{} fetching {}@{}: {e}", "error:".red().bold(), url, resolved.commit);
+        std::process::exit(1);
+    }
+
+    let Some(recipe_path) = commands::recipe::resolve_recipe_path(clone.path()) else {
+        std::process::exit(1);
+    };
+    // The cookbook signed the sha256 of this recipe; a repo serving different
+    // content than the cookbook vetted is rejected here.
+    let recipe_bytes = match std::fs::read(&recipe_path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("{} reading recipe: {e}", "error:".red().bold());
+            std::process::exit(1);
+        }
+    };
+    if sha256_hex(&recipe_bytes) != resolved.recipe_hash {
+        eprintln!(
+            "{} the recipe at the pinned commit does not match the cookbook's signed hash; refusing",
+            "error:".red().bold()
+        );
+        std::process::exit(1);
+    }
+
+    // The cookbook's capability cap (resolved.capability_cap) is a curated upper
+    // bound the recipe's declared capabilities must stay within. Enforcing it
+    // here is a follow-up (it needs the capability subset check); the recipe's
+    // own declared capabilities still gate at install and run time meanwhile.
+
+    // Untrusted remote recipe: never build it unconfined.
+    let lunpkg = match commands::build::build_recipe_at(&recipe_path, false).await {
+        Ok(p) => p,
+        Err(()) => std::process::exit(1),
+    };
+    Box::pin(cmd_install(lunpkg.to_string_lossy().into_owned())).await;
+}
+
+/// Build a clonable https URL from a cookbook's signed `git_url`. The host is
+/// pinned by the cookbook signature and the content by the commit; this only
+/// rejects an insecure transport and supplies https for a scheme-less host.
+fn clone_url(git_url: &str) -> Result<String, String> {
+    if let Some(rest) = git_url.strip_prefix("https://") {
+        if rest.is_empty() {
+            return Err(format!("git_url '{git_url}' has no host"));
+        }
+        Ok(git_url.to_string())
+    } else if git_url.starts_with("http://") {
+        Err(format!("git_url '{git_url}' uses insecure http; refusing"))
+    } else {
+        Ok(format!("https://{git_url}"))
+    }
+}
+
+/// Lowercase-hex sha256 of `bytes`.
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(bytes);
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
 async fn cmd_remove(app_id: String) {
