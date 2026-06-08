@@ -524,6 +524,150 @@ fn read_capped<R: std::io::Read>(src: &mut R, cap: Option<u64>) -> Result<Vec<u8
     Ok(buf)
 }
 
+/// Maximum redirect hops a [`RedirectingHttpDownloader`] follows before
+/// failing, matching modulesd's stricter-than-default cap.
+const MAX_REDIRECT_HOPS: usize = 5;
+
+/// One HTTPS response with redirects NOT followed: the status, the `Location`
+/// header (for a 3xx), and the body (for a 2xx, already size-capped).
+#[derive(Debug)]
+pub struct OneResponse {
+    /// HTTP status code.
+    pub status: u16,
+    /// The `Location` header value, if present.
+    pub location: Option<String>,
+    /// The response body (only populated/capped for a success).
+    pub body: Vec<u8>,
+}
+
+/// A single SSRF-pinned, no-redirect HTTPS GET. Behind a trait so the
+/// redirect-following loop can be tested without network.
+#[async_trait]
+pub trait SingleRequest: Send + Sync {
+    /// Perform one GET of `url` (which the caller has already checked is https),
+    /// resolving and pinning the host, returning the status + `Location` + a
+    /// body capped at `max_bytes`.
+    async fn get_once(&self, url: &str, max_bytes: u64) -> Result<OneResponse, FetchError>;
+}
+
+/// Follow redirects manually so each hop is SSRF-checked: every hop must be
+/// https and is resolved-and-pinned by the [`SingleRequest`] before connecting;
+/// the chain is capped at [`MAX_REDIRECT_HOPS`] and the final body at
+/// `max_bytes`. The content is still verified by hash downstream, so a redirect
+/// can change *which server* is reached but not what content is accepted.
+pub async fn follow_redirects(
+    req: &dyn SingleRequest,
+    url: &str,
+    max_bytes: u64,
+) -> Result<Vec<u8>, FetchError> {
+    let mut current = url.to_string();
+    for _ in 0..=MAX_REDIRECT_HOPS {
+        let parsed = reqwest::Url::parse(&current)
+            .map_err(|e| FetchError::Network(format!("parse url: {e}")))?;
+        if parsed.scheme() != "https" {
+            return Err(FetchError::Network(format!("non-https hop: {current}")));
+        }
+        let resp = req.get_once(&current, max_bytes).await?;
+        if (300..400).contains(&resp.status) {
+            let loc = resp
+                .location
+                .ok_or_else(|| FetchError::Network(format!("redirect {} without Location", resp.status)))?;
+            // Resolve a possibly-relative Location against the current URL.
+            current = parsed
+                .join(&loc)
+                .map_err(|e| FetchError::Network(format!("bad redirect target: {e}")))?
+                .to_string();
+            continue;
+        }
+        if (200..300).contains(&resp.status) {
+            return Ok(resp.body);
+        }
+        return Err(FetchError::Network(format!("status {}", resp.status)));
+    }
+    Err(FetchError::Network(format!(
+        "more than {MAX_REDIRECT_HOPS} redirects"
+    )))
+}
+
+/// The production [`SingleRequest`]: one reqwest GET over rustls, https-only,
+/// no redirects, no proxy, the host SSRF-guarded and DNS-pinned, body streamed
+/// and capped. Used by [`RedirectingHttpDownloader`] for each hop.
+#[derive(Debug, Default)]
+pub struct PinnedSingleRequest;
+
+#[async_trait]
+impl SingleRequest for PinnedSingleRequest {
+    async fn get_once(&self, url: &str, max_bytes: u64) -> Result<OneResponse, FetchError> {
+        let parsed =
+            reqwest::Url::parse(url).map_err(|e| FetchError::Network(format!("parse url: {e}")))?;
+        let host = parsed
+            .host_str()
+            .ok_or_else(|| FetchError::Network(format!("url has no host: {url}")))?;
+        let port = parsed.port_or_known_default().unwrap_or(443);
+        let addr = match resolve_and_pin(host, port).await {
+            Ok(addr) => addr,
+            Err(blocked @ GuardError::Blocked { .. }) => {
+                return Err(FetchError::Blocked(blocked.to_string()))
+            }
+            Err(e) => return Err(FetchError::Network(e.to_string())),
+        };
+        let client = reqwest::Client::builder()
+            .https_only(true)
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(120))
+            .user_agent(concat!("Arlen-forage/", env!("CARGO_PKG_VERSION")))
+            .resolve(host, addr)
+            .build()
+            .map_err(|e| FetchError::Network(format!("client: {e}")))?;
+        let resp = client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| FetchError::Network(e.to_string()))?;
+        let status = resp.status().as_u16();
+        let location = resp
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+        // Only read a body for a success; a 3xx body is irrelevant.
+        let body = if (200..300).contains(&status) {
+            use futures_util::StreamExt;
+            let mut buf = Vec::new();
+            let mut stream = resp.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| FetchError::Network(format!("body: {e}")))?;
+                if buf.len() as u64 + chunk.len() as u64 > max_bytes {
+                    return Err(FetchError::TooLarge { limit: max_bytes });
+                }
+                buf.extend_from_slice(&chunk);
+            }
+            buf
+        } else {
+            Vec::new()
+        };
+        Ok(OneResponse {
+            status,
+            location,
+            body,
+        })
+    }
+}
+
+/// A [`Downloader`] that follows redirects with a per-hop SSRF check (for hosts
+/// like GitHub release / crates.io that 3xx to a CDN). Each hop is https-only
+/// and DNS-pinned; the chain is hop-capped and the body size-capped.
+#[derive(Debug, Default)]
+pub struct RedirectingHttpDownloader;
+
+#[async_trait]
+impl Downloader for RedirectingHttpDownloader {
+    async fn get(&self, url: &str, max_bytes: u64) -> Result<Vec<u8>, FetchError> {
+        follow_redirects(&PinnedSingleRequest, url, max_bytes).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -617,6 +761,90 @@ mod tests {
         // No cap: reads everything.
         let mut all = std::io::Cursor::new(vec![1u8; 300]);
         assert_eq!(read_capped(&mut all, None).unwrap().len(), 300);
+    }
+
+    /// A SingleRequest that returns a queued sequence of responses (one per
+    /// call), so the redirect-following loop is tested without network.
+    struct MockSingle {
+        responses: std::sync::Mutex<std::collections::VecDeque<OneResponse>>,
+    }
+    impl MockSingle {
+        fn new(responses: Vec<OneResponse>) -> Self {
+            Self {
+                responses: std::sync::Mutex::new(responses.into()),
+            }
+        }
+    }
+    #[async_trait]
+    impl SingleRequest for MockSingle {
+        async fn get_once(&self, _url: &str, _max: u64) -> Result<OneResponse, FetchError> {
+            self.responses
+                .lock()
+                .unwrap()
+                .pop_front()
+                .ok_or_else(|| FetchError::Network("mock exhausted".into()))
+        }
+    }
+    fn redirect_to(loc: &str) -> OneResponse {
+        OneResponse {
+            status: 302,
+            location: Some(loc.into()),
+            body: Vec::new(),
+        }
+    }
+    fn ok_body(body: &[u8]) -> OneResponse {
+        OneResponse {
+            status: 200,
+            location: None,
+            body: body.to_vec(),
+        }
+    }
+
+    #[tokio::test]
+    async fn follow_redirects_chases_to_the_final_body() {
+        let req = MockSingle::new(vec![
+            redirect_to("https://cdn.example/a"),
+            redirect_to("https://cdn.example/b"),
+            ok_body(b"final content"),
+        ]);
+        let body = follow_redirects(&req, "https://example.org/start", DEFAULT_MAX_BYTES)
+            .await
+            .unwrap();
+        assert_eq!(body, b"final content");
+    }
+
+    #[tokio::test]
+    async fn follow_redirects_caps_hops() {
+        // Always redirecting -> error after the hop cap.
+        let loop_resps: Vec<OneResponse> =
+            (0..20).map(|_| redirect_to("https://example.org/again")).collect();
+        let req = MockSingle::new(loop_resps);
+        assert!(matches!(
+            follow_redirects(&req, "https://example.org/x", DEFAULT_MAX_BYTES).await,
+            Err(FetchError::Network(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn follow_redirects_rejects_non_https_hop() {
+        let req = MockSingle::new(vec![redirect_to("http://evil.internal/x")]);
+        assert!(matches!(
+            follow_redirects(&req, "https://example.org/x", DEFAULT_MAX_BYTES).await,
+            Err(FetchError::Network(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn follow_redirects_surfaces_non_success_status() {
+        let req = MockSingle::new(vec![OneResponse {
+            status: 404,
+            location: None,
+            body: Vec::new(),
+        }]);
+        assert!(matches!(
+            follow_redirects(&req, "https://example.org/x", DEFAULT_MAX_BYTES).await,
+            Err(FetchError::Network(_))
+        ));
     }
 
     fn local(path: &str) -> Source {
