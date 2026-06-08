@@ -1,0 +1,17 @@
+[package]
+name = "arlen-forage-patch"
+version = "0.1.0"
+edition = "2021"
+description = "Deterministic, path-contained application of recipe source patches for forage"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+diffy = "0.4"
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[workspace]
