@@ -68,6 +68,13 @@ pub enum Commands {
         /// (defaults to the current directory).
         #[arg(default_value = ".")]
         path: PathBuf,
+        /// Run the build directly on the host instead of inside the sandbox.
+        /// This executes the recipe's untrusted build steps unconfined, so it is
+        /// for a maintainer testing their own recipe locally, never for building
+        /// untrusted recipes. Without it the build runs in the pinned base
+        /// platform, which must be configured.
+        #[arg(long = "unsafe-no-sandbox")]
+        unsafe_no_sandbox: bool,
     },
     /// Manage cookbooks (recipe indexes / taps, forage-recipes.md section 7).
     Cookbook {

@@ -45,7 +45,10 @@ fn main() {
             RecipeAction::New { id, dir } => commands::recipe::new(&id, dir.as_deref()),
             RecipeAction::Validate { path } => commands::recipe::validate(&path),
         },
-        Commands::Build { path } => commands::build::build(&path),
+        Commands::Build {
+            path,
+            unsafe_no_sandbox,
+        } => run_async(commands::build::run(path, unsafe_no_sandbox)),
         Commands::Cookbook { action } => match action {
             CookbookAction::Add { name, url } => commands::cookbook::add(&name, &url),
             CookbookAction::Remove { name } => commands::cookbook::remove(&name),
