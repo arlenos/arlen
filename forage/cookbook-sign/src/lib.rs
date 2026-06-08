@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 
 use arlen_cookbook_index::{validate, CookbookManifest, RecipeEntry, ValidationError};
 use aws_lc_rs::rand::SystemRandom;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use ed25519_dalek::pkcs8::EncodePrivateKey;
 use ed25519_dalek::SigningKey;
 use sha2::{Digest, Sha256};
@@ -42,6 +42,14 @@ use zeroize::Zeroizing;
 
 /// The on-disk seed length of an Ed25519 key.
 const SEED_LEN: usize = 32;
+
+/// The TUF metadata version stamped on every role for an initial signing.
+/// Re-signing with version bumps (rollback protection over time) is a later
+/// increment; this first slice always signs version one.
+const ONE: NonZeroU64 = match NonZeroU64::new(1) {
+    Some(v) => v,
+    None => unreachable!(),
+};
 
 /// A failure signing a cookbook. Every variant is terminal.
 #[derive(Debug, Error)]
@@ -141,13 +149,45 @@ pub struct SignParams<'a> {
     /// The signer computes the TUF target descriptor from this and cross-checks
     /// the hash against the manifest.
     pub recipes: &'a HashMap<String, Vec<u8>>,
-    /// The PKCS8 PEM signing key (see [`generate_signing_key`]).
+    /// The PKCS8 DER signing key (see [`generate_signing_key`]).
     pub key_path: &'a Path,
-    /// Where to write the signed metadata (`root.json`, `targets.json`,
-    /// `snapshot.json`, `timestamp.json`).
+    /// Where to write the signed metadata. Created if it does not exist.
     pub out_dir: &'a Path,
-    /// The expiry stamped on every role.
-    pub expires: DateTime<Utc>,
+    /// Per-role expiries. TUF gives snapshot and timestamp short windows so a
+    /// mirror cannot freeze or replay stale metadata; root and targets are
+    /// long-lived. A single shared expiry would neuter that freshness defense,
+    /// so the roles are set independently (see [`Expiries`]).
+    pub expiries: Expiries,
+}
+
+/// The expiry stamped on each TUF role. Snapshot and timestamp are the freshness
+/// defense (forage-recipes.md section 7a: "short expiry, defending against a
+/// mirror's freeze / rollback / replay"), so they are deliberately separate from
+/// the long-lived root and targets.
+#[derive(Debug, Clone, Copy)]
+pub struct Expiries {
+    /// The root role's expiry (rarely changed, long-lived).
+    pub root: DateTime<Utc>,
+    /// The targets role's expiry (the recipe index).
+    pub targets: DateTime<Utc>,
+    /// The snapshot role's expiry (short, freshness).
+    pub snapshot: DateTime<Utc>,
+    /// The timestamp role's expiry (shortest, freshness).
+    pub timestamp: DateTime<Utc>,
+}
+
+impl Expiries {
+    /// Sensible TUF defaults measured from `now`: root one year, targets ninety
+    /// days, snapshot seven days, timestamp one day. A maintainer who re-signs
+    /// more or less often overrides these directly.
+    pub fn defaults_from(now: DateTime<Utc>) -> Self {
+        Self {
+            root: now + Duration::days(365),
+            targets: now + Duration::days(90),
+            snapshot: now + Duration::days(7),
+            timestamp: now + Duration::days(1),
+        }
+    }
 }
 
 /// Sign a cookbook manifest into TUF metadata written under `out_dir`.
@@ -162,6 +202,13 @@ pub async fn sign_cookbook(params: SignParams<'_>) -> Result<(), SignError> {
     if !errors.is_empty() {
         return Err(SignError::Manifest(errors));
     }
+
+    tokio::fs::create_dir_all(params.out_dir)
+        .await
+        .map_err(|source| SignError::Io {
+            path: params.out_dir.to_path_buf(),
+            source,
+        })?;
 
     // Validate every recipe's content against its declared hash and build the
     // target descriptors before touching any key material, so a content or hash
@@ -200,8 +247,8 @@ pub async fn sign_cookbook(params: SignParams<'_>) -> Result<(), SignError> {
     let mut root = Root {
         spec_version: "1.0.0".to_string(),
         consistent_snapshot: true,
-        version: NonZeroU64::new(1).expect("1 is non-zero"),
-        expires: params.expires,
+        version: ONE,
+        expires: params.expiries.root,
         keys: HashMap::new(),
         roles: HashMap::new(),
         _extra: HashMap::new(),
@@ -229,6 +276,10 @@ pub async fn sign_cookbook(params: SignParams<'_>) -> Result<(), SignError> {
     .await
     .map_err(|e| SignError::Tuf(e.to_string()))?;
 
+    // The unversioned `root.json` is the bootstrap anchor a client TOFU-pins on
+    // first fetch and the file `RepositoryEditor::new` loads here. The editor's
+    // later write also emits the versioned `1.root.json` (root's filename is
+    // always version-prefixed); both are byte-identical signed root metadata.
     let root_path = params.out_dir.join("root.json");
     tokio::fs::write(&root_path, signed_root.buffer())
         .await
@@ -248,16 +299,15 @@ pub async fn sign_cookbook(params: SignParams<'_>) -> Result<(), SignError> {
             .map_err(|e| SignError::Tuf(e.to_string()))?;
     }
 
-    let one = NonZeroU64::new(1).expect("1 is non-zero");
     editor
-        .targets_version(one)
+        .targets_version(ONE)
         .map_err(|e| SignError::Tuf(e.to_string()))?
-        .targets_expires(params.expires)
+        .targets_expires(params.expiries.targets)
         .map_err(|e| SignError::Tuf(e.to_string()))?
-        .snapshot_version(one)
-        .snapshot_expires(params.expires)
-        .timestamp_version(one)
-        .timestamp_expires(params.expires);
+        .snapshot_version(ONE)
+        .snapshot_expires(params.expiries.snapshot)
+        .timestamp_version(ONE)
+        .timestamp_expires(params.expiries.timestamp);
 
     let signed = editor
         .sign(&key_sources)
@@ -342,7 +392,7 @@ mod tests {
     #[tokio::test]
     async fn sign_then_load_and_resolve_round_trips() {
         let dir = tempfile::tempdir().unwrap();
-        let key_path = dir.path().join("cookbook.pem");
+        let key_path = dir.path().join("cookbook.der");
         generate_signing_key(&key_path).expect("keygen");
 
         let recipe_bytes = b"name = \"com.example.Tool\"\nversion = \"1.0\"\n".to_vec();
@@ -351,16 +401,15 @@ mod tests {
         let mut recipes = HashMap::new();
         recipes.insert("com.example.Tool".to_string(), recipe_bytes.clone());
 
+        // Deliberately do not pre-create out_dir: sign_cookbook must create it.
         let out_dir = dir.path().join("metadata");
-        std::fs::create_dir_all(&out_dir).unwrap();
-        let expires = Utc::now() + chrono::Duration::days(30);
 
         sign_cookbook(SignParams {
             manifest: &manifest,
             recipes: &recipes,
             key_path: &key_path,
             out_dir: &out_dir,
-            expires,
+            expiries: Expiries::defaults_from(Utc::now()),
         })
         .await
         .expect("sign");
@@ -389,7 +438,7 @@ mod tests {
     #[tokio::test]
     async fn a_content_hash_mismatch_fails_closed() {
         let dir = tempfile::tempdir().unwrap();
-        let key_path = dir.path().join("cookbook.pem");
+        let key_path = dir.path().join("cookbook.der");
         generate_signing_key(&key_path).unwrap();
 
         // Manifest declares a hash that the supplied content does not match.
@@ -400,14 +449,13 @@ mod tests {
         let mut recipes = HashMap::new();
         recipes.insert("com.example.Tool".to_string(), b"different".to_vec());
         let out_dir = dir.path().join("metadata");
-        std::fs::create_dir_all(&out_dir).unwrap();
 
         let err = sign_cookbook(SignParams {
             manifest: &manifest,
             recipes: &recipes,
             key_path: &key_path,
             out_dir: &out_dir,
-            expires: Utc::now() + chrono::Duration::days(30),
+            expiries: Expiries::defaults_from(Utc::now()),
         })
         .await
         .expect_err("must reject a hash mismatch");
