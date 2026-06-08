@@ -8,9 +8,30 @@
 //! output is verified against a pre-pinned hash, allowing network here is safe
 //! (a fixed-output derivation); after this phase the build runs with no network.
 //!
-//! This slice handles `tarball` sources (HTTP GET + sha256). `git`,
-//! `github-release`, `crate` and `local` sources are follow-up slices and
-//! return [`FetchError::Unsupported`] for now.
+//! This slice handles `tarball` sources (HTTP GET + sha256) and `git` sources
+//! (clone pinned to a commit, deterministic `git archive`). `github-release`,
+//! `crate` and `local` sources are follow-up slices and return
+//! [`FetchError::Unsupported`] for now.
+//!
+//! ## Git SSRF model
+//!
+//! Unlike reqwest, `git` resolves DNS itself, so we cannot pin its resolver to
+//! a verified address the way [`HttpDownloader`] pins reqwest with `.resolve()`.
+//! The guard is therefore best-effort: before running `git` we parse the url's
+//! host and call [`resolve_and_pin`], rejecting the fetch ([`FetchError::Blocked`])
+//! if the host resolves into a blocked (loopback/RFC1918/link-local/...) range.
+//! `git` then re-resolves the host when it connects, leaving a DNS-rebinding
+//! window: a hostile resolver could return a public address to our check and a
+//! private one to git's connect. This is the same class of limitation as
+//! modulesd's redirect re-validation. It is acceptable here because the pinned
+//! **commit hash is the real content-integrity guarantee**: `ProcessGitFetcher`
+//! verifies `git rev-parse HEAD` equals the declared commit and archives that
+//! exact tree, so a rebind can change *which server* is contacted but cannot
+//! inject content that differs from the pinned commit. The pre-check still
+//! closes the common SSRF case (a recipe naming an internal host directly).
+
+use std::path::Path;
+use std::process::Command;
 
 use arlen_forage_recipe::{Source, SourceType};
 use arlen_forage_store::{ContentHash, Store, StoreError};
@@ -39,6 +60,10 @@ pub enum FetchError {
     /// The destination resolved into a blocked range (SSRF guard).
     #[error("blocked destination: {0}")]
     Blocked(String),
+    /// A git operation failed (clone/fetch/checkout/archive) or the checkout
+    /// did not match the declared commit.
+    #[error("git: {0}")]
+    Git(String),
     /// The download exceeded the size cap.
     #[error("download exceeded {limit} bytes")]
     TooLarge {
@@ -58,17 +83,94 @@ pub trait Downloader: Send + Sync {
     async fn get(&self, url: &str, max_bytes: u64) -> Result<Vec<u8>, FetchError>;
 }
 
+/// Clones a git repository pinned to a commit and returns a deterministic
+/// archive of that commit's tree. Behind a trait so the fetch logic can be
+/// tested without real git or network.
+///
+/// Implementations must verify the checkout actually equals `commit` and must
+/// produce a reproducible archive (e.g. `git archive`, which excludes `.git`
+/// and emits a deterministic tar for a fixed commit).
+pub trait GitFetcher: Send + Sync {
+    /// Clone `url`, check out `commit`, verify it, and return a deterministic
+    /// tar archive of that commit's tree. `dest` is a caller-provided empty
+    /// working directory the implementation may use as scratch.
+    ///
+    /// Returns [`FetchError::Git`] on any git failure or a commit mismatch,
+    /// [`FetchError::TooLarge`] if the archive exceeds `max_bytes`, and must not
+    /// return partial/unverified content.
+    fn fetch_commit(
+        &self,
+        url: &str,
+        commit: &str,
+        dest: &Path,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, FetchError>;
+}
+
 /// Fetch `source` and, if it matches its pinned hash, store and root it to
 /// `owner` in the content-addressed store, returning its address. Nothing is
 /// stored on a mismatch or any failure.
+///
+/// A [`SourceType::Git`] source is handled via `git_fetcher`: the host is
+/// SSRF-pre-checked with [`resolve_and_pin`], the repo is cloned and verified
+/// against the pinned `commit`, then the deterministic archive bytes are
+/// stored and rooted with [`Store::put_referenced`] (the commit is the
+/// integrity pin, so there is no sha256 to verify the archive against).
 pub async fn fetch_source(
     source: &Source,
     owner: &str,
     store: &Store,
     downloader: &dyn Downloader,
+    git_fetcher: &dyn GitFetcher,
     max_bytes: u64,
 ) -> Result<ContentHash, FetchError> {
     match source.source_type {
+        SourceType::Git => {
+            let url = source
+                .url
+                .as_deref()
+                .filter(|u| !u.is_empty())
+                .ok_or(FetchError::MissingField("url"))?;
+            let commit = source
+                .commit
+                .as_deref()
+                .filter(|c| !c.is_empty())
+                .ok_or(FetchError::MissingField("commit"))?;
+
+            // SSRF pre-check: reject a host that resolves into a blocked range
+            // before any git process is spawned. Best-effort against rebinding;
+            // the commit pin is the content guarantee (see module docs).
+            let parsed = reqwest::Url::parse(url)
+                .map_err(|e| FetchError::Network(format!("parse git url: {e}")))?;
+            // Restrict to https: other transports (git://, ssh://, file://) would
+            // not go through the resolved/pinned host check and could read local
+            // or internal endpoints, defeating the SSRF guard entirely.
+            if parsed.scheme() != "https" {
+                return Err(FetchError::Network(format!("non-https git url: {url}")));
+            }
+            let host = parsed
+                .host_str()
+                .ok_or_else(|| FetchError::Network(format!("git url has no host: {url}")))?;
+            let port = parsed.port_or_known_default().unwrap_or(443);
+            match resolve_and_pin(host, port).await {
+                Ok(_addr) => {}
+                Err(blocked @ GuardError::Blocked { .. }) => {
+                    return Err(FetchError::Blocked(blocked.to_string()))
+                }
+                Err(e) => return Err(FetchError::Network(e.to_string())),
+            }
+
+            // Scratch working directory for the clone; dropped (removed) when
+            // this returns, success or failure.
+            let scratch = tempfile::tempdir()
+                .map_err(|e| FetchError::Git(format!("scratch dir: {e}")))?;
+            let bytes = git_fetcher.fetch_commit(url, commit, scratch.path(), max_bytes)?;
+
+            // The commit is the integrity pin, not a sha256, so the verified
+            // archive is stored and rooted without a content-hash check.
+            let hash = store.put_referenced(&bytes, owner)?;
+            Ok(hash)
+        }
         SourceType::Tarball => {
             let url = source
                 .url
@@ -162,6 +264,169 @@ impl Downloader for HttpDownloader {
     }
 }
 
+/// Wall-clock bound on any single git invocation. A hostile or degraded remote
+/// (a hanging fetch) is killed rather than wedging the fetch worker.
+const GIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// The production [`GitFetcher`]: drives the `git` CLI via [`Command`] with
+/// explicit arguments (never a shell) under a **sanitized environment**, a
+/// **wall-clock timeout**, and a **bounded** archive read.
+///
+/// The environment is cleared and only a minimal allowlist is set, so no
+/// inherited git config or environment can redirect the fetch: `~/.gitconfig`
+/// (`url.*.insteadOf`, proxies), `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_*`,
+/// `GIT_SSH`/`GIT_SSH_COMMAND`, `http(s)_proxy`/`ALL_PROXY` and friends are all
+/// dropped; global and system config are pointed at `/dev/null`. This closes
+/// the SSRF gap where `GIT_CONFIG_NOSYSTEM` alone left global config and proxy
+/// variables able to send git to a private endpoint after the pre-check.
+#[derive(Debug, Default)]
+pub struct ProcessGitFetcher;
+
+impl ProcessGitFetcher {
+    /// Run `git` with explicit args in `cwd`, a sanitized env, a timeout, and an
+    /// optional stdout byte cap. Returns stdout on success (capped if `cap` is
+    /// set), or an error on non-zero exit, timeout, or cap overflow.
+    fn git(&self, cwd: &Path, args: &[&str], cap: Option<u64>) -> Result<Vec<u8>, FetchError> {
+        use std::io::Read;
+        use std::process::Stdio;
+        use wait_timeout::ChildExt;
+
+        let arg0 = args.first().copied().unwrap_or("");
+        let mut child = Command::new("git")
+            .args(args)
+            .current_dir(cwd)
+            // Sanitized environment: clear everything, then set only the minimum.
+            // GIT_CONFIG_GLOBAL/SYSTEM=/dev/null disable user/system config
+            // (insteadOf, proxies); env_clear drops proxy and GIT_SSH* vars.
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("HOME", cwd)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| FetchError::Git(format!("spawn git {arg0}: {e}")))?;
+
+        // Drain stdout (capped) and stderr concurrently so a full pipe never
+        // blocks the child before it can exit.
+        let mut out = child.stdout.take().expect("stdout piped");
+        let mut err = child.stderr.take().expect("stderr piped");
+        let out_handle = std::thread::spawn(move || read_capped(&mut out, cap));
+        let err_handle = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = err.read_to_end(&mut buf);
+            buf
+        });
+
+        let status = match child.wait_timeout(GIT_TIMEOUT) {
+            Ok(Some(status)) => status,
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = out_handle.join();
+                let _ = err_handle.join();
+                return Err(FetchError::Git(format!("git {arg0} timed out")));
+            }
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(FetchError::Git(format!("git {arg0} wait: {e}")));
+            }
+        };
+
+        let stdout = out_handle
+            .join()
+            .map_err(|_| FetchError::Git(format!("git {arg0} stdout reader panicked")))??;
+        let stderr = err_handle.join().unwrap_or_default();
+
+        if !status.success() {
+            return Err(FetchError::Git(format!(
+                "git {arg0} failed ({status}): {}",
+                String::from_utf8_lossy(&stderr).trim()
+            )));
+        }
+        Ok(stdout)
+    }
+}
+
+impl GitFetcher for ProcessGitFetcher {
+    fn fetch_commit(
+        &self,
+        url: &str,
+        commit: &str,
+        dest: &Path,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, FetchError> {
+        // init an empty repo, fetch only the pinned commit shallowly, check it
+        // out detached. Fetching the commit directly (rather than cloning a
+        // branch) keeps the transfer minimal and never depends on a default
+        // branch. `--` terminates option parsing so a url/commit can never be
+        // read as a flag.
+        self.git(dest, &["init", "--quiet"], None)?;
+        self.git(
+            dest,
+            &["fetch", "--depth", "1", "--no-tags", "--", url, commit],
+            None,
+        )?;
+        self.git(dest, &["checkout", "--quiet", "FETCH_HEAD"], None)?;
+
+        // Verify the checkout is exactly the declared commit. git resolves
+        // FETCH_HEAD, so a server that served a different object than asked
+        // (or an abbreviated/ambiguous ref) is caught here.
+        let head = self.git(dest, &["rev-parse", "HEAD"], None)?;
+        let head = String::from_utf8_lossy(&head);
+        let head = head.trim();
+        if !head.eq_ignore_ascii_case(commit) {
+            return Err(FetchError::Git(format!(
+                "checkout is {head}, expected pinned commit {commit}"
+            )));
+        }
+
+        // Deterministic archive of the pinned tree, bounded by the size cap so a
+        // pinned-but-huge tree cannot exhaust memory.
+        self.git(dest, &["archive", "--format=tar", commit], Some(max_bytes))
+    }
+}
+
+/// Read `src` to EOF, returning its bytes, but fail with [`FetchError::TooLarge`]
+/// if it exceeds `cap`. When the cap is hit, the rest is drained and discarded
+/// (so the producer is not left blocked on a full pipe) and `TooLarge` is
+/// returned. `cap = None` reads without a limit.
+fn read_capped<R: std::io::Read>(src: &mut R, cap: Option<u64>) -> Result<Vec<u8>, FetchError> {
+    let mut buf = Vec::new();
+    let mut scratch = [0u8; 64 * 1024];
+    let mut total: u64 = 0;
+    let mut exceeded = false;
+    loop {
+        let n = src
+            .read(&mut scratch)
+            .map_err(|e| FetchError::Git(format!("read git output: {e}")))?;
+        if n == 0 {
+            break;
+        }
+        total += n as u64;
+        if let Some(cap) = cap {
+            if total > cap {
+                exceeded = true; // keep draining to unblock the child, discard
+                continue;
+            }
+        }
+        if !exceeded {
+            buf.extend_from_slice(&scratch[..n]);
+        }
+    }
+    if exceeded {
+        return Err(FetchError::TooLarge {
+            limit: cap.unwrap_or(0),
+        });
+    }
+    Ok(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,6 +459,85 @@ mod tests {
         }
     }
 
+    /// A git fetcher that returns canned archive bytes (or a canned error)
+    /// without touching real git or the network.
+    struct MockGitFetcher {
+        result: std::sync::Mutex<Option<Result<Vec<u8>, FetchError>>>,
+    }
+    impl MockGitFetcher {
+        fn ok(bytes: &[u8]) -> Self {
+            Self {
+                result: std::sync::Mutex::new(Some(Ok(bytes.to_vec()))),
+            }
+        }
+        fn err(e: FetchError) -> Self {
+            Self {
+                result: std::sync::Mutex::new(Some(Err(e))),
+            }
+        }
+        /// A fetcher that must never be called (asserts if it is).
+        fn never() -> Self {
+            Self {
+                result: std::sync::Mutex::new(None),
+            }
+        }
+    }
+    impl GitFetcher for MockGitFetcher {
+        fn fetch_commit(
+            &self,
+            _url: &str,
+            _commit: &str,
+            _dest: &Path,
+            _max_bytes: u64,
+        ) -> Result<Vec<u8>, FetchError> {
+            self.result
+                .lock()
+                .unwrap()
+                .take()
+                .expect("mock git fetcher called without a canned result")
+        }
+    }
+
+    /// The HTTP downloader is never reached on the git path; use this to assert
+    /// that.
+    fn no_dl() -> MockDownloader {
+        MockDownloader {
+            result: std::sync::Mutex::new(None),
+        }
+    }
+
+    #[test]
+    fn read_capped_enforces_the_limit() {
+        // Under the cap: returns the bytes.
+        let mut under = std::io::Cursor::new(vec![1u8; 100]);
+        assert_eq!(read_capped(&mut under, Some(200)).unwrap().len(), 100);
+        // Over the cap: TooLarge, even though the reader has more to give.
+        let mut over = std::io::Cursor::new(vec![1u8; 300]);
+        assert!(matches!(
+            read_capped(&mut over, Some(200)),
+            Err(FetchError::TooLarge { limit: 200 })
+        ));
+        // No cap: reads everything.
+        let mut all = std::io::Cursor::new(vec![1u8; 300]);
+        assert_eq!(read_capped(&mut all, None).unwrap().len(), 300);
+    }
+
+    #[tokio::test]
+    async fn non_https_git_url_is_rejected() {
+        let (_d, s) = store();
+        for url in ["git://evil/repo", "ssh://host/repo", "file:///etc"] {
+            let src = git(Some(url), Some(&"a".repeat(40)));
+            assert!(
+                matches!(
+                    fetch_source(&src, "o", &s, &no_dl(), &MockGitFetcher::never(), DEFAULT_MAX_BYTES)
+                        .await,
+                    Err(FetchError::Network(_))
+                ),
+                "non-https git url `{url}` must be rejected"
+            );
+        }
+    }
+
     fn store() -> (tempfile::TempDir, Store) {
         let dir = tempfile::tempdir().unwrap();
         let s = Store::open(dir.path()).unwrap();
@@ -212,6 +556,21 @@ mod tests {
         }
     }
 
+    fn git(url: Option<&str>, commit: Option<&str>) -> Source {
+        Source {
+            source_type: SourceType::Git,
+            url: url.map(|s| s.to_string()),
+            commit: commit.map(|s| s.to_string()),
+            sha256: None,
+            asset: None,
+            tag: None,
+            patches: Vec::new(),
+        }
+    }
+
+    /// A full 40-hex git object id, used as the pinned commit in git tests.
+    const COMMIT: &str = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
+
     #[tokio::test]
     async fn matching_tarball_is_stored_and_rooted() {
         let (_d, s) = store();
@@ -219,9 +578,16 @@ mod tests {
         let sha = ContentHash::of(body);
         let src = tarball("https://example.org/x.tar.gz", Some(sha.as_str()));
         let dl = MockDownloader::ok(body);
-        let h = fetch_source(&src, "org.example.app", &s, &dl, DEFAULT_MAX_BYTES)
-            .await
-            .unwrap();
+        let h = fetch_source(
+            &src,
+            "org.example.app",
+            &s,
+            &dl,
+            &MockGitFetcher::never(),
+            DEFAULT_MAX_BYTES,
+        )
+        .await
+        .unwrap();
         assert_eq!(h, sha);
         assert_eq!(s.refcount(&h).unwrap(), 1);
         assert_eq!(s.read(&h).unwrap(), body);
@@ -233,9 +599,16 @@ mod tests {
         let declared = ContentHash::of(b"what the recipe pinned");
         let src = tarball("https://example.org/x.tar.gz", Some(declared.as_str()));
         let dl = MockDownloader::ok(b"but the server served this");
-        let err = fetch_source(&src, "org.example.app", &s, &dl, DEFAULT_MAX_BYTES)
-            .await
-            .unwrap_err();
+        let err = fetch_source(
+            &src,
+            "org.example.app",
+            &s,
+            &dl,
+            &MockGitFetcher::never(),
+            DEFAULT_MAX_BYTES,
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(err, FetchError::Store(StoreError::Mismatch { .. })));
         assert!(!s.has(&declared));
         assert!(!s.has(&ContentHash::of(b"but the server served this")));
@@ -247,7 +620,15 @@ mod tests {
         let src = tarball("https://example.org/x.tar.gz", None);
         let dl = MockDownloader::ok(b"x");
         assert!(matches!(
-            fetch_source(&src, "o", &s, &dl, DEFAULT_MAX_BYTES).await,
+            fetch_source(
+                &src,
+                "o",
+                &s,
+                &dl,
+                &MockGitFetcher::never(),
+                DEFAULT_MAX_BYTES
+            )
+            .await,
             Err(FetchError::MissingField("sha256"))
         ));
     }
@@ -256,11 +637,19 @@ mod tests {
     async fn unsupported_source_type() {
         let (_d, s) = store();
         let mut src = tarball("https://example.org/x", Some(&"a".repeat(64)));
-        src.source_type = SourceType::Git;
+        src.source_type = SourceType::Crate;
         let dl = MockDownloader::ok(b"x");
         assert!(matches!(
-            fetch_source(&src, "o", &s, &dl, DEFAULT_MAX_BYTES).await,
-            Err(FetchError::Unsupported(SourceType::Git))
+            fetch_source(
+                &src,
+                "o",
+                &s,
+                &dl,
+                &MockGitFetcher::never(),
+                DEFAULT_MAX_BYTES
+            )
+            .await,
+            Err(FetchError::Unsupported(SourceType::Crate))
         ));
     }
 
@@ -271,9 +660,91 @@ mod tests {
         let src = tarball("https://example.org/x.tar.gz", Some(sha.as_str()));
         let dl = MockDownloader::err(FetchError::TooLarge { limit: 10 });
         assert!(matches!(
-            fetch_source(&src, "o", &s, &dl, DEFAULT_MAX_BYTES).await,
+            fetch_source(
+                &src,
+                "o",
+                &s,
+                &dl,
+                &MockGitFetcher::never(),
+                DEFAULT_MAX_BYTES
+            )
+            .await,
             Err(FetchError::TooLarge { limit: 10 })
         ));
         assert!(!s.has(&sha));
+    }
+
+    #[tokio::test]
+    async fn git_source_is_stored_and_rooted() {
+        let (_d, s) = store();
+        let archive = b"deterministic git archive tar bytes";
+        let src = git(Some("https://example.org/repo.git"), Some(COMMIT));
+        let gf = MockGitFetcher::ok(archive);
+        let h = fetch_source(
+            &src,
+            "org.example.app",
+            &s,
+            &no_dl(),
+            &gf,
+            DEFAULT_MAX_BYTES,
+        )
+        .await
+        .unwrap();
+        // The commit is the integrity pin: the stored object is addressed by
+        // the archive bytes' own content hash.
+        assert_eq!(h, ContentHash::of(archive));
+        assert_eq!(s.refcount(&h).unwrap(), 1);
+        assert_eq!(s.read(&h).unwrap(), archive);
+        // Rooted atomically, so a gc cannot collect it.
+        assert_eq!(s.gc().unwrap().removed, vec![]);
+    }
+
+    #[tokio::test]
+    async fn git_source_missing_url_is_rejected() {
+        let (_d, s) = store();
+        let src = git(None, Some(COMMIT));
+        assert!(matches!(
+            fetch_source(
+                &src,
+                "o",
+                &s,
+                &no_dl(),
+                &MockGitFetcher::never(),
+                DEFAULT_MAX_BYTES
+            )
+            .await,
+            Err(FetchError::MissingField("url"))
+        ));
+    }
+
+    #[tokio::test]
+    async fn git_source_missing_commit_is_rejected() {
+        let (_d, s) = store();
+        let src = git(Some("https://example.org/repo.git"), None);
+        assert!(matches!(
+            fetch_source(
+                &src,
+                "o",
+                &s,
+                &no_dl(),
+                &MockGitFetcher::never(),
+                DEFAULT_MAX_BYTES
+            )
+            .await,
+            Err(FetchError::MissingField("commit"))
+        ));
+    }
+
+    #[tokio::test]
+    async fn git_fetcher_error_propagates_and_stores_nothing() {
+        let (_d, s) = store();
+        let src = git(Some("https://example.org/repo.git"), Some(COMMIT));
+        let gf = MockGitFetcher::err(FetchError::Git("checkout mismatch".into()));
+        let err = fetch_source(&src, "o", &s, &no_dl(), &gf, DEFAULT_MAX_BYTES)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FetchError::Git(_)), "got {err:?}");
+        // No object made it into the store.
+        assert_eq!(s.gc().unwrap().removed, vec![]);
     }
 }
