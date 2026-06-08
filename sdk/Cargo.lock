@@ -66,6 +66,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-net-guard"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "arlen-permissions"
 version = "0.1.0"
 dependencies = [

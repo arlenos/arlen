@@ -24,10 +24,10 @@
 ///     fetches per module, surfaced via the manager so a runaway
 ///     module cannot saturate the host's outbound socket pool.
 
-use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use arlen_net_guard::{resolve_and_pin, GuardError};
 use reqwest::redirect::{Attempt, Policy};
 use reqwest::Method;
 
@@ -36,81 +36,6 @@ use crate::host::CapabilityContext;
 
 const MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Reject any request whose resolved destination falls into one of
-/// these address ranges. Modules that need to reach an internal
-/// service must declare an explicit, separate capability (not yet
-/// designed); allowing implicit private-network access through a
-/// hostname allowlist would let any DNS-controlled allowlisted name
-/// resolve to a loopback or RFC1918 target and bypass the
-/// trust boundary.
-fn is_blocked_destination(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v4) => {
-            v4.is_loopback()
-                || v4.is_private()
-                || v4.is_link_local()
-                || v4.is_broadcast()
-                || v4.is_multicast()
-                || v4.is_unspecified()
-                || v4.is_documentation()
-                // CGNAT 100.64.0.0/10 (RFC 6598).
-                || (v4.octets()[0] == 100 && (v4.octets()[1] & 0xc0) == 0x40)
-                // 0.0.0.0/8 reserved.
-                || v4.octets()[0] == 0
-                // 169.254/16 link-local already covered, but explicit.
-                || (v4.octets()[0] == 169 && v4.octets()[1] == 254)
-        }
-        IpAddr::V6(v6) => {
-            v6.is_loopback()
-                || v6.is_unspecified()
-                || v6.is_multicast()
-                // Unique-local fc00::/7.
-                || (v6.segments()[0] & 0xfe00) == 0xfc00
-                // Link-local fe80::/10.
-                || (v6.segments()[0] & 0xffc0) == 0xfe80
-                // IPv4-mapped (::ffff:0:0/96): defer to v4 check by
-                // re-mapping the embedded address.
-                || v6
-                    .to_ipv4_mapped()
-                    .map(|v4| is_blocked_destination(IpAddr::V4(v4)))
-                    .unwrap_or(false)
-        }
-    }
-}
-
-/// Resolve a host:port to its IPs and verify every candidate
-/// is acceptable. Returns the first non-blocked socket address so
-/// the caller can pin reqwest to it (defending against DNS
-/// rebinding between our pre-check and reqwest's own lookup).
-///
-/// Fails closed: if any address resolves into a blocked range,
-/// the entire hostname is rejected. We do **not** silently fall
-/// back to a non-blocked address from the same A/AAAA set — a
-/// hostname that points partly into a blocked range is suspicious
-/// enough that we refuse to use even the public-looking record.
-async fn check_host_resolution(host: &str, port: u16) -> Result<std::net::SocketAddr> {
-    let target = format!("{host}:{port}");
-    let ips: Vec<std::net::SocketAddr> = tokio::net::lookup_host(&target)
-        .await
-        .map_err(|e| DaemonError::Internal(format!("resolve {target}: {e}")))?
-        .collect();
-    if ips.is_empty() {
-        return Err(DaemonError::Internal(format!("no addresses for {host}")));
-    }
-    for sa in &ips {
-        if is_blocked_destination(sa.ip()) {
-            return Err(DaemonError::CapabilityDenied {
-                module_id: String::new(),
-                capability: format!(
-                    "network.fetch destination {} (host {host}) is in a blocked range",
-                    sa.ip()
-                ),
-            });
-        }
-    }
-    Ok(ips[0])
-}
 
 /// Outcome of a `network::fetch` host call.
 #[derive(Debug, Clone)]
@@ -243,15 +168,15 @@ async fn perform(
     let mut pin_resolution: Option<(String, std::net::SocketAddr)> = None;
     if let Some(host) = parsed.host_str() {
         let port = parsed.port_or_known_default().unwrap_or(443);
-        match check_host_resolution(host, port).await {
+        match resolve_and_pin(host, port).await {
             Ok(addr) => pin_resolution = Some((host.to_string(), addr)),
-            Err(DaemonError::CapabilityDenied { capability, .. }) => {
+            Err(blocked @ GuardError::Blocked { .. }) => {
                 return Err(DaemonError::CapabilityDenied {
                     module_id: ctx.module_id.clone(),
-                    capability,
+                    capability: format!("network.fetch {blocked}"),
                 });
             }
-            Err(other) => return Err(other),
+            Err(other) => return Err(DaemonError::Internal(format!("network.fetch {other}"))),
         }
     }
 
