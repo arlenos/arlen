@@ -45,6 +45,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-confiner"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "arlen-input-client"
 version = "0.1.0"
 dependencies = [
