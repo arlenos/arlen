@@ -219,6 +219,71 @@ fn sanitize_external(value: &str) -> String {
     extract_text(value.as_bytes()).unwrap_or_else(|_| "(unprocessable field)".to_string())
 }
 
+/// The maximum byte length of an observation preview kept inline in the
+/// transcript. The full result persists at the observation's reference (P8), so
+/// the inline preview is a bounded, inert snippet and one verbose tool result
+/// cannot blow the context window even before compaction.
+pub const OBSERVATION_PREVIEW_CAP: usize = 2_048;
+
+/// Render a read tool's result rows into a bounded, inert-text preview for an
+/// observation entry (the design's observe step). Every cell key and value is
+/// passed through the S18-B sanitiser ([`sanitize_external`]) so a result that
+/// reached untrusted data (a file's contents surfaced by a query) cannot carry
+/// control characters, ANSI escapes or bidirectional overrides back into the
+/// model's context. The preview is truncated to `cap` bytes on a char boundary
+/// with an explicit marker; truncation loses nothing the model cannot re-fetch
+/// from the full result at the observation's reference. This is the S18-B half
+/// of result screening; the caller still runs the S17 injection classifier over
+/// the returned preview before it enters the transcript.
+pub fn observation_preview(
+    rows: &[std::collections::HashMap<String, serde_json::Value>],
+    cap: usize,
+) -> String {
+    let mut out = String::new();
+    for row in rows {
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        // Deterministic column order so the preview is stable across runs.
+        let mut cells: Vec<(&String, &serde_json::Value)> = row.iter().collect();
+        cells.sort_by(|a, b| a.0.cmp(b.0));
+        let rendered: Vec<String> = cells
+            .iter()
+            .map(|(k, v)| {
+                format!(
+                    "{}={}",
+                    sanitize_external(k),
+                    sanitize_external(&value_to_string(v))
+                )
+            })
+            .collect();
+        out.push_str(&rendered.join(", "));
+        if out.len() > cap {
+            break; // stop building; the truncation below bounds it
+        }
+    }
+    if out.len() > cap {
+        let mut end = cap;
+        while end > 0 && !out.is_char_boundary(end) {
+            end -= 1;
+        }
+        out.truncate(end);
+        out.push_str(" ...(truncated; full result at reference)");
+    }
+    out
+}
+
+/// A JSON value's scalar string form for a preview cell. A string passes
+/// through (then sanitised by the caller); other scalars and containers use
+/// their JSON text. Never panics.
+fn value_to_string(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Null => "null".to_string(),
+        other => other.to_string(),
+    }
+}
+
 /// The external content of an event as the model will see it, for injection
 /// screening (S17). Covers the event type and every field value, sanitised
 /// exactly as [`build_agent_prompt`] sanitises them, so the screen covers
@@ -274,6 +339,38 @@ mod tests {
         // than silently coerced, so the gate only ever sees string operands.
         let text = r#"{"action":"propose","tool":"t","summary":"s","arguments":{"n":42}}"#;
         assert!(parse_agent_step(text).is_err());
+    }
+
+    fn row(pairs: &[(&str, serde_json::Value)]) -> std::collections::HashMap<String, serde_json::Value> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
+    }
+
+    #[test]
+    fn observation_preview_sanitises_and_orders_cells() {
+        let rows = vec![row(&[
+            ("name", serde_json::json!("a\u{1b}[31mred\u{1b}[0m")),
+            ("count", serde_json::json!(3)),
+        ])];
+        let preview = observation_preview(&rows, OBSERVATION_PREVIEW_CAP);
+        // The ESC control character is stripped (the S18-B security property);
+        // the exact escape-text handling is extract_text's own, tested there.
+        assert!(!preview.contains('\u{1b}'), "no control characters survive");
+        // Deterministic (sorted) column order, JSON scalar rendering.
+        assert!(preview.starts_with("count=3, name=a"), "ordered + sanitised: {preview}");
+    }
+
+    #[test]
+    fn observation_preview_truncates_on_a_char_boundary_with_a_marker() {
+        let big: String = "x".repeat(10_000);
+        let rows = vec![row(&[("data", serde_json::json!(big))])];
+        let preview = observation_preview(&rows, 100);
+        assert!(preview.len() < 200, "bounded near the cap");
+        assert!(preview.ends_with("full result at reference)"), "marks the elision");
+    }
+
+    #[test]
+    fn observation_preview_of_no_rows_is_empty() {
+        assert_eq!(observation_preview(&[], OBSERVATION_PREVIEW_CAP), "");
     }
 
     #[test]
