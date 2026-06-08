@@ -59,18 +59,14 @@ async fn listen_consumers(path: &str, registry: Arc<ConsumerRegistry>) -> Result
     }
 }
 
-/// Extract the peer UID from a Unix stream via SO_PEERCRED.
+/// Extract the peer UID from a Unix stream via `SO_PEERCRED`.
 /// Returns 0 (system) if credentials cannot be read.
 fn peer_uid(stream: &UnixStream) -> u32 {
-    stream
-        .peer_cred()
-        .ok()
-        .map(|cred| cred.uid())
-        .unwrap_or(0)
+    stream.peer_cred().map_or(0, |cred| cred.uid())
 }
 
 /// Handle a single producer connection.
-/// Reads length-prefixed protobuf messages, stamps the UID from SO_PEERCRED,
+/// Reads length-prefixed protobuf messages, stamps the UID from `SO_PEERCRED`,
 /// validates them, and dispatches.
 async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>) -> Result<()> {
     let producer_uid = peer_uid(&stream);
