@@ -31,7 +31,7 @@ use arlen_forage_package::{
     collect_artifacts, synthesize_manifest, write_lunpkg, Collection, ManifestError, PackageError,
     WriteError,
 };
-use arlen_forage_recipe::Recipe;
+use arlen_forage_recipe::{Recipe, Source, SourceType};
 use arlen_forage_store::{ContentHash, Store, StoreError};
 use ed25519_dalek::SigningKey;
 use thiserror::Error;
@@ -137,6 +137,18 @@ pub async fn build_recipe(
 ) -> Result<BuildOutcome, PipelineError> {
     let owner = recipe.recipe.id.as_str();
     let source = recipe.source.first().ok_or(PipelineError::NoSource)?;
+    // D6: a `crate` source whose `version` is omitted defaults to the recipe's
+    // own version, so a recipe packaging exactly one crate need not repeat it.
+    let crate_versioned;
+    let source = if matches!(source.source_type, SourceType::Crate) && source.version.is_none() {
+        crate_versioned = Source {
+            version: recipe.recipe.version.clone(),
+            ..source.clone()
+        };
+        &crate_versioned
+    } else {
+        source
+    };
     let build = recipe.build.as_ref().ok_or(PipelineError::NoBuild)?;
     let artifacts = recipe.artifacts.as_ref().ok_or(PipelineError::NoArtifacts)?;
 
@@ -312,6 +324,7 @@ mod tests {
                 sha256: Some(sha.into()),
                 asset: None,
                 tag: None,
+                version: None,
                 patches: Vec::new(),
             }],
             build: Some(Build {
