@@ -81,6 +81,83 @@ fn clone_dir(name: &str) -> PathBuf {
         .join(name)
 }
 
+/// The directory holding a cookbook's signed TUF metadata: `<root>/metadata`,
+/// where the root is the tracked clone for a `git+` cookbook or the source
+/// directory for a local one.
+fn cookbook_metadata_dir(c: &Cookbook) -> PathBuf {
+    let root = if c.source.starts_with("git+") {
+        clone_dir(&c.name)
+    } else {
+        PathBuf::from(&c.source)
+    };
+    root.join("metadata")
+}
+
+/// Resolve a recipe name across the tracked cookbooks, verifying each against its
+/// pinned root, and return the first verified match's authenticated pointer.
+///
+/// Layered precedence (first tracked = highest) with first-match-wins. A cookbook
+/// is consulted only if it is pinned (unsigned cookbooks never resolve, the
+/// fail-closed model). If a pinned cookbook's on-disk `root.json` no longer
+/// hashes to its pin, that is a hard error (tampering or an un-pinned root
+/// change on a cookbook the user explicitly trusts), not a silent fall-through
+/// to a lower-precedence cookbook.
+pub async fn resolve_in_cookbooks(
+    recipe_name: &str,
+) -> Result<arlen_cookbook_resolve::ResolvedRecipe, String> {
+    let registry = Registry::load()?;
+    resolve_against(&registry.cookbook, recipe_name).await
+}
+
+/// The layered-resolution core over an explicit cookbook list (testable without
+/// the global registry path).
+async fn resolve_against(
+    cookbooks: &[Cookbook],
+    recipe_name: &str,
+) -> Result<arlen_cookbook_resolve::ResolvedRecipe, String> {
+    if cookbooks.is_empty() {
+        return Err("no cookbooks are tracked (forage cookbook add <name> git+<url>)".into());
+    }
+    let mut last_err: Option<String> = None;
+    let mut considered = false;
+    for c in cookbooks {
+        // Unsigned cookbooks never resolve (fail-closed).
+        let Some(pin) = &c.pinned_root_sha256 else {
+            continue;
+        };
+        let metadata_dir = cookbook_metadata_dir(c);
+        let root_path = metadata_dir.join("root.json");
+        let root_bytes = match std::fs::read(&root_path) {
+            Ok(b) => b,
+            // The clone is missing its root (incomplete or removed); skip it
+            // rather than fail the whole resolution.
+            Err(_) => continue,
+        };
+        if sha256_hex(&root_bytes) != *pin {
+            return Err(format!(
+                "cookbook '{}' root.json no longer matches its pinned hash; refusing (re-add it if the change is expected)",
+                c.name
+            ));
+        }
+        considered = true;
+        match arlen_cookbook_resolve::resolve(&root_bytes, &metadata_dir, recipe_name).await {
+            Ok(resolved) => return Ok(resolved),
+            // Verified, but this cookbook does not index the recipe: try the next.
+            Err(arlen_cookbook_resolve::ResolveError::NotFound(_)) => continue,
+            Err(e) => last_err = Some(format!("cookbook '{}': {e}", c.name)),
+        }
+    }
+    if let Some(e) = last_err {
+        return Err(e);
+    }
+    if !considered {
+        return Err(
+            "no tracked cookbook is signed and pinned; nothing to resolve from".into(),
+        );
+    }
+    Err(format!("no tracked cookbook provides '{recipe_name}'"))
+}
+
 /// Compute the trust pin for a cookbook: the sha256 (lowercase hex) of its
 /// `metadata/root.json`. Returns `None` if the cookbook has no such root (it is
 /// unsigned), reading via `symlink_metadata` discipline left to the caller's
@@ -308,6 +385,77 @@ mod tests {
             toml::from_str("[[cookbook]]\nname = \"x\"\nsource = \"/t\"\n").unwrap();
         assert_eq!(back.cookbook.len(), 1);
         assert!(back.cookbook[0].pinned_root_sha256.is_none());
+    }
+
+    /// Sign a one-recipe cookbook into `<cookbook_dir>/metadata` and return a
+    /// tracked `Cookbook` entry for it (source = the local dir, root pinned).
+    async fn signed_cookbook_fixture(cookbook_dir: &Path, recipe_name: &str) -> Cookbook {
+        use arlen_cookbook_sign::{generate_signing_key, sign_cookbook, Expiries, SignParams};
+        let md = cookbook_dir.join("metadata");
+        std::fs::create_dir_all(&md).unwrap();
+        let key = cookbook_dir.join("key.der");
+        generate_signing_key(&key).unwrap();
+        let recipe_bytes = format!("name = \"{recipe_name}\"\n").into_bytes();
+        let hash = sha256_hex(&recipe_bytes);
+        let toml = format!(
+            "[[recipe]]\nname = \"{recipe_name}\"\ngit_url = \"github.com/o/r\"\ncommit = \"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\"\nrecipe_hash = \"{hash}\"\n"
+        );
+        let manifest = arlen_cookbook_index::parse(&toml).unwrap();
+        let mut recipes = std::collections::HashMap::new();
+        recipes.insert(recipe_name.to_string(), recipe_bytes);
+        sign_cookbook(SignParams {
+            manifest: &manifest,
+            recipes: &recipes,
+            key_path: &key,
+            out_dir: &md,
+            expiries: Expiries::defaults_from(chrono::Utc::now()),
+        })
+        .await
+        .unwrap();
+        let pin = root_pin(&md).unwrap();
+        Cookbook {
+            name: cookbook_dir.file_name().unwrap().to_string_lossy().into_owned(),
+            source: cookbook_dir.to_string_lossy().into_owned(),
+            pinned_root_sha256: Some(pin),
+        }
+    }
+
+    #[tokio::test]
+    async fn resolves_a_recipe_from_a_pinned_cookbook() {
+        let dir = tempfile::tempdir().unwrap();
+        let cb = signed_cookbook_fixture(&dir.path().join("personal"), "com.example.Tool").await;
+        let resolved = resolve_against(&[cb], "com.example.Tool").await.unwrap();
+        assert_eq!(resolved.git_url, "github.com/o/r");
+    }
+
+    #[tokio::test]
+    async fn a_tampered_pinned_root_is_a_hard_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let cbdir = dir.path().join("personal");
+        let cb = signed_cookbook_fixture(&cbdir, "com.example.Tool").await;
+        // Tamper the on-disk root after pinning: the stored pin no longer matches.
+        std::fs::write(cbdir.join("metadata/root.json"), b"tampered").unwrap();
+        let err = resolve_against(&[cb], "com.example.Tool").await.unwrap_err();
+        assert!(err.contains("no longer matches its pinned hash"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn an_unsigned_cookbook_resolves_nothing() {
+        let cb = Cookbook {
+            name: "bare".into(),
+            source: "/nonexistent".into(),
+            pinned_root_sha256: None,
+        };
+        let err = resolve_against(&[cb], "com.example.Tool").await.unwrap_err();
+        assert!(err.contains("signed and pinned"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn an_unknown_recipe_reports_no_provider() {
+        let dir = tempfile::tempdir().unwrap();
+        let cb = signed_cookbook_fixture(&dir.path().join("personal"), "com.example.Tool").await;
+        let err = resolve_against(&[cb], "com.example.Other").await.unwrap_err();
+        assert!(err.contains("no tracked cookbook provides"), "{err}");
     }
 
     #[test]

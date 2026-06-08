@@ -17,6 +17,7 @@ arlen-forage-build = { path = "build" }
 arlen-forage-fetch = { path = "fetch" }
 arlen-forage-store = { path = "store" }
 arlen-forage-signing = { path = "signing" }
+arlen-cookbook-resolve = { path = "cookbook-resolve" }
 colored = "2"
 sha2 = "0.10"
 serde = { version = "1", features = ["derive"] }
@@ -31,3 +32,6 @@ tempfile = "3"
 
 [dev-dependencies]
 tempfile = "3"
+arlen-cookbook-sign = { path = "cookbook-sign" }
+arlen-cookbook-index = { path = "cookbook-index" }
+chrono = { version = "0.4", features = ["clock"] }
