@@ -1,0 +1,17 @@
+[package]
+name = "arlen-forage-build"
+version = "0.1.0"
+edition = "2021"
+description = "Build-step planning and direct-exec execution for forage (no shell, reproducible environment)"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+arlen-forage-recipe = { path = "../../contracts/forage-recipe" }
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[workspace]
