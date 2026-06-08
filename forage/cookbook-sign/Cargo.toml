@@ -1,0 +1,29 @@
+[package]
+name = "arlen-cookbook-sign"
+version = "0.1.0"
+edition = "2021"
+description = "Compile a forage cookbook manifest into signed TUF metadata (forage cookbook sign), via the tough TUF library"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+arlen-cookbook-index = { path = "../cookbook-index" }
+arlen-forage-recipe = { path = "../../contracts/forage-recipe" }
+tough = "0.22"
+aws-lc-rs = "1"
+ed25519-dalek = { version = "2", features = ["std", "pkcs8"] }
+getrandom = "0.2"
+chrono = { version = "0.4", features = ["clock"] }
+serde_json = "1"
+sha2 = "0.10"
+hex = "0.4"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "fs"] }
+thiserror = "2"
+zeroize = "1"
+
+[dev-dependencies]
+tempfile = "3"
+url = "2"
+
+[workspace]
