@@ -25,6 +25,7 @@ message FileOpenedPayload {
   string path      = 1;  // absolute path
   string app_id    = 2;  // application identifier
   uint32 flags     = 3;  // openat() flags (O_RDONLY, O_WRONLY, etc.)
+  uint64 cgroup_id = 4;  // cgroup v2 id of the opening task; join key to Command. 0 = no attribution
 }
 
 // Emitted when a tracked file is written (sys_enter_write tracepoint).
