@@ -14,8 +14,11 @@
 //! is still refused.
 
 use std::collections::HashSet;
+use std::net::SocketAddr;
 
 use thiserror::Error;
+
+use crate::{resolve_and_pin, GuardError};
 
 /// A single allowlisted egress destination: an exact `host:port` pair the confined
 /// process may reach. Parsed from a `NetworkPolicy::FilteredHosts` entry (the
@@ -105,6 +108,35 @@ impl EgressAllowlist {
     }
 }
 
+/// The verdict the proxy reaches for one requested destination. Not `PartialEq`
+/// because [`GuardError`] wraps a `std::io::Error`; match on the variant instead.
+#[derive(Debug)]
+pub enum EgressVerdict {
+    /// On the allowlist and not in a blocked IP range; dial this pinned addr.
+    Allow(SocketAddr),
+    /// Not on the host allowlist.
+    NotAllowlisted,
+    /// On the allowlist but resolves into a blocked range (the SSRF floor).
+    Blocked(GuardError),
+}
+
+/// Decide a single requested destination: the host-allowlist check FIRST, then the
+/// existing SSRF resolve-and-pin floor. The allowlist check short-circuits before
+/// any DNS, so an unlisted host is refused without a lookup (no resolver work, and
+/// no side channel from the lookup). An allowlisted host then goes through
+/// [`resolve_and_pin`], so an allowlisted name that resolves into a blocked range is
+/// still refused. This is the pure decision core the proxy calls per `CONNECT`; it
+/// does the DNS (async) but no socket splicing.
+pub async fn decide_egress(allowlist: &EgressAllowlist, host: &str, port: u16) -> EgressVerdict {
+    if !allowlist.permits(host, port) {
+        return EgressVerdict::NotAllowlisted;
+    }
+    match resolve_and_pin(host, port).await {
+        Ok(addr) => EgressVerdict::Allow(addr),
+        Err(e) => EgressVerdict::Blocked(e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,5 +208,42 @@ mod tests {
     fn empty_allowlist_is_empty() {
         let a = EgressAllowlist::parse(&[]).unwrap();
         assert!(a.is_empty());
+    }
+
+    #[tokio::test]
+    async fn decide_short_circuits_before_dns_for_an_unlisted_host() {
+        // A host not on the allowlist is refused as NotAllowlisted, not Blocked -
+        // proving the allowlist check ran before any resolve. The probe host would
+        // resolve to loopback (a Blocked verdict) if DNS had run.
+        let a = EgressAllowlist::parse(&["other.example:443".to_string()]).unwrap();
+        let v = decide_egress(&a, "127.0.0.1", 443).await;
+        assert!(
+            matches!(v, EgressVerdict::NotAllowlisted),
+            "got {v:?}, expected NotAllowlisted (allowlist check precedes DNS)"
+        );
+    }
+
+    #[tokio::test]
+    async fn decide_allows_an_allowlisted_public_literal() {
+        let a = EgressAllowlist::parse(&["8.8.8.8:443".to_string()]).unwrap();
+        let v = decide_egress(&a, "8.8.8.8", 443).await;
+        match v {
+            EgressVerdict::Allow(addr) => {
+                assert_eq!(addr, "8.8.8.8:443".parse::<SocketAddr>().unwrap())
+            }
+            other => panic!("expected Allow, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn decide_blocks_an_allowlisted_loopback() {
+        // The SSRF floor still fires: an allowlisted host that resolves into a
+        // blocked range is refused.
+        let a = EgressAllowlist::parse(&["127.0.0.1:443".to_string()]).unwrap();
+        let v = decide_egress(&a, "127.0.0.1", 443).await;
+        assert!(
+            matches!(v, EgressVerdict::Blocked(_)),
+            "got {v:?}, expected Blocked (SSRF floor)"
+        );
     }
 }
