@@ -15,6 +15,7 @@ libc = "0.2"
 rmcp = { version = "1.7", features = ["server", "macros"] }
 tracing = "0.1"
 arlen-permissions = { path = "../permissions" }
+arlen-capsule = { path = "../../contracts/capsule" }
 
 toml = "0.8"
 notify = "6"

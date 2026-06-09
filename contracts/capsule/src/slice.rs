@@ -15,14 +15,14 @@
 
 use std::collections::BTreeMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// A field value in a frozen slice. A small, canonically-serializable set:
 /// timestamps are carried as their `i64` epoch-microsecond form ([`SliceValue::Int`],
 /// "fixed-precision epoch micros" §4), never a float, so the canonical bytes are
 /// deterministic. Floating-point fields are deliberately unsupported in the frozen
 /// form (the loader stringifies or drops them) to keep the content hash stable.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SliceValue {
     /// A text value.
@@ -37,7 +37,7 @@ pub enum SliceValue {
 
 /// One node in a frozen slice: its id, label and projected fields. Fields are a
 /// `BTreeMap`, so their keys serialize in sorted order with no work at write time.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SliceNode {
     /// The node id (its stable graph identity).
     pub id: String,
@@ -50,7 +50,7 @@ pub struct SliceNode {
 /// One relation in a frozen slice: a typed edge between two included nodes. Both
 /// endpoints are themselves in the slice (a capsule with dangling edges is not a
 /// subgraph), enforced by the loader against the id manifest.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct SliceRelation {
     /// The source node id.
     pub from: String,
@@ -63,7 +63,7 @@ pub struct SliceRelation {
 /// A frozen slice: the scope-selected subgraph as of `T_mint`. Its
 /// [`canonical_bytes`](FrozenSlice::canonical_bytes) is the content-addressed,
 /// order-independent serialization the capsule's identity hashes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct FrozenSlice {
     /// The included nodes.
     pub nodes: Vec<SliceNode>,
@@ -162,6 +162,23 @@ mod tests {
             relations: vec![],
         };
         assert_ne!(a.canonical_bytes(), c.canonical_bytes());
+    }
+
+    #[test]
+    fn canonical_bytes_deserialize_back_losslessly() {
+        // The wire form a client receives (the canonical bytes) parses back into a
+        // FrozenSlice that re-canonicalizes to the same bytes, so a round trip
+        // through the op preserves the content identity.
+        let s = FrozenSlice {
+            nodes: vec![
+                node("p1", "Project", &[("name", SliceValue::Text("X".into())), ("n", SliceValue::Int(3))]),
+                node("f1", "File", &[("path", SliceValue::Text("/a".into())), ("ok", SliceValue::Bool(true))]),
+            ],
+            relations: vec![rel("f1", "FILE_PART_OF", "p1")],
+        };
+        let bytes = s.canonical_bytes();
+        let parsed: FrozenSlice = serde_json::from_slice(&bytes).expect("parse canonical bytes");
+        assert_eq!(parsed.canonical_bytes(), bytes);
     }
 
     #[test]
