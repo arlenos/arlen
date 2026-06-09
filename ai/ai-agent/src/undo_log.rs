@@ -193,27 +193,46 @@ impl UndoLog {
     }
 }
 
+/// One persisted line: a record paired with its HMAC chain hash over the running
+/// head (`HMAC(key, prev_hash || record_bytes)`, §6). The `record_bytes` chained
+/// are the canonical `serde_json` encoding of `record`, so re-serializing a loaded
+/// record reproduces the chained input and the chain re-verifies on load.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ChainedLine {
+    record: LogRecord,
+    hash: [u8; 32],
+}
+
 /// A file-backed undo-log: the event-sourced record sequence persisted as JSON
-/// lines, appended write-ahead with an `fsync` before the call returns, and
-/// folded on read like the in-memory [`UndoLog`] (§6). The provisional record is
-/// durable before the externalised act, so a crash never loses an entry the
-/// caller believes recorded. This is the persistence mechanism; the on-disk HMAC
-/// chain and the separate-uid signer helper that will own this file (so a
-/// same-uid agent can neither forge nor read it) are later EM-R1 increments.
+/// lines, each carrying its HMAC chain hash, appended write-ahead with an `fsync`
+/// before the call returns, and folded on read like the in-memory [`UndoLog`]
+/// (§6). The provisional record is durable before the externalised act, so a
+/// crash never loses an entry the caller believes recorded; the chain makes a
+/// tamper, reorder, or mid-log removal evident on the next load (fail-closed).
+///
+/// The HMAC key is a constructor parameter, not custodied here: this is the
+/// persistence the separate-uid signer helper owns. A same-uid agent that held
+/// the key could still forge the chain, so integrity *against the agent itself*
+/// is the signer's job (different uid, key the agent never sees); against a
+/// keyless same-uid process or accidental corruption the chain already bites.
 #[derive(Debug)]
 pub struct FileUndoLog {
     path: PathBuf,
+    key: Vec<u8>,
+    head: [u8; 32],
     log: UndoLog,
 }
 
 impl FileUndoLog {
-    /// Open the log at `path`, creating it durably if absent (the empty file is
-    /// created and its parent directory fsynced, so the file's own appends need
-    /// only an `fsync` of the file), then load and fold the existing records. A
-    /// record that does not parse (corrupt, or a tampered path that fails the
-    /// `CanonicalPath` shape check on deserialize) fails the open, fail-closed.
-    pub fn open(path: impl Into<PathBuf>) -> std::io::Result<Self> {
+    /// Open the log at `path` with chain `key`, creating it durably if absent (the
+    /// empty file is created and its parent directory fsynced, so the file's own
+    /// appends need only an `fsync` of the file), then load, verify the chain, and
+    /// fold the records. A record that does not parse (corrupt, or a tampered path
+    /// that fails the `CanonicalPath` shape check on deserialize) or a broken chain
+    /// link fails the open, fail-closed.
+    pub fn open(path: impl Into<PathBuf>, key: impl Into<Vec<u8>>) -> std::io::Result<Self> {
         let path = path.into();
+        let key = key.into();
         if !path.exists() {
             std::fs::OpenOptions::new().create(true).append(true).open(&path)?;
             // fsync the directory so the new file's entry survives a crash; the
@@ -224,28 +243,56 @@ impl FileUndoLog {
                 }
             }
         }
-        let log = Self::load(&path)?;
-        Ok(Self { path, log })
+        let (log, head) = Self::load(&path, &key)?;
+        Ok(Self {
+            path,
+            key,
+            head,
+            log,
+        })
     }
 
-    fn load(path: &Path) -> std::io::Result<UndoLog> {
+    fn load(path: &Path, key: &[u8]) -> std::io::Result<(UndoLog, [u8; 32])> {
         let content = std::fs::read_to_string(path)?;
         let mut log = UndoLog::new();
-        for line in content.lines().filter(|l| !l.trim().is_empty()) {
-            let record: LogRecord = serde_json::from_str(line)
+        let mut head = GENESIS_PREV_HASH;
+        for (i, line) in content
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .enumerate()
+        {
+            let chained: ChainedLine = serde_json::from_str(line)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-            log.records.push(record);
+            let record_bytes = serde_json::to_vec(&chained.record)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            let expected = compute_chain_hash(key, &head, &record_bytes);
+            if expected != chained.hash {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("broken undo-log chain at record {i}"),
+                ));
+            }
+            head = chained.hash;
+            log.records.push(chained.record);
         }
-        Ok(log)
+        Ok((log, head))
     }
 
     fn append_record(&mut self, record: LogRecord) -> std::io::Result<()> {
-        let line = serde_json::to_string(&record)
+        let record_bytes = serde_json::to_vec(&record)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let hash = compute_chain_hash(&self.key, &self.head, &record_bytes);
+        let chained = ChainedLine {
+            record: record.clone(),
+            hash,
+        };
+        let line = serde_json::to_string(&chained)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         let mut f = std::fs::OpenOptions::new().append(true).open(&self.path)?;
         writeln!(f, "{line}")?;
         // Write-ahead: the record is durable before the call returns.
         f.sync_all()?;
+        self.head = hash;
         self.log.records.push(record);
         Ok(())
     }
@@ -423,18 +470,21 @@ mod tests {
         assert!(log.entry("absent").is_none());
     }
 
+    const TEST_KEY: &[u8] = b"undo-log-test-key";
+
     #[test]
     fn file_store_persists_and_folds_across_reopen() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("undo.log");
         {
-            let mut log = FileUndoLog::open(&path).unwrap();
+            let mut log = FileUndoLog::open(&path, TEST_KEY).unwrap();
             log.append_created(entry("op-1")).unwrap();
             log.append_transition("op-1", Committed).unwrap();
             assert_eq!(log.current_state("op-1").unwrap().unwrap(), Committed);
         }
-        // A fresh process re-opening the file recovers the same folded state.
-        let reopened = FileUndoLog::open(&path).unwrap();
+        // A fresh process re-opening the file recovers the same folded state and
+        // re-verifies the on-disk chain.
+        let reopened = FileUndoLog::open(&path, TEST_KEY).unwrap();
         assert_eq!(reopened.current_state("op-1").unwrap().unwrap(), Committed);
         assert_eq!(reopened.entry("op-1").unwrap().op_id, "op-1");
     }
@@ -442,7 +492,7 @@ mod tests {
     #[test]
     fn file_store_opens_a_fresh_path_empty() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let log = FileUndoLog::open(tmp.path().join("new.log")).unwrap();
+        let log = FileUndoLog::open(tmp.path().join("new.log"), TEST_KEY).unwrap();
         assert!(log.current_state("anything").is_none());
     }
 
@@ -452,16 +502,52 @@ mod tests {
         // A non-JSON line.
         let bad = tmp.path().join("corrupt.log");
         std::fs::write(&bad, "not json\n").unwrap();
-        assert!(FileUndoLog::open(&bad).is_err());
-        // A well-formed record whose CanonicalPath was tampered to a traversal
-        // path must fail the load (the validating Deserialize rejects it).
+        assert!(FileUndoLog::open(&bad, TEST_KEY).is_err());
+        // A well-formed envelope whose inner CanonicalPath is a traversal path
+        // must fail the load (the validating Deserialize rejects it before the
+        // chain is even checked).
         let tampered = tmp.path().join("tampered.log");
         std::fs::write(
             &tampered,
-            "{\"Created\":{\"op_id\":\"o\",\"correlation_id\":\"r\",\"inverse\":{\"RestorePath\":{\"now\":\"/a/x\",\"prior\":\"/a/../etc\"}}}}\n",
+            "{\"record\":{\"Created\":{\"op_id\":\"o\",\"correlation_id\":\"r\",\"inverse\":{\"RestorePath\":{\"now\":\"/a/x\",\"prior\":\"/a/../etc\"}}}},\"hash\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}\n",
         )
         .unwrap();
-        assert!(FileUndoLog::open(&tampered).is_err(), "a tampered traversal path must fail the load");
+        assert!(FileUndoLog::open(&tampered, TEST_KEY).is_err(), "a tampered traversal path must fail the load");
+    }
+
+    #[test]
+    fn file_store_fails_closed_when_a_persisted_record_is_tampered() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("undo.log");
+        {
+            let mut log = FileUndoLog::open(&path, TEST_KEY).unwrap();
+            log.append_created(entry("op-1")).unwrap();
+            log.append_transition("op-1", Committed).unwrap();
+        }
+        // Flip the op id in the first line: the record bytes no longer match the
+        // stored chain hash, so the load detects the break and fails closed.
+        let content = std::fs::read_to_string(&path).unwrap();
+        let tampered = content.replacen("op-1", "op-X", 1);
+        assert_ne!(content, tampered);
+        std::fs::write(&path, tampered).unwrap();
+        assert!(
+            FileUndoLog::open(&path, TEST_KEY).is_err(),
+            "a tampered persisted record must break the chain on load"
+        );
+    }
+
+    #[test]
+    fn file_store_fails_closed_under_a_wrong_key() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("undo.log");
+        {
+            let mut log = FileUndoLog::open(&path, TEST_KEY).unwrap();
+            log.append_created(entry("op-1")).unwrap();
+        }
+        assert!(
+            FileUndoLog::open(&path, b"different-key".as_slice()).is_err(),
+            "the chain must not verify under a different key"
+        );
     }
 
     // Build a chain of `(record_bytes, hash)` pairs from a sequence of byte
