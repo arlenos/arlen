@@ -21,7 +21,6 @@ mod migration;
 mod permission;
 mod project;
 mod promotion;
-mod provenance;
 mod quota;
 mod retention;
 mod schema;
