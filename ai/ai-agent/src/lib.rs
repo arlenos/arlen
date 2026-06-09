@@ -13,6 +13,7 @@ pub mod behaviour;
 pub mod dbus;
 pub mod compaction;
 pub mod config;
+pub mod effect_model;
 pub mod engine;
 pub mod executor;
 pub mod gate;
