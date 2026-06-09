@@ -447,6 +447,18 @@ enum WriteRequest {
 /// a token write-scope alone cannot create an arbitrary node label.
 const CREATABLE_NODES: &[&str] = &["system.Summary"];
 
+/// The reserved canary id namespace (canary-honeytools.md §3). No node may be
+/// created whose id mentions this token, so the agent's structural-canary operand
+/// check stays zero-false-positive: an honest node id can never contain it, so an
+/// operand (or an embedded read-query id) that does is provably injected. The
+/// `CreateNode` op is the only node-create path that takes a caller-supplied id
+/// (promotion ids are derived paths, entity ids are server-minted UUIDv7), so the
+/// reservation lives at its persistence primitive. This token MUST match the
+/// agent's `arlen_ai_agent::canary::RESERVED_CANARY_PREFIX`; the two crates share
+/// no dependency, so the one-token duplication is deliberate and noted on both
+/// sides.
+const RESERVED_CANARY_TOKEN: &str = "__canary:";
+
 /// An LLM-free retrieval request, sent with a leading `0x03` byte. The body is
 /// JSON; the response is a JSON array of ranked node ids.
 #[derive(Debug, Deserialize)]
@@ -1094,6 +1106,14 @@ async fn persist_file_part_of(
 /// the guarded no-op). `label` is a validated identifier from [`CREATABLE_NODES`]
 /// (not attacker-controlled); only `id` is caller-supplied and escaped.
 async fn persist_create_node(graph: &GraphHandle, label: &str, id: &str) -> String {
+    // Ingestion-boundary canary reservation (canary-honeytools.md §3): refuse to
+    // create any node whose id mentions the reserved token, so a producer can
+    // never seed the canary namespace and the agent's operand tripwire keeps its
+    // zero-false-positive property. Enforced at the persistence primitive so any
+    // caller is covered, not only the current dispatch.
+    if id.contains(RESERVED_CANARY_TOKEN) {
+        return "ERROR: id is in the reserved canary namespace".to_string();
+    }
     let id_lit = escape_cypher(id);
     let cypher = format!(
         "OPTIONAL MATCH (existing {{id: '{id_lit}'}}) WITH existing WHERE existing IS NULL \
@@ -2168,6 +2188,25 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(projects.rows[0][0].as_i64(), 0, "the foreign-label create was refused");
+    }
+
+    #[tokio::test]
+    async fn persist_create_node_reserves_the_canary_namespace() {
+        // The ingestion boundary refuses any id mentioning the reserved canary
+        // token, whether as a prefix or embedded, so a producer can never seed the
+        // namespace the agent's tripwire relies on. No node is created.
+        let (graph, _tmp) = spawn_test_graph().await;
+        for id in ["__canary:credentials-vault", "x__canary:embedded"] {
+            assert_eq!(
+                persist_create_node(&graph, "Summary", id).await,
+                "ERROR: id is in the reserved canary namespace"
+            );
+        }
+        let n = graph
+            .query_rows("MATCH (s:Summary) RETURN count(*) AS n".into())
+            .await
+            .unwrap();
+        assert_eq!(n.rows[0][0].as_i64(), 0, "no canary-id node was created");
     }
 
     #[tokio::test]
