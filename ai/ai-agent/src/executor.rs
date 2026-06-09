@@ -823,19 +823,20 @@ impl<'a> LiveExecutor<'a> {
 
     /// Resolve a commit-unknown retract by its durable operation id.
     ///
-    /// `Retracted` is reported iff this op's edge is now **absent**. This is the
-    /// mirror of the create-side reconciliation and sound by the same op-id
-    /// monotonicity, run in the opposite direction: a retract can only *remove*
-    /// the op-id edge, and nothing recreates that specific id under normal
-    /// operation (only this op's create stamps it, and that create already
-    /// happened — compensation runs only for a `Created` write), so once the
-    /// op-id edge is gone it stays gone. Absent is therefore a *terminal*
-    /// post-state, not merely a point-in-time read. It asserts the goal state
-    /// (this op's link is undone), not causal authorship: the edge may have gone
-    /// via this retract or via an independent bulk delete (e.g. the project store
-    /// unlinking the project's files). Either way the undo is achieved and a
-    /// retry would be a no-op, so suppressing the retry is correct, not a hidden
-    /// failure. If the edge is still present, the retract did not commit
+    /// `Retracted` is reported iff this op's edge is now **non-live** (closed or
+    /// gone). This is the mirror of the create-side reconciliation and sound by
+    /// the same op-id monotonicity, run in the opposite direction: a retract
+    /// temporally *closes* the op-id edge (§4.7), and nothing re-opens that
+    /// specific id under normal operation (only this op's create stamps it live,
+    /// and that create already happened — compensation runs only for a `Created`
+    /// write), so once the op-id edge is non-live it stays non-live. Non-live is
+    /// therefore a *terminal* post-state, not merely a point-in-time read. It
+    /// asserts the goal state (this op's link is undone), not causal authorship:
+    /// the edge may have closed via this retract or become non-live another way
+    /// (an independent bulk delete by the project store, or an earlier close).
+    /// Either way the undo is achieved and a retry would be a no-op, so
+    /// suppressing the retry is correct, not a hidden failure. If a live edge is
+    /// still present, the retract did not commit
     /// ([`ExecError::WriteIndeterminate`], resolved by an idempotent retry); a
     /// failed read is likewise indeterminate, never a false success.
     ///
@@ -860,7 +861,7 @@ impl<'a> LiveExecutor<'a> {
             Some(true) => Ok(CompensationOutcome::Retracted),
             Some(false) => Err(ExecError::WriteIndeterminate {
                 pending: pending(),
-                reason: "retract unconfirmed; this op's edge is still present".to_string(),
+                reason: "retract unconfirmed; this op's edge is still live".to_string(),
             }),
             None => Err(ExecError::WriteIndeterminate {
                 pending: pending(),
@@ -919,14 +920,20 @@ impl<'a> LiveExecutor<'a> {
         }
     }
 
-    /// Read whether this operation's edge (carrying `op_id`) is present now,
-    /// time-bounded. `Some(true)`/`Some(false)` is a definite verdict; `None`
-    /// means the read could not determine it (a failed/timed-out query, or a
-    /// malformed result). Fail-closed on a malformed shape (missing row, missing
-    /// or non-numeric `n`, negative count): a degraded or version-skewed read
-    /// becomes `None`, never a false absence that would lose a real commit. The
-    /// endpoint types are built-in system types, so the labels are the type
-    /// minus `system.`; the ids and op_id are escaped into the literal.
+    /// Read whether this operation's edge (carrying `op_id`) is present and
+    /// **live** now, time-bounded. Liveness is load-bearing since the daemon's
+    /// retract is a temporal *close*, not a delete (bitemporal-knowledge-graph.md
+    /// §4.7): a retracted edge is retained with its intervals set, so a bare
+    /// presence check would still see it and the retract-reconcile would never
+    /// confirm. Filtering to the live edge (`invalid_at`/`expired_at` both NULL)
+    /// makes "present" mean "still asserted": a created edge is live, a closed
+    /// edge is not. `Some(true)`/`Some(false)` is a definite verdict; `None` means
+    /// the read could not determine it (a failed/timed-out query, or a malformed
+    /// result). Fail-closed on a malformed shape (missing row, missing or
+    /// non-numeric `n`, negative count): a degraded read becomes `None`, never a
+    /// false absence that would lose a real commit. The endpoint types are
+    /// built-in system types, so the labels are the type minus `system.`; the ids
+    /// and op_id are escaped into the literal.
     async fn edge_exists(
         &self,
         write: &RelationWrite,
@@ -939,7 +946,8 @@ impl<'a> LiveExecutor<'a> {
         let to_lit = escape_cypher_literal(&write.to_id).ok()?;
         let op_lit = escape_cypher_literal(op_id).ok()?;
         let cypher = format!(
-            "MATCH (a:{from_label} {{id: '{from_lit}'}})-[:{edge} {{op_id: '{op_lit}'}}]->(b:{to_label} {{id: '{to_lit}'}}) \
+            "MATCH (a:{from_label} {{id: '{from_lit}'}})-[r:{edge} {{op_id: '{op_lit}'}}]->(b:{to_label} {{id: '{to_lit}'}}) \
+             WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
              RETURN count(*) AS n",
             edge = write.relation_type,
         );
