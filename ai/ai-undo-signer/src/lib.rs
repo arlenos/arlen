@@ -17,9 +17,13 @@
 //! missing key or a broken chain). The peer-authed submit/lookup socket and the
 //! access control that front this store for the agent are later increments.
 
-#![forbid(unsafe_code)]
+// `deny` rather than `forbid`: the one unavoidable `unsafe` is `libc::getuid()`
+// (no safe std wrapper), audited with a single `#[allow]` as the audit-daemon
+// does. Every other use of unsafe stays denied.
+#![deny(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod auth;
 pub mod error;
 pub mod key;
 pub mod paths;
