@@ -5,7 +5,10 @@ use aya_ebpf::{
     macros::{map, tracepoint},
     maps::RingBuf,
     programs::TracePointContext,
-    helpers::{bpf_get_current_uid_gid, bpf_ktime_get_ns, bpf_probe_read_user_str_bytes},
+    helpers::{
+        bpf_get_current_cgroup_id, bpf_get_current_uid_gid, bpf_ktime_get_ns,
+        bpf_probe_read_user_str_bytes,
+    },
 };
 use aya_log_ebpf::debug;
 use kernel_layer_common::{
@@ -62,6 +65,10 @@ fn try_file_opened(ctx: TracePointContext) -> Result<(), i64> {
     event.uid = uid;
     event.timestamp_ns = timestamp_ns;
     event.ret = 0; // Placeholder; return value not available at entry.
+    // The reserved slot is uninitialized, so every field must be assigned
+    // explicitly; an unassigned field is UB the verifier may reject. cgroup_id is
+    // the join key attributing this open to its per-command cgroup.
+    event.cgroup_id = unsafe { bpf_get_current_cgroup_id() };
     event.path = [0u8; MAX_PATH_LEN];
 
     // Copy the filename from user-space into the event.
