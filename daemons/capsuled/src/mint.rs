@@ -80,6 +80,24 @@ pub fn mint_capsule(
     Ok((hash, signed))
 }
 
+/// Revoke a capsule: stop every future read AND release the originator's own
+/// frozen-slice blob (context-capsule.md §6, CC-R5). First the ledger revoke (the
+/// security property: a revoked capsule is refused on every read, terminal), then
+/// release the per-capsule blob ref so the store's gc can collect the local copy
+/// (the "forget my copy" half — not erasure of a recipient's copy, which §2 drops,
+/// but reclaiming the originator's disk). Revoke is durable the moment the ledger
+/// write returns; the release is idempotent (an already-released owner is a no-op),
+/// so a retry after a release failure is safe.
+pub fn revoke_capsule(
+    handle: &str,
+    store: &Store,
+    ledger: &RevocationFile,
+) -> Result<(), MintError> {
+    ledger.revoke(handle)?;
+    store.release(&format!("capsule:{handle}"))?;
+    Ok(())
+}
+
 /// A fresh, unguessable revocation handle: 16 CSPRNG bytes as hex. Random (not
 /// derived from the slice) so two capsules of the same slice revoke independently.
 fn fresh_handle() -> Result<String, MintError> {
@@ -172,5 +190,28 @@ mod tests {
             serve_capsule_read(&signed.grant, &sig, &key.verifying_key(), 1, &ledger, &store),
             Err(Refusal::Revoked)
         );
+    }
+
+    #[test]
+    fn revoke_capsule_stops_reads_and_releases_the_blob() {
+        let (store, ledger) = paths();
+        let key = SigningKey::from_bytes(&[2u8; 32]);
+        let (hash, signed) = mint_capsule(&slice(), params(), &store, &ledger, &key).unwrap();
+        let handle = signed.grant.revocation_handle.clone();
+        // Before revoke: the blob is rooted (one ref) and reads serve.
+        assert_eq!(store.refcount(&hash).unwrap(), 1);
+
+        revoke_capsule(&handle, &store, &ledger).unwrap();
+
+        // No future read.
+        let sig = Signature::from_slice(&signed.signature).unwrap();
+        assert_eq!(
+            serve_capsule_read(&signed.grant, &sig, &key.verifying_key(), 1, &ledger, &store),
+            Err(Refusal::Revoked)
+        );
+        // The originator's blob ref is released, so gc can collect it.
+        assert_eq!(store.refcount(&hash).unwrap(), 0, "the slice blob ref is released");
+        // Idempotent: a retry is safe.
+        revoke_capsule(&handle, &store, &ledger).unwrap();
     }
 }
