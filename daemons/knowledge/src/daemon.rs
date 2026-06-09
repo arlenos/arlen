@@ -514,22 +514,24 @@ async fn persist_relation(graph: &GraphHandle, rel: &RelationResult, op_id: &str
     if op_id.len() > MAX_OP_ID_LEN {
         return "ERROR: op_id too long".to_string();
     }
-    let op_clause = if rel_type == "FILE_PART_OF" && !op_id.is_empty() {
-        format!(" {{op_id: '{}'}}", escape_cypher(op_id))
-    } else {
-        String::new()
-    };
+    // FILE_PART_OF is the bi-temporal assertion edge: a file belongs to one
+    // project at a time, so a new membership is a single-statement close-then-
+    // append (§4.5) rather than a plain create. Other relations carry no
+    // temporal columns and get the simple conditional create below.
+    if rel_type == "FILE_PART_OF" {
+        return persist_file_part_of(graph, from_label, to_label, &from_id, &to_id, op_id).await;
+    }
 
-    // Atomic conditional create. `created` = 1 only if this statement created
-    // the edge; 0 if the edge already existed (the `WHERE r IS NULL` filters its
-    // row out) OR an endpoint is missing (the MATCH binds nothing). The write
-    // awaits its definitive result with no client-side timeout: the graph worker
-    // is not cancellable, so a timeout would unblock the caller while the queued
-    // CREATE could still commit, mis-reporting a committed write.
+    // Atomic conditional create for a non-temporal relation. `created` = 1 only
+    // if this statement created the edge; 0 if the edge already existed (the
+    // `WHERE r IS NULL` filters its row out) OR an endpoint is missing (the MATCH
+    // binds nothing). The write awaits its definitive result with no client-side
+    // timeout: the graph worker is not cancellable, so a timeout would unblock
+    // the caller while the queued CREATE could still commit, mis-reporting it.
     let create_cypher = format!(
         "MATCH (a:{from_label} {{id: '{from_id}'}}), (b:{to_label} {{id: '{to_id}'}}) \
          OPTIONAL MATCH (a)-[r:{rel_type}]->(b) WITH a, b, r WHERE r IS NULL \
-         CREATE (a)-[:{rel_type}{op_clause}]->(b) RETURN count(*) AS created"
+         CREATE (a)-[:{rel_type}]->(b) RETURN count(*) AS created"
     );
     let created = match graph.query_rows(create_cypher).await {
         Ok(rs) => row_count(&rs),
@@ -543,11 +545,6 @@ async fn persist_relation(graph: &GraphHandle, rel: &RelationResult, op_id: &str
     // missing at create time. Disambiguate by checking the EDGE itself, never
     // merely the endpoints: an endpoint that a concurrent writer adds *after*
     // the create matched nothing must not be mistaken for a successful link.
-    // `OK: exists` is therefore reported only when the edge genuinely exists
-    // now (benign idempotent no-op); otherwise the link was not made and a
-    // retryable not-found is returned. A concurrent writer that created the
-    // edge meanwhile makes `exists` honest (the link is present, just not by
-    // this call), so compensation still correctly treats it as not-created.
     let edge_cypher = format!(
         "MATCH (a:{from_label} {{id: '{from_id}'}})-[r:{rel_type}]->(b:{to_label} {{id: '{to_id}'}}) \
          RETURN count(*) AS edge"
@@ -559,8 +556,77 @@ async fn persist_relation(graph: &GraphHandle, rel: &RelationResult, op_id: &str
     }
 }
 
+/// Persist a FILE_PART_OF membership as a single-statement **close-then-append**
+/// (bitemporal-knowledge-graph.md §4.5).
+///
+/// Because a file has a single live membership, this closes any currently-live
+/// FILE_PART_OF to a *different* project (the single-membership contradiction),
+/// then appends a freshly stamped edge — but only if no live edge for this exact
+/// `(from, to)` pair already exists (the idempotent re-assert). It is one Cypher
+/// statement, dispatched as one request the serial graph thread runs
+/// uninterrupted, so it is race-free precisely because it is one statement.
+///
+/// Outcome strings are unchanged so the os-sdk client is not broken: a
+/// supersession still returns `OK: created` (a new live edge was created; the
+/// close is internal). The new edge records `superseded = old.op_id` (the closed
+/// edge's id) so a later one-unit compensation can re-open what it replaced
+/// (§4.6). `created_at`/`valid_at` are the server clock at persist; the
+/// caller-supplied `valid_at`/`origin`/`prov_beh` are a protocol follow-up, so
+/// `origin` defaults to the agent write socket's `agent` for now. The
+/// `exists`-disambiguation checks the LIVE edge: a closed edge is retained but is
+/// not a current membership.
+async fn persist_file_part_of(
+    graph: &GraphHandle,
+    from_label: &str,
+    to_label: &str,
+    from_id: &str,
+    to_id: &str,
+    op_id: &str,
+) -> String {
+    let now = crate::time::now().0;
+    let op_prop = if op_id.is_empty() {
+        String::new()
+    } else {
+        format!("op_id: '{}', ", escape_cypher(op_id))
+    };
+    let create_cypher = format!(
+        "MATCH (a:{from_label} {{id: '{from_id}'}}), (b:{to_label} {{id: '{to_id}'}}) \
+         OPTIONAL MATCH (a)-[old:FILE_PART_OF]->(c:Project) \
+           WHERE c.id <> '{to_id}' AND old.invalid_at IS NULL AND old.expired_at IS NULL \
+         SET old.invalid_at = {now}, old.expired_at = {now} \
+         WITH a, b, old \
+         OPTIONAL MATCH (a)-[live:FILE_PART_OF]->(b) \
+           WHERE live.invalid_at IS NULL AND live.expired_at IS NULL \
+         WITH a, b, old, live WHERE live IS NULL \
+         CREATE (a)-[:FILE_PART_OF {{ {op_prop}valid_at: {now}, invalid_at: NULL, \
+           created_at: {now}, expired_at: NULL, origin: 'agent', prov_beh: '', \
+           superseded: CASE WHEN old IS NULL THEN NULL ELSE old.op_id END }}]->(b) \
+         RETURN count(*) AS created"
+    );
+    let created = match graph.query_rows(create_cypher).await {
+        Ok(rs) => row_count(&rs),
+        Err(e) => return format!("ERROR: {e}"),
+    };
+    if created > 0 {
+        return "OK: created".to_string();
+    }
+    // created == 0: a live membership for this exact pair already exists (the
+    // append was skipped) or an endpoint is missing. Disambiguate on the LIVE
+    // edge; a closed edge is retained but is not a current membership.
+    let edge_cypher = format!(
+        "MATCH (a:{from_label} {{id: '{from_id}'}})-[r:FILE_PART_OF]->(b:{to_label} {{id: '{to_id}'}}) \
+         WHERE r.invalid_at IS NULL AND r.expired_at IS NULL RETURN count(*) AS edge"
+    );
+    match graph.query_rows(edge_cypher).await {
+        Ok(rs) if row_count(&rs) > 0 => "OK: exists".to_string(),
+        Ok(_) => "ERROR: relation endpoints not found".to_string(),
+        Err(e) => format!("ERROR: {e}"),
+    }
+}
+
 /// Persist an authorised relation *retract* (compensation): temporally close the
-/// single live edge that carries this `op_id`, and only that edge.
+/// live edge that carries this `op_id`, re-opening the edge it superseded if any
+/// (the one-unit inverse of supersession, §4.6).
 ///
 /// The match is keyed by the `op_id` property AND the liveness predicate, so this
 /// closes exactly the live edge the caller's own create stamped, never a bare
@@ -606,15 +672,26 @@ async fn persist_retract(graph: &GraphHandle, rel: &RelationResult, op_id: &str)
     // than vanishing. The `MATCH` carries the liveness predicate, so `closed`
     // counts only edges that were live before this call (a `SET` over an already-
     // closed edge would otherwise inflate the count); R0 confirmed
-    // `SET ... RETURN count(*)` counts matched-and-mutated rows. Endpoint labels
-    // and the relation type are validated identifiers; only the ids and op_id
-    // are caller-supplied and escaped into the literals. `now` is the server
-    // clock at the close (a server-computed i64, safe to interpolate).
+    // `SET ... RETURN count(*)` counts matched-and-mutated rows.
+    //
+    // A retract is the inverse of supersession as ONE unit (§4.6): if the edge
+    // being closed superseded an earlier one (it carries `superseded = old.op_id`),
+    // re-open that earlier edge so the file returns to its pre-supersession
+    // membership rather than landing in neither project. A first assertion (no
+    // `superseded`) closes its edge alone (the `OPTIONAL MATCH` binds nothing).
+    //
+    // Endpoint labels and the relation type are validated identifiers; only the
+    // ids and op_id are caller-supplied and escaped into the literals. `now` is
+    // the server clock at the close (a server-computed i64, safe to interpolate).
     let now = crate::time::now().0;
     let cypher = format!(
         "MATCH (a:{from_label} {{id: '{from_id}'}})-[r:{rel_type} {{op_id: '{op}'}}]->(b:{to_label} {{id: '{to_id}'}}) \
          WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
          SET r.invalid_at = {now}, r.expired_at = {now} \
+         WITH a, r \
+         OPTIONAL MATCH (a)-[old:FILE_PART_OF]->(:Project) \
+           WHERE r.superseded IS NOT NULL AND old.op_id = r.superseded \
+         SET old.invalid_at = NULL, old.expired_at = NULL \
          RETURN count(*) AS closed"
     );
     match graph.query_rows(cypher).await {
@@ -1073,6 +1150,91 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(rows.rows[0][0].as_i64(), 1, "no duplicate edge after a repeat");
+    }
+
+    #[tokio::test]
+    async fn persist_relation_supersedes_a_live_membership_to_another_project() {
+        let (graph, _tmp) = spawn_test_graph().await;
+        graph
+            .write("CREATE (f:File {id: 'f1', path: '/x', app_id: 'test', last_accessed: 0})".into())
+            .await
+            .unwrap();
+        graph.write("CREATE (p:Project {id: 'p1'})".into()).await.unwrap();
+        graph.write("CREATE (p:Project {id: 'p2'})".into()).await.unwrap();
+
+        assert_eq!(persist_relation(&graph, &file_part_of("f1", "p1"), "op-1").await, "OK: created");
+        // A membership to a DIFFERENT project supersedes the first: it closes the
+        // p1 edge and appends the p2 edge in one statement, still reporting created.
+        assert_eq!(
+            persist_relation(&graph, &file_part_of("f1", "p2"), "op-2").await,
+            "OK: created",
+            "a supersession still reports created (the close is internal)"
+        );
+
+        // Both edges are retained: the closed p1 edge alongside the live p2 edge.
+        let total = graph
+            .query_rows(
+                "MATCH (:File {id: 'f1'})-[:FILE_PART_OF]->(:Project) RETURN count(*) AS n".into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(total.rows[0][0].as_i64(), 2, "the closed edge is retained alongside the new one");
+
+        // Exactly one live membership, to p2.
+        let live = graph
+            .query_rows(
+                "MATCH (:File {id: 'f1'})-[r:FILE_PART_OF]->(p:Project) \
+                 WHERE r.invalid_at IS NULL AND r.expired_at IS NULL RETURN p.id AS id"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(live.rows.len(), 1, "exactly one live membership after the supersession");
+        assert_eq!(live.rows[0][0].as_str(), "p2", "the live membership is the new project");
+
+        // The new edge back-references the superseded edge's op_id (§4.6), so a
+        // later one-unit compensation can re-open what it replaced.
+        let sup = graph
+            .query_rows(
+                "MATCH (:File {id: 'f1'})-[r:FILE_PART_OF {op_id: 'op-2'}]->(:Project) RETURN r.superseded AS s".into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(sup.rows[0][0].as_str(), "op-1", "the new edge records what it superseded");
+    }
+
+    #[tokio::test]
+    async fn retracting_a_supersession_reopens_the_edge_it_replaced() {
+        // §4.6: a retract is the one-unit inverse of supersession. After f1 moves
+        // p1 -> p2, retracting the p2 membership must re-open p1, not leave f1 in
+        // neither project.
+        let (graph, _tmp) = spawn_test_graph().await;
+        graph
+            .write("CREATE (f:File {id: 'f1', path: '/x', app_id: 'test', last_accessed: 0})".into())
+            .await
+            .unwrap();
+        graph.write("CREATE (p:Project {id: 'p1'})".into()).await.unwrap();
+        graph.write("CREATE (p:Project {id: 'p2'})".into()).await.unwrap();
+        assert_eq!(persist_relation(&graph, &file_part_of("f1", "p1"), "op-1").await, "OK: created");
+        assert_eq!(persist_relation(&graph, &file_part_of("f1", "p2"), "op-2").await, "OK: created");
+
+        // Retract the superseding p2 membership.
+        assert_eq!(
+            persist_retract(&graph, &file_part_of("f1", "p2"), "op-2").await,
+            "OK: retracted"
+        );
+
+        // f1 is back in p1 (re-opened), and only p1, as one unit.
+        let live = graph
+            .query_rows(
+                "MATCH (:File {id: 'f1'})-[r:FILE_PART_OF]->(p:Project) \
+                 WHERE r.invalid_at IS NULL AND r.expired_at IS NULL RETURN p.id AS id"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(live.rows.len(), 1, "exactly one live membership after the undo");
+        assert_eq!(live.rows[0][0].as_str(), "p1", "the superseded p1 membership is re-opened");
     }
 
     #[tokio::test]
