@@ -352,6 +352,52 @@ impl UnixGraphClient {
         }
     }
 
+    /// Create a node of a bounded built-in type at a caller-supplied id, via the
+    /// daemon's write socket (the node counterpart to [`create_relation`]).
+    ///
+    /// The daemon guards this so it can only ever create, never overwrite: the
+    /// `node_type` must be one of its creatable built-in types (the consolidation
+    /// nodes), and the id is checked label-agnostically, so an id that already
+    /// names a node of any label is refused rather than overwritten. Endpoint
+    /// types are the namespaced graph types (e.g. `system.Summary`) and the id is
+    /// the caller's own (e.g. a deterministic UUIDv5).
+    ///
+    /// On success returns whether the node was newly [`Created`] or
+    /// [`AlreadyExists`]ed; the create is atomic and never overwrites, so a retry
+    /// is safe. A daemon `ERROR:` maps to [`QueryError`] (a permission error to
+    /// [`QueryError::PermissionDenied`]).
+    ///
+    /// [`Created`]: NodeWriteOutcome::Created
+    /// [`AlreadyExists`]: NodeWriteOutcome::AlreadyExists
+    pub async fn create_node(
+        &self,
+        node_type: &str,
+        id: &str,
+    ) -> Result<NodeWriteOutcome, QueryError> {
+        let req = serde_json::json!({
+            "op": "create_node",
+            "node_type": node_type,
+            "id": id,
+        });
+        let json = serde_json::to_vec(&req).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+
+        // A leading 0x02 byte selects the daemon's structured write mode.
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x02);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_WRITE_RESPONSE_BYTES).await?;
+        let response = String::from_utf8_lossy(&bytes);
+        Self::check_error(&response)?;
+        match response.trim() {
+            "OK: created" => Ok(NodeWriteOutcome::Created),
+            "OK: exists" => Ok(NodeWriteOutcome::AlreadyExists),
+            other => Err(QueryError::InvalidQuery(format!(
+                "unexpected daemon node-write response: {other}"
+            ))),
+        }
+    }
+
     /// Retract (compensate) a relation this caller previously created, deleting
     /// only the edge that carries `op_id`, via the daemon's write socket.
     ///
@@ -415,6 +461,17 @@ pub enum RelationWriteOutcome {
     /// This call created the edge (it was absent before).
     Created,
     /// The edge already existed; the call was an idempotent no-op.
+    AlreadyExists,
+}
+
+/// The outcome of a successful [`create_node`](UnixGraphClient::create_node):
+/// whether this call created the node or found a node with that id already
+/// present (of any label, since the daemon's id check is label-agnostic).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeWriteOutcome {
+    /// This call created the node (no node had that id before).
+    Created,
+    /// A node with this id already existed; the call was an idempotent no-op.
     AlreadyExists,
 }
 
@@ -756,6 +813,45 @@ mod tests {
             result.unwrap(),
             vec!["/a/main.rs".to_string(), "p1".to_string()],
             "the ranked ids are parsed from the JSON array response"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_node_sends_a_tagged_request_and_accepts_created() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-create-node-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            assert_eq!(req[0], 0x02, "node writes carry the 0x02 prefix");
+            let body: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
+            assert_eq!(body["op"], "create_node");
+            assert_eq!(body["node_type"], "system.Summary");
+            assert_eq!(body["id"], "s1");
+
+            let ok = b"OK: created";
+            conn.write_all(&(ok.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(ok).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let result = client.create_node("system.Summary", "s1").await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        assert!(
+            matches!(result, Ok(NodeWriteOutcome::Created)),
+            "an `OK: created` status must map to Created, got {result:?}"
         );
     }
 
