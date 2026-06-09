@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2021"
 description = "Context Capsule daemon: mint, serve and revoke signed, scope-bound, frozen Knowledge-Graph slices lent under capability control"
 
+[[bin]]
+# The installed daemon binary, named arlen-capsuled to match the convention the
+# other daemons follow (arlen-notifyd, arlen-anomalyd, arlen-graph-daemon, ...).
+name = "arlen-capsuled"
+path = "src/main.rs"
+
 [dependencies]
 arlen-capsule = { path = "../../contracts/capsule" }
 arlen-forage-store = { path = "../../forage/store" }
@@ -13,7 +19,11 @@ serde_json = "1"
 ed25519-dalek = { version = "2", features = ["std", "zeroize"] }
 fs2 = "0.4"
 audit-proto = { path = "../../contracts/audit-proto" }
-tokio = { version = "1", features = ["rt", "net", "io-util", "macros", "sync"] }
+arlen-permissions = { path = "../../sdk/permissions" }
+libc = "0.2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "net", "io-util", "macros", "sync", "signal"] }
 
 [dev-dependencies]
 audit-proto = { path = "../../contracts/audit-proto", features = ["test-util"] }
