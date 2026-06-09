@@ -288,6 +288,13 @@ async fn promote_file_opened(
     let path_esc = escape_cypher(&path);
     let app_id_esc = escape_cypher(&app_id);
     let source_esc = escape_cypher(source);
+    // The cgroup v2 id of the opening task (0 when the open was not eBPF-sourced, so
+    // carries no attribution). Kernel-sourced and a bare integer, so it is
+    // interpolated unquoted (Kuzu stores INT64). A File node is path-keyed and opens
+    // merge, so this records only the LATEST cgroup, not a history; the per-open
+    // history with its cgroup lives in the SQLite event log, which the TOUCHED join
+    // reads from, not this merged node.
+    let cgroup_id = file_payload.cgroup_id;
 
     graph
         .write(format!(
@@ -298,7 +305,7 @@ async fn promote_file_opened(
     graph
         .write(format!(
             "MERGE (f:File {{id: '{path_esc}'}})
-             SET f.path = '{path_esc}', f.last_accessed = {timestamp}, f.app_id = '{app_id_esc}'"
+             SET f.path = '{path_esc}', f.last_accessed = {timestamp}, f.app_id = '{app_id_esc}', f.last_cgroup_id = {cgroup_id}"
         ))
         .await?;
 
@@ -696,6 +703,35 @@ mod shell_event_tests {
             .and_then(|r| r.first())
             .map(|v| v.as_i64())
             .unwrap_or(0)
+    }
+
+    #[tokio::test]
+    async fn promote_file_opened_records_cgroup_id() {
+        // A file.opened payload carrying an eBPF cgroup id lands as last_cgroup_id
+        // on the File node (Strand 4 attribution).
+        let (graph, _tmp) = setup().await;
+        let payload = FileOpenedPayload {
+            path: "/proj/main.rs".into(),
+            app_id: "ebpf:42".into(),
+            flags: 0,
+            cgroup_id: 987_654,
+        };
+        let mut buf = Vec::new();
+        payload.encode(&mut buf).unwrap();
+        promote_file_opened(&graph, "ev1", &100, "ebpf", &42, "sess", &buf)
+            .await
+            .unwrap();
+        let rs = graph
+            .query_rows("MATCH (f:File {id: '/proj/main.rs'}) RETURN f.last_cgroup_id AS cg".into())
+            .await
+            .unwrap();
+        let cg = rs
+            .rows
+            .first()
+            .and_then(|r| r.first())
+            .map(|v| v.as_i64())
+            .unwrap();
+        assert_eq!(cg, 987_654, "the cgroup id round-trips onto the File node");
     }
 
     #[tokio::test]
