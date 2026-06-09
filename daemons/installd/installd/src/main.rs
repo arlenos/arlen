@@ -12,6 +12,7 @@ mod flatpak;
 mod install;
 mod jobs;
 mod module_permissions;
+mod permission_helper;
 mod signature;
 mod transaction;
 mod trash;
