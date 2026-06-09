@@ -360,6 +360,10 @@ struct SliceSpec {
     /// Bindings a `Not(NodeExists{bind})` precondition proves absent. The
     /// absence proof an `AssertNode` requires before it can contribute to a lift.
     absence_proven: BTreeSet<String>,
+    /// Whether any `Effect::External` (a non-graph mutation) was seen. Refused in
+    /// `extract`: external effects need the world-facts ingestion (EM-R3) the
+    /// slice does not yet build, so they cannot be predicted on the graph slice.
+    external_effect: bool,
     /// Every label, field, and edge-type identifier the schema names, from
     /// preconditions and effects alike. Validated as safe identifiers before
     /// any read, so an effect-only identifier (a `SetField` field, an
@@ -414,6 +418,12 @@ impl SliceSpec {
             return Err(SliceError::UnsupportedEffect(format!(
                 "{effect}: a node-level mutation the bounded slice cannot represent"
             )));
+        }
+        if spec.external_effect {
+            return Err(SliceError::UnsupportedEffect(
+                "External: external effects need world-facts ingestion (EM-R3), not yet wired"
+                    .to_string(),
+            ));
         }
         // An `AssertNode` may only be admitted with an explicit `Not(NodeExists)`
         // absence proof for the same bind. Without it the strict-create would
@@ -597,6 +607,13 @@ impl SliceSpec {
             Effect::SetField { bind, field, .. } => {
                 self.add_ident(field);
                 self.mark_node(bind);
+            }
+            // An external (non-graph) effect mutates the filesystem or a setting,
+            // not graph nodes the slice can load. Predicting it needs the
+            // world-facts ingestion (EM-R3) the slice does not yet build, so refuse
+            // it here (flag for `extract`); it lands with that ingestion.
+            Effect::External { .. } => {
+                self.external_effect = true;
             }
             // Load the target edge's prior presence (as RetractEdge does), so a
             // strict AssertEdge sees a pre-existing edge and fails closed even
@@ -1129,8 +1146,10 @@ fn validate_effect_against_kg(
         Effect::AssertEdge { from, edge, to } | Effect::RetractEdge { from, edge, to } => {
             check_edge(labels, kg, from, edge, to)
         }
-        // Node-level mutations are already refused before this runs.
-        Effect::AssertNode { .. } | Effect::RetractNode { .. } => Ok(()),
+        // Node-level mutations and external effects are already refused before
+        // this runs (RetractNode + External in `extract`; AssertNode is admitted
+        // and validated via its bind label).
+        Effect::AssertNode { .. } | Effect::RetractNode { .. } | Effect::External { .. } => Ok(()),
     }
 }
 
@@ -2048,6 +2067,29 @@ tmpfs /tmp\\040dir tmpfs rw 0 0
         assert!(
             matches!(SliceSpec::extract(&schema), Err(SliceError::UnsupportedEffect(_))),
             "RetractNode must stay refused"
+        );
+    }
+
+    #[test]
+    fn external_effect_is_refused_until_world_facts() {
+        use crate::effect_model::{CaptureShape, EffectDomain, InverseClass};
+        // An external (non-graph) effect cannot be predicted on the graph slice
+        // until the world-facts ingestion (EM-R3) lands, so it is refused even
+        // when declared reversible.
+        let schema = ActionSchema {
+            action: "fs.move".to_string(),
+            preconditions: vec![],
+            effects: vec![Effect::External {
+                domain: EffectDomain::Filesystem,
+                op: "move".to_string(),
+                target: "file".to_string(),
+                class: InverseClass::Reversible { capture: CaptureShape::RestorePath },
+            }],
+            provenance: Provenance::Given,
+        };
+        assert!(
+            matches!(SliceSpec::extract(&schema), Err(SliceError::UnsupportedEffect(_))),
+            "an external effect must be refused until world-facts ingestion"
         );
     }
 

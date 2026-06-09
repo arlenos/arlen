@@ -22,6 +22,8 @@ use std::path::{Component, Path};
 
 use arlen_ai_core::capability::{ActionDecision, ActionKind, BaselineMode, Capability};
 
+use crate::effect_model::{EffectDomain, InverseClass};
+
 /// A node in the world state: a labelled entity with string fields,
 /// identified by an opaque id.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -295,6 +297,24 @@ pub enum Effect {
         /// The value to set it to.
         value: String,
     },
+    /// A mutation outside the Knowledge Graph: a file operation, a setting write,
+    /// an external action (reversible-receipts-and-the-effect-model.md §3.1). One
+    /// unified variant, the executor dispatching on `domain`; reversibility is the
+    /// declared `class`, NOT the op kind. Predicting it needs the world-facts
+    /// ingestion (EM-R3) that does not exist yet, so `apply_effects` fails closed
+    /// on it and the slice refuses it: no external action is predict-valid (and so
+    /// liftable) until that lands.
+    External {
+        /// The effect domain (selects the writer / inverse-capture seam).
+        domain: EffectDomain,
+        /// The concrete operation within the domain (`move`, `write`, ...).
+        op: String,
+        /// The bind whose argument resolves to the resource the op touches.
+        target: String,
+        /// The declared reversibility class, proven against the resolved target
+        /// at predict time (the lift source).
+        class: InverseClass,
+    },
 }
 
 impl Effect {
@@ -335,6 +355,22 @@ impl Effect {
             }),
             Effect::AssertNode { bind, .. } => Some(Effect::RetractNode { bind: bind.clone() }),
             Effect::RetractNode { .. } | Effect::SetField { .. } => None,
+            // External reversibility is the declared `class`, not a forward-Effect
+            // inverse: the real undo is the `InverseReceipt` the executor captures
+            // at commit. So inverse() folds to Some only for a `Reversible` class
+            // (preserving `is_reversible == compensation_of.is_some()`), returning
+            // the effect itself as a NON-REPLAYABLE reversibility marker. It is
+            // never replayed as an Effect: the non-graph compensate path
+            // (EM-R6) dispatches on `ActionReceipt::NonGraph` and replays the
+            // captured inverse, not this. `ReversibleWithCost`/`Irreversible` fold
+            // to None, so they are never autonomously lifted.
+            Effect::External { class, .. } => {
+                if class.is_reversible() {
+                    Some(self.clone())
+                } else {
+                    None
+                }
+            }
         }
     }
 }
@@ -721,6 +757,16 @@ fn apply_effects(effects: &[Effect], b: &Bindings, state: &WorldState) -> Result
                     .ok_or_else(|| format!("SetField {id:?}.{field:?}: the node is missing"))?;
                 node.fields.insert(field.clone(), value.clone());
             }
+            // An external effect mutates the filesystem / a setting, not the graph
+            // WorldState, and predicting it soundly needs the world-facts the slice
+            // does not yet ingest (EM-R3). Fail closed until then: an `External`
+            // effect cannot be predicted `Valid`, so it is never lifted. The slice
+            // also refuses it up front; this is the interpreter's backstop.
+            Effect::External { domain, op, .. } => {
+                return Err(format!(
+                    "External {domain:?}/{op}: external effects need world-facts ingestion (EM-R3), not yet wired"
+                ));
+            }
         }
     }
     Ok(s)
@@ -1075,6 +1121,39 @@ mod tests {
             Effect::SetField { bind: "a".into(), field: "t".into(), value: "y".into() },
         ];
         assert_eq!(compensation_of(&forward), None);
+    }
+
+    #[test]
+    fn external_inverse_folds_on_the_declared_class() {
+        use crate::effect_model::{CaptureShape, IrreversibilityReason, ResidualCost};
+        let reversible = Effect::External {
+            domain: EffectDomain::Filesystem,
+            op: "move".into(),
+            target: "f".into(),
+            class: InverseClass::Reversible { capture: CaptureShape::RestorePath },
+        };
+        assert!(reversible.inverse().is_some(), "a reversible external is lift-eligible");
+
+        let with_cost = Effect::External {
+            domain: EffectDomain::External,
+            op: "refund".into(),
+            target: "t".into(),
+            class: InverseClass::ReversibleWithCost {
+                capture: CaptureShape::RestoreValue,
+                cost: ResidualCost::Fee,
+            },
+        };
+        assert!(with_cost.inverse().is_none(), "reversible-with-cost never auto-lifts");
+        // A sequence with a non-reversible external folds to no compensation.
+        assert_eq!(compensation_of(&[with_cost]), None);
+
+        let irreversible = Effect::External {
+            domain: EffectDomain::External,
+            op: "send".into(),
+            target: "t".into(),
+            class: InverseClass::Irreversible { reason: IrreversibilityReason::ExternalSend },
+        };
+        assert!(irreversible.inverse().is_none());
     }
 
     #[test]
