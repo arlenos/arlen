@@ -239,7 +239,15 @@ impl FileUndoLog {
         let path = path.into();
         let key = key.into();
         if !path.exists() {
-            std::fs::OpenOptions::new().create(true).append(true).open(&path)?;
+            use std::os::unix::fs::OpenOptionsExt;
+            // Mode 0600: the log holds PII-adjacent prior state (paths, setting
+            // values), so it is owner-only at the file level too, not only via the
+            // 0700 directory the signer creates it in.
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .mode(0o600)
+                .open(&path)?;
             // fsync the directory so the new file's entry survives a crash; the
             // file's later appends then only fsync the file itself.
             if let Some(parent) = path.parent() {
