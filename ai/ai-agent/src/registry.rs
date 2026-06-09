@@ -18,6 +18,7 @@
 //! schema here.
 #![allow(dead_code)]
 
+use crate::effect_model::InverseClass;
 use crate::world::{compensation_of, ActionSchema, Effect, Predicate, Provenance};
 
 /// What a decided action would do and how to undo it, surfaced so the agent's
@@ -83,6 +84,19 @@ impl TrustedActionSchema {
     /// explicit compensation.
     pub(crate) fn is_reversible(&self) -> bool {
         compensation_of(&self.schema.effects).is_some()
+    }
+
+    /// The declared reversibility class of the schema's non-graph effect, if any
+    /// (reversible-receipts-and-the-effect-model.md §3.2). A pure-graph schema has
+    /// none (its reversibility is the op-id self-inverse, read via
+    /// [`is_reversible`](Self::is_reversible)); a non-graph schema carries it on
+    /// its `Effect::External`, and `resolved_action_kind` maps the three-way class
+    /// to the audit kind.
+    pub(crate) fn declared_inverse_class(&self) -> Option<InverseClass> {
+        self.schema.effects.iter().find_map(|e| match e {
+            Effect::External { class, .. } => Some(*class),
+            _ => None,
+        })
     }
 }
 

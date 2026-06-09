@@ -166,6 +166,12 @@ pub enum ActionKind {
     /// from the action's effects (its registry schema has no inverse), not its
     /// tool name, and grounds the gate's previously-circular "reversible".
     Irreversible,
+    /// An action whose undo is possible but spends something the user owns (a
+    /// refund fee, a re-download). Derived from the schema's
+    /// `InverseClass::ReversibleWithCost`; always confirms (the cost is the
+    /// user's to accept), never autonomously lifted
+    /// (reversible-receipts-and-the-effect-model.md §3.2).
+    ReversibleWithCost,
     /// Any action not on the hardcoded high-impact list. Subject only
     /// to the action mode and the external-content rule.
     Ordinary,
