@@ -1575,6 +1575,35 @@ async fn handle_client(
             }
         };
 
+        // Per-caller read scope (RS-R1). A system-anchored caller (the AI daemon,
+        // agent, terminal, Settings, Files - tier != ThirdParty, non-`unknown`)
+        // bypasses the label gate; the system tier is non-same-uid-forgeable for the
+        // root-owned identity rules 1-3 and cooperative-only for rule-4 user apps
+        // until F3, the same boundary-vs-cooperative split the authority gate
+        // documents. A non-system caller is held to its readable label set, so its
+        // readable labels are minted lazily here (only for that caller) via the
+        // write path's PID-reuse guard; an unprovisioned or recycled peer mints the
+        // empty scope (not an error), so a label-less no-op read still works while
+        // any labelled read is denied - the correct fail-closed behaviour.
+        let system_anchored = app_id != "unknown"
+            && QuotaConfig::arlen_default().tier_for_app(&app_id) != AppTier::ThirdParty;
+        let readable_labels: Vec<String> = if system_anchored {
+            Vec::new()
+        } else {
+            match &peer {
+                Some(p) => match (p.start_time, pid_start_time(p.pid).ok()) {
+                    (Some(captured), Some(now)) if now == captured => {
+                        match auth.lock().await.issue_token_for_pid(p.pid) {
+                            Ok(token) => readable_system_labels(&token.read_scopes),
+                            Err(_) => Vec::new(),
+                        }
+                    }
+                    _ => Vec::new(),
+                },
+                None => Vec::new(),
+            }
+        };
+
         // Failure responses are the plaintext `ERROR: ...` form in both
         // modes; a typed client detects the `ERROR:` prefix before parsing
         // JSON (the SDK does). Wrapping every typed failure in a structured
@@ -1609,6 +1638,15 @@ async fn handle_client(
                     .to_string(),
                 false,
             )
+        } else if let Some(denial) = raw_read_label_gate(&cypher, &readable_labels, system_anchored) {
+            // RS-R1 per-caller read scope: a non-system caller may only read labels
+            // in its readable set (a label-less or out-of-scope/sensitive read is
+            // refused before execution). A real boundary for coarse labels and
+            // defense-in-depth for the rest; sensitive content is served only by the
+            // structured read op. The authority gate above is a strict superset
+            // denial left as-is.
+            warn!(app_id = %app_id, "graph read denied by the read-scope label gate");
+            (format!("ERROR: {denial}"), false)
         } else {
             // Bounded *client wait*: the connection returns QueryTimeout
             // after 500 ms (foundation §8.4) so the caller is never
@@ -1773,8 +1811,6 @@ fn cypher_references_any(cypher: &str, needles: &[&str]) -> bool {
 /// [`references_authority_label`]); when the terminal/clipboard KG-promotion writes
 /// such a label, add it here and RS-R2 becomes its only reader. The allowlist
 /// pre-gate ([`raw_read_label_gate`]) is the active boundary in the meantime.
-// Wired into the read branches by the next RS-R1 commit; tests exercise it now.
-#[allow(dead_code)]
 const SENSITIVE_RAW_LABELS: [&str; 0] = [];
 
 /// The uppercased label/relationship-type tokens a Cypher query references: every
@@ -1783,7 +1819,6 @@ const SENSITIVE_RAW_LABELS: [&str; 0] = [];
 /// value is not mistaken for a label. A token must start with a letter, so a map
 /// literal's numeric value (`{count:5}`) is not captured. Used by the read-scope
 /// pre-gate to check every referenced label against the caller's readable set.
-#[allow(dead_code)]
 fn cypher_label_tokens(cypher: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut in_string = false;
@@ -1842,7 +1877,6 @@ fn cypher_label_tokens(cypher: &str) -> Vec<String> {
 /// B1), any sensitive label (RS-R2 only), and any label/rel-type outside its
 /// readable set (so a traversal to an out-of-scope neighbour, B2, is refused). Only
 /// a query whose every referenced label is in the readable, non-sensitive set runs.
-#[allow(dead_code)]
 fn raw_read_label_gate(
     cypher: &str,
     readable_labels: &[String],
