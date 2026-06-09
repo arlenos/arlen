@@ -480,6 +480,11 @@ fn default_retrieve_limit() -> i64 {
 /// for an unbounded fused/confirmed set.
 const MAX_RETRIEVE_LIMIT: i64 = 100;
 
+/// The hard ceiling on a capsule scope's hop expansion, so a request cannot walk
+/// the whole graph from a high-degree root (the relation-type / count over-share
+/// controls are the CC-R6 mint preview; this is the coarse DoS bound).
+const MAX_CAPSULE_HOPS: u32 = 6;
+
 /// A caller-scoped provenance read request, sent with a leading `0x04` byte
 /// (provenance-halo.md §5). The body is JSON; the response is the object's
 /// scoped provenance or a uniform out-of-scope denial.
@@ -1395,6 +1400,45 @@ async fn handle_client(
                         }
                     }
                     Err(e) => format!("ERROR: invalid retrieve request: {e}"),
+                }
+            };
+            timing_noise().await;
+            let response_bytes = response.as_bytes();
+            let response_len = u32::try_from(response_bytes.len())
+                .expect("response too large")
+                .to_be_bytes();
+            stream.write_all(&response_len).await?;
+            stream.write_all(response_bytes).await?;
+            continue;
+        }
+
+        // Capsule materialize mode: a leading 0x07 byte selects the Context
+        // Capsule frozen-slice read (context-capsule.md §4, loader option (b)). The
+        // body is a JSON `CapsuleScope`; the response is the canonical JSON of the
+        // materialized `FrozenSlice`, or the plaintext `ERROR: ...` form (a client
+        // detects the `ERROR:` prefix before parsing the JSON object). It reads the
+        // caller's own graph and is no more powerful than the 0x01 typed query, so
+        // it is query-rate-limited; the capsule access control (the signed grant,
+        // the audience, the human-gated mint) lives in `capsuled`, not here.
+        // `expand_hops` is clamped so a request cannot walk the whole graph.
+        if buf.first() == Some(&0x07) {
+            let violation = {
+                let mut rs = rate.lock().await;
+                rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
+            };
+            let response = if let Some(reason) = violation {
+                format!("ERROR: RateLimited: {reason}")
+            } else {
+                match serde_json::from_slice::<arlen_capsule::scope::CapsuleScope>(&buf[1..]) {
+                    Ok(mut scope) => {
+                        scope.expand_hops = scope.expand_hops.min(MAX_CAPSULE_HOPS);
+                        match crate::capsule::materialize_slice(&graph, &scope).await {
+                            Ok(slice) => String::from_utf8(slice.canonical_bytes())
+                                .unwrap_or_else(|_| "ERROR: non-utf8 slice".to_string()),
+                            Err(e) => format!("ERROR: {e}"),
+                        }
+                    }
+                    Err(e) => format!("ERROR: invalid capsule scope: {e}"),
                 }
             };
             timing_noise().await;
