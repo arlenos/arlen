@@ -355,14 +355,21 @@ async fn run_install_flatpak(
     //    consulted by nothing, so its grants were silently ignored.
     queue.update_progress(job_id, 70, "creating permission profile");
     emit_progress(conn, job_id, 70, "creating permission profile").await;
-    let profile = flatpak::default_permission_profile(app_id);
     let profile_path = arlen_permissions::profile_path(app_id)
         .map_err(|e| install::InstallError::Io(std::io::Error::other(e.to_string())))?;
-    if let Some(dir) = profile_path.parent() {
-        let _ = std::fs::create_dir_all(dir);
+    // Write the default profile ONLY if none exists (AUTH-CANONICAL §2: user edits to
+    // an existing profile are never overwritten). A reinstall must not silently reset
+    // grants the user has narrowed.
+    if profile_path.exists() {
+        tracing::info!("flatpak {app_id} already has a permission profile; leaving it");
+    } else {
+        let profile = flatpak::default_permission_profile(app_id);
+        if let Some(dir) = profile_path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        std::fs::write(&profile_path, &profile).map_err(install::InstallError::Io)?;
+        tracing::info!("wrote Arlen permission profile for flatpak {app_id}");
     }
-    std::fs::write(&profile_path, &profile).map_err(install::InstallError::Io)?;
-    tracing::info!("wrote Arlen permission profile for flatpak {app_id}");
 
     Ok(())
 }
