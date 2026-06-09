@@ -543,6 +543,13 @@ fn create_schema(conn: &Connection) -> Result<()> {
         )",
     )
     .map_err(|e| anyhow!("create Project table: {e}"))?;
+    // Transaction-time close stamp for the node lifecycle (§4.9): archiving a
+    // project is "the system stopped believing it is active", which is
+    // `expired_at`. A live project is `expired_at IS NULL`; `status`/`archived_at`
+    // stay as denormalised read filters. Convergent ADD IF NOT EXISTS, as for the
+    // edge temporal columns.
+    conn.query("ALTER TABLE Project ADD IF NOT EXISTS expired_at INT64")
+        .map_err(|e| anyhow!("ensure Project.expired_at column: {e}"))?;
 
     conn.query(
         "CREATE NODE TABLE IF NOT EXISTS Directory(
