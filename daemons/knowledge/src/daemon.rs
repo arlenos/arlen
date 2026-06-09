@@ -396,6 +396,38 @@ fn default_retrieve_limit() -> i64 {
 /// for an unbounded fused/confirmed set.
 const MAX_RETRIEVE_LIMIT: i64 = 100;
 
+/// A caller-scoped provenance read request, sent with a leading `0x04` byte
+/// (provenance-halo.md §5). The body is JSON; the response is the object's
+/// scoped provenance or a uniform out-of-scope denial.
+// `ProvenanceRequest` + `readable_system_labels` are the typed scope-mapping
+// foundation of the caller-scoped provenance read op (the `0x04` mode), consumed
+// by the op in the next increment; they read unused until that dispatch lands.
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProvenanceRequest {
+    /// The graph node id whose provenance is requested.
+    object_id: String,
+}
+
+/// The built-in observation-graph node labels a token may read, derived from its
+/// read scopes (provenance-halo.md §5). A read scope's entity type is namespaced
+/// (`system.File`); the observation graph's node labels are the unprefixed system
+/// names (`File`), so only `system.*` scopes map to a probeable label and the
+/// prefix is stripped. App-namespaced types (`com.x.Y`) are not built-in
+/// observation nodes and contribute no label. The result is validated to safe
+/// identifiers, since it is interpolated into the per-label existence probe that
+/// makes an out-of-scope object indistinguishable from an absent one.
+#[allow(dead_code)]
+fn readable_system_labels(read_scopes: &[crate::token::EntityScope]) -> Vec<String> {
+    read_scopes
+        .iter()
+        .filter_map(|s| s.entity_type.strip_prefix("system."))
+        .filter(|l| !l.is_empty() && l.chars().all(|c| c.is_ascii_alphanumeric()))
+        .map(str::to_string)
+        .collect()
+}
+
 /// Authorise and persist a structured write request, returning the plaintext
 /// response (`OK` / `ERROR: ...`).
 ///
@@ -1251,6 +1283,26 @@ mod tests {
         assert!(!is_privileged_authority_reader("desktop-shell"));
         assert!(!is_privileged_authority_reader("knowledge-app"));
         assert!(!is_privileged_authority_reader("unknown"));
+    }
+
+    #[test]
+    fn readable_system_labels_maps_only_safe_system_scopes() {
+        use crate::token::EntityScope;
+        let scope = |t: &str| EntityScope {
+            entity_type: t.to_string(),
+            fields: None,
+            exclude_fields: vec![],
+        };
+        // system.* scopes map to the unprefixed graph label; an app type does not.
+        assert_eq!(
+            readable_system_labels(&[scope("system.File"), scope("system.App"), scope("com.anki.Card")]),
+            vec!["File".to_string(), "App".to_string()],
+        );
+        // A type that would break the per-label probe is dropped (only safe
+        // identifiers reach the interpolated existence query).
+        assert!(readable_system_labels(&[scope("system.File; DROP")]).is_empty());
+        assert!(readable_system_labels(&[scope("system.")]).is_empty());
+        assert!(readable_system_labels(&[]).is_empty());
     }
 
     #[tokio::test]
