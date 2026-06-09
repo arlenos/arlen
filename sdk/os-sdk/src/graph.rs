@@ -390,6 +390,38 @@ impl UnixGraphClient {
             .map_err(|e| QueryError::InvalidQuery(format!("malformed access_grants response: {e}")))
     }
 
+    /// Revoke a capability from an app's permission profile, narrowing-only
+    /// (living-capability-graph.md §6), via the read socket's revoke op.
+    ///
+    /// A leading `0x06` byte selects the daemon's revoke op; the body is the JSON
+    /// [`RevokeReach`]. The daemon admits only the canonical `settings` principal,
+    /// refuses a system-tier target, and applies the narrowing through the
+    /// strict-subset gate, writing the target's profile only if authority strictly
+    /// shrank. Returns the [`RevokeOutcome`] (Revoked / NoChange / NotNarrowing /
+    /// NotFound) parsed from the wire token; a daemon `ERROR:` (not permitted,
+    /// invalid request, system-tier, io) maps to [`QueryError`]. The closed request
+    /// enum cannot express a widening.
+    pub async fn revoke(
+        &self,
+        request: &arlen_permissions::revoke::RevokeReach,
+    ) -> Result<arlen_permissions::revoke::RevokeOutcome, QueryError> {
+        let json = serde_json::to_vec(request).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x06);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_TYPED_RESPONSE_BYTES).await?;
+        let text = String::from_utf8_lossy(&bytes);
+        if let Some(outcome) = arlen_permissions::revoke::RevokeOutcome::from_wire_token(&text) {
+            return Ok(outcome);
+        }
+        // Not a recognised outcome token: an `ERROR:` reply or an unknown string.
+        if bytes.starts_with(b"ERROR:") {
+            Self::check_error(&text)?;
+        }
+        Err(QueryError::InvalidQuery(format!("malformed revoke response: {text}")))
+    }
+
     /// Create a built-in graph relation `from -[relation_type]-> to` between two
     /// existing nodes, via the daemon's write socket.
     ///
@@ -1022,6 +1054,81 @@ mod tests {
         assert_eq!(grants[0].app_id, "com.x");
         assert!(grants[0].live);
         assert_eq!(grants[0].reach, vec!["File".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn revoke_sends_a_tagged_request_and_parses_the_outcome() {
+        use arlen_permissions::revoke::{RevokeInitiator, RevokeOutcome, RevokeReach, RevokedReach};
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-revoke-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            assert_eq!(req[0], 0x06, "revoke carries the 0x06 prefix");
+            let body: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
+            assert_eq!(body["target_app_id"], "com.x");
+
+            let resp = b"OK: revoked";
+            conn.write_all(&(resp.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(resp).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let req = RevokeReach {
+            target_app_id: "com.x".into(),
+            reach: RevokedReach::Read { entity_pattern: "system.File".into() },
+            initiator: RevokeInitiator::User,
+        };
+        let outcome = client.revoke(&req).await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(outcome.unwrap(), RevokeOutcome::Revoked);
+    }
+
+    #[tokio::test]
+    async fn revoke_maps_an_error_reply_to_query_error() {
+        use arlen_permissions::revoke::{RevokeInitiator, RevokeReach, RevokedReach};
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-revoke-err-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+            let resp = b"ERROR: revoke not permitted for this caller";
+            conn.write_all(&(resp.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(resp).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let req = RevokeReach {
+            target_app_id: "com.x".into(),
+            reach: RevokedReach::InstanceAll,
+            initiator: RevokeInitiator::User,
+        };
+        let outcome = client.revoke(&req).await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        assert!(outcome.is_err(), "an ERROR reply maps to a QueryError");
     }
 
     #[tokio::test]
