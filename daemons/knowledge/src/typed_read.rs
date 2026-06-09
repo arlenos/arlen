@@ -9,10 +9,7 @@
 //! mirrors the typed graph-query DSL the AI layer already uses; this is the
 //! daemon-local, owner-enforcing variant.
 //!
-//! Wired into the `0x08` read branch by a later RS-R2 commit; the tests exercise
-//! these primitives now.
-#![allow(dead_code)]
-
+//! Wired into the `0x08` read branch (`handle_typed_read`).
 use serde::Deserialize;
 
 /// A typed scalar a caller may compare a field against. Untagged so the wire form
