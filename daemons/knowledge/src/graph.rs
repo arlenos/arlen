@@ -701,6 +701,68 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create PinnedMarker table: {e}"))?;
 
+    // Living Capability Graph (living-capability-graph.md §3): the capability
+    // projection. One Grant node per (app_id, token.id) recording an app's
+    // declared reach and its lifecycle state; CapabilityUse the effective-use
+    // tier (one per (app_id, capability), populated only once the usage feed
+    // lands); EntityType a marker per grantable type string. These are
+    // daemon-internal (written by emit_grant_node, not by clients), and the
+    // general read path denies these labels to non-privileged callers, so a
+    // co-tenant cannot harvest the whole machine's authority graph.
+    conn.query(
+        "CREATE NODE TABLE IF NOT EXISTS Grant(
+            id                STRING,
+            app_id            STRING,
+            pid               INT64,
+            issued_at         INT64,
+            expires_at        INT64,
+            declared_ceiling  STRING,
+            required          BOOL,
+            identity_verified BOOL,
+            live              BOOL,
+            revoked           BOOL,
+            superseded        BOOL,
+            last_exercised_at INT64,
+            use_count         INT64,
+            PRIMARY KEY(id)
+        )",
+    )
+    .map_err(|e| anyhow!("create Grant table: {e}"))?;
+
+    conn.query(
+        "CREATE NODE TABLE IF NOT EXISTS CapabilityUse(
+            id             STRING,
+            app_id         STRING,
+            capability     STRING,
+            first_observed INT64,
+            last_observed  INT64,
+            observe_count  INT64,
+            PRIMARY KEY(id)
+        )",
+    )
+    .map_err(|e| anyhow!("create CapabilityUse table: {e}"))?;
+
+    conn.query(
+        "CREATE NODE TABLE IF NOT EXISTS EntityType(
+            id    STRING,
+            label STRING,
+            PRIMARY KEY(id)
+        )",
+    )
+    .map_err(|e| anyhow!("create EntityType table: {e}"))?;
+
+    // GRANTS carries the queryable type projection (one hop = "which types can
+    // this app reach"); deliberately NOT in BUILTIN_RELATIONS (it is never
+    // client-writable). USED_BY ties a Grant to its App; LAST_EXERCISED points a
+    // CapabilityUse at the audit event that last exercised it (once the feed
+    // lands).
+    conn.query("CREATE REL TABLE IF NOT EXISTS GRANTS(FROM Grant TO EntityType)")
+        .map_err(|e| anyhow!("create GRANTS rel: {e}"))?;
+    conn.query("CREATE REL TABLE IF NOT EXISTS USED_BY(FROM Grant TO App)")
+        .map_err(|e| anyhow!("create USED_BY rel: {e}"))?;
+    conn.query("CREATE REL TABLE IF NOT EXISTS LAST_EXERCISED(FROM CapabilityUse TO Event)")
+        .map_err(|e| anyhow!("create LAST_EXERCISED rel: {e}"))?;
+
     debug!("schema created");
     Ok(())
 }
@@ -791,6 +853,50 @@ mod tests {
             .expect("op-id-keyed read works after convergence");
         let rows = qr.by_ref().count();
         assert_eq!(rows, 1, "the op-id edge is queryable after convergence");
+    }
+
+    #[test]
+    fn create_schema_builds_the_living_capability_graph_tables() {
+        // LCG-R1: the Grant / CapabilityUse / EntityType nodes and the
+        // GRANTS / USED_BY / LAST_EXERCISED edges must be createable on a fresh
+        // store, and a Grant node + its GRANTS projection must round-trip with the
+        // lifecycle-state columns. App/Event already exist for the edge endpoints.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("graph");
+        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+
+        create_schema(&conn).expect("create_schema builds the LCG tables");
+        create_schema(&conn).expect("create_schema is idempotent");
+
+        // A Grant projecting one reach onto an EntityType marker.
+        conn.query(
+            "CREATE (:Grant {id:'g1', app_id:'com.x', pid:42, issued_at:1, expires_at:0, \
+             declared_ceiling:'{}', required:true, identity_verified:false, live:true, \
+             revoked:false, superseded:false, last_exercised_at:0, use_count:0})",
+        )
+        .expect("a Grant node writes with its lifecycle-state columns");
+        conn.query("CREATE (:EntityType {id:'system.File', label:'File'})").unwrap();
+        conn.query(
+            "MATCH (g:Grant {id:'g1'}),(t:EntityType {id:'system.File'}) CREATE (g)-[:GRANTS]->(t)",
+        )
+        .expect("the GRANTS projection edge writes");
+
+        // The one-hop "which types can this live app reach" read.
+        let mut qr = conn
+            .query(
+                "MATCH (g:Grant {app_id:'com.x'})-[:GRANTS]->(t:EntityType) \
+                 WHERE g.live AND NOT g.revoked AND NOT g.superseded RETURN t.label",
+            )
+            .expect("the GRANTS projection is queryable");
+        let labels: Vec<String> = qr
+            .by_ref()
+            .filter_map(|row| match row.first() {
+                Some(Value::String(s)) => Some(s.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(labels, vec!["File".to_string()], "the live grant's reach projects one hop");
     }
 
     #[test]
