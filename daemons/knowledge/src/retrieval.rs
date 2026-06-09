@@ -16,6 +16,11 @@
 
 use std::collections::{HashMap, HashSet};
 
+use anyhow::Result;
+
+use crate::graph::GraphHandle;
+use crate::utils::escape_cypher;
+
 /// The standard RRF damping constant (§7.3): a larger `k` flattens the
 /// contribution of rank, so top ranks dominate less.
 pub const K_RRF: u32 = 60;
@@ -115,6 +120,42 @@ fn join_nonempty(parts: &[&str]) -> String {
         .join(" ")
 }
 
+/// The validity confirm (§7.3): keep only the candidate ids that have a current
+/// graph presence, preserving the fused order.
+///
+/// FTS5 and the vector index are atemporal (they index every fact ever seen), so
+/// a fused candidate may name a node that no longer exists. One batched,
+/// label-agnostic graph read filters the candidates to those actually present.
+/// This is the presence form; the full temporal liveness join (a node's
+/// `expired_at` against `T_asof`, the §4.4 endpoint-node clause) lands with the
+/// node temporal stamps in R6, at which point this gains a `WHERE` on the node's
+/// transaction axis. Returns the candidates that are present, in input order, so
+/// the RRF ranking survives the filter. An empty input is an empty result with
+/// no query.
+pub async fn confirm_present(graph: &GraphHandle, candidates: &[String]) -> Result<Vec<String>> {
+    if candidates.is_empty() {
+        return Ok(Vec::new());
+    }
+    let list = candidates
+        .iter()
+        .map(|id| format!("'{}'", escape_cypher(id)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    // Label-agnostic: a candidate id may belong to any node table.
+    let cypher = format!("MATCH (n) WHERE n.id IN [{list}] RETURN n.id AS id");
+    let rs = graph.query_rows(cypher).await?;
+    let present: HashSet<String> = rs
+        .rows
+        .iter()
+        .filter_map(|row| row.first().map(|cell| cell.as_str().to_string()))
+        .collect();
+    Ok(candidates
+        .iter()
+        .filter(|id| present.contains(*id))
+        .cloned()
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,5 +250,22 @@ mod tests {
         assert_eq!(fact_text("File", &f), fact_text("File", &f), "same fields -> same text");
         // A Project with only a name (no description/root) omits the empty parts.
         assert_eq!(fact_text("Project", &fields(&[("name", "Solo")])), "Solo");
+    }
+
+    #[tokio::test]
+    async fn confirm_present_keeps_only_existing_nodes_in_fused_order() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        graph.write("CREATE (:File {id: 'f1', path: '/a'})".into()).await.unwrap();
+        graph.write("CREATE (:Project {id: 'p1'})".into()).await.unwrap();
+
+        // Fused candidates: f1 present, "absent" not in the graph, p1 present.
+        let candidates = ids(&["f1", "absent", "p1"]);
+        let confirmed = confirm_present(&graph, &candidates).await.unwrap();
+        assert_eq!(confirmed, ids(&["f1", "p1"]), "absent dropped, fused order preserved");
+
+        // An empty candidate set returns empty without a query.
+        assert!(confirm_present(&graph, &[]).await.unwrap().is_empty());
     }
 }
