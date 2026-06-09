@@ -100,6 +100,7 @@ use arlen_ai_core::audit::{behaviour_action_event, AuditSink};
 use arlen_ai_core::capability::{ActionDecision, ActionKind, BaselineMode, Capability};
 use arlen_ai_core::mcp::{AlwaysConfirm, AlwaysConfirmReason};
 
+use crate::canary;
 use crate::effect_model::InverseClass;
 use crate::registry;
 use crate::seams::{GateObserver, GraphHandle};
@@ -252,6 +253,14 @@ pub enum GateError {
         /// The out-of-scope tool the proposal named.
         tool: String,
     },
+    /// A proposal's operand named a reserved canary id (canary-honeytools.md §3).
+    /// Honest operands are real ingestion ids that never bear the reserved
+    /// prefix, so a canary touch is deterministic proof the operand came from an
+    /// external injection. The action is refused and, in the agent loop, the loop
+    /// is stopped closed: a tripped run is treated as hijacked, never fed back for
+    /// the model to retry. The message carries no operand content.
+    #[error("structural canary touched: a proposal operand named a reserved canary id (probable prompt-injection)")]
+    CanaryTripped,
 }
 
 /// The action gate, holding the long-lived collaborators: the capability, the
@@ -286,6 +295,50 @@ impl<'a> Gate<'a> {
         }
     }
 
+    /// The structural-canary screen (canary-honeytools.md §3): if any operand
+    /// names a reserved canary id, audit a content-free trip outcome fail-closed
+    /// and return [`GateError::CanaryTripped`]; otherwise `Ok(())`. A canary touch
+    /// is deterministic proof of prompt-injection (honest operands are real
+    /// ingestion ids that never bear the reserved prefix), so it is checked before
+    /// scope and before any proof, and catches a touch even in suggest-mode. The
+    /// audit records the class and the external-trigger flag only, never the
+    /// operand value or the specific canary id.
+    async fn canary_check(
+        &self,
+        behaviour_name: &str,
+        action: &ProposedAction,
+        ctx: &ActionContext<'_>,
+    ) -> Result<(), GateError> {
+        if canary::touched_by(&action.arguments).is_some() {
+            self.audit
+                .submit(behaviour_action_event(
+                    behaviour_name,
+                    canary_trip_outcome(ctx.external_trigger),
+                    ctx.correlation_id,
+                ))
+                .await
+                .map_err(|e| GateError::AuditUnavailable(e.to_string()))?;
+            return Err(GateError::CanaryTripped);
+        }
+        Ok(())
+    }
+
+    /// Screen a proposal for a structural-canary touch without running the full
+    /// action gate. The agent loop calls this for EVERY proposal before it splits
+    /// into the read branch: a declared read tool is gate-exempt (D9) and never
+    /// reaches [`Gate::decide_action`], so without this the canary would not cover
+    /// reads, the channel that renders results verbatim into the model transcript
+    /// (the dangerous one §3 identifies). A trip is audited and returns
+    /// [`GateError::CanaryTripped`]; the caller stops the loop closed.
+    pub async fn screen_canary(
+        &self,
+        behaviour_name: &str,
+        action: &ProposedAction,
+        ctx: &ActionContext<'_>,
+    ) -> Result<(), GateError> {
+        self.canary_check(behaviour_name, action, ctx).await
+    }
+
     /// Decide the gate for one proposed action: resolve the capability
     /// decision, record it in the audit ledger fail-closed, notify the
     /// observer, and return a [`GateReceipt`] for the caller to act on.
@@ -303,6 +356,14 @@ impl<'a> Gate<'a> {
         ctx: &ActionContext<'_>,
         graph: &dyn GraphHandle,
     ) -> Result<GateReceipt, GateError> {
+        // Structural canary (canary-honeytools.md §3), checked FIRST, before
+        // tool-scope and before the predict-before-act proof. A reserved canary
+        // id in the operands is deterministic proof of prompt-injection, so it is
+        // the strongest refusal and must fire regardless of tool scope or mode.
+        // (The agent loop also screens reads through `screen_canary` before they
+        // reach this gate, since a read tool is gate-exempt.)
+        self.canary_check(behaviour_name, action, ctx).await?;
+
         // Tool-scope enforcement: a behaviour may only act through a tool
         // it declared. An out-of-scope proposal is refused fail-closed and
         // still audited (a scope violation is AI activity worth recording).
@@ -632,6 +693,18 @@ fn refusal_outcome(kind: ActionKind, external_trigger: bool) -> String {
     }
 }
 
+/// The content-free outcome for a structural-canary trip. Records the class
+/// (a canary was touched) and the external-trigger flag, never the operand value
+/// or the specific canary id, so the durable ledger shows a hijack tripwire fired
+/// without leaking what named it.
+fn canary_trip_outcome(external_trigger: bool) -> String {
+    if external_trigger {
+        "canary-tripped:structural+external-trigger".to_string()
+    } else {
+        "canary-tripped:structural".to_string()
+    }
+}
+
 /// The content-free label for a high-impact action class (a class, never the
 /// operands), so the ledger distinguishes an irreversible link from a permanent
 /// delete or an external message.
@@ -838,6 +911,47 @@ mod tests {
         assert_eq!(recorded[0].structural.outcome, "propose:mode");
         assert_eq!(recorded[0].call_chain_id.as_deref(), Some("run-1"));
         assert_eq!(obs.0.lock().unwrap().as_slice(), &[ActionDecision::Propose]);
+    }
+
+    #[tokio::test]
+    async fn a_canary_operand_trips_the_freeze_before_tool_scope() {
+        // A reserved canary id in the operands is proof of prompt-injection: the
+        // gate refuses with CanaryTripped and records a content-free trip outcome.
+        // It fires even though the tool IS in scope, proving the canary check runs
+        // pre-scope, and it does not notify the observer (a refusal, not a decision).
+        let cap = suggest_only();
+        let audit = MockAuditSink::accepting();
+        let obs = Recorder::default();
+        let act = ProposedAction {
+            tool: "graph.write".to_string(),
+            summary: "x".to_string(),
+            arguments: BTreeMap::from([(
+                "project".to_string(),
+                crate::canary::CANARY_IDS[0].to_string(),
+            )]),
+        };
+
+        let err = Gate::new(&cap, &audit, &obs, &FsPathResolver, &StaticMountPolicy::empty())
+            .decide_action(
+                "auto-tag-by-project",
+                BaselineMode::Suggest,
+                &scope(&["graph.write"]),
+                &act,
+                &ctx(true, "run-canary"),
+                &DeniedGraph,
+            )
+            .await
+            .expect_err("a canary touch must refuse");
+
+        assert!(matches!(err, GateError::CanaryTripped));
+        let recorded = audit.recorded().await;
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(
+            recorded[0].structural.outcome,
+            "canary-tripped:structural+external-trigger"
+        );
+        assert_eq!(recorded[0].structural.subject, "agent.auto-tag-by-project");
+        assert!(obs.0.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
