@@ -105,6 +105,39 @@ impl InstallDaemon {
         crate::trash::cleanup_trash() as u32
     }
 
+    /// Enrol a system-installed (apt/`.deb`) app: generate its profile from the
+    /// manifest at `manifest_path` and have the privileged `permission-helper` write
+    /// it root-owned under `/var/lib/arlen/permissions/{uid}/` (F3 Rung A). The uid
+    /// is this daemon's own (the user the app runs as). The future apt enroll-hook
+    /// calls this; the lunpkg path stays on the user-tier `~/.config` and does not.
+    /// Returns (success, error_message).
+    async fn enroll_system_app(&self, app_id: String, manifest_path: String) -> (bool, String) {
+        let content = match std::fs::read_to_string(&manifest_path) {
+            Ok(c) => c,
+            Err(e) => return (false, format!("read manifest: {e}")),
+        };
+        let manifest: install::Manifest = match toml::from_str(&content) {
+            Ok(m) => m,
+            Err(e) => return (false, format!("parse manifest: {e}")),
+        };
+        let profile = crate::permission_helper::system_profile_toml_from_manifest(
+            &app_id,
+            &manifest.permissions,
+        );
+        // SAFETY: getuid never fails.
+        let uid = unsafe { libc::getuid() };
+        match crate::permission_helper::write_system_profile(uid, &app_id, &profile).await {
+            Ok(()) => {
+                tracing::info!("enrolled system-tier profile for {app_id} (uid {uid})");
+                (true, String::new())
+            }
+            Err(e) => {
+                tracing::warn!("enroll_system_app failed for {app_id}: {e}");
+                (false, e.to_string())
+            }
+        }
+    }
+
     /// Get the current status of a job.
     ///
     /// Returns (progress: u8, state: String, status_message: String).
