@@ -15,6 +15,7 @@ import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { planRegenerate } from "$lib/regenerate";
 import { planEdit } from "$lib/edit";
+import { planDelete } from "$lib/delete";
 
 /// Who produced a message. `error` is a turn that failed (daemon down,
 /// disabled, query error) — rendered distinctly, never as an answer.
@@ -455,4 +456,19 @@ export async function editAndResend(messageId: number, newText: string): Promise
   } finally {
     busy.set(false);
   }
+}
+
+/// Delete a turn from the active conversation: remove the message with `id` and,
+/// for a question, the answer that belongs with it (see `planDelete`). A no-op
+/// when the delete is not allowed (a turn in flight, or an unknown id). Local
+/// and synchronous, so it persists immediately with no daemon round-trip; a
+/// caller wires it to a per-message delete control gated on the same check.
+export function deleteTurn(messageId: number): void {
+  const id = get(activeSessionId);
+  if (!id) return;
+  const session = get(sessions).find((s) => s.id === id);
+  if (!session) return;
+  const next = planDelete(session.messages, messageId);
+  if (!next) return;
+  updateSession(id, () => next);
 }
