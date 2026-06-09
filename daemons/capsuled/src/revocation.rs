@@ -13,7 +13,12 @@
 //! reads serialize) wraps it as a sibling piece.
 
 use std::collections::BTreeMap;
+use std::fs;
+use std::io::{self, Write};
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::path::PathBuf;
 
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 
 /// The durable per-capsule state.
@@ -82,6 +87,110 @@ impl RevocationLedger {
     }
 }
 
+/// The flock'd, durable persistence of a [`RevocationLedger`]. Every operation
+/// takes an exclusive lock on a dedicated lock file, loads the ledger, applies the
+/// one operation, and (on a state change) writes it back atomically (a private
+/// temp file + rename), so concurrent reads serialize and the op count survives a
+/// restart. The lock is on a stable file, never the renamed data file, so the lock
+/// stays valid across the rename.
+pub struct RevocationFile {
+    dir: PathBuf,
+}
+
+/// Holds the exclusive lock for the duration of one operation; unlocks on drop
+/// (closing the file releases the `flock`).
+struct LockGuard {
+    _file: fs::File,
+}
+
+impl RevocationFile {
+    /// Open (and create, `0700`) the directory holding the ledger.
+    pub fn open(dir: impl Into<PathBuf>) -> io::Result<Self> {
+        let dir = dir.into();
+        fs::create_dir_all(&dir)?;
+        let _ = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
+        Ok(Self { dir })
+    }
+
+    fn data_path(&self) -> PathBuf {
+        self.dir.join("revocations.json")
+    }
+
+    fn lock(&self) -> io::Result<LockGuard> {
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(self.dir.join("revocations.lock"))?;
+        file.lock_exclusive()?;
+        Ok(LockGuard { _file: file })
+    }
+
+    fn load(&self) -> io::Result<RevocationLedger> {
+        match fs::read(self.data_path()) {
+            Ok(bytes) => serde_json::from_slice(&bytes)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(RevocationLedger::default()),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn save(&self, ledger: &RevocationLedger) -> io::Result<()> {
+        let bytes =
+            serde_json::to_vec(ledger).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        let tmp = self.dir.join("revocations.json.tmp");
+        {
+            let mut f = fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(&tmp)?;
+            f.write_all(&bytes)?;
+            f.sync_all()?;
+        }
+        fs::rename(&tmp, self.data_path())?;
+        if let Ok(d) = fs::File::open(&self.dir) {
+            let _ = d.sync_all();
+        }
+        Ok(())
+    }
+
+    /// Record a freshly minted capsule (idempotent).
+    pub fn register(&self, handle: &str) -> io::Result<()> {
+        let _g = self.lock()?;
+        let mut ledger = self.load()?;
+        ledger.register(handle);
+        self.save(&ledger)
+    }
+
+    /// Revoke a capsule (terminal).
+    pub fn revoke(&self, handle: &str) -> io::Result<()> {
+        let _g = self.lock()?;
+        let mut ledger = self.load()?;
+        ledger.revoke(handle);
+        self.save(&ledger)
+    }
+
+    /// The per-read gate. Persists only on [`ConsumeVerdict::Allowed`] (a refused
+    /// read changes no state, so it writes nothing).
+    pub fn consume(&self, handle: &str, max_ops: u64) -> io::Result<ConsumeVerdict> {
+        let _g = self.lock()?;
+        let mut ledger = self.load()?;
+        let verdict = ledger.consume(handle, max_ops);
+        if matches!(verdict, ConsumeVerdict::Allowed) {
+            self.save(&ledger)?;
+        }
+        Ok(verdict)
+    }
+
+    /// The persisted state of a handle.
+    pub fn state(&self, handle: &str) -> io::Result<Option<CapsuleState>> {
+        let _g = self.lock()?;
+        Ok(self.load()?.state(handle).cloned())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,5 +241,43 @@ mod tests {
         let mut l = RevocationLedger::default();
         l.revoke("h");
         assert_eq!(l.consume("h", 10), ConsumeVerdict::Revoked);
+    }
+
+    #[test]
+    fn the_file_persists_counts_and_revocation_across_reopen() {
+        let dir = std::env::temp_dir().join(format!("capsule-revfile-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        {
+            let f = RevocationFile::open(&dir).unwrap();
+            f.register("h").unwrap();
+            assert_eq!(f.consume("h", 2).unwrap(), ConsumeVerdict::Allowed);
+        }
+        // Reopen: the count survived; one more read is allowed, then exhausted.
+        {
+            let f = RevocationFile::open(&dir).unwrap();
+            assert_eq!(f.state("h").unwrap().unwrap().ops_used, 1);
+            assert_eq!(f.consume("h", 2).unwrap(), ConsumeVerdict::Allowed);
+            assert_eq!(f.consume("h", 2).unwrap(), ConsumeVerdict::Exhausted);
+            f.revoke("h").unwrap();
+        }
+        // Revocation also survives a reopen.
+        {
+            let f = RevocationFile::open(&dir).unwrap();
+            assert_eq!(f.consume("h", 99).unwrap(), ConsumeVerdict::Revoked);
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_refused_read_writes_nothing_new() {
+        let dir = std::env::temp_dir().join(format!("capsule-revfile-noop-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let f = RevocationFile::open(&dir).unwrap();
+        // An unknown handle is refused and leaves no entry.
+        assert_eq!(f.consume("nope", 5).unwrap(), ConsumeVerdict::Unknown);
+        assert!(f.state("nope").unwrap().is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
