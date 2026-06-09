@@ -27,4 +27,5 @@ pub mod seams;
 pub mod slice;
 pub mod source;
 pub mod spill;
+pub mod undo_log;
 pub mod world;
