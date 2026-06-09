@@ -1000,6 +1000,24 @@ async fn handle_client(
                     .to_string(),
                 false,
             )
+        } else if references_authority_label(&cypher) && !is_privileged_authority_reader(&app_id) {
+            // The authority and provenance labels (Grant, CapabilityUse,
+            // EntityType) are served only through the dedicated, caller-scoped
+            // read op, never the general query path: a raw query like
+            // `MATCH (g:Grant)-[:USED_BY]->(a:App) RETURN a.id, g.declared_ceiling`
+            // would otherwise harvest the whole machine's authority-and-behaviour
+            // map, the most sensitive data the system holds (living-capability-
+            // graph.md §5, provenance-halo.md §5). This is the first per-query
+            // read-scope enforcement on the daemon, scoped to exactly these
+            // labels. The privileged whole-machine exemption is gated on F3
+            // (installd's inode-keyed identity registry) and not yet granted, so
+            // `is_privileged_authority_reader` denies every caller today.
+            warn!(app_id = %app_id, "graph query referencing an authority label denied");
+            (
+                "ERROR: queries referencing authority labels are not permitted via the query interface"
+                    .to_string(),
+                false,
+            )
         } else {
             // Bounded *client wait*: the connection returns QueryTimeout
             // after 500 ms (foundation §8.4) so the caller is never
@@ -1091,6 +1109,39 @@ fn is_write_query(cypher: &str) -> bool {
         "CREATE", "MERGE", "DELETE", "SET", "REMOVE", "DROP", "DETACH", "ALTER",
         "ATTACH", "USE", "COPY", "LOAD", "INSTALL", "EXPORT", "IMPORT",
     ];
+    cypher_references_any(cypher, &WRITE_KEYWORDS)
+}
+
+/// The graph labels whose projection is the machine's authority-and-behaviour
+/// map (living-capability-graph.md §5, provenance-halo.md §5). The general query
+/// path denies any reference to them; they are served only through the dedicated
+/// caller-scoped read op, so they can never be harvested wholesale.
+const AUTHORITY_LABELS: [&str; 3] = ["GRANT", "CAPABILITYUSE", "ENTITYTYPE"];
+
+/// Whether `cypher` references one of the protected authority labels. Fail-closed:
+/// an unusual identifier matching a label name (case-insensitively) is denied
+/// rather than risk a leak, which is safe because these are reserved
+/// authority-label identifiers a normal query never names.
+fn references_authority_label(cypher: &str) -> bool {
+    cypher_references_any(cypher, &AUTHORITY_LABELS)
+}
+
+/// Whether `app_id` may reference the authority labels on the general query path
+/// (the privileged whole-machine reader). Gated on F3 (installd's inode-keyed
+/// identity registry): until a caller's identity is hardware/installer-attested,
+/// a same-uid process could squat the privileged app id and become a
+/// whole-machine authority harvester, so no caller is privileged yet and the
+/// general path denies the labels for everyone. When F3 lands, the privileged
+/// Knowledge/Settings principal held to a dedicated capability is admitted here.
+fn is_privileged_authority_reader(_app_id: &str) -> bool {
+    false
+}
+
+/// Token-scan `cypher` for any of `needles` (compared uppercased), skipping
+/// single-quoted string literals so a keyword or label name inside a string value
+/// is a value, not a clause. The shared scan behind the write-query and
+/// authority-label read guards.
+fn cypher_references_any(cypher: &str, needles: &[&str]) -> bool {
     let mut in_string = false;
     let mut escaped = false;
     let mut token = String::new();
@@ -1109,14 +1160,14 @@ fn is_write_query(cypher: &str) -> bool {
             '\'' => in_string = true,
             c if c.is_ascii_alphanumeric() || c == '_' => token.push(c.to_ascii_uppercase()),
             _ => {
-                if WRITE_KEYWORDS.contains(&token.as_str()) {
+                if needles.contains(&token.as_str()) {
                     return true;
                 }
                 token.clear();
             }
         }
     }
-    WRITE_KEYWORDS.contains(&token.as_str())
+    needles.contains(&token.as_str())
 }
 
 #[cfg(test)]
@@ -1166,6 +1217,40 @@ mod tests {
         assert!(!is_write_query(
             "MATCH (f:File) WHERE f.path = '/var/COPY/load' RETURN f.id"
         ));
+    }
+
+    #[test]
+    fn detects_authority_label_references() {
+        assert!(references_authority_label("MATCH (g:Grant) RETURN g"));
+        assert!(references_authority_label(
+            "MATCH (g:Grant)-[:USED_BY]->(a:App) RETURN a.id, g.declared_ceiling"
+        ));
+        assert!(references_authority_label("MATCH (c:CapabilityUse) RETURN c"));
+        assert!(references_authority_label("MATCH (e:EntityType) RETURN e"));
+        // Fail-closed across case (a label is case-sensitive, but denying any
+        // case variant is safe and robust).
+        assert!(references_authority_label("MATCH (g:grant) RETURN g"));
+    }
+
+    #[test]
+    fn allows_non_authority_queries() {
+        assert!(!references_authority_label("MATCH (n:File) RETURN n"));
+        assert!(!references_authority_label("MATCH (a:App) RETURN a.id"));
+        // A property whose name merely contains a label word is a distinct token.
+        assert!(!references_authority_label("MATCH (a:App) RETURN a.grant_total"));
+        // A label name inside a string literal is a value, not a label.
+        assert!(!references_authority_label(
+            "MATCH (f:File) WHERE f.path = '/home/tim/Grant/x' RETURN f.id"
+        ));
+    }
+
+    #[test]
+    fn no_caller_is_a_privileged_authority_reader_pre_f3() {
+        // The privileged whole-machine exemption is gated on F3; until it lands,
+        // the general query path denies the authority labels for every caller.
+        assert!(!is_privileged_authority_reader("desktop-shell"));
+        assert!(!is_privileged_authority_reader("knowledge-app"));
+        assert!(!is_privileged_authority_reader("unknown"));
     }
 
     #[tokio::test]
