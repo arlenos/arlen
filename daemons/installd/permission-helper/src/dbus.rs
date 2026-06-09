@@ -75,6 +75,34 @@ impl PermissionHelper {
     async fn profile_exists(&self, app_id: &str, uid: u32) -> bool {
         profile::profile_exists(uid, app_id)
     }
+
+    /// Record an app's binary identity into the broker-owned registry (F3 Rung B).
+    /// The helper RE-STATS `install_path` itself (never trusts a caller-supplied
+    /// inode), so a compromised installd cannot record a lie; the registry is
+    /// root-owned, so a same-uid process cannot rewrite the mapping. The caller may
+    /// only record for its own uid (or, as root, any uid).
+    async fn record_identity(
+        &self,
+        app_id: &str,
+        uid: u32,
+        install_path: &str,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &Connection,
+    ) -> (bool, String) {
+        if let Err(e) = validate_caller(&header, connection, uid).await {
+            return (false, e);
+        }
+        match crate::identity::record_identity(uid, app_id, std::path::Path::new(install_path)) {
+            Ok(path) => {
+                tracing::info!("recorded identity for {app_id} (uid {uid}) at {}", path.display());
+                (true, String::new())
+            }
+            Err(e) => {
+                tracing::warn!("record_identity failed for {app_id}: {e}");
+                (false, e.to_string())
+            }
+        }
+    }
 }
 
 /// Validate that the D-Bus caller is an authorized process.
