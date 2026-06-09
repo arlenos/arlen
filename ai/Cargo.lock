@@ -40,10 +40,10 @@ dependencies = [
  "arlen-ai-core",
  "arlen-ai-providers",
  "arlen-ai-sandbox",
+ "arlen-ai-undo-core",
  "async-trait",
  "audit-proto",
  "futures",
- "hmac",
  "os-sdk",
  "prost",
  "serde",
@@ -174,9 +174,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-ai-undo-core"
+version = "0.1.0"
+dependencies = [
+ "hmac",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "arlen-ai-undo-signer"
 version = "0.1.0"
 dependencies = [
+ "arlen-ai-undo-core",
  "getrandom 0.2.17",
  "tempfile",
  "thiserror 2.0.18",
