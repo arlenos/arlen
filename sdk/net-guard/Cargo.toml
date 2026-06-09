@@ -2,14 +2,15 @@
 name = "arlen-net-guard"
 version = "0.1.0"
 edition = "2021"
-description = "SSRF guard: block private/loopback destinations and pin DNS resolution against rebinding"
+description = "SSRF guard plus per-host egress filter: block private/loopback destinations, pin DNS against rebinding, and forward-proxy a confined process to its declared host allowlist"
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-tokio = { version = "1", features = ["net", "rt"] }
+tokio = { version = "1", features = ["net", "rt", "io-util", "macros", "time"] }
+tokio-util = "0.7"
 thiserror = "2"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["net", "rt", "macros"] }
+tokio = { version = "1", features = ["net", "rt", "macros", "io-util", "time"] }
