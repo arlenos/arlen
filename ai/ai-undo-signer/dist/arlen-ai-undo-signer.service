@@ -1,0 +1,48 @@
+[Unit]
+Description=Arlen AI undo-log signer (user service)
+Documentation=https://github.com/arlenos/arlen
+# The signer seals the AI agent's durable undo-log. It has no runtime
+# dependency on any other service: it opens its own store and binds its
+# own socket, and the agent connects lazily and tolerates the socket
+# being absent, so there is no ordering requirement here.
+
+[Service]
+# Type=simple: the signer does not call sd_notify. The agent client
+# connects lazily and handles a not-yet-bound socket, so no readiness
+# barrier is needed before dependents start.
+Type=simple
+# Production binary path (system-wide install). Dev runs invoke the
+# debug binary directly; this file is the canonical production unit.
+ExecStart=/usr/lib/arlen/libexec/arlen-ai-undo-signer
+# A tampered or unverifiable undo-log makes the signer exit non-zero
+# (the fail-closed integrity posture); restart with back-off so a
+# persistent fault surfaces rather than crash-looping fast.
+Restart=on-failure
+RestartSec=2
+
+# The signer holds the undo-log's HMAC key and the chained log of
+# PII-adjacent prior state (prior paths, prior setting values). It
+# writes only its own per-user state directory and binds only a Unix
+# socket under the runtime dir, and never touches the network, so the
+# hardening is tight and the address-family restriction documents that
+# property.
+ProtectSystem=strict
+ProtectHome=read-only
+# The undo-log + HMAC key live under $XDG_STATE_HOME (~/.local/state).
+ReadWritePaths=%h/.local/state/arlen
+# The submit/lookup socket lives under $XDG_RUNTIME_DIR.
+ReadWritePaths=/run/user/%U/arlen
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target
