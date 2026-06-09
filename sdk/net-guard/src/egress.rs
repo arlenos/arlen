@@ -12,13 +12,41 @@
 //! later commits. The SSRF resolve-and-pin floor ([`crate::resolve_and_pin`]) stays
 //! the complementary check - an allowlisted host that resolves into a blocked range
 //! is still refused.
+//!
+//! The launcher's contract is exactly three calls:
+//! 1. [`EgressAllowlist::parse`] over the `NetworkPolicy::FilteredHosts` entries.
+//! 2. [`EgressProxy::bind`] then [`EgressProxy::listen_addr`] - the launcher writes
+//!    that address into the confined `http_proxy`/`https_proxy`/`all_proxy` env and
+//!    arranges the netns so it is the ONLY reachable route.
+//! 3. `tokio::spawn(proxy.serve(cancel))` - the launcher owns the cancellation
+//!    token and cancels on app exit.
+//!
+//! The route-absence invariant is load-bearing: the proxy is the netns's only
+//! route, so a proxy-unaware process that dials a raw IP directly reaches nothing
+//! (dropped by route absence, not by the proxy). The proxy enforces the allowlist
+//! for proxy-aware traffic; all other egress is dropped because there is no route.
+//! That is fail-closed - a hardcoded-IP app fails to reach the network rather than
+//! silently bypassing the allowlist. The netns plumbing itself is the launcher's
+//! job (strand 1), not this library's.
 
 use std::collections::HashSet;
+use std::future::Future;
 use std::net::SocketAddr;
+use std::pin::Pin;
+use std::sync::Arc;
 
 use thiserror::Error;
+use tokio::io::{copy_bidirectional, AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+use tokio_util::sync::CancellationToken;
 
 use crate::{resolve_and_pin, GuardError};
+
+/// The maximum bytes the proxy reads while looking for the end of the `CONNECT`
+/// request head. A confined process must not be able to make the proxy buffer
+/// unboundedly (OOM) by sending a head that never terminates; reaching this cap
+/// without a `\r\n\r\n` is a hard reject.
+const MAX_REQUEST_HEAD: usize = 8 * 1024;
 
 /// A single allowlisted egress destination: an exact `host:port` pair the confined
 /// process may reach. Parsed from a `NetworkPolicy::FilteredHosts` entry (the
@@ -137,6 +165,155 @@ pub async fn decide_egress(allowlist: &EgressAllowlist, host: &str, port: u16) -
     }
 }
 
+/// The per-destination decision the proxy runs for each `CONNECT`. The real proxy
+/// wires [`decide_egress`] over its allowlist; a test wires a stub so the splice
+/// path can be exercised against a loopback upstream without disabling the SSRF
+/// floor in production.
+type EgressResolver =
+    Arc<dyn Fn(String, u16) -> Pin<Box<dyn Future<Output = EgressVerdict> + Send>> + Send + Sync>;
+
+/// A forced forwarding proxy: the confined process's only egress. Speaks HTTP
+/// `CONNECT host:port` (tunnelling TLS unbroken) and enforces the allowlist + the
+/// SSRF floor on every tunnel. Runs in the host netns; the confined process reaches
+/// it over the netns's single link with `*_proxy` env pointed at [`Self::listen_addr`].
+pub struct EgressProxy {
+    listener: TcpListener,
+    resolver: EgressResolver,
+}
+
+impl EgressProxy {
+    /// Bind the proxy on `bind_addr` (the launcher picks a loopback/veth addr
+    /// reachable from the netns) with the given allowlist. Does not yet serve. Each
+    /// `CONNECT` is decided by [`decide_egress`] over `allowlist`.
+    pub async fn bind(bind_addr: SocketAddr, allowlist: EgressAllowlist) -> std::io::Result<Self> {
+        let resolver: EgressResolver = Arc::new(move |host, port| {
+            let allowlist = allowlist.clone();
+            Box::pin(async move { decide_egress(&allowlist, &host, port).await })
+        });
+        Self::bind_with_resolver(bind_addr, resolver).await
+    }
+
+    /// Bind with an injected decision function. The test seam: a resolver may return
+    /// `Allow(loopback)` so the tunnel splice is tested end to end without relaxing
+    /// the SSRF floor that the real [`Self::bind`] path enforces.
+    pub async fn bind_with_resolver(
+        bind_addr: SocketAddr,
+        resolver: EgressResolver,
+    ) -> std::io::Result<Self> {
+        let listener = TcpListener::bind(bind_addr).await?;
+        Ok(Self { listener, resolver })
+    }
+
+    /// The address the launcher writes into the confined `http(s)_proxy` env.
+    pub fn listen_addr(&self) -> std::io::Result<SocketAddr> {
+        self.listener.local_addr()
+    }
+
+    /// Serve until cancelled. Each accepted connection is one `CONNECT` tunnel:
+    /// parse the request head, decide, on `Allow` splice both directions to the
+    /// pinned addr, otherwise reply `403`/`502` and close. Cancellation-safe via
+    /// `cancel` (the launcher cancels on app exit); a per-connection error never
+    /// stops the accept loop.
+    pub async fn serve(self, cancel: CancellationToken) {
+        loop {
+            tokio::select! {
+                _ = cancel.cancelled() => break,
+                accepted = self.listener.accept() => {
+                    let Ok((stream, _peer)) = accepted else { continue };
+                    let resolver = self.resolver.clone();
+                    tokio::spawn(async move {
+                        let _ = handle_tunnel(stream, resolver).await;
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Handle one `CONNECT` tunnel: read the bounded request head, parse the target,
+/// decide, and either splice to the pinned upstream or reply with the refusal.
+async fn handle_tunnel(mut client: TcpStream, resolver: EgressResolver) -> std::io::Result<()> {
+    let (host, port) = match read_connect_target(&mut client).await {
+        Ok(target) => target,
+        Err(_) => {
+            // Malformed or oversized head: refuse, do not dial anything.
+            let _ = client.write_all(b"HTTP/1.1 400 Bad Request\r\n\r\n").await;
+            return Ok(());
+        }
+    };
+
+    match resolver(host, port).await {
+        EgressVerdict::Allow(addr) => {
+            let mut upstream = match TcpStream::connect(addr).await {
+                Ok(u) => u,
+                Err(_) => {
+                    let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n").await;
+                    return Ok(());
+                }
+            };
+            client
+                .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+                .await?;
+            // Splice both directions until both halves close; the sockets drop when
+            // this returns, so no upstream leak on a half-close.
+            let _ = copy_bidirectional(&mut client, &mut upstream).await;
+        }
+        EgressVerdict::NotAllowlisted => {
+            let _ = client.write_all(b"HTTP/1.1 403 Forbidden\r\n\r\n").await;
+        }
+        EgressVerdict::Blocked(_) => {
+            let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n").await;
+        }
+    }
+    Ok(())
+}
+
+/// Read the `CONNECT` request head (bounded by [`MAX_REQUEST_HEAD`]) and return the
+/// requested `(host, port)`. Errors on a non-`CONNECT` method, a malformed
+/// authority, a missing/invalid port, or a head that exceeds the cap without
+/// terminating - in every error case the caller refuses without dialling.
+async fn read_connect_target(client: &mut TcpStream) -> Result<(String, u16), ()> {
+    let mut buf: Vec<u8> = Vec::with_capacity(256);
+    let mut chunk = [0u8; 1024];
+    loop {
+        // Find the end of the head.
+        if let Some(pos) = find_head_end(&buf) {
+            return parse_connect_line(&buf[..pos]);
+        }
+        if buf.len() >= MAX_REQUEST_HEAD {
+            return Err(());
+        }
+        let n = client.read(&mut chunk).await.map_err(|_| ())?;
+        if n == 0 {
+            return Err(()); // EOF before a complete head
+        }
+        buf.extend_from_slice(&chunk[..n.min(MAX_REQUEST_HEAD - buf.len())]);
+    }
+}
+
+/// The index of the first byte of the `\r\n\r\n` head terminator, if present.
+fn find_head_end(buf: &[u8]) -> Option<usize> {
+    buf.windows(4).position(|w| w == b"\r\n\r\n")
+}
+
+/// Parse the first request line out of the head bytes: `CONNECT host:port HTTP/1.1`.
+fn parse_connect_line(head: &[u8]) -> Result<(String, u16), ()> {
+    let text = std::str::from_utf8(head).map_err(|_| ())?;
+    let first = text.lines().next().ok_or(())?;
+    let mut parts = first.split_whitespace();
+    let method = parts.next().ok_or(())?;
+    let authority = parts.next().ok_or(())?;
+    if !method.eq_ignore_ascii_case("CONNECT") {
+        return Err(());
+    }
+    let (host, port_str) = authority.rsplit_once(':').ok_or(())?;
+    if host.is_empty() {
+        return Err(());
+    }
+    let port = port_str.parse::<u16>().map_err(|_| ())?;
+    Ok((host.to_string(), port))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,5 +422,125 @@ mod tests {
             matches!(v, EgressVerdict::Blocked(_)),
             "got {v:?}, expected Blocked (SSRF floor)"
         );
+    }
+
+    // ── proxy tests (commit 3) ──
+
+    /// A resolver that always allows, dialling the given fixed upstream. Lets the
+    /// splice path run against a loopback upstream without relaxing the SSRF floor.
+    fn allow_resolver(upstream: SocketAddr) -> EgressResolver {
+        Arc::new(move |_host, _port| Box::pin(async move { EgressVerdict::Allow(upstream) }))
+    }
+
+    /// A resolver that always refuses as NotAllowlisted.
+    fn deny_resolver() -> EgressResolver {
+        Arc::new(|_host, _port| Box::pin(async { EgressVerdict::NotAllowlisted }))
+    }
+
+    async fn read_status_line(stream: &mut TcpStream) -> String {
+        let mut buf = Vec::new();
+        let mut byte = [0u8; 1];
+        // Read until the first \n (end of the status line).
+        loop {
+            let n = stream.read(&mut byte).await.unwrap();
+            if n == 0 {
+                break;
+            }
+            buf.push(byte[0]);
+            if byte[0] == b'\n' {
+                break;
+            }
+        }
+        String::from_utf8_lossy(&buf).trim().to_string()
+    }
+
+    #[tokio::test]
+    async fn allowlisted_connect_tunnels_bytes() {
+        // A fake upstream that echoes one line back.
+        let upstream = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_addr = upstream.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut s, _) = upstream.accept().await.unwrap();
+            let mut b = [0u8; 5];
+            s.read_exact(&mut b).await.unwrap();
+            s.write_all(&b).await.unwrap();
+        });
+
+        let proxy = EgressProxy::bind_with_resolver(
+            "127.0.0.1:0".parse().unwrap(),
+            allow_resolver(upstream_addr),
+        )
+        .await
+        .unwrap();
+        let proxy_addr = proxy.listen_addr().unwrap();
+        let cancel = CancellationToken::new();
+        let c2 = cancel.clone();
+        tokio::spawn(async move { proxy.serve(c2).await });
+
+        let mut client = TcpStream::connect(proxy_addr).await.unwrap();
+        client
+            .write_all(b"CONNECT api.example.org:443 HTTP/1.1\r\n\r\n")
+            .await
+            .unwrap();
+        let status = read_status_line(&mut client).await;
+        assert!(status.contains("200"), "expected 200, got {status:?}");
+        // Consume the rest of the blank-line terminator, then tunnel bytes.
+        let mut rest = [0u8; 2];
+        client.read_exact(&mut rest).await.unwrap(); // the trailing \r\n
+        client.write_all(b"hello").await.unwrap();
+        let mut echoed = [0u8; 5];
+        client.read_exact(&mut echoed).await.unwrap();
+        assert_eq!(&echoed, b"hello", "bytes tunnel through to the upstream");
+        cancel.cancel();
+    }
+
+    #[tokio::test]
+    async fn non_allowlisted_connect_is_refused_and_never_dials() {
+        // The deny resolver never yields an upstream; assert a 403 and that no dial
+        // happens (there is no upstream to dial, and the resolver short-circuits).
+        let proxy = EgressProxy::bind_with_resolver(
+            "127.0.0.1:0".parse().unwrap(),
+            deny_resolver(),
+        )
+        .await
+        .unwrap();
+        let proxy_addr = proxy.listen_addr().unwrap();
+        let cancel = CancellationToken::new();
+        let c2 = cancel.clone();
+        tokio::spawn(async move { proxy.serve(c2).await });
+
+        let mut client = TcpStream::connect(proxy_addr).await.unwrap();
+        client
+            .write_all(b"CONNECT blocked.example:443 HTTP/1.1\r\n\r\n")
+            .await
+            .unwrap();
+        let status = read_status_line(&mut client).await;
+        assert!(status.contains("403"), "expected 403, got {status:?}");
+        cancel.cancel();
+    }
+
+    #[tokio::test]
+    async fn an_unterminated_head_is_rejected() {
+        // A head that never terminates must not buffer unboundedly; the parser caps
+        // and the connection is refused with 400.
+        let proxy = EgressProxy::bind_with_resolver(
+            "127.0.0.1:0".parse().unwrap(),
+            allow_resolver("127.0.0.1:1".parse().unwrap()),
+        )
+        .await
+        .unwrap();
+        let proxy_addr = proxy.listen_addr().unwrap();
+        let cancel = CancellationToken::new();
+        let c2 = cancel.clone();
+        tokio::spawn(async move { proxy.serve(c2).await });
+
+        let mut client = TcpStream::connect(proxy_addr).await.unwrap();
+        // Send a CONNECT line but no terminating blank line, then a flood of bytes.
+        client.write_all(b"CONNECT api.example.org:443 HTTP/1.1\r\n").await.unwrap();
+        let flood = vec![b'x'; 16 * 1024];
+        let _ = client.write_all(&flood).await;
+        let status = read_status_line(&mut client).await;
+        assert!(status.contains("400"), "expected 400, got {status:?}");
+        cancel.cancel();
     }
 }

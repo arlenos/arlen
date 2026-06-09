@@ -15,7 +15,9 @@ use std::net::{IpAddr, SocketAddr};
 use thiserror::Error;
 
 mod egress;
-pub use egress::{decide_egress, AllowedHost, AllowlistError, EgressAllowlist, EgressVerdict};
+pub use egress::{
+    decide_egress, AllowedHost, AllowlistError, EgressAllowlist, EgressProxy, EgressVerdict,
+};
 
 /// Why a destination was refused before any socket was opened.
 #[derive(Debug, Error)]
