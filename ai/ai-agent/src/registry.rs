@@ -164,6 +164,46 @@ pub(crate) fn is_honeytool(tool: &str) -> bool {
     lookup(tool).is_some_and(|t| matches!(t.schema().provenance, Provenance::Honeytool))
 }
 
+/// Whether a schema's reversibility is *structurally proven* by its preconditions
+/// (reversible-receipts-and-the-effect-model.md EM-R9). A rule classified
+/// reversible must carry the precondition that makes its inverse exact; validating
+/// it here at registry level catches a malformed reversible rule before it ships,
+/// the layer above predict's per-invocation refusal. Today the one auto-reversible
+/// effect is `AssertEdge`: its op-id self-inverse `RetractEdge` is exact only if
+/// the edge was absent before, so each `AssertEdge` must be guarded by a matching
+/// `Not(EdgeExists)`; without it the assert could be a no-op on a pre-existing edge
+/// whose inverse retract would then wrongly remove it. A non-reversible schema
+/// carries no obligation (vacuously true). When a new reversible effect type gains
+/// a rule, its proof obligation is added here.
+pub(crate) fn reversibility_proof_holds(schema: &ActionSchema) -> bool {
+    if compensation_of(&schema.effects).is_none() {
+        return true;
+    }
+    schema.effects.iter().all(|effect| match effect {
+        Effect::AssertEdge { from, edge, to } => schema
+            .preconditions
+            .iter()
+            .any(|p| is_edge_absence_proof(p, from, edge, to)),
+        _ => true,
+    })
+}
+
+/// Whether `p` is exactly `Not(EdgeExists { from, edge, to })`, the absence proof
+/// that makes an `AssertEdge` a strict create (and so its retract inverse exact).
+fn is_edge_absence_proof(p: &Predicate, from: &str, edge: &str, to: &str) -> bool {
+    if let Predicate::Not(inner) = p {
+        if let Predicate::EdgeExists {
+            from: f,
+            edge: e,
+            to: t,
+        } = inner.as_ref()
+        {
+            return f == from && e == edge && t == to;
+        }
+    }
+    false
+}
+
 /// The given rule for linking a file to the project it belongs to
 /// (`FILE_PART_OF`). It proves the real invariant before the link may be
 /// asserted: both nodes exist, the file's path lies under the project's root
@@ -237,6 +277,64 @@ mod tests {
         // It is NOT a given rule, so the canary zero-FP invariant never scans it
         // and the proof path never treats it as provable.
         assert!(!GIVEN_ACTIONS.contains(&HONEYTOOL_ACTION));
+    }
+
+    #[test]
+    fn every_given_rule_proves_its_reversibility() {
+        // EM-R9: a registry rule classified reversible must structurally carry the
+        // precondition that makes its inverse exact. Validated over the canonical
+        // given set (extend with approved-Learned when that path lands), so a
+        // malformed reversible rule fails CI before it ships.
+        for action in GIVEN_ACTIONS {
+            let trusted = lookup(action).expect("a listed given action resolves");
+            assert!(
+                reversibility_proof_holds(trusted.schema()),
+                "given rule {action} is reversible but lacks its reversibility-proof precondition"
+            );
+        }
+    }
+
+    #[test]
+    fn reversibility_proof_requires_edge_absence() {
+        // A reversible AssertEdge without its Not(EdgeExists) proof fails; with it
+        // passes; a non-reversible schema is vacuously fine.
+        let edge = |from: &str, to: &str| Effect::AssertEdge {
+            from: from.into(),
+            edge: "FILE_PART_OF".into(),
+            to: to.into(),
+        };
+        let absent = Predicate::Not(Box::new(Predicate::EdgeExists {
+            from: "file".into(),
+            edge: "FILE_PART_OF".into(),
+            to: "proj".into(),
+        }));
+        let with_proof = ActionSchema {
+            action: "graph.write".into(),
+            preconditions: vec![absent],
+            effects: vec![edge("file", "proj")],
+            provenance: Provenance::Given,
+        };
+        assert!(reversibility_proof_holds(&with_proof));
+
+        let without_proof = ActionSchema {
+            action: "graph.write".into(),
+            preconditions: vec![],
+            effects: vec![edge("file", "proj")],
+            provenance: Provenance::Given,
+        };
+        assert!(!reversibility_proof_holds(&without_proof));
+
+        let irreversible = ActionSchema {
+            action: "x".into(),
+            preconditions: vec![],
+            effects: vec![Effect::SetField {
+                bind: "n".into(),
+                field: "f".into(),
+                value: "v".into(),
+            }],
+            provenance: Provenance::Given,
+        };
+        assert!(reversibility_proof_holds(&irreversible));
     }
 
     #[test]
