@@ -720,6 +720,20 @@ fn revoke_caller_admitted(app_id: &str) -> bool {
     app_id == "settings" || (cfg!(debug_assertions) && app_id.starts_with("dev."))
 }
 
+/// Whether `app_id` is a safe single path component for use as a profile-file
+/// name: non-empty, only `[A-Za-z0-9._-]` (excludes every path separator and NUL,
+/// so it cannot escape the permissions directory), and not a `.`/`..` directory
+/// reference. Reverse-DNS ids (`com.example.app`) pass; a traversal or absolute
+/// path does not.
+fn is_safe_app_id(app_id: &str) -> bool {
+    !app_id.is_empty()
+        && app_id != "."
+        && app_id != ".."
+        && app_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'_' || b == b'-')
+}
+
 /// LCG-R5 (living-capability-graph.md §6): the caller-scoped, narrowing-only
 /// revoke. Admits only the `settings` principal (kernel-attested), refuses a
 /// system-tier target (managed by the system, not revocable here), and applies
@@ -736,6 +750,16 @@ fn handle_revoke(app_id: &str, body: &[u8]) -> String {
         Ok(r) => r,
         Err(e) => return format!("ERROR: invalid revoke request: {e}"),
     };
+    // The target app id becomes a filesystem path (`profile_path` interpolates it
+    // into `~/.config/permissions/{id}.toml`), so it MUST be a single safe path
+    // component. Without this an attacker-influenced id like `/etc/x` (absolute,
+    // discards the base) or `../../etc/x` (lexical escape) would let revoke
+    // read+rewrite an arbitrary graph-profile-shaped TOML anywhere on disk. The
+    // charset excludes every path separator, so the result can only ever name a
+    // file inside the permissions directory.
+    if !is_safe_app_id(&req.target_app_id) {
+        return "ERROR: invalid target app id".to_string();
+    }
     // System-tier targets are refused, not faked (§6.2): their authority is
     // managed by the system, and the user-tier `~/.config` write would not be
     // re-read for them.
@@ -1775,6 +1799,33 @@ mod tests {
     fn handle_revoke_rejects_a_malformed_request() {
         let r = handle_revoke("settings", b"not json");
         assert!(r.starts_with("ERROR: invalid revoke request"), "got {r}");
+    }
+
+    #[test]
+    fn handle_revoke_rejects_a_traversal_target() {
+        // A target app id that would escape the permissions dir is refused before
+        // it becomes a path, so revoke can never read+rewrite an arbitrary file.
+        for target in ["../../../etc/cron.d/evil", "/etc/passwd", "..", "a/b", "x\0y"] {
+            let body = format!(
+                "{{\"target_app_id\":\"{}\",\"reach\":{{\"InstanceAll\":null}},\"initiator\":{{\"User\":null}}}}",
+                target.escape_default()
+            );
+            let r = handle_revoke("settings", body.as_bytes());
+            assert!(
+                r.starts_with("ERROR: invalid target app id") || r.starts_with("ERROR: invalid revoke request"),
+                "traversal target {target:?} must be refused, got {r}"
+            );
+        }
+    }
+
+    #[test]
+    fn is_safe_app_id_accepts_reverse_dns_and_rejects_traversal() {
+        for ok in ["settings", "com.example.app", "ai-agent", "a_b.c-d"] {
+            assert!(is_safe_app_id(ok), "{ok} should be safe");
+        }
+        for bad in ["", ".", "..", "../x", "/etc/x", "a/b", "a\\b", "x\0y"] {
+            assert!(!is_safe_app_id(bad), "{bad:?} must be rejected");
+        }
     }
 
     #[test]
