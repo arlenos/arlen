@@ -16,3 +16,4 @@
 //! serve loop and the mint/revoke surface follow.
 
 pub mod scope;
+pub mod slice;

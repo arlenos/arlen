@@ -6,6 +6,4 @@ description = "Context Capsule daemon: mint, serve and revoke signed, scope-boun
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-
-[dev-dependencies]
 serde_json = "1"
