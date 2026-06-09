@@ -134,10 +134,17 @@ pub fn validate_typed_read(
     req: TypedReadRequest,
     readable_labels: &[String],
 ) -> Result<ValidatedRead, &'static str> {
-    if !readable_labels.iter().any(|l| l.eq_ignore_ascii_case(&req.label)) {
+    // Match case-insensitively but bind the GRANTED label's casing (not the
+    // caller's), so the built query names the label the caller was actually scoped
+    // to - a case-variant request can never select a differently-cased label.
+    let Some(label) = readable_labels
+        .iter()
+        .find(|l| l.eq_ignore_ascii_case(&req.label))
+        .cloned()
+    else {
         return Err("label outside the caller's read scope");
-    }
-    if !is_valid_identifier(&req.label) {
+    };
+    if !is_valid_identifier(&label) {
         return Err("label is not a safe identifier");
     }
     if req.filters.is_empty() {
@@ -158,7 +165,7 @@ pub fn validate_typed_read(
     }
     let limit = req.limit.clamp(1, MAX_TYPED_READ_LIMIT);
     Ok(ValidatedRead {
-        label: req.label,
+        label,
         filters: req.filters.into_iter().map(|f| (f.field, f.value)).collect(),
         select: req.select,
         limit,
@@ -259,6 +266,19 @@ mod tests {
         assert_eq!(v.label, "CommandHistory");
         assert_eq!(v.filters.len(), 1);
         assert_eq!(v.select, ["command", "ran_at"]);
+    }
+
+    #[test]
+    fn validate_binds_the_granted_label_casing_not_the_callers() {
+        // A case-variant request matches the allowlist but the built read uses the
+        // GRANTED casing, never the caller's chosen casing.
+        let r = req(
+            "commandhistory",
+            vec![filter("session_id", TypedValue::Text("s".into()))],
+            &["command"],
+        );
+        let v = validate_typed_read(r, &["CommandHistory".into()]).unwrap();
+        assert_eq!(v.label, "CommandHistory");
     }
 
     #[test]
