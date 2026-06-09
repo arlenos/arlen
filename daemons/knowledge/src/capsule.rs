@@ -14,11 +14,6 @@
 //! conversion; the graph-backed scope expansion, the projected as-of node load and
 //! the read op follow.
 
-// API ahead of its consumer: the cell conversion is used by the capsule read op
-// (the next piece) and by tests; until the op wires it into the bin tree it reads
-// unused in a plain build, like the other not-yet-consumed daemon read APIs.
-#![allow(dead_code)]
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::Result;

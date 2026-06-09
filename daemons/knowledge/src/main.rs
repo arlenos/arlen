@@ -10,6 +10,7 @@ mod proto {
 
 mod auth;
 mod backup;
+mod capsule;
 mod daemon;
 mod db;
 mod events;

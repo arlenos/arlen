@@ -3,7 +3,6 @@
 
 pub mod auth;
 pub mod backup;
-pub mod capsule;
 pub mod db;
 pub mod fts;
 pub mod fuse;
