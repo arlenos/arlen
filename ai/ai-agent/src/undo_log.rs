@@ -13,13 +13,15 @@
 //! retention by undo-window), and the separate-uid signer helper that seals it,
 //! are later EM-R1 increments built on this core.
 
+use serde::{Deserialize, Serialize};
+
 /// The lifecycle of an undo-log entry (§2). An entry is created [`InFlight`] (the
 /// provisional record appended and fsynced *before* the externalised act,
 /// carrying the captured inverse), then transitions as the act commits, aborts,
 /// is compensated, or is superseded.
 ///
 /// [`InFlight`]: UndoState::InFlight
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UndoState {
     /// Provisional: written ahead of the act. A crash leaves the entry here for
     /// the reconciler to resolve against reality (§2).
@@ -100,7 +102,7 @@ pub fn fold_state(records: &[UndoState]) -> Result<UndoState, String> {
 /// so this never changes after the create record is appended. The resolved
 /// forward operation (for reconcile) is a later field, added with the reconcile
 /// path; the undo only needs the inverse.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UndoEntry {
     /// The durable op id (the entry's key, the reconcile/compensate key).
     pub op_id: String,
@@ -113,7 +115,7 @@ pub struct UndoEntry {
 /// One appended record in the event-sourced log: either an entry's creation (its
 /// immutable data, implicitly `InFlight`) or a lifecycle transition of an
 /// existing entry. The current state of an `op_id` is the fold of its records.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 enum LogRecord {
     /// An entry was created (state begins `InFlight`).
     Created(UndoEntry),
