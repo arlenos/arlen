@@ -33,6 +33,7 @@ const SCREEN_TIMEOUT: Duration = Duration::from_secs(5);
 /// config) flows under [`ScreeningMode::Off`] (sanitisation + the action gate are
 /// the containment), a configured-but-unloadable one [`ScreeningMode::FailClosed`]
 /// blocks, and a loaded one [`ScreeningMode::On`] screens.
+#[derive(Clone)]
 pub enum ScreeningMode {
     /// No classifier provisioned. Content flows (sanitisation + the gate contain).
     Off,
@@ -44,7 +45,10 @@ pub enum ScreeningMode {
 }
 
 /// A reusable screener: holds the mode and a single-flight permit, and scores text
-/// through the classifier with the full fail-closed discipline.
+/// through the classifier with the full fail-closed discipline. Cheap to clone (the
+/// classifier and the permit are shared `Arc`s), so the single-flight gate is shared
+/// across clones.
+#[derive(Clone)]
 pub struct Screener {
     mode: ScreeningMode,
     gate: Arc<tokio::sync::Semaphore>,

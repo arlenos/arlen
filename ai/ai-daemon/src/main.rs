@@ -206,7 +206,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             discovery.client(),
             tool_provider,
             TOOL_LOOP_MAX_STEPS,
-        ),
+        )
+        .with_screening(arlen_ai_core::screen::Screener::from_config(
+            &config_watch::load_ai_text(),
+        )),
     );
     config_watch::spawn_config_watch(service.clone());
 
