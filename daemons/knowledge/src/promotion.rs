@@ -526,30 +526,36 @@ async fn promote_annotation_set(
 ) -> Result<()> {
     let p = AnnotationSetPayload::decode(payload)?;
     let id = annotation_id(&p.target_type, &p.target_id, &p.namespace);
+    let version_id = uuid::Uuid::now_v7();
 
     let id_esc = escape_cypher(&id.to_string());
     let ns_esc = escape_cypher(&p.namespace);
     let tt_esc = escape_cypher(&p.target_type);
     let ti_esc = escape_cypher(&p.target_id);
     let data_esc = escape_cypher(&p.data_json);
+    let vid_esc = escape_cypher(&version_id.to_string());
 
-    // MERGE with ON CREATE / ON MATCH split so created_at is set
-    // exactly once on the very first write and `last_modified`
-    // advances on every subsequent re-set. Kuzu accepts the full
-    // openCypher MERGE clause; if a future Kuzu release narrows
-    // this we fall back to two queries (the test for replace-keeps-
-    // created_at would catch a regression).
+    // §4.8: the Annotation is the stable identity (created_at set once); its
+    // value lives on a temporal HAS_VERSION edge to an AnnotationVersion content
+    // node. A set closes the live version and appends a new one in ONE statement,
+    // so the prior value is retained as history rather than overwritten. The
+    // Annotation node is namespace-specific by id, so closing *this* node's live
+    // version is namespace-scoped by construction (other-namespace annotations
+    // are different nodes). Promotion collapses valid==created to the event
+    // instant (§7.5, no ingest LLM to extract a content valid-time).
     graph
         .write(format!(
-            "MERGE (a:Annotation {{id: '{id_esc}'}})
-             ON CREATE SET a.namespace = '{ns_esc}',
-                           a.target_type = '{tt_esc}',
-                           a.target_id = '{ti_esc}',
-                           a.data = '{data_esc}',
-                           a.created_at = {timestamp},
-                           a.last_modified = {timestamp}
-             ON MATCH SET a.data = '{data_esc}',
-                          a.last_modified = {timestamp}"
+            "MERGE (a:Annotation {{id: '{id_esc}'}}) \
+               ON CREATE SET a.namespace = '{ns_esc}', a.target_type = '{tt_esc}', \
+                             a.target_id = '{ti_esc}', a.created_at = {timestamp} \
+             WITH a \
+             OPTIONAL MATCH (a)-[old:HAS_VERSION]->(:AnnotationVersion) \
+               WHERE old.invalid_at IS NULL AND old.expired_at IS NULL \
+             SET old.invalid_at = {timestamp}, old.expired_at = {timestamp} \
+             WITH a \
+             CREATE (a)-[:HAS_VERSION {{valid_at: {timestamp}, invalid_at: NULL, \
+               created_at: {timestamp}, expired_at: NULL}}]->\
+               (:AnnotationVersion {{id: '{vid_esc}', data: '{data_esc}', recorded_at: {timestamp}}})"
         ))
         .await?;
 
@@ -563,18 +569,23 @@ async fn promote_annotation_set(
     Ok(())
 }
 
-/// Promote an `app.annotation.cleared` event by removing the
-/// Annotation node keyed on the same deterministic id. Idempotent:
-/// clearing a non-existent annotation is a no-op (Kuzu's MATCH +
-/// DELETE silently affects zero rows).
+/// Promote an `app.annotation.cleared` event by temporally closing the live
+/// version of the Annotation keyed on the same deterministic id (§4.8). The
+/// Annotation node and its closed versions are RETAINED for history (no
+/// `DETACH DELETE`), so a cleared annotation's prior values can still be read at
+/// a past `T_asof`. Idempotent: clearing a non-existent or already-cleared
+/// annotation closes nothing (the liveness predicate matches no live version).
 async fn promote_annotation_cleared(graph: &GraphHandle, payload: &[u8]) -> Result<()> {
     let p = AnnotationClearPayload::decode(payload)?;
     let id = annotation_id(&p.target_type, &p.target_id, &p.namespace);
     let id_esc = escape_cypher(&id.to_string());
+    let now = crate::time::now().0;
 
     graph
         .write(format!(
-            "MATCH (a:Annotation {{id: '{id_esc}'}}) DETACH DELETE a"
+            "MATCH (a:Annotation {{id: '{id_esc}'}})-[r:HAS_VERSION]->(:AnnotationVersion) \
+             WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
+             SET r.invalid_at = {now}, r.expired_at = {now}"
         ))
         .await?;
 
@@ -833,12 +844,15 @@ mod shell_event_tests {
         target_id: &str,
         namespace: &str,
     ) -> Option<(String, i64, i64)> {
-        // Returns (data, created_at, last_modified) for the matching annotation.
+        // The LIVE version's data, the Annotation's first-seen created_at, and
+        // the live version's recorded_at (the §4.8 two-hop read).
         let rs = graph
             .query_rows(format!(
-                "MATCH (a:Annotation) WHERE a.target_type = '{target_type}' \
-                 AND a.target_id = '{target_id}' AND a.namespace = '{namespace}' \
-                 RETURN a.data, a.created_at, a.last_modified"
+                "MATCH (a:Annotation)-[r:HAS_VERSION]->(v:AnnotationVersion) \
+                 WHERE a.target_type = '{target_type}' AND a.target_id = '{target_id}' \
+                 AND a.namespace = '{namespace}' \
+                 AND r.invalid_at IS NULL AND r.expired_at IS NULL \
+                 RETURN v.data, a.created_at, v.recorded_at"
             ))
             .await
             .unwrap();
@@ -902,13 +916,31 @@ mod shell_event_tests {
         let got = fetch_annotation(&graph, "File", "/home/tim/notes.md", "com.example.editor")
             .await
             .unwrap();
-        assert_eq!(got.0, r#"{"word_count":250}"#); // new data
+        assert_eq!(got.0, r#"{"word_count":250}"#); // the live version's data
         assert_eq!(got.1, 1_000); // original created_at preserved
-        assert_eq!(got.2, 5_000); // last_modified advanced
+        assert_eq!(got.2, 5_000); // the live version's recorded_at advanced
+
+        // History is retained (§4.8): both versions exist, exactly one live.
+        let total = graph
+            .query_rows(
+                "MATCH (:Annotation)-[:HAS_VERSION]->(:AnnotationVersion) RETURN count(*) AS n".into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(total.rows[0][0].as_i64(), 2, "the prior version is retained, not overwritten");
+        let live = graph
+            .query_rows(
+                "MATCH (:Annotation)-[r:HAS_VERSION]->(:AnnotationVersion) \
+                 WHERE r.invalid_at IS NULL AND r.expired_at IS NULL RETURN count(*) AS n"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(live.rows[0][0].as_i64(), 1, "exactly one live version");
     }
 
     #[tokio::test]
-    async fn annotation_clear_removes_node() {
+    async fn annotation_clear_closes_the_live_version() {
         let (graph, _tmp) = setup().await;
         let set_payload = AnnotationSetPayload {
             app_id: "com.example.editor".into(),
