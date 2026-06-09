@@ -581,6 +581,14 @@ async fn handle_write_request(
         Err(e) => return format!("ERROR: {e}"),
     };
 
+    // Living Capability Graph (living-capability-graph.md §4.1): project this
+    // graph-access peer's minted token into the browse graph. The auth lock is
+    // already released; failure is logged and swallowed so a graph hiccup never
+    // fails a validly-issued token (the projection degrades, the write does not).
+    if let Err(e) = crate::lcg::emit_grant_node(graph, &token).await {
+        tracing::warn!("emit_grant_node failed (capability projection degraded): {e}");
+    }
+
     match req {
         WriteRequest::CreateRelation {
             from_type,

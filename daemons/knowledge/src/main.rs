@@ -17,6 +17,7 @@ mod fts;
 mod fuse;
 mod graph;
 mod identity;
+mod lcg;
 mod lifecycle;
 mod migration;
 mod permission;
