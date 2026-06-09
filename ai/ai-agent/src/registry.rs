@@ -107,6 +107,16 @@ impl TrustedActionSchema {
 /// the invariant keeps covering the whole acceptance domain, not only `Given`.
 pub(crate) const GIVEN_ACTIONS: &[&str] = &["graph.write"];
 
+/// The honeytool action id (canary-honeytools.md §2): an attractive bait
+/// capability shaped like what an injection reaches for. Honest behaviour
+/// proposes only `graph.write` / `graph.query` (by exhaustion of the behaviour
+/// set), so a proposal of this id is deterministic proof of hijack. It is NOT a
+/// [`GIVEN_ACTIONS`] entry (it is never a provable rule); it is registered only
+/// so [`is_honeytool`] has a single source, and a behaviour must list it in its
+/// declared `tools` scope for the model to see it as available (a deployment
+/// step, not built here).
+const HONEYTOOL_ACTION: &str = "export_all_secrets";
+
 /// Resolve the given-rule schema for an invoked action/tool id, or `None` if
 /// no rule is registered. With no rule the predict-before-act path cannot
 /// prove the action, so the gate keeps its conservative cap rather than lift
@@ -114,6 +124,15 @@ pub(crate) const GIVEN_ACTIONS: &[&str] = &["graph.write"];
 pub(crate) fn lookup(action_id: &str) -> Option<TrustedActionSchema> {
     let schema = match action_id {
         "graph.write" => graph_write_link_schema(),
+        // The honeytool: registered so tool identity has a single source, but
+        // tagged `Honeytool` so it is never provable (predict refuses it) and the
+        // engine freezes on `is_honeytool` before the gate. Empty effects.
+        a if a == HONEYTOOL_ACTION => ActionSchema {
+            action: HONEYTOOL_ACTION.to_string(),
+            preconditions: vec![],
+            effects: vec![],
+            provenance: Provenance::Honeytool,
+        },
         // A registered but irreversible action, for the gate's
         // irreversible-always-confirms tests (a `SetField` cannot be inverted
         // from itself, so the schema has no derivable compensation).
@@ -131,6 +150,18 @@ pub(crate) fn lookup(action_id: &str) -> Option<TrustedActionSchema> {
         _ => return None,
     };
     Some(TrustedActionSchema { schema })
+}
+
+/// Whether `tool` is a honeytool (canary-honeytools.md §2): a registered bait
+/// action tagged [`Provenance::Honeytool`]. A pure name predicate, consulted at
+/// the engine's `Propose` arm before the read branch and before the gate (the
+/// ordering is mandatory: a honeytool named `graph.query` would otherwise execute
+/// as a gate-exempt read, and any other name would hit the low-signal
+/// `ToolOutOfScope`). A hit is a deterministic, high-signal hijack trip. Honest
+/// runs never name it (a tool is a capability shown to the model, never echoed
+/// from graph content), so zero false positives.
+pub(crate) fn is_honeytool(tool: &str) -> bool {
+    lookup(tool).is_some_and(|t| matches!(t.schema().provenance, Provenance::Honeytool))
 }
 
 /// The given rule for linking a file to the project it belongs to
@@ -191,6 +222,21 @@ mod tests {
     fn an_unknown_action_has_no_rule() {
         assert!(lookup("fs.delete").is_none());
         assert!(lookup("").is_none());
+    }
+
+    #[test]
+    fn the_honeytool_is_registered_recognised_and_not_a_given_rule() {
+        // is_honeytool fires for the bait and nothing else.
+        assert!(is_honeytool(HONEYTOOL_ACTION));
+        assert!(!is_honeytool("graph.write"));
+        assert!(!is_honeytool("unknown"));
+        // It is registered with empty effects and Honeytool provenance.
+        let t = lookup(HONEYTOOL_ACTION).expect("the honeytool resolves");
+        assert!(t.schema().effects.is_empty());
+        assert!(matches!(t.schema().provenance, Provenance::Honeytool));
+        // It is NOT a given rule, so the canary zero-FP invariant never scans it
+        // and the proof path never treats it as provable.
+        assert!(!GIVEN_ACTIONS.contains(&HONEYTOOL_ACTION));
     }
 
     #[test]

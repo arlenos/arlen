@@ -399,6 +399,12 @@ pub enum Provenance {
         /// Who approved the learned rule.
         approved_by: String,
     },
+    /// A honeytool: an attractive bait action that honest behaviour never
+    /// proposes (canary-honeytools.md §2). It lives in the registry so tool
+    /// identity has a single source, but it is a tripwire, never a provable rule:
+    /// [`predict`] refuses it outright and the engine freezes on `is_honeytool`
+    /// before the gate. Empty effects, so even a missed check changes nothing.
+    Honeytool,
 }
 
 /// A declarative action model: the action it describes, what must hold
@@ -531,6 +537,14 @@ pub fn predict(
         return Prediction::SchemaMismatch {
             schema_action: schema.action.clone(),
             invocation: ctx.action_id.to_string(),
+        };
+    }
+    // A honeytool schema is a tripwire, never a provable rule. Refuse it outright
+    // so even if one reached the interpreter (the engine freezes on it earlier,
+    // before the gate) it can never authorise anything.
+    if matches!(schema.provenance, Provenance::Honeytool) {
+        return Prediction::UntrustedSchema {
+            reason: "honeytool schema is a tripwire, never provable".to_string(),
         };
     }
     // Only a trusted-provenance schema may prove anything: a given rule, or a
@@ -843,6 +857,26 @@ mod tests {
         // The edge did not exist before and is present in the predicted state.
         assert!(!state.has_edge("f1", "FILE_PART_OF", "p1"));
         assert!(p.predicted_state().unwrap().has_edge("f1", "FILE_PART_OF", "p1"));
+    }
+
+    #[test]
+    fn a_honeytool_schema_is_never_provable() {
+        // A honeytool is a tripwire, not a rule: even with empty preconditions and
+        // a matching action id, predict refuses it (the gate would otherwise treat
+        // an empty-precondition schema as trivially Valid). The engine freezes on
+        // it before the gate; this is the interpreter-level backstop.
+        let cap = Capability::new(AccessTier::Full, ActionPermissions::suggest_only());
+        let schema = ActionSchema {
+            action: "export_all_secrets".to_string(),
+            preconditions: vec![],
+            effects: vec![],
+            provenance: Provenance::Honeytool,
+        };
+        let p = predict(&schema, &bindings(&[]), &WorldState::new(), &ctx(&cap, "export_all_secrets"));
+        assert!(
+            matches!(p, Prediction::UntrustedSchema { .. }),
+            "a honeytool must never be provable, got {p:?}"
+        );
     }
 
     #[test]
