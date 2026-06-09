@@ -136,6 +136,7 @@ fn handle_file_opened(
         path: path.clone(),
         app_id: format!("ebpf:{}", event.pid),
         flags: 0,
+        cgroup_id: event.cgroup_id,
     };
     encode_envelope("file.opened", event.pid, event.timestamp_ns, session_id, payload.encode_to_vec())
 }
