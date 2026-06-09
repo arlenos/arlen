@@ -712,6 +712,49 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
     serde_json::to_string(&views).unwrap_or_else(|_| "[]".to_string())
 }
 
+/// The app ids permitted to invoke a revoke (living-capability-graph.md §6.2,
+/// Option A). Revoke is user-initiated through Settings, narrowing-only, so only
+/// the canonical `settings` principal is admitted; a `dev.`-prefixed id is
+/// admitted in debug for a locally-run Settings (the audit-daemon convention).
+fn revoke_caller_admitted(app_id: &str) -> bool {
+    app_id == "settings" || (cfg!(debug_assertions) && app_id.starts_with("dev."))
+}
+
+/// LCG-R5 (living-capability-graph.md §6): the caller-scoped, narrowing-only
+/// revoke. Admits only the `settings` principal (kernel-attested), refuses a
+/// system-tier target (managed by the system, not revocable here), and applies
+/// the narrowing to the target's user-tier profile through the strict-subset
+/// gate, writing nothing unless authority strictly shrank. The closed
+/// `RevokedReach` cannot express a widening; the gate proves narrowing on the
+/// re-derived scopes. Outcomes are `OK:` tokens; only an auth/parse/tier/io
+/// failure is an `ERROR:`.
+fn handle_revoke(app_id: &str, body: &[u8]) -> String {
+    if !revoke_caller_admitted(app_id) {
+        return "ERROR: revoke not permitted for this caller".to_string();
+    }
+    let req: crate::revoke::RevokeReach = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(e) => return format!("ERROR: invalid revoke request: {e}"),
+    };
+    // System-tier targets are refused, not faked (§6.2): their authority is
+    // managed by the system, and the user-tier `~/.config` write would not be
+    // re-read for them.
+    if !crate::revoke::tier_allows_revoke(&req.target_app_id) {
+        return "ERROR: SystemTier: this app is managed by the system".to_string();
+    }
+    let path = match crate::permission::PermissionProfile::profile_path(&req.target_app_id) {
+        Ok(p) => p,
+        Err(e) => return format!("ERROR: {e}"),
+    };
+    match crate::revoke::revoke_at(&path, &req.reach) {
+        Ok(crate::revoke::RevokeOutcome::Revoked) => "OK: revoked".to_string(),
+        Ok(crate::revoke::RevokeOutcome::NoChange) => "OK: no-change".to_string(),
+        Ok(crate::revoke::RevokeOutcome::NotNarrowing) => "OK: not-narrowing".to_string(),
+        Ok(crate::revoke::RevokeOutcome::NotFound) => "OK: not-found".to_string(),
+        Err(e) => format!("ERROR: {e}"),
+    }
+}
+
 /// Authorise and persist a structured write request, returning the plaintext
 /// response (`OK` / `ERROR: ...`).
 ///
@@ -1379,6 +1422,30 @@ async fn handle_client(
             continue;
         }
 
+        // Revoke mode: a leading 0x06 byte selects the LCG narrowing-only revoke
+        // (living-capability-graph.md §6). The body is a JSON `RevokeReach`. It
+        // mutates the target's user-tier permission profile, admitted only for the
+        // `settings` principal; query-rate-limited (infrequent, user-initiated).
+        if buf.first() == Some(&0x06) {
+            let violation = {
+                let mut rs = rate.lock().await;
+                rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
+            };
+            let response = if let Some(reason) = violation {
+                format!("ERROR: RateLimited: {reason}")
+            } else {
+                handle_revoke(&app_id, &buf[1..])
+            };
+            timing_noise().await;
+            let response_bytes = response.as_bytes();
+            let response_len = u32::try_from(response_bytes.len())
+                .expect("response too large")
+                .to_be_bytes();
+            stream.write_all(&response_len).await?;
+            stream.write_all(response_bytes).await?;
+            continue;
+        }
+
         // Read mode. A leading 0x01 byte selects the structured (typed JSON
         // RowSet) response; without it the request is a legacy raw-Cypher text
         // query, so existing clients are unaffected.
@@ -1684,6 +1751,30 @@ mod tests {
         assert!(readable_system_labels(&[scope("system.File; DROP")]).is_empty());
         assert!(readable_system_labels(&[scope("system.")]).is_empty());
         assert!(readable_system_labels(&[]).is_empty());
+    }
+
+    #[test]
+    fn revoke_caller_admitted_only_settings() {
+        assert!(revoke_caller_admitted("settings"));
+        for other in ["ai-agent", "ai-daemon", "com.x", "knowledge", "unknown", ""] {
+            assert!(!revoke_caller_admitted(other), "{other} must not be allowed to revoke");
+        }
+        // The dev exception is live only in debug builds (the test binary).
+        assert_eq!(revoke_caller_admitted("dev.settings"), cfg!(debug_assertions));
+    }
+
+    #[test]
+    fn handle_revoke_refuses_a_non_settings_caller() {
+        // Even a well-formed body is refused before parsing if the caller is not
+        // the admitted Settings principal.
+        let r = handle_revoke("com.attacker", b"{\"target_app_id\":\"com.x\",\"reach\":{\"InstanceAll\":null},\"initiator\":{\"User\":null}}");
+        assert!(r.starts_with("ERROR: revoke not permitted"), "got {r}");
+    }
+
+    #[test]
+    fn handle_revoke_rejects_a_malformed_request() {
+        let r = handle_revoke("settings", b"not json");
+        assert!(r.starts_with("ERROR: invalid revoke request"), "got {r}");
     }
 
     #[test]
