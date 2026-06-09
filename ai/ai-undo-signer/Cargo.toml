@@ -17,9 +17,11 @@ thiserror = "2"
 getrandom = "0.2"
 zeroize = "1"
 libc = "0.2"
-tokio = { version = "1", features = ["net", "io-util", "sync", "rt", "rt-multi-thread", "signal", "macros"] }
+tokio = { version = "1", features = ["net", "io-util", "sync", "time", "rt", "rt-multi-thread", "signal", "macros"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 tempfile = "3"
+# `test-util` enables paused-time control so the read-timeout test fires instantly.
+tokio = { version = "1", features = ["test-util", "macros", "rt"] }
