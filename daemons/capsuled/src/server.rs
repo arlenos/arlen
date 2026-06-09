@@ -8,14 +8,57 @@
 //! same-uid admission are the daemon shell that wraps this (verified on a running
 //! system); the handler here is exercised over a socket pair.
 
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
 use arlen_forage_store::Store;
+use arlen_permissions::ConnectionAuth;
 use audit_proto::{AuditKind, AuditSink, IngestRequest, StructuralRecord};
 use ed25519_dalek::VerifyingKey;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{UnixListener, UnixStream};
 
 use crate::proto::{verify_and_serve, SignedGrant};
 use crate::revocation::RevocationFile;
 use crate::serve::Refusal;
+
+/// The shared collaborators a served connection reads through, cloned (Arc) per
+/// accepted connection.
+#[derive(Clone)]
+pub struct ServeContext {
+    /// The originator (this daemon's own capsule) verifying key.
+    pub verifying_key: VerifyingKey,
+    /// The durable revoke/op-count ledger.
+    pub ledger: Arc<RevocationFile>,
+    /// The frozen-slice blob store.
+    pub store: Arc<Store>,
+    /// The fail-closed audit sink.
+    pub audit: Arc<dyn AuditSink>,
+}
+
+/// The capsule serve socket: `$XDG_RUNTIME_DIR/arlen/capsule.sock`. `None` if the
+/// runtime dir is unset (the daemon fails closed rather than bind elsewhere).
+pub fn socket_path() -> Option<PathBuf> {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(|d| d.join("arlen/capsule.sock"))
+}
+
+/// This process's uid (the daemon runs as the user; only same-uid peers are served).
+pub fn current_uid() -> u32 {
+    // SAFETY: getuid is always safe; it reads the real uid and cannot fail.
+    unsafe { libc::getuid() }
+}
+
+/// Now, epoch microseconds (the serve-time clock for grant expiry).
+fn now_micros() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_micros() as i64)
+        .unwrap_or(0)
+}
 
 /// The largest request frame accepted (a presented grant is small).
 const MAX_REQUEST_FRAME: usize = 64 * 1024;
@@ -117,6 +160,67 @@ where
     let response =
         handle_request(&signed, originator, now_micros, ledger, store, audit, correlation_id).await;
     write_frame(&mut stream, &response).await
+}
+
+/// Bind the capsule serve socket at `path`, replacing any stale socket, and clamp
+/// it to `0600` (owner-only; same-uid is also enforced per connection).
+fn bind_socket(path: &Path) -> std::io::Result<UnixListener> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let _ = std::fs::remove_file(path);
+    let listener = UnixListener::bind(path)?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    Ok(listener)
+}
+
+/// Serve the capsule socket at `path` until the accept loop errors. Each accepted
+/// connection is admitted by SO_PEERCRED (same-uid only; cross-uid is rejected by
+/// [`ConnectionAuth::extract_from`]) with a PID-reuse re-check, then served. There
+/// is no app-id allowlist: any same-uid process may read a capsule for which it
+/// presents a valid, unrevoked, unexpired, in-budget signed grant — the grant and
+/// the ledger are the authorization, the socket only attests "same user, same
+/// machine" (§5).
+pub async fn run(path: &Path, ctx: ServeContext) -> std::io::Result<()> {
+    let listener = bind_socket(path)?;
+    let caller_uid = current_uid();
+    loop {
+        let (stream, _) = listener.accept().await?;
+        let ctx = ctx.clone();
+        tokio::spawn(async move {
+            handle(stream, caller_uid, ctx).await;
+        });
+    }
+}
+
+/// Admit and serve one accepted connection. A cross-uid peer or a recycled pid is
+/// rejected before any request is read; framing/serve errors close the connection.
+async fn handle(stream: UnixStream, caller_uid: u32, ctx: ServeContext) {
+    let auth = match ConnectionAuth::extract_from(&stream, caller_uid) {
+        Ok(a) => a,
+        Err(e) => {
+            tracing::debug!(error = %e, "capsule peer rejected at admission");
+            return;
+        }
+    };
+    if auth.verify_alive().is_err() {
+        return;
+    }
+    // A fresh correlation id per connection links the audit entry to this read.
+    let correlation_id = format!("capsule-{}-{}", caller_uid, now_micros());
+    if let Err(e) = serve_connection(
+        stream,
+        &ctx.verifying_key,
+        now_micros(),
+        &ctx.ledger,
+        &ctx.store,
+        ctx.audit.as_ref(),
+        &correlation_id,
+    )
+    .await
+    {
+        tracing::debug!(error = %e, "capsule connection closed");
+    }
 }
 
 /// Read a length-prefixed frame (4-byte big-endian length + body), bounded by
