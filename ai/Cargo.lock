@@ -41,6 +41,7 @@ dependencies = [
  "arlen-ai-providers",
  "arlen-ai-sandbox",
  "arlen-ai-undo-core",
+ "arlen-ai-undo-proto",
  "async-trait",
  "audit-proto",
  "futures",

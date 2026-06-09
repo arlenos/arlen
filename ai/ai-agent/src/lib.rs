@@ -27,6 +27,7 @@ pub mod slice;
 pub mod snapshot;
 pub mod source;
 pub mod spill;
+pub mod undo_client;
 pub mod world;
 
 // The undo-log vocabulary (the inverse-receipt effect model, the event-sourced

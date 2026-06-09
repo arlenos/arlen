@@ -29,6 +29,7 @@ arlen-ai-providers = { path = "../ai-providers" }
 arlen-ai-classifier = { path = "../ai-classifier" }
 arlen-ai-sandbox = { path = "../ai-sandbox" }
 arlen-ai-undo-core = { path = "../ai-undo-core" }
+arlen-ai-undo-proto = { path = "../ai-undo-proto" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
