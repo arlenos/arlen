@@ -216,6 +216,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-capsule"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "arlen-graph-schema"
 version = "0.1.0"
 
@@ -1824,6 +1832,7 @@ dependencies = [
 name = "os-sdk"
 version = "0.1.0"
 dependencies = [
+ "arlen-capsule",
  "arlen-permissions",
  "dirs",
  "libc",

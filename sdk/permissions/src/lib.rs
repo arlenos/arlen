@@ -447,10 +447,73 @@ pub fn profile_path(app_id: &str) -> Result<PathBuf, PermissionError> {
         .join(format!("{app_id}.toml")))
 }
 
-/// Load a permission profile from the canonical user-config path.
+/// Whether `app_id` is a safe single path component for joining into a
+/// root-owned profile path: a non-empty lowercase reverse-DNS-style id over
+/// `[a-z0-9._-]` with no traversal (`..`, leading/trailing dot, or any path
+/// separator — the charset already excludes `/`). A root-owned path must never be
+/// built from an unvalidated id, so [`system_profile_path`] returns `None` for an
+/// invalid one rather than touching `/var/lib`.
+fn is_valid_app_id(app_id: &str) -> bool {
+    !app_id.is_empty()
+        && app_id != ".."
+        && !app_id.starts_with('.')
+        && !app_id.ends_with('.')
+        && !app_id.contains("..")
+        && app_id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-'))
+}
+
+/// The system-tier (root-owned) profile path for `app_id`, or `None` if the id is
+/// not a safe path component (F3 Rung A). System-installed apps get a profile
+/// under `/var/lib/arlen/permissions/{uid}/{app_id}.toml`, written only through the
+/// root `permission-helper`, so a same-uid process cannot forge it
+/// (AUTH-CANONICAL.md §2). The `ARLEN_SYSTEM_PERMISSIONS_DIR` override (tests/dev
+/// only, never production) resolves directly to `<dir>/{app_id}.toml` with no uid
+/// subdir, mirroring `ARLEN_PERMISSIONS_DIR`.
+fn system_profile_path(app_id: &str) -> Option<PathBuf> {
+    if !is_valid_app_id(app_id) {
+        return None;
+    }
+    if let Ok(dir) = std::env::var("ARLEN_SYSTEM_PERMISSIONS_DIR") {
+        return Some(PathBuf::from(dir).join(format!("{app_id}.toml")));
+    }
+    // SAFETY: getuid never fails.
+    let uid = unsafe { libc::getuid() };
+    Some(
+        PathBuf::from("/var/lib/arlen/permissions")
+            .join(uid.to_string())
+            .join(format!("{app_id}.toml")),
+    )
+}
+
+/// Resolve a profile across the two tiers (F3 Rung A semantics): if a root-owned
+/// system-tier profile exists it is **authoritative and wins outright** — the user
+/// `~/.config` overlay is ignored for that app_id. This is the conservative,
+/// correct-by-construction behaviour (a naive union would let a same-uid user
+/// *widen* a system app's grants, the exact F3 hole); a tighten-only overlay that
+/// may only narrow the system ceiling is a noted follow-up, not done here. When no
+/// system base exists, the user-config profile is loaded as before.
+fn load_tiered(
+    system: Option<&Path>,
+    user: &Path,
+    app_id: &str,
+) -> Result<PermissionProfile, PermissionError> {
+    if let Some(sys) = system {
+        if sys.exists() {
+            return load_profile_from(sys, app_id);
+        }
+    }
+    load_profile_from(user, app_id)
+}
+
+/// Load a permission profile, preferring the root-owned system tier over the user
+/// `~/.config` tier (F3 Rung A — see [`load_tiered`] for the system-base-wins
+/// semantics).
 pub fn load_profile(app_id: &str) -> Result<PermissionProfile, PermissionError> {
-    let path = profile_path(app_id)?;
-    load_profile_from(&path, app_id)
+    let system = system_profile_path(app_id);
+    let user = profile_path(app_id)?;
+    load_tiered(system.as_deref(), &user, app_id)
 }
 
 /// Load from an explicit path (for testing).
@@ -602,6 +665,53 @@ always_confirm_overrides = ["empty_trash"]
             "com.missing",
         );
         assert!(matches!(result, Err(PermissionError::NotFound { .. })));
+    }
+
+    // ── F3 Rung A: the system tier ──
+
+    #[test]
+    fn system_profile_path_validates_the_app_id() {
+        let p = system_profile_path("com.example.notes").expect("a valid id resolves");
+        assert!(p.ends_with("com.example.notes.toml"));
+        // Without the test override, the default is the root-owned /var/lib path.
+        if std::env::var("ARLEN_SYSTEM_PERMISSIONS_DIR").is_err() {
+            assert!(p.to_string_lossy().contains("/var/lib/arlen/permissions"));
+        }
+        // A root-owned path is never built from an unsafe id.
+        for bad in ["..", "a/b", "../etc/x", "", "Upper", ".hidden", "trailing."] {
+            assert!(system_profile_path(bad).is_none(), "{bad:?} must be rejected");
+        }
+    }
+
+    #[test]
+    fn load_tiered_prefers_the_system_base() {
+        const USER_PROFILE: &str = "[info]\napp_id = \"com.example.notes\"\ntier = \"first-party\"\n";
+        let sys_dir = tempfile::TempDir::new().unwrap();
+        let user_dir = tempfile::TempDir::new().unwrap();
+        // System base is third-party (SAMPLE); the user overlay claims first-party.
+        let sys_path = write_profile(sys_dir.path(), SAMPLE_PROFILE);
+        let user_path = user_dir.path().join("com.example.notes.toml");
+        std::fs::write(&user_path, USER_PROFILE).unwrap();
+
+        let loaded = load_tiered(Some(&sys_path), &user_path, "com.example.notes").unwrap();
+        assert_eq!(
+            loaded.info.tier,
+            AppTier::ThirdParty,
+            "the root-owned system base wins outright; the user overlay cannot widen it"
+        );
+    }
+
+    #[test]
+    fn load_tiered_falls_back_to_user_without_a_system_base() {
+        let user_dir = tempfile::TempDir::new().unwrap();
+        let user_path = write_profile(user_dir.path(), SAMPLE_PROFILE);
+        // A system path that does not exist falls through to the user tier.
+        let missing = user_dir.path().join("absent").join("system.toml");
+        let loaded = load_tiered(Some(&missing), &user_path, "com.example.notes").unwrap();
+        assert_eq!(loaded.info.app_id, "com.example.notes");
+        // No system tier at all also falls through.
+        let loaded2 = load_tiered(None, &user_path, "com.example.notes").unwrap();
+        assert_eq!(loaded2.info.app_id, "com.example.notes");
     }
 
     // ── Tier detection ──
