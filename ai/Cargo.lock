@@ -200,11 +200,14 @@ name = "arlen-ai-undo-signer"
 version = "0.1.0"
 dependencies = [
  "arlen-ai-undo-core",
+ "arlen-ai-undo-proto",
  "arlen-permissions",
  "getrandom 0.2.17",
  "libc",
  "tempfile",
  "thiserror 2.0.18",
+ "tokio",
+ "tracing",
  "zeroize",
 ]
 

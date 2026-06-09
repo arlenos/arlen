@@ -27,6 +27,7 @@ pub mod auth;
 pub mod error;
 pub mod key;
 pub mod paths;
+pub mod server;
 pub mod store;
 
 pub use error::{Result, SignerError};
