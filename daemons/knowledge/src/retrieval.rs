@@ -57,6 +57,64 @@ pub fn rrf_rank(lists: &[Vec<String>], k: u32) -> Vec<String> {
     rrf_fuse(lists, k).into_iter().map(|(id, _)| id).collect()
 }
 
+/// Deterministically synthesise the indexed `fact_text` for a node from its own
+/// fields (§7.2), the text the FTS5 keyword index holds.
+///
+/// No LLM at ingest: a tiny pure function per label, regenerated idempotently on
+/// re-promotion (same fields → same text), so the index never drifts and costs
+/// no tokens on the silent path. The accepted cost is weaker paraphrase recall
+/// than an LLM-written fact, mitigated by the semantic primitive when present.
+/// `fields` are the node's own fields as strings (the promotion side stringifies
+/// them); `label` selects the synthesis. An unknown label flattens its
+/// non-internal field values in key order.
+pub fn fact_text(label: &str, fields: &std::collections::BTreeMap<String, String>) -> String {
+    match label {
+        "File" => file_fact_text(fields),
+        "Project" => project_fact_text(fields),
+        _ => generic_fact_text(fields),
+    }
+}
+
+/// `File` → path, its basename, and its parent dir. The basename and parent
+/// repeat substrings of the path on purpose: a keyword search for a filename or
+/// a directory then matches more strongly than against the full path alone.
+fn file_fact_text(fields: &std::collections::BTreeMap<String, String>) -> String {
+    let path = fields.get("path").map(String::as_str).unwrap_or("");
+    let basename = path.rsplit('/').next().unwrap_or("");
+    let parent = path.rsplit_once('/').map(|(p, _)| p).unwrap_or("");
+    join_nonempty(&[path, basename, parent])
+}
+
+/// `Project` → name, description, and root path.
+fn project_fact_text(fields: &std::collections::BTreeMap<String, String>) -> String {
+    let name = fields.get("name").map(String::as_str).unwrap_or("");
+    let description = fields.get("description").map(String::as_str).unwrap_or("");
+    let root_path = fields.get("root_path").map(String::as_str).unwrap_or("");
+    join_nonempty(&[name, description, root_path])
+}
+
+/// Unknown label: flatten every non-internal field value in key order (the map
+/// is sorted, so this is deterministic). `id` and `_`-prefixed reserved fields
+/// are excluded, as they are identity/bookkeeping, not searchable content.
+fn generic_fact_text(fields: &std::collections::BTreeMap<String, String>) -> String {
+    let values: Vec<&str> = fields
+        .iter()
+        .filter(|(k, _)| k.as_str() != "id" && !k.starts_with('_'))
+        .map(|(_, v)| v.as_str())
+        .collect();
+    join_nonempty(&values)
+}
+
+/// Join the non-empty parts with a single space.
+fn join_nonempty(parts: &[&str]) -> String {
+    parts
+        .iter()
+        .filter(|s| !s.is_empty())
+        .copied()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,5 +169,45 @@ mod tests {
     fn empty_input_is_empty() {
         assert!(rrf_rank(&[], K_RRF).is_empty());
         assert!(rrf_rank(&[vec![]], K_RRF).is_empty());
+    }
+
+    fn fields(pairs: &[(&str, &str)]) -> std::collections::BTreeMap<String, String> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    #[test]
+    fn file_fact_text_includes_path_basename_and_parent() {
+        let t = fact_text("File", &fields(&[("path", "/home/tim/proj/main.rs")]));
+        assert!(t.contains("/home/tim/proj/main.rs"), "full path: {t}");
+        assert!(t.contains("main.rs"), "basename: {t}");
+        assert!(t.contains("/home/tim/proj"), "parent dir: {t}");
+    }
+
+    #[test]
+    fn project_fact_text_joins_name_description_and_root() {
+        let t = fact_text(
+            "Project",
+            &fields(&[
+                ("name", "Arlen"),
+                ("description", "a desktop OS"),
+                ("root_path", "/home/tim/arlen"),
+            ]),
+        );
+        assert_eq!(t, "Arlen a desktop OS /home/tim/arlen");
+    }
+
+    #[test]
+    fn unknown_label_flattens_non_internal_values_deterministically() {
+        let f = fields(&[("id", "x"), ("_owner", "app"), ("alpha", "one"), ("beta", "two")]);
+        // id and _-prefixed reserved fields excluded; values in key order.
+        assert_eq!(fact_text("Widget", &f), "one two");
+    }
+
+    #[test]
+    fn synthesis_is_idempotent_and_omits_empty_fields() {
+        let f = fields(&[("path", "/a/b.txt")]);
+        assert_eq!(fact_text("File", &f), fact_text("File", &f), "same fields -> same text");
+        // A Project with only a name (no description/root) omits the empty parts.
+        assert_eq!(fact_text("Project", &fields(&[("name", "Solo")])), "Solo");
     }
 }
