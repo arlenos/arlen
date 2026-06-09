@@ -192,6 +192,16 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-ai-agent" => {
             return Ok("ai-agent".to_string());
         }
+        // The Settings app, pinned canonically so it resolves to the stable
+        // app_id `settings` (not the spoofable basename). The Living Capability
+        // Graph revoke socket op admits only this app id (living-capability-graph.md
+        // §6.2, Option A): revoke is user-initiated through Settings, narrowing-only,
+        // so a root-owned canonical path is the trust anchor until F3 upgrades it.
+        // Rule (3) would also resolve this apps path, but the explicit entry keeps
+        // the canonical principal unambiguous (as the ai-daemon apps entries do).
+        "/usr/lib/arlen/apps/settings/bin/arlen-settings" => {
+            return Ok("settings".to_string());
+        }
         _ => {}
     }
 
@@ -345,6 +355,21 @@ mod tests {
             assert!(
                 path_to_app_id(&PathBuf::from(spoofed)).is_err(),
                 "spoofed agent path {spoofed} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn test_app_id_from_path_settings_canonical() {
+        // The Settings app must resolve to the canonical `settings` app id, the
+        // sole principal the Living Capability Graph revoke op admits. A
+        // same-basename binary in a writable location must not impersonate it.
+        let path = PathBuf::from("/usr/lib/arlen/apps/settings/bin/arlen-settings");
+        assert_eq!(path_to_app_id(&path).unwrap(), "settings");
+        for spoofed in ["/tmp/arlen-settings", "/home/attacker/arlen-settings"] {
+            assert!(
+                path_to_app_id(&PathBuf::from(spoofed)).is_err(),
+                "spoofed settings path {spoofed} must be rejected"
             );
         }
     }
