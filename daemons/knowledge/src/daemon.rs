@@ -616,6 +616,60 @@ async fn handle_provenance_read(
     serde_json::json!({ "actors": visible, "accessed_by_others": accessed_by_others }).to_string()
 }
 
+/// Handle a structured typed read (RS-R2). The ONLY path that serves sensitive
+/// labels, because the daemon owns the entire query shape: the label is checked
+/// against the caller's readable allowlist, every field is identifier-checked,
+/// every value is `encode_literal`-escaped, and the built Cypher carries a mandatory
+/// anchoring `WHERE` and a `LIMIT`. Every failure is the single uniform denial (no
+/// existence oracle), routed through `timing_noise` by the caller.
+///
+/// The owner axis is the v1 anchor-requirement approximation: the live observation
+/// nodes carry no `_owner` column, so a non-empty filter set is required (an
+/// unanchored sensitive read is the wholesale-harvest shape this op prevents). The
+/// `n._owner = caller` predicate lands with that column (RS-R3); the filter core
+/// does not change when it does.
+async fn handle_typed_read(
+    body: &[u8],
+    peer: Option<&WritePeer>,
+    auth: &Arc<Mutex<Authenticator>>,
+    graph: &GraphHandle,
+) -> String {
+    let Ok(req) = serde_json::from_slice::<crate::typed_read::TypedReadRequest>(body) else {
+        return PROVENANCE_OUT_OF_SCOPE.to_string();
+    };
+    // Resolve the token from a live, unchanged peer process (the write path's
+    // PID-reuse guard: a reused pid cannot borrow the original peer's scope).
+    let Some(peer) = peer else {
+        return PROVENANCE_OUT_OF_SCOPE.to_string();
+    };
+    let Some(captured_start) = peer.start_time else {
+        return PROVENANCE_OUT_OF_SCOPE.to_string();
+    };
+    match pid_start_time(peer.pid) {
+        Ok(now) if now == captured_start => {}
+        _ => return PROVENANCE_OUT_OF_SCOPE.to_string(),
+    }
+    let token = match auth.lock().await.issue_token_for_pid(peer.pid) {
+        Ok(t) => t,
+        Err(_) => return PROVENANCE_OUT_OF_SCOPE.to_string(),
+    };
+    let readable = readable_system_labels(&token.read_scopes);
+    let validated = match crate::typed_read::validate_typed_read(req, &readable) {
+        Ok(v) => v,
+        Err(reason) => {
+            warn!(app_id = %token.app_id, reason, "typed read denied");
+            return PROVENANCE_OUT_OF_SCOPE.to_string();
+        }
+    };
+    let Some(cypher) = crate::typed_read::build_cypher(&validated) else {
+        return PROVENANCE_OUT_OF_SCOPE.to_string();
+    };
+    match graph.query_rows_json(cypher).await {
+        Ok(json) => json,
+        Err(_) => PROVENANCE_OUT_OF_SCOPE.to_string(),
+    }
+}
+
 /// One Grant row for the browse surface (living-capability-graph.md §5). The
 /// `declared_ceiling` is the faithful scope JSON; `reach` is the queryable type
 /// projection; `live` is resolved fresh at read time (see below).
@@ -1508,6 +1562,41 @@ async fn handle_client(
             continue;
         }
 
+        // Structured typed read mode: a leading 0x08 byte selects RS-R2, the only
+        // bypass-proof read for sensitive labels - the daemon owns the entire query
+        // shape (the caller supplies no Cypher), so a value cannot smuggle clause
+        // structure and a field cannot launder past the projection. It mirrors the
+        // 0x04 provenance op: query-rate-limited, 500 ms-bounded, every failure the
+        // single uniform denial routed through `timing_noise()` (no existence
+        // oracle). NB 0x07 is the capsule materialize op; 0x08 is the next free byte.
+        if buf.first() == Some(&0x08) {
+            let violation = {
+                let mut rs = rate.lock().await;
+                rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
+            };
+            let response = if let Some(reason) = violation {
+                format!("ERROR: RateLimited: {reason}")
+            } else {
+                match tokio::time::timeout(
+                    Duration::from_millis(500),
+                    handle_typed_read(&buf[1..], peer.as_ref(), &auth, &graph),
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(_elapsed) => PROVENANCE_OUT_OF_SCOPE.to_string(),
+                }
+            };
+            timing_noise().await;
+            let response_bytes = response.as_bytes();
+            let response_len = u32::try_from(response_bytes.len())
+                .expect("response too large")
+                .to_be_bytes();
+            stream.write_all(&response_len).await?;
+            stream.write_all(response_bytes).await?;
+            continue;
+        }
+
         // Access-grants mode: a leading 0x05 byte selects the caller-scoped grant
         // browse read (living-capability-graph.md §5). The caller's own grants
         // only (scoped by the attested app_id resolved at connect, never a request
@@ -2286,6 +2375,25 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
         handle_graph_event(&auth, &graph, GraphEvent::AiLevelChanged).await;
+    }
+
+    #[tokio::test]
+    async fn typed_read_fails_closed_to_the_uniform_denial() {
+        let auth = Arc::new(Mutex::new(Authenticator::new()));
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        // A malformed body never reaches the token guard: uniform OutOfScope.
+        assert_eq!(
+            handle_typed_read(b"not json", None, &auth, &graph).await,
+            PROVENANCE_OUT_OF_SCOPE
+        );
+        // A well-formed request with no attested peer is also the uniform denial
+        // (no oracle distinguishing it from an out-of-scope or absent read).
+        let body = br#"{"label":"CommandHistory","filters":[{"field":"session_id","value":"s1"}],"select":["command"]}"#;
+        assert_eq!(
+            handle_typed_read(body, None, &auth, &graph).await,
+            PROVENANCE_OUT_OF_SCOPE
+        );
     }
 
     #[tokio::test]
