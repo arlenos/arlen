@@ -19,6 +19,7 @@ import { planDelete } from "$lib/delete";
 import { planFork } from "$lib/fork";
 import { togglePinned } from "$lib/bookmark";
 import { clearDraft } from "$lib/stores/drafts";
+import { parseConversationEnvelope } from "$lib/export";
 
 /// Who produced a message. `error` is a turn that failed (daemon down,
 /// disabled, query error) — rendered distinctly, never as an answer.
@@ -514,4 +515,23 @@ export function togglePin(messageId: number): void {
   const id = get(activeSessionId);
   if (!id) return;
   updateSession(id, (messages) => togglePinned(messages, messageId));
+}
+
+/// Import a conversation from a JSON export envelope (see `conversationToJson`):
+/// validate the envelope, sanitise the embedded session, give it a fresh id so
+/// it cannot clobber an existing conversation, then add it and make it active.
+/// Returns the new session id, or `null` when the input is not a valid envelope
+/// or its session does not survive sanitisation. A re-import of a file the user
+/// already has therefore creates a distinct copy rather than overwriting.
+export function importConversation(json: string): string | null {
+  const raw = parseConversationEnvelope(json);
+  if (raw === null) return null;
+  const session = sanitizeSession(raw);
+  if (!session) return null;
+
+  const newId = crypto.randomUUID();
+  const imported: Session = { ...session, id: newId };
+  sessions.update((list) => [imported, ...list]);
+  activeSessionId.set(newId);
+  return newId;
 }
