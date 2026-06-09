@@ -58,6 +58,14 @@ fn sensitive_fields_for_type(entity_type: &str) -> &'static [&'static str] {
     }
 }
 
+/// The union of every sensitive field name across all entity types. The raw-read
+/// path cannot attribute a returned cell to its label (alias/`properties()`
+/// laundering), so it scrubs by field name alone as defense-in-depth; this is that
+/// name set. Keep it in sync with [`sensitive_fields_for_type`].
+pub fn all_sensitive_field_names() -> &'static [&'static str] {
+    &["email", "phone"]
+}
+
 /// Whether a token allows creating a relation to a shared entity.
 pub fn can_relate_to_shared(
     token: &CapabilityToken,
