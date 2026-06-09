@@ -422,6 +422,34 @@ impl UnixGraphClient {
         Err(QueryError::InvalidQuery(format!("malformed revoke response: {text}")))
     }
 
+    /// Materialize a Context Capsule frozen slice for `scope` as of now, via the
+    /// daemon's capsule read op (context-capsule.md §4, loader (b)).
+    ///
+    /// A leading `0x07` byte selects the op; the body is the JSON
+    /// [`CapsuleScope`](arlen_capsule::scope::CapsuleScope). The daemon expands the
+    /// scope, reads the projected fields and the live membership relations as of
+    /// now, and returns the canonical JSON of the
+    /// [`FrozenSlice`](arlen_capsule::slice::FrozenSlice); a daemon `ERROR:` (rate
+    /// limit, invalid scope, read failure) maps to [`QueryError`]. The caller
+    /// (`capsuled`) content-addresses the returned slice; re-canonicalizing it
+    /// yields the same bytes the daemon hashed.
+    pub async fn materialize_capsule(
+        &self,
+        scope: &arlen_capsule::scope::CapsuleScope,
+    ) -> Result<arlen_capsule::slice::FrozenSlice, QueryError> {
+        let json = serde_json::to_vec(scope).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x07);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_TYPED_RESPONSE_BYTES).await?;
+        if bytes.starts_with(b"ERROR:") {
+            Self::check_error(&String::from_utf8_lossy(&bytes))?;
+        }
+        serde_json::from_slice::<arlen_capsule::slice::FrozenSlice>(&bytes)
+            .map_err(|e| QueryError::InvalidQuery(format!("malformed capsule slice: {e}")))
+    }
+
     /// Create a built-in graph relation `from -[relation_type]-> to` between two
     /// existing nodes, via the daemon's write socket.
     ///
@@ -1094,6 +1122,49 @@ mod tests {
         let _ = std::fs::remove_file(&path);
 
         assert_eq!(outcome.unwrap(), RevokeOutcome::Revoked);
+    }
+
+    #[tokio::test]
+    async fn materialize_capsule_sends_the_scope_and_parses_the_slice() {
+        use arlen_capsule::scope::CapsuleScope;
+        use arlen_capsule::slice::SliceValue;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-capsule-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            assert_eq!(req[0], 0x07, "capsule materialize carries the 0x07 prefix");
+            let scope: CapsuleScope = serde_json::from_slice(&req[1..]).unwrap();
+            assert_eq!(scope.roots, vec!["p1".to_string()]);
+            assert_eq!(scope.expand_hops, 1);
+
+            let resp = br#"{"nodes":[{"id":"f1","label":"File","fields":{"path":{"text":"/a"}}}],"relations":[{"from":"f1","rel_type":"FILE_PART_OF","to":"p1"}]}"#;
+            conn.write_all(&(resp.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(resp).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let scope = CapsuleScope { roots: vec!["p1".into()], expand_hops: 1 };
+        let slice = client.materialize_capsule(&scope).await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        let slice = slice.unwrap();
+        assert_eq!(slice.nodes.len(), 1);
+        assert_eq!(slice.nodes[0].id, "f1");
+        assert_eq!(slice.nodes[0].fields.get("path"), Some(&SliceValue::Text("/a".into())));
+        assert_eq!(slice.relations.len(), 1);
+        assert_eq!(slice.relations[0].to, "p1");
     }
 
     #[tokio::test]
