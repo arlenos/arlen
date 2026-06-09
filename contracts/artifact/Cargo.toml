@@ -1,0 +1,15 @@
+[package]
+name = "arlen-artifact"
+version = "0.1.0"
+edition = "2021"
+description = "Shared typed artifact envelope (kind/payload/text/meta) for the terminal, harness and arlen-artifact helper"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[workspace]
