@@ -9,9 +9,11 @@ path = "src/lib.rs"
 
 [dependencies]
 arlen-ai-undo-core = { path = "../ai-undo-core" }
+arlen-permissions = { path = "../../sdk/permissions" }
 thiserror = "2"
 getrandom = "0.2"
 zeroize = "1"
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

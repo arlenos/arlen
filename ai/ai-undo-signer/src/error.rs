@@ -10,6 +10,10 @@ pub enum SignerError {
     /// A filesystem error resolving or preparing the signer's state directory.
     #[error("undo-log storage error: {0}")]
     Storage(String),
+    /// A connecting peer was rejected (bad credentials, wrong uid, or an app id
+    /// not on the admitted allowlist).
+    #[error("undo-log peer rejected: {0}")]
+    Unauthorized(String),
     /// An underlying I/O error.
     #[error(transparent)]
     Io(#[from] std::io::Error),
