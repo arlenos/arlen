@@ -482,8 +482,14 @@ const MAX_RETRIEVE_LIMIT: i64 = 100;
 
 /// The hard ceiling on a capsule scope's hop expansion, so a request cannot walk
 /// the whole graph from a high-degree root (the relation-type / count over-share
-/// controls are the CC-R6 mint preview; this is the coarse DoS bound).
+/// controls are the CC-R6 mint preview; this is the coarse DoS bound). The manifest
+/// breadth is separately capped in `capsule::capsule_expand`.
 const MAX_CAPSULE_HOPS: u32 = 6;
+
+/// The wall-clock bound on a capsule materialize. Unlike the single-probe read ops
+/// (a 500ms timeout), the materialize does O(manifest) graph reads, so it gets a
+/// few seconds; the manifest cap keeps that bounded.
+const CAPSULE_MATERIALIZE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// A caller-scoped provenance read request, sent with a leading `0x04` byte
 /// (provenance-halo.md §5). The body is JSON; the response is the object's
@@ -1417,10 +1423,14 @@ async fn handle_client(
         // body is a JSON `CapsuleScope`; the response is the canonical JSON of the
         // materialized `FrozenSlice`, or the plaintext `ERROR: ...` form (a client
         // detects the `ERROR:` prefix before parsing the JSON object). It reads the
-        // caller's own graph and is no more powerful than the 0x01 typed query, so
-        // it is query-rate-limited; the capsule access control (the signed grant,
-        // the audience, the human-gated mint) lives in `capsuled`, not here.
-        // `expand_hops` is clamped so a request cannot walk the whole graph.
+        // caller's OWN graph; its reach is bounded NOT by the 0x01 read-only/
+        // authority-label deny but by construction — the materializer loads only
+        // `File`/`Project` (the `CAPSULE_LABELS` allowlist) and follows only live
+        // `FILE_PART_OF`, so it never touches authority nodes, and the manifest is
+        // hop- AND breadth-capped. Query-rate-limited and wrapped in a wall-clock
+        // timeout (the materialize does O(manifest) reads, so it gets a longer
+        // bound than the single-probe sibling ops). The capsule access control (the
+        // signed grant, the audience, the human-gated mint) lives in `capsuled`.
         if buf.first() == Some(&0x07) {
             let violation = {
                 let mut rs = rate.lock().await;
@@ -1432,10 +1442,12 @@ async fn handle_client(
                 match serde_json::from_slice::<arlen_capsule::scope::CapsuleScope>(&buf[1..]) {
                     Ok(mut scope) => {
                         scope.expand_hops = scope.expand_hops.min(MAX_CAPSULE_HOPS);
-                        match crate::capsule::materialize_slice(&graph, &scope).await {
-                            Ok(slice) => String::from_utf8(slice.canonical_bytes())
+                        let materialize = crate::capsule::materialize_slice(&graph, &scope);
+                        match tokio::time::timeout(CAPSULE_MATERIALIZE_TIMEOUT, materialize).await {
+                            Ok(Ok(slice)) => String::from_utf8(slice.canonical_bytes())
                                 .unwrap_or_else(|_| "ERROR: non-utf8 slice".to_string()),
-                            Err(e) => format!("ERROR: {e}"),
+                            Ok(Err(e)) => format!("ERROR: {e}"),
+                            Err(_) => "ERROR: capsule materialize timed out".to_string(),
                         }
                     }
                     Err(e) => format!("ERROR: invalid capsule scope: {e}"),

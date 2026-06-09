@@ -23,6 +23,13 @@ use arlen_capsule::slice::{FrozenSlice, SliceNode, SliceRelation, SliceValue};
 use crate::graph::{CellValue, GraphHandle};
 use crate::utils::escape_cypher;
 
+/// The hard ceiling on a capsule manifest (nodes). Bounds the BFS breadth (the
+/// hop count alone does not — one hop from a high-degree root could pull the whole
+/// graph), so the per-node loads and the IN-list relation query stay bounded and a
+/// runaway scope is refused rather than served. A hand-picked share is far smaller;
+/// the relation-type over-share preview (CC-R6) is the finer control on top.
+const MAX_CAPSULE_MANIFEST: usize = 5000;
+
 /// Map a graph [`CellValue`] to a frozen-slice [`SliceValue`], or `None` if the
 /// value cannot be carried in the canonical frozen form.
 ///
@@ -143,6 +150,9 @@ pub(crate) async fn capsule_expand(
     scope: &CapsuleScope,
 ) -> Result<Vec<String>> {
     let mut included: BTreeSet<String> = scope.roots.iter().cloned().collect();
+    if included.len() > MAX_CAPSULE_MANIFEST {
+        anyhow::bail!("capsule scope too large: more than {MAX_CAPSULE_MANIFEST} nodes");
+    }
     let mut frontier: Vec<String> = included.iter().cloned().collect();
     for _ in 0..scope.expand_hops {
         if frontier.is_empty() {
@@ -153,6 +163,15 @@ pub(crate) async fn capsule_expand(
             for neighbour in capsule_neighbors(graph, node).await? {
                 if included.insert(neighbour.clone()) {
                     next.push(neighbour);
+                    // Bound the breadth, not just the depth (a high-degree root
+                    // would otherwise pull a huge manifest, making the per-node
+                    // loads and the IN-list relation query O(N)). A scope that
+                    // reaches more than the cap is refused rather than served huge.
+                    if included.len() > MAX_CAPSULE_MANIFEST {
+                        anyhow::bail!(
+                            "capsule scope too large: more than {MAX_CAPSULE_MANIFEST} nodes"
+                        );
+                    }
                 }
             }
         }
@@ -421,6 +440,17 @@ mod tests {
             "only in-manifest live edges, sorted; the f1->p2 edge is dropped"
         );
         assert!(capsule_relations(&graph, &[]).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_over_large_scope_is_refused() {
+        // A scope whose root set alone exceeds the manifest cap is refused before
+        // any graph read, so a runaway scope cannot pull a huge slice.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        let roots: Vec<String> = (0..=MAX_CAPSULE_MANIFEST).map(|i| format!("r{i}")).collect();
+        let scope = CapsuleScope { roots, expand_hops: 1 };
+        assert!(capsule_expand(&graph, &scope).await.is_err());
     }
 
     #[tokio::test]

@@ -143,6 +143,19 @@ mod tests {
     }
 
     #[test]
+    fn canonical_bytes_are_pinned() {
+        // Pin the exact signed form. The signature covers these bytes, so a silent
+        // change to the field order or shape (a serde reorder, a renamed field)
+        // would invalidate every existing grant; this test fails first instead.
+        let g = grant();
+        let expected = format!(
+            "{{\"roots\":[\"p1\"],\"expand_hops\":1,\"slice_hash\":\"sha256:abc\",\"audience_hex\":\"{}\",\"expires_at_micros\":1000000,\"max_ops\":10,\"originating_user\":\"tim\",\"revocation_handle\":\"rev-1\"}}",
+            "00".repeat(32)
+        );
+        assert_eq!(g.canonical_bytes(), expected.into_bytes());
+    }
+
+    #[test]
     fn canonical_bytes_are_root_order_independent() {
         let mut a = grant();
         a.scope.roots = vec!["a".into(), "b".into(), "c".into()];
