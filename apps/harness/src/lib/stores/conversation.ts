@@ -14,6 +14,7 @@
 import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { planRegenerate } from "$lib/regenerate";
+import { planEdit } from "$lib/edit";
 
 /// Who produced a message. `error` is a turn that failed (daemon down,
 /// disabled, query error) — rendered distinctly, never as an answer.
@@ -380,6 +381,70 @@ export async function regenerate(): Promise<void> {
     // Failure: keep the old response, turn only the placeholder into an error
     // turn. The previous answer is preserved above it, and the trailing error
     // is itself regeneratable, so the user can retry.
+    updateSession(id, (m) =>
+      m.map((msg) =>
+        msg.id === pendingId
+          ? { id: msg.id, role: "error" as const, text: String(e), pending: false }
+          : msg,
+      ),
+    );
+  } finally {
+    busy.set(false);
+  }
+}
+
+/// Edit a prior user message in the active conversation and re-ask it: drop that
+/// turn and everything after it, then send the new text. A no-op when the edit
+/// is not allowed (see `planEdit`), so a caller can wire it to an inline editor
+/// gated on the same check. Like `regenerate`, the original transcript stays
+/// visible and persisted until the replacement succeeds: the edited question and
+/// a placeholder are appended, the truncation happens atomically only on success,
+/// and a mid-flight failure turns just the placeholder into a retryable error
+/// without losing the prior conversation. The turn targets the session it was
+/// edited in even if the user switches mid-flight.
+export async function editAndResend(messageId: number, newText: string): Promise<void> {
+  const id = get(activeSessionId);
+  if (!id) return;
+  const session = get(sessions).find((s) => s.id === id);
+  if (!session) return;
+  const plan = planEdit(session.messages, messageId, newText);
+  if (!plan) return;
+
+  const userId = nextMsgId++;
+  const pendingId = nextMsgId++;
+  updateSession(id, (m) => [
+    ...m,
+    { id: userId, role: "user", text: plan.prompt },
+    { id: pendingId, role: "assistant", text: "", pending: true },
+  ]);
+  busy.set(true);
+
+  try {
+    // The plan only edits attachment-free turns, so the prompt is the new text
+    // verbatim (no referenced-files block to rebuild).
+    const reply = await invoke<{
+      answer: string;
+      toolCalls: ToolCall[];
+      traceUnavailable: boolean;
+    }>("ai_query", { prompt: plan.prompt });
+    // Success: atomically swap to the kept prefix, the edited question, and the
+    // fresh answer, dropping the old turns from the edit point onward.
+    updateSession(id, () => [
+      ...plan.keep,
+      { id: userId, role: "user", text: plan.prompt },
+      {
+        id: pendingId,
+        role: "assistant",
+        text: reply.answer,
+        pending: false,
+        toolCalls: reply.toolCalls,
+        traceUnavailable: reply.traceUnavailable,
+      },
+    ]);
+  } catch (e) {
+    // Failure: keep the original transcript and the edited question, turning
+    // only the placeholder into a retryable error. Nothing is truncated, so the
+    // prior conversation is never lost on a daemon error or hang.
     updateSession(id, (m) =>
       m.map((msg) =>
         msg.id === pendingId
