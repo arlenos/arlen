@@ -23,6 +23,12 @@ toml = "0.8"
 tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
 
+[features]
+# Forward the native ONNX classifier so `Screener::from_config` can load a model.
+# Off by default (no native deps); a configured-but-not-loadable classifier fails
+# closed (see `Screener::from_config`).
+onnx = ["arlen-ai-classifier/onnx"]
+
 [dev-dependencies]
 rmcp = { version = "1.7", features = ["client", "server", "macros"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync"] }
