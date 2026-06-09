@@ -333,6 +333,27 @@ pub enum ArtifactError {
     /// payload, bad JSON).
     #[error("malformed artifact: {0}")]
     Malformed(String),
+    /// A chart series carried a non-finite value (NaN or infinity). `serde_json`
+    /// cannot serialise a non-finite `f64`, so accepting one would make a later
+    /// `to_json` panic; it is rejected at construction instead.
+    #[error("chart series contains a non-finite value")]
+    NonFiniteChartValue,
+}
+
+/// Reject a payload that could not be serialised back to JSON. The only such case
+/// is a chart series with a non-finite `f64` (`serde_json` errors on NaN/infinity),
+/// which would otherwise turn a later `to_json` into a panic. Validated at every
+/// construction entry point so `to_json` is genuinely infallible for a constructed
+/// artifact.
+fn validate_payload(payload: &ArtifactPayload) -> Result<(), ArtifactError> {
+    if let ArtifactPayload::Chart { series, .. } = payload {
+        for s in series {
+            if s.values.iter().any(|v| !v.is_finite()) {
+                return Err(ArtifactError::NonFiniteChartValue);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// A program's envelope: payload + text (+ optional title) only. Deliberately has
@@ -363,6 +384,7 @@ impl Artifact {
         if text.is_empty() {
             return Err(ArtifactError::MissingText);
         }
+        validate_payload(&payload)?;
         let kind = payload.kind();
         Ok(Artifact {
             kind,
@@ -413,6 +435,7 @@ impl Artifact {
                 payload: payload_kind,
             });
         }
+        validate_payload(&raw.payload)?;
         Ok(raw)
     }
 
@@ -569,6 +592,34 @@ mod tests {
         .collect();
         assert_eq!(inert.len(), 7);
         assert!(!inert.contains(&ArtifactKind::Widget));
+    }
+
+    #[test]
+    fn non_finite_chart_value_is_rejected() {
+        // serde_json cannot serialise NaN/infinity, so a chart carrying one would
+        // make to_json panic; it must be rejected at construction instead.
+        let nan_chart = ArtifactPayload::Chart {
+            chart_type: ChartType::Line,
+            series: vec![Series {
+                name: "x".into(),
+                values: vec![1.0, f64::NAN],
+            }],
+        };
+        assert_eq!(
+            Artifact::new(nan_chart.clone(), "t".into(), ArtifactOrigin::AgentGenerated, None),
+            Err(ArtifactError::NonFiniteChartValue)
+        );
+        assert_eq!(
+            Artifact::receive(nan_chart, "t".into(), None),
+            Err(ArtifactError::NonFiniteChartValue)
+        );
+        // A finite chart constructs and to_json does not panic.
+        let ok_chart = ArtifactPayload::Chart {
+            chart_type: ChartType::Bar,
+            series: vec![Series { name: "y".into(), values: vec![1.0, 2.5] }],
+        };
+        let art = Artifact::new(ok_chart, "t".into(), ArtifactOrigin::AgentGenerated, None).unwrap();
+        let _ = art.to_json();
     }
 
     #[test]
