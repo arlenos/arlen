@@ -461,6 +461,13 @@ pub struct Dispatcher<'a> {
     /// blocking pool. A fresh dispatcher (a config epoch) gets a fresh permit,
     /// acceptable since epochs are rare and a wedge is pathological.
     screen_gate: Arc<tokio::sync::Semaphore>,
+    /// Where a read observation's full result is persisted (B-spill). The
+    /// transcript keeps only a bounded preview plus the result's content-address;
+    /// the full rows live here, fetchable by that address, so compaction can drop
+    /// the preview without losing the result. `None` leaves the ref an identity
+    /// with no backing store (the pre-spill behaviour); spilling is best-effort
+    /// and never aborts the loop.
+    spill: Option<&'a dyn crate::spill::SpillStore>,
 }
 
 /// How the dispatcher screens external content for prompt injection (S17).
@@ -515,7 +522,16 @@ impl<'a> Dispatcher<'a> {
             coalescer: std::sync::Mutex::new(Coalescer::new(DEFAULT_COALESCE_WINDOW)),
             screening: ScreeningMode::Off,
             screen_gate: Arc::new(tokio::sync::Semaphore::new(1)),
+            spill: None,
         }
+    }
+
+    /// Persist read-observation results to the given spill store (B-spill), so a
+    /// compacted-away preview can be recovered by its content-address. Without
+    /// this the observation reference is an identity with no backing store.
+    pub fn with_spill(mut self, spill: &'a dyn crate::spill::SpillStore) -> Self {
+        self.spill = Some(spill);
+        self
     }
 
     /// Opt into executing proven workflow decisions through the given live
@@ -1254,7 +1270,22 @@ impl<'a> Dispatcher<'a> {
                             match graph.query(query).await {
                                 Ok(rows) => {
                                     let raw = observation_preview(&rows, OBSERVATION_PREVIEW_CAP);
-                                    let result_ref = observation_ref(&rows);
+                                    // Content-address the full result once, then
+                                    // spill it (B-spill) so the preview can later
+                                    // be compacted away without losing the rows.
+                                    let full = serde_json::to_vec(&rows).unwrap_or_default();
+                                    let result_ref = crate::spill::content_ref(&full);
+                                    if let Some(spill) = self.spill {
+                                        if let Err(e) = spill.put(&result_ref, &full) {
+                                            // Best-effort: the preview still drives
+                                            // the prompt; a spill failure only means
+                                            // the ref cannot be re-expanded.
+                                            tracing::debug!(
+                                                error = %e,
+                                                "spilling observation result failed"
+                                            );
+                                        }
+                                    }
                                     // Screen the sanitised preview before it
                                     // enters the transcript; a Block withholds the
                                     // content (the model observes that, not it).
@@ -1452,18 +1483,6 @@ fn is_read_tool(tool: &str) -> bool {
     tool == "graph.query"
 }
 
-/// A content-address for a tool result's rows: a stable identity for the
-/// `Observation`'s reference. The full result is not yet persisted, so the
-/// reference is an identity rather than a fetch handle; a dropped preview is
-/// recovered by re-issuing the read, and persistence-by-reference (P8) is the
-/// follow-up.
-fn observation_ref(rows: &[HashMap<String, serde_json::Value>]) -> String {
-    use sha2::{Digest, Sha256};
-    let serialized = serde_json::to_vec(rows).unwrap_or_default();
-    let mut hasher = Sha256::new();
-    hasher.update(&serialized);
-    format!("sha256:{:x}", hasher.finalize())
-}
 
 fn estimate_tokens(reported: Option<u32>, text_len: usize) -> u32 {
     let estimate = (text_len / 4) as u32;
@@ -2352,6 +2371,51 @@ trigger:
             Some(DispatchOutcome::Terminal { outcome, .. }) if outcome == "done"
         ));
         assert!(audit.recorded().await.is_empty(), "a read observation is not audited");
+    }
+
+    #[tokio::test]
+    async fn a_read_observation_is_spilled_and_retrievable_by_ref() {
+        use crate::spill::SpillStore;
+        let behaviours = [loaded(&agent_read_skill(), Status::Enabled)];
+        let handlers = registry(Box::new(StubPropose));
+        let cap = Capability::new(AccessTier::Full, ActionPermissions::suggest_only());
+        let audit = MockAuditSink::accepting();
+        let obs = NullObserver;
+        let graph = RecordingGraph {
+            queries: std::sync::Mutex::new(Vec::new()),
+        };
+        let provider = MockProvider::new(vec![
+            propose_query("graph.query", "MATCH (f:File) RETURN f"),
+            stop(),
+        ]);
+        let dir = tempfile::tempdir().unwrap();
+        let spill = crate::spill::FileSpillStore::new(dir.path(), 1024 * 1024);
+        let d = Dispatcher::new(
+            &behaviours,
+            &handlers,
+            &graph,
+            AccessTier::Full,
+            gate(&audit, &obs, &cap),
+            Some(&provider),
+            &TEST_CLOCK,
+        )
+        .with_spill(&spill);
+
+        let _ = d.dispatch(&event("~/foo.rs")).await;
+
+        // The full result the read returned is persisted by its content address,
+        // so a preview compacted out of the prompt is still recoverable.
+        let expected: Vec<HashMap<String, serde_json::Value>> =
+            vec![[("name".to_string(), serde_json::json!("foo.rs"))]
+                .into_iter()
+                .collect()];
+        let bytes = serde_json::to_vec(&expected).unwrap();
+        let reference = crate::spill::content_ref(&bytes);
+        assert_eq!(
+            spill.get(&reference).unwrap().as_deref(),
+            Some(&bytes[..]),
+            "the observation's full result is spilled and fetchable by its ref"
+        );
     }
 
     #[tokio::test]
