@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::permission::PermissionProfile;
 use crate::quota::{AppTier, QuotaConfig};
-use crate::token::{EntityScope, InstanceScope, RelationScope};
+use crate::token::InstanceScope;
 
 /// A single reach to remove. A closed enum: there is no variant that *adds* a
 /// reach, so a revoke request cannot widen authority by construction (§6).
@@ -86,9 +86,14 @@ pub struct RevokeReach {
 /// type-and-relation-keyed set is the right granularity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScopeSummary {
-    /// The readable entity types.
+    /// The raw `[graph].read` pattern entries (e.g. `system.File`,
+    /// `system.File.path`, `com.x.*`). Kept as the verbatim patterns, NOT
+    /// collapsed to entity types: a field-scoped pattern (`system.File.path`)
+    /// and a broader one (`system.File`) are distinct entries, so removing one
+    /// while another for the same type remains is a real narrowing the gate must
+    /// see. Collapsing to entity types would hide it and false-refuse the revoke.
     pub read: BTreeSet<String>,
-    /// The writable entity types.
+    /// The raw `[graph].write` pattern entries, same discipline as `read`.
     pub write: BTreeSet<String>,
     /// The permitted relations, keyed `(from, to, relation_type)`.
     pub relations: BTreeSet<(String, String, String)>,
@@ -97,21 +102,27 @@ pub struct ScopeSummary {
 }
 
 impl ScopeSummary {
-    /// Summarise a token's four scope collections into the comparable set form.
-    pub fn from_scopes(
-        read: &[EntityScope],
-        write: &[EntityScope],
-        relations: &[RelationScope],
-        instance: InstanceScope,
-    ) -> ScopeSummary {
+    /// Summarise a profile's graph reach into the comparable set form: the raw
+    /// read/write pattern entries, the relation tuples, and the instance breadth.
+    /// Raw patterns (not parsed entity types) so field-level narrowing is visible
+    /// to the subset gate.
+    pub fn from_profile(profile: &PermissionProfile) -> ScopeSummary {
+        let (read, write) = match &profile.graph {
+            Some(g) => (
+                g.read.iter().cloned().collect(),
+                g.write.iter().cloned().collect(),
+            ),
+            None => (BTreeSet::new(), BTreeSet::new()),
+        };
         ScopeSummary {
-            read: read.iter().map(|s| s.entity_type.clone()).collect(),
-            write: write.iter().map(|s| s.entity_type.clone()).collect(),
-            relations: relations
+            read,
+            write,
+            relations: profile
+                .to_relation_scopes()
                 .iter()
                 .map(|r| (r.from.clone(), r.to.clone(), r.relation_type.clone()))
                 .collect(),
-            instance_all: matches!(instance, InstanceScope::All),
+            instance_all: matches!(profile.to_instance_scope(), InstanceScope::All),
         }
     }
 }
@@ -222,12 +233,7 @@ fn inline_str<'a>(table: &'a toml_edit::InlineTable, key: &str) -> Option<&'a st
 /// Summarise a loaded profile's re-derived runtime token scopes into the form
 /// the subset gate compares.
 fn summarize(profile: &PermissionProfile) -> ScopeSummary {
-    ScopeSummary::from_scopes(
-        &profile.to_read_scopes(),
-        &profile.to_write_scopes(),
-        &profile.to_relation_scopes(),
-        profile.to_instance_scope(),
-    )
+    ScopeSummary::from_profile(profile)
 }
 
 /// Whether the user tier may revoke this app's reach (§6.2): user-tier apps yes,
@@ -520,25 +526,41 @@ instance_scope = "all"
     }
 
     #[test]
-    fn from_scopes_summarises_each_collection() {
-        let read = vec![EntityScope {
-            entity_type: "system.File".into(),
-            fields: None,
-            exclude_fields: vec![],
-        }];
-        let rels = vec![RelationScope {
-            from: "system.File".into(),
-            to: "system.Project".into(),
-            relation_type: "FILE_PART_OF".into(),
-        }];
-        let s = ScopeSummary::from_scopes(&read, &[], &rels, InstanceScope::All);
-        assert!(s.read.contains("system.File"));
-        assert!(s.write.is_empty());
+    fn from_profile_summarises_raw_graph_entries() {
+        let profile: PermissionProfile = toml::from_str(
+            "[graph]\nread = [\"system.File.path\", \"system.Project\"]\n\
+             write = [\"com.x.Note\"]\n\
+             relations = [{ from = \"system.File\", to = \"system.Project\", type = \"FILE_PART_OF\" }]\n\
+             instance_scope = \"all\"\n",
+        )
+        .unwrap();
+        let s = ScopeSummary::from_profile(&profile);
+        // Raw patterns, not collapsed entity types: the field-scoped entry is kept verbatim.
+        assert!(s.read.contains("system.File.path"));
+        assert!(s.read.contains("system.Project"));
+        assert!(s.write.contains("com.x.Note"));
         assert!(s.relations.contains(&(
             "system.File".to_string(),
             "system.Project".to_string(),
             "FILE_PART_OF".to_string()
         )));
         assert!(s.instance_all);
+    }
+
+    #[test]
+    fn revoking_one_field_pattern_while_another_for_the_same_type_remains_is_narrowing() {
+        // Regression: with the old entity-type-collapsed summary, removing
+        // `system.File.path` while `system.File.name` stayed left the entity-type
+        // set unchanged and the gate false-refused the revoke. Raw-pattern
+        // comparison sees the genuine narrowing.
+        let parse = |t: &str| -> PermissionProfile { toml::from_str(t).unwrap() };
+        let old = parse(
+            "[graph]\nread = [\"system.File.path\", \"system.File.name\"]\ninstance_scope = \"own\"\n",
+        );
+        let new = parse("[graph]\nread = [\"system.File.name\"]\ninstance_scope = \"own\"\n");
+        assert!(
+            is_strict_narrowing(&ScopeSummary::from_profile(&old), &ScopeSummary::from_profile(&new)),
+            "dropping a field-scoped read pattern is a real narrowing"
+        );
     }
 }
