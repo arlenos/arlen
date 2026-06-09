@@ -189,8 +189,16 @@ pub async fn confirm_present(graph: &GraphHandle, candidates: &[String]) -> Resu
         .map(|id| format!("'{}'", escape_cypher(id)))
         .collect::<Vec<_>>()
         .join(", ");
-    // Label-agnostic: a candidate id may belong to any node table.
-    let cypher = format!("MATCH (n) WHERE n.id IN [{list}] RETURN n.id AS id");
+    // Label-agnostic: a candidate id may belong to any node table. The
+    // `expired_at IS NULL` clause is the as-of-now node liveness (§4.9): a
+    // transaction-closed node (an archived Project) is dropped, while a node
+    // table that carries no `expired_at` (the append-only observation nodes:
+    // File, App, Event, ...) reads as NULL there and so stays live, which is the
+    // honest interpretation (an observation never expires). The point-in-time
+    // `expired_at > T_asof` variant is a future parameter; "as of now" needs only
+    // the IS NULL form, since a close stamp is always in the past.
+    let cypher =
+        format!("MATCH (n) WHERE n.id IN [{list}] AND n.expired_at IS NULL RETURN n.id AS id");
     let rs = graph.query_rows(cypher).await?;
     let present: HashSet<String> = rs
         .rows
@@ -359,5 +367,30 @@ mod tests {
 
         // An empty candidate set returns empty without a query.
         assert!(confirm_present(&graph, &[]).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn confirm_present_drops_an_archived_project_keeps_live_and_observation_nodes() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        // A File (an observation node with no expired_at column), a live Project
+        // (expired_at NULL), and an archived Project (expired_at set).
+        graph.write("CREATE (:File {id: 'f1', path: '/a'})".into()).await.unwrap();
+        graph.write("CREATE (:Project {id: 'live'})".into()).await.unwrap();
+        graph.write("CREATE (:Project {id: 'arch'})".into()).await.unwrap();
+        graph
+            .write("MATCH (p:Project {id: 'arch'}) SET p.expired_at = 5000".into())
+            .await
+            .unwrap();
+
+        let confirmed = confirm_present(&graph, &ids(&["f1", "live", "arch"])).await.unwrap();
+        // The observation node (missing column -> NULL -> live) and the live
+        // project survive; the archived (closed) project is dropped.
+        assert_eq!(
+            confirmed,
+            ids(&["f1", "live"]),
+            "archived project dropped; observation node + live project kept"
+        );
     }
 }
