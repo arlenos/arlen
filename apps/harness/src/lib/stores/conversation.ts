@@ -16,6 +16,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { planRegenerate } from "$lib/regenerate";
 import { planEdit } from "$lib/edit";
 import { planDelete } from "$lib/delete";
+import { planFork } from "$lib/fork";
 
 /// Who produced a message. `error` is a turn that failed (daemon down,
 /// disabled, query error) — rendered distinctly, never as an answer.
@@ -471,4 +472,27 @@ export function deleteTurn(messageId: number): void {
   const next = planDelete(session.messages, messageId);
   if (!next) return;
   updateSession(id, () => next);
+}
+
+/// Fork the active conversation at a chosen turn into a new session: copy the
+/// prefix through that message into a fresh conversation and make it active,
+/// leaving the original untouched (see `planFork`). Returns the new session id,
+/// or `null` when the fork is not allowed (a turn in flight, or an unknown id).
+/// The new session derives its own title from the copied prefix; later turns
+/// added to the branch never touch the original.
+export function fork(messageId: number): string | null {
+  const id = get(activeSessionId);
+  if (!id) return null;
+  const session = get(sessions).find((s) => s.id === id);
+  if (!session) return null;
+  const prefix = planFork(session.messages, messageId);
+  if (!prefix) return null;
+
+  const newId = crypto.randomUUID();
+  sessions.update((list) => [
+    { id: newId, title: titleFrom(prefix), messages: prefix, createdAt: Date.now() },
+    ...list,
+  ]);
+  activeSessionId.set(newId);
+  return newId;
 }
