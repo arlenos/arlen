@@ -1,0 +1,11 @@
+[package]
+name = "capsuled"
+version = "0.1.0"
+edition = "2021"
+description = "Context Capsule daemon: mint, serve and revoke signed, scope-bound, frozen Knowledge-Graph slices lent under capability control"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"
