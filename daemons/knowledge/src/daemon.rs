@@ -1666,6 +1666,9 @@ async fn handle_client(
                 )
                 .await
                 {
+                    // Defense-in-depth: scrub known-sensitive columns for a
+                    // non-system caller (the label gate is the real boundary).
+                    Ok(Ok(json)) if !system_anchored => scrub_sensitive_columns_json(&json),
                     Ok(Ok(json)) => json,
                     Ok(Err(e)) => format!("ERROR: {e}"),
                     Err(_elapsed) => "ERROR: QueryTimeout".to_string(),
@@ -1900,6 +1903,58 @@ fn raw_read_label_gate(
     None
 }
 
+/// Null every cell of a typed `RowSet` JSON (`{columns, rows}`) whose column names a
+/// sensitive field. The column name's last dotted segment is compared (so
+/// `n.email`/`p.email` match `email`), case-insensitively, against
+/// [`crate::shared::all_sensitive_field_names`].
+///
+/// This is a defense-in-depth scrub on the raw read path, NOT a boundary: a query
+/// that aliases or transforms a sensitive field past its column name escapes it
+/// (the notes' B4). The boundary is the label pre-gate (which denies a sensitive or
+/// out-of-scope label outright for a non-system caller, so the row never returns)
+/// and the structured read op. Best-effort: a non-`RowSet` or an `ERROR:` string is
+/// returned unchanged. Applied only for callers without sensitive read scope.
+fn scrub_sensitive_columns_json(json: &str) -> String {
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return json.to_string();
+    };
+    let Some(columns) = value.get("columns").and_then(|c| c.as_array()) else {
+        return json.to_string();
+    };
+    let sensitive = crate::shared::all_sensitive_field_names();
+    let sensitive_idx: Vec<usize> = columns
+        .iter()
+        .enumerate()
+        .filter_map(|(i, col)| {
+            let name = col.as_str()?;
+            let leaf = name.rsplit('.').next().unwrap_or(name);
+            sensitive
+                .iter()
+                .any(|s| leaf.eq_ignore_ascii_case(s))
+                .then_some(i)
+        })
+        .collect();
+    if sensitive_idx.is_empty() {
+        return json.to_string();
+    }
+    if let Some(rows) = value
+        .as_object_mut()
+        .and_then(|o| o.get_mut("rows"))
+        .and_then(|r| r.as_array_mut())
+    {
+        for row in rows.iter_mut() {
+            if let Some(cells) = row.as_array_mut() {
+                for &i in &sensitive_idx {
+                    if let Some(cell) = cells.get_mut(i) {
+                        *cell = serde_json::Value::Null;
+                    }
+                }
+            }
+        }
+    }
+    value.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1942,6 +1997,29 @@ mod tests {
         assert!(
             raw_read_label_gate("MATCH (s:Session) RETURN s.id", &["File".into()], true).is_none()
         );
+    }
+
+    #[test]
+    fn scrub_nulls_sensitive_columns_keeps_others() {
+        let json = r#"{"columns":["p.email","p.name","phone"],"rows":[["a@b.com","Alice","555"],["c@d.com","Bob","666"]]}"#;
+        let scrubbed = scrub_sensitive_columns_json(json);
+        let v: serde_json::Value = serde_json::from_str(&scrubbed).unwrap();
+        let rows = v["rows"].as_array().unwrap();
+        // email (col 0) and phone (col 2) nulled; name (col 1) kept.
+        assert!(rows[0][0].is_null());
+        assert_eq!(rows[0][1], "Alice");
+        assert!(rows[0][2].is_null());
+        assert!(rows[1][0].is_null());
+        assert_eq!(rows[1][1], "Bob");
+    }
+
+    #[test]
+    fn scrub_passes_through_non_rowset_and_errors() {
+        assert_eq!(scrub_sensitive_columns_json("ERROR: QueryTimeout"), "ERROR: QueryTimeout");
+        // No sensitive column: unchanged.
+        let plain = r#"{"columns":["f.path"],"rows":[["/x"]]}"#;
+        let out = scrub_sensitive_columns_json(plain);
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&out).unwrap()["rows"][0][0], "/x");
     }
 
     #[test]
