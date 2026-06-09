@@ -885,7 +885,32 @@ impl<'a> LiveExecutor<'a> {
     /// decision by the receipt's correlation id. The retract is time-bounded and
     /// idempotent; a commit-unknown retract is reconciled by reading whether this
     /// op's edge is now gone.
+    /// Compensate (undo) a previously-executed action, dispatching on the receipt
+    /// variant (reversible-receipts-and-the-effect-model.md §5). The graph arm is
+    /// the original op-id-keyed retract verbatim; the non-graph arm replays the
+    /// captured [`InverseReceipt`] and is the EM-R6 increment. No non-graph receipt
+    /// is produced until the executor's non-graph arm (EM-R5), so the non-graph arm
+    /// fails closed today rather than silently no-op.
     pub async fn compensate(
+        &self,
+        receipt: &ActionReceipt,
+        graph: &dyn GraphHandle,
+        behaviour_name: &str,
+    ) -> Result<CompensationOutcome, ExecError> {
+        match receipt {
+            ActionReceipt::Graph(executed) => {
+                self.compensate_graph(executed, graph, behaviour_name).await
+            }
+            ActionReceipt::NonGraph(_) => Err(ExecError::UnsupportedEffect(
+                "non-graph compensation is the EM-R6 increment; no non-graph receipt is produced yet"
+                    .to_string(),
+            )),
+        }
+    }
+
+    /// The graph-edge compensation: retract only the edge this execution's op id
+    /// stamped. Unchanged from before the receipt generalisation.
+    async fn compensate_graph(
         &self,
         executed: &ExecutedWrite,
         graph: &dyn GraphHandle,
@@ -1736,7 +1761,7 @@ mod tests {
 
         let executed = receipt(WriteOutcome::Created);
         let outcome = exec
-            .compensate(&executed, &graph, "auto-tag-by-project")
+            .compensate(&ActionReceipt::Graph(executed.clone()), &graph, "auto-tag-by-project")
             .await
             .unwrap();
         assert_eq!(outcome, CompensationOutcome::Retracted);
@@ -1753,6 +1778,35 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].structural.outcome, "compensate");
         assert_eq!(entries[0].call_chain_id.as_deref(), Some("run-x"));
+    }
+
+    #[tokio::test]
+    async fn compensate_refuses_a_non_graph_receipt_until_em_r6() {
+        use crate::effect_model::{CanonicalPath, InverseReceipt};
+        let cap = executing_cap();
+        let writer = MockWriter::default();
+        let audit = MockAuditSink::accepting();
+        let graph = tag_graph(true);
+        let (resolver, mounts) = (IdentityResolver, StaticMountPolicy::empty());
+        let exec = LiveExecutor::new(&cap, &resolver, &mounts, &writer, &audit);
+
+        let receipt = ActionReceipt::NonGraph(ActionWrite::new(
+            ResolvedExternalOp::new(EffectDomain::Filesystem, "move".into(), "/a/x".into()),
+            InverseReceipt::RestorePath {
+                now: CanonicalPath::new("/b/x").unwrap(),
+                prior: CanonicalPath::new("/a/x").unwrap(),
+            },
+            "op-ng".into(),
+            "run-ng".into(),
+        ));
+        let result = exec.compensate(&receipt, &graph, "auto-tag-by-project").await;
+        assert!(
+            matches!(result, Err(ExecError::UnsupportedEffect(_))),
+            "non-graph compensation is the EM-R6 increment, not yet implemented"
+        );
+        // Fail-closed before any I/O: no retract, no audit.
+        assert!(writer.retracts.lock().unwrap().is_empty());
+        assert!(audit.recorded().await.is_empty());
     }
 
     #[tokio::test]
@@ -1774,7 +1828,7 @@ mod tests {
             op_id: "receipt-op-id".to_string(),
             correlation_id: "decision-A".to_string(),
         };
-        exec.compensate(&executed, &graph, "auto-tag-by-project").await.unwrap();
+        exec.compensate(&ActionReceipt::Graph(executed.clone()), &graph, "auto-tag-by-project").await.unwrap();
 
         let retracts = writer.retracts.lock().unwrap();
         assert_eq!(retracts[0].1, "receipt-op-id", "the retract is keyed by the receipt's op id");
@@ -1801,7 +1855,7 @@ mod tests {
         // action may undo: no retract, and no audit (nothing happened).
         let executed = receipt(WriteOutcome::AlreadyExists);
         let outcome = exec
-            .compensate(&executed, &graph, "auto-tag-by-project")
+            .compensate(&ActionReceipt::Graph(executed.clone()), &graph, "auto-tag-by-project")
             .await
             .unwrap();
         assert_eq!(outcome, CompensationOutcome::NothingToUndo);
@@ -1820,7 +1874,7 @@ mod tests {
 
         let executed = receipt(WriteOutcome::Created);
         let result = exec
-            .compensate(&executed, &graph, "auto-tag-by-project")
+            .compensate(&ActionReceipt::Graph(executed.clone()), &graph, "auto-tag-by-project")
             .await;
         assert!(matches!(result, Err(ExecError::AuditUnavailable(_))));
         assert!(
@@ -1843,7 +1897,7 @@ mod tests {
 
         let executed = receipt(WriteOutcome::Created);
         let outcome = exec
-            .compensate(&executed, &graph, "auto-tag-by-project")
+            .compensate(&ActionReceipt::Graph(executed.clone()), &graph, "auto-tag-by-project")
             .await
             .unwrap();
         assert_eq!(outcome, CompensationOutcome::Retracted);
