@@ -708,11 +708,17 @@ impl AiDaemonService {
         // sources outside the graph, so they only ride along at the Full tier
         // this method already requires). Each is fail-soft inside
         // `explain_with_sources`, so a degraded source never fails the answer.
+        // Screen the snapshot's external content before it reaches the model
+        // (S17). The classifier-from-config wiring lands with the tool-loop screen;
+        // an unprovisioned screener flows (Off), a configured one blocks an
+        // injection-scoring snapshot, both fail closed inside `explain_with_sources`.
+        let screener = arlen_ai_core::screen::Screener::off();
         let result = explain_with_sources(
             explainer.reader.as_ref(),
             explainer.anomaly.as_deref(),
             explainer.process.as_deref(),
             explainer.provider.as_ref(),
+            &screener,
             now_unix,
         )
         .await;
