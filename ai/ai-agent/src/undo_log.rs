@@ -274,6 +274,49 @@ impl FileUndoLog {
     }
 }
 
+/// The genesis previous-hash: 32 zero bytes, the chain's index-0 anchor (the same
+/// scheme as the audit ledger).
+pub const GENESIS_PREV_HASH: [u8; 32] = [0u8; 32];
+
+/// Compute a record's HMAC chain hash: `HMAC-SHA256(key, prev_hash || record_bytes)`
+/// (§6). Folding the previous hash into each record means any tamper, reorder, or
+/// removal changes every subsequent hash, so the chain is tamper- and (with an
+/// external head checkpoint) truncation-evident.
+///
+/// The HMAC key is the **separate-uid signer helper's**: a same-uid agent holds
+/// no key it could not also forge, so integrity *against the agent itself*
+/// requires the signer to be a different uid. This is the pure primitive that
+/// signer uses; it is not the key custody.
+pub fn compute_chain_hash(key: &[u8], prev_hash: &[u8; 32], record_bytes: &[u8]) -> [u8; 32] {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(key).expect("HMAC accepts a key of any length");
+    mac.update(prev_hash);
+    mac.update(record_bytes);
+    let out = mac.finalize().into_bytes();
+    let mut hash = [0u8; 32];
+    hash.copy_from_slice(&out);
+    hash
+}
+
+/// Verify an HMAC chain of `(record_bytes, stored_hash)` pairs against `key`,
+/// returning the index of the first broken link or `None` if the whole chain
+/// verifies. A tampered record, a tampered hash, or a reordering breaks the link
+/// at or after the change; a removed middle record breaks the next link. A
+/// removed *tail* is NOT caught here (the remaining prefix still verifies) and is
+/// the job of an external head checkpoint, as in the audit ledger.
+pub fn verify_chain(key: &[u8], records: &[(Vec<u8>, [u8; 32])]) -> Option<usize> {
+    let mut prev = GENESIS_PREV_HASH;
+    for (i, (bytes, stored)) in records.iter().enumerate() {
+        if compute_chain_hash(key, &prev, bytes) != *stored {
+            return Some(i);
+        }
+        prev = *stored;
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -419,5 +462,80 @@ mod tests {
         )
         .unwrap();
         assert!(FileUndoLog::open(&tampered).is_err(), "a tampered traversal path must fail the load");
+    }
+
+    // Build a chain of `(record_bytes, hash)` pairs from a sequence of byte
+    // payloads, hashing each over the running previous hash (genesis-anchored).
+    fn build_chain(key: &[u8], payloads: &[&[u8]]) -> Vec<(Vec<u8>, [u8; 32])> {
+        let mut prev = GENESIS_PREV_HASH;
+        let mut out = Vec::new();
+        for p in payloads {
+            let hash = compute_chain_hash(key, &prev, p);
+            out.push((p.to_vec(), hash));
+            prev = hash;
+        }
+        out
+    }
+
+    #[test]
+    fn a_well_formed_chain_verifies() {
+        let key = b"signer-key";
+        let chain = build_chain(key, &[b"a", b"b", b"c"]);
+        assert_eq!(verify_chain(key, &chain), None);
+    }
+
+    #[test]
+    fn an_empty_chain_verifies() {
+        assert_eq!(verify_chain(b"k", &[]), None);
+    }
+
+    #[test]
+    fn a_tampered_record_breaks_its_link() {
+        let key = b"signer-key";
+        let mut chain = build_chain(key, &[b"a", b"b", b"c"]);
+        // Tamper the payload of the middle record without re-hashing.
+        chain[1].0 = b"B".to_vec();
+        assert_eq!(verify_chain(key, &chain), Some(1));
+    }
+
+    #[test]
+    fn a_tampered_hash_breaks_its_link() {
+        let key = b"signer-key";
+        let mut chain = build_chain(key, &[b"a", b"b", b"c"]);
+        chain[2].1[0] ^= 0xff;
+        assert_eq!(verify_chain(key, &chain), Some(2));
+    }
+
+    #[test]
+    fn a_reorder_breaks_the_chain() {
+        let key = b"signer-key";
+        let mut chain = build_chain(key, &[b"a", b"b", b"c"]);
+        chain.swap(0, 1);
+        // The first record no longer hashes from genesis with its stored hash.
+        assert_eq!(verify_chain(key, &chain), Some(0));
+    }
+
+    #[test]
+    fn a_removed_middle_record_breaks_the_next_link() {
+        let key = b"signer-key";
+        let mut chain = build_chain(key, &[b"a", b"b", b"c"]);
+        chain.remove(1); // the record that was index 2 now expects b"b"'s hash as prev
+        assert_eq!(verify_chain(key, &chain), Some(1));
+    }
+
+    #[test]
+    fn a_wrong_key_breaks_the_chain_at_the_head() {
+        let chain = build_chain(b"signer-key", &[b"a", b"b"]);
+        assert_eq!(verify_chain(b"other-key", &chain), Some(0));
+    }
+
+    #[test]
+    fn a_truncated_tail_is_not_caught_by_the_chain_alone() {
+        // Documented limitation: removing the tail leaves a verifying prefix.
+        // Truncation evidence is the external head checkpoint's job.
+        let key = b"signer-key";
+        let mut chain = build_chain(key, &[b"a", b"b", b"c"]);
+        chain.pop();
+        assert_eq!(verify_chain(key, &chain), None);
     }
 }
