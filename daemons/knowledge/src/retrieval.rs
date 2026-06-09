@@ -17,18 +17,61 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
+use sqlx::SqlitePool;
 
 use crate::graph::GraphHandle;
 use crate::utils::escape_cypher;
 
-// The fusion + validity-confirm functions below are the retrieval *read* API,
-// consumed by the read-orchestration path (not yet wired) and the lib tests;
-// promotion consumes only `fact_text` (the index-write side), so the read API
-// reads as unused in the binary tree until its consumer lands.
+/// LLM-free retrieval (§7): combine the keyword and graph primitives into one
+/// temporally-honest ranking of node ids, with no LLM call at query time.
+///
+/// Runs the BM25 keyword search (`φ_bm25`) and a bounded graph expansion of its
+/// hits (`φ_bfs`, the hits' one-hop neighbours), fuses the two ranked id-lists by
+/// RRF (positional, so the primitives' incomparable raw scores need no
+/// normalisation), then drops any candidate with no current graph presence (the
+/// validity confirm, since the keyword index is atemporal). Returns node ids
+/// best-first, ready to seed the agent's slice. The optional semantic primitive
+/// (`φ_cos`, sqlite-vec, config-gated off) is not included in this default path;
+/// when absent, retrieval fails open to LLM-free-anyway, never a generative call.
+#[allow(dead_code)]
+pub async fn retrieve(
+    pool: &SqlitePool,
+    graph: &GraphHandle,
+    query: &str,
+    limit: i64,
+) -> Result<Vec<String>> {
+    let keyword = crate::fts::search_fact_text(pool, query, limit).await?;
+    let graph_hits = if keyword.is_empty() {
+        Vec::new()
+    } else {
+        neighbours(graph, &keyword).await?
+    };
+    let fused = rrf_rank(&[keyword, graph_hits], K_RRF);
+    confirm_present(graph, &fused).await
+}
+
+/// The one-hop neighbours of `seeds`, the `φ_bfs` graph primitive's ranked
+/// id-list (in traversal order). Distinct, label-agnostic, bounded to one hop so
+/// the expansion cannot explode. The seed ids are escaped into the id-list
+/// literal.
+async fn neighbours(graph: &GraphHandle, seeds: &[String]) -> Result<Vec<String>> {
+    let list = seeds
+        .iter()
+        .map(|id| format!("'{}'", escape_cypher(id)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let cypher =
+        format!("MATCH (s) WHERE s.id IN [{list}] MATCH (s)-[]-(n) RETURN DISTINCT n.id AS id");
+    let rs = graph.query_rows(cypher).await?;
+    Ok(rs
+        .rows
+        .iter()
+        .filter_map(|row| row.first().map(|cell| cell.as_str().to_string()))
+        .collect())
+}
 
 /// The standard RRF damping constant (§7.3): a larger `k` flattens the
 /// contribution of rank, so top ranks dominate less.
-#[allow(dead_code)]
 pub const K_RRF: u32 = 60;
 
 /// Fuse several ranked id-lists into one ranking by Reciprocal Rank Fusion.
@@ -40,7 +83,6 @@ pub const K_RRF: u32 = 60;
 /// primitive that emits a duplicate cannot inflate a candidate. Returns
 /// `(id, score)` sorted by score descending, ties broken by id ascending for a
 /// deterministic order.
-#[allow(dead_code)]
 pub fn rrf_fuse(lists: &[Vec<String>], k: u32) -> Vec<(String, f64)> {
     let mut scores: HashMap<String, f64> = HashMap::new();
     for list in lists {
@@ -65,7 +107,6 @@ pub fn rrf_fuse(lists: &[Vec<String>], k: u32) -> Vec<(String, f64)> {
 
 /// Fuse and return only the ids, best first (the common case where the caller
 /// wants the ranking, not the scores).
-#[allow(dead_code)]
 pub fn rrf_rank(lists: &[Vec<String>], k: u32) -> Vec<String> {
     rrf_fuse(lists, k).into_iter().map(|(id, _)| id).collect()
 }
@@ -140,7 +181,6 @@ fn join_nonempty(parts: &[&str]) -> String {
 /// transaction axis. Returns the candidates that are present, in input order, so
 /// the RRF ranking survives the filter. An empty input is an empty result with
 /// no query.
-#[allow(dead_code)]
 pub async fn confirm_present(graph: &GraphHandle, candidates: &[String]) -> Result<Vec<String>> {
     if candidates.is_empty() {
         return Ok(Vec::new());
@@ -259,6 +299,50 @@ mod tests {
         assert_eq!(fact_text("File", &f), fact_text("File", &f), "same fields -> same text");
         // A Project with only a name (no description/root) omits the empty parts.
         assert_eq!(fact_text("Project", &fields(&[("name", "Solo")])), "Solo");
+    }
+
+    #[tokio::test]
+    async fn retrieve_fuses_keyword_hits_with_their_graph_neighbours() {
+        use sqlx::sqlite::SqlitePoolOptions;
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::fts::create_fact_text_index(&pool).await.unwrap();
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        // A File linked to a Project, with the File indexed by keyword.
+        graph
+            .write("CREATE (:File {id: '/a/main.rs', path: '/a/main.rs'})".into())
+            .await
+            .unwrap();
+        graph.write("CREATE (:Project {id: 'p1'})".into()).await.unwrap();
+        graph
+            .write(
+                "MATCH (f:File {id: '/a/main.rs'}), (p:Project {id: 'p1'}) \
+                 CREATE (f)-[:FILE_PART_OF]->(p)"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        crate::fts::upsert_fact_text(&pool, "/a/main.rs", "/a/main.rs main.rs a source")
+            .await
+            .unwrap();
+
+        let results = retrieve(&pool, &graph, "main.rs", 10).await.unwrap();
+        assert!(
+            results.contains(&"/a/main.rs".to_string()),
+            "the keyword hit is returned: {results:?}"
+        );
+        assert!(
+            results.contains(&"p1".to_string()),
+            "its one-hop graph neighbour is fused in: {results:?}"
+        );
+        // A query matching nothing returns nothing (LLM-free, no fallback call).
+        assert!(retrieve(&pool, &graph, "nonexistent", 10).await.unwrap().is_empty());
     }
 
     #[tokio::test]
