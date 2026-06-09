@@ -82,6 +82,10 @@ pub struct Project {
     pub confidence: u8,
     pub promoted: bool,
     pub archived_at: Option<DateTime<Utc>>,
+    /// Transaction-time close stamp (§4.9): `Some` once the project is archived
+    /// (the system stopped believing it active), `None` while live. This is the
+    /// one tombstone the bi-temporal liveness predicate reads.
+    pub expired_at: Option<DateTime<Utc>>,
 }
 
 impl Project {
@@ -101,6 +105,7 @@ impl Project {
             confidence,
             promoted: false,
             archived_at: None,
+            expired_at: None,
         }
     }
 
@@ -120,6 +125,7 @@ impl Project {
             confidence: 100,
             promoted: true,
             archived_at: None,
+            expired_at: None,
         }
     }
 }
@@ -129,7 +135,7 @@ impl Project {
 /// Parse a Project from a RowSet where columns match the SELECT order.
 fn parse_project(rs: &RowSet, row_idx: usize) -> Option<Project> {
     let row = rs.rows.get(row_idx)?;
-    if row.len() < 13 {
+    if row.len() < 14 {
         return None;
     }
     let col = |name: &str| -> usize {
@@ -170,13 +176,14 @@ fn parse_project(rs: &RowSet, row_idx: usize) -> Option<Project> {
         confidence: i(col("p.confidence")) as u8,
         promoted: b(col("p.promoted")),
         archived_at: micros_to_dt(i(col("p.archived_at"))),
+        expired_at: micros_to_dt(i(col("p.expired_at"))),
     })
 }
 
 /// Column list for SELECT queries.
 const PROJECT_COLUMNS: &str = "p.id, p.name, p.description, p.root_path, \
     p.accent_color, p.icon, p.status, p.created_at, p.last_accessed, \
-    p.inferred, p.confidence, p.promoted, p.archived_at";
+    p.inferred, p.confidence, p.promoted, p.archived_at, p.expired_at";
 
 // ── ProjectStore ────────────────────────────────────────────────────────
 
@@ -354,10 +361,14 @@ impl ProjectStore {
     pub async fn archive(&self, id: Uuid) -> Result<()> {
         let id_esc = escape_cypher(&id.to_string());
         let now = crate::time::now().0;
+        // Archiving is a transaction-time close (§4.9): `expired_at` is the one
+        // tombstone the bi-temporal model reads (a live project is
+        // `expired_at IS NULL`); `status`/`archived_at` stay as denormalised read
+        // filters set alongside it.
         self.graph
             .write(format!(
                 "MATCH (p:Project {{id: '{id_esc}'}})
-                 SET p.status = 'archived', p.archived_at = {now}"
+                 SET p.status = 'archived', p.archived_at = {now}, p.expired_at = {now}"
             ))
             .await?;
         Ok(())
@@ -695,6 +706,18 @@ mod tests {
         let got = store.get_by_id(p.id).await.unwrap().unwrap();
         assert_eq!(got.status, ProjectStatus::Archived);
         assert!(got.archived_at.is_some());
+        // §4.9: archiving is a transaction-time close, so `expired_at` is set;
+        // the bi-temporal liveness predicate reads this, not `status`.
+        assert!(got.expired_at.is_some(), "archive sets the expired_at close stamp");
+    }
+
+    #[tokio::test]
+    async fn a_fresh_project_is_live_with_no_expired_at() {
+        let (store, _tmp) = setup().await;
+        let p = Project::new_inferred("live".into(), "/b".into(), 90);
+        store.create(&p).await.unwrap();
+        let got = store.get_by_id(p.id).await.unwrap().unwrap();
+        assert!(got.expired_at.is_none(), "a live project has a NULL expired_at");
     }
 
     #[tokio::test]
