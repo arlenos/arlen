@@ -9,6 +9,7 @@ prost = "0.13"
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v7"] }
+arlen-permissions = { path = "../../sdk/permissions" }
 
 [build-dependencies]
 prost-build = "0.13"
