@@ -40,12 +40,15 @@ pub enum IdentityError {
     Io(#[from] std::io::Error),
 }
 
-/// Get the registry base directory (overridable for tests via
-/// `ARLEN_IDENTITY_DIR`, matching the reader's override).
+/// Get the registry base directory. The `ARLEN_IDENTITY_DIR` override is honoured
+/// only in a debug build (tests/dev); a release helper always writes the root-owned
+/// `/var/lib` location, matching the reader's release-only path.
 fn base_dir() -> PathBuf {
-    std::env::var("ARLEN_IDENTITY_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(DEFAULT_BASE))
+    #[cfg(debug_assertions)]
+    if let Ok(dir) = std::env::var("ARLEN_IDENTITY_DIR") {
+        return PathBuf::from(dir);
+    }
+    PathBuf::from(DEFAULT_BASE)
 }
 
 /// The registry file path for a uid under `base`.
@@ -88,21 +91,29 @@ fn allowed_roots(uid: u32) -> Vec<PathBuf> {
     roots
 }
 
-/// Whether `install_path`'s real location is under one of `roots`. The path is
-/// canonicalised first (resolving symlinks and `..`), so neither a `..` escape nor
-/// a symlink can place a binary outside its app root yet pass the check; a path
-/// that cannot be canonicalised (missing) is rejected.
-fn is_under_allowed_root(install_path: &Path, roots: &[PathBuf]) -> bool {
+/// The app_id directory component `install_path` sits under within one of `roots`,
+/// or `None` if it is outside every root. The path is canonicalised first (resolving
+/// symlinks and `..`), so neither a `..` escape nor a symlink can place a binary
+/// outside its app root yet pass; a path that cannot be canonicalised (missing) is
+/// rejected.
+fn install_app_id_component(install_path: &Path, roots: &[PathBuf]) -> Option<String> {
     let Ok(canon) = install_path.canonicalize() else {
-        return false;
+        return None;
     };
     // canonicalize removes `..`, but double-check defensively.
     if canon.components().any(|c| matches!(c, Component::ParentDir)) {
-        return false;
+        return None;
     }
-    roots.iter().any(|root| {
+    // The install layout is `<root>/{app_id}/...`; return the first component under
+    // the matched root, so the caller can bind the recorded app_id to where the
+    // binary actually lives (a record cannot claim one app_id for another's path).
+    roots.iter().find_map(|root| {
         let canon_root = root.canonicalize().unwrap_or_else(|_| root.clone());
-        canon.starts_with(&canon_root)
+        canon
+            .strip_prefix(&canon_root)
+            .ok()
+            .and_then(|rest| rest.iter().next())
+            .map(|c| c.to_string_lossy().into_owned())
     })
 }
 
@@ -132,10 +143,17 @@ fn record_with_roots(
     roots: &[PathBuf],
 ) -> Result<PathBuf, IdentityError> {
     validate_app_id(app_id).map_err(|_| IdentityError::InvalidAppId(app_id.into()))?;
-    if !is_under_allowed_root(install_path, roots) {
-        return Err(IdentityError::ForbiddenPath(
-            install_path.display().to_string(),
-        ));
+    // The install path must be under an allowed root AND its app_id directory
+    // component must equal `app_id`: this binds the recorded key to where the binary
+    // actually lives, so even a compromised installd cannot enrol one app's id for a
+    // different app's (or an attacker's) binary path.
+    match install_app_id_component(install_path, roots) {
+        Some(component) if component == app_id => {}
+        _ => {
+            return Err(IdentityError::ForbiddenPath(
+                install_path.display().to_string(),
+            ))
+        }
     }
     // The helper stats the path itself: the recorded (ino, dev) is the truth of the
     // file installd wrote, not a value the caller could have lied about.
@@ -179,7 +197,10 @@ mod tests {
     use std::io::Write;
     use std::os::unix::fs::MetadataExt;
 
-    fn write_bin(dir: &Path, name: &str) -> PathBuf {
+    /// Create `<root>/{app_id}/bin/<name>` (the install layout) and return the path.
+    fn write_app_bin(root: &Path, app_id: &str, name: &str) -> PathBuf {
+        let dir = root.join(app_id).join("bin");
+        fs::create_dir_all(&dir).unwrap();
         let p = dir.join(name);
         let mut f = fs::File::create(&p).unwrap();
         f.write_all(b"binary").unwrap();
@@ -194,7 +215,7 @@ mod tests {
     fn records_and_round_trips_under_an_allowed_root() {
         let apps = tempfile::tempdir().unwrap();
         let base = tempfile::tempdir().unwrap();
-        let bin = write_bin(apps.path(), "app-bin");
+        let bin = write_app_bin(apps.path(), "com.example.app", "main");
 
         let path =
             record_with_roots(base.path(), 1000, "com.example.app", &bin, &roots(apps.path()))
@@ -212,8 +233,20 @@ mod tests {
         let outside = tempfile::tempdir().unwrap();
         let apps = tempfile::tempdir().unwrap();
         let base = tempfile::tempdir().unwrap();
-        let bin = write_bin(outside.path(), "evil");
+        let bin = write_app_bin(outside.path(), "com.example.app", "main");
         let err = record_with_roots(base.path(), 1000, "com.example.app", &bin, &roots(apps.path()))
+            .unwrap_err();
+        assert!(matches!(err, IdentityError::ForbiddenPath(_)));
+    }
+
+    #[test]
+    fn refuses_an_app_id_that_does_not_match_the_install_path() {
+        // The binary lives under `com.real/`, but the caller claims `com.victim`:
+        // the binding rejects it (a record cannot claim another app's path).
+        let apps = tempfile::tempdir().unwrap();
+        let base = tempfile::tempdir().unwrap();
+        let bin = write_app_bin(apps.path(), "com.real", "main");
+        let err = record_with_roots(base.path(), 1000, "com.victim", &bin, &roots(apps.path()))
             .unwrap_err();
         assert!(matches!(err, IdentityError::ForbiddenPath(_)));
     }
@@ -222,7 +255,7 @@ mod tests {
     fn refuses_an_invalid_app_id() {
         let apps = tempfile::tempdir().unwrap();
         let base = tempfile::tempdir().unwrap();
-        let bin = write_bin(apps.path(), "app-bin");
+        let bin = write_app_bin(apps.path(), "x", "main");
         assert!(matches!(
             record_with_roots(base.path(), 1000, "../evil", &bin, &roots(apps.path())),
             Err(IdentityError::InvalidAppId(_))
@@ -233,8 +266,8 @@ mod tests {
     fn a_second_record_does_not_clobber_the_first() {
         let apps = tempfile::tempdir().unwrap();
         let base = tempfile::tempdir().unwrap();
-        let a = write_bin(apps.path(), "a-bin");
-        let b = write_bin(apps.path(), "b-bin");
+        let a = write_app_bin(apps.path(), "com.a", "main");
+        let b = write_app_bin(apps.path(), "com.b", "main");
         record_with_roots(base.path(), 1000, "com.a", &a, &roots(apps.path())).unwrap();
         let path =
             record_with_roots(base.path(), 1000, "com.b", &b, &roots(apps.path())).unwrap();
