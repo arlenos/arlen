@@ -240,6 +240,12 @@ pub enum IrreversibilityReason {
     ExternalSend,
     /// An opaque command whose effect cannot be inverted.
     OpaqueCommand,
+    /// A snapshot-inverse action whose target is on a filesystem that cannot
+    /// snapshot (ext4/xfs/tmpfs). The predict-time downgrade (§9, §14.5): a
+    /// `Reversible { RestoreSnapshot }` claim resolves to irreversible here
+    /// rather than lifting and discovering at execute time that it has no
+    /// inverse.
+    NoSnapshotCapableFilesystem,
 }
 
 /// The static, predict-time reversibility class an effect declares (§3.2): the
@@ -275,6 +281,17 @@ impl InverseClass {
     /// This is the single reversibility source `is_reversible` derives from.
     pub fn is_reversible(&self) -> bool {
         matches!(self, InverseClass::Reversible { .. })
+    }
+
+    /// The inverse shape this class captures, or `None` for `Irreversible` (which
+    /// captures nothing). Lets a consumer (the snapshot downgrade §9) inspect the
+    /// declared capture without re-matching every variant.
+    pub fn capture_shape(&self) -> Option<CaptureShape> {
+        match self {
+            InverseClass::Reversible { capture }
+            | InverseClass::ReversibleWithCost { capture, .. } => Some(*capture),
+            InverseClass::Irreversible { .. } => None,
+        }
     }
 }
 
