@@ -464,6 +464,7 @@ fn create_schema(conn: &Connection) -> Result<()> {
             path        STRING,
             app_id      STRING,
             last_accessed INT64,
+            last_cgroup_id INT64,
             PRIMARY KEY(id)
         )",
     )
@@ -558,6 +559,12 @@ fn create_schema(conn: &Connection) -> Result<()> {
     // edge temporal columns.
     conn.query("ALTER TABLE Project ADD IF NOT EXISTS expired_at INT64")
         .map_err(|e| anyhow!("ensure Project.expired_at column: {e}"))?;
+
+    // The cgroup v2 id of the most recent open (Strand 4 attribution). A File node
+    // is path-keyed, so this is the LATEST cgroup, not a history; NULL/0 means no
+    // eBPF attribution. Convergent ADD IF NOT EXISTS for already-initialized DBs.
+    conn.query("ALTER TABLE File ADD IF NOT EXISTS last_cgroup_id INT64")
+        .map_err(|e| anyhow!("ensure File.last_cgroup_id column: {e}"))?;
 
     conn.query(
         "CREATE NODE TABLE IF NOT EXISTS Directory(
