@@ -65,10 +65,6 @@ pub async fn delete_fact_text(pool: &SqlitePool, node_id: &str) -> Result<()> {
 /// embedded quotes doubled), so special characters in a filename or path (`.`,
 /// `-`, `/`) are literal tokens, never FTS5 operators that would error. The
 /// ranked ids are one of RRF's input lists.
-///
-/// Used by the retrieval read path (not yet wired); kept as the index's search
-/// API beside `upsert`.
-#[allow(dead_code)]
 pub async fn search_fact_text(pool: &SqlitePool, query: &str, limit: i64) -> Result<Vec<String>> {
     let phrase = format!("\"{}\"", query.replace('"', "\"\""));
     let ids = sqlx::query_scalar::<_, String>(
