@@ -56,15 +56,46 @@ impl SignerStore {
     }
 
     /// Seal a newly-submitted entry into the chained log (its lifecycle begins
-    /// `InFlight`). The append is fsynced write-ahead before this returns.
+    /// `InFlight`). The append is fsynced write-ahead before this returns. A
+    /// duplicate create for an existing `op_id` is refused (a second `Created`
+    /// record would fold to an illegal sequence and wedge the entry to corrupt),
+    /// so a buggy or hostile submitter cannot silently demote a sealed action.
     pub fn submit_created(&mut self, entry: UndoEntry) -> Result<()> {
+        if self.log.entry(&entry.op_id).is_some() {
+            return Err(SignerError::IllegalRecord(format!(
+                "op_id {:?} already has a sealed entry",
+                entry.op_id
+            )));
+        }
         self.log
             .append_created(entry)
             .map_err(|e| SignerError::Storage(format!("appending an undo-log entry: {e}")))
     }
 
     /// Record a lifecycle transition for an existing entry, chained and fsynced.
+    /// The transition must be legal from the entry's current folded state (§6):
+    /// an unknown `op_id`, an already-corrupt chain, or a forbidden transition is
+    /// refused rather than sealed, so the chain can never be driven to a corrupt
+    /// fold that the executor would read as non-reversible.
     pub fn transition(&mut self, op_id: &str, state: UndoState) -> Result<()> {
+        match self.log.current_state(op_id) {
+            None => {
+                return Err(SignerError::IllegalRecord(format!(
+                    "no sealed entry for op_id {op_id:?} to transition"
+                )))
+            }
+            Some(Err(e)) => {
+                return Err(SignerError::IllegalRecord(format!(
+                    "op_id {op_id:?} chain is already corrupt: {e}"
+                )))
+            }
+            Some(Ok(current)) if !current.can_transition_to(state) => {
+                return Err(SignerError::IllegalRecord(format!(
+                    "illegal transition {current:?} -> {state:?} for op_id {op_id:?}"
+                )))
+            }
+            Some(Ok(_)) => {}
+        }
         self.log
             .append_transition(op_id, state)
             .map_err(|e| SignerError::Storage(format!("appending an undo-log transition: {e}")))
@@ -158,6 +189,41 @@ mod tests {
             SignerStore::open_in(&dir).is_err(),
             "a tampered sealed log must fail to open"
         );
+    }
+
+    #[test]
+    fn a_duplicate_create_is_refused_not_sealed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("undo-log");
+        let mut store = SignerStore::open_in(&dir).unwrap();
+        store.submit_created(entry("op-1")).unwrap();
+        match store.submit_created(entry("op-1")) {
+            Err(SignerError::IllegalRecord(_)) => {}
+            other => panic!("expected IllegalRecord, got {other:?}"),
+        }
+        // The original entry is untouched and still folds to a clean InFlight.
+        assert_eq!(store.state("op-1").unwrap().unwrap(), UndoState::InFlight);
+    }
+
+    #[test]
+    fn an_illegal_or_orphan_transition_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("undo-log");
+        let mut store = SignerStore::open_in(&dir).unwrap();
+        // No entry yet: a transition is an orphan.
+        assert!(matches!(
+            store.transition("op-1", UndoState::Committed),
+            Err(SignerError::IllegalRecord(_))
+        ));
+        store.submit_created(entry("op-1")).unwrap();
+        // InFlight cannot jump straight to Compensated.
+        assert!(matches!(
+            store.transition("op-1", UndoState::Compensated),
+            Err(SignerError::IllegalRecord(_))
+        ));
+        // A legal transition still works, and the state stays clean (not corrupt).
+        store.transition("op-1", UndoState::Committed).unwrap();
+        assert_eq!(store.state("op-1").unwrap().unwrap(), UndoState::Committed);
     }
 
     #[test]
