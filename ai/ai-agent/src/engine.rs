@@ -24,6 +24,7 @@ use std::time::{Duration, SystemTime};
 use futures::FutureExt as _;
 use arlen_ai_core::capability::{AccessTier, ActionDecision, BaselineMode};
 use arlen_ai_core::provider::{AIProvider, CompletionRequest};
+use arlen_ai_core::tagging::{Block, Origin, TaggedPrompt};
 
 use crate::agentic::{
     build_agent_prompt, external_screen_text, observation_preview, parse_agent_step, AgentStep,
@@ -1077,14 +1078,26 @@ impl<'a> Dispatcher<'a> {
             }
 
             // Keep the working memory inside the model's context window before
-            // building this step's prompt: a deterministic, model-free prune
-            // (collapse redundant correction feedback) then tighten (drop the
-            // rationale prose of older proposals, keeping every tool, decision,
-            // and refusal verbatim). If it still will not fit, terminate closed
-            // rather than send an over-window prompt or drop a load-bearing
-            // fact. This makes no model call, so it spends no budget here.
-            if let CompactionOutcome::OverWindow =
-                compact_for_window(&lb.behaviour, event, &mut transcript, window, &self.compaction)
+            // building this step's prompt: cheap model-free prune, then (if still
+            // over) the B-compact summarise tier folds older observation previews
+            // into shorter summaries via the provider, then tighten drops what is
+            // left. If it still will not fit, terminate closed rather than send an
+            // over-window prompt or drop a load-bearing fact. Only the summarise
+            // tier spends budget, and only when prune did not already suffice; it
+            // charges `tokens_spent` and is best-effort.
+            if let CompactionOutcome::OverWindow = compact_for_window(
+                &lb.behaviour,
+                event,
+                &mut transcript,
+                window,
+                &self.compaction,
+                Some(SummariseCtx {
+                    provider,
+                    tokens_spent: &mut tokens_spent,
+                    max_tokens: budget.max_tokens,
+                }),
+            )
+            .await
             {
                 outcomes.push(DispatchOutcome::Terminal {
                     behaviour,
@@ -1535,12 +1548,24 @@ enum CompactionOutcome {
 /// closes the loop rather than sending an over-window prompt or silently
 /// dropping a load-bearing fact. `window` is the wired model's input window
 /// (from the provider), so the bound tracks the real backend.
-fn compact_for_window(
+/// The collaborators the B-compact summarise tier needs: the provider to call
+/// and the token budget to charge it against. Bundled so the compaction entry
+/// point stays a manageable signature and the tier is enabled by presence.
+struct SummariseCtx<'a> {
+    provider: &'a dyn AIProvider,
+    tokens_spent: &'a mut u32,
+    max_tokens: u32,
+}
+
+async fn compact_for_window(
     behaviour: &Behaviour,
     event: &AgentEvent,
     transcript: &mut Vec<TranscriptEntry>,
     window: u32,
     policy: &CompactionPolicy,
+    // B-compact summarise-tier collaborator. `Some` enables the expensive tier
+    // (a provider call); `None` is the deterministic prune+tighten path.
+    summarise: Option<SummariseCtx<'_>>,
 ) -> CompactionOutcome {
     let estimate = |t: &[TranscriptEntry]| {
         window_token_estimate(build_agent_prompt(behaviour, event, t).len())
@@ -1552,11 +1577,108 @@ fn compact_for_window(
     if !policy.over(window, estimate(transcript)) {
         return CompactionOutcome::Proceed;
     }
+    // B-compact (expensive tier): summarise older observation previews into a
+    // shorter inert summary before resorting to tighten's total drop. The preview
+    // is already sanitised (S18-B) and screened (S17) at observe time, so it is
+    // safe to feed back; the summary keeps the gist a dropped preview would lose,
+    // and the full result still survives at the observation's spill reference.
+    // Best-effort: any failure leaves the preview for tighten, so this never
+    // makes the result worse than the deterministic tier.
+    if let Some(ctx) = summarise {
+        summarise_observations(transcript, policy, ctx.provider, ctx.tokens_spent, ctx.max_tokens)
+            .await;
+        if !policy.over(window, estimate(transcript)) {
+            return CompactionOutcome::Proceed;
+        }
+    }
     compaction::tighten(transcript, policy.keep_recent);
     if !policy.over(window, estimate(transcript)) {
         return CompactionOutcome::Proceed;
     }
     CompactionOutcome::OverWindow
+}
+
+/// A small output cap for a summary call (a summary is at most a few hundred
+/// chars; capping the output keeps the call cheap and bounded).
+const SUMMARY_OUTPUT_TOKENS: u32 = 256;
+
+/// How long a single summary call may run before it is abandoned. The tier is
+/// best-effort, so a slow provider drops the summary rather than stalling the
+/// loop during compaction.
+const SUMMARY_CALL_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Summarise the older observation previews in place (B-compact). For each
+/// observation older than the kept tail that still carries a bulky preview,
+/// replace the preview with a shorter provider-produced summary. Stops early
+/// when the token budget is exhausted; a per-observation failure is skipped.
+async fn summarise_observations(
+    transcript: &mut [TranscriptEntry],
+    policy: &CompactionPolicy,
+    provider: &dyn AIProvider,
+    tokens_spent: &mut u32,
+    max_tokens: u32,
+) {
+    let len = transcript.len();
+    if len <= policy.keep_recent {
+        return;
+    }
+    for i in 0..len - policy.keep_recent {
+        if *tokens_spent >= max_tokens {
+            break;
+        }
+        let preview = match &transcript[i] {
+            TranscriptEntry::Observation { preview, .. } if !preview.is_empty() => preview.clone(),
+            _ => continue,
+        };
+        if let Some(summary) = summarise_one(provider, &preview, tokens_spent, max_tokens).await {
+            if let TranscriptEntry::Observation { preview, .. } = &mut transcript[i] {
+                *preview = summary;
+            }
+        }
+    }
+}
+
+/// Summarise one already-safe observation preview into a shorter inert summary
+/// via the provider. Best-effort: a provider error, a timeout, no token room, or
+/// an empty validated summary returns `None`, so the caller keeps the preview
+/// for the deterministic tighten to drop. The preview is sanitised and screened
+/// at observe time; it is still wrapped as a tagged data block (S18-A) so the
+/// instruction and the data stay in separate channels. The summary output is run
+/// through [`compaction::clean_summary`] before it re-enters the transcript.
+async fn summarise_one(
+    provider: &dyn AIProvider,
+    preview: &str,
+    tokens_spent: &mut u32,
+    max_tokens: u32,
+) -> Option<String> {
+    let blocks = [Block {
+        origin: Origin::GraphData,
+        content: preview,
+    }];
+    let tagged = TaggedPrompt::new(&blocks);
+    let prompt = format!(
+        "{instruction}\n\n{preamble}\n\n{rendered}",
+        instruction = compaction::summary_instruction(),
+        preamble = tagged.preamble(),
+        rendered = tagged.rendered(),
+    );
+    let input = estimate_tokens(None, prompt.len());
+    if tokens_spent.saturating_add(input) >= max_tokens {
+        return None;
+    }
+    let request = CompletionRequest {
+        prompt,
+        extras: serde_json::json!({ "max_tokens": SUMMARY_OUTPUT_TOKENS }),
+    };
+    let resp = match tokio::time::timeout(SUMMARY_CALL_TIMEOUT, provider.complete(request)).await {
+        Ok(Ok(resp)) => resp,
+        _ => return None,
+    };
+    // Charge input plus a conservative output estimate against the budget.
+    *tokens_spent = tokens_spent
+        .saturating_add(input)
+        .saturating_add(estimate_tokens(None, resp.text.len()));
+    compaction::clean_summary(&resp.text, compaction::SUMMARY_MAX_CHARS)
 }
 
 #[cfg(test)]
@@ -3410,30 +3532,32 @@ trigger:
         }
     }
 
-    fn compact(
+    /// The deterministic compaction path (no summarise tier), for the prune/
+    /// tighten tests. Passing `None` provider keeps it model-free.
+    async fn compact(
         b: &Behaviour,
         ev: &AgentEvent,
         t: &mut Vec<TranscriptEntry>,
         window: u32,
         p: &CompactionPolicy,
     ) -> CompactionOutcome {
-        compact_for_window(b, ev, t, window, p)
+        compact_for_window(b, ev, t, window, p, None).await
     }
 
-    #[test]
-    fn compaction_leaves_an_under_threshold_transcript_untouched() {
+    #[tokio::test]
+    async fn compaction_leaves_an_under_threshold_transcript_untouched() {
         let b = demo_behaviour();
         let ev = event("~/foo.rs");
         let mut t = vec![proposed(0), proposed(1)];
         let before = t.clone();
         let window = 1_000_000; // far above the prompt
         let p = CompactionPolicy::default();
-        assert_eq!(compact(&b, &ev, &mut t, window, &p), CompactionOutcome::Proceed);
+        assert_eq!(compact(&b, &ev, &mut t, window, &p).await, CompactionOutcome::Proceed);
         assert_eq!(t, before);
     }
 
-    #[test]
-    fn cheap_prune_alone_can_bring_it_under() {
+    #[tokio::test]
+    async fn cheap_prune_alone_can_bring_it_under() {
         let b = demo_behaviour();
         let ev = event("~/foo.rs");
         let full: Vec<TranscriptEntry> = (0..6).map(nag).collect();
@@ -3451,12 +3575,12 @@ trigger:
             keep_recent: 4,
         };
         let mut t = full.clone();
-        assert_eq!(compact(&b, &ev, &mut t, window, &p), CompactionOutcome::Proceed);
+        assert_eq!(compact(&b, &ev, &mut t, window, &p).await, CompactionOutcome::Proceed);
         assert!(t.len() < full.len()); // the nag run collapsed
     }
 
-    #[test]
-    fn tighten_brings_a_substantive_transcript_under_and_keeps_facts() {
+    #[tokio::test]
+    async fn tighten_brings_a_substantive_transcript_under_and_keeps_facts() {
         let b = demo_behaviour();
         let ev = event("~/foo.rs");
         let full: Vec<TranscriptEntry> = (0..8).map(proposed).collect();
@@ -3476,7 +3600,7 @@ trigger:
             keep_recent: 2,
         };
         let mut t = full.clone();
-        assert_eq!(compact(&b, &ev, &mut t, window, &p), CompactionOutcome::Proceed);
+        assert_eq!(compact(&b, &ev, &mut t, window, &p).await, CompactionOutcome::Proceed);
         // The oldest proposal kept its tool and decision; only the rationale
         // prose was dropped.
         match &t[0] {
@@ -3494,8 +3618,8 @@ trigger:
         }
     }
 
-    #[test]
-    fn over_window_when_even_tightening_cannot_fit() {
+    #[tokio::test]
+    async fn over_window_when_even_tightening_cannot_fit() {
         let b = demo_behaviour();
         let ev = event("~/foo.rs");
         let base = prompt_estimate(&b, &ev, &[]);
@@ -3508,11 +3632,11 @@ trigger:
             keep_recent: 2,
         };
         let mut t = full.clone();
-        assert_eq!(compact(&b, &ev, &mut t, window, &p), CompactionOutcome::OverWindow);
+        assert_eq!(compact(&b, &ev, &mut t, window, &p).await, CompactionOutcome::OverWindow);
     }
 
-    #[test]
-    fn over_window_when_event_alone_exceeds_the_window() {
+    #[tokio::test]
+    async fn over_window_when_event_alone_exceeds_the_window() {
         let b = demo_behaviour();
         let ev = event("~/foo.rs");
         let base = prompt_estimate(&b, &ev, &[]);
@@ -3522,7 +3646,55 @@ trigger:
             keep_recent: 4,
         };
         let mut t: Vec<TranscriptEntry> = Vec::new();
-        assert_eq!(compact(&b, &ev, &mut t, window, &p), CompactionOutcome::OverWindow);
+        assert_eq!(compact(&b, &ev, &mut t, window, &p).await, CompactionOutcome::OverWindow);
+    }
+
+    #[tokio::test]
+    async fn the_summarise_tier_shortens_an_old_observation_preview() {
+        let b = demo_behaviour();
+        let ev = event("~/foo.rs");
+        let obs = |preview: &str| TranscriptEntry::Observation {
+            step: 0,
+            tool: "graph.query".to_string(),
+            preview: preview.to_string(),
+            result_ref: "sha256:aa".to_string(),
+        };
+        let mut t = vec![obs(&"x".repeat(4000)), proposed(1)];
+        // The model returns a short summary for the summarise call.
+        let provider =
+            MockProvider::new(vec![Ok("3 rows: a, b, c".to_string())]).with_context_window(1_000_000);
+        // A window the full transcript overflows but the summarised one fits, so
+        // the summarise tier runs and tighten does not (the summary survives).
+        let full_est = prompt_estimate(&b, &ev, &t);
+        let summ_est = prompt_estimate(&b, &ev, &[obs("3 rows: a, b, c"), proposed(1)]);
+        assert!(summ_est < full_est, "the summary must shrink the prompt");
+        let window = (summ_est + full_est) / 2;
+        let p = CompactionPolicy {
+            headroom: 0,
+            keep_recent: 1,
+        };
+        let mut tokens = 0u32;
+        let out = compact_for_window(
+            &b,
+            &ev,
+            &mut t,
+            window,
+            &p,
+            Some(SummariseCtx {
+                provider: &provider,
+                tokens_spent: &mut tokens,
+                max_tokens: u32::MAX,
+            }),
+        )
+        .await;
+        assert_eq!(out, CompactionOutcome::Proceed);
+        match &t[0] {
+            TranscriptEntry::Observation { preview, .. } => {
+                assert_eq!(preview, "3 rows: a, b, c", "the old preview became the summary");
+            }
+            other => panic!("expected a summarised observation, got {other:?}"),
+        }
+        assert!(tokens > 0, "the summarise call charged the token budget");
     }
 
     #[tokio::test]
