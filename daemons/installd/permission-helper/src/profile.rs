@@ -38,19 +38,28 @@ pub fn profile_path_in(base: &Path, uid: u32, app_id: &str) -> PathBuf {
     base.join(uid.to_string()).join(format!("{app_id}.toml"))
 }
 
-/// Validate an app_id: reverse-domain notation, no path traversal.
+/// Validate an app_id: lowercase reverse-domain notation over `[a-z0-9._-]`, no
+/// path traversal. This MUST agree with the profile loaders' `is_valid_app_id`
+/// (`sdk/permissions` and `daemons/knowledge`): if the helper accepted an id the
+/// loader rejects (e.g. an uppercase or non-ASCII one), the helper would write a
+/// root-owned profile the loader cannot resolve, and the loader would silently fall
+/// back to the spoofable `~/.config` tier (the F3 hole reopened). `is_alphanumeric`
+/// is Unicode- and uppercase-accepting, so the charset is pinned to ASCII lowercase
+/// here, matching the loaders. Leading/trailing dots are rejected too.
 pub fn validate_app_id(app_id: &str) -> Result<(), ProfileError> {
-    if app_id.is_empty()
-        || app_id.contains('/')
-        || app_id.contains("..")
-        || app_id.contains('\0')
-        || !app_id
+    let ok = !app_id.is_empty()
+        && app_id != ".."
+        && !app_id.starts_with('.')
+        && !app_id.ends_with('.')
+        && !app_id.contains("..")
+        && app_id
             .chars()
-            .all(|c| c.is_alphanumeric() || c == '.' || c == '-' || c == '_')
-    {
-        return Err(ProfileError::InvalidAppId(app_id.into()));
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-'));
+    if ok {
+        Ok(())
+    } else {
+        Err(ProfileError::InvalidAppId(app_id.into()))
     }
-    Ok(())
 }
 
 /// Validate that the content is parseable TOML with an [info] section.
@@ -169,6 +178,16 @@ documents = true
         assert!(validate_app_id("../evil").is_err());
         assert!(validate_app_id("path/traversal").is_err());
         assert!(validate_app_id("has spaces").is_err());
+    }
+
+    #[test]
+    fn test_validate_app_id_agrees_with_the_loaders() {
+        // Forms the loaders' is_valid_app_id rejects must be rejected here too, or a
+        // written profile would be unresolvable and the loader would fall back to the
+        // spoofable user tier (F3 hole). Uppercase, non-ASCII, leading/trailing dot.
+        for bad in ["Com.Victim", "com.VICTIM", "café.app", ".hidden", "trail."] {
+            assert!(validate_app_id(bad).is_err(), "{bad:?} must be rejected");
+        }
     }
 
     #[test]
