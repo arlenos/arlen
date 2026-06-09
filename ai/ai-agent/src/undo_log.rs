@@ -13,6 +13,9 @@
 //! retention by undo-window), and the separate-uid signer helper that seals it,
 //! are later EM-R1 increments built on this core.
 
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
 use serde::{Deserialize, Serialize};
 
 /// The lifecycle of an undo-log entry (§2). An entry is created [`InFlight`] (the
@@ -190,6 +193,87 @@ impl UndoLog {
     }
 }
 
+/// A file-backed undo-log: the event-sourced record sequence persisted as JSON
+/// lines, appended write-ahead with an `fsync` before the call returns, and
+/// folded on read like the in-memory [`UndoLog`] (§6). The provisional record is
+/// durable before the externalised act, so a crash never loses an entry the
+/// caller believes recorded. This is the persistence mechanism; the on-disk HMAC
+/// chain and the separate-uid signer helper that will own this file (so a
+/// same-uid agent can neither forge nor read it) are later EM-R1 increments.
+#[derive(Debug)]
+pub struct FileUndoLog {
+    path: PathBuf,
+    log: UndoLog,
+}
+
+impl FileUndoLog {
+    /// Open the log at `path`, creating it durably if absent (the empty file is
+    /// created and its parent directory fsynced, so the file's own appends need
+    /// only an `fsync` of the file), then load and fold the existing records. A
+    /// record that does not parse (corrupt, or a tampered path that fails the
+    /// `CanonicalPath` shape check on deserialize) fails the open, fail-closed.
+    pub fn open(path: impl Into<PathBuf>) -> std::io::Result<Self> {
+        let path = path.into();
+        if !path.exists() {
+            std::fs::OpenOptions::new().create(true).append(true).open(&path)?;
+            // fsync the directory so the new file's entry survives a crash; the
+            // file's later appends then only fsync the file itself.
+            if let Some(parent) = path.parent() {
+                if let Ok(dir) = std::fs::File::open(parent) {
+                    let _ = dir.sync_all();
+                }
+            }
+        }
+        let log = Self::load(&path)?;
+        Ok(Self { path, log })
+    }
+
+    fn load(path: &Path) -> std::io::Result<UndoLog> {
+        let content = std::fs::read_to_string(path)?;
+        let mut log = UndoLog::new();
+        for line in content.lines().filter(|l| !l.trim().is_empty()) {
+            let record: LogRecord = serde_json::from_str(line)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            log.records.push(record);
+        }
+        Ok(log)
+    }
+
+    fn append_record(&mut self, record: LogRecord) -> std::io::Result<()> {
+        let line = serde_json::to_string(&record)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let mut f = std::fs::OpenOptions::new().append(true).open(&self.path)?;
+        writeln!(f, "{line}")?;
+        // Write-ahead: the record is durable before the call returns.
+        f.sync_all()?;
+        self.log.records.push(record);
+        Ok(())
+    }
+
+    /// Append an entry's creation record, durably (state begins `InFlight`).
+    pub fn append_created(&mut self, entry: UndoEntry) -> std::io::Result<()> {
+        self.append_record(LogRecord::Created(entry))
+    }
+
+    /// Append a lifecycle transition for an existing entry, durably.
+    pub fn append_transition(&mut self, op_id: &str, state: UndoState) -> std::io::Result<()> {
+        self.append_record(LogRecord::Transition {
+            op_id: op_id.to_string(),
+            state,
+        })
+    }
+
+    /// The current state of `op_id`, folded from its records (§6).
+    pub fn current_state(&self, op_id: &str) -> Option<Result<UndoState, String>> {
+        self.log.current_state(op_id)
+    }
+
+    /// The created entry for `op_id`, if one was created.
+    pub fn entry(&self, op_id: &str) -> Option<&UndoEntry> {
+        self.log.entry(op_id)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,5 +378,46 @@ mod tests {
         log.append_created(entry("op-1"));
         assert_eq!(log.entry("op-1").unwrap().correlation_id, "run");
         assert!(log.entry("absent").is_none());
+    }
+
+    #[test]
+    fn file_store_persists_and_folds_across_reopen() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("undo.log");
+        {
+            let mut log = FileUndoLog::open(&path).unwrap();
+            log.append_created(entry("op-1")).unwrap();
+            log.append_transition("op-1", Committed).unwrap();
+            assert_eq!(log.current_state("op-1").unwrap().unwrap(), Committed);
+        }
+        // A fresh process re-opening the file recovers the same folded state.
+        let reopened = FileUndoLog::open(&path).unwrap();
+        assert_eq!(reopened.current_state("op-1").unwrap().unwrap(), Committed);
+        assert_eq!(reopened.entry("op-1").unwrap().op_id, "op-1");
+    }
+
+    #[test]
+    fn file_store_opens_a_fresh_path_empty() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let log = FileUndoLog::open(tmp.path().join("new.log")).unwrap();
+        assert!(log.current_state("anything").is_none());
+    }
+
+    #[test]
+    fn file_store_fails_closed_on_a_corrupt_or_tampered_record() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // A non-JSON line.
+        let bad = tmp.path().join("corrupt.log");
+        std::fs::write(&bad, "not json\n").unwrap();
+        assert!(FileUndoLog::open(&bad).is_err());
+        // A well-formed record whose CanonicalPath was tampered to a traversal
+        // path must fail the load (the validating Deserialize rejects it).
+        let tampered = tmp.path().join("tampered.log");
+        std::fs::write(
+            &tampered,
+            "{\"Created\":{\"op_id\":\"o\",\"correlation_id\":\"r\",\"inverse\":{\"RestorePath\":{\"now\":\"/a/x\",\"prior\":\"/a/../etc\"}}}}\n",
+        )
+        .unwrap();
+        assert!(FileUndoLog::open(&tampered).is_err(), "a tampered traversal path must fail the load");
     }
 }
