@@ -96,7 +96,7 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use arlen_ai_core::audit::{behaviour_action_event, AuditSink};
+use arlen_ai_core::audit::{behaviour_action_event, behaviour_policy_violation_event, AuditSink};
 use arlen_ai_core::capability::{ActionDecision, ActionKind, BaselineMode, Capability};
 use arlen_ai_core::mcp::{AlwaysConfirm, AlwaysConfirmReason};
 
@@ -317,7 +317,7 @@ impl<'a> Gate<'a> {
     ) -> Result<(), GateError> {
         if registry::is_honeytool(&action.tool) {
             self.audit
-                .submit(behaviour_action_event(
+                .submit(behaviour_policy_violation_event(
                     behaviour_name,
                     honeytool_trip_outcome(ctx.external_trigger),
                     ctx.correlation_id,
@@ -328,7 +328,7 @@ impl<'a> Gate<'a> {
         }
         if canary::touched_by(&action.arguments).is_some() {
             self.audit
-                .submit(behaviour_action_event(
+                .submit(behaviour_policy_violation_event(
                     behaviour_name,
                     canary_trip_outcome(ctx.external_trigger),
                     ctx.correlation_id,
@@ -980,6 +980,9 @@ mod tests {
             "canary-tripped:structural+external-trigger"
         );
         assert_eq!(recorded[0].structural.subject, "agent.auto-tag-by-project");
+        // A trip is a deterministic hijack proof, classified as a policy
+        // violation so a ledger reader can surface it by kind.
+        assert_eq!(recorded[0].kind, audit_proto::AuditKind::PolicyViolation);
         assert!(obs.0.lock().unwrap().is_empty());
     }
 
@@ -1015,6 +1018,7 @@ mod tests {
         assert_eq!(recorded.len(), 1);
         assert_eq!(recorded[0].structural.outcome, "honeytool-tripped");
         assert_eq!(recorded[0].structural.subject, "agent.auto-tag-by-project");
+        assert_eq!(recorded[0].kind, audit_proto::AuditKind::PolicyViolation);
         assert!(obs.0.lock().unwrap().is_empty());
     }
 
