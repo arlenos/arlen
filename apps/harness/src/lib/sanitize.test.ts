@@ -32,6 +32,16 @@ describe("sanitizeSession", () => {
     expect(s!.messages[2].pinned).toBeUndefined();
   });
 
+  it("restores a true session pin and ignores a non-true flag", () => {
+    expect(
+      sanitizeSession({ id: "a", title: "x", createdAt: 0, messages: [], pinned: true })!.pinned,
+    ).toBe(true);
+    expect(
+      sanitizeSession({ id: "a", title: "x", createdAt: 0, messages: [], pinned: "yes" })!.pinned,
+    ).toBeUndefined();
+    expect(sanitizeSession({ id: "a", title: "x", createdAt: 0, messages: [] })!.pinned).toBeUndefined();
+  });
+
   it("coerces a non-array messages to empty rather than throwing", () => {
     const s = sanitizeSession({ id: "a", title: "x", createdAt: 0, messages: null });
     expect(s).not.toBeNull();

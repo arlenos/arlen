@@ -20,6 +20,7 @@ import { planFork } from "$lib/fork";
 import { togglePinned } from "$lib/bookmark";
 import { clearDraft } from "$lib/stores/drafts";
 import { parseConversationEnvelope } from "$lib/export";
+import { sortSessions } from "$lib/pin-session";
 
 /// Who produced a message. `error` is a turn that failed (daemon down,
 /// disabled, query error) — rendered distinctly, never as an answer.
@@ -74,6 +75,9 @@ export interface Session {
   title: string;
   messages: Message[];
   createdAt: number;
+  /// True when the user pinned this conversation to the top of the rail. Absent
+  /// (not `false`) when unpinned, to keep the stored record minimal.
+  pinned?: boolean;
 }
 
 /// Build the prompt actually sent to the daemon: the attached files as a
@@ -99,6 +103,12 @@ const MAX_SESSIONS = 100;
 
 /// All conversations this run, newest first.
 export const sessions = writable<Session[]>([]);
+
+/// The sessions in rail order: pinned conversations first (see `sortSessions`),
+/// otherwise the store's newest-first order. The rail reads this so pinning
+/// takes effect without the store itself reordering (which would complicate
+/// id-recovery and the save mirror).
+export const orderedSessions = derived(sessions, ($sessions) => sortSessions($sessions));
 /// The conversation currently shown; `null` before the first one exists.
 export const activeSessionId = writable<string | null>(null);
 /// True while a turn is in flight; the composer disables itself.
@@ -155,7 +165,10 @@ export function sanitizeSession(raw: unknown): Session | null {
     if (m.pinned === true) msg.pinned = true;
     messages.push(msg);
   }
-  return { id, title, createdAt, messages };
+  const session: Session = { id, title, createdAt, messages };
+  // Only a true pin is restored; an absent or non-true flag stays unset.
+  if (r.pinned === true) session.pinned = true;
+  return session;
 }
 
 /// Load persisted sessions on startup and keep the store mirrored to disk.
@@ -237,6 +250,23 @@ export function newSession(): string {
 /// Switch to an existing conversation.
 export function selectSession(id: string): void {
   activeSessionId.set(id);
+}
+
+/// Toggle whether a conversation is pinned to the top of the rail (see
+/// `sortSessions` / `orderedSessions`). Pinning sets `pinned: true`; unpinning
+/// removes the flag entirely, so an unpinned session carries no `pinned` key.
+export function togglePinSession(id: string): void {
+  sessions.update((list) =>
+    list.map((s) => {
+      if (s.id !== id) return s;
+      if (s.pinned) {
+        const next = { ...s };
+        delete next.pinned;
+        return next;
+      }
+      return { ...s, pinned: true };
+    }),
+  );
 }
 
 /// Rename a conversation. A non-empty title is taken verbatim (trimmed) and
