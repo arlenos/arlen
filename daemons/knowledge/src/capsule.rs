@@ -19,8 +19,10 @@
 // unused in a plain build, like the other not-yet-consumed daemon read APIs.
 #![allow(dead_code)]
 
+use std::collections::BTreeMap;
+
 use anyhow::Result;
-use arlen_capsule::slice::SliceValue;
+use arlen_capsule::slice::{SliceNode, SliceValue};
 
 use crate::graph::{CellValue, GraphHandle};
 use crate::utils::escape_cypher;
@@ -83,6 +85,51 @@ pub(crate) async fn capsule_neighbors(graph: &GraphHandle, node_id: &str) -> Res
     Ok(ids)
 }
 
+/// Load one node's projected fields as a [`SliceNode`], or `None` if no node with
+/// that `(label, id)` exists.
+///
+/// `label` and `fields` are **trusted schema identifiers** (the projection layer
+/// resolves them from the entity schema, never from caller input), so they are
+/// interpolated into the query; only `id` is escaped. The fields are read
+/// explicitly (`RETURN n.id, n.field, ...`) because the typed row protocol has no
+/// map/struct cell, so a whole-node read is not representable: the projection is
+/// thus applied at read time, not after. Each cell is mapped through
+/// [`cell_to_slice_value`]; a field that maps to `None` (a float) or is absent is
+/// omitted, so the slice carries only the canonical, projected values. The leading
+/// `n.id` column is the existence probe.
+pub(crate) async fn load_node_fields(
+    graph: &GraphHandle,
+    label: &str,
+    id: &str,
+    fields: &[&str],
+) -> Result<Option<SliceNode>> {
+    let id_esc = escape_cypher(id);
+    let mut cols = vec!["n.id".to_string()];
+    cols.extend(fields.iter().map(|f| format!("n.{f}")));
+    let cypher = format!(
+        "MATCH (n:{label} {{id: '{id_esc}'}}) RETURN {}",
+        cols.join(", ")
+    );
+    let rs = graph.query_rows(cypher).await?;
+    let Some(row) = rs.rows.first() else {
+        return Ok(None);
+    };
+    let mut field_map = BTreeMap::new();
+    for (i, field) in fields.iter().enumerate() {
+        // Column 0 is the existence probe (n.id); projected fields start at 1.
+        if let Some(cell) = row.get(i + 1) {
+            if let Some(value) = cell_to_slice_value(cell) {
+                field_map.insert((*field).to_string(), value);
+            }
+        }
+    }
+    Ok(Some(SliceNode {
+        id: id.to_string(),
+        label: label.to_string(),
+        fields: field_map,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,6 +179,34 @@ mod tests {
         assert_eq!(capsule_neighbors(&graph, "f1").await.unwrap(), vec!["p1".to_string()]);
         // A node with no live membership has no neighbours.
         assert!(capsule_neighbors(&graph, "absent").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn loads_a_node_with_its_projected_fields() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        graph
+            .write(
+                "CREATE (f:File {id: 'f1', path: '/x/y.rs', app_id: 'editor', last_accessed: 42})"
+                    .into(),
+            )
+            .await
+            .unwrap();
+
+        let node = load_node_fields(&graph, "File", "f1", &["path", "last_accessed"])
+            .await
+            .unwrap()
+            .expect("the node exists");
+        assert_eq!(node.id, "f1");
+        assert_eq!(node.label, "File");
+        // Only the projected fields, each mapped to its canonical SliceValue type.
+        assert_eq!(node.fields.len(), 2);
+        assert_eq!(node.fields.get("path"), Some(&SliceValue::Text("/x/y.rs".into())));
+        assert_eq!(node.fields.get("last_accessed"), Some(&SliceValue::Int(42)));
+        assert!(node.fields.get("app_id").is_none(), "an unprojected field is omitted");
+
+        // A missing node is None.
+        assert!(load_node_fields(&graph, "File", "absent", &["path"]).await.unwrap().is_none());
     }
 
     #[tokio::test]
