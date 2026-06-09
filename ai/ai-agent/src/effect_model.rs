@@ -173,6 +173,94 @@ pub enum InverseReceipt {
     },
 }
 
+/// The domain of a non-graph effect (reversible-receipts-and-the-effect-model.md
+/// §3.1). Closed: it selects the writer seam and the inverse-capture seam, and a
+/// new domain extends this enum rather than adding an `Effect` variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectDomain {
+    /// A filesystem operation (move, trash, create).
+    Filesystem,
+    /// A scalar setting write under the user's Arlen config.
+    Setting,
+    /// An opaque external action (a write-MCP tool, a send).
+    External,
+}
+
+/// The shape of inverse an effect's capture produces, mirroring the
+/// [`InverseReceipt`] variant the executor will capture at commit. A small closed
+/// enum so the gate and the content-free activity view label it without leaking
+/// operands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaptureShape {
+    /// A prior path is captured ([`InverseReceipt::RestorePath`]).
+    RestorePath,
+    /// A prior setting value is captured ([`InverseReceipt::RestoreValue`]).
+    RestoreValue,
+    /// The created entity's identity is captured ([`InverseReceipt::DeleteCreated`]).
+    DeleteCreated,
+    /// A pre-action snapshot is captured ([`InverseReceipt::RestoreSnapshot`]).
+    RestoreSnapshot,
+}
+
+/// What the undo of a `ReversibleWithCost` effect spends that the user owns
+/// (§3.2). The named examples from the design; closed and extensible. Arlen does
+/// not auto-execute this class: the cost is the user's to accept.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResidualCost {
+    /// Undo costs a refund or charge.
+    Fee,
+    /// Undo requires re-fetching data (a re-download).
+    Redownload,
+}
+
+/// Why an effect has no capturable inverse (§3.2). The named examples; closed and
+/// extensible.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IrreversibilityReason {
+    /// A permanent delete with no recoverable prior state.
+    PermanentDelete,
+    /// A send to an external party that cannot be recalled.
+    ExternalSend,
+    /// An opaque command whose effect cannot be inverted.
+    OpaqueCommand,
+}
+
+/// The static, predict-time reversibility class an effect declares (§3.2): the
+/// ONE source of truth for "may the gate lift this, and how must it be reported".
+/// Two consumers read this same field (the lift bit and the audit-honest kind),
+/// which is not a synchronisation hazard because it is one field read twice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InverseClass {
+    /// A captured inverse fully undoes it at no residual cost. The only class
+    /// eligible for the autonomous lift.
+    Reversible {
+        /// The inverse shape the executor captures.
+        capture: CaptureShape,
+    },
+    /// Undoable, but the undo spends something the user owns. Always confirms,
+    /// with the cost surfaced.
+    ReversibleWithCost {
+        /// The inverse shape the executor captures.
+        capture: CaptureShape,
+        /// What the undo spends.
+        cost: ResidualCost,
+    },
+    /// No inverse can be captured. Always confirms, never autonomous.
+    Irreversible {
+        /// Why it cannot be inverted.
+        reason: IrreversibilityReason,
+    },
+}
+
+impl InverseClass {
+    /// The lift bit (§3.2): only a `Reversible` effect is eligible for the
+    /// autonomous lift. `ReversibleWithCost` and `Irreversible` always confirm.
+    /// This is the single reversibility source `is_reversible` derives from.
+    pub fn is_reversible(&self) -> bool {
+        matches!(self, InverseClass::Reversible { .. })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,6 +302,20 @@ mod tests {
     fn snapshot_ref_requires_a_handle() {
         assert!(SnapshotRef::new("snapper:42").is_some());
         assert!(SnapshotRef::new("").is_none());
+    }
+
+    #[test]
+    fn only_reversible_is_lift_eligible() {
+        assert!(InverseClass::Reversible { capture: CaptureShape::RestorePath }.is_reversible());
+        assert!(!InverseClass::ReversibleWithCost {
+            capture: CaptureShape::RestoreValue,
+            cost: ResidualCost::Fee,
+        }
+        .is_reversible());
+        assert!(!InverseClass::Irreversible {
+            reason: IrreversibilityReason::PermanentDelete,
+        }
+        .is_reversible());
     }
 
     #[test]
