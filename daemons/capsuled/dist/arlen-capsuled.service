@@ -1,0 +1,49 @@
+[Unit]
+Description=Arlen Context Capsule daemon (user service)
+Documentation=https://github.com/arlenos/arlen
+# capsuled serves same-machine capsule reads: a reader presents a signed grant
+# and gets the frozen slice from capsuled's own content-addressed store. It audits
+# each read through the audit daemon, but tolerates it being absent (a down audit
+# fails the read closed, not the daemon), so there is no startup ordering
+# requirement here.
+
+[Service]
+# Type=simple: capsuled does not call sd_notify. A reader connects lazily and a
+# not-yet-bound socket is simply a failed connect, so no readiness barrier is
+# needed before dependents start.
+Type=simple
+# Production binary path (system-wide install). Dev runs invoke the debug binary
+# directly; this file is the canonical production unit.
+ExecStart=/usr/lib/arlen/libexec/arlen-capsuled
+# A tampered or unverifiable capsule key, store or revoke ledger makes the daemon
+# exit non-zero (the fail-closed posture); restart with back-off so a persistent
+# fault surfaces rather than crash-looping fast.
+Restart=on-failure
+RestartSec=2
+
+# capsuled holds the persisted Ed25519 capsule signing key, the content-addressed
+# frozen-slice store and the durable revoke/op-count ledger, all under the per-user
+# state directory, and binds only a Unix socket under the runtime dir; it never
+# touches the network (it connects only to the AF_UNIX audit ingest socket), so the
+# hardening is tight and the address-family restriction documents that property.
+ProtectSystem=strict
+ProtectHome=read-only
+# The capsule key, slice store and revoke ledger live under $XDG_STATE_HOME
+# (~/.local/state/arlen/capsule).
+ReadWritePaths=%h/.local/state/arlen
+# The serve socket lives under $XDG_RUNTIME_DIR.
+ReadWritePaths=/run/user/%U/arlen
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target
