@@ -25,6 +25,7 @@ mod registry;
 pub mod router;
 pub mod seams;
 pub mod slice;
+pub mod snapshot;
 pub mod source;
 pub mod spill;
 pub mod undo_log;
