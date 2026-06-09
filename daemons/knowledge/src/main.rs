@@ -26,6 +26,7 @@ mod promotion;
 mod quota;
 mod retrieval;
 mod retention;
+mod revoke;
 mod schema;
 mod shared;
 mod time;
