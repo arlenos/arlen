@@ -1761,9 +1761,165 @@ fn cypher_references_any(cypher: &str, needles: &[&str]) -> bool {
     needles.contains(&token.as_str())
 }
 
+/// The labels whose content is sensitive enough that the raw-Cypher read path can
+/// never serve them to a non-system caller: a name-keyed field filter cannot
+/// soundly scope them (the read-scope notes' bypass classes B1-B7 - label-less
+/// `MATCH (n)`, traversal, whole-node `RETURN n`, `properties()`/alias laundering,
+/// aggregation oracles), so they are denied here and served only through the
+/// structured read op (RS-R2). Compared uppercased, like [`AUTHORITY_LABELS`].
+///
+/// Empty today: the observation graph holds no command-history / clipboard /
+/// credential / PII node label yet (the authority labels are denied separately by
+/// [`references_authority_label`]); when the terminal/clipboard KG-promotion writes
+/// such a label, add it here and RS-R2 becomes its only reader. The allowlist
+/// pre-gate ([`raw_read_label_gate`]) is the active boundary in the meantime.
+// Wired into the read branches by the next RS-R1 commit; tests exercise it now.
+#[allow(dead_code)]
+const SENSITIVE_RAW_LABELS: [&str; 0] = [];
+
+/// The uppercased label/relationship-type tokens a Cypher query references: every
+/// identifier that immediately follows a `:` (a node label `(n:File)` or a rel type
+/// `-[:FILE_PART_OF]->`), skipping single-quoted string literals so a name inside a
+/// value is not mistaken for a label. A token must start with a letter, so a map
+/// literal's numeric value (`{count:5}`) is not captured. Used by the read-scope
+/// pre-gate to check every referenced label against the caller's readable set.
+#[allow(dead_code)]
+fn cypher_label_tokens(cypher: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut token = String::new();
+    let mut token_after_colon = false;
+    let mut prev_colon = false;
+    let flush = |token: &mut String, after_colon: bool, out: &mut Vec<String>| {
+        if after_colon
+            && token
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic())
+        {
+            out.push(token.clone());
+        }
+        token.clear();
+    };
+    for ch in cypher.chars() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '\'' {
+                in_string = false;
+            }
+            continue;
+        }
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            if token.is_empty() {
+                token_after_colon = prev_colon;
+            }
+            token.push(ch.to_ascii_uppercase());
+        } else {
+            flush(&mut token, token_after_colon, &mut out);
+            prev_colon = ch == ':';
+            if ch == '\'' {
+                in_string = true;
+            }
+        }
+    }
+    flush(&mut token, token_after_colon, &mut out);
+    out
+}
+
+/// Whether `cypher` references a label outside the caller's readable label set, OR
+/// a sensitive label a non-system caller may never read on the raw path. Returns
+/// the denial reason, or `None` to allow.
+///
+/// Fail-closed by design (the notes' over-reject stance): a `system_anchored` caller
+/// bypasses the allowlist entirely (the system tier is non-same-uid-forgeable for
+/// the root-owned identity rules 1-3, cooperative-only for rule-4 user apps until
+/// F3 - the same boundary-vs-cooperative split [`is_privileged_authority_reader`]
+/// documents). A non-system caller is denied a label-less query (nothing to scope,
+/// B1), any sensitive label (RS-R2 only), and any label/rel-type outside its
+/// readable set (so a traversal to an out-of-scope neighbour, B2, is refused). Only
+/// a query whose every referenced label is in the readable, non-sensitive set runs.
+#[allow(dead_code)]
+fn raw_read_label_gate(
+    cypher: &str,
+    readable_labels: &[String],
+    system_anchored: bool,
+) -> Option<&'static str> {
+    if system_anchored {
+        return None;
+    }
+    let tokens = cypher_label_tokens(cypher);
+    if tokens.is_empty() {
+        return Some("read denied: a label-less query cannot be scoped to the caller");
+    }
+    for t in &tokens {
+        if SENSITIVE_RAW_LABELS.contains(&t.as_str()) {
+            return Some("read denied: sensitive label served only through the structured read op");
+        }
+        if !readable_labels.iter().any(|l| l.eq_ignore_ascii_case(t)) {
+            return Some("read denied: label outside the caller's read scope");
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn label_tokens_extracts_labels_and_rel_types() {
+        assert_eq!(cypher_label_tokens("MATCH (f:File) RETURN f.path"), ["FILE"]);
+        assert_eq!(
+            cypher_label_tokens("MATCH (f:File)-[:FILE_PART_OF]->(p:Project) RETURN p"),
+            ["FILE", "FILE_PART_OF", "PROJECT"]
+        );
+        // No label: label-less MATCH yields nothing.
+        assert!(cypher_label_tokens("MATCH (n) RETURN n").is_empty());
+        // A colon inside a string literal is not a label.
+        assert!(cypher_label_tokens("MATCH (n) WHERE n.x = 'a:b' RETURN n").is_empty());
+        // A map-literal numeric value (`{c:5}`) is not a label (must start alpha).
+        assert!(cypher_label_tokens("MATCH (n {c:5}) RETURN n").is_empty());
+    }
+
+    #[test]
+    fn read_gate_denies_label_less_query() {
+        assert!(raw_read_label_gate("MATCH (n) RETURN n", &[], false).is_some());
+    }
+
+    #[test]
+    fn read_gate_allows_an_in_scope_label() {
+        assert!(raw_read_label_gate("MATCH (f:File) RETURN f.path", &["File".into()], false).is_none());
+    }
+
+    #[test]
+    fn read_gate_denies_an_out_of_scope_label() {
+        assert!(
+            raw_read_label_gate("MATCH (s:Session) RETURN s.id", &["File".into()], false).is_some()
+        );
+    }
+
+    #[test]
+    fn read_gate_system_anchored_caller_bypasses() {
+        // The same out-of-scope query is allowed for a system-anchored caller.
+        assert!(
+            raw_read_label_gate("MATCH (s:Session) RETURN s.id", &["File".into()], true).is_none()
+        );
+    }
+
+    #[test]
+    fn read_gate_denies_a_traversal_to_an_unreadable_type() {
+        // File is readable, but the rel type and Project are not: fail-closed.
+        assert!(raw_read_label_gate(
+            "MATCH (f:File)-[:FILE_PART_OF]->(p:Project) RETURN p",
+            &["File".into()],
+            false
+        )
+        .is_some());
+    }
 
     #[test]
     fn detects_write_queries() {
