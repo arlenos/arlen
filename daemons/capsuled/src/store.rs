@@ -8,9 +8,8 @@
 //! references it. The content hash IS the capsule's identity (§3); `release` + the
 //! store's gc is the forget primitive a revoke uses (CC-R5).
 
+use arlen_capsule::slice::FrozenSlice;
 use arlen_forage_store::{ContentHash, Store, StoreError};
-
-use crate::slice::FrozenSlice;
 
 /// Store a [`FrozenSlice`] as a content-addressed, refcounted blob rooted to
 /// `owner`, returning its content hash (the capsule's identity). The slice is
@@ -28,7 +27,7 @@ pub fn store_frozen_slice(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::slice::{SliceNode, SliceRelation, SliceValue};
+    use arlen_capsule::slice::{SliceNode, SliceRelation, SliceValue};
     use std::collections::BTreeMap;
 
     fn slice() -> FrozenSlice {
