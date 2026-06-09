@@ -110,10 +110,14 @@ impl IdentityRegistry {
     }
 }
 
-/// The registry file path for `uid`. The `ARLEN_IDENTITY_DIR` override (tests/dev
-/// only, never production) resolves directly to `<dir>/registry.json` with no uid
-/// subdir, mirroring `ARLEN_PERMISSIONS_DIR`.
+/// The registry file path for `uid`. The `ARLEN_IDENTITY_DIR` override resolves
+/// directly to `<dir>/registry.json` (no uid subdir), but ONLY in a debug build:
+/// the registry is the trust root for the inode gate, so a release build must never
+/// let an attacker-controlled environment variable redirect the resolver to a
+/// forged registry. In release the path is always the root-owned `/var/lib`
+/// location.
 fn registry_path(uid: u32) -> PathBuf {
+    #[cfg(debug_assertions)]
     if let Ok(dir) = std::env::var("ARLEN_IDENTITY_DIR") {
         return PathBuf::from(dir).join("registry.json");
     }
