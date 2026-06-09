@@ -18,10 +18,15 @@ use std::sync::Arc;
 use arlen_ai_undo_proto::{read_request, write_response, Request, Response, StateReply};
 use arlen_permissions::ConnectionAuth;
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 
 use crate::error::{Result, SignerError};
 use crate::store::SignerStore;
+
+/// Cap on concurrently-served connections. The sole admitted caller is the agent,
+/// which uses one or few connections; this bounds task/fd growth so a peer that
+/// opens many connections (and stalls each mid-frame) cannot exhaust the helper.
+const MAX_CONNECTIONS: usize = 16;
 
 /// Resolve the signer socket path: `$XDG_RUNTIME_DIR/arlen/undo-signer.sock`,
 /// falling back to `/run/arlen/undo-signer.sock`.
@@ -116,14 +121,26 @@ async fn handle(stream: UnixStream, caller_uid: u32, store: Arc<Mutex<SignerStor
 pub async fn run(socket_path: &Path, store: Arc<Mutex<SignerStore>>) -> Result<()> {
     let listener = bind_unix_socket(socket_path)?;
     let caller_uid = crate::auth::current_uid();
+    let conns = Arc::new(Semaphore::new(MAX_CONNECTIONS));
     tracing::info!(socket = %socket_path.display(), "undo-signer listening");
     loop {
+        // Acquire a connection slot before accepting the next peer: at the cap the
+        // loop pauses (backpressure) until a served connection ends, so the helper
+        // never spawns unbounded handlers. The permit is held by the task and
+        // released when the connection closes.
+        let permit = Arc::clone(&conns)
+            .acquire_owned()
+            .await
+            .map_err(|e| SignerError::Storage(format!("connection semaphore closed: {e}")))?;
         let (stream, _) = listener
             .accept()
             .await
             .map_err(|e| SignerError::Storage(format!("undo-signer accept: {e}")))?;
         let store = Arc::clone(&store);
-        tokio::spawn(handle(stream, caller_uid, store));
+        tokio::spawn(async move {
+            handle(stream, caller_uid, store).await;
+            drop(permit);
+        });
     }
 }
 
@@ -132,7 +149,9 @@ pub async fn run(socket_path: &Path, store: Arc<Mutex<SignerStore>>) -> Result<(
 fn bind_unix_socket(path: &Path) -> Result<UnixListener> {
     use std::os::unix::fs::PermissionsExt;
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+        // Clamp the socket's parent directory to 0700 (as the state dir is), so
+        // the socket node lives in an owner-only directory.
+        crate::paths::ensure_private_dir(parent)?;
     }
     if path.exists() {
         match std::os::unix::net::UnixStream::connect(path) {
