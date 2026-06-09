@@ -16,8 +16,23 @@
 //! permissions model only `read`/`write` (not the `relations` / `instance_scope`
 //! the daemon's profile and the on-disk format carry), so a serialize round-trip
 //! would silently drop those fields. An in-place edit cannot lose a field it does
-//! not model. The handler, the file write, and the tier/required checks are
-//! later increments built on this.
+//! not model.
+//!
+//! **Honest limits (both fail toward "didn't shrink enough", never toward a
+//! widening, so neither is an authority leak):**
+//! - **Required-reach refusal (§6.3) is NOT yet enforced here.** The design says
+//!   an essential reach is refused so a one-click revoke cannot brick an app, but
+//!   the on-disk `GraphPermissions` carries no `required` marker today, so nothing
+//!   is markable required and the refusal is inert-by-absence. When the schema
+//!   gains a `required` field, wire the refusal in `handle_revoke` before the
+//!   gate; until then the gate will happily approve removing any reach.
+//! - **Revoking a pattern still covered by a live wildcard is cosmetic.** The gate
+//!   compares the raw pattern entries, so removing `system.File` while `system.*`
+//!   remains is a strict-subset shrink (reported `Revoked`) even though the
+//!   effective coverage is unchanged. Surfacing "still covered by `system.*`"
+//!   needs the wildcard-expansion (`pattern_matches`) the gate deliberately does
+//!   not do; a follow-up, recorded here so the `Revoked` outcome is not mistaken
+//!   for "this reach is now gone" when a broader entry still grants it.
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -95,6 +110,12 @@ pub struct ScopeSummary {
     pub read: BTreeSet<String>,
     /// The raw `[graph].write` pattern entries, same discipline as `read`.
     pub write: BTreeSet<String>,
+    /// The raw `[graph].read_sensitive` pattern entries. Not token-bearing today
+    /// (the mint reads only read/write/relations/instance), but the gate covers
+    /// it so the invariant "every authority-bearing field is in the subset check"
+    /// holds by construction the day this field flows into the token, rather than
+    /// silently leaving a revoke able to shrink `read` while sensitive reach stays.
+    pub read_sensitive: BTreeSet<String>,
     /// The permitted relations, keyed `(from, to, relation_type)`.
     pub relations: BTreeSet<(String, String, String)>,
     /// Whether the instance scope is `All` (the wider of the two).
@@ -107,16 +128,18 @@ impl ScopeSummary {
     /// Raw patterns (not parsed entity types) so field-level narrowing is visible
     /// to the subset gate.
     pub fn from_profile(profile: &PermissionProfile) -> ScopeSummary {
-        let (read, write) = match &profile.graph {
+        let (read, write, read_sensitive) = match &profile.graph {
             Some(g) => (
                 g.read.iter().cloned().collect(),
                 g.write.iter().cloned().collect(),
+                g.read_sensitive.iter().cloned().collect(),
             ),
-            None => (BTreeSet::new(), BTreeSet::new()),
+            None => (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()),
         };
         ScopeSummary {
             read,
             write,
+            read_sensitive,
             relations: profile
                 .to_relation_scopes()
                 .iter()
@@ -136,13 +159,16 @@ impl ScopeSummary {
 pub fn is_strict_narrowing(old: &ScopeSummary, new: &ScopeSummary) -> bool {
     let read_subset = new.read.is_subset(&old.read);
     let write_subset = new.write.is_subset(&old.write);
+    let read_sensitive_subset = new.read_sensitive.is_subset(&old.read_sensitive);
     let relations_subset = new.relations.is_subset(&old.relations);
     // Instance: `All` is wider than `Own`. The new scope may not gain `All`.
     let instance_subset = !new.instance_all || old.instance_all;
-    let every_dimension_subset = read_subset && write_subset && relations_subset && instance_subset;
+    let every_dimension_subset =
+        read_subset && write_subset && read_sensitive_subset && relations_subset && instance_subset;
 
     let strictly_smaller = new.read.len() < old.read.len()
         || new.write.len() < old.write.len()
+        || new.read_sensitive.len() < old.read_sensitive.len()
         || new.relations.len() < old.relations.len()
         || (old.instance_all && !new.instance_all);
 
@@ -345,6 +371,7 @@ mod tests {
         ScopeSummary {
             read: read.iter().map(|s| s.to_string()).collect(),
             write: write.iter().map(|s| s.to_string()).collect(),
+            read_sensitive: BTreeSet::new(),
             relations: BTreeSet::new(),
             instance_all,
         }
@@ -355,6 +382,17 @@ mod tests {
         let old = summary(&["system.File", "system.Project"], &[], false);
         let new = summary(&["system.File"], &[], false);
         assert!(is_strict_narrowing(&old, &new));
+    }
+
+    #[test]
+    fn the_gate_covers_read_sensitive() {
+        // Dropping a read_sensitive entry (and nothing else) is a narrowing the
+        // gate must see, and gaining one is a widening it must refuse.
+        let mut old = summary(&["system.File"], &[], false);
+        old.read_sensitive.insert("system.File.secret".into());
+        let new = summary(&["system.File"], &[], false); // read_sensitive empty
+        assert!(is_strict_narrowing(&old, &new), "dropping read_sensitive is narrowing");
+        assert!(!is_strict_narrowing(&new, &old), "gaining read_sensitive is a widening");
     }
 
     #[test]
