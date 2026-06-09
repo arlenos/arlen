@@ -1400,7 +1400,18 @@ async fn handle_client(
                         let limit = req.limit.clamp(1, MAX_RETRIEVE_LIMIT);
                         match crate::retrieval::retrieve(&pool, &graph, &req.query, limit).await {
                             Ok(ids) => {
-                                serde_json::to_string(&ids).unwrap_or_else(|_| "[]".to_string())
+                                // RS-R1: scope the returned ids to the caller's
+                                // readable labels (a system caller sees all).
+                                let system_anchored = app_id != "unknown"
+                                    && QuotaConfig::arlen_default().tier_for_app(&app_id)
+                                        != AppTier::ThirdParty;
+                                let scoped = if system_anchored {
+                                    ids
+                                } else {
+                                    let readable = caller_readable_labels(peer.as_ref(), &auth).await;
+                                    filter_ids_to_readable_labels(&graph, &ids, &readable).await
+                                };
+                                serde_json::to_string(&scoped).unwrap_or_else(|_| "[]".to_string())
                             }
                             Err(e) => format!("ERROR: {e}"),
                         }
@@ -1590,18 +1601,7 @@ async fn handle_client(
         let readable_labels: Vec<String> = if system_anchored {
             Vec::new()
         } else {
-            match &peer {
-                Some(p) => match (p.start_time, pid_start_time(p.pid).ok()) {
-                    (Some(captured), Some(now)) if now == captured => {
-                        match auth.lock().await.issue_token_for_pid(p.pid) {
-                            Ok(token) => readable_system_labels(&token.read_scopes),
-                            Err(_) => Vec::new(),
-                        }
-                    }
-                    _ => Vec::new(),
-                },
-                None => Vec::new(),
-            }
+            caller_readable_labels(peer.as_ref(), &auth).await
         };
 
         // Failure responses are the plaintext `ERROR: ...` form in both
@@ -1953,6 +1953,62 @@ fn scrub_sensitive_columns_json(json: &str) -> String {
         }
     }
     value.to_string()
+}
+
+/// The caller's readable system labels, minted lazily from a live, unchanged peer
+/// process via the write path's PID-reuse guard. An unprovisioned or recycled peer
+/// (or one with no graph access) yields the empty set, NOT an error - the
+/// fail-closed default, so a caller with no scope can read nothing labelled.
+async fn caller_readable_labels(
+    peer: Option<&WritePeer>,
+    auth: &Arc<Mutex<Authenticator>>,
+) -> Vec<String> {
+    match peer {
+        Some(p) => match (p.start_time, pid_start_time(p.pid).ok()) {
+            (Some(captured), Some(now)) if now == captured => {
+                match auth.lock().await.issue_token_for_pid(p.pid) {
+                    Ok(token) => readable_system_labels(&token.read_scopes),
+                    Err(_) => Vec::new(),
+                }
+            }
+            _ => Vec::new(),
+        },
+        None => Vec::new(),
+    }
+}
+
+/// Keep only the `ids` that exist under one of the caller's `readable_labels`,
+/// preserving the input ranking order (RS-R1 for the `0x03` retrieve op). One
+/// batched probe per readable label (`MATCH (n:Label) WHERE n.id IN [...]`), so the
+/// cost is the readable-label count, not the id count; the ids are bounded by the
+/// retrieve limit and escaped, the labels are safe identifiers. An empty readable
+/// set drops everything (fail-closed). Unlike the raw path this IS a real boundary
+/// for `0x03`: it returns only ids, so there is no field-laundering bypass.
+async fn filter_ids_to_readable_labels(
+    graph: &GraphHandle,
+    ids: &[String],
+    readable_labels: &[String],
+) -> Vec<String> {
+    if ids.is_empty() || readable_labels.is_empty() {
+        return Vec::new();
+    }
+    let in_list = ids
+        .iter()
+        .map(|id| format!("'{}'", escape_cypher(id)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut allowed = std::collections::HashSet::new();
+    for label in readable_labels {
+        let cypher = format!("MATCH (n:{label}) WHERE n.id IN [{in_list}] RETURN n.id");
+        if let Ok(rs) = graph.query_rows(cypher).await {
+            for row in &rs.rows {
+                if let Some(cell) = row.first() {
+                    allowed.insert(cell.as_str().to_string());
+                }
+            }
+        }
+    }
+    ids.iter().filter(|id| allowed.contains(*id)).cloned().collect()
 }
 
 #[cfg(test)]
@@ -2382,6 +2438,31 @@ mod tests {
             to_id: to_id.into(),
             relation_type: "FILE_PART_OF".into(),
         }
+    }
+
+    #[tokio::test]
+    async fn retrieve_filter_drops_ids_under_unreadable_labels() {
+        let (graph, _tmp) = spawn_test_graph().await;
+        graph
+            .write("CREATE (f:File {id: 'f1', path: '/x', app_id: 't', last_accessed: 0})".into())
+            .await
+            .unwrap();
+        graph
+            .write("CREATE (s:Session {id: 's1'})".into())
+            .await
+            .unwrap();
+        // File readable, Session not: s1 is dropped, the ranking order is preserved.
+        let kept = filter_ids_to_readable_labels(
+            &graph,
+            &["f1".to_string(), "s1".to_string()],
+            &["File".to_string()],
+        )
+        .await;
+        assert_eq!(kept, vec!["f1".to_string()]);
+        // No readable label → nothing survives (fail-closed).
+        assert!(filter_ids_to_readable_labels(&graph, &["f1".to_string()], &[])
+            .await
+            .is_empty());
     }
 
     #[tokio::test]
