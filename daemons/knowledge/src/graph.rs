@@ -634,6 +634,40 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create Annotation table: {e}"))?;
 
+    // Annotation history (bitemporal-knowledge-graph.md §4.8): the mutable
+    // `Annotation.data` is reified onto a temporal `HAS_VERSION` edge to an
+    // `AnnotationVersion` content node, so a `set` closes the live version and
+    // appends a new one rather than overwriting (prior value lost). The
+    // `Annotation` node stays the stable identity (its deterministic id, which
+    // the SDK queries by the (target_type, target_id, namespace) triple); the
+    // value lives on the versioned edge.
+    conn.query(
+        "CREATE NODE TABLE IF NOT EXISTS AnnotationVersion(
+            id          STRING,
+            data        STRING,
+            recorded_at INT64,
+            PRIMARY KEY(id)
+        )",
+    )
+    .map_err(|e| anyhow!("create AnnotationVersion table: {e}"))?;
+    // The versioned edge carries the four bi-temporal stamps (§4.1) plus `op_id`,
+    // exactly like FILE_PART_OF, so a `set` is a close-then-append and history is
+    // retained. Convergent column adds for a store created before they existed.
+    conn.query(
+        "CREATE REL TABLE IF NOT EXISTS HAS_VERSION(FROM Annotation TO AnnotationVersion)",
+    )
+    .map_err(|e| anyhow!("create HAS_VERSION rel: {e}"))?;
+    for column in [
+        "valid_at INT64",
+        "invalid_at INT64",
+        "created_at INT64",
+        "expired_at INT64",
+        "op_id STRING",
+    ] {
+        conn.query(&format!("ALTER TABLE HAS_VERSION ADD IF NOT EXISTS {column}"))
+            .map_err(|e| anyhow!("ensure HAS_VERSION.{column} column: {e}"))?;
+    }
+
     // Retention policy: summary nodes for compacted old data.
     conn.query(
         "CREATE NODE TABLE IF NOT EXISTS Summary(
@@ -892,5 +926,40 @@ mod tests {
         // An empty transaction is a no-op success.
         run_transaction(&conn, &[]).expect("empty transaction is a no-op");
         assert_eq!(count(&conn), 2);
+    }
+
+    #[test]
+    fn create_schema_supports_annotation_versioning() {
+        // KG-R6 (§4.8): an Annotation links via a temporal HAS_VERSION edge to an
+        // AnnotationVersion content node, so annotation history is retained
+        // instead of overwritten. This checks the schema supports that shape.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db = Database::new(tmp.path().join("graph").to_str().unwrap(), SystemConfig::default())
+            .unwrap();
+        let conn = Connection::new(&db).unwrap();
+        create_schema(&conn).expect("schema");
+
+        conn.query(
+            "CREATE (:Annotation {id: 'a1', namespace: 'notes', target_type: 'File', target_id: 'f1'})",
+        )
+        .unwrap();
+        conn.query("CREATE (:AnnotationVersion {id: 'v1', data: 'hello', recorded_at: 1000})")
+            .unwrap();
+        conn.query(
+            "MATCH (a:Annotation {id: 'a1'}), (v:AnnotationVersion {id: 'v1'}) \
+             CREATE (a)-[:HAS_VERSION {valid_at: 1000, created_at: 1000, op_id: 'op-1'}]->(v)",
+        )
+        .expect("a temporally-stamped version edge writes");
+
+        // The live version (open intervals) is reachable via the two-hop read.
+        let live = conn
+            .query(
+                "MATCH (:Annotation {id: 'a1'})-[r:HAS_VERSION]->(v:AnnotationVersion) \
+                 WHERE r.invalid_at IS NULL AND r.expired_at IS NULL RETURN v.data",
+            )
+            .expect("the versioned-annotation read works")
+            .by_ref()
+            .count();
+        assert_eq!(live, 1, "the live annotation version is reachable");
     }
 }
