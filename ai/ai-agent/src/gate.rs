@@ -100,6 +100,7 @@ use arlen_ai_core::audit::{behaviour_action_event, AuditSink};
 use arlen_ai_core::capability::{ActionDecision, ActionKind, BaselineMode, Capability};
 use arlen_ai_core::mcp::{AlwaysConfirm, AlwaysConfirmReason};
 
+use crate::effect_model::InverseClass;
 use crate::registry;
 use crate::seams::{GateObserver, GraphHandle};
 use crate::slice::{build_slice_trusted, MountPolicy, PathResolver};
@@ -529,11 +530,32 @@ impl<'a> Gate<'a> {
 /// identically and the executor cannot under-classify what the gate proved.
 pub(crate) fn resolved_action_kind(tool: &str) -> ActionKind {
     let base_kind = action_kind_for_tool(tool);
-    let schema_reversible = registry::lookup(tool).map(|t| t.is_reversible());
+    let trusted = registry::lookup(tool);
+    // A non-graph schema declares a three-way `InverseClass` on its
+    // `Effect::External`; map it (the single reversibility source, §3.2). A
+    // pure-graph schema has none, so fall back to the op-id self-inverse bool: a
+    // non-confirm tool whose graph effects are not reversible is `Irreversible`.
+    if let Some(class) = trusted.as_ref().and_then(|t| t.declared_inverse_class()) {
+        return action_kind_from_class(class, base_kind);
+    }
+    let schema_reversible = trusted.map(|t| t.is_reversible());
     if !base_kind.always_requires_confirmation() && schema_reversible == Some(false) {
         ActionKind::Irreversible
     } else {
         base_kind
+    }
+}
+
+/// Map a declared [`InverseClass`] to the audit-honest [`ActionKind`] (§3.2): a
+/// `Reversible` effect keeps the tool's base kind (it may still be lifted), a
+/// `ReversibleWithCost` always confirms with the cost surfaced, and an
+/// `Irreversible` always confirms. The single reversibility source read for the
+/// kind, the twin of `is_reversible` reading it for the lift bit.
+fn action_kind_from_class(class: InverseClass, base: ActionKind) -> ActionKind {
+    match class {
+        InverseClass::Reversible { .. } => base,
+        InverseClass::ReversibleWithCost { .. } => ActionKind::ReversibleWithCost,
+        InverseClass::Irreversible { .. } => ActionKind::Irreversible,
     }
 }
 
@@ -622,6 +644,7 @@ fn high_impact_class_label(kind: ActionKind) -> &'static str {
         ActionKind::UndeclaredNetwork => "high-impact-undeclared-network",
         ActionKind::ElevatedPrivilege => "high-impact-elevated-privilege",
         ActionKind::Irreversible => "high-impact-irreversible",
+        ActionKind::ReversibleWithCost => "reversible-with-cost",
         // Ordinary is not high-impact, so it never reaches here; defensive.
         ActionKind::Ordinary => "high-impact",
     }
@@ -636,6 +659,46 @@ mod tests {
 
     use audit_proto::MockAuditSink;
     use arlen_ai_core::capability::{AccessTier, ActionPermissions};
+
+    #[test]
+    fn action_kind_from_class_maps_the_three_way() {
+        use crate::effect_model::{CaptureShape, IrreversibilityReason, ResidualCost};
+        // Reversible keeps the base kind (still possibly liftable).
+        assert!(matches!(
+            action_kind_from_class(
+                InverseClass::Reversible { capture: CaptureShape::RestorePath },
+                ActionKind::Ordinary,
+            ),
+            ActionKind::Ordinary
+        ));
+        // Reversible does not downgrade a high-impact base kind.
+        assert!(matches!(
+            action_kind_from_class(
+                InverseClass::Reversible { capture: CaptureShape::RestorePath },
+                ActionKind::PermanentDelete,
+            ),
+            ActionKind::PermanentDelete
+        ));
+        // With-cost always confirms.
+        assert!(matches!(
+            action_kind_from_class(
+                InverseClass::ReversibleWithCost {
+                    capture: CaptureShape::RestoreValue,
+                    cost: ResidualCost::Fee,
+                },
+                ActionKind::Ordinary,
+            ),
+            ActionKind::ReversibleWithCost
+        ));
+        // Irreversible always confirms.
+        assert!(matches!(
+            action_kind_from_class(
+                InverseClass::Irreversible { reason: IrreversibilityReason::ExternalSend },
+                ActionKind::Ordinary,
+            ),
+            ActionKind::Irreversible
+        ));
+    }
 
     use crate::seams::{DeniedGraph, GraphError};
     use crate::slice::{FsPathResolver, SliceError, StaticMountPolicy};
