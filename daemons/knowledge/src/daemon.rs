@@ -352,7 +352,24 @@ enum WriteRequest {
         relation_type: String,
         op_id: String,
     },
+    /// Create a node of a bounded built-in type at a caller-supplied id, guarded
+    /// so it can only ever create, never overwrite (bitemporal-knowledge-graph.md
+    /// §5.3). The id is the caller's own (e.g. a deterministic UUIDv5), checked
+    /// label-agnostically so a foreign-label id collision is refused. The only
+    /// creatable types are the consolidation node types ([`CREATABLE_NODES`]);
+    /// node fields and the transaction-time stamp are a later increment.
+    CreateNode {
+        /// The namespaced node type (e.g. `system.Summary`).
+        node_type: String,
+        /// The caller-supplied node id.
+        id: String,
+    },
 }
+
+/// The node types creatable via the `0x02` write socket: the consolidation node
+/// types only (§5.3). A narrow allowlist, like `BUILTIN_RELATIONS` for edges, so
+/// a token write-scope alone cannot create an arbitrary node label.
+const CREATABLE_NODES: &[&str] = &["system.Summary"];
 
 /// Authorise and persist a structured write request, returning the plaintext
 /// response (`OK` / `ERROR: ...`).
@@ -459,6 +476,21 @@ async fn handle_write_request(
                 Err(e) => return format!("ERROR: {e}"),
             };
             persist_retract(graph, &rel, &op_id).await
+        }
+        WriteRequest::CreateNode { node_type, id } => {
+            // Token write scope (the same check entity create uses), then the
+            // narrow creatable-node allowlist and a non-empty id. All fail-closed.
+            if !token.can_write(&node_type) {
+                return format!("ERROR: permission denied for {node_type}");
+            }
+            if !CREATABLE_NODES.contains(&node_type.as_str()) {
+                return format!("ERROR: node type {node_type} is not creatable via this socket");
+            }
+            if id.is_empty() {
+                return "ERROR: create node requires an id".to_string();
+            }
+            let label = node_type.strip_prefix("system.").unwrap_or(&node_type);
+            persist_create_node(graph, label, &id).await
         }
     }
 }
@@ -620,6 +652,29 @@ async fn persist_file_part_of(
     match graph.query_rows(edge_cypher).await {
         Ok(rs) if row_count(&rs) > 0 => "OK: exists".to_string(),
         Ok(_) => "ERROR: relation endpoints not found".to_string(),
+        Err(e) => format!("ERROR: {e}"),
+    }
+}
+
+/// Persist a node-create with the atomic single-statement id probe (§5.3).
+///
+/// The label-agnostic existence check and the `CREATE` are ONE Cypher statement
+/// on the serial graph thread, so the foreign-label id-collision check and the
+/// create are evaluated together and cannot race (an earlier "probe then create"
+/// framing is two statements and would). It creates only, never overwrites: a
+/// node already carrying this id under ANY label refuses the create. `created` 1
+/// is `OK: created`; 0 means a node with this id already exists (`OK: exists`,
+/// the guarded no-op). `label` is a validated identifier from [`CREATABLE_NODES`]
+/// (not attacker-controlled); only `id` is caller-supplied and escaped.
+async fn persist_create_node(graph: &GraphHandle, label: &str, id: &str) -> String {
+    let id_lit = escape_cypher(id);
+    let cypher = format!(
+        "OPTIONAL MATCH (existing {{id: '{id_lit}'}}) WITH existing WHERE existing IS NULL \
+         CREATE (:{label} {{id: '{id_lit}'}}) RETURN count(*) AS created"
+    );
+    match graph.query_rows(cypher).await {
+        Ok(rs) if row_count(&rs) > 0 => "OK: created".to_string(),
+        Ok(_) => "OK: exists".to_string(),
         Err(e) => format!("ERROR: {e}"),
     }
 }
@@ -1201,6 +1256,29 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(sup.rows[0][0].as_str(), "op-1", "the new edge records what it superseded");
+    }
+
+    #[tokio::test]
+    async fn persist_create_node_is_atomic_and_create_only() {
+        let (graph, _tmp) = spawn_test_graph().await;
+        // A fresh node is created.
+        assert_eq!(persist_create_node(&graph, "Summary", "s1").await, "OK: created");
+        // Re-creating the same id+label is a guarded no-op (never overwrites).
+        assert_eq!(persist_create_node(&graph, "Summary", "s1").await, "OK: exists");
+        // A DIFFERENT label at the same id (a foreign-label collision) is refused
+        // by the label-agnostic probe, so no second node appears.
+        assert_eq!(persist_create_node(&graph, "Project", "s1").await, "OK: exists");
+
+        let summaries = graph
+            .query_rows("MATCH (s:Summary {id: 's1'}) RETURN count(*) AS n".into())
+            .await
+            .unwrap();
+        assert_eq!(summaries.rows[0][0].as_i64(), 1, "exactly one Summary at s1");
+        let projects = graph
+            .query_rows("MATCH (p:Project {id: 's1'}) RETURN count(*) AS n".into())
+            .await
+            .unwrap();
+        assert_eq!(projects.rows[0][0].as_i64(), 0, "the foreign-label create was refused");
     }
 
     #[tokio::test]
