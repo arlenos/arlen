@@ -666,4 +666,55 @@ mod tests {
         let rows = qr.by_ref().count();
         assert_eq!(rows, 1, "the op-id edge is queryable after convergence");
     }
+
+    #[test]
+    fn r0_engine_permits_parallel_same_type_edges_and_set_counts_matched() {
+        // KG-R0 (bitemporal-knowledge-graph.md §4.10): the append-don't-overwrite
+        // bi-temporal model needs multiple FILE_PART_OF edges between one
+        // (File, Project) pair (joined / left / re-joined is three retained
+        // rows). The op_id precedent proves edges carry properties; it does NOT
+        // prove the engine permits parallel same-type edges. This probes ladybug
+        // empirically. It passing SELECTS the on-edge-stamps representation
+        // (§4.1-4.9); a failure (the engine collapses or rejects the second edge)
+        // would instead select the reified `Membership` fact-node fallback.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("graph");
+        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+        conn.query("CREATE NODE TABLE File(id STRING, PRIMARY KEY(id))").unwrap();
+        conn.query("CREATE NODE TABLE Project(id STRING, PRIMARY KEY(id))").unwrap();
+        conn.query("CREATE REL TABLE FILE_PART_OF(FROM File TO Project, op_id STRING)").unwrap();
+        conn.query("CREATE (:File {id:'f1'})").unwrap();
+        conn.query("CREATE (:Project {id:'p1'})").unwrap();
+
+        // Two edges of the same type between the same node pair.
+        conn.query("MATCH (f:File{id:'f1'}),(p:Project{id:'p1'}) CREATE (f)-[:FILE_PART_OF {op_id:'a'}]->(p)")
+            .unwrap();
+        conn.query("MATCH (f:File{id:'f1'}),(p:Project{id:'p1'}) CREATE (f)-[:FILE_PART_OF {op_id:'b'}]->(p)")
+            .unwrap();
+
+        // Both persist and both are returned: parallel same-type edges permitted.
+        let parallel = conn
+            .query("MATCH (:File{id:'f1'})-[r:FILE_PART_OF]->(:Project{id:'p1'}) RETURN r.op_id")
+            .unwrap()
+            .by_ref()
+            .count();
+        assert_eq!(
+            parallel, 2,
+            "ladybug must retain both parallel FILE_PART_OF edges (else the Membership fallback, §4.10)"
+        );
+
+        // SET ... RETURN count(*) counts matched-and-mutated rows, so the
+        // close-then-append write can report how many edges it closed.
+        let mut qr = conn
+            .query("MATCH (:File{id:'f1'})-[r:FILE_PART_OF]->(:Project{id:'p1'}) SET r.op_id = 'c' RETURN count(*)")
+            .unwrap();
+        let row = qr.by_ref().next().expect("count(*) returns one row");
+        let count = row.into_iter().next().and_then(value_to_json).and_then(|j| j.as_i64());
+        assert_eq!(
+            count,
+            Some(2),
+            "SET ... RETURN count(*) reports the matched-and-mutated row count"
+        );
+    }
 }
