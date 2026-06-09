@@ -456,7 +456,6 @@ async fn handle_provenance_read(
     peer: &Option<WritePeer>,
     auth: &Arc<Mutex<Authenticator>>,
     graph: &GraphHandle,
-    app_id: &str,
 ) -> String {
     let Ok(req) = serde_json::from_slice::<ProvenanceRequest>(body) else {
         return PROVENANCE_OUT_OF_SCOPE.to_string();
@@ -479,28 +478,37 @@ async fn handle_provenance_read(
         Err(_) => return PROVENANCE_OUT_OF_SCOPE.to_string(),
     };
 
-    // Probe only the labels the caller may read. Found under one => in scope;
-    // found under none => uniform OutOfScope, so out-of-scope and absent are
-    // indistinguishable. The labels are safe identifiers (see
-    // `readable_system_labels`) and the id is escaped.
+    // Probe the labels the caller may read for the object. Every readable label
+    // is probed (no early break) so the query count, and thus the timing, does
+    // not reveal which label the object lives under, nor distinguish an
+    // out-of-scope object from an absent one: both cost exactly N probes and no
+    // actor query. The FIRST label the object is found under is the one bound in
+    // the actor query, so provenance is read for exactly a label the caller may
+    // read, never the label-free union across tables that share an id (a Kuzu
+    // primary key is per-table, so one id can exist under several labels). The
+    // labels are safe identifiers (see `readable_system_labels`); the id is
+    // escaped.
     let id_esc = escape_cypher(&req.object_id);
-    let mut in_scope = false;
+    let mut found_label: Option<String> = None;
     for label in readable_system_labels(&token.read_scopes) {
         let cypher = format!("MATCH (n:{label} {{id: '{id_esc}'}}) RETURN n.id LIMIT 1");
         if let Ok(rs) = graph.query_rows(cypher).await {
-            if !rs.rows.is_empty() {
-                in_scope = true;
-                break;
+            if !rs.rows.is_empty() && found_label.is_none() {
+                found_label = Some(label);
             }
         }
     }
-    if !in_scope {
+    let Some(label) = found_label else {
         return PROVENANCE_OUT_OF_SCOPE.to_string();
-    }
+    };
 
-    // In scope: the object's actor set (ACCESSED_BY is File -> App), filtered so
-    // a co-tenant is never named.
-    let cypher = format!("MATCH (n {{id: '{id_esc}'}})-[:ACCESSED_BY]->(a) RETURN a.id AS id");
+    // In scope: the object's actor set, bound to the label that satisfied the
+    // scope check (ACCESSED_BY is File -> App, so only a File yields actors),
+    // co-tenant-filtered so a co-tenant is never named. The filter keys on the
+    // token's own app id, the identity the read scope was resolved for, not the
+    // connection-time id.
+    let cypher =
+        format!("MATCH (n:{label} {{id: '{id_esc}'}})-[:ACCESSED_BY]->(a) RETURN a.id AS id");
     let actors: Vec<String> = match graph.query_rows(cypher).await {
         Ok(rs) => rs
             .rows
@@ -509,7 +517,7 @@ async fn handle_provenance_read(
             .collect(),
         Err(_) => return PROVENANCE_OUT_OF_SCOPE.to_string(),
     };
-    let (visible, accessed_by_others) = co_tenant_filter(&actors, app_id);
+    let (visible, accessed_by_others) = co_tenant_filter(&actors, &token.app_id);
     serde_json::json!({ "actors": visible, "accessed_by_others": accessed_by_others }).to_string()
 }
 
@@ -1099,7 +1107,7 @@ async fn handle_client(
             } else {
                 match tokio::time::timeout(
                     Duration::from_millis(500),
-                    handle_provenance_read(&buf[1..], &peer, &auth, &graph, &app_id),
+                    handle_provenance_read(&buf[1..], &peer, &auth, &graph),
                 )
                 .await
                 {
