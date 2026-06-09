@@ -11,6 +11,12 @@ path = "src/main.rs"
 [lib]
 path = "src/lib.rs"
 
+[features]
+# Forward the native ONNX classifier so a configured `[classifier]` loads its
+# model and screens external content. Off by default (no native deps); a
+# configured-but-not-loadable classifier fails closed.
+onnx = ["arlen-ai-core/onnx"]
+
 [dependencies]
 arlen-ai-core = { path = "../ai-core" }
 arlen-ai-providers = { path = "../ai-providers" }

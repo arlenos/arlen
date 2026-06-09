@@ -22,6 +22,7 @@ use std::time::Duration;
 use arlen_ai_core::audit::{self, AuditSink};
 use arlen_ai_core::graph_query::QueryScope;
 use arlen_ai_core::mcp::McpClient;
+use arlen_ai_core::screen::Screener;
 use arlen_ai_core::pipeline::{QueryRunner, RunFailure};
 use arlen_ai_core::provider::AIProvider;
 use arlen_ai_explanation::{
@@ -328,6 +329,11 @@ pub struct AiDaemonService {
     /// tool-use loop instead of the single-shot graph-query runner
     /// (`docs/architecture/ai-tool-routing.md`).
     tool_loop: Option<ToolLoop>,
+    /// External-content screener (S17). Built once from the `[classifier]`
+    /// config; screens the explanation snapshot and the tool-loop transcript
+    /// before they reach the model. Defaults to [`Screener::off`] (no
+    /// classifier provisioned) until [`Self::with_screening`] wires one.
+    screener: Screener,
 }
 
 /// The wired interactive tool-use capability: the MCP client (shared with
@@ -392,7 +398,18 @@ impl AiDaemonService {
             max_prompt_bytes,
             explain: None,
             tool_loop: None,
+            screener: Screener::off(),
         }
+    }
+
+    /// Wire the external-content screener (S17), built from the `[classifier]`
+    /// config. Without it the screener is [`Screener::off`] (content flows under
+    /// the gate's containment); with a configured classifier it screens the
+    /// explanation snapshot and the tool-loop transcript, failing closed on a
+    /// Block.
+    pub fn with_screening(mut self, screener: Screener) -> Self {
+        self.screener = screener;
+        self
     }
 
     /// Wire the System Explanation Mode capability: the provider that
@@ -709,16 +726,14 @@ impl AiDaemonService {
         // this method already requires). Each is fail-soft inside
         // `explain_with_sources`, so a degraded source never fails the answer.
         // Screen the snapshot's external content before it reaches the model
-        // (S17). The classifier-from-config wiring lands with the tool-loop screen;
-        // an unprovisioned screener flows (Off), a configured one blocks an
+        // (S17): an unprovisioned screener flows (Off), a configured one blocks an
         // injection-scoring snapshot, both fail closed inside `explain_with_sources`.
-        let screener = arlen_ai_core::screen::Screener::off();
         let result = explain_with_sources(
             explainer.reader.as_ref(),
             explainer.anomaly.as_deref(),
             explainer.process.as_deref(),
             explainer.provider.as_ref(),
-            &screener,
+            &self.screener,
             now_unix,
         )
         .await;
@@ -838,6 +853,7 @@ impl AiDaemonService {
                 &query_id,
                 &cancel,
                 tl.provider.as_ref(),
+                &self.screener,
                 &prompt,
                 tl.max_steps,
             )

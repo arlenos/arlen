@@ -15,6 +15,7 @@ use arlen_ai_core::mcp::{
 };
 use arlen_ai_core::pipeline::{extract_json, QueryRunner};
 use arlen_ai_core::provider::{AIProvider, CompletionRequest};
+use arlen_ai_core::screen::{Screener, Verdict};
 use arlen_ai_core::tagging::{Block, Origin, TaggedPrompt};
 use serde::Deserialize;
 use std::sync::Arc;
@@ -139,9 +140,11 @@ pub fn build_tool_prompt(
          {{\"action\": \"answer\", \"text\": \"<the answer, in plain language>\"}}\n\
          Call a tool only when you need more information; otherwise answer."
     );
-    // The question and prior tool results are data, tagged by origin. Tool
-    // results come from the read-only servers (the knowledge graph), so they
-    // are GRAPH-DATA; the question is USER-QUESTION.
+    // The question and prior tool results are data, tagged by origin. The question
+    // is USER-QUESTION; the tool results come from the servers and carry app/user
+    // strings an injection can ride, so they are EXTERNAL-CONTENT (the highest-risk
+    // origin, the one screened before the loop feeds them back), never the
+    // more-trusted GRAPH-DATA tier.
     let transcript_text = render_transcript(transcript);
     let mut blocks = vec![Block {
         origin: Origin::UserInput,
@@ -149,7 +152,7 @@ pub fn build_tool_prompt(
     }];
     if !transcript_text.is_empty() {
         blocks.push(Block {
-            origin: Origin::GraphData,
+            origin: Origin::ExternalContent,
             content: &transcript_text,
         });
     }
@@ -458,6 +461,7 @@ pub async fn run_tool_loop(
     query_id: &str,
     cancel: &CancellationToken,
     provider: &dyn AIProvider,
+    screener: &Screener,
     question: &str,
     max_steps: u32,
 ) -> (LoopOutcome, Vec<ToolStep>) {
@@ -494,6 +498,27 @@ pub async fn run_tool_loop(
         // starts no further provider or tool work.
         if cancel.is_cancelled() {
             return (LoopOutcome::Cancelled, transcript);
+        }
+        // Screen the accumulated tool-result transcript (external content) before it
+        // re-enters the model (S17, the D9 observation-screening discipline). The
+        // tool results come from the read-only servers and carry app/user strings an
+        // injection can ride; a Block (or a broken/timed-out screen) fails the loop
+        // closed rather than feed the model a payload that scored as injection. The
+        // first step's transcript is empty (only the user question, screened
+        // nowhere because it IS the instruction channel), so screening starts to
+        // bite once a tool result lands.
+        if !transcript.is_empty()
+            && matches!(
+                screener.screen(&render_transcript(&transcript)).await,
+                Verdict::Block
+            )
+        {
+            return (
+                LoopOutcome::Failed(
+                    "tool output blocked by injection screening".to_string(),
+                ),
+                transcript,
+            );
         }
         // Keep the prompt within the model window, compacting the transcript if
         // needed; fail closed if even a fully compacted transcript cannot fit.
@@ -793,7 +818,10 @@ mod tests {
         let p = build_tool_prompt("q", &cat, &steps);
         assert!(p.contains("step 1: called system.knowledge/query"), "transcript present");
         assert!(p.contains("[{\"path\":\"/x\"}]"), "result present");
-        assert!(p.contains("GRAPH-DATA-"), "results tagged as graph data");
+        assert!(
+            p.contains("EXTERNAL-CONTENT-"),
+            "tool results are the highest-risk origin, tagged EXTERNAL-CONTENT"
+        );
     }
 
     #[test]
@@ -1118,6 +1146,7 @@ mod tests {
                 TEST_QUERY_ID,
                 &CancellationToken::new(),
                 &provider,
+                &Screener::off(),
                 "what notes do I have?",
                 5,
             )
@@ -1173,6 +1202,7 @@ mod tests {
                 TEST_QUERY_ID,
                 &CancellationToken::new(),
                 &provider,
+                &Screener::off(),
                 "q",
                 5,
             )
@@ -1211,6 +1241,7 @@ mod tests {
                 TEST_QUERY_ID,
                 &CancellationToken::new(),
                 &provider,
+                &Screener::off(),
                 "q",
                 5,
             )
@@ -1246,6 +1277,7 @@ mod tests {
                 TEST_QUERY_ID,
                 &CancellationToken::new(),
                 &provider,
+                &Screener::off(),
                 "what did I open today?",
                 5,
             )
@@ -1291,6 +1323,7 @@ mod tests {
                 TEST_QUERY_ID,
                 &CancellationToken::new(),
                 &provider,
+                &Screener::off(),
                 "what did I open today?",
                 5,
             )
@@ -1342,6 +1375,7 @@ mod tests {
                 TEST_QUERY_ID,
                 &CancellationToken::new(),
                 &provider,
+                &Screener::off(),
                 "read everything",
                 5,
             )
@@ -1404,6 +1438,7 @@ mod tests {
                 TEST_QUERY_ID,
                 &CancellationToken::new(),
                 &provider,
+                &Screener::off(),
                 "read everything",
                 5,
             )
@@ -1432,6 +1467,7 @@ mod tests {
                 TEST_QUERY_ID,
                 &CancellationToken::new(),
                 &provider,
+                &Screener::off(),
                 "read everything",
                 5,
             )
@@ -1493,6 +1529,7 @@ mod tests {
                 TEST_QUERY_ID,
                 &cancel,
                 &provider,
+                &Screener::off(),
                 "anything",
                 5,
             )
@@ -1559,6 +1596,7 @@ mod tests {
                 TEST_QUERY_ID,
                 &CancellationToken::new(),
                 &provider,
+                &Screener::off(),
                 "hi",
                 5,
             )
@@ -1593,6 +1631,7 @@ mod tests {
                 TEST_QUERY_ID,
                 &CancellationToken::new(),
                 &provider,
+                &Screener::off(),
                 &huge_question,
                 5,
             )

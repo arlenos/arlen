@@ -183,6 +183,13 @@ pub fn load_ai_settings() -> AiSettings {
     }
 }
 
+/// Read the raw `ai.toml` text, for `Screener::from_config`'s `[classifier]`
+/// parse. Empty on a missing or unreadable file, so the screener flows `Off`
+/// (the deliberate opt-out posture).
+pub fn load_ai_text() -> String {
+    std::fs::read_to_string(os_sdk::config::config_path("ai")).unwrap_or_default()
+}
+
 /// Apply a freshly-loaded `ai.toml` to the service as one atomic
 /// admission state.
 ///
