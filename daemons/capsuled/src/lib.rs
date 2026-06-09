@@ -20,4 +20,5 @@
 pub use arlen_capsule::{scope, slice};
 
 pub mod grant;
+pub mod key;
 pub mod store;

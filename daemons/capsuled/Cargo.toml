@@ -7,6 +7,7 @@ description = "Context Capsule daemon: mint, serve and revoke signed, scope-boun
 [dependencies]
 arlen-capsule = { path = "../../contracts/capsule" }
 arlen-forage-store = { path = "../../forage/store" }
+arlen-forage-signing = { path = "../../forage/signing" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ed25519-dalek = { version = "2", features = ["std", "zeroize"] }
