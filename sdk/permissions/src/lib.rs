@@ -10,10 +10,12 @@
 pub mod connection_auth;
 pub mod identity;
 pub mod profile_watcher;
+pub mod revoke;
 pub mod token;
 
 pub use connection_auth::{AuthError, ConnectionAuth};
 pub use profile_watcher::{ProfileChange, ProfileWatcher};
+pub use revoke::{RevokeInitiator, RevokeOutcome, RevokeReach, RevokedReach};
 
 use std::path::{Path, PathBuf};
 

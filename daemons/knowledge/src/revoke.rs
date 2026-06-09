@@ -37,63 +37,19 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
-
 use crate::permission::PermissionProfile;
 use crate::quota::{AppTier, QuotaConfig};
 use crate::token::InstanceScope;
 
-/// A single reach to remove. A closed enum: there is no variant that *adds* a
-/// reach, so a revoke request cannot widen authority by construction (§6).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum RevokedReach {
-    /// Remove an entry of `[graph].read` (an entity-type read pattern).
-    Read {
-        /// The read pattern to remove.
-        entity_pattern: String,
-    },
-    /// Remove an entry of `[graph].write`.
-    Write {
-        /// The write pattern to remove.
-        entity_pattern: String,
-    },
-    /// Remove a `[graph].relations` entry (a permitted relation creation).
-    Relation {
-        /// The relation's source entity type.
-        from: String,
-        /// The relation's target entity type.
-        to: String,
-        /// The relation type.
-        relation_type: String,
-    },
-    /// Demote `instance_scope` from `All` to `Own` (the app loses cross-app reach).
-    InstanceAll,
-}
-
-/// Who initiated the revoke. The agent may only *propose* (suggest-mode records a
-/// proposal into the pull-review timeline); the user confirming replays it as
-/// [`RevokeInitiator::User`]. There is no agent path that auto-applies (§6.3).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum RevokeInitiator {
-    /// A user-confirmed revoke.
-    User,
-    /// An agent suggestion, carrying the proposal id it replays.
-    Agent {
-        /// The suggestion id this revoke replays.
-        suggestion_id: String,
-    },
-}
-
-/// A revoke request. The closed [`RevokedReach`] makes widening unexpressible.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RevokeReach {
-    /// The app whose reach is narrowed.
-    pub target_app_id: String,
-    /// The reach to remove.
-    pub reach: RevokedReach,
-    /// Who initiated it.
-    pub initiator: RevokeInitiator,
-}
+// The revoke wire-contract types (the request enums + the outcome) live in
+// `arlen-permissions`, shared with the os-sdk client so the request shape and the
+// outcome tokens have one definition and cannot drift. Re-exported so the daemon's
+// `crate::revoke::{RevokeReach, RevokedReach, RevokeInitiator, RevokeOutcome}`
+// references resolve unchanged; the daemon-internal logic (the gate, the
+// `toml_edit` narrowing, the command) stays here.
+pub use arlen_permissions::revoke::{
+    RevokeInitiator, RevokeOutcome, RevokeReach, RevokedReach,
+};
 
 /// A set-shaped summary of a profile's re-derived runtime token scopes, the form
 /// the subset gate compares. The coarse `RevokedReach` variants remove whole
@@ -287,20 +243,6 @@ fn summarize(profile: &PermissionProfile) -> ScopeSummary {
 /// quota tier so a core system principal is never narrowed here.
 pub fn tier_allows_revoke(app_id: &str) -> bool {
     QuotaConfig::arlen_default().tier_for_app(app_id) != AppTier::System
-}
-
-/// The outcome of a revoke attempt.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RevokeOutcome {
-    /// The profile was narrowed and written.
-    Revoked,
-    /// The reach was already absent; nothing changed, nothing written.
-    NoChange,
-    /// The narrowing did not strictly shrink authority (the safety gate refused);
-    /// nothing written.
-    NotNarrowing,
-    /// No profile file exists for the app; nothing to narrow.
-    NotFound,
 }
 
 /// Apply a revoke to the profile at `path` (§6): load it, re-derive its scopes,
