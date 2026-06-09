@@ -28,6 +28,12 @@ pub struct FileOpenedEvent {
     pub timestamp_ns: u64,
     /// Return value of openat: file descriptor on success, negative errno on failure.
     pub ret: i64,
+    /// cgroup v2 id of the calling task (bpf_get_current_cgroup_id). Stable for the
+    /// lifetime of the cgroup and free of PID-reuse hazards, so it is the join key
+    /// that attributes the open to its per-command cgroup. Placed before `path` to
+    /// keep natural 8-byte alignment (the two u32s pack, then u64/i64/u64) and avoid
+    /// inserting tail padding the eBPF writer would have to zero.
+    pub cgroup_id: u64,
     /// Null-terminated file path, truncated to MAX_PATH_LEN bytes.
     pub path: [u8; MAX_PATH_LEN],
 }
