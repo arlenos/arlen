@@ -258,6 +258,10 @@ async fn run_install_package(
     emit_progress(conn, job_id, 25, "validating manifest").await;
     install::validate_manifest(&manifest)?;
 
+    // Capture the identity inputs before the manifest moves into the transaction.
+    let app_id = manifest.package.id.clone();
+    let binary_rel = manifest.binary.path.clone();
+
     // 5. Begin transaction. From here, any error triggers auto-rollback.
     let mut txn = InstallTransaction::new(temp_dir, manifest);
 
@@ -297,6 +301,23 @@ async fn run_install_package(
     queue.update_progress(job_id, 95, "committing");
     emit_progress(conn, job_id, 95, "committing").await;
     txn.commit();
+
+    // 12. Record the app's binary identity into the broker-owned registry (F3
+    //     Rung B), so a same-uid copy of the binary to a different path can no
+    //     longer impersonate it. The helper re-stats the install path (it records
+    //     the truth, not a value we pass). Best-effort: a record failure does NOT
+    //     fail the install (the app is usable; its identity is the cooperative
+    //     residual until recorded), and a missing helper (dev box) is non-fatal.
+    let install_path = install::user_apps_dir_pub().join(&app_id).join(&binary_rel);
+    // SAFETY: getuid never fails.
+    let uid = unsafe { libc::getuid() };
+    if let Err(e) = crate::permission_helper::record_identity(uid, &app_id, &install_path).await {
+        tracing::warn!(
+            error = %e,
+            app_id = %app_id,
+            "failed to record app identity; the app is installed but not yet inode-attested"
+        );
+    }
 
     Ok(())
 }
