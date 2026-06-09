@@ -173,6 +173,21 @@ pub async fn listen(socket_path: &str, graph: GraphHandle, pool: sqlx::SqlitePoo
     let auth = Arc::new(Mutex::new(Authenticator::new()));
     info!("graph daemon: HMAC key generated");
 
+    // LCG-R3 (living-capability-graph.md §4.2): the restart liveness sweep. The
+    // HMAC key was just regenerated, so every persisted Grant node's projected
+    // token is provably dead. Mark them all not-live here, after the fresh
+    // Authenticator is built and BEFORE the socket binds (below), so no node
+    // claims a live token that cannot verify and no re-mint races the sweep; apps
+    // re-mint live one at a time as they reconnect. Best-effort: a failed sweep
+    // only degrades the browse projection (the read command re-checks liveness
+    // with process_alive), so it must not block startup.
+    if let Err(e) = graph
+        .write("MATCH (g:Grant) WHERE g.live = true SET g.live = false".to_string())
+        .await
+    {
+        warn!("LCG liveness sweep failed (browse projection may show stale live): {e}");
+    }
+
     // Per-identity rate limiting + the violation emitter are shared
     // across all query connections.
     let rate = Arc::new(Mutex::new(RateState::new()));
@@ -186,8 +201,8 @@ pub async fn listen(socket_path: &str, graph: GraphHandle, pool: sqlx::SqlitePoo
     let registry = Arc::new(SchemaRegistry::new(vec![]));
 
     tokio::try_join!(
-        listen_queries(socket_path, graph, pool, auth.clone(), rate, emitter, registry),
-        listen_events(auth),
+        listen_queries(socket_path, graph.clone(), pool, auth.clone(), rate, emitter, registry),
+        listen_events(auth, graph),
     )?;
 
     Ok(())
@@ -241,7 +256,7 @@ async fn listen_queries(
 }
 
 /// Subscribe to Event Bus and process permission/schema events.
-async fn listen_events(auth: Arc<Mutex<Authenticator>>) -> Result<()> {
+async fn listen_events(auth: Arc<Mutex<Authenticator>>, graph: GraphHandle) -> Result<()> {
     let uid = unsafe { libc::getuid() };
     let consumer_id = format!("graph-daemon-{uid}");
 
@@ -262,7 +277,7 @@ async fn listen_events(auth: Arc<Mutex<Authenticator>>) -> Result<()> {
     loop {
         match events::recv_event(&mut stream).await {
             Some(event) => {
-                handle_graph_event(&auth, event).await;
+                handle_graph_event(&auth, &graph, event).await;
             }
             None => {
                 warn!("graph daemon: event bus disconnected, attempting reconnect");
@@ -281,16 +296,40 @@ async fn listen_events(auth: Arc<Mutex<Authenticator>>) -> Result<()> {
     }
 }
 
+/// Mark an app's live Grant nodes stale (living-capability-graph.md §4.2): a
+/// token invalidation means the projected reach no longer verifies. Best-effort,
+/// like the restart sweep: a failed update only degrades the browse projection
+/// (the read command re-checks liveness with `process_alive`).
+async fn mark_app_grants_stale(graph: &GraphHandle, app_id: &str) {
+    let app_esc = escape_cypher(app_id);
+    if let Err(e) = graph
+        .write(format!(
+            "MATCH (g:Grant {{app_id: '{app_esc}'}}) WHERE g.live SET g.live = false"
+        ))
+        .await
+    {
+        warn!("marking {app_id} grants stale failed: {e}");
+    }
+}
+
 /// Process a graph-relevant event.
-async fn handle_graph_event(auth: &Arc<Mutex<Authenticator>>, event: GraphEvent) {
+async fn handle_graph_event(
+    auth: &Arc<Mutex<Authenticator>>,
+    graph: &GraphHandle,
+    event: GraphEvent,
+) {
     match event {
         GraphEvent::PermissionChanged { app_id } => {
             info!("permission changed for {app_id}, invalidating token");
             auth.lock().await.invalidate(&app_id);
+            // The app's prior live reach no longer verifies; reflect that in the
+            // projection alongside the token invalidation (§4.2).
+            mark_app_grants_stale(graph, &app_id).await;
         }
         GraphEvent::AiLevelChanged => {
             info!("AI level changed, invalidating ai-daemon token");
             auth.lock().await.invalidate("ai-daemon");
+            mark_app_grants_stale(graph, "ai-daemon").await;
         }
         GraphEvent::SchemaRegistered { app_id } => {
             info!("schema registered: {app_id}");
@@ -1456,20 +1495,57 @@ mod tests {
     #[tokio::test]
     async fn test_handle_graph_event_permission_changed() {
         let auth = Arc::new(Mutex::new(Authenticator::new()));
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
         handle_graph_event(
             &auth,
+            &graph,
             GraphEvent::PermissionChanged {
                 app_id: "com.test".into(),
             },
         )
         .await;
-        // Should not panic; cache invalidation is internal.
+        // Should not panic; cache invalidation is internal and the stale-mark is
+        // a no-op on an empty graph.
     }
 
     #[tokio::test]
     async fn test_handle_graph_event_ai_level() {
         let auth = Arc::new(Mutex::new(Authenticator::new()));
-        handle_graph_event(&auth, GraphEvent::AiLevelChanged).await;
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        handle_graph_event(&auth, &graph, GraphEvent::AiLevelChanged).await;
+    }
+
+    #[tokio::test]
+    async fn mark_app_grants_stale_flips_a_live_grant() {
+        use crate::token::{CapabilityToken, EntityScope, InstanceScope};
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+
+        // Project a live grant for the app.
+        let token = CapabilityToken::new(
+            "com.x".into(),
+            7,
+            vec![EntityScope {
+                entity_type: "system.File".into(),
+                fields: None,
+                exclude_fields: vec![],
+            }],
+            vec![],
+            vec![],
+            InstanceScope::Own,
+        );
+        crate::lcg::emit_grant_node(&graph, &token).await.unwrap();
+
+        mark_app_grants_stale(&graph, "com.x").await;
+
+        let state = graph
+            .query_rows_json("MATCH (g:Grant {app_id:'com.x'}) RETURN g.live".to_string())
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&state).unwrap();
+        assert_eq!(parsed["rows"][0][0], false, "the grant is no longer live: {state}");
     }
 
     #[test]
