@@ -31,7 +31,7 @@ impl PermissionHelper {
         #[zbus(connection)] connection: &Connection,
     ) -> (bool, String) {
         // Validate caller.
-        if let Err(e) = validate_caller(&header, connection).await {
+        if let Err(e) = validate_caller(&header, connection, uid).await {
             return (false, e);
         }
 
@@ -55,7 +55,7 @@ impl PermissionHelper {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &Connection,
     ) -> (bool, String) {
-        if let Err(e) = validate_caller(&header, connection).await {
+        if let Err(e) = validate_caller(&header, connection, uid).await {
             return (false, e);
         }
 
@@ -81,6 +81,7 @@ impl PermissionHelper {
 async fn validate_caller(
     header: &zbus::message::Header<'_>,
     connection: &Connection,
+    target_uid: u32,
 ) -> Result<(), String> {
     let sender = header
         .sender()
@@ -108,6 +109,19 @@ async fn validate_caller(
     if !ALLOWED_CALLERS.iter().any(|c| exe_name.contains(c)) {
         return Err(format!(
             "unauthorized caller: {exe_name} (pid {pid})"
+        ));
+    }
+
+    // The caller may only act on its own uid's profile tree, unless it is root
+    // (the apt enroll-hook). Without this an admitted caller could plant or delete
+    // an authoritative profile in another user's tree on a multi-user host.
+    let caller_uid = proxy
+        .get_connection_unix_user(sender.clone().into())
+        .await
+        .map_err(|e| format!("get uid: {e}"))?;
+    if caller_uid != 0 && caller_uid != target_uid {
+        return Err(format!(
+            "caller uid {caller_uid} may not write profiles for uid {target_uid}"
         ));
     }
 
