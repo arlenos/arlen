@@ -29,6 +29,19 @@ impl std::fmt::Display for QueryError {
 
 impl std::error::Error for QueryError {}
 
+/// The caller-scoped provenance of one graph object: which apps accessed it,
+/// filtered to the caller's own identity (a co-tenant is never named, only
+/// summarised by [`accessed_by_others`](ProvenanceView::accessed_by_others)).
+/// Returned by [`UnixGraphClient::read_provenance`] when the object is within the
+/// caller's read scope.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ProvenanceView {
+    /// The actor app ids the caller may see (its own identity), never a co-tenant.
+    pub actors: Vec<String>,
+    /// Whether a foreign actor also accessed the object, without naming it.
+    pub accessed_by_others: bool,
+}
+
 /// Largest response frame the client will allocate for the legacy text path.
 /// Generous, because a display query can legitimately return a large blob;
 /// the limit only exists so a buggy or compromised daemon cannot exhaust
@@ -284,6 +297,48 @@ impl UnixGraphClient {
         }
         serde_json::from_slice::<Vec<String>>(&bytes)
             .map_err(|e| QueryError::InvalidQuery(format!("malformed retrieve response: {e}")))
+    }
+
+    /// Read the caller-scoped provenance of a graph object via the read socket's
+    /// provenance op.
+    ///
+    /// A leading `0x04` byte selects the daemon's caller-scoped provenance read
+    /// (beside `0x01` typed-rows, `0x02` write, `0x03` retrieve); the body is the
+    /// JSON request `{ "object_id": ... }`. The daemon resolves the caller's read
+    /// scope from its kernel-attested identity, returns the object's actors
+    /// filtered to the caller (a co-tenant is summarised, never named), and gives a
+    /// **uniform** out-of-scope denial for any object the scope does not cover.
+    ///
+    /// Returns `Ok(Some(view))` when the object is in scope, `Ok(None)` for the
+    /// uniform out-of-scope denial. The `None` case is deliberately
+    /// indistinguishable from "object absent": the daemon emits one denial shape so
+    /// the caller cannot use this op as an existence oracle for objects outside its
+    /// read scope. Other daemon errors map to [`QueryError`].
+    pub async fn read_provenance(
+        &self,
+        object_id: &str,
+    ) -> Result<Option<ProvenanceView>, QueryError> {
+        let req = serde_json::json!({ "object_id": object_id });
+        let json = serde_json::to_vec(&req).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x04);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_TYPED_RESPONSE_BYTES).await?;
+        let text = String::from_utf8_lossy(&bytes);
+        // The uniform out-of-scope/absent denial (must match the daemon's
+        // `PROVENANCE_OUT_OF_SCOPE`). Surfaced as `None`, the no-oracle outcome,
+        // not an error: the caller cannot tell out-of-scope from absent.
+        if text.trim() == "ERROR: OutOfScope" {
+            return Ok(None);
+        }
+        if bytes.starts_with(b"ERROR:") {
+            Self::check_error(&text)?;
+        }
+        let view = serde_json::from_slice::<ProvenanceView>(&bytes)
+            .map_err(|e| QueryError::InvalidQuery(format!("malformed provenance response: {e}")))?;
+        Ok(Some(view))
     }
 
     /// Create a built-in graph relation `from -[relation_type]-> to` between two
@@ -814,6 +869,73 @@ mod tests {
             vec!["/a/main.rs".to_string(), "p1".to_string()],
             "the ranked ids are parsed from the JSON array response"
         );
+    }
+
+    #[tokio::test]
+    async fn read_provenance_sends_a_tagged_request_and_parses_the_view() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-provenance-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            assert_eq!(req[0], 0x04, "provenance reads carry the 0x04 prefix");
+            let body: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
+            assert_eq!(body["object_id"], "/a/main.rs");
+
+            let resp = br#"{"actors":["ai-agent"],"accessed_by_others":true}"#;
+            conn.write_all(&(resp.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(resp).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let result = client.read_provenance("/a/main.rs").await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        let view = result.unwrap().expect("in-scope object yields a view");
+        assert_eq!(view.actors, vec!["ai-agent".to_string()]);
+        assert!(view.accessed_by_others, "a foreign actor is summarised, not named");
+    }
+
+    #[tokio::test]
+    async fn read_provenance_maps_out_of_scope_to_none() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-provenance-oos-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            // The uniform out-of-scope/absent denial.
+            let resp = b"ERROR: OutOfScope";
+            conn.write_all(&(resp.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(resp).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let result = client.read_provenance("/secret").await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(result.unwrap(), None, "out-of-scope is the no-oracle None, not an error");
     }
 
     #[tokio::test]
