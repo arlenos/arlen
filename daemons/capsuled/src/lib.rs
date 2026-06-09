@@ -24,4 +24,5 @@ pub mod key;
 pub mod proto;
 pub mod revocation;
 pub mod serve;
+pub mod server;
 pub mod store;
