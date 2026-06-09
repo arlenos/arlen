@@ -5,6 +5,5 @@ edition = "2021"
 description = "Context Capsule daemon: mint, serve and revoke signed, scope-bound, frozen Knowledge-Graph slices lent under capability control"
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+arlen-capsule = { path = "../../contracts/capsule" }
 arlen-forage-store = { path = "../../forage/store" }
