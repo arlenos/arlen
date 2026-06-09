@@ -27,6 +27,14 @@ message FileOpenedPayload {
   uint32 flags     = 3;  // openat() flags (O_RDONLY, O_WRONLY, etc.)
 }
 
+// Emitted when a tracked file is written (sys_enter_write tracepoint).
+// Event type: "file.written"
+message FileWrittenPayload {
+  string path      = 1;  // absolute path
+  string app_id    = 2;  // application identifier
+  uint64 bytes     = 3;  // number of bytes written
+}
+
 // Emitted when keyboard focus changes between Wayland surfaces.
 // Event type: "window.focused"
 message WindowFocusedPayload {
