@@ -94,6 +94,100 @@ pub fn fold_state(records: &[UndoState]) -> Result<UndoState, String> {
     Ok(current)
 }
 
+/// The immutable data an entry is created with (§2): its operation identity, the
+/// decision it came from, and the captured inverse that undoes it. The lifecycle
+/// `state` is NOT stored here (it is the fold of the entry's transition records),
+/// so this never changes after the create record is appended. The resolved
+/// forward operation (for reconcile) is a later field, added with the reconcile
+/// path; the undo only needs the inverse.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UndoEntry {
+    /// The durable op id (the entry's key, the reconcile/compensate key).
+    pub op_id: String,
+    /// The gate decision this action came from.
+    pub correlation_id: String,
+    /// The captured inverse: replaying it is the undo.
+    pub inverse: crate::effect_model::InverseReceipt,
+}
+
+/// One appended record in the event-sourced log: either an entry's creation (its
+/// immutable data, implicitly `InFlight`) or a lifecycle transition of an
+/// existing entry. The current state of an `op_id` is the fold of its records.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum LogRecord {
+    /// An entry was created (state begins `InFlight`).
+    Created(UndoEntry),
+    /// An existing entry transitioned to a new state.
+    Transition {
+        /// The entry whose state changed.
+        op_id: String,
+        /// The new state.
+        state: UndoState,
+    },
+}
+
+/// An in-memory event-sourced undo-log: an append-only record sequence whose
+/// per-entry state is folded on read (§6). This is the pure store core; the fsync
+/// write-ahead, the on-disk HMAC chain, and the separate-uid signer that seals it
+/// are later EM-R1 increments that persist exactly this record sequence.
+#[derive(Debug, Default)]
+pub struct UndoLog {
+    records: Vec<LogRecord>,
+}
+
+impl UndoLog {
+    /// A new, empty log.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Append an entry's creation record (state begins `InFlight`). In the durable
+    /// store this is the provisional record written and fsynced before the act.
+    pub fn append_created(&mut self, entry: UndoEntry) {
+        self.records.push(LogRecord::Created(entry));
+    }
+
+    /// Append a lifecycle transition for an existing entry.
+    pub fn append_transition(&mut self, op_id: &str, state: UndoState) {
+        self.records.push(LogRecord::Transition {
+            op_id: op_id.to_string(),
+            state,
+        });
+    }
+
+    /// The current state of `op_id`, folded from its records (§6), or `None` if no
+    /// entry with that id was ever created. `Err` if the record chain is illegal
+    /// (fails closed, never a bogus state).
+    pub fn current_state(&self, op_id: &str) -> Option<Result<UndoState, String>> {
+        let mut states: Vec<UndoState> = Vec::new();
+        let mut created = false;
+        for record in &self.records {
+            match record {
+                LogRecord::Created(entry) if entry.op_id == op_id => {
+                    created = true;
+                    states.push(UndoState::InFlight);
+                }
+                LogRecord::Transition { op_id: id, state } if id == op_id => {
+                    states.push(*state);
+                }
+                _ => {}
+            }
+        }
+        if !created {
+            return None;
+        }
+        Some(fold_state(&states))
+    }
+
+    /// The created entry for `op_id`, if one was created (its immutable data).
+    pub fn entry(&self, op_id: &str) -> Option<&UndoEntry> {
+        self.records.iter().find_map(|r| match r {
+            LogRecord::Created(entry) if entry.op_id == op_id => Some(entry),
+            _ => None,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,5 +241,56 @@ mod tests {
                 assert!(!terminal.can_transition_to(next), "{terminal:?} -> {next:?} must be illegal");
             }
         }
+    }
+
+    fn entry(op: &str) -> UndoEntry {
+        use crate::effect_model::{CanonicalPath, InverseReceipt};
+        UndoEntry {
+            op_id: op.to_string(),
+            correlation_id: "run".to_string(),
+            inverse: InverseReceipt::RestorePath {
+                now: CanonicalPath::new("/b/x").unwrap(),
+                prior: CanonicalPath::new("/a/x").unwrap(),
+            },
+        }
+    }
+
+    #[test]
+    fn store_folds_an_entrys_current_state_on_read() {
+        let mut log = UndoLog::new();
+        log.append_created(entry("op-1"));
+        assert_eq!(log.current_state("op-1").unwrap().unwrap(), InFlight);
+        log.append_transition("op-1", Committed);
+        assert_eq!(log.current_state("op-1").unwrap().unwrap(), Committed);
+        log.append_transition("op-1", Compensating);
+        log.append_transition("op-1", Compensated);
+        assert_eq!(log.current_state("op-1").unwrap().unwrap(), Compensated);
+    }
+
+    #[test]
+    fn store_isolates_entries_by_op_id() {
+        let mut log = UndoLog::new();
+        log.append_created(entry("a"));
+        log.append_created(entry("b"));
+        log.append_transition("a", Committed);
+        assert_eq!(log.current_state("a").unwrap().unwrap(), Committed);
+        assert_eq!(log.current_state("b").unwrap().unwrap(), InFlight, "b unaffected by a");
+        assert!(log.current_state("c").is_none(), "an uncreated op id has no entry");
+    }
+
+    #[test]
+    fn store_surfaces_an_illegal_chain_as_err() {
+        let mut log = UndoLog::new();
+        log.append_created(entry("op-1"));
+        log.append_transition("op-1", Compensated); // illegal: InFlight -> Compensated
+        assert!(log.current_state("op-1").unwrap().is_err());
+    }
+
+    #[test]
+    fn store_returns_the_created_entry_data() {
+        let mut log = UndoLog::new();
+        log.append_created(entry("op-1"));
+        assert_eq!(log.entry("op-1").unwrap().correlation_id, "run");
+        assert!(log.entry("absent").is_none());
     }
 }
