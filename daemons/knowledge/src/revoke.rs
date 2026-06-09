@@ -20,9 +20,12 @@
 //! later increments built on this.
 
 use std::collections::BTreeSet;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::permission::PermissionProfile;
+use crate::quota::{AppTier, QuotaConfig};
 use crate::token::{EntityScope, InstanceScope, RelationScope};
 
 /// A single reach to remove. A closed enum: there is no variant that *adds* a
@@ -216,6 +219,100 @@ fn inline_str<'a>(table: &'a toml_edit::InlineTable, key: &str) -> Option<&'a st
     table.get(key).and_then(|v| v.as_str())
 }
 
+/// Summarise a loaded profile's re-derived runtime token scopes into the form
+/// the subset gate compares.
+fn summarize(profile: &PermissionProfile) -> ScopeSummary {
+    ScopeSummary::from_scopes(
+        &profile.to_read_scopes(),
+        &profile.to_write_scopes(),
+        &profile.to_relation_scopes(),
+        profile.to_instance_scope(),
+    )
+}
+
+/// Whether the user tier may revoke this app's reach (§6.2): user-tier apps yes,
+/// system principals no (their authority is managed by the system, not revocable
+/// through this user-tier path). The system-tier store (`/var/lib`) is unbuilt,
+/// so every app's profile is in `~/.config` today; this refusal keys on the
+/// quota tier so a core system principal is never narrowed here.
+pub fn tier_allows_revoke(app_id: &str) -> bool {
+    QuotaConfig::arlen_default().tier_for_app(app_id) != AppTier::System
+}
+
+/// The outcome of a revoke attempt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RevokeOutcome {
+    /// The profile was narrowed and written.
+    Revoked,
+    /// The reach was already absent; nothing changed, nothing written.
+    NoChange,
+    /// The narrowing did not strictly shrink authority (the safety gate refused);
+    /// nothing written.
+    NotNarrowing,
+    /// No profile file exists for the app; nothing to narrow.
+    NotFound,
+}
+
+/// Apply a revoke to the profile at `path` (§6): load it, re-derive its scopes,
+/// narrow the document in place, prove the result is a strict subset of the
+/// original, and only then write it back atomically. Writes nothing unless the
+/// gate confirms authority strictly shrank, so a no-op, a non-narrowing edit, or
+/// a parse round-trip surprise leaves the file untouched.
+///
+/// This is the user-config-writing core; the caller (the socket command) applies
+/// the tier refusal ([`tier_allows_revoke`]) and resolves `path` from the app id.
+pub fn revoke_at(path: &Path, reach: &RevokedReach) -> std::io::Result<RevokeOutcome> {
+    if !path.exists() {
+        return Ok(RevokeOutcome::NotFound);
+    }
+    let old_text = std::fs::read_to_string(path)?;
+    let old_profile: PermissionProfile = toml::from_str(&old_text)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let old_summary = summarize(&old_profile);
+
+    let mut doc: toml_edit::DocumentMut = old_text
+        .parse()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    if !apply_revoke(&mut doc, reach) {
+        // The reach was already absent.
+        return Ok(RevokeOutcome::NoChange);
+    }
+    let new_text = doc.to_string();
+
+    // The safety gate: re-derive the narrowed profile's scopes and prove they are
+    // a strict subset of the original. If not, write nothing.
+    let new_profile: PermissionProfile = toml::from_str(&new_text)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let new_summary = summarize(&new_profile);
+    if !is_strict_narrowing(&old_summary, &new_summary) {
+        return Ok(RevokeOutcome::NotNarrowing);
+    }
+
+    atomic_write(path, new_text.as_bytes())?;
+    Ok(RevokeOutcome::Revoked)
+}
+
+/// Write `bytes` to `path` atomically: a sibling temp file, fsync, rename over
+/// the target, then fsync the directory so the rename is durable. A crash leaves
+/// either the old profile or the new, never a torn file.
+fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let dir = path.parent().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "profile path has no parent")
+    })?;
+    let tmp = path.with_extension("toml.tmp");
+    {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+    }
+    std::fs::rename(&tmp, path)?;
+    if let Ok(d) = std::fs::File::open(dir) {
+        let _ = d.sync_all();
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -372,6 +469,54 @@ instance_scope = "all"
             &mut d,
             &RevokedReach::Read { entity_pattern: "system.File".into() }
         ));
+    }
+
+    #[test]
+    fn revoke_at_narrows_the_file_when_the_gate_passes() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("com.test.toml");
+        std::fs::write(&path, SAMPLE).unwrap();
+
+        let outcome = revoke_at(
+            &path,
+            &RevokedReach::Read { entity_pattern: "system.Project".into() },
+        )
+        .unwrap();
+        assert_eq!(outcome, RevokeOutcome::Revoked);
+
+        // The file now reflects the narrowed read set, format preserved.
+        let after = std::fs::read_to_string(&path).unwrap();
+        let read_line = after.lines().find(|l| l.trim_start().starts_with("read =")).unwrap();
+        assert!(!read_line.contains("system.Project"), "read narrowed on disk");
+        assert!(after.contains("# my app profile"), "comments preserved");
+    }
+
+    #[test]
+    fn revoke_at_writes_nothing_for_an_absent_reach() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("com.test.toml");
+        std::fs::write(&path, SAMPLE).unwrap();
+        let before = std::fs::read_to_string(&path).unwrap();
+
+        let outcome = revoke_at(
+            &path,
+            &RevokedReach::Read { entity_pattern: "system.NotPresent".into() },
+        )
+        .unwrap();
+        assert_eq!(outcome, RevokeOutcome::NoChange);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), before, "file untouched");
+    }
+
+    #[test]
+    fn revoke_at_reports_not_found_for_a_missing_profile() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("absent.toml");
+        let outcome = revoke_at(
+            &path,
+            &RevokedReach::InstanceAll,
+        )
+        .unwrap();
+        assert_eq!(outcome, RevokeOutcome::NotFound);
     }
 
     #[test]

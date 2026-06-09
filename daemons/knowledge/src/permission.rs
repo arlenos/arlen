@@ -96,7 +96,7 @@ impl PermissionProfile {
     }
 
     /// Resolve the profile path for an app.
-    fn profile_path(app_id: &str) -> Result<PathBuf, PermissionError> {
+    pub(crate) fn profile_path(app_id: &str) -> Result<PathBuf, PermissionError> {
         let home = dirs::home_dir().ok_or(PermissionError::NoHomeDir)?;
         Ok(home
             .join(".config")
