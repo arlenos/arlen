@@ -1,0 +1,173 @@
+//! The signer's local sealed store: the HMAC-chained undo-log it owns
+//! (reversible-receipts-and-the-effect-model.md §6).
+//!
+//! [`SignerStore`] wires the two halves the signer holds: the key custody
+//! ([`crate::key`]) and the chained `FileUndoLog` (from `arlen-ai-undo-core`).
+//! Opening it resolves the private state directory, decides whether the log
+//! already holds records *before* touching the key (so a chained log whose key
+//! is missing fails closed rather than silently re-keying), loads-or-creates the
+//! key, then opens and chain-verifies the log. Append and lookup go through this
+//! store; the peer-authed socket that fronts it for the agent is a later
+//! increment.
+
+use std::path::Path;
+
+use arlen_ai_undo_core::undo_log::{FileUndoLog, UndoEntry, UndoState};
+
+use crate::error::{Result, SignerError};
+use crate::{key, paths};
+
+/// The signer-owned, HMAC-chained undo-log plus its custodied key. Constructed by
+/// the signer process; the agent never holds this (it reaches the store only
+/// through the signer's socket).
+#[derive(Debug)]
+pub struct SignerStore {
+    log: FileUndoLog,
+}
+
+impl SignerStore {
+    /// Open the store under the default private state directory
+    /// (`paths::undo_log_dir`).
+    pub fn open_default() -> Result<SignerStore> {
+        let dir = paths::undo_log_dir()?;
+        SignerStore::open_in(&dir)
+    }
+
+    /// Open the store under `dir`: ensure the 0700 private directory, decide
+    /// whether the log already holds records, load-or-create the chain key, then
+    /// open and verify the chained log. Fails closed if the log holds records but
+    /// the key is gone (the chain would be unverifiable), or if the chain does
+    /// not verify on load.
+    pub fn open_in(dir: &Path) -> Result<SignerStore> {
+        paths::ensure_private_dir(dir)?;
+        let log_path = dir.join("undo.log");
+        let key_path = paths::key_path(dir);
+
+        // Whether the log already holds records is read from the file before the
+        // key is touched: a non-empty log with a missing key must fail closed
+        // (load_or_create refuses to mint a fresh key that would invalidate the
+        // chain), never silently re-key.
+        let log_has_records = log_has_records(&log_path);
+        let key = key::load_or_create(&key_path, log_has_records)?;
+
+        let log = FileUndoLog::open(&log_path, key.to_vec())
+            .map_err(|e| SignerError::Storage(format!("opening the chained undo-log: {e}")))?;
+        Ok(SignerStore { log })
+    }
+
+    /// Seal a newly-submitted entry into the chained log (its lifecycle begins
+    /// `InFlight`). The append is fsynced write-ahead before this returns.
+    pub fn submit_created(&mut self, entry: UndoEntry) -> Result<()> {
+        self.log
+            .append_created(entry)
+            .map_err(|e| SignerError::Storage(format!("appending an undo-log entry: {e}")))
+    }
+
+    /// Record a lifecycle transition for an existing entry, chained and fsynced.
+    pub fn transition(&mut self, op_id: &str, state: UndoState) -> Result<()> {
+        self.log
+            .append_transition(op_id, state)
+            .map_err(|e| SignerError::Storage(format!("appending an undo-log transition: {e}")))
+    }
+
+    /// The current folded state of `op_id`, or `None` if no entry with that id was
+    /// ever sealed. The inner `Result` is `Err` if the record chain is illegal.
+    pub fn state(&self, op_id: &str) -> Option<std::result::Result<UndoState, String>> {
+        self.log.current_state(op_id)
+    }
+
+    /// The sealed entry for `op_id` (its immutable created data), if any.
+    pub fn entry(&self, op_id: &str) -> Option<&UndoEntry> {
+        self.log.entry(op_id)
+    }
+}
+
+/// Whether the undo-log file at `path` already holds at least one record: it
+/// exists and is non-empty. An absent or zero-length file has no records (the
+/// genesis case), so the key may be minted.
+fn log_has_records(path: &Path) -> bool {
+    std::fs::metadata(path)
+        .map(|m| m.len() > 0)
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arlen_ai_undo_core::effect_model::{CanonicalPath, InverseReceipt};
+
+    fn entry(op: &str) -> UndoEntry {
+        UndoEntry {
+            op_id: op.to_string(),
+            correlation_id: "run".to_string(),
+            inverse: InverseReceipt::RestorePath {
+                now: CanonicalPath::new("/b/x").unwrap(),
+                prior: CanonicalPath::new("/a/x").unwrap(),
+            },
+        }
+    }
+
+    #[test]
+    fn genesis_open_creates_key_and_seals_an_entry_across_reopen() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("undo-log");
+        {
+            let mut store = SignerStore::open_in(&dir).unwrap();
+            store.submit_created(entry("op-1")).unwrap();
+            store.transition("op-1", UndoState::Committed).unwrap();
+            assert_eq!(store.state("op-1").unwrap().unwrap(), UndoState::Committed);
+        }
+        // A fresh signer process reopens: the key is read back and the chain
+        // re-verifies, recovering the folded state.
+        let reopened = SignerStore::open_in(&dir).unwrap();
+        assert_eq!(reopened.state("op-1").unwrap().unwrap(), UndoState::Committed);
+        assert_eq!(reopened.entry("op-1").unwrap().op_id, "op-1");
+        assert!(reopened.state("absent").is_none());
+    }
+
+    #[test]
+    fn a_populated_log_with_a_missing_key_fails_closed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("undo-log");
+        {
+            let mut store = SignerStore::open_in(&dir).unwrap();
+            store.submit_created(entry("op-1")).unwrap();
+        }
+        // Delete the key but keep the chained log: reopening must refuse rather
+        // than mint a fresh key that would make the chain unverifiable.
+        std::fs::remove_file(paths::key_path(&dir)).unwrap();
+        match SignerStore::open_in(&dir) {
+            Err(SignerError::KeyUnavailable(_)) => {}
+            other => panic!("expected KeyUnavailable, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_tampered_log_fails_closed_on_reopen() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("undo-log");
+        {
+            let mut store = SignerStore::open_in(&dir).unwrap();
+            store.submit_created(entry("op-1")).unwrap();
+        }
+        // Flip a byte in the sealed log: the chain no longer verifies.
+        let log_path = dir.join("undo.log");
+        let content = std::fs::read_to_string(&log_path).unwrap();
+        std::fs::write(&log_path, content.replacen("op-1", "op-X", 1)).unwrap();
+        assert!(
+            SignerStore::open_in(&dir).is_err(),
+            "a tampered sealed log must fail to open"
+        );
+    }
+
+    #[test]
+    fn an_empty_genesis_log_does_not_require_a_pre_existing_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("undo-log");
+        // Two opens with no entries: the first mints the key, the second reads it
+        // back (the empty log carries no records, so neither errors).
+        SignerStore::open_in(&dir).unwrap();
+        SignerStore::open_in(&dir).unwrap();
+        assert!(!log_has_records(&dir.join("undo.log")), "empty log");
+    }
+}

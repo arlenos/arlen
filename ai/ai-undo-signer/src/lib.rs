@@ -10,11 +10,12 @@
 //! move as the root-owned `permission-helper` and the `audit-daemon`'s own key
 //! custody.
 //!
-//! Built smallest-sound-sub-step first. This crate currently provides the **key
-//! custody** ([`key`]) and the private state-directory resolution ([`paths`]).
-//! The chained on-disk log (reusing `arlen-ai-agent::undo_log`'s chain scheme),
-//! the peer-authed submit/lookup socket, and the access control are later
-//! increments built on this.
+//! Built smallest-sound-sub-step first. This crate provides the **key custody**
+//! ([`key`]), the private state-directory resolution ([`paths`]), and the
+//! signer's **local sealed store** ([`store::SignerStore`]: the HMAC-chained
+//! `arlen-ai-undo-core` log opened with the custodied key, fail-closed on a
+//! missing key or a broken chain). The peer-authed submit/lookup socket and the
+//! access control that front this store for the agent are later increments.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -22,5 +23,7 @@
 pub mod error;
 pub mod key;
 pub mod paths;
+pub mod store;
 
 pub use error::{Result, SignerError};
+pub use store::SignerStore;
