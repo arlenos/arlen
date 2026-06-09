@@ -8,9 +8,9 @@ description = "SSRF guard plus per-host egress filter: block private/loopback de
 path = "src/lib.rs"
 
 [dependencies]
-tokio = { version = "1", features = ["net", "rt", "io-util", "macros", "time"] }
+tokio = { version = "1", features = ["net", "rt", "io-util", "macros", "time", "sync"] }
 tokio-util = "0.7"
 thiserror = "2"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["net", "rt", "macros", "io-util", "time"] }
+tokio = { version = "1", features = ["net", "rt", "macros", "io-util", "time", "sync"] }
