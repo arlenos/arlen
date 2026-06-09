@@ -1,0 +1,18 @@
+[package]
+name = "arlen-ai-undo-proto"
+version = "0.1.0"
+edition = "2021"
+description = "The wire protocol between the Arlen AI agent (submitter) and the separate-uid undo-log signer (sealer): the submit/lookup request and response types, their validation, and length-prefixed async framing. Thin, like audit-proto, so one definition serves both sides."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+arlen-ai-undo-core = { path = "../ai-undo-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["io-util"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["io-util", "macros", "rt", "net"] }
