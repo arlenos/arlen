@@ -18,6 +18,7 @@ import { planEdit } from "$lib/edit";
 import { planDelete } from "$lib/delete";
 import { planFork } from "$lib/fork";
 import { togglePinned } from "$lib/bookmark";
+import { clearDraft } from "$lib/stores/drafts";
 
 /// Who produced a message. `error` is a turn that failed (daemon down,
 /// disabled, query error) — rendered distinctly, never as an answer.
@@ -299,6 +300,8 @@ export async function send(prompt: string, mentions: MentionContent[] = []): Pro
   if (!text && mentions.length === 0) return;
 
   const id = ensureActive();
+  // The prompt is now sent, so its saved composer draft is spent.
+  clearDraft(id);
   const names = mentions.map((m) => m.name);
   updateSession(id, (m) => [
     ...m,
