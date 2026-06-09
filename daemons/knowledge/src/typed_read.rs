@@ -73,6 +73,101 @@ pub fn is_valid_identifier(s: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
+/// The result cap for a typed read, and the default when the request omits one.
+pub const MAX_TYPED_READ_LIMIT: i64 = 100;
+
+/// The default `limit` when a request omits it.
+pub fn default_typed_read_limit() -> i64 {
+    20
+}
+
+/// One equality filter: a field compared to a typed value. The value is encoded by
+/// [`encode_literal`], never interpolated raw.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TypedFilter {
+    /// The field name (identifier-checked).
+    pub field: String,
+    /// The value to match.
+    pub value: TypedValue,
+}
+
+/// A structured read over a single sensitive label. The body the `0x08` op accepts;
+/// the daemon builds all Cypher, the caller never supplies query text. `deny_unknown_fields`
+/// so a typo cannot smuggle an unvalidated key.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TypedReadRequest {
+    /// The system label to read (unprefixed, e.g. `"CommandHistory"`), checked
+    /// against the caller's readable-label allowlist.
+    pub label: String,
+    /// Equality filters anchoring the read. At least one is required (the owner-axis
+    /// v1 approximation): an unanchored read of a sensitive label is the
+    /// wholesale-harvest shape this op exists to prevent.
+    #[serde(default)]
+    pub filters: Vec<TypedFilter>,
+    /// The fields to project; each is identifier-checked, empty is rejected.
+    pub select: Vec<String>,
+    /// Result cap, clamped to `[1, MAX_TYPED_READ_LIMIT]`.
+    #[serde(default = "default_typed_read_limit")]
+    pub limit: i64,
+}
+
+/// A validated read: every label/field is a safe identifier, the label is in the
+/// caller's readable set, at least one anchoring filter is present, and the limit is
+/// clamped. The Cypher builder consumes this; nothing here is caller-controlled text.
+pub struct ValidatedRead {
+    /// The validated label (a safe identifier in the readable set).
+    pub label: String,
+    /// The anchoring equality filters (field is a safe identifier).
+    pub filters: Vec<(String, TypedValue)>,
+    /// The projected fields (each a safe identifier).
+    pub select: Vec<String>,
+    /// The clamped result cap.
+    pub limit: i64,
+}
+
+/// Validate a typed read against the caller's readable labels. Enforces the three
+/// axes: the LABEL must be in `readable_labels` (and a safe identifier); every
+/// filter and select FIELD must be a safe identifier (no `properties(n)`, no alias,
+/// no `*` - the caller supplies no query text); and at least one anchoring filter
+/// is required (the OWNER axis v1 approximation, pending an `_owner` column). Errors
+/// carry an internal reason for logging; the handler maps any error to the single
+/// uniform denial (no existence oracle).
+pub fn validate_typed_read(
+    req: TypedReadRequest,
+    readable_labels: &[String],
+) -> Result<ValidatedRead, &'static str> {
+    if !readable_labels.iter().any(|l| l.eq_ignore_ascii_case(&req.label)) {
+        return Err("label outside the caller's read scope");
+    }
+    if !is_valid_identifier(&req.label) {
+        return Err("label is not a safe identifier");
+    }
+    if req.filters.is_empty() {
+        return Err("a sensitive read must be anchored by at least one filter");
+    }
+    for f in &req.filters {
+        if !is_valid_identifier(&f.field) {
+            return Err("filter field is not a safe identifier");
+        }
+    }
+    if req.select.is_empty() {
+        return Err("select is empty");
+    }
+    for s in &req.select {
+        if !is_valid_identifier(s) {
+            return Err("select field is not a safe identifier");
+        }
+    }
+    let limit = req.limit.clamp(1, MAX_TYPED_READ_LIMIT);
+    Ok(ValidatedRead {
+        label: req.label,
+        filters: req.filters.into_iter().map(|f| (f.field, f.value)).collect(),
+        select: req.select,
+        limit,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,6 +210,75 @@ mod tests {
         let lit = encode_literal(&v).unwrap();
         assert_eq!(lit, "'\\' OR 1=1 RETURN n --'");
         assert!(lit.starts_with('\'') && lit.ends_with('\''));
+    }
+
+    fn req(label: &str, filters: Vec<TypedFilter>, select: &[&str]) -> TypedReadRequest {
+        TypedReadRequest {
+            label: label.into(),
+            filters,
+            select: select.iter().map(|s| s.to_string()).collect(),
+            limit: 20,
+        }
+    }
+
+    fn filter(field: &str, value: TypedValue) -> TypedFilter {
+        TypedFilter { field: field.into(), value }
+    }
+
+    #[test]
+    fn validate_accepts_an_in_scope_anchored_read() {
+        let r = req(
+            "CommandHistory",
+            vec![filter("session_id", TypedValue::Text("s1".into()))],
+            &["command", "ran_at"],
+        );
+        let v = validate_typed_read(r, &["CommandHistory".into()]).unwrap();
+        assert_eq!(v.label, "CommandHistory");
+        assert_eq!(v.filters.len(), 1);
+        assert_eq!(v.select, ["command", "ran_at"]);
+    }
+
+    #[test]
+    fn validate_denies_out_of_scope_label() {
+        let r = req("Secrets", vec![filter("id", TypedValue::Text("x".into()))], &["v"]);
+        assert!(validate_typed_read(r, &["CommandHistory".into()]).is_err());
+    }
+
+    #[test]
+    fn validate_denies_unanchored_read() {
+        let r = req("CommandHistory", vec![], &["command"]);
+        assert!(validate_typed_read(r, &["CommandHistory".into()]).is_err());
+    }
+
+    #[test]
+    fn validate_denies_bad_field_identifiers() {
+        // A laundering attempt in select.
+        let r = req(
+            "CommandHistory",
+            vec![filter("session_id", TypedValue::Text("s".into()))],
+            &["properties(n)"],
+        );
+        assert!(validate_typed_read(r, &["CommandHistory".into()]).is_err());
+        // A bad filter field.
+        let r2 = req(
+            "CommandHistory",
+            vec![filter("n.email", TypedValue::Text("s".into()))],
+            &["command"],
+        );
+        assert!(validate_typed_read(r2, &["CommandHistory".into()]).is_err());
+    }
+
+    #[test]
+    fn validate_denies_empty_select() {
+        let r = req("CommandHistory", vec![filter("id", TypedValue::Int(1))], &[]);
+        assert!(validate_typed_read(r, &["CommandHistory".into()]).is_err());
+    }
+
+    #[test]
+    fn validate_clamps_the_limit() {
+        let mut r = req("CommandHistory", vec![filter("id", TypedValue::Int(1))], &["v"]);
+        r.limit = 10_000;
+        assert_eq!(validate_typed_read(r, &["CommandHistory".into()]).unwrap().limit, MAX_TYPED_READ_LIMIT);
     }
 
     #[test]
