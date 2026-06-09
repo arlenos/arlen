@@ -74,6 +74,7 @@ dependencies = [
 name = "arlen-ai-core"
 version = "0.1.0"
 dependencies = [
+ "arlen-ai-classifier",
  "arlen-graph-schema",
  "async-trait",
  "audit-proto",

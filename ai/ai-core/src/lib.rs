@@ -22,4 +22,5 @@ pub mod mcp;
 pub mod pipeline;
 pub mod provider;
 pub mod routing;
+pub mod screen;
 pub mod tagging;
