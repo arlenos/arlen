@@ -47,6 +47,10 @@ pub async fn upsert_fact_text(pool: &SqlitePool, node_id: &str, text: &str) -> R
 /// Remove a node's indexed text (when it is summarised away or compacted, §7.2):
 /// kept consistent with the graph by deleting in the same transaction so an
 /// orphaned index entry cannot survive a deleted node.
+///
+/// Used by the compaction/retention path (not yet wired); kept as the index's
+/// delete-side API beside `upsert`.
+#[allow(dead_code)]
 pub async fn delete_fact_text(pool: &SqlitePool, node_id: &str) -> Result<()> {
     sqlx::query("DELETE FROM fact_text WHERE node_id = ?1")
         .bind(node_id)
@@ -57,13 +61,20 @@ pub async fn delete_fact_text(pool: &SqlitePool, node_id: &str) -> Result<()> {
 
 /// Keyword-search the index, returning matching node ids ranked best-first by
 /// BM25 (SQLite's `bm25()` is more negative for a better match, so ascending
-/// order is best-first). `query` is FTS5 match syntax, bound as a parameter (not
-/// interpolated). The ranked ids are one of RRF's input lists.
+/// order is best-first). The query is bound as an FTS5 **phrase** (double-quoted,
+/// embedded quotes doubled), so special characters in a filename or path (`.`,
+/// `-`, `/`) are literal tokens, never FTS5 operators that would error. The
+/// ranked ids are one of RRF's input lists.
+///
+/// Used by the retrieval read path (not yet wired); kept as the index's search
+/// API beside `upsert`.
+#[allow(dead_code)]
 pub async fn search_fact_text(pool: &SqlitePool, query: &str, limit: i64) -> Result<Vec<String>> {
+    let phrase = format!("\"{}\"", query.replace('"', "\"\""));
     let ids = sqlx::query_scalar::<_, String>(
         "SELECT node_id FROM fact_text WHERE fact_text MATCH ?1 ORDER BY bm25(fact_text) LIMIT ?2",
     )
-    .bind(query)
+    .bind(phrase)
     .bind(limit)
     .fetch_all(pool)
     .await?;

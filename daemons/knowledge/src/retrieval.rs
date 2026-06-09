@@ -21,8 +21,14 @@ use anyhow::Result;
 use crate::graph::GraphHandle;
 use crate::utils::escape_cypher;
 
+// The fusion + validity-confirm functions below are the retrieval *read* API,
+// consumed by the read-orchestration path (not yet wired) and the lib tests;
+// promotion consumes only `fact_text` (the index-write side), so the read API
+// reads as unused in the binary tree until its consumer lands.
+
 /// The standard RRF damping constant (§7.3): a larger `k` flattens the
 /// contribution of rank, so top ranks dominate less.
+#[allow(dead_code)]
 pub const K_RRF: u32 = 60;
 
 /// Fuse several ranked id-lists into one ranking by Reciprocal Rank Fusion.
@@ -34,6 +40,7 @@ pub const K_RRF: u32 = 60;
 /// primitive that emits a duplicate cannot inflate a candidate. Returns
 /// `(id, score)` sorted by score descending, ties broken by id ascending for a
 /// deterministic order.
+#[allow(dead_code)]
 pub fn rrf_fuse(lists: &[Vec<String>], k: u32) -> Vec<(String, f64)> {
     let mut scores: HashMap<String, f64> = HashMap::new();
     for list in lists {
@@ -58,6 +65,7 @@ pub fn rrf_fuse(lists: &[Vec<String>], k: u32) -> Vec<(String, f64)> {
 
 /// Fuse and return only the ids, best first (the common case where the caller
 /// wants the ranking, not the scores).
+#[allow(dead_code)]
 pub fn rrf_rank(lists: &[Vec<String>], k: u32) -> Vec<String> {
     rrf_fuse(lists, k).into_iter().map(|(id, _)| id).collect()
 }
@@ -132,6 +140,7 @@ fn join_nonempty(parts: &[&str]) -> String {
 /// transaction axis. Returns the candidates that are present, in input order, so
 /// the RRF ranking survives the filter. An empty input is an empty result with
 /// no query.
+#[allow(dead_code)]
 pub async fn confirm_present(graph: &GraphHandle, candidates: &[String]) -> Result<Vec<String>> {
     if candidates.is_empty() {
         return Ok(Vec::new());
