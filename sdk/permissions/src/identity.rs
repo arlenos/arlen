@@ -244,7 +244,29 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
             if let Some(first) = rest.iter().next() {
                 let app_id = first.to_string_lossy();
                 if !app_id.is_empty() {
-                    return Ok(app_id.into_owned());
+                    let app_id = app_id.into_owned();
+                    // F3 Rung B: `~/.local/share/arlen/apps/` is user-writable, so
+                    // the path alone is forgeable (a same-uid copy to this dir).
+                    // If the app is enrolled in the broker-owned (root-owned)
+                    // identity registry, the binary's inode MUST match the recorded
+                    // one — a copy gets a new inode and is rejected as a spoof, a
+                    // hardlink shares it and passes. An app with NO record is the
+                    // documented pre-enrolment residual: resolved cooperatively
+                    // (still path-spoofable) until installd records it at install.
+                    // So an enrolled app is a hard, non-forgeable identity; an
+                    // unenrolled one is unchanged. The daemon only serves same-uid
+                    // peers (SO_PEERCRED rejects cross-uid before this), so the
+                    // running uid keys the right registry. A corrupt registry is
+                    // root-caused (the file is root-owned 0644, not same-uid
+                    // writable), so falling through cooperatively is acceptable.
+                    // SAFETY: getuid never fails.
+                    let uid = unsafe { libc::getuid() };
+                    if let Ok(registry) = crate::identity_registry::IdentityRegistry::load(uid) {
+                        if !user_app_inode_ok(&registry, &app_id, path) {
+                            return Err(IdentityError::UnknownBinary(path.to_path_buf()));
+                        }
+                    }
+                    return Ok(app_id);
                 }
             }
         }
@@ -261,6 +283,23 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
     }
 
     Err(IdentityError::UnknownBinary(path.to_path_buf()))
+}
+
+/// The F3 Rung B inode gate for a resolved user-app `app_id` at `path`. If the app
+/// is enrolled in the broker-owned `registry`, the binary's inode must match the
+/// recorded one (a same-uid copy to the app's path has a new inode → false, a
+/// hardlink shares it → true). An app with NO record passes - the documented
+/// pre-enrolment residual, resolved cooperatively until installd records it. Pure
+/// over the registry, so the gate is unit-testable without the on-disk file.
+fn user_app_inode_ok(
+    registry: &crate::identity_registry::IdentityRegistry,
+    app_id: &str,
+    path: &Path,
+) -> bool {
+    match registry.lookup(app_id) {
+        Some(record) => crate::identity_registry::verify_binary(record, path),
+        None => true,
+    }
 }
 
 /// Check if a process is still alive (cheap stat on /proc/{pid}).
@@ -303,6 +342,31 @@ impl AsRawFd for OwnedFd {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::identity_registry::{IdentityRecord, IdentityRegistry};
+    use std::io::Write;
+
+    #[test]
+    fn user_app_inode_gate_rejects_a_copy_but_passes_the_real_binary_and_unenrolled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bin = tmp.path().join("real");
+        std::fs::File::create(&bin).unwrap().write_all(b"x").unwrap();
+
+        let mut registry = IdentityRegistry::default();
+        registry.record("com.example".into(), IdentityRecord::for_path(&bin).unwrap());
+
+        // The real, enrolled binary passes.
+        assert!(user_app_inode_ok(&registry, "com.example", &bin));
+        // A copy (new inode) at a different path is a spoof: rejected.
+        let copy = tmp.path().join("evil");
+        std::fs::copy(&bin, &copy).unwrap();
+        assert!(!user_app_inode_ok(&registry, "com.example", &copy));
+        // A hardlink (same inode) is the same file: passes.
+        let link = tmp.path().join("link");
+        std::fs::hard_link(&bin, &link).unwrap();
+        assert!(user_app_inode_ok(&registry, "com.example", &link));
+        // An UNENROLLED app (no record) passes cooperatively (the residual).
+        assert!(user_app_inode_ok(&registry, "com.other", &copy));
+    }
 
     #[test]
     fn test_app_id_from_path_system_app() {
