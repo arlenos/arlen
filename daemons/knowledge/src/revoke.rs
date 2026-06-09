@@ -135,6 +135,87 @@ pub fn is_strict_narrowing(old: &ScopeSummary, new: &ScopeSummary) -> bool {
     every_dimension_subset && strictly_smaller
 }
 
+/// Apply a revoke to a parsed profile document in place, format-preserving
+/// (comments, ordering, and every field the daemon models but a re-serialize
+/// might not are untouched). Returns `true` if something was actually removed or
+/// demoted, `false` if the reach was already absent (a no-op the caller treats as
+/// `NotNarrowing`). Operates on `toml_edit::DocumentMut` so the user's file shape
+/// survives the edit.
+pub fn apply_revoke(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> bool {
+    use toml_edit::{Item, Value};
+
+    let Some(graph) = doc.get_mut("graph").and_then(Item::as_table_like_mut) else {
+        // No `[graph]` table: nothing to narrow.
+        return false;
+    };
+
+    match reach {
+        RevokedReach::Read { entity_pattern } => {
+            remove_string_from_array(graph, "read", entity_pattern)
+        }
+        RevokedReach::Write { entity_pattern } => {
+            remove_string_from_array(graph, "write", entity_pattern)
+        }
+        RevokedReach::Relation {
+            from,
+            to,
+            relation_type,
+        } => {
+            let Some(arr) = graph.get_mut("relations").and_then(Item::as_array_mut) else {
+                return false;
+            };
+            let before = arr.len();
+            arr.retain(|v| {
+                // Keep every entry that does NOT match all three keys.
+                let matches = v
+                    .as_inline_table()
+                    .map(|t| {
+                        inline_str(t, "from") == Some(from.as_str())
+                            && inline_str(t, "to") == Some(to.as_str())
+                            && inline_str(t, "type") == Some(relation_type.as_str())
+                    })
+                    .unwrap_or(false);
+                !matches
+            });
+            arr.len() != before
+        }
+        RevokedReach::InstanceAll => {
+            // Demote `all` -> `own`; a no-op (false) if it was not `all`.
+            let is_all = graph
+                .get("instance_scope")
+                .and_then(Item::as_str)
+                .map(|s| s.eq_ignore_ascii_case("all"))
+                .unwrap_or(false);
+            if is_all {
+                graph.insert("instance_scope", Item::Value(Value::from("own")));
+                true
+            } else {
+                false
+            }
+        }
+    }
+}
+
+/// Remove the first array element equal to `value` from the `key` string array of
+/// `graph`. Returns whether an element was removed.
+fn remove_string_from_array(
+    graph: &mut dyn toml_edit::TableLike,
+    key: &str,
+    value: &str,
+) -> bool {
+    let Some(arr) = graph.get_mut(key).and_then(toml_edit::Item::as_array_mut) else {
+        return false;
+    };
+    let before = arr.len();
+    arr.retain(|v| v.as_str() != Some(value));
+    arr.len() != before
+}
+
+/// The string value of `key` in an inline table, if present and a string.
+fn inline_str<'a>(table: &'a toml_edit::InlineTable, key: &str) -> Option<&'a str> {
+    table.get(key).and_then(|v| v.as_str())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -201,6 +282,96 @@ mod tests {
         ));
         let new = summary(&[], &[], false);
         assert!(is_strict_narrowing(&old, &new));
+    }
+
+    const SAMPLE: &str = r#"# my app profile
+[info]
+app_id = "com.test"
+
+[graph]
+read = ["system.File", "system.Project"]
+write = ["com.test.Note"]
+relations = [
+    { from = "com.test.Note", to = "system.File", type = "REFERENCES" },
+    { from = "system.File", to = "system.Project", type = "FILE_PART_OF" },
+]
+instance_scope = "all"
+"#;
+
+    fn doc(s: &str) -> toml_edit::DocumentMut {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn revoke_read_removes_only_that_pattern_and_preserves_the_rest() {
+        let mut d = doc(SAMPLE);
+        let changed = apply_revoke(
+            &mut d,
+            &RevokedReach::Read {
+                entity_pattern: "system.Project".into(),
+            },
+        );
+        assert!(changed);
+        let out = d.to_string();
+        // The read array now holds only the kept pattern (checked on the read
+        // line, since "system.Project" also legitimately appears as a relation
+        // endpoint and must NOT be touched there).
+        let read_line = out.lines().find(|l| l.trim_start().starts_with("read =")).unwrap();
+        assert!(read_line.contains("system.File"), "the kept read pattern survives");
+        assert!(!read_line.contains("system.Project"), "the revoked read pattern is gone");
+        // The relation endpoint of the same name is untouched.
+        assert!(out.contains("to = \"system.Project\""), "relations are not touched");
+        // Format-preserving: the comment and other sections are untouched.
+        assert!(out.contains("# my app profile"));
+        assert!(out.contains("write = [\"com.test.Note\"]"));
+        assert!(out.contains("instance_scope = \"all\""));
+    }
+
+    #[test]
+    fn revoke_relation_removes_only_the_matching_entry() {
+        let mut d = doc(SAMPLE);
+        let changed = apply_revoke(
+            &mut d,
+            &RevokedReach::Relation {
+                from: "com.test.Note".into(),
+                to: "system.File".into(),
+                relation_type: "REFERENCES".into(),
+            },
+        );
+        assert!(changed);
+        let out = d.to_string();
+        assert!(!out.contains("REFERENCES"), "the revoked relation is gone");
+        assert!(out.contains("FILE_PART_OF"), "the other relation survives");
+    }
+
+    #[test]
+    fn revoke_instance_all_demotes_to_own() {
+        let mut d = doc(SAMPLE);
+        let changed = apply_revoke(&mut d, &RevokedReach::InstanceAll);
+        assert!(changed);
+        assert!(d.to_string().contains("instance_scope = \"own\""));
+    }
+
+    #[test]
+    fn revoking_an_absent_reach_is_a_no_op() {
+        let mut d = doc(SAMPLE);
+        // A read pattern that is not present.
+        assert!(!apply_revoke(
+            &mut d,
+            &RevokedReach::Read { entity_pattern: "system.Event".into() }
+        ));
+        // instance already own after a first demote -> a second demote is a no-op.
+        apply_revoke(&mut d, &RevokedReach::InstanceAll);
+        assert!(!apply_revoke(&mut d, &RevokedReach::InstanceAll), "already own -> no-op");
+    }
+
+    #[test]
+    fn revoke_on_a_profile_without_a_graph_table_is_a_no_op() {
+        let mut d = doc("[info]\napp_id = \"com.x\"\n");
+        assert!(!apply_revoke(
+            &mut d,
+            &RevokedReach::Read { entity_pattern: "system.File".into() }
+        ));
     }
 
     #[test]
