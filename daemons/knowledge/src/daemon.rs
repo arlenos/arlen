@@ -28,7 +28,7 @@ use tracing::{debug, error, info, warn};
 use crate::auth::Authenticator;
 use crate::events::{self, GraphEvent};
 use crate::graph::GraphHandle;
-use crate::identity::{app_id_from_pid, pid_start_time};
+use crate::identity::{app_id_from_pid, pid_start_time, process_alive};
 use crate::proto::Event;
 use crate::quota::{AppTier, QuotaConfig, RateLimiter};
 use crate::schema::SchemaRegistry;
@@ -558,6 +558,112 @@ async fn handle_provenance_read(
     };
     let (visible, accessed_by_others) = co_tenant_filter(&actors, &token.app_id);
     serde_json::json!({ "actors": visible, "accessed_by_others": accessed_by_others }).to_string()
+}
+
+/// One Grant row for the browse surface (living-capability-graph.md §5). The
+/// `declared_ceiling` is the faithful scope JSON; `reach` is the queryable type
+/// projection; `live` is resolved fresh at read time (see below).
+// The five bools mirror the Grant node's lifecycle + caveat flags (§3.1), which
+// the browse surface must each distinguish; they are not a collapsible state.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, serde::Serialize)]
+struct GrantView {
+    id: String,
+    app_id: String,
+    declared_ceiling: String,
+    required: bool,
+    identity_verified: bool,
+    live: bool,
+    revoked: bool,
+    superseded: bool,
+    issued_at: i64,
+    reach: Vec<String>,
+}
+
+/// The uniform `access_grants` failure shape.
+const ACCESS_GRANTS_ERROR: &str = "ERROR: access_grants failed";
+
+/// LCG-R4 (living-capability-graph.md §5): the caller-scoped grant browse read.
+///
+/// Scopes by the **kernel-attested** `app_id` (resolved from `SO_PEERCRED` at
+/// connect, never a request field): a normal caller receives only its own grants
+/// (`WHERE app_id = caller`), the privileged Knowledge/Settings principal the
+/// whole-system view. The privileged check is `is_privileged_authority_reader`,
+/// false for every caller until F3, so today no caller can enumerate another's
+/// authority through this op (the §5 leak the dedicated reader exists to prevent).
+///
+/// `live` is recomputed fresh from `process_alive(g.pid)`: a node stored live but
+/// whose process is gone renders not-live, so the flag never lies beyond the read
+/// instant (§4.2). The general read path already denies the `Grant` label, so this
+/// is the only way these nodes are ever served.
+async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
+    let privileged = is_privileged_authority_reader(app_id);
+    let scope = if privileged {
+        // Whole-system view (gated false until F3).
+        String::new()
+    } else {
+        // Own grants only; the filter keys on the attested app_id.
+        let app_esc = escape_cypher(app_id);
+        format!(" {{app_id: '{app_esc}'}}")
+    };
+
+    // The reach (grant id -> type labels) is read separately and grouped here: a
+    // collected LIST cell is not faithfully representable on the typed row path,
+    // so both queries return only scalars.
+    let reach_cypher =
+        format!("MATCH (g:Grant{scope})-[:GRANTS]->(t:EntityType) RETURN g.id, t.label");
+    let mut reach: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    match graph.query_rows(reach_cypher).await {
+        Ok(rs) => {
+            for row in rs.rows {
+                if row.len() >= 2 {
+                    reach
+                        .entry(row[0].as_str().to_string())
+                        .or_default()
+                        .push(row[1].as_str().to_string());
+                }
+            }
+        }
+        Err(_) => return ACCESS_GRANTS_ERROR.to_string(),
+    }
+
+    let cypher = format!(
+        "MATCH (g:Grant{scope}) RETURN g.id, g.app_id, g.declared_ceiling, g.required, \
+         g.identity_verified, g.live, g.revoked, g.superseded, g.pid, g.issued_at"
+    );
+    let rows = match graph.query_rows(cypher).await {
+        Ok(rs) => rs.rows,
+        Err(_) => return ACCESS_GRANTS_ERROR.to_string(),
+    };
+
+    let mut views: Vec<GrantView> = Vec::new();
+    for row in rows {
+        if row.len() < 10 {
+            continue;
+        }
+        let id = row[0].as_str().to_string();
+        let stored_live = row[5].as_bool();
+        let pid = row[8].as_i64();
+        // Fresh liveness: a stored-live grant whose process is gone renders
+        // not-live, caught here at read time rather than trusting the stored flag.
+        // `try_from` keeps an out-of-range or negative stored pid from wrapping.
+        let live = stored_live
+            && u32::try_from(pid).map(process_alive).unwrap_or(false);
+        let reach = reach.get(&id).cloned().unwrap_or_default();
+        views.push(GrantView {
+            app_id: row[1].as_str().to_string(),
+            declared_ceiling: row[2].as_str().to_string(),
+            required: row[3].as_bool(),
+            identity_verified: row[4].as_bool(),
+            live,
+            revoked: row[6].as_bool(),
+            superseded: row[7].as_bool(),
+            issued_at: row[9].as_i64(),
+            reach,
+            id,
+        });
+    }
+    serde_json::to_string(&views).unwrap_or_else(|_| "[]".to_string())
 }
 
 /// Authorise and persist a structured write request, returning the plaintext
@@ -1172,6 +1278,32 @@ async fn handle_client(
             continue;
         }
 
+        // Access-grants mode: a leading 0x05 byte selects the caller-scoped grant
+        // browse read (living-capability-graph.md §5). The caller's own grants
+        // only (scoped by the attested app_id resolved at connect, never a request
+        // field), with live recomputed fresh. It is a read, so query-rate-limited
+        // and open to every tier; the general read path's label-denial keeps these
+        // nodes off the raw-Cypher path, so this is their only reader.
+        if buf.first() == Some(&0x05) {
+            let violation = {
+                let mut rs = rate.lock().await;
+                rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
+            };
+            let response = if let Some(reason) = violation {
+                format!("ERROR: RateLimited: {reason}")
+            } else {
+                handle_access_grants(&app_id, &graph).await
+            };
+            timing_noise().await;
+            let response_bytes = response.as_bytes();
+            let response_len = u32::try_from(response_bytes.len())
+                .expect("response too large")
+                .to_be_bytes();
+            stream.write_all(&response_len).await?;
+            stream.write_all(response_bytes).await?;
+            continue;
+        }
+
         // Read mode. A leading 0x01 byte selects the structured (typed JSON
         // RowSet) response; without it the request is a legacy raw-Cypher text
         // query, so existing clients are unaffected.
@@ -1515,6 +1647,45 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
         handle_graph_event(&auth, &graph, GraphEvent::AiLevelChanged).await;
+    }
+
+    #[tokio::test]
+    async fn access_grants_is_caller_scoped_with_fresh_liveness() {
+        use crate::token::{CapabilityToken, EntityScope, InstanceScope};
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+
+        let mk = |app: &str, ty: &str| {
+            CapabilityToken::new(
+                app.into(),
+                999_999, // a pid that is not alive, so fresh liveness renders not-live
+                vec![EntityScope {
+                    entity_type: ty.into(),
+                    fields: None,
+                    exclude_fields: vec![],
+                }],
+                vec![],
+                vec![],
+                InstanceScope::Own,
+            )
+        };
+        crate::lcg::emit_grant_node(&graph, &mk("com.a", "system.File")).await.unwrap();
+        crate::lcg::emit_grant_node(&graph, &mk("com.b", "system.Project")).await.unwrap();
+
+        // com.a sees only its own grant, never com.b's (the §5 scoping).
+        let json = handle_access_grants("com.a", &graph).await;
+        let views: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let arr = views.as_array().unwrap();
+        assert_eq!(arr.len(), 1, "caller sees exactly its own grant: {json}");
+        assert_eq!(arr[0]["app_id"], "com.a");
+        assert_eq!(arr[0]["reach"][0], "File");
+        // Stored live=true, but pid 999999 is not alive, so it renders not-live.
+        assert_eq!(arr[0]["live"], false, "dead process renders not-live: {json}");
+        assert_eq!(arr[0]["revoked"], false);
+
+        // An app with no grants gets an empty array, never an error or a leak.
+        let none = handle_access_grants("com.c", &graph).await;
+        assert_eq!(none, "[]", "no grants -> empty, not a leak: {none}");
     }
 
     #[tokio::test]

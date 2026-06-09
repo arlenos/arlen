@@ -31,6 +31,14 @@ impl CellValue {
             _ => 0,
         }
     }
+
+    /// Extract a bool, returning false for non-boolean values.
+    pub fn as_bool(&self) -> bool {
+        match self {
+            CellValue::Bool(b) => *b,
+            _ => false,
+        }
+    }
 }
 
 /// Structured query result with column names and typed rows.
