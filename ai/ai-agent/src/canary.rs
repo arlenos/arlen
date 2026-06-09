@@ -51,27 +51,34 @@ pub(crate) const CANARY_IDS: &[&str] = &[
     "__canary:system-keyring",
 ];
 
-/// Whether `id` falls inside the reserved canary namespace. This is the predicate
-/// the ingestion boundary uses to refuse creating a colliding node, and the same
-/// predicate the operand check uses, so the reservation and the detection cannot
-/// disagree.
+/// Whether `id` falls inside the reserved canary namespace, i.e. begins with the
+/// reserved prefix. This is the predicate the ingestion boundary uses to refuse
+/// creating a node whose id collides with the canary namespace (a node id is a
+/// structured token, so the namespace is a prefix). Detection over free-form
+/// operands is broader (see [`touched_by`]).
 pub(crate) fn is_reserved_canary_id(id: &str) -> bool {
     id.starts_with(RESERVED_CANARY_PREFIX)
 }
 
-/// The structural-canary check: the first operand value in `arguments` that names
-/// a canary id (i.e. bears the reserved prefix), or `None` if the proposal touches
-/// no canary. Pure set/prefix membership over the operand values, with no graph
-/// read and no scope check, so it is cheap and runs pre-scope.
+/// The structural-canary check: the first operand value in `arguments` that
+/// *mentions* the reserved canary token, or `None` if the proposal touches no
+/// canary. Pure substring search over the operand values, with no graph read and
+/// no scope check, so it is cheap and runs pre-scope.
 ///
-/// The returned id is a reserved-namespace constant, never user or model free
-/// text, so a caller may record *which* canary fired without leaking content.
-/// `None` is the honest case: real File/Project operands never bear the prefix.
+/// Detection is **substring**, not whole-value prefix, on purpose: a mutate
+/// operand is itself a node id (so the value *is* a canary id), but a read
+/// operand is a free-form Cypher `query` string with the canary id embedded
+/// (`{id:'__canary:...'}`). A `contains` check catches both; a `starts_with`
+/// check would miss the embedded-in-query case, which is the channel that renders
+/// results verbatim into the model transcript (the dangerous one, §3). The
+/// reserved token is distinctive, so a real File/Project id or an honest query
+/// never contains it (zero false positives, once the ingestion reservation keeps
+/// the namespace empty).
 pub(crate) fn touched_by(arguments: &BTreeMap<String, String>) -> Option<&str> {
     arguments
         .values()
         .map(String::as_str)
-        .find(|value| is_reserved_canary_id(value))
+        .find(|value| value.contains(RESERVED_CANARY_PREFIX))
 }
 
 #[cfg(test)]
@@ -120,6 +127,19 @@ mod tests {
         let probed = "__canary:made-up-by-an-injection";
         let a = args(&[("node", probed)]);
         assert_eq!(touched_by(&a), Some(probed));
+    }
+
+    #[test]
+    fn a_canary_embedded_in_a_read_query_is_a_touch() {
+        // The read tool's operand is a free-form Cypher string with the canary id
+        // embedded, not a standalone id; substring detection catches it where a
+        // whole-value prefix check would not.
+        let q = "MATCH (n {id:'__canary:credentials-vault'}) RETURN n";
+        let a = args(&[("query", q)]);
+        assert_eq!(touched_by(&a), Some(q));
+        // An honest survey query never mentions the reserved token.
+        let honest = args(&[("query", "MATCH (f:File) RETURN f.id")]);
+        assert_eq!(touched_by(&honest), None);
     }
 
     #[test]

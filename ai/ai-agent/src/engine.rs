@@ -1265,6 +1265,23 @@ impl<'a> Dispatcher<'a> {
                     // so scope is still enforced. The no-progress / repeated-tool
                     // guards below still apply (an identical re-read is the same
                     // key, so a stuck re-reading loop is bounded).
+                    // Structural canary, screened for EVERY proposal before the
+                    // read/gate branch split (canary-honeytools.md §3). A declared
+                    // read tool is gate-exempt (D9) and bypasses decide_action, so
+                    // the canary must be checked here too, before the read runs and
+                    // renders its rows verbatim into the transcript. A trip (or a
+                    // fail-closed audit outage during the trip) stops the loop
+                    // closed: a hijacked run is never fed back to retry.
+                    if let Err(e) = self.gate.screen_canary(&behaviour, &action, &ctx).await {
+                        let reason = match e {
+                            GateError::CanaryTripped => {
+                                "structural canary tripped: probable prompt-injection".to_string()
+                            }
+                            other => format!("canary screen failed: {other}"),
+                        };
+                        outcomes.push(DispatchOutcome::Failed { behaviour, reason });
+                        return outcomes;
+                    }
                     let progress_key = if is_read_tool(&action.tool)
                         && m.tools.contains_key(&action.tool)
                     {
@@ -1371,6 +1388,19 @@ impl<'a> Dispatcher<'a> {
                             outcomes.push(DispatchOutcome::Failed {
                                 behaviour,
                                 reason: format!("audit unavailable: {reason}"),
+                            });
+                            return outcomes;
+                        }
+                        Err(GateError::CanaryTripped) => {
+                            // A reserved canary id in the operands is deterministic
+                            // proof of prompt-injection (canary-honeytools.md §3).
+                            // Stop the loop closed: a hijacked run must never be fed
+                            // back for the model to retry. The trip was already
+                            // audited inside the gate.
+                            outcomes.push(DispatchOutcome::Failed {
+                                behaviour,
+                                reason: "structural canary tripped: probable prompt-injection"
+                                    .to_string(),
                             });
                             return outcomes;
                         }
@@ -2493,6 +2523,50 @@ trigger:
             Some(DispatchOutcome::Terminal { outcome, .. }) if outcome == "done"
         ));
         assert!(audit.recorded().await.is_empty(), "a read observation is not audited");
+    }
+
+    #[tokio::test]
+    async fn a_canary_in_a_read_query_halts_the_loop_before_executing() {
+        // The read branch bypasses decide_action (D9), so the pre-branch
+        // screen_canary is what must catch a canary id embedded in the query.
+        // The loop stops closed and the read never runs.
+        let behaviours = [loaded(&agent_read_skill(), Status::Enabled)];
+        let handlers = registry(Box::new(StubPropose));
+        let cap = Capability::new(AccessTier::Full, ActionPermissions::suggest_only());
+        let audit = MockAuditSink::accepting();
+        let obs = NullObserver;
+        let graph = RecordingGraph {
+            queries: std::sync::Mutex::new(Vec::new()),
+        };
+        let provider = MockProvider::new(vec![
+            propose_query("graph.query", "MATCH (n {id:'__canary:credentials-vault'}) RETURN n"),
+            stop(),
+        ]);
+        let d = Dispatcher::new(
+            &behaviours,
+            &handlers,
+            &graph,
+            AccessTier::Full,
+            gate(&audit, &obs, &cap),
+            Some(&provider),
+            &TEST_CLOCK,
+        );
+
+        let outcomes = d.dispatch(&event("~/foo.rs")).await;
+        // The read was NEVER executed: the canary screen halts the loop first.
+        assert!(
+            graph.queries.lock().unwrap().is_empty(),
+            "the canary must stop the read before it runs"
+        );
+        // The loop stopped closed with a Failed outcome, not a read observation.
+        assert!(matches!(outcomes.last(), Some(DispatchOutcome::Failed { .. })));
+        // The trip was audited content-free.
+        let recorded = audit.recorded().await;
+        assert_eq!(recorded.len(), 1);
+        assert!(recorded[0]
+            .structural
+            .outcome
+            .starts_with("canary-tripped:structural"));
     }
 
     #[tokio::test]
