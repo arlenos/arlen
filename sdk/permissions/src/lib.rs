@@ -9,6 +9,7 @@
 
 pub mod connection_auth;
 pub mod identity;
+pub mod identity_registry;
 pub mod profile_watcher;
 pub mod revoke;
 pub mod token;
