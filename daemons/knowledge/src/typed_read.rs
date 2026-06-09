@@ -168,6 +168,32 @@ pub fn validate_typed_read(
     })
 }
 
+/// Build the deterministic, injection-safe Cypher for a validated read:
+/// `MATCH (n:Label) WHERE n.field = <literal> AND … RETURN n.s0, n.s1, … LIMIT N`.
+/// The label and every field are validated identifiers (safe to interpolate) and
+/// every value goes through [`encode_literal`]; a value that cannot be encoded (a
+/// control char) yields `None`, which the handler maps to the uniform denial. The
+/// anchoring `WHERE` is always present (validation requires a filter) and the
+/// `LIMIT` is always final, so the read is bounded and caller-anchored by
+/// construction.
+pub fn build_cypher(read: &ValidatedRead) -> Option<String> {
+    let mut conditions = Vec::with_capacity(read.filters.len());
+    for (field, value) in &read.filters {
+        conditions.push(format!("n.{field} = {}", encode_literal(value)?));
+    }
+    let where_clause = conditions.join(" AND ");
+    let projection = read
+        .select
+        .iter()
+        .map(|s| format!("n.{s}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(format!(
+        "MATCH (n:{}) WHERE {} RETURN {} LIMIT {}",
+        read.label, where_clause, projection, read.limit
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,6 +305,44 @@ mod tests {
         let mut r = req("CommandHistory", vec![filter("id", TypedValue::Int(1))], &["v"]);
         r.limit = 10_000;
         assert_eq!(validate_typed_read(r, &["CommandHistory".into()]).unwrap().limit, MAX_TYPED_READ_LIMIT);
+    }
+
+    #[test]
+    fn build_cypher_is_anchored_bounded_and_injection_safe() {
+        let r = req(
+            "CommandHistory",
+            vec![filter("session_id", TypedValue::Text("s1".into()))],
+            &["command", "ran_at"],
+        );
+        let v = validate_typed_read(r, &["CommandHistory".into()]).unwrap();
+        let cypher = build_cypher(&v).unwrap();
+        assert_eq!(
+            cypher,
+            "MATCH (n:CommandHistory) WHERE n.session_id = 's1' RETURN n.command, n.ran_at LIMIT 20"
+        );
+        // The LIMIT is final (a trailing clause cannot append rows past the cap).
+        assert!(cypher.trim_end().ends_with("LIMIT 20"));
+
+        // An injection value is escaped into an inert literal, not executed.
+        let r2 = req(
+            "CommandHistory",
+            vec![filter("session_id", TypedValue::Text("' OR 1=1 RETURN n --".into()))],
+            &["command"],
+        );
+        let v2 = validate_typed_read(r2, &["CommandHistory".into()]).unwrap();
+        let c2 = build_cypher(&v2).unwrap();
+        assert!(c2.contains("n.session_id = '\\' OR 1=1 RETURN n --'"));
+    }
+
+    #[test]
+    fn build_cypher_rejects_an_unencodable_value() {
+        let r = req(
+            "CommandHistory",
+            vec![filter("session_id", TypedValue::Text("a\u{0}b".into()))],
+            &["command"],
+        );
+        let v = validate_typed_read(r, &["CommandHistory".into()]).unwrap();
+        assert!(build_cypher(&v).is_none());
     }
 
     #[test]
