@@ -8,6 +8,7 @@ members = [
     "ai-daemon",
     "ai-agent",
     "ai-sandbox",
+    "ai-undo-core",
     "ai-undo-signer",
 ]
 resolver = "2"

@@ -8,6 +8,7 @@ description = "The separate-uid signer helper that seals the AI agent's durable 
 path = "src/lib.rs"
 
 [dependencies]
+arlen-ai-undo-core = { path = "../ai-undo-core" }
 thiserror = "2"
 getrandom = "0.2"
 zeroize = "1"

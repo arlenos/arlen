@@ -13,7 +13,6 @@ pub mod behaviour;
 pub mod dbus;
 pub mod compaction;
 pub mod config;
-pub mod effect_model;
 pub mod engine;
 pub mod executor;
 pub mod gate;
@@ -28,5 +27,10 @@ pub mod slice;
 pub mod snapshot;
 pub mod source;
 pub mod spill;
-pub mod undo_log;
 pub mod world;
+
+// The undo-log vocabulary (the inverse-receipt effect model, the event-sourced
+// lifecycle, the HMAC-chained log) is shared with the separate-uid signer
+// helper, so it lives in `arlen-ai-undo-core` and is re-exported here. Internal
+// references stay `crate::effect_model` / `crate::undo_log`.
+pub use arlen_ai_undo_core::{effect_model, undo_log};
