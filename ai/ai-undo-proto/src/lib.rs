@@ -17,9 +17,23 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+use std::path::PathBuf;
+
 use arlen_ai_undo_core::undo_log::{UndoEntry, UndoState};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+/// The rendezvous socket path both the signer (server) and the agent (client)
+/// resolve: `$XDG_RUNTIME_DIR/arlen/undo-signer.sock`, falling back to
+/// `/run/arlen/undo-signer.sock`. Part of the protocol contract, so it lives here
+/// rather than in either endpoint's crate.
+pub fn socket_path() -> PathBuf {
+    let base = std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/run"));
+    base.join("arlen").join("undo-signer.sock")
+}
 
 /// Max framed message length: a created entry carries two canonical paths or a
 /// setting value, all small, so 64 KiB is generous and bounds a hostile peer's

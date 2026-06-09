@@ -12,10 +12,13 @@
 //! [`serve_requests`] is the post-auth wire loop (tested over a socket pair);
 //! [`run`] binds the socket and is the daemon's long-lived task.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use arlen_ai_undo_proto::{read_request, write_response, Request, Response, StateReply};
+// The rendezvous path is part of the protocol contract; re-exported so existing
+// `server::socket_path()` callers keep working.
+pub use arlen_ai_undo_proto::socket_path;
 use arlen_permissions::ConnectionAuth;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{Mutex, Semaphore};
@@ -27,16 +30,6 @@ use crate::store::SignerStore;
 /// which uses one or few connections; this bounds task/fd growth so a peer that
 /// opens many connections (and stalls each mid-frame) cannot exhaust the helper.
 const MAX_CONNECTIONS: usize = 16;
-
-/// Resolve the signer socket path: `$XDG_RUNTIME_DIR/arlen/undo-signer.sock`,
-/// falling back to `/run/arlen/undo-signer.sock`.
-pub fn socket_path() -> PathBuf {
-    let base = std::env::var_os("XDG_RUNTIME_DIR")
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/run"));
-    base.join("arlen").join("undo-signer.sock")
-}
 
 /// Map one request to its response against the store. The pure dispatch core: no
 /// I/O, no auth, just the store operations. A store error becomes a coarse
