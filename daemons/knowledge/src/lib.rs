@@ -11,6 +11,7 @@ pub mod lifecycle;
 pub mod migration;
 pub mod permission;
 pub mod project;
+pub mod provenance;
 pub mod quota;
 pub mod schema;
 pub mod shared;

@@ -515,6 +515,31 @@ fn create_schema(conn: &Connection) -> Result<()> {
     conn.query("ALTER TABLE FILE_PART_OF ADD IF NOT EXISTS op_id STRING")
         .map_err(|e| anyhow!("ensure FILE_PART_OF.op_id column: {e}"))?;
 
+    // Bi-temporal stamps + the provenance quad on the agent-curated assertion
+    // edge (bitemporal-knowledge-graph.md §4.1). Four INT64-micros stamps: two
+    // transaction-axis (created_at = when Arlen learned the fact, expired_at =
+    // when it learned the fact was superseded) and two valid-axis (valid_at =
+    // when it became true in the world, invalid_at = when it stopped). NULL on
+    // either axis means open (eternal / still believed), so every edge that
+    // exists today reads as an always-known eternal fact with no backfill (§4.3).
+    // The provenance columns (origin, prov_beh) record who asserted it and
+    // `superseded` back-references the edge a supersession replaced (§4.6). Same
+    // convergent `ADD IF NOT EXISTS` pattern proven for `op_id`.
+    for column in [
+        "valid_at INT64",
+        "invalid_at INT64",
+        "created_at INT64",
+        "expired_at INT64",
+        "origin STRING",
+        "prov_beh STRING",
+        "superseded STRING",
+    ] {
+        conn.query(&format!(
+            "ALTER TABLE FILE_PART_OF ADD IF NOT EXISTS {column}"
+        ))
+        .map_err(|e| anyhow!("ensure FILE_PART_OF.{column} column: {e}"))?;
+    }
+
     conn.query(
         "CREATE REL TABLE IF NOT EXISTS DIR_PART_OF(FROM Directory TO Project)",
     )
@@ -716,5 +741,43 @@ mod tests {
             Some(2),
             "SET ... RETURN count(*) reports the matched-and-mutated row count"
         );
+    }
+
+    #[test]
+    fn create_schema_adds_temporal_and_provenance_columns_to_file_part_of() {
+        // KG-R2 (§4.1): a store created before the bi-temporal columns existed
+        // (here, even before op_id) must converge to the full schema, so a write
+        // can stamp the four temporal axes and the provenance quad. Same
+        // `ALTER ADD IF NOT EXISTS` convergence proven for op_id.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("graph");
+        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+        conn.query("CREATE NODE TABLE File(id STRING, PRIMARY KEY(id))").unwrap();
+        conn.query("CREATE NODE TABLE Project(id STRING, PRIMARY KEY(id))").unwrap();
+        // The OLD shape: no temporal/provenance columns.
+        conn.query("CREATE REL TABLE FILE_PART_OF(FROM File TO Project)").unwrap();
+
+        create_schema(&conn).expect("create_schema converges the old store");
+        create_schema(&conn).expect("create_schema is idempotent");
+
+        conn.query("CREATE (:File {id:'f1'})").unwrap();
+        conn.query("CREATE (:Project {id:'p1'})").unwrap();
+        // A write stamping every new column now works end to end.
+        conn.query(
+            "MATCH (f:File {id:'f1'}),(p:Project {id:'p1'}) \
+             CREATE (f)-[:FILE_PART_OF {valid_at:1000, created_at:1000, origin:'agent', op_id:'op-1'}]->(p)",
+        )
+        .expect("a temporally-stamped edge write works after convergence");
+        // A live-edge read (NULL invalid_at/expired_at = open interval) returns it.
+        let live = conn
+            .query(
+                "MATCH (:File)-[r:FILE_PART_OF]->(:Project) \
+                 WHERE r.invalid_at IS NULL AND r.expired_at IS NULL RETURN r.origin",
+            )
+            .expect("the live-edge predicate columns exist")
+            .by_ref()
+            .count();
+        assert_eq!(live, 1, "the stamped edge reads as a live, open-interval fact");
     }
 }
