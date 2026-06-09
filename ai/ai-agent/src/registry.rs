@@ -100,6 +100,13 @@ impl TrustedActionSchema {
     }
 }
 
+/// The canonical set of production given-rule action ids. `lookup` resolves
+/// exactly these (plus a `#[cfg(test)]`-only schema), and the zero-false-positive
+/// canary invariant (canary-honeytools.md §3, CY-R4) enumerates them. A future
+/// approved-`Learned` admission path must extend the set it is checked over so
+/// the invariant keeps covering the whole acceptance domain, not only `Given`.
+pub(crate) const GIVEN_ACTIONS: &[&str] = &["graph.write"];
+
 /// Resolve the given-rule schema for an invoked action/tool id, or `None` if
 /// no rule is registered. With no rule the predict-before-act path cannot
 /// prove the action, so the gate keeps its conservative cap rather than lift
@@ -184,6 +191,38 @@ mod tests {
     fn an_unknown_action_has_no_rule() {
         assert!(lookup("fs.delete").is_none());
         assert!(lookup("").is_none());
+    }
+
+    #[test]
+    fn every_listed_given_action_resolves() {
+        // Keeps GIVEN_ACTIONS in sync with `lookup`'s production arms: a listed id
+        // that does not resolve (or a resolved given rule never listed) would let
+        // the canary invariant below silently skip part of the acceptance domain.
+        for action in GIVEN_ACTIONS {
+            let trusted = lookup(action).unwrap_or_else(|| panic!("{action} must resolve"));
+            assert_eq!(&trusted.schema().action, action);
+            assert!(matches!(trusted.schema().provenance, Provenance::Given));
+        }
+    }
+
+    #[test]
+    fn no_given_schema_mentions_a_canary_id() {
+        // CY-R4 (canary-honeytools.md §3): the structural canary is zero-false-
+        // positive only if no trusted schema's acceptance domain can itself name a
+        // reserved canary id, so an honest proposal proven against a Given rule can
+        // never bind or bake one. Scan the whole schema (action id, bind names,
+        // labels, fields, literal values) via its Debug form: the derive includes
+        // every field and the reserved token has no escape characters, so a
+        // substring search is a complete check. A future approved-Learned schema
+        // must be added to GIVEN_ACTIONS so it is covered too.
+        for action in GIVEN_ACTIONS {
+            let trusted = lookup(action).expect("a listed given action resolves");
+            let dump = format!("{:?}", trusted.schema());
+            assert!(
+                !dump.contains(crate::canary::RESERVED_CANARY_PREFIX),
+                "given schema {action} must not mention a reserved canary id"
+            );
+        }
     }
 
     #[test]
