@@ -340,15 +340,18 @@ async fn run_install_flatpak(
         install::InstallError::FlatpakFailed(e.to_string())
     })?;
 
-    // 2. Create default Arlen permission profile.
+    // 2. Create default Arlen permission profile. Flatpak apps run as the user, so
+    //    the grant is a user-tier profile at the canonical `~/.config/permissions/`
+    //    that the loaders actually read. The old `flatpak-profiles/` directory was
+    //    consulted by nothing, so its grants were silently ignored.
     queue.update_progress(job_id, 70, "creating permission profile");
     emit_progress(conn, job_id, 70, "creating permission profile").await;
     let profile = flatpak::default_permission_profile(app_id);
-    let profile_dir = dirs::data_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("~/.local/share"))
-        .join("arlen/flatpak-profiles");
-    let _ = std::fs::create_dir_all(&profile_dir);
-    let profile_path = profile_dir.join(format!("{app_id}.toml"));
+    let profile_path = arlen_permissions::profile_path(app_id)
+        .map_err(|e| install::InstallError::Io(std::io::Error::other(e.to_string())))?;
+    if let Some(dir) = profile_path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
     std::fs::write(&profile_path, &profile).map_err(install::InstallError::Io)?;
     tracing::info!("wrote Arlen permission profile for flatpak {app_id}");
 
@@ -371,14 +374,14 @@ async fn run_uninstall_flatpak(
         install::InstallError::FlatpakFailed(e.to_string())
     })?;
 
-    // 2. Remove Arlen permission profile.
+    // 2. Remove Arlen permission profile from the canonical user-tier location it
+    //    was written to.
     queue.update_progress(job_id, 70, "removing permission profile");
     emit_progress(conn, job_id, 70, "removing permission profile").await;
-    let profile_path = dirs::data_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("~/.local/share"))
-        .join(format!("arlen/flatpak-profiles/{app_id}.toml"));
-    if profile_path.exists() {
-        let _ = std::fs::remove_file(&profile_path);
+    if let Ok(profile_path) = arlen_permissions::profile_path(app_id) {
+        if profile_path.exists() {
+            let _ = std::fs::remove_file(&profile_path);
+        }
     }
 
     Ok(())
