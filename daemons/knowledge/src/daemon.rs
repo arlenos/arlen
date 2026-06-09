@@ -559,24 +559,24 @@ async fn persist_relation(graph: &GraphHandle, rel: &RelationResult, op_id: &str
     }
 }
 
-/// Persist an authorised relation *retract* (compensation): delete the single
-/// edge that carries this `op_id`, and only that edge.
+/// Persist an authorised relation *retract* (compensation): temporally close the
+/// single live edge that carries this `op_id`, and only that edge.
 ///
-/// The match is keyed by the `op_id` property, so this deletes exactly the edge
-/// the caller's own create stamped, never a bare edge it did not write. Only
-/// `FILE_PART_OF` carries the `op_id` column, so a retract of any other relation
-/// is refused fail-closed (there is no precise key, and we never delete an
-/// op-id-less edge here). The `op_id` non-emptiness was already enforced by
-/// `retract_relation`; it is re-checked and length-bounded here before it goes
-/// into the literal, mirroring `persist_relation`.
+/// The match is keyed by the `op_id` property AND the liveness predicate, so this
+/// closes exactly the live edge the caller's own create stamped, never a bare
+/// edge it did not write and never an already-closed one. Only `FILE_PART_OF`
+/// carries the `op_id` column, so a retract of any other relation is refused
+/// fail-closed (there is no precise key). The `op_id` non-emptiness was already
+/// enforced by `retract_relation`; it is re-checked and length-bounded here.
 ///
-/// Deletion is **idempotent**: a match-nothing run (the edge was already gone,
-/// or never existed) is `OK: absent`, a successful no-op. A run that deleted the
-/// edge is `OK: retracted`. The two differ only in their label; both guarantee
-/// the same post-state (no edge with this op_id), which is what compensation
-/// needs. The single statement runs on the serial graph thread, so a concurrent
-/// retract of the same edge cannot double-delete: the second sees nothing and
-/// reports `absent`.
+/// Closing is **idempotent**: a match-nothing run (no live edge with this op_id,
+/// already closed or never existed) is `OK: absent`, a successful no-op; a run
+/// that closed the edge is `OK: retracted`. Both guarantee the same post-state
+/// (no *live* edge with this op_id), which is what compensation needs, and the
+/// closed edge is retained for audit (bitemporal-knowledge-graph.md §4.7). The
+/// single statement runs on the serial graph thread, so a concurrent retract of
+/// the same edge cannot double-close: the second sees no live edge and reports
+/// `absent`.
 async fn persist_retract(graph: &GraphHandle, rel: &RelationResult, op_id: &str) -> String {
     if op_id.is_empty() {
         return "ERROR: retract requires an op_id".to_string();
@@ -600,13 +600,22 @@ async fn persist_retract(graph: &GraphHandle, rel: &RelationResult, op_id: &str)
     let to_id = escape_cypher(&rel.to_id);
     let op = escape_cypher(op_id);
 
-    // Endpoint labels and the relation type are validated identifiers (not
-    // attacker-controlled); only the ids and op_id are caller-supplied and are
-    // escaped into the literals. `deleted` counts the edges this statement
-    // matched and removed (RETURN runs over the same bound rows as DELETE).
+    // Retract is a temporal *close*, not a delete (bitemporal-knowledge-graph.md
+    // §4.7): the edge is retained, its two intervals set, so an undone action
+    // leaves a closed edge whose history corroborates the audit ledger rather
+    // than vanishing. The `MATCH` carries the liveness predicate, so `closed`
+    // counts only edges that were live before this call (a `SET` over an already-
+    // closed edge would otherwise inflate the count); R0 confirmed
+    // `SET ... RETURN count(*)` counts matched-and-mutated rows. Endpoint labels
+    // and the relation type are validated identifiers; only the ids and op_id
+    // are caller-supplied and escaped into the literals. `now` is the server
+    // clock at the close (a server-computed i64, safe to interpolate).
+    let now = crate::time::now().0;
     let cypher = format!(
         "MATCH (a:{from_label} {{id: '{from_id}'}})-[r:{rel_type} {{op_id: '{op}'}}]->(b:{to_label} {{id: '{to_id}'}}) \
-         DELETE r RETURN count(*) AS deleted"
+         WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
+         SET r.invalid_at = {now}, r.expired_at = {now} \
+         RETURN count(*) AS closed"
     );
     match graph.query_rows(cypher).await {
         Ok(rs) if row_count(&rs) > 0 => "OK: retracted".to_string(),
@@ -1067,7 +1076,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn persist_retract_deletes_only_the_op_id_edge() {
+    async fn persist_retract_closes_only_the_op_id_edge() {
         let (graph, _tmp) = spawn_test_graph().await;
         graph
             .write("CREATE (f:File {id: 'f1', path: '/x', app_id: 'test', last_accessed: 0})".into())
@@ -1094,18 +1103,29 @@ mod tests {
             .unwrap();
         assert_eq!(rows.rows[0][0].as_i64(), 1, "the edge survives a wrong-op retract");
 
-        // The matching op_id deletes exactly that edge.
+        // The matching op_id closes exactly that edge.
         let hit = persist_retract(&graph, &file_part_of("f1", "p1"), "op-1").await;
-        assert_eq!(hit, "OK: retracted", "the owning op_id retracts its edge");
-        let rows = graph
+        assert_eq!(hit, "OK: retracted", "the owning op_id closes its edge");
+        // The edge is RETAINED (closed, not deleted): the row still exists for
+        // audit, but it is no longer live.
+        let total = graph
             .query_rows(
                 "MATCH (:File {id: 'f1'})-[:FILE_PART_OF]->(:Project {id: 'p1'}) RETURN count(*) AS n".into(),
             )
             .await
             .unwrap();
-        assert_eq!(rows.rows[0][0].as_i64(), 0, "the edge is gone after its retract");
+        assert_eq!(total.rows[0][0].as_i64(), 1, "the closed edge is retained for audit");
+        let live = graph
+            .query_rows(
+                "MATCH (:File {id: 'f1'})-[r:FILE_PART_OF]->(:Project {id: 'p1'}) \
+                 WHERE r.invalid_at IS NULL AND r.expired_at IS NULL RETURN count(*) AS n"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(live.rows[0][0].as_i64(), 0, "no live edge remains after the retract");
 
-        // Retracting again is an idempotent success (the edge is already gone).
+        // Retracting again is an idempotent success (no live edge with this op_id).
         let again = persist_retract(&graph, &file_part_of("f1", "p1"), "op-1").await;
         assert_eq!(again, "OK: absent", "a repeat retract is an idempotent no-op");
     }
