@@ -1,7 +1,43 @@
 /// Serialise a conversation to a Markdown transcript, for "copy as Markdown"
-/// (a common chat-client export). Pure, so the format is unit-tested without a
-/// clipboard or the DOM.
-import type { Message } from "$lib/stores/conversation";
+/// (a common chat-client export), and to a portable JSON envelope for backup or
+/// transfer. Pure, so the formats are unit-tested without a clipboard or the DOM.
+import type { Message, Session } from "$lib/stores/conversation";
+
+/// The tag and version of the JSON export envelope, so a future format change is
+/// detected on import rather than mis-read.
+const EXPORT_FORMAT = "arlen-harness-conversation";
+const EXPORT_VERSION = 1;
+
+/// Serialise a whole conversation to a portable JSON envelope (backup or
+/// transfer), tagged with a format marker and version so import can reject a
+/// foreign or future file. The session is embedded verbatim; import re-validates
+/// it through `sanitizeSession`, so a hand-edited file cannot inject a malformed
+/// record.
+export function conversationToJson(session: Session): string {
+  return JSON.stringify(
+    { format: EXPORT_FORMAT, version: EXPORT_VERSION, session },
+    null,
+    2,
+  );
+}
+
+/// Parse a JSON export envelope, returning the embedded session payload (still
+/// untrusted, to be sanitised by the caller) or `null` when the input is not a
+/// well-formed envelope of the expected format and version. Deliberately does
+/// not sanitise here: that keeps this module free of a value-dependency on the
+/// store, and the caller runs `sanitizeSession` as the single validation point.
+export function parseConversationEnvelope(json: string): unknown {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const env = parsed as Record<string, unknown>;
+  if (env.format !== EXPORT_FORMAT || env.version !== EXPORT_VERSION) return null;
+  return env.session ?? null;
+}
 
 /// Render one message as a labelled Markdown block. Pending turns carry no
 /// content and are dropped by the caller; an error turn is shown as such so a

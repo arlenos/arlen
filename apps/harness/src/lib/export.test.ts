@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { conversationToMarkdown } from "./export";
-import type { Message } from "$lib/stores/conversation";
+import { conversationToMarkdown, conversationToJson, parseConversationEnvelope } from "./export";
+import type { Message, Session } from "$lib/stores/conversation";
 
 function msg(partial: Partial<Message> & Pick<Message, "role" | "text">): Message {
   return { id: 0, ...partial };
@@ -49,5 +49,46 @@ describe("conversationToMarkdown", () => {
   it("is empty for an empty or all-pending conversation", () => {
     expect(conversationToMarkdown([])).toBe("");
     expect(conversationToMarkdown([msg({ id: 1, role: "assistant", text: "", pending: true })])).toBe("");
+  });
+});
+
+describe("conversationToJson / parseConversationEnvelope", () => {
+  const session: Session = {
+    id: "s1",
+    title: "Notes",
+    createdAt: 5,
+    messages: [
+      msg({ id: 1, role: "user", text: "hi" }),
+      msg({ id: 2, role: "assistant", text: "hello" }),
+    ],
+  };
+
+  it("round-trips the session through the envelope", () => {
+    const back = parseConversationEnvelope(conversationToJson(session));
+    expect(back).toEqual(session);
+  });
+
+  it("tags the envelope with the format and version", () => {
+    const env = JSON.parse(conversationToJson(session));
+    expect(env.format).toBe("arlen-harness-conversation");
+    expect(env.version).toBe(1);
+  });
+
+  it("rejects invalid JSON", () => {
+    expect(parseConversationEnvelope("{not json")).toBeNull();
+  });
+
+  it("rejects a foreign or wrong-version envelope", () => {
+    expect(parseConversationEnvelope(JSON.stringify({ format: "other", version: 1, session }))).toBeNull();
+    expect(
+      parseConversationEnvelope(JSON.stringify({ format: "arlen-harness-conversation", version: 2, session })),
+    ).toBeNull();
+  });
+
+  it("rejects a non-object or a missing session", () => {
+    expect(parseConversationEnvelope("42")).toBeNull();
+    expect(
+      parseConversationEnvelope(JSON.stringify({ format: "arlen-harness-conversation", version: 1 })),
+    ).toBeNull();
   });
 });
