@@ -260,6 +260,32 @@ impl UnixGraphClient {
         parse_row_set(&bytes)
     }
 
+    /// LLM-free retrieval: ask the daemon for the node ids most relevant to a
+    /// keyword `query`, best-first, via the read socket's retrieval mode.
+    ///
+    /// A leading `0x03` byte selects the daemon's retrieval op (beside `0x01`
+    /// typed-rows and `0x02` write); the body is the JSON request. The daemon
+    /// fuses its keyword index and a bounded graph expansion, drops candidates
+    /// with no current graph presence, and returns up to `limit` ranked node ids
+    /// (the daemon clamps `limit` to its own ceiling). On success the response is
+    /// a JSON array of ids; a daemon `ERROR:` maps to [`QueryError`]. This makes
+    /// no LLM call at query time.
+    pub async fn retrieve(&self, query: &str, limit: i64) -> Result<Vec<String>, QueryError> {
+        let req = serde_json::json!({ "query": query, "limit": limit });
+        let json = serde_json::to_vec(&req).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x03);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_TYPED_RESPONSE_BYTES).await?;
+        if bytes.starts_with(b"ERROR:") {
+            Self::check_error(&String::from_utf8_lossy(&bytes))?;
+        }
+        serde_json::from_slice::<Vec<String>>(&bytes)
+            .map_err(|e| QueryError::InvalidQuery(format!("malformed retrieve response: {e}")))
+    }
+
     /// Create a built-in graph relation `from -[relation_type]-> to` between two
     /// existing nodes, via the daemon's write socket.
     ///
@@ -690,6 +716,46 @@ mod tests {
         assert!(
             matches!(result, Ok(RelationWriteOutcome::Created)),
             "an `OK: created` status must map to Created, got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn retrieve_sends_a_tagged_request_and_parses_ranked_ids() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-retrieve-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            // The retrieval-mode prefix, then the JSON request.
+            assert_eq!(req[0], 0x03, "retrieve requests carry the 0x03 prefix");
+            let body: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
+            assert_eq!(body["query"], "main.rs");
+            assert_eq!(body["limit"], 10);
+
+            let resp = br#"["/a/main.rs","p1"]"#;
+            conn.write_all(&(resp.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(resp).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let result = client.retrieve("main.rs", 10).await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(
+            result.unwrap(),
+            vec!["/a/main.rs".to_string(), "p1".to_string()],
+            "the ranked ids are parsed from the JSON array response"
         );
     }
 
