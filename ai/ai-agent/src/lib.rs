@@ -10,6 +10,7 @@
 
 pub mod agentic;
 pub mod behaviour;
+mod canary;
 pub mod dbus;
 pub mod compaction;
 pub mod config;
