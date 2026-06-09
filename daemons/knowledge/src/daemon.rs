@@ -1140,6 +1140,25 @@ async fn handle_client(
     };
     debug!(app_id = %app_id, "new graph daemon client");
 
+    // LCG §4.1: project the connecting app's capability at connect, so an app
+    // with graph access appears in the browse surface even when it only ever
+    // reads (the typed-query path mints no per-request token, so a pure reader
+    // would otherwise have no Grant node). Best-effort and off the request path:
+    // mint from the peer's profile and emit; an app with no graph access (the
+    // mint fails closed) gets no node, and a graph hiccup degrades the projection
+    // never the connection. An `unknown` peer (SO_PEERCRED unresolved) is skipped
+    // so its grants never pool under one shared id.
+    if app_id != "unknown" {
+        if let Some(p) = &peer {
+            let minted = auth.lock().await.issue_token_for_pid(p.pid).ok();
+            if let Some(token) = minted {
+                if let Err(e) = crate::lcg::emit_grant_node(&graph, &token).await {
+                    warn!(app_id = %app_id, "connect-time grant emit failed: {e}");
+                }
+            }
+        }
+    }
+
     loop {
         // Read query length.
         let mut len_buf = [0u8; 4];
