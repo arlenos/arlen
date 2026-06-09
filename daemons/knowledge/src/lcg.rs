@@ -68,8 +68,15 @@ pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Re
     let expires = token.expires_at.as_ref().map(time::dt_to_micros).unwrap_or(0);
     let ceiling_esc = escape_cypher(&declared_ceiling_json(token));
 
+    // The whole projection runs as ONE transaction, so a mid-emit failure rolls
+    // back rather than leaving a partial projection (a Grant with no reach edges,
+    // or prior nodes left un-superseded so the app reads as two live grants).
+    // Statements within the transaction see each other's writes, so the MATCH
+    // after each MERGE resolves the just-created node.
+    let mut stmts: Vec<String> = Vec::new();
+
     // The App principal (plain MERGE: do not clobber a name set by promotion).
-    graph.write(format!("MERGE (a:App {{id: '{app_esc}'}})")).await?;
+    stmts.push(format!("MERGE (a:App {{id: '{app_esc}'}})"));
 
     // The Grant node, born live. MERGE on the token id so a re-emit updates in
     // place rather than duplicating. The lifecycle flags and the use counters are
@@ -77,55 +84,45 @@ pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Re
     // issue/expiry) but must NOT resurrect a revoked or superseded grant (revoked
     // is terminal, §3.1) nor zero an accrued use count, so those are never reset
     // on a match.
-    graph
-        .write(format!(
-            "MERGE (g:Grant {{id: '{id_esc}'}}) \
-             ON CREATE SET g.app_id = '{app_esc}', g.pid = {pid}, g.issued_at = {issued}, \
-             g.expires_at = {expires}, g.declared_ceiling = '{ceiling_esc}', \
-             g.required = false, g.identity_verified = false, g.live = true, \
-             g.revoked = false, g.superseded = false, g.last_exercised_at = 0, g.use_count = 0 \
-             ON MATCH SET g.pid = {pid}, g.issued_at = {issued}, g.expires_at = {expires}, \
-             g.declared_ceiling = '{ceiling_esc}'",
-            pid = token.pid,
-        ))
-        .await?;
+    stmts.push(format!(
+        "MERGE (g:Grant {{id: '{id_esc}'}}) \
+         ON CREATE SET g.app_id = '{app_esc}', g.pid = {pid}, g.issued_at = {issued}, \
+         g.expires_at = {expires}, g.declared_ceiling = '{ceiling_esc}', \
+         g.required = false, g.identity_verified = false, g.live = true, \
+         g.revoked = false, g.superseded = false, g.last_exercised_at = 0, g.use_count = 0 \
+         ON MATCH SET g.pid = {pid}, g.issued_at = {issued}, g.expires_at = {expires}, \
+         g.declared_ceiling = '{ceiling_esc}'",
+        pid = token.pid,
+    ));
 
     // USED_BY: Grant -> App.
-    graph
-        .write(format!(
-            "MATCH (g:Grant {{id: '{id_esc}'}}), (a:App {{id: '{app_esc}'}}) \
-             MERGE (g)-[:USED_BY]->(a)"
-        ))
-        .await?;
+    stmts.push(format!(
+        "MATCH (g:Grant {{id: '{id_esc}'}}), (a:App {{id: '{app_esc}'}}) \
+         MERGE (g)-[:USED_BY]->(a)"
+    ));
 
     // The EntityType markers and GRANTS edges for each reachable type.
     for entity_type in reachable_types(token) {
         let t_esc = escape_cypher(&entity_type);
         let label_esc = escape_cypher(type_label(&entity_type));
-        graph
-            .write(format!(
-                "MERGE (t:EntityType {{id: '{t_esc}'}}) SET t.label = '{label_esc}'"
-            ))
-            .await?;
-        graph
-            .write(format!(
-                "MATCH (g:Grant {{id: '{id_esc}'}}), (t:EntityType {{id: '{t_esc}'}}) \
-                 MERGE (g)-[:GRANTS]->(t)"
-            ))
-            .await?;
+        stmts.push(format!(
+            "MERGE (t:EntityType {{id: '{t_esc}'}}) SET t.label = '{label_esc}'"
+        ));
+        stmts.push(format!(
+            "MATCH (g:Grant {{id: '{id_esc}'}}), (t:EntityType {{id: '{t_esc}'}}) \
+             MERGE (g)-[:GRANTS]->(t)"
+        ));
     }
 
     // Supersede the app's prior non-revoked nodes (this fresher mint replaces
     // them); a revoked node stays terminal, and this token's own node is excluded.
-    graph
-        .write(format!(
-            "MATCH (g:Grant {{app_id: '{app_esc}'}}) \
-             WHERE g.id <> '{id_esc}' AND NOT g.revoked \
-             SET g.superseded = true, g.live = false"
-        ))
-        .await?;
+    stmts.push(format!(
+        "MATCH (g:Grant {{app_id: '{app_esc}'}}) \
+         WHERE g.id <> '{id_esc}' AND NOT g.revoked \
+         SET g.superseded = true, g.live = false"
+    ));
 
-    Ok(())
+    graph.transaction(stmts).await
 }
 
 #[cfg(test)]
