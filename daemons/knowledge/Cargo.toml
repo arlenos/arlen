@@ -41,6 +41,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 notify = { version = "7", default-features = false, features = ["macos_kqueue"] }
 shellexpand = "3"
 arlen-permissions = { path = "../../sdk/permissions" }
+arlen-capsule = { path = "../../contracts/capsule" }
 regex = "1"
 
 [dev-dependencies]
