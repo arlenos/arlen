@@ -333,6 +333,15 @@ async fn run_install_flatpak(
 ) -> Result<(), install::InstallError> {
     use crate::flatpak;
 
+    // 0. Reject a malformed app_id before it reaches the flatpak CLI, the generated
+    //    profile TOML (unescaped interpolation) or the profile path (`..`/separator
+    //    traversal). The id arrives from the unauthenticated session-bus method.
+    if !flatpak::is_valid_app_id(app_id) {
+        return Err(install::InstallError::FlatpakFailed(format!(
+            "invalid flatpak app_id: {app_id}"
+        )));
+    }
+
     // 1. Install via flatpak CLI.
     queue.update_progress(job_id, 20, "installing via flatpak");
     emit_progress(conn, job_id, 20, "installing via flatpak").await;

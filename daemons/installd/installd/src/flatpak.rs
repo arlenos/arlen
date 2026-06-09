@@ -141,11 +141,28 @@ pub fn list_installed_flatpaks() -> Vec<(String, String, String, String)> {
     apps
 }
 
+/// Whether `app_id` is a syntactically valid flatpak application id: a non-empty,
+/// dot-separated reverse-DNS name over `[A-Za-z0-9._-]` (flatpak permits uppercase,
+/// e.g. `org.kde.Kdenlive`) with no `..` and no leading/trailing dot. The id is
+/// interpolated into the generated profile TOML and joined into the profile path,
+/// so this rejects the metacharacters (`"`, `]`, newline) that would inject grants
+/// and the separators (`/`, `..`) that would escape `~/.config/permissions/`.
+pub fn is_valid_app_id(app_id: &str) -> bool {
+    !app_id.is_empty()
+        && !app_id.starts_with('.')
+        && !app_id.ends_with('.')
+        && !app_id.contains("..")
+        && app_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+}
+
 /// Generate a default Arlen permission profile TOML for a Flatpak app.
 ///
 /// Flatpak apps get a conservative default profile. The actual sandbox
 /// enforcement comes from Flatpak itself; this profile controls
-/// Knowledge Graph and Event Bus access.
+/// Knowledge Graph and Event Bus access. The caller MUST validate `app_id` with
+/// [`is_valid_app_id`] first; the id is interpolated into the TOML unescaped.
 pub fn default_permission_profile(app_id: &str) -> String {
     format!(
         r#"[info]
@@ -203,6 +220,25 @@ mod tests {
         let parsed: toml::Value = toml::from_str(&profile).unwrap();
         assert!(parsed.get("info").is_some());
         assert!(parsed.get("graph").is_some());
+    }
+
+    #[test]
+    fn test_is_valid_app_id() {
+        assert!(is_valid_app_id("org.gnome.Calculator"));
+        assert!(is_valid_app_id("org.kde.Kdenlive"));
+        assert!(is_valid_app_id("com.obsproject.Studio"));
+        // Injection + traversal forms the format!/path build must never see.
+        for bad in [
+            "",
+            "x\"]\nwrite = [\"system.*\"]\n#",
+            "../../evil",
+            "a/b",
+            ".hidden",
+            "trail.",
+            "with space",
+        ] {
+            assert!(!is_valid_app_id(bad), "{bad:?} must be rejected");
+        }
     }
 
     #[test]
