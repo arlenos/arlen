@@ -86,8 +86,21 @@ pub fn write_profile_in(
 
     if !dir.exists() {
         fs::create_dir_all(dir)?;
-        let _ = fs::set_permissions(dir, fs::Permissions::from_mode(0o700));
     }
+    // The directory tree stays root-owned (so a same-uid process cannot swap a
+    // profile for a symlink or rewrite it) but must be TRAVERSABLE by the owning
+    // user, whose desktop-shell brokers and `--user` knowledge daemon read the 0644
+    // profile by name. `0o700 root` would deny the user `--x`, so `Path::exists()`
+    // on the reader side returns false on EACCES and the loader silently falls back
+    // to the spoofable `~/.config` tier (F3 no-op). The base is `0o755` and the
+    // per-uid dir `0o711`: root-write-only, owner-traversable, not listable by
+    // others. Profiles are capability declarations, not secrets, so cross-user read
+    // of a known id is acceptable; integrity is the property. Set unconditionally so
+    // a directory created at the old `0o700` is corrected on the next write.
+    if let Some(parent) = dir.parent() {
+        let _ = fs::set_permissions(parent, fs::Permissions::from_mode(0o755));
+    }
+    let _ = fs::set_permissions(dir, fs::Permissions::from_mode(0o711));
 
     // Atomic write: temp file then rename.
     let tmp = path.with_extension("tmp");
@@ -210,5 +223,18 @@ documents = true
         let dir = tempfile::TempDir::new().unwrap();
         assert!(write_profile_in(dir.path(), 1000, "../evil", VALID_PROFILE).is_err());
         assert!(write_profile_in(dir.path(), 1000, "", VALID_PROFILE).is_err());
+    }
+
+    #[test]
+    fn test_per_uid_dir_is_owner_traversable() {
+        // The owning user's loaders must be able to traverse to their 0644 profile.
+        // A 0700 per-uid dir would deny `--x` and silently break the F3 fix.
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = write_profile_in(dir.path(), 1000, "com.test", VALID_PROFILE).unwrap();
+        let uid_dir = path.parent().unwrap();
+        let dir_mode = fs::metadata(uid_dir).unwrap().permissions().mode() & 0o777;
+        assert_eq!(dir_mode, 0o711, "per-uid dir must be owner-traversable");
+        let file_mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(file_mode, 0o644, "profile must be world-readable, root-write-only");
     }
 }
