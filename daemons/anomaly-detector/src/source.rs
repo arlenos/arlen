@@ -108,6 +108,15 @@ impl Detector {
     pub fn process_entry(&mut self, e: &StructuralView) -> Vec<Alert> {
         let mut alerts = Vec::new();
 
+        // A deterministic safety stop the AI gate recorded (a structural-canary
+        // touch or a honeytool selection, canary-honeytools.md §2-§3). It is proof
+        // of a likely prompt-injection, not a statistical deviation, so it alerts
+        // immediately with no warmup; the cause class lives in the (content-free)
+        // outcome and keys the cooldown so distinct tripwires alert independently.
+        if e.kind == AuditKind::PolicyViolation {
+            alerts.push(Alert::policy_violation(&e.structural.outcome));
+        }
+
         if e.kind == AuditKind::Query {
             if let Some(a) = self.state.rate.observe_query(e.timestamp_micros, &self.cfg) {
                 alerts.push(a);
@@ -431,6 +440,24 @@ mod tests {
             alerts.iter().any(|a| a.kind == AlertKind::NovelNodeType),
             "novel node-type must alert: {alerts:?}"
         );
+    }
+
+    #[test]
+    fn process_entry_flags_a_policy_violation_immediately() {
+        // A deterministic safety stop (a canary/honeytool trip recorded as a
+        // PolicyViolation) alerts at once: no warmup, critical, keyed by cause so
+        // distinct tripwires cool down independently. grace_until = MAX isolates it
+        // from the no-interaction check.
+        let mut d = detector(State::default(), DetectorConfig::default(), MockSource::new(vec![]), i64::MAX);
+        let mut e = entry(0, AuditKind::PolicyViolation, 1000, &[]);
+        e.structural.outcome = "canary-tripped:structural".into();
+        let alerts = d.process_entry(&e);
+        let a = alerts
+            .iter()
+            .find(|a| a.kind == AlertKind::PolicyViolation)
+            .expect("a policy violation must alert");
+        assert!(a.critical, "a deterministic safety stop is critical");
+        assert_eq!(a.key, "policy-violation:canary-tripped:structural");
     }
 
     #[test]

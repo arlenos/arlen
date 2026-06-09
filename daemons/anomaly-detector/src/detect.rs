@@ -25,6 +25,11 @@ pub enum AlertKind {
     AuditTampered,
     /// A rate-limit violation reported by the graph/AI layer (S15).
     RateLimit,
+    /// The AI agent's gate recorded a policy violation: a deterministic safety
+    /// stop such as a structural-canary touch or a honeytool selection
+    /// (canary-honeytools.md §2-§3). Proof of a likely prompt-injection, not a
+    /// statistical deviation, so it is surfaced immediately and as critical.
+    PolicyViolation,
 }
 
 impl AlertKind {
@@ -36,6 +41,7 @@ impl AlertKind {
             AlertKind::NoUserInteraction => "no-user-interaction",
             AlertKind::AuditTampered => "audit-tampered",
             AlertKind::RateLimit => "rate-limit",
+            AlertKind::PolicyViolation => "policy-violation",
         }
     }
 }
@@ -111,6 +117,24 @@ impl Alert {
                  task, this can indicate a runaway or compromised component."
             ),
             critical: false,
+        }
+    }
+
+    /// The AI agent's gate recorded a deterministic safety stop (a structural
+    /// canary touch or a honeytool selection). `cause` is the content-free audit
+    /// outcome class (e.g. `canary-tripped:structural`, `honeytool-tripped`),
+    /// keyed so distinct tripwires alert independently. Critical: it is proof of a
+    /// likely prompt-injection, the rare warning the silent-curator model permits.
+    pub fn policy_violation(cause: &str) -> Self {
+        Alert {
+            kind: AlertKind::PolicyViolation,
+            key: format!("{}:{cause}", AlertKind::PolicyViolation.as_str()),
+            summary: "AI assistant stopped by a safety check".to_string(),
+            body: "A safety tripwire stopped an AI action because its input looked \
+                   like a prompt-injection attempt. The action did not run. Review \
+                   recent AI activity in Settings if this was unexpected."
+                .to_string(),
+            critical: true,
         }
     }
 
