@@ -51,6 +51,9 @@ const HWM_KEY: &str = "promotion_hwm";
 pub async fn run(pool: SqlitePool, graph: GraphHandle) -> Result<()> {
     // Ensure the metadata table exists for high-water mark tracking.
     ensure_metadata_table(&pool).await?;
+    // The FTS5 keyword index for LLM-free retrieval (§7.1) lives beside `events`
+    // and is populated here as nodes are promoted.
+    crate::fts::create_fact_text_index(&pool).await?;
 
     let project_store = ProjectStore::new(graph.clone());
 
@@ -174,6 +177,12 @@ async fn run_pass(
                             {
                                 debug!("project link skipped for {}: {e}", fp.path);
                             }
+                            // Index the File's keyword text for retrieval (§7.1).
+                            // Non-fatal: the index is an optimisation, so a
+                            // transient error must not stall graph promotion.
+                            if let Err(e) = index_file_fact_text(pool, &fp.path).await {
+                                debug!("fact_text index skipped for {}: {e}", fp.path);
+                            }
                         }
                     }
                 }
@@ -235,6 +244,20 @@ async fn run_pass(
 /// Deserializes the payload to obtain the file path and app ID, then
 /// creates or merges a `File` node (keyed by path) and an `App` node,
 /// with an `ACCESSED_BY` edge between them.
+/// Synthesise and index a File node's keyword text for retrieval (§7.1). The
+/// File node id is its path, so the index entry is keyed by the same id the graph
+/// uses, which is what lets a keyword hit fuse with graph traversal. Idempotent:
+/// re-promotion of the same file re-upserts identical text, never a duplicate.
+/// The full §7.1 "same SQLite transaction as the HWM advance" (no drift) is a
+/// follow-up; this idempotent per-file upsert converges (a crash before the
+/// upsert is fixed on the next pass, which re-promotes from the un-advanced HWM).
+async fn index_file_fact_text(pool: &SqlitePool, path: &str) -> Result<()> {
+    let mut fields = std::collections::BTreeMap::new();
+    fields.insert("path".to_string(), path.to_string());
+    let text = crate::retrieval::fact_text("File", &fields);
+    crate::fts::upsert_fact_text(pool, path, &text).await
+}
+
 async fn promote_file_opened(
     graph: &GraphHandle,
     event_id: &str,
@@ -662,6 +685,26 @@ mod shell_event_tests {
             .and_then(|r| r.first())
             .map(|v| v.as_i64())
             .unwrap_or(0)
+    }
+
+    #[tokio::test]
+    async fn index_file_fact_text_makes_a_file_searchable_by_basename() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::fts::create_fact_text_index(&pool).await.unwrap();
+
+        index_file_fact_text(&pool, "/home/tim/proj/main.rs").await.unwrap();
+
+        // The synthesised text includes the basename, so a keyword search finds
+        // the File by its node id (the path).
+        let hits = crate::fts::search_fact_text(&pool, "main.rs", 10).await.unwrap();
+        assert_eq!(hits, vec!["/home/tim/proj/main.rs".to_string()]);
+        // Re-indexing the same file does not duplicate it.
+        index_file_fact_text(&pool, "/home/tim/proj/main.rs").await.unwrap();
+        assert_eq!(crate::fts::search_fact_text(&pool, "main.rs", 10).await.unwrap().len(), 1);
     }
 
     #[tokio::test]
