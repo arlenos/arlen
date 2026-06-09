@@ -12,13 +12,30 @@
 //! durable undo-log that stores these, and the executor arms that capture them
 //! are separate increments built on this.
 
+use serde::{Deserialize, Serialize};
+
 /// A canonical, absolute filesystem path: the type-level guarantee that a path
 /// is absolute and free of `.`/`..`/empty components. Symlink resolution is the
 /// resolver's job at capture time (slice.rs `PathResolver`); this type carries
 /// the syntactic canonical invariant the inverse vocabulary relies on, so an
 /// inverse can never name a relative or traversal path.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
 pub struct CanonicalPath(String);
+
+// A persisted CanonicalPath must re-pass the same shape validation on load, so a
+// tampered or corrupt undo-log record can never carry a relative or traversal
+// path into an inverse. Deserialize routes through `new`, the one constructor.
+impl<'de> Deserialize<'de> for CanonicalPath {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        CanonicalPath::new(&s)
+            .ok_or_else(|| serde::de::Error::custom(format!("{s:?} is not a canonical absolute path")))
+    }
+}
 
 impl CanonicalPath {
     /// Construct from an already-canonical absolute path, fail-closed on a
@@ -54,7 +71,7 @@ impl CanonicalPath {
 /// config (`~/.config/arlen`). The executor validates the file's location at
 /// capture; this type pairs the file with the dotted key whose prior value the
 /// inverse restores.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SettingTarget {
     file: String,
     key: String,
@@ -86,7 +103,7 @@ impl SettingTarget {
 /// The identity of an entity an action created: its canonical path plus a
 /// commit-time fingerprint, so undo (`DeleteCreated`) deletes exactly what the
 /// action created and never a later replacement that reused the path.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreatedIdentity {
     path: CanonicalPath,
     fingerprint: String,
@@ -119,7 +136,7 @@ impl CreatedIdentity {
 /// An opaque handle to a filesystem snapshot (Snapper/Btrfs), the only
 /// crash-exact inverse witness (§9); gated on a snapshot-capable filesystem at
 /// capture time.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SnapshotRef(String);
 
 impl SnapshotRef {
@@ -140,7 +157,7 @@ impl SnapshotRef {
 /// The captured inverse of a committed non-graph action (§5): a closed enum
 /// total over the actions the executor can commit. The executor captures one of
 /// these write-ahead; replaying it is the undo.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InverseReceipt {
     /// Relocation: undo moves `now` back to `prior`. Captured: the prior path.
     RestorePath {
@@ -176,7 +193,7 @@ pub enum InverseReceipt {
 /// The domain of a non-graph effect (reversible-receipts-and-the-effect-model.md
 /// §3.1). Closed: it selects the writer seam and the inverse-capture seam, and a
 /// new domain extends this enum rather than adding an `Effect` variant.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EffectDomain {
     /// A filesystem operation (move, trash, create).
     Filesystem,
@@ -190,7 +207,7 @@ pub enum EffectDomain {
 /// [`InverseReceipt`] variant the executor will capture at commit. A small closed
 /// enum so the gate and the content-free activity view label it without leaking
 /// operands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CaptureShape {
     /// A prior path is captured ([`InverseReceipt::RestorePath`]).
     RestorePath,
@@ -205,7 +222,7 @@ pub enum CaptureShape {
 /// What the undo of a `ReversibleWithCost` effect spends that the user owns
 /// (§3.2). The named examples from the design; closed and extensible. Arlen does
 /// not auto-execute this class: the cost is the user's to accept.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ResidualCost {
     /// Undo costs a refund or charge.
     Fee,
@@ -215,7 +232,7 @@ pub enum ResidualCost {
 
 /// Why an effect has no capturable inverse (§3.2). The named examples; closed and
 /// extensible.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IrreversibilityReason {
     /// A permanent delete with no recoverable prior state.
     PermanentDelete,
@@ -229,7 +246,7 @@ pub enum IrreversibilityReason {
 /// ONE source of truth for "may the gate lift this, and how must it be reported".
 /// Two consumers read this same field (the lift bit and the audit-honest kind),
 /// which is not a synchronisation hazard because it is one field read twice.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InverseClass {
     /// A captured inverse fully undoes it at no residual cost. The only class
     /// eligible for the autonomous lift.
@@ -316,6 +333,31 @@ mod tests {
             reason: IrreversibilityReason::PermanentDelete,
         }
         .is_reversible());
+    }
+
+    #[test]
+    fn canonical_path_validates_on_deserialize() {
+        // A valid path round-trips as a bare string (transparent).
+        let p = CanonicalPath::new("/home/tim/x").unwrap();
+        let json = serde_json::to_string(&p).unwrap();
+        assert_eq!(json, "\"/home/tim/x\"");
+        assert_eq!(serde_json::from_str::<CanonicalPath>(&json).unwrap(), p);
+        // A tampered or corrupt record carrying a traversal / relative path is
+        // rejected on deserialize, so the shape invariant survives persistence,
+        // not only construction.
+        assert!(serde_json::from_str::<CanonicalPath>("\"/home/../etc\"").is_err());
+        assert!(serde_json::from_str::<CanonicalPath>("\"relative/x\"").is_err());
+        assert!(serde_json::from_str::<CanonicalPath>("\"/\"").is_err());
+    }
+
+    #[test]
+    fn inverse_receipt_round_trips_through_json() {
+        let inv = InverseReceipt::RestoreValue {
+            target: SettingTarget::new("shell.toml", "layout.mode").unwrap(),
+            prior: Some("tiling".to_string()),
+        };
+        let json = serde_json::to_string(&inv).unwrap();
+        assert_eq!(serde_json::from_str::<InverseReceipt>(&json).unwrap(), inv);
     }
 
     #[test]
