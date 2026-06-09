@@ -8,6 +8,7 @@ pub mod fts;
 pub mod fuse;
 pub mod graph;
 pub mod identity;
+pub mod lcg;
 pub mod lifecycle;
 pub mod migration;
 pub mod permission;
