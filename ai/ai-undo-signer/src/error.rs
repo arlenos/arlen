@@ -14,6 +14,12 @@ pub enum SignerError {
     /// not on the admitted allowlist).
     #[error("undo-log peer rejected: {0}")]
     Unauthorized(String),
+    /// A submission that would make the record chain fold to an illegal
+    /// sequence (a duplicate create, or a transition the lifecycle forbids). It
+    /// is refused rather than sealed, so the log stays a legal event source by
+    /// construction and an entry can never be wedged to a corrupt state.
+    #[error("undo-log submission rejected: {0}")]
+    IllegalRecord(String),
     /// An underlying I/O error.
     #[error(transparent)]
     Io(#[from] std::io::Error),
