@@ -347,11 +347,19 @@ struct SliceSpec {
     /// (the walk stops descending at that point).
     too_deep: bool,
     /// A node-level mutation the slice cannot soundly predict yet, if any.
-    /// `AssertNode` would need a cross-label id check the id-keyed state cannot
-    /// do; `RetractNode`'s real blast radius is every edge incident to the
-    /// node, which the bounded slice does not load (loading them all would be
-    /// an unbounded traversal). Carries the effect name for the refusal.
+    /// Today only `RetractNode`: its real blast radius is every edge incident to
+    /// the node, which the bounded slice does not load (loading them all would be
+    /// an unbounded traversal). `AssertNode` is admitted (loaded + daemon
+    /// create-only backstop). Carries the effect name for the refusal.
     node_mutation: Option<&'static str>,
+    /// Bindings asserted by an `AssertNode` effect. Each MUST be matched by a
+    /// `Not(NodeExists{bind})` precondition (recorded in `absence_proven`), so a
+    /// node create can only ever be proven against an explicit absence, never on
+    /// a bare point-in-time empty read. Enforced in `extract`.
+    asserted_nodes: BTreeSet<String>,
+    /// Bindings a `Not(NodeExists{bind})` precondition proves absent. The
+    /// absence proof an `AssertNode` requires before it can contribute to a lift.
+    absence_proven: BTreeSet<String>,
     /// Every label, field, and edge-type identifier the schema names, from
     /// preconditions and effects alike. Validated as safe identifiers before
     /// any read, so an effect-only identifier (a `SetField` field, an
@@ -396,14 +404,27 @@ impl SliceSpec {
                 spec.edges.len()
             )));
         }
-        // A node-level mutation cannot be soundly predicted on a bounded,
-        // id-keyed slice: creation needs a cross-label id check, and deletion
-        // cascades to every incident edge the slice did not load. Refuse
-        // rather than predict an understated blast radius; these land with the
-        // richer identity / blast-radius model (a world-model follow-up).
+        // `AssertNode` is now admitted (loaded like a precondition node, with the
+        // daemon's label-agnostic create-only probe as the cross-label backstop;
+        // see `walk_effect`). Only `RetractNode` remains refused: its `DETACH
+        // DELETE` blast radius is every incident edge, which the bounded slice did
+        // not load, so the prediction would understate it. That lands with a
+        // richer blast-radius model.
         if let Some(effect) = spec.node_mutation {
             return Err(SliceError::UnsupportedEffect(format!(
                 "{effect}: a node-level mutation the bounded slice cannot represent"
+            )));
+        }
+        // An `AssertNode` may only be admitted with an explicit `Not(NodeExists)`
+        // absence proof for the same bind. Without it the strict-create would
+        // still predict `Valid` against a point-in-time empty slice and could be
+        // auto-lifted on a bare absence; requiring the precondition makes the
+        // node create provable only against a stated absence, structurally (not
+        // by convention). The node create has no atomic execute-time re-check yet
+        // (unlike edges), so this absence proof is the gate.
+        if let Some(bind) = spec.asserted_nodes.difference(&spec.absence_proven).next() {
+            return Err(SliceError::UnsupportedEffect(format!(
+                "AssertNode {bind}: a node create requires a Not(NodeExists) precondition proving the target's absence"
             )));
         }
         // Validate every identifier the schema names, up front and before any
@@ -520,17 +541,44 @@ impl SliceSpec {
                 self.needs_read_only = true;
                 self.path_bindings.insert(bind.clone());
             }
-            Predicate::Not(inner) => self.walk_precondition(inner, depth + 1),
+            Predicate::Not(inner) => {
+                // A `Not(NodeExists{bind})` is the absence proof an `AssertNode`
+                // requires: record the bind so `extract` can demand it. Recorded
+                // before recursing so the inner walk still loads the node.
+                if let Predicate::NodeExists { bind, .. } = inner.as_ref() {
+                    self.absence_proven.insert(bind.clone());
+                }
+                self.walk_precondition(inner, depth + 1);
+            }
         }
     }
 
     fn walk_effect(&mut self, e: &Effect) {
         match e {
-            // Node-level mutations: not soundly predictable on a bounded,
-            // id-keyed slice, so flag them for refusal in `extract`.
-            Effect::AssertNode { .. } => {
-                self.node_mutation.get_or_insert("AssertNode");
+            // A guarded node create (§5.3). Load the target's existence exactly
+            // as a `NodeExists` precondition would (label, identifier, node bind),
+            // so the strict-create in `apply_effects` sees a pre-existing
+            // same-label node and fails closed instead of double-creating. A
+            // cross-label id collision (a different label reusing this id) is not
+            // visible to the label-specific load, but the daemon's `create_node`
+            // does a label-AGNOSTIC create-only id probe, so it refuses such a
+            // write at execute: no unsound write can result, only a predicted
+            // create that the executor's re-validation reports as failed. A
+            // `Not(NodeExists{bind})` precondition is REQUIRED (enforced in
+            // `extract` via `asserted_nodes`/`absence_proven`): without it the
+            // strict-create would still predict `Valid` against a point-in-time
+            // empty slice and could be auto-lifted on a bare absence, so the
+            // schema is refused rather than admitted.
+            Effect::AssertNode { bind, label } => {
+                self.set_label(bind, label);
+                self.add_ident(label);
+                self.mark_node(bind);
+                self.asserted_nodes.insert(bind.clone());
             }
+            // A node deletion's real blast radius is every edge incident to the
+            // node, which a bounded id-keyed slice does not load, so `DETACH
+            // DELETE` would strip history the prediction never saw. Refuse it
+            // (flag for `extract`); it lands with a richer blast-radius model.
             Effect::RetractNode { .. } => {
                 self.node_mutation.get_or_insert("RetractNode");
             }
@@ -1983,33 +2031,92 @@ tmpfs /tmp\\040dir tmpfs rw 0 0
     }
 
     #[test]
-    fn node_level_mutations_are_refused_until_the_richer_model_exists() {
-        // AssertNode (create) and RetractNode (delete) both have effects the
-        // bounded, id-keyed slice cannot soundly represent, so they are
-        // refused rather than predicted with an understated impact.
-        for effect in [
-            Effect::AssertNode {
-                bind: "new".to_string(),
-                label: "Tag".to_string(),
-            },
-            Effect::RetractNode {
+    fn retract_node_is_still_refused() {
+        // RetractNode's DETACH-DELETE blast radius is every incident edge, which
+        // the bounded slice did not load, so it stays refused.
+        let schema = ActionSchema {
+            action: "graph.write".to_string(),
+            preconditions: vec![Predicate::NodeExists {
                 bind: "old".to_string(),
-            },
-        ] {
-            let schema = ActionSchema {
-                action: "graph.write".to_string(),
-                preconditions: vec![Predicate::NodeExists {
-                    bind: "old".to_string(),
-                    label: "Tag".to_string(),
-                }],
-                effects: vec![effect],
-                provenance: Provenance::Given,
-            };
-            assert!(
-                matches!(SliceSpec::extract(&schema), Err(SliceError::UnsupportedEffect(_))),
-                "a node-level mutation must be refused"
-            );
-        }
+                label: "Tag".to_string(),
+            }],
+            effects: vec![Effect::RetractNode {
+                bind: "old".to_string(),
+            }],
+            provenance: Provenance::Given,
+        };
+        assert!(
+            matches!(SliceSpec::extract(&schema), Err(SliceError::UnsupportedEffect(_))),
+            "RetractNode must stay refused"
+        );
+    }
+
+    #[test]
+    fn assert_node_is_admitted_and_loads_its_target() {
+        // AssertNode is admitted: the slice loads its target (so apply_effects'
+        // strict-create sees a same-label pre-existing node and fails closed). A
+        // Not(NodeExists) precondition proves the absence the create needs to
+        // lift; the asserted bind is loaded either way.
+        let schema = ActionSchema {
+            action: "graph.write".to_string(),
+            preconditions: vec![Predicate::Not(Box::new(Predicate::NodeExists {
+                bind: "new".to_string(),
+                label: "Summary".to_string(),
+            }))],
+            effects: vec![Effect::AssertNode {
+                bind: "new".to_string(),
+                label: "Summary".to_string(),
+            }],
+            provenance: Provenance::Given,
+        };
+        let spec = SliceSpec::extract(&schema).expect("AssertNode is admitted");
+        assert!(
+            spec.node_binds.contains("new"),
+            "the asserted target is loaded so the strict-create can see its existence"
+        );
+    }
+
+    #[test]
+    fn assert_node_without_an_absence_proof_is_refused() {
+        // An AssertNode that does not prove the target absent (no
+        // Not(NodeExists{bind})) is refused: otherwise the strict-create would
+        // predict Valid on a bare point-in-time empty slice and could auto-lift.
+        let schema = ActionSchema {
+            action: "graph.write".to_string(),
+            preconditions: vec![],
+            effects: vec![Effect::AssertNode {
+                bind: "new".to_string(),
+                label: "Summary".to_string(),
+            }],
+            provenance: Provenance::Given,
+        };
+        assert!(
+            matches!(SliceSpec::extract(&schema), Err(SliceError::UnsupportedEffect(_))),
+            "a node create without a Not(NodeExists) absence proof must be refused"
+        );
+    }
+
+    #[test]
+    fn assert_node_with_a_conflicting_label_is_refused() {
+        // The AssertNode effect label must agree with the Not(NodeExists) absence
+        // proof's label for the same bind; a mismatch is an ambiguous-label
+        // refusal (so the loaded node and the asserted node are the same label).
+        let schema = ActionSchema {
+            action: "graph.write".to_string(),
+            preconditions: vec![Predicate::Not(Box::new(Predicate::NodeExists {
+                bind: "new".to_string(),
+                label: "File".to_string(),
+            }))],
+            effects: vec![Effect::AssertNode {
+                bind: "new".to_string(),
+                label: "Summary".to_string(),
+            }],
+            provenance: Provenance::Given,
+        };
+        assert!(
+            matches!(SliceSpec::extract(&schema), Err(SliceError::AmbiguousLabel(_))),
+            "a label that disagrees with the absence-proof precondition is refused"
+        );
     }
 
     #[test]
