@@ -42,6 +42,35 @@ pub struct ProvenanceView {
     pub accessed_by_others: bool,
 }
 
+/// One capability grant in the Living Capability Graph browse surface, as served
+/// by [`UnixGraphClient::access_grants`]. Mirrors the daemon's projection: the
+/// declared ceiling (faithful scope JSON), the queryable type `reach`, and the
+/// lifecycle flags. `live` is resolved fresh by the daemon at read time.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GrantView {
+    /// The grant id (the projected token's UUIDv7).
+    pub id: String,
+    /// The principal the grant belongs to.
+    pub app_id: String,
+    /// The declared capability ceiling, as canonical scope JSON.
+    pub declared_ceiling: String,
+    /// Whether this reach was declared essential at enroll.
+    pub required: bool,
+    /// Whether the app identity is verified (false while it rests on the
+    /// spoofable app-id resolution, the F3 caveat).
+    pub identity_verified: bool,
+    /// Whether the projected token still verifies (resolved fresh at read time).
+    pub live: bool,
+    /// Whether the user severed this reach.
+    pub revoked: bool,
+    /// Whether a fresher mint replaced this node.
+    pub superseded: bool,
+    /// When the grant was issued (epoch micros).
+    pub issued_at: i64,
+    /// The entity types this grant can reach (the queryable projection).
+    pub reach: Vec<String>,
+}
+
 /// Largest response frame the client will allocate for the legacy text path.
 /// Generous, because a display query can legitimately return a large blob;
 /// the limit only exists so a buggy or compromised daemon cannot exhaust
@@ -339,6 +368,26 @@ impl UnixGraphClient {
         let view = serde_json::from_slice::<ProvenanceView>(&bytes)
             .map_err(|e| QueryError::InvalidQuery(format!("malformed provenance response: {e}")))?;
         Ok(Some(view))
+    }
+
+    /// Read the caller's capability grants via the read socket's access-grants op
+    /// (living-capability-graph.md §5).
+    ///
+    /// A leading `0x05` byte selects the daemon's caller-scoped grant browse read.
+    /// The daemon scopes the result to the caller's kernel-attested identity (a
+    /// normal app receives only its own grants; the request carries no scope
+    /// field), recomputes `live` fresh, and returns a JSON array of [`GrantView`].
+    /// An app with no grants gets an empty vector, not an error. A daemon `ERROR:`
+    /// (rate-limited, internal failure) maps to [`QueryError`].
+    pub async fn access_grants(&self) -> Result<Vec<GrantView>, QueryError> {
+        // The op takes no request body; the single prefix byte selects it.
+        let body = [0x05u8];
+        let bytes = self.round_trip(&body, MAX_TYPED_RESPONSE_BYTES).await?;
+        if bytes.starts_with(b"ERROR:") {
+            Self::check_error(&String::from_utf8_lossy(&bytes))?;
+        }
+        serde_json::from_slice::<Vec<GrantView>>(&bytes)
+            .map_err(|e| QueryError::InvalidQuery(format!("malformed access_grants response: {e}")))
     }
 
     /// Create a built-in graph relation `from -[relation_type]-> to` between two
@@ -936,6 +985,43 @@ mod tests {
         let _ = std::fs::remove_file(&path);
 
         assert_eq!(result.unwrap(), None, "out-of-scope is the no-oracle None, not an error");
+    }
+
+    #[tokio::test]
+    async fn access_grants_sends_the_prefix_and_parses_the_views() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-access-grants-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            // The op is selected by the single 0x05 prefix byte, no body.
+            assert_eq!(req, vec![0x05], "access_grants is a bare 0x05 prefix");
+
+            let resp = br#"[{"id":"g1","app_id":"com.x","declared_ceiling":"{}","required":false,"identity_verified":false,"live":true,"revoked":false,"superseded":false,"issued_at":1,"reach":["File"]}]"#;
+            conn.write_all(&(resp.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(resp).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let grants = client.access_grants().await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        let grants = grants.unwrap();
+        assert_eq!(grants.len(), 1);
+        assert_eq!(grants[0].app_id, "com.x");
+        assert!(grants[0].live);
+        assert_eq!(grants[0].reach, vec!["File".to_string()]);
     }
 
     #[tokio::test]
