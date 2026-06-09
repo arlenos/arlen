@@ -583,6 +583,11 @@ struct GrantView {
 /// The uniform `access_grants` failure shape.
 const ACCESS_GRANTS_ERROR: &str = "ERROR: access_grants failed";
 
+/// Cap on (grant, type) rows returned by `access_grants`, bounding the response
+/// so one app's accumulated grant history cannot grow it without limit. Generous
+/// for a real app's live + dormant + revoked grants and their type reach.
+const ACCESS_GRANTS_ROW_CAP: usize = 5000;
+
 /// LCG-R4 (living-capability-graph.md §5): the caller-scoped grant browse read.
 ///
 /// Scopes by the **kernel-attested** `app_id` (resolved from `SO_PEERCRED` at
@@ -607,29 +612,19 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
         format!(" {{app_id: '{app_esc}'}}")
     };
 
-    // The reach (grant id -> type labels) is read separately and grouped here: a
-    // collected LIST cell is not faithfully representable on the typed row path,
-    // so both queries return only scalars.
-    let reach_cypher =
-        format!("MATCH (g:Grant{scope})-[:GRANTS]->(t:EntityType) RETURN g.id, t.label");
-    let mut reach: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    match graph.query_rows(reach_cypher).await {
-        Ok(rs) => {
-            for row in rs.rows {
-                if row.len() >= 2 {
-                    reach
-                        .entry(row[0].as_str().to_string())
-                        .or_default()
-                        .push(row[1].as_str().to_string());
-                }
-            }
-        }
-        Err(_) => return ACCESS_GRANTS_ERROR.to_string(),
-    }
-
+    // One query, one consistent snapshot: a row per (grant, reachable type),
+    // grouped by grant id here. A single query (vs a separate reach query) makes
+    // the reach join atomic, and returning the label per row (not a collected
+    // LIST) keeps every cell a scalar the typed row path can represent. Superseded
+    // nodes are excluded (they accumulate on every reconnect and are collapsed in
+    // the surface anyway, §3.1), and the row count is bounded so one app's grant
+    // history cannot grow the response without limit.
     let cypher = format!(
-        "MATCH (g:Grant{scope}) RETURN g.id, g.app_id, g.declared_ceiling, g.required, \
-         g.identity_verified, g.live, g.revoked, g.superseded, g.pid, g.issued_at"
+        "MATCH (g:Grant{scope}) WHERE NOT g.superseded \
+         OPTIONAL MATCH (g)-[:GRANTS]->(t:EntityType) \
+         RETURN g.id, g.app_id, g.declared_ceiling, g.required, g.identity_verified, \
+         g.live, g.revoked, g.superseded, g.pid, g.issued_at, t.label \
+         LIMIT {ACCESS_GRANTS_ROW_CAP}"
     );
     let rows = match graph.query_rows(cypher).await {
         Ok(rs) => rs.rows,
@@ -637,31 +632,49 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
     };
 
     let mut views: Vec<GrantView> = Vec::new();
+    let mut index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for row in rows {
-        if row.len() < 10 {
+        if row.len() < 11 {
             continue;
         }
         let id = row[0].as_str().to_string();
-        let stored_live = row[5].as_bool();
-        let pid = row[8].as_i64();
-        // Fresh liveness: a stored-live grant whose process is gone renders
-        // not-live, caught here at read time rather than trusting the stored flag.
-        // `try_from` keeps an out-of-range or negative stored pid from wrapping.
-        let live = stored_live
-            && u32::try_from(pid).map(process_alive).unwrap_or(false);
-        let reach = reach.get(&id).cloned().unwrap_or_default();
-        views.push(GrantView {
-            app_id: row[1].as_str().to_string(),
-            declared_ceiling: row[2].as_str().to_string(),
-            required: row[3].as_bool(),
-            identity_verified: row[4].as_bool(),
-            live,
-            revoked: row[6].as_bool(),
-            superseded: row[7].as_bool(),
-            issued_at: row[9].as_i64(),
-            reach,
-            id,
+        let slot = *index.entry(id.clone()).or_insert_with(|| {
+            let revoked = row[6].as_bool();
+            let superseded = row[7].as_bool();
+            let stored_live = row[5].as_bool();
+            let pid = row[8].as_i64();
+            // Fresh liveness: a stored-live grant renders live only if its process
+            // is still alive (death caught at read time) AND it is neither revoked
+            // nor superseded (defensive: the active-reach flag is correct in the
+            // reader, not only by emitter discipline). `try_from` keeps an
+            // out-of-range or negative stored pid from wrapping.
+            let live = stored_live
+                && !revoked
+                && !superseded
+                && u32::try_from(pid).map(process_alive).unwrap_or(false);
+            views.push(GrantView {
+                id: id.clone(),
+                app_id: row[1].as_str().to_string(),
+                declared_ceiling: row[2].as_str().to_string(),
+                required: row[3].as_bool(),
+                identity_verified: row[4].as_bool(),
+                live,
+                revoked,
+                superseded,
+                issued_at: row[9].as_i64(),
+                reach: Vec::new(),
+            });
+            views.len() - 1
         });
+        // Append this row's reach label (OPTIONAL MATCH yields an empty string
+        // when the grant reaches no type).
+        let label = row[10].as_str();
+        if !label.is_empty() {
+            let reach = &mut views[slot].reach;
+            if !reach.iter().any(|l| l == label) {
+                reach.push(label.to_string());
+            }
+        }
     }
     serde_json::to_string(&views).unwrap_or_else(|_| "[]".to_string())
 }
@@ -1292,7 +1305,17 @@ async fn handle_client(
             let response = if let Some(reason) = violation {
                 format!("ERROR: RateLimited: {reason}")
             } else {
-                handle_access_grants(&app_id, &graph).await
+                // Bounded wait, as the typed and provenance read ops have, so a
+                // slow graph cannot pin the connection without a client deadline.
+                match tokio::time::timeout(
+                    Duration::from_millis(500),
+                    handle_access_grants(&app_id, &graph),
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(_elapsed) => ACCESS_GRANTS_ERROR.to_string(),
+                }
             };
             timing_noise().await;
             let response_bytes = response.as_bytes();
