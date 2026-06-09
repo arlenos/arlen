@@ -1,10 +1,11 @@
 /// Project CRUD and PART_OF edge operations against the Ladybug graph.
 
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::graph::{CellValue, GraphHandle, RowSet};
+use crate::time::{dt_to_micros, micros_to_dt};
 use crate::utils::escape_cypher;
 
 // ── Types ───────────────────────────────────────────────────────────────
@@ -125,20 +126,6 @@ impl Project {
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
-/// Convert DateTime<Utc> to milliseconds since epoch for graph storage.
-fn dt_to_millis(dt: &DateTime<Utc>) -> i64 {
-    dt.timestamp_millis()
-}
-
-/// Convert millis to Option<DateTime<Utc>>. Returns None for 0.
-fn millis_to_dt(millis: i64) -> Option<DateTime<Utc>> {
-    if millis == 0 {
-        None
-    } else {
-        Utc.timestamp_millis_opt(millis).single()
-    }
-}
-
 /// Parse a Project from a RowSet where columns match the SELECT order.
 fn parse_project(rs: &RowSet, row_idx: usize) -> Option<Project> {
     let row = rs.rows.get(row_idx)?;
@@ -177,12 +164,12 @@ fn parse_project(rs: &RowSet, row_idx: usize) -> Option<Project> {
         accent_color: s(col("p.accent_color")),
         icon: s(col("p.icon")),
         status: ProjectStatus::from_str(&s(col("p.status"))),
-        created_at: millis_to_dt(created_at_ms).unwrap_or_else(Utc::now),
-        last_accessed: millis_to_dt(i(col("p.last_accessed"))),
+        created_at: micros_to_dt(created_at_ms).unwrap_or_else(Utc::now),
+        last_accessed: micros_to_dt(i(col("p.last_accessed"))),
         inferred: b(col("p.inferred")),
         confidence: i(col("p.confidence")) as u8,
         promoted: b(col("p.promoted")),
-        archived_at: millis_to_dt(i(col("p.archived_at"))),
+        archived_at: micros_to_dt(i(col("p.archived_at"))),
     })
 }
 
@@ -213,8 +200,8 @@ impl ProjectStore {
         let color = escape_cypher(&project.accent_color);
         let icon = escape_cypher(&project.icon);
         let status = project.status.as_str();
-        let created = dt_to_millis(&project.created_at);
-        let accessed = project.last_accessed.map(|d| dt_to_millis(&d)).unwrap_or(0);
+        let created = dt_to_micros(&project.created_at);
+        let accessed = project.last_accessed.map(|d| dt_to_micros(&d)).unwrap_or(0);
         let inferred = project.inferred;
         let confidence = project.confidence as i64;
         let promoted = project.promoted;
@@ -366,7 +353,7 @@ impl ProjectStore {
     /// Archive a project (soft delete).
     pub async fn archive(&self, id: Uuid) -> Result<()> {
         let id_esc = escape_cypher(&id.to_string());
-        let now = Utc::now().timestamp_millis();
+        let now = crate::time::now().0;
         self.graph
             .write(format!(
                 "MATCH (p:Project {{id: '{id_esc}'}})
@@ -401,7 +388,7 @@ impl ProjectStore {
     /// Update the last_accessed timestamp.
     pub async fn touch(&self, id: Uuid) -> Result<()> {
         let id_esc = escape_cypher(&id.to_string());
-        let now = Utc::now().timestamp_millis();
+        let now = crate::time::now().0;
         self.graph
             .write(format!(
                 "MATCH (p:Project {{id: '{id_esc}'}}) SET p.last_accessed = {now}"
