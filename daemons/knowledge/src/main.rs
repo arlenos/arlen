@@ -193,11 +193,11 @@ async fn main() -> Result<()> {
             Ok(()) => bail!("promotion task exited unexpectedly"),
             Err(e) => bail!("promotion: {e}"),
         },
-        r = retention::run(pool, graph.clone()) => match r {
+        r = retention::run(pool.clone(), graph.clone()) => match r {
             Ok(()) => bail!("retention task exited unexpectedly"),
             Err(e) => bail!("retention: {e}"),
         },
-        r = daemon::listen(&daemon_socket, graph) => match r {
+        r = daemon::listen(&daemon_socket, graph, pool) => match r {
             Ok(()) => bail!("daemon listener exited unexpectedly"),
             Err(e) => bail!("daemon listen ({daemon_socket}): {e}"),
         },

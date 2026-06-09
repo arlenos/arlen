@@ -169,7 +169,7 @@ async fn timing_noise() {
 /// Spawns two concurrent tasks:
 /// 1. Socket listener for client queries.
 /// 2. Event Bus subscriber for permission/schema change events.
-pub async fn listen(socket_path: &str, graph: GraphHandle) -> Result<()> {
+pub async fn listen(socket_path: &str, graph: GraphHandle, pool: sqlx::SqlitePool) -> Result<()> {
     let auth = Arc::new(Mutex::new(Authenticator::new()));
     info!("graph daemon: HMAC key generated");
 
@@ -186,7 +186,7 @@ pub async fn listen(socket_path: &str, graph: GraphHandle) -> Result<()> {
     let registry = Arc::new(SchemaRegistry::new(vec![]));
 
     tokio::try_join!(
-        listen_queries(socket_path, graph, auth.clone(), rate, emitter, registry),
+        listen_queries(socket_path, graph, pool, auth.clone(), rate, emitter, registry),
         listen_events(auth),
     )?;
 
@@ -194,9 +194,11 @@ pub async fn listen(socket_path: &str, graph: GraphHandle) -> Result<()> {
 }
 
 /// Accept and handle client connections.
+#[allow(clippy::too_many_arguments)]
 async fn listen_queries(
     socket_path: &str,
     graph: GraphHandle,
+    pool: sqlx::SqlitePool,
     auth: Arc<Mutex<Authenticator>>,
     rate: Arc<Mutex<RateState>>,
     emitter: Arc<RateLimitEmitter>,
@@ -219,13 +221,15 @@ async fn listen_queries(
         match listener.accept().await {
             Ok((stream, _)) => {
                 let graph = graph.clone();
+                let pool = pool.clone();
                 let auth = auth.clone();
                 let rate = rate.clone();
                 let emitter = emitter.clone();
                 let registry = registry.clone();
                 tokio::spawn(async move {
                     if let Err(e) =
-                        handle_client(stream, graph, auth, rate, emitter, registry, our_uid).await
+                        handle_client(stream, graph, pool, auth, rate, emitter, registry, our_uid)
+                            .await
                     {
                         error!("graph daemon client error: {e}");
                     }
@@ -370,6 +374,27 @@ enum WriteRequest {
 /// types only (§5.3). A narrow allowlist, like `BUILTIN_RELATIONS` for edges, so
 /// a token write-scope alone cannot create an arbitrary node label.
 const CREATABLE_NODES: &[&str] = &["system.Summary"];
+
+/// An LLM-free retrieval request, sent with a leading `0x03` byte. The body is
+/// JSON; the response is a JSON array of ranked node ids.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RetrieveRequest {
+    /// The keyword query.
+    query: String,
+    /// The maximum number of results, clamped to `[1, MAX_RETRIEVE_LIMIT]`.
+    #[serde(default = "default_retrieve_limit")]
+    limit: i64,
+}
+
+/// The default retrieve result cap when the request omits `limit`.
+fn default_retrieve_limit() -> i64 {
+    20
+}
+
+/// The hard ceiling on a retrieve request's result count, so a caller cannot ask
+/// for an unbounded fused/confirmed set.
+const MAX_RETRIEVE_LIMIT: i64 = 100;
 
 /// Authorise and persist a structured write request, returning the plaintext
 /// response (`OK` / `ERROR: ...`).
@@ -772,9 +797,11 @@ fn row_count(rs: &crate::graph::RowSet) -> i64 {
 /// daemon still accepts raw Cypher queries. Full token enforcement
 /// (token on every request) is deferred to when the Request/Response
 /// protobuf protocol replaces the current plaintext protocol.
+#[allow(clippy::too_many_arguments)]
 async fn handle_client(
     mut stream: UnixStream,
     graph: GraphHandle,
+    pool: sqlx::SqlitePool,
     auth: Arc<Mutex<Authenticator>>,
     rate: Arc<Mutex<RateState>>,
     emitter: Arc<RateLimitEmitter>,
@@ -892,6 +919,44 @@ async fn handle_client(
 
             timing_noise().await;
 
+            let response_bytes = response.as_bytes();
+            let response_len = u32::try_from(response_bytes.len())
+                .expect("response too large")
+                .to_be_bytes();
+            stream.write_all(&response_len).await?;
+            stream.write_all(response_bytes).await?;
+            continue;
+        }
+
+        // Retrieve mode: a leading 0x03 byte selects the LLM-free retrieval op
+        // (§7). The body is a JSON `{query, limit}`; the response is a JSON array
+        // of ranked node ids (best first), or the plaintext `ERROR: ...` form on
+        // failure (a client detects the `ERROR:` prefix before parsing JSON). It
+        // is a read, so it is query-rate-limited and open to every tier; the
+        // §7.6 read-tier label/time-window gating on the returned set is a
+        // follow-up, shared with the coarse gating on the typed query path.
+        if buf.first() == Some(&0x03) {
+            let violation = {
+                let mut rs = rate.lock().await;
+                rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
+            };
+            let response = if let Some(reason) = violation {
+                format!("ERROR: RateLimited: {reason}")
+            } else {
+                match serde_json::from_slice::<RetrieveRequest>(&buf[1..]) {
+                    Ok(req) => {
+                        let limit = req.limit.clamp(1, MAX_RETRIEVE_LIMIT);
+                        match crate::retrieval::retrieve(&pool, &graph, &req.query, limit).await {
+                            Ok(ids) => {
+                                serde_json::to_string(&ids).unwrap_or_else(|_| "[]".to_string())
+                            }
+                            Err(e) => format!("ERROR: {e}"),
+                        }
+                    }
+                    Err(e) => format!("ERROR: invalid retrieve request: {e}"),
+                }
+            };
+            timing_noise().await;
             let response_bytes = response.as_bytes();
             let response_len = u32::try_from(response_bytes.len())
                 .expect("response too large")

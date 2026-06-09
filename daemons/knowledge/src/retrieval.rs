@@ -33,7 +33,6 @@ use crate::utils::escape_cypher;
 /// best-first, ready to seed the agent's slice. The optional semantic primitive
 /// (`φ_cos`, sqlite-vec, config-gated off) is not included in this default path;
 /// when absent, retrieval fails open to LLM-free-anyway, never a generative call.
-#[allow(dead_code)]
 pub async fn retrieve(
     pool: &SqlitePool,
     graph: &GraphHandle,
