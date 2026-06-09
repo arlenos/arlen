@@ -7,6 +7,7 @@
 /// See `docs/architecture/permission-system.md`.
 
 mod dbus;
+mod identity;
 mod profile;
 
 use zbus::connection;
