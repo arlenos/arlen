@@ -58,6 +58,36 @@ pub async fn write_system_profile(
     }
 }
 
+/// Ask the `permission-helper` to record `app_id`'s binary identity (F3 Rung B):
+/// the helper RE-STATS `install_path` itself and records its `(inode, device)` into
+/// the root-owned identity registry, so the app's identity becomes non-forgeable by
+/// a same-uid copy-to-a-different-path. Maps the `(bool, String)` reply to a Result.
+pub async fn record_identity(
+    uid: u32,
+    app_id: &str,
+    install_path: &std::path::Path,
+) -> Result<(), HelperError> {
+    let conn = Connection::system().await?;
+    let proxy = zbus::Proxy::new(
+        &conn,
+        "org.arlen.PermissionHelper1",
+        "/org/arlen/PermissionHelper1",
+        "org.arlen.PermissionHelper1",
+    )
+    .await?;
+    let (ok, reason): (bool, String) = proxy
+        .call(
+            "RecordIdentity",
+            &(app_id, uid, install_path.to_string_lossy().as_ref()),
+        )
+        .await?;
+    if ok {
+        Ok(())
+    } else {
+        Err(HelperError::Refused(reason))
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Manifest -> profile TOML
 // ---------------------------------------------------------------------------
