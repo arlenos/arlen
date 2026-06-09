@@ -45,6 +45,7 @@ use async_trait::async_trait;
 use arlen_ai_core::audit::{behaviour_action_event, AuditSink};
 use arlen_ai_core::capability::{ActionDecision, BaselineMode, Capability};
 
+use crate::effect_model::{EffectDomain, InverseReceipt};
 use crate::gate::{resolved_action_kind, ActionContext, ProposedAction};
 use crate::registry::{self, TrustedActionSchema};
 use crate::seams::GraphHandle;
@@ -368,6 +369,115 @@ impl PendingWrite {
     pub fn correlation_id(&self) -> &str {
         &self.correlation_id
     }
+}
+
+// The non-graph receipt types (reversible-receipts-and-the-effect-model.md §5).
+// Built ahead of their constructor (the executor's non-graph arm, EM-R5) and
+// their consumer (the generalised `compensate`, the compensate blast-radius), so
+// they read unused in the non-test build until those land; the test submodule
+// exercises them via the module-private constructors.
+#[allow(dead_code)]
+/// The resolved, scope-checked non-graph operation an action performed: the
+/// effect domain, the concrete op within it, and the resolved target it touched
+/// (the bind's argument already resolved to the real resource). The non-graph
+/// analogue of [`RelationWrite`] — the "forward" a reconcile re-derives.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedExternalOp {
+    domain: EffectDomain,
+    op: String,
+    target: String,
+}
+
+#[allow(dead_code)]
+impl ResolvedExternalOp {
+    /// Build a resolved external op. Module-private: only the executor's
+    /// non-graph arm resolves and constructs one.
+    fn new(domain: EffectDomain, op: String, target: String) -> Self {
+        Self { domain, op, target }
+    }
+
+    /// The effect domain (selects the writer / inverse-capture seam).
+    pub fn domain(&self) -> EffectDomain {
+        self.domain
+    }
+
+    /// The concrete operation within the domain (`move`, `write`, ...).
+    pub fn op(&self) -> &str {
+        &self.op
+    }
+
+    /// The resolved resource the operation touched.
+    pub fn target(&self) -> &str {
+        &self.target
+    }
+}
+
+/// The receipt of a committed non-graph action and its captured inverse, the
+/// non-graph twin of [`ExecutedWrite`]. Opaque (private fields, module-private
+/// constructor, read accessors), so a receipt is only ever obtained from the
+/// executor and never fabricated, and compensation is keyed off the receipt, not
+/// a re-supplied context. `is_reversible` for a non-graph rule is exactly "the
+/// executor captured a valid `InverseReceipt` here".
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActionWrite {
+    forward: ResolvedExternalOp,
+    inverse: InverseReceipt,
+    op_id: String,
+    correlation_id: String,
+}
+
+#[allow(dead_code)]
+impl ActionWrite {
+    /// Build a non-graph receipt. Module-private: only the executor's non-graph
+    /// arm constructs one, so the `(forward, inverse, op_id)` pairing is always
+    /// executor-derived.
+    fn new(
+        forward: ResolvedExternalOp,
+        inverse: InverseReceipt,
+        op_id: String,
+        correlation_id: String,
+    ) -> Self {
+        Self {
+            forward,
+            inverse,
+            op_id,
+            correlation_id,
+        }
+    }
+
+    /// The forward operation that was committed.
+    pub fn forward(&self) -> &ResolvedExternalOp {
+        &self.forward
+    }
+
+    /// The captured inverse (replaying it is the undo).
+    pub fn inverse(&self) -> &InverseReceipt {
+        &self.inverse
+    }
+
+    /// The durable operation id (the compensation/reconcile key).
+    pub fn op_id(&self) -> &str {
+        &self.op_id
+    }
+
+    /// The correlation id of the decision that produced this write.
+    pub fn correlation_id(&self) -> &str {
+        &self.correlation_id
+    }
+}
+
+/// One receipt vocabulary (§5): the graph variant unchanged (self-inverse via
+/// op_id, no captured prior state), and the non-graph variant carrying a captured
+/// inverse. `compensate` dispatches on the variant; the graph arm is the current
+/// code verbatim.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActionReceipt {
+    /// A graph edge write, self-inverse via its op_id.
+    Graph(ExecutedWrite),
+    /// A non-graph action and its captured inverse.
+    NonGraph(ActionWrite),
 }
 
 /// The result of compensating (undoing) a previously-executed write. Closes the
@@ -1011,6 +1121,37 @@ impl<'a> LiveExecutor<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::effect_model::CanonicalPath;
+
+    #[test]
+    fn non_graph_receipt_carries_its_forward_and_captured_inverse() {
+        // The test submodule, an in-module descendant, builds receipts via the
+        // module-private constructors (the opacity discipline that keeps them
+        // non-fabricable outside the executor).
+        let forward = ResolvedExternalOp::new(
+            EffectDomain::Filesystem,
+            "move".to_string(),
+            "/home/tim/b/x".to_string(),
+        );
+        let inverse = InverseReceipt::RestorePath {
+            now: CanonicalPath::new("/home/tim/b/x").unwrap(),
+            prior: CanonicalPath::new("/home/tim/a/x").unwrap(),
+        };
+        let receipt = ActionReceipt::NonGraph(ActionWrite::new(
+            forward,
+            inverse.clone(),
+            "op-1".to_string(),
+            "corr-1".to_string(),
+        ));
+        let ActionReceipt::NonGraph(w) = &receipt else {
+            panic!("expected a non-graph receipt");
+        };
+        assert_eq!(w.forward().domain(), EffectDomain::Filesystem);
+        assert_eq!(w.forward().op(), "move");
+        assert_eq!(w.op_id(), "op-1");
+        assert_eq!(w.correlation_id(), "corr-1");
+        assert_eq!(w.inverse(), &inverse);
+    }
 
     fn graph_write_action(args: &[(&str, &str)]) -> ProposedAction {
         ProposedAction {
