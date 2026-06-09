@@ -219,7 +219,12 @@ struct ChainedLine {
 pub struct FileUndoLog {
     path: PathBuf,
     key: Vec<u8>,
-    head: [u8; 32],
+    /// The chain hash of every record, in order. The head is the last; the
+    /// length is the record count. Retained (not just the running head) so an
+    /// external head checkpoint can confirm the record at a given position still
+    /// hashes as recorded, catching prefix/whole-log truncation the chain alone
+    /// cannot.
+    hashes: Vec<[u8; 32]>,
     log: UndoLog,
 }
 
@@ -243,18 +248,19 @@ impl FileUndoLog {
                 }
             }
         }
-        let (log, head) = Self::load(&path, &key)?;
+        let (log, hashes) = Self::load(&path, &key)?;
         Ok(Self {
             path,
             key,
-            head,
+            hashes,
             log,
         })
     }
 
-    fn load(path: &Path, key: &[u8]) -> std::io::Result<(UndoLog, [u8; 32])> {
+    fn load(path: &Path, key: &[u8]) -> std::io::Result<(UndoLog, Vec<[u8; 32]>)> {
         let content = std::fs::read_to_string(path)?;
         let mut log = UndoLog::new();
+        let mut hashes = Vec::new();
         let mut head = GENESIS_PREV_HASH;
         for (i, line) in content
             .lines()
@@ -273,15 +279,16 @@ impl FileUndoLog {
                 ));
             }
             head = chained.hash;
+            hashes.push(chained.hash);
             log.records.push(chained.record);
         }
-        Ok((log, head))
+        Ok((log, hashes))
     }
 
     fn append_record(&mut self, record: LogRecord) -> std::io::Result<()> {
         let record_bytes = serde_json::to_vec(&record)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        let hash = compute_chain_hash(&self.key, &self.head, &record_bytes);
+        let hash = compute_chain_hash(&self.key, &self.head_hash(), &record_bytes);
         let chained = ChainedLine {
             record: record.clone(),
             hash,
@@ -292,9 +299,27 @@ impl FileUndoLog {
         writeln!(f, "{line}")?;
         // Write-ahead: the record is durable before the call returns.
         f.sync_all()?;
-        self.head = hash;
+        self.hashes.push(hash);
         self.log.records.push(record);
         Ok(())
+    }
+
+    /// The number of records in the chain.
+    pub fn record_count(&self) -> usize {
+        self.hashes.len()
+    }
+
+    /// The current head chain hash (the last record's hash, or the genesis
+    /// anchor for an empty log).
+    pub fn head_hash(&self) -> [u8; 32] {
+        self.hashes.last().copied().unwrap_or(GENESIS_PREV_HASH)
+    }
+
+    /// The chain hash of the record at `index` (0-based), or `None` if out of
+    /// range. Lets an external checkpoint confirm the record it witnessed is
+    /// still present with the same hash.
+    pub fn hash_at(&self, index: usize) -> Option<[u8; 32]> {
+        self.hashes.get(index).copied()
     }
 
     /// Append an entry's creation record, durably (state begins `InFlight`).

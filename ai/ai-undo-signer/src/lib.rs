@@ -24,6 +24,7 @@
 #![warn(missing_docs)]
 
 pub mod auth;
+pub mod checkpoint;
 pub mod error;
 pub mod key;
 pub mod paths;

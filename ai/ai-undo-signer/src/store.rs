@@ -12,17 +12,21 @@
 
 use std::path::Path;
 
+use std::path::PathBuf;
+
 use arlen_ai_undo_core::undo_log::{FileUndoLog, UndoEntry, UndoState};
 
+use crate::checkpoint::{self, StartupCheck};
 use crate::error::{Result, SignerError};
 use crate::{key, paths};
 
-/// The signer-owned, HMAC-chained undo-log plus its custodied key. Constructed by
-/// the signer process; the agent never holds this (it reaches the store only
-/// through the signer's socket).
+/// The signer-owned, HMAC-chained undo-log plus its custodied key and head
+/// checkpoint. Constructed by the signer process; the agent never holds this (it
+/// reaches the store only through the signer's socket).
 #[derive(Debug)]
 pub struct SignerStore {
     log: FileUndoLog,
+    checkpoint_path: PathBuf,
 }
 
 impl SignerStore {
@@ -52,7 +56,44 @@ impl SignerStore {
 
         let log = FileUndoLog::open(&log_path, key.to_vec())
             .map_err(|e| SignerError::Storage(format!("opening the chained undo-log: {e}")))?;
-        Ok(SignerStore { log })
+
+        // Head checkpoint: the chain catches in-place tamper but not truncation
+        // or whole-log erasure. Confirm the witnessed record is still present
+        // with its recorded hash, fail-closed on a tampered/missing witness.
+        let checkpoint_path = checkpoint::checkpoint_path(&log_path);
+        let cp_read = checkpoint::read(&checkpoint_path);
+        let head_at = match &cp_read {
+            Ok(Some(cp)) if cp.count >= 1 => log
+                .hash_at((cp.count - 1) as usize)
+                .map(|h| checkpoint::hex32(&h)),
+            _ => None,
+        };
+        match checkpoint::assess_startup(cp_read, log.record_count() == 0, head_at) {
+            StartupCheck::Tampered { detail } => {
+                return Err(SignerError::Storage(format!("undo-log integrity: {detail}")))
+            }
+            StartupCheck::Genesis | StartupCheck::Consistent => {}
+        }
+
+        let store = SignerStore { log, checkpoint_path };
+        // Reseed the checkpoint to the live head: advances past a crash-ahead
+        // append (the log may be one record ahead of the witness) so the witness
+        // tracks reality. A no-op for an empty genesis log.
+        if store.log.record_count() > 0 {
+            store.write_checkpoint()?;
+        }
+        Ok(store)
+    }
+
+    /// Write the head checkpoint to the current record count and head hash.
+    fn write_checkpoint(&self) -> Result<()> {
+        checkpoint::write(
+            &self.checkpoint_path,
+            &checkpoint::Checkpoint {
+                count: self.log.record_count() as u64,
+                head_hex: checkpoint::hex32(&self.log.head_hash()),
+            },
+        )
     }
 
     /// Seal a newly-submitted entry into the chained log (its lifecycle begins
@@ -69,7 +110,8 @@ impl SignerStore {
         }
         self.log
             .append_created(entry)
-            .map_err(|e| SignerError::Storage(format!("appending an undo-log entry: {e}")))
+            .map_err(|e| SignerError::Storage(format!("appending an undo-log entry: {e}")))?;
+        self.write_checkpoint()
     }
 
     /// Record a lifecycle transition for an existing entry, chained and fsynced.
@@ -98,7 +140,8 @@ impl SignerStore {
         }
         self.log
             .append_transition(op_id, state)
-            .map_err(|e| SignerError::Storage(format!("appending an undo-log transition: {e}")))
+            .map_err(|e| SignerError::Storage(format!("appending an undo-log transition: {e}")))?;
+        self.write_checkpoint()
     }
 
     /// The current folded state of `op_id`, or `None` if no entry with that id was
@@ -224,6 +267,39 @@ mod tests {
         // A legal transition still works, and the state stays clean (not corrupt).
         store.transition("op-1", UndoState::Committed).unwrap();
         assert_eq!(store.state("op-1").unwrap().unwrap(), UndoState::Committed);
+    }
+
+    #[test]
+    fn truncating_the_log_is_caught_by_the_head_checkpoint() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("undo-log");
+        {
+            let mut store = SignerStore::open_in(&dir).unwrap();
+            store.submit_created(entry("op-1")).unwrap();
+            store.submit_created(entry("op-2")).unwrap();
+        }
+        // Truncate the log to empty (an attacker erasing history). The chain alone
+        // would read this as a clean genesis; the head checkpoint witnesses that 2
+        // records existed, so the open fails closed.
+        std::fs::write(dir.join("undo.log"), b"").unwrap();
+        match SignerStore::open_in(&dir) {
+            Err(SignerError::Storage(msg)) => assert!(msg.contains("integrity")),
+            other => panic!("expected an integrity failure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn removing_only_the_checkpoint_for_a_nonempty_log_fails_closed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("undo-log");
+        {
+            let mut store = SignerStore::open_in(&dir).unwrap();
+            store.submit_created(entry("op-1")).unwrap();
+        }
+        // Delete the witness while leaving the log: the missing checkpoint for a
+        // non-empty log is tampering, not a fresh genesis.
+        std::fs::remove_file(checkpoint::checkpoint_path(&dir.join("undo.log"))).unwrap();
+        assert!(SignerStore::open_in(&dir).is_err());
     }
 
     #[test]
