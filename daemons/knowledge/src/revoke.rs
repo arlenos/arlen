@@ -175,23 +175,40 @@ pub fn apply_revoke(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> b
             to,
             relation_type,
         } => {
-            let Some(arr) = graph.get_mut("relations").and_then(Item::as_array_mut) else {
-                return false;
-            };
-            let before = arr.len();
-            arr.retain(|v| {
-                // Keep every entry that does NOT match all three keys.
-                let matches = v
-                    .as_inline_table()
-                    .map(|t| {
-                        inline_str(t, "from") == Some(from.as_str())
-                            && inline_str(t, "to") == Some(to.as_str())
-                            && inline_str(t, "type") == Some(relation_type.as_str())
-                    })
-                    .unwrap_or(false);
-                !matches
-            });
-            arr.len() != before
+            // Relations may be written either as an inline array
+            // (`relations = [{ from=.., to=.., type=.. }]`) or, as serde's TOML
+            // serializer emits a `Vec<struct>`, as an array-of-tables
+            // (`[[graph.relations]]`). Handle both, so a relation revoke is not
+            // silently a no-op on a profile written in the other form.
+            if let Some(arr) = graph.get_mut("relations").and_then(Item::as_array_mut) {
+                let before = arr.len();
+                arr.retain(|v| {
+                    let matches = v
+                        .as_inline_table()
+                        .map(|t| {
+                            inline_str(t, "from") == Some(from.as_str())
+                                && inline_str(t, "to") == Some(to.as_str())
+                                && inline_str(t, "type") == Some(relation_type.as_str())
+                        })
+                        .unwrap_or(false);
+                    !matches
+                });
+                arr.len() != before
+            } else if let Some(tables) =
+                graph.get_mut("relations").and_then(Item::as_array_of_tables_mut)
+            {
+                let before = tables.len();
+                tables.retain(|t| {
+                    let table_str = |k: &str| t.get(k).and_then(|i| i.as_str());
+                    let matches = table_str("from") == Some(from.as_str())
+                        && table_str("to") == Some(to.as_str())
+                        && table_str("type") == Some(relation_type.as_str());
+                    !matches
+                });
+                tables.len() != before
+            } else {
+                false
+            }
         }
         RevokedReach::InstanceAll => {
             // Demote `all` -> `own`; a no-op (false) if it was not `all`.
@@ -210,8 +227,9 @@ pub fn apply_revoke(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> b
     }
 }
 
-/// Remove the first array element equal to `value` from the `key` string array of
-/// `graph`. Returns whether an element was removed.
+/// Remove every array element equal to `value` from the `key` string array of
+/// `graph` (a pattern revoked entirely, so any duplicate entries go too).
+/// Returns whether an element was removed.
 fn remove_string_from_array(
     graph: &mut dyn toml_edit::TableLike,
     key: &str,
@@ -442,6 +460,29 @@ instance_scope = "all"
             },
         );
         assert!(changed);
+        let out = d.to_string();
+        assert!(!out.contains("REFERENCES"), "the revoked relation is gone");
+        assert!(out.contains("FILE_PART_OF"), "the other relation survives");
+    }
+
+    #[test]
+    fn revoke_relation_handles_the_array_of_tables_form() {
+        // serde's TOML serializer emits a Vec<struct> as [[graph.relations]],
+        // not an inline array, so apply_revoke must handle that form too.
+        let mut d = doc(
+            "[graph]\nread = [\"system.File\"]\n\
+             [[graph.relations]]\nfrom = \"com.test.Note\"\nto = \"system.File\"\ntype = \"REFERENCES\"\n\
+             [[graph.relations]]\nfrom = \"system.File\"\nto = \"system.Project\"\ntype = \"FILE_PART_OF\"\n",
+        );
+        let changed = apply_revoke(
+            &mut d,
+            &RevokedReach::Relation {
+                from: "com.test.Note".into(),
+                to: "system.File".into(),
+                relation_type: "REFERENCES".into(),
+            },
+        );
+        assert!(changed, "the array-of-tables relation is removed");
         let out = d.to_string();
         assert!(!out.contains("REFERENCES"), "the revoked relation is gone");
         assert!(out.contains("FILE_PART_OF"), "the other relation survives");
