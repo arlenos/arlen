@@ -72,14 +72,20 @@ pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Re
     graph.write(format!("MERGE (a:App {{id: '{app_esc}'}})")).await?;
 
     // The Grant node, born live. MERGE on the token id so a re-emit updates in
-    // place rather than duplicating.
+    // place rather than duplicating. The lifecycle flags and the use counters are
+    // set ON CREATE only: a re-emit refreshes the declared data (ceiling, pid,
+    // issue/expiry) but must NOT resurrect a revoked or superseded grant (revoked
+    // is terminal, §3.1) nor zero an accrued use count, so those are never reset
+    // on a match.
     graph
         .write(format!(
             "MERGE (g:Grant {{id: '{id_esc}'}}) \
-             SET g.app_id = '{app_esc}', g.pid = {pid}, g.issued_at = {issued}, \
+             ON CREATE SET g.app_id = '{app_esc}', g.pid = {pid}, g.issued_at = {issued}, \
              g.expires_at = {expires}, g.declared_ceiling = '{ceiling_esc}', \
              g.required = false, g.identity_verified = false, g.live = true, \
-             g.revoked = false, g.superseded = false, g.last_exercised_at = 0, g.use_count = 0",
+             g.revoked = false, g.superseded = false, g.last_exercised_at = 0, g.use_count = 0 \
+             ON MATCH SET g.pid = {pid}, g.issued_at = {issued}, g.expires_at = {expires}, \
+             g.declared_ceiling = '{ceiling_esc}'",
             pid = token.pid,
         ))
         .await?;
@@ -232,5 +238,36 @@ mod tests {
         let row = &parsed["rows"][0];
         assert_eq!(row[0], true, "prior grant superseded: {state}");
         assert_eq!(row[1], false, "prior grant no longer live: {state}");
+    }
+
+    #[tokio::test]
+    async fn a_re_emit_does_not_resurrect_a_revoked_grant() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+
+        let token = token_for("com.x", &["system.File"]);
+        let id = token.id.to_string();
+        emit_grant_node(&graph, &token).await.unwrap();
+
+        // Simulate a revoke having marked this grant terminal.
+        graph
+            .write(format!(
+                "MATCH (g:Grant {{id:'{id}'}}) SET g.revoked = true, g.live = false"
+            ))
+            .await
+            .unwrap();
+
+        // Re-emitting the SAME token must refresh data but preserve the terminal
+        // revoked state (ON MATCH never resets the lifecycle flags), so a stale
+        // re-emit can never un-revoke a grant.
+        emit_grant_node(&graph, &token).await.unwrap();
+        let state = graph
+            .query_rows_json(format!("MATCH (g:Grant {{id:'{id}'}}) RETURN g.revoked, g.live"))
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&state).unwrap();
+        let row = &parsed["rows"][0];
+        assert_eq!(row[0], true, "revoked stays terminal across a re-emit: {state}");
+        assert_eq!(row[1], false, "a revoked grant is not made live again: {state}");
     }
 }
