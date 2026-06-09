@@ -215,7 +215,7 @@ pub fn build_agent_prompt(
 /// raise for a field (a value past its multi-megabyte cap, which is itself
 /// suspect), returns a placeholder rather than the raw value, so nothing
 /// unsanitised is ever forwarded.
-fn sanitize_external(value: &str) -> String {
+pub(crate) fn sanitize_external(value: &str) -> String {
     extract_text(value.as_bytes()).unwrap_or_else(|_| "(unprocessable field)".to_string())
 }
 

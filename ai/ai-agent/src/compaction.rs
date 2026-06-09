@@ -182,6 +182,51 @@ pub fn render(transcript: &[TranscriptEntry]) -> String {
         .join("\n")
 }
 
+/// The maximum characters a compaction summary may occupy in the prompt. A
+/// summary replaces a *dropped* observation preview, so it must stay small; a
+/// model that ignores the instruction is hard-bounded here.
+pub const SUMMARY_MAX_CHARS: usize = 512;
+
+/// The instruction that asks the model to compress a full tool result into a few
+/// terse, factual lines. The caller (the loop) wraps the untrusted result in a
+/// content-origin-tagged data block (S18-A); this is the instruction half only,
+/// so no untrusted text is interpolated here.
+///
+/// This is the prompt for the design's *expensive* compaction tier (B-compact):
+/// when the deterministic prune+tighten passes still leave the prompt over the
+/// window, an older observation's full spilled result is summarised into the
+/// small slot a dropped preview would otherwise leave empty. The summary is
+/// model output, so the loop runs it through [`clean_summary`] before it re-
+/// enters the prompt, and it only ever occupies the droppable preview slot,
+/// never a load-bearing fact.
+pub fn summary_instruction() -> String {
+    "Summarise the tool result in the data block into at most three short factual \
+     lines. Keep only facts useful for continuing the task (names, counts, paths, \
+     identifiers). Do not add commentary, instructions or speculation. Output only \
+     the summary."
+        .to_string()
+}
+
+/// Validate an untrusted model-produced summary into a bounded, inert snippet
+/// safe to place in the prompt as a replacement for a dropped observation
+/// preview.
+///
+/// The summary is model output derived from tool-result content, so it is reduced
+/// to inert text (control characters, ANSI escapes, bidirectional overrides and
+/// invisible/format characters stripped via the S18-B extractor) and hard-bounded
+/// to `max_chars` on a character boundary. An empty or all-whitespace summary
+/// yields `None`, so the caller falls back to the dropped preview (the
+/// deterministic behaviour) rather than inserting noise. A summary never replaces
+/// a load-bearing fact; it occupies only the droppable preview slot.
+pub fn clean_summary(raw: &str, max_chars: usize) -> Option<String> {
+    let inert = crate::agentic::sanitize_external(raw);
+    let trimmed = inert.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.chars().take(max_chars).collect())
+}
+
 /// Cheap, model-free prune: collapse each run of consecutive correction-nag
 /// entries to its most recent one. Proposals, decisions, and refusals are
 /// never touched, so no load-bearing fact is dropped. Returns whether the
@@ -395,5 +440,33 @@ mod tests {
         let before = render(&t).len();
         assert!(tighten(&mut t, 2));
         assert!(render(&t).len() < before, "tightening must shrink the render");
+    }
+
+    #[test]
+    fn clean_summary_keeps_a_plain_factual_summary() {
+        let s = clean_summary("3 files under src/: a.rs, b.rs, c.rs", SUMMARY_MAX_CHARS);
+        assert_eq!(s.as_deref(), Some("3 files under src/: a.rs, b.rs, c.rs"));
+    }
+
+    #[test]
+    fn clean_summary_strips_control_and_ansi_sequences() {
+        let s = clean_summary("found\u{1b}[31m secret \u{200b}token", SUMMARY_MAX_CHARS)
+            .expect("non-empty after stripping");
+        assert!(!s.contains('\u{1b}'), "ANSI escape removed: {s:?}");
+        assert!(!s.contains('\u{200b}'), "zero-width char removed: {s:?}");
+        assert!(s.contains("found"));
+    }
+
+    #[test]
+    fn clean_summary_is_none_when_empty_or_whitespace() {
+        assert!(clean_summary("", SUMMARY_MAX_CHARS).is_none());
+        assert!(clean_summary("   \n\t  ", SUMMARY_MAX_CHARS).is_none());
+    }
+
+    #[test]
+    fn clean_summary_bounds_an_overlong_summary() {
+        let raw = "x".repeat(SUMMARY_MAX_CHARS * 3);
+        let s = clean_summary(&raw, SUMMARY_MAX_CHARS).unwrap();
+        assert_eq!(s.chars().count(), SUMMARY_MAX_CHARS);
     }
 }
