@@ -31,6 +31,14 @@ use crate::store::SignerStore;
 /// opens many connections (and stalls each mid-frame) cannot exhaust the helper.
 const MAX_CONNECTIONS: usize = 16;
 
+/// How long a connection may sit between (or mid-) requests before it is reaped.
+/// Closes the review's L1: a peer that sends a length header and then stalls
+/// mid-frame can no longer pin a serve task indefinitely. Generous, because the
+/// agent client (`arlen-ai-agent::undo_client`) does request/response bursts and
+/// reconnects on demand, so a dropped idle connection just reconnects on its next
+/// operation; the read timeout only reaps a stalled or long-idle peer.
+const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
 /// Map one request to its response against the store. The pure dispatch core: no
 /// I/O, no auth, just the store operations. A store error becomes a coarse
 /// `Error` response (the messages carry no captured prior state, only operation
@@ -74,10 +82,13 @@ pub async fn serve_requests(
         if auth.verify_alive().is_err() {
             return Ok(());
         }
-        let request = match read_request(&mut stream).await {
-            Ok(r) => r,
+        let request = match tokio::time::timeout(READ_TIMEOUT, read_request(&mut stream)).await {
+            Ok(Ok(r)) => r,
             // EOF or a framing/codec error ends the session.
-            Err(_) => return Ok(()),
+            Ok(Err(_)) => return Ok(()),
+            // A stalled mid-frame or long-idle peer: drop the connection (it
+            // reconnects on its next request).
+            Err(_elapsed) => return Ok(()),
         };
         let response = match request.validate() {
             Ok(()) => {
@@ -276,5 +287,21 @@ mod tests {
         // Closing the client ends the serve loop.
         drop(client);
         task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn serve_requests_reaps_a_stalled_peer_via_the_read_timeout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = store_in(&tmp.path().join("undo-log"));
+        let (client, server) = UnixStream::pair().unwrap();
+        let task = tokio::spawn(serve_requests(server, test_auth(), store));
+
+        // The client connects but never sends a request. With paused time the
+        // runtime advances to the read-timeout, which reaps the connection so the
+        // serve task returns rather than pinning forever. Holding `client` keeps
+        // the socket open (no EOF), so it is the timeout, not a close, that ends it.
+        let r = task.await.unwrap();
+        assert!(r.is_ok(), "a stalled connection is reaped, not an error");
+        drop(client);
     }
 }
