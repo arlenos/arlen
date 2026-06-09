@@ -23,7 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::Result;
 use arlen_capsule::scope::CapsuleScope;
-use arlen_capsule::slice::{SliceNode, SliceRelation, SliceValue};
+use arlen_capsule::slice::{FrozenSlice, SliceNode, SliceRelation, SliceValue};
 
 use crate::graph::{CellValue, GraphHandle};
 use crate::utils::escape_cypher;
@@ -47,6 +47,51 @@ pub(crate) fn cell_to_slice_value(cell: &CellValue) -> Option<SliceValue> {
         CellValue::Null => Some(SliceValue::Null),
         CellValue::Float(_) => None,
     }
+}
+
+/// The default projection: the labels a capsule slice carries and, per label, the
+/// user-meaningful fields included (context-capsule.md §4, the read-time field
+/// projection). Internal lifecycle / detection fields (`confidence`, `archived_at`,
+/// `expired_at`) are excluded — they are the originator's bookkeeping, not shared
+/// content. Today only `File` and `Project` appear (the `FILE_PART_OF` membership
+/// the share-a-project capsule is built from); a per-capsule field/link-type
+/// deselection on top of this default is the CC-R6 mint preview.
+const CAPSULE_LABELS: &[(&str, &[&str])] = &[
+    ("File", &["path", "app_id", "last_accessed"]),
+    (
+        "Project",
+        &["name", "description", "root_path", "status", "created_at"],
+    ),
+];
+
+/// Materialize a [`CapsuleScope`] into its [`FrozenSlice`] over the live graph: the
+/// scope's id manifest, each node loaded with its projected fields, and the live
+/// membership relations among the loaded nodes. This is the daemon-side capsule
+/// read (loader option (b)): the as-of read, the projection and the BFS all run
+/// where the graph is. Relations are loaded over the LOADED node ids (not the raw
+/// manifest), so the slice never carries a dangling edge to a node that did not
+/// load. The slice is read as of now (a fresh mint), per [`capsule_neighbors`].
+pub(crate) async fn materialize_slice(
+    graph: &GraphHandle,
+    scope: &CapsuleScope,
+) -> Result<FrozenSlice> {
+    let manifest = capsule_expand(graph, scope).await?;
+    let mut nodes = Vec::new();
+    for id in &manifest {
+        // Under the FILE_PART_OF scope every manifest node is a File or a Project;
+        // try each projected label and take the one that loads (ids are per-label,
+        // so at most one matches). A manifest id that loads as neither is skipped,
+        // and its edges are excluded by loading relations over the loaded ids.
+        for (label, fields) in CAPSULE_LABELS {
+            if let Some(node) = load_node_fields(graph, label, id, fields).await? {
+                nodes.push(node);
+                break;
+            }
+        }
+    }
+    let loaded_ids: Vec<String> = nodes.iter().map(|n| n.id.clone()).collect();
+    let relations = capsule_relations(graph, &loaded_ids).await?;
+    Ok(FrozenSlice { nodes, relations })
 }
 
 /// The live `FILE_PART_OF` neighbours of `node_id`, both directions — the
@@ -298,6 +343,47 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(zero, vec!["p1".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn materialize_assembles_nodes_and_relations() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        graph
+            .write("CREATE (f:File {id: 'f1', path: '/proj/a.rs', app_id: 'editor', last_accessed: 5})".into())
+            .await
+            .unwrap();
+        graph
+            .write("CREATE (p:Project {id: 'p1', name: 'Proj', description: 'd', root_path: '/proj', status: 'active', created_at: 9})".into())
+            .await
+            .unwrap();
+        graph
+            .write("MATCH (f:File {id:'f1'}), (p:Project {id:'p1'}) CREATE (f)-[:FILE_PART_OF]->(p)".into())
+            .await
+            .unwrap();
+
+        let slice = materialize_slice(&graph, &CapsuleScope { roots: vec!["p1".into()], expand_hops: 1 })
+            .await
+            .unwrap();
+
+        // Both nodes are present with their projected fields.
+        assert_eq!(slice.nodes.len(), 2);
+        let file = slice.nodes.iter().find(|n| n.id == "f1").expect("file node");
+        assert_eq!(file.label, "File");
+        assert_eq!(file.fields.get("path"), Some(&SliceValue::Text("/proj/a.rs".into())));
+        assert_eq!(file.fields.get("last_accessed"), Some(&SliceValue::Int(5)));
+        let proj = slice.nodes.iter().find(|n| n.id == "p1").expect("project node");
+        assert_eq!(proj.fields.get("name"), Some(&SliceValue::Text("Proj".into())));
+        // The membership relation is carried.
+        assert_eq!(
+            slice.relations,
+            vec![SliceRelation { from: "f1".into(), rel_type: "FILE_PART_OF".into(), to: "p1".into() }]
+        );
+        // Determinism: re-materializing yields identical canonical bytes.
+        let again = materialize_slice(&graph, &CapsuleScope { roots: vec!["p1".into()], expand_hops: 1 })
+            .await
+            .unwrap();
+        assert_eq!(slice.canonical_bytes(), again.canonical_bytes());
     }
 
     #[tokio::test]
