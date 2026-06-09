@@ -64,6 +64,48 @@ impl Screener {
         Self::new(ScreeningMode::Off)
     }
 
+    /// Build a screener from an `ai.toml` snapshot's `[classifier]` section. An
+    /// absent section is a deliberate opt-out (`Off`: content flows, sanitisation
+    /// and the action gate contain it). A present-but-invalid section (an unknown
+    /// key, a wrong type, or out-of-range thresholds) is a config error and fails
+    /// closed (`FailClosed`). A present-and-valid section loads the model in an
+    /// `onnx` build (`On`, or `FailClosed` if the load fails); in a build without
+    /// the native classifier a configured screen cannot be honoured, so it fails
+    /// closed rather than silently flow content unscreened.
+    ///
+    /// Takes the already-read text (not a path) so the screening posture is derived
+    /// from the same config snapshot as everything else - re-reading the file could
+    /// combine a screening mode from one revision with settings from another.
+    pub fn from_config(ai_text: &str) -> Self {
+        match parse_classifier_config(ai_text) {
+            ClassifierProvision::Absent => Self::off(),
+            ClassifierProvision::Invalid => Self::new(ScreeningMode::FailClosed),
+            ClassifierProvision::Configured(config) => Self::from_loaded_config(config),
+        }
+    }
+
+    #[cfg(feature = "onnx")]
+    fn from_loaded_config(config: arlen_ai_classifier::ClassifierConfig) -> Self {
+        use arlen_ai_classifier::onnx::OnnxClassifier;
+        match OnnxClassifier::load(&config) {
+            Ok(classifier) => {
+                tracing::info!("prompt-injection classifier loaded; external content will be screened");
+                Self::new(ScreeningMode::On(Arc::new(classifier), config.policy()))
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "[classifier] is configured but failed to load; screening fails closed until it is fixed");
+                Self::new(ScreeningMode::FailClosed)
+            }
+        }
+    }
+
+    #[cfg(not(feature = "onnx"))]
+    fn from_loaded_config(_config: arlen_ai_classifier::ClassifierConfig) -> Self {
+        // A configured classifier a build without the native runtime cannot load is
+        // an operator intent this binary cannot honour; fail closed.
+        Self::new(ScreeningMode::FailClosed)
+    }
+
     /// Whether this screener can ever block (i.e. screening is not `Off`). Lets a
     /// caller skip preparing screen text when nothing will be screened.
     pub fn is_active(&self) -> bool {
@@ -109,6 +151,91 @@ impl Screener {
     }
 }
 
+/// The result of parsing the `[classifier]` section: absent (opt-out), valid
+/// (with the config), or invalid (a typo, unknown key, wrong type, or bad
+/// thresholds). Pure and always compiled, so the parse is unit-tested without the
+/// model; only the model *load* is feature-gated.
+enum ClassifierProvision {
+    // The config is read only in the `onnx` build (to load the model); the default
+    // build matches the variant for the fail-closed decision but never reads it.
+    Configured(#[cfg_attr(not(feature = "onnx"), allow(dead_code))] arlen_ai_classifier::ClassifierConfig),
+    Invalid,
+    Absent,
+}
+
+/// Whether `[classifier]` thresholds are usable: finite, in `0.0..=1.0`, ordered.
+fn classifier_thresholds_valid(warn_at: f32, block_at: f32) -> bool {
+    warn_at.is_finite()
+        && block_at.is_finite()
+        && (0.0..=1.0).contains(&warn_at)
+        && (0.0..=1.0).contains(&block_at)
+        && warn_at <= block_at
+}
+
+/// Parse and validate the `[classifier]` section of an `ai.toml` snapshot.
+/// `deny_unknown_fields` makes a misspelled key a parse error (fail closed) rather
+/// than a silently-ignored default. `benign_label_index` is deliberately NOT a
+/// config field (the scorer computes injection as `1 - softmax[benign]`, so a wrong
+/// value would invert the verdict); it is hardcoded to 0 for the supported models,
+/// and `deny_unknown_fields` turns any attempt to set it into a parse error.
+fn parse_classifier_config(ai_text: &str) -> ClassifierProvision {
+    use arlen_ai_classifier::ClassifierConfig;
+
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct RawClassifier {
+        model_path: std::path::PathBuf,
+        tokenizer_path: std::path::PathBuf,
+        #[serde(default = "default_max_tokens")]
+        max_tokens: usize,
+        #[serde(default = "default_warn")]
+        warn_at: f32,
+        #[serde(default = "default_block")]
+        block_at: f32,
+    }
+    fn default_max_tokens() -> usize {
+        512
+    }
+    fn default_warn() -> f32 {
+        0.5
+    }
+    fn default_block() -> f32 {
+        0.9
+    }
+
+    // A parse failure of the whole document is the daemon's own config concern
+    // (handled fail-closed there); treat it as "not configured" here, not a block.
+    let Ok(doc) = toml::from_str::<toml::Table>(ai_text) else {
+        return ClassifierProvision::Absent;
+    };
+    let Some(section) = doc.get("classifier") else {
+        return ClassifierProvision::Absent;
+    };
+    let rc: RawClassifier = match section.clone().try_into() {
+        Ok(rc) => rc,
+        Err(e) => {
+            tracing::error!(error = %e, "[classifier] is present but invalid (unknown key or wrong-typed field); screening fails closed until fixed");
+            return ClassifierProvision::Invalid;
+        }
+    };
+    if !classifier_thresholds_valid(rc.warn_at, rc.block_at) {
+        tracing::error!(
+            warn_at = rc.warn_at,
+            block_at = rc.block_at,
+            "[classifier] thresholds are invalid (need finite, 0.0..=1.0, warn_at <= block_at); screening fails closed until fixed"
+        );
+        return ClassifierProvision::Invalid;
+    }
+    ClassifierProvision::Configured(ClassifierConfig {
+        model_path: rc.model_path,
+        tokenizer_path: rc.tokenizer_path,
+        max_tokens: rc.max_tokens,
+        benign_label_index: 0,
+        warn_at: rc.warn_at,
+        block_at: rc.block_at,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,5 +279,40 @@ mod tests {
         let big = "x".repeat(MAX_SCREEN_BYTES + 1);
         // Even a benign-scoring classifier blocks an over-cap payload.
         assert_eq!(on(0.0).screen(&big).await, Verdict::Block);
+    }
+
+    #[test]
+    fn from_config_absent_section_is_off() {
+        // No [classifier]: a deliberate opt-out flows.
+        assert!(!Screener::from_config("[ai]\nprovider = \"x\"\n").is_active());
+        assert!(!Screener::from_config("").is_active());
+    }
+
+    #[tokio::test]
+    async fn from_config_invalid_section_fails_closed() {
+        // An unknown key fails closed.
+        let s = Screener::from_config(
+            "[classifier]\nmodel_path = \"/m\"\ntokenizer_path = \"/t\"\nbogus = 1\n",
+        );
+        assert!(s.is_active());
+        assert_eq!(s.screen("anything").await, Verdict::Block);
+        // Out-of-range thresholds fail closed.
+        let bad = Screener::from_config(
+            "[classifier]\nmodel_path = \"/m\"\ntokenizer_path = \"/t\"\nwarn_at = 0.9\nblock_at = 0.1\n",
+        );
+        assert_eq!(bad.screen("x").await, Verdict::Block);
+    }
+
+    #[tokio::test]
+    async fn from_config_valid_section_without_onnx_fails_closed() {
+        // In a build without the native classifier, a configured screen cannot be
+        // honoured, so it fails closed (never silently flows unscreened).
+        let s = Screener::from_config(
+            "[classifier]\nmodel_path = \"/m\"\ntokenizer_path = \"/t\"\n",
+        );
+        assert!(s.is_active());
+        // (In an `onnx` build this would load the model and screen `On`.)
+        #[cfg(not(feature = "onnx"))]
+        assert_eq!(s.screen("x").await, Verdict::Block);
     }
 }
