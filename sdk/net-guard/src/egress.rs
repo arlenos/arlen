@@ -35,9 +35,12 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use std::time::Duration;
+
 use thiserror::Error;
 use tokio::io::{copy_bidirectional, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
 use crate::{resolve_and_pin, GuardError};
@@ -47,6 +50,18 @@ use crate::{resolve_and_pin, GuardError};
 /// unboundedly (OOM) by sending a head that never terminates; reaching this cap
 /// without a `\r\n\r\n` is a hard reject.
 const MAX_REQUEST_HEAD: usize = 8 * 1024;
+
+/// How long the proxy waits for a complete `CONNECT` head before giving up. Bounds
+/// a slowloris-style drip (one byte per read, never terminating the head) that
+/// would otherwise pin a host task indefinitely on the time axis (the byte cap only
+/// bounds memory).
+const HEAD_READ_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The maximum number of concurrent tunnels the proxy serves. A confined process
+/// must not exhaust host tasks/FDs by opening connections without bound; beyond
+/// this, new connections are dropped (the app's own egress degrades, the host is
+/// protected). An owned permit is held for the connection's whole lifetime.
+const MAX_CONNECTIONS: usize = 64;
 
 /// A single allowlisted egress destination: an exact `host:port` pair the confined
 /// process may reach. Parsed from a `NetworkPolicy::FilteredHosts` entry (the
@@ -193,10 +208,12 @@ impl EgressProxy {
         Self::bind_with_resolver(bind_addr, resolver).await
     }
 
-    /// Bind with an injected decision function. The test seam: a resolver may return
-    /// `Allow(loopback)` so the tunnel splice is tested end to end without relaxing
-    /// the SSRF floor that the real [`Self::bind`] path enforces.
-    pub async fn bind_with_resolver(
+    /// Bind with an injected decision function. Private (not a public constructor)
+    /// so the ONLY production entry point is [`Self::bind`], which always wraps
+    /// [`decide_egress`] and therefore cannot skip the SSRF floor; the in-crate
+    /// tests use this seam to return `Allow(loopback)` and exercise the splice path
+    /// without relaxing the floor in production.
+    async fn bind_with_resolver(
         bind_addr: SocketAddr,
         resolver: EgressResolver,
     ) -> std::io::Result<Self> {
@@ -215,14 +232,20 @@ impl EgressProxy {
     /// `cancel` (the launcher cancels on app exit); a per-connection error never
     /// stops the accept loop.
     pub async fn serve(self, cancel: CancellationToken) {
+        let limit = Arc::new(Semaphore::new(MAX_CONNECTIONS));
         loop {
             tokio::select! {
                 _ = cancel.cancelled() => break,
                 accepted = self.listener.accept() => {
                     let Ok((stream, _peer)) = accepted else { continue };
+                    // Cap concurrent tunnels: an owned permit is held for the whole
+                    // connection. At the cap, drop the connection (the app's egress
+                    // degrades; the host task/FD table is protected).
+                    let Ok(permit) = limit.clone().try_acquire_owned() else { continue };
                     let resolver = self.resolver.clone();
                     tokio::spawn(async move {
                         let _ = handle_tunnel(stream, resolver).await;
+                        drop(permit);
                     });
                 }
             }
@@ -233,14 +256,18 @@ impl EgressProxy {
 /// Handle one `CONNECT` tunnel: read the bounded request head, parse the target,
 /// decide, and either splice to the pinned upstream or reply with the refusal.
 async fn handle_tunnel(mut client: TcpStream, resolver: EgressResolver) -> std::io::Result<()> {
-    let (host, port) = match read_connect_target(&mut client).await {
-        Ok(target) => target,
-        Err(_) => {
-            // Malformed or oversized head: refuse, do not dial anything.
+    // Bound the head read on the time axis (the byte cap bounds only memory): a
+    // peer that never completes the head is reaped.
+    let parsed = match tokio::time::timeout(HEAD_READ_TIMEOUT, read_connect_target(&mut client)).await
+    {
+        Ok(Ok(target)) => target,
+        _ => {
+            // Malformed, oversized or timed-out head: refuse, do not dial anything.
             let _ = client.write_all(b"HTTP/1.1 400 Bad Request\r\n\r\n").await;
             return Ok(());
         }
     };
+    let (host, port, early_data) = parsed;
 
     match resolver(host, port).await {
         EgressVerdict::Allow(addr) => {
@@ -254,6 +281,12 @@ async fn handle_tunnel(mut client: TcpStream, resolver: EgressResolver) -> std::
             client
                 .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
                 .await?;
+            // Any bytes the client coalesced after the CONNECT head are tunnel body
+            // already consumed off the socket; forward them before splicing or the
+            // first request (e.g. a TLS ClientHello) would be truncated.
+            if !early_data.is_empty() {
+                upstream.write_all(&early_data).await?;
+            }
             // Splice both directions until both halves close; the sockets drop when
             // this returns, so no upstream leak on a half-close.
             let _ = copy_bidirectional(&mut client, &mut upstream).await;
@@ -269,16 +302,20 @@ async fn handle_tunnel(mut client: TcpStream, resolver: EgressResolver) -> std::
 }
 
 /// Read the `CONNECT` request head (bounded by [`MAX_REQUEST_HEAD`]) and return the
-/// requested `(host, port)`. Errors on a non-`CONNECT` method, a malformed
+/// requested `(host, port, early_data)`, where `early_data` is any bytes the client
+/// coalesced after the `\r\n\r\n` head terminator (tunnel body the caller must
+/// forward before splicing). Errors on a non-`CONNECT` method, a malformed
 /// authority, a missing/invalid port, or a head that exceeds the cap without
 /// terminating - in every error case the caller refuses without dialling.
-async fn read_connect_target(client: &mut TcpStream) -> Result<(String, u16), ()> {
+async fn read_connect_target(client: &mut TcpStream) -> Result<(String, u16, Vec<u8>), ()> {
     let mut buf: Vec<u8> = Vec::with_capacity(256);
     let mut chunk = [0u8; 1024];
     loop {
         // Find the end of the head.
         if let Some(pos) = find_head_end(&buf) {
-            return parse_connect_line(&buf[..pos]);
+            let (host, port) = parse_connect_line(&buf[..pos])?;
+            let early_data = buf[pos + 4..].to_vec();
+            return Ok((host, port, early_data));
         }
         if buf.len() >= MAX_REQUEST_HEAD {
             return Err(());
@@ -297,6 +334,11 @@ fn find_head_end(buf: &[u8]) -> Option<usize> {
 }
 
 /// Parse the first request line out of the head bytes: `CONNECT host:port HTTP/1.1`.
+/// Mis-parses fail closed (any `Err` becomes a 400 with no dial). An IPv6-literal
+/// authority (`[::1]:443`) keeps its brackets and so never matches a DNS-host
+/// allowlist entry, and a bare-colon v6 form splits the same way the allowlist
+/// parser does, so the parser and the vocabulary agree - no entry can be smuggled
+/// past the allowlist by authority shape.
 fn parse_connect_line(head: &[u8]) -> Result<(String, u16), ()> {
     let text = std::str::from_utf8(head).map_err(|_| ())?;
     let first = text.lines().next().ok_or(())?;
@@ -491,6 +533,46 @@ mod tests {
         let mut echoed = [0u8; 5];
         client.read_exact(&mut echoed).await.unwrap();
         assert_eq!(&echoed, b"hello", "bytes tunnel through to the upstream");
+        cancel.cancel();
+    }
+
+    #[tokio::test]
+    async fn coalesced_early_data_is_forwarded() {
+        // The client coalesces the CONNECT head and the first tunnel bytes in one
+        // write; the proxy must forward those early bytes, not drop them.
+        let upstream = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_addr = upstream.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut s, _) = upstream.accept().await.unwrap();
+            let mut b = [0u8; 5];
+            s.read_exact(&mut b).await.unwrap();
+            s.write_all(&b).await.unwrap();
+        });
+
+        let proxy = EgressProxy::bind_with_resolver(
+            "127.0.0.1:0".parse().unwrap(),
+            allow_resolver(upstream_addr),
+        )
+        .await
+        .unwrap();
+        let proxy_addr = proxy.listen_addr().unwrap();
+        let cancel = CancellationToken::new();
+        let c2 = cancel.clone();
+        tokio::spawn(async move { proxy.serve(c2).await });
+
+        let mut client = TcpStream::connect(proxy_addr).await.unwrap();
+        // Head AND early tunnel bytes in a single write.
+        client
+            .write_all(b"CONNECT api.example.org:443 HTTP/1.1\r\n\r\nhello")
+            .await
+            .unwrap();
+        let status = read_status_line(&mut client).await;
+        assert!(status.contains("200"), "expected 200, got {status:?}");
+        let mut rest = [0u8; 2];
+        client.read_exact(&mut rest).await.unwrap(); // trailing \r\n
+        let mut echoed = [0u8; 5];
+        client.read_exact(&mut echoed).await.unwrap();
+        assert_eq!(&echoed, b"hello", "coalesced early data reaches the upstream");
         cancel.cancel();
     }
 
