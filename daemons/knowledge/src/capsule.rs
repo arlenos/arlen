@@ -23,7 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::Result;
 use arlen_capsule::scope::CapsuleScope;
-use arlen_capsule::slice::{SliceNode, SliceValue};
+use arlen_capsule::slice::{SliceNode, SliceRelation, SliceValue};
 
 use crate::graph::{CellValue, GraphHandle};
 use crate::utils::escape_cypher;
@@ -120,6 +120,53 @@ pub(crate) async fn capsule_expand(
     }
     // A BTreeSet iterates in sorted order, so the manifest is deterministic.
     Ok(included.into_iter().collect())
+}
+
+/// The live `FILE_PART_OF` relations whose BOTH endpoints are in `manifest` — the
+/// edges a capsule carries (a capsule with dangling edges is not a subgraph, so an
+/// edge to an out-of-manifest node is excluded). Live = the same open-interval
+/// predicate as [`capsule_neighbors`], so the relations match the as-of-now slice.
+/// Sorted and deduped for determinism; an empty manifest reads nothing. ids are
+/// escaped into the `IN` list. Only `FILE_PART_OF` today (the followed membership);
+/// other relation types are the documented follow-up.
+pub(crate) async fn capsule_relations(
+    graph: &GraphHandle,
+    manifest: &[String],
+) -> Result<Vec<SliceRelation>> {
+    if manifest.is_empty() {
+        return Ok(Vec::new());
+    }
+    let list = manifest
+        .iter()
+        .map(|id| format!("'{}'", escape_cypher(id)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let cypher = format!(
+        "MATCH (a)-[r:FILE_PART_OF]->(b) \
+         WHERE a.id IN [{list}] AND b.id IN [{list}] \
+         AND r.invalid_at IS NULL AND r.expired_at IS NULL \
+         RETURN a.id AS src, b.id AS dst"
+    );
+    let rs = graph.query_rows(cypher).await?;
+    let mut rels: Vec<SliceRelation> = rs
+        .rows
+        .iter()
+        .filter_map(|row| {
+            let from = row.first()?.as_str().to_string();
+            let to = row.get(1)?.as_str().to_string();
+            if from.is_empty() || to.is_empty() {
+                return None;
+            }
+            Some(SliceRelation {
+                from,
+                rel_type: "FILE_PART_OF".to_string(),
+                to,
+            })
+        })
+        .collect();
+    rels.sort();
+    rels.dedup();
+    Ok(rels)
 }
 
 /// Load one node's projected fields as a [`SliceNode`], or `None` if no node with
@@ -251,6 +298,48 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(zero, vec!["p1".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn relations_carry_only_in_manifest_live_edges() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        for f in ["f1", "f2"] {
+            graph
+                .write(format!(
+                    "CREATE (f:File {{id: '{f}', path: '/{f}', app_id: 't', last_accessed: 0}})"
+                ))
+                .await
+                .unwrap();
+        }
+        // p1 is in the manifest; p2 is not.
+        graph.write("CREATE (p:Project {id: 'p1'})".into()).await.unwrap();
+        graph.write("CREATE (p:Project {id: 'p2'})".into()).await.unwrap();
+        graph
+            .write("MATCH (f:File {id:'f1'}), (p:Project {id:'p1'}) CREATE (f)-[:FILE_PART_OF]->(p)".into())
+            .await
+            .unwrap();
+        graph
+            .write("MATCH (f:File {id:'f2'}), (p:Project {id:'p1'}) CREATE (f)-[:FILE_PART_OF]->(p)".into())
+            .await
+            .unwrap();
+        // f1 also belongs to p2, which is OUT of the manifest — its edge is excluded.
+        graph
+            .write("MATCH (f:File {id:'f1'}), (p:Project {id:'p2'}) CREATE (f)-[:FILE_PART_OF]->(p)".into())
+            .await
+            .unwrap();
+
+        let manifest = vec!["f1".to_string(), "f2".to_string(), "p1".to_string()];
+        let rels = capsule_relations(&graph, &manifest).await.unwrap();
+        assert_eq!(
+            rels,
+            vec![
+                SliceRelation { from: "f1".into(), rel_type: "FILE_PART_OF".into(), to: "p1".into() },
+                SliceRelation { from: "f2".into(), rel_type: "FILE_PART_OF".into(), to: "p1".into() },
+            ],
+            "only in-manifest live edges, sorted; the f1->p2 edge is dropped"
+        );
+        assert!(capsule_relations(&graph, &[]).await.unwrap().is_empty());
     }
 
     #[tokio::test]
