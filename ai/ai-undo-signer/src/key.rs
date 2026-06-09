@@ -34,7 +34,20 @@ pub const KEY_LEN: usize = 32;
 /// `log_has_records` is whether the undo-log already holds at least one record.
 /// If the key file is absent *and* the log is non-empty the call fails closed: a
 /// fresh key would make every existing chained record fail verification, so the
-/// signer must stop and the user recover explicitly. There is no silent re-key.
+/// signer must stop and the user recover explicitly. There is no silent re-key
+/// while records remain.
+///
+/// Honest limit: this guards against a *lost* key, not against an attacker who
+/// can also erase the log. Removing the key AND truncating the log to empty makes
+/// `log_has_records` false and re-keys over a blank log, erasing history with no
+/// error. That is the same class as the documented tail-truncation gap (the chain
+/// proves no in-place tamper, but a prefix or whole-log erasure leaves a
+/// self-consistent shorter chain), and it is closed only by an external head
+/// checkpoint (a signed record-count + head-hash sidecar, the deferred next
+/// increment), not by key custody alone. In the intended separate-uid deployment
+/// the 0700 signer-owned directory keeps any non-signer process from doing this;
+/// in the as-built same-uid deployment it collapses into the acknowledged F3
+/// residual (see `auth.rs`).
 pub fn load_or_create(path: &Path, log_has_records: bool) -> Result<Zeroizing<Vec<u8>>> {
     if path.exists() {
         return read_key(path);
@@ -49,21 +62,34 @@ pub fn load_or_create(path: &Path, log_has_records: bool) -> Result<Zeroizing<Ve
     create_key(path)
 }
 
-/// Read and validate an existing key file. The file is `lstat`-checked first so a
-/// planted symlink cannot redirect the signer to key material it does not
-/// control; it must be a regular file, not reachable by group or others (mode
-/// 0600), and exactly [`KEY_LEN`] bytes.
+/// Read and validate an existing key file with no TOCTOU window: the file is
+/// opened `O_NOFOLLOW` (a symlink at the final component fails the open with
+/// `ELOOP`), then validated by `fstat` on the *open fd* (not a re-resolved path)
+/// for being a regular file, not reachable by group or others (mode 0600), and
+/// read to exactly [`KEY_LEN`] bytes from that same fd.
 fn read_key(path: &Path) -> Result<Zeroizing<Vec<u8>>> {
-    use std::os::unix::fs::PermissionsExt;
+    use std::io::Read;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
-    // `symlink_metadata` is `lstat`: it does not follow a symlink.
-    let meta = std::fs::symlink_metadata(path)?;
-    if meta.file_type().is_symlink() {
-        return Err(SignerError::KeyUnavailable(format!(
-            "key file {} is a symlink; refusing to follow it",
-            path.display()
-        )));
-    }
+    // O_NOFOLLOW: if the final path component is a symlink the open fails, so a
+    // symlink planted between any check and the read cannot redirect us. The fd
+    // is then the single object we fstat and read; the path is never re-resolved.
+    let mut file = match std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+    {
+        Ok(f) => f,
+        Err(e) if e.raw_os_error() == Some(libc::ELOOP) => {
+            return Err(SignerError::KeyUnavailable(format!(
+                "key file {} is a symlink; refusing to follow it",
+                path.display()
+            )))
+        }
+        Err(e) => return Err(e.into()),
+    };
+
+    let meta = file.metadata()?; // fstat on the open fd
     if !meta.is_file() {
         return Err(SignerError::KeyUnavailable(format!(
             "key path {} is not a regular file",
@@ -77,7 +103,8 @@ fn read_key(path: &Path) -> Result<Zeroizing<Vec<u8>>> {
         )));
     }
 
-    let bytes = Zeroizing::new(std::fs::read(path)?);
+    let mut bytes = Zeroizing::new(Vec::new());
+    file.read_to_end(&mut bytes)?;
     if bytes.len() != KEY_LEN {
         return Err(SignerError::KeyUnavailable(format!(
             "key file {} holds {} bytes, expected {KEY_LEN}",
