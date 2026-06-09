@@ -750,6 +750,17 @@ fn handle_revoke(app_id: &str, body: &[u8]) -> String {
         Ok(r) => r,
         Err(e) => return format!("ERROR: invalid revoke request: {e}"),
     };
+    // §6.3: there is no agent path that auto-applies. The agent may only *propose*
+    // a revoke into the pull-review timeline; a user confirming it replays the
+    // proposal as `User`. A literal `Agent` initiator arriving at the apply site is
+    // therefore never a confirmed revoke, so it is refused, not applied. The
+    // caller-allowlist (only `settings`) already blocks the agent from connecting,
+    // but that guards *who* connects; this guards *what semantics* may apply, so
+    // the invariant survives admitting another caller later (a confused deputy
+    // forwarding a raw suggestion cannot turn it into an auto-applied revoke).
+    if matches!(req.initiator, crate::revoke::RevokeInitiator::Agent { .. }) {
+        return "ERROR: an agent-initiated revoke is a proposal, not a confirmed revoke".to_string();
+    }
     // The target app id becomes a filesystem path (`profile_path` interpolates it
     // into `~/.config/permissions/{id}.toml`), so it MUST be a single safe path
     // component. Without this an attacker-influenced id like `/etc/x` (absolute,
@@ -1799,6 +1810,17 @@ mod tests {
     fn handle_revoke_rejects_a_malformed_request() {
         let r = handle_revoke("settings", b"not json");
         assert!(r.starts_with("ERROR: invalid revoke request"), "got {r}");
+    }
+
+    #[test]
+    fn handle_revoke_refuses_an_agent_initiated_revoke() {
+        // §6.3: a literal `Agent` initiator at the apply site is a proposal, never a
+        // confirmed revoke, so it is refused even from the admitted Settings caller
+        // (a confirmed revoke is replayed as `User`). The refusal lands before the
+        // target is turned into a path, so no profile is touched.
+        let body = b"{\"target_app_id\":\"com.x\",\"reach\":{\"InstanceAll\":null},\"initiator\":{\"Agent\":{\"suggestion_id\":\"s1\"}}}";
+        let r = handle_revoke("settings", body);
+        assert!(r.starts_with("ERROR: an agent-initiated revoke"), "got {r}");
     }
 
     #[test]
