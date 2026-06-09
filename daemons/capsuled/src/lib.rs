@@ -17,3 +17,4 @@
 
 pub mod scope;
 pub mod slice;
+pub mod store;
