@@ -108,10 +108,29 @@ impl InstallDaemon {
     /// Enrol a system-installed (apt/`.deb`) app: generate its profile from the
     /// manifest at `manifest_path` and have the privileged `permission-helper` write
     /// it root-owned under `/var/lib/arlen/permissions/{uid}/` (F3 Rung A). The uid
-    /// is this daemon's own (the user the app runs as). The future apt enroll-hook
-    /// calls this; the lunpkg path stays on the user-tier `~/.config` and does not.
-    /// Returns (success, error_message).
-    async fn enroll_system_app(&self, app_id: String, manifest_path: String) -> (bool, String) {
+    /// is this daemon's own (the user the app runs as). Returns (success, error).
+    ///
+    /// **Root-only.** The enrol entry point mints a root-owned, authoritative
+    /// profile, so on the session bus uid alone cannot tell the legitimate (root)
+    /// apt enroll-hook from a same-uid malware peer. The caller is therefore
+    /// required to be root; a non-root peer is refused. The lunpkg path stays on the
+    /// user-tier `~/.config` and does not call this. `app_id` must equal the
+    /// manifest's declared id, so a caller cannot enrol a wide profile under another
+    /// principal's name.
+    async fn enroll_system_app(
+        &self,
+        app_id: String,
+        manifest_path: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> (bool, String) {
+        match caller_uid(&header, connection).await {
+            Ok(0) => {}
+            Ok(uid) => {
+                return (false, format!("enrol requires root; caller uid {uid} refused"))
+            }
+            Err(e) => return (false, format!("resolve caller: {e}")),
+        }
         let content = match std::fs::read_to_string(&manifest_path) {
             Ok(c) => c,
             Err(e) => return (false, format!("read manifest: {e}")),
@@ -120,6 +139,15 @@ impl InstallDaemon {
             Ok(m) => m,
             Err(e) => return (false, format!("parse manifest: {e}")),
         };
+        if manifest.package.id != app_id {
+            return (
+                false,
+                format!(
+                    "app_id {app_id} does not match manifest id {}",
+                    manifest.package.id
+                ),
+            );
+        }
         let profile = crate::permission_helper::system_profile_toml_from_manifest(
             &app_id,
             &manifest.permissions,
@@ -178,4 +206,22 @@ impl InstallDaemon {
         app_name: String,
         permissions: Vec<String>,
     ) -> zbus::Result<()>;
+}
+
+/// Resolve the kernel-attested uid of a D-Bus caller from its message sender, via
+/// the bus daemon's `GetConnectionUnixUser`. Used to gate the root-only enrol path.
+async fn caller_uid(
+    header: &zbus::message::Header<'_>,
+    connection: &zbus::Connection,
+) -> Result<u32, String> {
+    let sender = header
+        .sender()
+        .ok_or_else(|| "no sender in message".to_string())?;
+    let proxy = zbus::fdo::DBusProxy::new(connection)
+        .await
+        .map_err(|e| format!("DBusProxy: {e}"))?;
+    proxy
+        .get_connection_unix_user(sender.clone().into())
+        .await
+        .map_err(|e| format!("get uid: {e}"))
 }
