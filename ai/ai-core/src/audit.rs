@@ -174,13 +174,41 @@ pub fn behaviour_action_event(
     outcome: impl Into<String>,
     correlation_id: &str,
 ) -> IngestRequest {
+    behaviour_event(AuditKind::Permission, behaviour, outcome, correlation_id)
+}
+
+/// A behaviour audit entry classified as a [`AuditKind::PolicyViolation`], for a
+/// gate refusal that is a deterministic hijack proof rather than a routine
+/// decision: a structural-canary touch or a honeytool selection
+/// (canary-honeytools.md §2-§3). Same content-free subject + correlation as
+/// [`behaviour_action_event`]; only the kind differs, so a ledger reader (the
+/// anomaly detector) can surface a tripwire firing by kind instead of parsing the
+/// outcome string. The specific cause stays in the (already content-free)
+/// `outcome` (`canary-tripped:…` / `honeytool-tripped`).
+pub fn behaviour_policy_violation_event(
+    behaviour: &str,
+    outcome: impl Into<String>,
+    correlation_id: &str,
+) -> IngestRequest {
+    behaviour_event(AuditKind::PolicyViolation, behaviour, outcome, correlation_id)
+}
+
+/// Shared builder for a content-free behaviour audit entry. The subject is
+/// validated here (the content-free boundary), so neither public wrapper can
+/// persist free text into the Structural tier.
+fn behaviour_event(
+    kind: AuditKind,
+    behaviour: &str,
+    outcome: impl Into<String>,
+    correlation_id: &str,
+) -> IngestRequest {
     let subject = if is_safe_behaviour_subject(behaviour) {
         format!("agent.{behaviour}")
     } else {
         "agent.behaviour".to_string()
     };
     IngestRequest {
-        kind: AuditKind::Permission,
+        kind,
         structural: StructuralRecord {
             subject,
             node_types: Vec::new(),
@@ -299,6 +327,23 @@ mod tests {
         assert_eq!(ev.structural.outcome, "propose");
         assert_eq!(ev.call_chain_id.as_deref(), Some("run-7"));
         assert!(ev.forensic.is_none());
+    }
+
+    #[test]
+    fn behaviour_policy_violation_event_is_classified_and_content_free() {
+        // A tripwire firing is a policy violation, not a routine permission
+        // decision, so it carries that kind; the subject + correlation are
+        // content-free exactly like the action event, and the specific cause stays
+        // in the outcome.
+        let ev = behaviour_policy_violation_event("auto-tag-by-project", "canary-tripped:structural", "run-9");
+        assert_eq!(ev.kind, AuditKind::PolicyViolation);
+        assert_eq!(ev.structural.subject, "agent.auto-tag-by-project");
+        assert_eq!(ev.structural.outcome, "canary-tripped:structural");
+        assert_eq!(ev.call_chain_id.as_deref(), Some("run-9"));
+        assert!(ev.forensic.is_none());
+        // The content-free boundary still collapses an unsafe subject.
+        let bad = behaviour_policy_violation_event("not a kebab id!", "honeytool-tripped", "r");
+        assert_eq!(bad.structural.subject, "agent.behaviour");
     }
 
     #[test]
