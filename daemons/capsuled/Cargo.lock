@@ -52,6 +52,7 @@ dependencies = [
  "arlen-forage-signing",
  "arlen-forage-store",
  "ed25519-dalek",
+ "fs2",
  "serde",
  "serde_json",
 ]
