@@ -19,9 +19,10 @@
 // unused in a plain build, like the other not-yet-consumed daemon read APIs.
 #![allow(dead_code)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::Result;
+use arlen_capsule::scope::CapsuleScope;
 use arlen_capsule::slice::{SliceNode, SliceValue};
 
 use crate::graph::{CellValue, GraphHandle};
@@ -83,6 +84,42 @@ pub(crate) async fn capsule_neighbors(graph: &GraphHandle, node_id: &str) -> Res
     ids.sort();
     ids.dedup();
     Ok(ids)
+}
+
+/// Expand a [`CapsuleScope`] into its id manifest by a bounded breadth-first walk
+/// over the live graph, following [`capsule_neighbors`] for `expand_hops` hops.
+///
+/// This is the live, async counterpart of the pure
+/// [`arlen_capsule::scope::expand_scope`] (which stays the tested specification of
+/// the algorithm): a graph read is async and fallible, so the walk cannot use the
+/// pure version's sync `Fn` neighbour source. The walk is cycle-safe (each id is
+/// visited once via the included set) and deterministic (the manifest is the sorted
+/// included set), so a fresh mint of the same scope yields the same manifest. A
+/// neighbour read error propagates, so the caller fails the mint closed rather than
+/// freezing a partial slice. Roots are always included; empty roots yield an empty
+/// manifest with no reads.
+pub(crate) async fn capsule_expand(
+    graph: &GraphHandle,
+    scope: &CapsuleScope,
+) -> Result<Vec<String>> {
+    let mut included: BTreeSet<String> = scope.roots.iter().cloned().collect();
+    let mut frontier: Vec<String> = included.iter().cloned().collect();
+    for _ in 0..scope.expand_hops {
+        if frontier.is_empty() {
+            break;
+        }
+        let mut next = Vec::new();
+        for node in &frontier {
+            for neighbour in capsule_neighbors(graph, node).await? {
+                if included.insert(neighbour.clone()) {
+                    next.push(neighbour);
+                }
+            }
+        }
+        frontier = next;
+    }
+    // A BTreeSet iterates in sorted order, so the manifest is deterministic.
+    Ok(included.into_iter().collect())
 }
 
 /// Load one node's projected fields as a [`SliceNode`], or `None` if no node with
@@ -179,6 +216,41 @@ mod tests {
         assert_eq!(capsule_neighbors(&graph, "f1").await.unwrap(), vec!["p1".to_string()]);
         // A node with no live membership has no neighbours.
         assert!(capsule_neighbors(&graph, "absent").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn expand_walks_a_project_to_its_members() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        for f in ["f1", "f2"] {
+            graph
+                .write(format!(
+                    "CREATE (f:File {{id: '{f}', path: '/{f}', app_id: 't', last_accessed: 0}})"
+                ))
+                .await
+                .unwrap();
+        }
+        graph.write("CREATE (p:Project {id: 'p1'})".into()).await.unwrap();
+        for f in ["f1", "f2"] {
+            graph
+                .write(format!(
+                    "MATCH (f:File {{id:'{f}'}}), (p:Project {{id:'p1'}}) CREATE (f)-[:FILE_PART_OF]->(p)"
+                ))
+                .await
+                .unwrap();
+        }
+
+        // One hop from the project reaches its two member files (sorted manifest).
+        let one_hop = capsule_expand(&graph, &CapsuleScope { roots: vec!["p1".into()], expand_hops: 1 })
+            .await
+            .unwrap();
+        assert_eq!(one_hop, vec!["f1".to_string(), "f2".to_string(), "p1".to_string()]);
+
+        // Zero hops is exactly the roots.
+        let zero = capsule_expand(&graph, &CapsuleScope { roots: vec!["p1".into()], expand_hops: 0 })
+            .await
+            .unwrap();
+        assert_eq!(zero, vec!["p1".to_string()]);
     }
 
     #[tokio::test]
