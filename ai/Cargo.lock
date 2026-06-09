@@ -185,6 +185,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-ai-undo-proto"
+version = "0.1.0"
+dependencies = [
+ "arlen-ai-undo-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "arlen-ai-undo-signer"
 version = "0.1.0"
 dependencies = [
