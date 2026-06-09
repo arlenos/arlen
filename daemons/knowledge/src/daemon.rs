@@ -312,6 +312,33 @@ async fn mark_app_grants_stale(graph: &GraphHandle, app_id: &str) {
     }
 }
 
+/// Remove an app's Grant nodes entirely (living-capability-graph.md §13, LCG-R6
+/// uninstall cleanup): when the profile is gone, the grants are orphaned
+/// projection (the app will never re-mint and the durable authority history lives
+/// in the audit ledger, not here), so a `DETACH DELETE` removes them and their
+/// `GRANTS`/`USED_BY` edges rather than leaving them as misleading "dormant"
+/// rows. Best-effort like the stale-mark.
+async fn remove_app_grants(graph: &GraphHandle, app_id: &str) {
+    let app_esc = escape_cypher(app_id);
+    if let Err(e) = graph
+        .write(format!(
+            "MATCH (g:Grant {{app_id: '{app_esc}'}}) DETACH DELETE g"
+        ))
+        .await
+    {
+        warn!("removing {app_id} grants on uninstall failed: {e}");
+    }
+}
+
+/// Whether the app still has a profile on disk. A `permission.changed` for an app
+/// whose profile is gone is an uninstall (the projection must be cleaned up), not
+/// a narrowing (the projection stays stale and re-mints).
+fn profile_exists(app_id: &str) -> bool {
+    crate::permission::PermissionProfile::profile_path(app_id)
+        .map(|p| p.exists())
+        .unwrap_or(false)
+}
+
 /// Process a graph-relevant event.
 async fn handle_graph_event(
     auth: &Arc<Mutex<Authenticator>>,
@@ -322,9 +349,15 @@ async fn handle_graph_event(
         GraphEvent::PermissionChanged { app_id } => {
             info!("permission changed for {app_id}, invalidating token");
             auth.lock().await.invalidate(&app_id);
-            // The app's prior live reach no longer verifies; reflect that in the
-            // projection alongside the token invalidation (§4.2).
-            mark_app_grants_stale(graph, &app_id).await;
+            if profile_exists(&app_id) {
+                // A narrowing/edit: the prior live reach no longer verifies, so
+                // mark it stale; the next connection re-mints at the new ceiling.
+                mark_app_grants_stale(graph, &app_id).await;
+            } else {
+                // The profile is gone (uninstall): the grants are orphaned, remove
+                // them so the browse surface does not show a dead app as dormant.
+                remove_app_grants(graph, &app_id).await;
+            }
         }
         GraphEvent::AiLevelChanged => {
             info!("AI level changed, invalidating ai-daemon token");
@@ -1728,6 +1761,59 @@ mod tests {
         // An app with no grants gets an empty array, never an error or a leak.
         let none = handle_access_grants("com.c", &graph).await;
         assert_eq!(none, "[]", "no grants -> empty, not a leak: {none}");
+    }
+
+    #[tokio::test]
+    async fn permission_changed_for_an_uninstalled_app_removes_its_grants() {
+        use crate::token::{CapabilityToken, EntityScope, InstanceScope};
+        let auth = Arc::new(Mutex::new(Authenticator::new()));
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+
+        // An app id that has no profile on disk (so profile_exists is false =
+        // uninstalled).
+        let app = "com.test.uninstalled.nonexistent.example";
+        let token = CapabilityToken::new(
+            app.into(),
+            7,
+            vec![EntityScope {
+                entity_type: "system.File".into(),
+                fields: None,
+                exclude_fields: vec![],
+            }],
+            vec![],
+            vec![],
+            InstanceScope::Own,
+        );
+        crate::lcg::emit_grant_node(&graph, &token).await.unwrap();
+
+        // Sanity: the grant exists before the uninstall event.
+        let before = graph
+            .query_rows_json(format!("MATCH (g:Grant {{app_id:'{app}'}}) RETURN g.id"))
+            .await
+            .unwrap();
+        assert!(before.contains("rows"));
+        let before_parsed: serde_json::Value = serde_json::from_str(&before).unwrap();
+        assert_eq!(before_parsed["rows"].as_array().unwrap().len(), 1);
+
+        // The uninstall event (profile gone) removes the orphaned grant.
+        handle_graph_event(
+            &auth,
+            &graph,
+            GraphEvent::PermissionChanged { app_id: app.into() },
+        )
+        .await;
+
+        let after = graph
+            .query_rows_json(format!("MATCH (g:Grant {{app_id:'{app}'}}) RETURN g.id"))
+            .await
+            .unwrap();
+        let after_parsed: serde_json::Value = serde_json::from_str(&after).unwrap();
+        assert_eq!(
+            after_parsed["rows"].as_array().unwrap().len(),
+            0,
+            "the uninstalled app's grants are removed: {after}"
+        );
     }
 
     #[tokio::test]
