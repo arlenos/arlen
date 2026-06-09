@@ -16,6 +16,22 @@ describe("sanitizeSession", () => {
     expect(s!.messages[0].text).toBe("hi");
   });
 
+  it("restores a true bookmark and ignores a non-true pinned flag", () => {
+    const s = sanitizeSession({
+      id: "a",
+      title: "x",
+      createdAt: 0,
+      messages: [
+        { id: 1, role: "assistant", text: "kept", pinned: true },
+        { id: 2, role: "assistant", text: "noise", pinned: "yes" },
+        { id: 3, role: "assistant", text: "plain" },
+      ],
+    });
+    expect(s!.messages[0].pinned).toBe(true);
+    expect(s!.messages[1].pinned).toBeUndefined();
+    expect(s!.messages[2].pinned).toBeUndefined();
+  });
+
   it("coerces a non-array messages to empty rather than throwing", () => {
     const s = sanitizeSession({ id: "a", title: "x", createdAt: 0, messages: null });
     expect(s).not.toBeNull();

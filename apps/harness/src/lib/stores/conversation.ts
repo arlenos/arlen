@@ -17,6 +17,7 @@ import { planRegenerate } from "$lib/regenerate";
 import { planEdit } from "$lib/edit";
 import { planDelete } from "$lib/delete";
 import { planFork } from "$lib/fork";
+import { togglePinned } from "$lib/bookmark";
 
 /// Who produced a message. `error` is a turn that failed (daemon down,
 /// disabled, query error) — rendered distinctly, never as an answer.
@@ -58,6 +59,10 @@ export interface Message {
   /// Names of files the user attached to this turn (user turns only), shown
   /// as chips on the bubble so the transcript records what was supplemented.
   mentions?: string[];
+  /// True when the user bookmarked this message, so it can be revisited from a
+  /// bookmarks view. Absent (not `false`) when unmarked, to keep the stored
+  /// record minimal.
+  pinned?: boolean;
 }
 
 /// One conversation: an ordered transcript plus a display title and creation
@@ -144,6 +149,8 @@ export function sanitizeSession(raw: unknown): Session | null {
     }
     if (Array.isArray(m.toolCalls)) msg.toolCalls = m.toolCalls as ToolCall[];
     if (typeof m.traceUnavailable === "boolean") msg.traceUnavailable = m.traceUnavailable;
+    // Only a true bookmark is restored; an absent or false flag stays unset.
+    if (m.pinned === true) msg.pinned = true;
     messages.push(msg);
   }
   return { id, title, createdAt, messages };
@@ -495,4 +502,13 @@ export function fork(messageId: number): string | null {
   ]);
   activeSessionId.set(newId);
   return newId;
+}
+
+/// Toggle the bookmark on a message in the active conversation (see
+/// `togglePinned`). Local and synchronous, so it persists immediately with no
+/// daemon round-trip; a caller wires it to a per-message bookmark control.
+export function togglePin(messageId: number): void {
+  const id = get(activeSessionId);
+  if (!id) return;
+  updateSession(id, (messages) => togglePinned(messages, messageId));
 }
