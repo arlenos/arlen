@@ -14,8 +14,9 @@
 //! given.
 
 use arlen_ai_core::provider::{AIProvider, CompletionRequest};
+use arlen_ai_core::screen::{Screener, Verdict};
 
-use crate::prompt::build_explanation_prompt;
+use crate::prompt::{build_explanation_prompt, render_snapshot};
 use crate::snapshot::SystemSnapshot;
 use crate::source::{
     anomaly_context, graph_context, live_context, merge_snapshots, AnomalyReader, GraphReader,
@@ -37,6 +38,11 @@ pub enum ExplainError {
     /// The provider completion failed.
     #[error("provider failed: {0}")]
     Provider(String),
+    /// The snapshot was blocked by the injection classifier (S17): the
+    /// graph/app-sourced content scored as a likely prompt injection, so it never
+    /// reached the model. Fail-closed - a broken or unavailable screen blocks too.
+    #[error("explanation blocked: snapshot content failed injection screening")]
+    Blocked,
 }
 
 /// Summarise an assembled snapshot in plain language via `provider`.
@@ -46,7 +52,16 @@ pub enum ExplainError {
 pub async fn explain(
     snapshot: &SystemSnapshot,
     provider: &dyn AIProvider,
+    screener: &Screener,
 ) -> Result<String, ExplainError> {
+    // Screen the snapshot's external content (the same text that goes into the
+    // prompt block) before it reaches the model. The graph holds app- and
+    // user-controlled strings an injection can ride; a Block (or a broken/timed-out
+    // screen) refuses the explanation rather than feed the model the payload.
+    let data = render_snapshot(snapshot);
+    if matches!(screener.screen(&data).await, Verdict::Block) {
+        return Err(ExplainError::Blocked);
+    }
     let prompt = build_explanation_prompt(snapshot);
     let request = CompletionRequest {
         prompt,
@@ -66,10 +81,11 @@ pub async fn explain(
 pub async fn explain_system(
     reader: &dyn GraphReader,
     provider: &dyn AIProvider,
+    screener: &Screener,
     now_unix: i64,
 ) -> Result<String, ExplainError> {
     let snapshot = graph_context(reader, now_unix).await?;
-    explain(&snapshot, provider).await
+    explain(&snapshot, provider, screener).await
 }
 
 /// Assemble the graph half and the anomaly half, [`merge_snapshots`] them,
@@ -81,6 +97,7 @@ pub async fn explain_with_sources(
     anomaly_reader: Option<&dyn AnomalyReader>,
     process_reader: Option<&dyn ProcessReader>,
     provider: &dyn AIProvider,
+    screener: &Screener,
     now_unix: i64,
 ) -> Result<String, ExplainError> {
     // The graph is the core source; its failure fails the explanation. The
@@ -98,7 +115,7 @@ pub async fn explain_with_sources(
             snapshot = merge_snapshots(snapshot, live);
         }
     }
-    explain(&snapshot, provider).await
+    explain(&snapshot, provider, screener).await
 }
 
 #[cfg(test)]
@@ -165,18 +182,28 @@ mod tests {
     #[tokio::test]
     async fn explain_returns_the_provider_summary_and_sends_a_tagged_prompt() {
         let provider = MockProvider::ok("Your computer is idle.");
-        let summary = explain(&quiet(), &provider).await.unwrap();
+        let summary = explain(&quiet(), &provider, &Screener::off()).await.unwrap();
         assert_eq!(summary, "Your computer is idle.");
         // The prompt the provider saw is the tagged explanation prompt.
         let prompt = provider.seen_prompt.lock().unwrap().clone().unwrap();
         assert!(prompt.contains("What is my computer doing right now?"));
-        assert!(prompt.contains("[GRAPH-DATA-"));
+        assert!(prompt.contains("[EXTERNAL-CONTENT-"));
+    }
+
+    #[tokio::test]
+    async fn explain_blocks_when_screening_fails_closed_and_never_calls_the_provider() {
+        let provider = MockProvider::ok("should not be reached");
+        // A FailClosed screener blocks any content; the provider is never called.
+        let screener = Screener::new(arlen_ai_core::screen::ScreeningMode::FailClosed);
+        let err = explain(&quiet(), &provider, &screener).await.unwrap_err();
+        assert!(matches!(err, ExplainError::Blocked));
+        assert!(provider.seen_prompt.lock().unwrap().is_none(), "the model was not called");
     }
 
     #[tokio::test]
     async fn explain_maps_a_provider_error() {
         let provider = MockProvider::err(ProviderError::Unavailable("no daemon".into()));
-        let err = explain(&quiet(), &provider).await.unwrap_err();
+        let err = explain(&quiet(), &provider, &Screener::off()).await.unwrap_err();
         assert!(matches!(err, ExplainError::Provider(_)));
     }
 
@@ -206,9 +233,10 @@ mod tests {
     #[tokio::test]
     async fn explain_with_sources_folds_anomalies_into_the_prompt() {
         let provider = MockProvider::ok("ok");
-        let summary = explain_with_sources(&EmptyGraph, Some(&OneAnomaly), None, &provider, 1)
-            .await
-            .unwrap();
+        let summary =
+            explain_with_sources(&EmptyGraph, Some(&OneAnomaly), None, &provider, &Screener::off(), 1)
+                .await
+                .unwrap();
         assert_eq!(summary, "ok");
         // The anomaly the source returned reaches the prompt the model sees.
         let prompt = provider.seen_prompt.lock().unwrap().clone().unwrap();

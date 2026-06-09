@@ -15,7 +15,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use arlen_ai_classifier::{screen, ClassifierPolicy, InjectionClassifier, Verdict};
+use arlen_ai_classifier::{screen, ClassifierPolicy, InjectionClassifier};
+pub use arlen_ai_classifier::Verdict;
 
 /// The maximum bytes the classifier is asked to score. A payload past this is not
 /// normal content and would force many inference windows, so it is blocked.
