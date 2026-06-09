@@ -115,6 +115,15 @@ pub enum GraphRequest {
         cypher: String,
         reply: tokio::sync::oneshot::Sender<Result<String>>,
     },
+    /// Run several Cypher statements under one transaction on the serial thread,
+    /// committing all or none (bitemporal-knowledge-graph.md §4.5). For the
+    /// genuinely multi-statement writes that cannot be one Cypher query (a
+    /// node-create plus its edges, §5.3); single-statement writes stay a plain
+    /// `Query`, which is already atomic on the serial thread.
+    Transaction {
+        statements: Vec<String>,
+        reply: tokio::sync::oneshot::Sender<Result<()>>,
+    },
     /// Shut down the Ladybug thread cleanly.
     Shutdown,
 }
@@ -171,6 +180,26 @@ impl GraphHandle {
         self.sender
             .send(GraphRequest::QueryRows {
                 cypher,
+                reply: reply_tx,
+            })
+            .await
+            .map_err(|_| anyhow!("ladybug thread has stopped"))?;
+        reply_rx
+            .await
+            .map_err(|_| anyhow!("ladybug thread dropped reply sender"))?
+    }
+
+    /// Run several Cypher statements atomically under one transaction: all of
+    /// them commit, or (on any statement error) none do. For a multi-statement
+    /// write that cannot be one Cypher query, such as a node-create plus its
+    /// edges (§5.3); a single-statement write should use [`write`](Self::write),
+    /// which is already atomic on the serial thread. An empty statement list is a
+    /// no-op success.
+    pub async fn transaction(&self, statements: Vec<String>) -> Result<()> {
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+        self.sender
+            .send(GraphRequest::Transaction {
+                statements,
                 reply: reply_tx,
             })
             .await
@@ -353,6 +382,10 @@ fn ladybug_thread(path: &str, mut rx: mpsc::Receiver<GraphRequest>) -> Result<()
                 });
                 reply.send(result).ok();
             }
+            GraphRequest::Transaction { statements, reply } => {
+                debug!(count = statements.len(), "executing transaction");
+                reply.send(run_transaction(&conn, &statements)).ok();
+            }
             GraphRequest::Shutdown => {
                 info!("ladybug thread shutting down");
                 break;
@@ -360,6 +393,33 @@ fn ladybug_thread(path: &str, mut rx: mpsc::Receiver<GraphRequest>) -> Result<()
         }
     }
 
+    Ok(())
+}
+
+/// Run `statements` under one Kuzu transaction on the calling (serial) thread:
+/// `BEGIN TRANSACTION`, each statement in order, `COMMIT`; any statement error
+/// triggers a `ROLLBACK` and returns the error, so the write is all-or-nothing.
+/// An empty list is a no-op success. lbug exposes no transaction handle, so the
+/// boundaries are Cypher statements (standard Kuzu `BEGIN TRANSACTION` /
+/// `COMMIT` / `ROLLBACK`). Runs on the serial graph thread, so no other request
+/// interleaves between BEGIN and COMMIT.
+fn run_transaction(conn: &Connection, statements: &[String]) -> Result<()> {
+    if statements.is_empty() {
+        return Ok(());
+    }
+    conn.query("BEGIN TRANSACTION")
+        .map_err(|e| anyhow!("begin transaction: {e}"))?;
+    for stmt in statements {
+        if let Err(e) = conn.query(stmt) {
+            // Best-effort rollback; surface the original statement error.
+            let _ = conn.query("ROLLBACK");
+            return Err(anyhow!("transaction statement failed: {e}"));
+        }
+    }
+    conn.query("COMMIT").map_err(|e| {
+        let _ = conn.query("ROLLBACK");
+        anyhow!("commit failed: {e}")
+    })?;
     Ok(())
 }
 
@@ -779,5 +839,51 @@ mod tests {
             .by_ref()
             .count();
         assert_eq!(live, 1, "the stamped edge reads as a live, open-interval fact");
+    }
+
+    #[test]
+    fn run_transaction_commits_all_or_rolls_back_on_error() {
+        // KG-R5 (§4.5): the multi-statement transaction variant must be atomic.
+        // This also probes that lbug honours `BEGIN TRANSACTION`/`COMMIT`/
+        // `ROLLBACK` (it exposes no transaction handle, so the boundaries are
+        // Cypher statements); a failure here would mean the node-create-plus-edges
+        // path needs a different mechanism.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db = Database::new(tmp.path().join("graph").to_str().unwrap(), SystemConfig::default())
+            .unwrap();
+        let conn = Connection::new(&db).unwrap();
+        conn.query("CREATE NODE TABLE N(id STRING, PRIMARY KEY(id))").unwrap();
+
+        let count = |conn: &Connection| -> i64 {
+            conn.query("MATCH (n:N) RETURN count(*)")
+                .unwrap()
+                .by_ref()
+                .next()
+                .and_then(|row| row.into_iter().next())
+                .and_then(value_to_json)
+                .and_then(|j| j.as_i64())
+                .unwrap()
+        };
+
+        // A valid transaction commits every statement.
+        run_transaction(
+            &conn,
+            &["CREATE (:N {id: 'a'})".to_string(), "CREATE (:N {id: 'b'})".to_string()],
+        )
+        .expect("a valid transaction commits");
+        assert_eq!(count(&conn), 2, "both nodes committed");
+
+        // A transaction whose second statement fails (duplicate primary key)
+        // rolls back the first, so nothing from it persists.
+        let r = run_transaction(
+            &conn,
+            &["CREATE (:N {id: 'c'})".to_string(), "CREATE (:N {id: 'a'})".to_string()],
+        );
+        assert!(r.is_err(), "the duplicate-key statement fails the transaction");
+        assert_eq!(count(&conn), 2, "the failed transaction rolled back 'c'");
+
+        // An empty transaction is a no-op success.
+        run_transaction(&conn, &[]).expect("empty transaction is a no-op");
+        assert_eq!(count(&conn), 2);
     }
 }
