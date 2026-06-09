@@ -933,6 +933,13 @@ impl<'a> Dispatcher<'a> {
         ctx: &ActionContext<'_>,
         ceiling: BaselineMode,
     ) -> Option<ExecutionResult> {
+        // A honeytool must never reach execution: it is frozen pre-gate, and is
+        // unprovable so it could never be lifted to an executing decision anyway
+        // (empty effects, predict refuses it). This is the §2 belt.
+        debug_assert!(
+            !crate::registry::is_honeytool(&action.tool),
+            "a honeytool reached the executor"
+        );
         let executor = self.executor.as_ref()?;
         match executor
             .execute(action, decision, tool_scope, graph, behaviour, ctx, ceiling)
@@ -1265,19 +1272,24 @@ impl<'a> Dispatcher<'a> {
                     // so scope is still enforced. The no-progress / repeated-tool
                     // guards below still apply (an identical re-read is the same
                     // key, so a stuck re-reading loop is bounded).
-                    // Structural canary, screened for EVERY proposal before the
-                    // read/gate branch split (canary-honeytools.md §3). A declared
-                    // read tool is gate-exempt (D9) and bypasses decide_action, so
-                    // the canary must be checked here too, before the read runs and
-                    // renders its rows verbatim into the transcript. A trip (or a
-                    // fail-closed audit outage during the trip) stops the loop
-                    // closed: a hijacked run is never fed back to retry.
-                    if let Err(e) = self.gate.screen_canary(&behaviour, &action, &ctx).await {
+                    // Pre-gate tripwires (canary-honeytools.md §2-§3): honeytool +
+                    // structural canary, screened for EVERY proposal before the
+                    // read/gate branch split. A declared read tool is gate-exempt
+                    // (D9) and bypasses decide_action, so these must be checked here
+                    // too, before the read runs and renders its rows verbatim into
+                    // the transcript, and before a honeytool named like a read tool
+                    // could execute as one. A trip (or a fail-closed audit outage
+                    // during the trip) stops the loop closed: a hijacked run is
+                    // never fed back to retry.
+                    if let Err(e) = self.gate.screen_pre_gate(&behaviour, &action, &ctx).await {
                         let reason = match e {
+                            GateError::HoneytoolTripped => {
+                                "honeytool selected: probable prompt-injection".to_string()
+                            }
                             GateError::CanaryTripped => {
                                 "structural canary tripped: probable prompt-injection".to_string()
                             }
-                            other => format!("canary screen failed: {other}"),
+                            other => format!("pre-gate screen failed: {other}"),
                         };
                         outcomes.push(DispatchOutcome::Failed { behaviour, reason });
                         return outcomes;
@@ -1391,16 +1403,17 @@ impl<'a> Dispatcher<'a> {
                             });
                             return outcomes;
                         }
-                        Err(GateError::CanaryTripped) => {
-                            // A reserved canary id in the operands is deterministic
-                            // proof of prompt-injection (canary-honeytools.md §3).
-                            // Stop the loop closed: a hijacked run must never be fed
-                            // back for the model to retry. The trip was already
-                            // audited inside the gate.
+                        Err(e @ (GateError::CanaryTripped | GateError::HoneytoolTripped)) => {
+                            // A pre-gate tripwire (a reserved canary id in the
+                            // operands, or a honeytool selection) is deterministic
+                            // proof of hijack (canary-honeytools.md §2-§3). Stop the
+                            // loop closed: a hijacked run must never be fed back for
+                            // the model to retry. The trip was already audited inside
+                            // the gate. (Normally pre-empted by screen_pre_gate at the
+                            // branch above; this is the defense-in-depth backstop.)
                             outcomes.push(DispatchOutcome::Failed {
                                 behaviour,
-                                reason: "structural canary tripped: probable prompt-injection"
-                                    .to_string(),
+                                reason: e.to_string(),
                             });
                             return outcomes;
                         }
@@ -2567,6 +2580,38 @@ trigger:
             .structural
             .outcome
             .starts_with("canary-tripped:structural"));
+    }
+
+    #[tokio::test]
+    async fn a_honeytool_proposal_halts_the_loop() {
+        // Proposing the bait tool is deterministic proof of hijack: screen_pre_gate
+        // fires before the read/gate branch (and before scope), so the loop stops
+        // closed with a Failed outcome and the trip is audited content-free.
+        let behaviours = [loaded(&agent_skill(5, 1_000_000, 60_000), Status::Enabled)];
+        let handlers = registry(Box::new(StubPropose));
+        let cap = Capability::new(AccessTier::Full, ActionPermissions::suggest_only());
+        let audit = MockAuditSink::accepting();
+        let obs = NullObserver;
+        let graph = EmptyGraph;
+        let provider = MockProvider::new(vec![propose("export_all_secrets"), stop()]);
+        let d = Dispatcher::new(
+            &behaviours,
+            &handlers,
+            &graph,
+            AccessTier::Full,
+            gate(&audit, &obs, &cap),
+            Some(&provider),
+            &TEST_CLOCK,
+        );
+
+        let outcomes = d.dispatch(&event("~/foo.rs")).await;
+        assert!(matches!(outcomes.last(), Some(DispatchOutcome::Failed { .. })));
+        let recorded = audit.recorded().await;
+        assert_eq!(recorded.len(), 1);
+        assert!(recorded[0]
+            .structural
+            .outcome
+            .starts_with("honeytool-tripped"));
     }
 
     #[tokio::test]

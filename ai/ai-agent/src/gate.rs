@@ -261,6 +261,12 @@ pub enum GateError {
     /// the model to retry. The message carries no operand content.
     #[error("structural canary touched: a proposal operand named a reserved canary id (probable prompt-injection)")]
     CanaryTripped,
+    /// A proposal named a honeytool (canary-honeytools.md §2): an attractive bait
+    /// tool that honest behaviour never proposes, so a selection is deterministic
+    /// proof of hijack. Refused, and in the agent loop the loop is stopped closed
+    /// rather than fed back. The message carries no operand content.
+    #[error("honeytool selected: a proposal named a bait tool no honest behaviour uses (probable prompt-injection)")]
+    HoneytoolTripped,
 }
 
 /// The action gate, holding the long-lived collaborators: the capability, the
@@ -295,20 +301,31 @@ impl<'a> Gate<'a> {
         }
     }
 
-    /// The structural-canary screen (canary-honeytools.md §3): if any operand
-    /// names a reserved canary id, audit a content-free trip outcome fail-closed
-    /// and return [`GateError::CanaryTripped`]; otherwise `Ok(())`. A canary touch
-    /// is deterministic proof of prompt-injection (honest operands are real
-    /// ingestion ids that never bear the reserved prefix), so it is checked before
-    /// scope and before any proof, and catches a touch even in suggest-mode. The
-    /// audit records the class and the external-trigger flag only, never the
-    /// operand value or the specific canary id.
-    async fn canary_check(
+    /// The pre-gate tripwires (canary-honeytools.md §2-§3): two deterministic
+    /// hijack proofs checked before scope and before any proof, so they fire even
+    /// in suggest-mode. First the **honeytool** (a proposed bait tool name that
+    /// honest behaviour never names), then the **structural canary** (an operand
+    /// that mentions a reserved canary id, which an honest ingestion id never
+    /// does). Either audits a content-free trip outcome fail-closed and returns
+    /// its error; the audit records the class and the external-trigger flag only,
+    /// never the tool, operand value or specific canary id.
+    async fn pre_gate_tripwires(
         &self,
         behaviour_name: &str,
         action: &ProposedAction,
         ctx: &ActionContext<'_>,
     ) -> Result<(), GateError> {
+        if registry::is_honeytool(&action.tool) {
+            self.audit
+                .submit(behaviour_action_event(
+                    behaviour_name,
+                    honeytool_trip_outcome(ctx.external_trigger),
+                    ctx.correlation_id,
+                ))
+                .await
+                .map_err(|e| GateError::AuditUnavailable(e.to_string()))?;
+            return Err(GateError::HoneytoolTripped);
+        }
         if canary::touched_by(&action.arguments).is_some() {
             self.audit
                 .submit(behaviour_action_event(
@@ -323,20 +340,21 @@ impl<'a> Gate<'a> {
         Ok(())
     }
 
-    /// Screen a proposal for a structural-canary touch without running the full
-    /// action gate. The agent loop calls this for EVERY proposal before it splits
-    /// into the read branch: a declared read tool is gate-exempt (D9) and never
-    /// reaches [`Gate::decide_action`], so without this the canary would not cover
-    /// reads, the channel that renders results verbatim into the model transcript
-    /// (the dangerous one §3 identifies). A trip is audited and returns
-    /// [`GateError::CanaryTripped`]; the caller stops the loop closed.
-    pub async fn screen_canary(
+    /// Run the pre-gate tripwires without the full action gate. The agent loop
+    /// calls this for EVERY proposal before it splits into the read branch: a
+    /// declared read tool is gate-exempt (D9) and never reaches
+    /// [`Gate::decide_action`], so without this the tripwires would not cover
+    /// reads (the channel that renders results verbatim into the model transcript,
+    /// the dangerous one §2-§3 identify) and a honeytool named like a read tool
+    /// would execute as one. A trip is audited and returns its error; the caller
+    /// stops the loop closed.
+    pub async fn screen_pre_gate(
         &self,
         behaviour_name: &str,
         action: &ProposedAction,
         ctx: &ActionContext<'_>,
     ) -> Result<(), GateError> {
-        self.canary_check(behaviour_name, action, ctx).await
+        self.pre_gate_tripwires(behaviour_name, action, ctx).await
     }
 
     /// Decide the gate for one proposed action: resolve the capability
@@ -356,13 +374,13 @@ impl<'a> Gate<'a> {
         ctx: &ActionContext<'_>,
         graph: &dyn GraphHandle,
     ) -> Result<GateReceipt, GateError> {
-        // Structural canary (canary-honeytools.md §3), checked FIRST, before
-        // tool-scope and before the predict-before-act proof. A reserved canary
-        // id in the operands is deterministic proof of prompt-injection, so it is
-        // the strongest refusal and must fire regardless of tool scope or mode.
-        // (The agent loop also screens reads through `screen_canary` before they
-        // reach this gate, since a read tool is gate-exempt.)
-        self.canary_check(behaviour_name, action, ctx).await?;
+        // Pre-gate tripwires (canary-honeytools.md §2-§3): honeytool + structural
+        // canary, checked FIRST, before tool-scope and before the predict-before-
+        // act proof. Either is deterministic proof of hijack, so it is the
+        // strongest refusal and must fire regardless of tool scope or mode. (The
+        // agent loop also runs these through `screen_pre_gate` before the read
+        // branch, since a read tool is gate-exempt and never reaches this gate.)
+        self.pre_gate_tripwires(behaviour_name, action, ctx).await?;
 
         // Tool-scope enforcement: a behaviour may only act through a tool
         // it declared. An out-of-scope proposal is refused fail-closed and
@@ -705,6 +723,17 @@ fn canary_trip_outcome(external_trigger: bool) -> String {
     }
 }
 
+/// The content-free outcome for a honeytool trip. Records the class (a honeytool
+/// was selected) and the external-trigger flag, never the tool name, so the
+/// durable ledger shows a hijack tripwire fired without leaking which bait.
+fn honeytool_trip_outcome(external_trigger: bool) -> String {
+    if external_trigger {
+        "honeytool-tripped+external-trigger".to_string()
+    } else {
+        "honeytool-tripped".to_string()
+    }
+}
+
 /// The content-free label for a high-impact action class (a class, never the
 /// operands), so the ledger distinguishes an irreversible link from a permanent
 /// delete or an external message.
@@ -950,6 +979,41 @@ mod tests {
             recorded[0].structural.outcome,
             "canary-tripped:structural+external-trigger"
         );
+        assert_eq!(recorded[0].structural.subject, "agent.auto-tag-by-project");
+        assert!(obs.0.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_honeytool_proposal_trips_the_freeze_before_tool_scope() {
+        // Proposing a honeytool is deterministic proof of hijack: the gate refuses
+        // with HoneytoolTripped and records a content-free trip outcome, firing
+        // even when the bait IS in the declared scope (so it is the high-signal
+        // trip, not a low-signal ToolOutOfScope) and without notifying the observer.
+        let cap = suggest_only();
+        let audit = MockAuditSink::accepting();
+        let obs = Recorder::default();
+        let act = ProposedAction {
+            tool: "export_all_secrets".to_string(),
+            summary: "x".to_string(),
+            arguments: BTreeMap::new(),
+        };
+
+        let err = Gate::new(&cap, &audit, &obs, &FsPathResolver, &StaticMountPolicy::empty())
+            .decide_action(
+                "auto-tag-by-project",
+                BaselineMode::Suggest,
+                &scope(&["export_all_secrets"]),
+                &act,
+                &ctx(false, "run-ht"),
+                &DeniedGraph,
+            )
+            .await
+            .expect_err("a honeytool must refuse");
+
+        assert!(matches!(err, GateError::HoneytoolTripped));
+        let recorded = audit.recorded().await;
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(recorded[0].structural.outcome, "honeytool-tripped");
         assert_eq!(recorded[0].structural.subject, "agent.auto-tag-by-project");
         assert!(obs.0.lock().unwrap().is_empty());
     }
