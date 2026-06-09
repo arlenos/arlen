@@ -25,4 +25,5 @@ pub mod router;
 pub mod seams;
 pub mod slice;
 pub mod source;
+pub mod spill;
 pub mod world;

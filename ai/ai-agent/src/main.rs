@@ -59,6 +59,19 @@ const AGENT_BUS_NAME: &str = "org.arlen.AIAgent1";
 /// stays flat.
 const RECEIPT_CAPACITY: usize = 256;
 
+/// The largest single observation result spilled to disk (B-spill). A larger
+/// result is skipped (its ref stays identity-only), bounding any one file.
+const SPILL_MAX_BYTES: usize = 1024 * 1024;
+
+/// The per-run observation spill directory under the runtime dir (tmpfs), or a
+/// temp-dir fallback. Process-scoped working memory, not durable state.
+fn spill_dir() -> std::path::PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("arlen/ai-agent/spill")
+}
+
 /// Backoff bounds for the initial Event Bus subscription retry.
 const SUBSCRIBE_BACKOFF_INITIAL: Duration = Duration::from_millis(500);
 const SUBSCRIBE_BACKOFF_MAX: Duration = Duration::from_secs(30);
@@ -557,6 +570,12 @@ async fn run(
     // actually finishes. A fresh per-dispatcher gate would let repeated rearms
     // each spawn a new scorer and exhaust the blocking pool.
     let screen_gate = Arc::new(tokio::sync::Semaphore::new(1));
+    // Observation spill store (B-spill), process-lived so it outlives each
+    // per-epoch dispatcher: a read observation's full result is persisted here by
+    // content-address, so a preview compacted out of the prompt is still
+    // recoverable. A per-run directory under the runtime dir (tmpfs) bounds its
+    // lifetime; one result over the cap is skipped, not stored.
+    let spill_store = arlen_ai_agent::spill::FileSpillStore::new(spill_dir(), SPILL_MAX_BYTES);
     // Execution receipts retained for the daemon's lifetime (across provider
     // re-arms and config reloads) so a later compensate can find the write to
     // undo by its decision correlation id. Populated as Written outcomes are
@@ -789,7 +808,8 @@ async fn run(
             let mut dispatcher =
                 Dispatcher::new(&outcome.loaded, handlers, graph, read_tier, gate, provider, &clock)
                     .with_screening_mode(screening.clone())
-                    .with_screen_gate(Arc::clone(&screen_gate));
+                    .with_screen_gate(Arc::clone(&screen_gate))
+                    .with_spill(&spill_store);
             // Opt into executing when configured: the executor shares the gate's
             // capability/path/mount/audit collaborators, so it re-validates and
             // audits a proven write identically to the proof the gate ran.
