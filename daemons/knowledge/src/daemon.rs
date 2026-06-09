@@ -399,10 +399,6 @@ const MAX_RETRIEVE_LIMIT: i64 = 100;
 /// A caller-scoped provenance read request, sent with a leading `0x04` byte
 /// (provenance-halo.md §5). The body is JSON; the response is the object's
 /// scoped provenance or a uniform out-of-scope denial.
-// `ProvenanceRequest` + `readable_system_labels` are the typed scope-mapping
-// foundation of the caller-scoped provenance read op (the `0x04` mode), consumed
-// by the op in the next increment; they read unused until that dispatch lands.
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ProvenanceRequest {
@@ -418,7 +414,6 @@ struct ProvenanceRequest {
 /// observation nodes and contribute no label. The result is validated to safe
 /// identifiers, since it is interpolated into the per-label existence probe that
 /// makes an out-of-scope object indistinguishable from an absent one.
-#[allow(dead_code)]
 fn readable_system_labels(read_scopes: &[crate::token::EntityScope]) -> Vec<String> {
     read_scopes
         .iter()
@@ -426,6 +421,96 @@ fn readable_system_labels(read_scopes: &[crate::token::EntityScope]) -> Vec<Stri
         .filter(|l| !l.is_empty() && l.chars().all(|c| c.is_ascii_alphanumeric()))
         .map(str::to_string)
         .collect()
+}
+
+/// The uniform denial for the provenance read op. Every failure mode (malformed
+/// request, no or changed peer, out-of-scope, absent object) returns this one
+/// shape so a spoofed reference cannot become a file-existence oracle by shape;
+/// the caller pairs it with `timing_noise()` so timing cannot either.
+const PROVENANCE_OUT_OF_SCOPE: &str = "ERROR: OutOfScope";
+
+/// Co-tenant filter (provenance-halo.md §5): from an object's actor set, name
+/// only the caller's own access and collapse every foreign actor to a single
+/// "accessed by others" signal, so the provenance of a shared object never names
+/// a co-tenant. Returns `(visible_actors, accessed_by_others)`.
+fn co_tenant_filter(actors: &[String], caller: &str) -> (Vec<String>, bool) {
+    let caller_accessed = actors.iter().any(|a| a == caller);
+    let accessed_by_others = actors.iter().any(|a| a != caller);
+    let visible = if caller_accessed { vec![caller.to_string()] } else { Vec::new() };
+    (visible, accessed_by_others)
+}
+
+/// Handle a caller-scoped provenance read (provenance-halo.md §5, the shared
+/// read-scope op). Serves an object's provenance only to a caller whose read
+/// scope covers it; every other outcome is the uniform [`PROVENANCE_OUT_OF_SCOPE`]
+/// denial.
+///
+/// The caller's token (and its read scopes) is resolved from the kernel-attested
+/// peer pid with the same PID-reuse guard the write path uses. The object's label
+/// is found by probing only the labels the caller may read, so an object under an
+/// unreadable label is indistinguishable from an absent one (no existence
+/// oracle). The actor set is co-tenant-filtered. The caller routes the result
+/// through `timing_noise()`.
+async fn handle_provenance_read(
+    body: &[u8],
+    peer: &Option<WritePeer>,
+    auth: &Arc<Mutex<Authenticator>>,
+    graph: &GraphHandle,
+    app_id: &str,
+) -> String {
+    let Ok(req) = serde_json::from_slice::<ProvenanceRequest>(body) else {
+        return PROVENANCE_OUT_OF_SCOPE.to_string();
+    };
+
+    // Resolve the caller's token from a live, unchanged peer process (the write
+    // path's guard: a reused pid cannot borrow the original peer's scope).
+    let Some(peer) = peer else {
+        return PROVENANCE_OUT_OF_SCOPE.to_string();
+    };
+    let Some(captured_start) = peer.start_time else {
+        return PROVENANCE_OUT_OF_SCOPE.to_string();
+    };
+    match pid_start_time(peer.pid) {
+        Ok(now) if now == captured_start => {}
+        _ => return PROVENANCE_OUT_OF_SCOPE.to_string(),
+    }
+    let token = match auth.lock().await.issue_token_for_pid(peer.pid) {
+        Ok(t) => t,
+        Err(_) => return PROVENANCE_OUT_OF_SCOPE.to_string(),
+    };
+
+    // Probe only the labels the caller may read. Found under one => in scope;
+    // found under none => uniform OutOfScope, so out-of-scope and absent are
+    // indistinguishable. The labels are safe identifiers (see
+    // `readable_system_labels`) and the id is escaped.
+    let id_esc = escape_cypher(&req.object_id);
+    let mut in_scope = false;
+    for label in readable_system_labels(&token.read_scopes) {
+        let cypher = format!("MATCH (n:{label} {{id: '{id_esc}'}}) RETURN n.id LIMIT 1");
+        if let Ok(rs) = graph.query_rows(cypher).await {
+            if !rs.rows.is_empty() {
+                in_scope = true;
+                break;
+            }
+        }
+    }
+    if !in_scope {
+        return PROVENANCE_OUT_OF_SCOPE.to_string();
+    }
+
+    // In scope: the object's actor set (ACCESSED_BY is File -> App), filtered so
+    // a co-tenant is never named.
+    let cypher = format!("MATCH (n {{id: '{id_esc}'}})-[:ACCESSED_BY]->(a) RETURN a.id AS id");
+    let actors: Vec<String> = match graph.query_rows(cypher).await {
+        Ok(rs) => rs
+            .rows
+            .iter()
+            .filter_map(|r| r.first().map(|c| c.as_str().to_string()))
+            .collect(),
+        Err(_) => return PROVENANCE_OUT_OF_SCOPE.to_string(),
+    };
+    let (visible, accessed_by_others) = co_tenant_filter(&actors, app_id);
+    serde_json::json!({ "actors": visible, "accessed_by_others": accessed_by_others }).to_string()
 }
 
 /// Authorise and persist a structured write request, returning the plaintext
@@ -998,6 +1083,40 @@ async fn handle_client(
             continue;
         }
 
+        // Provenance read mode: a leading 0x04 byte selects the caller-scoped
+        // provenance op (provenance-halo.md §5, the shared read-scope op). Like
+        // the retrieve op it is a read (query-rate-limited), but every outcome is
+        // bounded and routed through `timing_noise()` with a single denial shape,
+        // so a spoofed object reference is not a file-existence oracle. The 500 ms
+        // bound (as on the typed path) caps the per-label scope probe.
+        if buf.first() == Some(&0x04) {
+            let violation = {
+                let mut rs = rate.lock().await;
+                rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
+            };
+            let response = if let Some(reason) = violation {
+                format!("ERROR: RateLimited: {reason}")
+            } else {
+                match tokio::time::timeout(
+                    Duration::from_millis(500),
+                    handle_provenance_read(&buf[1..], &peer, &auth, &graph, &app_id),
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(_elapsed) => PROVENANCE_OUT_OF_SCOPE.to_string(),
+                }
+            };
+            timing_noise().await;
+            let response_bytes = response.as_bytes();
+            let response_len = u32::try_from(response_bytes.len())
+                .expect("response too large")
+                .to_be_bytes();
+            stream.write_all(&response_len).await?;
+            stream.write_all(response_bytes).await?;
+            continue;
+        }
+
         // Read mode. A leading 0x01 byte selects the structured (typed JSON
         // RowSet) response; without it the request is a legacy raw-Cypher text
         // query, so existing clients are unaffected.
@@ -1303,6 +1422,19 @@ mod tests {
         assert!(readable_system_labels(&[scope("system.File; DROP")]).is_empty());
         assert!(readable_system_labels(&[scope("system.")]).is_empty());
         assert!(readable_system_labels(&[]).is_empty());
+    }
+
+    #[test]
+    fn co_tenant_filter_names_only_the_caller() {
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        // The caller and a co-tenant: name the caller, flag the other.
+        assert_eq!(co_tenant_filter(&s(&["me", "other"]), "me"), (vec!["me".to_string()], true));
+        // Only the caller: named, no others.
+        assert_eq!(co_tenant_filter(&s(&["me"]), "me"), (vec!["me".to_string()], false));
+        // Only foreign actors: none named, others flagged (the co-tenant fix).
+        assert_eq!(co_tenant_filter(&s(&["a", "b"]), "me"), (Vec::<String>::new(), true));
+        // No actors at all.
+        assert_eq!(co_tenant_filter(&s(&[]), "me"), (Vec::<String>::new(), false));
     }
 
     #[tokio::test]
