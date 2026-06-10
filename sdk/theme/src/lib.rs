@@ -653,10 +653,20 @@ fn from_file(f: ArlenThemeFile) -> Result<ArlenTheme, ResolveError> {
 
     Ok(ArlenTheme {
         meta: ThemeMeta {
-            id: meta.id,
-            name: meta.name,
+            // `meta.id` is the only theme string that becomes a *path* — the
+            // desktop-shell picker stores it and `load(id)` joins
+            // `themes/{id}.toml`, so a hostile `id = "../../../etc/x"` from a
+            // dropped theme file is a traversal vector. Force it to a safe slug
+            // (`[a-z0-9-]`, no separators, no `..`); `extends` is path-joined the
+            // same way by a parent resolver, so slug it too. `name` is display
+            // text that must not carry generated-config syntax, so it goes
+            // through the inert floor like every other free string. A bundled
+            // theme's `id`/`name` are already clean, so this is a no-op for them
+            // and a containment for an imported file.
+            id: base16::slugify(&meta.id),
+            name: inert_or(Some(meta.name), "Imported Theme"),
             variant,
-            extends: meta.extends,
+            extends: meta.extends.map(|e| base16::slugify(&e)),
         },
         color,
         radius,
@@ -1272,6 +1282,24 @@ button = 12
         let user = "[terminal.ansi]\nred = \"javascript:alert(1)\"\n";
         let t = ArlenTheme::resolve(SAMPLE_BUNDLED, Some(user), None).expect("resolve");
         assert_eq!(t.terminal.ansi[1], t.color.error, "invalid hex falls back to synthesis");
+    }
+
+    #[test]
+    fn hostile_meta_id_and_name_are_contained_at_resolve() {
+        // meta.id becomes a path component in the desktop-shell loader
+        // (themes/{id}.toml), and meta.name is display text that must carry no
+        // generated-config syntax. A dropped theme file with a traversal id and
+        // an injection name must resolve to a safe slug + an inert name.
+        let user = "[meta]\nid = \"../../../etc/passwd\"\nname = \"evil; } body { x: y\"\nvariant = \"dark\"\n";
+        let t = ArlenTheme::resolve(SAMPLE_BUNDLED, Some(user), None).expect("resolve");
+        assert_eq!(t.meta.id, "etc-passwd", "traversal id slugged to a safe component");
+        assert!(!t.meta.id.contains('/') && !t.meta.id.contains(".."), "no path syntax survives");
+        assert_eq!(t.meta.name, "Imported Theme", "non-inert name dropped to the default");
+        // A legitimate id/name is preserved unchanged.
+        let ok = "[meta]\nid = \"my-theme\"\nname = \"Solarized Dark\"\nvariant = \"dark\"\n";
+        let t = ArlenTheme::resolve(SAMPLE_BUNDLED, Some(ok), None).expect("resolve");
+        assert_eq!(t.meta.id, "my-theme");
+        assert_eq!(t.meta.name, "Solarized Dark");
     }
 
     #[test]
