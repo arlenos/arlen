@@ -158,7 +158,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db = dir.path().join("ledger.db");
         {
-            let mut ledger = Ledger::open(&db, b"test-key".to_vec()).await.unwrap();
+            let mut ledger = Ledger::open(&db, zeroize::Zeroizing::new(b"test-key".to_vec()))
+                .await
+                .unwrap();
             for _ in 0..3 {
                 ledger
                     .append(

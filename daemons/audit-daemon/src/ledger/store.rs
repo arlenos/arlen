@@ -12,6 +12,7 @@ use sqlx::sqlite::{
     SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteRow,
 };
 use sqlx::{Row, SqlitePool};
+use zeroize::Zeroizing;
 
 use super::entry::{
     compute_entry_hash, AuditEntry, AuditKind, ForensicRecord, StructuralRecord,
@@ -34,7 +35,7 @@ pub const MAX_READ_LIMIT: u64 = 1000;
 /// next start.
 pub struct Ledger {
     pool: SqlitePool,
-    key: Vec<u8>,
+    key: Zeroizing<Vec<u8>>,
     next_index: u64,
     prev_hash: [u8; 32],
     /// Path of the head checkpoint written after every append. Lets
@@ -47,7 +48,7 @@ impl Ledger {
     /// Open (creating if absent) the ledger at `db_path`, signing
     /// entries with `key`. WAL mode lets the read API read while
     /// appends proceed.
-    pub async fn open(db_path: &Path, key: Vec<u8>) -> Result<Self> {
+    pub async fn open(db_path: &Path, key: Zeroizing<Vec<u8>>) -> Result<Self> {
         if let Some(parent) = db_path.parent() {
             // 0700 so only the owning user can reach the ledger.
             crate::ensure_private_dir(parent)?;
@@ -562,8 +563,8 @@ fn map_sqlx(e: sqlx::Error) -> AuditError {
 mod tests {
     use super::*;
 
-    fn key() -> Vec<u8> {
-        b"audit-test-key-0123456789".to_vec()
+    fn key() -> Zeroizing<Vec<u8>> {
+        Zeroizing::new(b"audit-test-key-0123456789".to_vec())
     }
 
     fn structural(outcome: &str) -> StructuralRecord {
@@ -578,7 +579,7 @@ mod tests {
         }
     }
 
-    async fn open_temp(dir: &std::path::Path, key: Vec<u8>) -> Ledger {
+    async fn open_temp(dir: &std::path::Path, key: Zeroizing<Vec<u8>>) -> Ledger {
         Ledger::open(&dir.join("ledger.db"), key)
             .await
             .expect("open ledger")
@@ -691,7 +692,7 @@ mod tests {
         }
         // Reopening with a different HMAC key cannot recompute the
         // stored hashes: the chain reads as broken from index 0.
-        let ledger = open_temp(dir.path(), b"a-different-key".to_vec()).await;
+        let ledger = open_temp(dir.path(), Zeroizing::new(b"a-different-key".to_vec())).await;
         match ledger.verify().await {
             Err(AuditError::ChainBroken { index, .. }) => assert_eq!(index, 0),
             other => panic!("wrong key was not rejected: {other:?}"),
