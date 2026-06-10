@@ -396,3 +396,73 @@ async fn a_promoted_file_is_retrievable_by_keyword_under_scope() {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 }
+
+/// IT-1 provenance read (the 0x04 op) + the co-tenant no-leak filter: a File
+/// opened by a foreign app is provenance-readable by a scoped caller, but the
+/// foreign opener is collapsed to `accessed_by_others` and NEVER named. We emit a
+/// `file.opened` with `app_id = "integration-test"` (an actor that is not the
+/// caller's own id), let it promote (File + App + ACCESSED_BY), then read
+/// provenance under the seeded `system.File` scope. The invariant checked on
+/// every in-scope view is the security one: a co-tenant actor must never appear
+/// in `actors`. The scenario succeeds once `accessed_by_others` is set, proving
+/// the op surfaces foreign access without leaking the principal. `None` before
+/// promotion is the no-oracle out-of-scope/absent shape. Same `#[ignore]`
+/// rationale (promotion-dependent, ~30s).
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge binaries built and a FUSE-capable host (~30s)"]
+async fn provenance_read_flags_a_foreign_opener_without_naming_it() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    stack
+        .seed_read_profile(&["system.File.id", "system.File.path"])
+        .expect("seed read profile");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let path = "/work/it/provenance.rs";
+    let foreign_app = "integration-test";
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let payload = proto::FileOpenedPayload {
+            path: path.to_string(),
+            app_id: foreign_app.to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        emitter
+            .emit("file.opened", payload)
+            .await
+            .expect("emit file.opened");
+        if let Ok(Some(view)) = client.read_provenance(path).await {
+            // The security invariant, checked on every in-scope view regardless of
+            // timing: the foreign opener is never named to the caller.
+            assert!(
+                !view.actors.iter().any(|a| a == foreign_app),
+                "a co-tenant opener must never appear in the provenance actors, got {:?}",
+                view.actors
+            );
+            if view.accessed_by_others {
+                return; // in scope, foreign access flagged but the principal withheld
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the promoted File's provenance never flagged the foreign opener within 60s"
+        );
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
