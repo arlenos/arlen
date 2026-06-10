@@ -23,6 +23,12 @@ pub struct AppEntry {
     pub name: String,
     /// Command to execute (Exec= key, placeholders stripped).
     pub exec: String,
+    /// The app's reverse-DNS identity: the `X-Arlen-AppId=` key if present,
+    /// else the `.desktop` file's basename (the freedesktop desktop-id
+    /// convention, e.g. `org.gnome.Calculator`). The confined-launch path
+    /// (`arlen-run`) keys the permission profile on this; this field only
+    /// carries it, validation/routing is a later, flag-gated step.
+    pub app_id: String,
     /// Icon name or path (Icon= key).
     pub icon_name: String,
     /// Base64 data URL for the icon, or None if not resolved.
@@ -177,11 +183,13 @@ fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
         })
         .unwrap_or_default();
 
+    let app_id = derive_app_id(fields.get("X-Arlen-AppId").map(String::as_str), path);
     let name_lower = name.to_lowercase();
     let description_lower = description.to_lowercase();
     Some(AppEntry {
         name,
         exec: strip_exec_placeholders(&exec),
+        app_id,
         icon_name,
         icon_data: None,
         description,
@@ -189,6 +197,21 @@ fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
         name_lower,
         description_lower,
     })
+}
+
+/// Derive an app's reverse-DNS id: an explicit non-empty `X-Arlen-AppId=` value
+/// wins; otherwise the `.desktop` file's basename without the extension (the
+/// freedesktop desktop-id, e.g. `org.gnome.Calculator.desktop` ->
+/// `org.gnome.Calculator`). Empty only if the path has no usable stem (it would
+/// then resolve no profile, the fail-closed outcome the launcher already gives).
+fn derive_app_id(explicit: Option<&str>, path: &Path) -> String {
+    if let Some(id) = explicit.map(str::trim).filter(|s| !s.is_empty()) {
+        return id.to_string();
+    }
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default()
+        .to_string()
 }
 
 /// Strips freedesktop Exec placeholders (%u, %U, %f, %F, %i, %c, %k, etc.).
@@ -274,4 +297,30 @@ pub fn launch_app(exec: String) {
             .stderr(std::process::Stdio::null())
             .spawn();
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn app_id_falls_back_to_the_desktop_basename() {
+        let id = derive_app_id(None, Path::new("/usr/share/applications/org.gnome.Calculator.desktop"));
+        assert_eq!(id, "org.gnome.Calculator");
+    }
+
+    #[test]
+    fn explicit_app_id_key_wins_over_the_basename() {
+        let id = derive_app_id(
+            Some("com.example.app"),
+            Path::new("/usr/share/applications/example.desktop"),
+        );
+        assert_eq!(id, "com.example.app");
+    }
+
+    #[test]
+    fn blank_explicit_app_id_falls_back() {
+        let id = derive_app_id(Some("   "), Path::new("/x/firefox.desktop"));
+        assert_eq!(id, "firefox");
+    }
 }
