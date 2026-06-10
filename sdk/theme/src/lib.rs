@@ -33,6 +33,7 @@
 //! and per-token semantic guidance.
 
 pub mod base16;
+pub mod catppuccin;
 pub mod color;
 mod file;
 pub mod gtk;
