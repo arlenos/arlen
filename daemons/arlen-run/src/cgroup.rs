@@ -44,10 +44,13 @@ pub fn cgroup_leaf_name(app_id: &str, launch_pid: u32) -> String {
 /// of [`cgroup_leaf_name`]. Mirrors xdg-portal's `match_flatpak`: strip the
 /// `app-arlen-` prefix and the `.scope` suffix, then split off the trailing
 /// `-<pid>` with `rsplit_once('-')` (the pid is all digits, so a dashed app_id
-/// still round-trips). xdg-portal will add the symmetric `match_arlen` to
-/// `parse_cgroup`; this local copy proves the naming round-trips. The launcher
-/// only ever mints the name (the parse side lives in xdg-portal), so this is
-/// kept as the round-trip proof and the reference for that future addition.
+/// still round-trips). The launcher only ever mints the name; this local copy is
+/// the round-trip proof for the naming. NB the xdg-portal's PRODUCTION caller
+/// identity comes from the frontend-supplied `method_app_id`, not cgroup
+/// detection (its `parse_cgroup` is a vestigial helper, no production caller, the
+/// xdg-dbus-proxy-PID problem), so a symmetric `match_arlen` there is NOT needed
+/// unless the portal adopts cgroup-based identity; this is the reference IF it
+/// ever does, not a pending addition.
 #[allow(dead_code)]
 pub fn parse_arlen_leaf(scope: &str) -> Option<(String, u32)> {
     let inner = scope.strip_suffix(".scope")?.strip_prefix("app-arlen-")?;
