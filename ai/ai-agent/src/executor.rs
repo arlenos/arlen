@@ -897,113 +897,9 @@ impl<'a> LiveExecutor<'a> {
         graph: &dyn GraphHandle,
         behaviour_name: &str,
     ) -> Result<CompensationOutcome, ExecError> {
-        match receipt {
-            ActionReceipt::Graph(executed) => {
-                self.compensate_graph(executed, graph, behaviour_name).await
-            }
-            ActionReceipt::NonGraph(_) => Err(ExecError::UnsupportedEffect(
-                "non-graph compensation is the EM-R6 increment; no non-graph receipt is produced yet"
-                    .to_string(),
-            )),
-        }
+        compensate_receipt(self.writer, self.audit, receipt, graph, behaviour_name).await
     }
 
-    /// The graph-edge compensation: retract only the edge this execution's op id
-    /// stamped. Unchanged from before the receipt generalisation.
-    async fn compensate_graph(
-        &self,
-        executed: &ExecutedWrite,
-        graph: &dyn GraphHandle,
-        behaviour_name: &str,
-    ) -> Result<CompensationOutcome, ExecError> {
-        // Only undo a real create. A no-op write created nothing to retract.
-        if executed.outcome != WriteOutcome::Created {
-            return Ok(CompensationOutcome::NothingToUndo);
-        }
-
-        // Audit the compensation before the retract, fail-closed: the graph is
-        // not mutated (here, un-mutated) without a durable, content-free record,
-        // linked to the original decision by the receipt's own correlation id.
-        self.audit
-            .submit(behaviour_action_event(behaviour_name, "compensate", &executed.correlation_id))
-            .await
-            .map_err(|e| ExecError::AuditUnavailable(e.to_string()))?;
-
-        // The op id comes from the receipt, so the retract is keyed to this
-        // execution's own edge and nothing else.
-        match tokio::time::timeout(
-            WRITE_TIMEOUT,
-            self.writer.retract_relation(&executed.write, &executed.op_id),
-        )
-        .await
-        {
-            Ok(Ok(RetractOutcome::Retracted)) => Ok(CompensationOutcome::Retracted),
-            Ok(Ok(RetractOutcome::Absent)) => Ok(CompensationOutcome::NothingToUndo),
-            // A definite no-commit: the retract did not run, the edge is unchanged.
-            Ok(Err(WriteError::Failed(e))) => Err(ExecError::Write(e)),
-            // Commit-unknown (post-send transport failure, or a timeout that may
-            // have fired after the retract reached the daemon). Reconcile by the
-            // op id rather than report a failure that could hide a real retract.
-            Ok(Err(WriteError::Indeterminate(_))) | Err(_) => {
-                self.reconcile_retract(
-                    &executed.write,
-                    &executed.op_id,
-                    &executed.correlation_id,
-                    graph,
-                )
-                .await
-            }
-        }
-    }
-
-    /// Resolve a commit-unknown retract by its durable operation id.
-    ///
-    /// `Retracted` is reported iff this op's edge is now **non-live** (closed or
-    /// gone). This is the mirror of the create-side reconciliation and sound by
-    /// the same op-id monotonicity, run in the opposite direction: a retract
-    /// temporally *closes* the op-id edge (§4.7), and nothing re-opens that
-    /// specific id under normal operation (only this op's create stamps it live,
-    /// and that create already happened — compensation runs only for a `Created`
-    /// write), so once the op-id edge is non-live it stays non-live. Non-live is
-    /// therefore a *terminal* post-state, not merely a point-in-time read. It
-    /// asserts the goal state (this op's link is undone), not causal authorship:
-    /// the edge may have closed via this retract or become non-live another way
-    /// (an independent bulk delete by the project store, or an earlier close).
-    /// Either way the undo is achieved and a retry would be a no-op, so
-    /// suppressing the retry is correct, not a hidden failure. If a live edge is
-    /// still present, the retract did not commit
-    /// ([`ExecError::WriteIndeterminate`], resolved by an idempotent retry); a
-    /// failed read is likewise indeterminate, never a false success.
-    ///
-    /// (The one theoretical way the op-id edge could reappear is a crash-replay
-    /// of the *original* create, which derives the same op_id; that is a fresh
-    /// dispatch re-running predict/gate, not a concurrent event during this
-    /// reconcile, and is the same bounded replay caveat the create side carries.)
-    async fn reconcile_retract(
-        &self,
-        write: &RelationWrite,
-        op_id: &str,
-        correlation_id: &str,
-        graph: &dyn GraphHandle,
-    ) -> Result<CompensationOutcome, ExecError> {
-        let pending = || {
-            PendingWrite::new(write.clone(), op_id.to_string(), correlation_id.to_string())
-        };
-        // Poll for the edge becoming ABSENT (target = not present): the retract
-        // may land slightly after the immediate read, so a few backed-off reads
-        // catch it before reporting indeterminate.
-        match poll_for(write, op_id, graph, false).await {
-            Some(true) => Ok(CompensationOutcome::Retracted),
-            Some(false) => Err(ExecError::WriteIndeterminate {
-                pending: pending(),
-                reason: "retract unconfirmed; this op's edge is still live".to_string(),
-            }),
-            None => Err(ExecError::WriteIndeterminate {
-                pending: pending(),
-                reason: "retract reconciliation read failed".to_string(),
-            }),
-        }
-    }
 
     /// Resolve a commit-unknown write by its durable operation id. The op_id
     /// query is causally sound: an edge carrying THIS op_id can only have been
@@ -1055,6 +951,110 @@ impl<'a> LiveExecutor<'a> {
         }
     }
 
+}
+
+/// Compensate (undo) a previously-executed action, dispatching on the receipt
+/// variant. A free function over only the `writer` + `audit` it needs (not the
+/// full executor's capability/paths/mounts), so both `LiveExecutor::compensate`
+/// and the owned `Compensator` (the D-Bus undo path) call it without
+/// constructing an executor or a dummy capability. The graph arm retracts the
+/// op-id-keyed edge; the non-graph arm is the EM-R6 increment and fails closed
+/// (no non-graph receipt is produced until the executor's EM-R5 arm).
+async fn compensate_receipt(
+    writer: &dyn RelationWriter,
+    audit: &dyn AuditSink,
+    receipt: &ActionReceipt,
+    graph: &dyn GraphHandle,
+    behaviour_name: &str,
+) -> Result<CompensationOutcome, ExecError> {
+    match receipt {
+        ActionReceipt::Graph(executed) => {
+            compensate_graph(writer, audit, executed, graph, behaviour_name).await
+        }
+        ActionReceipt::NonGraph(_) => Err(ExecError::UnsupportedEffect(
+            "non-graph compensation is the EM-R6 increment; no non-graph receipt is produced yet"
+                .to_string(),
+        )),
+    }
+}
+
+/// The graph-edge compensation: retract only the edge this execution's op id
+/// stamped. Audits the compensation before the retract (fail-closed, the S13
+/// audit-before-acting invariant), keys the retract to the receipt's own op id
+/// (never re-derived), and only undoes a real `Created` write. A commit-unknown
+/// retract is reconciled by [`reconcile_retract`].
+async fn compensate_graph(
+    writer: &dyn RelationWriter,
+    audit: &dyn AuditSink,
+    executed: &ExecutedWrite,
+    graph: &dyn GraphHandle,
+    behaviour_name: &str,
+) -> Result<CompensationOutcome, ExecError> {
+    // Only undo a real create. A no-op write created nothing to retract.
+    if executed.outcome != WriteOutcome::Created {
+        return Ok(CompensationOutcome::NothingToUndo);
+    }
+
+    // Audit the compensation before the retract, fail-closed: the graph is not
+    // mutated (here, un-mutated) without a durable, content-free record, linked
+    // to the original decision by the receipt's own correlation id.
+    audit
+        .submit(behaviour_action_event(behaviour_name, "compensate", &executed.correlation_id))
+        .await
+        .map_err(|e| ExecError::AuditUnavailable(e.to_string()))?;
+
+    // The op id comes from the receipt, so the retract is keyed to this
+    // execution's own edge and nothing else.
+    match tokio::time::timeout(
+        WRITE_TIMEOUT,
+        writer.retract_relation(&executed.write, &executed.op_id),
+    )
+    .await
+    {
+        Ok(Ok(RetractOutcome::Retracted)) => Ok(CompensationOutcome::Retracted),
+        Ok(Ok(RetractOutcome::Absent)) => Ok(CompensationOutcome::NothingToUndo),
+        // A definite no-commit: the retract did not run, the edge is unchanged.
+        Ok(Err(WriteError::Failed(e))) => Err(ExecError::Write(e)),
+        // Commit-unknown (post-send transport failure, or a timeout that may have
+        // fired after the retract reached the daemon). Reconcile by the op id
+        // rather than report a failure that could hide a real retract.
+        Ok(Err(WriteError::Indeterminate(_))) | Err(_) => {
+            reconcile_retract(&executed.write, &executed.op_id, &executed.correlation_id, graph).await
+        }
+    }
+}
+
+/// Resolve a commit-unknown retract by its durable operation id.
+///
+/// `Retracted` is reported iff this op's edge is now **non-live** (closed or
+/// gone), sound by op-id monotonicity run in reverse: a retract temporally
+/// closes the op-id edge and nothing re-opens that specific id (compensation
+/// runs only for a `Created` write whose create already happened), so non-live
+/// is a terminal post-state. A still-live edge means the retract did not commit
+/// ([`ExecError::WriteIndeterminate`], resolved by an idempotent retry); a failed
+/// read is likewise indeterminate, never a false success.
+async fn reconcile_retract(
+    write: &RelationWrite,
+    op_id: &str,
+    correlation_id: &str,
+    graph: &dyn GraphHandle,
+) -> Result<CompensationOutcome, ExecError> {
+    let pending =
+        || PendingWrite::new(write.clone(), op_id.to_string(), correlation_id.to_string());
+    // Poll for the edge becoming ABSENT (target = not present): the retract may
+    // land slightly after the immediate read, so a few backed-off reads catch it
+    // before reporting indeterminate.
+    match poll_for(write, op_id, graph, false).await {
+        Some(true) => Ok(CompensationOutcome::Retracted),
+        Some(false) => Err(ExecError::WriteIndeterminate {
+            pending: pending(),
+            reason: "retract unconfirmed; this op's edge is still live".to_string(),
+        }),
+        None => Err(ExecError::WriteIndeterminate {
+            pending: pending(),
+            reason: "retract reconciliation read failed".to_string(),
+        }),
+    }
 }
 
 /// Reconciler: poll [`edge_exists`] up to [`RECONCILE_ATTEMPTS`] times with
