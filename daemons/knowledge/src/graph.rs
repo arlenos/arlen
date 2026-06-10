@@ -965,6 +965,43 @@ mod tests {
         );
     }
 
+    /// GD-R4 capability constraint: ladybug (Kuzu) does NOT support `FOREACH`, so
+    /// the append-a-reopen in `persist_retract` cannot be the clean single
+    /// statement that closes the retracted edge AND, only-if-it-superseded-one,
+    /// conditionally appends a fresh reopen edge (the parser rejects `FOREACH`
+    /// after an `OPTIONAL MATCH` with "expected oC_MultiPartQuery"). This pins
+    /// that constraint: it forces the GD-R4 design onto a transaction / a
+    /// restructured statement rather than a conditional `FOREACH ... CREATE`, and
+    /// canaries a future Kuzu that gains `FOREACH` (then the clean atomic form,
+    /// which preserves bi-temporal history without a crash window, is available
+    /// and the design should be revisited). Probed empirically rather than
+    /// assumed, the same way KG-R0 selected the on-edge-stamps representation.
+    #[test]
+    fn gd_r4_kuzu_does_not_support_foreach_create() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("graph");
+        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+        conn.query("CREATE NODE TABLE File(id STRING, PRIMARY KEY(id))").unwrap();
+        conn.query("CREATE NODE TABLE Project(id STRING, PRIMARY KEY(id))").unwrap();
+        conn.query("CREATE REL TABLE FILE_PART_OF(FROM File TO Project, op_id STRING)").unwrap();
+        conn.query("CREATE (:File {id:'f1'})").unwrap();
+        conn.query("CREATE (:Project {id:'p1'})").unwrap();
+
+        // A minimal FOREACH-CREATE. If ladybug supported it this would append one
+        // edge; today the parser rejects the clause outright.
+        let res = conn.query(
+            "MATCH (f:File{id:'f1'}),(p:Project{id:'p1'}) \
+             FOREACH (_ IN [1] | CREATE (f)-[:FILE_PART_OF {op_id:'x'}]->(p))",
+        );
+        assert!(
+            res.is_err(),
+            "FOREACH is unexpectedly supported now — the clean single-statement \
+             append-a-reopen is available; revisit the GD-R4 design that works \
+             around its absence: {res:?}"
+        );
+    }
+
     #[test]
     fn create_schema_adds_temporal_and_provenance_columns_to_file_part_of() {
         // KG-R2 (§4.1): a store created before the bi-temporal columns existed
