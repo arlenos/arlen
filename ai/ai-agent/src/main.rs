@@ -31,17 +31,17 @@ use arlen_ai_agent::engine::{
 };
 use arlen_ai_agent::gate::Gate;
 use arlen_ai_agent::slice::{FsPathResolver, ProcMountsPolicy};
-use arlen_ai_agent::executor::{ActionReceipt, LiveExecutor};
+use arlen_ai_agent::executor::{ActionReceipt, Compensator, LiveExecutor};
 use arlen_ai_agent::graph::{UnixGraph, UnixRelationWriter, DEFAULT_GRAPH_SOCKET};
 use arlen_ai_agent::handlers::builtin_handlers;
 use arlen_ai_agent::receipt_store::{ReceiptStore, RetainedReceipt};
 use arlen_ai_agent::loader::{ai_config_path, behaviour_sources, load};
-use arlen_ai_agent::seams::{AgentEvent, NullObserver, SystemClock, TriggerSource};
+use arlen_ai_agent::seams::{AgentEvent, GraphHandle, NullObserver, SystemClock, TriggerSource};
 use arlen_ai_agent::source::{subscription_types, EventBusSource, DEFAULT_CONSUMER_SOCKET};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use arlen_ai_classifier::{ClassifierPolicy, InjectionClassifier};
-use arlen_ai_core::audit::LedgerAuditSink;
+use arlen_ai_core::audit::{AuditSink, LedgerAuditSink};
 use arlen_ai_core::capability::{AccessTier, Capability};
 use arlen_ai_core::provider::AIProvider;
 use arlen_ai_providers::proxied::{ProxiedConfig, ProxiedProvider};
@@ -366,7 +366,12 @@ enum AgentConnection {
 /// `status` is the live-status cell the interface reads from. It is updated by
 /// the dispatch loop; before the first event it reads `Subscribing`, the
 /// correct view of a daemon that is up but not yet receiving triggers.
-async fn establish_agent_connection(status: StatusHandle) -> AgentConnection {
+async fn establish_agent_connection(
+    status: StatusHandle,
+    compensator: Compensator,
+    graph: Arc<dyn GraphHandle>,
+    receipts: Arc<Mutex<ReceiptStore<RetainedReceipt>>>,
+) -> AgentConnection {
     use zbus::fdo::{RequestNameFlags, RequestNameReply};
 
     let connection = match Connection::session().await {
@@ -377,7 +382,12 @@ async fn establish_agent_connection(status: StatusHandle) -> AgentConnection {
         }
     };
     // Register the interface before claiming the name.
-    let iface = AgentInterface { status };
+    let iface = AgentInterface {
+        status,
+        compensator,
+        graph,
+        receipts,
+    };
     if let Err(e) = connection.object_server().at(AGENT_OBJECT_PATH, iface).await {
         tracing::warn!(error = %e, path = AGENT_OBJECT_PATH, "could not register agent interface; D-Bus behaviour status will not be available");
         // Non-fatal: LLM behaviours can still run, only the status method is
@@ -473,14 +483,27 @@ async fn build_provider(
 /// until a config reload or supervisor restart. A liveness monitor that
 /// re-arms on a dead session connection mid-run needs a connection/proxy
 /// liveness probe that does not exist yet, a follow-up.
-async fn recover_connection(connection: &mut Option<Connection>, status: StatusHandle) -> bool {
+async fn recover_connection(
+    connection: &mut Option<Connection>,
+    status: StatusHandle,
+    compensator: Compensator,
+    graph: Arc<dyn GraphHandle>,
+    receipts: Arc<Mutex<ReceiptStore<RetainedReceipt>>>,
+) -> bool {
     let mut backoff = SUBSCRIBE_BACKOFF_INITIAL;
     loop {
         tokio::time::sleep(backoff).await;
         if connection.is_some() {
             return true;
         }
-        match establish_agent_connection(Arc::clone(&status)).await {
+        match establish_agent_connection(
+            Arc::clone(&status),
+            compensator.clone(),
+            Arc::clone(&graph),
+            Arc::clone(&receipts),
+        )
+        .await
+        {
             AgentConnection::Owned(conn) => {
                 *connection = Some(conn);
                 return true;
@@ -579,9 +602,23 @@ async fn run(
     // Execution receipts retained for the daemon's lifetime (across provider
     // re-arms and config reloads) so a later compensate can find the write to
     // undo by its decision correlation id. Populated as Written outcomes are
-    // surfaced; read by the compensate path (a following increment).
-    let receipts: std::sync::Mutex<ReceiptStore<RetainedReceipt>> =
-        std::sync::Mutex::new(ReceiptStore::new(RECEIPT_CAPACITY));
+    // surfaced; read both by the dispatch loop (retain) and the D-Bus
+    // `compensate` method, hence shared through an `Arc`.
+    let receipts: Arc<Mutex<ReceiptStore<RetainedReceipt>>> =
+        Arc::new(Mutex::new(ReceiptStore::new(RECEIPT_CAPACITY)));
+    // The owned compensator + graph handle the D-Bus undo path uses. Built once
+    // for the process (writer/audit/graph are startup-stable), independent of the
+    // config epoch: whether an undo is *permitted* is gated at call time on
+    // `executor_live`, not by these being present. Built from the same sockets
+    // the dispatch path uses so the compensation re-validates and retracts
+    // through the same daemon. `Clone` is a cheap `Arc` bump, so the same
+    // compensator threads into both interface-registration sites (the eager
+    // establish and the background recovery re-register).
+    let compensator = Compensator::new(
+        Arc::new(UnixRelationWriter::new(graph_socket())),
+        Arc::new(LedgerAuditSink::at_default_socket()) as Arc<dyn AuditSink>,
+    );
+    let iface_graph: Arc<dyn GraphHandle> = Arc::new(UnixGraph::new(graph_socket()));
     loop {
         // At the very top of every epoch, before any (possibly slow) config
         // load, classifier provisioning, or resubscribe, report `subscribing`:
@@ -704,7 +741,14 @@ async fn run(
         // would dispatch the same triggers (and, with the executor live,
         // duplicate audited graph writes).
         if connection.is_none() {
-            match establish_agent_connection(Arc::clone(status)).await {
+            match establish_agent_connection(
+                Arc::clone(status),
+                compensator.clone(),
+                Arc::clone(&iface_graph),
+                Arc::clone(&receipts),
+            )
+            .await
+            {
                 AgentConnection::Owned(conn) => *connection = Some(conn),
                 // No bus yet: leave the connection unset; recovery re-attempts
                 // it in the background while workflow behaviours run. The
@@ -858,7 +902,13 @@ async fn run(
                     &mut shutdown_rx,
                     status,
                     &receipts,
-                    recover_connection(connection, Arc::clone(status)),
+                    recover_connection(
+                        connection,
+                        Arc::clone(status),
+                        compensator.clone(),
+                        Arc::clone(&iface_graph),
+                        Arc::clone(&receipts),
+                    ),
                 )
                 .await
             } else {

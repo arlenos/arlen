@@ -28,9 +28,15 @@
 //! that lands when the harness moves from poll to subscribe.
 
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use zbus::interface;
+
+use crate::config::AgentConfig;
+use crate::executor::{CompensationOutcome, Compensator};
+use crate::loader::ai_config_path;
+use crate::receipt_store::{ReceiptStore, RetainedReceipt};
+use crate::seams::GraphHandle;
 
 /// The D-Bus object path the interface is registered under.
 pub const AGENT_OBJECT_PATH: &str = "/org/arlen/AIAgent1";
@@ -119,6 +125,15 @@ pub fn load_status(handle: &StatusHandle) -> LoopStatus {
 pub struct AgentInterface {
     /// Live loop status, updated by the dispatch loop.
     pub status: StatusHandle,
+    /// The owned compensator for the undo path. Always built (its writer/audit
+    /// are startup-stable); whether an undo is *permitted* is gated at call time
+    /// on `executor_live`, not by its presence.
+    pub compensator: Compensator,
+    /// The graph handle the compensation reads/retracts through.
+    pub graph: Arc<dyn GraphHandle>,
+    /// The execution receipts the dispatch loop retains, shared so a `compensate`
+    /// call can look up the write to undo by its decision's correlation id.
+    pub receipts: Arc<Mutex<ReceiptStore<RetainedReceipt>>>,
 }
 
 #[interface(name = "org.arlen.AIAgent1")]
@@ -133,6 +148,53 @@ impl AgentInterface {
     async fn status(&self) -> String {
         load_status(&self.status).as_str().to_string()
     }
+
+    /// Undo a previously-executed write, identified by its decision's
+    /// correlation id (the activity entry the harness shows carries it). Returns
+    /// a short status string: `not-enabled` when the executor is in suggest mode,
+    /// `no-such-receipt` when no retained write matches, `retracted` /
+    /// `nothing-to-undo` on a compensation, or `error: …` on a failed undo.
+    ///
+    /// The compensation is the same op-id-keyed retract `LiveExecutor` performs
+    /// (fail-closed audit before the retract, keyed to the receipt's own op id,
+    /// only a real `Created` write is undone). Suggest mode retains no receipts,
+    /// so the call-time `executor_live` gate is belt-and-braces over an empty
+    /// store; re-reading the config means a runtime flip is honoured without a
+    /// restart. Authorisation is the session bus's same-user boundary (the KG is
+    /// the user's own and the undo is reversible curation the agent re-derives).
+    async fn compensate(&self, correlation_id: String) -> String {
+        if !current_executor_live() {
+            return "not-enabled: the executor is in suggest mode".to_string();
+        }
+        // Clone the receipt out under the lock; never hold the std Mutex across
+        // the async compensation.
+        let retained = match self.receipts.lock() {
+            Ok(store) => store.get(&correlation_id),
+            Err(_) => return "error: receipt store unavailable".to_string(),
+        };
+        let Some(retained) = retained else {
+            return "no-such-receipt".to_string();
+        };
+        match self
+            .compensator
+            .compensate(&retained.receipt, &*self.graph, &retained.behaviour)
+            .await
+        {
+            Ok(CompensationOutcome::Retracted) => "retracted".to_string(),
+            Ok(CompensationOutcome::NothingToUndo) => "nothing-to-undo".to_string(),
+            Err(e) => format!("error: {e}"),
+        }
+    }
+}
+
+/// Whether the executor is currently live, re-read from `ai.toml` so a runtime
+/// flip is honoured without a daemon restart. Fail-closed to `false` (suggest
+/// mode, undo refused) on any read/parse failure.
+fn current_executor_live() -> bool {
+    std::fs::read_to_string(ai_config_path())
+        .ok()
+        .map(|t| AgentConfig::parse(&t).executor_live)
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
