@@ -15,7 +15,7 @@
 //!     --test integration_backend_smoke -- --ignored
 //! (a future `just integration-smoke` wraps this.)
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use arlen_integration::EphemeralStack;
 use os_sdk::{EventEmitter, QueryError, UnixEventEmitter, UnixGraphClient};
@@ -245,4 +245,68 @@ async fn a_scoped_caller_may_read_its_granted_label() {
         allowed.is_ok(),
         "a caller granted system.File read may run a File query (RS-R1 admits a granted label), got {allowed:?}"
     );
+}
+
+/// IT-1 capstone data-flow: a `file.opened` event promotes through to a graph
+/// `File` node that an authorised caller can read back. Ties the whole pipeline
+/// together: bus -> knowledge writer -> SQLite -> the ~30s promotion pass ->
+/// graph node -> the authorised 0x01 typed read returning the node. The poll
+/// (up to ~45s) absorbs the promotion timing rather than a brittle fixed sleep;
+/// a non-empty result for `MATCH (f:File {id:'<our path>'})` proves OUR file was
+/// promoted and is readable under the seeded scope. Same `#[ignore]` rationale
+/// (and it is the slowest scenario, ~30s, so it sits last).
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge binaries built and a FUSE-capable host (~30s)"]
+async fn a_file_opened_promotes_to_a_readable_file_node() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    stack
+        .seed_read_profile(&["system.File.id", "system.File.path"])
+        .expect("seed read profile");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    // Let the writer's `*` subscription register before emitting.
+    tokio::time::sleep(Duration::from_millis(700)).await;
+
+    let path = "/work/it/promoted.rs";
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let payload = proto::FileOpenedPayload {
+        path: path.to_string(),
+        app_id: "integration-test".to_string(),
+        flags: 0,
+    }
+    .encode_to_vec();
+    emitter
+        .emit("file.opened", payload)
+        .await
+        .expect("emit file.opened");
+
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let query = format!("MATCH (f:File {{id: '{path}'}}) RETURN f.path LIMIT 1");
+    let deadline = Instant::now() + Duration::from_secs(45);
+    loop {
+        if let Ok(rows) = client.query_rows(&query).await {
+            if !rows.is_empty() {
+                return; // promoted to a File node and readable under the seeded scope
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the file.opened event never promoted to a readable File node within 45s"
+        );
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
 }
