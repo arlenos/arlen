@@ -98,6 +98,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
+name = "arlen-capsule"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "arlen-desktop-shell"
 version = "0.1.0"
 dependencies = [
@@ -165,6 +173,7 @@ dependencies = [
  "libc",
  "notify 6.1.1",
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "toml 0.8.2",
 ]
@@ -2969,6 +2978,7 @@ dependencies = [
 name = "os-sdk"
 version = "0.1.0"
 dependencies = [
+ "arlen-capsule",
  "arlen-permissions",
  "dirs 5.0.1",
  "libc",
