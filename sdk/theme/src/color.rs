@@ -150,7 +150,8 @@ pub fn derive_hover_pressed(accent: Rgba, dark: bool) -> (Rgba, Rgba) {
 /// text, 3.0 for status/large). Returns `fg` unchanged when the pair already
 /// clears. Otherwise walks the foreground's OKLCH lightness toward BOTH poles
 /// (hue and chroma fixed) and returns the colour from whichever direction clears
-/// the floor in the fewest steps — the genuinely smallest move. Walking only one
+/// the floor in the fewest steps — the genuinely smallest move (an equal-steps
+/// tie keeps the lighter pole, deterministically). Walking only one
 /// direction is wrong: when the foreground is between the background and a pole
 /// that tops out below the floor, the opposite pole may clear comfortably (e.g.
 /// a mid accent on a light background — white-on-accent caps low, black clears),
@@ -170,7 +171,9 @@ pub fn clamp_contrast(fg: Rgba, bg: Rgba, floor: f32) -> Rgba {
     const STEP: f32 = 0.01;
     let mut best = fg;
     let mut best_ratio = start;
-    // The fewest-steps clear across both directions (smaller move wins ties).
+    // The fewest-steps clear across both directions. The `steps < s` test is
+    // strict, so on an equal-steps tie the first-tried (lighter, dir=+1) pole is
+    // kept — a deterministic tie-break, not a smaller move (the moves are equal).
     let mut cleared: Option<(u32, Rgba)> = None;
     for dir in [1.0f32, -1.0] {
         let mut l = fg_ok.l;

@@ -1,7 +1,7 @@
 //! Terminal outbound generators (theming-system-plan.md Strand 3).
 //!
 //! One small emitter per format — Alacritty (TOML), Kitty (conf), Foot (INI),
-//! Xresources — all serializing the same resolved [`TerminalTokens`]: the
+//! Xresources — all serializing the same resolved [`crate::TerminalTokens`]: the
 //! two-path honour-vs-synthesise decision already happened at resolve
 //! (`resolve_terminal`), so these are pure projections. Clean lossy-by-design:
 //! 16 ANSI + fg/bg/cursor is everything the medium can show.

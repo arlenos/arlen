@@ -19,15 +19,28 @@
 //! Plus a per-user PREFERENCE layer:
 //!
 //! 4. **`appearance.toml [overrides].radius_intensity`** — multiplier
-//!    in `0.0..=2.0` applied to all semantic radii at *emit time*
-//!    (`ArlenTheme::effective_*()`), excluding `radius.full` and
-//!    `radius.window_corners` which are categorical. The base
-//!    radii live in the theme; the multiplier is the user-only knob.
+//!    in `0.0..=2.0` applied at *emit time* (`ArlenTheme::effective_*()`)
+//!    to all semantic radii AND `radius.window_corners` (so GTK app
+//!    windows and the compositor track the slider in lock-step with the
+//!    shell); only `radius.full`, the categorical pill radius, is
+//!    excluded. The base radii live in the theme; the multiplier is the
+//!    user-only knob.
 //!
 //! Both compositor and desktop-shell read the same resolved
 //! `ArlenTheme`. The schema is grouped into per-concern substructs
 //! (color, radius, spacing, typography, motion, depth, wm, cursor)
 //! so callers borrow the slice they care about.
+//!
+//! **Trust floor (TH-0).** A consumed theme is inert validated data:
+//! every free-string it can carry (spacing, fonts, motion, shadows, the
+//! cursor/icon theme names, the `[meta]` id/name) is passed through
+//! `inert_or` at resolve, so a value that could be config syntax is
+//! dropped to its safe default. The outbound generators (GTK/Qt/terminal)
+//! therefore consume only inert data and emit colours plus numbers.
+//! Emit-safety rests ENTIRELY on this resolve floor: a newly-consumed
+//! free-string field MUST be routed through `inert_or` /
+//! [`is_inert_css_token`] at resolve, or the guarantee silently will not
+//! cover it. The unit tests and the `proptest` fuzz harness pin this.
 //!
 //! See `docs/architecture/theme-system.md` for the full architecture
 //! and per-token semantic guidance.
