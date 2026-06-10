@@ -791,10 +791,22 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
 
 /// The app ids permitted to invoke a revoke (living-capability-graph.md §6.2,
 /// Option A). Revoke is user-initiated through Settings, narrowing-only, so only
-/// the canonical `settings` principal is admitted; a `dev.`-prefixed id is
-/// admitted in debug for a locally-run Settings (the audit-daemon convention).
+/// the canonical `settings` principal is admitted; in debug the exact cargo-run
+/// id `dev.arlen-settings` is also admitted for a locally-run Settings (the
+/// audit-daemon convention). The match is exact, not a broad `dev.` prefix,
+/// which would let any locally-built crate narrow another app's scope.
 fn revoke_caller_admitted(app_id: &str) -> bool {
-    app_id == "settings" || (cfg!(debug_assertions) && app_id.starts_with("dev."))
+    if app_id == "settings" {
+        return true;
+    }
+    #[cfg(debug_assertions)]
+    {
+        app_id == "dev.arlen-settings"
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        false
+    }
 }
 
 /// Whether `app_id` is a safe single path component for use as a profile-file
@@ -2287,8 +2299,14 @@ mod tests {
         for other in ["ai-agent", "ai-daemon", "com.x", "knowledge", "unknown", ""] {
             assert!(!revoke_caller_admitted(other), "{other} must not be allowed to revoke");
         }
-        // The dev exception is live only in debug builds (the test binary).
-        assert_eq!(revoke_caller_admitted("dev.settings"), cfg!(debug_assertions));
+        // Only Settings' exact cargo-run id is admitted in debug, never
+        // in release; an arbitrary `dev.*` crate is always refused.
+        assert_eq!(
+            revoke_caller_admitted("dev.arlen-settings"),
+            cfg!(debug_assertions)
+        );
+        assert!(!revoke_caller_admitted("dev.evil"));
+        assert!(!revoke_caller_admitted("dev.arlen-knowledge"));
     }
 
     #[test]

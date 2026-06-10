@@ -29,11 +29,29 @@ use crate::error::{Result, SignerError};
 /// undo entries and looks them up; nothing else has any business here.
 pub const ADMITTED: &[&str] = &["ai-agent"];
 
-/// Whether a resolved peer `app_id` may use the signer socket. A `dev.`-prefixed
-/// id is admitted in debug builds so a locally-run agent (from a `target/` tree)
-/// can be exercised, matching the audit-daemon's convention.
+/// The agent's exact cargo-run `dev.*` id, admitted only in debug
+/// builds. An exact match, not a broad `dev.` prefix: any locally-built
+/// crate resolves to some `dev.<bin>`, so a prefix would let any
+/// cargo-run binary reach the signer socket.
+#[cfg(debug_assertions)]
+const DEV_ADMITTED: &str = "dev.arlen-ai-agent";
+
+/// Whether a resolved peer `app_id` may use the signer socket. In debug
+/// builds the agent's exact `dev.*` id is also admitted so a locally-run
+/// agent (from a `target/` tree) can be exercised, matching the
+/// audit-daemon's convention.
 pub fn caller_is_admitted(app_id: &str) -> bool {
-    ADMITTED.contains(&app_id) || (cfg!(debug_assertions) && app_id.starts_with("dev."))
+    if ADMITTED.contains(&app_id) {
+        return true;
+    }
+    #[cfg(debug_assertions)]
+    {
+        app_id == DEV_ADMITTED
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        false
+    }
 }
 
 /// The signer process's own uid, for `ConnectionAuth` peer extraction.
@@ -73,8 +91,14 @@ mod tests {
 
     #[test]
     fn dev_prefixed_ids_are_admitted_only_in_debug() {
-        // The test binary is a debug build, so the dev exception is live here.
-        assert_eq!(caller_is_admitted("dev.ai-agent"), cfg!(debug_assertions));
+        // Only the agent's exact cargo-run id is admitted in debug, and
+        // never in release. An arbitrary `dev.*` crate is always refused.
+        assert_eq!(
+            caller_is_admitted("dev.arlen-ai-agent"),
+            cfg!(debug_assertions)
+        );
+        assert!(!caller_is_admitted("dev.evil"));
+        assert!(!caller_is_admitted("dev.arlen-knowledge"));
     }
 
     #[test]

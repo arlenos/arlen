@@ -113,7 +113,7 @@ impl IngestServer {
 
     /// Handle one connection: authenticate the peer, then field
     /// ingest requests until it closes.
-    async fn handle(&self, mut stream: UnixStream, caller_uid: u32) -> Result<()> {
+    async fn handle(&self, stream: UnixStream, caller_uid: u32) -> Result<()> {
         let auth = match ConnectionAuth::extract_from(&stream, caller_uid) {
             Ok(auth) => auth,
             Err(e) => {
@@ -131,7 +131,15 @@ impl IngestServer {
         // The actor is the kernel-attested peer identity, never a
         // request field — a caller cannot record under another name.
         let actor = auth.app_id().to_string();
+        self.serve_connection(stream, &actor).await
+    }
 
+    /// Field ingest requests on an already-authenticated connection
+    /// until the peer closes. `actor` is the kernel-attested identity
+    /// recorded on every entry. Split out of [`handle`](Self::handle)
+    /// so the transport + record + ledger round-trip is testable
+    /// without re-deriving admission from the test process's own pid.
+    async fn serve_connection(&self, mut stream: UnixStream, actor: &str) -> Result<()> {
         loop {
             let body = match read_frame(&mut stream).await {
                 Ok(body) => body,
@@ -140,7 +148,7 @@ impl IngestServer {
                 // recover.
                 Err(_) => return Ok(()),
             };
-            let response = self.record(&actor, &body).await;
+            let response = self.record(actor, &body).await;
             let encoded = encode_response(&response)?;
             write_frame(&mut stream, &encoded).await?;
         }
@@ -210,10 +218,31 @@ impl IngestServer {
     }
 }
 
+/// The cargo-run `dev.*` ids of the admitted producers, accepted only
+/// in debug builds. An exact list, not a broad `dev.` prefix: any
+/// cargo-run crate resolves to some `dev.<bin>`, so a prefix match
+/// would admit every locally-built binary to the ingest socket. Each
+/// entry is `dev.<bin-name>` for the corresponding [`ADMITTED`] daemon.
+#[cfg(debug_assertions)]
+const DEV_ADMITTED: &[&str] = &[
+    "dev.arlen-ai-daemon",
+    "dev.arlen-ai-proxy",
+    "dev.arlen-ai-agent",
+];
+
 /// Whether a resolved peer app_id may submit audit events.
 fn caller_is_admitted(app_id: &str) -> bool {
-    ADMITTED.contains(&app_id)
-        || (cfg!(debug_assertions) && app_id.starts_with("dev."))
+    if ADMITTED.contains(&app_id) {
+        return true;
+    }
+    #[cfg(debug_assertions)]
+    {
+        DEV_ADMITTED.contains(&app_id)
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        false
+    }
 }
 
 /// The daemon's own uid, for `ConnectionAuth` peer extraction.
@@ -236,11 +265,18 @@ mod tests {
         assert!(!caller_is_admitted("knowledge"));
         assert!(!caller_is_admitted("com.example.app"));
         assert!(!caller_is_admitted(""));
-        // Debug builds also admit cargo-run `dev.*` ids.
+        // Debug builds admit the listed cargo-run `dev.*` producer
+        // ids, but not an arbitrary `dev.*` crate.
         assert_eq!(
             caller_is_admitted("dev.arlen-ai-daemon"),
             cfg!(debug_assertions)
         );
+        assert_eq!(
+            caller_is_admitted("dev.arlen-ai-agent"),
+            cfg!(debug_assertions)
+        );
+        assert!(!caller_is_admitted("dev.arlen-knowledge"));
+        assert!(!caller_is_admitted("dev.evil"));
     }
 
     /// Every AI-layer producer that submits audit entries must be in
@@ -270,14 +306,16 @@ mod tests {
         );
     }
 
-    /// Spin up the server on a temp socket, submit one event as the
-    /// test process (a `dev.*` peer, admitted in debug), and confirm
-    /// it is appended and the ledger verifies.
+    /// Drive the transport + record + ledger round-trip over a socket
+    /// pair as an admitted producer (`ai-agent`), and confirm the event
+    /// is appended and the ledger verifies. Admission itself is covered
+    /// by [`admission_is_restricted_to_the_ai_layer`]; this exercises
+    /// `serve_connection` for an already-authenticated peer rather than
+    /// re-deriving admission from the test process's own pid (which is
+    /// not a producer and is correctly refused after the dev.* tighten).
     #[tokio::test]
     async fn an_admitted_caller_appends_through_the_socket() {
         let dir = tempfile::tempdir().unwrap();
-        let socket = dir.path().join("audit-ingest.sock");
-
         let ledger = Ledger::open(&dir.path().join("ledger.db"), b"test-key".to_vec())
             .await
             .expect("open ledger");
@@ -291,20 +329,11 @@ mod tests {
             Arc::new(AtomicBool::new(false)),
         ));
 
-        let socket_for_task = socket.clone();
+        let (mut client, server_end) = UnixStream::pair().unwrap();
         let serving = tokio::spawn(async move {
-            let _ = server.run(&socket_for_task).await;
+            let _ = server.serve_connection(server_end, "ai-agent").await;
         });
 
-        // Wait for the socket to bind.
-        for _ in 0..100 {
-            if socket.exists() {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        }
-
-        let mut client = UnixStream::connect(&socket).await.expect("connect");
         let req = IngestRequest {
             kind: AuditKind::Query,
             structural: StructuralRecord {
@@ -330,7 +359,8 @@ mod tests {
         // The entry is really in the ledger and the chain holds.
         assert_eq!(ledger.lock().await.verify().await.unwrap(), 1);
 
-        serving.abort();
+        drop(client);
+        let _ = serving.await;
     }
 
     /// A server whose tamper flag is set must refuse every append:
@@ -338,7 +368,6 @@ mod tests {
     #[tokio::test]
     async fn a_tampered_ledger_refuses_appends() {
         let dir = tempfile::tempdir().unwrap();
-        let socket = dir.path().join("audit-ingest.sock");
 
         let ledger = Ledger::open(&dir.path().join("ledger.db"), b"test-key".to_vec())
             .await
@@ -352,18 +381,11 @@ mod tests {
             Arc::new(AtomicBool::new(true)),
         ));
 
-        let socket_for_task = socket.clone();
+        let (mut client, server_end) = UnixStream::pair().unwrap();
         let serving = tokio::spawn(async move {
-            let _ = server.run(&socket_for_task).await;
+            let _ = server.serve_connection(server_end, "ai-agent").await;
         });
-        for _ in 0..100 {
-            if socket.exists() {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        }
 
-        let mut client = UnixStream::connect(&socket).await.expect("connect");
         let req = IngestRequest {
             kind: AuditKind::Query,
             structural: StructuralRecord {
@@ -391,6 +413,7 @@ mod tests {
         // Nothing was written: the ledger is still empty.
         assert_eq!(ledger.lock().await.verify().await.unwrap(), 0);
 
-        serving.abort();
+        drop(client);
+        let _ = serving.await;
     }
 }
