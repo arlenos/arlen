@@ -91,6 +91,48 @@ pub fn parse_hex(hex: &str) -> Option<Rgba> {
     }
 }
 
+/// Whether a free-string theme token is inert: safe to emit verbatim into any
+/// generated config without breaking out of its declaration context.
+///
+/// A theme is inert validated data (theming-system-plan.md): a value parses into
+/// a typed colour, a number, or a *vetted* string, and nothing it carries can
+/// become syntax in the file it is written into. Colours already go through
+/// [`parse_hex`]; this is the analogous floor for the remaining free-string
+/// fields (font families, lengths, durations, easings, shadows, the cursor theme
+/// name). It is deliberately format-AGNOSTIC: the one resolved value fans out to
+/// every generator (CSS custom properties, the GTK/libadwaita CSS, qt*ct INI,
+/// terminal `.conf`/Xresources), so it must carry nothing that is syntax in ANY
+/// of them. Rejected: control characters (newlines, the multi-line-injection
+/// vector across all formats), the CSS statement/block punctuation `;{}`, the INI
+/// section/comment punctuation `[]` (and `;`, already covered), the markup
+/// guards `<>`, the at-rule `@`, the escape `\`, and the CSS comment sequences
+/// `/*` `*/`. Every well-formed token value uses only letters, digits, spaces and
+/// `,.()#%-_"'/:` — none of the rejected set — so a legitimate theme always
+/// passes and an adversarial value is dropped to its safe default at resolve.
+pub fn is_inert_css_token(value: &str) -> bool {
+    if value.chars().any(|c| c.is_control()) {
+        return false;
+    }
+    const FORBIDDEN: &[char] = &[';', '{', '}', '[', ']', '<', '>', '@', '\\'];
+    if value.contains(FORBIDDEN) {
+        return false;
+    }
+    if value.contains("/*") || value.contains("*/") {
+        return false;
+    }
+    true
+}
+
+/// Resolve a free-string token: keep the author's value only if it is
+/// [inert](is_inert_css_token), otherwise fall back to the built-in default. The
+/// trust floor for every free-string field — an adversarial value can at worst
+/// produce the default token, never break out of the generated config.
+fn inert_or(value: Option<String>, default: &str) -> String {
+    value
+        .filter(|v| is_inert_css_token(v))
+        .unwrap_or_else(|| default.to_string())
+}
+
 // ---------------------------------------------------------------------------
 // Resolved theme — the post-merge struct both crates consume
 // ---------------------------------------------------------------------------
@@ -479,23 +521,22 @@ fn from_file(f: ArlenThemeFile) -> Result<ArlenTheme, ResolveError> {
 
     let s = f.spacing.unwrap_or_default();
     let spacing = SpacingTokens {
-        xs: s.xs.unwrap_or_else(|| "4px".to_string()),
-        sm: s.sm.unwrap_or_else(|| "8px".to_string()),
-        md: s.md.unwrap_or_else(|| "16px".to_string()),
-        lg: s.lg.unwrap_or_else(|| "24px".to_string()),
-        xl: s.xl.unwrap_or_else(|| "32px".to_string()),
+        xs: inert_or(s.xs, "4px"),
+        sm: inert_or(s.sm, "8px"),
+        md: inert_or(s.md, "16px"),
+        lg: inert_or(s.lg, "24px"),
+        xl: inert_or(s.xl, "32px"),
     };
 
     let t = f.typography.unwrap_or_default();
     let typography = TypographyTokens {
-        font_sans:     t.font_sans.unwrap_or_else(|| {
-            "\"Inter Variable\", ui-sans-serif, system-ui, sans-serif".to_string()
-        }),
-        font_mono:     t.font_mono.unwrap_or_else(|| {
-            "\"JetBrains Mono\", ui-monospace, monospace".to_string()
-        }),
-        size_base:     t.size_base.unwrap_or_else(|| "14px".to_string()),
-        line_height:   t.line_height.unwrap_or_else(|| "1.5".to_string()),
+        font_sans:     inert_or(
+            t.font_sans,
+            "\"Inter Variable\", ui-sans-serif, system-ui, sans-serif",
+        ),
+        font_mono:     inert_or(t.font_mono, "\"JetBrains Mono\", ui-monospace, monospace"),
+        size_base:     inert_or(t.size_base, "14px"),
+        line_height:   inert_or(t.line_height, "1.5"),
         weight_normal: t.weight_normal.unwrap_or(400),
         weight_medium: t.weight_medium.unwrap_or(500),
         weight_bold:   t.weight_bold.unwrap_or(600),
@@ -503,28 +544,18 @@ fn from_file(f: ArlenThemeFile) -> Result<ArlenTheme, ResolveError> {
 
     let m = f.motion.unwrap_or_default();
     let motion = MotionTokens {
-        duration_fast:   m.duration_fast.unwrap_or_else(|| "100ms".to_string()),
-        duration_normal: m.duration_normal.unwrap_or_else(|| "200ms".to_string()),
-        duration_slow:   m.duration_slow.unwrap_or_else(|| "400ms".to_string()),
-        easing_default:  m.easing_default.unwrap_or_else(|| {
-            "cubic-bezier(0.4, 0, 0.2, 1)".to_string()
-        }),
-        easing_spring:   m.easing_spring.unwrap_or_else(|| {
-            "cubic-bezier(0.34, 1.56, 0.64, 1)".to_string()
-        }),
+        duration_fast:   inert_or(m.duration_fast, "100ms"),
+        duration_normal: inert_or(m.duration_normal, "200ms"),
+        duration_slow:   inert_or(m.duration_slow, "400ms"),
+        easing_default:  inert_or(m.easing_default, "cubic-bezier(0.4, 0, 0.2, 1)"),
+        easing_spring:   inert_or(m.easing_spring, "cubic-bezier(0.34, 1.56, 0.64, 1)"),
     };
 
     let d = f.depth.unwrap_or_default();
     let depth = DepthTokens {
-        shadow_sm:    d.shadow_sm.unwrap_or_else(|| {
-            "0 1px 2px rgba(0, 0, 0, 0.3)".to_string()
-        }),
-        shadow_md:    d.shadow_md.unwrap_or_else(|| {
-            "0 4px 12px rgba(0, 0, 0, 0.4)".to_string()
-        }),
-        shadow_lg:    d.shadow_lg.unwrap_or_else(|| {
-            "0 8px 24px rgba(0, 0, 0, 0.5)".to_string()
-        }),
+        shadow_sm:    inert_or(d.shadow_sm, "0 1px 2px rgba(0, 0, 0, 0.3)"),
+        shadow_md:    inert_or(d.shadow_md, "0 4px 12px rgba(0, 0, 0, 0.4)"),
+        shadow_lg:    inert_or(d.shadow_lg, "0 8px 24px rgba(0, 0, 0, 0.5)"),
         blur_enabled: d.blur_enabled.unwrap_or(true),
     };
 
@@ -542,7 +573,7 @@ fn from_file(f: ArlenThemeFile) -> Result<ArlenTheme, ResolveError> {
 
     let c = f.cursor.unwrap_or_default();
     let cursor = CursorTokens {
-        theme: c.theme.unwrap_or_else(|| "default".to_string()),
+        theme: inert_or(c.theme, "default"),
         size:  c.size.unwrap_or(24),
     };
 
@@ -954,5 +985,97 @@ button = 12
         assert_eq!(scale_radius(7.0, 1.5), 11.0);
         // 5 * 0.3 = 1.5 -> rounds to 2
         assert_eq!(scale_radius(5.0, 0.3), 2.0);
+    }
+
+    /// Every free-string field of a resolved theme (the values that fan out into
+    /// generated config). The TH-0 property: all of these are always inert.
+    fn free_strings(t: &ArlenTheme) -> Vec<&str> {
+        vec![
+            t.spacing.xs.as_str(),
+            t.spacing.sm.as_str(),
+            t.spacing.md.as_str(),
+            t.spacing.lg.as_str(),
+            t.spacing.xl.as_str(),
+            t.typography.font_sans.as_str(),
+            t.typography.font_mono.as_str(),
+            t.typography.size_base.as_str(),
+            t.typography.line_height.as_str(),
+            t.motion.duration_fast.as_str(),
+            t.motion.duration_normal.as_str(),
+            t.motion.duration_slow.as_str(),
+            t.motion.easing_default.as_str(),
+            t.motion.easing_spring.as_str(),
+            t.depth.shadow_sm.as_str(),
+            t.depth.shadow_md.as_str(),
+            t.depth.shadow_lg.as_str(),
+            t.cursor.theme.as_str(),
+        ]
+    }
+
+    #[test]
+    fn inert_gate_accepts_legitimate_values_and_rejects_break_out() {
+        // Every default + a normal theme value is inert.
+        for ok in [
+            "4px",
+            "1.5",
+            "100ms",
+            "cubic-bezier(0.4, 0, 0.2, 1)",
+            "0 1px 2px rgba(0, 0, 0, 0.3)",
+            "\"Inter Variable\", ui-sans-serif, system-ui, sans-serif",
+            "default",
+            "Adwaita",
+            "MyFont, sans-serif",
+        ] {
+            assert!(is_inert_css_token(ok), "should accept inert value: {ok:?}");
+        }
+        // Break-out attempts across CSS + INI/conf are rejected.
+        for bad in [
+            "4px; color: red",            // CSS statement break-out
+            "0 0 0 #000 } * { color: red", // CSS block break-out
+            "x [section]",                // INI section
+            "a @import url(evil)",         // at-rule
+            "a\\b",                        // escape
+            "a /* c */ d",                 // CSS comment
+            "line1\nline2",               // multi-line injection
+            "a <script> b",                // markup
+        ] {
+            assert!(!is_inert_css_token(bad), "should reject break-out value: {bad:?}");
+        }
+    }
+
+    #[test]
+    fn adversarial_free_strings_resolve_to_inert_values() {
+        // The TH-0 trust-floor theorem: whatever an adversarial theme puts in the
+        // free-string fields, the resolved values are all inert (a break-out value
+        // is dropped to its safe default at resolve), so no generator can be made
+        // to emit syntax out of theme data. Payloads avoid `'`/newline so they sit
+        // in TOML literal strings; the control-char vector is covered by the unit
+        // test above.
+        let payloads = ["; } body", "x [section] y", "a /* */ b", "a<b>@c\\d"];
+        for p in payloads {
+            let user = format!(
+                "[spacing]\nxs='{p}'\nsm='{p}'\nmd='{p}'\nlg='{p}'\nxl='{p}'\n\
+                 [typography]\nfont_sans='{p}'\nfont_mono='{p}'\nsize_base='{p}'\nline_height='{p}'\n\
+                 [motion]\nduration_fast='{p}'\nduration_normal='{p}'\nduration_slow='{p}'\neasing_default='{p}'\neasing_spring='{p}'\n\
+                 [depth]\nshadow_sm='{p}'\nshadow_md='{p}'\nshadow_lg='{p}'\n\
+                 [cursor]\ntheme='{p}'\n"
+            );
+            let t = ArlenTheme::resolve(SAMPLE_BUNDLED, Some(&user), None)
+                .expect("an adversarial theme still resolves (to safe defaults)");
+            for v in free_strings(&t) {
+                assert!(
+                    is_inert_css_token(v),
+                    "payload {p:?} leaked a non-inert resolved value {v:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_legitimate_user_free_string_survives_the_gate() {
+        // The gate must not over-reject: a normal custom font passes through.
+        let user = "[typography]\nfont_sans = \"My Custom Font, sans-serif\"\n";
+        let t = ArlenTheme::resolve(SAMPLE_BUNDLED, Some(user), None).expect("resolve");
+        assert_eq!(t.typography.font_sans, "My Custom Font, sans-serif");
     }
 }
