@@ -11,7 +11,11 @@ User=root
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/arlen/permissions
+# The helper writes both the system permission profiles and the inode-keyed
+# identity registry (F3 Rung B); without the identity path here ProtectSystem
+# makes it read-only and every RecordIdentity fails EROFS, so the inode gate
+# would gate nothing in deployment.
+ReadWritePaths=/var/lib/arlen/permissions /var/lib/arlen/identity
 ProtectHome=true
 PrivateTmp=true
 

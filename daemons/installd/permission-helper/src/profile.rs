@@ -21,11 +21,17 @@ pub enum ProfileError {
     Io(#[from] std::io::Error),
 }
 
-/// Get the base directory.
+/// Get the base directory. The `ARLEN_PERMISSIONS_DIR` override is honoured only
+/// in a debug build (tests/dev); a release helper always writes the root-owned
+/// `/var/lib` location, so the two root writers (this and the identity writer)
+/// share one release-pins-the-path rule and a release env-misconfiguration cannot
+/// relocate the authoritative profiles (review F3-3).
 fn base_dir() -> PathBuf {
-    std::env::var("ARLEN_PERMISSIONS_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(DEFAULT_BASE))
+    #[cfg(debug_assertions)]
+    if let Ok(dir) = std::env::var("ARLEN_PERMISSIONS_DIR") {
+        return PathBuf::from(dir);
+    }
+    PathBuf::from(DEFAULT_BASE)
 }
 
 /// Get the profile file path for an app.
