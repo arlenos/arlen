@@ -33,6 +33,7 @@
 //! and per-token semantic guidance.
 
 mod file;
+pub mod gtk;
 mod watcher;
 
 pub use file::{
