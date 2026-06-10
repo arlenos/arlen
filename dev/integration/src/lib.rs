@@ -49,6 +49,7 @@ impl EphemeralStack {
         let runtime = tempfile::Builder::new().prefix("arlen-it-").tempdir()?;
         std::fs::create_dir_all(runtime.path().join("knowledge"))?;
         std::fs::create_dir_all(runtime.path().join("timeline"))?;
+        std::fs::create_dir_all(runtime.path().join("permissions"))?;
         Ok(Self {
             runtime,
             children: Vec::new(),
@@ -116,8 +117,38 @@ impl EphemeralStack {
             ("ARLEN_DB_PATH".to_string(), p("knowledge/events.db")),
             ("ARLEN_GRAPH_PATH".to_string(), p("knowledge/graph")),
             ("ARLEN_TIMELINE_MOUNT".to_string(), p("timeline")),
+            // The daemon loads permission profiles from here (profile_path
+            // checks ARLEN_PERMISSIONS_DIR first), so a profile seeded by
+            // `seed_read_profile` is the one it reads for the caller.
+            ("ARLEN_PERMISSIONS_DIR".to_string(), p("permissions")),
             ("XDG_RUNTIME_DIR".to_string(), root),
         ])
+    }
+
+    /// The directory the daemon loads permission profiles from (via
+    /// `ARLEN_PERMISSIONS_DIR`).
+    pub fn permissions_dir(&self) -> PathBuf {
+        self.socket_path("permissions")
+    }
+
+    /// Seed a permission profile granting graph **read** on `read_fields` (e.g.
+    /// `"system.File.id"`) for THIS test process's own app id, so a scenario can
+    /// make authorised reads. The daemon resolves the connecting test process to
+    /// the same app id (both use `path_to_app_id` over `/proc/<pid>/exe`), and
+    /// loads this profile from [`permissions_dir`](Self::permissions_dir) to mint
+    /// the caller's read scope. Returns the resolved app id. (A read-only grant
+    /// needs no `relations`/`instance_scope`.)
+    pub fn seed_read_profile(&self, read_fields: &[&str]) -> std::io::Result<String> {
+        let app_id = own_app_id()
+            .ok_or_else(|| std::io::Error::other("could not resolve own app id"))?;
+        let reads = read_fields
+            .iter()
+            .map(|f| format!("    \"{f}\","))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let toml = format!("[graph]\nread = [\n{reads}\n]\n");
+        std::fs::write(self.permissions_dir().join(format!("{app_id}.toml")), toml)?;
+        Ok(app_id)
     }
 
     /// Spawn a daemon binary (`<repo>/target/debug/<bin>`) with the base
@@ -194,6 +225,17 @@ pub fn binary_path(repo: &str, name: &str) -> PathBuf {
     repo_root.join(repo).join("target").join("debug").join(name)
 }
 
+/// Resolve THIS process's app id the same way the daemon resolves a connecting
+/// peer: `path_to_app_id` over the real executable path (`/proc/self/exe`
+/// readlinked). Both sides run the same resolver on the same binary, so the id
+/// the test seeds a profile for is the id the daemon loads. `None` if the exe
+/// link or the resolution fails. In a debug test binary this is `dev.<name>`
+/// (the dev fallback rule).
+pub fn own_app_id() -> Option<String> {
+    let exe = std::fs::read_link("/proc/self/exe").ok()?;
+    arlen_permissions::identity::path_to_app_id(&exe).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,6 +296,40 @@ mod tests {
             .wait_socket("never.sock", Duration::from_millis(120))
             .unwrap_err();
         assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+    }
+
+    #[test]
+    fn own_app_id_resolves_to_a_non_empty_id() {
+        // The test binary lives under target/debug/deps, so the dev fallback
+        // rule yields a `dev.`-prefixed id; we only assert it is resolvable and
+        // non-empty (the exact name is the test binary's).
+        let id = own_app_id().expect("own app id resolves");
+        assert!(!id.is_empty());
+    }
+
+    #[test]
+    fn seed_read_profile_writes_the_grant_for_the_caller() {
+        let stack = EphemeralStack::new().unwrap();
+        let app_id = stack
+            .seed_read_profile(&["system.File.id", "system.File.path"])
+            .expect("seed profile");
+        let profile = stack.permissions_dir().join(format!("{app_id}.toml"));
+        let body = std::fs::read_to_string(&profile).expect("profile written");
+        assert!(body.contains("[graph]"));
+        assert!(body.contains("\"system.File.id\""));
+        assert!(body.contains("\"system.File.path\""));
+        // The same id the daemon will resolve for the connecting peer.
+        assert_eq!(app_id, own_app_id().unwrap());
+    }
+
+    #[test]
+    fn base_env_points_profile_loading_at_the_temp_dir() {
+        let stack = EphemeralStack::new().unwrap();
+        let env = stack.base_env();
+        assert_eq!(
+            env["ARLEN_PERMISSIONS_DIR"],
+            stack.permissions_dir().to_string_lossy()
+        );
     }
 
     #[test]
