@@ -17,16 +17,20 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::executor::ExecutedWrite;
+use crate::executor::ActionReceipt;
 
 /// A retained execution receipt together with the behaviour that produced it.
-/// A later compensate audits the undo under the original behaviour's identity
-/// (the audit links the retract to the write's decision), which the bare
-/// [`ExecutedWrite`] receipt does not carry, so it is kept alongside here.
+/// The receipt is stored as the [`ActionReceipt`] that `compensate` consumes
+/// directly (the graph write wrapped as [`ActionReceipt::Graph`]), so the future
+/// undo trigger passes `&retained.receipt` without re-wrapping, and a non-graph
+/// receipt (EM-R5) is retained uniformly as [`ActionReceipt::NonGraph`]. A later
+/// compensate audits the undo under the original behaviour's identity (the audit
+/// links the retract to the write's decision), which the receipt does not carry,
+/// so it is kept alongside here.
 #[derive(Debug, Clone)]
 pub struct RetainedReceipt {
-    /// The execution receipt (write, op_id, correlation id, outcome).
-    pub write: ExecutedWrite,
+    /// The compensate-ready execution receipt.
+    pub receipt: ActionReceipt,
     /// The behaviour whose decision produced the write.
     pub behaviour: String,
 }
