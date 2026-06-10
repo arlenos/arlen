@@ -1,9 +1,10 @@
-/home/tim/Repositories/arlen/daemons/arlen-run/target/debug/deps/arlen_run-df3824c6dcc5fcc6.d: src/main.rs src/cgroup.rs src/landlock_apply.rs src/profile.rs src/spawn.rs Cargo.toml
+/home/tim/Repositories/arlen/daemons/arlen-run/target/debug/deps/arlen_run-df3824c6dcc5fcc6.d: src/main.rs src/cgroup.rs src/egress.rs src/landlock_apply.rs src/profile.rs src/spawn.rs Cargo.toml
 
-/home/tim/Repositories/arlen/daemons/arlen-run/target/debug/deps/libarlen_run-df3824c6dcc5fcc6.rmeta: src/main.rs src/cgroup.rs src/landlock_apply.rs src/profile.rs src/spawn.rs Cargo.toml
+/home/tim/Repositories/arlen/daemons/arlen-run/target/debug/deps/libarlen_run-df3824c6dcc5fcc6.rmeta: src/main.rs src/cgroup.rs src/egress.rs src/landlock_apply.rs src/profile.rs src/spawn.rs Cargo.toml
 
 src/main.rs:
 src/cgroup.rs:
+src/egress.rs:
 src/landlock_apply.rs:
 src/profile.rs:
 src/spawn.rs:
