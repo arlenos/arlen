@@ -574,7 +574,7 @@ mod tests {
     fn score_by_project_matches() {
         let row = mk_row("/a", "app", 1000, Some("Arlen"));
         assert!(score_by_project(&row, "arlen").is_some());
-        assert!(score_by_project(&row, "lun").is_some());
+        assert!(score_by_project(&row, "arl").is_some());
         assert!(score_by_project(&row, "xyz").is_none());
     }
 
