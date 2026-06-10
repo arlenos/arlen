@@ -28,23 +28,6 @@ export interface ActivityPage {
   total: number;
 }
 
-/// One agent behaviour as the registry reports it.
-export interface BehaviourStatus {
-  name: string;
-  description: string;
-  kind: string;
-  provenance: string;
-  enabled: boolean;
-  disabledReason: string | null;
-  reads: string;
-}
-
-/// The behaviour registry read: the set plus any directory load errors.
-export interface BehaviourReport {
-  behaviours: BehaviourStatus[];
-  errors: string[];
-}
-
 /// One anomaly-detector notice (the rare important warning channel).
 export interface Notice {
   kind: string;

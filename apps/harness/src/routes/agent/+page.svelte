@@ -1,34 +1,30 @@
 <script lang="ts">
-  /// Agent dashboard (ai-app.md §2.2) — the pull / observability surface:
-  /// the read-only activity timeline from the tamper-evident audit ledger,
-  /// behaviour status, anomaly notices, and System Explanation Mode. This
-  /// route owns the reads, the polling, and the filter state; rendering
-  /// lives in the `$lib/components/agent` family.
+  /// The Activity feed (harness-redo-plan.md, decided 11 June): the
+  /// review-only view of what the AI did for you, newest first, with
+  /// per-entry undo. Not a peer mode to Chat; it opens from the sidebar's
+  /// quiet Activity entry. Configuration (master switch, posture,
+  /// behaviours) lives in Settings, not here. This route owns the reads,
+  /// the polling, the filter state, and the undo call; rendering lives in
+  /// `$lib/components/agent`.
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
-  import PostureBanner from "$lib/components/agent/PostureBanner.svelte";
   import ActivityTimeline from "$lib/components/agent/ActivityTimeline.svelte";
-  import BehaviourPanel from "$lib/components/agent/BehaviourPanel.svelte";
-  import NoticePanel from "$lib/components/agent/NoticePanel.svelte";
+  import WarningsPanel from "$lib/components/agent/WarningsPanel.svelte";
   import ExplainPanel from "$lib/components/agent/ExplainPanel.svelte";
-  import AgentFilters from "$lib/components/agent/AgentFilters.svelte";
   import { readCapability, type Capability } from "$lib/capability";
-  import {
-    KIND_META,
-    type ActivityPage,
-    type BehaviourReport,
-    type Notice,
-    type NoticesResult,
-  } from "$lib/ledger";
+  import { categorize } from "$lib/display";
+  import type { ActivityEntry, ActivityPage, Notice, NoticesResult } from "$lib/ledger";
 
   let activity = $state<ActivityPage | null>(null);
   let loading = $state(false);
   let error = $state<string | null>(null);
-  let behaviours = $state<BehaviourReport | null>(null);
   let notices = $state<Notice[] | null>(null);
+  // An unreadable warning source is shown as exactly that, never as the
+  // all-clear (`available: false` from the read).
+  let noticesUnreadable = $state(false);
   let capability = $state<Capability | null>(null);
 
   // System Explanation Mode (Foundation §5.8), generated on demand.
@@ -49,24 +45,20 @@
     }
   }
 
-  // Activity-timeline filters. User-driven `$state` (not an IPC callback),
-  // so plain reactivity is reliable here.
-  let selectedKind = $state<string | null>(null);
-  let selectedOutcome = $state<string | null>(null);
+  // Feed filters. User-driven `$state` (not an IPC callback), so plain
+  // reactivity is reliable here.
+  let category = $state("all");
+  let outcome = $state("all");
   let timeWindow = $state("all");
 
-  // Filter options are derived from the loaded entries, not hardcoded, so only
-  // what the ledger actually contains is offered.
-  const kindOptions = $derived(
-    [...new Set((activity?.entries ?? []).map((e) => e.kind))]
-      .sort()
-      .map((k) => ({ value: k, label: KIND_META[k]?.label ?? k })),
-  );
-  const outcomeOptions = $derived(
-    [...new Set((activity?.entries ?? []).map((e) => e.outcome))]
-      .sort()
-      .map((o) => ({ value: o, label: o })),
-  );
+  // How much of the record is loaded; "Show older entries" widens the
+  // window through the same read command.
+  const PAGE = 100;
+  let loadLimit = $state(PAGE);
+  function loadMore() {
+    loadLimit += PAGE;
+    load();
+  }
 
   const WINDOW_MS: Record<string, number | null> = {
     all: null,
@@ -75,28 +67,42 @@
     "7d": 604_800_000,
   };
 
-  // The visible timeline after applying the filters. Time compares against the
-  // wall clock; entry timestamps are microseconds, the window is milliseconds.
+  // The visible feed after the filters. Time compares against the wall
+  // clock; entry timestamps are microseconds, the window is milliseconds.
   const filteredEntries = $derived.by(() => {
     const entries = activity?.entries ?? [];
     const windowMs = WINDOW_MS[timeWindow] ?? null;
     const now = Date.now();
     return entries.filter(
       (e) =>
-        (selectedKind === null || e.kind === selectedKind) &&
-        (selectedOutcome === null || e.outcome === selectedOutcome) &&
+        (category === "all" || categorize(e.kind).key === category) &&
+        (outcome === "all" || e.outcome === outcome) &&
         (windowMs === null || now - e.timestampMicros / 1000 <= windowMs),
     );
   });
+
+  /// Undo one change through the agent's compensation path. The command is
+  /// the intended `ai_undo` contract; until the backend provides it the call
+  /// fails and the row reports that honestly.
+  async function undoEntry(entry: ActivityEntry): Promise<boolean> {
+    try {
+      await invoke("ai_undo", { entryRef: entry.entryRef });
+      // The compensation lands as a new ledger entry; refresh so it shows.
+      refreshLive();
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   // Monotonic token for live refreshes. A manual `load()` and each background
   // poll bump it; a poll applies its result only if still the latest, so a slow
   // poll can never overwrite newer state (a manual reload, or a later poll).
   let refreshSeq = 0;
-  // True when the last live poll could not reach a source, so the activity /
-  // notices on screen may be stale. Surfaced in the UI, since silently showing
-  // old data on an observability surface could hide a daemon outage or a missed
-  // critical notice.
+  // True when the last live poll could not reach a source, so the feed /
+  // warnings on screen may be stale. Surfaced in the UI, since silently
+  // showing old data on a review surface could hide an outage or a missed
+  // critical warning.
   let liveStale = $state(false);
 
   async function load() {
@@ -105,24 +111,19 @@
     // Invalidate any in-flight background poll so its (older) result cannot land
     // after this authoritative reload.
     refreshSeq++;
-    // Behaviour status is independent of the audit ledger: load it
-    // best-effort so an audit-daemon outage does not blank the behaviour
-    // list, and vice versa.
-    try {
-      behaviours = await invoke<BehaviourReport>("ai_behaviours");
-    } catch {
-      behaviours = null;
-    }
-    try {
-      notices = (await invoke<NoticesResult>("ai_notices")).notices;
-    } catch {
-      notices = null;
-    }
-    // The acting posture (executor_live) is config, not ledger state, so
-    // it loads independently and a daemon outage never blanks it.
+    // The capability read only drives the Explain affordance; it loads
+    // independently so an outage never blanks the feed.
     capability = await readCapability();
     try {
-      activity = await invoke<ActivityPage>("ai_activity_recent", { limit: 100 });
+      const n = await invoke<NoticesResult>("ai_notices");
+      notices = n.notices;
+      noticesUnreadable = !n.available;
+    } catch {
+      notices = null;
+      noticesUnreadable = true;
+    }
+    try {
+      activity = await invoke<ActivityPage>("ai_activity_recent", { limit: loadLimit });
       liveStale = false;
     } catch (e) {
       error = String(e);
@@ -132,23 +133,21 @@
     }
   }
 
-  // Silent background refresh of the live elements: the activity timeline (new
-  // audit entries) and the notices (anomaly warnings, which are time-sensitive
-  // and should not wait for a manual refresh). No spinner flicker, and a
-  // transient poll failure keeps the current view rather than blanking it or
-  // surfacing a blip; the manual Refresh button reports real errors and reloads
-  // everything (including the rarely-changing behaviour and capability panels).
+  // Silent background refresh of the live elements: the feed (new entries)
+  // and the warnings (time-sensitive). No spinner flicker; a transient poll
+  // failure keeps the current view and flags staleness instead of blanking
+  // it. The manual Refresh reloads everything and reports real errors.
   async function refreshLive() {
     if (loading) return;
     const seq = ++refreshSeq;
     let failed = false;
     let nextActivity: ActivityPage | null = null;
-    let nextNotices: Notice[] | null = null;
+    let nextNotices: NoticesResult | null = null;
     try {
-      const a = await invoke<ActivityPage>("ai_activity_recent", { limit: 100 });
-      // A successful call can still report the audit daemon unreachable
+      const a = await invoke<ActivityPage>("ai_activity_recent", { limit: loadLimit });
+      // A successful call can still report the record unreadable
       // (available=false). That is a degraded poll, not fresh data: keep the
-      // last-known timeline and flag staleness rather than blanking it.
+      // last-known feed and flag staleness rather than blanking it.
       if (a.available) nextActivity = a;
       else failed = true;
     } catch {
@@ -156,9 +155,7 @@
     }
     try {
       const n = await invoke<NoticesResult>("ai_notices");
-      // Likewise, an unreadable/malformed alert log returns available=false;
-      // do not clear a shown notice and present a degraded source as all-clear.
-      if (n.available) nextNotices = n.notices;
+      if (n.available) nextNotices = n;
       else failed = true;
     } catch {
       failed = true;
@@ -171,7 +168,8 @@
       error = null;
     }
     if (nextNotices !== null) {
-      notices = nextNotices;
+      notices = nextNotices.notices;
+      noticesUnreadable = false;
     }
     // A failed poll means what is on screen may be stale; surface that rather
     // than letting old data look current. A later good poll clears it.
@@ -182,9 +180,9 @@
 
   onMount(() => {
     load();
-    // Poll the live elements so a running system's new audit entries and
-    // anomaly notices appear without a manual refresh. Paused while the window
-    // is hidden, so an unseen tab does not poll; the next visible tick catches up.
+    // Poll the live elements so new entries and warnings appear without a
+    // manual refresh. Paused while the window is hidden; the next visible
+    // tick catches up.
     const timer = setInterval(() => {
       if (!document.hidden) refreshLive();
     }, REFRESH_MS);
@@ -192,63 +190,39 @@
   });
 </script>
 
-<div class="agent-shell">
-  <div class="agent-main">
-    <Page
-      title="Agent"
-      description="What the assistant has done on your behalf. Read-only, from the tamper-evident audit ledger — review each curated action and undo it if you want."
-    >
-      <SectionGrid>
-        {#if capability}
-          <PostureBanner {capability} />
-        {/if}
+<Page
+  title="Activity"
+  description="Everything the assistant did for you on this device, newest first."
+>
+  <SectionGrid>
+    <Group label="Warnings" class="span-full">
+      <WarningsPanel {notices} unreadable={noticesUnreadable} />
+    </Group>
 
-        <Group label="Activity" class="span-full">
-          <ActivityTimeline
-            {activity}
-            entries={filteredEntries}
-            {error}
-            {loading}
-            {liveStale}
-            onrefresh={load}
-          />
-        </Group>
+    <Group class="span-full">
+      <ActivityTimeline
+        {activity}
+        entries={filteredEntries}
+        {error}
+        {loading}
+        {liveStale}
+        bind:category
+        bind:outcome
+        bind:timeWindow
+        onrefresh={load}
+        onmore={loadMore}
+        onundo={undoEntry}
+      />
+    </Group>
 
-        <Group label="Behaviours">
-          <BehaviourPanel report={behaviours} />
-        </Group>
-
-        <Group label="Notices">
-          <NoticePanel {notices} />
-        </Group>
-
-        <Group label="What's happening now">
-          <ExplainPanel
-            {explanation}
-            error={explainError}
-            busy={explaining}
-            onexplain={runExplain}
-          />
-        </Group>
-      </SectionGrid>
-    </Page>
-  </div>
-  <AgentFilters
-    kinds={kindOptions}
-    outcomes={outcomeOptions}
-    bind:selectedKind
-    bind:selectedOutcome
-    bind:timeWindow
-  />
-</div>
-
-<style>
-  .agent-shell {
-    display: flex;
-    min-height: 100%;
-  }
-  .agent-main {
-    flex: 1;
-    min-width: 0;
-  }
-</style>
+    <Group label="What's happening now" class="span-full">
+      <ExplainPanel
+        {explanation}
+        error={explainError}
+        busy={explaining}
+        aiOff={capability !== null && !capability.enabled}
+        onexplain={runExplain}
+      />
+    </Group>
+  </SectionGrid>
+</Page>

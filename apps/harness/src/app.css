@@ -71,8 +71,13 @@
      SectionGrid, Page and Group consume these; without them the kit
      primitives fall back to their hardcoded defaults. */
   --space-row:     0.75rem;  /* Internal row padding (within a section card) */
+  --space-card:    1rem;     /* Prose-container inset (message blocks, banners) */
   --space-section: 1.5rem;   /* Gap between sections / SectionGrid column gap */
   --space-page:    1.5rem;   /* Page horizontal + top padding */
+
+  /* The chat measure: thread, empty state and composer share one centered
+     column (harness-redo-plan.md, chat archetype). */
+  --width-thread:  48rem;
 
   /* Motion tokens live in sdk/ui-kit/src/lib/motion.css (imported above). */
 

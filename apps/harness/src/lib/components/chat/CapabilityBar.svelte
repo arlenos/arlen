@@ -1,0 +1,62 @@
+<script lang="ts">
+  /// The quiet status line under the composer: capability and posture as one
+  /// plain sentence, anchored by the capability glyph. The technical facts
+  /// (model, provider, per-question independence) live in the tooltip. This
+  /// is the in-body capability strip; nothing about it lives in the header.
+  import type { Capability } from "$lib/capability";
+  import { statusSentence, statusTooltip } from "$lib/display";
+
+  let {
+    capability,
+    loaded,
+    onretry,
+  }: {
+    /// The capability read; `null` after a failed read.
+    capability: Capability | null;
+    /// False until the first read settles, so nothing flashes.
+    loaded: boolean;
+    onretry: () => void;
+  } = $props();
+</script>
+
+{#if loaded}
+  <p class="status" title={capability ? statusTooltip(capability) : undefined}>
+    {#if capability}
+      <span class="glyph" class:off={!capability.enabled} aria-hidden="true">◆</span>
+      {statusSentence(capability)}
+    {:else}
+      Can't reach the assistant right now.
+      <button type="button" class="retry" onclick={onretry}>Try again</button>
+    {/if}
+  </p>
+{/if}
+
+<style>
+  .status {
+    margin: 0.5rem 0 0;
+    text-align: center;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .glyph {
+    color: var(--color-success);
+    margin-right: 0.25rem;
+  }
+  .glyph.off {
+    color: color-mix(in srgb, var(--foreground) 35%, transparent);
+  }
+  .retry {
+    border: none;
+    background: transparent;
+    padding: 0;
+    margin-left: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--foreground);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+</style>

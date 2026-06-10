@@ -1,14 +1,23 @@
 <script lang="ts">
-  /// The read-only activity timeline (trigger → gate → act → audit, newest
-  /// first) with its honest states: daemon unavailable, empty ledger, no
-  /// filter match, tamper warning, interrupted live updates. Rendering only;
-  /// the page owns the reads and the filters.
-  import { History, RefreshCw, ShieldAlert } from "@lucide/svelte";
+  /// The activity feed: a toolbar header (entry count, the type / outcome /
+  /// time filters, refresh) over the ledger rows, with the honest states:
+  /// record unreadable, empty, nothing matching, tamper warning, interrupted
+  /// live updates. Rendering only; the page owns the reads and the filter
+  /// state, this component owns the row mapping into user language.
+  import { RefreshCw, ShieldAlert } from "@lucide/svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Select } from "@arlen/ui-kit/components/ui/select";
   import TimelineRow from "./TimelineRow.svelte";
   import AlertBanner from "./AlertBanner.svelte";
   import { relativeTime } from "$lib/time";
-  import { KIND_META, type ActivityEntry, type ActivityPage } from "$lib/ledger";
+  import {
+    categorize,
+    entrySentence,
+    failureMarker,
+    undoable,
+    FILTER_CATEGORIES,
+  } from "$lib/display";
+  import type { ActivityEntry, ActivityPage } from "$lib/ledger";
 
   let {
     activity,
@@ -16,7 +25,12 @@
     error,
     loading,
     liveStale,
+    category = $bindable("all"),
+    outcome = $bindable("all"),
+    timeWindow = $bindable("all"),
     onrefresh,
+    onmore,
+    onundo,
   }: {
     /// The loaded page, `null` while unloaded or after a failed load.
     activity: ActivityPage | null;
@@ -27,76 +41,127 @@
     loading: boolean;
     /// True when a background poll failed, so the data shown may be stale.
     liveStale: boolean;
+    category: string;
+    outcome: string;
+    timeWindow: string;
     onrefresh: () => void;
+    /// Load a larger window of the record.
+    onmore: () => void;
+    /// Undo one change; resolves false when it failed.
+    onundo: (entry: ActivityEntry) => Promise<boolean>;
   } = $props();
 
-  /// The detail line: actor, relations, result count, duration — only the
-  /// parts the entry actually carries.
-  function detailOf(e: ActivityEntry): { text: string }[] {
-    const parts: { text: string }[] = [{ text: e.actor }];
-    if (e.relations.length > 0) parts.push({ text: e.relations.join(", ") });
+  const CATEGORY_OPTIONS = [
+    { value: "all", label: "All activity" },
+    ...FILTER_CATEGORIES.map((c) => ({ value: c.key, label: `${c.label}s` })),
+  ];
+  const OUTCOME_OPTIONS = [
+    { value: "all", label: "All outcomes" },
+    { value: "ok", label: "Worked" },
+    { value: "denied", label: "Blocked" },
+    { value: "error", label: "Failed" },
+  ];
+  const TIME_OPTIONS = [
+    { value: "all", label: "All time" },
+    { value: "1h", label: "Last hour" },
+    { value: "24h", label: "Last 24 hours" },
+    { value: "7d", label: "Last 7 days" },
+  ];
+
+  const filtered = $derived(
+    category !== "all" || outcome !== "all" || timeWindow !== "all",
+  );
+
+  /// The technical record behind the chevron: everything the surface line
+  /// dropped, unabridged, with neutral keys.
+  function detailsOf(e: ActivityEntry): { key: string; value: string }[] {
+    const d: { key: string; value: string }[] = [
+      { key: "Recorded as", value: e.subject || e.kind },
+      { key: "Component", value: e.actor },
+    ];
+    if (e.relations.length > 0) d.push({ key: "Graph link", value: e.relations.join(", ") });
     if (e.resultCount !== null)
-      parts.push({ text: `${e.resultCount} result${e.resultCount === 1 ? "" : "s"}` });
-    if (e.durationMs !== null) parts.push({ text: `${e.durationMs} ms` });
-    return parts;
+      d.push({ key: "Items", value: `${e.resultCount}` });
+    if (e.durationMs !== null) d.push({ key: "Duration", value: `${e.durationMs} ms` });
+    if (e.outcome) d.push({ key: "Outcome", value: e.outcome });
+    d.push({ key: "Reference", value: e.entryRef });
+    return d;
+  }
+
+  function markerOf(e: ActivityEntry): { text: string; tone: "warn" }[] {
+    const m = failureMarker(e);
+    return m ? [{ text: m, tone: "warn" }] : [];
   }
 </script>
 
 <div class="head">
-  <p class="hint">
-    <History size={14} strokeWidth={1.75} />
-    <span>
-      Trigger → gate → act → audit, newest first.{#if activity && activity.total > 0}
-        <span class="count">{activity.total} total</span>{/if}
-      {#if liveStale}
-        <span
-          class="stale"
-          title="A background refresh failed; showing the last known data. Use Refresh."
-        >
-          <ShieldAlert size={12} strokeWidth={2} />live updates interrupted
-        </span>
-      {/if}
-    </span>
+  <p class="count">
+    {#if !activity?.available}
+      {""}
+    {:else if filtered}
+      {entries.length} of {activity.entries.length} shown
+    {:else if activity.total > activity.entries.length}
+      Latest {activity.entries.length} of {activity.total}
+    {:else}
+      {activity.total} {activity.total === 1 ? "entry" : "entries"}
+    {/if}
+    {#if liveStale}
+      <span
+        class="stale"
+        title="A background refresh failed. What you see may be out of date; use Refresh."
+      >
+        <ShieldAlert size={12} strokeWidth={2} />out of date
+      </span>
+    {/if}
   </p>
-  <Button variant="ghost" size="sm" disabled={loading} onclick={onrefresh}>
-    <RefreshCw size={14} class={loading ? "spin" : ""} />
-    Refresh
-  </Button>
+  <div class="controls">
+    <Select class="filter" bind:value={category} options={CATEGORY_OPTIONS} ariaLabel="Filter by type" />
+    <Select class="filter" bind:value={outcome} options={OUTCOME_OPTIONS} ariaLabel="Filter by outcome" />
+    <Select class="filter" bind:value={timeWindow} options={TIME_OPTIONS} ariaLabel="Filter by time" />
+    <Button variant="ghost" size="sm" disabled={loading} onclick={onrefresh}>
+      <RefreshCw size={14} class={loading ? "spin" : ""} />
+      Refresh
+    </Button>
+  </div>
 </div>
 
 {#if activity?.tampered}
   <AlertBanner>
-    The audit ledger reports tampering. The entries below may be incomplete.
+    This record failed a safety check. Entries may have been changed outside the app.
   </AlertBanner>
 {/if}
 
-{#if error}
-  <p class="empty">Activity unavailable: {error}</p>
-{:else if !activity || !activity.available}
-  <p class="empty">The audit daemon is not running, so there is no activity to show yet.</p>
+{#if error || (activity && !activity.available)}
+  <p class="empty">Can't read the activity record right now.</p>
+{:else if !activity}
+  <p class="empty">Loading activity</p>
 {:else if activity.entries.length === 0}
-  <p class="empty">No AI activity recorded yet.</p>
+  <p class="empty">No activity yet. When the AI does something for you, it appears here.</p>
 {:else if entries.length === 0}
-  <p class="empty">No activity matches the current filters.</p>
+  <p class="empty">Nothing matches these filters.</p>
 {:else}
   <ul class="list">
     {#each entries as entry (entry.entryRef)}
-      {@const meta = KIND_META[entry.kind] ?? { label: entry.kind, tone: "neutral" }}
+      {@const cat = categorize(entry.kind)}
       <TimelineRow
-        label={meta.label}
-        tone={meta.tone}
-        subject={entry.subject}
-        subjectMeta={[
-          {
-            text: entry.outcome,
-            tone: entry.outcome === "denied" || entry.outcome === "error" ? "warn" : "neutral",
-          },
-        ]}
-        detail={detailOf(entry)}
+        label={cat.label}
+        tone={cat.tone}
+        subject={entrySentence(entry)}
+        subjectMeta={markerOf(entry)}
+        details={detailsOf(entry)}
         time={relativeTime(entry.timestampMicros)}
+        undoable={undoable(entry) && !activity.tampered}
+        onundo={() => onundo(entry)}
       />
     {/each}
   </ul>
+  {#if !filtered && activity.total > activity.entries.length}
+    <div class="more">
+      <Button variant="ghost" size="sm" disabled={loading} onclick={onmore}>
+        Show older entries
+      </Button>
+    </div>
+  {/if}
 {/if}
 
 <style>
@@ -104,36 +169,39 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-row, 0.75rem);
+    flex-wrap: wrap;
+    gap: 0.5rem;
     padding: 0.5rem var(--space-row, 0.75rem);
   }
-  .hint {
+  .count {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 0.5rem;
     margin: 0;
     min-width: 0;
     font-size: 0.8125rem;
-    line-height: 1.4;
-    color: color-mix(in srgb, var(--foreground) 60%, transparent);
-  }
-  .hint :global(svg) {
-    flex-shrink: 0;
-    margin-top: 0.125rem;
-  }
-  .count {
-    margin-left: 0.375rem;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    white-space: nowrap;
   }
   .stale {
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    margin-left: 0.5rem;
     color: var(--color-error);
+    font-size: 0.75rem;
   }
   .stale :global(svg) {
     flex-shrink: 0;
+  }
+  .controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+  .controls :global(.filter) {
+    width: 8.5rem;
   }
   .empty {
     margin: 0;
@@ -152,5 +220,10 @@
      instances the row's own scoped CSS cannot pair. */
   .list :global(li + li) {
     border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+  }
+  .more {
+    display: flex;
+    justify-content: center;
+    padding: 0.25rem var(--space-row, 0.75rem) 0.5rem;
   }
 </style>
