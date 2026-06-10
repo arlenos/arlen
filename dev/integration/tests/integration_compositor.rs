@@ -77,7 +77,14 @@ impl Drop for KillOnDrop {
     }
 }
 
+// IT-4 (GUI/compositor) scenario: needs the now-separate compositor repo
+// (`COMPOSITOR_PATH`, not under the monorepo so `binary_path("compositor", ..)`
+// cannot resolve here) plus a display, and uses the pre-restructure flat paths.
+// Ignored so the host-only IT run (`just integration` / `integration-smoke`) is
+// not poisoned by it; it graduates to the VM-based IT-4 stage
+// (integration-testing-plan.md §3) rebuilt on the `EphemeralStack` harness.
 #[tokio::test]
+#[ignore = "IT-4 GUI scenario: needs the separate compositor repo + a display (VM stage)"]
 async fn compositor_window_focused_lands_in_sqlite() {
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
     let producer_socket = tmp.path().join("producer.sock");

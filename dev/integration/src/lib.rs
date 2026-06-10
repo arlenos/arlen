@@ -82,6 +82,12 @@ impl EphemeralStack {
         self.socket_path("knowledge.sock")
     }
 
+    /// The knowledge daemon's SQLite `events.db` path (matches `base_env`'s
+    /// `ARLEN_DB_PATH`), for a scenario that asserts on the raw event store.
+    pub fn db_path(&self) -> PathBuf {
+        self.socket_path("knowledge/events.db")
+    }
+
     /// The base environment every daemon inherits: the runtime root, the
     /// explicit socket overrides, AND the knowledge daemon's data + timeline
     /// paths, all pointed at this stack's temp dir, plus `XDG_RUNTIME_DIR` so
