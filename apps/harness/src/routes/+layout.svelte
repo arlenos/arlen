@@ -34,8 +34,8 @@
   // surface name.
   const viewTitle = $derived(
     $page.url.pathname.startsWith("/agent")
-      ? "Agent"
-      : $activeTitle || "Conversation",
+      ? "Activity"
+      : $activeTitle || "Chat",
   );
 
   // Window drag via explicit pointerdown + startDragging(), because the
@@ -56,14 +56,19 @@
     (await w.isMaximized()) ? await w.unmaximize() : await w.maximize();
   }
 
-  // Ctrl+N starts a new conversation from anywhere; the affordance itself
-  // lives in the sidebar, the shortcut is global so it works with the
-  // sidebar collapsed.
+  // Ctrl+N starts a new chat, Ctrl+K jumps to the history search. The
+  // affordances live in the sidebar; the shortcuts are global so they work
+  // with the sidebar collapsed.
   function onKeydown(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
+    if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+    const key = e.key.toLowerCase();
+    if (key === "n") {
       e.preventDefault();
       newSession();
       if ($page.url.pathname !== "/") goto("/");
+    } else if (key === "k") {
+      e.preventDefault();
+      document.getElementById("harness-session-search")?.focus();
     }
   }
 </script>

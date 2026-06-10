@@ -12,12 +12,15 @@
     value = $bindable(""),
     options,
     placeholder = "Select...",
+    ariaLabel,
     onchange,
   }: {
     class?: string;
     value?: string;
     options: Option[];
     placeholder?: string;
+    /// Accessible name for label-less uses (toolbar filters).
+    ariaLabel?: string;
     onchange?: (value: string) => void;
   } = $props();
 
@@ -31,6 +34,7 @@
 <div class={cn("relative", className)}>
   <select
     {value}
+    aria-label={ariaLabel}
     onchange={handleChange}
     class="h-control w-full appearance-none rounded-input border border-border bg-input px-3 pr-8 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
   >

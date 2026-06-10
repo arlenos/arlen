@@ -1,19 +1,23 @@
 <script lang="ts">
   /// Settings group: a small uppercase label followed by a rounded
-  /// card with divided rows. macOS System Settings pattern.
+  /// card with divided rows. macOS System Settings pattern. The label is
+  /// omitted when the page context already names the card (e.g. a feed card
+  /// directly under a page title of the same name).
   import type { Snippet } from "svelte";
 
   let {
     label,
     children,
     class: className,
-  }: { label: string; children?: Snippet; class?: string } = $props();
+  }: { label?: string; children?: Snippet; class?: string } = $props();
 </script>
 
 <!-- `class` is forwarded to the root so a section can opt into the SectionGrid
      `span-full` escape hatch via `<Group class="span-full">`. -->
 <div class="group {className ?? ''}">
-  <div class="group-label">{label}</div>
+  {#if label}
+    <div class="group-label">{label}</div>
+  {/if}
   <div class="group-card">
     {@render children?.()}
   </div>

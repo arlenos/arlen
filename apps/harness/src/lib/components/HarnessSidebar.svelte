@@ -1,28 +1,38 @@
 <script lang="ts">
-  /// The harness sidebar (ai-app.md §2.0): surface nav (Chat / Agent) above
-  /// the conversation history, on the `@arlen/ui-kit` sidebar canon. The
-  /// history is the chat archetype's contextual column folded in: new chat,
-  /// a title/content search, and the pinned-first session list with per-row
-  /// pin / rename / delete behind a quiet hover menu.
+  /// The harness sidebar. The harness IS Chat (harness-redo-plan.md, decided
+  /// 11 June), so the sidebar is the chat history: a History group whose
+  /// label row carries the new-chat action, a search directly above the list
+  /// it narrows, and per-row pin / rename / copy / delete behind a quiet
+  /// hover menu. The agent's review feed is reachable through one quiet
+  /// Activity entry; it is a secondary view, never a peer mode.
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
   import {
     Sidebar,
     SidebarContent,
+    SidebarFooter,
     SidebarGroup,
     SidebarGroupLabel,
-    SidebarHeader,
     SidebarMenu,
     SidebarMenuAction,
     SidebarMenuButton,
     SidebarMenuItem,
     SidebarRail,
   } from "@arlen/ui-kit/components/ui/sidebar";
-  import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
-  import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import * as DropdownMenu from "@arlen/ui-kit/components/ui/dropdown-menu";
-  import { MessageSquare, MoreHorizontal, Pencil, Pin, PinOff, Plus, Trash2 } from "@lucide/svelte";
+  import {
+    Activity,
+    Copy,
+    MoreHorizontal,
+    Pencil,
+    Pin,
+    PinOff,
+    Plus,
+    Search,
+    Trash2,
+  } from "@lucide/svelte";
   import {
     orderedSessions,
     activeSessionId,
@@ -33,18 +43,17 @@
     togglePinSession,
   } from "$lib/stores/conversation";
   import { sessionMatches } from "$lib/search";
+  import { conversationToMarkdown } from "$lib/export";
 
-  const SURFACES = [
-    { value: "/", label: "Chat" },
-    { value: "/agent", label: "Agent" },
-  ];
-  const surface = $derived($page.url.pathname.startsWith("/agent") ? "/agent" : "/");
+  const onChat = $derived(!$page.url.pathname.startsWith("/agent"));
 
   let query = $state("");
   // The conversation being renamed inline, and the draft title. `null` when no
   // rename is in progress; double-clicking a title or the row menu opens it.
   let editingId = $state<string | null>(null);
   let draft = $state("");
+  // The conversation awaiting delete confirmation; `null` when none.
+  let confirmDeleteId = $state<string | null>(null);
 
   function beginRename(id: string, current: string): void {
     editingId = id;
@@ -58,15 +67,27 @@
     editingId = null;
   }
 
-  // Selecting a session (or starting a new one) belongs to the Chat surface,
-  // so either navigates there when the Agent surface is active.
   function openSession(id: string): void {
     selectSession(id);
-    if (surface !== "/") goto("/");
+    if (!onChat) goto("/");
   }
   function startNew(): void {
     newSession();
-    if (surface !== "/") goto("/");
+    if (!onChat) goto("/");
+  }
+
+  // Copy one conversation as a text transcript. Fails silently: a copy that
+  // does not land is a minor annoyance, not worth an error surface.
+  async function copySession(id: string): Promise<void> {
+    const session = $orderedSessions.find((s) => s.id === id);
+    if (!session) return;
+    const md = conversationToMarkdown(session.messages);
+    if (md.length === 0) return;
+    try {
+      await navigator.clipboard.writeText(md);
+    } catch {
+      // Clipboard unavailable (locked-down webview); nothing to surface.
+    }
   }
 
   // Sessions in rail order (pinned first), narrowed by the search. The query
@@ -75,45 +96,43 @@
 </script>
 
 <Sidebar>
-  <SidebarHeader>
-    <SegmentedControl
-      id="harness-surface-nav"
-      class="w-full *:flex-1"
-      options={SURFACES}
-      value={surface}
-      ariaLabel="Surface"
-      onchange={(v) => goto(v)}
-    />
-    <Button
-      id="harness-new-chat"
-      variant="outline"
-      size="sm"
-      class="w-full justify-start gap-1.5"
-      title="New chat (Ctrl+N)"
-      onclick={startNew}
-    >
-      <Plus size={14} strokeWidth={2} />
-      New chat
-    </Button>
-    {#if $orderedSessions.length > 0}
-      <Input
-        id="harness-session-search"
-        bind:value={query}
-        placeholder="Search conversations"
-        aria-label="Search conversations"
-      />
-    {/if}
-  </SidebarHeader>
-
   <SidebarContent>
     <SidebarGroup>
-      <SidebarGroupLabel>History</SidebarGroupLabel>
+      <SidebarGroupLabel>
+        <span>History</span>
+        <button
+          id="harness-new-chat"
+          type="button"
+          class="ml-auto flex size-6 items-center justify-center rounded-chip text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+          title="New chat (Ctrl+N)"
+          aria-label="New chat"
+          onclick={startNew}
+        >
+          <Plus size={14} strokeWidth={2} />
+        </button>
+      </SidebarGroupLabel>
+      {#if $orderedSessions.length > 0}
+        <div class="relative mb-1">
+          <Search
+            size={13}
+            strokeWidth={2}
+            class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 opacity-50"
+          />
+          <Input
+            id="harness-session-search"
+            class="pl-7"
+            bind:value={query}
+            placeholder="Search chats"
+            aria-label="Search chats"
+          />
+        </div>
+      {/if}
       {#if $orderedSessions.length === 0}
-        <p class="px-2 py-3 text-xs leading-relaxed text-sidebar-foreground/60">
-          No conversations yet. Ask something to start one.
+        <p class="px-2 py-2 text-xs leading-relaxed text-sidebar-foreground/55">
+          Your chats will show up here.
         </p>
       {:else if filtered.length === 0}
-        <p class="px-2 py-3 text-xs text-sidebar-foreground/60">No conversations match.</p>
+        <p class="px-2 py-2 text-xs text-sidebar-foreground/55">No chats match.</p>
       {:else}
         <SidebarMenu>
           {#each filtered as s (s.id)}
@@ -121,7 +140,7 @@
               {#if editingId === s.id}
                 <Input
                   bind:value={draft}
-                  aria-label="Rename conversation"
+                  aria-label="Chat name"
                   onblur={commitRename}
                   onkeydown={(e: KeyboardEvent) => {
                     if (e.key === "Enter") commitRename();
@@ -135,12 +154,11 @@
               {:else}
                 <SidebarMenuButton
                   class="pr-7"
-                  isActive={s.id === $activeSessionId}
+                  isActive={onChat && s.id === $activeSessionId}
                   title={s.title}
                   onclick={() => openSession(s.id)}
                   ondblclick={() => beginRename(s.id, s.title)}
                 >
-                  <MessageSquare strokeWidth={1.75} />
                   <span class="truncate">{s.title}</span>
                   {#if s.pinned}
                     <Pin strokeWidth={1.75} class="ml-auto opacity-50" aria-label="Pinned" />
@@ -149,7 +167,7 @@
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger>
                     {#snippet child({ props })}
-                      <SidebarMenuAction showOnHover aria-label="Conversation actions" {...props}>
+                      <SidebarMenuAction showOnHover aria-label="Chat actions" {...props}>
                         <MoreHorizontal strokeWidth={2} />
                       </SidebarMenuAction>
                     {/snippet}
@@ -168,8 +186,12 @@
                       <Pencil />
                       Rename
                     </DropdownMenu.Item>
+                    <DropdownMenu.Item onclick={() => copySession(s.id)}>
+                      <Copy />
+                      Copy chat
+                    </DropdownMenu.Item>
                     <DropdownMenu.Separator />
-                    <DropdownMenu.Item variant="destructive" onclick={() => deleteSession(s.id)}>
+                    <DropdownMenu.Item variant="destructive" onclick={() => (confirmDeleteId = s.id)}>
                       <Trash2 />
                       Delete
                     </DropdownMenu.Item>
@@ -183,5 +205,33 @@
     </SidebarGroup>
   </SidebarContent>
 
+  <SidebarFooter>
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          isActive={!onChat}
+          tooltip="Activity"
+          onclick={() => goto("/agent")}
+        >
+          <Activity strokeWidth={1.75} />
+          <span>Activity</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  </SidebarFooter>
+
   <SidebarRail />
 </Sidebar>
+
+<ConfirmDialog
+  open={confirmDeleteId !== null}
+  title="Delete this chat?"
+  message="This removes the chat and its messages. You cannot undo this."
+  confirmLabel="Delete"
+  variant="destructive"
+  onConfirm={() => {
+    if (confirmDeleteId !== null) deleteSession(confirmDeleteId);
+    confirmDeleteId = null;
+  }}
+  onCancel={() => (confirmDeleteId = null)}
+/>
