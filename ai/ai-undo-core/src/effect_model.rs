@@ -50,9 +50,8 @@ impl CanonicalPath {
         // must be non-empty and not a `.`/`..` traversal.
         let mut components = path.split('/');
         components.next();
-        if components.clone().next().is_none() {
-            return None; // bare "/" has no addressable component
-        }
+        // A bare "/" has no addressable component.
+        components.clone().next()?;
         for comp in components {
             if comp.is_empty() || comp == "." || comp == ".." {
                 return None;
