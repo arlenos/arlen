@@ -6,15 +6,38 @@
 /// Only arlen-installd may invoke methods. Caller identity is verified
 /// via /proc/{pid}/exe.
 
+use arlen_permissions::identity::{app_id_from_pid, pid_start_time};
 use zbus::{interface, Connection};
 
 use crate::install;
 
-/// Allowed caller binaries (resolved from /proc/{pid}/exe).
-const ALLOWED_CALLERS: &[&str] = &[
-    "arlen-installd",
-    "arlen-install-helper", // self-test
-];
+/// app_ids permitted to call the root install helper, resolved by the
+/// anchored install-path resolver (`path_to_app_id`), never a basename
+/// substring. The verbs here are root-privileged install/trash/signature,
+/// so the spoofable basename check this replaces was an arbitrary-root-write
+/// primitive for any same-uid binary named to contain an allowed token.
+const ALLOWED_CALLER_APP_IDS: &[&str] = &["installd", "install-helper"];
+
+/// The cargo-run `dev.*` ids of the allowed callers, admitted only in
+/// debug builds (exact match, not a broad `dev.` prefix).
+#[cfg(debug_assertions)]
+const DEV_ALLOWED_CALLER_APP_IDS: &[&str] =
+    &["dev.arlen-installd", "dev.arlen-install-helper"];
+
+/// Whether a resolved caller `app_id` may invoke the helper.
+fn caller_app_id_admitted(app_id: &str) -> bool {
+    if ALLOWED_CALLER_APP_IDS.contains(&app_id) {
+        return true;
+    }
+    #[cfg(debug_assertions)]
+    {
+        DEV_ALLOWED_CALLER_APP_IDS.contains(&app_id)
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        false
+    }
+}
 
 /// D-Bus interface implementation.
 pub struct InstallHelper;
@@ -137,19 +160,44 @@ async fn validate_caller(
         .await
         .map_err(|e| format!("get PID: {e}"))?;
 
-    let exe = std::fs::read_link(format!("/proc/{pid}/exe"))
-        .map_err(|e| format!("read exe: {e}"))?;
-
-    let exe_name = exe
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    if !ALLOWED_CALLERS.iter().any(|c| exe_name.contains(c)) {
-        return Err(format!(
-            "unauthorized caller: {exe_name} (pid {pid})"
-        ));
+    // Anchored caller identity. `app_id_from_pid` reads `/proc/{pid}/exe`
+    // with the openat/O_NOFOLLOW hardening (no symlink-swap TOCTOU) and
+    // maps it to an app_id only through trusted install roots. A
+    // start-time guard brackets the resolution so a pid reused
+    // mid-resolution is rejected.
+    let start_before = pid_start_time(pid).map_err(|e| format!("pid start: {e}"))?;
+    let app_id = app_id_from_pid(pid).map_err(|e| format!("resolve caller: {e}"))?;
+    let start_after = pid_start_time(pid).map_err(|e| format!("pid start: {e}"))?;
+    if start_before != start_after {
+        return Err(format!("caller pid {pid} changed identity during validation"));
+    }
+    if !caller_app_id_admitted(&app_id) {
+        return Err(format!("unauthorized caller app_id {app_id} (pid {pid})"));
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn admits_only_the_anchored_caller_app_ids() {
+        for ok in ALLOWED_CALLER_APP_IDS {
+            assert!(caller_app_id_admitted(ok), "{ok} should be admitted");
+        }
+        for bad in ["settings", "ai-agent", "com.attacker", "arlen-installd", ""] {
+            assert!(!caller_app_id_admitted(bad), "{bad} must be refused");
+        }
+    }
+
+    #[test]
+    fn dev_ids_are_admitted_only_in_debug() {
+        assert_eq!(
+            caller_app_id_admitted("dev.arlen-installd"),
+            cfg!(debug_assertions)
+        );
+        assert!(!caller_app_id_admitted("dev.evil"));
+    }
 }
