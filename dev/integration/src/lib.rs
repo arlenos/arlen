@@ -136,8 +136,23 @@ impl EphemeralStack {
             // Private config home so a daemon reads only the seeded config (e.g.
             // the project watch list), never the real `~/.config/arlen`.
             ("XDG_CONFIG_HOME".to_string(), p("config")),
+            // Private data home so a daemon that persists under `XDG_DATA_HOME`
+            // (or `$HOME/.local/share`) writes under the temp root, not the real
+            // user data dir. The audit daemon's HMAC key + ledger live here; the
+            // daemon `create_dir_all`s `<data>/arlen` itself.
+            ("XDG_DATA_HOME".to_string(), p("data")),
             ("XDG_RUNTIME_DIR".to_string(), root),
         ])
+    }
+
+    /// The audit daemon's read-API socket path (`$XDG_RUNTIME_DIR/arlen/audit-read.sock`).
+    pub fn audit_read_socket(&self) -> PathBuf {
+        self.runtime.path().join("arlen").join("audit-read.sock")
+    }
+
+    /// The audit daemon's ingest socket path (`$XDG_RUNTIME_DIR/arlen/audit-ingest.sock`).
+    pub fn audit_ingest_socket(&self) -> PathBuf {
+        self.runtime.path().join("arlen").join("audit-ingest.sock")
     }
 
     /// The private config home (`XDG_CONFIG_HOME` stand-in); a daemon's config
@@ -308,6 +323,12 @@ mod tests {
         assert!(env["ARLEN_DB_PATH"].ends_with("knowledge/events.db"));
         assert!(env["ARLEN_GRAPH_PATH"].starts_with(&root));
         assert!(env["ARLEN_TIMELINE_MOUNT"].starts_with(&root));
+        // The private config + data homes keep config/state reads hermetic.
+        assert!(env["XDG_CONFIG_HOME"].starts_with(&root));
+        assert!(env["XDG_DATA_HOME"].starts_with(&root));
+        // The audit sockets resolve under the runtime root's arlen/ subdir.
+        assert!(stack.audit_read_socket().starts_with(&root));
+        assert!(stack.audit_ingest_socket().ends_with("arlen/audit-ingest.sock"));
     }
 
     #[test]

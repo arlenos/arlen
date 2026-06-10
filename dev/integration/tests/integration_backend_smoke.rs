@@ -710,3 +710,43 @@ async fn a_signal_bearing_directory_is_detected_as_a_project() {
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
 }
+
+/// IT-1 audit subsystem: the audit daemon comes up hermetically and binds both
+/// its sockets. The foundation for the audit-chain scenarios (an admitted
+/// component writing an entry that a reader verifies): it proves `arlen-auditd`
+/// starts under the harness env contract, persisting its HMAC key + ledger under
+/// the private `XDG_DATA_HOME` (not the dev's real `~/.local/share`) and binding
+/// the ingest + read sockets under `$XDG_RUNTIME_DIR/arlen/`. The daemon
+/// `create_dir_all`s its data dir and socket parents itself, so the harness only
+/// points the env at the temp root. Same `#[ignore]` rationale.
+#[tokio::test]
+#[ignore = "needs event-bus + audit-daemon binaries built and a per-user data dir"]
+async fn the_audit_daemon_comes_up_hermetically() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    // The event bus first: the audit daemon opens a producer client for its
+    // `audit.tampered` alert (lazily, so a late bus is fine, but spawn it for a
+    // realistic assembled context).
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+
+    stack
+        .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+        .expect("spawn audit-daemon");
+    // The sockets live under the `arlen/` subdir of the runtime root; the daemon
+    // creates that dir when it binds.
+    stack
+        .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+        .expect("audit ingest socket appears");
+    stack
+        .wait_socket("arlen/audit-read.sock", Duration::from_secs(20))
+        .expect("audit read socket appears");
+
+    // Both sockets bound: the audit daemon is up, hermetic (key + ledger under the
+    // temp XDG_DATA_HOME). Dropping `stack` tears it down and removes the root.
+    assert!(stack.audit_ingest_socket().exists());
+    assert!(stack.audit_read_socket().exists());
+}
