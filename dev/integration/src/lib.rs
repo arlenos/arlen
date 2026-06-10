@@ -126,6 +126,15 @@ impl EphemeralStack {
                 "ARLEN_DAEMON_SOCKET".to_string(),
                 self.knowledge_socket().to_string_lossy().into_owned(),
             ),
+            // The knowledge daemon binds via ARLEN_DAEMON_SOCKET, but the ai-agent
+            // connects via ARLEN_KNOWLEDGE_SOCKET (both default to the same
+            // /run/arlen/knowledge.sock in production, so they agree there; they
+            // only diverge under an override like this harness's). Set both names
+            // to the one socket so either resolver finds it.
+            (
+                "ARLEN_KNOWLEDGE_SOCKET".to_string(),
+                self.knowledge_socket().to_string_lossy().into_owned(),
+            ),
             ("ARLEN_DB_PATH".to_string(), p("knowledge/events.db")),
             ("ARLEN_GRAPH_PATH".to_string(), p("knowledge/graph")),
             ("ARLEN_TIMELINE_MOUNT".to_string(), p("timeline")),
@@ -141,6 +150,11 @@ impl EphemeralStack {
             // user data dir. The audit daemon's HMAC key + ledger live here; the
             // daemon `create_dir_all`s `<data>/arlen` itself.
             ("XDG_DATA_HOME".to_string(), p("data")),
+            // The ai-agent resolves `ai.toml` from `ARLEN_AI_CONFIG` (it reads
+            // `$HOME/.config`, NOT XDG_CONFIG_HOME), so point it at the seeded
+            // config under the private config home. Absent file -> the agent's
+            // fail-closed defaults (AI off), so this is hermetic either way.
+            ("ARLEN_AI_CONFIG".to_string(), p("config/arlen/ai.toml")),
             ("XDG_RUNTIME_DIR".to_string(), root),
         ])
     }
@@ -173,6 +187,41 @@ impl EphemeralStack {
                 dir.to_string_lossy()
             ),
         )
+    }
+
+    /// Seed a COMPLETE permission profile (with the mandatory `[info]` section)
+    /// for `app_id`, granting `[graph].read` on `read_fields`. Unlike
+    /// [`seed_profile_for`](Self::seed_profile_for) (a `[graph]`-only fragment the
+    /// knowledge read-scope resolver tolerates), this is a full
+    /// `arlen_permissions::PermissionProfile` that also parses under
+    /// `ConnectionAuth` (the peer-auth path the audit daemon and other brokers
+    /// use, which requires `[info]`). Needed for a principal that connects to a
+    /// `ConnectionAuth`-gated socket, e.g. the agent submitting to the audit
+    /// daemon. The caller's tier is still derived daemon-side from the quota
+    /// config, so `tier` here only satisfies the profile schema.
+    pub fn seed_full_profile_for(
+        &self,
+        app_id: &str,
+        tier: &str,
+        read_fields: &[&str],
+    ) -> std::io::Result<()> {
+        let reads = read_fields
+            .iter()
+            .map(|f| format!("    \"{f}\","))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let toml = format!(
+            "[info]\napp_id = \"{app_id}\"\ntier = \"{tier}\"\n\n[graph]\nread = [\n{reads}\n]\n"
+        );
+        std::fs::write(self.permissions_dir().join(format!("{app_id}.toml")), toml)
+    }
+
+    /// Write the agent's `ai.toml` into the private config home (the path the
+    /// ai-agent resolves via `XDG_CONFIG_HOME`), so a scenario can enable a
+    /// behaviour, set the read tier, and pick the action mode. Must be called
+    /// BEFORE spawning the agent (it reads the config at startup).
+    pub fn seed_ai_config(&self, text: &str) -> std::io::Result<()> {
+        std::fs::write(self.config_home().join("arlen/ai.toml"), text)
     }
 
     /// The directory the daemon loads permission profiles from (via
@@ -235,6 +284,35 @@ impl EphemeralStack {
         Ok(())
     }
 
+    /// Like [`spawn`](Self::spawn) but redirects the child's stdout+stderr to
+    /// `log_path` (an absolute path, typically outside the temp root so it
+    /// survives teardown) instead of nulling them. For diagnosing a spawned
+    /// daemon that produces no observable effect.
+    pub fn spawn_logged(
+        &mut self,
+        repo: &str,
+        bin: &str,
+        extra_env: &[(&str, &str)],
+        log_path: &Path,
+    ) -> std::io::Result<()> {
+        let path = binary_path(repo, bin);
+        let log = std::fs::File::create(log_path)?;
+        let log_err = log.try_clone()?;
+        let mut cmd = Command::new(&path);
+        for (k, v) in self.base_env() {
+            cmd.env(k, v);
+        }
+        for (k, v) in extra_env {
+            cmd.env(k, v);
+        }
+        cmd.stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::from(log))
+            .stderr(std::process::Stdio::from(log_err));
+        let child = cmd.spawn()?;
+        self.children.push(child);
+        Ok(())
+    }
+
     /// Block until the socket named `name` appears under the runtime root, the
     /// readiness contract `process-compose.yaml` uses. Returns the socket path on
     /// success; errors if it does not appear within `timeout`.
@@ -273,14 +351,20 @@ impl Drop for EphemeralStack {
 /// `dev/integration` -> `dev` -> repo root). Matches the existing
 /// `integration_compositor` test's resolution.
 pub fn binary_path(repo: &str, name: &str) -> PathBuf {
+    repo_path(&format!("{repo}/target/debug/{name}"))
+}
+
+/// Resolve a path relative to the repo root (the integration crate's manifest
+/// dir is `dev/integration`, so the root is its grandparent). Useful for locating
+/// in-tree fixtures such as the agent behaviour directory.
+pub fn repo_path(rel: &str) -> PathBuf {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .expect("CARGO_MANIFEST_DIR set under cargo");
-    let repo_root = PathBuf::from(&manifest_dir)
+    PathBuf::from(&manifest_dir)
         .parent()
         .and_then(|p| p.parent())
         .expect("dev/integration has a grandparent (repo root)")
-        .to_path_buf();
-    repo_root.join(repo).join("target").join("debug").join(name)
+        .join(rel)
 }
 
 /// Resolve THIS process's app id the same way the daemon resolves a connecting
