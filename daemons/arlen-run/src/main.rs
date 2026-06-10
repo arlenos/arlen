@@ -21,6 +21,8 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+#[cfg(target_os = "linux")]
+mod landlock_apply;
 mod profile;
 mod spawn;
 
@@ -191,14 +193,34 @@ fn main() -> ExitCode {
         }
     };
 
+    // Ensure the app's own state dirs exist so their Landlock write grant is
+    // expressible (a missing writable path is otherwise skipped, leaving the
+    // app unable to write its own state). Best-effort 0700; a failure here is
+    // not fatal (the grant is simply dropped for that dir).
+    for dir in &app_state_dirs(&home, &args.app_id) {
+        let _ = std::fs::create_dir_all(dir);
+    }
+
     let argv = spawn::bwrap_argv(&confinement, &args.program);
-    match spawn::spawn_and_wait(&argv) {
+    match spawn::spawn_and_wait(&argv, &inputs.app_dirs) {
         Ok(code) => ExitCode::from(code),
         Err(e) => {
             eprintln!("arlen-run: failed to spawn {}: {e}", args.app_id);
             ExitCode::from(exit::SPAWN)
         }
     }
+}
+
+/// The app's own state directories, always part of its writable set. The
+/// launcher creates these before spawning so their write grant is always
+/// expressible under Landlock.
+#[cfg(target_os = "linux")]
+fn app_state_dirs(home: &std::path::Path, app_id: &str) -> Vec<PathBuf> {
+    vec![
+        home.join(".local/share/arlen/apps").join(app_id),
+        home.join(".config/arlen/apps").join(app_id),
+        home.join(".cache/arlen/apps").join(app_id),
+    ]
 }
 
 /// The minimal explicit environment for the confined app. `bwrap --clearenv`

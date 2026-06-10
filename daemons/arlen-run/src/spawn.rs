@@ -87,25 +87,34 @@ pub fn bwrap_argv(confinement: &Confinement, program: &[String]) -> Vec<String> 
     argv
 }
 
-/// Spawn `bwrap` with the assembled argument vector, closing every inherited
-/// file descriptor above stderr and starting a new process group in the child
-/// before exec, then wait for it and return the propagated exit code.
+/// Spawn `bwrap` with the assembled argument vector, then wait and return the
+/// propagated exit code. In the child, before exec, in order: close every
+/// inherited fd above stderr, start a new process group, and apply Landlock
+/// over `writable` (so bwrap and the app both inherit the filesystem
+/// confinement). The order matters: Landlock opens path fds, so it must precede
+/// the seccomp filter (a later commit) that removes `openat`.
 ///
 /// `bwrap` propagates the app's own exit code, so the returned `u8` is the
 /// app's exit status (or `128 + signal` if the app was killed by a signal). A
 /// failure to spawn `bwrap` at all is an `Err`, which the caller maps to the
 /// `SPAWN` exit code; the launcher never falls back to an unconfined run.
+///
+/// The launcher is single-threaded at spawn time, so the post-fork child is
+/// single-threaded and the `pre_exec` allocations (the Landlock ruleset) are
+/// safe; do not introduce threads before this call.
 #[cfg(target_os = "linux")]
-pub fn spawn_and_wait(argv: &[String]) -> std::io::Result<u8> {
+pub fn spawn_and_wait(argv: &[String], writable: &[PathBuf]) -> std::io::Result<u8> {
     use std::os::unix::process::{CommandExt, ExitStatusExt};
 
+    let writable: Vec<PathBuf> = writable.to_vec();
     let mut cmd = Command::new("bwrap");
     cmd.args(argv);
-    // SAFETY: the closure runs in the child after fork, before exec. It calls
-    // only async-signal-safe syscalls (close_range, setpgid) and allocates
-    // nothing, so it is safe in the post-fork single-threaded child.
+    // SAFETY: the closure runs in the child after fork, before exec. The
+    // launcher is single-threaded so the post-fork child is too, making the
+    // ruleset allocations safe; the syscalls (close_range, setpgid, the
+    // Landlock setup) only narrow the child's own capabilities.
     unsafe {
-        cmd.pre_exec(|| {
+        cmd.pre_exec(move || {
             // Close every fd above stderr so no launcher fd (daemon sockets,
             // the profile file) leaks into the confined app. close_range is a
             // single syscall; a failure is fatal (fail-closed: never exec with
@@ -119,6 +128,9 @@ pub fn spawn_and_wait(argv: &[String]) -> std::io::Result<u8> {
             if libc::setpgid(0, 0) != 0 {
                 return Err(std::io::Error::last_os_error());
             }
+            // Filesystem confinement, inherited by bwrap and the app. Before
+            // exec, before any future seccomp filter removes path-open.
+            crate::landlock_apply::apply_landlock(&writable)?;
             Ok(())
         });
     }
@@ -237,7 +249,7 @@ mod tests {
         )
         .unwrap();
         let argv = bwrap_argv(&conf, &["/usr/bin/echo".into(), "hi".into()]);
-        let code = spawn_and_wait(&argv).expect("bwrap spawns");
+        let code = spawn_and_wait(&argv, &[]).expect("bwrap spawns");
         assert_eq!(code, 0);
     }
 }
