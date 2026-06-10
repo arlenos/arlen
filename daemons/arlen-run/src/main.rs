@@ -11,14 +11,18 @@
 //! NEVER starts. There is no "run with reduced confinement" path; a missing
 //! profile is a deny, not a default-open.
 //!
-//! This commit is the CLI surface: argv parsing, app-id validation, the exit-code
-//! contract, the non-Linux stub, and a profile load that prints the program it
-//! would run. The confinement layers land in later commits.
+//! As of this commit the launcher actually spawns the app under bwrap with the
+//! completed confinement (namespaces, the pruned mount view, `no_new_privs`,
+//! `--clearenv`). Landlock, the app seccomp filter, the per-command cgroup and
+//! the egress filter land in the following commits. A profile that asked for a
+//! filtered host set refuses to launch until the egress filter exists, rather
+//! than running with unfiltered network.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 mod profile;
+mod spawn;
 
 /// The fail-closed exit-code contract. Any setup failure means the app never
 /// starts; otherwise the app's own exit code is propagated.
@@ -133,8 +137,8 @@ fn main() -> ExitCode {
     };
 
     // Derive the confiner inputs (the writable set + the network policy) from the
-    // profile. The full bwrap spawn + Landlock + seccomp + cgroup + egress land in
-    // later commits; for now report what the confinement would be.
+    // profile, then build the completed confinement and spawn the app under bwrap.
+    // Landlock + seccomp + cgroup + egress land in later commits.
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
     let user_dirs = profile::UserDirs {
         documents: dirs::document_dir().unwrap_or_else(|| home.join("Documents")),
@@ -150,14 +154,80 @@ fn main() -> ExitCode {
         &home,
         &user_dirs,
     );
-    println!(
-        "arlen-run: would launch {} confined as {} (network {:?}, {} writable dirs)",
-        args.program.join(" "),
-        args.app_id,
+
+    // A profile that declared specific hosts needs the egress filter, which is a
+    // later commit. Until it exists, refuse the launch rather than run the app
+    // with unfiltered network. `None` (no network) and `Unrestricted` have a
+    // well-defined posture without a filter and may launch now.
+    if let arlen_confiner::NetworkPolicy::FilteredHosts(hosts) = &inputs.network {
+        if !hosts.is_empty() {
+            eprintln!(
+                "arlen-run: {} declares a filtered host set but the egress filter is not yet wired; refusing to launch",
+                args.app_id
+            );
+            return ExitCode::from(exit::EGRESS);
+        }
+    }
+
+    let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
+    let wayland_display = std::env::var("WAYLAND_DISPLAY").ok();
+    let plumbing = match &runtime_dir {
+        Some(rt) => spawn::plumbing_binds(rt, wayland_display.as_deref(), |p| p.exists()),
+        None => Vec::new(),
+    };
+    let env = launch_env(&home, runtime_dir.as_deref(), wayland_display.as_deref());
+
+    let confinement = match spawn::build_confinement(
+        std::path::Path::new("/usr"),
+        &inputs.app_dirs,
+        env,
         inputs.network,
-        inputs.app_dirs.len()
-    );
-    ExitCode::from(exit::OK)
+        plumbing,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("arlen-run: confinement setup for {}: {e}", args.app_id);
+            return ExitCode::from(exit::CONFINE_SETUP);
+        }
+    };
+
+    let argv = spawn::bwrap_argv(&confinement, &args.program);
+    match spawn::spawn_and_wait(&argv) {
+        Ok(code) => ExitCode::from(code),
+        Err(e) => {
+            eprintln!("arlen-run: failed to spawn {}: {e}", args.app_id);
+            ExitCode::from(exit::SPAWN)
+        }
+    }
+}
+
+/// The minimal explicit environment for the confined app. `bwrap --clearenv`
+/// wipes the ambient environment, so only these are set: the in-sandbox home,
+/// the runtime dir and Wayland display (for the bound sockets), a fixed PATH,
+/// and the locale passthrough. The ambient environment is never forwarded.
+#[cfg(target_os = "linux")]
+fn launch_env(
+    home: &std::path::Path,
+    runtime_dir: Option<&std::path::Path>,
+    wayland_display: Option<&str>,
+) -> std::collections::BTreeMap<String, String> {
+    let mut env = std::collections::BTreeMap::new();
+    if let Some(h) = home.to_str() {
+        env.insert("HOME".to_string(), h.to_string());
+    }
+    env.insert("PATH".to_string(), "/usr/bin:/bin".to_string());
+    if let Some(rt) = runtime_dir.and_then(|p| p.to_str()) {
+        env.insert("XDG_RUNTIME_DIR".to_string(), rt.to_string());
+    }
+    if let Some(wl) = wayland_display {
+        env.insert("WAYLAND_DISPLAY".to_string(), wl.to_string());
+    }
+    for key in ["LANG", "LC_ALL", "LC_CTYPE"] {
+        if let Ok(v) = std::env::var(key) {
+            env.insert(key.to_string(), v);
+        }
+    }
+    env
 }
 
 #[cfg(not(target_os = "linux"))]

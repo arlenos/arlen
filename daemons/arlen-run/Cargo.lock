@@ -35,6 +35,7 @@ dependencies = [
  "arlen-confiner",
  "arlen-permissions",
  "dirs",
+ "libc",
  "tempfile",
 ]
 
