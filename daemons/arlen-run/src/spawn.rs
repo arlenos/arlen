@@ -103,7 +103,11 @@ pub fn bwrap_argv(confinement: &Confinement, program: &[String]) -> Vec<String> 
 /// single-threaded and the `pre_exec` allocations (the Landlock ruleset) are
 /// safe; do not introduce threads before this call.
 #[cfg(target_os = "linux")]
-pub fn spawn_and_wait(argv: &[String], writable: &[PathBuf]) -> std::io::Result<u8> {
+pub fn spawn_and_wait(
+    argv: &[String],
+    writable: &[PathBuf],
+    cgroup_procs: Option<PathBuf>,
+) -> std::io::Result<u8> {
     use std::os::unix::process::{CommandExt, ExitStatusExt};
 
     let writable: Vec<PathBuf> = writable.to_vec();
@@ -127,6 +131,12 @@ pub fn spawn_and_wait(argv: &[String], writable: &[PathBuf]) -> std::io::Result<
             // launcher's group does not race the cgroup-based reaping.
             if libc::setpgid(0, 0) != 0 {
                 return Err(std::io::Error::last_os_error());
+            }
+            // Join the per-launch cgroup BEFORE Landlock: a read-only `/`
+            // ruleset would deny the write to cgroup.procs, and a later seccomp
+            // filter would deny the open.
+            if let Some(procs) = &cgroup_procs {
+                crate::cgroup::join_current(procs)?;
             }
             // Filesystem confinement, inherited by bwrap and the app. Before
             // exec, before any future seccomp filter removes path-open.
@@ -249,7 +259,7 @@ mod tests {
         )
         .unwrap();
         let argv = bwrap_argv(&conf, &["/usr/bin/echo".into(), "hi".into()]);
-        let code = spawn_and_wait(&argv, &[]).expect("bwrap spawns");
+        let code = spawn_and_wait(&argv, &[], None).expect("bwrap spawns");
         assert_eq!(code, 0);
     }
 }

@@ -22,6 +22,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 #[cfg(target_os = "linux")]
+mod cgroup;
+#[cfg(target_os = "linux")]
 mod landlock_apply;
 mod profile;
 mod spawn;
@@ -201,8 +203,33 @@ fn main() -> ExitCode {
         let _ = std::fs::create_dir_all(dir);
     }
 
+    // Create the per-launch cgroup so the child can join it and the tree can be
+    // reaped with one kill. A system without delegated cgroup v2 (some dev
+    // setups) is not fatal: the cgroup is a reaping/attribution aid, not a
+    // security boundary, so on failure the launch proceeds without it (bwrap's
+    // pid-namespace + --die-with-parent still tear the tree down).
+    // SAFETY: getpid only reads the launcher's pid.
+    let launch_pid = unsafe { libc::getpid() } as u32;
+    let uid = unsafe { libc::getuid() };
+    let cgroup = match cgroup::Cgroup::create(uid, &args.app_id, launch_pid) {
+        Ok(cg) => Some(cg),
+        Err(e) => {
+            eprintln!("arlen-run: no per-launch cgroup ({e}); reaping falls back to bwrap");
+            None
+        }
+    };
+    let cgroup_procs = cgroup.as_ref().map(cgroup::Cgroup::procs_path);
+
     let argv = spawn::bwrap_argv(&confinement, &args.program);
-    match spawn::spawn_and_wait(&argv, &inputs.app_dirs) {
+    let result = spawn::spawn_and_wait(&argv, &inputs.app_dirs, cgroup_procs);
+
+    // Reap the subtree (kills any process the app left behind), then the leaf is
+    // removed when `cgroup` drops.
+    if let Some(cg) = &cgroup {
+        cg.kill_all();
+    }
+
+    match result {
         Ok(code) => ExitCode::from(code),
         Err(e) => {
             eprintln!("arlen-run: failed to spawn {}: {e}", args.app_id);
