@@ -27,8 +27,8 @@ export async function searchApps(query: string): Promise<AppEntry[]> {
     return invoke<AppEntry[]>("search_apps", { query });
 }
 
-export function launchApp(exec: string) {
-    invoke("launch_app", { exec });
+export function launchApp(exec: string, appId?: string) {
+    invoke("launch_app", { exec, appId: appId ?? null });
 }
 
 export async function evaluateInput(input: string): Promise<WaypointerResult | null> {

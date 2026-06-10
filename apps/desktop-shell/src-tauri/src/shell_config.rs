@@ -46,6 +46,22 @@ pub struct ShellConfig {
     /// job.
     #[serde(default)]
     pub toast: ToastConfig,
+    /// App-launch confinement. Default off (apps launch directly); flipping
+    /// `confined` routes launches through `arlen-run`.
+    #[serde(default)]
+    pub launcher: LauncherConfig,
+}
+
+/// Launcher configuration. `confined = false` (default) launches apps directly,
+/// today's behaviour. Flipping it to `true` routes every launch through the
+/// confined `arlen-run` path, which runs the app under its permission profile and
+/// refuses an app it cannot scope - a deliberate, human-gated tightening, so the
+/// default is off and the flip is an explicit opt-in.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LauncherConfig {
+    /// Route launches through `arlen-run` (confined). Default `false`.
+    #[serde(default)]
+    pub confined: bool,
 }
 
 /// Toast renderer configuration (consumed by the frontend Toaster).
