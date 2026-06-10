@@ -18,6 +18,8 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+mod profile;
+
 /// The fail-closed exit-code contract. Any setup failure means the app never
 /// starts; otherwise the app's own exit code is propagated.
 pub mod exit {
@@ -122,7 +124,7 @@ fn main() -> ExitCode {
         }
         None => arlen_permissions::load_profile(&args.app_id),
     };
-    let _profile = match profile {
+    let profile = match profile {
         Ok(p) => p,
         Err(e) => {
             eprintln!("arlen-run: profile for {}: {e}", args.app_id);
@@ -130,12 +132,30 @@ fn main() -> ExitCode {
         }
     };
 
-    // Confinement (Landlock + seccomp + cgroup + egress + bwrap spawn) lands in
-    // later commits. For now, report the program that would run under confinement.
+    // Derive the confiner inputs (the writable set + the network policy) from the
+    // profile. The full bwrap spawn + Landlock + seccomp + cgroup + egress land in
+    // later commits; for now report what the confinement would be.
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+    let user_dirs = profile::UserDirs {
+        documents: dirs::document_dir().unwrap_or_else(|| home.join("Documents")),
+        downloads: dirs::download_dir().unwrap_or_else(|| home.join("Downloads")),
+        pictures: dirs::picture_dir().unwrap_or_else(|| home.join("Pictures")),
+        music: dirs::audio_dir().unwrap_or_else(|| home.join("Music")),
+        videos: dirs::video_dir().unwrap_or_else(|| home.join("Videos")),
+    };
+    let inputs = profile::confinement_inputs(
+        &profile.filesystem,
+        &profile.network,
+        &args.app_id,
+        &home,
+        &user_dirs,
+    );
     println!(
-        "arlen-run: would launch {} confined as {}",
+        "arlen-run: would launch {} confined as {} (network {:?}, {} writable dirs)",
         args.program.join(" "),
-        args.app_id
+        args.app_id,
+        inputs.network,
+        inputs.app_dirs.len()
     );
     ExitCode::from(exit::OK)
 }
