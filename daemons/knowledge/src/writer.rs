@@ -42,10 +42,14 @@ async fn connect_and_consume(consumer_socket: &str, pool: &SqlitePool) -> Result
     let mut stream = UnixStream::connect(consumer_socket).await?;
     info!(socket = consumer_socket, "connected to event bus");
 
-    // Send registration: consumer ID followed by subscribed event types.
-    // We subscribe to everything ("*") because the Graph Writer stores all events.
-    // The promotion pipeline decides later what is worth keeping in Ladybug.
+    // Send registration: the bus reads three newline-terminated lines (consumer
+    // id, comma-separated event patterns, UID filter). We subscribe to everything
+    // ("*") because the Graph Writer stores all events (the promotion pipeline
+    // decides later what is worth keeping in Ladybug), across all UIDs ("*"). The
+    // third line is mandatory: the bus blocks reading it, so omitting it leaves
+    // registration incomplete and the writer never receives any event.
     stream.write_all(b"graph-writer\n").await?;
+    stream.write_all(b"*\n").await?;
     stream.write_all(b"*\n").await?;
 
     info!("registered as consumer, starting event loop");
