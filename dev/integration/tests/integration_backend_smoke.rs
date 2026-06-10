@@ -18,7 +18,7 @@
 use std::time::Duration;
 
 use arlen_integration::EphemeralStack;
-use os_sdk::{EventEmitter, UnixEventEmitter};
+use os_sdk::{EventEmitter, UnixEventEmitter, UnixGraphClient};
 use prost::Message;
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -120,5 +120,43 @@ async fn a_file_opened_event_lands_in_sqlite() {
     assert!(
         row.is_some(),
         "the emitted file.opened event should have landed in the hermetic SQLite store"
+    );
+}
+
+/// IT-1 read-scope enforcement (RS-R1): the knowledge read socket refuses an
+/// authority-label query from a non-privileged caller. This test process
+/// resolves (via SO_PEERCRED -> `/proc/self/exe`) to an unenrolled dev app id =
+/// ThirdParty, not system-anchored, so a `Grant` query must be denied by the
+/// `references_authority_label` pre-gate. A success would mean the gate failed:
+/// the `Grant` table exists and the query is valid Cypher, so it would return
+/// empty rows if allowed. Verifies the security boundary in the assembled
+/// daemon, not just the unit test. Same `#[ignore]` rationale.
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge binaries built and a FUSE-capable host"]
+async fn the_read_socket_denies_an_unprivileged_authority_query() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let denied = client
+        .query_rows("MATCH (g:Grant) RETURN g.id LIMIT 1")
+        .await;
+    assert!(
+        denied.is_err(),
+        "an unprivileged authority-label (Grant) query must be denied end-to-end (RS-R1)"
     );
 }
