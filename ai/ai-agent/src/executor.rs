@@ -743,7 +743,7 @@ impl<'a> LiveExecutor<'a> {
     }
 
     /// Execute a gated decision: derive the planned write (only for a proven
-    /// `PreviewThenExecute`, with scope enforced), re-run the full trusted proof
+    /// `PreviewThenExecute`, with scope enforced), re-run the trusted proof
     /// against the CURRENT graph, and write only if it still holds. Returns the
     /// write performed, `None` for a non-executable decision, or an
     /// [`ExecError`] (the proof went stale, the re-validation timed out, scope
@@ -761,6 +761,19 @@ impl<'a> LiveExecutor<'a> {
     /// create enforces only endpoint existence and edge absence, not the agent's
     /// path-prefix predicate. Fully closing that needs a graph snapshot/version
     /// the engine does not expose (gap A2); it is why nothing wires this live yet.
+    ///
+    /// The re-validation re-checks the proof's GRAPH facts (node existence, the
+    /// path-under-project containment, edge absence), NOT the two non-configurable
+    /// confirm rules (high-impact and external-trigger always confirm). Those are
+    /// enforced point-in-time upstream, in `capability::decide_for_behaviour` and
+    /// the gate lift: the only registered executable schema (`graph.write`)
+    /// carries no `CapabilityAllows` precondition, so the `EvalContext` authority
+    /// fields built below are inert for it and the executor is NOT an independent
+    /// authority re-check today. It re-validates graph state and fails closed on a
+    /// stale proof; an authority second line of defence lands when a higher-impact
+    /// executable schema is registered carrying a `CapabilityAllows` precondition
+    /// (assert it at registry load so a future schema cannot omit it, review
+    /// AE-2). That is deferred because no such schema exists yet.
     ///
     /// `behaviour_name` and `ctx` are the trusted, dispatch-supplied ids (never
     /// the proposal), the same the gate decided with, so the execution audit
