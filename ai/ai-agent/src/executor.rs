@@ -992,7 +992,7 @@ impl<'a> LiveExecutor<'a> {
         // Poll for the edge becoming ABSENT (target = not present): the retract
         // may land slightly after the immediate read, so a few backed-off reads
         // catch it before reporting indeterminate.
-        match self.poll_for(write, op_id, graph, false).await {
+        match poll_for(write, op_id, graph, false).await {
             Some(true) => Ok(CompensationOutcome::Retracted),
             Some(false) => Err(ExecError::WriteIndeterminate {
                 pending: pending(),
@@ -1033,7 +1033,7 @@ impl<'a> LiveExecutor<'a> {
         // Poll for the op-id edge becoming PRESENT (target = present): a commit
         // that lands just after the write timed out is caught by the backed-off
         // retries instead of being reported indeterminate prematurely.
-        match self.poll_for(&write, &op_id, graph, true).await {
+        match poll_for(&write, &op_id, graph, true).await {
             Some(true) => Ok(Some(ExecutedWrite::new(
                 write,
                 WriteOutcome::Created,
@@ -1055,92 +1055,93 @@ impl<'a> LiveExecutor<'a> {
         }
     }
 
-    /// Read whether this operation's edge (carrying `op_id`) is present and
-    /// **live** now, time-bounded. Liveness is load-bearing since the daemon's
-    /// retract is a temporal *close*, not a delete (bitemporal-knowledge-graph.md
-    /// §4.7): a retracted edge is retained with its intervals set, so a bare
-    /// presence check would still see it and the retract-reconcile would never
-    /// confirm. Filtering to the live edge (`invalid_at`/`expired_at` both NULL)
-    /// makes "present" mean "still asserted": a created edge is live, a closed
-    /// edge is not. `Some(true)`/`Some(false)` is a definite verdict; `None` means
-    /// the read could not determine it (a failed/timed-out query, or a malformed
-    /// result). Fail-closed on a malformed shape (missing row, missing or
-    /// non-numeric `n`, negative count): a degraded read becomes `None`, never a
-    /// false absence that would lose a real commit. The endpoint types are
-    /// built-in system types, so the labels are the type minus `system.`; the ids
-    /// and op_id are escaped into the literal.
-    async fn edge_exists(
-        &self,
-        write: &RelationWrite,
-        graph: &dyn GraphHandle,
-        op_id: &str,
-    ) -> Option<bool> {
-        let from_label = write.from_type.strip_prefix("system.").unwrap_or(&write.from_type);
-        let to_label = write.to_type.strip_prefix("system.").unwrap_or(&write.to_type);
-        let from_lit = escape_cypher_literal(&write.from_id).ok()?;
-        let to_lit = escape_cypher_literal(&write.to_id).ok()?;
-        let op_lit = escape_cypher_literal(op_id).ok()?;
-        let cypher = format!(
-            "MATCH (a:{from_label} {{id: '{from_lit}'}})-[r:{edge} {{op_id: '{op_lit}'}}]->(b:{to_label} {{id: '{to_lit}'}}) \
-             WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
-             RETURN count(*) AS n",
-            edge = write.relation_type,
-        );
-        let rows = tokio::time::timeout(RECONCILE_TIMEOUT, graph.query(&cypher))
-            .await
-            .ok()?
-            .ok()?;
-        // Exactly one row with a numeric, non-negative count, else fail closed.
-        let n = rows.first()?.get("n")?.as_i64()?;
-        if n < 0 {
-            return None;
-        }
-        Some(n > 0)
-    }
+}
 
-    /// Reconciler: poll [`edge_exists`] up to [`RECONCILE_ATTEMPTS`] times with
-    /// backoff, stopping as soon as the edge reaches `target_present` (present
-    /// for a create's confirmation, absent for a retract's). This is the bounded
-    /// "read repeatedly until confirmed" job: a commit (or delete) that lands a
-    /// moment after the immediate read is caught instead of being reported
-    /// indeterminate too early.
-    ///
-    /// Returns `Some(true)` once it observes the target state (a definite,
-    /// sound verdict — for a create, op-id-present can only be this write; for a
-    /// retract, op-id-absent is terminal by the same monotonicity); `Some(false)`
-    /// if every definite read disagreed across the whole budget (still
-    /// unresolved, the key is preserved for the next organic reconcile); `None`
-    /// if no read ever succeeded (a persistently failing/stalled socket). It
-    /// never blocks unbounded: a never-landing write resolves to `Some(false)`
-    /// after the fixed budget rather than waiting forever.
-    async fn poll_for(
-        &self,
-        write: &RelationWrite,
-        op_id: &str,
-        graph: &dyn GraphHandle,
-        target_present: bool,
-    ) -> Option<bool> {
-        let mut had_definite_read = false;
-        for attempt in 0..RECONCILE_ATTEMPTS {
-            if attempt > 0 {
-                tokio::time::sleep(reconcile_backoff(attempt)).await;
-            }
-            if let Some(present) = self.edge_exists(write, graph, op_id).await {
-                had_definite_read = true;
-                if present == target_present {
-                    return Some(true);
-                }
-            }
+/// Reconciler: poll [`edge_exists`] up to [`RECONCILE_ATTEMPTS`] times with
+/// backoff, stopping as soon as the edge reaches `target_present` (present
+/// for a create's confirmation, absent for a retract's). This is the bounded
+/// "read repeatedly until confirmed" job: a commit (or delete) that lands a
+/// moment after the immediate read is caught instead of being reported
+/// indeterminate too early.
+///
+/// Returns `Some(true)` once it observes the target state (a definite,
+/// sound verdict — for a create, op-id-present can only be this write; for a
+/// retract, op-id-absent is terminal by the same monotonicity); `Some(false)`
+/// if every definite read disagreed across the whole budget (still
+/// unresolved, the key is preserved for the next organic reconcile); `None`
+/// if no read ever succeeded (a persistently failing/stalled socket). It
+/// never blocks unbounded: a never-landing write resolves to `Some(false)`
+/// after the fixed budget rather than waiting forever.
+///
+/// A free function (not a method): shared by the create-side and compensate-side
+/// reconcilers, using no executor state (only the graph, via [`edge_exists`]).
+async fn poll_for(
+    write: &RelationWrite,
+    op_id: &str,
+    graph: &dyn GraphHandle,
+    target_present: bool,
+) -> Option<bool> {
+    let mut had_definite_read = false;
+    for attempt in 0..RECONCILE_ATTEMPTS {
+        if attempt > 0 {
+            tokio::time::sleep(reconcile_backoff(attempt)).await;
         }
-        // Never reached the target. Distinguish "definitely never matched" (we
-        // got at least one good read) from "could not read at all" (None), so a
-        // read outage is not mistaken for a definite disagreement.
-        if had_definite_read {
-            Some(false)
-        } else {
-            None
+        if let Some(present) = edge_exists(write, graph, op_id).await {
+            had_definite_read = true;
+            if present == target_present {
+                return Some(true);
+            }
         }
     }
+    // Never reached the target. Distinguish "definitely never matched" (we
+    // got at least one good read) from "could not read at all" (None), so a
+    // read outage is not mistaken for a definite disagreement.
+    if had_definite_read {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+/// Read whether this operation's edge (carrying `op_id`) is present and
+/// **live** now, time-bounded. Liveness is load-bearing since the daemon's
+/// retract is a temporal *close*, not a delete (bitemporal-knowledge-graph.md
+/// §4.7): a retracted edge is retained with its intervals set, so a bare
+/// presence check would still see it and the retract-reconcile would never
+/// confirm. Filtering to the live edge (`invalid_at`/`expired_at` both NULL)
+/// makes "present" mean "still asserted": a created edge is live, a closed
+/// edge is not. `Some(true)`/`Some(false)` is a definite verdict; `None` means
+/// the read could not determine it (a failed/timed-out query, or a malformed
+/// result). Fail-closed on a malformed shape (missing row, missing or
+/// non-numeric `n`, negative count): a degraded read becomes `None`, never a
+/// false absence that would lose a real commit. The endpoint types are
+/// built-in system types, so the labels are the type minus `system.`; the ids
+/// and op_id are escaped into the literal.
+///
+/// A free function (not a method): shared by the create-side reconcile and the
+/// compensate-side reconcile, and uses no executor state (only the graph).
+async fn edge_exists(write: &RelationWrite, graph: &dyn GraphHandle, op_id: &str) -> Option<bool> {
+    let from_label = write.from_type.strip_prefix("system.").unwrap_or(&write.from_type);
+    let to_label = write.to_type.strip_prefix("system.").unwrap_or(&write.to_type);
+    let from_lit = escape_cypher_literal(&write.from_id).ok()?;
+    let to_lit = escape_cypher_literal(&write.to_id).ok()?;
+    let op_lit = escape_cypher_literal(op_id).ok()?;
+    let cypher = format!(
+        "MATCH (a:{from_label} {{id: '{from_lit}'}})-[r:{edge} {{op_id: '{op_lit}'}}]->(b:{to_label} {{id: '{to_lit}'}}) \
+         WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
+         RETURN count(*) AS n",
+        edge = write.relation_type,
+    );
+    let rows = tokio::time::timeout(RECONCILE_TIMEOUT, graph.query(&cypher))
+        .await
+        .ok()?
+        .ok()?;
+    // Exactly one row with a numeric, non-negative count, else fail closed.
+    let n = rows.first()?.get("n")?.as_i64()?;
+    if n < 0 {
+        return None;
+    }
+    Some(n > 0)
 }
 
 #[cfg(test)]
