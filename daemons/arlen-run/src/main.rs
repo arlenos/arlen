@@ -204,10 +204,15 @@ fn main() -> ExitCode {
 
     // Ensure the app's own state dirs exist so their Landlock write grant is
     // expressible (a missing writable path is otherwise skipped, leaving the
-    // app unable to write its own state). Best-effort 0700; a failure here is
+    // app unable to write its own state). Created mode 0700 (owner-only: an
+    // app's private state is not world-readable); best-effort, a failure here is
     // not fatal (the grant is simply dropped for that dir).
+    use std::os::unix::fs::DirBuilderExt;
     for dir in &app_state_dirs(&home, &args.app_id) {
-        let _ = std::fs::create_dir_all(dir);
+        let _ = std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(dir);
     }
 
     // Create the per-launch cgroup so the child can join it and the tree can be
