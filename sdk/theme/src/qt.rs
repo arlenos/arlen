@@ -20,24 +20,13 @@
 //! them (`lighter(150)`/`lighter(125)`/`darker(200)`/`darker(150)`), so bevels
 //! track the theme without four extra schema slots.
 
-use crate::{ArlenTheme, Rgba};
+use crate::{scale_rgb, ArlenTheme, Rgba};
 
 /// Serialize a resolved [`Rgba`] to Qt's `#AARRGGBB` form (alpha first).
 pub fn rgba_to_qt_hex(c: Rgba) -> String {
     let to_u8 = |f: f32| (f.clamp(0.0, 1.0) * 255.0).round() as u8;
     let [r, g, b, a] = c;
     format!("#{:02x}{:02x}{:02x}{:02x}", to_u8(a), to_u8(r), to_u8(g), to_u8(b))
-}
-
-/// Scale a colour's RGB by `factor` (alpha kept), clamped — the same shape as
-/// `QColor::lighter`/`darker` with `factor = percent / 100`.
-fn scale_rgb(c: Rgba, factor: f32) -> Rgba {
-    [
-        (c[0] * factor).clamp(0.0, 1.0),
-        (c[1] * factor).clamp(0.0, 1.0),
-        (c[2] * factor).clamp(0.0, 1.0),
-        c[3],
-    ]
 }
 
 /// Relative luminance proxy, only used to pick the brighter of two colours.
