@@ -50,6 +50,18 @@ impl EphemeralStack {
         std::fs::create_dir_all(runtime.path().join("knowledge"))?;
         std::fs::create_dir_all(runtime.path().join("timeline"))?;
         std::fs::create_dir_all(runtime.path().join("permissions"))?;
+        // A private config home (`XDG_CONFIG_HOME`) so a spawned daemon reads no
+        // real user config. Without it the knowledge daemon's project watcher
+        // falls back to `default_watch_dirs` (`~/Repositories`, `~/Projects`, ...)
+        // and scans the dev's REAL repositories: a hermeticity leak (spurious
+        // Project nodes) and a needless cost. Seed an empty project watch list so
+        // the watcher scans nothing by default; a scenario that wants detection
+        // calls `seed_project_watch_dir` before spawning.
+        std::fs::create_dir_all(runtime.path().join("config/arlen"))?;
+        std::fs::write(
+            runtime.path().join("config/arlen/graph.toml"),
+            "[projects]\nwatch_directories = []\n",
+        )?;
         Ok(Self {
             runtime,
             children: Vec::new(),
@@ -121,8 +133,31 @@ impl EphemeralStack {
             // checks ARLEN_PERMISSIONS_DIR first), so a profile seeded by
             // `seed_read_profile` is the one it reads for the caller.
             ("ARLEN_PERMISSIONS_DIR".to_string(), p("permissions")),
+            // Private config home so a daemon reads only the seeded config (e.g.
+            // the project watch list), never the real `~/.config/arlen`.
+            ("XDG_CONFIG_HOME".to_string(), p("config")),
             ("XDG_RUNTIME_DIR".to_string(), root),
         ])
+    }
+
+    /// The private config home (`XDG_CONFIG_HOME` stand-in); a daemon's config
+    /// (e.g. `arlen/graph.toml`, `arlen/ai.toml`) is read from here.
+    pub fn config_home(&self) -> PathBuf {
+        self.socket_path("config")
+    }
+
+    /// Point the knowledge daemon's project watcher at `dir` (rewriting the seeded
+    /// `graph.toml` `[projects].watch_directories`), so a scenario can drive
+    /// project detection from a controlled fixture directory. Must be called
+    /// BEFORE spawning knowledge (the watcher loads its config at startup).
+    pub fn seed_project_watch_dir(&self, dir: &Path) -> std::io::Result<()> {
+        std::fs::write(
+            self.config_home().join("arlen/graph.toml"),
+            format!(
+                "[projects]\nwatch_directories = [\"{}\"]\n",
+                dir.to_string_lossy()
+            ),
+        )
     }
 
     /// The directory the daemon loads permission profiles from (via
@@ -280,6 +315,29 @@ mod tests {
         let stack = EphemeralStack::new().unwrap();
         assert!(stack.runtime_dir().join("knowledge").is_dir());
         assert!(stack.runtime_dir().join("timeline").is_dir());
+    }
+
+    #[test]
+    fn new_seeds_a_private_config_home_with_an_empty_project_watch_list() {
+        // The hermeticity fix: a spawned daemon reads this config home, not the
+        // real `~/.config/arlen`, and the seeded graph.toml scans no directories
+        // (so the project watcher never touches the dev's real repos).
+        let stack = EphemeralStack::new().unwrap();
+        let env = stack.base_env();
+        assert_eq!(env["XDG_CONFIG_HOME"], stack.config_home().to_string_lossy());
+        let graph_toml = stack.config_home().join("arlen/graph.toml");
+        let body = std::fs::read_to_string(&graph_toml).expect("seeded graph.toml");
+        assert!(body.contains("watch_directories = []"), "got: {body}");
+    }
+
+    #[test]
+    fn seed_project_watch_dir_points_the_watcher_at_a_fixture() {
+        let stack = EphemeralStack::new().unwrap();
+        let fixture = stack.runtime_dir().join("proj-fixture");
+        stack.seed_project_watch_dir(&fixture).unwrap();
+        let body =
+            std::fs::read_to_string(stack.config_home().join("arlen/graph.toml")).unwrap();
+        assert!(body.contains("proj-fixture"), "got: {body}");
     }
 
     #[test]
