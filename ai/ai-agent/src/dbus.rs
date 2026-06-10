@@ -157,11 +157,28 @@ impl AgentInterface {
     ///
     /// The compensation is the same op-id-keyed retract `LiveExecutor` performs
     /// (fail-closed audit before the retract, keyed to the receipt's own op id,
-    /// only a real `Created` write is undone). Suggest mode retains no receipts,
-    /// so the call-time `executor_live` gate is belt-and-braces over an empty
-    /// store; re-reading the config means a runtime flip is honoured without a
-    /// restart. Authorisation is the session bus's same-user boundary (the KG is
-    /// the user's own and the undo is reversible curation the agent re-derives).
+    /// only a real `Created` write is undone). The call-time `executor_live` gate
+    /// is the conservative posture "the executor is off, so no executor operation
+    /// runs, undo included": re-reading the config means a flip is honoured
+    /// without a restart. It is deliberately fail-safe over fully-undoable: a
+    /// runtime live to suggest flip leaves real receipts in the store, and undo
+    /// then refuses (`not-enabled`) until the executor is re-enabled, rather than
+    /// retracting under a config that says the executor is off. Refusing an undo
+    /// is always safe (the write already happened), so erring toward refusal here
+    /// costs only convenience.
+    ///
+    /// Authorisation today is the session bus's same-user boundary: the KG is the
+    /// user's own and the undo is reversible curation the agent re-derives on the
+    /// next promotion pass, so a hostile same-user peer can at most force a
+    /// transient un-tag, not an escalation across a trust boundary. That is weaker
+    /// than the read-only `status` property warrants for a destructive verb,
+    /// though: the defense-in-depth closure is a caller allowlist (the harness /
+    /// settings, the `audit-daemon` `ADMITTED` pattern) plus recording the D-Bus
+    /// caller in the retract audit (today the retract is attributed to the
+    /// originating behaviour, not the invoker). That is deferred until a canonical
+    /// harness app id exists to name in the allowlist (the same precedent as the
+    /// `settings` app id added for revoke); enforcing an allowlist against a
+    /// not-yet-canonical caller would be a dead gate.
     async fn compensate(&self, correlation_id: String) -> String {
         if !current_executor_live() {
             return "not-enabled: the executor is in suggest mode".to_string();
