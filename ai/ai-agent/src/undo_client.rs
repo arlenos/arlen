@@ -1,4 +1,4 @@
-//! The agent-side client to the separate-uid undo-log signer
+//! The agent-side client to the undo-log signer
 //! (reversible-receipts-and-the-effect-model.md EM-R1).
 //!
 //! The executor submits an inverse-receipt entry write-ahead before an
@@ -6,8 +6,12 @@
 //! or is compensated, and looks the durable state back when reconciling. This is
 //! the thin transport: it connects to the signer's rendezvous socket and maps
 //! each [`arlen_ai_undo_proto::Request`]/`Response` pair to a typed result. The
-//! signer (a different uid) owns the key and the chained log; the agent never
-//! holds either.
+//! signer owns the key and the chained log; the agent reaches them only through
+//! this socket. As built the signer runs same-uid, so the separation is
+//! defense-in-depth, not integrity against a fully-compromised agent; the
+//! separate-uid property that would withhold the key from such an agent is
+//! provisioned at deploy time and closed by the installd inode registry plus a
+//! TPM-sealed counter, per the signer's `auth.rs`.
 
 use std::path::Path;
 
