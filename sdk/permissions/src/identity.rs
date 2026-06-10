@@ -245,6 +245,23 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
                 let app_id = first.to_string_lossy();
                 if !app_id.is_empty() {
                     let app_id = app_id.into_owned();
+                    // A user-writable path may never mint a privileged identity.
+                    // The quota tier keys System off `system`/`system.*` and
+                    // FirstParty off `org.arlen.*` plus the canonical AI daemons,
+                    // and `settings` is the canonical revoke-caller principal, so
+                    // a same-uid directory named to match one of those would
+                    // escalate above the third-party tier this path warrants (or
+                    // impersonate the revoke caller). Those identities only ever
+                    // come from the root-owned rules 1-3; reserving them here means
+                    // rule 4 cannot forge one. A
+                    // legitimate user-installed app is third-party reverse-DNS and
+                    // never bears a reserved id. (The bare per-daemon names rule 2
+                    // mints, e.g. `knowledge`, stay third-party-tier so a squat of
+                    // one is no tier escalation; the broader provenance-attested
+                    // tiering is the F3 follow-up.)
+                    if is_reserved_app_id(&app_id) {
+                        return Err(IdentityError::UnknownBinary(path.to_path_buf()));
+                    }
                     // F3 Rung B: `~/.local/share/arlen/apps/` is user-writable, so
                     // the path alone is forgeable (a same-uid copy to this dir).
                     // If the app is enrolled in the broker-owned (root-owned)
@@ -283,6 +300,33 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
     }
 
     Err(IdentityError::UnknownBinary(path.to_path_buf()))
+}
+
+/// Whether `app_id` is in a namespace reserved for root-installed
+/// components, which a user-writable path (rule 4 of [`path_to_app_id`])
+/// must never mint. `system` / `system.*` map to the System quota tier
+/// and `org.arlen.*` + the canonical AI daemons (`ai-daemon` /
+/// `ai-agent`) to FirstParty (`daemons/knowledge/src/quota/config.rs`
+/// `tier_for_app`); `settings` is the canonical revoke-caller principal
+/// (`daemon.rs` `revoke_caller_admitted`). Legitimate holders of these
+/// identities resolve through the root-owned rules 1-3; reserving them
+/// on the user path closes the same-uid name-mint that would otherwise
+/// escalate tier (or impersonate the revoke caller) from a directory the
+/// attacker controls.
+///
+/// This set must stay congruent with `tier_for_app`'s compile-time
+/// defaults. It deliberately does NOT cover a `graph.toml`-extended
+/// `first_party_apps` allowlist: the SDK resolver cannot see the
+/// daemon's loaded quota config, and no live tier decision reads that
+/// config today (every caller uses `QuotaConfig::arlen_default`, whose
+/// privileged ids are all reserved here). If `QuotaConfig::load` is ever
+/// wired into live tiering, this guard must be re-fenced against the
+/// configured allowlist or the rule-4 squat reopens for the added ids.
+fn is_reserved_app_id(app_id: &str) -> bool {
+    app_id == "system"
+        || app_id.starts_with("system.")
+        || app_id.starts_with("org.arlen.")
+        || matches!(app_id, "ai-daemon" | "ai-agent" | "settings")
 }
 
 /// The F3 Rung B inode gate for a resolved user-app `app_id` at `path`. If the app
@@ -386,6 +430,54 @@ mod tests {
         let path = home
             .join(".local/share/arlen/apps/org.zotero/bin/zotero");
         assert_eq!(path_to_app_id(&path).unwrap(), "org.zotero");
+    }
+
+    /// A user-writable app directory may not mint a privileged identity:
+    /// `system.*` (System tier), `org.arlen.*` and the canonical AI
+    /// daemons (FirstParty) are reserved, so a same-uid squat under
+    /// `~/.local/share/arlen/apps/<reserved>/` is refused rather than
+    /// resolving to a privileged app_id. Legitimate third-party ids
+    /// still resolve.
+    #[test]
+    fn user_app_path_cannot_mint_a_reserved_identity() {
+        let Some(home) = dirs::home_dir() else {
+            return;
+        };
+        for reserved in [
+            "system",
+            "system.knowledge",
+            "org.arlen.contacts",
+            "ai-daemon",
+            "ai-agent",
+            "settings",
+        ] {
+            let path = home.join(format!(".local/share/arlen/apps/{reserved}/bin/x"));
+            assert!(
+                path_to_app_id(&path).is_err(),
+                "rule-4 path must not mint the reserved id {reserved}"
+            );
+        }
+        // A genuine third-party reverse-DNS id is unaffected.
+        let ok = home.join(".local/share/arlen/apps/com.example.app/bin/x");
+        assert_eq!(path_to_app_id(&ok).unwrap(), "com.example.app");
+    }
+
+    #[test]
+    fn reserved_namespace_predicate() {
+        assert!(is_reserved_app_id("system"));
+        assert!(is_reserved_app_id("system.daemon"));
+        assert!(is_reserved_app_id("org.arlen.calendar"));
+        assert!(is_reserved_app_id("ai-daemon"));
+        assert!(is_reserved_app_id("ai-agent"));
+        // `settings` is the canonical revoke-caller principal; a user path
+        // may not mint it.
+        assert!(is_reserved_app_id("settings"));
+        // Third-party reverse-DNS and the bare per-daemon names rule 2
+        // mints stay unreserved (they are third-party-tier).
+        assert!(!is_reserved_app_id("com.example.app"));
+        assert!(!is_reserved_app_id("org.zotero"));
+        assert!(!is_reserved_app_id("knowledge"));
+        assert!(!is_reserved_app_id("systematic")); // not system / system.*
     }
 
     #[test]
