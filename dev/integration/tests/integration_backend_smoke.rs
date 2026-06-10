@@ -157,12 +157,26 @@ async fn the_read_socket_denies_an_unprivileged_authority_query() {
         .expect("knowledge socket");
 
     let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
-    let denied = client
+    let result = client
         .query_rows("MATCH (g:Grant) RETURN g.id LIMIT 1")
         .await;
+    // Assert the EXACT denial, not a generic `is_err()` (which a transport
+    // glitch or a malformed-query error would satisfy without the gate firing).
+    // The daemon answers `ERROR: queries referencing authority labels are not
+    // permitted via the query interface`; the SDK's coarse `check_error` maps
+    // that to `InvalidQuery` (it keys `PermissionDenied` off the literal
+    // substring "permission", absent here), so accept that variant when its
+    // message names the authority-label boundary, plus `PermissionDenied` should
+    // the mapping ever tighten. Mirrors the write-deny scenario's precise match.
+    let denied = match &result {
+        Err(QueryError::PermissionDenied) => true,
+        Err(QueryError::InvalidQuery(msg)) => msg.contains("authority"),
+        _ => false,
+    };
     assert!(
-        denied.is_err(),
-        "an unprivileged authority-label (Grant) query must be denied end-to-end (RS-R1)"
+        denied,
+        "an unprivileged authority-label (Grant) query must be denied by the \
+         RS-R1 gate end-to-end, got {result:?}"
     );
 }
 
