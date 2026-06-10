@@ -103,6 +103,34 @@ integration-smoke:
     cargo test --manifest-path "{{justfile_directory()}}/integration/Cargo.toml" \
         --test integration_backend_smoke -- --ignored
 
+# IT-1 nightly (integration-testing-plan.md §4 / coder-night-backlog-2 §4.3):
+# build EVERY daemon the suite spawns (event-bus, knowledge, audit-daemon and
+# the ai-agent in the ai/ workspace), run the WHOLE #[ignore]d backend suite
+# single-threaded, and capture a timestamped report under the state dir. Exits
+# with the run's status so a wrapping systemd user timer or cron reads pass/fail
+# and a morning digest can parse the report. Each scenario owns a hermetic
+# `EphemeralStack`, so teardown is automatic (no shared state to clean). Needs a
+# FUSE-capable host for the timeline mount, by design. Debug builds, because the
+# harness resolves spawned binaries from each crate's `target/debug`.
+integration-nightly:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    report_dir="${XDG_STATE_HOME:-$HOME/.local/state}/arlen/integration"
+    mkdir -p "$report_dir"
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    report="$report_dir/it1-$stamp.log"
+    echo "IT-1 nightly $stamp (host $(uname -n))" | tee "$report"
+    for c in daemons/event-bus daemons/knowledge daemons/audit-daemon ai; do
+        echo "== build $c ==" | tee -a "$report"
+        cargo build --manifest-path "{{ROOT}}/$c/Cargo.toml" 2>&1 | tee -a "$report"
+    done
+    echo "== run IT-1 (#[ignore]d, single-threaded) ==" | tee -a "$report"
+    cargo test --manifest-path "{{justfile_directory()}}/integration/Cargo.toml" \
+        --test integration_backend_smoke -- --ignored --test-threads=1 2>&1 | tee -a "$report"
+    status="${PIPESTATUS[0]}"
+    echo "== IT-1 nightly exit ${status} (report ${report}) ==" | tee -a "$report"
+    exit "${status}"
+
 # Compositor nested in the current Wayland session (separate repo).
 # DISPLAY="" forces the Winit/Wayland backend so wlr-layer-shell is advertised.
 compositor:
