@@ -1204,8 +1204,9 @@ async fn persist_create_node(graph: &GraphHandle, label: &str, id: &str) -> Stri
 }
 
 /// Persist an authorised relation *retract* (compensation): temporally close the
-/// live edge that carries this `op_id`, re-opening the edge it superseded if any
-/// (the one-unit inverse of supersession, §4.6).
+/// live edge that carries this `op_id`, restoring the membership it superseded if
+/// any by appending a fresh live edge (the one-unit inverse of supersession,
+/// §4.6; the restore is an append, never a stamp-clear, graph-drift.md §2).
 ///
 /// The match is keyed by the `op_id` property AND the liveness predicate, so this
 /// closes exactly the live edge the caller's own create stamped, never a bare
@@ -1248,35 +1249,89 @@ async fn persist_retract(graph: &GraphHandle, rel: &RelationResult, op_id: &str)
     // Retract is a temporal *close*, not a delete (bitemporal-knowledge-graph.md
     // §4.7): the edge is retained, its two intervals set, so an undone action
     // leaves a closed edge whose history corroborates the audit ledger rather
-    // than vanishing. The `MATCH` carries the liveness predicate, so `closed`
-    // counts only edges that were live before this call (a `SET` over an already-
-    // closed edge would otherwise inflate the count); R0 confirmed
-    // `SET ... RETURN count(*)` counts matched-and-mutated rows.
-    //
-    // A retract is the inverse of supersession as ONE unit (§4.6): if the edge
-    // being closed superseded an earlier one (it carries `superseded = old.op_id`),
-    // re-open that earlier edge so the file returns to its pre-supersession
-    // membership rather than landing in neither project. A first assertion (no
-    // `superseded`) closes its edge alone (the `OPTIONAL MATCH` binds nothing).
+    // than vanishing. The close `MATCH` carries the liveness predicate, so it
+    // mutates only an edge that was live (a `SET` over an already-closed edge is
+    // a no-op), which keeps the retract idempotent.
     //
     // Endpoint labels and the relation type are validated identifiers; only the
     // ids and op_id are caller-supplied and escaped into the literals. `now` is
     // the server clock at the close (a server-computed i64, safe to interpolate).
     let now = crate::time::now().0;
-    let cypher = format!(
+
+    // The retracted/absent verdict is read FIRST, before the mutation, so it can
+    // never report a half-applied state: was there a live edge for this op_id?
+    // The probe and the transaction below are serialised on the graph thread, so
+    // no other writer interleaves between them. `OK: retracted` is reported only
+    // when the transaction that observed a live edge also commits; a transaction
+    // error leaves the edge live (rollback), which the executor's reconcile then
+    // reads as not-yet-retracted (Indeterminate) rather than a false success.
+    let probe_cypher = format!(
         "MATCH (a:{from_label} {{id: '{from_id}'}})-[r:{rel_type} {{op_id: '{op}'}}]->(b:{to_label} {{id: '{to_id}'}}) \
          WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
-         SET r.invalid_at = {now}, r.expired_at = {now} \
-         WITH a, r \
-         OPTIONAL MATCH (a)-[old:FILE_PART_OF]->(:Project) \
-           WHERE r.superseded IS NOT NULL AND old.op_id = r.superseded \
-         SET old.invalid_at = NULL, old.expired_at = NULL \
-         RETURN count(*) AS closed"
+         RETURN count(*) AS live"
     );
-    match graph.query_rows(cypher).await {
-        Ok(rs) if row_count(&rs) > 0 => "OK: retracted".to_string(),
-        Ok(_) => "OK: absent".to_string(),
-        Err(e) => format!("ERROR: {e}"),
+    let was_live = match graph.query_rows(probe_cypher).await {
+        Ok(rs) => row_count(&rs) > 0,
+        Err(e) => return format!("ERROR: {e}"),
+    };
+
+    // A retract is the inverse of supersession as ONE unit (§4.6): close the live
+    // op_id edge, and if it superseded an earlier membership (it carries
+    // `superseded = old.op_id`), restore that membership so the file returns to
+    // its pre-supersession project rather than landing in neither. The restore
+    // APPENDS a fresh live edge (graph-drift.md §2, GD-R4) instead of clearing the
+    // superseded edge's close stamps: the old edge keeps its history (close-never-
+    // delete §4.7), the reopen is a new event (its own `created_at`), and a
+    // future merge cannot un-close what another device closed.
+    //
+    // The close and the reopen run as ONE atomic transaction, so a failure (or a
+    // crash) of either rolls back BOTH and never leaves the file in neither
+    // project; a retry redoes the whole unit cleanly. The reopen's append is
+    // guarded against a duplicate (the `OPTIONAL MATCH ... live ... WHERE live IS
+    // NULL` mirrors `persist_file_part_of`) and keys off the now-closed edge's
+    // stable `op_id`/`superseded` (no liveness predicate on `r`), so it is
+    // idempotent under retry. FOREACH (the openCypher conditional-create idiom)
+    // is unavailable on Kuzu, so the conditional is the non-optional `MATCH
+    // (a)-[old]->(p) WHERE old.op_id = r.superseded`: the CREATE fires for the
+    // matched (r, old) pair and not at all when nothing was superseded. op_id is
+    // the per-operation key (unique by construction); the `WITH ... LIMIT 1`
+    // bounds the restore to a single membership defensively even if that
+    // invariant were ever violated. The reopen carries a derived `reopen:<op>` id
+    // (itself retractable, deterministic so the retry stays idempotent), no
+    // `superseded` back-ref (it chains no further), and the prior edge's `origin`
+    // (defaulting to the agent's when the superseded edge carried none).
+    //
+    // Bitemporal axes: the reopen restores the prior edge's `valid_at` (the
+    // membership was true from then, so inverting the supersession leaves no hole
+    // in the valid-time line over the superseded period), while `created_at = now`
+    // records that the system re-believed it at the undo instant. The superseded
+    // edge keeps its own closed intervals, so a transaction-time read still shows
+    // the move was believed until the undo.
+    let close_stmt = format!(
+        "MATCH (a:{from_label} {{id: '{from_id}'}})-[r:{rel_type} {{op_id: '{op}'}}]->(b:{to_label} {{id: '{to_id}'}}) \
+         WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
+         SET r.invalid_at = {now}, r.expired_at = {now}"
+    );
+    let reopen_stmt = format!(
+        "MATCH (a:{from_label} {{id: '{from_id}'}})-[r:{rel_type} {{op_id: '{op}'}}]->(:Project) \
+         WHERE r.superseded IS NOT NULL \
+         MATCH (a)-[old:FILE_PART_OF]->(p:Project) WHERE old.op_id = r.superseded \
+         WITH a, old, p LIMIT 1 \
+         OPTIONAL MATCH (a)-[live:FILE_PART_OF]->(p) \
+           WHERE live.invalid_at IS NULL AND live.expired_at IS NULL \
+         WITH a, p, old, live WHERE live IS NULL \
+         CREATE (a)-[:FILE_PART_OF {{ op_id: 'reopen:{op}', valid_at: old.valid_at, invalid_at: NULL, \
+           created_at: {now}, expired_at: NULL, \
+           origin: CASE WHEN old.origin IS NULL THEN 'agent' ELSE old.origin END, \
+           prov_beh: '', superseded: NULL }}]->(p)"
+    );
+    if let Err(e) = graph.transaction(vec![close_stmt, reopen_stmt]).await {
+        return format!("ERROR: {e}");
+    }
+    if was_live {
+        "OK: retracted".to_string()
+    } else {
+        "OK: absent".to_string()
     }
 }
 
@@ -2807,17 +2862,80 @@ mod tests {
             "OK: retracted"
         );
 
-        // f1 is back in p1 (re-opened), and only p1, as one unit.
+        // f1 is back in p1, and only p1, as one unit. The restore is an APPEND:
+        // the live edge is a fresh `reopen:op-2` edge, not the original op-1 edge.
         let live = graph
             .query_rows(
                 "MATCH (:File {id: 'f1'})-[r:FILE_PART_OF]->(p:Project) \
-                 WHERE r.invalid_at IS NULL AND r.expired_at IS NULL RETURN p.id AS id"
+                 WHERE r.invalid_at IS NULL AND r.expired_at IS NULL RETURN p.id AS id, r.op_id AS op"
                     .into(),
             )
             .await
             .unwrap();
         assert_eq!(live.rows.len(), 1, "exactly one live membership after the undo");
-        assert_eq!(live.rows[0][0].as_str(), "p1", "the superseded p1 membership is re-opened");
+        assert_eq!(live.rows[0][0].as_str(), "p1", "the superseded p1 membership is restored");
+        assert_eq!(
+            live.rows[0][1].as_str(),
+            "reopen:op-2",
+            "the restore is an appended reopen edge, not the resurrected original"
+        );
+
+        // The original op-1 edge stays CLOSED (close-never-delete): its stamps
+        // were not cleared, so its supersession history is retained.
+        let old = graph
+            .query_rows(
+                "MATCH (:File {id: 'f1'})-[r:FILE_PART_OF {op_id: 'op-1'}]->(:Project) \
+                 RETURN r.invalid_at AS iv"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(old.rows.len(), 1, "the original op-1 edge is retained");
+        assert!(
+            !matches!(old.rows[0][0], crate::graph::CellValue::Null),
+            "the original op-1 edge stays closed, its stamps preserved"
+        );
+
+        // The reopen restores the original edge's `valid_at` (no valid-time hole
+        // over the superseded period), so the two carry the same valid_at.
+        let valids = graph
+            .query_rows(
+                "MATCH (:File {id: 'f1'})-[r:FILE_PART_OF]->(:Project {id: 'p1'}) \
+                 RETURN r.op_id AS op, r.valid_at AS v ORDER BY r.op_id"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(valids.rows.len(), 2, "p1 has the closed original and the live reopen");
+        // ORDER BY op_id: 'op-1' < 'reopen:op-2'.
+        assert_eq!(valids.rows[0][0].as_str(), "op-1");
+        assert_eq!(valids.rows[1][0].as_str(), "reopen:op-2");
+        assert_eq!(
+            valids.rows[0][1].as_i64(),
+            valids.rows[1][1].as_i64(),
+            "the reopen carries the original membership's valid_at (valid-time continuity)"
+        );
+
+        // A retried retract (crash-recovery / at-least-once) must NOT append a
+        // second reopen edge: the live-edge guard skips the CREATE because a live
+        // edge to p1 already exists, and the close is an idempotent `absent`.
+        assert_eq!(
+            persist_retract(&graph, &file_part_of("f1", "p2"), "op-2").await,
+            "OK: absent"
+        );
+        let still = graph
+            .query_rows(
+                "MATCH (:File {id: 'f1'})-[r:FILE_PART_OF]->(:Project {id: 'p1'}) \
+                 WHERE r.invalid_at IS NULL AND r.expired_at IS NULL RETURN count(*) AS n"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            still.rows[0][0].as_i64(),
+            1,
+            "the reopen is idempotent: a retried retract appends no duplicate"
+        );
     }
 
     #[tokio::test]
