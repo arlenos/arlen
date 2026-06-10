@@ -39,6 +39,7 @@
 //! one it holds the `graph.write` tool name for.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -953,6 +954,39 @@ impl<'a> LiveExecutor<'a> {
 
 }
 
+/// An owned compensator: holds just the `writer` + `audit` the compensate path
+/// needs (Arc, not borrowed), so a long-lived owner (the D-Bus undo interface)
+/// can run a compensation without constructing a [`LiveExecutor`] (whose
+/// capability/paths/mounts only the forward execute path uses) or a dummy
+/// capability. Built at startup under `executor_live`; delegates to the same
+/// [`compensate_receipt`] free function as [`LiveExecutor::compensate`], so the
+/// undo semantics are identical on both paths.
+pub struct Compensator {
+    writer: Arc<dyn RelationWriter>,
+    audit: Arc<dyn AuditSink>,
+}
+
+impl Compensator {
+    /// A compensator over an owned writer + audit sink.
+    pub fn new(writer: Arc<dyn RelationWriter>, audit: Arc<dyn AuditSink>) -> Self {
+        Self { writer, audit }
+    }
+
+    /// Compensate (undo) a previously-executed action by its receipt. Identical
+    /// to [`LiveExecutor::compensate`] (same free `compensate_receipt`), over the
+    /// owned deps: audits fail-closed before the retract, keys the retract to the
+    /// receipt's own op id, only undoes a real `Created` write, reconciles a
+    /// commit-unknown retract by the op id.
+    pub async fn compensate(
+        &self,
+        receipt: &ActionReceipt,
+        graph: &dyn GraphHandle,
+        behaviour_name: &str,
+    ) -> Result<CompensationOutcome, ExecError> {
+        compensate_receipt(&*self.writer, &*self.audit, receipt, graph, behaviour_name).await
+    }
+}
+
 /// Compensate (undo) a previously-executed action, dispatching on the receipt
 /// variant. A free function over only the `writer` + `audit` it needs (not the
 /// full executor's capability/paths/mounts), so both `LiveExecutor::compensate`
@@ -1779,6 +1813,22 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].structural.outcome, "compensate");
         assert_eq!(entries[0].call_chain_id.as_deref(), Some("run-x"));
+    }
+
+    #[tokio::test]
+    async fn compensator_retracts_a_created_write_over_owned_deps() {
+        // The owned Compensator (the D-Bus undo path) runs the same compensation
+        // as LiveExecutor::compensate, over Arc-owned deps and no capability.
+        let writer: Arc<dyn RelationWriter> = Arc::new(MockWriter::default());
+        let audit: Arc<dyn AuditSink> = Arc::new(MockAuditSink::accepting());
+        let comp = Compensator::new(writer, audit);
+        let graph = tag_graph(true); // not read on the happy path
+        let executed = receipt(WriteOutcome::Created);
+        let outcome = comp
+            .compensate(&ActionReceipt::Graph(executed), &graph, "auto-tag-by-project")
+            .await
+            .unwrap();
+        assert_eq!(outcome, CompensationOutcome::Retracted);
     }
 
     #[tokio::test]
