@@ -750,3 +750,71 @@ async fn the_audit_daemon_comes_up_hermetically() {
     assert!(stack.audit_ingest_socket().exists());
     assert!(stack.audit_read_socket().exists());
 }
+
+/// IT-1 audit chain end-to-end: an entry submitted to the ingest socket lands in
+/// the hash-chained ledger and reads back through the read API with the chain
+/// intact. The test process is peer-authenticated and admitted (a `dev.*` id in a
+/// debug build, the documented dev-dir allowance), so it submits a structural
+/// entry directly via `AuditClient`, then `ReadClient::recent` returns it with
+/// `available` set and `tampered` clear, proving ingest -> HMAC-chained ledger ->
+/// read-API verification assembled and hermetic. The actor is the kernel-attested
+/// peer (this test), never the request, so we assert on the content-free subject
+/// we submitted. Same `#[ignore]` rationale (debug build for the dev. admission).
+#[tokio::test]
+#[ignore = "needs event-bus + audit-daemon binaries built (debug, for the dev. ingest admission)"]
+async fn an_audit_entry_lands_in_the_chain_and_reads_back() {
+    use audit_proto::client::AuditClient;
+    use audit_proto::{AuditKind, IngestRequest, ReadClient, StructuralRecord};
+
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+        .expect("spawn audit-daemon");
+    stack
+        .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+        .expect("audit ingest socket");
+    stack
+        .wait_socket("arlen/audit-read.sock", Duration::from_secs(20))
+        .expect("audit read socket");
+
+    let subject = "it.audit.probe";
+    let request = IngestRequest {
+        kind: AuditKind::Query,
+        structural: StructuralRecord {
+            subject: subject.to_string(),
+            node_types: vec![],
+            relations: vec![],
+            result_count: None,
+            duration_ms: None,
+            outcome: "ok".to_string(),
+            depth: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    };
+    let ingest = AuditClient::new(stack.audit_ingest_socket());
+    ingest
+        .submit(&request)
+        .await
+        .expect("the admitted test peer's audit entry is accepted into the ledger");
+
+    let reader = ReadClient::new(stack.audit_read_socket());
+    let page = reader.recent(16).await;
+    assert!(page.available, "the audit read API must answer");
+    assert!(
+        !page.tampered,
+        "a freshly-appended entry must leave the hash chain intact"
+    );
+    assert!(
+        page.entries.iter().any(|e| e.subject == subject),
+        "the submitted entry must read back from the ledger, got subjects {:?}",
+        page.entries.iter().map(|e| e.subject.clone()).collect::<Vec<_>>()
+    );
+}
