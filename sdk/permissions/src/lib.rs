@@ -12,7 +12,6 @@ pub mod identity;
 pub mod identity_registry;
 pub mod profile_watcher;
 pub mod revoke;
-pub mod token;
 
 pub use connection_auth::{AuthError, ConnectionAuth};
 pub use profile_watcher::{ProfileChange, ProfileWatcher};
