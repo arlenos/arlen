@@ -26,7 +26,7 @@ use xdg_portal_arlen_protocol::{FileFilter, PickerRequest, PickerResponse};
 use crate::document_portal;
 use crate::interfaces::options;
 use crate::request::{response, RequestHandle};
-use crate::sandbox::CallerIdentity;
+use crate::sandbox::{self, CallerIdentity};
 use crate::state::DaemonState;
 
 /// Result-key the spec mandates for the URI list returned by
@@ -241,34 +241,12 @@ async fn build_uris_for_caller(
             }
         }
         None => {
-            // Unconfined: raw `file://` URIs are reachable directly.
+            // Host-reachable caller (Arlen-native or unconfined): raw
+            // `file://` URIs resolve directly, no Document Portal mount
+            // to bridge.
             Ok(paths.iter().map(|p| path_to_file_uri(p)).collect())
         }
     }
-}
-
-/// Determine caller identity from the frontend-supplied `app_id`
-/// argument.
-///
-/// The impl-portal interface receives `app_id` set by the
-/// `xdg-desktop-portal` frontend AFTER it has verified the caller
-/// (by inspecting `.flatpak-info`, the snap cgroup, etc.). We trust
-/// that verdict.
-///
-/// We deliberately do NOT use cgroup-based detection here even
-/// though the helper exists in `crate::sandbox` — Flatpak callers
-/// reach the bus through `xdg-dbus-proxy`, and `GetConnectionUnixProcessID`
-/// reports the proxy's host-PID. Reading that PID's cgroup yields
-/// the user-session scope (not the app's bubblewrap scope), so the
-/// detection silently classifies real Flatpak callers as Unconfined.
-/// The frontend's `app_id` argument sidesteps the proxy entirely.
-fn caller_identity(method_app_id: &str) -> CallerIdentity {
-    if !method_app_id.is_empty() {
-        return CallerIdentity::Flatpak {
-            app_id: method_app_id.to_string(),
-        };
-    }
-    CallerIdentity::Unconfined
 }
 
 fn success_results(
@@ -389,8 +367,9 @@ impl FileChooser {
         title: &str,
         opts: HashMap<&str, OwnedValue>,
         #[zbus(connection)] connection: &zbus::Connection,
+        #[zbus(header)] header: zbus::message::Header<'_>,
     ) -> (u32, HashMap<String, OwnedValue>) {
-        let identity = caller_identity(app_id);
+        let identity = sandbox::resolve_identity(connection, &header).await;
         let request = PickerRequest::OpenFile {
             handle: handle.to_string(),
             app_id: app_id.to_string(),
@@ -415,8 +394,9 @@ impl FileChooser {
         title: &str,
         opts: HashMap<&str, OwnedValue>,
         #[zbus(connection)] connection: &zbus::Connection,
+        #[zbus(header)] header: zbus::message::Header<'_>,
     ) -> (u32, HashMap<String, OwnedValue>) {
-        let identity = caller_identity(app_id);
+        let identity = sandbox::resolve_identity(connection, &header).await;
         let request = PickerRequest::SaveFile {
             handle: handle.to_string(),
             app_id: app_id.to_string(),
@@ -440,8 +420,9 @@ impl FileChooser {
         title: &str,
         opts: HashMap<&str, OwnedValue>,
         #[zbus(connection)] connection: &zbus::Connection,
+        #[zbus(header)] header: zbus::message::Header<'_>,
     ) -> (u32, HashMap<String, OwnedValue>) {
-        let identity = caller_identity(app_id);
+        let identity = sandbox::resolve_identity(connection, &header).await;
         let request = PickerRequest::SaveFiles {
             handle: handle.to_string(),
             app_id: app_id.to_string(),

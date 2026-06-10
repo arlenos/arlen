@@ -26,7 +26,7 @@ use zbus::interface;
 use zbus::zvariant::{Fd, ObjectPath, OwnedValue, Value};
 
 use crate::request::{response, RequestHandle};
-use crate::sandbox::CallerIdentity;
+use crate::sandbox::{self, CallerIdentity};
 use crate::state::DaemonState;
 
 /// Schemes we forward to `xdg-open` without question. `mailto:` and
@@ -152,25 +152,25 @@ fn classify_scheme(uri: &str) -> SchemeClass {
 /// tests pass a literal.
 ///
 /// Authorization rules:
-/// - `Unknown` (identity-resolution failed) → deny. Codex flagged
-///   that fail-open here let a transient D-Bus glitch waive the
-///   sandbox check.
-/// - `Unconfined` → allow. The caller could open the file from a
-///   shell anyway.
-/// - `Flatpak`/`Snap` → URI must parse cleanly (no traversal,
-///   no NUL, percent-decode UTF-8) AND the resulting path must
-///   start with the Document Portal mount path. The path-based
+/// - `Unknown` (identity-resolution failed) → deny. Fail-open here
+///   would let a transient D-Bus glitch waive the sandbox check.
+/// - Host-reachable callers (`Unconfined`, `ArlenNative`) → allow.
+///   They reach the file through the host filesystem under the
+///   user's own uid anyway, so the portal grants nothing extra.
+/// - `Flatpak` (mount-namespaced) → URI must parse cleanly (no
+///   traversal, no NUL, percent-decode UTF-8) AND the resulting path
+///   must start with the Document Portal mount path. The path-based
 ///   check replaces the previous string-prefix check that was
-///   bypassable via `file:///mount/../escape` (Codex critical).
+///   bypassable via `file:///mount/../escape`.
 fn file_uri_authorized_with_prefix(
     uri: &str,
     identity: &CallerIdentity,
     document_mount: Option<&Path>,
 ) -> bool {
-    if matches!(identity, CallerIdentity::Unknown) {
+    if !identity.is_known() {
         return false;
     }
-    if matches!(identity, CallerIdentity::Unconfined) {
+    if identity.reaches_host_fs() {
         return true;
     }
     let Some(mount) = document_mount else {
@@ -217,18 +217,6 @@ impl OpenUri {
     pub fn new(state: DaemonState) -> Self {
         Self { state }
     }
-
-    /// Determine caller identity from the frontend-supplied
-    /// `app_id` argument. See `file_chooser::caller_identity` for
-    /// the rationale on not using cgroup detection.
-    fn caller_identity(method_app_id: &str) -> CallerIdentity {
-        if !method_app_id.is_empty() {
-            return CallerIdentity::Flatpak {
-                app_id: method_app_id.to_string(),
-            };
-        }
-        CallerIdentity::Unconfined
-    }
 }
 
 fn error_results(message: &str) -> HashMap<String, OwnedValue> {
@@ -251,10 +239,12 @@ impl OpenUri {
         parent_window: &str,
         uri: &str,
         _options: HashMap<&str, OwnedValue>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        #[zbus(header)] header: zbus::message::Header<'_>,
     ) -> (u32, HashMap<String, OwnedValue>) {
         let _guard = self.state.track_request();
         let req = RequestHandle::from_object_path(handle.into());
-        let identity = Self::caller_identity(app_id);
+        let identity = sandbox::resolve_identity(connection, &header).await;
         let redacted = redact_uri(uri);
 
         match classify_scheme(uri) {
@@ -326,10 +316,12 @@ impl OpenUri {
         parent_window: &str,
         fd: Fd<'_>,
         _options: HashMap<&str, OwnedValue>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        #[zbus(header)] header: zbus::message::Header<'_>,
     ) -> (u32, HashMap<String, OwnedValue>) {
         let _guard = self.state.track_request();
         let req = RequestHandle::from_object_path(handle.into());
-        let identity = Self::caller_identity(app_id);
+        let identity = sandbox::resolve_identity(connection, &header).await;
 
         let path = match resolve_fd_to_path(&fd) {
             Ok(p) => p,

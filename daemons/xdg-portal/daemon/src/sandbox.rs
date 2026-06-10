@@ -1,215 +1,322 @@
-// FA7 originally derived caller identity from `/proc/<pid>/cgroup`.
-// In practice the impl-portal interface receives a frontend-verified
-// `app_id` argument and Flatpak callers reach the bus via
-// `xdg-dbus-proxy` (whose own cgroup is the user-session scope, not
-// the bubblewrap scope), so cgroup detection silently misclassifies
-// real Flatpak callers as Unconfined. The cgroup helpers below are
-// kept for diagnostic use and a future fallback path that does not
-// require D-Bus PID lookup, but no production code calls them today.
-#![allow(dead_code)]
+//! Caller identity resolution (FA7 / X-id), peer-authenticated.
+//!
+//! Portal callers pass `app_id` in their method arguments, but that
+//! value is caller-controlled and therefore untrusted: an app that
+//! blanks it would otherwise fall open to `Unconfined` and wake the
+//! fail-closed guards in the FileChooser and OpenURI handlers. We
+//! never read it for identity. Instead we resolve the real caller
+//! from the D-Bus message sender, fail-closed:
+//!
+//! 1. Take the message **sender** (set by the bus daemon, not a
+//!    method argument) and resolve its PID via
+//!    `GetConnectionUnixProcessID`. No sender or no PID -> `Unknown`.
+//! 2. **Flatpak:** if `/proc/<pid>/root/.flatpak-info` exists the
+//!    caller is a Flatpak app; the app id is read from that file's
+//!    `[Application] name=` (never from the caller argument). This is
+//!    the standard xdg-desktop-portal handshake and is robust to the
+//!    `xdg-dbus-proxy` topology that makes the proxy's PID, not the
+//!    app's, visible. A present-but-unreadable `.flatpak-info` is a
+//!    sandbox we cannot name -> `Unknown` -> deny.
+//! 3. **Arlen-native:** else resolve the PID through Arlen's own
+//!    identity infrastructure (`arlen_permissions::identity`,
+//!    openat-hardened `/proc/<pid>/exe` -> anchored install path).
+//!    A resolved app is `ArlenNative`.
+//! 4. **Else -> `Unconfined`.** A plain host process under the user's
+//!    own uid reaches the filesystem directly; serving it raw
+//!    `file://` grants nothing it did not already have.
+//!
+//! Empty or unverifiable callers are `Unknown`, never `Unconfined`.
 
-//! Caller sandbox / app-id detection (FA7).
-//!
-//! Portal callers can pass `app_id` in their method arguments, but the
-//! value is caller-controlled and therefore untrusted. We derive the
-//! real identity from the caller's cgroup, which the kernel maintains
-//! and the caller cannot spoof.
-//!
-//! Supported formats:
-//!
-//! - Flatpak: `/user.slice/.../app-flatpak-<app_id>-<n>.scope`
-//! - Snap (recognised, not exercised): `snap.<name>.<launcher>.scope`
-//! - Anything else → `Unconfined`. The portal method handler then has
-//!   to decide whether to grant the request based on user consent
-//!   alone, since there is no sandbox boundary to honour.
-//!
-//! The cgroup is read from `/proc/<pid>/cgroup`, which exists on every
-//! Linux ≥ 2.6.24 with cgroups enabled (always true on Arlen).
+use arlen_permissions::identity::app_id_from_pid;
 
-use std::fs;
-use std::path::Path;
-
-/// Outcome of sandbox detection for a given caller PID.
+/// Outcome of identity resolution for a portal caller.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallerIdentity {
-    /// Flatpak-confined caller. `app_id` is the Flatpak application
-    /// id (`org.gnome.Calculator`, `com.spotify.Client`, ...).
-    Flatpak { app_id: String },
-    /// Snap-confined caller. `name` is the Snap package name.
-    Snap { name: String },
-    /// Anything else: native binary, systemd service, container we
-    /// have not explicitly detected. The caller can do whatever the
-    /// invoking user can do regardless of what app_id they pass.
+    /// Flatpak-confined caller. `app_id` comes from `.flatpak-info`
+    /// (`org.gnome.Calculator`, ...). Mount-namespaced, so picked
+    /// paths must be re-exported through the Document Portal.
+    Flatpak {
+        /// Flatpak application id from `[Application] name=`.
+        app_id: String,
+    },
+    /// Arlen-native caller resolved to a known install path. Runs on
+    /// the host under the user's uid (no separate mount namespace
+    /// today), so it reaches picked files directly.
+    ArlenNative {
+        /// Resolved Arlen app id.
+        app_id: String,
+    },
+    /// Plain host process: a binary we could not anchor to a known
+    /// install path, running under the invoking user. It can do
+    /// whatever that user can do regardless of any app_id it passes.
     Unconfined,
-    /// Identity could not be determined: D-Bus message had no
-    /// sender header, `org.freedesktop.DBus` was unreachable, or
-    /// PID-to-cgroup lookup failed. Authorization decisions that
-    /// touch a security boundary (file:// access through the host)
-    /// must fail-closed for this state — Codex review found that
-    /// silently coalescing this into `Unconfined` would let a
-    /// transient D-Bus glitch waive the sandbox check.
+    /// Identity could not be determined: the message had no sender,
+    /// `org.freedesktop.DBus` was unreachable, or the PID lookup
+    /// failed. Authorization decisions that touch a security boundary
+    /// must fail-closed for this state; silently coalescing it into
+    /// `Unconfined` would let a transient D-Bus glitch waive the
+    /// sandbox check.
     Unknown,
 }
 
 impl CallerIdentity {
-    /// Best-effort app-id string suitable for logs and Document
-    /// Portal calls. `None` for unconfined callers and for the
-    /// Unknown failure state.
+    /// App id for Document Portal routing: `Some` only for callers
+    /// that live in a separate mount namespace (Flatpak) and so need
+    /// their picked paths re-exported. `None` for host-reachable
+    /// callers (`ArlenNative`, `Unconfined`) and for `Unknown`.
     pub fn app_id(&self) -> Option<&str> {
         match self {
             CallerIdentity::Flatpak { app_id } => Some(app_id),
-            CallerIdentity::Snap { name } => Some(name),
-            CallerIdentity::Unconfined | CallerIdentity::Unknown => None,
+            CallerIdentity::ArlenNative { .. }
+            | CallerIdentity::Unconfined
+            | CallerIdentity::Unknown => None,
         }
     }
 
-    /// True when sandbox detection produced a definite answer
-    /// (Flatpak / Snap / Unconfined). False only for Unknown.
-    /// Callers that need to fail-closed on identity-resolution
-    /// failures gate on this.
+    /// True when the caller reaches the host filesystem directly and
+    /// so may receive raw `file://` URIs without a Document Portal
+    /// export: `ArlenNative` and `Unconfined`. False for the
+    /// mount-namespaced `Flatpak` and for `Unknown` (which must be
+    /// denied outright before this is consulted).
+    pub fn reaches_host_fs(&self) -> bool {
+        matches!(
+            self,
+            CallerIdentity::ArlenNative { .. } | CallerIdentity::Unconfined
+        )
+    }
+
+    /// True when identity resolution produced a definite answer.
+    /// False only for `Unknown`. Callers that must fail-closed on
+    /// resolution failure gate on this.
     pub fn is_known(&self) -> bool {
         !matches!(self, CallerIdentity::Unknown)
     }
 }
 
-/// Detect the identity of the process at `pid` by reading its cgroup.
+/// Resolve the caller identity from a D-Bus message header.
 ///
-/// Returns `Unconfined` for any cgroup that does not match a known
-/// sandbox pattern; this is intentional — we prefer to under-report
-/// confinement than to mis-attribute confinement to an attacker who
-/// has crafted a misleading cgroup name.
-pub fn detect(pid: u32) -> CallerIdentity {
-    let path = format!("/proc/{pid}/cgroup");
-    match fs::read_to_string(Path::new(&path)) {
-        Ok(content) => parse_cgroup(&content),
-        Err(_) => CallerIdentity::Unconfined,
+/// Fails closed to [`CallerIdentity::Unknown`] if the message carries
+/// no sender or the PID cannot be resolved, so the security guards in
+/// the FileChooser and OpenURI handlers refuse the request rather than
+/// treating an unverifiable caller as unconfined.
+pub async fn resolve_identity(
+    connection: &zbus::Connection,
+    header: &zbus::message::Header<'_>,
+) -> CallerIdentity {
+    let Some(sender) = header.sender() else {
+        tracing::warn!("portal request carried no D-Bus sender; identity unknown");
+        return CallerIdentity::Unknown;
+    };
+    match connection_pid(connection, sender).await {
+        Ok(pid) => identity_for_pid(pid),
+        Err(e) => {
+            tracing::warn!(%sender, error = %e, "could not resolve caller PID; identity unknown");
+            CallerIdentity::Unknown
+        }
     }
 }
 
-/// Parse a `/proc/<pid>/cgroup` payload. Public for test coverage.
-pub fn parse_cgroup(content: &str) -> CallerIdentity {
+/// Resolve a sender bus name to its connection PID via
+/// `org.freedesktop.DBus.GetConnectionUnixProcessID`.
+async fn connection_pid(
+    connection: &zbus::Connection,
+    sender: &zbus::names::UniqueName<'_>,
+) -> Result<u32, zbus::Error> {
+    let dbus = zbus::fdo::DBusProxy::new(connection).await?;
+    let bus_name = zbus::names::BusName::try_from(sender.as_str())?;
+    let pid = dbus.get_connection_unix_process_id(bus_name).await?;
+    Ok(pid)
+}
+
+/// The resolution chain for a known caller PID: Flatpak via
+/// `.flatpak-info`, then Arlen-native via the install-path resolver,
+/// else `Unconfined`. The PID-reading is split from the decision so
+/// [`classify_identity`] is unit-testable.
+fn identity_for_pid(pid: u32) -> CallerIdentity {
+    let flatpak_info =
+        std::fs::read_to_string(format!("/proc/{pid}/root/.flatpak-info")).ok();
+    // Only consult the native resolver when this is not a Flatpak
+    // caller: a Flatpak's `/proc/<pid>/exe` points inside the runtime,
+    // not at an Arlen install path, so the native lookup is moot.
+    let native = if flatpak_info.is_none() {
+        app_id_from_pid(pid).ok()
+    } else {
+        None
+    };
+    classify_identity(flatpak_info.as_deref(), native)
+}
+
+/// Pure classification core. `flatpak_info` is `Some(contents)` when
+/// `/proc/<pid>/root/.flatpak-info` exists (file present means the
+/// caller is Flatpak-confined), `native` is the Arlen-native app id
+/// when the install-path resolver succeeded.
+///
+/// A present `.flatpak-info` whose `[Application] name=` is missing or
+/// unsafe yields `Unknown` (a sandbox we cannot name, denied) rather
+/// than falling through to `Unconfined`.
+fn classify_identity(flatpak_info: Option<&str>, native: Option<String>) -> CallerIdentity {
+    if let Some(contents) = flatpak_info {
+        return match parse_flatpak_info(contents) {
+            Some(app_id) => CallerIdentity::Flatpak { app_id },
+            None => CallerIdentity::Unknown,
+        };
+    }
+    match native {
+        Some(app_id) => CallerIdentity::ArlenNative { app_id },
+        None => CallerIdentity::Unconfined,
+    }
+}
+
+/// Pull the Flatpak app id out of a `.flatpak-info` payload: the
+/// `name=` key in the `[Application]` section. Returns `None` (caller
+/// treats as deny) when the section or key is absent or the value is
+/// not a safe app id.
+fn parse_flatpak_info(content: &str) -> Option<String> {
+    let mut in_application = false;
     for line in content.lines() {
-        if let Some(id) = match_flatpak(line) {
-            return CallerIdentity::Flatpak { app_id: id };
+        let line = line.trim();
+        if line.starts_with('[') && line.ends_with(']') {
+            in_application = line == "[Application]";
+            continue;
         }
-        if let Some(name) = match_snap(line) {
-            return CallerIdentity::Snap { name };
+        if in_application {
+            if let Some(value) = line.strip_prefix("name=") {
+                let id = value.trim();
+                return is_safe_flatpak_id(id).then(|| id.to_string());
+            }
         }
     }
-    CallerIdentity::Unconfined
+    None
 }
 
-/// Pull the Flatpak app-id out of a cgroup line. Flatpak's cgroup
-/// format is `app-flatpak-<app_id>-<pid_or_random>.scope`.
-fn match_flatpak(line: &str) -> Option<String> {
-    let scope = line.rsplit('/').next()?;
-    let stripped = scope.strip_suffix(".scope")?;
-    let inner = stripped.strip_prefix("app-flatpak-")?;
-    // The numeric suffix can be PID or any digits Flatpak uses for
-    // disambiguation. We rsplit once and trim the leading dash.
-    let (app_id, _suffix) = inner.rsplit_once('-')?;
-    if app_id.is_empty() {
-        return None;
+/// Validate that a `.flatpak-info` app id is a safe reverse-DNS
+/// identifier before it is used as a Document Portal app id or
+/// interpolated into a path. Rejects empty, leading/trailing dot,
+/// `..`, and anything outside `[A-Za-z0-9._-]` (Flatpak ids are
+/// case-sensitive reverse-DNS, so uppercase is allowed unlike the
+/// lowercase-only Arlen app-id rule).
+fn is_safe_flatpak_id(id: &str) -> bool {
+    if id.is_empty() || id.starts_with('.') || id.ends_with('.') || id.contains("..") {
+        return false;
     }
-    Some(app_id.to_string())
-}
-
-/// Pull the Snap package name out of a cgroup line. Snap format is
-/// `snap.<name>.<launcher>.scope`.
-fn match_snap(line: &str) -> Option<String> {
-    let scope = line.rsplit('/').next()?;
-    let stripped = scope.strip_suffix(".scope")?;
-    let inner = stripped.strip_prefix("snap.")?;
-    // We want the part before the first `.`.
-    let (name, _) = inner.split_once('.')?;
-    if name.is_empty() {
-        return None;
-    }
-    Some(name.to_string())
+    id.bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Real-world Flatpak cgroup line from `flatpak run org.gnome.Calculator`.
-    /// The cgroup file contains v1 and v2 entries on hybrid systems;
-    /// only the unified entry has the `app-flatpak-` scope.
+    /// A real `.flatpak-info` payload: the app id comes from
+    /// `[Application] name=`, not from any caller argument.
     #[test]
-    fn detects_flatpak() {
-        let content = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/app-flatpak-org.gnome.Calculator-12345.scope\n";
+    fn parses_application_name() {
+        let info = "[Application]\nname=org.gnome.Calculator\nruntime=runtime/org.gnome.Platform/x86_64/45\n\n[Instance]\ninstance-id=12345\n";
         assert_eq!(
-            parse_cgroup(content),
+            parse_flatpak_info(info).as_deref(),
+            Some("org.gnome.Calculator")
+        );
+    }
+
+    /// `name=` only counts inside `[Application]`. A `name=` in a
+    /// later section must not be picked up.
+    #[test]
+    fn ignores_name_outside_application_section() {
+        let info = "[Instance]\nname=evil\n[Context]\nname=also-evil\n";
+        assert_eq!(parse_flatpak_info(info), None);
+    }
+
+    /// Missing `[Application]` section -> None -> denied.
+    #[test]
+    fn missing_application_section_is_none() {
+        assert_eq!(parse_flatpak_info("[Instance]\ninstance-id=1\n"), None);
+        assert_eq!(parse_flatpak_info(""), None);
+    }
+
+    /// An unsafe app id (path traversal) is rejected at parse time so
+    /// it can never reach a Document Portal call or a path join.
+    #[test]
+    fn unsafe_app_id_rejected() {
+        assert_eq!(parse_flatpak_info("[Application]\nname=../etc\n"), None);
+        assert_eq!(parse_flatpak_info("[Application]\nname=\n"), None);
+        assert_eq!(parse_flatpak_info("[Application]\nname=a/b\n"), None);
+        assert_eq!(parse_flatpak_info("[Application]\nname=.hidden\n"), None);
+    }
+
+    #[test]
+    fn safe_id_charset() {
+        assert!(is_safe_flatpak_id("org.gnome.Calculator"));
+        assert!(is_safe_flatpak_id("com.valve.Steam"));
+        assert!(is_safe_flatpak_id("io.github.app-name_2"));
+        assert!(!is_safe_flatpak_id(""));
+        assert!(!is_safe_flatpak_id(".x"));
+        assert!(!is_safe_flatpak_id("x."));
+        assert!(!is_safe_flatpak_id("a..b"));
+        assert!(!is_safe_flatpak_id("a/b"));
+        assert!(!is_safe_flatpak_id("a b"));
+    }
+
+    /// Flatpak present + parseable -> Flatpak (mount-namespaced,
+    /// routes through Document Portal).
+    #[test]
+    fn classify_flatpak() {
+        let id = classify_identity(Some("[Application]\nname=org.x.Y\n"), None);
+        assert_eq!(
+            id,
             CallerIdentity::Flatpak {
-                app_id: "org.gnome.Calculator".into()
+                app_id: "org.x.Y".into()
             }
         );
+        assert_eq!(id.app_id(), Some("org.x.Y"));
+        assert!(!id.reaches_host_fs());
+        assert!(id.is_known());
     }
 
-    /// Snap cgroup pattern.
+    /// Flatpak present but unparseable -> Unknown (deny), never
+    /// Unconfined. Even if a native id was somehow resolved, the
+    /// sandbox signal wins.
     #[test]
-    fn detects_snap() {
-        let content = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/snap.firefox.firefox.scope\n";
+    fn classify_unparseable_flatpak_is_unknown() {
+        let id = classify_identity(Some("[Instance]\ninstance-id=1\n"), Some("settings".into()));
+        assert_eq!(id, CallerIdentity::Unknown);
+        assert!(!id.is_known());
+    }
+
+    /// No Flatpak, install-path resolver succeeded -> ArlenNative.
+    /// It reaches the host fs directly but is positively identified.
+    #[test]
+    fn classify_arlen_native() {
+        let id = classify_identity(None, Some("settings".into()));
         assert_eq!(
-            parse_cgroup(content),
-            CallerIdentity::Snap {
-                name: "firefox".into()
+            id,
+            CallerIdentity::ArlenNative {
+                app_id: "settings".into()
             }
         );
+        assert_eq!(id.app_id(), None);
+        assert!(id.reaches_host_fs());
+        assert!(id.is_known());
     }
 
-    /// Plain user-session process — neither Flatpak nor Snap.
+    /// No Flatpak, no native resolution -> Unconfined (a plain host
+    /// binary under the user's uid).
     #[test]
-    fn unconfined_for_plain_user_session() {
-        let content = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/app-org.gnome.Terminal-12345.scope\n";
-        assert_eq!(parse_cgroup(content), CallerIdentity::Unconfined);
+    fn classify_unconfined() {
+        let id = classify_identity(None, None);
+        assert_eq!(id, CallerIdentity::Unconfined);
+        assert_eq!(id.app_id(), None);
+        assert!(id.reaches_host_fs());
+        assert!(id.is_known());
     }
 
-    /// Empty file (cannot read /proc, or the process exited before we
-    /// got there) collapses to Unconfined rather than panicking.
+    /// Accessors for the failure state: no app id, not known, does
+    /// not reach host fs (must be denied before that is consulted
+    /// anyway).
     #[test]
-    fn empty_file_is_unconfined() {
-        assert_eq!(parse_cgroup(""), CallerIdentity::Unconfined);
-    }
-
-    /// Malformed Flatpak scope (missing the trailing -<n>) does not
-    /// produce a partial app-id — better unconfined than wrong.
-    #[test]
-    fn malformed_flatpak_is_unconfined() {
-        let content = "0::/user.slice/.../app-flatpak.scope\n";
-        assert_eq!(parse_cgroup(content), CallerIdentity::Unconfined);
-    }
-
-    /// `app_id()` returns the app id for confined callers, None
-    /// for both unconfined and unknown — Unknown deliberately
-    /// shares the no-app-id shape because it must not be treated
-    /// as "has app id with unknown app".
-    #[test]
-    fn app_id_accessor() {
-        assert_eq!(
-            CallerIdentity::Flatpak {
-                app_id: "x".into()
-            }
-            .app_id(),
-            Some("x")
-        );
-        assert_eq!(CallerIdentity::Unconfined.app_id(), None);
-        assert_eq!(CallerIdentity::Unknown.app_id(), None);
-    }
-
-    /// `is_known()` distinguishes the "we definitely couldn't
-    /// determine" state from any successful classification.
-    #[test]
-    fn is_known_accessor() {
-        assert!(CallerIdentity::Flatpak {
-            app_id: "x".into()
-        }
-        .is_known());
-        assert!(CallerIdentity::Snap {
-            name: "y".into()
-        }
-        .is_known());
-        assert!(CallerIdentity::Unconfined.is_known());
-        assert!(!CallerIdentity::Unknown.is_known());
+    fn unknown_accessors() {
+        let id = CallerIdentity::Unknown;
+        assert_eq!(id.app_id(), None);
+        assert!(!id.is_known());
+        assert!(!id.reaches_host_fs());
     }
 }
