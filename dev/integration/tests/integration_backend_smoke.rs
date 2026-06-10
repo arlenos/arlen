@@ -327,3 +327,72 @@ async fn a_file_opened_promotes_to_a_readable_file_node() {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 }
+
+/// IT-1 retrieval (RRF, the 0x03 op): a promoted File is findable by keyword
+/// through the LLM-free retrieval pipeline, scoped to the caller's read grant.
+/// Exercises the whole read path no per-crate test covers end-to-end: promotion
+/// synthesizes the File's fact text and populates the FTS5 index, then the 0x03
+/// op runs BM25 keyword search + graph expansion -> RRF fusion -> validity
+/// confirm -> the readable-label filter (RS-R1), returning ranked node ids. The
+/// `system.File` grant is load-bearing twice: it admits the retrieve AND keeps
+/// the File id past the readable-label filter (an unscoped caller's result is
+/// dropped to empty). A distinctive basename token (`retrieval`) makes the match
+/// unambiguous in an otherwise-empty hermetic graph. Same `#[ignore]` rationale
+/// (promotion-dependent, ~30s).
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge binaries built and a FUSE-capable host (~30s)"]
+async fn a_promoted_file_is_retrievable_by_keyword_under_scope() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    stack
+        .seed_read_profile(&["system.File.id", "system.File.path"])
+        .expect("seed read profile");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    // A distinctive basename token so the keyword search is unambiguous; the File
+    // node id is its path, so that is what the retrieve result must contain.
+    let path = "/work/it/retrieval.rs";
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    // Promotion synthesizes the fact text and populates the FTS index in the same
+    // pass that creates the node, so once the node exists the keyword search is
+    // ready. Re-emit each iteration (subscription race) and poll the 0x03 op until
+    // it returns OUR path among the ranked ids. The deadline covers the writer
+    // subscription plus one full ~30s promotion interval.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let payload = proto::FileOpenedPayload {
+            path: path.to_string(),
+            app_id: "integration-test".to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        emitter
+            .emit("file.opened", payload)
+            .await
+            .expect("emit file.opened");
+        if let Ok(ids) = client.retrieve("retrieval", 10).await {
+            if ids.iter().any(|id| id == path) {
+                return; // found via BM25 + RRF + confirm, kept by the read-scope filter
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the promoted File was never retrievable by keyword via the 0x03 op within 60s"
+        );
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
