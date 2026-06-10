@@ -247,9 +247,12 @@ pub struct ColorTokens {
 /// applied via `effective_*()` accessors, **not** stored back
 /// here, so the original theme intent stays inspectable.
 ///
-/// `full` and `window_corners` are NEVER scaled by intensity —
-/// they're categorical (pill = pill, window-outline = wm-spec)
-/// rather than on the design-spectrum.
+/// `full` is NEVER scaled by intensity — it is categorical (a pill
+/// is a pill, not a point on the design-spectrum). `window_corners`
+/// IS intensity-scaled, but only through
+/// [`effective_window_corners`](ArlenTheme::effective_window_corners)
+/// (not stored back), so the compositor's window outline and GTK app
+/// windows track the roundness slider in lock-step with the shell.
 #[derive(Debug, Clone)]
 pub struct RadiusTokens {
     /// Inline tags, dots, badges, tiny chips. Default 4.
@@ -268,10 +271,12 @@ pub struct RadiusTokens {
     /// shape (top-left, top-right, bottom-right, bottom-left).
     /// Independent of the semantic scale because window shapes can
     /// be asymmetric (top-rounded, bottom-square for drag-attached
-    /// frames). Categorical, not intensity-scaled.
+    /// frames). Authored absolutely, then intensity-scaled at read
+    /// time via `effective_window_corners` (compositor + GTK lock-step).
     pub window_corners: [f32; 4],
     /// User-applied multiplier. `0.0..=2.0`, clamped on `effective_*`.
-    /// Excluded from `full` and `window_corners`. Theme authors can
+    /// Scales the semantic radii and `window_corners`; `full` is the
+    /// one categorical radius it never touches. Theme authors can
     /// default this (e.g. brutalist theme defaults to 0.5).
     pub intensity: f32,
 }
