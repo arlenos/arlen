@@ -193,6 +193,14 @@ pub struct IconsSection {
     pub theme: Option<String>,
 }
 
+/// TRUST-FLOOR REMINDER: the wallpaper and sound fields below are free-string
+/// asset paths that are NOT yet resolved into the consumed [`crate::ArlenTheme`]
+/// or emitted by any generator, so they are not a break-out surface today. When
+/// an asset emitter IS wired (e.g. writing a wallpaper/sound path into a
+/// compositor or notification config), each path MUST be routed through the
+/// inert floor (`inert_or` / `is_inert_css_token`) at resolve, exactly like the
+/// other free-strings — otherwise the TH-0 inert-in/safe-out guarantee silently
+/// will not cover it and a hostile theme path could carry config syntax.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct WallpaperSection {
     pub r#type:    Option<String>,
