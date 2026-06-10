@@ -141,14 +141,22 @@ impl EphemeralStack {
     pub fn seed_read_profile(&self, read_fields: &[&str]) -> std::io::Result<String> {
         let app_id = own_app_id()
             .ok_or_else(|| std::io::Error::other("could not resolve own app id"))?;
+        self.seed_profile_for(&app_id, read_fields)?;
+        Ok(app_id)
+    }
+
+    /// Seed a `[graph].read` profile for an arbitrary `app_id` (not this process's
+    /// own), so a scenario can act on another principal's profile, e.g. a revoke
+    /// whose target is a different app. Writes `<permissions_dir>/{app_id}.toml`,
+    /// the path the daemon resolves via `ARLEN_PERMISSIONS_DIR`.
+    pub fn seed_profile_for(&self, app_id: &str, read_fields: &[&str]) -> std::io::Result<()> {
         let reads = read_fields
             .iter()
             .map(|f| format!("    \"{f}\","))
             .collect::<Vec<_>>()
             .join("\n");
         let toml = format!("[graph]\nread = [\n{reads}\n]\n");
-        std::fs::write(self.permissions_dir().join(format!("{app_id}.toml")), toml)?;
-        Ok(app_id)
+        std::fs::write(self.permissions_dir().join(format!("{app_id}.toml")), toml)
     }
 
     /// Spawn a daemon binary (`<repo>/target/debug/<bin>`) with the base
