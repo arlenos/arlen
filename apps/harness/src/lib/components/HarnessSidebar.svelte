@@ -1,82 +1,189 @@
 <script lang="ts">
-  /// The harness sidebar: the two primary surfaces of the AI app
-  /// (ai-app.md §2) — Conversation (query mode) and Agent (pull /
-  /// observability). Built on the `@arlen/ui-kit` sidebar canon, the
-  /// same component Settings uses, so the app is structurally
-  /// consistent with the rest of the OS.
+  /// The harness sidebar (ai-app.md §2.0): surface nav (Chat / Agent) above
+  /// the conversation history, on the `@arlen/ui-kit` sidebar canon. The
+  /// history is the chat archetype's contextual column folded in: new chat,
+  /// a title/content search, and the pinned-first session list with per-row
+  /// pin / rename / delete behind a quiet hover menu.
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
   import {
     Sidebar,
-    SidebarHeader,
     SidebarContent,
     SidebarGroup,
+    SidebarGroupLabel,
+    SidebarHeader,
     SidebarMenu,
-    SidebarMenuItem,
+    SidebarMenuAction,
     SidebarMenuButton,
+    SidebarMenuItem,
     SidebarRail,
   } from "@arlen/ui-kit/components/ui/sidebar";
-  import { MessageSquare, Activity, Sparkles } from "@lucide/svelte";
+  import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Input } from "@arlen/ui-kit/components/ui/input";
+  import * as DropdownMenu from "@arlen/ui-kit/components/ui/dropdown-menu";
+  import { MessageSquare, MoreHorizontal, Pencil, Pin, PinOff, Plus, Trash2 } from "@lucide/svelte";
+  import {
+    orderedSessions,
+    activeSessionId,
+    newSession,
+    selectSession,
+    deleteSession,
+    renameSession,
+    togglePinSession,
+  } from "$lib/stores/conversation";
+  import { sessionMatches } from "$lib/search";
 
-  interface Surface {
-    href: string;
-    title: string;
-    icon: typeof MessageSquare;
-  }
-
-  const SURFACES: Surface[] = [
-    { href: "/", title: "Conversation", icon: MessageSquare },
-    { href: "/agent", title: "Agent", icon: Activity },
+  const SURFACES = [
+    { value: "/", label: "Chat" },
+    { value: "/agent", label: "Agent" },
   ];
+  const surface = $derived($page.url.pathname.startsWith("/agent") ? "/agent" : "/");
 
-  // Active when the path matches exactly (root) or is a sub-path.
-  function isActive(href: string, path: string): boolean {
-    return href === "/" ? path === "/" : path.startsWith(href);
+  let query = $state("");
+  // The conversation being renamed inline, and the draft title. `null` when no
+  // rename is in progress; double-clicking a title or the row menu opens it.
+  let editingId = $state<string | null>(null);
+  let draft = $state("");
+
+  function beginRename(id: string, current: string): void {
+    editingId = id;
+    draft = current;
   }
+  function commitRename(): void {
+    if (editingId !== null) renameSession(editingId, draft);
+    editingId = null;
+  }
+  function cancelRename(): void {
+    editingId = null;
+  }
+
+  // Selecting a session (or starting a new one) belongs to the Chat surface,
+  // so either navigates there when the Agent surface is active.
+  function openSession(id: string): void {
+    selectSession(id);
+    if (surface !== "/") goto("/");
+  }
+  function startNew(): void {
+    newSession();
+    if (surface !== "/") goto("/");
+  }
+
+  // Sessions in rail order (pinned first), narrowed by the search. The query
+  // matches titles and message content, case-insensitive; empty matches all.
+  const filtered = $derived($orderedSessions.filter((s) => sessionMatches(s, query)));
 </script>
 
-<Sidebar collapsible="icon">
+<Sidebar>
   <SidebarHeader>
-    <div class="harness-brand">
-      <Sparkles size={18} strokeWidth={1.75} />
-      <span class="harness-brand-text">AI</span>
-    </div>
+    <SegmentedControl
+      id="harness-surface-nav"
+      class="w-full *:flex-1"
+      options={SURFACES}
+      value={surface}
+      ariaLabel="Surface"
+      onchange={(v) => goto(v)}
+    />
+    <Button
+      id="harness-new-chat"
+      variant="outline"
+      size="sm"
+      class="w-full justify-start gap-1.5"
+      title="New chat (Ctrl+N)"
+      onclick={startNew}
+    >
+      <Plus size={14} strokeWidth={2} />
+      New chat
+    </Button>
+    {#if $orderedSessions.length > 0}
+      <Input
+        id="harness-session-search"
+        class="h-8"
+        bind:value={query}
+        placeholder="Search conversations"
+        aria-label="Search conversations"
+      />
+    {/if}
   </SidebarHeader>
 
   <SidebarContent>
     <SidebarGroup>
-      <SidebarMenu>
-        {#each SURFACES as surface (surface.href)}
-          {@const Icon = surface.icon}
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              isActive={isActive(surface.href, $page.url.pathname)}
-              tooltip={surface.title}
-              onclick={() => goto(surface.href)}
-            >
-              <Icon size={16} strokeWidth={1.75} />
-              <span>{surface.title}</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        {/each}
-      </SidebarMenu>
+      <SidebarGroupLabel>History</SidebarGroupLabel>
+      {#if $orderedSessions.length === 0}
+        <p class="px-2 py-3 text-xs leading-relaxed text-sidebar-foreground/60">
+          No conversations yet. Ask something to start one.
+        </p>
+      {:else if filtered.length === 0}
+        <p class="px-2 py-3 text-xs text-sidebar-foreground/60">No conversations match.</p>
+      {:else}
+        <SidebarMenu>
+          {#each filtered as s (s.id)}
+            <SidebarMenuItem>
+              {#if editingId === s.id}
+                <Input
+                  class="h-8"
+                  bind:value={draft}
+                  aria-label="Rename conversation"
+                  onblur={commitRename}
+                  onkeydown={(e: KeyboardEvent) => {
+                    if (e.key === "Enter") commitRename();
+                    else if (e.key === "Escape") cancelRename();
+                  }}
+                  {@attach (node: HTMLInputElement) => {
+                    node.focus();
+                    node.select();
+                  }}
+                />
+              {:else}
+                <SidebarMenuButton
+                  class="pr-7"
+                  isActive={s.id === $activeSessionId}
+                  title={s.title}
+                  onclick={() => openSession(s.id)}
+                  ondblclick={() => beginRename(s.id, s.title)}
+                >
+                  <MessageSquare strokeWidth={1.75} />
+                  <span class="truncate">{s.title}</span>
+                  {#if s.pinned}
+                    <Pin strokeWidth={1.75} class="ml-auto opacity-50" aria-label="Pinned" />
+                  {/if}
+                </SidebarMenuButton>
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger>
+                    {#snippet child({ props })}
+                      <SidebarMenuAction showOnHover aria-label="Conversation actions" {...props}>
+                        <MoreHorizontal strokeWidth={2} />
+                      </SidebarMenuAction>
+                    {/snippet}
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Content side="right" align="start">
+                    <DropdownMenu.Item onclick={() => togglePinSession(s.id)}>
+                      {#if s.pinned}
+                        <PinOff />
+                        Unpin
+                      {:else}
+                        <Pin />
+                        Pin
+                      {/if}
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item onclick={() => beginRename(s.id, s.title)}>
+                      <Pencil />
+                      Rename
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Separator />
+                    <DropdownMenu.Item variant="destructive" onclick={() => deleteSession(s.id)}>
+                      <Trash2 />
+                      Delete
+                    </DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Root>
+              {/if}
+            </SidebarMenuItem>
+          {/each}
+        </SidebarMenu>
+      {/if}
     </SidebarGroup>
   </SidebarContent>
 
   <SidebarRail />
 </Sidebar>
-
-<style>
-  .harness-brand {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.5rem 0.25rem;
-    color: var(--color-accent);
-  }
-  .harness-brand-text {
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--foreground);
-  }
-</style>

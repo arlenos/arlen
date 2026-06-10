@@ -8,6 +8,7 @@ export { default as SidebarGroupLabel } from "./SidebarGroupLabel.svelte";
 export { default as SidebarMenu } from "./SidebarMenu.svelte";
 export { default as SidebarMenuItem } from "./SidebarMenuItem.svelte";
 export { default as SidebarMenuButton } from "./SidebarMenuButton.svelte";
+export { default as SidebarMenuAction } from "./SidebarMenuAction.svelte";
 export { default as SidebarRail } from "./SidebarRail.svelte";
 export { default as SidebarTrigger } from "./SidebarTrigger.svelte";
 export { useSidebar, SidebarState } from "./context.svelte";

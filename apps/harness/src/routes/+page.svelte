@@ -14,9 +14,8 @@
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { MessageSquare, ArrowUp, AlertCircle, Eye, Wand2, Wrench, Cpu, File as FileIcon, Folder, Paperclip, X, Copy, Check, RotateCcw, PowerOff, ChevronDown } from "@lucide/svelte";
-  import { messages, busy, send, regenerate, initSessions, type MentionContent, type Message } from "$lib/stores/conversation";
+  import { messages, busy, send, regenerate, type MentionContent, type Message } from "$lib/stores/conversation";
   import { planRegenerate } from "$lib/regenerate";
-  import ConversationRail from "$lib/components/ConversationRail.svelte";
   import { renderMarkdown } from "$lib/markdown";
   import { conversationToMarkdown } from "$lib/export";
   import { externalLinks } from "$lib/externalLinks";
@@ -198,8 +197,6 @@
   // and action mode the AI operates under, from ai.toml (what the daemon
   // enforces). Refreshed each mount so a Settings change is reflected.
   onMount(async () => {
-    // Load persisted conversations so the history rail is populated on open.
-    initSessions();
     try {
       capability = await invoke<Capability>("ai_capability");
     } catch {
@@ -284,9 +281,7 @@
   }
 </script>
 
-<div class="chat-shell">
-  <ConversationRail />
-  <div class="conversation">
+<div class="conversation">
   {#if capability}
     <div class="context-bar" title="What the assistant can see and do, from your AI settings">
       <span class="cap" class:off={!capability.enabled}>
@@ -511,15 +506,9 @@
   {#if $messages.length > 0}
     <p class="turn-note">Each question is answered independently — no conversation memory yet.</p>
   {/if}
-  </div>
 </div>
 
 <style>
-  .chat-shell {
-    display: flex;
-    height: 100%;
-    min-height: 0;
-  }
   .conversation {
     display: flex;
     flex-direction: column;
