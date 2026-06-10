@@ -1,10 +1,14 @@
 <script lang="ts">
-  /// Root layout: the AI harness shell. Sidebar (Conversation / Agent)
-  /// + a CSD titlebar, both on the `@arlen/ui-kit` canon. The window
-  /// runs with `decorations: false` (Arlen CSD), so the titlebar
-  /// carries the drag region and window controls.
+  /// Root layout: the harness three-pane shell (ai-app.md §2.0). Left, the
+  /// sidebar (surface nav + conversation history); center, the active
+  /// surface; a surface brings its own contextual right pane. The window
+  /// runs with `decorations: false` (Arlen CSD), so the slim header carries
+  /// only the drag region, the surface title, and the window controls —
+  /// nothing essential lives in it (terminal.md §4.4).
   import "../app.css";
+  import { onMount } from "svelte";
   import { page } from "$app/stores";
+  import { goto } from "$app/navigation";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import {
     SidebarProvider,
@@ -12,17 +16,22 @@
     SidebarTrigger,
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { Separator } from "@arlen/ui-kit/components/ui/separator";
+  import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import HarnessSidebar from "$lib/components/HarnessSidebar.svelte";
-  import WindowControls from "$lib/components/WindowControls.svelte";
-  import { activeTitle } from "$lib/stores/conversation";
+  import { activeTitle, initSessions, newSession } from "$lib/stores/conversation";
 
   let { children } = $props();
 
-  // The header carried only a drag region + window controls (dead centre).
-  // Name the place there, like Settings' breadcrumb slot. On the conversation
-  // route it shows the active conversation's title, so the user has their
-  // bearings even when the history rail is hidden on a narrow window; the agent
-  // route and an empty conversation fall back to the surface name.
+  // Load persisted conversations here, not in a route, so the history in the
+  // sidebar is populated whichever surface the app opens on.
+  onMount(() => {
+    initSessions();
+  });
+
+  // The header names the place. On the conversation route it shows the active
+  // conversation's title, so the user has their bearings even when the sidebar
+  // is collapsed; the agent route and an empty conversation fall back to the
+  // surface name.
   const viewTitle = $derived(
     $page.url.pathname.startsWith("/agent")
       ? "Agent"
@@ -46,7 +55,20 @@
     const w = getCurrentWindow();
     (await w.isMaximized()) ? await w.unmaximize() : await w.maximize();
   }
+
+  // Ctrl+N starts a new conversation from anywhere; the affordance itself
+  // lives in the sidebar, the shortcut is global so it works with the
+  // sidebar collapsed.
+  function onKeydown(e: KeyboardEvent) {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
+      e.preventDefault();
+      newSession();
+      if ($page.url.pathname !== "/") goto("/");
+    }
+  }
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <SidebarProvider>
   <HarnessSidebar />
@@ -58,26 +80,13 @@
     >
       <SidebarTrigger class="-ml-1" />
       <Separator orientation="vertical" class="mr-1 h-4" />
-      <span class="view-title">{viewTitle}</span>
+      <span class="text-sm font-medium text-foreground">{viewTitle}</span>
       <div class="flex-1"></div>
-      <WindowControls />
+      <WindowButtons />
     </header>
 
-    <main class="harness-main">
+    <main class="min-h-0 flex-1 overflow-y-auto">
       {@render children?.()}
     </main>
   </SidebarInset>
 </SidebarProvider>
-
-<style>
-  .harness-main {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-  }
-  .view-title {
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--foreground);
-  }
-</style>
