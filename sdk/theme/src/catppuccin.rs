@@ -411,18 +411,30 @@ mod tests {
     }
 
     #[test]
-    fn every_flavor_resolves_and_clears_the_wcag_floors() {
+    fn every_flavor_and_every_accent_clears_the_wcag_floors() {
+        // The review's gap: the old test only exercised the default Mauve, so
+        // 11/14 Latte accents shipped illegible white-on-accent under the
+        // one-direction clamp bug. Cover the full picker on every flavor.
+        let accents = [
+            Accent::Rosewater, Accent::Flamingo, Accent::Pink, Accent::Mauve,
+            Accent::Red, Accent::Maroon, Accent::Peach, Accent::Yellow,
+            Accent::Green, Accent::Teal, Accent::Sky, Accent::Sapphire,
+            Accent::Blue, Accent::Lavender,
+        ];
         for flavor in [Flavor::Latte, Flavor::Frappe, Flavor::Macchiato, Flavor::Mocha] {
-            let t = ArlenTheme::from_bundled(&adapt_catppuccin(flavor, Accent::default()))
-                .unwrap_or_else(|e| panic!("{flavor:?} failed to resolve: {e:?}"));
-            assert!(
-                contrast_ratio(t.color.fg_primary, t.color.bg_app) >= 4.5,
-                "{flavor:?}: fg.primary readable"
-            );
-            assert!(
-                contrast_ratio(t.color.fg_inverse, t.color.accent) >= 4.5,
-                "{flavor:?}: inverse-on-accent readable"
-            );
+            for accent in accents {
+                let t = ArlenTheme::from_bundled(&adapt_catppuccin(flavor, accent))
+                    .unwrap_or_else(|e| panic!("{flavor:?}/{accent:?} failed: {e:?}"));
+                assert!(
+                    contrast_ratio(t.color.fg_primary, t.color.bg_app) >= 4.5,
+                    "{flavor:?}/{accent:?}: fg.primary readable"
+                );
+                assert!(
+                    contrast_ratio(t.color.fg_inverse, t.color.accent) >= 4.5,
+                    "{flavor:?}/{accent:?}: inverse-on-accent readable ({})",
+                    contrast_ratio(t.color.fg_inverse, t.color.accent)
+                );
+            }
         }
     }
 
