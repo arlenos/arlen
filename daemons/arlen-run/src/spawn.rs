@@ -119,11 +119,20 @@ pub fn spawn_and_wait(
     // Landlock setup) only narrow the child's own capabilities.
     unsafe {
         cmd.pre_exec(move || {
-            // Close every fd above stderr so no launcher fd (daemon sockets,
-            // the profile file) leaks into the confined app. close_range is a
-            // single syscall; a failure is fatal (fail-closed: never exec with
-            // leaked descriptors).
-            let rc = libc::close_range(3, libc::c_uint::MAX, 0);
+            // Mark every fd above stderr close-on-exec so no launcher fd (daemon
+            // sockets, the profile file) leaks into the confined app, while
+            // leaving them open through pre_exec and execve. Using
+            // CLOSE_RANGE_CLOEXEC instead of an immediate close is deliberate:
+            // std::process reports a pre_exec OR execve failure to the parent
+            // over a CLOEXEC pipe (an fd >= 3), so closing fds outright would
+            // make a setpgid / cgroup-join / Landlock / exec failure
+            // unreportable (the child still _exits before exec, so it is never
+            // fail-open, but the parent would misread the cause). Marking
+            // CLOEXEC closes every launcher fd atomically on a successful exec
+            // and keeps the error pipe alive until then. Needs kernel >= 5.11,
+            // below the Landlock >= 5.13 floor this launcher already requires.
+            let rc =
+                libc::close_range(3, libc::c_uint::MAX, libc::CLOSE_RANGE_CLOEXEC as libc::c_int);
             if rc != 0 {
                 return Err(std::io::Error::last_os_error());
             }
