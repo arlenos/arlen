@@ -1842,9 +1842,15 @@ async fn handle_client(
 /// expanded blocklist is the ceiling; it closes the known privilege-escalation
 /// verbs while keeping the over-reject-not-under-reject safety direction.
 fn is_write_query(cypher: &str) -> bool {
-    const WRITE_KEYWORDS: [&str; 15] = [
+    // CALL drives Kuzu's runtime config (`CALL threads=N`), metadata, and
+    // extension procedures, and FOREACH iterates writes; both can mutate or
+    // reconfigure the database, so they are write barriers on the read path
+    // alongside the mutation verbs. This matches ai-core's own cypher
+    // blocklist, and no read consumer issues either on the query socket.
+    const WRITE_KEYWORDS: [&str; 17] = [
         "CREATE", "MERGE", "DELETE", "SET", "REMOVE", "DROP", "DETACH", "ALTER",
-        "ATTACH", "USE", "COPY", "LOAD", "INSTALL", "EXPORT", "IMPORT",
+        "ATTACH", "USE", "COPY", "LOAD", "INSTALL", "EXPORT", "IMPORT", "CALL",
+        "FOREACH",
     ];
     cypher_references_any(cypher, &WRITE_KEYWORDS)
 }
@@ -1992,6 +1998,15 @@ fn raw_read_label_gate(
 ) -> Option<&'static str> {
     if system_anchored {
         return None;
+    }
+    // A backtick quotes an identifier (label, rel type, property) that the token
+    // scanner cannot positively account for: `cypher_label_tokens` resets on the
+    // backtick, so a backtick-quoted label `(b:`Session`)` is invisible to the
+    // allowlist and would fall open. The scanner can never be a sound parser, so
+    // an unmodellable construct is treated as denial (the over-reject stance).
+    // Arlen labels are plain identifiers, so a scoped read never needs a backtick.
+    if cypher.contains('`') {
+        return Some("read denied: backtick-quoted identifiers cannot be scoped to the caller");
     }
     let tokens = cypher_label_tokens(cypher);
     if tokens.is_empty() {
@@ -2161,6 +2176,27 @@ mod tests {
     }
 
     #[test]
+    fn read_gate_denies_a_backtick_quoted_label() {
+        // A backtick-quoted label is invisible to the token scanner, so it
+        // would otherwise smuggle an out-of-scope label past the allowlist.
+        // The raw read path denies any backtick for a non-system caller, even
+        // when a readable label is also present.
+        assert!(raw_read_label_gate(
+            "MATCH (f:File)-[:FILE_PART_OF]->(b:`Session`) RETURN b",
+            &["File".into()],
+            false
+        )
+        .is_some());
+        assert!(
+            raw_read_label_gate("MATCH (b:`File`) RETURN b", &["File".into()], false).is_some()
+        );
+        // A system-anchored caller still bypasses the whole gate.
+        assert!(
+            raw_read_label_gate("MATCH (b:`Session`) RETURN b", &["File".into()], true).is_none()
+        );
+    }
+
+    #[test]
     fn scrub_nulls_sensitive_columns_keeps_others() {
         let json = r#"{"columns":["p.email","p.name","phone"],"rows":[["a@b.com","Alice","555"],["c@d.com","Bob","666"]]}"#;
         let scrubbed = scrub_sensitive_columns_json(json);
@@ -2224,6 +2260,12 @@ mod tests {
         assert!(is_write_query("USE other_db"));
         assert!(is_write_query("EXPORT DATABASE '/tmp/dump'"));
         assert!(is_write_query("IMPORT DATABASE '/tmp/dump'"));
+        // CALL reconfigures/runs procedures, FOREACH iterates writes.
+        assert!(is_write_query("CALL threads=4"));
+        assert!(is_write_query("MATCH (n) CALL show_tables() RETURN *"));
+        assert!(is_write_query(
+            "MATCH (n) FOREACH (x IN [1] | SET n.y = x)"
+        ));
     }
 
     #[test]
