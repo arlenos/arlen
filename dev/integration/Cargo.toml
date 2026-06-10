@@ -17,6 +17,7 @@ tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v7"] }
 os-sdk = { path = "../../sdk/os-sdk" }
 arlen-capsule = { path = "../../contracts/capsule" }
+audit-proto = { path = "../../contracts/audit-proto" }
 
 [build-dependencies]
 prost-build = "0.13"
