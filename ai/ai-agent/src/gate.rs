@@ -410,13 +410,22 @@ impl<'a> Gate<'a> {
             });
         }
 
+        // Resolve the tool's trusted schema ONCE: the reversibility lift-bit, the
+        // action-kind classification, and the predict-before-act proof below all
+        // bind THIS resolution, so the gate cannot classify, lift, and prove
+        // against three different schemas (a single source for every
+        // schema-derived part of the decision; today `lookup` is pure so the
+        // three were already identical, but threading one keeps that structural
+        // if a future dynamic-rule path makes resolution context-dependent).
+        let trusted = registry::lookup(&action.tool);
+
         // Reversibility (Foundation B1) grounds the gate's high-impact logic:
         // "reversible" was assumed but never defined, leaving it circular. An
         // action is reversible iff its registry-resolved schema has a derivable
         // compensation. `None` = unregistered (unmodelled, not a *declared*
         // irreversibility), `Some(false)` = registered but irreversible,
         // `Some(true)` = reversible. A static property of the schema's effects.
-        let schema_reversible = registry::lookup(&action.tool).map(|t| t.is_reversible());
+        let schema_reversible = trusted.as_ref().map(|t| t.is_reversible());
 
         // Classify the proposed tool with the shared always-confirm classifier
         // (the same one MCP dispatch and the live executor use) — never a risk
@@ -427,7 +436,7 @@ impl<'a> Gate<'a> {
         // executing one. An unregistered tool stays Ordinary and is held back
         // instead by the lift below, which needs a proof it cannot get. Combine
         // with the mode (ceiling ∧ grant) and the external-trigger override.
-        let kind = resolved_action_kind(&action.tool);
+        let kind = resolved_action_kind_from(&action.tool, trusted.as_ref());
         let decision =
             self.capability
                 .decide_for_behaviour(ctx.app_id, kind, ctx.external_trigger, ceiling);
@@ -450,9 +459,12 @@ impl<'a> Gate<'a> {
             decision,
             ActionDecision::PreviewThenExecute | ActionDecision::Proceed
         ) {
-            tokio::time::timeout(PROOF_TIMEOUT, self.prove_action(action, kind, ctx, ceiling, graph))
-                .await
-                .unwrap_or(false)
+            tokio::time::timeout(
+                PROOF_TIMEOUT,
+                self.prove_action(action, trusted.as_ref(), kind, ctx, ceiling, graph),
+            )
+            .await
+            .unwrap_or(false)
         } else {
             false
         };
@@ -554,14 +566,17 @@ impl<'a> Gate<'a> {
     async fn prove_action(
         &self,
         action: &ProposedAction,
+        trusted: Option<&registry::TrustedActionSchema>,
         kind: ActionKind,
         ctx: &ActionContext<'_>,
         ceiling: BaselineMode,
         graph: &dyn GraphHandle,
     ) -> bool {
         // The schema must come from the trusted registry, never the proposal;
-        // with no registered rule the action cannot be proven.
-        let Some(trusted) = registry::lookup(&action.tool) else {
+        // with no registered rule the action cannot be proven. It is the same
+        // resolution the caller classified and lifted against (threaded in), so
+        // the proof cannot bind a different schema than the decision used.
+        let Some(trusted) = trusted else {
             return false;
         };
         // Build the bounded slice for this invocation's operands, reading
@@ -571,7 +586,7 @@ impl<'a> Gate<'a> {
         // set; the schema and the slice are what make a `Valid` prediction
         // trustworthy. Any build failure fails closed.
         let (state, bindings) = match build_slice_trusted(
-            &trusted,
+            trusted,
             &action.tool,
             &action.arguments,
             graph,
@@ -608,13 +623,24 @@ impl<'a> Gate<'a> {
 /// decision and the live executor's re-validation, so both classify a tool
 /// identically and the executor cannot under-classify what the gate proved.
 pub(crate) fn resolved_action_kind(tool: &str) -> ActionKind {
+    resolved_action_kind_from(tool, registry::lookup(tool).as_ref())
+}
+
+/// [`resolved_action_kind`] over an already-resolved schema, so the gate
+/// decision can resolve a tool's schema ONCE and then classify, lift, and prove
+/// against the same resolution (the three uses cannot bind three different
+/// schemas). `trusted` is the registry's resolution for `tool`, or `None` when
+/// unregistered.
+fn resolved_action_kind_from(
+    tool: &str,
+    trusted: Option<&registry::TrustedActionSchema>,
+) -> ActionKind {
     let base_kind = action_kind_for_tool(tool);
-    let trusted = registry::lookup(tool);
     // A non-graph schema declares a three-way `InverseClass` on its
     // `Effect::External`; map it (the single reversibility source, §3.2). A
     // pure-graph schema has none, so fall back to the op-id self-inverse bool: a
     // non-confirm tool whose graph effects are not reversible is `Irreversible`.
-    if let Some(class) = trusted.as_ref().and_then(|t| t.declared_inverse_class()) {
+    if let Some(class) = trusted.and_then(|t| t.declared_inverse_class()) {
         return action_kind_from_class(class, base_kind);
     }
     let schema_reversible = trusted.map(|t| t.is_reversible());
