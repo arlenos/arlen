@@ -101,9 +101,13 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
 
         match Event::decode(buf.as_slice()) {
             Ok(mut event) => {
-                // Stamp UID from SO_PEERCRED if the producer did not set it.
-                // This prevents UID spoofing: the kernel-provided credential
-                // always wins over a self-declared UID.
+                // Backfill the UID from SO_PEERCRED only when the producer left
+                // it unset (zero): the kernel-attested uid fills a self-declared
+                // zero. It does NOT override a non-zero self-declared uid, so a
+                // producer can still stamp another user's uid here (forgery is
+                // not yet prevented). Making the kernel-attested cred always win
+                // (or rejecting a mismatching self-declared uid) needs the
+                // producer-trust model and is the deferred fix (review EBK-2).
                 if event.uid == 0 && producer_uid != 0 {
                     event.uid = producer_uid;
                 }
