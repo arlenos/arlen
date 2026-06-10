@@ -15,6 +15,7 @@ prost = "0.13"
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v7"] }
 arlen-permissions = { path = "../../sdk/permissions" }
+os-sdk = { path = "../../sdk/os-sdk" }
 
 [build-dependencies]
 prost-build = "0.13"
