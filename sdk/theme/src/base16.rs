@@ -472,9 +472,15 @@ palette:
         );
         let s = parse_scheme(&hostile).unwrap();
         let toml_text = adapt_base16(&s);
-        // Still parses as one valid theme; the name stayed a string value.
+        // Two layers hold: toml_escape keeps the emitted document a single valid
+        // theme (it parses), and resolve's inert floor then drops the non-inert
+        // name (it carries `[`/`\`) to the safe default — defence in depth.
         let t = ArlenTheme::from_bundled(&toml_text).expect("escaped name keeps the TOML valid");
-        assert!(t.meta.name.contains("Evil"));
+        assert!(
+            crate::is_inert_css_token(&t.meta.name),
+            "the resolved theme name is inert, got {:?}",
+            t.meta.name
+        );
     }
 
     #[test]
