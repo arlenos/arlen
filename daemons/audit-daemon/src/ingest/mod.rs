@@ -42,10 +42,15 @@ use crate::error::{AuditError, Result};
 use crate::ledger::Ledger;
 
 /// app_ids permitted to submit audit events. Phase 9 audits the AI
-/// layer; the graph daemon joins this set when graph-access auditing
-/// is wired. In debug builds every component runs from a cargo target
-/// directory and resolves to a `dev.*` id, which is admitted too.
-const ADMITTED: &[&str] = &["ai-daemon", "ai-proxy"];
+/// layer: `ai-daemon` and `ai-proxy` audit their model calls, and
+/// `ai-agent` audits every gate decision before acting (the
+/// fail-closed audit-before-act in `LiveExecutor`). The agent MUST be
+/// here or in a release build `caller_is_admitted` returns false, the
+/// `LedgerAuditSink` reports `Unavailable`, and the gate refuses every
+/// action — the agent cannot act at all. Debug builds masked this
+/// because the agent then resolves to a `dev.*` id (admitted below).
+/// The graph daemon joins this set when graph-access auditing is wired.
+const ADMITTED: &[&str] = &["ai-daemon", "ai-proxy", "ai-agent"];
 
 /// Resolve the ingest socket path:
 /// `$XDG_RUNTIME_DIR/arlen/audit-ingest.sock`, falling back to
@@ -227,6 +232,7 @@ mod tests {
     fn admission_is_restricted_to_the_ai_layer() {
         assert!(caller_is_admitted("ai-daemon"));
         assert!(caller_is_admitted("ai-proxy"));
+        assert!(caller_is_admitted("ai-agent"));
         assert!(!caller_is_admitted("knowledge"));
         assert!(!caller_is_admitted("com.example.app"));
         assert!(!caller_is_admitted(""));
@@ -235,6 +241,23 @@ mod tests {
             caller_is_admitted("dev.arlen-ai-daemon"),
             cfg!(debug_assertions)
         );
+    }
+
+    /// Every AI-layer producer that submits audit entries must be in
+    /// the const allowlist itself, NOT reachable only through the
+    /// debug `dev.*` fallback. This is a release-build guard: it would
+    /// catch the AL-1 regression where `ai-agent` was omitted and its
+    /// fail-closed gate audit silently broke in release while debug
+    /// masked it via the `dev.*` admission. Asserting against
+    /// `ADMITTED` directly is independent of the build profile.
+    #[test]
+    fn audit_producers_are_admitted_in_release() {
+        for producer in ["ai-daemon", "ai-proxy", "ai-agent"] {
+            assert!(
+                ADMITTED.contains(&producer),
+                "{producer} must be in ADMITTED, not rely on the debug dev.* fallback"
+            );
+        }
     }
 
     #[test]
