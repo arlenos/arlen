@@ -32,6 +32,7 @@
 //! See `docs/architecture/theme-system.md` for the full architecture
 //! and per-token semantic guidance.
 
+pub mod base16;
 pub mod color;
 mod file;
 pub mod gtk;
