@@ -72,7 +72,9 @@
 
 <SidebarProvider>
   <HarnessSidebar />
-  <SidebarInset>
+  <!-- `h-svh` locks the shell to the viewport so the CSD header never
+       scrolls away; only the content region below it scrolls. -->
+  <SidebarInset class="h-svh">
     <header
       onpointerdown={startDrag}
       ondblclick={toggleMax}
@@ -85,8 +87,9 @@
       <WindowButtons />
     </header>
 
-    <main class="min-h-0 flex-1 overflow-y-auto">
+    <!-- SidebarInset is the page's <main>; this is just its scroll region. -->
+    <div class="min-h-0 flex-1 overflow-y-auto">
       {@render children?.()}
-    </main>
+    </div>
   </SidebarInset>
 </SidebarProvider>
