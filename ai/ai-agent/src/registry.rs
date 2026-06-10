@@ -100,19 +100,36 @@ impl TrustedActionSchema {
     }
 }
 
-/// The canonical set of production given-rule action ids. `lookup` resolves
-/// exactly these (plus a `#[cfg(test)]`-only schema), and the zero-false-positive
-/// canary invariant (canary-honeytools.md §3, CY-R4) enumerates them. A future
-/// approved-`Learned` admission path must extend the set it is checked over so
-/// the invariant keeps covering the whole acceptance domain, not only `Given`.
-pub(crate) const GIVEN_ACTIONS: &[&str] = &["graph.write"];
+/// The production given-rule table: the single source of truth for which action
+/// ids `lookup` resolves to a `Given` schema, each paired with its schema
+/// builder. `lookup` dispatches every production `Given` rule through this table
+/// and [`given_actions`] derives from it, so the set the CY-R4 canary-zero-FP
+/// scan and the EM-R9 reversibility-proof CI iterate is exactly the set `lookup`
+/// can resolve as `Given` (no silent under-cover when a rule is added: a new
+/// production rule cannot resolve without a table entry, which the invariants
+/// then cover by construction). The honeytool (never provable) and a
+/// `#[cfg(test)]` fixture are deliberately NOT here; a future approved-`Learned`
+/// admission path must feed the same derived set so the invariants keep covering
+/// the whole acceptance domain, not only `Given`.
+const PRODUCTION_GIVEN_RULES: &[(&str, GivenRuleBuilder)] =
+    &[("graph.write", graph_write_link_schema)];
+
+/// Builds a registered given-rule schema (one table entry's value).
+type GivenRuleBuilder = fn() -> ActionSchema;
+
+/// The canonical production given-rule action ids, derived from
+/// [`PRODUCTION_GIVEN_RULES`] so they can never drift from what `lookup`
+/// resolves. The CI invariants iterate this, not a hand-kept constant.
+pub(crate) fn given_actions() -> impl Iterator<Item = &'static str> {
+    PRODUCTION_GIVEN_RULES.iter().map(|(id, _)| *id)
+}
 
 /// The honeytool action id (canary-honeytools.md §2): an attractive bait
 /// capability shaped like what an injection reaches for. Honest behaviour
 /// proposes only `graph.write` / `graph.query` (by exhaustion of the behaviour
 /// set), so a proposal of this id is deterministic proof of hijack. It is NOT a
-/// [`GIVEN_ACTIONS`] entry (it is never a provable rule); it is registered only
-/// so [`is_honeytool`] has a single source, and a behaviour must list it in its
+/// [`PRODUCTION_GIVEN_RULES`] entry (it is never a provable rule); it is
+/// registered only so [`is_honeytool`] has a single source, and a behaviour must list it in its
 /// declared `tools` scope for the model to see it as available (a deployment
 /// step, not built here).
 const HONEYTOOL_ACTION: &str = "export_all_secrets";
@@ -122,8 +139,15 @@ const HONEYTOOL_ACTION: &str = "export_all_secrets";
 /// prove the action, so the gate keeps its conservative cap rather than lift
 /// it.
 pub(crate) fn lookup(action_id: &str) -> Option<TrustedActionSchema> {
+    // Every production `Given` rule resolves through the table, so the canary /
+    // reversibility CI (which iterates the same table) cannot under-cover.
+    if let Some((_, build)) = PRODUCTION_GIVEN_RULES
+        .iter()
+        .find(|(id, _)| *id == action_id)
+    {
+        return Some(TrustedActionSchema { schema: build() });
+    }
     let schema = match action_id {
-        "graph.write" => graph_write_link_schema(),
         // The honeytool: registered so tool identity has a single source, but
         // tagged `Honeytool` so it is never provable (predict refuses it) and the
         // engine freezes on `is_honeytool` before the gate. Empty effects.
@@ -276,7 +300,7 @@ mod tests {
         assert!(matches!(t.schema().provenance, Provenance::Honeytool));
         // It is NOT a given rule, so the canary zero-FP invariant never scans it
         // and the proof path never treats it as provable.
-        assert!(!GIVEN_ACTIONS.contains(&HONEYTOOL_ACTION));
+        assert!(!given_actions().any(|a| a == HONEYTOOL_ACTION));
     }
 
     #[test]
@@ -285,7 +309,7 @@ mod tests {
         // precondition that makes its inverse exact. Validated over the canonical
         // given set (extend with approved-Learned when that path lands), so a
         // malformed reversible rule fails CI before it ships.
-        for action in GIVEN_ACTIONS {
+        for action in given_actions() {
             let trusted = lookup(action).expect("a listed given action resolves");
             assert!(
                 reversibility_proof_holds(trusted.schema()),
@@ -339,12 +363,14 @@ mod tests {
 
     #[test]
     fn every_listed_given_action_resolves() {
-        // Keeps GIVEN_ACTIONS in sync with `lookup`'s production arms: a listed id
-        // that does not resolve (or a resolved given rule never listed) would let
-        // the canary invariant below silently skip part of the acceptance domain.
-        for action in GIVEN_ACTIONS {
+        // `given_actions` derives from `PRODUCTION_GIVEN_RULES`, the same table
+        // `lookup` dispatches production given rules through, so the resolved set
+        // and the scanned set cannot drift: a new production rule resolves only by
+        // a table entry, which this (and the canary / reversibility invariants)
+        // then cover. Confirm each derived id resolves to its own given schema.
+        for action in given_actions() {
             let trusted = lookup(action).unwrap_or_else(|| panic!("{action} must resolve"));
-            assert_eq!(&trusted.schema().action, action);
+            assert_eq!(trusted.schema().action.as_str(), action);
             assert!(matches!(trusted.schema().provenance, Provenance::Given));
         }
     }
@@ -358,8 +384,8 @@ mod tests {
         // labels, fields, literal values) via its Debug form: the derive includes
         // every field and the reserved token has no escape characters, so a
         // substring search is a complete check. A future approved-Learned schema
-        // must be added to GIVEN_ACTIONS so it is covered too.
-        for action in GIVEN_ACTIONS {
+        // must be added to the derived given set so it is covered too.
+        for action in given_actions() {
             let trusted = lookup(action).expect("a listed given action resolves");
             let dump = format!("{:?}", trusted.schema());
             assert!(
