@@ -85,9 +85,23 @@ fmt:
     set -euo pipefail
     for c in {{RUST_CRATES}}; do cargo fmt --manifest-path "{{ROOT}}/$c/Cargo.toml" --all; done
 
-# The cross-daemon integration tests.
+# The cross-daemon integration tests (the non-ignored, no-binary ones: the
+# harness's own unit tests). The scenario tests that need built daemons are
+# #[ignore]d; run them via `just integration-smoke`.
 integration:
     cargo test --manifest-path "{{justfile_directory()}}/integration/Cargo.toml"
+
+# IT-1 host-only backend smoke (integration-testing-plan.md §4): build the
+# backend daemons, then run the hermetic #[ignore]d backend scenarios
+# (`EphemeralStack`: stack-comes-up + the file.opened -> SQLite data-flow). Fast
+# enough for the coder to run after a change as a "did I break a boundary" check.
+integration-smoke:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo build --manifest-path "{{ROOT}}/daemons/event-bus/Cargo.toml"
+    cargo build --manifest-path "{{ROOT}}/daemons/knowledge/Cargo.toml"
+    cargo test --manifest-path "{{justfile_directory()}}/integration/Cargo.toml" \
+        --test integration_backend_smoke -- --ignored
 
 # Compositor nested in the current Wayland session (separate repo).
 # DISPLAY="" forces the Winit/Wayland backend so wlr-layer-shell is advertised.
