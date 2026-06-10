@@ -34,6 +34,7 @@
 
 mod file;
 pub mod gtk;
+pub mod qt;
 mod watcher;
 
 pub use file::{
