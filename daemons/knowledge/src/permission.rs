@@ -119,8 +119,20 @@ impl PermissionProfile {
         toml::from_str(&content).map_err(|e| PermissionError::Parse(e.to_string()))
     }
 
-    /// Resolve the profile path for an app.
+    /// Resolve the user-tier profile path for an app.
+    ///
+    /// Foundation §7.3 canonical path: `~/.config/permissions/{app_id}.toml`,
+    /// owned by the user. The optional `ARLEN_PERMISSIONS_DIR` override (tests
+    /// and dev sandboxes only, never production) redirects to
+    /// `<dir>/{app_id}.toml`, mirroring `arlen_permissions::profile_path` so the
+    /// daemon's own resolver and the SDK resolver agree on where the user-tier
+    /// profile lives. The override touches only the user tier, which the same-uid
+    /// user already fully controls, so it adds no trust boundary the system-tier
+    /// (`/var/lib`, root-owned) path does not already hold.
     pub(crate) fn profile_path(app_id: &str) -> Result<PathBuf, PermissionError> {
+        if let Ok(dir) = std::env::var("ARLEN_PERMISSIONS_DIR") {
+            return Ok(PathBuf::from(dir).join(format!("{app_id}.toml")));
+        }
         let home = dirs::home_dir().ok_or(PermissionError::NoHomeDir)?;
         Ok(home
             .join(".config")
