@@ -203,3 +203,46 @@ async fn the_write_socket_refuses_an_unprivileged_relation_write() {
         "a ThirdParty relation write must be refused by the tier gate, got {refused:?}"
     );
 }
+
+/// IT-1 read-scope grant (the positive complement to the deny scenarios): a
+/// caller WITH a seeded read profile may read its granted label. We seed a
+/// `system.File` read grant for this test's own app id, then a `File` query is
+/// ALLOWED where the unprivileged caller's was denied. `Ok` <=> allowed: a denied
+/// query returns `Err`, and a fresh KG returns empty rows, so `Ok` proves the
+/// seeded grant lifted the RS-R1 gate. Shows the gate is a real boundary that
+/// both denies AND admits per the caller's scope (and that the daemon resolves
+/// the connecting peer to the same app id the profile was seeded for). Same
+/// `#[ignore]` rationale.
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge binaries built and a FUSE-capable host"]
+async fn a_scoped_caller_may_read_its_granted_label() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    // Seed the read grant before the daemon loads it for our connection.
+    stack
+        .seed_read_profile(&["system.File.id", "system.File.path"])
+        .expect("seed read profile");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let allowed = client
+        .query_rows("MATCH (f:File) RETURN f.id LIMIT 1")
+        .await;
+    assert!(
+        allowed.is_ok(),
+        "a caller granted system.File read may run a File query (RS-R1 admits a granted label), got {allowed:?}"
+    );
+}
