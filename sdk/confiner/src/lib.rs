@@ -38,6 +38,11 @@ pub enum NetworkPolicy {
     /// Network is available but the allowed-host set is enforced by a separate
     /// filter the launcher installs (not by bwrap). The app profile uses this.
     FilteredHosts(Vec<String>),
+    /// Network is available with NO host filter (an app that declared `allow_all`).
+    /// Like [`NetworkPolicy::FilteredHosts`] bwrap leaves the network up (no
+    /// `--unshare-net`); unlike it the launcher installs no egress filter. The
+    /// widest egress posture, for apps that explicitly request unrestricted network.
+    Unrestricted,
 }
 
 /// A read-only or read-write bind mount from host to the confined view. Both
@@ -442,6 +447,22 @@ mod tests {
         assert!(!args.contains(&"--unshare-net".to_string()));
         assert!(rw_pairs(&args)
             .contains(&("/home/u/.config/demo".into(), "/home/u/.config/demo".into())));
+    }
+
+    #[test]
+    fn unrestricted_network_leaves_the_network_up() {
+        // An `allow_all` app maps to Unrestricted: network up (no --unshare-net),
+        // and the launcher installs no filter (FilteredHosts is the filtered case).
+        let skel = app_runtime_profile(
+            Path::new("/usr"),
+            &[],
+            BTreeMap::new(),
+            NetworkPolicy::Unrestricted,
+        )
+        .unwrap();
+        assert!(matches!(skel.network(), NetworkPolicy::Unrestricted));
+        let args = skel.complete(vec![], vec![]).bwrap_args();
+        assert!(!args.contains(&"--unshare-net".to_string()));
     }
 
     fn rw_pairs(args: &[String]) -> Vec<(String, String)> {
