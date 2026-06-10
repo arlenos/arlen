@@ -1678,9 +1678,13 @@ async fn handle_client(
         // Per-caller read scope (RS-R1). A system-anchored caller (the AI daemon,
         // agent, terminal, Settings, Files - tier != ThirdParty, non-`unknown`)
         // bypasses the label gate; the system tier is non-same-uid-forgeable for the
-        // root-owned identity rules 1-3 and cooperative-only for rule-4 user apps
-        // until F3, the same boundary-vs-cooperative split the authority gate
-        // documents. A non-system caller is held to its readable label set, so its
+        // root-owned identity rules 1-3 and, since F3 Rung B, inode-attested for
+        // rule-4 user apps once installd has enrolled them (a same-uid copy to a
+        // different path is rejected). An unenrolled rule-4 app stays cooperative
+        // until it is recorded, and an in-place inode-preserving rewrite of the
+        // user-owned binary is the documented A-2 residual only AppArmor closes
+        // (`docs/architecture/identity-spoof-mitigation.md`). A non-system caller is
+        // held to its readable label set, so its
         // readable labels are minted lazily here (only for that caller) via the
         // write path's PID-reuse guard; an unprovisioned or recycled peer mints the
         // empty scope (not an error), so a label-less no-op read still works while
