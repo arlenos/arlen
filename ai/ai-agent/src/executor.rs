@@ -960,7 +960,9 @@ impl<'a> LiveExecutor<'a> {
 /// capability/paths/mounts only the forward execute path uses) or a dummy
 /// capability. Built at startup under `executor_live`; delegates to the same
 /// [`compensate_receipt`] free function as [`LiveExecutor::compensate`], so the
-/// undo semantics are identical on both paths.
+/// undo semantics are identical on both paths. Clone is a cheap Arc bump (the
+/// D-Bus interface that owns it is re-registered on a bus reconnect).
+#[derive(Clone)]
 pub struct Compensator {
     writer: Arc<dyn RelationWriter>,
     audit: Arc<dyn AuditSink>,
