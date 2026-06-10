@@ -142,7 +142,19 @@ pub(crate) fn blend(a: Rgba, b: Rgba) -> Rgba {
 /// `,.()#%-_"'/:` — none of the rejected set — so a legitimate theme always
 /// passes and an adversarial value is dropped to its safe default at resolve.
 pub fn is_inert_css_token(value: &str) -> bool {
-    if value.chars().any(|c| c.is_control()) {
+    // Control chars, plus the Unicode line/paragraph separators and bidi/format
+    // controls `char::is_control()` does NOT flag (it only covers the Cc
+    // category): U+2028/U+2029 are line breaks some parsers honour (multi-line
+    // injection), and the zero-width + bidi-override chars are display-spoofing
+    // vectors. Legitimate non-ASCII letters (a CJK font name) are untouched.
+    if value.chars().any(|c| {
+        c.is_control()
+            || matches!(c,
+                '\u{2028}' | '\u{2029}' | '\u{feff}'
+                | '\u{200b}'..='\u{200f}'
+                | '\u{202a}'..='\u{202e}'
+                | '\u{2066}'..='\u{2069}')
+    }) {
         return false;
     }
     const FORBIDDEN: &[char] = &[';', '{', '}', '[', ']', '<', '>', '@', '\\'];
@@ -150,6 +162,15 @@ pub fn is_inert_css_token(value: &str) -> bool {
         return false;
     }
     if value.contains("/*") || value.contains("*/") {
+        return false;
+    }
+    // Defence in depth against the exfiltration vectors the format thesis names
+    // (CSS `url()`/`@import`/`expression()`): `@import` is already blocked by
+    // `@`, but `url(` and `expression(` slip through the punctuation set since
+    // `(` is legitimate in `rgba()`/`cubic-bezier()`. No real token value (a
+    // length, font list, timing function, shadow) needs either.
+    let lower = value.to_ascii_lowercase();
+    if lower.contains("url(") || lower.contains("expression(") {
         return false;
     }
     true
@@ -1204,9 +1225,15 @@ button = 12
             "a /* c */ d",                 // CSS comment
             "line1\nline2",               // multi-line injection
             "a <script> b",                // markup
+            "inter\u{2028}background: red", // Unicode line separator
+            "ev\u{202e}il",               // bidi override (display spoof)
+            "Inter url(//evil)",           // url() exfiltration
+            "EXPRESSION(alert(1))",        // legacy CSS expression(), case-insensitive
         ] {
             assert!(!is_inert_css_token(bad), "should reject break-out value: {bad:?}");
         }
+        // A non-ASCII font name (legitimate) is still inert.
+        assert!(is_inert_css_token("\u{30e1}\u{30a4}\u{30ea}\u{30aa}, sans-serif"));
     }
 
     #[test]
