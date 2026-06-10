@@ -39,8 +39,9 @@ mod watcher;
 
 pub use file::{
     BorderColors, ColorBgFile, ColorFgFile, ColorSection, ColorSemanticFile,
-    CursorSection, DepthSection, ArlenThemeFile, MetaSection, MotionSection,
-    RadiusSection, SoundsSection, SpacingSection, TypographySection,
+    CursorSection, DepthSection, ArlenThemeFile, IconsSection, MetaSection,
+    MotionSection, RadiusSection, SoundsSection, SpacingSection,
+    TerminalAnsiSection, TerminalSection, TypographySection,
     WallpaperSection, WmSection,
 };
 pub use watcher::ThemeWatcher;
@@ -91,6 +92,31 @@ pub fn parse_hex(hex: &str) -> Option<Rgba> {
         }
         _ => None,
     }
+}
+
+/// Scale a colour's RGB by `factor` (alpha kept), clamped — the same shape as
+/// `QColor::lighter`/`darker` with `factor = percent / 100`. Shared by the
+/// outbound generators (Fusion bevel shades) and the terminal-ANSI synthesis
+/// (bright variants).
+pub(crate) fn scale_rgb(c: Rgba, factor: f32) -> Rgba {
+    [
+        (c[0] * factor).clamp(0.0, 1.0),
+        (c[1] * factor).clamp(0.0, 1.0),
+        (c[2] * factor).clamp(0.0, 1.0),
+        c[3],
+    ]
+}
+
+/// Component-wise average of two colours — the deterministic hue synthesis for
+/// the ANSI slots `ArlenTheme` has no semantic source for (magenta from
+/// red+blue, cyan from green+blue).
+pub(crate) fn blend(a: Rgba, b: Rgba) -> Rgba {
+    [
+        (a[0] + b[0]) / 2.0,
+        (a[1] + b[1]) / 2.0,
+        (a[2] + b[2]) / 2.0,
+        (a[3] + b[3]) / 2.0,
+    ]
 }
 
 /// Whether a free-string theme token is inert: safe to emit verbatim into any
@@ -287,6 +313,29 @@ pub struct CursorTokens {
     pub size:  u32,
 }
 
+/// Resolved terminal palette: the semantic→16-ANSI projection (or the authored
+/// `[terminal.ansi]` override, slot-by-slot) plus fg/bg/cursor. The terminal
+/// generators serialize this; the two-path honour-vs-synthesise decision is
+/// made once, at resolve.
+#[derive(Debug, Clone)]
+pub struct TerminalTokens {
+    /// Default foreground (`fg.primary`).
+    pub fg: Rgba,
+    /// Default background (`bg.app`).
+    pub bg: Rgba,
+    /// Cursor colour (`accent`).
+    pub cursor: Rgba,
+    /// ANSI colours 0-15: black, red, green, yellow, blue, magenta, cyan,
+    /// white, then the bright variants in the same order.
+    pub ansi: [Rgba; 16],
+}
+
+/// Resolved icon-theme selection (mirrors [`CursorTokens`]'s `theme`).
+#[derive(Debug, Clone)]
+pub struct IconTokens {
+    pub theme: String,
+}
+
 /// Fully resolved theme. Both compositor and desktop-shell consume
 /// this. Construct via `ArlenTheme::resolve(...)`; do not build
 /// by hand outside tests.
@@ -301,6 +350,8 @@ pub struct ArlenTheme {
     pub depth:      DepthTokens,
     pub wm:         WmTokens,
     pub cursor:     CursorTokens,
+    pub terminal:   TerminalTokens,
+    pub icons:      IconTokens,
 }
 
 // ---------------------------------------------------------------------------
@@ -579,6 +630,12 @@ fn from_file(f: ArlenThemeFile) -> Result<ArlenTheme, ResolveError> {
         size:  c.size.unwrap_or(24),
     };
 
+    let terminal = resolve_terminal(&color, f.terminal);
+    let i = f.icons.unwrap_or_default();
+    let icons = IconTokens {
+        theme: inert_or(i.theme, "default"),
+    };
+
     let variant = match meta.variant.as_str() {
         "dark" => ThemeVariant::Dark,
         "light" => ThemeVariant::Light,
@@ -605,7 +662,60 @@ fn from_file(f: ArlenThemeFile) -> Result<ArlenTheme, ResolveError> {
         depth,
         wm,
         cursor,
+        terminal,
+        icons,
     })
+}
+
+/// Build the resolved terminal palette: synthesise the 16-ANSI projection from
+/// the semantic tokens, then honour any authored `[terminal.ansi]` slot over the
+/// synthesis (the A2 two-path generator, decided once here so the per-format
+/// emitters just serialize). `ArlenTheme` honestly yields five of the eight
+/// hues (error→red, success→green, warning→yellow, info→blue, accent→cursor);
+/// magenta and cyan are blended from their RGB neighbours, the brights scaled up
+/// from the normals, and the neutrals mapped to the fg/border ramp
+/// (black←border.default, white←fg.secondary, bright-black←fg.disabled — the
+/// classic muted slot — bright-white←fg.primary). An authored slot that does not
+/// parse as hex keeps the synthesised colour (typed fail-to-default, like every
+/// other colour field).
+fn resolve_terminal(c: &ColorTokens, section: Option<TerminalSection>) -> TerminalTokens {
+    let bright = |x: Rgba| scale_rgb(x, 1.25);
+    let mut ansi = [
+        c.border_default,          // 0  black
+        c.error,                   // 1  red
+        c.success,                 // 2  green
+        c.warning,                 // 3  yellow
+        c.info,                    // 4  blue
+        blend(c.error, c.info),    // 5  magenta
+        blend(c.success, c.info),  // 6  cyan
+        c.fg_secondary,            // 7  white
+        c.fg_disabled,             // 8  bright black
+        bright(c.error),           // 9  bright red
+        bright(c.success),         // 10 bright green
+        bright(c.warning),         // 11 bright yellow
+        bright(c.info),            // 12 bright blue
+        bright(blend(c.error, c.info)),   // 13 bright magenta
+        bright(blend(c.success, c.info)), // 14 bright cyan
+        c.fg_primary,              // 15 bright white
+    ];
+    if let Some(a) = section.and_then(|t| t.ansi) {
+        let slots = [
+            a.black, a.red, a.green, a.yellow, a.blue, a.magenta, a.cyan, a.white,
+            a.bright_black, a.bright_red, a.bright_green, a.bright_yellow,
+            a.bright_blue, a.bright_magenta, a.bright_cyan, a.bright_white,
+        ];
+        for (i, authored) in slots.into_iter().enumerate() {
+            if let Some(rgba) = authored.as_deref().and_then(parse_hex) {
+                ansi[i] = rgba;
+            }
+        }
+    }
+    TerminalTokens {
+        fg: c.fg_primary,
+        bg: c.bg_app,
+        cursor: c.accent,
+        ansi,
+    }
 }
 
 /// Field-by-field merge — every Optional in `over` that is `Some`
@@ -622,8 +732,24 @@ fn merge_files(under: ArlenThemeFile, over: ArlenThemeFile) -> ArlenThemeFile {
         depth: merge_depth(under.depth, over.depth),
         wm: merge_wm(under.wm, over.wm),
         cursor: merge_cursor(under.cursor, over.cursor),
+        terminal: merge_terminal(under.terminal, over.terminal),
+        icons: merge_icons(under.icons, over.icons),
         wallpaper: over.wallpaper.or(under.wallpaper),
         sounds: over.sounds.or(under.sounds),
+    }
+}
+
+/// Terminal nests one level (`[terminal.ansi]`), so it composes the macro-made
+/// ANSI merge the way `merge_color` composes its substructs.
+fn merge_terminal(
+    under: Option<TerminalSection>,
+    over: Option<TerminalSection>,
+) -> Option<TerminalSection> {
+    match (under, over) {
+        (None, x) | (x, None) => x,
+        (Some(u), Some(o)) => Some(TerminalSection {
+            ansi: merge_terminal_ansi(u.ansi, o.ansi),
+        }),
     }
 }
 
@@ -709,6 +835,29 @@ merge_struct_field!(
     [active_hint, gaps_inner, gaps_outer, window_hint]
 );
 merge_struct_field!(merge_cursor, CursorSection, [theme, size]);
+merge_struct_field!(
+    merge_terminal_ansi,
+    TerminalAnsiSection,
+    [
+        black,
+        red,
+        green,
+        yellow,
+        blue,
+        magenta,
+        cyan,
+        white,
+        bright_black,
+        bright_red,
+        bright_green,
+        bright_yellow,
+        bright_blue,
+        bright_magenta,
+        bright_cyan,
+        bright_white,
+    ]
+);
+merge_struct_field!(merge_icons, IconsSection, [theme]);
 
 // Helper for ColorSection's substructs (they need their own
 // because the grouped section nests one level deeper than the
@@ -1011,6 +1160,7 @@ button = 12
             t.depth.shadow_md.as_str(),
             t.depth.shadow_lg.as_str(),
             t.cursor.theme.as_str(),
+            t.icons.theme.as_str(),
         ]
     }
 
@@ -1060,7 +1210,7 @@ button = 12
                  [typography]\nfont_sans='{p}'\nfont_mono='{p}'\nsize_base='{p}'\nline_height='{p}'\n\
                  [motion]\nduration_fast='{p}'\nduration_normal='{p}'\nduration_slow='{p}'\neasing_default='{p}'\neasing_spring='{p}'\n\
                  [depth]\nshadow_sm='{p}'\nshadow_md='{p}'\nshadow_lg='{p}'\n\
-                 [cursor]\ntheme='{p}'\n"
+                 [cursor]\ntheme='{p}'\n[icons]\ntheme='{p}'\n"
             );
             let t = ArlenTheme::resolve(SAMPLE_BUNDLED, Some(&user), None)
                 .expect("an adversarial theme still resolves (to safe defaults)");
@@ -1079,5 +1229,53 @@ button = 12
         let user = "[typography]\nfont_sans = \"My Custom Font, sans-serif\"\n";
         let t = ArlenTheme::resolve(SAMPLE_BUNDLED, Some(user), None).expect("resolve");
         assert_eq!(t.typography.font_sans, "My Custom Font, sans-serif");
+    }
+
+    #[test]
+    fn terminal_ansi_is_synthesised_from_the_semantic_tokens() {
+        // No [terminal] section: the two-path resolve takes the synthesis path.
+        let t = ArlenTheme::from_bundled(SAMPLE_BUNDLED).expect("resolve");
+        let c = &t.color;
+        assert_eq!(t.terminal.ansi[1], c.error, "red <- error");
+        assert_eq!(t.terminal.ansi[2], c.success, "green <- success");
+        assert_eq!(t.terminal.ansi[3], c.warning, "yellow <- warning");
+        assert_eq!(t.terminal.ansi[4], c.info, "blue <- info");
+        assert_eq!(t.terminal.ansi[8], c.fg_disabled, "bright black is the muted slot");
+        assert_eq!(t.terminal.ansi[15], c.fg_primary, "bright white <- fg.primary");
+        assert_eq!(t.terminal.fg, c.fg_primary);
+        assert_eq!(t.terminal.bg, c.bg_app);
+        assert_eq!(t.terminal.cursor, c.accent);
+        // A synthesised bright is genuinely brighter than its normal.
+        assert!(t.terminal.ansi[9][0] > t.terminal.ansi[1][0], "bright red is lighter");
+    }
+
+    #[test]
+    fn an_authored_ansi_slot_overrides_only_that_slot() {
+        let user = "[terminal.ansi]\nred = \"#123456\"\n";
+        let t = ArlenTheme::resolve(SAMPLE_BUNDLED, Some(user), None).expect("resolve");
+        assert_eq!(t.terminal.ansi[1], parse_hex("#123456").unwrap(), "authored red honoured");
+        // The neighbouring slots keep the synthesis: green untouched, and bright
+        // red still derives from the SEMANTIC error colour (the override is
+        // slot-exact, it does not re-seed the bright derivation).
+        assert_eq!(t.terminal.ansi[2], t.color.success, "green still synthesised");
+        assert_eq!(t.terminal.ansi[9], scale_rgb(t.color.error, 1.25), "bright red keeps the synthesis");
+    }
+
+    #[test]
+    fn an_invalid_authored_ansi_slot_keeps_the_synthesis() {
+        // Typed fail-to-default: a non-hex authored slot cannot reach the
+        // resolved palette (it parses to None and the synthesis stands).
+        let user = "[terminal.ansi]\nred = \"javascript:alert(1)\"\n";
+        let t = ArlenTheme::resolve(SAMPLE_BUNDLED, Some(user), None).expect("resolve");
+        assert_eq!(t.terminal.ansi[1], t.color.error, "invalid hex falls back to synthesis");
+    }
+
+    #[test]
+    fn icon_theme_resolves_with_default_and_honours_an_authored_name() {
+        let t = ArlenTheme::from_bundled(SAMPLE_BUNDLED).expect("resolve");
+        assert_eq!(t.icons.theme, "default");
+        let user = "[icons]\ntheme = \"Papirus-Dark\"\n";
+        let t = ArlenTheme::resolve(SAMPLE_BUNDLED, Some(user), None).expect("resolve");
+        assert_eq!(t.icons.theme, "Papirus-Dark");
     }
 }

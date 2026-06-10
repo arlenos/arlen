@@ -22,6 +22,8 @@ pub struct ArlenThemeFile {
     pub depth:      Option<DepthSection>,
     pub wm:         Option<WmSection>,
     pub cursor:     Option<CursorSection>,
+    pub terminal:   Option<TerminalSection>,
+    pub icons:      Option<IconsSection>,
     pub wallpaper:  Option<WallpaperSection>,
     pub sounds:     Option<SoundsSection>,
 }
@@ -150,6 +152,45 @@ pub struct WmSection {
 pub struct CursorSection {
     pub theme: Option<String>,
     pub size:  Option<u32>,
+}
+
+/// Terminal-specific tokens (theming-system-plan.md Fork (a) = A2). The
+/// optional `[terminal.ansi]` block lets an author who cares about a tuned
+/// terminal palette override the semantic→ANSI synthesis slot-by-slot; the 95%
+/// of themes that leave it out get the synthesised projection.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct TerminalSection {
+    pub ansi: Option<TerminalAnsiSection>,
+}
+
+/// The authored 16-colour ANSI block. Every slot is optional: a present slot
+/// overrides the synthesised colour for exactly that slot (hex, same format as
+/// every other colour field), absent slots keep the synthesis.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct TerminalAnsiSection {
+    pub black:          Option<String>,
+    pub red:            Option<String>,
+    pub green:          Option<String>,
+    pub yellow:         Option<String>,
+    pub blue:           Option<String>,
+    pub magenta:        Option<String>,
+    pub cyan:           Option<String>,
+    pub white:          Option<String>,
+    pub bright_black:   Option<String>,
+    pub bright_red:     Option<String>,
+    pub bright_green:   Option<String>,
+    pub bright_yellow:  Option<String>,
+    pub bright_blue:    Option<String>,
+    pub bright_magenta: Option<String>,
+    pub bright_cyan:    Option<String>,
+    pub bright_white:   Option<String>,
+}
+
+/// Icon-theme selection, mirroring `[cursor]`'s `theme` field (Fork (a) = A2:
+/// the schema previously had no icon story at all).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct IconsSection {
+    pub theme: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
