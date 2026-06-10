@@ -316,7 +316,10 @@ mod tests {
     #[tokio::test]
     async fn an_admitted_caller_appends_through_the_socket() {
         let dir = tempfile::tempdir().unwrap();
-        let ledger = Ledger::open(&dir.path().join("ledger.db"), b"test-key".to_vec())
+        let ledger = Ledger::open(
+            &dir.path().join("ledger.db"),
+            zeroize::Zeroizing::new(b"test-key".to_vec()),
+        )
             .await
             .expect("open ledger");
         let ledger = Arc::new(Mutex::new(ledger));
@@ -369,7 +372,10 @@ mod tests {
     async fn a_tampered_ledger_refuses_appends() {
         let dir = tempfile::tempdir().unwrap();
 
-        let ledger = Ledger::open(&dir.path().join("ledger.db"), b"test-key".to_vec())
+        let ledger = Ledger::open(
+            &dir.path().join("ledger.db"),
+            zeroize::Zeroizing::new(b"test-key".to_vec()),
+        )
             .await
             .expect("open ledger");
         let ledger = Arc::new(Mutex::new(ledger));

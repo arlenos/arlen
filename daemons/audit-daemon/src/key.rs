@@ -19,6 +19,8 @@ use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
+use zeroize::Zeroizing;
+
 use crate::error::{AuditError, Result};
 
 /// HMAC key length in bytes — 256-bit, SHA-256-block-friendly.
@@ -37,7 +39,7 @@ pub fn key_path() -> Result<PathBuf> {
 /// non-empty the call fails closed: a fresh key would make every
 /// existing chain entry fail verification, so the daemon must stop
 /// and the user recover explicitly. There is no silent re-key.
-pub fn load_or_create(path: &Path, ledger_has_entries: bool) -> Result<Vec<u8>> {
+pub fn load_or_create(path: &Path, ledger_has_entries: bool) -> Result<Zeroizing<Vec<u8>>> {
     if path.exists() {
         return read_key(path);
     }
@@ -51,24 +53,37 @@ pub fn load_or_create(path: &Path, ledger_has_entries: bool) -> Result<Vec<u8>> 
     create_key(path)
 }
 
-/// Read and validate an existing key file.
+/// Read and validate an existing key file with no TOCTOU window.
 ///
-/// Before reading, the file is checked with `lstat` so a planted
-/// symlink cannot redirect the daemon to key material it does not
-/// control; it must be a regular file, and it must not be reachable
-/// by group or others (mode `0600`). Only then is its content read
-/// and length-checked.
-fn read_key(path: &Path) -> Result<Vec<u8>> {
+/// The file is opened `O_NOFOLLOW` (a symlink at the final component
+/// fails the open with `ELOOP`, so a symlink planted between any check
+/// and the read cannot redirect the daemon), then validated by `fstat`
+/// on the *open fd* (not a re-resolved path): a regular file, not
+/// reachable by group or others (mode `0600`), and read to exactly
+/// [`KEY_LEN`] bytes from that same fd. The key is held in `Zeroizing`.
+fn read_key(path: &Path) -> Result<Zeroizing<Vec<u8>>> {
+    use std::io::Read;
     use std::os::unix::fs::PermissionsExt;
 
-    // `symlink_metadata` is `lstat`: it does not follow a symlink.
-    let meta = std::fs::symlink_metadata(path)?;
-    if meta.file_type().is_symlink() {
-        return Err(AuditError::KeyUnavailable(format!(
-            "key file {} is a symlink; refusing to follow it",
-            path.display()
-        )));
-    }
+    // O_NOFOLLOW: the open fails if the final path component is a
+    // symlink, so the path is resolved once and every later check plus
+    // the read operate on that single fd, never a re-resolved path.
+    let mut file = match std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+    {
+        Ok(f) => f,
+        Err(e) if e.raw_os_error() == Some(libc::ELOOP) => {
+            return Err(AuditError::KeyUnavailable(format!(
+                "key file {} is a symlink; refusing to follow it",
+                path.display()
+            )))
+        }
+        Err(e) => return Err(e.into()),
+    };
+
+    let meta = file.metadata()?; // fstat on the open fd
     if !meta.is_file() {
         return Err(AuditError::KeyUnavailable(format!(
             "key path {} is not a regular file",
@@ -82,7 +97,8 @@ fn read_key(path: &Path) -> Result<Vec<u8>> {
         )));
     }
 
-    let bytes = std::fs::read(path)?;
+    let mut bytes = Zeroizing::new(Vec::new());
+    file.read_to_end(&mut bytes)?;
     if bytes.len() != KEY_LEN {
         return Err(AuditError::KeyUnavailable(format!(
             "key file {} holds {} bytes, expected {KEY_LEN}",
@@ -95,7 +111,7 @@ fn read_key(path: &Path) -> Result<Vec<u8>> {
 
 /// Generate a fresh key with the OS CSPRNG and persist it durably at
 /// mode 0600.
-fn create_key(path: &Path) -> Result<Vec<u8>> {
+fn create_key(path: &Path) -> Result<Zeroizing<Vec<u8>>> {
     let parent = path.parent().ok_or_else(|| {
         AuditError::KeyUnavailable(format!(
             "key path {} has no parent directory",
@@ -104,7 +120,7 @@ fn create_key(path: &Path) -> Result<Vec<u8>> {
     })?;
     crate::ensure_private_dir(parent)?;
 
-    let mut key = vec![0u8; KEY_LEN];
+    let mut key = Zeroizing::new(vec![0u8; KEY_LEN]);
     getrandom::getrandom(&mut key)
         .map_err(|e| AuditError::KeyUnavailable(format!("CSPRNG failed: {e}")))?;
 
@@ -165,7 +181,7 @@ mod tests {
         // The file now exists; a second call must read it back, not
         // generate a new one.
         let second = load_or_create(&path, true).unwrap();
-        assert_eq!(first, second);
+        assert_eq!(first.as_slice(), second.as_slice());
     }
 
     #[test]
