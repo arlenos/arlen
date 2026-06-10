@@ -466,3 +466,59 @@ async fn provenance_read_flags_a_foreign_opener_without_naming_it() {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 }
+
+/// IT-1 access-grants (the 0x05 op) + the LCG connect-time emit: a graph-accessing
+/// app appears in its own caller-scoped capability browse, and sees ONLY its own
+/// grants. On connect the daemon mints the caller's token from its profile and
+/// emits a `Grant` node (living-capability-graph.md §4.1), awaited before the
+/// request is served, so the caller's own grant exists by the time `access_grants`
+/// reads. The op scopes to the kernel-attested app id (the request carries no
+/// scope), so every returned grant must be the caller's own. This also exercises
+/// the daemon profile resolver: the connect mint needs the seeded profile to load
+/// (`ARLEN_PERMISSIONS_DIR`), so an empty result would mean the mint, hence the
+/// resolver, failed. No promotion needed, so this is fast. Same `#[ignore]`
+/// rationale (needs the assembled daemons).
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge binaries built and a FUSE-capable host"]
+async fn a_connecting_app_sees_only_its_own_capability_grant() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    let app_id = stack
+        .seed_read_profile(&["system.File.id"])
+        .expect("seed read profile");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    // The connect-emit is awaited before serving, so the first call should already
+    // see the grant; poll briefly to absorb any reconnect interleaving.
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let grants = client.access_grants().await.expect("access_grants ok");
+        if !grants.is_empty() {
+            assert!(
+                grants.iter().all(|g| g.app_id == app_id),
+                "access_grants is caller-scoped: every grant must be the caller's own ({app_id}), got {:?}",
+                grants.iter().map(|g| g.app_id.clone()).collect::<Vec<_>>()
+            );
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the connecting app's own capability grant never appeared in access_grants within 15s"
+        );
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
