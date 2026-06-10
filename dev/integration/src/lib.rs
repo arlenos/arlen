@@ -41,9 +41,14 @@ pub struct EphemeralStack {
 
 impl EphemeralStack {
     /// Create an empty stack with a fresh private runtime root. No daemon runs
-    /// yet; call [`spawn`](Self::spawn) for each one the scenario needs.
+    /// yet; call [`spawn`](Self::spawn) for each one the scenario needs. The
+    /// knowledge daemon's data + timeline-mount dirs are pre-created under the
+    /// root so a spawned knowledge daemon is fully hermetic (writes its SQLite +
+    /// graph under the temp root, never `/var/lib`).
     pub fn new() -> std::io::Result<Self> {
         let runtime = tempfile::Builder::new().prefix("arlen-it-").tempdir()?;
+        std::fs::create_dir_all(runtime.path().join("knowledge"))?;
+        std::fs::create_dir_all(runtime.path().join("timeline"))?;
         Ok(Self {
             runtime,
             children: Vec::new(),
@@ -77,12 +82,17 @@ impl EphemeralStack {
         self.socket_path("knowledge.sock")
     }
 
-    /// The base environment every daemon inherits: the runtime root and the
-    /// explicit socket overrides, all pointed at this stack's temp dir, plus
-    /// `XDG_RUNTIME_DIR` so daemons that derive `$XDG_RUNTIME_DIR/arlen` also
-    /// land here. Pure over the runtime path so it is testable without spawning.
+    /// The base environment every daemon inherits: the runtime root, the
+    /// explicit socket overrides, AND the knowledge daemon's data + timeline
+    /// paths, all pointed at this stack's temp dir, plus `XDG_RUNTIME_DIR` so
+    /// daemons that derive `$XDG_RUNTIME_DIR/arlen` also land here. Setting the
+    /// data paths is what makes a spawned knowledge daemon hermetic (it would
+    /// otherwise write SQLite + the graph under `/var/lib`). A daemon that does
+    /// not read a given var simply ignores it. Pure over the runtime path so it
+    /// is testable without spawning.
     pub fn base_env(&self) -> BTreeMap<String, String> {
         let root = self.runtime.path().to_string_lossy().into_owned();
+        let p = |rel: &str| self.runtime.path().join(rel).to_string_lossy().into_owned();
         BTreeMap::from([
             ("ARLEN_RUNTIME_DIR".to_string(), root.clone()),
             (
@@ -97,6 +107,9 @@ impl EphemeralStack {
                 "ARLEN_DAEMON_SOCKET".to_string(),
                 self.knowledge_socket().to_string_lossy().into_owned(),
             ),
+            ("ARLEN_DB_PATH".to_string(), p("knowledge/events.db")),
+            ("ARLEN_GRAPH_PATH".to_string(), p("knowledge/graph")),
+            ("ARLEN_TIMELINE_MOUNT".to_string(), p("timeline")),
             ("XDG_RUNTIME_DIR".to_string(), root),
         ])
     }
@@ -198,6 +211,19 @@ mod tests {
         assert_eq!(env["XDG_RUNTIME_DIR"], root);
         assert!(env["ARLEN_PRODUCER_SOCKET"].starts_with(&root));
         assert!(env["ARLEN_DAEMON_SOCKET"].ends_with("knowledge.sock"));
+        // The knowledge data paths land under the root too (hermetic: no
+        // /var/lib or $HOME/.timeline writes).
+        assert!(env["ARLEN_DB_PATH"].starts_with(&root));
+        assert!(env["ARLEN_DB_PATH"].ends_with("knowledge/events.db"));
+        assert!(env["ARLEN_GRAPH_PATH"].starts_with(&root));
+        assert!(env["ARLEN_TIMELINE_MOUNT"].starts_with(&root));
+    }
+
+    #[test]
+    fn new_precreates_the_knowledge_data_dirs() {
+        let stack = EphemeralStack::new().unwrap();
+        assert!(stack.runtime_dir().join("knowledge").is_dir());
+        assert!(stack.runtime_dir().join("timeline").is_dir());
     }
 
     #[test]
