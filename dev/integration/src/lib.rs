@@ -112,7 +112,7 @@ impl EphemeralStack {
     pub fn base_env(&self) -> BTreeMap<String, String> {
         let root = self.runtime.path().to_string_lossy().into_owned();
         let p = |rel: &str| self.runtime.path().join(rel).to_string_lossy().into_owned();
-        BTreeMap::from([
+        let mut env = BTreeMap::from([
             ("ARLEN_RUNTIME_DIR".to_string(), root.clone()),
             (
                 "ARLEN_PRODUCER_SOCKET".to_string(),
@@ -156,7 +156,16 @@ impl EphemeralStack {
             // fail-closed defaults (AI off), so this is hermetic either way.
             ("ARLEN_AI_CONFIG".to_string(), p("config/arlen/ai.toml")),
             ("XDG_RUNTIME_DIR".to_string(), root),
-        ])
+        ]);
+        // The audit daemon's ingest allowlist admits only the named AI-layer
+        // producers (and their exact cargo-run dev ids); a test that submits
+        // directly is NOT a producer, so name THIS test's own resolved dev id as
+        // the daemon's one debug-only extra-admit (exact match, set only here).
+        // Without it the audit-chain scenario's direct submit is refused.
+        if let Some(id) = own_app_id() {
+            env.insert("ARLEN_AUDIT_EXTRA_ADMIT".to_string(), id);
+        }
+        env
     }
 
     /// The audit daemon's read-API socket path (`$XDG_RUNTIME_DIR/arlen/audit-read.sock`).

@@ -237,12 +237,23 @@ fn caller_is_admitted(app_id: &str) -> bool {
     }
     #[cfg(debug_assertions)]
     {
-        DEV_ADMITTED.contains(&app_id)
+        DEV_ADMITTED.contains(&app_id) || dev_extra_admits(app_id)
     }
     #[cfg(not(debug_assertions))]
     {
         false
     }
+}
+
+/// A debug-only test affordance: an integration harness sets
+/// `ARLEN_AUDIT_EXTRA_ADMIT` to ONE extra dev id (its own cargo-run
+/// `dev.<test>` id, which is hash-suffixed and so cannot be a static
+/// [`DEV_ADMITTED`] entry) so it can exercise the ingest path as itself.
+/// An EXACT match, never a broad `dev.` prefix, and never compiled into a
+/// release build — normal dev keeps the tightened producer-only allowlist.
+#[cfg(debug_assertions)]
+fn dev_extra_admits(app_id: &str) -> bool {
+    std::env::var("ARLEN_AUDIT_EXTRA_ADMIT").is_ok_and(|v| v == app_id)
 }
 
 /// The daemon's own uid, for `ConnectionAuth` peer extraction.
