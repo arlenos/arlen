@@ -2,7 +2,7 @@
 name = "arlen-ai-undo-signer"
 version = "0.1.0"
 edition = "2021"
-description = "The separate-uid signer helper that seals the AI agent's durable undo-log (reversible-receipts-and-the-effect-model.md EM-R1). Owns the HMAC key the agent never sees, the HMAC-chained on-disk log, peer-authed access control, and a submit/lookup socket, so a same-uid compromised agent can neither forge nor read undo history."
+description = "The signer helper that seals the AI agent's durable undo-log (reversible-receipts-and-the-effect-model.md EM-R1). Owns the HMAC key, the HMAC-chained on-disk log, peer-authed access control, and a submit/lookup socket. As built it runs same-uid: defense-in-depth (process isolation + tamper-evidence) against a non-agent same-uid process and accidental corruption, not integrity against a fully-compromised agent. The separate-uid property that withholds the key from a compromised agent is provisioned at deploy time and closed only by the installd inode-keyed identity registry plus a TPM-sealed counter."
 
 [lib]
 path = "src/lib.rs"
