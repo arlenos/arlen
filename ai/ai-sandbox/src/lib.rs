@@ -148,7 +148,11 @@ pub fn parse_document(sandbox_bin: &Path, document: &[u8]) -> Result<String, San
     let mut child = Command::new(sandbox_bin)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        // Discard the worker's stderr rather than pipe it: nothing reads it, so a
+        // piped stderr would let a worker that writes a lot to it block on a full
+        // pipe (reaped only on the timeout, not promptly on exit). Discarding also
+        // avoids propagating a future content-bearing parser's stderr.
+        .stderr(Stdio::null())
         .spawn()
         .map_err(|e| SandboxError::Process(format!("spawn: {e}")))?;
 
