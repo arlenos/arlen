@@ -374,7 +374,8 @@ pub struct BuildLimits {
 #[cfg(unix)]
 const BUILD_UMASK: libc::mode_t = 0o022;
 
-/// On Unix, prepare the forked child before `exec`: make it a process-group
+/// On Unix, prepare the forked child before `exec`: mark inherited fds
+/// close-on-exec so none leaks into the spawned build, make it a process-group
 /// leader (`setpgid(0, 0)`) so its descendants share its group and can be killed
 /// as a unit on timeout, and pin the reproducible build umask. Under the
 /// confined runner the spawned process is `bwrap`, which inherits this umask and
@@ -382,12 +383,22 @@ const BUILD_UMASK: libc::mode_t = 0o022;
 #[cfg(unix)]
 fn prepare_child(command: &mut std::process::Command) {
     use std::os::unix::process::CommandExt;
-    // SAFETY: the closure runs in the forked child before exec. `setpgid` and
-    // `umask` are both async-signal-safe and touch only the child's own state
-    // (its process group and file-mode mask); they read or write no parent state
-    // and allocate nothing.
+    // SAFETY: the closure runs in the forked child before exec. `close_range`,
+    // `setpgid` and `umask` are async-signal-safe and touch only the child's own
+    // state (its open fds, process group and file-mode mask); they read or write
+    // no parent state and allocate nothing.
     unsafe {
         command.pre_exec(|| {
+            // Mark every fd above stderr close-on-exec so no forage-process fd
+            // (the builder signing key, fetched sources, a fetch-phase socket)
+            // leaks through bwrap into an untrusted build. Rust opens fds
+            // O_CLOEXEC by default, so this is belt-and-suspenders against a
+            // raw-libc or inherited non-CLOEXEC fd. Best-effort, unlike
+            // arlen-run's fatal close: this helper is shared with the unconfined
+            // `--unsafe-no-sandbox` runner and forage carries no kernel floor,
+            // while CLOSE_RANGE_CLOEXEC needs Linux >= 5.11; on an older kernel
+            // the syscall no-ops and the O_CLOEXEC default remains the defence.
+            let _ = libc::close_range(3, libc::c_uint::MAX, libc::CLOSE_RANGE_CLOEXEC as libc::c_int);
             if libc::setpgid(0, 0) != 0 {
                 return Err(std::io::Error::last_os_error());
             }
