@@ -1204,6 +1204,51 @@ button = 12
         ]
     }
 
+    proptest::proptest! {
+        /// TH-0 trust-floor theorem, fuzzed (the §3.2 harness). Whatever an
+        /// adversarial theme puts in the free-string fields, every resolved
+        /// free-string is inert (a break-out value dropped to its safe default
+        /// at resolve), and every outbound generator runs without panic on the
+        /// adversarial theme; the Alacritty config must still parse as TOML (a
+        /// structural break-out would fail that). The charset is printable ASCII
+        /// minus `'` so the payload sits in a TOML literal string; the control
+        /// and bidi/zero-width vectors are covered by the is_inert_css_token unit
+        /// test. Generalises `adversarial_free_strings_resolve_to_inert_values`
+        /// from four hand-picked payloads to the whole break-out charset.
+        #[test]
+        fn fuzz_resolve_keeps_free_strings_inert_and_generators_safe(
+            p in "[\\x20-\\x26\\x28-\\x7e]{0,48}"
+        ) {
+            let user = format!(
+                "[spacing]\nxs='{p}'\nsm='{p}'\nmd='{p}'\nlg='{p}'\nxl='{p}'\n\
+                 [typography]\nfont_sans='{p}'\nfont_mono='{p}'\nsize_base='{p}'\nline_height='{p}'\n\
+                 [motion]\nduration_fast='{p}'\nduration_normal='{p}'\nduration_slow='{p}'\neasing_default='{p}'\neasing_spring='{p}'\n\
+                 [depth]\nshadow_sm='{p}'\nshadow_md='{p}'\nshadow_lg='{p}'\n\
+                 [cursor]\ntheme='{p}'\n[icons]\ntheme='{p}'\n"
+            );
+            let t = ArlenTheme::resolve(SAMPLE_BUNDLED, Some(&user), None)
+                .expect("an adversarial theme still resolves to safe defaults");
+            for v in free_strings(&t) {
+                proptest::prop_assert!(
+                    is_inert_css_token(v),
+                    "payload {p:?} leaked a non-inert resolved value {v:?}"
+                );
+            }
+            // Every outbound generator runs on the adversarial theme; the
+            // structured Alacritty output must still parse as TOML.
+            let _ = crate::gtk::generate_gtk_css(&t);
+            let _ = crate::qt::generate_qt_conf(&t);
+            let _ = crate::terminal::generate_kitty_conf(&t);
+            let _ = crate::terminal::generate_foot_ini(&t);
+            let _ = crate::terminal::generate_xresources(&t);
+            let alacritty = crate::terminal::generate_alacritty_toml(&t);
+            proptest::prop_assert!(
+                toml::from_str::<toml::Table>(&alacritty).is_ok(),
+                "Alacritty output is not valid TOML for payload {p:?}"
+            );
+        }
+    }
+
     #[test]
     fn inert_gate_accepts_legitimate_values_and_rejects_break_out() {
         // Every default + a normal theme value is inert.

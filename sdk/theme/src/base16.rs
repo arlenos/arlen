@@ -325,6 +325,37 @@ mod tests {
     use crate::color::contrast_ratio;
     use crate::ArlenTheme;
 
+    proptest::proptest! {
+        /// The §3.2 inbound-adapter fuzz: no scheme name — however hostile —
+        /// can break the emitted Arlen-theme TOML. `(?s).{0,64}` covers arbitrary
+        /// chars including quotes, backslashes, newlines and control codes, the
+        /// exact break-out surface `toml_escape` + `slugify` exist to neutralise.
+        /// Generalises the hand-picked hostile-name test: for every name the
+        /// adapted document must still re-parse via `from_bundled`.
+        #[test]
+        fn fuzz_adapt_base16_emits_reparsable_toml(name in "(?s).{0,64}") {
+            let scheme = Base16Scheme {
+                name,
+                author: "fuzz".to_string(),
+                variant: Some("dark".to_string()),
+                palette: [[0.5, 0.5, 0.5, 1.0]; 16],
+            };
+            let toml_text = adapt_base16(&scheme);
+            proptest::prop_assert!(
+                ArlenTheme::from_bundled(&toml_text).is_ok(),
+                "adapt_base16 emitted un-reparsable TOML for a hostile scheme name"
+            );
+        }
+
+        /// `parse_scheme` is a hand-written flat parser; on ANY input it must
+        /// return `Ok`/`Err`, never panic (no slice-index or unwrap on a
+        /// malformed line). `(?s).{0,200}` is arbitrary multi-line text.
+        #[test]
+        fn fuzz_parse_scheme_never_panics(text in "(?s).{0,200}") {
+            let _ = parse_scheme(&text);
+        }
+    }
+
     /// The canonical legacy example, verbatim from
     /// chriskempson/base16-default-schemes/default-dark.yaml.
     const LEGACY: &str = r##"
