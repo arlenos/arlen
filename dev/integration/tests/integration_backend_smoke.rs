@@ -654,3 +654,59 @@ async fn revoke_narrows_a_target_profiles_read_scope() {
         "the unrevoked read pattern must remain, got:\n{body}"
     );
 }
+
+/// IT-1 project detection: a directory bearing a project signal (a `.git` entry)
+/// is detected by the knowledge daemon's project watcher and promoted to a graph
+/// `Project` node. Exercises the detection pipeline end-to-end (watcher scan ->
+/// signal detection -> `ProjectStore::create` -> graph node), driven by a
+/// controlled fixture the hermetic `XDG_CONFIG_HOME` graph.toml points the watcher
+/// at (never the dev's real repos). A `system.Project` read grant lets the caller
+/// read the node back; the watcher scans on startup so the node appears shortly
+/// after the socket binds. Same `#[ignore]` rationale.
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge binaries built and a FUSE-capable host"]
+async fn a_signal_bearing_directory_is_detected_as_a_project() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    // A fixture directory carrying a `.git` signal; the watcher must scan only it.
+    let fixture = stack.runtime_dir().join("proj-fixture");
+    std::fs::create_dir_all(fixture.join(".git")).expect("create .git fixture");
+    stack
+        .seed_project_watch_dir(&fixture)
+        .expect("point the watcher at the fixture");
+    stack
+        .seed_read_profile(&["system.Project.id", "system.Project.name"])
+        .expect("seed read profile");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        if let Ok(rows) = client
+            .query_rows("MATCH (p:Project) RETURN p.id LIMIT 1")
+            .await
+        {
+            if !rows.is_empty() {
+                return; // the .git fixture was detected and promoted to a Project node
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the signal-bearing directory was never detected as a Project node within 20s"
+        );
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
