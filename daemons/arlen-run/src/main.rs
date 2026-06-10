@@ -2,21 +2,22 @@
 //!
 //! A fork-exec binary (not a daemon) that the shell's `launch_app` execs with an
 //! app identity and a program to run. `arlen-run` loads the app's permission
-//! profile, then (in later commits) applies Landlock + seccomp + a per-command
-//! cgroup and the egress filter and spawns the app under bwrap, becoming its
-//! long-lived confined parent. It replaces the unconfined `sh -c` launch path.
+//! profile, applies Landlock, a per-command cgroup and the egress seam, and
+//! spawns the app under bwrap, becoming its long-lived confined parent. It
+//! replaces the unconfined `sh -c` launch path.
 //!
 //! Fail-closed is the whole point: any setup failure - a missing/unparsable
 //! profile, a confinement-setup error, an egress-filter failure - means the app
 //! NEVER starts. There is no "run with reduced confinement" path; a missing
 //! profile is a deny, not a default-open.
 //!
-//! As of this commit the launcher actually spawns the app under bwrap with the
-//! completed confinement (namespaces, the pruned mount view, `no_new_privs`,
-//! `--clearenv`). Landlock, the app seccomp filter, the per-command cgroup and
-//! the egress filter land in the following commits. A profile that asked for a
-//! filtered host set refuses to launch until the egress filter exists, rather
-//! than running with unfiltered network.
+//! The launcher spawns the app under bwrap with the namespace + mount
+//! confinement (the pruned mount view, `no_new_privs`, `--clearenv`), applies
+//! Landlock over the writable set, places the launch in a per-command cgroup
+//! (reaping), and installs the egress seam. The app seccomp filter and the real
+//! egress enforcer are the remaining confinement layers. A profile that asks for
+//! a filtered host set refuses to launch until the real egress filter exists,
+//! rather than running with unfiltered network.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -142,8 +143,9 @@ fn main() -> ExitCode {
     };
 
     // Derive the confiner inputs (the writable set + the network policy) from the
-    // profile, then build the completed confinement and spawn the app under bwrap.
-    // Landlock + seccomp + cgroup + egress land in later commits.
+    // profile, then build the confinement and spawn the app under bwrap. Landlock,
+    // the per-command cgroup and the egress seam are applied in the spawn; the
+    // seccomp filter and the real egress enforcer are the remaining layers.
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
     let user_dirs = profile::UserDirs {
         documents: dirs::document_dir().unwrap_or_else(|| home.join("Documents")),

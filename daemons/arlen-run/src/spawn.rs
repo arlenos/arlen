@@ -12,10 +12,11 @@
 //! - [`spawn_and_wait`] runs `bwrap`, closing inherited fds and starting a new
 //!   process group in the child, then waits and maps the exit status.
 //!
-//! This commit applies confinement by namespaces only (what `bwrap` itself
-//! sets: the namespaces, `no_new_privs`, the pruned mount view, `--clearenv`).
-//! Landlock, seccomp, the per-command cgroup and the egress filter land in the
-//! following commits and slot into the `pre_exec` chain / the parent setup.
+//! Beyond what `bwrap` itself sets (the namespaces, `no_new_privs`, the pruned
+//! mount view, `--clearenv`), the `pre_exec` chain joins the per-command cgroup
+//! and applies Landlock over the writable set, and the parent installs the
+//! egress seam. The app seccomp filter and the real egress enforcer are the
+//! remaining confinement layers.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
