@@ -587,3 +587,70 @@ async fn a_promoted_file_materializes_into_a_capsule_slice() {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 }
+
+/// IT-1 revoke (the 0x06 op) + the LCG strict-narrowing gate: a caller narrows a
+/// target app's read profile, removing one of two field patterns. The daemon's
+/// revoke caller-allowlist admits the canonical `settings` principal and, in a
+/// debug build, the `dev.`-prefixed test caller, so this exercises the real
+/// narrowing path end-to-end (not a deny). We seed a target profile with two read
+/// patterns for a DIFFERENT app, revoke one, and assert `RevokeOutcome::Revoked`:
+/// the strict-subset gate confirms the raw pattern set shrank (the prior sweep's
+/// field-level fix, since both patterns share the `system.File` entity type), and
+/// the on-disk profile is then narrowed. A `User` initiator is required (§6.3
+/// refuses an agent-initiated revoke). The target lookup also depends on the
+/// daemon resolving `ARLEN_PERMISSIONS_DIR`. Same `#[ignore]` rationale, and it
+/// only narrows in a debug build (the dev. caller admission).
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge binaries built (debug, for the dev. caller admission) and a FUSE-capable host"]
+async fn revoke_narrows_a_target_profiles_read_scope() {
+    use arlen_permissions::revoke::{RevokeInitiator, RevokeOutcome, RevokeReach, RevokedReach};
+
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    let target = "com.example.target";
+    stack
+        .seed_profile_for(target, &["system.File.id", "system.File.path"])
+        .expect("seed target profile");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let req = RevokeReach {
+        target_app_id: target.to_string(),
+        reach: RevokedReach::Read {
+            entity_pattern: "system.File.path".to_string(),
+        },
+        initiator: RevokeInitiator::User,
+    };
+    let outcome = client.revoke(&req).await.expect("revoke round-trips");
+    assert_eq!(
+        outcome,
+        RevokeOutcome::Revoked,
+        "removing one of two read patterns is a strict narrowing the gate must accept"
+    );
+
+    // The on-disk target profile is narrowed: the revoked pattern is gone, the
+    // other kept.
+    let body = std::fs::read_to_string(stack.permissions_dir().join(format!("{target}.toml")))
+        .expect("read the narrowed target profile");
+    assert!(
+        !body.contains("system.File.path"),
+        "the revoked read pattern must be removed from the profile, got:\n{body}"
+    );
+    assert!(
+        body.contains("system.File.id"),
+        "the unrevoked read pattern must remain, got:\n{body}"
+    );
+}
