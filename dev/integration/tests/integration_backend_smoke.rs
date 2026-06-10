@@ -943,3 +943,114 @@ async fn the_agent_audits_a_workflow_proposal_in_suggest_mode() {
         );
     }
 }
+
+/// IT-1 canary trip (the deterministic hijack tripwire): an agent proposal whose
+/// operand carries the reserved `__canary:` token trips the gate's pre-scope
+/// tripwire, which halts the run and audits a content-free `PolicyViolation`
+/// (CY-R2 + CY-R3). Same assembled agent stack as the workflow scenario, but the
+/// `file.opened` path embeds the canary token: auto-tag matches the project by
+/// prefix and proposes `FILE_PART_OF` with that path as the `file` operand, so
+/// `touched_by` fires and the decision is audited as `policy_violation` rather
+/// than a routine `permission`. Asserts an entry from the agent with the
+/// PolicyViolation kind appears, proving the tripwire fires end-to-end and is
+/// classified for a ledger reader. Same `#[ignore]` rationale.
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge + audit-daemon + ai-agent binaries built (debug)"]
+async fn a_canary_operand_trips_the_gate_and_audits_a_policy_violation() {
+    use audit_proto::ReadClient;
+
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    let agent_exe = arlen_integration::binary_path("ai", "arlen-ai-agent");
+    let agent_app_id = arlen_permissions::identity::path_to_app_id(&agent_exe)
+        .expect("resolve the agent's app id");
+    stack
+        .seed_full_profile_for(
+            &agent_app_id,
+            "third-party",
+            &["system.Project.id", "system.Project.root_path"],
+        )
+        .expect("seed the agent's full profile");
+
+    let project_dir = stack.runtime_dir().join("proj");
+    std::fs::create_dir_all(project_dir.join(".git")).expect("create .git fixture");
+    stack
+        .seed_project_watch_dir(&project_dir)
+        .expect("point the watcher at the fixture");
+    stack
+        .seed_ai_config(
+            "[ai]\nenabled = true\naccess_level = 2\naction_mode = \"supervised\"\n\n\
+             [agent]\nenabled = [\"auto-tag-by-project\"]\n",
+        )
+        .expect("seed ai.toml");
+
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+    stack
+        .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+        .expect("spawn audit-daemon");
+    stack
+        .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+        .expect("audit ingest socket");
+    stack
+        .wait_socket("arlen/audit-read.sock", Duration::from_secs(20))
+        .expect("audit read socket");
+
+    let behaviours = arlen_integration::repo_path("ai/ai-agent/behaviours");
+    let behaviours = behaviours.to_string_lossy().into_owned();
+    stack
+        .spawn(
+            "ai",
+            "arlen-ai-agent",
+            &[
+                ("ARLEN_AGENT_BEHAVIOURS", behaviours.as_str()),
+                ("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent-arlen-it"),
+            ],
+        )
+        .expect("spawn ai-agent");
+
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let reader = ReadClient::new(stack.audit_read_socket());
+    // A file under the project whose name carries the reserved canary token; the
+    // agent's auto-tag proposal then has a canary-bearing `file` operand.
+    let file_path = format!("{}/__canary:secret.rs", project_dir.to_string_lossy());
+    let deadline = Instant::now() + Duration::from_secs(40);
+    loop {
+        let payload = proto::FileOpenedPayload {
+            path: file_path.clone(),
+            app_id: "integration-test".to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        emitter
+            .emit("file.opened", payload)
+            .await
+            .expect("emit file.opened");
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        let page = reader.recent(64).await;
+        if page
+            .entries
+            .iter()
+            .any(|e| e.actor == agent_app_id && e.kind == "policy-violation")
+        {
+            return; // the canary operand tripped the gate and was audited as a policy violation
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the canary operand never produced a policy-violation audit from the agent within 40s (entries: {:?})",
+            page.entries.iter().map(|e| (e.actor.clone(), e.kind.clone())).collect::<Vec<_>>()
+        );
+    }
+}
