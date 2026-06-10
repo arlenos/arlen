@@ -23,6 +23,7 @@ use std::process::ExitCode;
 
 #[cfg(target_os = "linux")]
 mod cgroup;
+mod egress;
 #[cfg(target_os = "linux")]
 mod landlock_apply;
 mod profile;
@@ -159,19 +160,25 @@ fn main() -> ExitCode {
         &user_dirs,
     );
 
-    // A profile that declared specific hosts needs the egress filter, which is a
-    // later commit. Until it exists, refuse the launch rather than run the app
-    // with unfiltered network. `None` (no network) and `Unrestricted` have a
-    // well-defined posture without a filter and may launch now.
-    if let arlen_confiner::NetworkPolicy::FilteredHosts(hosts) = &inputs.network {
-        if !hosts.is_empty() {
-            eprintln!(
-                "arlen-run: {} declares a filtered host set but the egress filter is not yet wired; refusing to launch",
-                args.app_id
-            );
-            return ExitCode::from(exit::EGRESS);
+    // A profile that declared specific hosts has its egress installed through
+    // the enforcer seam. The stand-in refuses a non-empty host set until the
+    // real netns proxy is wired (fail-closed: never run a host-restricted app
+    // with unfiltered network); the real `EgressEnforcer` slots in here. The
+    // guard is held for the whole launch and tears the restriction down on drop.
+    // `None` (no network) and `Unrestricted` (no filter by design) never reach
+    // the enforcer.
+    use egress::EgressEnforcer;
+    let _egress_guard = if let arlen_confiner::NetworkPolicy::FilteredHosts(hosts) = &inputs.network {
+        match egress::DenyUnlessEmpty.install(hosts) {
+            Ok(guard) => Some(guard),
+            Err(e) => {
+                eprintln!("arlen-run: {}: {e}", args.app_id);
+                return ExitCode::from(exit::EGRESS);
+            }
         }
-    }
+    } else {
+        None
+    };
 
     let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
     let wayland_display = std::env::var("WAYLAND_DISPLAY").ok();
