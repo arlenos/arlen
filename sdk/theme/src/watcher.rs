@@ -75,7 +75,7 @@ impl ThemeWatcher {
         let mut watched_parents: Vec<&Path> = Vec::new();
         for p in paths.iter() {
             if let Some(parent) = p.parent() {
-                if !watched_parents.iter().any(|w| *w == parent) && parent.exists() {
+                if !watched_parents.contains(&parent) && parent.exists() {
                     watcher.watch(parent, RecursiveMode::NonRecursive)?;
                     watched_parents.push(parent);
                 }
