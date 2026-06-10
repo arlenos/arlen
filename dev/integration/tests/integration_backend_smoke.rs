@@ -81,46 +81,51 @@ async fn a_file_opened_event_lands_in_sqlite() {
         .wait_socket("knowledge.sock", Duration::from_secs(30))
         .expect("knowledge socket");
 
-    // Let the knowledge writer register its `*` consumer subscription before we
-    // emit, or the event would be delivered to no one (the bus fans out to the
-    // consumers registered at emit time).
-    tokio::time::sleep(Duration::from_millis(700)).await;
-
-    // Emit one file.opened through the real SDK emitter (envelope + framing as a
-    // production app would). The payload is the typed FileOpenedPayload bytes;
-    // the emitter wraps them in the Event envelope under `file.opened`.
+    // The knowledge writer registers its `*` consumer subscription concurrently
+    // with binding its query socket (`tokio::select!`, no ordering guarantee), and
+    // the bus drops an event with no consumer registered at emit time. So a single
+    // emit after a fixed sleep races the subscription. Instead emit repeatedly
+    // until the event lands: once the writer is subscribed a later emit is
+    // delivered, and each emit carries a fresh envelope id so no idempotency check
+    // suppresses the retries. This is robust to the subscription latency rather
+    // than guessing it.
     let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
-    // The integration crate's proto copy omits the additive `cgroup_id` (field
-    // 4); knowledge decodes its absence to 0, the documented sentinel.
-    let payload = proto::FileOpenedPayload {
-        path: "/tmp/it/main.rs".to_string(),
-        app_id: "integration-test".to_string(),
-        flags: 0,
-    }
-    .encode_to_vec();
-    emitter
-        .emit("file.opened", payload)
-        .await
-        .expect("emit file.opened");
-
-    // The writer batches on a 500ms timer; wait it out with margin.
-    tokio::time::sleep(Duration::from_millis(1200)).await;
-
     let db = stack.db_path();
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .connect(&format!("sqlite:{}", db.display()))
         .await
         .expect("open the hermetic events.db");
-    let row: Option<(String,)> =
-        sqlx::query_as("SELECT type FROM events WHERE type = 'file.opened' LIMIT 1")
-            .fetch_optional(&pool)
+
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        // The integration crate's proto copy omits the additive `cgroup_id` (field
+        // 4); knowledge decodes its absence to 0, the documented sentinel.
+        let payload = proto::FileOpenedPayload {
+            path: "/tmp/it/main.rs".to_string(),
+            app_id: "integration-test".to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        emitter
+            .emit("file.opened", payload)
             .await
-            .expect("query events");
-    assert!(
-        row.is_some(),
-        "the emitted file.opened event should have landed in the hermetic SQLite store"
-    );
+            .expect("emit file.opened");
+        // The writer batches on a 500ms timer; give it margin before checking.
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT type FROM events WHERE type = 'file.opened' LIMIT 1")
+                .fetch_optional(&pool)
+                .await
+                .expect("query events");
+        if row.is_some() {
+            return; // the emitted file.opened landed in the hermetic SQLite store
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the emitted file.opened event never landed in the hermetic SQLite store within 20s"
+        );
+    }
 }
 
 /// IT-1 read-scope enforcement (RS-R1): the knowledge read socket refuses an
@@ -198,8 +203,19 @@ async fn the_write_socket_refuses_an_unprivileged_relation_write() {
             "it-write-deny",
         )
         .await;
+    // The boundary is "the write is refused by the tier gate", not a specific
+    // error variant: the daemon answers `ERROR: write mode not permitted for this
+    // caller`, which the SDK's coarse `check_error` maps to `InvalidQuery` (it
+    // keys `PermissionDenied` off the literal substring "permission", absent
+    // here). Accept either denial shape, but exclude a transport error so the
+    // assertion stays meaningful.
+    let denied = match &refused {
+        Err(QueryError::PermissionDenied) => true,
+        Err(QueryError::InvalidQuery(msg)) => msg.contains("not permitted"),
+        _ => false,
+    };
     assert!(
-        matches!(refused, Err(QueryError::PermissionDenied)),
+        denied,
         "a ThirdParty relation write must be refused by the tier gate, got {refused:?}"
     );
 }
@@ -278,26 +294,27 @@ async fn a_file_opened_promotes_to_a_readable_file_node() {
         .wait_socket("knowledge.sock", Duration::from_secs(30))
         .expect("knowledge socket");
 
-    // Let the writer's `*` subscription register before emitting.
-    tokio::time::sleep(Duration::from_millis(700)).await;
-
     let path = "/work/it/promoted.rs";
     let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
-    let payload = proto::FileOpenedPayload {
-        path: path.to_string(),
-        app_id: "integration-test".to_string(),
-        flags: 0,
-    }
-    .encode_to_vec();
-    emitter
-        .emit("file.opened", payload)
-        .await
-        .expect("emit file.opened");
-
     let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
     let query = format!("MATCH (f:File {{id: '{path}'}}) RETURN f.path LIMIT 1");
-    let deadline = Instant::now() + Duration::from_secs(45);
+    // Re-emit each iteration so a `file.opened` dropped before the writer's
+    // subscription registered does not doom the whole wait; promotion is
+    // idempotent on the path (one File node), so repeated emits are harmless. The
+    // deadline covers the writer-subscription race plus one full ~30s promotion
+    // interval after the event first lands in SQLite.
+    let deadline = Instant::now() + Duration::from_secs(60);
     loop {
+        let payload = proto::FileOpenedPayload {
+            path: path.to_string(),
+            app_id: "integration-test".to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        emitter
+            .emit("file.opened", payload)
+            .await
+            .expect("emit file.opened");
         if let Ok(rows) = client.query_rows(&query).await {
             if !rows.is_empty() {
                 return; // promoted to a File node and readable under the seeded scope
@@ -305,7 +322,7 @@ async fn a_file_opened_promotes_to_a_readable_file_node() {
         }
         assert!(
             Instant::now() < deadline,
-            "the file.opened event never promoted to a readable File node within 45s"
+            "the file.opened event never promoted to a readable File node within 60s"
         );
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
