@@ -59,17 +59,24 @@ async fn listen_consumers(path: &str, registry: Arc<ConsumerRegistry>) -> Result
     }
 }
 
-/// Extract the peer UID from a Unix stream via `SO_PEERCRED`.
-/// Returns 0 (system) if credentials cannot be read.
-fn peer_uid(stream: &UnixStream) -> u32 {
-    stream.peer_cred().map_or(0, |cred| cred.uid())
+/// Extract the peer UID from a Unix stream via `SO_PEERCRED`. `None` on a
+/// credential-read error, so the caller drops the connection rather than fall
+/// back to a trusted identity: an unreadable peer cred fails CLOSED, never open
+/// to uid 0 (root, which would skip the restamp and bypass every consumer
+/// filter). On a connected AF_UNIX stream the kernel fixes peercred at connect,
+/// so this error path is not normally reachable; it is the fail-safe default.
+fn peer_uid(stream: &UnixStream) -> Option<u32> {
+    stream.peer_cred().ok().map(|cred| cred.uid())
 }
 
 /// Handle a single producer connection.
 /// Reads length-prefixed protobuf messages, stamps the UID from `SO_PEERCRED`,
 /// validates them, and dispatches.
 async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>) -> Result<()> {
-    let producer_uid = peer_uid(&stream);
+    let Some(producer_uid) = peer_uid(&stream) else {
+        warn!("could not read producer SO_PEERCRED, dropping connection");
+        return Ok(());
+    };
     debug!(uid = producer_uid, "new producer connection");
 
     loop {
@@ -210,6 +217,10 @@ mod tests {
         let uid = peer_uid(&sock_a);
         // In tests, the peer UID should be our own UID.
         let expected = unsafe { libc::getuid() };
-        assert_eq!(uid, expected, "peer_uid should return the current user's UID");
+        assert_eq!(
+            uid,
+            Some(expected),
+            "peer_uid should return the current user's UID"
+        );
     }
 }
