@@ -116,6 +116,11 @@ pub fn contrast_ratio(a: Rgba, b: Rgba) -> f32 {
     (hi + 0.05) / (lo + 0.05)
 }
 
+/// Rule B's WCAG floor for body text (and for `fg.inverse` on `accent`).
+pub const BODY_CONTRAST_FLOOR: f32 = 4.5;
+/// Rule B's WCAG floor for status colours / large text.
+pub const STATUS_CONTRAST_FLOOR: f32 = 3.0;
+
 /// How far Rule A nudges the accent's OKLCH lightness (the plan's 6–8% band).
 const HOVER_L_NUDGE: f32 = 0.07;
 /// Rule A's "touch of desaturation" on the pressed state.
