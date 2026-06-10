@@ -76,6 +76,20 @@ impl ReqwestForwarder {
 
     /// Build with an explicit response cap. Tests use a small cap to
     /// exercise the oversized-response path cheaply.
+    ///
+    /// SSRF posture (review EG-1): the dial is defended at the host-STRING
+    /// layer (the service's allowlist check on the catalogued URL) and by the
+    /// redirect-disable above, but this `reqwest` client applies NO
+    /// `is_blocked_destination` IP-range floor and no resolve-and-pin on its own
+    /// dial, unlike net-guard's CONNECT proxy. When the ai-proxy itself runs
+    /// confined, its egress is CONNECT-tunnelled through net-guard (reqwest
+    /// honours `https_proxy`) and the IP floor applies underneath; running
+    /// unconfined in the host netns, the dial is direct and a user-configured
+    /// provider host that resolves (or DNS-rebinds) into a blocked range
+    /// (loopback, link-local metadata, RFC1918) would be dialled. Closing this
+    /// independently of the launch env (a custom `is_blocked_destination`
+    /// resolver/connector, or routing the dial through net-guard) is the
+    /// deferred hardening; the allowlist's trusted-host set bounds it today.
     pub fn with_max_response(max_response_bytes: usize) -> Result<Self, ForwardError> {
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(120))
