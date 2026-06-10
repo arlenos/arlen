@@ -98,7 +98,6 @@
     {#if $orderedSessions.length > 0}
       <Input
         id="harness-session-search"
-        class="h-8"
         bind:value={query}
         placeholder="Search conversations"
         aria-label="Search conversations"
@@ -121,7 +120,6 @@
             <SidebarMenuItem>
               {#if editingId === s.id}
                 <Input
-                  class="h-8"
                   bind:value={draft}
                   aria-label="Rename conversation"
                   onblur={commitRename}

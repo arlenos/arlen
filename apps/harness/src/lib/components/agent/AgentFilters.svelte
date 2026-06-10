@@ -1,7 +1,8 @@
 <script lang="ts">
   /// Agent surface contextual filter column (ai-app.md §2.0, dashboard
-  /// archetype's filter column). Scopes the activity timeline by type,
-  /// outcome, and time window. Single-select per group; "All" clears it.
+  /// archetype): scopes the activity timeline by type, outcome, and time
+  /// window. Single-select per group; "All" clears it. Sits on the right as
+  /// the dashboard's contextual pane.
   ///
   /// Options for type/outcome are data-driven (derived from the loaded
   /// entries by the page) rather than hardcoded, so whatever the ledger
@@ -35,54 +36,42 @@
   ];
 </script>
 
-<aside class="filters" aria-label="Activity filters">
+{#snippet group(
+  label: string,
+  options: Option[],
+  selected: string | null,
+  select: (v: string | null) => void,
+  allValue: string | null,
+)}
   <div class="filter-group">
-    <span class="filter-label">Type</span>
-    <button class="filter-item" class:active={selectedKind === null} onclick={() => (selectedKind = null)}>
-      All
-    </button>
-    {#each kinds as k (k.value)}
+    <span class="filter-label">{label}</span>
+    {#if allValue === null}
       <button
         class="filter-item"
-        class:active={selectedKind === k.value}
-        onclick={() => (selectedKind = k.value)}
+        class:active={selected === null}
+        onclick={() => select(null)}
       >
-        {k.label}
-      </button>
-    {/each}
-  </div>
-
-  {#if outcomes.length > 0}
-    <div class="filter-group">
-      <span class="filter-label">Outcome</span>
-      <button class="filter-item" class:active={selectedOutcome === null} onclick={() => (selectedOutcome = null)}>
         All
       </button>
-      {#each outcomes as o (o.value)}
-        <button
-          class="filter-item"
-          class:active={selectedOutcome === o.value}
-          onclick={() => (selectedOutcome = o.value)}
-        >
-          {o.label}
-        </button>
-      {/each}
-    </div>
-  {/if}
-
-  <div class="filter-group">
-    <span class="filter-label">Time</span>
-    {#each TIMES as t (t.value)}
+    {/if}
+    {#each options as o (o.value)}
       <button
         class="filter-item"
-        class:active={timeWindow === t.value}
-        onclick={() => (timeWindow = t.value)}
+        class:active={selected === o.value}
+        onclick={() => select(o.value)}
       >
-        {t.label}
+        {o.label}
       </button>
     {/each}
   </div>
+{/snippet}
 
+<aside class="filters" aria-label="Activity filters">
+  {@render group("Type", kinds, selectedKind, (v) => (selectedKind = v), null)}
+  {#if outcomes.length > 0}
+    {@render group("Outcome", outcomes, selectedOutcome, (v) => (selectedOutcome = v), null)}
+  {/if}
+  {@render group("Time", TIMES, timeWindow, (v) => (timeWindow = v ?? "all"), "all")}
   <p class="filter-note">Filters scope the activity timeline.</p>
 </aside>
 
@@ -90,45 +79,50 @@
   .filters {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--space-section, 1.5rem);
     width: 13rem;
     flex-shrink: 0;
-    padding: 0.85rem 0.7rem;
-    border-right: 1px solid var(--color-border);
-    background: color-mix(in srgb, var(--color-bg-card) 35%, transparent);
+    padding: var(--space-page, 1.5rem) var(--space-row, 0.75rem);
+    border-left: 1px solid var(--color-border);
     position: sticky;
     top: 0;
     align-self: flex-start;
-    max-height: 100%;
-    overflow-y: auto;
   }
   .filter-group {
     display: flex;
     flex-direction: column;
-    gap: 0.15rem;
+    gap: 0.125rem;
   }
+  /* Same register as the Group label, so the column reads as part of the
+     dashboard rather than a foreign sidebar. */
   .filter-label {
-    font-size: 0.68rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
-    margin-bottom: 0.2rem;
-    padding: 0 0.4rem;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    padding: 0 0.5rem 0.25rem;
   }
   .filter-item {
-    display: block;
+    display: flex;
+    align-items: center;
+    min-height: var(--height-control-compact, 24px);
     width: 100%;
     text-align: left;
-    padding: 0.3rem 0.4rem;
+    padding: 0 0.5rem;
     border: none;
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 75%, transparent);
-    font-size: 0.8rem;
+    font-size: 0.8125rem;
     border-radius: var(--radius-chip);
     cursor: pointer;
+    transition:
+      background-color var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out);
   }
   .filter-item:hover {
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    color: var(--foreground);
   }
   .filter-item.active {
     background: color-mix(in srgb, var(--color-accent) 16%, transparent);
@@ -136,10 +130,13 @@
   }
   .filter-note {
     margin: 0;
-    padding: 0 0.4rem;
-    font-size: 0.7rem;
+    padding: 0 0.5rem;
+    font-size: 0.75rem;
+    line-height: 1.4;
     color: color-mix(in srgb, var(--foreground) 40%, transparent);
   }
+  /* On a narrow window the filter column yields so the timeline keeps a
+     usable width. */
   @media (max-width: 52rem) {
     .filters {
       display: none;

@@ -36,4 +36,12 @@
   .section-grid :global(.span-full) {
     grid-column: 1 / -1;
   }
+
+  /* Grid items default to `min-width: auto`, so one unbreakable line (a long
+     path in a log row) would silently widen its track past the grid's own
+     max-width and push the page into horizontal overflow. Cap the minimum so
+     content truncates inside its card instead. */
+  .section-grid > :global(*) {
+    min-width: 0;
+  }
 </style>

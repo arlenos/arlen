@@ -269,6 +269,11 @@ textarea,
    the conversation answers and the agent system-explanation. Global so both
    surfaces pick them up without each component duplicating the rules. Tight
    margins keep a one-line answer compact. */
+.markdown {
+  /* Rendered HTML manages its own spacing; an inherited `pre-wrap` would
+     turn the newlines between tags into phantom blank lines. */
+  white-space: normal;
+}
 .markdown p {
   margin: 0 0 0.5rem;
 }
@@ -278,10 +283,18 @@ textarea,
 .markdown p:last-child {
   margin-bottom: 0;
 }
+/* Tailwind's preflight strips list styling globally; restore it for
+   rendered prose so bullets and numbering actually show. */
 .markdown ul,
 .markdown ol {
   margin: 0 0 0.5rem;
   padding-left: 1.25rem;
+}
+.markdown ul {
+  list-style: disc;
+}
+.markdown ol {
+  list-style: decimal;
 }
 .markdown li {
   margin: 0.1rem 0;
@@ -314,4 +327,14 @@ textarea,
   margin: 0.4rem 0 0.3rem;
   font-size: 1em;
   font-weight: 600;
+}
+
+/* Spinner for in-flight refresh/explain icons (lucide svg gets the class). */
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

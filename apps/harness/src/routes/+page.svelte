@@ -19,19 +19,12 @@
   import { renderMarkdown } from "$lib/markdown";
   import { conversationToMarkdown } from "$lib/export";
   import { externalLinks } from "$lib/externalLinks";
+  import { readCapability, type Capability } from "$lib/capability";
 
   interface FileSuggestion {
     path: string;
     name: string;
     isDir: boolean;
-  }
-
-  interface Capability {
-    enabled: boolean;
-    tier: string;
-    actionMode: string;
-    provider?: string | null;
-    model?: string | null;
   }
 
   let draft = $state("");
@@ -197,11 +190,7 @@
   // and action mode the AI operates under, from ai.toml (what the daemon
   // enforces). Refreshed each mount so a Settings change is reflected.
   onMount(async () => {
-    try {
-      capability = await invoke<Capability>("ai_capability");
-    } catch {
-      capability = null;
-    }
+    capability = await readCapability();
   });
 
   function scrollToBottom() {
@@ -498,7 +487,7 @@
         disabled={$busy || aiDisabled}
         aria-label="Message"
       />
-      <Button size="icon" variant="default" onclick={submit} disabled={$busy || aiDisabled || (draft.trim() === "" && $attached.length === 0)} aria-label="Send">
+      <Button size="icon-sm" variant="default" onclick={submit} disabled={$busy || aiDisabled || (draft.trim() === "" && $attached.length === 0)} aria-label="Send">
         <ArrowUp size={16} strokeWidth={2} />
       </Button>
     </div>
@@ -763,6 +752,12 @@
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;
+  }
+  /* Rendered markdown manages its own spacing; pre-wrap would turn the
+     newlines between its tags into phantom blank lines. Plain-text bubbles
+     (user turns, errors) keep pre-wrap above. */
+  .bubble.markdown {
+    white-space: normal;
   }
   .bubble-user {
     background: var(--color-accent);
