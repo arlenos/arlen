@@ -18,7 +18,7 @@
 use std::time::Duration;
 
 use arlen_integration::EphemeralStack;
-use os_sdk::{EventEmitter, UnixEventEmitter, UnixGraphClient};
+use os_sdk::{EventEmitter, QueryError, UnixEventEmitter, UnixGraphClient};
 use prost::Message;
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -158,5 +158,48 @@ async fn the_read_socket_denies_an_unprivileged_authority_query() {
     assert!(
         denied.is_err(),
         "an unprivileged authority-label (Grant) query must be denied end-to-end (RS-R1)"
+    );
+}
+
+/// IT-1 write-tier enforcement: the knowledge write socket refuses a relation
+/// write from an unprivileged caller. The test process is ThirdParty (an
+/// unenrolled dev app id), and the write path's least-privilege tier gate
+/// rejects ThirdParty before any persistence, so `create_relation` must map to
+/// `PermissionDenied`. Complements the RS-R1 read deny: a distinct boundary (the
+/// write tier), verified end-to-end in the assembled daemon. Same `#[ignore]`.
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge binaries built and a FUSE-capable host"]
+async fn the_write_socket_refuses_an_unprivileged_relation_write() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let refused = client
+        .create_relation(
+            "system.File",
+            "/tmp/it/x.rs",
+            "system.Project",
+            "/tmp/it",
+            "FILE_PART_OF",
+            "it-write-deny",
+        )
+        .await;
+    assert!(
+        matches!(refused, Err(QueryError::PermissionDenied)),
+        "a ThirdParty relation write must be refused by the tier gate, got {refused:?}"
     );
 }
