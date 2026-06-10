@@ -522,3 +522,68 @@ async fn a_connecting_app_sees_only_its_own_capability_grant() {
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
 }
+
+/// IT-1 Context Capsule materialize (the 0x07 op): a promoted File materializes
+/// into a frozen slice rooted at it. Exercises the capsule read end-to-end: the
+/// scope selector -> bounded-hop BFS manifest -> projected node load (the
+/// `CAPSULE_LABELS` allowlist) -> canonical `FrozenSlice` over the wire. Unlike
+/// the other read ops this is NOT RS-R1 gated (it reads the caller's own graph,
+/// bounded by construction to File/Project + live FILE_PART_OF, hop- and
+/// breadth-capped), so no read profile is seeded; the materialize poll itself is
+/// the promotion check (an empty slice until the File node exists, then it
+/// contains it). Asserts the root resolves to a `File`-labelled node, proving the
+/// projected load picked the right label. Same `#[ignore]` rationale
+/// (promotion-dependent, ~30s).
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge binaries built and a FUSE-capable host (~30s)"]
+async fn a_promoted_file_materializes_into_a_capsule_slice() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let path = "/work/it/capsule.rs";
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    // A single-node capsule rooted at the file (no expansion); the root is always
+    // included in the manifest, so once the File node exists it is loaded.
+    let scope = arlen_capsule::scope::CapsuleScope {
+        roots: vec![path.to_string()],
+        expand_hops: 0,
+    };
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let payload = proto::FileOpenedPayload {
+            path: path.to_string(),
+            app_id: "integration-test".to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        emitter
+            .emit("file.opened", payload)
+            .await
+            .expect("emit file.opened");
+        if let Ok(slice) = client.materialize_capsule(&scope).await {
+            if slice.nodes.iter().any(|n| n.id == path && n.label == "File") {
+                return; // the promoted File materialized into the frozen slice
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the promoted File never materialized into a capsule slice within 60s"
+        );
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
