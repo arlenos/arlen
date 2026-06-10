@@ -51,7 +51,7 @@ jobs:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          RUST_ALL='["contracts/audit-proto","contracts/notification-proto","contracts/modulesd-proto","contracts/graph-schema","contracts/forage-recipe","contracts/capsule","contracts/artifact","sdk","ai","daemons/event-bus","daemons/knowledge","daemons/notification-daemon","daemons/audit-daemon","daemons/anomaly-detector","daemons/modulesd","daemons/installd","daemons/knowledge-mcp","daemons/file-manager-mcp","daemons/system-monitor-mcp","daemons/xdg-portal","daemons/capsuled","forage","forage/store","forage/fetch","forage/build","forage/package","forage/extract","forage/pipeline","forage/signing","forage/patch","forage/capabilities","forage/cookbook-index","forage/cookbook-sign","forage/cookbook-resolve"]'
+          RUST_ALL='["contracts/audit-proto","contracts/notification-proto","contracts/modulesd-proto","contracts/graph-schema","contracts/forage-recipe","contracts/capsule","contracts/artifact","sdk","ai","daemons/event-bus","daemons/knowledge","daemons/notification-daemon","daemons/audit-daemon","daemons/anomaly-detector","daemons/modulesd","daemons/installd","daemons/knowledge-mcp","daemons/file-manager-mcp","daemons/system-monitor-mcp","daemons/xdg-portal","daemons/capsuled","daemons/arlen-run","forage","forage/store","forage/fetch","forage/build","forage/package","forage/extract","forage/pipeline","forage/signing","forage/patch","forage/capabilities","forage/cookbook-index","forage/cookbook-sign","forage/cookbook-resolve"]'
           FRONT_ALL='["apps/settings","apps/harness","apps/desktop-shell","sdk/ui-kit"]'
 
           if [ "$EVENT_NAME" = "pull_request" ]; then

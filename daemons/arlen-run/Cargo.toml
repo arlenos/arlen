@@ -1,0 +1,17 @@
+[package]
+name = "arlen-run"
+version = "0.1.0"
+edition = "2021"
+description = "Confined app launcher for Arlen: applies Landlock + seccomp + the egress filter + a per-command cgroup, then spawns the app under bwrap and reaps the tree."
+
+[[bin]]
+name = "arlen-run"
+path = "src/main.rs"
+
+[dependencies]
+arlen-permissions = { path = "../../sdk/permissions" }
+
+[dev-dependencies]
+tempfile = "3"
+
+[workspace]
