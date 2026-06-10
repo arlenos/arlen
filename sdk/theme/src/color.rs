@@ -148,46 +148,55 @@ pub fn derive_hover_pressed(accent: Rgba, dark: bool) -> (Rgba, Rgba) {
 
 /// Rule B: clamp `fg` against `bg` to at least `floor` contrast (4.5 for body
 /// text, 3.0 for status/large). Returns `fg` unchanged when the pair already
-/// clears. Otherwise pushes the foreground's OKLCH lightness AWAY from the
-/// background's, in the smallest step that clears, hue and chroma fixed. If
-/// even the extreme cannot clear (a floor no in-gamut hue/chroma can reach),
-/// returns the extreme — the best available, never a worse pair than authored.
+/// clears. Otherwise walks the foreground's OKLCH lightness toward BOTH poles
+/// (hue and chroma fixed) and returns the colour from whichever direction clears
+/// the floor in the fewest steps — the genuinely smallest move. Walking only one
+/// direction is wrong: when the foreground is between the background and a pole
+/// that tops out below the floor, the opposite pole may clear comfortably (e.g.
+/// a mid accent on a light background — white-on-accent caps low, black clears),
+/// and a one-way walk would ship the sub-floor extreme. If NEITHER pole reaches
+/// the floor, returns the best ratio found across both — the best available,
+/// never worse than the input. A non-finite input (NaN lightness) returns `fg`
+/// unchanged rather than looping.
 pub fn clamp_contrast(fg: Rgba, bg: Rgba, floor: f32) -> Rgba {
-    if contrast_ratio(fg, bg) >= floor {
+    let start = contrast_ratio(fg, bg);
+    if start >= floor {
         return fg;
     }
     let fg_ok = srgb_to_oklch(fg);
-    let bg_ok = srgb_to_oklch(bg);
-    // Push away from the background's lightness; when equal, toward whichever
-    // pole is further (more headroom).
-    let dir = if (fg_ok.l - bg_ok.l).abs() > f32::EPSILON {
-        (fg_ok.l - bg_ok.l).signum()
-    } else if bg_ok.l <= 0.5 {
-        1.0
-    } else {
-        -1.0
-    };
-    // The smallest move that clears: walk L in fine steps to the pole.
+    if !fg_ok.l.is_finite() {
+        return fg;
+    }
     const STEP: f32 = 0.01;
-    let mut l = fg_ok.l;
     let mut best = fg;
-    let mut best_ratio = contrast_ratio(fg, bg);
-    loop {
-        l += dir * STEP;
-        let clamped_l = l.clamp(0.0, 1.0);
-        let candidate = oklch_to_srgb(Oklch { l: clamped_l, ..fg_ok }, fg[3]);
-        let ratio = contrast_ratio(candidate, bg);
-        if ratio >= floor {
-            return candidate;
-        }
-        if ratio > best_ratio {
-            best_ratio = ratio;
-            best = candidate;
-        }
-        if clamped_l <= 0.0 || clamped_l >= 1.0 {
-            return best;
+    let mut best_ratio = start;
+    // The fewest-steps clear across both directions (smaller move wins ties).
+    let mut cleared: Option<(u32, Rgba)> = None;
+    for dir in [1.0f32, -1.0] {
+        let mut l = fg_ok.l;
+        let mut steps = 0u32;
+        loop {
+            l += dir * STEP;
+            steps += 1;
+            let clamped_l = l.clamp(0.0, 1.0);
+            let candidate = oklch_to_srgb(Oklch { l: clamped_l, ..fg_ok }, fg[3]);
+            let ratio = contrast_ratio(candidate, bg);
+            if ratio >= floor {
+                if cleared.is_none_or(|(s, _)| steps < s) {
+                    cleared = Some((steps, candidate));
+                }
+                break;
+            }
+            if ratio > best_ratio {
+                best_ratio = ratio;
+                best = candidate;
+            }
+            if clamped_l <= 0.0 || clamped_l >= 1.0 {
+                break;
+            }
         }
     }
+    cleared.map(|(_, c)| c).unwrap_or(best)
 }
 
 #[cfg(test)]
@@ -298,13 +307,48 @@ mod tests {
     #[test]
     fn rule_b_yields_the_best_extreme_when_the_floor_is_unreachable() {
         // 21:1 over mid-grey is unreachable; the clamp must terminate and hand
-        // back the best in-gamut value rather than loop or overshoot.
+        // back the best in-gamut value rather than loop or overshoot. Over
+        // mid-grey the black pole (~5.3:1) beats the white pole (~3.9:1), and
+        // the both-direction walk must return the better one.
         let fg = parse_hex("#808080").unwrap();
         let bg = parse_hex("#808080").unwrap();
         let clamped = clamp_contrast(fg, bg, 21.0);
         let got = contrast_ratio(clamped, bg);
-        // The white pole over mid-grey is ~3.9; black pole ~5.3. Expect the
-        // better direction to have been chosen and returned.
-        assert!(got > 3.0, "got the best available extreme ({got})");
+        assert!(got >= 5.0, "got the best available extreme, the black pole ({got})");
+    }
+
+    #[test]
+    fn rule_b_takes_the_opposite_pole_when_the_near_pole_cannot_clear() {
+        // The bug the review caught: fg slightly lighter than bg, but the white
+        // pole tops out below the floor while the dark pole clears. A one-way
+        // (away-from-bg => lighter) walk would ship ~3.9:1; both-direction must
+        // return the black pole that clears 4.5.
+        let fg = parse_hex("#8c8c8c").unwrap();
+        let bg = parse_hex("#808080").unwrap();
+        assert!(contrast_ratio(fg, bg) < 4.5, "fixture should fail");
+        let clamped = clamp_contrast(fg, bg, 4.5);
+        assert!(
+            contrast_ratio(clamped, bg) >= 4.5,
+            "the opposite (dark) pole clears the floor ({})",
+            contrast_ratio(clamped, bg)
+        );
+        assert!(
+            srgb_to_oklch(clamped).l < srgb_to_oklch(fg).l,
+            "clamped darker — the clearing direction, not the away-from-bg one"
+        );
+    }
+
+    #[test]
+    fn rule_b_picks_the_smaller_move_across_both_directions() {
+        // Both poles clear: the result must be the nearer one (fewest steps).
+        let fg = parse_hex("#9a9a9a").unwrap();
+        let bg = parse_hex("#3a3a3a").unwrap();
+        if contrast_ratio(fg, bg) >= 4.5 {
+            return; // fixture already passes; nothing to assert
+        }
+        let clamped = clamp_contrast(fg, bg, 4.5);
+        let moved = (srgb_to_oklch(clamped).l - srgb_to_oklch(fg).l).abs();
+        assert!(contrast_ratio(clamped, bg) >= 4.5);
+        assert!(moved < 0.5, "the smaller lightness move was chosen ({moved})");
     }
 }
