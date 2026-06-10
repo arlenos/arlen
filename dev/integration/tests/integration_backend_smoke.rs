@@ -944,6 +944,65 @@ async fn the_agent_audits_a_workflow_proposal_in_suggest_mode() {
     }
 }
 
+/// IT-1 window.focused promotion: a `window.focused` event promotes through to an
+/// `App` graph node, exercising the App/Session/Event/ACTIVE_IN subgraph that the
+/// file.opened scenarios (File/Project) never touch — a distinct promotion path.
+/// Emits a `window.focused` via the real SDK emitter and polls for the App node
+/// (id = the app id) under a seeded `system.App` read grant; the emit-loop absorbs
+/// the writer-subscription race and the ~30s promotion interval. Same `#[ignore]`
+/// rationale (promotion-dependent, ~30s).
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge binaries built and a FUSE-capable host (~30s)"]
+async fn a_window_focused_event_promotes_to_a_readable_app_node() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    stack
+        .seed_read_profile(&["system.App.id", "system.App.name"])
+        .expect("seed read profile");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let app_id = "it.window.app";
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let query = format!("MATCH (a:App {{id: '{app_id}'}}) RETURN a.id LIMIT 1");
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let payload = proto::WindowFocusedPayload {
+            app_id: app_id.to_string(),
+            window_title: "Integration Test".to_string(),
+            prev_app_id: String::new(),
+        }
+        .encode_to_vec();
+        emitter
+            .emit("window.focused", payload)
+            .await
+            .expect("emit window.focused");
+        if let Ok(rows) = client.query_rows(&query).await {
+            if !rows.is_empty() {
+                return; // promoted to an App node and readable under the seeded scope
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the window.focused event never promoted to a readable App node within 60s"
+        );
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
 /// IT-1 canary trip (the deterministic hijack tripwire): an agent proposal whose
 /// operand carries the reserved `__canary:` token trips the gate's pre-scope
 /// tripwire, which halts the run and audits a content-free `PolicyViolation`
