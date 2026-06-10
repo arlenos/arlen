@@ -818,3 +818,128 @@ async fn an_audit_entry_lands_in_the_chain_and_reads_back() {
         page.entries.iter().map(|e| e.subject.clone()).collect::<Vec<_>>()
     );
 }
+
+/// IT-1 agent workflow path (the "AI query -> dry-run executor" piece, suggest
+/// mode): the ai-agent runs a deterministic workflow behaviour and audits its
+/// decision. The agent has no session bus in the harness (forced via an invalid
+/// `DBUS_SESSION_BUS_ADDRESS`), so per the D-1 design it skips agent-kind/provider
+/// work and runs workflow behaviours. `auto-tag-by-project` is enabled at
+/// ProjectScoped tier with behaviours loaded from the in-tree fixture dir. A
+/// `.git` project fixture gives the watcher a `Project`; a `file.opened` under it
+/// lets auto-tag match the project by path prefix and, since promotion is batched
+/// (no `FILE_PART_OF` edge yet), propose the edge -> the gate audits the decision
+/// (audit-before-act) to the audit daemon under the agent's kernel-attested id.
+/// The agent needs its own `system.Project` read profile (RS-R1 gates its read).
+/// The agent has no readiness socket, so we emit repeatedly and poll the audit
+/// ledger until an entry from the agent appears (absorbing the subscription race;
+/// suggest mode never writes the edge, so every emit re-proposes). Same `#[ignore]`
+/// rationale (debug build for the dev. ingest admission).
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge + audit-daemon + ai-agent binaries built (debug)"]
+async fn the_agent_audits_a_workflow_proposal_in_suggest_mode() {
+    use audit_proto::ReadClient;
+
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+
+    // The agent's own graph-read scope: RS-R1 gates the agent's Project read by
+    // its kernel-attested app id, which the daemon resolves from the agent's
+    // binary exactly as `path_to_app_id` does here.
+    // ai-agent is a member of the `ai/` workspace, so its binary builds to
+    // `ai/target/debug`, not `ai/ai-agent/target/debug`.
+    let agent_exe = arlen_integration::binary_path("ai", "arlen-ai-agent");
+    let agent_app_id = arlen_permissions::identity::path_to_app_id(&agent_exe)
+        .expect("resolve the agent's app id");
+    // A COMPLETE profile (with `[info]`): the agent both reads the graph (the
+    // knowledge resolver) AND connects to the audit daemon (ConnectionAuth, which
+    // parses the full profile and rejects a `[graph]`-only fragment).
+    stack
+        .seed_full_profile_for(
+            &agent_app_id,
+            "third-party",
+            &["system.Project.id", "system.Project.root_path"],
+        )
+        .expect("seed the agent's full profile");
+
+    // A project fixture the watcher will detect, and the agent config: AI on,
+    // ProjectScoped read, supervised, auto-tag enabled. No provider -> workflow
+    // only; no `executor_live` -> suggest mode (nothing is written).
+    let project_dir = stack.runtime_dir().join("proj");
+    std::fs::create_dir_all(project_dir.join(".git")).expect("create .git fixture");
+    stack
+        .seed_project_watch_dir(&project_dir)
+        .expect("point the watcher at the fixture");
+    stack
+        .seed_ai_config(
+            "[ai]\nenabled = true\naccess_level = 2\naction_mode = \"supervised\"\n\n\
+             [agent]\nenabled = [\"auto-tag-by-project\"]\n",
+        )
+        .expect("seed ai.toml");
+
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+    stack
+        .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+        .expect("spawn audit-daemon");
+    stack
+        .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+        .expect("audit ingest socket");
+    stack
+        .wait_socket("arlen/audit-read.sock", Duration::from_secs(20))
+        .expect("audit read socket");
+
+    // The agent: behaviours from the in-tree fixture dir (debug override), and no
+    // session bus (an unreachable address forces the D-1 workflow-only path rather
+    // than connecting to the dev's real session bus).
+    let behaviours = arlen_integration::repo_path("ai/ai-agent/behaviours");
+    let behaviours = behaviours.to_string_lossy().into_owned();
+    stack
+        .spawn(
+            "ai",
+            "arlen-ai-agent",
+            &[
+                ("ARLEN_AGENT_BEHAVIOURS", behaviours.as_str()),
+                ("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent-arlen-it"),
+            ],
+        )
+        .expect("spawn ai-agent");
+
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let reader = ReadClient::new(stack.audit_read_socket());
+    let file_path = format!("{}/main.rs", project_dir.to_string_lossy());
+    let deadline = Instant::now() + Duration::from_secs(40);
+    loop {
+        let payload = proto::FileOpenedPayload {
+            path: file_path.clone(),
+            app_id: "integration-test".to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        emitter
+            .emit("file.opened", payload)
+            .await
+            .expect("emit file.opened");
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        let page = reader.recent(64).await;
+        if page.entries.iter().any(|e| e.actor == agent_app_id) {
+            return; // the agent ran the workflow and audited its decision
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the agent never audited a workflow decision within 40s (actors seen: {:?})",
+            page.entries.iter().map(|e| e.actor.clone()).collect::<Vec<_>>()
+        );
+    }
+}
