@@ -31,7 +31,7 @@ use arlen_ai_agent::engine::{
 };
 use arlen_ai_agent::gate::Gate;
 use arlen_ai_agent::slice::{FsPathResolver, ProcMountsPolicy};
-use arlen_ai_agent::executor::LiveExecutor;
+use arlen_ai_agent::executor::{ActionReceipt, LiveExecutor};
 use arlen_ai_agent::graph::{UnixGraph, UnixRelationWriter, DEFAULT_GRAPH_SOCKET};
 use arlen_ai_agent::handlers::builtin_handlers;
 use arlen_ai_agent::receipt_store::{ReceiptStore, RetainedReceipt};
@@ -1082,7 +1082,9 @@ fn retain_receipt(
             store.record(
                 receipt.correlation_id().to_string(),
                 RetainedReceipt {
-                    write: receipt.clone(),
+                    // Store the compensate-ready receipt: a graph write wrapped
+                    // as ActionReceipt::Graph, the exact type compensate consumes.
+                    receipt: ActionReceipt::Graph(receipt.clone()),
                     behaviour: behaviour.clone(),
                 },
             );
