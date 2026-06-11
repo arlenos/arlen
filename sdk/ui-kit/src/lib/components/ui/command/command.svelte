@@ -10,6 +10,10 @@
 	}: CommandPrimitive.RootProps = $props();
 </script>
 
+<!-- Surface colors belong to the consumer (the shell's waypointer
+     paints itself via its .wp-root class) — a kit primitive must not
+     hardcode shell tokens, and an inline style here would force every
+     consumer override into !important. -->
 <CommandPrimitive.Root
 	bind:ref
 	bind:value
@@ -18,6 +22,5 @@
 		"flex h-full w-full flex-col overflow-hidden rounded-input",
 		className
 	)}
-	style="background: var(--color-bg-shell); color: var(--color-fg-shell);"
 	{...restProps}
 />
