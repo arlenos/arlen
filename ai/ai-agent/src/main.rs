@@ -1300,8 +1300,17 @@ fn consumer_socket() -> String {
     std::env::var("ARLEN_CONSUMER_SOCKET").unwrap_or_else(|_| DEFAULT_CONSUMER_SOCKET.to_string())
 }
 
+/// Resolve the knowledge daemon socket: this agent's own `ARLEN_KNOWLEDGE_SOCKET`
+/// override first, then `ARLEN_DAEMON_SOCKET` (the knowledge daemon's OWN bind
+/// env), then the system default. The `ARLEN_DAEMON_SOCKET` fallback (which
+/// knowledge-mcp and the ai-daemon already honour) means a launcher that sets
+/// only the daemon's canonical bind env reaches the agent too, instead of the
+/// agent silently dialing the default — the bug that recurred in the dev stack
+/// and the integration harness when only one of the two env names was set.
 fn graph_socket() -> String {
-    std::env::var("ARLEN_KNOWLEDGE_SOCKET").unwrap_or_else(|_| DEFAULT_GRAPH_SOCKET.to_string())
+    std::env::var("ARLEN_KNOWLEDGE_SOCKET")
+        .or_else(|_| std::env::var("ARLEN_DAEMON_SOCKET"))
+        .unwrap_or_else(|_| DEFAULT_GRAPH_SOCKET.to_string())
 }
 
 /// Resolve when Ctrl-C or SIGTERM arrives, so the daemon stops cleanly.
