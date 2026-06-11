@@ -1,0 +1,18 @@
+[package]
+name = "arlen-wallpaper"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen wallpaper: the data-only TOML manifest model (image / video / shader / dynamic, per-monitor + time-of-day variants, referencing plain asset files, no executable code) the background-layer client and the Settings picker share. The renderer client and the time-of-day selection build on this."
+authors = ["Arlen"]
+
+[lib]
+name = "arlen_wallpaper"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+thiserror = "1"
+
+[dev-dependencies]
+
+[workspace]
