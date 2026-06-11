@@ -55,7 +55,6 @@
     appletId="tray"
     {tooltip}
     popoverOpen={isOpen}
-    state={hasAttention ? "warn" : undefined}
     onclick={() => togglePopover("tray")}
     onmouseenter={() => hoverPopover("tray")}
   >
