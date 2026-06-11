@@ -3,7 +3,6 @@
   /// newest at the bottom like a terminal. Sticks to the bottom while
   /// the user is there; scrolling up parks the view and offers a
   /// jump-to-latest pill instead of yanking it back down.
-  import { ArrowDown } from "lucide-svelte";
   import type { Block } from "$lib/contract";
   import StreamBlock from "./StreamBlock.svelte";
 
@@ -41,10 +40,7 @@
 
 {#if !pinnedToBottom}
   <div class="jump-wrap">
-    <button class="jump-btn" onclick={jumpToLatest}>
-      <ArrowDown size={12} strokeWidth={2} />
-      Jump to latest
-    </button>
+    <button class="jump-btn" onclick={jumpToLatest}>Jump to latest</button>
   </div>
 {/if}
 
