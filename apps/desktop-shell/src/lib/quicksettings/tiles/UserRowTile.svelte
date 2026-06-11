@@ -135,7 +135,6 @@
     align-items: center;
     gap: 10px;
     flex: 1;
-    cursor: pointer;
     border-radius: var(--radius-input);
     padding: 6px 8px;
     transition: background-color 100ms ease;
@@ -180,7 +179,6 @@
     border: none;
     border-radius: var(--radius-input);
     color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);
-    cursor: pointer;
     padding: 0;
     transition: all 100ms ease;
   }
@@ -213,7 +211,6 @@
     border-radius: var(--radius-input);
     color: var(--color-fg-shell);
     font-size: 0.75rem;
-    cursor: pointer;
     text-align: left;
     transition: background-color 100ms ease;
   }

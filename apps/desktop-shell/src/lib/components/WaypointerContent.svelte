@@ -1319,7 +1319,6 @@
     border-radius: var(--radius-chip);
     color: var(--color-fg-shell);
     opacity: 0.35;
-    cursor: pointer;
     transition: background 80ms ease, opacity 80ms ease;
   }
   .wp-inline-btn:hover {

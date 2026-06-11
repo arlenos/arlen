@@ -1855,7 +1855,6 @@
     border-radius: var(--radius-input);
     border: 1px solid transparent;
     background: transparent;
-    cursor: pointer;
     transition:
       background-color 120ms ease,
       border-color 120ms ease;
@@ -2005,7 +2004,7 @@
     width: 24px;
     height: 24px;
     object-fit: contain;
-    border-radius: 4px;
+    border-radius: var(--radius-chip);
     pointer-events: none;
   }
 
@@ -2144,7 +2143,6 @@
     font-size: 0.6875rem;
     font-weight: 500;
     line-height: 1;
-    cursor: pointer;
     white-space: nowrap;
     transition:
       background-color 150ms ease,
@@ -2193,7 +2191,6 @@
     padding: 0;
     border: none;
     background: transparent;
-    cursor: pointer;
     border-radius: var(--radius-full);
     transition: transform 100ms ease;
   }

@@ -126,7 +126,6 @@
         height: 28px;
         border: none;
         border-radius: var(--radius-input);
-        cursor: pointer;
         background: transparent;
         color: var(--foreground);
         font-size: 16px;
@@ -191,7 +190,6 @@
         background: none;
         color: var(--foreground);
         font-size: 13px;
-        cursor: pointer;
         text-align: left;
     }
 

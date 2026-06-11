@@ -193,7 +193,7 @@
     background: transparent;
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
-    cursor: pointer; font-size: 0.625rem; font-weight: 500;
+    font-size: 0.625rem; font-weight: 500;
     transition: all 100ms ease;
   }
   .mode-pill:hover {

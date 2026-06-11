@@ -350,14 +350,14 @@
   .bt-msg { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 12px; color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); text-align: center; font-size: 0.8125rem; }
   .bt-hint { font-size: 0.6875rem; opacity: 0.5; }
 
-  .bt-error { padding: 6px 10px; background: rgba(239, 68, 68, 0.15); border-radius: var(--radius-input); color: #ef4444; font-size: 0.6875rem; }
+  .bt-error { padding: 6px 10px; background: color-mix(in srgb, var(--color-error) 15%, transparent); border-radius: var(--radius-input); color: var(--color-error); font-size: 0.6875rem; }
 
   .bt-section-label { font-size: 0.6875rem; opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 
   .bt-device {
     display: flex; align-items: center; gap: 10px;
     padding: 8px 10px; background: transparent; border: none; border-radius: var(--radius-input);
-    color: var(--color-fg-shell); font-size: 0.8125rem; cursor: pointer;
+    color: var(--color-fg-shell); font-size: 0.8125rem;
     text-align: left; width: 100%; transition: background-color 0.1s ease;
   }
   .bt-device:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
@@ -373,7 +373,7 @@
     display: flex; align-items: center; justify-content: center; gap: 6px;
     padding: 7px; background: transparent; border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     border-radius: var(--radius-input); color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
-    font-size: 0.75rem; cursor: pointer; transition: all 0.15s ease;
+    font-size: 0.75rem; transition: all 0.15s ease;
   }
   .bt-scan-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); color: var(--color-fg-shell); }
 

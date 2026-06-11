@@ -87,7 +87,7 @@
       text += ` (${status.signal_strength}%)`;
     }
     if (status.vpn_active) {
-      text += " · VPN";
+      text += " (VPN)";
     }
     return text;
   });

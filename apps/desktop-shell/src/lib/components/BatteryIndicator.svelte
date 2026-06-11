@@ -106,12 +106,12 @@
       const h = Math.floor(status.time_remaining_minutes / 60);
       const m = status.time_remaining_minutes % 60;
       if (h > 0) {
-        text += ` — ${h}h ${m}min ${status.charging ? "until full" : "remaining"}`;
+        text += `, ${h}h ${m}min ${status.charging ? "until full" : "remaining"}`;
       } else {
-        text += ` — ${m}min ${status.charging ? "until full" : "remaining"}`;
+        text += `, ${m}min ${status.charging ? "until full" : "remaining"}`;
       }
     } else if (status.charging) {
-      text += " — Charging";
+      text += ", charging";
     }
     return text;
   });

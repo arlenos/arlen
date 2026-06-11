@@ -276,8 +276,7 @@
     height: 100%;
     background: transparent;
     border: none;
-    cursor: pointer;
-    color: var(--color-fg-muted, #a1a1aa);
+    color: var(--color-fg-muted);
   }
   .mod-failed-glyph {
     font-size: 12px;

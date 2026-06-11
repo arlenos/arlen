@@ -231,7 +231,7 @@
                 class="focus-indicator"
                 role="button"
                 tabindex="0"
-                title={`Project: ${$focusState.projectName} — right-click for options`}
+                title={`Project: ${$focusState.projectName}. Right-click for options`}
                 onclick={openProjectSwitcher}
               >
                 {#if $focusState.accentColor}
@@ -378,7 +378,6 @@
      signals "this is interactive" without needing a separate
      button. */
   .focus-indicator {
-    cursor: pointer;
     transition: background-color var(--duration-fast, 100ms) var(--ease-out, ease);
   }
   .focus-indicator:hover {

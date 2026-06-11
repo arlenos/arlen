@@ -149,16 +149,16 @@
     height: 8px;
     min-width: 0;
     padding: 0;
-    border-radius: 4px;
+    border-radius: var(--radius-chip);
   }
   .app-badge.badge-error {
-    background: var(--color-error, #dc2626);
+    background: var(--color-error);
   }
   .app-badge.badge-warning {
-    background: var(--color-warning, #d97706);
+    background: var(--color-warning);
   }
   .app-badge.badge-success {
-    background: var(--color-success, #16a34a);
+    background: var(--color-success);
   }
   .app-badge.badge-progress {
     background: var(--color-accent);
@@ -179,7 +179,6 @@
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
     font-size: 0.75rem;
     font-weight: 500;
-    cursor: pointer;
     border-radius: var(--radius-chip);
     white-space: nowrap;
     transition: background-color 100ms ease, color 100ms ease;

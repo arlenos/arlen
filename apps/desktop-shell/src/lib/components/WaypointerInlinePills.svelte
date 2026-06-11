@@ -54,7 +54,6 @@
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
     font-size: 0.625rem;
     font-weight: 500;
-    cursor: pointer;
     white-space: nowrap;
     transition: all 100ms ease;
   }

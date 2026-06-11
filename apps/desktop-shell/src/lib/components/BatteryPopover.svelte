@@ -132,7 +132,7 @@
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     border-radius: var(--radius-input); background: transparent;
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
-    cursor: pointer; padding: 0;
+    padding: 0;
     transition: all 0.15s ease;
   }
   .bat-pill:hover {

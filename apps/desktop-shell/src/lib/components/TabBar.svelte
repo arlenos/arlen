@@ -45,7 +45,6 @@
         justify-content: center;
         padding: 0 8px;
         border: none;
-        cursor: pointer;
         font-size: 12px;
         transition: background-color var(--duration-fast) var(--easing-default);
         background: color-mix(in srgb, var(--background) 60%, transparent);

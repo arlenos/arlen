@@ -26,7 +26,7 @@
 <Applet
   appletId="notifications"
   tooltip={hasUnread
-    ? `Notifications — ${$unreadCount} unread`
+    ? `Notifications: ${$unreadCount} unread`
     : "Notifications"}
   ariaLabel={hasUnread
     ? `${$unreadCount} unread notifications`
