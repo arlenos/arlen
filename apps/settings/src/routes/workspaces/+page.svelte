@@ -86,11 +86,12 @@
   function ruleSummary(rule: WindowRule): string {
     const parts: string[] = [];
     const m = rule.match ?? {};
-    if (m.app_id) parts.push(`app_id ~ /${m.app_id}/`);
-    if (m.title) parts.push(`title ~ /${m.title}/`);
-    if (m.window_type) parts.push(`type = ${m.window_type}`);
-    if (parts.length === 0) parts.push("(empty matcher)");
-    return `${parts.join(" · ")} → ${rule.action === "float" ? "Float" : "Tile"}`;
+    if (m.app_id) parts.push(`app matches ${m.app_id}`);
+    if (m.title) parts.push(`title matches ${m.title}`);
+    if (m.window_type) parts.push(`type is ${m.window_type}`);
+    if (parts.length === 0) parts.push("any window");
+    const action = rule.action === "float" ? "floats" : "tiles";
+    return `${parts.join(", ")}: ${action}`;
   }
 
   const LAYOUT_OPTIONS = [
@@ -207,7 +208,7 @@
         onremove={removeRule}
         onadd={() => (addRuleOpen = true)}
         addLabel="Add Rule"
-        emptyMessage="No rules yet — apps follow the global tiling default."
+        emptyMessage="No rules yet. Apps follow the global tiling default."
       >
         {#snippet itemSnippet({ item }: { item: WindowRule; index: number })}
           <code class="rule-code">{ruleSummary(item as WindowRule)}</code>

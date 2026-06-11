@@ -64,7 +64,7 @@ function pluginToSummary(p: PluginSummary): ModuleSummary {
     hasTopbar: false,
     hasSettings: false,
     icon: "",
-    path: p.prefix ? `built-in · prefix "${p.prefix}"` : "built-in",
+    path: p.prefix ? `built-in, prefix "${p.prefix}"` : "built-in",
     warnings: [],
   };
 }

@@ -95,7 +95,7 @@
       busy = false;
       onClose();
     } else {
-      error = `Revert ${r.outcome === "failed" ? "rejected" : "cancelled"} by compositor — try again.`;
+      error = "The revert did not go through. Try again.";
       pendingRevertId = null;
       busy = false;
     }

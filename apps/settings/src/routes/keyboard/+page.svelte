@@ -280,8 +280,9 @@
   {#if lastError}
     <div
       class="span-full rounded-[var(--radius-chip)] border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+      title={lastError}
     >
-      {lastError}
+      Could not save the keyboard change. The previous setting still applies.
     </div>
   {/if}
 

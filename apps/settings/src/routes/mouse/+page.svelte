@@ -92,7 +92,7 @@
     </Group>
 
     {#if $mouse.error}
-      <div class="span-full error-box">{$mouse.error}</div>
+      <div class="span-full error-box" title={$mouse.error}>Can't read these settings right now. Changes are paused.</div>
     {/if}
   </SectionGrid>
 </Page>

@@ -79,7 +79,7 @@
                 class="hidden-chip"
                 role="button"
                 tabindex="0"
-                aria-label={`Hidden tile: ${tile.label} — drag back into the panel or right-click to show`}
+                aria-label={`Hidden tile: ${tile.label}. Drag back into the panel or right-click to show`}
                 draggable="true"
                 ondragstart={(e) => handleDragStart(e, tile.id)}
               >

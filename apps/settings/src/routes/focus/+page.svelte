@@ -134,7 +134,7 @@
           // the button is hidden via empty addLabel.
         }}
         addLabel=""
-        emptyMessage="No apps configured — Focus Mode uses per-project lists only."
+        emptyMessage="No apps configured. Focus Mode uses per-project lists only."
       >
         {#snippet itemSnippet({ item }: { item: string; index: number })}
           <span class="app-row">

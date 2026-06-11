@@ -34,10 +34,10 @@
   description="Per-app permissions and data access controls."
 >
   <SectionGrid>
-    <Group label="Coming with Phase 8">
+    <Group label="Permissions">
     <Row
       label="Per-app permissions"
-      description="Granular control over Knowledge Graph, Event Bus, filesystem, network, clipboard, camera, microphone, and location access. Arrives with the first-party apps in Phase 8 — by then app-files / app-knowledge / app-terminal will register their permission profiles for review here."
+      description="Per-app control over what may read your files, your activity record, the network, the clipboard, camera, microphone, and location. Not built yet; apps will register their permission profiles for review here."
       id="privacy-permissions"
     >
       {#snippet control()}
@@ -47,7 +47,7 @@
 
     <Row
       label="Permission system architecture"
-      description="The token-store, profile-parser, and permission-helper daemon already exist. What's missing is the per-app UI surface."
+      description="The underpinnings exist; this page is the missing piece. Until it lands, app access is managed by the system defaults."
       id="privacy-arch-link"
     >
       {#snippet control()}

@@ -55,28 +55,28 @@
 
 <Page
   title="About"
-  description="System information and daemon status. Read-only — no settings to change here."
+  description="System information and service status. Read-only; nothing to change here."
 >
   <SectionGrid>
     <Group label="Arlen OS">
       <Row label="Version" id="arlen-version">
         {#snippet control()}
-          <span class="meta">{info?.arlenVersion ?? "—"}</span>
+          <span class="meta">{info?.arlenVersion ?? "Unknown"}</span>
         {/snippet}
       </Row>
       <Row label="Kernel" id="kernel">
         {#snippet control()}
-          <span class="meta">{info?.kernel ?? "—"}</span>
+          <span class="meta">{info?.kernel ?? "Unknown"}</span>
         {/snippet}
       </Row>
       <Row label="Wayland display" id="wayland-display">
         {#snippet control()}
-          <span class="meta">{info?.waylandDisplay ?? "—"}</span>
+          <span class="meta">{info?.waylandDisplay ?? "Unknown"}</span>
         {/snippet}
       </Row>
     </Group>
 
-    <Group label="Daemons">
+    <Group label="Services">
       {#if info}
         {#each info.daemons as d (d.name)}
           <Row
@@ -96,7 +96,7 @@
           {#snippet control()}<span class="meta">…</span>{/snippet}
         </Row>
       {/if}
-      <Row label="Refresh" description="Re-poll daemon status." id="about-refresh">
+      <Row label="Refresh" description="Check the services again." id="about-refresh">
         {#snippet control()}
           <Button variant="ghost" size="sm" disabled={loading} onclick={refresh}>
             <RefreshCw size={14} class={loading ? "about-spin" : ""} />
