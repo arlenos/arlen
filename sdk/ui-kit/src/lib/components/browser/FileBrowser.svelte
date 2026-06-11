@@ -169,9 +169,22 @@
   let rootEl = $state<HTMLDivElement | null>(null);
   function scrollCursorIntoView() {
     const i = selection.cursor();
-    if (i === null) return;
+    if (i === null || !rootEl) return;
+    if ($viewMode === "list") {
+      // The list windows its rows, so the target may not be in the
+      // DOM; the row metric (2rem) makes the scroll math exact.
+      const rowPx = 32;
+      const headerPx = 28;
+      const top = headerPx + i * rowPx;
+      if (top < rootEl.scrollTop + headerPx) {
+        rootEl.scrollTop = top - headerPx;
+      } else if (top + rowPx > rootEl.scrollTop + rootEl.clientHeight) {
+        rootEl.scrollTop = top + rowPx - rootEl.clientHeight;
+      }
+      return;
+    }
     rootEl
-      ?.querySelectorAll(".file-row, .file-tile")
+      .querySelectorAll(".file-row, .file-tile")
       [i]?.scrollIntoView({ block: "nearest" });
   }
 
@@ -205,7 +218,17 @@
   {#if $error}
     <div class="fb-state">
       <span class="fb-state-title">Can't open this folder</span>
-      <span class="fb-state-hint">{$error}</span>
+      <span class="fb-state-hint">
+        {#if /permission denied/i.test($error)}
+          You don't have permission to see what's inside.
+        {:else if /not connected/i.test($error)}
+          This place is not connected right now.
+        {:else if /no such directory/i.test($error)}
+          This folder does not exist anymore.
+        {:else}
+          {$error}
+        {/if}
+      </span>
     </div>
   {:else if !$loading && visible.length === 0}
     <div class="fb-state">

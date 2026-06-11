@@ -1,8 +1,10 @@
 <script lang="ts">
   /// The detail view: a sortable header row over FileRows. Sorting
   /// goes through the controller (the backend sorts, the view only
-  /// asks); rows render with content-visibility so huge folders stay
-  /// scrollable without windowing machinery.
+  /// asks). Rows are windowed against the scrolling host, so a
+  /// hundred-thousand-entry folder costs the viewport, not the
+  /// listing — two spacers keep the scrollbar honest.
+  import { onMount } from "svelte";
   import type { Snippet } from "svelte";
   import { ChevronDown, ChevronUp } from "@lucide/svelte";
   import type { FileEntry, SortKey } from "./types";
@@ -44,9 +46,41 @@
     { key: "size", label: "Size", align: "right" },
     { key: "modified", label: "Modified", align: "left" },
   ];
+
+  // Windowing: the row height is the 2rem row box; the visible slice
+  // follows the scrolling ancestor with a generous overscan.
+  const ROW_PX = 32;
+  const OVERSCAN = 24;
+  let bodyEl = $state<HTMLDivElement | null>(null);
+  let winStart = $state(0);
+  let winEnd = $state(200);
+
+  onMount(() => {
+    const scroller = bodyEl?.closest(".file-browser");
+    if (!(scroller instanceof HTMLElement)) return;
+    const update = () => {
+      const top = scroller.scrollTop;
+      const height = scroller.clientHeight;
+      winStart = Math.max(0, Math.floor(top / ROW_PX) - OVERSCAN);
+      winEnd = Math.ceil((top + height) / ROW_PX) + OVERSCAN;
+    };
+    update();
+    scroller.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(scroller);
+    return () => {
+      scroller.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  });
+
+  const sliceEnd = $derived(Math.min(winEnd, entries.length));
+  const slice = $derived(entries.slice(winStart, sliceEnd));
+  const padTop = $derived(winStart * ROW_PX);
+  const padBottom = $derived(Math.max(0, entries.length - sliceEnd) * ROW_PX);
 </script>
 
-<div class="file-list" role="grid" aria-label="Files">
+<div class="file-list" role="grid" aria-label="Files" aria-rowcount={entries.length}>
   <div class="fl-header" role="row">
     {#each COLUMNS as col (col.key)}
       <button
@@ -68,23 +102,24 @@
     {/each}
   </div>
 
-  <div class="fl-body">
-    {#each entries as entry, i (entry.name)}
-      <div class="fl-rowslot">
-        <FileRow
-          {entry}
-          {now}
-          {icon}
-          selected={selectedIndices.has(i)}
-          focused={cursorIndex === i}
-          renaming={renamingName === entry.name}
-          onrowclick={(e) => onrowevent?.("click", i, e)}
-          onrowdblclick={(e) => onrowevent?.("dblclick", i, e)}
-          onrowcontextmenu={(e) => onrowevent?.("contextmenu", i, e)}
-          onrename={(newName) => onrename?.(entry, newName)}
-        />
-      </div>
+  <div class="fl-body" bind:this={bodyEl}>
+    <div style:height="{padTop}px"></div>
+    {#each slice as entry, sliceIndex (entry.name)}
+      {@const i = winStart + sliceIndex}
+      <FileRow
+        {entry}
+        {now}
+        {icon}
+        selected={selectedIndices.has(i)}
+        focused={cursorIndex === i}
+        renaming={renamingName === entry.name}
+        onrowclick={(e) => onrowevent?.("click", i, e)}
+        onrowdblclick={(e) => onrowevent?.("dblclick", i, e)}
+        onrowcontextmenu={(e) => onrowevent?.("contextmenu", i, e)}
+        onrename={(newName) => onrename?.(entry, newName)}
+      />
     {/each}
+    <div style:height="{padBottom}px"></div>
   </div>
 </div>
 
@@ -135,11 +170,5 @@
     display: flex;
     flex-direction: column;
     padding: 4px 0;
-  }
-  /* Huge folders: rows outside the viewport render lazily; the fixed
-     height keeps the scrollbar honest. */
-  .fl-rowslot {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 2rem;
   }
 </style>

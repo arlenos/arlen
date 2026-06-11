@@ -51,6 +51,8 @@
 
 <style>
   .file-tile {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 6rem;
     display: flex;
     flex-direction: column;
     align-items: center;
