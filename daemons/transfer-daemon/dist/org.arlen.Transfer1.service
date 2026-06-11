@@ -1,4 +1,0 @@
-[D-BUS Service]
-Name=org.arlen.Transfer1
-Exec=/usr/lib/arlen/libexec/arlen-transferd
-SystemdService=arlen-transferd.service
