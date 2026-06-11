@@ -24,6 +24,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod vt;
+
 /// Who issued the command in a block: the user typed it, or the agent ran it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
