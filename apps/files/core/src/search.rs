@@ -36,6 +36,15 @@ pub const DEFAULT_MAX_DEPTH: usize = 16;
 /// The default cap on results before the walk ends [`SearchOutcome::truncated`].
 pub const DEFAULT_MAX_RESULTS: usize = 1000;
 
+/// The default cap on entries EXAMINED (statted) across the whole walk. The
+/// result cap bounds hits, not work: a query that matches nothing would
+/// otherwise stat every entry in the granted tree up to the depth cap. This
+/// bounds the walk's cost by the options, not only by the on-disk tree size;
+/// once reached the walk ends with [`SearchOutcome::examined_capped`] set. The
+/// default is generous (a large home rarely reaches it); a host wanting a
+/// snappier interactive search lowers it and pairs it with a cancel flag.
+pub const DEFAULT_MAX_ENTRIES_EXAMINED: usize = 1_000_000;
+
 /// The default per-file byte cap for the content grep (8 MiB): a larger file is
 /// name-matched but its content is not read.
 pub const DEFAULT_MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
@@ -68,6 +77,11 @@ pub struct SearchOptions {
     /// Stop after this many results; the walk then ends with
     /// [`SearchOutcome::truncated`] set (more may exist).
     pub max_results: usize,
+    /// Stop after examining (statting) this many entries, so the walk's cost is
+    /// bounded by the options and not only by the granted tree size. A no-match
+    /// query would otherwise stat the whole tree; once this is reached the walk
+    /// ends with [`SearchOutcome::examined_capped`] set.
+    pub max_entries_examined: usize,
     /// Per-file byte cap for the content grep. A file larger than this is
     /// name-matched but its content is NOT read, and
     /// [`SearchOutcome::content_budget_exhausted`] is set.
@@ -90,6 +104,7 @@ impl Default for SearchOptions {
             match_content: false,
             max_depth: DEFAULT_MAX_DEPTH,
             max_results: DEFAULT_MAX_RESULTS,
+            max_entries_examined: DEFAULT_MAX_ENTRIES_EXAMINED,
             max_file_bytes: DEFAULT_MAX_FILE_BYTES,
             max_total_content_bytes: DEFAULT_MAX_TOTAL_CONTENT_BYTES,
             skip_hidden: false,
@@ -137,6 +152,10 @@ pub struct SearchOutcome {
     /// `max_file_bytes` or the total budget was spent, so the content results are
     /// not exhaustive. Honest reporting, never a silent partial.
     pub content_budget_exhausted: bool,
+    /// Set when the walk stopped because `max_entries_examined` was reached, so
+    /// parts of the tree were not visited and more matches may exist. Distinct
+    /// from `truncated` (which is about the result cap): this is the work cap.
+    pub examined_capped: bool,
 }
 
 /// Search the tree rooted at the capability `dir`, returning every entry whose
@@ -159,6 +178,7 @@ pub fn search(dir: &Dir, opts: &SearchOptions) -> SearchOutcome {
         query_content: query_lower.as_bytes().to_ascii_lowercase(),
         visited: HashSet::new(),
         content_spent: 0,
+        examined: 0,
         outcome: SearchOutcome::default(),
     };
     // The root itself is recorded as visited so a symlink back to it is detected.
@@ -181,7 +201,20 @@ struct WalkState<'a> {
     query_content: Vec<u8>,
     visited: HashSet<(u64, u64)>,
     content_spent: u64,
+    examined: usize,
     outcome: SearchOutcome,
+}
+
+/// Whether the walk should stop and unwind: the result cap was reached (sets
+/// [`SearchOutcome::truncated`]) or the work cap was reached (the loop set
+/// [`SearchOutcome::examined_capped`] before returning). Checked at every
+/// early-return point so a stop propagates up through the recursion.
+fn should_stop(state: &mut WalkState) -> bool {
+    if state.outcome.hits.len() >= state.opts.max_results {
+        state.outcome.truncated = true;
+        return true;
+    }
+    state.outcome.examined_capped
 }
 
 /// Walk one directory at `depth`, matching each child and descending real
@@ -197,8 +230,14 @@ fn walk(root: &Dir, read_path: &Path, rel_prefix: &Path, depth: usize, state: &m
         return;
     };
     for entry in read_dir {
-        if state.outcome.hits.len() >= state.opts.max_results {
-            state.outcome.truncated = true;
+        if should_stop(state) {
+            return;
+        }
+        // Count every entry the walk examines and stop at the work cap, so a
+        // query that matches no name cannot stat the whole granted tree.
+        state.examined += 1;
+        if state.examined > state.opts.max_entries_examined {
+            state.outcome.examined_capped = true;
             return;
         }
         let Ok(entry) = entry else { continue };
@@ -215,8 +254,7 @@ fn walk(root: &Dir, read_path: &Path, rel_prefix: &Path, depth: usize, state: &m
 
         // Match this entry (name and/or content) and record a hit if it matches.
         match_entry(root, &child_read, &child_rel, &name, kind, state);
-        if state.outcome.hits.len() >= state.opts.max_results {
-            state.outcome.truncated = true;
+        if should_stop(state) {
             return;
         }
 
@@ -236,8 +274,7 @@ fn walk(root: &Dir, read_path: &Path, rel_prefix: &Path, depth: usize, state: &m
                 continue;
             }
             walk(root, &child_read, &child_rel, depth + 1, state);
-            if state.outcome.hits.len() >= state.opts.max_results {
-                state.outcome.truncated = true;
+            if should_stop(state) {
                 return;
             }
         }

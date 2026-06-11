@@ -22,9 +22,7 @@
   import {
     selectedWindowIds,
     toggleSelection,
-    selectOnly,
     clearSelection,
-    isSelected,
     selectionSnapshot,
     pruneSelection,
   } from "$lib/stores/overlaySelection.js";
@@ -51,6 +49,7 @@
     moveAllSelectedToWorkspace,
     tileSideBySide,
   } from "$lib/workspace/actions.js";
+  import { createDragEngine } from "$lib/workspace/drag.svelte.js";
 
   /// Output context published by the parent TopBar. The
   /// connector is `null` until the registry replies; in that
@@ -638,16 +637,6 @@
     setTimeout(() => overlayEl?.focus(), 0);
   }
 
-  /// Timestamp of the last drag-drop. Used to suppress the synthesized
-  /// `click` that the browser fires on the element under the pointer
-  /// immediately after a pointerup — even when pointer capture was
-  /// held by a different element (the card). Without this guard,
-  /// dropping a card inside a column triggers a column-click cycle:
-  /// activateWorkspace → overlayVisible=false → overlay closes, which
-  /// contradicts the spec (overlay stays open so the user can chain
-  /// more drags).
-  let lastDropTime = 0;
-
   function handleColumnClick(id: string, e: MouseEvent) {
     // Window-card clicks are fully handled in the card's own
     // pointerdown/up pair (activate / ctrl-toggle / drag) — never
@@ -666,7 +655,7 @@
     // Swallow the click synthesized by the browser after a drag-drop.
     // 300ms is generous: a real user click lands within a few ms of
     // pointerup, a synthetic click after drag is even tighter.
-    if (performance.now() - lastDropTime < 300) return;
+    if (performance.now() - drag.lastDropTime < 300) return;
     activateWorkspace(id);
     overlayVisible = false;
     invoke("set_popover_input_region", { expanded: false }).catch(() => {});
@@ -697,580 +686,19 @@
   }
 
   // ── Drag & Drop ──────────────────────────────────────────────────────────
-
-  /// Drag state. `kind` distinguishes active vs. minimized source
-  /// cards so the drop handler knows which row to target on same-
-  /// workspace drops. `sourceWs` is "" for sticky/orphan minimized
-  /// windows (no workspace attachment).
-  type DragSourceKind = "active" | "minimized";
-  let dragState = $state<
-    | { windowId: string; sourceWs: string; kind: DragSourceKind }
-    | null
-  >(null);
-  let dragOverWs = $state<string | null>(null);
-  /// Which subregion the cursor is hovering during drag. Used for
-  /// the drop-zone highlight so the user sees exactly whether the
-  /// drop will land in the Active or Minimized area.
-  let dragOverSection = $state<DropSection | null>(null);
-
-  // ── Pointer-based drag & drop ───────────────────────────────────────────
   //
-  // The HTML5 drag API (dragstart/dragover/dragend + setDragImage) kept
-  // freezing WebKitGTK when combined with a custom ghost — see debug
-  // sessions 2026-04-19. Pointer events give us full control without
-  // the browser's drag abstraction interfering:
-  //   pointerdown  → capture pointer, stash start position
-  //   pointermove  → once moved past threshold, create ghost; then
-  //                  position ghost + update hover column every tick
-  //   pointerup    → if dragged: fire move_to_workspace + cleanup;
-  //                  if not dragged: treat as a click on the card
-  //   pointercancel → cleanup (browser abort)
-  //   watchdog     → 8s fallback cleanup
-  //
-  // Column hit-testing uses `document.elementFromPoint` plus a
-  // `data-ws-id` attribute on each column. The ghost is
-  // `pointer-events: none` so it never shadows the real hit-test.
-
-  const DRAG_THRESHOLD_PX = 5;
-
-  /// Non-reactive pointer-state for the in-flight gesture. Holds
-  /// enough info to distinguish a click (pointer released before
-  /// moving past `DRAG_THRESHOLD_PX`) from a drag.
-  ///
-  /// `kind` discriminates the source card subregion. The drop
-  /// handler uses (kind, target-section, same/different workspace)
-  /// to decide the action. All drags go through the overlay; the
-  /// topbar pills are click-only.
-  let pointerDrag: {
-    pointerId: number;
-    startX: number;
-    startY: number;
-    windowId: string;
-    sourceWs: string;
-    card: HTMLElement;
-    dragging: boolean;
-    kind: DragSourceKind;
-    /// Was Ctrl held on pointerdown? Used on pointerup-without-drag
-    /// to branch between "activate" (plain click) and "toggle
-    /// selection" (Ctrl+click).
-    ctrlOnDown: boolean;
-    /// Ids the drop handler should operate on. Single-element array
-    /// for normal drags, multiple for a drag started on a selected
-    /// card when the selection had > 1 entries.
-    targets: string[];
-  } | null = null;
-
-  let ghostEl: HTMLElement | null = null;
-  let ghostOffsetX = 0;
-  let ghostOffsetY = 0;
-  let dragWatchdog: ReturnType<typeof setTimeout> | null = null;
-
-  // Dynamic tilt. Maps horizontal pointer velocity (delta-X between
-  // consecutive pointermove events) to a rotation that feels like the
-  // card is swinging while carried. Smoothing is exponential so the
-  // ghost doesn't jitter on tiny jumps and doesn't flip instantly on
-  // direction changes. `ghostLastX` is reset to the current pointer
-  // X when the ghost is created (see `onCardPointerMove`) so the
-  // first frame doesn't compute a huge delta against 0.
-  const TILT_GAIN = 0.5; // degrees per pixel of delta-X
-  const TILT_CLAMP = 10; // max absolute rotation
-  const TILT_LERP = 0.25; // 0 = frozen, 1 = no smoothing
-  let ghostLastX = 0;
-  let ghostRotation = 0;
-
-  /// Applies the float-effect to a ghost element as inline styles.
-  ///
-  /// The ghost lives on `document.body`, outside the component's
-  /// scoped subtree, and single-drag clones carry the full scoped
-  /// `.window-card` ruleset via the copied hash class — inline
-  /// properties are the one layer that outranks those declarations
-  /// without a specificity fight. JS already owns the ghost's whole
-  /// lifecycle (build, position, tilt, remove), so its float look
-  /// lives here too.
-  function applyGhostFloatStyle(el: HTMLElement): void {
-    Object.assign(el.style, {
-      position: "fixed",
-      top: "0",
-      left: "0",
-      // Above everything in the shell z-scale (see the table in
-      // app.css) — the ghost trails the pointer across all chrome.
-      zIndex: "10001",
-      pointerEvents: "none",
-      opacity: "0.95",
-      // Initial value before the first positionGhost call lands, so
-      // rotation=0 looks clean during the single frame between
-      // appendChild and the first pointermove.
-      transform: "translate3d(0, 0, 0) rotate(0deg) scale(1.05)",
-      boxShadow:
-        "0 12px 32px rgba(0, 0, 0, 0.35), 0 4px 8px rgba(0, 0, 0, 0.2)",
-      transition: "none",
-      cursor: "grabbing",
-      outline: "none",
-      willChange: "transform",
-    });
-  }
-
-  /// Builds a drag-ghost element.
-  ///
-  /// Single-window drag: clones the source card directly.
-  ///
-  /// Multi-window drag (targets.length > 1): builds a stacked-cards
-  /// presentation. Up to 3 card clones are layered with a small
-  /// x/y offset so the user sees a physical "stack" under the
-  /// cursor. If more than 3 targets exist, a "+N" badge appears in
-  /// the bottom-right corner indicating the overflow.
-  ///
-  /// Returns the container element (already appended to document
-  /// body). Tilt / position updates in `positionGhost` apply to
-  /// this container as-is — the inner card clones are positioned
-  /// absolutely relative to it.
-  function buildGhost(sourceCard: HTMLElement, targets: string[]): HTMLElement {
-    const rect = sourceCard.getBoundingClientRect();
-
-    if (targets.length <= 1) {
-      const clone = sourceCard.cloneNode(true) as HTMLElement;
-      clone.removeAttribute("draggable");
-      clone.classList.add("drag-ghost");
-      applyGhostFloatStyle(clone);
-      clone.style.width = `${rect.width}px`;
-      clone.style.height = `${rect.height}px`;
-      document.body.appendChild(clone);
-      return clone;
-    }
-
-    // Multi: stack container. Gets a fixed size equal to the source
-    // card plus the total stack offset so the whole stack is one
-    // positional unit for translate3d.
-    const STACK_VISIBLE = 3;
-    const STACK_OFFSET_PX = 4;
-    const visible = Math.min(targets.length, STACK_VISIBLE);
-    const container = document.createElement("div");
-    container.classList.add("drag-ghost", "drag-ghost-stack");
-    applyGhostFloatStyle(container);
-    // The container is a bare positioning frame — the inner clones
-    // carry their own card look and per-card shadow instead.
-    container.style.boxShadow = "none";
-    container.style.width = `${rect.width + (visible - 1) * STACK_OFFSET_PX}px`;
-    container.style.height = `${rect.height + (visible - 1) * STACK_OFFSET_PX}px`;
-
-    // Paint back-to-front so the clicked card (index 0) sits on top.
-    for (let i = visible - 1; i >= 0; i--) {
-      // Pick the card DOM for each target. If another selected card
-      // isn't currently in the DOM (off-screen workspace column),
-      // fall back to cloning the source card — the visual still
-      // reads as "N cards".
-      const targetId = targets[i];
-      const targetEl =
-        targetId === targets[0]
-          ? sourceCard
-          : (document.querySelector<HTMLElement>(
-              `[data-ws-id] [aria-label][title], [data-ws-id]`,
-            ) ?? sourceCard);
-      const clone = targetEl.cloneNode(true) as HTMLElement;
-      clone.removeAttribute("draggable");
-      clone.classList.add("drag-ghost-card");
-      clone.style.position = "absolute";
-      clone.style.top = `${i * STACK_OFFSET_PX}px`;
-      clone.style.left = `${i * STACK_OFFSET_PX}px`;
-      clone.style.width = `${rect.width}px`;
-      clone.style.height = `${rect.height}px`;
-      // Per-card shadow so the layering reads even though the
-      // container itself casts none.
-      clone.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.3)";
-      container.appendChild(clone);
-    }
-
-    if (targets.length > STACK_VISIBLE) {
-      const badge = document.createElement("span");
-      badge.classList.add("drag-ghost-badge");
-      badge.textContent = `+${targets.length - STACK_VISIBLE}`;
-      container.appendChild(badge);
-    }
-
-    document.body.appendChild(container);
-    return container;
-  }
-
-  function removeGhost() {
-    if (dragWatchdog) {
-      clearTimeout(dragWatchdog);
-      dragWatchdog = null;
-    }
-    if (ghostEl) {
-      const el = ghostEl;
-      ghostEl = null;
-      // Reset tilt state so the next drag starts neutral instead of
-      // inheriting the last drag's final angle.
-      ghostLastX = 0;
-      ghostRotation = 0;
-      requestAnimationFrame(() => {
-        try {
-          el.remove();
-        } catch {
-          /* already detached */
-        }
-      });
-    }
-  }
-
-  function positionGhost(clientX: number, clientY: number) {
-    if (!ghostEl) return;
-    const x = clientX - ghostOffsetX;
-    const y = clientY - ghostOffsetY;
-    const deltaX = clientX - ghostLastX;
-    ghostLastX = clientX;
-    // Target rotation from velocity. Clamp before smoothing so
-    // `ghostRotation` itself never exceeds the clamp, even if a
-    // pathological single-frame delta is huge.
-    const target = Math.max(
-      -TILT_CLAMP,
-      Math.min(TILT_CLAMP, deltaX * TILT_GAIN),
-    );
-    ghostRotation = ghostRotation + (target - ghostRotation) * TILT_LERP;
-    ghostEl.style.transform =
-      `translate3d(${x}px, ${y}px, 0) rotate(${ghostRotation.toFixed(2)}deg) scale(1.05)`;
-  }
-
-  /// A drop-target location resolved from a cursor position. The
-  /// section tells the drop handler whether the user dropped on the
-  /// "active windows" area (top 75%) or the "minimized" area
-  /// (bottom 25%) of a workspace card — the action matrix branches
-  /// on this.
-  type DropSection = "active" | "minimized";
-  type DropTarget = { wsId: string; section: DropSection };
-
-  /// Finds the drop-target column + section under (x, y) via
-  /// elementFromPoint. Walks the DOM for the closest `data-ws-id`
-  /// (gives the workspace) AND the closest `data-ws-section`
-  /// (gives active vs minimized). The data attributes are set on
-  /// the overlay's card subregions — pills in the topbar don't
-  /// carry them, so the topbar indicator never acts as a drop
-  /// zone.
-  function dropTargetAt(
-    clientX: number,
-    clientY: number,
-  ): DropTarget | null {
-    const el = document.elementFromPoint(
-      clientX,
-      clientY,
-    ) as HTMLElement | null;
-    if (!el) return null;
-    const column = el.closest("[data-ws-id]") as HTMLElement | null;
-    if (!column) return null;
-    const sectionEl = el.closest("[data-ws-section]") as HTMLElement | null;
-    // Missing section element = cursor is over the column header or
-    // padding. We still return a target with a default section of
-    // "active" so users who drop slightly off the cards still get a
-    // reasonable action (move-to-workspace keeps the window open).
-    const section = (sectionEl?.dataset.wsSection as DropSection | undefined)
-      ?? "active";
-    return { wsId: column.dataset.wsId!, section };
-  }
-
-  /// rAF-throttled hit-test for the drag hover state.
-  ///
-  /// Every `elementFromPoint()` forces a synchronous style+layout pass
-  /// which at 60+ Hz pointermove (WebKitGTK fires them faster than that)
-  /// causes 100-200ms stutters on constrained machines. Coalescing to
-  /// one hit-test per animation frame drops the cost to at most ~60 Hz
-  /// while still feeling responsive.
-  let pendingHitTest: { x: number; y: number } | null = null;
-  let pendingHitTestFrame = 0;
-
-  function scheduleHitTest(x: number, y: number): void {
-    // Coalesce: overwrite coords so the scheduled frame hits the latest
-    // pointer position, not the stale one from the first event.
-    if (pendingHitTest) {
-      pendingHitTest.x = x;
-      pendingHitTest.y = y;
-      return;
-    }
-    pendingHitTest = { x, y };
-    pendingHitTestFrame = requestAnimationFrame(() => {
-      if (!pendingHitTest) return;
-      const t = dropTargetAt(pendingHitTest.x, pendingHitTest.y);
-      dragOverWs = t?.wsId ?? null;
-      dragOverSection = t?.section ?? null;
-      pendingHitTest = null;
-    });
-  }
-
-  function cancelPendingHitTest(): void {
-    if (pendingHitTestFrame !== 0) {
-      cancelAnimationFrame(pendingHitTestFrame);
-      pendingHitTestFrame = 0;
-    }
-    pendingHitTest = null;
-  }
-
-  function resetDragUI() {
-    dragState = null;
-    dragOverWs = null;
-    dragOverSection = null;
-    removeGhost();
-    cancelPendingHitTest();
-  }
-
-  /// Unified pointer-down handler for both active and minimized
-  /// cards. `kind` routes the action at drop time; the rest of the
-  /// gesture (threshold, ghost, hit-test) is identical.
-  ///
-  /// Multi-select gesture rules (spec §Feature 4):
-  /// - If the card is in the current selection AND selection has
-  ///   >1 entries → multi-drag: targets = full selection snapshot.
-  /// - Otherwise → single-drag: targets = [windowId]. If the card
-  ///   was NOT in the selection, clear the selection first so the
-  ///   visual state matches the intent ("I'm starting a new drag,
-  ///   not operating on the previous multi-select").
-  function onCardPointerDown(
-    e: PointerEvent,
-    windowId: string,
-    sourceWs: string,
-    kind: DragSourceKind,
-  ) {
-    // Right-click (button 2): prepare the selection state that the
-    // about-to-open shadcn ContextMenu should see, then fall through
-    // so bits-ui's own `oncontextmenu` (bound via `{...props}` on the
-    // button) can open the menu unobstructed.
-    //
-    // This is the spec path — we previously had an `oncontextmenu`
-    // handler on the button, but spreading `{...props}` *before* our
-    // handler means ours overrode bits-ui's, and the menu never
-    // opened at all. Using pointerdown-with-button-2 runs ahead of
-    // the contextmenu event, so the menu renders with the right
-    // selection state in `cardContextMenu`.
-    if (e.button === 2) {
-      const snap = selectionSnapshot();
-      if (!(snap.length > 1 && snap.includes(windowId))) {
-        selectOnly(windowId);
-      }
-      // Use log_frontend so the message lands in the shell's
-      // tracing log (console.debug never makes it out of WebKitGTK
-      // reliably, so the previous debug lines were invisible in
-      // diagnostic sessions).
-      invoke("log_frontend", {
-        message: `[overlay] right-click card=${windowId} selectionSize=${snap.length}`,
-      }).catch(() => {});
-      return;
-    }
-    if (e.button !== 0) return; // left mouse / primary touch only
-
-    const card = e.currentTarget as HTMLElement;
-    try {
-      card.setPointerCapture(e.pointerId);
-    } catch {
-      /* capture not supported → we'll still get events on the card */
-    }
-    const rect = card.getBoundingClientRect();
-    ghostOffsetX = e.clientX - rect.left;
-    ghostOffsetY = e.clientY - rect.top;
-
-    // `ctrlKey || metaKey` so Cmd+click on macOS / WebKitGTK-style
-    // environments behaves the same as Ctrl+click on Linux. The drag
-    // and the click handlers both read this flag.
-    const multiKey = e.ctrlKey || e.metaKey;
-    const wasSelected = isSelected(windowId);
-    const snap = selectionSnapshot();
-    let targets: string[];
-    if (wasSelected && snap.length > 1) {
-      targets = snap.slice();
-    } else {
-      if (!wasSelected && !multiKey) {
-        clearSelection();
-      }
-      targets = [windowId];
-    }
-
-    invoke("log_frontend", {
-      message:
-        `[overlay] pointerdown card=${windowId} button=${e.button} ` +
-        `ctrl=${e.ctrlKey} meta=${e.metaKey} multiKey=${multiKey} ` +
-        `wasSelected=${wasSelected} selSize=${snap.length} targets=${targets.length}`,
-    }).catch(() => {});
-
-    pointerDrag = {
-      pointerId: e.pointerId,
-      startX: e.clientX,
-      startY: e.clientY,
-      windowId,
-      sourceWs,
-      card,
-      dragging: false,
-      kind,
-      ctrlOnDown: multiKey,
-      targets,
-    };
-  }
-
-  function onCardPointerMove(e: PointerEvent) {
-    if (!pointerDrag || e.pointerId !== pointerDrag.pointerId) return;
-
-    if (!pointerDrag.dragging) {
-      const dx = e.clientX - pointerDrag.startX;
-      const dy = e.clientY - pointerDrag.startY;
-      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
-
-      // Threshold crossed → promote to a real drag. Build the ghost
-      // now (not on pointerdown) so tiny pointer jitter during a
-      // plain click doesn't leave stray DOM behind.
-      pointerDrag.dragging = true;
-      try {
-        ghostEl = buildGhost(pointerDrag.card, pointerDrag.targets);
-        ghostLastX = e.clientX;
-        ghostRotation = 0;
-      } catch (err) {
-        console.error("drag-ghost setup failed", err);
-        removeGhost();
-      }
-
-      dragState = {
-        windowId: pointerDrag.windowId,
-        sourceWs: pointerDrag.sourceWs,
-        kind: pointerDrag.kind,
-      };
-
-      // Backstop in case pointerup/cancel never fire (OS-level
-      // grab loss, WebKitGTK quirk). Forces cleanup after 8s.
-      dragWatchdog = setTimeout(resetDragUI, 8000);
-    }
-
-    positionGhost(e.clientX, e.clientY);
-    scheduleHitTest(e.clientX, e.clientY);
-  }
-
-  function onCardPointerUp(e: PointerEvent) {
-    if (!pointerDrag || e.pointerId !== pointerDrag.pointerId) return;
-    const captured = pointerDrag;
-    pointerDrag = null;
-    try {
-      captured.card.releasePointerCapture(e.pointerId);
-    } catch {
-      /* capture already released */
-    }
-
-    if (captured.dragging) {
-      const drop = dropTargetAt(e.clientX, e.clientY);
-      lastDropTime = performance.now();
-      resetDragUI();
-
-      if (!drop) {
-        return;
-      }
-
-      // Apply the action matrix (spec §Feature 4) to every target in
-      // the captured drag. For single drags `targets.length === 1`.
-      // For multi-drags we need per-window classification (active vs
-      // minimized) because the source kind of the "anchor" card may
-      // differ from the kind of other selected cards (a selection
-      // can span both sections on the same workspace).
-      for (const targetId of captured.targets) {
-        const win = $windows.find((w) => w.id === targetId);
-        if (!win) continue;
-        const perWinKind: DragSourceKind =
-          win.minimized ? "minimized" : "active";
-        const perWinSourceWs =
-          win.workspace_ids.find((id) =>
-            workspacesView.some((ws) => ws.id === id),
-          ) ?? "";
-        applyDropAction(targetId, perWinKind, perWinSourceWs, drop);
-      }
-      clearSelection();
-    } else {
-      // Pointer never moved past the threshold — treat as a click.
-      //
-      // Multi-select click rules (spec §Feature 2):
-      // - Ctrl+click: toggle selection, don't activate, don't close
-      // - Plain click: clear selection, activate/restore, close overlay
-      if (captured.ctrlOnDown) {
-        toggleSelection(captured.windowId);
-        invoke("log_frontend", {
-          message: `[overlay] toggleSelection card=${captured.windowId}`,
-        }).catch(() => {});
-        return;
-      }
-      clearSelection();
-      if (captured.kind === "active") {
-        invoke("activate_window", { id: captured.windowId }).catch(() => {});
-      } else {
-        restoreWindow(captured.windowId);
-      }
+  // The pointer-gesture engine lives in `$lib/workspace/drag.svelte.ts`
+  // (with the ghost in `dragGhost.ts`). The component hands it the
+  // live per-output workspace view for drop resolution and the
+  // collapsing close path a plain card click triggers; the template
+  // forwards the card pointer handlers.
+  const drag = createDragEngine({
+    getWorkspaces: () => workspacesView,
+    closeOverlayAndCollapse: () => {
       overlayVisible = false;
       invoke("set_popover_input_region", { expanded: false }).catch(() => {});
-    }
-  }
-
-  /// Applies one drop action based on the source card's kind +
-  /// workspace and the drop target. Extracted so multi-drag can loop
-  /// over targets without duplicating the branch logic.
-  function applyDropAction(
-    windowId: string,
-    sourceKind: DragSourceKind,
-    sourceWs: string,
-    drop: DropTarget,
-  ) {
-    const sameWs = drop.wsId === sourceWs;
-    const targetSection = drop.section;
-    if (sourceKind === "active") {
-      if (sameWs && targetSection === "minimized") {
-        minimizeWindow(windowId);
-      } else if (!sameWs) {
-        invoke("window_move_to_workspace", {
-          windowId,
-          targetWorkspaceId: drop.wsId,
-        }).catch((err) =>
-          console.error("window_move_to_workspace failed", err),
-        );
-        // Drop target is the minimized section on a different
-        // workspace → move + minimize (spec §Feature 4).
-        if (targetSection === "minimized") {
-          minimizeWindow(windowId);
-        }
-      }
-    } else {
-      if (sameWs && targetSection === "active") {
-        restoreWindow(windowId);
-      } else if (!sameWs) {
-        if (targetSection === "active") {
-          restoreWindowToWorkspace(windowId, drop.wsId);
-        } else {
-          // Minimized → other workspace's minimized section: move
-          // without restoring (keeps the minimize state).
-          invoke("window_move_to_workspace", {
-            windowId,
-            targetWorkspaceId: drop.wsId,
-          }).catch(() => {});
-        }
-      }
-    }
-  }
-
-  function onCardPointerCancel(e: PointerEvent) {
-    if (!pointerDrag || e.pointerId !== pointerDrag.pointerId) return;
-    const captured = pointerDrag;
-    pointerDrag = null;
-    try {
-      captured.card.releasePointerCapture(e.pointerId);
-    } catch {
-      /* capture already released */
-    }
-    resetDragUI();
-  }
-
-  /// Document-level Escape handler that aborts an in-flight drag.
-  /// Registered in the same $effect as the overlay-keydown handler
-  /// below. Keeps the cancel path consistent across both drag kinds:
-  /// overlay-card and minimized-icon.
-  function onDragEscape(e: KeyboardEvent) {
-    if (e.key !== "Escape" || !pointerDrag) return;
-    const captured = pointerDrag;
-    pointerDrag = null;
-    try {
-      captured.card.releasePointerCapture(captured.pointerId);
-    } catch {
-      /* capture already released */
-    }
-    resetDragUI();
-  }
+    },
+  });
 
   // ── Icon resolution cache ────────────────────────────────────────────────
 
@@ -1305,15 +733,14 @@
       );
 
     document.addEventListener("keydown", onKeydown);
-    document.addEventListener("keydown", onDragEscape);
+    document.addEventListener("keydown", drag.onDragEscape);
 
     return () => {
       document.removeEventListener("keydown", onKeydown);
-      document.removeEventListener("keydown", onDragEscape);
+      document.removeEventListener("keydown", drag.onDragEscape);
       if (unlistenWsOverlay) unlistenWsOverlay();
       if (hoverTimer) clearTimeout(hoverTimer);
-      pointerDrag = null;
-      resetDragUI();
+      drag.resetDragUI();
     };
   });
 </script>
@@ -1489,14 +916,14 @@
           {@const wsWindows = getWindowsForWorkspace(ws.id)}
           {@const { shown, overflow } = visibleSlice(wsWindows)}
           {@const isDropTarget =
-            dragState !== null && dragState.sourceWs !== ws.id}
+            drag.dragState !== null && drag.dragState.sourceWs !== ws.id}
           {@const wsMinimized = $minimizedByWorkspace.get(ws.id) ?? []}
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <div
             class="ws-column"
             class:ws-column-active={ws.active}
             class:ws-column-drop-target={isDropTarget}
-            class:ws-column-drop-hover={isDropTarget && dragOverWs === ws.id}
+            class:ws-column-drop-hover={isDropTarget && drag.dragOverWs === ws.id}
             role="button"
             tabindex="0"
             aria-label={fullLabel(ws, i)}
@@ -1521,13 +948,13 @@
               Active-windows section: top ~75% of each workspace
               card. Drop target for minimized windows (restores them
               on drop). `data-ws-section` drives the drop-target
-              routing in `dropTargetAt` + `onCardPointerUp`.
+              routing in `dropTargetAt` + `drag.onCardPointerUp`.
             -->
             <div
               class="ws-section ws-section-active"
               class:ws-section-drop-hover={isDropTarget
-                && dragOverWs === ws.id
-                && dragOverSection === "active"}
+                && drag.dragOverWs === ws.id
+                && drag.dragOverSection === "active"}
               data-ws-section="active"
             >
               {#if shown.length === 0}
@@ -1542,7 +969,7 @@
                           <button
                             {...props}
                             class="window-card"
-                            class:window-card-dragging={dragState?.windowId ===
+                            class:window-card-dragging={drag.dragState?.windowId ===
                               win.id}
                             class:window-card-keyboard-focus={focusedWindowId ===
                               win.id}
@@ -1550,10 +977,10 @@
                               win.id,
                             )}
                             onpointerdown={(e) =>
-                              onCardPointerDown(e, win.id, ws.id, "active")}
-                            onpointermove={onCardPointerMove}
-                            onpointerup={onCardPointerUp}
-                            onpointercancel={onCardPointerCancel}
+                              drag.onCardPointerDown(e, win.id, ws.id, "active")}
+                            onpointermove={drag.onCardPointerMove}
+                            onpointerup={drag.onCardPointerUp}
+                            onpointercancel={drag.onCardPointerCancel}
                             title={win.title || win.app_id}
                             aria-label={`${win.title || win.app_id} on workspace ${i + 1}`}
                           >
@@ -1605,13 +1032,13 @@
               have no minimized windows (empty workspaces etc.).
             -->
             {#if wsMinimized.length > 0
-              || (dragState?.kind === "active"
-                && dragState.sourceWs === ws.id)}
+              || (drag.dragState?.kind === "active"
+                && drag.dragState.sourceWs === ws.id)}
               <div
                 class="ws-section ws-section-minimized"
                 class:ws-section-drop-hover={isDropTarget
-                  && dragOverWs === ws.id
-                  && dragOverSection === "minimized"}
+                  && drag.dragOverWs === ws.id
+                  && drag.dragOverSection === "minimized"}
                 class:ws-section-minimized-empty={wsMinimized.length === 0}
                 data-ws-section="minimized"
               >
@@ -1625,7 +1052,7 @@
                           <button
                             {...props}
                             class="window-card window-card-minimized"
-                            class:window-card-dragging={dragState?.windowId ===
+                            class:window-card-dragging={drag.dragState?.windowId ===
                               m.windowId}
                             class:window-card-keyboard-focus={focusedWindowId ===
                               m.windowId}
@@ -1633,10 +1060,10 @@
                               m.windowId,
                             )}
                             onpointerdown={(e) =>
-                              onCardPointerDown(e, m.windowId, ws.id, "minimized")}
-                            onpointermove={onCardPointerMove}
-                            onpointerup={onCardPointerUp}
-                            onpointercancel={onCardPointerCancel}
+                              drag.onCardPointerDown(e, m.windowId, ws.id, "minimized")}
+                            onpointermove={drag.onCardPointerMove}
+                            onpointerup={drag.onCardPointerUp}
+                            onpointercancel={drag.onCardPointerCancel}
                             title={m.title || m.appId}
                             aria-label={`Minimized: ${m.title || m.appId} on workspace ${i + 1}`}
                           >
