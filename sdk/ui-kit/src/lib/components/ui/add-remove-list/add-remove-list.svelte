@@ -17,8 +17,8 @@
   /// pickers (DirectoryPicker, AppPicker, plain text input, etc.).
 
   import type { Snippet } from "svelte";
-  import { X, Plus } from "lucide-svelte";
-  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { X, Plus } from "@lucide/svelte";
+  import { Button } from "../button/index.js";
 
   let {
     items,
@@ -125,7 +125,6 @@
     border: 1px solid transparent;
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
-    cursor: pointer;
     transition:
       background 0.1s ease,
       color 0.1s ease;
@@ -138,7 +137,6 @@
 
   .remove:disabled {
     opacity: 0.5;
-    cursor: not-allowed;
   }
 
   .footer {

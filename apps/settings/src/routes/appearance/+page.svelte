@@ -20,7 +20,7 @@
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import ModeToggle from "$lib/components/appearance/ModeToggle.svelte";
   import AccentPicker from "$lib/components/appearance/AccentPicker.svelte";
-  import { ValueSlider } from "$lib/components/ui/value-slider";
+  import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import FontSelect from "$lib/components/appearance/FontSelect.svelte";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import BorderColorPicker from "$lib/components/appearance/BorderColorPicker.svelte";

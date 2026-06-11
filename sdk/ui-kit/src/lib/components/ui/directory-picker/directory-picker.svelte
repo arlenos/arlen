@@ -13,8 +13,8 @@
   /// modal pickers is "pick whatever the system has".
 
   import { invoke } from "@tauri-apps/api/core";
-  import { FolderOpen } from "lucide-svelte";
-  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { FolderOpen } from "@lucide/svelte";
+  import { Button } from "../button/index.js";
 
   let {
     onpick,

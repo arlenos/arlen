@@ -17,7 +17,7 @@
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { AddRemoveList } from "$lib/components/ui/add-remove-list";
+  import { AddRemoveList } from "@arlen/ui-kit/components/ui/add-remove-list";
   import { shell, FOCUS_SETTINGS_DEFAULTS } from "$lib/stores/shell";
   import AppPicker from "$lib/components/appearance/AppPicker.svelte";
   import { invoke } from "@tauri-apps/api/core";

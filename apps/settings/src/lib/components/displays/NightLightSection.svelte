@@ -17,7 +17,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
-  import { ValueSlider } from "$lib/components/ui/value-slider";
+  import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { TimeInput } from "@arlen/ui-kit/components/ui/time-input";
   import { NumberInput } from "@arlen/ui-kit/components/ui/number-input";

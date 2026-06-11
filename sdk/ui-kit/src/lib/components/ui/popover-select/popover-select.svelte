@@ -45,6 +45,10 @@
     /// whole surrounding popover).
     placeholder?: string;
     onchange: (value: string) => void;
+    /// Disable the control entirely (the trigger stops opening and is
+    /// dimmed); the canonical dropdown needs this since the native
+    /// `<select>` fallback was retired.
+    disabled?: boolean;
     /// Optional per-option renderer. Receives the option and whether
     /// it's the currently-selected one. When omitted, the component
     /// renders `option.label` as plain text.
@@ -58,6 +62,7 @@
     width = "200px",
     placeholder = "None",
     onchange,
+    disabled = false,
     renderLabel,
   }: Props = $props();
 
@@ -80,6 +85,7 @@
   );
 
   function toggle(): void {
+    if (disabled) return;
     open = !open;
   }
 
@@ -170,6 +176,7 @@
     type="button"
     class="trigger"
     class:open
+    {disabled}
     aria-haspopup="listbox"
     aria-expanded={open}
     aria-label={ariaLabel}
@@ -243,6 +250,9 @@
     transition:
       background-color 150ms ease,
       border-color 150ms ease;
+  }
+  .trigger:disabled {
+    opacity: 0.5;
   }
 
   .trigger:hover {
