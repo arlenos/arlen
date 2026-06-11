@@ -1,0 +1,44 @@
+[Unit]
+Description=Arlen online-accounts daemon (user service)
+Documentation=https://github.com/arlenos/arlen
+# arlen-accountsd owns org.arlen.Accounts1 on the session bus and mediates every
+# account-token handout against a per-app capability grant - the caller's Arlen
+# identity resolved from the bus-attested PID (GetConnectionUnixProcessID ->
+# path_to_app_id), the structural fix for the ambient shared-DB access GOA/KDE
+# expose. It reads the account intent under ~/.config/arlen/accounts (no secrets
+# there) and talks only over AF_UNIX (the session bus, later the Secret Service
+# and the confined rclone's rc socket).
+
+[Service]
+# Type=dbus: the service is "started" once it owns its bus name, which also lets
+# the session bus D-Bus-activate it on first use (see dist/dbus/).
+Type=dbus
+BusName=org.arlen.Accounts1
+# Production binary path (system-wide install). Dev runs invoke the debug binary
+# directly; this file is the canonical production unit.
+ExecStart=/usr/lib/arlen/libexec/arlen-accountsd
+# A failure to acquire the bus name or serve exits non-zero; restart with back-off
+# so a persistent fault surfaces rather than crash-looping fast.
+Restart=on-failure
+RestartSec=2
+
+# It only READS the account configs and serves over the bus; it writes nothing to
+# the home today, so ProtectHome=read-only is sufficient. (OA-R3's confined-rclone
+# mount management will add a ReadWritePaths for the runtime dir and the mount
+# point when it lands; this unit is then tightened to exactly those paths.)
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target
