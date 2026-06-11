@@ -1,0 +1,15 @@
+[package]
+name = "arlen-terminal-engine"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen terminal: the concrete VT engine (a shell on a portable-pty PTY) behind the core seam"
+authors = ["Arlen"]
+
+[lib]
+
+[dependencies]
+arlen-terminal-core = { path = "../core" }
+portable-pty = "0.9"
+getrandom = "0.2"
+
+[workspace]
