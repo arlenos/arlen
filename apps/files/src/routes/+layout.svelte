@@ -2,7 +2,8 @@
   /// Root layout: the file manager shell (file-manager-ui-plan.md).
   /// Headerless CSD like the terminal: a slim drag strip with the
   /// sidebar trigger and the window controls; everything essential
-  /// lives in the toolbar and the content below.
+  /// lives in the toolbar and the content below. Global shortcuts:
+  /// Ctrl+T tab, Ctrl+W close tab, Ctrl+L edit the path.
   import "../app.css";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import {
@@ -12,8 +13,28 @@
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { tauriAvailable } from "$lib/tauri";
+  import FmSidebar from "$lib/components/FmSidebar.svelte";
+  import { newTab, closeTab, activeTabId } from "$lib/stores/tabs";
+  import { pathEditing } from "$lib/stores/ui";
+  import { get } from "svelte/store";
 
   let { children } = $props();
+
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (!e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+    const key = e.key.toLowerCase();
+    if (key === "t") {
+      e.preventDefault();
+      newTab();
+    } else if (key === "w") {
+      e.preventDefault();
+      const id = get(activeTabId);
+      if (id !== null) closeTab(id);
+    } else if (key === "l") {
+      e.preventDefault();
+      pathEditing.set(true);
+    }
+  }
 
   // Window drag via explicit pointerdown + startDragging(), because the
   // `data-tauri-drag-region` attribute is unreliable on Wayland in
@@ -36,8 +57,10 @@
   }
 </script>
 
+<svelte:window onkeydown={onWindowKeydown} />
+
 <SidebarProvider>
-  <!-- The places sidebar lands here with the FM shell increment. -->
+  <FmSidebar />
   <SidebarInset class="h-svh">
     <header
       onpointerdown={startDrag}
