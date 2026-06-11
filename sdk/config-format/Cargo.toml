@@ -1,0 +1,20 @@
+[package]
+name = "arlen-config-format"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen integration packages: the format-preserving config-handler library (TOML, JSON/JSONC, INI, Firefox prefs.js, .env, flat key=value) with a read-after-write self-check and the cap-std + sandbox confinement boundary"
+authors = ["Arlen"]
+
+[lib]
+
+[dependencies]
+toml_edit = "0.22"
+jsonc-parser = { version = "0.32", features = ["cst"] }
+cap-std = "3"
+arlen-ai-sandbox = { path = "../../ai/ai-sandbox" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"

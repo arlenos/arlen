@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "config",
+    "config-format",
     "arlen-input-client",
     "os-sdk",
     "module-sdk",

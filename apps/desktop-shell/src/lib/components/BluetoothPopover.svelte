@@ -1,13 +1,15 @@
 <script lang="ts">
   /// Bluetooth popover: device list with context menus, scan, power toggle.
 
-  import { activePopover, closePopover } from "$lib/stores/activePopover.js";
+  import { activePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { Separator } from "@arlen/ui-kit/components/ui/separator/index.js";
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu/index.js";
+  import ShellPopover from "$lib/components/shared/ShellPopover.svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
+  import PopoverErrorBanner from "$lib/components/shared/PopoverErrorBanner.svelte";
   import {
     Bluetooth, BluetoothOff, RefreshCw, BatteryMedium,
     Headphones, Keyboard, Mouse, Gamepad2, Smartphone, Speaker,
@@ -37,27 +39,13 @@
   let error = $state<string | null>(null);
   let connectingTo = $state<string | null>(null);
 
-  const iconMap: Record<string, typeof Bluetooth> = {
-    "audio-headphones": Headphones,
-    "audio-headset": Headphones,
-    "audio-speakers": Speaker,
-    "input-keyboard": Keyboard,
-    "input-mouse": Mouse,
-    "input-gaming": Gamepad2,
-    "phone": Smartphone,
-  };
-
-  function deviceIcon(icon: string) {
-    return iconMap[icon] ?? Bluetooth;
-  }
-
   async function load() {
     loading = true;
     error = null;
     try {
       btState = await invoke<BluetoothState>("get_bluetooth_state");
     } catch {
-      error = "Could not load Bluetooth state";
+      error = "Could not load Bluetooth";
     }
     loading = false;
   }
@@ -103,7 +91,7 @@
       await invoke("set_bluetooth_powered", { enabled: !btState.powered });
       await load();
     } catch {
-      error = "Could not toggle Bluetooth";
+      error = "Could not turn Bluetooth on or off";
     }
   }
 
@@ -130,7 +118,7 @@
     error = null;
     if (dev.connected) {
       try { await invoke("disconnect_bluetooth_device", { path: dev.path }); }
-      catch { error = "Disconnect failed"; }
+      catch { error = "Could not disconnect"; }
       await load();
       return;
     }
@@ -139,7 +127,7 @@
       if (!dev.paired) await invoke("pair_bluetooth_device", { path: dev.path });
       await invoke("connect_bluetooth_device", { path: dev.path });
     } catch {
-      error = "Connection failed";
+      error = "Could not connect";
     }
     connectingTo = null;
     await load();
@@ -152,7 +140,7 @@
 
   async function connect(path: string) {
     connectingTo = path;
-    try { await invoke("connect_bluetooth_device", { path }); } catch { error = "Connection failed"; }
+    try { await invoke("connect_bluetooth_device", { path }); } catch { error = "Could not connect"; }
     connectingTo = null;
     await load();
   }
@@ -225,11 +213,15 @@
                 Paired
               {/if}
               {#if dev.battery_percentage != null}
-                {#if dev.connected || dev.paired}
-                  &middot;
-                {/if}
-                <BatteryMedium size={12} strokeWidth={1.5} class="bt-battery-icon" />
-                {dev.battery_percentage}%
+                <span
+                  class="bt-battery"
+                  class:bt-battery-spaced={connectingTo === dev.path ||
+                    dev.connected ||
+                    dev.paired}
+                >
+                  <BatteryMedium size={12} strokeWidth={1.5} class="bt-battery-icon" />
+                  {dev.battery_percentage}%
+                </span>
               {/if}
             </span>
           </div>
@@ -258,7 +250,7 @@
       {/if}
       {#if dev.paired}
         <ContextMenu.Separator />
-        <ContextMenu.Item onclick={() => remove(dev.path)} class="text-red-400">
+        <ContextMenu.Item onclick={() => remove(dev.path)} class="text-[var(--color-error)]">
           <Trash2 size={14} class="mr-2" />Forget Device
         </ContextMenu.Item>
       {/if}
@@ -266,91 +258,75 @@
   </ContextMenu.Root>
 {/snippet}
 
-{#if $activePopover === "bluetooth"}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="pop-backdrop" onclick={closePopover}></div>
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="pop-panel pop-bt shell-popover" onclick={(e) => e.stopPropagation()}>
-
+<ShellPopover id="bluetooth" width={280} right={80} bodyPadding="12px" bodyGap="6px">
+  {#snippet header()}
     <PopoverHeader
       icon={Bluetooth}
       title="Bluetooth"
       toggled={btState?.powered ?? false}
       onToggle={togglePower}
     />
+  {/snippet}
 
-    <div class="pop-body">
-      {#if !btState?.available}
-        <div class="bt-msg">
-          <BluetoothOff size={32} strokeWidth={1} />
-          <span>No Bluetooth adapter</span>
-        </div>
-      {:else if !btState.powered}
-        <div class="bt-msg">
-          <BluetoothOff size={32} strokeWidth={1} />
-          <span>Bluetooth is off</span>
-          <span class="bt-hint">Toggle the switch above to enable</span>
-        </div>
-      {:else}
-        {#if error}
-          <div class="bt-error">{error}</div>
-        {/if}
-
-        {#if connectedDevices.length > 0}
-          <div class="bt-section-label">Connected</div>
-          {#each connectedDevices as dev (dev.address)}
-            {@render deviceItem(dev)}
-          {/each}
-          <Separator class="opacity-10" />
-        {/if}
-
-        {#if pairedDevices.length > 0}
-          <div class="bt-section-label">Paired Devices</div>
-          {#each pairedDevices as dev (dev.address)}
-            {@render deviceItem(dev)}
-          {/each}
-          <Separator class="opacity-10" />
-        {/if}
-
-        {#if btState.discovering && availableDevices.length > 0}
-          <div class="bt-section-label">Available</div>
-          {#each availableDevices as dev (dev.address)}
-            {@render deviceItem(dev)}
-          {/each}
-          <Separator class="opacity-10" />
-        {/if}
-
-        <button class="bt-scan-btn" onclick={(e) => { e.stopPropagation(); toggleScan(); }}>
-          <RefreshCw size={12} strokeWidth={2} class={btState.discovering ? "spinning" : ""} />
-          <span>{btState.discovering ? "Scanning..." : "Scan for Devices"}</span>
-        </button>
-      {/if}
+  {#if !btState}
+    {#if error}
+      <PopoverErrorBanner message={error} />
+    {:else}
+      <div class="bt-msg">
+        <Bluetooth size={32} strokeWidth={1} />
+        <span>Loading...</span>
+      </div>
+    {/if}
+  {:else if !btState.available}
+    <div class="bt-msg">
+      <BluetoothOff size={32} strokeWidth={1} />
+      <span>Bluetooth is not available on this device</span>
     </div>
-  </div>
-{/if}
+  {:else if !btState.powered}
+    <div class="bt-msg">
+      <BluetoothOff size={32} strokeWidth={1} />
+      <span>Bluetooth is off</span>
+      <span class="bt-hint">Turn Bluetooth back on with the switch above</span>
+    </div>
+  {:else}
+    {#if error}
+      <PopoverErrorBanner message={error} />
+    {/if}
+
+    {#if connectedDevices.length > 0}
+      <div class="bt-section-label">Connected</div>
+      {#each connectedDevices as dev (dev.address)}
+        {@render deviceItem(dev)}
+      {/each}
+      <Separator class="opacity-10" />
+    {/if}
+
+    {#if pairedDevices.length > 0}
+      <div class="bt-section-label">Paired Devices</div>
+      {#each pairedDevices as dev (dev.address)}
+        {@render deviceItem(dev)}
+      {/each}
+      <Separator class="opacity-10" />
+    {/if}
+
+    {#if btState.discovering && availableDevices.length > 0}
+      <div class="bt-section-label">Available</div>
+      {#each availableDevices as dev (dev.address)}
+        {@render deviceItem(dev)}
+      {/each}
+      <Separator class="opacity-10" />
+    {/if}
+
+    <button class="bt-scan-btn" onclick={(e) => { e.stopPropagation(); toggleScan(); }}>
+      <RefreshCw size={12} strokeWidth={2} class={btState.discovering ? "spinning" : ""} />
+      <span>{btState.discovering ? "Scanning..." : "Scan for Devices"}</span>
+    </button>
+  {/if}
+</ShellPopover>
 
 <style>
-  .pop-backdrop { position: fixed; inset: 0; z-index: 90; }
-  .pop-panel {
-    position: fixed; top: 40px; z-index: 100; border-radius: var(--radius-card);
-    background: var(--color-bg-shell);
-    border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
-    box-shadow: var(--shadow-lg);
-    color: var(--color-fg-shell);
-    display: flex; flex-direction: column;
-    animation: arlen-popover-in var(--duration-medium) var(--ease-out) both;
-    transform-origin: top center;
-  }
-  .pop-bt { right: 80px; width: 280px; }
-  .pop-body { padding: 12px; display: flex; flex-direction: column; gap: 6px; }
-  /* Entry keyframes defined in sdk/ui-kit/src/lib/motion.css. */
-
   .bt-msg { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 12px; color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); text-align: center; font-size: 0.8125rem; }
   .bt-hint { font-size: 0.6875rem; opacity: 0.5; }
-
-  .bt-error { padding: 6px 10px; background: color-mix(in srgb, var(--color-error) 15%, transparent); border-radius: var(--radius-input); color: var(--color-error); font-size: 0.6875rem; }
 
   .bt-section-label { font-size: 0.6875rem; opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 
@@ -358,7 +334,8 @@
     display: flex; align-items: center; gap: 10px;
     padding: 8px 10px; background: transparent; border: none; border-radius: var(--radius-input);
     color: var(--color-fg-shell); font-size: 0.8125rem;
-    text-align: left; width: 100%; transition: background-color 0.1s ease;
+    text-align: left; width: 100%;
+    transition: background-color var(--duration-micro, 100ms) ease;
   }
   .bt-device:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
   .bt-device.connected { background: color-mix(in srgb, var(--color-accent) 15%, transparent); border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent); }
@@ -367,13 +344,20 @@
   .bt-device-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .bt-device-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; font-size: 0.8125rem; }
   .bt-device-detail { font-size: 0.6875rem; opacity: 0.5; display: flex; align-items: center; gap: 3px; }
+  /* Battery reading sits apart from the status word by spacing, not
+     a separator glyph. */
+  .bt-battery { display: inline-flex; align-items: center; gap: 3px; }
+  .bt-battery-spaced { margin-left: 6px; }
   :global(.bt-battery-icon) { display: inline; vertical-align: middle; }
 
   .bt-scan-btn {
     display: flex; align-items: center; justify-content: center; gap: 6px;
     padding: 7px; background: transparent; border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     border-radius: var(--radius-input); color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
-    font-size: 0.75rem; transition: all 0.15s ease;
+    font-size: 0.75rem;
+    transition:
+      background-color var(--duration-fast, 150ms) ease,
+      color var(--duration-fast, 150ms) ease;
   }
   .bt-scan-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); color: var(--color-fg-shell); }
 

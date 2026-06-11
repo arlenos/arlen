@@ -1,13 +1,14 @@
 <script lang="ts">
   /// Audio popover: output/input volume, device selection, per-app volume, DND.
 
-  import { activePopover, closePopover } from "$lib/stores/activePopover.js";
+  import { activePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
   import { Separator } from "@arlen/ui-kit/components/ui/separator/index.js";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import {
     Volume2, VolumeX, Mic, MicOff, ChevronRight,
   } from "lucide-svelte";
+  import ShellPopover from "$lib/components/shared/ShellPopover.svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
   import { FillSlider } from "@arlen/ui-kit/components/ui/fill-slider";
 
@@ -56,9 +57,6 @@
     } catch {}
   }
 
-  // PopoverSelect owns its open-state internally and unmounts cleanly
-  // with the surrounding `{#if $activePopover === "audio"}` guard, so
-  // the old dropdown-open flags are no longer needed.
   $effect(() => {
     if ($activePopover === "audio") {
       poll();
@@ -96,142 +94,121 @@
   }
 </script>
 
-{#if $activePopover === "audio"}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="pop-backdrop" onclick={closePopover}></div>
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="pop-panel pop-audio shell-popover" onclick={(e) => e.stopPropagation()}>
+<ShellPopover id="audio" width={280} right={80} bodyPadding="12px" bodyGap="8px">
+  {#snippet header()}
     <PopoverHeader icon={Volume2} title="Sound" toggled={!dndEnabled} onToggle={toggleDnd} />
-    <div class="pop-body">
+  {/snippet}
 
-      <!-- Output Section -->
-      <div class="section-label">Output</div>
-      <div class="vol-row">
-        <button class="vol-icon-btn" onclick={(e) => { e.stopPropagation(); toggleMute(); }}
-          aria-label={muted ? "Unmute" : "Mute"}>
-          {#if muted}
-            <VolumeX size={16} strokeWidth={1.5} />
-          {:else}
-            <Volume2 size={16} strokeWidth={1.5} />
-          {/if}
-        </button>
-        <div class="vol-slider-wrap">
-          <FillSlider
-            value={volume}
-            min={0}
-            max={100}
-            step={1}
-            size="sm"
-            ariaLabel="Output volume"
-            oninput={(v) => setVolume(v)}
-          />
-        </div>
-        <span class="vol-value">{volume}%</span>
-      </div>
-
-      <PopoverSelect
-        value={currentOutputId}
-        options={outputOptions}
-        onchange={selectOutput}
-        ariaLabel="Audio output device"
-        width="100%"
+  <!-- Output Section -->
+  <div class="section-label">Output</div>
+  <div class="vol-row">
+    <button class="vol-icon-btn" onclick={(e) => { e.stopPropagation(); toggleMute(); }}
+      aria-label={muted ? "Unmute" : "Mute"}>
+      {#if muted}
+        <VolumeX size={16} strokeWidth={1.5} />
+      {:else}
+        <Volume2 size={16} strokeWidth={1.5} />
+      {/if}
+    </button>
+    <div class="vol-slider-wrap">
+      <FillSlider
+        value={volume}
+        min={0}
+        max={100}
+        step={1}
+        size="sm"
+        ariaLabel="Output volume"
+        oninput={(v) => setVolume(v)}
       />
-
-      <Separator class="opacity-10" />
-
-      <!-- Input Section -->
-      {#if inputs.length > 0}
-        <div class="section-label">Input</div>
-        <div class="vol-row">
-          <button class="vol-icon-btn" onclick={(e) => { e.stopPropagation(); toggleInputMute(); }}
-            aria-label={inputMuted ? "Unmute mic" : "Mute mic"}>
-            {#if inputMuted}
-              <MicOff size={16} strokeWidth={1.5} />
-            {:else}
-              <Mic size={16} strokeWidth={1.5} />
-            {/if}
-          </button>
-          <div class="vol-slider-wrap">
-            <FillSlider
-              value={inputVolume}
-              min={0}
-              max={100}
-              step={1}
-              size="sm"
-              ariaLabel="Input volume"
-              oninput={(v) => setInputVol(v)}
-            />
-          </div>
-          <span class="vol-value">{inputVolume}%</span>
-        </div>
-
-        <PopoverSelect
-          value={currentInputId}
-          options={inputOptions}
-          onchange={selectInput}
-          ariaLabel="Audio input device"
-          width="100%"
-        />
-
-        <Separator class="opacity-10" />
-      {/if}
-
-      <!-- Per-App Volume (Collapsible) -->
-      {#if apps.length > 0}
-        <button class="apps-header" onclick={(e) => { e.stopPropagation(); appsExpanded = !appsExpanded; }}>
-          <ChevronRight size={12} strokeWidth={2} class={appsExpanded ? "apps-chevron-open" : ""} />
-          <span>Apps ({apps.length})</span>
-        </button>
-        {#if appsExpanded}
-          <div class="apps-list">
-            {#each apps as app (app.name)}
-              <div class="app-row">
-                <div class="app-icon">
-                  {#if app.icon_data}
-                    <img src={app.icon_data} alt="" class="app-icon-img" />
-                  {:else}
-                    <span class="app-icon-letter">{app.name.charAt(0).toUpperCase()}</span>
-                  {/if}
-                </div>
-                <span class="app-name" title={app.name}>{app.name}</span>
-                <div class="vol-slider-wrap app-slider-wrap">
-                  <FillSlider
-                    value={app.volume}
-                    min={0}
-                    max={100}
-                    step={1}
-                    size="sm"
-                    ariaLabel="{app.name} volume"
-                    oninput={(v) => setAppVol(app.id, v)}
-                  />
-                </div>
-                <span class="vol-value">{app.volume}%</span>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      {/if}
     </div>
+    <span class="vol-value">{volume}%</span>
   </div>
-{/if}
+
+  <PopoverSelect
+    value={currentOutputId}
+    options={outputOptions}
+    onchange={selectOutput}
+    ariaLabel="Audio output device"
+    width="100%"
+  />
+
+  <Separator class="opacity-10" />
+
+  <!-- Input Section -->
+  {#if inputs.length > 0}
+    <div class="section-label">Input</div>
+    <div class="vol-row">
+      <button class="vol-icon-btn" onclick={(e) => { e.stopPropagation(); toggleInputMute(); }}
+        aria-label={inputMuted ? "Unmute microphone" : "Mute microphone"}>
+        {#if inputMuted}
+          <MicOff size={16} strokeWidth={1.5} />
+        {:else}
+          <Mic size={16} strokeWidth={1.5} />
+        {/if}
+      </button>
+      <div class="vol-slider-wrap">
+        <FillSlider
+          value={inputVolume}
+          min={0}
+          max={100}
+          step={1}
+          size="sm"
+          ariaLabel="Input volume"
+          oninput={(v) => setInputVol(v)}
+        />
+      </div>
+      <span class="vol-value">{inputVolume}%</span>
+    </div>
+
+    <PopoverSelect
+      value={currentInputId}
+      options={inputOptions}
+      onchange={selectInput}
+      ariaLabel="Audio input device"
+      width="100%"
+    />
+
+    <Separator class="opacity-10" />
+  {/if}
+
+  <!-- Per-App Volume (Collapsible) -->
+  {#if apps.length > 0}
+    <button class="apps-header" onclick={(e) => { e.stopPropagation(); appsExpanded = !appsExpanded; }}>
+      <ChevronRight size={12} strokeWidth={2} class={appsExpanded ? "apps-chevron-open" : ""} />
+      <span>Apps ({apps.length})</span>
+    </button>
+    {#if appsExpanded}
+      <div class="apps-list">
+        {#each apps as app (app.id)}
+          <div class="app-row">
+            <div class="app-icon">
+              {#if app.icon_data}
+                <img src={app.icon_data} alt="" class="app-icon-img" />
+              {:else}
+                <span class="app-icon-letter">{app.name.charAt(0).toUpperCase()}</span>
+              {/if}
+            </div>
+            <span class="app-name" title={app.name}>{app.name}</span>
+            <div class="vol-slider-wrap app-slider-wrap">
+              <FillSlider
+                value={app.volume}
+                min={0}
+                max={100}
+                step={1}
+                size="sm"
+                ariaLabel="{app.name} volume"
+                oninput={(v) => setAppVol(app.id, v)}
+              />
+            </div>
+            <span class="vol-value">{app.volume}%</span>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  {/if}
+</ShellPopover>
 
 <style>
-  .pop-backdrop { position: fixed; inset: 0; z-index: 90; }
-  .pop-panel {
-    position: fixed; top: 40px; z-index: 100; border-radius: var(--radius-card);
-    background: var(--color-bg-shell);
-    border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
-    box-shadow: var(--shadow-lg); color: var(--color-fg-shell);
-    display: flex; flex-direction: column;
-    animation: arlen-popover-in var(--duration-medium) var(--ease-out) both;
-    transform-origin: top center;
-  }
-  .pop-audio { right: 80px; width: 280px; }
-  .pop-body { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-  /* Entry keyframes defined in sdk/ui-kit/src/lib/motion.css. */
-
   .section-label { font-size: 0.6875rem; opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 
   /* Volume row */
@@ -241,21 +218,22 @@
     background: transparent; border: none; border-radius: var(--radius-chip);
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
     padding: 0; flex-shrink: 0;
-    transition: all 100ms ease;
+    transition:
+      background-color var(--duration-micro, 100ms) ease,
+      color var(--duration-micro, 100ms) ease;
   }
   .vol-icon-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); color: var(--color-fg-shell); }
   .vol-value { font-size: 0.6875rem; opacity: 0.5; min-width: 30px; text-align: right; }
 
-  /* Slider wrappers — sizing only; the bar itself comes from FillSlider. */
+  /* Slider wrappers: sizing only; the bar itself comes from FillSlider. */
   .vol-slider-wrap { flex: 1; display: flex; align-items: center; }
   .app-slider-wrap { width: 100px; flex: none; }
 
   /*
    * Output/input device pickers use the shared PopoverSelect from
-   * $lib/components/ui/popover-select. Its menu portals to
-   * document.body, so styling is driven by the shell's :root theme
-   * tokens (--foreground, --background) — no shell-specific overrides
-   * live here.
+   * the kit. Its menu portals to document.body, so styling is driven
+   * by the shell's :root theme tokens (--foreground, --background) —
+   * no shell-specific overrides live here.
    */
 
   /* Apps section */
@@ -264,7 +242,7 @@
     padding: 4px 0; background: transparent; border: none;
     color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
     font-size: 0.75rem; font-weight: 500; width: 100%; text-align: left;
-    transition: color 0.1s ease;
+    transition: color var(--duration-micro, 100ms) ease;
   }
   .apps-header:hover { color: var(--color-fg-shell); }
   :global(.apps-chevron-open) { transform: rotate(90deg); }
