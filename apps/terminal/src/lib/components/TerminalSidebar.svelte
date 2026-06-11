@@ -138,14 +138,17 @@
 </Sidebar>
 
 <style>
+  /* The nav register (the same square the Settings sidebar gives its
+     collapsed search): 32px box, 14px glyph. */
   .ts-new-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: var(--height-control-compact, 24px);
-    height: var(--height-control-compact, 24px);
+    width: 2rem;
+    height: 2rem;
+    flex-shrink: 0;
     border: none;
-    border-radius: var(--radius-chip);
+    border-radius: var(--radius-input);
     background: transparent;
     color: color-mix(in srgb, var(--sidebar-foreground) 55%, transparent);
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);

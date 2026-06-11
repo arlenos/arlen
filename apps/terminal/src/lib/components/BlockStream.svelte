@@ -1,14 +1,26 @@
 <script lang="ts">
   /// The block stream: the session's command history as quiet blocks,
-  /// newest at the bottom like a terminal. Sticks to the bottom while
-  /// the user is there; scrolling up parks the view and offers a
-  /// jump-to-latest pill instead of yanking it back down.
+  /// newest at the bottom like a terminal. The live prompt (the
+  /// composer) rides along as the last row — at the top of an empty
+  /// session, directly under the last block otherwise. Sticks to the
+  /// bottom while the user is there; scrolling up parks the view and
+  /// offers a jump pill instead of yanking it back down.
+  import type { Snippet } from "svelte";
   import type { Block } from "$lib/contract";
   import StreamBlock from "./StreamBlock.svelte";
 
-  let { blocks }: { blocks: Block[] } = $props();
+  let {
+    blocks,
+    children,
+  }: {
+    blocks: Block[];
+    /// The live prompt row (the composer), rendered after the blocks
+    /// inside the scroller.
+    children?: Snippet;
+  } = $props();
 
   let scroller = $state<HTMLDivElement | null>(null);
+  let content = $state<HTMLDivElement | null>(null);
   let pinnedToBottom = $state(true);
 
   function onScroll() {
@@ -22,20 +34,28 @@
     scroller?.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
   }
 
-  /// New blocks keep the view glued to the bottom only when the user
-  /// already was there.
+  // Anything that grows the content (new blocks, the composer gaining
+  // lines, an image finishing its load) keeps the view glued to the
+  // bottom — but only when the user already was there.
   $effect(() => {
-    void blocks.length;
-    if (pinnedToBottom && scroller) {
-      scroller.scrollTop = scroller.scrollHeight;
-    }
+    if (!content || !scroller) return;
+    const observer = new ResizeObserver(() => {
+      if (pinnedToBottom && scroller) {
+        scroller.scrollTop = scroller.scrollHeight;
+      }
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
   });
 </script>
 
 <div class="block-stream" bind:this={scroller} onscroll={onScroll}>
-  {#each blocks as block (block.id)}
-    <StreamBlock {block} />
-  {/each}
+  <div class="stream-content" bind:this={content}>
+    {#each blocks as block (block.id)}
+      <StreamBlock {block} />
+    {/each}
+    {@render children?.()}
+  </div>
 </div>
 
 {#if !pinnedToBottom}
@@ -49,6 +69,9 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+  }
+
+  .stream-content {
     display: flex;
     flex-direction: column;
   }
