@@ -16,8 +16,10 @@
     cursorIndex = null,
     now,
     icon,
+    renamingName = null,
     onsort,
     onrowevent,
+    onrename,
   }: {
     entries: FileEntry[];
     sortKey: SortKey;
@@ -26,7 +28,10 @@
     cursorIndex?: number | null;
     now?: number;
     icon?: Snippet<[FileEntry]>;
+    /// The entry name in inline rename, or null.
+    renamingName?: string | null;
     onsort?: (key: SortKey) => void;
+    onrename?: (entry: FileEntry, newName: string) => void;
     onrowevent?: (
       kind: "click" | "dblclick" | "contextmenu",
       index: number,
@@ -72,9 +77,11 @@
           {icon}
           selected={selectedIndices.has(i)}
           focused={cursorIndex === i}
+          renaming={renamingName === entry.name}
           onrowclick={(e) => onrowevent?.("click", i, e)}
           onrowdblclick={(e) => onrowevent?.("dblclick", i, e)}
           onrowcontextmenu={(e) => onrowevent?.("contextmenu", i, e)}
+          onrename={(newName) => onrename?.(entry, newName)}
         />
       </div>
     {/each}

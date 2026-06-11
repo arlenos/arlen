@@ -17,6 +17,9 @@
     controller,
     onactivate,
     onselection,
+    oncontextmenu,
+    onrenamecommit,
+    renamingName = $bindable(null),
     filter,
     now,
     icon,
@@ -27,6 +30,13 @@
     onactivate?: (entry: FileEntry, path: string) => void;
     /// The selection changed; entries are the selected rows.
     onselection?: (entries: FileEntry[]) => void;
+    /// A row (or the empty area, entry null) asked for a context menu.
+    oncontextmenu?: (entry: FileEntry | null, e: MouseEvent) => void;
+    /// The inline rename committed with a changed name.
+    onrenamecommit?: (entry: FileEntry, newName: string) => void;
+    /// The entry name currently in inline rename (F2); bindable so
+    /// the host can start a rename (e.g. right after New Folder).
+    renamingName?: string | null;
     /// Host-side row filter (the picker's globs); directories always
     /// pass on the host side by convention.
     filter?: (entry: FileEntry) => boolean;
@@ -87,6 +97,7 @@
         selection.click(i);
         publish();
       }
+      oncontextmenu?.(visible[i] ?? null, e);
       return;
     }
     // dblclick
@@ -102,9 +113,74 @@
     }
     onactivate?.(entry, joinPath($path, entry.name));
   }
+
+  /// The desktop keyboard grammar: arrows move the cursor (Shift
+  /// extends), Home/End jump, Enter activates, Backspace goes up,
+  /// Ctrl+A selects all, Escape clears, F2 renames the cursor entry.
+  function onkeydown(e: KeyboardEvent) {
+    if (renamingName !== null) return;
+    const key = e.key;
+    if (key === "ArrowDown" || key === "ArrowUp") {
+      e.preventDefault();
+      selection.moveCursor(key === "ArrowDown" ? 1 : -1, e.shiftKey);
+      publish();
+      scrollCursorIntoView();
+    } else if (key === "Home" || key === "End") {
+      e.preventDefault();
+      selection.moveCursor(key === "Home" ? -Infinity : Infinity, e.shiftKey);
+      publish();
+      scrollCursorIntoView();
+    } else if (key === "Enter") {
+      const i = selection.cursor();
+      const entry = i !== null ? visible[i] : undefined;
+      if (entry) {
+        e.preventDefault();
+        activate(entry);
+      }
+    } else if (key === "Backspace") {
+      e.preventDefault();
+      void controller.up();
+    } else if (key === "a" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      selection.selectAll();
+      publish();
+    } else if (key === "Escape") {
+      selection.clear();
+      publish();
+    } else if (key === "F2") {
+      const i = selection.cursor();
+      const entry = i !== null ? visible[i] : undefined;
+      if (entry) {
+        e.preventDefault();
+        renamingName = entry.name;
+      }
+    }
+  }
+
+  let rootEl = $state<HTMLDivElement | null>(null);
+  function scrollCursorIntoView() {
+    const i = selection.cursor();
+    if (i === null) return;
+    rootEl
+      ?.querySelectorAll(".file-row")
+      [i]?.scrollIntoView({ block: "nearest" });
+  }
 </script>
 
-<div class="file-browser">
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div
+  class="file-browser"
+  bind:this={rootEl}
+  role="application"
+  aria-label="File browser"
+  tabindex="0"
+  onkeydown={onkeydown}
+  oncontextmenu={(e) => {
+    if (!(e.target as HTMLElement).closest(".file-row")) {
+      oncontextmenu?.(null, e);
+    }
+  }}
+>
   {#if $error}
     <div class="fb-state">
       <span class="fb-state-title">Can't open this folder</span>
@@ -123,8 +199,13 @@
       {cursorIndex}
       {now}
       {icon}
+      {renamingName}
       onsort={(key) => controller.setSort(key)}
       {onrowevent}
+      onrename={(entry, newName) => {
+        renamingName = null;
+        if (newName !== entry.name) onrenamecommit?.(entry, newName);
+      }}
     />
   {/if}
 </div>
@@ -136,6 +217,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    outline: none;
   }
 
   .fb-state {
