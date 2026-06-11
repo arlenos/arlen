@@ -74,8 +74,8 @@
     border-radius: var(--radius-full);
     border: 1px solid var(--control-border);
     background: var(--background);
-    color: color-mix(in srgb, var(--foreground) 70%, transparent);
-    font-size: 0.6875rem;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    font-size: 0.75rem;
     font-weight: 500;
     box-shadow: var(--shadow-md);
     transition: background-color var(--duration-fast, 150ms) var(--ease-out, ease);

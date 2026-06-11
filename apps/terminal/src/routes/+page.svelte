@@ -96,13 +96,14 @@
     text-align: center;
     padding: 2rem;
   }
+  /* Chrome voice; the hierarchy is weight + dim, not size. */
   .stream-empty-title {
-    font-size: 0.9375rem;
+    font-size: 0.75rem;
     font-weight: 500;
     color: var(--foreground);
   }
   .stream-empty-hint {
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .stream-empty-btn {

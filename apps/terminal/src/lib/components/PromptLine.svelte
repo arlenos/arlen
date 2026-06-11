@@ -24,29 +24,28 @@
 </span>
 
 <style>
+  /* Console content voice, dimmed: same size as the command, the
+     hierarchy comes from brightness alone (the command is the only
+     full-strength line in a block). */
   .prompt-line {
     display: inline-flex;
     align-items: baseline;
     gap: 6px;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.6875rem;
+    font-size: 0.8125rem;
     line-height: 1.5;
     min-width: 0;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
   .pl-path {
-    color: color-mix(in srgb, var(--color-accent, var(--primary)) 75%, var(--foreground) 25%);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .pl-sep {
-    color: color-mix(in srgb, var(--foreground) 30%, transparent);
-  }
-
-  .pl-branch {
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 35%, transparent);
   }
 
   .pl-dirty {

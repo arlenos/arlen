@@ -1,6 +1,6 @@
 <script lang="ts">
-  /// The quiet capability line under the composer, anchored by the
-  /// capability glyph: the same sentence pattern as the harness strip
+  /// The quiet capability line under the composer, anchored by a
+  /// status dot: the same sentence pattern as the harness strip
   /// (copy law: plain words on the surface, the technical facts live
   /// in the tooltip). A failed read renders as unreachable with a
   /// retry, never as "off".
@@ -54,7 +54,7 @@
           <Tooltip.Trigger>
             {#snippet child({ props })}
               <p {...props} class="line">
-                <span class="glyph" class:off={!$capability?.enabled} aria-hidden="true">◆</span>
+                <span class="strip-dot" class:off={!$capability?.enabled} aria-hidden="true"></span>
                 {sentence($capability)}
               </p>
             {/snippet}
@@ -65,13 +65,13 @@
         </Tooltip.Root>
       {:else}
         <p class="line">
-          <span class="glyph" class:off={!$capability?.enabled} aria-hidden="true">◆</span>
+          <span class="strip-dot" class:off={!$capability?.enabled} aria-hidden="true"></span>
           {sentence($capability)}
         </p>
       {/if}
     {:else}
       <p class="line">
-        <span class="glyph off" aria-hidden="true">◆</span>
+        <span class="strip-dot unreachable" aria-hidden="true"></span>
         Can't reach the assistant right now.
       </p>
       <Button variant="outline" size="sm" onclick={load}>Try again</Button>
@@ -86,24 +86,35 @@
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    margin-top: 6px;
+    margin-top: 8px;
     min-height: var(--height-control, 28px);
     min-width: 0;
   }
   .line {
     margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     font-size: 0.75rem;
-    line-height: 1.4;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    line-height: 1.5;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .glyph {
-    color: var(--color-success);
-    margin-right: 0.25rem;
+  /* The one dot language (fills, outside the text dim scale):
+     green on, gray off, red unreachable. */
+  .strip-dot {
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-full);
+    background: var(--color-success);
   }
-  .glyph.off {
-    color: color-mix(in srgb, var(--foreground) 35%, transparent);
+  .strip-dot.off {
+    background: color-mix(in srgb, var(--foreground) 30%, transparent);
+  }
+  .strip-dot.unreachable {
+    background: var(--color-error);
   }
 </style>

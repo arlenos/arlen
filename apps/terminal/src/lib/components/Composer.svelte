@@ -78,7 +78,7 @@
 <style>
   .composer-zone {
     flex-shrink: 0;
-    padding: 8px 16px 10px;
+    padding: 12px 16px;
     border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
   }
 
@@ -99,12 +99,15 @@
     opacity: 0.7;
   }
 
+  /* Quiet prompt char: accent at the marker slot now means "the
+     agent ran this", so the composer's char stays neutral and the
+     focus ring carries "type here". */
   .prompt-glyph {
     flex-shrink: 0;
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 0.8125rem;
     line-height: 1.25rem;
-    color: var(--color-accent, var(--primary));
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
   /* The textarea is borderless inside the container; the container is

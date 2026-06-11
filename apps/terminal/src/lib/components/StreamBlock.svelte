@@ -22,6 +22,7 @@
   exitCode={block.exit_code}
   durationMs={block.duration_ms}
   running={block.exit_code === null && block.duration_ms === null}
+  originLabel={block.origin === "agent" ? "agent" : null}
 >
   {#snippet context()}
     <PromptLine cwd={block.cwd} git={block.git} />
@@ -65,7 +66,7 @@
     border: none;
     border-radius: var(--radius-chip);
     background: transparent;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
     transition:
       background-color var(--duration-micro, 100ms) var(--ease-out, ease),
       color var(--duration-micro, 100ms) var(--ease-out, ease);

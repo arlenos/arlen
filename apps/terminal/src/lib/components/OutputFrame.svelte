@@ -28,14 +28,13 @@
   .of-tag {
     display: block;
     text-align: right;
-    padding: 4px 8px 0;
-    font-size: 0.625rem;
-    letter-spacing: 0.02em;
+    padding: 4px 12px 0;
+    font-size: 0.75rem;
     color: color-mix(in srgb, var(--foreground) 35%, transparent);
     pointer-events: none;
   }
 
   .of-content {
-    padding: 2px 10px 10px;
+    padding: 4px 12px 12px;
   }
 </style>

@@ -46,7 +46,7 @@
     flex-shrink: 0;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 7%, transparent);
-    color: color-mix(in srgb, var(--foreground) 70%, transparent);
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
   .ac-text {
@@ -64,8 +64,8 @@
     white-space: nowrap;
   }
   .ac-summary {
-    font-size: 0.6875rem;
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+    font-size: 0.75rem;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
