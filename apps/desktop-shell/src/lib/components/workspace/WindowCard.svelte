@@ -61,6 +61,7 @@
         class:window-card-dragging={dragging}
         class:window-card-keyboard-focus={keyboardFocus}
         class:window-card-selected={selected}
+        data-window-id={windowId}
         onpointerdown={(e) =>
           drag.onCardPointerDown(
             e,
@@ -266,5 +267,13 @@
   :global(.window-card.window-card-minimized .window-card-title) {
     font-size: 9px;
     line-height: 1.05;
+  }
+
+  /* A dragged minimized card must dim like any other drag source.
+     Declared after the minimized block: its base opacity (0.72,
+     (0,2,0)) would otherwise beat `.window-card-dragging` (also
+     (0,2,0)) purely by source order. */
+  :global(.window-card.window-card-minimized.window-card-dragging) {
+    opacity: 0.3;
   }
 </style>

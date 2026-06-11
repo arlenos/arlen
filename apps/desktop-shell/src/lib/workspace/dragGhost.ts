@@ -111,16 +111,16 @@ export class GhostController {
 
     // Paint back-to-front so the clicked card (index 0) sits on top.
     for (let i = visible - 1; i >= 0; i--) {
-      // Pick the card DOM for each target. If another selected card
-      // isn't currently in the DOM (off-screen workspace column),
-      // fall back to cloning the source card — the visual still
-      // reads as "N cards".
+      // Pick the card DOM for each target via its `data-window-id`.
+      // If another selected card isn't currently in the DOM
+      // (off-screen workspace column), fall back to cloning the
+      // source card — the visual still reads as "N cards".
       const targetId = targets[i];
       const targetEl =
         targetId === targets[0]
           ? sourceCard
           : (document.querySelector<HTMLElement>(
-              `[data-ws-id] [aria-label][title], [data-ws-id]`,
+              `[data-window-id="${CSS.escape(targetId)}"]`,
             ) ?? sourceCard);
       const clone = targetEl.cloneNode(true) as HTMLElement;
       clone.removeAttribute("draggable");
