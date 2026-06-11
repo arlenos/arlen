@@ -10,14 +10,25 @@
   let {
     entries,
     selected,
+    resultsCount = null,
+    errored = false,
   }: {
     entries: FileEntry[];
     selected: FileEntry[];
+    /// Search is showing: the line counts results, not folder items.
+    resultsCount?: number | null;
+    /// The listing failed: the bar stays silent (it cannot know a
+    /// count it never saw).
+    errored?: boolean;
   } = $props();
 
-  const itemsLine = $derived(
-    entries.length === 1 ? "1 item" : `${entries.length} items`,
-  );
+  const itemsLine = $derived.by(() => {
+    if (errored) return null;
+    if (resultsCount !== null) {
+      return resultsCount === 1 ? "1 result" : `${resultsCount} results`;
+    }
+    return entries.length === 1 ? "1 item" : `${entries.length} items`;
+  });
 
   const selectionLine = $derived.by(() => {
     if (selected.length === 0) return null;
@@ -29,8 +40,10 @@
 </script>
 
 <div class="status-bar">
-  <span>{itemsLine}</span>
-  {#if selectionLine}
+  {#if itemsLine}
+    <span>{itemsLine}</span>
+  {/if}
+  {#if selectionLine && !errored && resultsCount === null}
     <span>{selectionLine}</span>
   {/if}
 </div>

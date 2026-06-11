@@ -86,12 +86,18 @@
   }
 
   // The visible listing of the focused pane, mirrored for the status
-  // line.
+  // line, plus whether its listing failed (the bar then stays quiet).
   let entries = $state<FileEntry[]>([]);
+  let listingError = $state(false);
   $effect(() => {
     const c = focusedController;
     if (!c) return;
     return c.entries.subscribe((list) => (entries = list));
+  });
+  $effect(() => {
+    const c = focusedController;
+    if (!c) return;
+    return c.error.subscribe((e) => (listingError = e !== null));
   });
   // A tab switch shows the new tab's selection state, which starts
   // empty — the browser republishes on interaction.
@@ -289,8 +295,10 @@
             </ContextMenu.Item>
           {/if}
         {/if}
-        <ContextMenu.Separator />
-        <ContextMenu.Item onclick={newFolder}>New folder</ContextMenu.Item>
+        {#if selected.length === 0}
+          <ContextMenu.Separator />
+          <ContextMenu.Item onclick={newFolder}>New folder</ContextMenu.Item>
+        {/if}
         {#if selected.length > 0}
           <ContextMenu.Separator />
           <ContextMenu.Item onclick={trashSelection}>
@@ -303,7 +311,14 @@
         {/if}
       </ContextMenu.Content>
     </ContextMenu.Root>
-    <FmStatusBar {entries} {selected} />
+    <FmStatusBar
+      {entries}
+      {selected}
+      errored={listingError}
+      resultsCount={$searchOpen && $searchResults !== null
+        ? $searchResults.length
+        : null}
+    />
   {/if}
 </div>
 
@@ -355,6 +370,6 @@
   /* The focused pane carries a quiet top rule so the toolbar's
      subject is visible; only meaningful with two panes. */
   .fm-panes.split .fm-pane.pane-focused {
-    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-accent, var(--primary)) 35%, transparent);
+    box-shadow: inset 0 2px 0 color-mix(in srgb, var(--color-accent, var(--primary)) 45%, transparent);
   }
 </style>
