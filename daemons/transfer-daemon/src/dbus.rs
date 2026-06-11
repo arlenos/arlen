@@ -22,16 +22,20 @@
 //! This module owns the path resolution and the per-request flow shape
 //! (auth -> gate -> deliver); the live `UnixListener` accept loop and the live
 //! cross-uid delivery are the daemon-side wiring (`main`) plus the deferred
-//! broker. The interface name `org.arlen.Transfer1` and the D-Bus activation
-//! file in `dist/` are kept for discoverability and a future bus-side control
-//! surface, but the data path is the raw per-uid socket described above.
+//! broker. `org.arlen.Transfer1` is the daemon's well-known IDENTIFIER (used in
+//! logs and reserved as a future bus-side control-surface name), but the daemon
+//! serves ONLY over the raw per-uid sockets above and owns no bus name today, so
+//! it ships like its sibling socket daemons (audit, undo-signer, capsuled): a
+//! systemd unit, no D-Bus activation file. A future bus control surface adds the
+//! activation file plus a `Type=dbus` unit once the daemon actually owns the name.
 
 use std::path::PathBuf;
 
 use crate::request::ProfileId;
 
-/// The well-known interface name (kept for discoverability and the dist D-Bus
-/// activation file; the data path is the raw per-uid socket).
+/// The daemon's well-known identifier (used in logs and reserved as a future
+/// bus control-surface name). The daemon owns no bus name today; the data path
+/// is the raw per-uid socket.
 pub const INTERFACE_NAME: &str = "org.arlen.Transfer1";
 
 /// The transfer request socket for one profile uid:
