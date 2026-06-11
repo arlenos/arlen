@@ -211,7 +211,7 @@
   --height-bar:                 var(--height-bar, 36px);
 
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, "JetBrains Mono", monospace;
+  --font-mono: "JetBrainsMono Nerd Font Mono", "JetBrains Mono", ui-monospace, monospace;
 
   /* Motion tokens registered as Tailwind utilities. Values come from
      sdk/ui-kit/src/lib/motion.css; this block only exposes them to

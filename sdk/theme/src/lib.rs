@@ -630,7 +630,7 @@ fn from_file(f: ArlenThemeFile) -> Result<ArlenTheme, ResolveError> {
             t.font_sans,
             "\"Inter Variable\", ui-sans-serif, system-ui, sans-serif",
         ),
-        font_mono:     inert_or(t.font_mono, "\"JetBrains Mono\", ui-monospace, monospace"),
+        font_mono:     inert_or(t.font_mono, "\"JetBrainsMono Nerd Font Mono\", \"JetBrains Mono\", ui-monospace, monospace"),
         size_base:     inert_or(t.size_base, "14px"),
         line_height:   inert_or(t.line_height, "1.5"),
         weight_normal: t.weight_normal.unwrap_or(400),

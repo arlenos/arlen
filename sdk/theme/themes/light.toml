@@ -53,7 +53,7 @@ xl = "32px"
 
 [typography]
 font_sans     = "\"Inter Variable\", ui-sans-serif, system-ui, sans-serif"
-font_mono     = "\"JetBrains Mono\", ui-monospace, monospace"
+font_mono     = "\"JetBrainsMono Nerd Font Mono\", \"JetBrains Mono\", ui-monospace, monospace"
 size_base     = "14px"
 line_height   = "1.5"
 weight_normal = 400
