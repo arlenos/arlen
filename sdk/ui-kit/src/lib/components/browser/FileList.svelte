@@ -133,6 +133,16 @@
   .fl-header {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 6rem 9rem;
+  }
+  @container browser (max-width: 34rem) {
+    .fl-header {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .fl-col:not(:first-child) {
+      display: none;
+    }
+  }
+  .fl-header {
     gap: 8px;
     padding: 0 8px;
     border-bottom: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);

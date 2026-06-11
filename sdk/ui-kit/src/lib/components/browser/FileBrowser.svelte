@@ -277,6 +277,10 @@
     min-height: 0;
     overflow-y: auto;
     outline: none;
+    /* Children query this width: a narrow pane (dual + info open)
+       drops the metadata columns instead of crushing the names. */
+    container-type: inline-size;
+    container-name: browser;
   }
 
   .fb-state {

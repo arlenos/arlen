@@ -131,6 +131,18 @@
   .file-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 6rem 9rem;
+  }
+  /* A narrow pane keeps the name and lets the metadata go. */
+  @container browser (max-width: 34rem) {
+    .file-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .fr-size,
+    .fr-modified {
+      display: none;
+    }
+  }
+  .file-row {
     align-items: center;
     gap: 8px;
     height: 2rem;

@@ -78,19 +78,29 @@
   }
 
   // The current folder is the rightmost column; keep it in view when
-  // the trail grows or the mode opens.
+  // the trail grows or the mode opens. A left fade says "more
+  // columns this way" whenever ancestors sit off-screen.
   let scroller = $state<HTMLDivElement | null>(null);
+  let scrolledLeft = $state(false);
   $effect(() => {
     void $ancestors;
-    if (scroller) scroller.scrollLeft = scroller.scrollWidth;
+    if (scroller) {
+      scroller.scrollLeft = scroller.scrollWidth;
+      scrolledLeft = scroller.scrollLeft > 4;
+    }
   });
 </script>
 
+<div class="miller-wrap">
+{#if scrolledLeft}
+  <div class="mc-fade" aria-hidden="true"></div>
+{/if}
 <div
   class="miller"
   bind:this={scroller}
   role="grid"
   aria-label="Folder columns"
+  onscroll={() => (scrolledLeft = (scroller?.scrollLeft ?? 0) > 4)}
 >
   {#each $ancestors as column (column.path)}
     <div class="mc-column">
@@ -142,16 +152,42 @@
     {/if}
   </div>
 </div>
+</div>
 
 <style>
+  .miller-wrap {
+    position: relative;
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+  .mc-fade {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 16px;
+    z-index: 1;
+    pointer-events: none;
+    background: linear-gradient(
+      to right,
+      var(--background),
+      transparent
+    );
+  }
+
   .miller {
     display: flex;
     flex: 1;
     min-height: 0;
     overflow-x: auto;
+    /* Resting positions align to column edges, so a partial column
+       never lingers at the viewport edge. */
+    scroll-snap-type: x proximity;
   }
 
   .mc-column {
+    scroll-snap-align: start;
     width: 13rem;
     flex-shrink: 0;
     overflow-y: auto;
