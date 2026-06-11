@@ -5,7 +5,7 @@
   /// (tool name, component, duration, reference) lives behind the chevron,
   /// honest and unabridged. Two-layer transparency.
   import { ChevronDown, Undo2 } from "@lucide/svelte";
-  import IconAction from "$lib/components/IconAction.svelte";
+  import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import type { Tone } from "$lib/ledger";
 
   interface Annotation {
