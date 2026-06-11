@@ -3,13 +3,18 @@
   import type { HTMLInputAttributes } from "svelte/elements";
 
   let {
+    ref = $bindable(null),
     class: className,
     value = $bindable(""),
     ...rest
-  }: HTMLInputAttributes & { value?: string | number } = $props();
+  }: HTMLInputAttributes & {
+    ref?: HTMLInputElement | null;
+    value?: string | number;
+  } = $props();
 </script>
 
 <input
+  bind:this={ref}
   bind:value
   class={cn(
     "flex h-control w-full rounded-input border border-border bg-input px-3 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
