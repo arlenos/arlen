@@ -53,8 +53,11 @@ pub const DEFAULT_MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
 /// (256 MiB): once spent, later files are name-matched only.
 pub const DEFAULT_MAX_TOTAL_CONTENT_BYTES: u64 = 256 * 1024 * 1024;
 
-/// The chunk size the content grep reads in (64 KiB), bounding the working buffer
-/// regardless of file size.
+/// The chunk size the content grep reads in (64 KiB). The working buffer is
+/// bounded by `query.len() + CONTENT_CHUNK_BYTES` (the file size never enters it):
+/// a sliding window keeps only the query-length overlap between chunks so a match
+/// straddling a chunk boundary is still found. The query is host-supplied (the
+/// search box), so in practice the buffer is essentially the chunk size.
 const CONTENT_CHUNK_BYTES: usize = 64 * 1024;
 
 /// How a search query is matched against an entry. The host wires the search
@@ -522,6 +525,72 @@ mod tests {
         assert_eq!(hit_paths(&out), vec!["d/target.txt".to_string()]);
         // The loop link itself is not a name match for "target".
         assert!(out.hits.iter().all(|h| h.entry.kind != EntryKind::Symlink));
+        // This exercises the symlink-leaf protection (a symlink is never
+        // descended). The `(dev, ino)` visited set is a second, defense-in-depth
+        // guard against a hardlinked-directory / bind-mount loop, which a
+        // privilege-free unit test cannot create, so it is not reached here.
+    }
+
+    #[test]
+    fn max_entries_examined_bounds_the_walk_and_sets_examined_capped() {
+        let tmp = tempfile::tempdir().unwrap();
+        for i in 0..50 {
+            fs::write(tmp.path().join(format!("f{i}.dat")), b"x").unwrap();
+        }
+        let dir = cap(tmp.path());
+        // A query that matches NOTHING, so the result cap never trips; only the
+        // work cap can stop the walk. With the cap below the entry count, the
+        // walk stops early and reports it honestly.
+        let opts = SearchOptions {
+            query: "no-such-name".to_string(),
+            max_entries_examined: 10,
+            ..Default::default()
+        };
+        let out = search(&dir, &opts);
+        assert!(out.hits.is_empty());
+        assert!(!out.truncated, "no result cap was hit");
+        assert!(out.examined_capped, "the work cap stopped the walk");
+    }
+
+    #[test]
+    fn the_total_content_budget_is_honoured_across_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Several files each holding the needle; the total budget is smaller than
+        // their combined size, so some are left unread and the flag is set.
+        for i in 0..6 {
+            fs::write(tmp.path().join(format!("doc{i}.txt")), b"needle inside").unwrap();
+        }
+        let dir = cap(tmp.path());
+        let opts = SearchOptions {
+            query: "needle".to_string(),
+            match_names: false,
+            match_content: true,
+            max_total_content_bytes: 20,
+            ..Default::default()
+        };
+        let out = search(&dir, &opts);
+        assert!(
+            out.content_budget_exhausted,
+            "the total content budget engaged across files",
+        );
+    }
+
+    #[test]
+    fn a_tree_deeper_than_max_depth_stops_descending() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(tmp.path().join("a/b/c")).unwrap();
+        fs::write(tmp.path().join("a/b/c/buried.txt"), b"x").unwrap();
+        fs::write(tmp.path().join("a/shallow.txt"), b"x").unwrap();
+        let dir = cap(tmp.path());
+        // max_depth 1 descends the root (depth 0) and `a` (depth 1) but not
+        // `a/b`, so the depth-2 file is never reached.
+        let opts = SearchOptions {
+            query: ".txt".to_string(),
+            max_depth: 1,
+            ..Default::default()
+        };
+        let out = search(&dir, &opts);
+        assert_eq!(hit_paths(&out), vec!["a/shallow.txt".to_string()]);
     }
 
     #[test]
