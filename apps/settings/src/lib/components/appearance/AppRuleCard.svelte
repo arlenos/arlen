@@ -157,7 +157,6 @@
     padding: 0 0.5rem 0 0.6rem;
     background: transparent;
     border: none;
-    cursor: pointer;
     text-align: left;
     color: inherit;
     font: inherit;
@@ -209,7 +208,6 @@
     background: transparent;
     border: none;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
-    cursor: pointer;
     flex-shrink: 0;
     transition:
       color 120ms ease,
@@ -262,7 +260,6 @@
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
     font-size: 0.6875rem;
     font-weight: 500;
-    cursor: pointer;
     text-transform: capitalize;
     transition:
       background-color 120ms ease,

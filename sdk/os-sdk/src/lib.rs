@@ -10,6 +10,7 @@ pub mod mock;
 pub mod intents;
 pub mod mcp;
 pub mod presence;
+pub mod runtime;
 pub mod search;
 pub mod shortcuts;
 pub mod spatial;

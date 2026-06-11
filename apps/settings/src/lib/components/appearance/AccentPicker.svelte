@@ -142,7 +142,6 @@
     border-radius: var(--radius-input);
     border: none;
     padding: 0;
-    cursor: pointer;
     box-shadow:
       0 0 0 1px rgba(0, 0, 0, 0.35) inset,
       0 1px 2px rgba(0, 0, 0, 0.4);

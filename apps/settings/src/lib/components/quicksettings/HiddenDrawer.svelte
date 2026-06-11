@@ -119,7 +119,6 @@
     color: var(--color-fg-shell);
     font-size: 0.8125rem;
     font-weight: 500;
-    cursor: pointer;
     text-align: left;
     transition: background-color 100ms ease;
   }

@@ -297,8 +297,16 @@
      needed because `[data-collapsible="icon"]` lives on the outer
      Sidebar wrapper, outside Svelte's class-hash scope. */
   :global([data-collapsible="icon"]) .search-input {
-    padding: 4px 0;
-    cursor: pointer;
+    /* In icon mode the search joins the nav register: a borderless square
+       icon button, not a squeezed input box. */
+    height: auto;
+    aspect-ratio: 1;
+    padding: 0;
+    border: none;
+    background: transparent;
+  }
+  :global([data-collapsible="icon"]) .search-input:hover {
+    background: color-mix(in srgb, var(--color-fg-app) 10%, transparent);
   }
 
   :global([data-collapsible="icon"] .settings-search-wrap .search-icon) {
@@ -341,7 +349,6 @@
     border-radius: var(--radius-chip);
     color: var(--color-fg-app);
     text-align: left;
-    cursor: pointer;
     transition:
       background 80ms ease;
   }
