@@ -17,14 +17,41 @@ use tokio::signal;
 
 mod normalizer;
 
-const DEFAULT_PRODUCER_SOCKET: &str = "/run/arlen/event-bus-producer.sock";
+/// Resolve a daemon socket path per the standard Arlen 3-tier
+/// convention: the `env_var` override (non-empty) wins, else
+/// `$XDG_RUNTIME_DIR/arlen/<file_name>` (the per-user path, i.e.
+/// `/run/user/{uid}/arlen/<file_name>`), else `/run/arlen/<file_name>`.
+///
+/// kernel-layer does not depend on `os-sdk`, so the shared
+/// `os_sdk::runtime::socket_path` resolver is reproduced here. The
+/// `ARLEN_PRODUCER_SOCKET` override stays tier 1 — the dev stack and
+/// the integration harness pin the bus socket through it. NB this
+/// daemon usually runs as root outside a user session, so the
+/// `/run/arlen` last resort is the common path; a per-user launcher
+/// that pins the env still wins.
+fn socket_path(env_var: &str, file_name: &str) -> String {
+    let env_val = std::env::var(env_var).ok();
+    if let Some(p) = env_val.as_deref().filter(|s| !s.is_empty()) {
+        return p.to_string();
+    }
+    if let Some(dir) = std::env::var("XDG_RUNTIME_DIR")
+        .ok()
+        .filter(|s| !s.is_empty())
+    {
+        let path = format!("{dir}/arlen/{file_name}");
+        if let Some(parent) = std::path::Path::new(&path).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        return path;
+    }
+    format!("/run/arlen/{file_name}")
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
 
-    let producer_socket = std::env::var("ARLEN_PRODUCER_SOCKET")
-        .unwrap_or_else(|_| DEFAULT_PRODUCER_SOCKET.to_string());
+    let producer_socket = socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock");
 
     // Read or generate session ID.
     let session_id = std::env::var("ARLEN_SESSION_ID")

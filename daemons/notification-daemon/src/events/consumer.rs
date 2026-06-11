@@ -26,10 +26,33 @@ pub mod proto {
     include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 
-/// Default consumer-socket path matching `event-bus::main::DEFAULT_CONSUMER_SOCKET`.
-/// Override with `ARLEN_CONSUMER_SOCKET` for dev sessions.
-pub const DEFAULT_CONSUMER_SOCKET: &str = "/run/arlen/event-bus-consumer.sock";
 const CONSUMER_ID: &str = "notification-daemon";
+
+/// Resolve the Event Bus consumer socket per the standard Arlen 3-tier
+/// convention: `ARLEN_CONSUMER_SOCKET` (non-empty) wins, else the
+/// per-user path `$XDG_RUNTIME_DIR/arlen/event-bus-consumer.sock` (i.e.
+/// `/run/user/{uid}/arlen/...`), else `/run/arlen/event-bus-consumer.sock`.
+///
+/// notification-daemon does not depend on `os-sdk`, so the shared
+/// `os_sdk::runtime::socket_path` resolver is reproduced here. The env
+/// override stays tier 1, the contract the dev stack and the
+/// integration harness pin the socket through; it must match the path
+/// event-bus binds.
+fn resolve_consumer_socket() -> String {
+    if let Some(p) = std::env::var("ARLEN_CONSUMER_SOCKET")
+        .ok()
+        .filter(|s| !s.is_empty())
+    {
+        return p;
+    }
+    if let Some(dir) = std::env::var("XDG_RUNTIME_DIR")
+        .ok()
+        .filter(|s| !s.is_empty())
+    {
+        return format!("{dir}/arlen/event-bus-consumer.sock");
+    }
+    "/run/arlen/event-bus-consumer.sock".to_string()
+}
 /// Prefix subscriptions. The registry supports `*` for all, exact type,
 /// or `<prefix>.` for prefix match. Using two prefixes keeps the
 /// registration readable.
@@ -44,8 +67,7 @@ const MAX_MESSAGE_BYTES: u32 = 1024 * 1024;
 /// other daemon tasks.
 pub fn start(manager: Arc<NotificationManager>) {
     tokio::spawn(async move {
-        let socket_path = std::env::var("ARLEN_CONSUMER_SOCKET")
-            .unwrap_or_else(|_| DEFAULT_CONSUMER_SOCKET.to_string());
+        let socket_path = resolve_consumer_socket();
         loop {
             if let Err(e) = run_once(&socket_path, &manager).await {
                 tracing::warn!(

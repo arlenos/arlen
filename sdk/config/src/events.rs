@@ -9,6 +9,34 @@ use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
+/// Resolve the Event Bus producer socket per the standard Arlen 3-tier
+/// convention: `ARLEN_PRODUCER_SOCKET` (non-empty) wins, else the
+/// per-user path `$XDG_RUNTIME_DIR/arlen/event-bus-producer.sock` (i.e.
+/// `/run/user/{uid}/arlen/...`), else `/run/arlen/event-bus-producer.sock`.
+///
+/// `sdk/config` is a narrow config-loader crate that does not depend on
+/// `os-sdk`, so the shared `os_sdk::runtime::socket_path` resolver is
+/// reproduced here rather than introducing a dependency edge. The env
+/// override stays tier 1, the pinning contract for the dev stack and
+/// the integration harness.
+fn resolve_producer_socket() -> PathBuf {
+    if let Some(p) = std::env::var("ARLEN_PRODUCER_SOCKET")
+        .ok()
+        .filter(|s| !s.is_empty())
+    {
+        return PathBuf::from(p);
+    }
+    if let Some(dir) = std::env::var("XDG_RUNTIME_DIR")
+        .ok()
+        .filter(|s| !s.is_empty())
+    {
+        return PathBuf::from(dir)
+            .join("arlen")
+            .join("event-bus-producer.sock");
+    }
+    PathBuf::from("/run/arlen/event-bus-producer.sock")
+}
+
 /// Payload for config.changed events (encoded as JSON in protobuf payload field).
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ConfigChangedPayload {
@@ -30,9 +58,7 @@ pub struct ConfigEventEmitter {
 impl ConfigEventEmitter {
     /// Create a new emitter. Does not connect yet (lazy).
     pub fn new() -> Self {
-        let socket_path = std::env::var("ARLEN_PRODUCER_SOCKET")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/run/arlen/event-bus-producer.sock"));
+        let socket_path = resolve_producer_socket();
         let session_id = std::env::var("ARLEN_SESSION_ID")
             .unwrap_or_else(|_| "unknown".into());
         Self {

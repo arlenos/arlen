@@ -48,9 +48,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d036a3c4ab069c7b410a2ce876bd74808d2d0888a82667669f8e783a898bf1"
 
 [[package]]
+name = "arlen-ai-classifier"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
 name = "arlen-ai-core"
 version = "0.1.0"
 dependencies = [
+ "arlen-ai-classifier",
  "arlen-graph-schema",
  "async-trait",
  "audit-proto",
@@ -64,6 +73,14 @@ dependencies = [
  "toml",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "arlen-capsule"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -117,6 +134,7 @@ version = "0.1.0"
 dependencies = [
  "thiserror 2.0.18",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -127,6 +145,7 @@ dependencies = [
  "libc",
  "notify",
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "toml",
 ]
@@ -1560,6 +1579,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 name = "os-sdk"
 version = "0.1.0"
 dependencies = [
+ "arlen-capsule",
  "arlen-permissions",
  "dirs 5.0.1",
  "libc",

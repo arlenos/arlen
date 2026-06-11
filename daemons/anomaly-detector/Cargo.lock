@@ -45,6 +45,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-capsule"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "arlen-permissions"
 version = "0.1.0"
 dependencies = [
@@ -52,6 +60,7 @@ dependencies = [
  "libc",
  "notify",
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "toml",
 ]
@@ -800,6 +809,7 @@ dependencies = [
 name = "os-sdk"
 version = "0.1.0"
 dependencies = [
+ "arlen-capsule",
  "arlen-permissions",
  "dirs",
  "libc",

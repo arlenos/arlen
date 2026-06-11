@@ -11,8 +11,6 @@ use std::path::PathBuf;
 
 use crate::proto::Event;
 
-const DEFAULT_PRODUCER_SOCKET: &str = "/run/arlen/event-bus-producer.sock";
-
 /// Emits project events to the Event Bus.
 pub struct ProjectEmitter {
     socket_path: PathBuf,
@@ -21,8 +19,7 @@ pub struct ProjectEmitter {
 impl ProjectEmitter {
     /// Create a new emitter. Does not connect immediately.
     pub fn new() -> Self {
-        let path = std::env::var("ARLEN_PRODUCER_SOCKET")
-            .unwrap_or_else(|_| DEFAULT_PRODUCER_SOCKET.to_string());
+        let path = crate::utils::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock");
         Self {
             socket_path: PathBuf::from(path),
         }
