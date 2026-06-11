@@ -157,9 +157,15 @@
   {#if wsMinimized.length > 0
     || (drag.dragState?.kind === "active"
       && drag.dragState.sourceWs === ws.id)}
+    <!-- Drop-hover also fires for an active-card drag over its OWN
+         workspace's minimized zone — that drop minimizes (a legal
+         action in the drop matrix), so it speaks the same visual
+         grammar as the cross-workspace targets. -->
     <div
       class="ws-section ws-section-minimized"
-      class:ws-section-drop-hover={isDropTarget
+      class:ws-section-drop-hover={(isDropTarget
+        || (drag.dragState?.kind === "active"
+          && drag.dragState.sourceWs === ws.id))
         && drag.dragOverWs === ws.id
         && drag.dragOverSection === "minimized"}
       class:ws-section-minimized-empty={wsMinimized.length === 0}
@@ -272,6 +278,7 @@
     font-size: 11px;
     opacity: 0.35;
     padding: 8px 0;
+    text-align: center;
   }
 
   .ws-cards {
