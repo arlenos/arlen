@@ -68,7 +68,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 24px;
+    height: var(--height-control-compact, 24px);
     min-width: 32px;
     padding: 0 10px;
     border-radius: var(--radius-card);
@@ -78,9 +78,9 @@
     line-height: 1;
     white-space: nowrap;
     transition:
-      background-color 150ms ease,
-      color 150ms ease,
-      transform 100ms ease;
+      background-color var(--duration-fast, 150ms) ease,
+      color var(--duration-fast, 150ms) ease,
+      transform var(--duration-micro, 100ms) ease;
     background: transparent;
     color: var(--foreground);
   }
@@ -97,7 +97,7 @@
   .pill-active {
     background: color-mix(in srgb, var(--color-accent) 18%, transparent);
     color: var(--color-accent);
-    animation: pill-activate 100ms ease forwards;
+    animation: pill-activate var(--duration-micro, 100ms) ease forwards;
   }
 
   .pill-active:hover {
@@ -119,13 +119,13 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 24px);
     padding: 0;
     border: none;
     background: transparent;
     border-radius: var(--radius-full);
-    transition: transform 100ms ease;
+    transition: transform var(--duration-micro, 100ms) ease;
   }
 
   .dot-btn:active {
@@ -139,9 +139,9 @@
     border-radius: var(--radius-full);
     background: color-mix(in srgb, var(--foreground) 45%, transparent);
     transition:
-      width 100ms ease,
-      height 100ms ease,
-      background-color 150ms ease;
+      width var(--duration-micro, 100ms) ease,
+      height var(--duration-micro, 100ms) ease,
+      background-color var(--duration-fast, 150ms) ease;
   }
 
   .dot-btn:hover .dot {
@@ -152,7 +152,7 @@
     width: 7px;
     height: 7px;
     background: var(--color-accent);
-    animation: dot-activate 100ms ease forwards;
+    animation: dot-activate var(--duration-micro, 100ms) ease forwards;
   }
 
   .dot-btn:hover .dot-active {
