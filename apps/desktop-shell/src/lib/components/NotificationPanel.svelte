@@ -198,8 +198,6 @@
     border-radius: var(--radius-chip);
     transition: background-color 100ms ease;
   }
-  .notif-group-header.collapsible {
-  }
   .notif-group-header.collapsible:hover {
     background: color-mix(in srgb, var(--color-fg-shell) 6%, transparent);
   }

@@ -15,7 +15,7 @@ processes:
   # from a prior run is cleared first so the readiness probe only passes once the
   # fresh nested socket exists.
   compositor:
-    command: 'cd "${COMPOSITOR_PATH:-../compositor}" && rm -f "${XDG_RUNTIME_DIR}/wayland-2" "${XDG_RUNTIME_DIR}/wayland-2.lock" && DISPLAY="" WAYLAND_DISPLAY=wayland-1 cargo run --bin cosmic-comp'
+    command: 'cd "${COMPOSITOR_PATH}" && rm -f "${XDG_RUNTIME_DIR}/wayland-2" "${XDG_RUNTIME_DIR}/wayland-2.lock" && DISPLAY="" WAYLAND_DISPLAY=wayland-1 cargo run --bin cosmic-comp'
     readiness_probe:
       exec:
         command: 'test -S "${XDG_RUNTIME_DIR}/wayland-2"'

@@ -1,0 +1,42 @@
+[Unit]
+Description=Arlen transfer daemon (the sole cross-profile broker)
+Documentation=https://github.com/arlenos/arlen
+# arlen-transferd is the only process with simultaneous access to two profile
+# namespaces. All cross-profile flow goes through it; nothing bypasses it. Every
+# transfer passes a default-deny, first-match, DIRECTIONAL policy keyed on
+# (source-profile, dest-profile, type) and is audited to BOTH profiles' ledgers
+# before any byte crosses. It reuses the existing caller-auth identity
+# (SO_PEERCRED + path_to_app_id) and reads the policy under
+# ~/.config/arlen/transfer (no secrets there). Locked profiles have transfer
+# hardcoded off in all directions, enforced in the policy gate, not config.
+
+[Service]
+Type=simple
+# Production binary path (system-wide install). Dev runs invoke the debug binary
+# directly; this file is the canonical production unit.
+ExecStart=/usr/lib/arlen/libexec/arlen-transferd
+# A failure to load the policy or serve exits non-zero; restart with back-off so
+# a persistent fault surfaces rather than crash-looping fast.
+Restart=on-failure
+RestartSec=2
+
+# It reads the transfer policy and brokers over AF_UNIX sockets (the per-profile
+# request sockets, the two profiles' audit-ingest sockets). The dual-uid byte
+# move that needs broader access lands with the live broker (PR-R1); this unit
+# is tightened to exactly the paths that impl needs when it does.
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target
