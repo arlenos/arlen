@@ -14,8 +14,65 @@
 //! or recursive glob is not (the manifest author uses the whole-segment form).
 
 use crate::adapter::InstanceStrategy;
+use crate::allowlist::{resolve_under_allowlist, AllowlistError, ALLOWED_SUBDIRS};
+use cap_std::ambient_authority;
 use cap_std::fs::Dir;
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+/// A failure resolving or globbing a confined source path.
+#[derive(Debug, thiserror::Error)]
+pub enum GlobError {
+    /// The source path failed the user-config allowlist gate.
+    #[error(transparent)]
+    Allowlist(#[from] AllowlistError),
+    /// The allowlist root directory could not be opened as a capability.
+    #[error("opening allowlist root {root}: {error}")]
+    OpenRoot {
+        /// The root that could not be opened.
+        root: String,
+        /// The underlying I/O error.
+        error: String,
+    },
+}
+
+/// Open the cap-std capability rooted at the allowlist directory a validated
+/// source path lives under, and return it with the root-RELATIVE glob.
+///
+/// This OWNS the root construction so the access-time confinement cannot be
+/// miswired: a caller passes only `home` and the untrusted `raw_source_path`, and
+/// gets back a `Dir` rooted at exactly the allowlist directory the path validated
+/// against (e.g. `~/.mozilla`) plus the glob relative to it (e.g.
+/// `firefox/*/prefs.js`). Globbing and any later I/O go through that `Dir`, so
+/// they are confined to the allowlist subtree by construction; the caller cannot
+/// accidentally root the capability at `/` or `$HOME`.
+pub fn confined_root(raw_source_path: &str, home: &Path) -> Result<(Dir, String), GlobError> {
+    let abs = resolve_under_allowlist(raw_source_path, home)?;
+    // The allowlist guarantees `abs` is under `home/<sub>` for exactly one sub.
+    let (root, relative) = ALLOWED_SUBDIRS
+        .iter()
+        .find_map(|sub| {
+            let root = home.join(sub);
+            abs.strip_prefix(&root)
+                .ok()
+                .map(|rel| (root, rel.to_string_lossy().into_owned()))
+        })
+        .expect("an allowlist-validated path is under exactly one allowlist root");
+    let dir = Dir::open_ambient_dir(&root, ambient_authority()).map_err(|e| GlobError::OpenRoot {
+        root: root.display().to_string(),
+        error: e.to_string(),
+    })?;
+    Ok((dir, relative))
+}
+
+/// Resolve `raw_source_path` against the allowlist under `home`, open its
+/// allowlist root, and glob it - the confined end-to-end entry point. The
+/// matches' `rel_path` is relative to the allowlist root (re-derive it with
+/// [`confined_root`] if you need the root capability for the subsequent I/O).
+pub fn glob_confined(raw_source_path: &str, home: &Path) -> Result<Vec<Match>, GlobError> {
+    let (dir, relative) = confined_root(raw_source_path, home)?;
+    Ok(glob_under(&dir, &relative))
+}
 
 /// One file a source glob matched, with its modification time (for `last_used`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +104,12 @@ pub enum Resolution {
 /// literal path if it exists. Every descent is a cap-std `open_dir`, so the walk
 /// cannot escape `root` (an escaping symlink is refused, that branch dropped). An
 /// unreadable directory or a missing leaf is simply not a match (never fatal).
+///
+/// PRECONDITION: `root` MUST be a `Dir` opened at the allowlist directory the
+/// source path validated against (under `$HOME`), and `relative_glob` MUST be
+/// root-relative (the allowlist prefix stripped), never the absolute path. Use
+/// [`confined_root`] / [`glob_confined`], which own that construction, rather than
+/// rooting the capability by hand.
 pub fn glob_under(root: &Dir, relative_glob: &str) -> Vec<Match> {
     let segments: Vec<&str> = relative_glob.split('/').filter(|s| !s.is_empty()).collect();
     if segments.is_empty() {
@@ -136,7 +199,9 @@ fn open_subdir(root: &Dir, rel: &str) -> std::io::Result<Dir> {
     root.open_dir(rel)
 }
 
-/// Whether `rel` is a readable regular file under `root` (no-follow on the entry).
+/// Whether `rel` resolves to a readable regular file under `root`. `cap-std`'s
+/// `metadata` follows symlinks, but the follow is sandboxed to the capability, so
+/// a symlink that points outside `root` is refused rather than followed out.
 fn is_file(root: &Dir, rel: &str) -> bool {
     root.metadata(rel).map(|m| m.is_file()).unwrap_or(false)
 }
@@ -238,5 +303,31 @@ mod tests {
         let a = [m("a", 50), m("b", 50)];
         let b = [m("b", 50), m("a", 50)];
         assert_eq!(resolve(InstanceStrategy::LastUsed, &a), resolve(InstanceStrategy::LastUsed, &b));
+    }
+
+    #[test]
+    fn glob_confined_roots_at_the_allowlist_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        // A literal source under ~/.config, globbed through the owned root.
+        fs::create_dir_all(home.join(".config/app")).unwrap();
+        fs::write(home.join(".config/app/config.toml"), b"x").unwrap();
+        let m = glob_confined("~/.config/app/config.toml", home).unwrap();
+        assert_eq!(m.len(), 1);
+        // The rel_path is relative to the .config allowlist root, not the home.
+        assert_eq!(m[0].rel_path, "app/config.toml");
+
+        // A *-glob under ~/.mozilla resolves to its match, root-relative.
+        fs::create_dir_all(home.join(".mozilla/firefox/p1")).unwrap();
+        fs::write(home.join(".mozilla/firefox/p1/prefs.js"), b"a").unwrap();
+        let g = glob_confined("~/.mozilla/firefox/*/prefs.js", home).unwrap();
+        assert_eq!(g.len(), 1);
+        assert_eq!(g[0].rel_path, "firefox/p1/prefs.js");
+
+        // A source outside the allowlist is an allowlist error, not an empty glob.
+        assert!(matches!(
+            glob_confined("/etc/passwd", home),
+            Err(GlobError::Allowlist(_))
+        ));
     }
 }
