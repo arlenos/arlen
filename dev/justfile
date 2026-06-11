@@ -62,7 +62,9 @@ dev *ARGS:
       fi
       i=$((i + 1))
     done
-    cd "{{ROOT}}" && process-compose "${configs[@]}" up ${passthrough[@]+"${passthrough[@]}"}
+    # -U: serve over a per-pid unix socket instead of TCP :8080, so the dev stack
+    # never collides with whatever else holds 8080 on the machine.
+    cd "{{ROOT}}" && process-compose "${configs[@]}" -U up ${passthrough[@]+"${passthrough[@]}"}
 
 # Quick loop: one Tauri app via cargo tauri dev (needs a running compositor).
 dev-ui app:
