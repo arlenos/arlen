@@ -607,6 +607,22 @@ fn create_schema(conn: &Connection) -> Result<()> {
     // The provenance columns (origin, prov_beh) record who asserted it and
     // `superseded` back-references the edge a supersession replaced (§4.6). Same
     // convergent `ADD IF NOT EXISTS` pattern proven for `op_id`.
+    //
+    // `merge_key` is the content-addressed identity of the membership fact,
+    // `digest(from, rel, to)` (graph-drift.md §2 / GD-R1), orthogonal to `op_id`:
+    // `op_id` is the per-device write idempotency/crash-replay key (different on
+    // each device), `merge_key` is the same on every device that asserts the same
+    // fact, so a future cross-device union dedups two writes of "f1 PART_OF p1" to
+    // one membership identity. It is the merge-prep column the resolve pass
+    // (GD-R2) keys on; on a single device it is hardening-only (set but not yet
+    // merged on). Same convergent `ADD IF NOT EXISTS` pattern.
+    //
+    // GD-R2 obligation: only the agent write path stamps this today; the
+    // promotion pipeline's own FILE_PART_OF creates leave it NULL (as they do
+    // `op_id`). When GD-R2's resolve pass starts deduping on `merge_key`, a
+    // promoted (NULL) and an agent-created (stamped) edge for the SAME membership
+    // would read as distinct facts, so that pass must either stamp promotion
+    // edges with the same content key or special-case NULL.
     for column in [
         "valid_at INT64",
         "invalid_at INT64",
@@ -615,6 +631,7 @@ fn create_schema(conn: &Connection) -> Result<()> {
         "origin STRING",
         "prov_beh STRING",
         "superseded STRING",
+        "merge_key STRING",
     ] {
         conn.query(&format!(
             "ALTER TABLE FILE_PART_OF ADD IF NOT EXISTS {column}"

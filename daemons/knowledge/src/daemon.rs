@@ -1043,6 +1043,46 @@ async fn handle_write_request(
 /// filters becomes load-bearing when an unprivileged app links its own
 /// (anchored) nodes; that is the documented follow-up alongside app-relation
 /// support.
+/// The content-addressed merge identity of a relation fact: a length-delimited
+/// SHA-256 over the content tuple `(from_label, from_id, rel, to_label, to_id)`,
+/// rendered as lowercase hex (graph-drift.md §2 / GD-R1).
+///
+/// It is orthogonal to `op_id`. `op_id` is the per-device write idempotency key
+/// (the agent derives it from its correlation id, so each device's write of the
+/// same fact carries a different one); `merge_key` is identical on every device
+/// that asserts the same content tuple, so a future cross-device union dedups
+/// two writes of one fact to a single membership identity. The server-stamped
+/// `valid_at` is deliberately NOT in the tuple: it differs per device by
+/// construction, so including it would defeat the dedup. The provenance
+/// (`origin`/`prov_beh`) is likewise excluded so the same fact asserted by
+/// different behaviours still converges to one identity; trust between competing
+/// assertions is the resolve pass's job (GD-R3), not the merge key's. The length
+/// prefix per part means no concatenation of distinct tuples can collide
+/// (`("ab","c")` and `("a","bc")` hash apart). The output is fixed 64-char hex,
+/// so it carries no quote or backslash and is safe to interpolate into a Cypher
+/// literal.
+fn content_merge_key(
+    from_label: &str,
+    from_id: &str,
+    rel: &str,
+    to_label: &str,
+    to_id: &str,
+) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    for part in [from_label, from_id, rel, to_label, to_id] {
+        h.update((part.len() as u64).to_le_bytes());
+        h.update(part.as_bytes());
+    }
+    let digest = h.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for b in digest {
+        use std::fmt::Write;
+        let _ = write!(hex, "{b:02x}");
+    }
+    hex
+}
+
 async fn persist_relation(graph: &GraphHandle, rel: &RelationResult, op_id: &str) -> String {
     let from_label = rel
         .from_type
@@ -1067,7 +1107,14 @@ async fn persist_relation(graph: &GraphHandle, rel: &RelationResult, op_id: &str
     // append (§4.5) rather than a plain create. Other relations carry no
     // temporal columns and get the simple conditional create below.
     if rel_type == "FILE_PART_OF" {
-        return persist_file_part_of(graph, from_label, to_label, &from_id, &to_id, op_id).await;
+        // The content-addressed merge identity of this membership fact, derived
+        // from the RAW content tuple (not the Cypher-escaped literal, so the key
+        // is independent of the escaping scheme and stays stable across devices).
+        // graph-drift.md §2 / GD-R1.
+        let merge_key =
+            content_merge_key(from_label, &rel.from_id, rel_type, to_label, &rel.to_id);
+        return persist_file_part_of(graph, from_label, to_label, &from_id, &to_id, op_id, &merge_key)
+            .await;
     }
 
     // Atomic conditional create for a non-temporal relation. `created` = 1 only
@@ -1130,6 +1177,7 @@ async fn persist_file_part_of(
     from_id: &str,
     to_id: &str,
     op_id: &str,
+    merge_key: &str,
 ) -> String {
     let now = crate::time::now().0;
     let op_prop = if op_id.is_empty() {
@@ -1137,6 +1185,9 @@ async fn persist_file_part_of(
     } else {
         format!("op_id: '{}', ", escape_cypher(op_id))
     };
+    // `merge_key` is a fixed-length lowercase-hex digest (no escaping needed; it
+    // contains no quote or backslash by construction), the content identity that
+    // makes two devices' assertion of the same fact converge (GD-R1).
     let create_cypher = format!(
         "MATCH (a:{from_label} {{id: '{from_id}'}}), (b:{to_label} {{id: '{to_id}'}}) \
          OPTIONAL MATCH (a)-[old:FILE_PART_OF]->(c:Project) \
@@ -1148,6 +1199,7 @@ async fn persist_file_part_of(
          WITH a, b, old, live WHERE live IS NULL \
          CREATE (a)-[:FILE_PART_OF {{ {op_prop}valid_at: {now}, invalid_at: NULL, \
            created_at: {now}, expired_at: NULL, origin: 'agent', prov_beh: '', \
+           merge_key: '{merge_key}', \
            superseded: CASE WHEN old IS NULL THEN NULL ELSE old.op_id END }}]->(b) \
          RETURN count(*) AS created"
     );
@@ -2797,6 +2849,64 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(sup.rows[0][0].as_str(), "op-1", "the new edge records what it superseded");
+    }
+
+    #[test]
+    fn content_merge_key_is_deterministic_content_specific_and_collision_safe() {
+        let k = content_merge_key("File", "f1", "FILE_PART_OF", "Project", "p1");
+        // Deterministic + fixed 64-char lowercase hex (so it is injection-safe).
+        assert_eq!(k, content_merge_key("File", "f1", "FILE_PART_OF", "Project", "p1"));
+        assert_eq!(k.len(), 64);
+        assert!(k.bytes().all(|b| b.is_ascii_hexdigit()), "merge key is hex");
+        // A different fact (different project) is a different key.
+        assert_ne!(k, content_merge_key("File", "f1", "FILE_PART_OF", "Project", "p2"));
+        // The length prefix means a tuple-boundary shift cannot collide: moving a
+        // character across the from/to boundary yields a different key.
+        assert_ne!(
+            content_merge_key("File", "f1x", "FILE_PART_OF", "Project", "p1"),
+            content_merge_key("File", "f1", "FILE_PART_OF", "Project", "xp1"),
+        );
+    }
+
+    #[tokio::test]
+    async fn two_replicas_assert_the_same_membership_to_the_same_merge_key() {
+        // GD-R1 convergence property: two independent "devices" each write the
+        // same fact (f1 PART_OF p1) under their OWN op_id. The op_ids differ (the
+        // per-device idempotency key), but the content-addressed merge_key is
+        // identical, so a future cross-device union dedups them to one membership.
+        async fn write_on_a_replica(op_id: &str) -> (GraphHandle, tempfile::TempDir, String) {
+            let (graph, tmp) = spawn_test_graph().await;
+            graph
+                .write(
+                    "CREATE (f:File {id: 'f1', path: '/x', app_id: 't', last_accessed: 0})".into(),
+                )
+                .await
+                .unwrap();
+            graph.write("CREATE (p:Project {id: 'p1'})".into()).await.unwrap();
+            assert_eq!(persist_relation(&graph, &file_part_of("f1", "p1"), op_id).await, "OK: created");
+            let row = graph
+                .query_rows(
+                    "MATCH (:File {id: 'f1'})-[r:FILE_PART_OF]->(:Project {id: 'p1'}) \
+                     RETURN r.merge_key AS mk"
+                        .into(),
+                )
+                .await
+                .unwrap();
+            let mk = row.rows[0][0].as_str().to_string();
+            (graph, tmp, mk)
+        }
+
+        let (_ga, _ta, mk_a) = write_on_a_replica("op-device-a").await;
+        let (_gb, _tb, mk_b) = write_on_a_replica("op-device-b").await;
+
+        assert_eq!(mk_a, mk_b, "the same fact converges to one merge_key across replicas");
+        assert_eq!(
+            mk_a,
+            content_merge_key("File", "f1", "FILE_PART_OF", "Project", "p1"),
+            "the stamped key is the content digest, independent of the per-device op_id"
+        );
+        // And it is content-specific: the key for a different membership differs.
+        assert_ne!(mk_a, content_merge_key("File", "f1", "FILE_PART_OF", "Project", "p2"));
     }
 
     #[tokio::test]
