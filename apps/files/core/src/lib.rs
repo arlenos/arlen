@@ -11,6 +11,8 @@
 //! Tauri-agnostic data core (entries, scoped listing, sorting, the breadcrumb
 //! model, keyboard-selection helpers) shared across hosts.
 
+pub mod selection;
+
 use std::cmp::Ordering;
 use std::io;
 use std::path::{Component, Path, PathBuf};
