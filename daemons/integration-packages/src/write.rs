@@ -50,6 +50,11 @@ const COMM_MAX: usize = 15;
 
 /// Whether a `/proc/<pid>/comm` value identifies `process_name`, accounting for
 /// the kernel's 15-byte `comm` truncation (a longer name matches its prefix).
+///
+/// The 15-byte-prefix match is intentionally coarse: two distinct process names
+/// sharing a 15-byte prefix collide. That only ever over-defers a write (treats
+/// the app as running when it is a different long-named process), never clobbers,
+/// so it is safe for this data-loss gate and not a precise identity check.
 pub fn comm_matches(comm: &str, process_name: &str) -> bool {
     let comm = comm.trim_end_matches('\n');
     if comm == process_name {

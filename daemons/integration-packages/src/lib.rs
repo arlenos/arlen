@@ -27,5 +27,7 @@ pub use adapter::{
     SettingType, SourceSpec, WriteStrategy, SCHEMA_VERSION,
 };
 pub use allowlist::{resolve_under_allowlist, AllowlistError, ALLOWED_SUBDIRS};
-pub use resolve::{glob_under, resolve, Match, Resolution};
+pub use resolve::{
+    confined_root, glob_confined, glob_under, resolve, GlobError, Match, Resolution,
+};
 pub use write::{comm_matches, write_gate, AppPresence, ProcAppPresence, WriteGate};
