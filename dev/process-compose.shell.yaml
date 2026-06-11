@@ -1,0 +1,24 @@
+# Graphical overlay for `just dev --profile shell`: the nested compositor + the
+# desktop shell. Loaded on top of process-compose.yaml (it provides the ARLEN_*
+# environment, which process-compose applies across all `-f` files). Kept in a
+# separate file because the pinned process-compose (v1.40.1) ignores the
+# `profiles:` field, so profile gating is done by composing config files instead.
+#
+# The compositor is a separate repo (COMPOSITOR_PATH); DISPLAY="" forces the
+# Wayland backend so wlr-layer-shell is advertised, and the shell attaches to its
+# nested display.
+version: "0.5"
+
+processes:
+  compositor:
+    command: 'cd "${COMPOSITOR_PATH:-../compositor}" && DISPLAY="" WAYLAND_DISPLAY=wayland-2 cargo run --bin cosmic-comp'
+    availability:
+      restart: "on_failure"
+
+  desktop-shell:
+    command: 'WAYLAND_DISPLAY=wayland-2 cargo tauri dev'
+    working_dir: "apps/desktop-shell"
+    depends_on:
+      compositor: { condition: process_started }
+    availability:
+      restart: "on_failure"
