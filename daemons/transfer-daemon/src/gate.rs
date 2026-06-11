@@ -49,6 +49,10 @@ pub enum RefusalReason {
     CallerNotAdmitted,
     /// The request was malformed (empty/NUL/oversized payload).
     InvalidRequest,
+    /// The Locked-resolved profile refs did not name the same profiles the
+    /// request body does, so deciding on the refs would approve/audit a
+    /// different direction than the request describes. A wiring fault, refused.
+    InconsistentRequest,
     /// The directional policy denied the flow (or a Locked profile is involved).
     PolicyDenied,
     /// The dual-ledger audit could not record the decision, so the transfer is
@@ -62,6 +66,7 @@ impl RefusalReason {
         match self {
             RefusalReason::CallerNotAdmitted => "caller-not-admitted",
             RefusalReason::InvalidRequest => "invalid-request",
+            RefusalReason::InconsistentRequest => "inconsistent-request",
             RefusalReason::PolicyDenied => "policy-denied",
             RefusalReason::AuditUnavailable => "audit-unavailable",
         }
@@ -103,6 +108,18 @@ pub async fn decide_transfer(
     if request.validate().is_err() {
         return GateDecision::Refused {
             reason: RefusalReason::InvalidRequest,
+        };
+    }
+
+    // 2b. Internal consistency: the Locked-resolved profile refs the policy is
+    // decided on MUST name the same profiles the request body carries (the
+    // daemon resolves `source`/`dest` from `request.source`/`request.dest`). A
+    // mismatch would let the policy be decided on one direction while the
+    // minted approval and the audit record describe another, the direction
+    // bypass; refuse it (a wiring fault, no standing to audit a real attempt).
+    if source.id != &request.source || dest.id != &request.dest {
+        return GateDecision::Refused {
+            reason: RefusalReason::InconsistentRequest,
         };
     }
 
@@ -309,6 +326,38 @@ mod tests {
                 reason: RefusalReason::AuditUnavailable
             }
         ));
+    }
+
+    #[tokio::test]
+    async fn a_request_disagreeing_with_the_profile_refs_is_refused() {
+        // The request body says personal->work, but the resolved refs say
+        // work->personal (which has an allow rule). The gate must NOT approve the
+        // ref direction while the request describes the opposite: it refuses the
+        // inconsistency before the policy is even read, so no divergent approval
+        // or audit is minted.
+        let req = request("personal", "work", TransferType::File);
+        let policy = allow_policy("work", "personal", TransferType::File);
+        let (ledger, src_sink, dst_sink) = ledger();
+        let s = pid("work");
+        let d = pid("personal");
+        let decision = decide_transfer(
+            ADMITTED_CALLER,
+            &req,
+            &ProfileRef::unlocked(&s),
+            &ProfileRef::unlocked(&d),
+            &policy,
+            &ledger,
+        )
+        .await;
+        assert!(matches!(
+            decision,
+            GateDecision::Refused {
+                reason: RefusalReason::InconsistentRequest
+            }
+        ));
+        // No audit was written for a wiring-fault mismatch.
+        assert_eq!(src_sink.count().await, 0);
+        assert_eq!(dst_sink.count().await, 0);
     }
 
     #[tokio::test]

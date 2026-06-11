@@ -71,6 +71,19 @@ pub enum BrokerError {
 pub trait TransferBroker: Send + Sync {
     /// Deliver the approved transfer. Only an [`ApprovedTransfer`] (gate-minted)
     /// can be passed, so an ungated transfer never reaches a delivery.
+    ///
+    /// OBLIGATION on the live cross-uid impl (the receive-side confused-deputy
+    /// defense, profile-system-plan.md Decided 4): before any byte reaches a
+    /// destination consumer, the impl MUST shape the payload through
+    /// [`crate::receive::Delivery::cross_profile`] (which stamps
+    /// [`crate::receive::Origin::ExternalContent`] with no opt-out) and, when
+    /// [`crate::receive::requires_parse_sandbox`] holds, route the bytes through
+    /// the S18-B document-parse sandbox (`ai_sandbox::parse_document`) on the
+    /// RECEIVING side, delivering only the inert stripped text it returns and
+    /// nothing on a sandbox error. Moving the raw source bytes into the
+    /// destination untagged or unsandboxed reintroduces exactly the parser hazard
+    /// the directional broker exists to close. The type system cannot force this
+    /// until the impl carries the fetched content, so it is a hard contract here.
     async fn deliver(&self, approved: &ApprovedTransfer)
         -> Result<DeliveryReceipt, BrokerError>;
 }

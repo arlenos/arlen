@@ -23,8 +23,24 @@ pub const MAX_SOURCE_PATH_LEN: usize = 4096;
 /// traversal) so it can never reach a socket path or an audit subject as a
 /// separator. The newtype keeps a raw `String` from being passed where a
 /// validated id is required.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct ProfileId(String);
+
+// A profile id is validated at EVERY untrusted boundary, including
+// deserialization: a derived `Deserialize` would wrap any string (a TOML
+// policy rule's `source`, a wire `TransferRequest`) into a `ProfileId`
+// without the charset/traversal check, defeating the invariant the newtype
+// exists for (it reaches an audit subject and a per-uid socket path). The
+// manual impl routes through the validating constructor and fails closed.
+impl<'de> Deserialize<'de> for ProfileId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let name = String::deserialize(deserializer)?;
+        ProfileId::new(name).ok_or_else(|| serde::de::Error::custom("invalid profile id"))
+    }
+}
 
 impl ProfileId {
     /// Build a validated profile id, or `None` if the name is not a safe path
@@ -193,6 +209,23 @@ mod tests {
 
     fn pid(name: &str) -> ProfileId {
         ProfileId::new(name).expect("valid test profile id")
+    }
+
+    #[test]
+    fn deserializing_a_profile_id_re_validates() {
+        // A valid id round-trips.
+        let ok: ProfileId = serde_json::from_str("\"work\"").unwrap();
+        assert_eq!(ok.as_str(), "work");
+        // A traversal / separator / case id is REFUSED on the wire, not wrapped.
+        for bad in ["\"../../etc/passwd\"", "\"a/b/c\"", "\"UPPER\"", "\"..\"", "\"with space\""] {
+            assert!(
+                serde_json::from_str::<ProfileId>(bad).is_err(),
+                "{bad} should be rejected by ProfileId::deserialize"
+            );
+        }
+        // The same guard fires through a whole TransferRequest body and a TOML rule.
+        let req = r#"{"source":"../etc","dest":"personal","ty":"file","payload":{"file":{"source_path":"/x"}}}"#;
+        assert!(serde_json::from_str::<TransferRequest>(req).is_err());
     }
 
     #[test]
