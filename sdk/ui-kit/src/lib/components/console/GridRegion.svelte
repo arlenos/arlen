@@ -51,13 +51,15 @@
     outline: 1px dashed color-mix(in srgb, var(--foreground) 14%, transparent);
     outline-offset: -1px;
     background: color-mix(in srgb, var(--foreground) 2%, transparent);
-    padding: 2px 8px;
+    padding: 0 8px;
   }
 
+  /* The label sits on the cell metric (one cell row high), so the
+     stand-in previews the exact type the grid will paint. */
   .grid-region-label {
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.6875rem;
-    line-height: 1.6;
+    font-size: 0.8125rem;
+    line-height: 1.5;
     color: color-mix(in srgb, var(--foreground) 35%, transparent);
     white-space: nowrap;
     overflow: hidden;
