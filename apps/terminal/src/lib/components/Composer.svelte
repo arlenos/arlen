@@ -85,6 +85,12 @@
       submit();
     }
   }
+
+  /// Typing while scrolled up jumps the view back to the prompt, the
+  /// way every terminal returns to the tape end on input.
+  function onInput() {
+    textareaRef?.scrollIntoView({ block: "nearest" });
+  }
 </script>
 
 <div class="composer-zone">
@@ -101,16 +107,19 @@
       disabled={!usable || $busy}
       aria-label="Command input"
       onkeydown={onKeydown}
+      oninput={onInput}
     />
     <CapabilityIndicator />
   </div>
 </div>
 
 <style>
+  /* A stream row, not a footer: the live prompt sits where the next
+     block will form — top of an empty session, under the last block
+     otherwise. The previous block's hairline already separates. */
   .composer-zone {
     flex-shrink: 0;
     padding: 12px 16px;
-    border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
   }
 
   .composer {

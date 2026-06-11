@@ -67,13 +67,14 @@
         </button>
       </div>
     {:else}
-      <BlockStream blocks={$blocks} />
+      <BlockStream blocks={$blocks}>
+        <Composer
+          session={activeSession}
+          onsent={() => loadBlocks($activeSessionId)}
+        />
+      </BlockStream>
     {/if}
   </div>
-  <Composer
-    session={activeSession}
-    onsent={() => loadBlocks($activeSessionId)}
-  />
 </div>
 
 <style>
