@@ -2,8 +2,9 @@
 //!
 //! GOA/KDE let any app read the shared accounts DB and keyring (ambient access).
 //! Arlen mediates EVERY token handout against a per-app capability grant, keyed on
-//! the caller's existing identity (SO_PEERCRED + F3 `path_to_app_id`, resolved by
-//! the daemon at the D-Bus boundary). This module is the pure decision over the
+//! the caller's existing identity (the F3 `path_to_app_id` model, resolved by the
+//! daemon from the bus-attested PID at the D-Bus boundary). This is the pure
+//! decision over the
 //! loaded configs: given a resolved `caller_app_id`, `ListAccounts` returns only
 //! the granted accounts and `GetAccessToken` is refused unless the app holds the
 //! grant for that exact account + service. Fail-closed throughout: no grant, an
