@@ -616,7 +616,7 @@
               onclick={clearHistory}
             >
               <Trash2 size={12} strokeWidth={2.25} />
-              {confirmingClear ? "Confirm — click again" : "Clear history"}
+              {confirmingClear ? "Click again to confirm" : "Clear history"}
             </button>
           {/snippet}
         </Row>
@@ -771,13 +771,16 @@
   }
   .expires-banner .link {
     margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    height: var(--height-control-compact, 24px);
+    padding: 0 0.5rem;
     background: none;
-    border: none;
-    color: var(--color-accent);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-button);
+    color: color-mix(in srgb, var(--foreground) 75%, transparent);
     font: inherit;
     font-size: 0.6875rem;
-    text-decoration: underline;
-    cursor: pointer;
     padding: 0;
   }
 

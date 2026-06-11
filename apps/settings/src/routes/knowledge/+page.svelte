@@ -95,7 +95,7 @@
   }
 
   function formatBytes(bytes: number | null): string {
-    if (bytes === null) return "—";
+    if (bytes === null) return "Unknown";
     if (bytes < 1024) return `${bytes} B`;
     const kb = bytes / 1024;
     if (kb < 1024) return `${kb.toFixed(1)} KB`;
@@ -107,23 +107,23 @@
 
 <Page
   title="Knowledge Graph"
-  description="Arlen keeps a private graph of the files, projects, and apps you use. Configure project detection here; browse the graph in the Knowledge app (Phase 8)."
+  description="Arlen keeps a private record of the files, projects, and apps you use. Configure project detection here."
 >
   <SectionGrid>
     <Group label="Status">
       {#if error}
-        <Row label="Stats unavailable" description={error} id="kg-error">
+        <Row label="Stats unavailable" description="Can't read the stats right now." id="kg-error">
           {#snippet control()}
-            <AlertCircle size={16} class="kg-error-icon" />
+            <span title={error}><AlertCircle size={16} class="kg-error-icon" /></span>
           {/snippet}
         </Row>
       {:else if stats}
         {@const s = stats}
         <Row
-          label="Knowledge Daemon"
+          label="Knowledge service"
           description={s.daemonRunning
-            ? "Running — stats are live."
-            : "Not running — start the daemon to populate stats."}
+            ? "Running. Stats are live."
+            : "Not running. Stats fill in once it starts."}
           id="kg-daemon-status"
         >
           {#snippet control()}
@@ -171,7 +171,7 @@
         label="Watch directories"
         description={watchDirs.length === 0
           ? `Using defaults: ${PROJECTS_DEFAULTS.watch_directories.join(", ")}. Add a directory to override.`
-          : "Directories scanned for projects. Restart the daemon to apply."}
+          : "Directories scanned for projects. Restart the service to apply."}
         id="kg-watch-dirs"
       >
         {#snippet below()}
@@ -203,7 +203,7 @@
       {#if projectDirty}
         <Row
           label="Restart required"
-          description="The Knowledge Daemon reads this config at startup; restart it to apply project-detection changes."
+          description="The knowledge service reads this at startup; restart it to apply project-detection changes."
           id="kg-restart-hint"
         >
           {#snippet control()}
@@ -231,7 +231,7 @@
     <Group label="Knowledge App">
       <Row
         label="Browse the graph"
-        description="Timeline, projects, and semantic search across your files. Coming with Phase 8."
+        description="Timeline, projects, and search across your files. The Knowledge app is not built yet."
         id="kg-app-link"
       >
         {#snippet control()}
@@ -269,6 +269,6 @@
     color: var(--destructive);
   }
   :global(.kg-warn-icon) {
-    color: #f59e0b;
+    color: var(--color-warning);
   }
 </style>

@@ -211,7 +211,8 @@
               <span class="search-result-text">
                 <span class="search-result-title">{r.setting.title}</span>
                 <span class="search-result-meta">
-                  {r.setting.section} · {r.setting.description}
+                  <span>{r.setting.section}</span>
+                  <span>{r.setting.description}</span>
                 </span>
               </span>
             </button>
@@ -377,9 +378,19 @@
   }
 
   .search-result-meta {
+    display: flex;
+    gap: 0.625rem;
+    min-width: 0;
     font-size: 0.75rem;
     color: color-mix(in srgb, var(--color-fg-app) 55%, transparent);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .search-result-meta > span:first-child {
+    flex-shrink: 0;
+  }
+  .search-result-meta > span:last-child {
     overflow: hidden;
     text-overflow: ellipsis;
   }

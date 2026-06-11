@@ -120,7 +120,7 @@
     </Group>
 
     {#if $touchpad.error}
-      <div class="span-full error-box">{$touchpad.error}</div>
+      <div class="span-full error-box" title={$touchpad.error}>Can't read these settings right now. Changes are paused.</div>
     {/if}
   </SectionGrid>
 </Page>

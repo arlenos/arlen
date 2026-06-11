@@ -189,7 +189,7 @@
         message: isParse
           ? `Quick Settings layout file is malformed. Editor is in read-only mode${
               hasLoadedOnce ? " (showing last saved state)" : ""
-            } — fix the file or reset to recover.`
+            }. Fix the file or reset to recover.`
           : `Could not read Quick Settings layout: ${err}`,
       };
     }
@@ -485,14 +485,14 @@
     line-height: 1.4;
   }
   .qs-banner.kind-warning {
-    background: color-mix(in srgb, var(--color-warning, #eab308) 14%, transparent);
-    color: color-mix(in srgb, var(--color-warning, #eab308) 90%, var(--color-fg-shell));
-    border: 1px solid color-mix(in srgb, var(--color-warning, #eab308) 30%, transparent);
+    background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+    color: color-mix(in srgb, var(--color-warning) 90%, var(--color-fg-shell));
+    border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
   }
   .qs-banner.kind-error {
-    background: color-mix(in srgb, var(--color-error, #ef4444) 14%, transparent);
-    color: color-mix(in srgb, var(--color-error, #ef4444) 90%, var(--color-fg-shell));
-    border: 1px solid color-mix(in srgb, var(--color-error, #ef4444) 30%, transparent);
+    background: color-mix(in srgb, var(--color-error) 14%, transparent);
+    color: color-mix(in srgb, var(--color-error) 90%, var(--color-fg-shell));
+    border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
   }
   .qs-banner.kind-info {
     background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);

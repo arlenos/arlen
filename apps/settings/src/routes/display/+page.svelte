@@ -163,7 +163,7 @@
         />
         <div class="action-row">
           {#if applyError}
-            <p class="apply-error">{applyError}</p>
+            <p class="apply-error" title={applyError}>Could not apply this layout. Nothing was changed.</p>
           {/if}
           <Button variant="outline" onclick={onApply} disabled={!dirty}>
             Apply

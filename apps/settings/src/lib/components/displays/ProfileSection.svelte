@@ -200,7 +200,8 @@
               {/if}
             </div>
             <div class="meta">
-              {describeOutputs(p.outputSet)} · {describeWhen(p.lastUsed)}
+              <span>{describeOutputs(p.outputSet)}</span>
+              <span>{describeWhen(p.lastUsed)}</span>
             </div>
           {/if}
         </div>
@@ -322,6 +323,8 @@
   }
 
   .meta {
+    display: flex;
+    gap: 0.75rem;
     font-size: 0.75rem;
     color: color-mix(in srgb, var(--color-fg-app) 55%, transparent);
   }

@@ -99,7 +99,7 @@
           <span class="row-value mono">{module.id}</span>
         </div>
         <div class="row">
-          <span class="row-label">Trust tier</span>
+          <span class="row-label">Trust level</span>
           <span class="row-value">{module.moduleType}</span>
         </div>
         <div class="row">
@@ -133,7 +133,7 @@
             onclick={clickUninstall}
           >
             <Trash2 size={12} strokeWidth={2.25} />
-            {confirmingUninstall ? "Confirm — click again" : "Uninstall"}
+            {confirmingUninstall ? "Click again to confirm" : "Uninstall"}
           </button>
         </div>
       {/if}
@@ -246,8 +246,8 @@
     color: var(--color-accent);
   }
   .badge.builtin {
-    background: color-mix(in srgb, var(--color-success, #10b981) 18%, transparent);
-    color: var(--color-success, #10b981);
+    background: color-mix(in srgb, var(--color-success) 18%, transparent);
+    color: var(--color-success);
   }
   .badge.ext {
     background: color-mix(in srgb, var(--foreground) 6%, transparent);

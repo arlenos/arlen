@@ -133,7 +133,7 @@
 <ConfirmDialog
   open={resetAllOpen}
   title="Reset all system actions?"
-  message="The whole [system_actions] section will be removed from compositor.toml so every action falls back to the built-in default."
+  message="This removes every custom command. All actions go back to their built-in defaults."
   confirmLabel="Reset all"
   variant="destructive"
   onConfirm={resetAll}

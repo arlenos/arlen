@@ -22,7 +22,6 @@
   /// their own. Shown verbatim in the empty state so the user knows
   /// exactly where to put new modules.
   const USER_MODULES_DIR = "~/.local/share/arlen/modules/";
-  const SYSTEM_MODULES_DIR = "/usr/share/arlen/modules/";
   /// Link to the module-system spec shipped with the repo. When the
   /// Arlen docs site goes live this should flip to the canonical URL.
   const MODULES_DOCS =
@@ -59,7 +58,7 @@
 
 <Page
   title="Extensions"
-  description="Modules that extend the Arlen shell. Install third-party modules by dropping them into ~/.local/share/arlen/modules/."
+  description="Modules that extend the Arlen shell. Install them with forage or place them in your modules folder."
 >
   <SectionGrid>
   <div class="span-full ext-column">
@@ -93,7 +92,7 @@
   {#if $modules.loading && $modules.data.length === 0}
     <div class="status">Scanning module directories…</div>
   {:else if $modules.error}
-    <div class="error">Failed to load modules: {$modules.error}</div>
+    <div class="error" title={$modules.error}>Can't read the modules right now.</div>
   {:else if total === 0}
     <div class="empty">
       <div class="empty-icon">
@@ -101,11 +100,9 @@
       </div>
       <h2>No modules installed</h2>
       <p>
-        Modules live in <code>{USER_MODULES_DIR}&lt;id&gt;/</code> for the
-        current user, or in <code>{SYSTEM_MODULES_DIR}</code> system-wide.
-        Each directory needs a <code>manifest.toml</code>. Install them
-        with <code>forage install</code> or drop them in manually; the
-        Settings app rescans when you press refresh.
+        Install modules with <code>forage install</code>, or place them in
+        your modules folder (<code>{USER_MODULES_DIR}</code>). Press refresh
+        to rescan.
       </p>
       <a
         class="empty-link"
@@ -205,14 +202,21 @@
     color: var(--foreground);
   }
   .banner-dismiss {
+    display: inline-flex;
+    align-items: center;
+    height: var(--height-control-compact, 24px);
+    padding: 0 0.5rem;
     background: transparent;
-    border: none;
-    color: var(--color-accent);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-button);
+    color: color-mix(in srgb, var(--foreground) 75%, transparent);
     font: inherit;
     font-size: 0.6875rem;
-    text-decoration: underline;
-    cursor: pointer;
-    padding: 0;
+    transition: background-color var(--duration-fast) var(--ease-out);
+  }
+  .banner-dismiss:hover {
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    color: var(--foreground);
   }
 
   .summary {
