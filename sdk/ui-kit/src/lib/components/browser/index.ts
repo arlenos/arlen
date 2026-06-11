@@ -6,10 +6,13 @@
 
 export { default as FileBrowser } from "./FileBrowser.svelte";
 export { default as FileList } from "./FileList.svelte";
+export { default as FileGrid } from "./FileGrid.svelte";
+export { default as FileTile } from "./FileTile.svelte";
+export { default as MillerColumns } from "./MillerColumns.svelte";
 export { default as FileRow } from "./FileRow.svelte";
 export { default as Breadcrumb } from "./Breadcrumb.svelte";
 export { default as PlacesSidebar } from "./PlacesSidebar.svelte";
-export { createBrowserState, type BrowserState } from "./controller";
+export { createBrowserState, type BrowserState, type ViewMode } from "./controller";
 export { breadcrumb } from "./breadcrumb";
 export { Selection } from "./selection";
 export { entryIcon, placeIcon } from "./icons";
