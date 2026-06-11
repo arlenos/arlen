@@ -1310,8 +1310,12 @@ async fn persist_retract(graph: &GraphHandle, rel: &RelationResult, op_id: &str)
     // bounds the restore to a single membership defensively even if that
     // invariant were ever violated. The reopen carries a derived `reopen:<op>` id
     // (itself retractable, deterministic so the retry stays idempotent), no
-    // `superseded` back-ref (it chains no further), and the prior edge's `origin`
-    // (defaulting to the agent's when the superseded edge carried none).
+    // `superseded` back-ref (it chains no further), the prior edge's `origin`
+    // (defaulting to the agent's when the superseded edge carried none), and the
+    // prior edge's `merge_key` (GD-R1): the reopen restores the SAME membership
+    // (a -> p), so it must carry that membership's content identity, and `old`'s
+    // key is exactly it — copying keeps the restored live edge content-identical
+    // to the rest of the membership's history (a future merge sees one fact).
     //
     // Bitemporal axes: the reopen restores the prior edge's `valid_at` (the
     // membership was true from then, so inverting the supersession leaves no hole
@@ -1335,7 +1339,7 @@ async fn persist_retract(graph: &GraphHandle, rel: &RelationResult, op_id: &str)
          CREATE (a)-[:FILE_PART_OF {{ op_id: 'reopen:{op}', valid_at: old.valid_at, invalid_at: NULL, \
            created_at: {now}, expired_at: NULL, \
            origin: CASE WHEN old.origin IS NULL THEN 'agent' ELSE old.origin END, \
-           prov_beh: '', superseded: NULL }}]->(p)"
+           prov_beh: '', merge_key: old.merge_key, superseded: NULL }}]->(p)"
     );
     if let Err(e) = graph.transaction(vec![close_stmt, reopen_stmt]).await {
         return format!("ERROR: {e}");
@@ -2984,6 +2988,25 @@ mod tests {
             valids.rows[0][1].as_i64(),
             valids.rows[1][1].as_i64(),
             "the reopen carries the original membership's valid_at (valid-time continuity)"
+        );
+
+        // GD-R1: the reopen also carries the superseded membership's content
+        // merge_key, so the restored live edge is content-identical to the rest of
+        // the (f1 -> p1) history (a future merge sees one fact, not two).
+        let keys = graph
+            .query_rows(
+                "MATCH (:File {id: 'f1'})-[r:FILE_PART_OF]->(:Project {id: 'p1'}) \
+                 RETURN r.merge_key AS mk ORDER BY r.op_id"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        let want = content_merge_key("File", "f1", "FILE_PART_OF", "Project", "p1");
+        assert_eq!(keys.rows[0][0].as_str(), want, "the closed original carries the content key");
+        assert_eq!(
+            keys.rows[1][0].as_str(),
+            want,
+            "the reopen carries the same content key (copied from the superseded edge)"
         );
 
         // A retried retract (crash-recovery / at-least-once) must NOT append a
