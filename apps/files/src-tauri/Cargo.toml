@@ -1,0 +1,29 @@
+[package]
+name = "arlen-files"
+version = "0.1.0"
+description = "Arlen OS file manager app"
+authors = ["Arlen"]
+edition = "2021"
+
+[lib]
+name = "arlen_files_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+env_logger = "0.11"
+# The shared file-browser core: real listing, sorting, breadcrumb,
+# properties, operations, trash and search. The host wraps each as a
+# thin command over a capability-scoped root.
+arlen-file-browser-core = { path = "../core" }
+cap-std = "3"
+# Read the AI capability context from ai.toml for the capability
+# indicator (same reader as the harness and the terminal).
+toml = "0.8"
+dirs = "5"
