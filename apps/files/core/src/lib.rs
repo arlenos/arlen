@@ -12,6 +12,7 @@
 //! model, keyboard-selection helpers) shared across hosts.
 
 pub mod ops;
+pub mod search;
 pub mod selection;
 
 use std::cmp::Ordering;
@@ -19,7 +20,7 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-use cap_std::fs::{Dir, FileType, Metadata};
+use cap_std::fs::{Dir, FileType, Metadata, MetadataExt};
 use serde::{Deserialize, Serialize};
 
 /// What a directory entry is, reported WITHOUT following symlinks (a symlink is a
@@ -135,6 +136,24 @@ pub enum SortKey {
     Size,
     /// By modification time.
     Modified,
+    /// By type, i.e. the lowercased file extension (all `.rs` together, all
+    /// `.png` together). Extension-less files group under an empty key; the name
+    /// tiebreak orders within each extension group. Folders-first is unaffected
+    /// (directories already group ahead via `folders_first`), so the extension
+    /// key only discriminates the file group, which is what "sort by type" means.
+    Type,
+}
+
+/// The lowercased extension of `name` (without the dot), used as the
+/// [`SortKey::Type`] comparison key. Follows the same convention as the ops
+/// module's name split: the part after the LAST `.`, except a leading-dot
+/// dotfile (whose only `.` is at index 0, e.g. `.bashrc`) and a name with no `.`
+/// have no extension and yield an empty key.
+pub(crate) fn ext_key(name: &str) -> String {
+    match name.rfind('.') {
+        Some(i) if i > 0 => name[i + 1..].to_lowercase(),
+        _ => String::new(),
+    }
 }
 
 /// Sort a listing in place. When `folders_first` (the file-manager convention),
@@ -154,6 +173,7 @@ pub fn sort_entries(entries: &mut [FileEntry], key: SortKey, folders_first: bool
             SortKey::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
             SortKey::Size => a.size.unwrap_or(0).cmp(&b.size.unwrap_or(0)),
             SortKey::Modified => a.modified_unix.unwrap_or(0).cmp(&b.modified_unix.unwrap_or(0)),
+            SortKey::Type => ext_key(&a.name).cmp(&ext_key(&b.name)),
         };
         // A stable tiebreak by name keeps the order deterministic for equal keys.
         let ord = ord.then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
@@ -204,6 +224,92 @@ pub fn breadcrumb(path: &Path) -> Vec<Crumb> {
         }
     }
     crumbs
+}
+
+/// The full-fidelity detail of a single entry, the data behind a Properties
+/// panel (FM-R3): kind, size, the Unix mode, the four timestamps, ownership and
+/// link count. Read WITHOUT following a final symlink, so a symlink reports the
+/// LINK's own properties (its size/mode/times), never silently the target's.
+///
+/// Times are `i64` seconds, the native form of the `MetadataExt` time accessors
+/// and wide enough for pre-1970 mtimes; this is the detail surface, so it keeps
+/// the full fidelity that [`FileEntry::modified_unix`] (`u64`, for listing-
+/// display economy) trims. `created_unix` is an `Option` because birth time is
+/// often unsupported by the filesystem/kernel and then reads as `None`, not an
+/// error.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Properties {
+    /// What the entry is (a symlink is reported as a symlink, not followed).
+    pub kind: EntryKind,
+    /// Size in bytes of the entry itself (for a symlink, the link's own size).
+    pub size: u64,
+    /// The full Unix `st_mode` (the file-type bits plus the permission bits,
+    /// including suid/sgid/sticky); the host formats the `rwxr-xr-x` display.
+    pub mode: u32,
+    /// Modification time (`mtime`), seconds since the Unix epoch.
+    pub modified_unix: i64,
+    /// Inode change time (`ctime`), seconds since the Unix epoch.
+    pub changed_unix: i64,
+    /// Last access time (`atime`), seconds since the Unix epoch.
+    pub accessed_unix: i64,
+    /// Birth time (`btime`), seconds since the Unix epoch, IF the filesystem and
+    /// platform report it; `None` otherwise (most Linux setups).
+    pub created_unix: Option<i64>,
+    /// The owning user id.
+    pub uid: u32,
+    /// The owning group id.
+    pub gid: u32,
+    /// The number of hard links to the entry.
+    pub nlink: u64,
+    /// For a symlink, its raw (unresolved) target; `None` otherwise. Mirrors
+    /// [`FileEntry::symlink_target`].
+    pub symlink_target: Option<String>,
+}
+
+/// Read the full [`Properties`] of the entry at `rel` (relative to the capability
+/// `dir`), WITHOUT following a final symlink.
+///
+/// Like [`list_dir`], cap-std confines the read to `dir`, so an absolute or
+/// `..`-bearing `rel` is refused at the syscall (an `io::Error`), not by a string
+/// check. The metadata is read with `symlink_metadata`, so a symlink's properties
+/// are the LINK's own (its mode/size/times), never the target's; a host that
+/// wants the target's properties resolves the link and calls this on the target.
+///
+/// Unlike [`search`](crate::search::search), this is a single fail-closed
+/// `io::Result`: properties is asked for one selected entry, and a stat failure
+/// there (the file vanished, permission denied) is a real error the host should
+/// surface, not swallow.
+pub fn properties(dir: &Dir, rel: impl AsRef<Path>) -> io::Result<Properties> {
+    let rel = rel.as_ref();
+    let meta = dir.symlink_metadata(rel)?;
+    let kind = kind_of(&meta.file_type());
+    // Birth time is often unsupported; map the io::Result to an Option so a
+    // missing btime degrades to None rather than failing the whole read.
+    let created_unix = meta
+        .created()
+        .ok()
+        .and_then(|t| t.into_std().duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64);
+    let symlink_target = if kind == EntryKind::Symlink {
+        dir.read_link(rel)
+            .ok()
+            .map(|p| p.to_string_lossy().into_owned())
+    } else {
+        None
+    };
+    Ok(Properties {
+        kind,
+        size: meta.size(),
+        mode: meta.mode(),
+        modified_unix: meta.mtime(),
+        changed_unix: meta.ctime(),
+        accessed_unix: meta.atime(),
+        created_unix,
+        uid: meta.uid(),
+        gid: meta.gid(),
+        nlink: meta.nlink(),
+        symlink_target,
+    })
 }
 
 #[cfg(test)]
@@ -261,6 +367,30 @@ mod tests {
     }
 
     #[test]
+    fn type_sort_groups_by_extension_with_folders_first_and_a_name_tiebreak() {
+        let mut v = vec![
+            entry("b.txt", EntryKind::File, Some(1), None),
+            entry("photo.png", EntryKind::File, Some(1), None),
+            entry("dir", EntryKind::Directory, None, None),
+            entry("a.txt", EntryKind::File, Some(1), None),
+            entry("code.rs", EntryKind::File, Some(1), None),
+        ];
+        sort_entries(&mut v, SortKey::Type, true, true);
+        let names: Vec<&str> = v.iter().map(|e| e.name.as_str()).collect();
+        // Folder first, then by extension (png < rs < txt), and a.txt before
+        // b.txt within the .txt group via the name tiebreak.
+        assert_eq!(names, vec!["dir", "photo.png", "code.rs", "a.txt", "b.txt"]);
+    }
+
+    #[test]
+    fn ext_key_follows_the_dotfile_convention() {
+        assert_eq!(ext_key("photo.PNG"), "png", "extension is lowercased");
+        assert_eq!(ext_key("archive.tar.gz"), "gz", "last dot wins");
+        assert_eq!(ext_key("README"), "", "no dot is no extension");
+        assert_eq!(ext_key(".bashrc"), "", "a leading-dot dotfile has no extension");
+    }
+
+    #[test]
     fn breadcrumb_decomposes_an_absolute_path() {
         let crumbs = breadcrumb(Path::new("/home/x/proj"));
         assert_eq!(
@@ -315,5 +445,68 @@ mod tests {
         // An absolute path or a parent traversal is refused by cap-std, not served.
         assert!(list_dir(&dir, "/etc").is_err());
         assert!(list_dir(&dir, "../..").is_err());
+    }
+
+    #[test]
+    fn properties_reads_a_files_mode_size_and_timestamps() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("doc.txt");
+        std::fs::write(&path, b"hello").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        let dir = Dir::open_ambient_dir(tmp.path(), ambient_authority()).unwrap();
+        let p = properties(&dir, "doc.txt").unwrap();
+        assert_eq!(p.kind, EntryKind::File);
+        assert_eq!(p.size, 5);
+        // The low 12 bits are the chmod'd permission bits.
+        assert_eq!(p.mode & 0o7777, 0o644);
+        assert!(p.modified_unix > 0, "mtime is a sane epoch value");
+        assert!(p.changed_unix > 0);
+        assert!(p.accessed_unix > 0);
+        assert!(p.nlink >= 1);
+        assert!(p.symlink_target.is_none());
+        // btime support is platform-dependent: assert the call succeeded, not a
+        // particular value.
+        let _ = p.created_unix;
+    }
+
+    #[test]
+    fn properties_reports_a_directory_kind() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(tmp.path().join("sub")).unwrap();
+        let dir = Dir::open_ambient_dir(tmp.path(), ambient_authority()).unwrap();
+        let p = properties(&dir, "sub").unwrap();
+        assert_eq!(p.kind, EntryKind::Directory);
+    }
+
+    #[test]
+    fn properties_does_not_follow_a_symlink() {
+        let tmp = tempfile::tempdir().unwrap();
+        // A small link pointing at a much larger file: no-follow must report the
+        // LINK's own (small) size and symlink kind, not the target's size.
+        std::fs::write(tmp.path().join("big.bin"), vec![0u8; 4096]).unwrap();
+        std::os::unix::fs::symlink("big.bin", tmp.path().join("link")).unwrap();
+
+        let dir = Dir::open_ambient_dir(tmp.path(), ambient_authority()).unwrap();
+        let p = properties(&dir, "link").unwrap();
+        assert_eq!(p.kind, EntryKind::Symlink, "a symlink is reported as a symlink");
+        assert_eq!(
+            p.symlink_target.as_deref(),
+            Some("big.bin"),
+            "the raw link target is reported"
+        );
+        assert!(
+            p.size < 4096,
+            "no-follow reports the link's own size, not the target's"
+        );
+    }
+
+    #[test]
+    fn properties_cannot_escape_the_capability() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = Dir::open_ambient_dir(tmp.path(), ambient_authority()).unwrap();
+        assert!(properties(&dir, "/etc/passwd").is_err());
+        assert!(properties(&dir, "../../etc").is_err());
     }
 }
