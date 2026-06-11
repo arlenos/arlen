@@ -117,7 +117,6 @@
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 10%, transparent);
-    cursor: pointer;
     font-family: inherit;
     transition:
       background-color 150ms ease,
@@ -163,7 +162,6 @@
     border-radius: var(--radius-input);
     border: none;
     padding: 0;
-    cursor: pointer;
     background: conic-gradient(
       from 180deg,
       #6366f1,

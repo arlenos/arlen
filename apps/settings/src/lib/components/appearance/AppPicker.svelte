@@ -228,7 +228,6 @@
     border-radius: var(--radius-chip);
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
-    cursor: pointer;
     transition:
       transform 180ms cubic-bezier(0.4, 0, 0.2, 1),
       color 120ms ease,
@@ -271,7 +270,6 @@
     color: var(--foreground);
     font-size: 0.75rem;
     text-align: left;
-    cursor: pointer;
     transition: background-color 100ms ease;
   }
   .item:hover {

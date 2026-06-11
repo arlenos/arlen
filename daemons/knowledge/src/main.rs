@@ -41,30 +41,20 @@ mod writer;
 use anyhow::{bail, Result};
 use tracing::{info, warn};
 
-const DEFAULT_CONSUMER_SOCKET: &str = "/run/arlen/event-bus-consumer.sock";
 const DEFAULT_DB_PATH: &str = "/var/lib/arlen/knowledge/events.db";
 const DEFAULT_GRAPH_PATH: &str = "/var/lib/arlen/knowledge/graph";
-const DEFAULT_DAEMON_SOCKET: &str = "/run/arlen/knowledge.sock";
 const DEFAULT_TIMELINE_MOUNT: &str = ".timeline";
 
-/// Pick the daemon socket path with a graceful fallback for non-root
-/// runs. The hardcoded `/run/arlen/` default requires write access
-/// we don't have outside privileged launchers; if nothing is pinned
-/// via `ARLEN_DAEMON_SOCKET` and XDG_RUNTIME_DIR is available, use
-/// that. The daemon itself thus starts cleanly in a normal dev
-/// session even if the launcher script forgets to set the env var.
+/// Pick the daemon socket path per the standard 3-tier convention:
+/// `ARLEN_DAEMON_SOCKET` (non-empty) wins, else the per-user path
+/// `$XDG_RUNTIME_DIR/arlen/knowledge.sock` (i.e.
+/// `/run/user/{uid}/arlen/knowledge.sock`), else `/run/arlen/knowledge.sock`.
+/// The XDG branch creates the `arlen/` parent so the daemon starts
+/// cleanly in a normal dev session even if the launcher forgets the env
+/// var; the `/run/arlen/` last resort requires the write access only a
+/// privileged launcher has.
 fn pick_daemon_socket() -> String {
-    if let Ok(p) = std::env::var("ARLEN_DAEMON_SOCKET") {
-        return p;
-    }
-    if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
-        let path = format!("{xdg}/arlen/knowledge.sock");
-        if let Some(parent) = std::path::Path::new(&path).parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        return path;
-    }
-    DEFAULT_DAEMON_SOCKET.to_string()
+    crate::utils::socket_path("ARLEN_DAEMON_SOCKET", "knowledge.sock")
 }
 
 /// Check whether `path` is currently a mount point. Reads

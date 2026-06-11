@@ -720,7 +720,6 @@
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 9%, transparent);
-    cursor: pointer;
     transition:
       background-color 120ms ease,
       border-color 120ms ease;
@@ -800,7 +799,6 @@
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     color: var(--foreground);
     font-size: 0.75rem;
-    cursor: pointer;
     transition: background-color 120ms ease;
   }
   .quick-btn:hover {
@@ -827,7 +825,6 @@
     border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
     color: var(--foreground);
     font-size: 0.6875rem;
-    cursor: pointer;
     transition: background-color 120ms ease;
   }
   .chip:hover {
@@ -859,7 +856,6 @@
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     font-size: 0.6875rem;
     font-weight: 500;
-    cursor: pointer;
     text-transform: capitalize;
     transition: all 120ms ease;
   }
@@ -884,7 +880,6 @@
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     color: var(--foreground);
     font-size: 0.6875rem;
-    cursor: pointer;
     transition: background-color 120ms ease;
   }
   .test-btn:hover {
@@ -909,7 +904,6 @@
     border: 1px solid color-mix(in srgb, var(--color-error) 35%, transparent);
     color: var(--color-error);
     font-size: 0.75rem;
-    cursor: pointer;
     transition:
       background-color 120ms ease,
       border-color 120ms ease;

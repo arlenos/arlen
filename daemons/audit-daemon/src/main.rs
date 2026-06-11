@@ -55,10 +55,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ledger = Ledger::open(&ledger_path, key).await?;
 
     // The Event Bus producer client. Created before verification so a
-    // tamper alert can be emitted the moment it is detected.
-    let producer_socket = std::env::var("ARLEN_PRODUCER_SOCKET")
-        .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".to_string());
-    let emitter = Arc::new(UnixEventEmitter::new(producer_socket));
+    // tamper alert can be emitted the moment it is detected. Resolves
+    // per-user (`$XDG_RUNTIME_DIR/arlen/...`); `ARLEN_PRODUCER_SOCKET`
+    // pins it for the dev stack and the integration harness.
+    let producer_socket =
+        os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock");
+    let emitter = Arc::new(UnixEventEmitter::new(
+        producer_socket.to_string_lossy().into_owned(),
+    ));
 
     // Startup integrity witness 1: the HMAC hash chain.
     let tampered = Arc::new(AtomicBool::new(false));

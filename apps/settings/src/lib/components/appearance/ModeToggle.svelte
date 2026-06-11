@@ -92,7 +92,6 @@
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     background: transparent;
     border: none;
-    cursor: pointer;
     transition: color 150ms ease;
     -webkit-user-select: none;
     user-select: none;

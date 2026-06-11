@@ -177,7 +177,6 @@
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     color: var(--foreground);
-    cursor: pointer;
     flex-shrink: 0;
     transition: background-color 120ms ease;
   }

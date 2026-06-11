@@ -389,14 +389,31 @@ struct McpServerEntry {
 
 impl Manager {
     pub fn new(events_tx: broadcast::Sender<Event>) -> crate::error::Result<Arc<Self>> {
-        // S6: build the backend clients up-front. Socket paths follow
-        // the same env-fallback convention every other Arlen client
-        // uses; defaults match `os-sdk` and `installd`.
+        // S6: build the backend clients up-front. Socket paths resolve
+        // per-user (`$XDG_RUNTIME_DIR/arlen/...`, i.e.
+        // `/run/user/{uid}/arlen/...`) and stay pinnable via the env
+        // overrides the dev stack and the integration harness set. The
+        // knowledge socket keeps its two-tier override
+        // (`ARLEN_KNOWLEDGE_SOCKET` then `ARLEN_DAEMON_SOCKET`) so it
+        // stays in sync with the daemon when relocated; both then fall
+        // through to the shared per-user resolution.
         let knowledge_socket = std::env::var("ARLEN_KNOWLEDGE_SOCKET")
-            .or_else(|_| std::env::var("ARLEN_DAEMON_SOCKET"))
-            .unwrap_or_else(|_| "/run/arlen/knowledge.sock".into());
-        let producer_socket = std::env::var("ARLEN_PRODUCER_SOCKET")
-            .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".into());
+            .ok()
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                std::env::var("ARLEN_DAEMON_SOCKET")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+            })
+            .unwrap_or_else(|| {
+                os_sdk::runtime::socket_path("ARLEN_DAEMON_SOCKET", "knowledge.sock")
+                    .to_string_lossy()
+                    .into_owned()
+            });
+        let producer_socket =
+            os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock")
+                .to_string_lossy()
+                .into_owned();
 
         let graph_client = Arc::new(UnixGraphClient::new(knowledge_socket.clone()));
         let event_emitter = Arc::new(UnixEventEmitter::new(producer_socket.clone()));

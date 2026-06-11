@@ -69,23 +69,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Resolve the Event Bus consumer socket: explicit
-/// `ARLEN_CONSUMER_SOCKET` wins; else the per-user runtime path when
-/// present; else the system path.
+/// `ARLEN_CONSUMER_SOCKET` wins; else the per-user runtime path
+/// (`$XDG_RUNTIME_DIR/arlen/...`, i.e. `/run/user/{uid}/arlen/...`);
+/// else the system path.
+///
+/// The path is resolved unconditionally — it must NOT depend on the
+/// socket file already existing. The detector's reconnect loop retries
+/// the resolved path until the bus comes up, so a daemon that starts
+/// before event-bus binds still lands on the correct per-user socket
+/// rather than the system fallback.
 fn resolve_event_consumer_socket() -> String {
-    if let Ok(explicit) = std::env::var("ARLEN_CONSUMER_SOCKET") {
-        if !explicit.is_empty() {
-            return explicit;
-        }
-    }
-    if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
-        if !xdg.is_empty() {
-            let runtime = format!("{xdg}/arlen/event-bus-consumer.sock");
-            if std::path::Path::new(&runtime).exists() {
-                return runtime;
-            }
-        }
-    }
-    "/run/arlen/event-bus-consumer.sock".to_string()
+    os_sdk::runtime::socket_path("ARLEN_CONSUMER_SOCKET", "event-bus-consumer.sock")
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// Resolve on SIGTERM (systemd stop) or SIGINT (Ctrl-C).

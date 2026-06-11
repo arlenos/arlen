@@ -168,7 +168,6 @@
     padding: 0.25rem 0.5rem 0.25rem 0.6rem;
     background: transparent;
     border: none;
-    cursor: pointer;
     text-align: left;
     color: var(--foreground);
     font: inherit;
@@ -344,7 +343,6 @@
     border: 1px solid color-mix(in srgb, var(--color-error) 35%, transparent);
     color: var(--color-error);
     font-size: 0.6875rem;
-    cursor: pointer;
     transition: background-color 120ms ease;
   }
   .danger-btn:hover {
