@@ -31,7 +31,8 @@
           (m) =>
             m.tier === "iframe" &&
             m.extensionPoints.includes("topbar") &&
-            m.enabled,
+            m.enabled &&
+            !m.failed,
         )
         .sort((a, b) => a.priority - b.priority);
     } catch {
@@ -50,7 +51,7 @@
 </script>
 
 {#each modules as mod (mod.id)}
-  <div class="mod-indicator" title={mod.name}>
+  <div class="mod-indicator" role="group" aria-label={mod.name}>
     <SandboxedModuleHost module={mod} slot="topbar" />
   </div>
 {/each}
@@ -60,14 +61,14 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: var(--height-control, 28px);
+    height: var(--height-control, 28px);
     border-radius: var(--radius-chip);
     overflow: hidden;
   }
   .mod-indicator :global(iframe) {
-    width: 28px;
-    height: 28px;
+    width: var(--height-control, 28px);
+    height: var(--height-control, 28px);
     pointer-events: auto;
   }
 </style>

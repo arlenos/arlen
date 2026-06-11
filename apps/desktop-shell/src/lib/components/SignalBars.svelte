@@ -1,9 +1,11 @@
 <script lang="ts">
   let { signal = 0 }: { signal: number } = $props();
-  const bars = $derived(Math.max(1, Math.ceil(signal / 20)));
+  // Zero (or unknown) signal shows zero bars — forcing a minimum of
+  // one bar made "no signal" indistinguishable from a weak one.
+  const bars = $derived(signal <= 0 ? 0 : Math.ceil(signal / 20));
 </script>
 
-<div class="signal-bars">
+<div class="signal-bars" role="img" aria-label="Signal strength {signal}%">
   {#each [1, 2, 3, 4, 5] as bar}
     <div class="signal-bar" class:active={bar <= bars} style:height="{bar * 3}px"></div>
   {/each}

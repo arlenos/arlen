@@ -55,7 +55,9 @@
     font-size: 0.625rem;
     font-weight: 500;
     white-space: nowrap;
-    transition: all 100ms ease;
+    transition:
+      background-color var(--duration-micro, 100ms) ease,
+      color var(--duration-micro, 100ms) ease;
   }
   .wp-pill:hover {
     color: var(--color-fg-shell);

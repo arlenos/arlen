@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { indicators, type IndicatorState } from "$lib/stores/indicators";
+    import { indicators } from "$lib/stores/indicators";
 
     const LABELS: Record<number, string> = {
         1: "Stack Windows",
@@ -31,24 +31,26 @@
         <!-- Resize: edge arrows + shortcut hints -->
         <div class="indicator-resize shell-surface">
             {#if edgeActive(ind.edges, 1)}
-                <div class="resize-arrow top">\u{2191}</div>
+                <div class="resize-arrow top">↑</div>
             {/if}
             {#if edgeActive(ind.edges, 4)}
-                <div class="resize-arrow left">\u{2190}</div>
+                <div class="resize-arrow left">←</div>
             {/if}
-            <div class="resize-center">
-                {#if ind.shortcut1}
-                    <span class="shortcut">{ind.shortcut1}{directionLabel(1)}</span>
-                {/if}
-                {#if ind.shortcut2}
-                    <span class="shortcut">{ind.shortcut2}{directionLabel(2)}</span>
-                {/if}
-            </div>
+            {#if ind.shortcut1 || ind.shortcut2}
+                <div class="resize-center">
+                    {#if ind.shortcut1}
+                        <span class="shortcut">{ind.shortcut1}{directionLabel(1)}</span>
+                    {/if}
+                    {#if ind.shortcut2}
+                        <span class="shortcut">{ind.shortcut2}{directionLabel(2)}</span>
+                    {/if}
+                </div>
+            {/if}
             {#if edgeActive(ind.edges, 8)}
-                <div class="resize-arrow right">\u{2192}</div>
+                <div class="resize-arrow right">→</div>
             {/if}
             {#if edgeActive(ind.edges, 2)}
-                <div class="resize-arrow bottom">\u{2193}</div>
+                <div class="resize-arrow bottom">↓</div>
             {/if}
         </div>
     {/if}

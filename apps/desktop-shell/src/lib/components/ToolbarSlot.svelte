@@ -12,6 +12,7 @@
 <script lang="ts">
   import { focusedToolbar, focusedToolbarKey } from "$lib/stores/toolbarStore";
   import { invoke } from "@tauri-apps/api/core";
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import * as Icons from "lucide-svelte";
 
   /** Resolve a Lucide icon name (kebab-case) to its component. */
@@ -44,18 +45,29 @@
   }
 </script>
 
-{#if $focusedToolbar.kind === "quick-actions"}
+{#if $focusedToolbar.kind === "quick-actions" && $focusedToolbar.actions.length > 0}
   <div class="toolbar-quick-actions" data-tauri-drag-region={false}>
     {#each $focusedToolbar.actions as action (action.action)}
-      <button
-        class="qa-btn"
-        class:toggle={action.toggle}
-        class:active={action.toggle && action.active}
-        title={action.tooltip}
-        on:click={() => dispatch(action.action)}
-      >
-        <svelte:component this={lookupIcon(action.icon)} size={14} />
-      </button>
+      {@const Icon = lookupIcon(action.icon)}
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <button
+              {...props}
+              class="qa-btn"
+              class:toggle={action.toggle}
+              class:active={action.toggle && action.active}
+              aria-label={action.tooltip}
+              onclick={() => dispatch(action.action)}
+            >
+              <Icon size={14} />
+            </button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.TooltipContent side="bottom">
+          {action.tooltip}
+        </Tooltip.TooltipContent>
+      </Tooltip.Root>
     {/each}
   </div>
 {:else if $focusedToolbar.kind === "breadcrumb"}
@@ -64,13 +76,22 @@
       {#if i > 0}
         <span class="bc-sep">/</span>
       {/if}
-      <button class="bc-seg" on:click={() => dispatch(item.action)}>
+      <button class="bc-seg" onclick={() => dispatch(item.action)}>
         {item.label}
       </button>
     {/each}
   </nav>
 {:else if $focusedToolbar.kind === "progress"}
-  <div class="toolbar-progress" title={$focusedToolbar.progress.label ?? ""}>
+  <div
+    class="toolbar-progress"
+    role="progressbar"
+    aria-label={$focusedToolbar.progress.label ?? "Progress"}
+    aria-valuemin={0}
+    aria-valuemax={100}
+    aria-valuenow={Math.round(
+      Math.max(0, Math.min(1, $focusedToolbar.progress.value)) * 100,
+    )}
+  >
     <div
       class="tp-fill"
       style="width: {Math.max(0, Math.min(1, $focusedToolbar.progress.value)) * 100}%"
@@ -91,13 +112,13 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 24px);
     border: none;
     background: transparent;
     color: var(--color-fg);
     border-radius: var(--radius-chip);
-    transition: background 0.1s;
+    transition: background var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .qa-btn:hover {
     background: color-mix(in srgb, var(--color-fg) 10%, transparent);
@@ -119,7 +140,7 @@
     background: transparent;
     color: var(--color-fg-muted);
     padding: 2px 4px;
-    border-radius: 3px;
+    border-radius: var(--radius-chip);
   }
   .bc-seg:hover {
     background: color-mix(in srgb, var(--color-fg) 10%, transparent);
@@ -135,13 +156,13 @@
     width: 200px;
     height: 4px;
     background: color-mix(in srgb, var(--color-fg) 10%, transparent);
-    border-radius: 2px;
+    border-radius: var(--radius-full);
     overflow: hidden;
   }
   .tp-fill {
     height: 100%;
     background: var(--color-accent);
-    transition: width 0.2s;
+    transition: width var(--duration-fast, 150ms) ease;
   }
   .tp-label {
     position: absolute;

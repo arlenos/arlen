@@ -166,18 +166,25 @@
       </Dialog.Header>
 
       {#if request.kind === "confirmation"}
-        <div class="code-display" aria-label="Pairing code">
+        <div class="code-display">
           {pad6(request.passkey)}
         </div>
       {:else if request.kind === "displayPinCode"}
-        <div class="code-display" aria-label="PIN code">
+        <div class="code-display">
           {request.pinCode}
         </div>
       {:else if request.kind === "displayPasskey"}
-        <div class="code-display" aria-label="Passkey">
+        <div class="code-display">
           {pad6(request.passkey)}
         </div>
-        <div class="entered-progress" aria-label="Digits entered on device">
+        <div
+          class="entered-progress"
+          role="progressbar"
+          aria-label="Digits entered on device"
+          aria-valuemin={0}
+          aria-valuemax={6}
+          aria-valuenow={request.entered}
+        >
           {#each Array.from({ length: 6 }) as _, i}
             <span
               class="entered-slot"
@@ -198,18 +205,21 @@
       {:else if request.kind === "passkeyInput"}
         <div class="input-row">
           <Input
-            type="number"
             bind:value={passkeyInput}
-            min={0}
-            max={999999}
+            inputmode="numeric"
+            maxlength={6}
             autofocus
             placeholder="000000"
             aria-label="Passkey"
+            oninput={() => {
+              passkeyInput = passkeyInput.replace(/[^0-9]/g, "");
+            }}
           />
         </div>
       {:else if request.kind === "authorizeService"}
         <div class="meta">
-          {request.deviceAddress} · {request.uuidLabel}
+          <span>{request.deviceAddress}</span>
+          <span>{request.uuidLabel}</span>
         </div>
       {/if}
 
@@ -252,9 +262,9 @@
   .entered-slot {
     width: 22px;
     height: 4px;
-    border-radius: 2px;
+    border-radius: var(--radius-full);
     background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
-    transition: background 0.15s ease;
+    transition: background var(--duration-fast, 150ms) ease;
   }
 
   .entered-slot.filled {
@@ -267,7 +277,10 @@
 
   .meta {
     margin: 4px 0 8px;
-    font-size: 0.85rem;
-    color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 0.75rem;
+    color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);
   }
 </style>

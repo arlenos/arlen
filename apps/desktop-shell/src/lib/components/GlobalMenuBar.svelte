@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { activeMenu, activeAppId, dispatchMenuAction, type MenuGroup, type MenuItem } from "$lib/stores/menus.js";
+  import { activeMenu, activeAppId, dispatchMenuAction, type MenuItem } from "$lib/stores/menus.js";
   import { activeAppName, activeWindowForOutput } from "$lib/stores/windows.js";
   import { focusedBadge, type BadgeRender } from "$lib/stores/appStateStores";
   import {
@@ -8,9 +8,6 @@
   } from "@arlen/ui-kit/components/ui/dropdown-menu/index.js";
   import { getContext } from "svelte";
   import type { Readable } from "svelte/store";
-  const shellColors =
-    "bg-[var(--color-bg-shell)] text-[var(--color-fg-shell)] border-[color-mix(in_srgb,var(--color-bg-shell)_60%,white_40%)]";
-
   function handleAction(action: string) {
     const appId = $activeAppId;
     if (appId) dispatchMenuAction(appId, action);
@@ -48,10 +45,21 @@
         <SubTrigger>
           {item.label}
         </SubTrigger>
-        <SubContent class="menubar-content {shellColors}">
+        <SubContent class="menubar-content shell-popover">
           {@render menuItems(item.children)}
         </SubContent>
       </Sub>
+    {:else if item.type === "item" && item.checked !== undefined}
+      <CheckboxItem
+        checked={item.checked}
+        disabled={item.disabled}
+        onSelect={() => handleAction(item.action)}
+      >
+        {item.label}
+        {#if item.shortcut}
+          <Shortcut>{item.shortcut}</Shortcut>
+        {/if}
+      </CheckboxItem>
     {:else if item.type === "item"}
       <Item
         disabled={item.disabled}
@@ -71,18 +79,18 @@
     <span class="menubar-appname">
       {$activeAppName || "Arlen"}
       {#if $focusedBadge}
-        {@const b = $focusedBadge as BadgeRender}
+        {@const b = $focusedBadge as NonNullable<BadgeRender>}
         <span
           class="app-badge"
-          class:badge-error={b !== null && (b.kind === "status" || b.kind === "countWithStatus") && b.status === "error"}
-          class:badge-warning={b !== null && (b.kind === "status" || b.kind === "countWithStatus") && b.status === "warning"}
-          class:badge-success={b !== null && b.kind === "status" && b.status === "success"}
-          class:badge-progress={b !== null && b.kind === "status" && b.status === "progress"}
-          class:badge-dot={b !== null && b.kind === "dot"}
+          class:badge-error={(b.kind === "status" || b.kind === "countWithStatus") && b.status === "error"}
+          class:badge-warning={(b.kind === "status" || b.kind === "countWithStatus") && b.status === "warning"}
+          class:badge-success={b.kind === "status" && b.status === "success"}
+          class:badge-progress={b.kind === "status" && b.status === "progress"}
+          class:badge-dot={b.kind === "dot"}
         >
-          {#if b !== null && b.kind === "count"}
+          {#if b.kind === "count"}
             {b.count > 99 ? "99+" : b.count}
-          {:else if b !== null && b.kind === "countWithStatus"}
+          {:else if b.kind === "countWithStatus"}
             {b.count > 99 ? "99+" : b.count}
           {/if}
         </span>
@@ -99,7 +107,7 @@
             </button>
           {/snippet}
         </Trigger>
-        <Content sideOffset={4} class="menubar-content {shellColors}">
+        <Content sideOffset={4} class="menubar-content shell-popover">
           {@render menuItems(group.items)}
         </Content>
       </Root>
@@ -127,8 +135,8 @@
     position: relative;
   }
 
-  /* App badge — small overlay on the app-name span. Mirrors
-     the unread-count badge pattern from PanelTrigger.svelte. */
+  /* App badge: small overlay on the app-name span, same register
+     as the topbar unread-count badge. */
   .app-badge {
     display: inline-flex;
     align-items: center;
@@ -137,7 +145,7 @@
     height: 14px;
     min-width: 14px;
     padding: 0 4px;
-    border-radius: 7px;
+    border-radius: var(--radius-full);
     font-size: 9px;
     font-weight: 700;
     line-height: 1;
@@ -149,7 +157,7 @@
     height: 8px;
     min-width: 0;
     padding: 0;
-    border-radius: var(--radius-chip);
+    border-radius: var(--radius-full);
   }
   .app-badge.badge-error {
     background: var(--color-error);
@@ -172,7 +180,7 @@
   .menubar-trigger {
     display: flex;
     align-items: center;
-    height: 24px;
+    height: var(--height-control-compact, 24px);
     padding: 0 8px;
     border: none;
     background: transparent;
@@ -181,7 +189,7 @@
     font-weight: 500;
     border-radius: var(--radius-chip);
     white-space: nowrap;
-    transition: background-color 100ms ease, color 100ms ease;
+    transition: background-color var(--duration-micro, 100ms) ease, color var(--duration-micro, 100ms) ease;
   }
 
   .menubar-trigger:hover {

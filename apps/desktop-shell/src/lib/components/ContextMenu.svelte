@@ -78,9 +78,6 @@
         const id = $contextMenu.menu_id;
         if (lastActivatedMenuId === id) return;
         lastActivatedMenuId = id;
-        console.log(
-            `[contextMenu] activate menu_id=${id} index=${index}`,
-        );
         activateItem(id, index);
     }
 
@@ -88,6 +85,9 @@
     /// below the menu) tells the compositor to dismiss the menu and
     /// release its pointer grab. Without this the only way to close was
     /// to pick an item or press Escape.
+    let menuW = $state(200);
+    let menuH = $state(100);
+
     function onBackdropClick(e: MouseEvent) {
         e.preventDefault();
         e.stopPropagation();
@@ -155,16 +155,21 @@
     {/each}
 {/snippet}
 
-{#if $contextMenu.visible}
+{#if $contextMenu.visible && tree.length > 0}
 <div
     class="ctx-backdrop"
     role="presentation"
     onmousedown={onBackdropClick}
 ></div>
+<!-- Clamp against the measured menu box so a tall menu near the
+     bottom edge flips fully on-screen instead of overflowing past
+     a guessed 200x100 footprint. -->
 <div
     role="menu"
     class="ctx-menu shell-popover"
-    style="left: {Math.min($contextMenu.x, window.innerWidth - 200)}px; top: {Math.min($contextMenu.y, window.innerHeight - 100)}px;"
+    bind:clientWidth={menuW}
+    bind:clientHeight={menuH}
+    style="left: {Math.min($contextMenu.x, window.innerWidth - menuW - 8)}px; top: {Math.min($contextMenu.y, window.innerHeight - menuH - 8)}px;"
 >
     {@render menuLevel(tree)}
 </div>
@@ -174,15 +179,15 @@
     .ctx-backdrop {
         position: fixed;
         inset: 0;
-        z-index: 9998;
+        z-index: 299;
         background: transparent;
     }
     .ctx-menu {
         position: fixed;
-        z-index: 9999;
+        z-index: 300;
         background: var(--color-bg-shell);
         border: 1px solid var(--color-border-default, color-mix(in srgb, var(--color-fg-shell) 20%, transparent));
-        border-radius: var(--radius-md, 8px);
+        border-radius: var(--radius-input);
         box-shadow: var(--shadow-md);
         padding: 4px 0;
         min-width: 160px;
@@ -205,7 +210,7 @@
         text-align: left;
         color: var(--color-fg-primary, var(--color-fg-shell));
         border-radius: 0;
-        transition: background-color var(--duration-fast, 100ms) ease;
+        transition: background-color var(--duration-fast, 150ms) var(--ease-out, ease);
     }
     .ctx-item:hover:not(.disabled) {
         background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
@@ -228,11 +233,11 @@
         top: -5px;
         background: var(--color-bg-shell);
         border: 1px solid var(--color-border-default, color-mix(in srgb, var(--color-fg-shell) 20%, transparent));
-        border-radius: var(--radius-md, 8px);
+        border-radius: var(--radius-input);
         box-shadow: var(--shadow-md);
         padding: 4px 0;
         min-width: 160px;
-        z-index: 10000;
+        z-index: 310;
     }
     :global(.ctx-chevron) {
         opacity: 0.6;

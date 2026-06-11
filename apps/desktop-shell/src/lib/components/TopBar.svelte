@@ -225,13 +225,10 @@
         <ContextMenu.Root>
           <ContextMenu.Trigger>
             {#snippet child({ props })}
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <div
+              <button
                 {...props}
                 class="focus-indicator"
-                role="button"
-                tabindex="0"
-                title={`Project: ${$focusState.projectName}. Right-click for options`}
+                aria-label={`Project: ${$focusState.projectName}. Right-click for options`}
                 onclick={openProjectSwitcher}
               >
                 {#if $focusState.accentColor}
@@ -242,13 +239,14 @@
                     CSS-parse the interpolation braces and trips
                     up, surfacing as "Invalid declaration:
                     <script lang=\"ts\">" on the script block
-                    a few lines above (known plugin bug — see
-                    CLAUDE.md "Tailwind v4 in Tauri/SvelteKit").
+                    a few lines above (known Tailwind-Vite
+                    plugin parsing bug with braces in style
+                    attributes).
                   -->
                   <span class="focus-dot" style:background={$focusState.accentColor}></span>
                 {/if}
                 <span class="focus-name">{$focusState.projectName}</span>
-              </div>
+              </button>
             {/snippet}
           </ContextMenu.Trigger>
           <ContextMenu.Content class="shell-popover">
@@ -339,7 +337,6 @@
     display: none;
   }
 
-  /* Region separator hides when adjacent slot-project is empty */
   .topbar-sep {
     width: 1px;
     height: 14px;
@@ -349,13 +346,17 @@
     align-self: center;
   }
 
+  /* The focus chip is interactive: left-click opens the project
+     switcher, right-click the context menu. Hover bg signals it. */
   .focus-indicator {
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 2px 8px;
+    border: none;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    transition: background-color var(--duration-fast, 150ms) var(--ease-out, ease);
   }
   .focus-dot {
     width: 6px;
@@ -372,13 +373,6 @@
     max-width: 120px;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-  /* Focus-indicator chip is now interactive: left-click opens
-     project-switcher, right-click opens context menu. Hover bg
-     signals "this is interactive" without needing a separate
-     button. */
-  .focus-indicator {
-    transition: background-color var(--duration-fast, 100ms) var(--ease-out, ease);
   }
   .focus-indicator:hover {
     background: color-mix(in srgb, var(--foreground) 12%, transparent);

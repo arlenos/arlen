@@ -46,14 +46,19 @@
     };
   });
 
-  const tooltip = $derived(
-    new Intl.DateTimeFormat(locale, {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    }).format(new Date()),
-  );
+  const dateFormatter = new Intl.DateTimeFormat(locale, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  // `time` is the reactive dependency: the full-date tooltip
+  // re-derives on every minute tick, so it rolls over at midnight
+  // instead of freezing at mount.
+  const tooltip = $derived.by(() => {
+    void time;
+    return dateFormatter.format(new Date());
+  });
 </script>
 
 <Applet appletId="clock" {tooltip} ariaLabel={`Clock: ${weekday} ${time}`}>

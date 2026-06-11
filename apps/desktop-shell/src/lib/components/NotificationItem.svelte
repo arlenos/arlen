@@ -78,7 +78,7 @@
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--color-fg-shell) 4%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
-    transition: background-color 100ms ease, border-color 100ms ease;
+    transition: background-color var(--duration-micro, 100ms) ease, border-color var(--duration-micro, 100ms) ease;
   }
   .notif-item:hover {
     background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
@@ -168,7 +168,7 @@
     border-radius: var(--radius-chip);
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
     padding: 0;
-    transition: background-color 100ms ease, color 100ms ease;
+    transition: background-color var(--duration-micro, 100ms) ease, color var(--duration-micro, 100ms) ease;
   }
   .notif-dismiss:hover {
     background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
@@ -189,7 +189,7 @@
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     color: var(--color-fg-shell);
-    transition: background-color 100ms ease, border-color 100ms ease;
+    transition: background-color var(--duration-micro, 100ms) ease, border-color var(--duration-micro, 100ms) ease;
   }
   .notif-action-btn:hover {
     background: color-mix(in srgb, var(--color-fg-shell) 18%, transparent);
