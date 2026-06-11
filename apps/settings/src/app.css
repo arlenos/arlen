@@ -66,7 +66,11 @@
   --height-control-prominent:   36px;  /* Prominent controls, default button */
   --height-control-emphasized:  40px;  /* Emphasized buttons, hero inputs */
   --height-row:                 40px;  /* Settings rows, dense list items */
-  --height-bar:                 36px;  /* Top bar, compositor SSD header */
+  --height-bar:                 36px;
+
+  /* One width for boxy value controls on the right of settings rows
+     (mirrors sdk/ui-kit/src/app.css). */
+  --width-row-control: 200px;  /* Top bar, compositor SSD header */
 
   /* Motion tokens live in sdk/ui-kit/src/lib/motion.css (imported above). */
 
@@ -275,4 +279,11 @@ textarea,
 ::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--foreground) 30%, transparent);
   background-clip: padding-box;
+}
+
+/* Boxy value controls (input, number, select) inside a settings Row share
+   one width so stacked rows raster into a clean control column. Binary
+   controls (switch, button) keep natural width. */
+.row-control {
+  width: var(--width-row-control, 200px);
 }

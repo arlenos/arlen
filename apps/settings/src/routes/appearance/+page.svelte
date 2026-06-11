@@ -109,8 +109,8 @@
   {#if $theme.loading && !$theme.data}
     <div class="status span-full">Loading…</div>
   {:else if $theme.error && !$theme.data}
-    <div class="error span-full">
-      Failed to load appearance config: {$theme.error}
+    <div class="error span-full" title={$theme.error}>
+      Can't read the appearance settings right now.
     </div>
   {:else}
     <div class="groups span-full">

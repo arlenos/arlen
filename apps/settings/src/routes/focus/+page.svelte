@@ -116,15 +116,13 @@
         </span>
       {/snippet}
     </Row>
-    <div class="picker-row">
+    <div class="picker-list">
       <AppPicker
         {knownApps}
         excluded={suppressedApps}
         placeholder="Add app..."
         onpick={addSuppressedApp}
       />
-    </div>
-    <div class="list-wrap">
       <AddRemoveList
         items={suppressedApps}
         onremove={removeSuppressedApp}
@@ -173,14 +171,15 @@
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
-  .picker-row,
-  .list-wrap {
-    padding: 0 1rem 0.625rem;
+  /* One card child for picker + list: one divider above the pair, one
+     internal rhythm, so the empty box never sits flush on a border. */
+  .picker-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    padding: 0.625rem 1rem;
   }
 
-  .picker-row {
-    padding-top: 0.25rem;
-  }
 
   .app-row {
     display: inline-flex;

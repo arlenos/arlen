@@ -188,7 +188,7 @@
         id="kg-max-depth"
       >
         {#snippet control()}
-          <NumberInput value={maxDepth} min={1} max={10} onchange={setMaxDepth} />
+          <NumberInput width="var(--width-row-control, 200px)" value={maxDepth} min={1} max={10} onchange={setMaxDepth} />
         {/snippet}
       </Row>
       <Row
@@ -197,7 +197,7 @@
         id="kg-promote"
       >
         {#snippet control()}
-          <NumberInput value={promoteThreshold} min={1} max={20} onchange={setPromoteThreshold} />
+          <NumberInput width="var(--width-row-control, 200px)" value={promoteThreshold} min={1} max={20} onchange={setPromoteThreshold} />
         {/snippet}
       </Row>
       {#if projectDirty}

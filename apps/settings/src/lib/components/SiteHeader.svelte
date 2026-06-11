@@ -10,7 +10,13 @@
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { ChevronRight } from "lucide-svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { readable } from "svelte/store";
   import { windowMode } from "@arlen/tauri-plugin-menu";
+  import { tauriAvailable } from "$lib/tauri";
+
+  // Subscribing to the plugin store registers a Tauri event listener, which
+  // throws without the runtime; standalone behaves like a floating window.
+  const mode = tauriAvailable ? windowMode : readable("floating");
 
   function isInteractive(e: Event): boolean {
     const target = e.target as HTMLElement | null;
@@ -68,5 +74,5 @@
 
   <!-- Minimizing a tiled surface breaks the layout in the tiling WM, so the
        button hides while the compositor reports the window as tiled. -->
-  <WindowButtons showMinimize={$windowMode !== "tiled"} />
+  <WindowButtons showMinimize={$mode !== "tiled"} />
 </header>

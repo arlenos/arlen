@@ -225,19 +225,18 @@
             value={provider}
             options={PROVIDERS}
             ariaLabel="AI model provider"
-            width="180px"
             onchange={setProvider}
           />
         {/snippet}
       </Row>
       <Row label="Model" description="Model identifier the provider serves (blank uses the default)." id="ai-model">
         {#snippet control()}
-          <Input value={model} placeholder="llama3:8b" oninput={(e) => setModel(e.currentTarget.value)} />
+          <Input class="row-control" value={model} placeholder="llama3:8b" oninput={(e) => setModel(e.currentTarget.value)} />
         {/snippet}
       </Row>
       <Row label="Context window" description="How much text the model can take in at once, in tokens." id="ai-context-window">
         {#snippet control()}
-          <NumberInput value={contextWindow} min={2048} max={131072} step={1024} unit="tok" onchange={setContextWindow} />
+          <NumberInput width="var(--width-row-control, 200px)" value={contextWindow} min={2048} max={131072} step={1024} unit="tok" onchange={setContextWindow} />
         {/snippet}
       </Row>
       {#if providerRestartPending}

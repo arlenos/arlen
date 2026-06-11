@@ -21,6 +21,7 @@
   } from "$lib/stores/navigation";
   import { theme } from "$lib/stores/theme";
   import { exportSettingsIndex } from "$lib/search/index";
+  import { tauriAvailable } from "$lib/tauri";
 
   let { children } = $props();
 
@@ -55,6 +56,10 @@
   // the in-app breadcrumb in SiteHeader.
   $effect(() => {
     const segments = $breadcrumbs.map((label) => ({ label }));
+    // Without the Tauri runtime `invoke` throws synchronously, which would
+    // kill this effect and the whole layout with it; standalone keeps the
+    // in-app breadcrumb only.
+    if (!tauriAvailable) return;
     invoke("plugin:arlen-menu|set_breadcrumb", {
       segmentsJson: JSON.stringify(segments),
     }).catch(() => {});
@@ -81,6 +86,15 @@
     theme.load();
     document.addEventListener("contextmenu", suppressBrowserContextMenu);
 
+    // Everything below talks to the Tauri runtime; standalone (plain
+    // browser dev, the screenshot loop) renders without window chrome,
+    // config watchers, index export, and CLI deep links.
+    if (!tauriAvailable) {
+      return () => {
+        document.removeEventListener("contextmenu", suppressBrowserContextMenu);
+      };
+    }
+
     // Export the settings search index so Waypointer always has an
     // up-to-date copy at ~/.local/share/arlen/settings-index.json.
     exportSettingsIndex();
@@ -100,7 +114,7 @@
     });
 
     // Deep link navigation from CLI args. The backend stashes them
-    // in a static and we pull them here — guaranteed to run after
+    // in a static and we pull them here, guaranteed to run after
     // mount, so the DOM is ready and no race is possible.
     invoke<{ panel: string; anchor: string | null } | null>(
       "get_launch_args",
