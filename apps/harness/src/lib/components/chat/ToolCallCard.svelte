@@ -54,7 +54,6 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-input);
     background: transparent;
-    cursor: pointer;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
     transition: color var(--duration-fast) var(--ease-out);
   }

@@ -68,7 +68,7 @@
   </div>
 
   {#if !atBottom && $messages.length > 0}
-    <button type="button" class="jump" aria-label="Jump to latest" title="Jump to latest" onclick={() => scrollToBottom()}>
+    <button type="button" class="jump" aria-label="Jump to latest" onclick={() => scrollToBottom()}>
       <ChevronDown size={16} strokeWidth={2} />
     </button>
   {/if}
@@ -113,7 +113,6 @@
     border-radius: var(--radius-full);
     background: var(--color-bg-card);
     color: color-mix(in srgb, var(--foreground) 75%, transparent);
-    cursor: pointer;
     z-index: 5;
     transition:
       background-color var(--duration-fast) var(--ease-out),

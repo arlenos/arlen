@@ -75,7 +75,6 @@
     background: transparent;
     border: 1px solid transparent;
     padding: 0;
-    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;

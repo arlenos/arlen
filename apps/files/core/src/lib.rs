@@ -11,6 +11,7 @@
 //! Tauri-agnostic data core (entries, scoped listing, sorting, the breadcrumb
 //! model, keyboard-selection helpers) shared across hosts.
 
+pub mod ops;
 pub mod selection;
 
 use std::cmp::Ordering;
@@ -104,7 +105,7 @@ pub fn list_dir(dir: &Dir, rel: impl AsRef<Path>) -> io::Result<Vec<FileEntry>> 
 }
 
 /// Classify an entry's `FileType` without following symlinks.
-fn kind_of(file_type: &FileType) -> EntryKind {
+pub(crate) fn kind_of(file_type: &FileType) -> EntryKind {
     if file_type.is_symlink() {
         EntryKind::Symlink
     } else if file_type.is_dir() {

@@ -44,7 +44,6 @@
       class="wb-btn"
       onclick={minimize}
       aria-label="Minimize"
-      title="Minimize"
     >
       <Minus size={12} strokeWidth={2} />
     </button>
@@ -55,7 +54,6 @@
       class="wb-btn"
       onclick={toggleMaximize}
       aria-label="Maximize"
-      title="Maximize"
     >
       <Square size={10} strokeWidth={2} />
     </button>
@@ -65,7 +63,6 @@
     class="wb-btn wb-close"
     onclick={close}
     aria-label="Close"
-    title="Close"
   >
     <X size={12} strokeWidth={2} />
   </button>
@@ -87,7 +84,6 @@
     background: transparent;
     color: var(--color-fg-secondary);
     border-radius: var(--radius-input);
-    cursor: pointer;
     transition:
       background-color var(--duration-fast) var(--ease-out),
       color var(--duration-fast) var(--ease-out);

@@ -228,9 +228,6 @@
     min-height: 32px;
     transition: background-color 100ms ease;
   }
-  .qs-tile-strip.is-interactive {
-    cursor: pointer;
-  }
   .qs-tile-strip.is-interactive:hover {
     background: color-mix(in srgb, var(--color-fg-shell) 14%, transparent);
   }

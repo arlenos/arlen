@@ -103,7 +103,6 @@
     border: none;
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    cursor: pointer;
     font-size: 0.875rem;
     line-height: 1;
     padding: 0 2px;

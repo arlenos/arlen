@@ -71,7 +71,6 @@
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     border-radius: var(--radius-chip);
-    cursor: pointer;
   }
   .chip-x:hover {
     color: var(--foreground);

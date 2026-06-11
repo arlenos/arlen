@@ -102,9 +102,6 @@
   .status-badge.has-label {
     padding-right: 8px;
   }
-  button.status-badge {
-    cursor: pointer;
-  }
   button.status-badge:hover {
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
   }

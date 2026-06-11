@@ -13,6 +13,7 @@
   import { ArrowUp, File as FileIcon, Folder, Paperclip } from "@lucide/svelte";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import IconAction from "$lib/components/IconAction.svelte";
   import ContextChips from "./ContextChips.svelte";
   import {
     activeSessionId,
@@ -53,6 +54,9 @@
       draftSession = id;
       draft = id ? getDraft(id) : "";
       hist = { index: null, saved: "" };
+      // Switching chats puts the caret where typing continues, like any
+      // desktop chat client.
+      if (!disabled) textareaRef?.focus();
     }
   });
   function onInput() {
@@ -271,16 +275,9 @@
       onkeydown={onKeydown}
     />
     <div class="composer-foot">
-      <button
-        type="button"
-        class="attach"
-        title="Attach a file"
-        aria-label="Attach a file"
-        disabled={disabled || $busy}
-        onclick={openPicker}
-      >
+      <IconAction label="Attach a file" size="control" disabled={disabled || $busy} onclick={openPicker}>
         <Paperclip size={14} strokeWidth={2} />
-      </button>
+      </IconAction>
       <Button
         size="icon-sm"
         variant="default"
@@ -333,29 +330,6 @@
     justify-content: space-between;
     padding: 0 0.5rem 0.5rem;
   }
-  .attach {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--height-control, 28px);
-    height: var(--height-control, 28px);
-    border: none;
-    background: transparent;
-    border-radius: var(--radius-button);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    cursor: pointer;
-    transition:
-      background-color var(--duration-fast) var(--ease-out),
-      color var(--duration-fast) var(--ease-out);
-  }
-  .attach:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
-    color: var(--foreground);
-  }
-  .attach:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
   .mention-popover {
     position: absolute;
     bottom: 100%;
@@ -382,7 +356,6 @@
     color: var(--foreground);
     font-size: 0.8125rem;
     text-align: left;
-    cursor: pointer;
     border-radius: var(--radius-chip);
   }
   .mention-item.active {

@@ -160,7 +160,6 @@
     background: transparent;
     border: none;
     color: var(--foreground);
-    cursor: pointer;
     padding: 0;
     transition: background-color 120ms ease;
   }
@@ -175,7 +174,6 @@
 
   .btn:disabled {
     opacity: 0.35;
-    cursor: not-allowed;
   }
 
   .btn + .field {

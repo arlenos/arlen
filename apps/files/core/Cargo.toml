@@ -10,8 +10,13 @@ authors = ["Arlen"]
 [dependencies]
 cap-std = "3"
 serde = { version = "1", features = ["derive"] }
+thiserror = "1"
+percent-encoding = "2"
+libc = "0.2"
+time = { version = "0.3", features = ["formatting", "local-offset"] }
 
 [dev-dependencies]
 tempfile = "3"
+time = { version = "0.3", features = ["macros"] }
 
 [workspace]
