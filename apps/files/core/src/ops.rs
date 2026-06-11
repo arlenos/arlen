@@ -38,12 +38,14 @@
 //! that differs from the intended bytes. The copy itself is byte-faithful and
 //! never panics or escapes; acceptable for an interactive file manager.
 
+use std::ffi::OsString;
 use std::io;
-use std::os::unix::ffi::OsStrExt;
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 
 use cap_std::fs::{Dir, OpenOptions};
-use percent_encoding::{percent_encode, AsciiSet, NON_ALPHANUMERIC};
+use percent_encoding::{percent_decode, percent_encode, AsciiSet, NON_ALPHANUMERIC};
+use std::io::Read as _;
 use std::io::Write as _;
 use time::OffsetDateTime;
 
@@ -159,9 +161,55 @@ pub struct TrashedEntry {
     pub trashed_name: String,
 }
 
+/// The parsed contents of one `<Trash>/info/<name>.trashinfo`: the original
+/// location the entry was deleted from (the recorded `Path=`, percent-DECODED)
+/// and the recorded deletion time.
+///
+/// `original_path` is RECORDED DATA, not a capability target: it is an absolute
+/// path written by whoever trashed the entry (untrusted - a crafted info file
+/// could record `/etc/passwd`). The host uses it to DISPLAY the prior location
+/// and to drive its OWN trust-checked resolution into a [`restore_entry`]
+/// destination capability + relative path; this module never feeds it to a
+/// cap-std method. See [`restore_entry`] for the division.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrashInfo {
+    /// The percent-decoded original absolute path from `Path=`. A `PathBuf`
+    /// (not a `String`) because a trashed name may carry non-UTF-8 bytes that
+    /// percent-decode to a non-UTF-8 path; `OsString`/`PathBuf` is lossless,
+    /// a `String` would not be.
+    pub original_path: PathBuf,
+    /// The recorded `DeletionDate=` verbatim (the spec `YYYY-MM-DDThh:mm:ss`
+    /// local-time string), kept as-is for display/sorting. Not parsed to a
+    /// timestamp here: the Trash UI displays it; turning it into a typed time
+    /// is the host's job if it wants to sort chronologically.
+    pub deletion_date: String,
+}
+
+/// One restorable entry in the trash: the paired `files/<trashed_name>` +
+/// `info/<trashed_name>.trashinfo`, with the recorded original location and
+/// deletion time, for the Trash place/UI ([`list_trash`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrashedItem {
+    /// The shared basename: `<Trash>/files/<trashed_name>` and
+    /// `<Trash>/info/<trashed_name>.trashinfo`. The token the host passes back
+    /// to [`restore_entry`] / a future `delete_from_trash`.
+    pub trashed_name: String,
+    /// The percent-decoded original absolute path (recorded DATA, see
+    /// [`TrashInfo`]).
+    pub original_path: PathBuf,
+    /// The recorded deletion date string (verbatim, see [`TrashInfo`]).
+    pub deletion_date: String,
+}
+
 /// The hard bound on the rename-suffix walk, guarding a pathological directory
 /// where thousands of `(copy N)` names are all taken.
 const MAX_UNIQUE_ATTEMPTS: u32 = 10_000;
+
+/// The hard bound on a `.trashinfo` read ([`read_trashinfo`]). A well-formed
+/// file is three short lines; this generous cap refuses a hostile or corrupt
+/// multi-megabyte `info/*.trashinfo` (oversized fails closed rather than being
+/// truncated and parsed, since a truncated `Path=` is a wrong restore target).
+const MAX_TRASHINFO_BYTES: usize = 64 * 1024;
 
 /// The set of bytes percent-escaped in a `.trashinfo` `Path=` value: everything
 /// non-alphanumeric, then the RFC 3986 unreserved punctuation (`-_.~`) and the
@@ -592,24 +640,47 @@ pub fn move_entry(
         ConflictResolution::UseName(p) => target_rel = p,
         ConflictResolution::Proceed => {}
     }
-    // Fast path: an atomic rename across the two capabilities. `resolve_conflict`
-    // already cleared the collision, so a `Proceed` here is a no-conflict move
-    // or a `Replace` over a file target (which rename overwrites cleanly). A
-    // `Replace` over a NON-EMPTY directory raises ENOTEMPTY/EEXIST; route that,
-    // like a cross-device move, to the merging copy+delete fallback.
-    match src_dir.rename(src, dst_dir, &target_rel) {
-        Ok(()) => return Ok(OpOutcome::Renamed { target: target_rel }),
+    move_resolved(src_dir, src, dst_dir, &target_rel, policy)?;
+    Ok(OpOutcome::Renamed { target: target_rel })
+}
+
+/// Move `src` (under `src_dir`) to an ALREADY-RESOLVED `target` (under
+/// `dst_dir`): the rename-then-cross-fs-copy+delete core shared by
+/// [`move_entry`] (after it derives the target from the source basename) and
+/// [`restore_entry`] (after it resolves the host-chosen exact destination). The
+/// caller has already run [`resolve_conflict`], so `target` is the final path
+/// and no second conflict resolution happens here.
+///
+/// Tries an atomic rename across the two capabilities first (the same-filesystem
+/// O(1) fast path, symlink-correct). If the kernel refuses because the
+/// capabilities are on different filesystems (EXDEV), or because the target is a
+/// non-empty directory to merge (ENOTEMPTY/EEXIST), falls back to copy-into-the-
+/// target then delete-the-source. On a partial copy the source is left intact;
+/// a copy that succeeds but whose source delete fails leaves a duplicate (the
+/// safe failure direction, see [`move_entry`]).
+fn move_resolved(
+    src_dir: &Dir,
+    src: &Path,
+    dst_dir: &Dir,
+    target: &Path,
+    policy: ConflictPolicy,
+) -> OpResult<()> {
+    // Fast path: an atomic rename across the two capabilities. The collision was
+    // already cleared, so a no-conflict move or a `Replace` over a file target
+    // (which rename overwrites cleanly). A `Replace` over a NON-EMPTY directory
+    // raises ENOTEMPTY/EEXIST; route that, like a cross-device move, to the
+    // merging copy+delete fallback.
+    match src_dir.rename(src, dst_dir, target) {
+        Ok(()) => return Ok(()),
         Err(e) if is_cross_device(&e) || is_dir_not_empty(&e) => {
             // fall through to the copy+delete fallback
         }
         Err(e) => return Err(e.into()),
     }
     // Fallback: copy fully into the resolved target, then delete the source.
-    // The copy honours the already-resolved `target_rel` (no second conflict
-    // resolution). On a partial copy the source is left intact.
-    copy_into_target(src_dir, src, dst_dir, &target_rel, policy)?;
+    copy_into_target(src_dir, src, dst_dir, target, policy)?;
     remove_source(src_dir, src)?;
-    Ok(OpOutcome::Renamed { target: target_rel })
+    Ok(())
 }
 
 /// Remove a moved source entry after a successful cross-fs copy: a file/symlink/
@@ -788,6 +859,249 @@ fn format_deletion_date(now: OffsetDateTime) -> String {
         t.minute(),
         t.second(),
     )
+}
+
+/// Read and parse `<Trash>/info/<trashed_name>.trashinfo` (relative to the
+/// `trash_dir` capability) into a [`TrashInfo`]. The `Path=` value is
+/// percent-DECODED into [`TrashInfo::original_path`]; `DeletionDate=` is kept
+/// verbatim. The exact inverse of [`trash_entry`]'s recorded bytes, so a
+/// trash-then-read round-trips the original path.
+///
+/// The recorded `Path=` is RECORDED DATA the host displays/resolves, NEVER a
+/// path this module feeds to a capability (see [`restore_entry`]).
+///
+/// Parsing is defensive and fail-closed: the read is size-bounded
+/// ([`MAX_TRASHINFO_BYTES`]), the `[Trash Info]` group header must be present,
+/// the `Path=` key is required, and a malformed/oversized/duplicate-key/
+/// missing-`Path`/missing-header file is refused as [`OpError::Io`]
+/// (`InvalidData`) rather than guessed at - a half-parsed restore target is
+/// worse than no restore. A missing `DeletionDate=` is tolerated (it only
+/// degrades display) and yields an empty string. A malformed percent escape in
+/// the value decodes leniently (the bytes are data the host re-vets, never a
+/// capability target), so a cosmetically broken escape does not block an
+/// otherwise-restorable entry.
+pub fn read_trashinfo(trash_dir: &Dir, trashed_name: &str) -> OpResult<TrashInfo> {
+    validate_name(trashed_name)?;
+    let info_rel = Path::new("info").join(format!("{trashed_name}.trashinfo"));
+    let file = trash_dir.open(&info_rel)?;
+    // Bound the read: take one byte past the cap so an oversized file is
+    // detected (and refused) instead of truncated and parsed.
+    let mut buf = Vec::new();
+    file.take(MAX_TRASHINFO_BYTES as u64 + 1)
+        .read_to_end(&mut buf)?;
+    if buf.len() > MAX_TRASHINFO_BYTES {
+        return Err(OpError::Io(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "trashinfo too large",
+        )));
+    }
+    parse_trashinfo(&buf)
+}
+
+/// Parse the bytes of a `.trashinfo` key-file (freedesktop subset) into a
+/// [`TrashInfo`]. Pure (no filesystem), so the byte-shape cases are unit-tested
+/// directly. Parses line-oriented over the raw bytes (the keys/header are
+/// ASCII, the `Path=` value is percent-encoded ASCII or `%XX`), so a stray
+/// non-UTF-8 byte in the value fails the value decode, not a blanket UTF-8
+/// check that would reject before the structure is even seen.
+fn parse_trashinfo(bytes: &[u8]) -> OpResult<TrashInfo> {
+    let invalid = |msg: &'static str| OpError::Io(io::Error::new(io::ErrorKind::InvalidData, msg));
+
+    let mut header_seen = false;
+    let mut path_value: Option<Vec<u8>> = None;
+    let mut date_value: Option<String> = None;
+
+    for raw in bytes.split(|&b| b == b'\n') {
+        // Trim a trailing `\r` and surrounding ASCII whitespace.
+        let line = trim_ascii(raw);
+        if line.is_empty() || line.first() == Some(&b'#') {
+            continue;
+        }
+        if line == b"[Trash Info]" {
+            header_seen = true;
+            continue;
+        }
+        // A `key=value` line: split on the first `=`. The key is ASCII.
+        let Some(eq) = line.iter().position(|&b| b == b'=') else {
+            continue;
+        };
+        let key = &line[..eq];
+        let value = &line[eq + 1..];
+        if key == b"Path" {
+            // A duplicate `Path=` is malformed/adversarial (a crafted file could
+            // hide a second value behind the first); fail closed rather than pick.
+            if path_value.is_some() {
+                return Err(invalid("trashinfo has duplicate Path"));
+            }
+            path_value = Some(value.to_vec());
+        } else if key == b"DeletionDate" {
+            if date_value.is_some() {
+                return Err(invalid("trashinfo has duplicate DeletionDate"));
+            }
+            date_value = Some(String::from_utf8_lossy(value).into_owned());
+        }
+    }
+
+    if !header_seen {
+        return Err(invalid("trashinfo missing [Trash Info] header"));
+    }
+    let path_value = path_value.ok_or_else(|| invalid("trashinfo missing Path"))?;
+
+    // Percent-decode the value into a lossless PathBuf. A value with no `%`
+    // round-trips unchanged; a malformed `%` escape is passed through literally
+    // (lenient decode), acceptable because the result is data the host re-vets.
+    let decoded: Vec<u8> = percent_decode(&path_value).collect();
+    let original_path = PathBuf::from(OsString::from_vec(decoded));
+
+    Ok(TrashInfo {
+        original_path,
+        // A missing DeletionDate degrades display only, so tolerate it (Path is
+        // the load-bearing field); empty string when absent.
+        deletion_date: date_value.unwrap_or_default(),
+    })
+}
+
+/// Trim leading and trailing ASCII whitespace (including a trailing `\r`) from a
+/// byte line, without allocating.
+fn trim_ascii(mut b: &[u8]) -> &[u8] {
+    while let [first, rest @ ..] = b {
+        if first.is_ascii_whitespace() {
+            b = rest;
+        } else {
+            break;
+        }
+    }
+    while let [rest @ .., last] = b {
+        if last.is_ascii_whitespace() {
+            b = rest;
+        } else {
+            break;
+        }
+    }
+    b
+}
+
+/// Enumerate the home-trash: every `<Trash>/info/*.trashinfo` paired with its
+/// `<Trash>/files/<name>` entry, as [`TrashedItem`]s for the Trash place/UI.
+///
+/// An info file with no matching `files/` entry (a half-state orphan), a
+/// `files/` entry with no info (untracked), a non-`.trashinfo` name, a
+/// non-UTF-8 name, or a malformed/unreadable info file is SKIPPED, not reported
+/// and not an error: `list_trash` returns only well-paired, parseable items, so
+/// the UI never shows a half-entry it cannot restore. The order is unspecified
+/// (the host sorts, e.g. by deletion date). A future "clean trash" maintenance
+/// op could surface the skipped half-states; out of scope here.
+///
+/// The only error returned is [`OpError::Io`] when `info/` itself cannot be
+/// opened (e.g. an uninitialised trash); per-entry problems are skips.
+pub fn list_trash(trash_dir: &Dir) -> OpResult<Vec<TrashedItem>> {
+    let mut items = Vec::new();
+    for entry in trash_dir.read_dir("info")? {
+        let Ok(entry) = entry else { continue };
+        // The name must be valid UTF-8 (it becomes the `String` restore token)
+        // and end in `.trashinfo`; anything else is skipped.
+        let Ok(file_name) = entry.file_name().into_string() else {
+            continue;
+        };
+        let Some(trashed_name) = file_name.strip_suffix(".trashinfo") else {
+            continue;
+        };
+        if trashed_name.is_empty() {
+            continue;
+        }
+        // The matching `files/<trashed_name>` must exist (a dangling-symlink
+        // entry still counts, so it is listed and restorable as a link). An
+        // orphan info (no files entry) is skipped.
+        let files_rel = Path::new("files").join(trashed_name);
+        if !exists_no_follow(trash_dir, &files_rel) {
+            continue;
+        }
+        // A malformed/unreadable info file is skipped, not an error.
+        let Ok(info) = read_trashinfo(trash_dir, trashed_name) else {
+            continue;
+        };
+        items.push(TrashedItem {
+            trashed_name: trashed_name.to_string(),
+            original_path: info.original_path,
+            deletion_date: info.deletion_date,
+        });
+    }
+    Ok(items)
+}
+
+/// Restore a trashed entry: move `<Trash>/files/<trashed_name>` to
+/// `dest_dir`/`dest_rel` (the host-resolved destination), then remove BOTH the
+/// `files/` entry and the matching `info/<trashed_name>.trashinfo` on success.
+/// The inverse of [`trash_entry`].
+///
+/// PATH-SAFETY (the central rule): the destination is decided by the HOST and
+/// passed as a `dest_dir` capability + a `dest_rel` path RELATIVE to it. This
+/// function NEVER reads the `.trashinfo`'s recorded original path to drive the
+/// write - that path is untrusted recorded data (a crafted info file could
+/// record `/etc/passwd`, and `info/` is writable by anything with the trash
+/// capability). The host calls [`read_trashinfo`] to learn the original
+/// location, applies its own trust policy to choose a legitimate restore root,
+/// and hands this function the capability + relative path; cap-std then refuses
+/// any `..`/absolute/escaping `dest_rel` at the syscall ([`OpError::Io`]). The
+/// capability is the authority. This is where the module-header invariant ("the
+/// only absolute path this module handles is recorded text, never handed to a
+/// capability") pays off: the recorded path leaves via [`read_trashinfo`] as
+/// data, full stop.
+///
+/// Conflict handling reuses the move path: if `dest_rel` already exists,
+/// `policy` decides it (the Skip/Replace/Rename/Fail cases), via the same
+/// [`resolve_conflict`] and move-resolved logic as every other op; the returned
+/// [`OpOutcome::Renamed`] carries the FINAL destination-relative path (which
+/// differs from `dest_rel` under `Rename`). A [`ConflictPolicy::Skip`] returns
+/// [`OpOutcome::Skipped`] and leaves the trash pair INTACT (only a successful
+/// move removes the pair). Restore never returns [`OpOutcome::Created`]: it is a
+/// move.
+///
+/// Ordering / crash-safety: the `files/` entry is MOVED OUT first (the
+/// committing step); only then is the `.trashinfo` removed (cleanup that may
+/// safely lag). A crash between the two leaves the entry restored and an ORPHAN
+/// `.trashinfo` (which [`list_trash`] skips), never a removed info with the
+/// entry still trapped in the trash. The `.trashinfo` removal is best-effort
+/// with respect to the OUTCOME: the entry is already restored, so a failure to
+/// delete the info does not fail the restore (the leftover is a harmless orphan
+/// a maintenance pass sweeps). This mirrors [`trash_entry`]'s inverse ordering
+/// (reserve info first, move second, roll back info on move failure).
+///
+/// Cross-filesystem: the move reuses the same-fs-rename / cross-fs-copy+delete
+/// fallback as [`move_entry`], so a restore from a trash on one filesystem to a
+/// destination on another works and is symlink-correct (a trashed link restores
+/// as the link).
+pub fn restore_entry(
+    trash_dir: &Dir,
+    trashed_name: &str,
+    dest_dir: &Dir,
+    dest_rel: &Path,
+    policy: ConflictPolicy,
+) -> OpResult<OpOutcome> {
+    validate_name(trashed_name)?;
+    let files_rel = Path::new("files").join(trashed_name);
+    let info_rel = Path::new("info").join(format!("{trashed_name}.trashinfo"));
+
+    // Resolve the conflict against the HOST-CHOSEN exact destination (not the
+    // trashed basename): restore must honour `dest_rel` so a `doc (copy).txt`
+    // trapped in the trash can land back as its original `doc.txt`.
+    let target = match resolve_conflict(dest_dir, dest_rel, policy)? {
+        ConflictResolution::Skip => return Ok(OpOutcome::Skipped),
+        ConflictResolution::UseName(p) => p,
+        ConflictResolution::Proceed => dest_rel.to_path_buf(),
+    };
+
+    // Move the files entry out FIRST (the committing step). cap-std confines the
+    // write to `dest_dir`, so an escaping `dest_rel`/`target` is refused here,
+    // before any info removal, leaving the trash pair intact.
+    move_resolved(trash_dir, &files_rel, dest_dir, &target, policy)?;
+
+    // The entry is restored; remove the now-orphan `.trashinfo`. Best-effort:
+    // a failure here must NOT fail a completed restore (a leftover info is the
+    // orphan `list_trash` skips, swept by a maintenance pass).
+    let _ = trash_dir.remove_file(&info_rel);
+
+    Ok(OpOutcome::Renamed { target })
 }
 
 #[cfg(test)]
@@ -1507,5 +1821,499 @@ mod tests {
             0,
             "no orphan info from the refused trashes"
         );
+    }
+
+    // ---- read_trashinfo / list_trash / restore_entry ----------------------
+
+    #[test]
+    fn read_trashinfo_round_trips_trash_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_root = tmp.path().join("home");
+        fs::create_dir(&src_root).unwrap();
+        fs::write(src_root.join("doc.txt"), b"C").unwrap();
+        let src_dir = cap(&src_root);
+        let trash_dir = make_trash(tmp.path());
+        trash_entry_at(
+            &src_dir,
+            "doc.txt",
+            &trash_dir,
+            Path::new("/home/u/my docs/doc.txt"),
+            fixed_now(),
+        )
+        .unwrap();
+
+        let info = read_trashinfo(&trash_dir, "doc.txt").unwrap();
+        // The %20 was decoded back to a space; the date is verbatim.
+        assert_eq!(info.original_path, PathBuf::from("/home/u/my docs/doc.txt"));
+        assert_eq!(info.deletion_date, "2026-06-11T14:03:09");
+    }
+
+    #[test]
+    fn read_trashinfo_decodes_nonascii_and_percent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_root = tmp.path().join("home");
+        fs::create_dir(&src_root).unwrap();
+        fs::write(src_root.join("café.txt"), b"C").unwrap();
+        let src_dir = cap(&src_root);
+        let trash_dir = make_trash(tmp.path());
+        let original = Path::new("/home/u/100%/café.txt");
+        let out = trash_entry_at(&src_dir, "café.txt", &trash_dir, original, fixed_now()).unwrap();
+
+        let info = read_trashinfo(&trash_dir, &out.trashed_name).unwrap();
+        // The exact inverse of the percent-encode: %25 -> %, %C3%A9 -> é bytes.
+        assert_eq!(info.original_path, original.to_path_buf());
+    }
+
+    #[test]
+    fn parse_trashinfo_tolerates_key_ordering() {
+        let bytes = b"# a leading comment\n\n[Trash Info]\nDeletionDate=2026-01-02T03:04:05\nPath=/home/u/x.txt\n\n";
+        let info = parse_trashinfo(bytes).unwrap();
+        assert_eq!(info.original_path, PathBuf::from("/home/u/x.txt"));
+        assert_eq!(info.deletion_date, "2026-01-02T03:04:05");
+    }
+
+    #[test]
+    fn parse_trashinfo_path_with_no_encoding() {
+        let info = parse_trashinfo(b"[Trash Info]\nPath=/home/u/plain.txt\n").unwrap();
+        assert_eq!(info.original_path, PathBuf::from("/home/u/plain.txt"));
+    }
+
+    #[test]
+    fn parse_trashinfo_missing_path_fails_closed() {
+        let err = parse_trashinfo(b"[Trash Info]\nDeletionDate=2026-01-02T03:04:05\n");
+        assert!(matches!(err, Err(OpError::Io(_))), "missing Path is refused");
+    }
+
+    #[test]
+    fn parse_trashinfo_missing_header_fails_closed() {
+        let err = parse_trashinfo(b"Path=/x\nDeletionDate=2026-01-02T03:04:05\n");
+        assert!(matches!(err, Err(OpError::Io(_))), "missing header is refused");
+    }
+
+    #[test]
+    fn parse_trashinfo_duplicate_path_fails_closed() {
+        let bytes = b"[Trash Info]\nPath=/home/u/benign.txt\nPath=/etc/passwd\n";
+        let err = parse_trashinfo(bytes);
+        assert!(
+            matches!(err, Err(OpError::Io(_))),
+            "a duplicate Path is refused, not last-wins-spoofed"
+        );
+    }
+
+    #[test]
+    fn parse_trashinfo_missing_date_is_tolerated() {
+        let info = parse_trashinfo(b"[Trash Info]\nPath=/home/u/x.txt\n").unwrap();
+        assert_eq!(info.original_path, PathBuf::from("/home/u/x.txt"));
+        assert_eq!(info.deletion_date, "", "missing DeletionDate -> empty string");
+    }
+
+    #[test]
+    fn read_trashinfo_oversized_fails_closed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let trash_dir = make_trash(tmp.path());
+        // Write an info file larger than the bound.
+        let mut bytes = b"[Trash Info]\nPath=/home/u/x.txt\nDeletionDate=2026-01-02T03:04:05\n".to_vec();
+        bytes.extend(std::iter::repeat_n(b'#', MAX_TRASHINFO_BYTES + 1024));
+        fs::write(tmp.path().join("Trash/info/big.trashinfo"), &bytes).unwrap();
+        let err = read_trashinfo(&trash_dir, "big");
+        assert!(
+            matches!(err, Err(OpError::Io(_))),
+            "an oversized trashinfo is refused, not truncated and parsed"
+        );
+    }
+
+    #[test]
+    fn parse_trashinfo_non_utf8_value_decodes_to_pathbuf() {
+        // %FF decodes to the raw byte 0xFF, which is not valid UTF-8: the
+        // PathBuf must carry it losslessly (proving OsString::from_vec, not a
+        // lossy String).
+        let info = parse_trashinfo(b"[Trash Info]\nPath=/x/%FF\n").unwrap();
+        let expected = PathBuf::from(OsString::from_vec(vec![b'/', b'x', b'/', 0xFF]));
+        assert_eq!(info.original_path, expected);
+        // The raw byte survived (the path is not representable as UTF-8).
+        assert!(info.original_path.to_str().is_none(), "the path is non-UTF-8");
+    }
+
+    /// Trash a real file from `src_root` and return its trashed name.
+    fn trash_one(tmp: &Path, src_root: &Path, trash_dir: &Dir, name: &str, original: &str) -> String {
+        fs::write(src_root.join(name), b"C").unwrap();
+        let _ = tmp; // the trash lives under tmp via trash_dir
+        let src_dir = cap(src_root);
+        trash_entry_at(&src_dir, name, trash_dir, Path::new(original), fixed_now())
+            .unwrap()
+            .trashed_name
+    }
+
+    #[test]
+    fn list_trash_pairs_entries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_root = tmp.path().join("home");
+        fs::create_dir(&src_root).unwrap();
+        let trash_dir = make_trash(tmp.path());
+        trash_one(tmp.path(), &src_root, &trash_dir, "a.txt", "/home/u/a.txt");
+        trash_one(tmp.path(), &src_root, &trash_dir, "b.txt", "/home/u/b.txt");
+
+        let mut items = list_trash(&trash_dir).unwrap();
+        items.sort_by(|x, y| x.trashed_name.cmp(&y.trashed_name));
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].trashed_name, "a.txt");
+        assert_eq!(items[0].original_path, PathBuf::from("/home/u/a.txt"));
+        assert_eq!(items[0].deletion_date, "2026-06-11T14:03:09");
+        assert_eq!(items[1].trashed_name, "b.txt");
+        assert_eq!(items[1].original_path, PathBuf::from("/home/u/b.txt"));
+    }
+
+    #[test]
+    fn list_trash_skips_orphan_info() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_root = tmp.path().join("home");
+        fs::create_dir(&src_root).unwrap();
+        let trash_dir = make_trash(tmp.path());
+        // A real, well-paired entry...
+        trash_one(tmp.path(), &src_root, &trash_dir, "real.txt", "/home/u/real.txt");
+        // ...and an orphan info with NO matching files/ entry.
+        fs::write(
+            tmp.path().join("Trash/info/ghost.txt.trashinfo"),
+            b"[Trash Info]\nPath=/home/u/ghost.txt\nDeletionDate=2026-01-02T03:04:05\n",
+        )
+        .unwrap();
+
+        let items = list_trash(&trash_dir).unwrap();
+        assert_eq!(items.len(), 1, "only the well-paired entry is listed");
+        assert_eq!(items[0].trashed_name, "real.txt");
+    }
+
+    #[test]
+    fn list_trash_skips_orphan_files_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let trash_dir = make_trash(tmp.path());
+        // A files/ entry with no info/ pairing: enumeration is info-driven, so it
+        // is never listed.
+        fs::write(tmp.path().join("Trash/files/x"), b"X").unwrap();
+        let items = list_trash(&trash_dir).unwrap();
+        assert!(items.is_empty(), "an untracked files/ entry is not listed");
+    }
+
+    #[test]
+    fn list_trash_skips_malformed_info() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_root = tmp.path().join("home");
+        fs::create_dir(&src_root).unwrap();
+        let trash_dir = make_trash(tmp.path());
+        // A valid, well-paired entry survives the listing...
+        trash_one(tmp.path(), &src_root, &trash_dir, "ok.txt", "/home/u/ok.txt");
+        // ...a malformed info (missing Path) paired with a files/ entry is skipped.
+        fs::write(tmp.path().join("Trash/files/m"), b"M").unwrap();
+        fs::write(
+            tmp.path().join("Trash/info/m.trashinfo"),
+            b"[Trash Info]\nDeletionDate=2026-01-02T03:04:05\n",
+        )
+        .unwrap();
+
+        let items = list_trash(&trash_dir).unwrap();
+        assert_eq!(items.len(), 1, "the malformed entry is skipped");
+        assert_eq!(items[0].trashed_name, "ok.txt");
+    }
+
+    #[test]
+    fn list_trash_empty_is_ok() {
+        let tmp = tempfile::tempdir().unwrap();
+        let trash_dir = make_trash(tmp.path());
+        assert_eq!(list_trash(&trash_dir).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn restore_round_trips_a_file_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_root = tmp.path().join("home");
+        fs::create_dir(&src_root).unwrap();
+        fs::write(src_root.join("doc.txt"), b"CONTENT").unwrap();
+        let src_dir = cap(&src_root);
+        let trash_dir = make_trash(tmp.path());
+        trash_entry_at(&src_dir, "doc.txt", &trash_dir, Path::new("/home/u/doc.txt"), fixed_now())
+            .unwrap();
+
+        // The host chose `dest_dir` = the home root and `dest_rel` = doc.txt.
+        let dest_dir = cap(&src_root);
+        let out = restore_entry(
+            &trash_dir,
+            "doc.txt",
+            &dest_dir,
+            Path::new("doc.txt"),
+            ConflictPolicy::Fail,
+        )
+        .unwrap();
+        assert_eq!(out, OpOutcome::Renamed { target: PathBuf::from("doc.txt") });
+        assert_eq!(read(&src_root.join("doc.txt")), b"CONTENT", "restored with its bytes");
+        // BOTH trash sides are gone.
+        assert!(!tmp.path().join("Trash/files/doc.txt").exists(), "files entry removed");
+        assert!(
+            !tmp.path().join("Trash/info/doc.txt.trashinfo").exists(),
+            "trashinfo removed"
+        );
+    }
+
+    #[test]
+    fn restore_to_a_different_name_than_the_trashed_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_root = tmp.path().join("home");
+        fs::create_dir(&src_root).unwrap();
+        fs::write(src_root.join("doc.txt"), b"SECOND").unwrap();
+        let src_dir = cap(&src_root);
+        let trash_dir = make_trash(tmp.path());
+        // Pre-occupy `doc.txt` in the trash so the new one is suffixed.
+        fs::write(tmp.path().join("Trash/files/doc.txt"), b"FIRST").unwrap();
+        fs::write(tmp.path().join("Trash/info/doc.txt.trashinfo"), b"[Trash Info]\n").unwrap();
+        let out = trash_entry_at(
+            &src_dir,
+            "doc.txt",
+            &trash_dir,
+            Path::new("/home/u/doc.txt"),
+            fixed_now(),
+        )
+        .unwrap();
+        assert_eq!(out.trashed_name, "doc (copy).txt");
+
+        // Restore the suffixed entry back to its original name `doc.txt`.
+        fs::create_dir(tmp.path().join("restored")).unwrap();
+        let dest_dir = cap(&tmp.path().join("restored"));
+        let result = restore_entry(
+            &trash_dir,
+            "doc (copy).txt",
+            &dest_dir,
+            Path::new("doc.txt"),
+            ConflictPolicy::Fail,
+        )
+        .unwrap();
+        assert_eq!(result, OpOutcome::Renamed { target: PathBuf::from("doc.txt") });
+        // It landed under the host-chosen name, not the trashed `(copy)` name.
+        assert_eq!(read(&tmp.path().join("restored/doc.txt")), b"SECOND");
+        assert!(!tmp.path().join("Trash/files/doc (copy).txt").exists());
+        assert!(!tmp.path().join("Trash/info/doc (copy).txt.trashinfo").exists());
+    }
+
+    #[test]
+    fn restore_is_conflict_aware_rename() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_root = tmp.path().join("home");
+        fs::create_dir(&src_root).unwrap();
+        fs::write(src_root.join("doc.txt"), b"TRASHED").unwrap();
+        let src_dir = cap(&src_root);
+        let trash_dir = make_trash(tmp.path());
+        trash_entry_at(&src_dir, "doc.txt", &trash_dir, Path::new("/home/u/doc.txt"), fixed_now())
+            .unwrap();
+        // The destination already has a doc.txt.
+        let dest_dir = cap(&src_root);
+        fs::write(src_root.join("doc.txt"), b"EXISTING").unwrap();
+
+        let out = restore_entry(
+            &trash_dir,
+            "doc.txt",
+            &dest_dir,
+            Path::new("doc.txt"),
+            ConflictPolicy::Rename,
+        )
+        .unwrap();
+        assert_eq!(out, OpOutcome::Renamed { target: PathBuf::from("doc (copy).txt") });
+        assert_eq!(read(&src_root.join("doc.txt")), b"EXISTING", "the existing file is kept");
+        assert_eq!(read(&src_root.join("doc (copy).txt")), b"TRASHED");
+        // The trash pair was removed (a successful move).
+        assert!(!tmp.path().join("Trash/files/doc.txt").exists());
+        assert!(!tmp.path().join("Trash/info/doc.txt.trashinfo").exists());
+    }
+
+    #[test]
+    fn restore_is_conflict_aware_skip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_root = tmp.path().join("home");
+        fs::create_dir(&src_root).unwrap();
+        fs::write(src_root.join("doc.txt"), b"TRASHED").unwrap();
+        let src_dir = cap(&src_root);
+        let trash_dir = make_trash(tmp.path());
+        trash_entry_at(&src_dir, "doc.txt", &trash_dir, Path::new("/home/u/doc.txt"), fixed_now())
+            .unwrap();
+        let dest_dir = cap(&src_root);
+        fs::write(src_root.join("doc.txt"), b"EXISTING").unwrap();
+
+        let out = restore_entry(
+            &trash_dir,
+            "doc.txt",
+            &dest_dir,
+            Path::new("doc.txt"),
+            ConflictPolicy::Skip,
+        )
+        .unwrap();
+        assert_eq!(out, OpOutcome::Skipped);
+        assert_eq!(read(&src_root.join("doc.txt")), b"EXISTING", "destination untouched");
+        // A skipped restore did NOT move the entry, so the trash pair stays INTACT.
+        assert_eq!(read(&tmp.path().join("Trash/files/doc.txt")), b"TRASHED");
+        assert!(tmp.path().join("Trash/info/doc.txt.trashinfo").exists());
+    }
+
+    #[test]
+    fn restore_is_conflict_aware_fail() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_root = tmp.path().join("home");
+        fs::create_dir(&src_root).unwrap();
+        fs::write(src_root.join("doc.txt"), b"TRASHED").unwrap();
+        let src_dir = cap(&src_root);
+        let trash_dir = make_trash(tmp.path());
+        trash_entry_at(&src_dir, "doc.txt", &trash_dir, Path::new("/home/u/doc.txt"), fixed_now())
+            .unwrap();
+        let dest_dir = cap(&src_root);
+        fs::write(src_root.join("doc.txt"), b"EXISTING").unwrap();
+
+        let err = restore_entry(
+            &trash_dir,
+            "doc.txt",
+            &dest_dir,
+            Path::new("doc.txt"),
+            ConflictPolicy::Fail,
+        );
+        assert!(matches!(err, Err(OpError::AlreadyExists { .. })));
+        assert_eq!(read(&src_root.join("doc.txt")), b"EXISTING", "destination untouched");
+        // The trash pair is intact (the move never happened).
+        assert_eq!(read(&tmp.path().join("Trash/files/doc.txt")), b"TRASHED");
+        assert!(tmp.path().join("Trash/info/doc.txt.trashinfo").exists());
+    }
+
+    #[test]
+    fn restore_refuses_a_dest_rel_escape() {
+        // The cap-std floor: the untrusted recorded path can NEVER become an
+        // arbitrary write, because restore only ever moves into the host's
+        // capability + relative path. A `..` or absolute `dest_rel` is refused
+        // by cap-std, before the info removal, leaving the trash pair intact.
+        let outer = tempfile::tempdir().unwrap();
+        fs::create_dir(outer.path().join("home")).unwrap();
+        fs::write(outer.path().join("home/doc.txt"), b"TRASHED").unwrap();
+        fs::write(outer.path().join("secret"), b"s").unwrap();
+        let src_dir = cap(&outer.path().join("home"));
+        let trash_dir = make_trash(outer.path());
+        trash_entry_at(&src_dir, "doc.txt", &trash_dir, Path::new("/home/u/doc.txt"), fixed_now())
+            .unwrap();
+        // The host capability is the home root; an escaping dest_rel is refused.
+        let dest_dir = cap(&outer.path().join("home"));
+
+        assert!(matches!(
+            restore_entry(
+                &trash_dir,
+                "doc.txt",
+                &dest_dir,
+                Path::new("../escape.txt"),
+                ConflictPolicy::Fail
+            ),
+            Err(OpError::Io(_))
+        ));
+        assert!(matches!(
+            restore_entry(
+                &trash_dir,
+                "doc.txt",
+                &dest_dir,
+                Path::new("/etc/evil"),
+                ConflictPolicy::Fail
+            ),
+            Err(OpError::Io(_))
+        ));
+        // Nothing written outside the dest root...
+        assert!(!outer.path().join("escape.txt").exists());
+        assert!(!outer.path().join("home/../escape.txt").exists());
+        assert_eq!(read(&outer.path().join("secret")), b"s", "outside file untouched");
+        // ...and the trash pair is left intact (the move was refused before the
+        // info removal).
+        assert_eq!(read(&outer.path().join("Trash/files/doc.txt")), b"TRASHED");
+        assert!(outer.path().join("Trash/info/doc.txt.trashinfo").exists());
+    }
+
+    #[test]
+    fn restore_does_not_follow_symlink() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_root = tmp.path().join("home");
+        fs::create_dir(&src_root).unwrap();
+        fs::write(src_root.join("target.txt"), b"KEEP").unwrap();
+        std::os::unix::fs::symlink("target.txt", src_root.join("link")).unwrap();
+        let src_dir = cap(&src_root);
+        let trash_dir = make_trash(tmp.path());
+        // The link is trashed as a link (per trash_does_not_follow_symlink).
+        trash_entry_at(&src_dir, "link", &trash_dir, Path::new("/home/u/link"), fixed_now())
+            .unwrap();
+
+        fs::create_dir(tmp.path().join("restored")).unwrap();
+        let dest_dir = cap(&tmp.path().join("restored"));
+        restore_entry(
+            &trash_dir,
+            "link",
+            &dest_dir,
+            Path::new("link"),
+            ConflictPolicy::Fail,
+        )
+        .unwrap();
+        // The restored entry is a symlink with the same raw target.
+        let md = fs::symlink_metadata(tmp.path().join("restored/link")).unwrap();
+        assert!(md.file_type().is_symlink(), "restored as the link, not the target");
+        assert_eq!(
+            fs::read_link(tmp.path().join("restored/link")).unwrap(),
+            PathBuf::from("target.txt")
+        );
+        // The link's target file is untouched.
+        assert_eq!(read(&src_root.join("target.txt")), b"KEEP");
+    }
+
+    #[test]
+    fn restore_cross_fs_via_copy_into_target_then_delete() {
+        // A real EXDEV is not portably forced in CI, so exercise the building
+        // blocks the restore path uses on the cross-fs/merge fallback: copy from
+        // files/ into the exact dest, remove the files/ source, remove the info.
+        let tmp = tempfile::tempdir().unwrap();
+        let src_root = tmp.path().join("home");
+        fs::create_dir(&src_root).unwrap();
+        fs::write(src_root.join("doc.txt"), b"X").unwrap();
+        let src_dir = cap(&src_root);
+        let trash_dir = make_trash(tmp.path());
+        trash_entry_at(&src_dir, "doc.txt", &trash_dir, Path::new("/home/u/doc.txt"), fixed_now())
+            .unwrap();
+
+        fs::create_dir(tmp.path().join("restored")).unwrap();
+        let dest_dir = cap(&tmp.path().join("restored"));
+        copy_into_target(
+            &trash_dir,
+            Path::new("files/doc.txt"),
+            &dest_dir,
+            Path::new("doc.txt"),
+            ConflictPolicy::Fail,
+        )
+        .unwrap();
+        remove_source(&trash_dir, Path::new("files/doc.txt")).unwrap();
+        trash_dir.remove_file("info/doc.txt.trashinfo").unwrap();
+        assert_eq!(read(&tmp.path().join("restored/doc.txt")), b"X");
+        assert!(!tmp.path().join("Trash/files/doc.txt").exists());
+        assert!(!tmp.path().join("Trash/info/doc.txt.trashinfo").exists());
+    }
+
+    #[test]
+    fn restore_of_a_nonexistent_trashed_name_fails_and_leaves_trash_unchanged() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_root = tmp.path().join("home");
+        fs::create_dir(&src_root).unwrap();
+        fs::write(src_root.join("real.txt"), b"R").unwrap();
+        let src_dir = cap(&src_root);
+        let trash_dir = make_trash(tmp.path());
+        // An unrelated entry sits in the trash and must be untouched.
+        trash_entry_at(&src_dir, "real.txt", &trash_dir, Path::new("/home/u/real.txt"), fixed_now())
+            .unwrap();
+
+        fs::create_dir(tmp.path().join("restored")).unwrap();
+        let dest_dir = cap(&tmp.path().join("restored"));
+        let err = restore_entry(
+            &trash_dir,
+            "nope.txt",
+            &dest_dir,
+            Path::new("nope.txt"),
+            ConflictPolicy::Fail,
+        );
+        assert!(matches!(err, Err(OpError::Io(_))), "the files/ move ENOENTs");
+        // The info removal never ran (the move failed); the unrelated entry stays.
+        assert_eq!(read(&tmp.path().join("Trash/files/real.txt")), b"R");
+        assert!(tmp.path().join("Trash/info/real.txt.trashinfo").exists());
+        assert!(!tmp.path().join("restored/nope.txt").exists());
     }
 }
