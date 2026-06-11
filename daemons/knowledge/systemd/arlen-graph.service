@@ -23,6 +23,17 @@ ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=%h/.local/share/arlen
 ReadWritePaths=/run/user/%U/arlen
+# DEPLOYMENT CAVEAT (Phase 10, needs on-host verification): the daemon mounts a
+# FUSE timeline at ~/.timeline (DEFAULT_TIMELINE_MOUNT). That conflicts with the
+# hardening above twice over: ProtectHome=read-only makes ~/.timeline read-only
+# (the mount point cannot be created/mounted), AND ProtectSystem/ProtectHome put
+# this unit in a private mount namespace, so a FUSE mount made here is not
+# visible to the user's session. Making the timeline usable under this unit
+# likely needs ~/.timeline in ReadWritePaths plus mount propagation
+# (PrivateMounts=no / a shared MountFlags), or relaxing ProtectHome for the
+# mount point. Set ARLEN_TIMELINE_MOUNT to a ReadWritePaths-covered location
+# meanwhile. The graph/DB/socket paths above are correct; only the FUSE mount is
+# affected.
 
 [Install]
 WantedBy=default.target
