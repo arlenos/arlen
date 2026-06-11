@@ -11,7 +11,7 @@ mod capability;
 use std::path::Path;
 
 use arlen_file_browser_core::{
-    breadcrumb, list_dir, properties, search, sort_entries, Crumb, FileEntry, SortKey,
+    breadcrumb, list_dir, ops, properties, search, sort_entries, Crumb, FileEntry, SortKey,
 };
 use cap_std::ambient_authority;
 use cap_std::fs::Dir;
@@ -180,6 +180,108 @@ fn files_search(path: String, query: String) -> Result<search::SearchOutcome, St
     Ok(search::search(&scope, &opts))
 }
 
+fn conflict_policy(policy: Option<&str>) -> ops::ConflictPolicy {
+    match policy {
+        Some("replace") => ops::ConflictPolicy::Replace,
+        Some("skip") => ops::ConflictPolicy::Skip,
+        Some("rename") => ops::ConflictPolicy::Rename,
+        _ => ops::ConflictPolicy::Fail,
+    }
+}
+
+/// The home trash capability (`~/.local/share/Trash` with `files/` and
+/// `info/`), created on first use per the freedesktop trash spec.
+fn trash_dir() -> Result<Dir, String> {
+    let base = dirs::data_local_dir()
+        .ok_or("no data dir")?
+        .join("Trash");
+    std::fs::create_dir_all(base.join("files")).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(base.join("info")).map_err(|e| e.to_string())?;
+    Dir::open_ambient_dir(&base, ambient_authority()).map_err(|e| e.to_string())
+}
+
+fn split_parent(path: &str) -> Result<(String, String), String> {
+    let p = Path::new(path);
+    let name = p
+        .file_name()
+        .ok_or_else(|| format!("path has no name: {path}"))?
+        .to_string_lossy()
+        .into_owned();
+    let parent = p
+        .parent()
+        .map(|x| x.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "/".to_string());
+    Ok((parent, name))
+}
+
+/// One filesystem mutation (contract: kind, sources, destination).
+/// `policy` is the conflict policy for copy/move ("fail" when absent);
+/// it is a proposed contract extension, flagged, not silently invented.
+#[tauri::command]
+fn files_op(
+    kind: String,
+    src: Vec<String>,
+    dst: Option<String>,
+    policy: Option<String>,
+) -> Result<(), String> {
+    let dir = root()?;
+    let pol = conflict_policy(policy.as_deref());
+    match kind.as_str() {
+        "new_folder" => {
+            let parent = dst.ok_or("new_folder needs the destination folder")?;
+            let name = src.first().ok_or("new_folder needs a name")?;
+            ops::new_folder(&dir, rel(&parent), name)
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        }
+        "rename" => {
+            let from = src.first().ok_or("rename needs a source")?;
+            let to = dst.ok_or("rename needs the new name")?;
+            let (parent, from_name) = split_parent(from)?;
+            ops::rename(&dir, rel(&parent), &from_name, &to)
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        }
+        "trash" => {
+            let trash = trash_dir()?;
+            for s in &src {
+                ops::trash_entry(&dir, rel(s), &trash, Path::new(s))
+                    .map_err(|e| e.to_string())?;
+            }
+            Ok(())
+        }
+        "copy" | "move" => {
+            let dest_dir = dst.ok_or("copy and move need the destination folder")?;
+            for s in &src {
+                let (_, name) = split_parent(s)?;
+                let target = format!("{}/{}", dest_dir.trim_end_matches('/'), name);
+                let r = if kind == "copy" {
+                    ops::copy_entry(&dir, rel(s), &dir, rel(&target), pol)
+                } else {
+                    ops::move_entry(&dir, rel(s), &dir, rel(&target), pol)
+                };
+                r.map(|_| ()).map_err(|e| e.to_string())?;
+            }
+            Ok(())
+        }
+        "duplicate" => {
+            for s in &src {
+                ops::copy_entry(&dir, rel(s), &dir, rel(s), ops::ConflictPolicy::Rename)
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())?;
+            }
+            Ok(())
+        }
+        "delete" => {
+            for s in &src {
+                ops::delete_permanent(&dir, rel(s)).map_err(|e| e.to_string())?;
+            }
+            Ok(())
+        }
+        other => Err(format!("unknown operation: {other}")),
+    }
+}
+
 /// Open a path with the default handler.
 #[tauri::command]
 fn files_open(path: String) -> Result<(), String> {
@@ -229,6 +331,7 @@ pub fn run() {
             files_places,
             files_info,
             files_search,
+            files_op,
             files_open,
             files_projects,
             files_saved_searches,
