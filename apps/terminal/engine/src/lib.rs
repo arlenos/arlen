@@ -214,4 +214,75 @@ mod tests {
             "the emitted OSC 133;A surfaced as PromptStart, got {found:?}"
         );
     }
+
+    /// On-host (needs zsh + a PTY): the FULL mark loop. The engine mints the
+    /// nonce and exports it; the TM-R3 integration script (sourced in the spawned
+    /// zsh) reads it, escapes a command line containing a `;`, and emits the
+    /// nonced 633;E mark; the engine's scanner - holding the SAME nonce - accepts
+    /// it and decodes the command. Proves the producer and consumer agree on the
+    /// nonce, the OSC framing and the escaping. `#[ignore]`d (on-host).
+    #[test]
+    #[ignore]
+    fn the_integration_script_emits_a_nonced_command_mark_the_engine_decodes() {
+        let script = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../integration/arlen-shell-integration.zsh"
+        );
+        // Source the script (defines the emitters using the engine-set nonce),
+        // then invoke the preexec emitter directly with a command that contains a
+        // `;` (the escaping + nonce-field separation is the thing under test).
+        let inner = format!("source {script}; _arlen_term_preexec 'ls -la; echo hi'");
+        let mut eng = PtyEngine::spawn("zsh", &["-c", &inner], None, 80, 24).unwrap();
+
+        let mut found = Vec::new();
+        for _ in 0..100 {
+            found.extend(eng.drain_events());
+            if found
+                .iter()
+                .any(|e| matches!(e, VtEvent::CommandLine { .. }))
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(
+            found.contains(&VtEvent::CommandLine {
+                command: "ls -la; echo hi".into()
+            }),
+            "the script's nonced 633;E decoded to the exact command line, got {found:?}"
+        );
+    }
+
+    /// On-host: a command line containing a BEL (which would otherwise terminate
+    /// the OSC early) is escaped by the script, survives the framing, and the BEL
+    /// byte round-trips back into the decoded command. Guards the framing-safety
+    /// escaping. `#[ignore]`d (on-host).
+    #[test]
+    #[ignore]
+    fn a_command_with_a_control_byte_survives_the_osc_framing() {
+        let script = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../integration/arlen-shell-integration.zsh"
+        );
+        // zsh $'...' turns \a into a literal BEL inside the command line.
+        let inner = format!("source {script}; _arlen_term_preexec $'echo \\a hi'");
+        let mut eng = PtyEngine::spawn("zsh", &["-c", &inner], None, 80, 24).unwrap();
+        let mut found = Vec::new();
+        for _ in 0..100 {
+            found.extend(eng.drain_events());
+            if found
+                .iter()
+                .any(|e| matches!(e, VtEvent::CommandLine { .. }))
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(
+            found.contains(&VtEvent::CommandLine {
+                command: "echo \u{7} hi".into()
+            }),
+            "the BEL-bearing command survived framing and round-tripped, got {found:?}"
+        );
+    }
 }
