@@ -11,7 +11,7 @@
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
   import { terminalInput, type Session } from "$lib/contract";
   import { composerPrefill } from "$lib/stores/composer";
-  import CapabilityStrip from "./CapabilityStrip.svelte";
+  import CapabilityIndicator from "./CapabilityIndicator.svelte";
 
   let {
     session,
@@ -102,8 +102,8 @@
       aria-label="Command input"
       onkeydown={onKeydown}
     />
+    <CapabilityIndicator />
   </div>
-  <CapabilityStrip />
 </div>
 
 <style>
