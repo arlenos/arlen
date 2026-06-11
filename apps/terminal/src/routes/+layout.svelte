@@ -17,14 +17,15 @@
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { tauriAvailable } from "$lib/tauri";
   import TerminalSidebar from "$lib/components/TerminalSidebar.svelte";
+  import HistoryPalette from "$lib/components/HistoryPalette.svelte";
   import { newSession } from "$lib/stores/sessions";
-  import { focusHistorySearch } from "$lib/stores/history";
+  import { historyPaletteOpen } from "$lib/stores/history";
 
   let { children } = $props();
 
   // The two global shortcuts (terminal.md §4): Ctrl+T opens a new
-  // session, Ctrl+R goes to the history search. They work from
-  // anywhere, including the composer.
+  // session, Ctrl+R the history palette. They work from anywhere,
+  // including the composer.
   function onWindowKeydown(e: KeyboardEvent) {
     if (!e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
     const key = e.key.toLowerCase();
@@ -33,7 +34,7 @@
       newSession();
     } else if (key === "r") {
       e.preventDefault();
-      focusHistorySearch();
+      historyPaletteOpen.update((open) => !open);
     }
   }
 
@@ -82,3 +83,5 @@
     </div>
   </SidebarInset>
 </SidebarProvider>
+
+<HistoryPalette />

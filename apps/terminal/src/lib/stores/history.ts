@@ -1,7 +1,7 @@
-/// History-search state for the sidebar: the query, the filter set and
-/// the results, all in writable stores (IPC-callback rule). The search
-/// runs against `terminal_history_search`; typing is debounced so every
-/// keystroke does not become a backend call.
+/// History state for the Ctrl+R palette: the query, the filter set
+/// and the results, all in writable stores (IPC-callback rule). The
+/// search runs against `terminal_history_search`; typing is debounced
+/// so every keystroke does not become a backend call.
 
 import { writable, get } from "svelte/store";
 import {
@@ -10,6 +10,9 @@ import {
   type Block,
   type Origin,
 } from "$lib/contract";
+
+/// Whether the history palette is on screen (Ctrl+R toggles it).
+export const historyPaletteOpen = writable(false);
 
 /// The free-text query over past commands.
 export const historyQuery = writable("");
@@ -20,25 +23,24 @@ export const historyOnlyFailures = writable(false);
 /// Filter: only blocks the agent issued.
 export const historyAgentOnly = writable(false);
 
-/// Filter: scope to one project (toggled from the projects group).
+/// Filter: scope to one project (the palette's project chips).
 export const historyProjectId = writable<string | null>(null);
 
-/// The current result set, newest meaning of the backend's order.
+/// The current result set, in the backend's order.
 export const historyResults = writable<Block[]>([]);
 
 /// True once the first search answered; before that the list shows
 /// nothing instead of claiming "no matches".
 export const historyLoaded = writable(false);
 
-/// Bumped by the global Ctrl+R handler; the sidebar reacts by opening
-/// itself and focusing the search field.
-export const historyFocusTick = writable(0);
-
 let debounce: ReturnType<typeof setTimeout> | null = null;
 
-/// Ask the sidebar to focus the history search (Ctrl+R).
-export function focusHistorySearch(): void {
-  historyFocusTick.update((n) => n + 1);
+export function openHistoryPalette(): void {
+  historyPaletteOpen.set(true);
+}
+
+export function closeHistoryPalette(): void {
+  historyPaletteOpen.set(false);
 }
 
 /// Run the search with the current query and filters.
