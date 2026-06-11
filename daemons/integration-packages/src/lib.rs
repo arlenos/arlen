@@ -20,6 +20,7 @@
 pub mod adapter;
 pub mod allowlist;
 pub mod resolve;
+pub mod write;
 
 pub use adapter::{
     AdapterError, AdapterManifest, AdapterMeta, FormatName, InstanceStrategy, SettingSpec,
@@ -27,3 +28,4 @@ pub use adapter::{
 };
 pub use allowlist::{resolve_under_allowlist, AllowlistError, ALLOWED_SUBDIRS};
 pub use resolve::{glob_under, resolve, Match, Resolution};
+pub use write::{comm_matches, write_gate, AppPresence, ProcAppPresence, WriteGate};
