@@ -17,8 +17,25 @@
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { tauriAvailable } from "$lib/tauri";
   import TerminalSidebar from "$lib/components/TerminalSidebar.svelte";
+  import { newSession } from "$lib/stores/sessions";
+  import { focusHistorySearch } from "$lib/stores/history";
 
   let { children } = $props();
+
+  // The two global shortcuts (terminal.md §4): Ctrl+T opens a new
+  // session, Ctrl+R goes to the history search. They work from
+  // anywhere, including the composer.
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (!e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+    const key = e.key.toLowerCase();
+    if (key === "t") {
+      e.preventDefault();
+      newSession();
+    } else if (key === "r") {
+      e.preventDefault();
+      focusHistorySearch();
+    }
+  }
 
   // Window drag via explicit pointerdown + startDragging(), because the
   // `data-tauri-drag-region` attribute is unreliable on Wayland in
@@ -40,6 +57,8 @@
     (await w.isMaximized()) ? await w.unmaximize() : await w.maximize();
   }
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 <SidebarProvider>
   <TerminalSidebar />

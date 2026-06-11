@@ -13,6 +13,7 @@
     newSession,
   } from "$lib/stores/sessions";
   import BlockStream from "$lib/components/BlockStream.svelte";
+  import Composer from "$lib/components/Composer.svelte";
 
   const blocks = writable<Block[]>([]);
   const blocksLoaded = writable(false);
@@ -64,6 +65,10 @@
       <BlockStream blocks={$blocks} />
     {/if}
   </div>
+  <Composer
+    sessionId={$activeSessionId}
+    onsent={() => loadBlocks($activeSessionId)}
+  />
 </div>
 
 <style>
