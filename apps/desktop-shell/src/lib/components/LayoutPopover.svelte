@@ -1,11 +1,11 @@
 <script lang="ts">
   /// Layout popover: mode selection, gaps, smart gaps.
 
-  import { activePopover, closePopover } from "$lib/stores/activePopover.js";
+  import { activePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
-  import { onMount } from "svelte";
   import { Separator } from "@arlen/ui-kit/components/ui/separator/index.js";
   import { Layers, LayoutPanelLeft, Maximize } from "lucide-svelte";
+  import ShellPopover from "$lib/components/shared/ShellPopover.svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
   import Switch from "@arlen/ui-kit/components/ui/switch/switch.svelte";
   import { FillSlider } from "@arlen/ui-kit/components/ui/fill-slider";
@@ -74,116 +74,92 @@
   }
 </script>
 
-{#if $activePopover === "layout"}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="pop-backdrop" onclick={closePopover}></div>
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="pop-panel pop-layout shell-popover" onclick={(e) => e.stopPropagation()}>
-
+<ShellPopover id="layout" width={260} right={50} bodyPadding="12px" bodyGap="10px">
+  {#snippet header()}
     <PopoverHeader icon={LayoutPanelLeft} title="Layout" />
+  {/snippet}
 
-    <div class="pop-body">
-      <!-- Mode Selector -->
-      <div class="mode-section">
-        <div class="mode-pills">
-          <button
-            class="mode-pill"
-            class:active={state.mode === "floating"}
-            onclick={() => setMode("floating")}
-            title="Floating"
-          >
-            <Layers size={16} strokeWidth={1.5} />
-            <span>Float</span>
-          </button>
-          <button
-            class="mode-pill"
-            class:active={state.mode === "tiling"}
-            onclick={() => setMode("tiling")}
-            title="Tiling"
-          >
-            <LayoutPanelLeft size={16} strokeWidth={1.5} />
-            <span>Tile</span>
-          </button>
-          <button
-            class="mode-pill"
-            class:active={state.mode === "monocle"}
-            onclick={() => setMode("monocle")}
-            title="Monocle"
-          >
-            <Maximize size={16} strokeWidth={1.5} />
-            <span>Mono</span>
-          </button>
-        </div>
-      </div>
-
-      <Separator class="opacity-10" />
-
-      <!-- Gaps -->
-      <div class="gap-row">
-        <span class="gap-label">Gaps</span>
-        <div class="gap-slider-wrap">
-          <FillSlider
-            value={state.inner_gap}
-            min={0}
-            max={24}
-            step={1}
-            size="sm"
-            ariaLabel="Inner gap"
-            oninput={(v) => setGap(v)}
-          />
-        </div>
-        <span class="gap-value">{state.inner_gap}px</span>
-      </div>
-
-      <!-- Smart Gaps -->
-      <div class="toggle-row">
-        <span class="toggle-label">Smart Gaps</span>
-        <Switch
-          value={state.smart_gaps}
-          onchange={toggleSmartGaps}
-          ariaLabel="Smart Gaps"
-        />
-      </div>
-
-      <!--
-        Tiled Headers: only meaningful when tiled windows actually exist.
-        Hidden in floating mode to keep the UI focused. The setting is
-        global (compositor.toml [layout]) so toggling it in tiling/monocle
-        and switching back to floating preserves the value silently.
-      -->
-      {#if state.mode === "tiling" || state.mode === "monocle"}
-        <div class="toggle-row" title="Hide compositor title bars on tiled windows">
-          <span class="toggle-label">Tiled Headers</span>
-          <Switch
-            value={state.tiled_headers}
-            onchange={toggleTiledHeaders}
-            ariaLabel="Tiled Headers"
-          />
-        </div>
-      {/if}
-
+  <!-- Mode Selector. The pills carry their own text labels, so no
+       extra tooltips: "Single" is the monocle mode (one window at a
+       time fills the workspace) in plain words. -->
+  <div class="mode-section">
+    <div class="mode-pills">
+      <button
+        class="mode-pill"
+        class:active={state.mode === "floating"}
+        onclick={() => setMode("floating")}
+      >
+        <Layers size={16} strokeWidth={1.5} />
+        <span>Float</span>
+      </button>
+      <button
+        class="mode-pill"
+        class:active={state.mode === "tiling"}
+        onclick={() => setMode("tiling")}
+      >
+        <LayoutPanelLeft size={16} strokeWidth={1.5} />
+        <span>Tile</span>
+      </button>
+      <button
+        class="mode-pill"
+        class:active={state.mode === "monocle"}
+        onclick={() => setMode("monocle")}
+      >
+        <Maximize size={16} strokeWidth={1.5} />
+        <span>Single</span>
+      </button>
     </div>
   </div>
-{/if}
+
+  <Separator class="opacity-10" />
+
+  <!-- Gaps -->
+  <div class="gap-row">
+    <span class="gap-label">Gaps</span>
+    <div class="gap-slider-wrap">
+      <FillSlider
+        value={state.inner_gap}
+        min={0}
+        max={24}
+        step={1}
+        size="sm"
+        ariaLabel="Inner gap"
+        oninput={(v) => setGap(v)}
+      />
+    </div>
+    <span class="gap-value">{state.inner_gap}px</span>
+  </div>
+
+  <!-- Smart Gaps -->
+  <div class="toggle-row">
+    <span class="toggle-label">Smart Gaps</span>
+    <Switch
+      value={state.smart_gaps}
+      onchange={toggleSmartGaps}
+      ariaLabel="Smart Gaps"
+    />
+  </div>
+
+  <!--
+    Title bars on tiled windows: only meaningful when tiled windows
+    actually exist. Hidden in floating mode to keep the UI focused.
+    The setting is global (compositor.toml [layout]) so toggling it
+    in tiling/monocle and switching back to floating preserves the
+    value silently.
+  -->
+  {#if state.mode === "tiling" || state.mode === "monocle"}
+    <div class="toggle-row">
+      <span class="toggle-label">Title Bars</span>
+      <Switch
+        value={state.tiled_headers}
+        onchange={toggleTiledHeaders}
+        ariaLabel="Title bars on tiled windows"
+      />
+    </div>
+  {/if}
+</ShellPopover>
 
 <style>
-  .pop-backdrop { position: fixed; inset: 0; z-index: 90; }
-  .pop-panel {
-    position: fixed; top: 40px; z-index: 100; border-radius: var(--radius-card);
-    background: var(--color-bg-shell);
-    border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
-    box-shadow: var(--shadow-lg);
-    color: var(--color-fg-shell);
-    display: flex; flex-direction: column;
-    animation: arlen-popover-in var(--duration-medium) var(--ease-out) both;
-    transform-origin: top center;
-  }
-  .pop-layout { right: 50px; width: 260px; }
-  .pop-body { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-  /* Entry keyframes defined in sdk/ui-kit/src/lib/motion.css. */
-
   /* Mode pills */
   .mode-section { display: flex; flex-direction: column; gap: 6px; }
   .mode-pills { display: flex; gap: 4px; }
@@ -194,7 +170,10 @@
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
     font-size: 0.625rem; font-weight: 500;
-    transition: all 100ms ease;
+    transition:
+      background-color var(--duration-micro, 100ms) ease,
+      border-color var(--duration-micro, 100ms) ease,
+      color var(--duration-micro, 100ms) ease;
   }
   .mode-pill:hover {
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
@@ -213,7 +192,7 @@
   .gap-slider-wrap { flex: 1; display: flex; align-items: center; }
 
   /* Toggle row uses the same flex+gap pattern as `.gap-row` so
-     the rhythm of "label · control" reads consistently across
+     the rhythm of "label, control" reads consistently across
      rows. `space-between` looks fine in isolation but creates a
      visible right-edge jitter when sibling rows have value pills
      pinned right. */
@@ -226,5 +205,4 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-
 </style>

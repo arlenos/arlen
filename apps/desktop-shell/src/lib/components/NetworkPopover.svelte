@@ -2,15 +2,18 @@
   /// Network popover: WiFi list with context menus, VPN, power toggle.
   /// Structure mirrors BluetoothPopover: Header > Sections > Items with ContextMenu.
 
-  import { activePopover, closePopover } from "$lib/stores/activePopover.js";
+  import { activePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
   import { Separator } from "@arlen/ui-kit/components/ui/separator/index.js";
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu/index.js";
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import {
     Wifi, WifiOff, Cable, Plane, Lock, Check, RefreshCw,
     ChevronRight, Shield, Trash2, Copy, Info,
   } from "lucide-svelte";
+  import ShellPopover from "$lib/components/shared/ShellPopover.svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
+  import PopoverErrorBanner from "$lib/components/shared/PopoverErrorBanner.svelte";
   import SignalBars from "$lib/components/SignalBars.svelte";
 
   interface WifiNetwork {
@@ -53,7 +56,7 @@
       await invoke("set_wifi_enabled", { enabled: !wifiEnabled });
       wifiEnabled = !wifiEnabled;
       await pollStatus(); if (wifiEnabled) await loadNetworks();
-    } catch { error = "Failed to toggle WiFi"; }
+    } catch { error = "Could not turn WiFi on or off"; }
   }
   async function pollStatus() { try { status = await invoke<NetworkStatus>("get_network_status"); } catch {} }
 
@@ -78,12 +81,12 @@
 
   async function handleConnect(net: WifiNetwork) {
     if (net.is_connected) {
-      try { await invoke("disconnect_wifi"); } catch { error = "Disconnect failed"; }
+      try { await invoke("disconnect_wifi"); } catch { error = "Could not disconnect"; }
       await pollStatus(); await loadNetworks(true); return;
     }
     if (net.is_known || !net.security || net.security === "--") {
       connectingTo = net.ssid;
-      try { await invoke("connect_wifi", { ssid: net.ssid }); } catch { error = "Connection failed"; }
+      try { await invoke("connect_wifi", { ssid: net.ssid }); } catch { error = "Could not connect"; }
       connectingTo = null; await pollStatus(); await loadNetworks(true);
     } else { showPasswordFor = net.ssid; passwordInput = ""; }
   }
@@ -93,7 +96,7 @@
     try {
       await invoke("connect_wifi_password", { ssid: showPasswordFor, password: passwordInput });
       showPasswordFor = null; passwordInput = "";
-    } catch { error = "Authentication failed"; }
+    } catch { error = "Could not connect. Check the password."; }
     connectingTo = null; await pollStatus(); await loadNetworks(true);
   }
   async function copyPassword(ssid: string) {
@@ -111,10 +114,9 @@
       if (vpn.active) await invoke("disconnect_vpn", { name: vpn.name });
       else await invoke("connect_vpn", { name: vpn.name });
       await loadVpns(); await pollStatus();
-    } catch { error = "VPN operation failed"; }
+    } catch { error = "Could not change the VPN connection"; }
   }
 
-  const connectedNets = $derived(networks.filter(n => n.is_connected));
   const otherNets = $derived(networks.filter(n => !n.is_connected));
   const activeVpnCount = $derived(vpns.filter(v => v.active).length);
 </script>
@@ -173,7 +175,7 @@
               {/if}
               {#if connDetails.gateway}
                 <ContextMenu.Item onclick={() => copyText(connDetails!.gateway)}>
-                  <span class="ctx-label">GW</span><span class="ctx-value">{connDetails.gateway}</span>
+                  <span class="ctx-label">Gateway</span><span class="ctx-value">{connDetails.gateway}</span>
                 </ContextMenu.Item>
               {/if}
               {#if connDetails.dns}
@@ -188,7 +190,7 @@
               {/if}
             {:else}
               <ContextMenu.Item onclick={() => loadConnDetails(net.ssid)}>
-                Load details...
+                Show details
               </ContextMenu.Item>
             {/if}
           </ContextMenu.SubContent>
@@ -196,7 +198,7 @@
       {/if}
       {#if net.is_known}
         <ContextMenu.Separator />
-        <ContextMenu.Item onclick={() => forgetNetwork(net.ssid)} class="text-red-400">
+        <ContextMenu.Item onclick={() => forgetNetwork(net.ssid)} class="text-[var(--color-error)]">
           <Trash2 size={14} class="mr-2" />Forget Network
         </ContextMenu.Item>
       {/if}
@@ -204,144 +206,134 @@
   </ContextMenu.Root>
 {/snippet}
 
-{#if $activePopover === "network"}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="pop-backdrop" onclick={closePopover}></div>
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="pop-panel pop-network shell-popover" onclick={(e) => e.stopPropagation()}>
-
+<ShellPopover id="network" width={280} right={110} bodyPadding="12px" bodyGap="6px">
+  {#snippet header()}
     <PopoverHeader icon={Wifi} title="Network" toggled={wifiEnabled && !airplaneMode} onToggle={toggleWifi} />
+  {/snippet}
 
-    <div class="pop-body">
-      {#if airplaneMode}
-        <div class="net-msg">
-          <Plane size={32} strokeWidth={1} />
-          <span class="net-msg-title">Airplane Mode is on</span>
-          <span class="net-msg-hint">Wireless connections are disabled</span>
-        </div>
-      {:else if !wifiEnabled}
-        <div class="net-msg">
-          <WifiOff size={32} strokeWidth={1} />
-          <span class="net-msg-title">WiFi is off</span>
-          <span class="net-msg-hint">Toggle the switch above to enable</span>
-        </div>
-      {:else}
-        {#if error}
-          <div class="net-error">{error}</div>
-        {/if}
-
-        <!-- Current connection status (always visible when connected) -->
-        {#if status?.connected}
-          <div class="net-status">
-            <div class="net-status-icon">
-              {#if status.connection_type === "ethernet"}
-                <Cable size={18} strokeWidth={1.5} />
-              {:else}
-                <Wifi size={18} strokeWidth={1.5} />
-              {/if}
-            </div>
-            <div class="net-status-info">
-              <span class="net-status-name">{status.name ?? "Connected"}</span>
-              <span class="net-status-detail">
-                {#if status.signal_strength != null}{status.signal_strength}% · {/if}{status.connection_type === "ethernet" ? "Ethernet" : "WiFi"}{#if status.vpn_active} · VPN{/if}
-              </span>
-            </div>
-          </div>
-          <Separator class="opacity-10" />
-        {:else}
-          <div class="net-status">
-            <div class="net-status-icon net-off"><WifiOff size={18} strokeWidth={1.5} /></div>
-            <div class="net-status-info">
-              <span class="net-status-name">Disconnected</span>
-            </div>
-          </div>
-          <Separator class="opacity-10" />
-        {/if}
-
-        {#if showPasswordFor}
-          <div class="pw-section">
-            <span class="pw-title">Connect to "{showPasswordFor}"</span>
-            <input type="password" class="pw-input" bind:value={passwordInput} placeholder="Password"
-              onkeydown={(e) => { if (e.key === "Enter") handlePasswordSubmit(); }} />
-            <div class="pw-actions">
-              <button class="pw-btn" onclick={(e) => { e.stopPropagation(); showPasswordFor = null; }}>Cancel</button>
-              <button class="pw-btn pw-btn-primary" onclick={(e) => { e.stopPropagation(); handlePasswordSubmit(); }}>Connect</button>
-            </div>
-          </div>
-        {:else if loading}
-          <div class="net-loading">Scanning...</div>
-        {:else}
-          <div class="net-list-header">
-            <span>Available Networks</span>
-            <button class="net-refresh" onclick={(e) => { e.stopPropagation(); loadNetworks(); }} title="Refresh">
-              <RefreshCw size={12} strokeWidth={2} />
-            </button>
-          </div>
-          <div class="net-list themed-scroll">
-            {#each otherNets as net (net.ssid)}
-              {@render networkItem(net)}
-            {:else}
-              <div class="net-empty">No networks found</div>
-            {/each}
-          </div>
-        {/if}
-
-        {#if status?.connection_type === "ethernet" && status.connected}
-          <Separator class="opacity-10" />
-          <div class="net-ethernet">
-            <Cable size={14} strokeWidth={1.5} />
-            <span>{status.name ?? "Ethernet"}</span>
-            <span class="net-ethernet-badge">Connected</span>
-          </div>
-        {/if}
-
-        {#if vpns.length > 0}
-          <Separator class="opacity-10" />
-          <button class="vpn-header" onclick={(e) => { e.stopPropagation(); vpnExpanded = !vpnExpanded; }}>
-            <ChevronRight size={12} strokeWidth={2} class={vpnExpanded ? "vpn-chevron-open" : ""} />
-            <Shield size={14} strokeWidth={1.5} />
-            <span>VPN</span>
-            {#if activeVpnCount > 0}
-              <span class="vpn-badge">{activeVpnCount} active</span>
-            {/if}
-          </button>
-          {#if vpnExpanded}
-            <div class="vpn-list">
-              {#each vpns as vpn (vpn.name)}
-                <button class="net-item" class:connected={vpn.active}
-                  onclick={(e) => { e.stopPropagation(); toggleVpn(vpn); }}>
-                  <div class="net-item-info">
-                    {#if vpn.active}<Check size={14} strokeWidth={2} class="net-check" />{/if}
-                    <span>{vpn.name}</span>
-                  </div>
-                  <span class="vpn-status">{vpn.active ? "Connected" : "Connect"}</span>
-                </button>
-              {/each}
-            </div>
-          {/if}
-        {/if}
-      {/if}
+  {#if airplaneMode}
+    <div class="net-msg">
+      <Plane size={32} strokeWidth={1} />
+      <span class="net-msg-title">Airplane Mode is on</span>
+      <span class="net-msg-hint">Wireless connections are disabled</span>
     </div>
-  </div>
-{/if}
+  {:else if !wifiEnabled}
+    <div class="net-msg">
+      <WifiOff size={32} strokeWidth={1} />
+      <span class="net-msg-title">WiFi is off</span>
+      <span class="net-msg-hint">Turn WiFi back on with the switch above</span>
+    </div>
+  {:else}
+    {#if error}
+      <PopoverErrorBanner message={error} />
+    {/if}
+
+    <!-- Current connection status (always visible when connected) -->
+    {#if status?.connected}
+      <div class="net-status">
+        <div class="net-status-icon">
+          {#if status.connection_type === "ethernet"}
+            <Cable size={18} strokeWidth={1.5} />
+          {:else}
+            <Wifi size={18} strokeWidth={1.5} />
+          {/if}
+        </div>
+        <div class="net-status-info">
+          <span class="net-status-name">{status.name ?? "Connected"}</span>
+          <span class="net-status-detail">
+            {#if status.signal_strength != null}{status.signal_strength}%, {/if}{status.connection_type === "ethernet" ? "Ethernet" : "WiFi"}{#if status.vpn_active}, VPN{/if}
+          </span>
+        </div>
+      </div>
+      <Separator class="opacity-10" />
+    {:else}
+      <div class="net-status">
+        <div class="net-status-icon net-off"><WifiOff size={18} strokeWidth={1.5} /></div>
+        <div class="net-status-info">
+          <span class="net-status-name">Disconnected</span>
+        </div>
+      </div>
+      <Separator class="opacity-10" />
+    {/if}
+
+    {#if showPasswordFor}
+      <div class="pw-section">
+        <span class="pw-title">Connect to "{showPasswordFor}"</span>
+        <input type="password" class="pw-input" bind:value={passwordInput} placeholder="Password"
+          onkeydown={(e) => { if (e.key === "Enter") handlePasswordSubmit(); }} />
+        <div class="pw-actions">
+          <button class="pw-btn" onclick={(e) => { e.stopPropagation(); showPasswordFor = null; }}>Cancel</button>
+          <button class="pw-btn pw-btn-primary" onclick={(e) => { e.stopPropagation(); handlePasswordSubmit(); }}>Connect</button>
+        </div>
+      </div>
+    {:else if loading}
+      <div class="net-loading">Scanning...</div>
+    {:else}
+      <div class="net-list-header">
+        <span>Available Networks</span>
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <button
+                {...props}
+                class="net-refresh"
+                aria-label="Refresh networks"
+                onclick={(e) => { e.stopPropagation(); loadNetworks(); }}
+              >
+                <RefreshCw size={12} strokeWidth={2} />
+              </button>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.TooltipContent side="bottom">Refresh</Tooltip.TooltipContent>
+        </Tooltip.Root>
+      </div>
+      <div class="net-list themed-scroll">
+        {#each otherNets as net (net.ssid)}
+          {@render networkItem(net)}
+        {:else}
+          <div class="net-empty">No networks found</div>
+        {/each}
+      </div>
+    {/if}
+
+    {#if status?.connection_type === "ethernet" && status.connected}
+      <Separator class="opacity-10" />
+      <div class="net-ethernet">
+        <Cable size={14} strokeWidth={1.5} />
+        <span>{status.name ?? "Ethernet"}</span>
+        <span class="net-ethernet-badge">Connected</span>
+      </div>
+    {/if}
+
+    {#if vpns.length > 0}
+      <Separator class="opacity-10" />
+      <button class="vpn-header" onclick={(e) => { e.stopPropagation(); vpnExpanded = !vpnExpanded; }}>
+        <ChevronRight size={12} strokeWidth={2} class={vpnExpanded ? "vpn-chevron-open" : ""} />
+        <Shield size={14} strokeWidth={1.5} />
+        <span>VPN</span>
+        {#if activeVpnCount > 0}
+          <span class="vpn-badge">{activeVpnCount} active</span>
+        {/if}
+      </button>
+      {#if vpnExpanded}
+        <div class="vpn-list">
+          {#each vpns as vpn (vpn.name)}
+            <button class="net-item" class:connected={vpn.active}
+              onclick={(e) => { e.stopPropagation(); toggleVpn(vpn); }}>
+              <div class="net-item-info">
+                {#if vpn.active}<Check size={14} strokeWidth={2} class="net-check" />{/if}
+                <span>{vpn.name}</span>
+              </div>
+              <span class="vpn-status">{vpn.active ? "Connected" : "Connect"}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
+    {/if}
+  {/if}
+</ShellPopover>
 
 <style>
-  .pop-backdrop { position: fixed; inset: 0; z-index: 90; }
-  .pop-panel {
-    position: fixed; top: 40px; z-index: 100; border-radius: var(--radius-card);
-    background: var(--color-bg-shell);
-    border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
-    box-shadow: var(--shadow-lg); color: var(--color-fg-shell);
-    display: flex; flex-direction: column;
-    animation: arlen-popover-in var(--duration-medium) var(--ease-out) both;
-    transform-origin: top center;
-  }
-  .pop-network { right: 110px; width: 280px; }
-  .pop-body { padding: 12px; display: flex; flex-direction: column; gap: 6px; }
-  /* Entry keyframes defined in sdk/ui-kit/src/lib/motion.css. */
-
   .net-msg { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 12px; color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); text-align: center; font-size: 0.8125rem; }
   .net-msg-title { color: var(--color-fg-shell); }
   .net-msg-hint { font-size: 0.6875rem; opacity: 0.5; }
@@ -352,10 +344,8 @@
   .net-status-name { font-size: 0.8125rem; font-weight: 500; }
   .net-status-detail { font-size: 0.6875rem; opacity: 0.5; }
 
-  .net-error { padding: 6px 10px; background: color-mix(in srgb, var(--color-error) 15%, transparent); border-radius: var(--radius-input); color: var(--color-error); font-size: 0.6875rem; }
   .net-loading { padding: 20px; text-align: center; opacity: 0.4; font-size: 0.75rem; }
 
-  .net-section-label { font-size: 0.6875rem; opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
   .net-list-header { display: flex; align-items: center; justify-content: space-between; font-size: 0.6875rem; opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
   .net-refresh { width: var(--height-control-compact, 24px); height: var(--height-control-compact, 24px); display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-chip); color: inherit; padding: 0; }
   .net-refresh:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
@@ -365,7 +355,8 @@
     display: flex; align-items: center; justify-content: space-between;
     padding: 8px 10px; background: transparent; border: none; border-radius: var(--radius-input);
     color: var(--color-fg-shell); font-size: 0.8125rem;
-    text-align: left; width: 100%; transition: background-color 0.1s ease;
+    text-align: left; width: 100%;
+    transition: background-color var(--duration-micro, 100ms) ease;
   }
   .net-item:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
   .net-item.connected { background: color-mix(in srgb, var(--color-accent) 15%, transparent); border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent); }
@@ -379,7 +370,7 @@
   .net-item-meta { display: flex; align-items: center; gap: 6px; opacity: 0.5; flex-shrink: 0; }
   .net-empty { padding: 20px; text-align: center; opacity: 0.3; font-size: 0.75rem; }
 
-  :global(.ctx-label) { opacity: 0.5; font-size: 0.625rem; min-width: 32px; text-transform: uppercase; letter-spacing: 0.03em; }
+  :global(.ctx-label) { opacity: 0.5; font-size: 0.625rem; min-width: 48px; text-transform: uppercase; letter-spacing: 0.03em; }
   :global(.ctx-value) { font-size: 0.6875rem; font-family: monospace; }
 
   .net-ethernet { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 0.8125rem; opacity: 0.7; }
@@ -390,7 +381,7 @@
     padding: 6px 4px; background: transparent; border: none; border-radius: var(--radius-chip);
     color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
     font-size: 0.75rem; font-weight: 500; width: 100%; text-align: left;
-    transition: color 0.1s ease;
+    transition: color var(--duration-micro, 100ms) ease;
   }
   .vpn-header:hover { color: var(--color-fg-shell); }
   :global(.vpn-chevron-open) { transform: rotate(90deg); }
