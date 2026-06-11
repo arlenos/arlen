@@ -192,7 +192,7 @@
      reads the accent dot as gray. */
   @keyframes cb-running-pulse {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+    50% { opacity: 0.65; }
   }
 
   .cb-origin {
