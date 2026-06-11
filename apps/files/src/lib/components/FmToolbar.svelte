@@ -10,6 +10,8 @@
     Columns2,
     Eye,
     EyeOff,
+    Info,
+    Search,
   } from "lucide-svelte";
   import { Toolbar } from "@arlen/ui-kit/components/ui/toolbar";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
@@ -26,6 +28,10 @@
     pathEditing = $bindable(false),
     split = false,
     onsplittoggle,
+    searchOpen = false,
+    onsearchtoggle,
+    infoOpen = false,
+    oninfotoggle,
   }: {
     controller: BrowserState;
     homePath?: string;
@@ -34,6 +40,12 @@
     /// The dual-pane layout is on.
     split?: boolean;
     onsplittoggle?: () => void;
+    /// The search row shows.
+    searchOpen?: boolean;
+    onsearchtoggle?: () => void;
+    /// The info panel shows.
+    infoOpen?: boolean;
+    oninfotoggle?: () => void;
   } = $props();
 
   const path = $derived(controller.path);
@@ -99,6 +111,22 @@
       onclick={() => onsplittoggle?.()}
     >
       <Columns2 size={15} strokeWidth={1.75} />
+    </IconAction>
+    <IconAction
+      label="Search"
+      size="control"
+      active={searchOpen}
+      onclick={() => onsearchtoggle?.()}
+    >
+      <Search size={15} strokeWidth={1.75} />
+    </IconAction>
+    <IconAction
+      label={infoOpen ? "Close info" : "Show info"}
+      size="control"
+      active={infoOpen}
+      onclick={() => oninfotoggle?.()}
+    >
+      <Info size={15} strokeWidth={1.75} />
     </IconAction>
     <IconAction
       label={$showHidden ? "Hide hidden files" : "Show hidden files"}
