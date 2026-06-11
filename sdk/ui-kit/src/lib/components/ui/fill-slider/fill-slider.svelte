@@ -92,7 +92,7 @@
     height: var(--height-control-compact, 24px);
   }
   .ln-fill-slider.disabled {
-    opacity: 0.5;
+    opacity: var(--control-disabled-opacity, 0.5);
   }
 
   /* Track is the VISIBLE bar — not the wrapper. It's centred
@@ -105,9 +105,8 @@
     top: 50%;
     transform: translateY(-50%);
     border-radius: var(--radius-input);
-    border: 1px solid
-      color-mix(in srgb, var(--foreground) 12%, transparent);
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    border: 1px solid var(--control-border);
+    background: var(--control-bg-strong);
     overflow: hidden;
     transition:
       border-color var(--duration-fast, 150ms) var(--ease-out, ease),
@@ -124,11 +123,11 @@
   }
   .ln-fill-slider.sm .ln-fill-slider-track {
     height: 14px;
-    border-color: color-mix(in srgb, var(--foreground) 10%, transparent);
+    border-color: var(--control-border);
   }
 
   .ln-fill-slider:hover:not(.disabled) .ln-fill-slider-track {
-    border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
+    border-color: var(--control-border-hover);
   }
 
   .ln-fill-slider:focus-within .ln-fill-slider-track {

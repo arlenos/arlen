@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
+@import "./lib/motion.css";
 
 /* ============================================================
    Arlen Surface Tokens - Panda Theme (default)
@@ -67,17 +68,10 @@
        - Disappears immediately on mouse leave
        - Never on touch/mobile
        - Use Shadcn Tooltip component exclusively
-     ============================================================ */
-  --duration-instant:  80ms;   /* pressed states, immediate feedback */
-  --duration-micro:   100ms;   /* card hovers, focus rings, tiny moves */
-  --duration-fast:    150ms;   /* hover transitions, tooltips */
-  --duration-medium:  200ms;   /* expand/collapse, panel open */
-  --duration-slow:    350ms;   /* page transitions, large layout shifts */
 
-  --easing-default: cubic-bezier(0.4, 0, 0.2, 1);
-  --easing-enter:   cubic-bezier(0.0, 0.0, 0.2, 1);
-  --easing-exit:    cubic-bezier(0.4, 0.0, 1.0, 1);
-  --easing-spring:  cubic-bezier(0.34, 1.56, 0.64, 1); /* snap/bounce feedback */
+     The duration/easing tokens themselves live in lib/motion.css
+     (imported above) - the same single source every app consumes.
+     ============================================================ */
 
   /* Semantic radius tokens, see docs/architecture/design-system.md §3.
      Named by the component role that defines the rounding step.
@@ -145,12 +139,14 @@
 @theme inline {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
 
-  /* Animation timing - enables duration-fast, duration-medium, etc. utilities */
-  --duration-instant: var(--duration-instant);
-  --duration-micro:   var(--duration-micro);
-  --duration-fast:    var(--duration-fast);
-  --duration-medium:  var(--duration-medium);
-  --duration-slow:    var(--duration-slow);
+  /* Animation timing - enables duration-fast, duration-medium, etc.
+     utilities (Tailwind v4 namespaces these under
+     --transition-duration-*). */
+  --transition-duration-instant: var(--duration-micro);
+  --transition-duration-micro:   var(--duration-micro);
+  --transition-duration-fast:    var(--duration-fast);
+  --transition-duration-medium:  var(--duration-medium);
+  --transition-duration-slow:    var(--duration-slow);
 
   /* Easing - enables ease-default, ease-enter, ease-exit, ease-spring utilities */
   --ease-default: var(--easing-default);
@@ -219,18 +215,8 @@
   }
 }
 
-/* Reduce motion: override all duration tokens to 0ms.
-   Applies when the OS setting is active OR when Settings disables animations.
-   No component may suppress this - it is a global invariant. */
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --duration-instant: 0ms;
-    --duration-micro:   0ms;
-    --duration-fast:    0ms;
-    --duration-medium:  0ms;
-    --duration-slow:    0ms;
-  }
-}
+/* Reduced motion is handled in lib/motion.css alongside the
+   tokens it zeroes - one invariant, one place. */
 
 @custom-variant data-open {
   &:where([data-state="open"]), &:where([data-open]:not([data-open="false"])) {

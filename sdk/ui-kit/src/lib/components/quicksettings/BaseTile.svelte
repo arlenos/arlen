@@ -39,7 +39,9 @@
     oncontextmenu,
     onDetail,
     detailLabel = "",
+    headTrailing,
     children,
+    tabindex,
   }: {
     /// Primary tile label, shown above the status subtitle.
     label: string;
@@ -76,9 +78,15 @@
     /// `"Open details for <label>"`. Useful when the tile's name
     /// alone doesn't tell the user what surface opens.
     detailLabel?: string;
-    /// Optional inline content rendered below the status. Used by
-    /// SliderTile to embed the range input.
+    /// Optional trailing content for the head row, right-aligned
+    /// after the label. SliderTile renders its percent readout here.
+    headTrailing?: Snippet;
+    /// Optional inline content rendered between the head and the
+    /// strip. SliderTile embeds its slider here.
     children?: Snippet;
+    /// Focus override for the outer button. SliderTile passes -1:
+    /// its inner slider is the keyboard stop, not the tile body.
+    tabindex?: number;
   } = $props();
 
   const stripAriaLabel = $derived(
@@ -100,6 +108,7 @@
   class:size-2x2={size === "2x2"}
   class:has-strip={!!statusText}
   {disabled}
+  {tabindex}
   onclick={() => onclick?.()}
   oncontextmenu={(e) => {
     if (oncontextmenu || onDetail) {
@@ -116,7 +125,16 @@
     <div class="qs-tile-text">
       <span class="qs-tile-label">{label}</span>
     </div>
+    {#if headTrailing}
+      <span class="qs-tile-head-trailing">{@render headTrailing()}</span>
+    {/if}
   </div>
+
+  {#if children}
+    <div class="qs-tile-body">
+      {@render children()}
+    </div>
+  {/if}
 
   {#if statusText}
     {#if onDetail}
@@ -151,11 +169,6 @@
     {/if}
   {/if}
 
-  {#if children}
-    <div class="qs-tile-body">
-      {@render children()}
-    </div>
-  {/if}
 </button>
 
 <style>
@@ -169,13 +182,13 @@
     gap: 0;
     padding: 0;
     min-height: 64px;
-    background: color-mix(in srgb, var(--color-fg-shell) 6%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-fg-shell) 12%, transparent);
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
     border-radius: var(--radius-card);
-    color: var(--color-fg-shell);
+    color: var(--foreground);
     text-align: left;
     overflow: hidden;
-    transition: background-color 100ms ease, border-color 100ms ease;
+    transition: background-color var(--duration-micro, 100ms) ease, border-color var(--duration-micro, 100ms) ease;
   }
   .qs-tile.size-2x1 {
     grid-column: span 2;
@@ -186,8 +199,8 @@
   }
 
   .qs-tile:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
-    border-color: color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
+    background: color-mix(in srgb, var(--foreground) 10%, transparent);
+    border-color: color-mix(in srgb, var(--foreground) 20%, transparent);
   }
 
   .qs-tile:focus-visible {
@@ -196,10 +209,9 @@
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent);
   }
 
-  /* Active state — matches the system-wide "connected/active item"
-     pattern from BluetoothPopover/NetworkPopover (CLAUDE.md popover
-     style consistency: hover=10%, active=15% bg + 30% border). Keeps
-     the QS tile language coherent with the rest of the shell. */
+  /* Active state: the system-wide "connected/active item" pattern
+     (hover 10%, active 15% bg + 30% border) shared with the
+     Bluetooth/Network popover rows. */
   .qs-tile.active {
     background: color-mix(in srgb, var(--color-accent) 15%, transparent);
     border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
@@ -229,7 +241,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: var(--color-fg-shell);
+    color: var(--foreground);
     flex-shrink: 0;
   }
   .qs-tile.active .qs-tile-icon {
@@ -244,6 +256,13 @@
     flex: 1;
   }
 
+  .qs-tile-head-trailing {
+    flex-shrink: 0;
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+    color: color-mix(in srgb, var(--foreground) 70%, transparent);
+  }
+
   .qs-tile-label {
     font-size: 0.8125rem;
     font-weight: 500;
@@ -255,7 +274,7 @@
 
   .qs-tile-status {
     font-size: 0.6875rem;
-    color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
     line-height: 1.2;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -283,14 +302,10 @@
        revision moves both head and strip together. */
     min-height: var(--height-control, 28px);
     margin-top: auto;
-    transition: background-color 100ms ease;
+    transition: background-color var(--duration-micro, 100ms) ease;
   }
   .qs-tile-strip.is-interactive:hover {
-    background: color-mix(in srgb, var(--color-fg-shell) 14%, transparent);
-  }
-  .qs-tile-strip.is-interactive:focus-visible {
-    outline: none;
-    background: color-mix(in srgb, var(--color-fg-shell) 14%, transparent);
+    background: color-mix(in srgb, var(--foreground) 14%, transparent);
   }
   .qs-tile.active .qs-tile-strip.is-interactive:hover {
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
@@ -298,16 +313,17 @@
 
   :global(.qs-tile-chevron) {
     flex-shrink: 0;
-    color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
-    transition: color 100ms ease, transform 100ms ease;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+    transition: color var(--duration-micro, 100ms) ease, transform var(--duration-micro, 100ms) ease;
   }
   .qs-tile-strip.is-interactive:hover :global(.qs-tile-chevron) {
-    color: var(--color-fg-shell);
+    color: var(--foreground);
     transform: translateX(2px);
   }
 
   .qs-tile-body {
     display: flex;
     flex-direction: column;
+    padding: 0 12px;
   }
 </style>
