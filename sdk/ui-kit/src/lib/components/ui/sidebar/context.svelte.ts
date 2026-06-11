@@ -13,19 +13,13 @@ export const SIDEBAR_WIDTH_ICON = "3rem";
 
 export class SidebarState {
   open = $state(true);
-  openMobile = $state(false);
-  isMobile = $state(false);
 
   constructor(defaultOpen = true) {
     this.open = defaultOpen;
   }
 
   toggle(): void {
-    if (this.isMobile) {
-      this.openMobile = !this.openMobile;
-    } else {
-      this.open = !this.open;
-    }
+    this.open = !this.open;
   }
 }
 

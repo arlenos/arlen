@@ -105,7 +105,7 @@
     font-size: 0.8125rem;
     font-weight: 500;
     padding: 4px 12px;
-    min-height: var(--height-control-compact, 24px);
+    min-height: calc(var(--height-control, 28px) - 6px);
     border-radius: calc(var(--radius-input) - 2px);
     transition:
       background-color var(--duration-fast) var(--ease-out),

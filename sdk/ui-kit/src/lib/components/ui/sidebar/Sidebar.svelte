@@ -17,11 +17,13 @@
   const state = $derived(sidebar.open ? "expanded" : "collapsed");
 </script>
 
+<!-- No responsive breakpoints: this is a desktop app, the sidebar exists at
+     every window width; collapsing is the offcanvas/icon mode's job. -->
 <div
   data-slot="sidebar"
   data-state={state}
   data-collapsible={sidebar.open ? "" : collapsible}
-  class="group peer hidden text-sidebar-foreground md:block"
+  class="group peer block text-sidebar-foreground"
 >
   <!-- Spacer that matches the sidebar width, keeps inset layout stable. -->
   <div
@@ -36,7 +38,7 @@
   <div
     data-slot="sidebar-container"
     class={cn(
-      "fixed inset-y-0 left-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,width] duration-200 ease-linear md:flex",
+      "fixed inset-y-0 left-0 z-10 flex h-svh w-(--sidebar-width) transition-[left,width] duration-200 ease-linear",
       "group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]",
       "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
       "border-r border-sidebar-border",

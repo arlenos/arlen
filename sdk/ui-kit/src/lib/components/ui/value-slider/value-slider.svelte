@@ -50,7 +50,7 @@
     display: flex;
     align-items: center;
     gap: 0.625rem;
-    width: 200px;
+    width: var(--width-row-control, 200px);
   }
 
   .slider-wrap {
