@@ -12,12 +12,14 @@ import {
   FileCode,
   FileText,
   Folder,
+  FolderDot,
   FolderSymlink,
   HardDrive,
   House,
   Image,
   Monitor,
   Music,
+  Search,
   Trash2,
   Usb,
   Video,
@@ -63,6 +65,8 @@ const PLACE_ICONS: Record<string, typeof Icon> = {
   usb: Usb,
   cloud: Cloud,
   trash: Trash2,
+  project: FolderDot,
+  search: Search,
 };
 
 export function placeIcon(key: string): typeof Icon {
