@@ -26,6 +26,9 @@ pub mod exec;
 pub mod resolve;
 pub mod write;
 
+// Re-exported so a consumer can call the exec layer (which accepts and returns a
+// `ConfigValue`) without taking a direct dependency on `arlen-config-format`.
+pub use arlen_config_format::ConfigValue;
 pub use adapter::{
     AdapterError, AdapterManifest, AdapterMeta, FormatName, InstanceStrategy, SettingSpec,
     SettingType, SourceSpec, WriteStrategy, SCHEMA_VERSION,
