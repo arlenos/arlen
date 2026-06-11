@@ -12,6 +12,7 @@
     loadSessions,
     newSession,
   } from "$lib/stores/sessions";
+  import BlockStream from "$lib/components/BlockStream.svelte";
 
   const blocks = writable<Block[]>([]);
   const blocksLoaded = writable(false);
@@ -60,10 +61,7 @@
         </span>
       </div>
     {:else}
-      <!-- Block stream lands in T2; this proves the data path. -->
-      <div class="stream-debug">
-        {$blocks.length} blocks loaded
-      </div>
+      <BlockStream blocks={$blocks} />
     {/if}
   </div>
 </div>
@@ -116,11 +114,5 @@
   }
   .stream-empty-btn:hover {
     background: var(--control-bg-hover);
-  }
-
-  .stream-debug {
-    padding: 1rem;
-    font-size: 0.8125rem;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 </style>
