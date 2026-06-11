@@ -33,6 +33,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
+name = "arlen-capsule"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "arlen-file-manager-mcp"
 version = "0.1.0"
 dependencies = [
@@ -56,6 +64,7 @@ dependencies = [
  "libc",
  "notify",
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "toml",
 ]
@@ -744,6 +753,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 name = "os-sdk"
 version = "0.1.0"
 dependencies = [
+ "arlen-capsule",
  "arlen-permissions",
  "dirs",
  "libc",
