@@ -32,7 +32,7 @@ impl FormatHandler for TomlHandler {
             detail: format!("{e}"),
         })?;
         let mut entries = Vec::new();
-        collect_leaves(doc.as_table().iter(), &mut String::new(), &mut entries, 0)?;
+        collect_leaves(doc.as_table().iter(), "", &mut entries, 0)?;
         Ok(ConfigModel::from_entries(entries))
     }
 
@@ -68,7 +68,7 @@ impl FormatHandler for TomlHandler {
 /// the self-check refuses to flatten it.
 fn collect_leaves<'a>(
     items: impl Iterator<Item = (&'a str, &'a Item)>,
-    prefix: &mut String,
+    prefix: &str,
     out: &mut Vec<(KeyPath, ConfigValue)>,
     depth: usize,
 ) -> Result<(), ParseError> {
@@ -79,15 +79,10 @@ fn collect_leaves<'a>(
         let path = join_path(prefix, key);
         match item {
             Item::Value(Value::InlineTable(t)) => {
-                let mut child_prefix = path;
-                child_prefix.push('\0'); // sentinel removed below; reuse buffer cheaply
-                child_prefix.pop();
-                let mut p = child_prefix;
-                recurse_inline(t, &mut p, out, depth + 1)?;
+                recurse_inline(t, &path, out, depth + 1)?;
             }
             Item::Table(t) => {
-                let mut p = path;
-                collect_leaves(t.iter(), &mut p, out, depth + 1)?;
+                collect_leaves(t.iter(), &path, out, depth + 1)?;
             }
             Item::Value(v) => {
                 out.push((path, value_of(v)));
@@ -104,7 +99,7 @@ fn collect_leaves<'a>(
 /// Recurse into an inline table, collecting its scalar leaves under `prefix`.
 fn recurse_inline(
     table: &toml_edit::InlineTable,
-    prefix: &mut String,
+    prefix: &str,
     out: &mut Vec<(KeyPath, ConfigValue)>,
     depth: usize,
 ) -> Result<(), ParseError> {
@@ -115,8 +110,7 @@ fn recurse_inline(
         let path = join_path(prefix, key);
         match value {
             Value::InlineTable(t) => {
-                let mut p = path;
-                recurse_inline(t, &mut p, out, depth + 1)?;
+                recurse_inline(t, &path, out, depth + 1)?;
             }
             v => out.push((path, value_of(v))),
         }
@@ -179,14 +173,8 @@ fn assign_nested(
     for seg in parents {
         // If the segment is absent, create an implicit table; if it is a
         // non-table, refuse rather than clobber a scalar.
-        let table = current
-            .as_table_mut()
-            .map(|t| t as &mut dyn TableLikeMut)
-            .or_else(|| current.as_inline_table_mut().map(|t| t as &mut dyn TableLikeMut));
-        let table = match table {
-            Some(t) => t,
-            None => return Err(format!("{seg:?} parent is not a table")),
-        };
+        let table = table_like_mut(current)
+            .ok_or_else(|| format!("{seg:?} parent is not a table"))?;
         if !table.contains_key(seg) {
             table.insert_table(seg);
         }
@@ -200,13 +188,25 @@ fn assign_nested(
     }
 
     // Indexed assign on the leaf: mutate in place, keep the decor.
-    let parent = current
-        .as_table_mut()
-        .map(|t| t as &mut dyn TableLikeMut)
-        .or_else(|| current.as_inline_table_mut().map(|t| t as &mut dyn TableLikeMut))
-        .ok_or_else(|| "leaf parent is not a table".to_string())?;
+    let parent =
+        table_like_mut(current).ok_or_else(|| "leaf parent is not a table".to_string())?;
     parent.assign_value(last, value);
     Ok(())
+}
+
+/// View an item as the [`TableLikeMut`] used by the nested assign, whether it is
+/// a regular table or an inline table. Returns `None` for a scalar standing
+/// where a table is needed. Borrows the item exactly once, so it composes in a
+/// descent loop without the double-mutable-borrow a `map`/`or_else` chain hits.
+fn table_like_mut(item: &mut Item) -> Option<&mut dyn TableLikeMut> {
+    if item.is_table() {
+        item.as_table_mut().map(|t| t as &mut dyn TableLikeMut)
+    } else if item.is_inline_table() {
+        item.as_inline_table_mut()
+            .map(|t| t as &mut dyn TableLikeMut)
+    } else {
+        None
+    }
 }
 
 /// Remove the leaf at `segments`. An absent path is a no-op (the caller treats a
@@ -217,11 +217,10 @@ fn remove_nested(doc: &mut DocumentMut, segments: &[&str]) {
     };
     let mut current: &mut Item = doc.as_item_mut();
     for seg in parents {
-        let Some(next) = current
-            .as_table_mut()
-            .and_then(|t| t.get_mut(seg))
-            .or_else(|| current.as_inline_table_mut().and_then(|_| None))
-        else {
+        // Descend through regular tables only; an inline table holds `Value`s,
+        // not `Item`s, so a path running through one has no `Item` to remove
+        // from and the absent path is a no-op, matching `assign_nested`.
+        let Some(next) = current.as_table_mut().and_then(|t| t.get_mut(seg)) else {
             return;
         };
         current = next;
