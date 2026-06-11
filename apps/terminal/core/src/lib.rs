@@ -142,6 +142,62 @@ pub struct HistoryFilters {
     pub only_failures: bool,
 }
 
+/// The contract command handlers, as stubs.
+///
+/// These are the backend behind the `terminal_*` Tauri commands. They live in
+/// the embeddable core (not the app shell) because TM-R1's `VtEngine` replaces
+/// each stub with the real, engine-backed implementation, and the file manager's
+/// embedded terminal pane (FM-R6) drives the same handlers. The Tauri host
+/// (`apps/terminal/src-tauri`, the thin host) wraps each as a one-line
+/// `#[tauri::command]` of the matching name. Until the engine wires, the queries
+/// report nothing (the UI's empty state) rather than fabricate data; arlen-ui
+/// renders the populated chrome against its own mock of these shapes.
+pub mod stub {
+    use super::{Block, HistoryFilters, Project, Session, SessionStatus};
+
+    /// Stub for `terminal_sessions()`: the open shells. Empty until the engine
+    /// spawns and tracks them.
+    pub fn sessions() -> Vec<Session> {
+        Vec::new()
+    }
+
+    /// Stub for `terminal_blocks(session_id)`: a session's blocks. Empty until the
+    /// engine surfaces OSC-marked command output.
+    pub fn blocks(_session_id: &str) -> Vec<Block> {
+        Vec::new()
+    }
+
+    /// Stub for `terminal_input(session_id, input)`: feed input to a session's
+    /// shell. A no-op until the engine owns the pty.
+    pub fn input(_session_id: &str, _input: &str) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Stub for `terminal_new_session()`: open a new shell. Returns a fresh
+    /// running session anchored at the user's home so the shape is exercised
+    /// (the engine assigns the real id and cwd).
+    pub fn new_session() -> Result<Session, String> {
+        Ok(Session {
+            id: String::new(),
+            cwd: std::env::var("HOME").unwrap_or_else(|_| "/".to_string()),
+            status: SessionStatus::Running,
+            last_exit: None,
+        })
+    }
+
+    /// Stub for `terminal_history_search(query, filters)`: the `⌃R` search over
+    /// past blocks. Empty until the graph-backed history is wired.
+    pub fn history_search(_query: &str, _filters: &HistoryFilters) -> Vec<Block> {
+        Vec::new()
+    }
+
+    /// Stub for `terminal_projects()`: the projects to scope to. Empty until the
+    /// graph-backed project list is wired.
+    pub fn projects() -> Vec<Project> {
+        Vec::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,6 +299,24 @@ mod tests {
             json!({ "cwd": null, "origin": null, "project_id": null, "only_failures": false })
         );
         assert_eq!(serde_json::from_value::<HistoryFilters>(v).unwrap(), f);
+    }
+
+    #[test]
+    fn stub_handlers_match_the_command_signatures() {
+        // The query stubs report nothing until the engine wires (no fabricated
+        // data), and the mutating stubs succeed.
+        assert!(stub::sessions().is_empty());
+        assert!(stub::blocks("s1").is_empty());
+        assert!(stub::history_search("git", &HistoryFilters::default()).is_empty());
+        assert!(stub::projects().is_empty());
+        assert!(stub::input("s1", "ls\n").is_ok());
+        // new_session yields a valid running session in the contract shape.
+        let s = stub::new_session().unwrap();
+        assert_eq!(s.status, SessionStatus::Running);
+        assert_eq!(s.last_exit, None);
+        let v = serde_json::to_value(&s).unwrap();
+        assert!(v.get("id").is_some() && v.get("cwd").is_some());
+        assert_eq!(v["status"], json!("running"));
     }
 
     #[test]
