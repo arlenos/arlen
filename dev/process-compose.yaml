@@ -14,6 +14,11 @@ environment:
   - "ARLEN_PRODUCER_SOCKET=${XDG_RUNTIME_DIR}/arlen/event-bus-producer.sock"
   - "ARLEN_CONSUMER_SOCKET=${XDG_RUNTIME_DIR}/arlen/event-bus-consumer.sock"
   - "ARLEN_DAEMON_SOCKET=${XDG_RUNTIME_DIR}/arlen/knowledge.sock"
+  # The knowledge daemon BINDS at ARLEN_DAEMON_SOCKET; the ai-agent CONNECTS via
+  # ARLEN_KNOWLEDGE_SOCKET (no ARLEN_DAEMON_SOCKET fallback, unlike knowledge-mcp),
+  # so set both to the same path or the agent dials the /run/arlen default and
+  # cannot reach knowledge in the dev stack.
+  - "ARLEN_KNOWLEDGE_SOCKET=${XDG_RUNTIME_DIR}/arlen/knowledge.sock"
   # lbug (Kuzu) vendors thrift C++ that misses <cstdint> on newer GCC.
   - "CXXFLAGS=-include cstdint"
 
