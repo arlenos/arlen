@@ -17,6 +17,7 @@
     exitCode = null,
     durationMs = null,
     running = false,
+    originLabel = null,
     context,
     marker,
     lens,
@@ -35,6 +36,10 @@
     /// True while the command is still executing — shows the quiet
     /// running indicator instead of the result.
     running?: boolean;
+    /// Optional origin word in the header meta cluster (e.g. "agent"
+    /// on agent-issued blocks); null renders nothing, so the common
+    /// you-ran path stays silent.
+    originLabel?: string | null;
     /// The prompt context line above the header (path + git).
     context?: Snippet;
     /// The origin marker rendered before the command (prompt char).
@@ -76,6 +81,9 @@
     {#if actions}
       <span class="cb-actions">{@render actions()}</span>
     {/if}
+    {#if originLabel}
+      <span class="cb-origin">{originLabel}</span>
+    {/if}
     {#if running}
       <span class="cb-running" aria-label="Still running">
         <span class="cb-running-dot"></span>
@@ -100,7 +108,7 @@
   .console-block {
     display: flex;
     flex-direction: column;
-    padding: 8px 0 10px;
+    padding: 12px 0;
     border-bottom: 1px solid
       color-mix(in srgb, var(--foreground) 7%, transparent);
   }
@@ -163,8 +171,8 @@
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    font-size: 0.6875rem;
+    gap: 6px;
+    font-size: 0.75rem;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .cb-running-dot {
@@ -179,28 +187,34 @@
     50% { opacity: 0.35; }
   }
 
+  .cb-origin {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+
   .cb-exit {
     flex-shrink: 0;
     height: var(--height-tag, 20px);
     display: inline-flex;
     align-items: center;
-    padding: 0 7px;
+    padding: 0 8px;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--color-error) 14%, transparent);
     color: var(--color-error);
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
   }
 
   .cb-duration {
     flex-shrink: 0;
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     font-variant-numeric: tabular-nums;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
   .cb-body {
-    padding: 6px 16px 0;
+    padding: 8px 16px 0;
   }
 </style>
