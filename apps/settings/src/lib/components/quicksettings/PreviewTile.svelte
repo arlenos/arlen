@@ -202,7 +202,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 10px 12px;
+    padding: 12px;
     min-height: 64px;
     background: color-mix(in srgb, var(--color-fg-shell) 6%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 12%, transparent);
@@ -227,7 +227,6 @@
     opacity: 0.4;
   }
   .preview-tile.read-only {
-    cursor: not-allowed;
     opacity: 0.6;
   }
 
@@ -283,11 +282,13 @@
     gap: 6px;
   }
   :global(.skeleton-status) {
-    height: 10px;
-    width: 60%;
+    /* Mocks the real tile strip (BaseTile: min-height --height-control). */
+    height: var(--height-control, 28px);
+    width: 100%;
   }
   :global(.skeleton-slider) {
-    height: 4px;
+    /* Mocks the FillSlider's visible track (18px inside its 28px wrapper). */
+    height: 18px;
     width: 100%;
   }
   :global(.skeleton-chart) {
