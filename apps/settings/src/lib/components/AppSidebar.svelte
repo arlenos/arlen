@@ -150,7 +150,10 @@
 </script>
 
 <Sidebar collapsible="icon">
-  <SidebarHeader>
+  <!-- The header band matches the content header's height and shares its
+       bottom seam, so sidebar top and titlebar read as one continuous bar
+       across the window; the search keeps its full 36px hero size inside. -->
+  <SidebarHeader class="h-12 justify-center border-b border-sidebar-border py-0">
     <!--
       Search replaces the static "Settings · Arlen OS" branding
       that lived here. The block was decorative and the slot is on
