@@ -24,7 +24,7 @@
   import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import { Plus } from "lucide-svelte";
   import { terminalProjects, type Project, type Session } from "$lib/contract";
-  import { shortPath } from "$lib/paths";
+  import { displayPath, shortPath } from "$lib/paths";
   import {
     sessions,
     activeSessionId,
@@ -152,7 +152,7 @@
                 class:ts-dot-failed={sessionFailed(s)}
               ></span>
               <span class="ts-text group-data-[collapsible=icon]:hidden">
-                {shortPath(s.cwd)}
+                {displayPath(s.cwd)}
               </span>
               <span
                 class="ts-dot ml-auto group-data-[collapsible=icon]:hidden"
