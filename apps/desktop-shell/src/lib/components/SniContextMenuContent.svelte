@@ -26,12 +26,14 @@
 
   let items = $state<DbusMenuItem[]>([]);
   let loading = $state(true);
+  let failed = $state(false);
 
   $effect(() => {
     loading = true;
+    failed = false;
     invoke<DbusMenuItem[]>("get_sni_menu", { service, menuPath })
       .then((result) => { items = result; })
-      .catch(() => {})
+      .catch(() => { failed = true; })
       .finally(() => { loading = false; });
   });
 
@@ -43,10 +45,10 @@
   }
 </script>
 
+<!-- Callers filter on `visible` before rendering, so the snippet
+     only ever sees visible items. -->
 {#snippet menuItem(item: DbusMenuItem)}
-  {#if !item.visible}
-    <!-- hidden -->
-  {:else if item.item_type === "separator"}
+  {#if item.item_type === "separator"}
     <ContextMenu.Separator />
   {:else if item.children.length > 0}
     <ContextMenu.Sub>
@@ -75,6 +77,8 @@
 <ContextMenu.Content class="shell-popover min-w-[180px]">
   {#if loading}
     <ContextMenu.Item disabled>Loading...</ContextMenu.Item>
+  {:else if failed}
+    <ContextMenu.Item disabled>Couldn't load this menu</ContextMenu.Item>
   {:else if items.length === 0}
     <ContextMenu.Item disabled>No actions</ContextMenu.Item>
   {:else}

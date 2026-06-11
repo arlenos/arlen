@@ -11,16 +11,30 @@
         MOVEMENT_ON_EDGE,
         MOVEMENT_CENTERED,
     } from "$lib/stores/zoom";
+    import { Minus, Plus, Ellipsis, Check, X } from "lucide-svelte";
 
     let incrementOpen = $state(false);
     let movementOpen = $state(false);
 
-    function movementLabel(m: number): string {
-        switch (m) {
-            case MOVEMENT_CONTINUOUSLY: return "Continuously";
-            case MOVEMENT_ON_EDGE: return "On Edge";
-            case MOVEMENT_CENTERED: return "Centered";
-            default: return "Unknown";
+    /// Either hand-rolled popover dangles open until its trigger is
+    /// re-clicked — close them on any press outside the toolbar and
+    /// on Escape, like every other transient surface in the shell.
+    function onWindowPointerDown(e: PointerEvent) {
+        if (!incrementOpen && !movementOpen) return;
+        if (
+            e.target instanceof Element &&
+            e.target.closest(".zoom-popover-container")
+        ) {
+            return;
+        }
+        incrementOpen = false;
+        movementOpen = false;
+    }
+
+    function onWindowKeydown(e: KeyboardEvent) {
+        if (e.key === "Escape" && (incrementOpen || movementOpen)) {
+            incrementOpen = false;
+            movementOpen = false;
         }
     }
 
@@ -29,16 +43,18 @@
     }
 </script>
 
+<svelte:window onpointerdown={onWindowPointerDown} onkeydown={onWindowKeydown} />
+
 {#if $zoom.visible}
     <div class="zoom-toolbar shell-surface">
-        <button class="zoom-btn" onclick={zoomDecrease} title="Zoom out">
-            <span class="zoom-icon">-</span>
+        <button class="zoom-btn" onclick={zoomDecrease} aria-label="Zoom out">
+            <Minus size={14} strokeWidth={2} />
         </button>
 
         <span class="zoom-level">{formatLevel($zoom.level)}</span>
 
-        <button class="zoom-btn" onclick={zoomIncrease} title="Zoom in">
-            <span class="zoom-icon">+</span>
+        <button class="zoom-btn" onclick={zoomIncrease} aria-label="Zoom in">
+            <Plus size={14} strokeWidth={2} />
         </button>
 
         <div class="zoom-separator"></div>
@@ -46,6 +62,9 @@
         <div class="zoom-popover-container">
             <button
                 class="zoom-btn zoom-text-btn"
+                aria-label="Zoom step"
+                aria-haspopup="menu"
+                aria-expanded={incrementOpen}
                 onclick={() => { incrementOpen = !incrementOpen; movementOpen = false; }}
             >
                 {$zoom.increment}%
@@ -68,10 +87,12 @@
         <div class="zoom-popover-container">
             <button
                 class="zoom-btn"
+                aria-label="Zoom movement"
+                aria-haspopup="menu"
+                aria-expanded={movementOpen}
                 onclick={() => { movementOpen = !movementOpen; incrementOpen = false; }}
-                title="View movement"
             >
-                <span class="zoom-icon">\u{2026}</span>
+                <Ellipsis size={14} strokeWidth={2} />
             </button>
             {#if movementOpen}
                 <div class="zoom-popover">
@@ -86,7 +107,7 @@
                             onclick={() => { zoomSetMovement(opt.mode); movementOpen = false; }}
                         >
                             {#if opt.mode === $zoom.movement}
-                                <span class="check">\u{2713}</span>
+                                <span class="check"><Check size={12} strokeWidth={2} /></span>
                             {/if}
                             {opt.label}
                         </button>
@@ -97,8 +118,8 @@
 
         <div class="zoom-separator"></div>
 
-        <button class="zoom-btn" onclick={zoomClose} title="Close zoom">
-            <span class="zoom-icon">\u{2715}</span>
+        <button class="zoom-btn" onclick={zoomClose} aria-label="Turn off zoom">
+            <X size={14} strokeWidth={2} />
         </button>
     </div>
 {/if}
@@ -122,13 +143,12 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 28px;
-        height: 28px;
+        width: var(--height-control, 28px);
+        height: var(--height-control, 28px);
         border: none;
         border-radius: var(--radius-input);
         background: transparent;
         color: var(--foreground);
-        font-size: 16px;
         transition: background var(--duration-fast, 150ms) var(--easing-default, ease);
     }
 
@@ -149,11 +169,6 @@
         font-size: 13px;
         font-weight: 600;
         color: var(--foreground);
-    }
-
-    .zoom-icon {
-        font-size: 16px;
-        line-height: 1;
     }
 
     .zoom-separator {
@@ -202,7 +217,7 @@
     }
 
     .check {
-        font-size: 12px;
+        display: inline-flex;
         color: var(--color-accent);
     }
 </style>

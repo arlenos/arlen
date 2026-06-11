@@ -31,7 +31,9 @@
       calendar: "create and modify calendar events",
       email: "compose and send email",
     };
-    return known[scope] ?? scope;
+    // Unknown scopes stay honest (no guessing) but read as a
+    // sentence: 'Allow the assistant to use "kg-write"?'
+    return known[scope] ?? `use "${scope}"`;
   }
 </script>
 

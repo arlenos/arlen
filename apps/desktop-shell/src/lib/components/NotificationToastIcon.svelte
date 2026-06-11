@@ -27,8 +27,8 @@
 
 <style>
   .toast-icon-img {
-    width: 24px;
-    height: 24px;
+    width: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 24px);
     border-radius: var(--radius-chip);
     object-fit: contain;
     flex-shrink: 0;
@@ -38,8 +38,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 24px);
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, currentColor 12%, transparent);
     color: inherit;

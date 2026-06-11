@@ -17,11 +17,9 @@
 
   let expandedGroups = $state<Set<string>>(new Set());
 
-  /// Materialise the Map<string, Notification[]> into a stable array
-  /// once per store update. Inlining `[...$groupedNotifications.entries()]`
-  /// directly in `{#each}` creates a fresh array reference on every
-  /// render, which defeats Svelte's identity-based child reconciliation
-  /// and makes the whole panel re-render on any unrelated parent update.
+  /// Materialise the Map<string, Notification[]> into an array so
+  /// the template destructures entries readably; the keyed each
+  /// reconciles by app name either way.
   const groupEntries = $derived(
     Array.from($groupedNotifications.entries()),
   );
@@ -66,15 +64,7 @@
     <div class="notif-list">
       {#each groupEntries as [appName, items] (appName)}
         <div class="notif-group">
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <div
-            class="notif-group-header"
-            class:collapsible={items.length >= 3}
-            onclick={() => {
-              if (items.length >= 3) toggleGroup(appName);
-            }}
-          >
+          {#snippet groupHeaderContent()}
             <span class="notif-group-dot"></span>
             <span class="notif-group-name">{appName}</span>
             {#if items.length > 1}
@@ -87,7 +77,21 @@
                 class="notif-chevron {expandedGroups.has(appName) ? 'expanded' : ''}"
               />
             {/if}
-          </div>
+          {/snippet}
+          {#if items.length >= 3}
+            <button
+              class="notif-group-header collapsible"
+              aria-expanded={expandedGroups.has(appName)}
+              aria-label="Show all {appName} notifications"
+              onclick={() => toggleGroup(appName)}
+            >
+              {@render groupHeaderContent()}
+            </button>
+          {:else}
+            <div class="notif-group-header">
+              {@render groupHeaderContent()}
+            </div>
+          {/if}
 
           <div class="notif-group-items">
             {#if items.length >= 3 && !expandedGroups.has(appName)}
@@ -111,9 +115,8 @@
     gap: 12px;
   }
 
-  /* Section header — bigger, full-weight title with a count pill
-     and a clear-all button that's a real labelled button (not an
-     icon-only mystery button). */
+  /* Section header: full-weight title with a count pill and a
+     labelled clear-all button. */
   .notif-section-header {
     display: flex;
     align-items: center;
@@ -153,7 +156,7 @@
     color: color-mix(in srgb, var(--color-fg-shell) 65%, transparent);
     font-size: 0.75rem;
     font-weight: 500;
-    transition: background-color 100ms ease, color 100ms ease, border-color 100ms ease;
+    transition: background-color var(--duration-micro, 100ms) ease, color var(--duration-micro, 100ms) ease, border-color var(--duration-micro, 100ms) ease;
   }
   .notif-clear-btn:hover {
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
@@ -187,16 +190,19 @@
     gap: 6px;
   }
 
-  /* Group header — accent dot + app name + count pill, more
-     prominent than the previous tiny uppercase label. Collapsible
+  /* Group header: accent dot + app name + count pill. Collapsible
      when 3+ items (chevron rotates). */
   .notif-group-header {
     display: flex;
     align-items: center;
     gap: 8px;
+    width: 100%;
     padding: 4px 6px;
+    border: none;
+    background: transparent;
+    text-align: left;
     border-radius: var(--radius-chip);
-    transition: background-color 100ms ease;
+    transition: background-color var(--duration-micro, 100ms) ease;
   }
   .notif-group-header.collapsible:hover {
     background: color-mix(in srgb, var(--color-fg-shell) 6%, transparent);
@@ -227,7 +233,7 @@
   :global(.notif-chevron) {
     margin-left: auto;
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
-    transition: transform 150ms ease;
+    transition: transform var(--duration-fast, 150ms) ease;
   }
   :global(.notif-chevron.expanded) {
     transform: rotate(180deg);

@@ -3,19 +3,46 @@
   pulses or tints in response to the focused app's
   shell.ambient state. Mounted once at the root layout level.
   pointer-events: none, z-index: 1 (above background, below
-  TopBar at z=50 and any popover at z=100).
+  the topbar at z=95 and any popover at z=100).
 
   See `docs/architecture/ambient-api.md`.
 -->
 <script lang="ts">
   import { focusedAmbient } from "$lib/stores/appStateStores";
+  import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
 
   // Ambient is globally disable-able via `~/.config/arlen/
-  // shell.toml [ambient] enabled = false`. The shell config
-  // store would expose this; for Phase 1 we read from a
-  // simple Tauri command on mount and skip render when off.
-  // TODO: wire shell.toml ambient.enabled — Phase 6.
+  // shell.toml [ambient] enabled = false`. Read once on mount and
+  // re-read on external config writes (same event the toast config
+  // follows); absent section means enabled.
   let ambientGloballyEnabled = $state(true);
+
+  async function loadAmbientEnabled() {
+    try {
+      const cfg = await invoke<{ ambient?: { enabled?: boolean } }>(
+        "get_shell_config",
+      );
+      ambientGloballyEnabled = cfg.ambient?.enabled ?? true;
+    } catch {
+      // Keep the default on error.
+    }
+  }
+
+  $effect(() => {
+    loadAmbientEnabled();
+    let unlisten: (() => void) | null = null;
+    listen("arlen://shell-config-changed", () => {
+      loadAmbientEnabled();
+    })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch(() => {});
+    return () => {
+      unlisten?.();
+    };
+  });
 
   // Animation duration mapping. The CSS `--ambient-speed-ms`
   // variable drives the keyframe iteration period.
@@ -74,6 +101,6 @@
   .ambient-tint {
     background: var(--ambient-color);
     opacity: var(--clamped-intensity);
-    transition: opacity 0.3s ease-out;
+    transition: opacity var(--duration-medium, 200ms) var(--ease-out, ease-out);
   }
 </style>

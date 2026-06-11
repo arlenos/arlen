@@ -6,6 +6,7 @@
     {#if bar.tabs.length > 0 && bar.width > 0}
         <div
             class="tab-bar shell-surface"
+            role="tablist"
             style="
                 position: fixed;
                 left: {bar.x}px;
@@ -18,11 +19,12 @@
             {#each bar.tabs as tab (tab.index)}
                 <button
                     class="tab"
+                    role="tab"
+                    aria-selected={tab.index === bar.active}
                     class:active={tab.index === bar.active}
                     onclick={() => activateTab(bar.stack_id, tab.index)}
-                    title={tab.title}
                 >
-                    <span class="tab-title">{tab.title}</span>
+                    <span class="tab-title" title={tab.title}>{tab.title}</span>
                 </button>
             {/each}
         </div>
@@ -52,7 +54,7 @@
     }
 
     .tab:hover {
-        background: color-mix(in srgb, var(--background) 80%, white 20%);
+        background: var(--card);
     }
 
     .tab.active {

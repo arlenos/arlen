@@ -38,6 +38,7 @@
   duplicate header on-screen.
 -->
 {#each [...$windowHeaders.values()].filter((hdr) => hdr.stack_id !== 0) as hdr (hdr.surface_id)}
+    {@const tabs = tabsFor(hdr.stack_id)}
     <!--
       `transform: translate3d()` rather than `left/top` so position
       updates are GPU-composited. With separate clients (shell vs.
@@ -80,8 +81,6 @@
           same contract visually (GTK's hit-testing within the
           layer surface also skips it).
         -->
-        {#if hdr.stack_id !== 0}
-            {@const tabs = tabsFor(hdr.stack_id)}
             <!--
               Integrated stack header (Feature 3). Tabs sit on the
               LEFT as clickable buttons; the drag zone between tabs
@@ -90,34 +89,27 @@
               region in windowHeaders.ts covers both the tab strip
               and the button strip.
             -->
-            <div class="header-tabs" role="tablist" aria-label="Window tabs">
-                {#each tabs as tab (tab.index)}
-                    <button
-                        type="button"
-                        role="tab"
-                        class="header-tab"
-                        class:header-tab-active={tab.active}
-                        onclick={() => activateTab(tab.stackId, tab.index)}
-                        title={tab.title}
-                        aria-selected={tab.active}
-                    >
-                        <span class="header-tab-title">{tab.title}</span>
-                    </button>
-                {/each}
-            </div>
-            <div class="header-drag header-drag-grow"></div>
-        {:else}
-            <div class="header-drag">
-                <span class="header-title">{hdr.title}</span>
-            </div>
-        {/if}
+        <div class="header-tabs" role="tablist" aria-label="Window tabs">
+            {#each tabs as tab (tab.index)}
+                <button
+                    type="button"
+                    role="tab"
+                    class="header-tab"
+                    class:header-tab-active={tab.active}
+                    onclick={() => activateTab(tab.stackId, tab.index)}
+                    aria-selected={tab.active}
+                >
+                    <span class="header-tab-title" title={tab.title}>{tab.title}</span>
+                </button>
+            {/each}
+        </div>
+        <div class="header-drag header-drag-grow"></div>
 
         <div class="header-buttons">
             {#if hdr.has_minimize}
                 <button
                     class="header-btn minimize"
                     onclick={() => headerAction(hdr.surface_id, HEADER_ACTION_MINIMIZE)}
-                    title="Minimize"
                     aria-label="Minimize"
                 >
                     <Minus size={14} strokeWidth={2} />
@@ -127,7 +119,6 @@
                 <button
                     class="header-btn maximize"
                     onclick={() => headerAction(hdr.surface_id, HEADER_ACTION_MAXIMIZE)}
-                    title="Maximize"
                     aria-label="Maximize"
                 >
                     <Square size={12} strokeWidth={2} />
@@ -136,7 +127,6 @@
             <button
                 class="header-btn close"
                 onclick={() => headerAction(hdr.surface_id, HEADER_ACTION_CLOSE)}
-                title="Close"
                 aria-label="Close"
             >
                 <X size={14} strokeWidth={2} />
@@ -190,8 +180,10 @@
       for the duration of the drag — `draggingSurfaces` toggles
       this class via the Feature-4 drag_start/drag_end events.
     */
+    /* The two-class selector (0,2,0) outranks the base rule's
+       (0,1,0) on its own. */
     .window-header.dragging {
-        transition: none !important;
+        transition: none;
     }
 
     .header-drag {
@@ -263,14 +255,6 @@
         pointer-events: none;
     }
 
-    .header-title {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-size: 13px;
-        font-weight: 500;
-    }
-
     .header-buttons {
         display: flex;
         align-items: center;
@@ -282,8 +266,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 28px;
-        height: 28px;
+        width: var(--height-control, 28px);
+        height: var(--height-control, 28px);
         border: none;
         border-radius: var(--radius-input);
         background: transparent;
