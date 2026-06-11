@@ -1,20 +1,18 @@
 <script lang="ts">
-  /// AI settings page — configures `~/.config/arlen/ai.toml`.
+  /// AI settings page, the single CONFIG home for the AI layer (settings-app.md
+  /// §0.3; the chat/agent split resolution in harness-redo-plan.md): master
+  /// switch, provider, read level, action mode, behaviours, execution, and
+  /// service status. Configures `~/.config/arlen/ai.toml`.
   ///
-  /// Built on the design-system canon (docs/architecture/settings-app.md §0.3):
-  /// Page/SectionGrid/Group/Row/Switch/SegmentedControl/ChipList from
-  /// `@arlen/ui-kit`; Button/Input/NumberInput/PopoverSelect are app-local
-  /// (Tailwind/lucide) until the @source consolidation (S-U1b).
-  ///
-  /// Sections built here are the confirmed config keys, daemon status, and the
-  /// read-only Activity timeline (S-U4, the audit-ledger read command). The
-  /// External-content screening (`[classifier]` schema) and the behaviours list
-  /// (needs a SKILL.md discovery command) remain sub-steps S-U3b, not yet wired.
+  /// Reviewing what the AI did lives in the AI app's Activity feed, not here
+  /// (one activity home, one config home). The behaviours list is wired
+  /// against the intended commands (`ai_behaviours` read,
+  /// `ai_behaviour_set_enabled` write); until the backend provides them the
+  /// rows report that honestly.
 
   import { onMount } from "svelte";
-  import { get } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import { Sparkles, RefreshCw, AlertCircle, ShieldAlert, History } from "lucide-svelte";
+  import { Sparkles, RefreshCw, AlertCircle } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
@@ -33,40 +31,20 @@
     proxyRunning: boolean;
   }
 
-  interface ActivityEntry {
-    index: number;
-    timestampMicros: number;
+  /// One background behaviour as the registry reports it.
+  interface BehaviourStatus {
+    name: string;
+    description: string;
     kind: string;
-    actor: string;
-    subject: string;
-    outcome: string;
-    nodeTypes: string[];
-    relations: string[];
-    resultCount: number | null;
-    durationMs: number | null;
-    depth: number | null;
-    callChainId: string | null;
-    projectId: string | null;
-    entryRef: string;
+    provenance: string;
+    enabled: boolean;
+    disabledReason: string | null;
+    reads: string;
   }
-
-  interface ActivityPage {
-    entries: ActivityEntry[];
-    available: boolean;
-    tampered: boolean;
-    total: number;
+  interface BehaviourReport {
+    behaviours: BehaviourStatus[];
+    errors: string[];
   }
-
-  /// Human label per audit kind, paired with a semantic tone for the badge.
-  const KIND_META: Record<string, { label: string; tone: string }> = {
-    query: { label: "Query", tone: "neutral" },
-    "tool-call": { label: "Tool call", tone: "info" },
-    confirm: { label: "Confirmed", tone: "ok" },
-    "policy-violation": { label: "Blocked", tone: "warn" },
-    "graph-access": { label: "Graph", tone: "neutral" },
-    permission: { label: "Permission", tone: "info" },
-    "network-call": { label: "Network", tone: "info" },
-  };
 
   const PROVIDERS = [{ value: "ollama-default", label: "Ollama (local)" }];
 
@@ -78,11 +56,11 @@
     { value: "4", label: "Full" },
   ];
   const ACCESS_HINTS: Record<string, string> = {
-    "0": "The assistant sees almost nothing of your graph.",
+    "0": "The assistant sees almost nothing.",
     "1": "Limited to the current session's activity.",
     "2": "The active project's files and context.",
     "3": "A recent time window across projects.",
-    "4": "The whole Knowledge Graph.",
+    "4": "Everything the system has recorded about your files and activity.",
   };
   const ACTION_MODES = [
     { value: "suggest", label: "Suggest" },
@@ -94,7 +72,7 @@
   let statusError = $state<string | null>(null);
 
   // System Explanation Mode (Foundation §5.8): an on-demand plain-language
-  // summary of what the computer is doing now, from the AI daemon.
+  // summary of what the computer is doing now.
   let explanation = $state<string | null>(null);
   let explainError = $state<string | null>(null);
   let explaining = $state(false);
@@ -122,35 +100,40 @@
   let executorLive = $state(false);
   let contextWindow = $state(8192);
 
-  let activity = $state<ActivityPage | null>(null);
-  let activityLoading = $state(false);
-  let activityError = $state<string | null>(null);
+  // The behaviours read. `null` before the first read settles; `unavailable`
+  // when the command failed (it does not exist in this app's backend yet).
+  let behaviours = $state<BehaviourReport | null>(null);
+  let behavioursUnavailable = $state(false);
+  // Behaviour names whose toggle write failed, shown honestly per row.
+  let behaviourWriteFailed = $state<Record<string, boolean>>({});
 
-  /// A coarse relative-time label from a microsecond Unix timestamp.
-  function relativeTime(micros: number): string {
-    const then = micros / 1000;
-    const diffSec = Math.max(0, (Date.now() - then) / 1000);
-    if (diffSec < 45) return "just now";
-    if (diffSec < 90) return "a minute ago";
-    const min = Math.round(diffSec / 60);
-    if (min < 60) return `${min} min ago`;
-    const hr = Math.round(min / 60);
-    if (hr < 24) return `${hr} h ago`;
-    const day = Math.round(hr / 24);
-    if (day < 7) return `${day} d ago`;
-    return new Date(then).toLocaleDateString();
+  async function loadBehaviours(): Promise<void> {
+    try {
+      behaviours = await invoke<BehaviourReport>("ai_behaviours");
+      behavioursUnavailable = false;
+    } catch {
+      behaviours = null;
+      behavioursUnavailable = true;
+    }
   }
 
-  async function loadActivity(): Promise<void> {
-    activityLoading = true;
-    activityError = null;
+  async function setBehaviourEnabled(name: string, v: boolean): Promise<void> {
+    // Optimistic flip; on failure flip back and say so on the row.
+    behaviours = behaviours && {
+      ...behaviours,
+      behaviours: behaviours.behaviours.map((b) => (b.name === name ? { ...b, enabled: v } : b)),
+    };
     try {
-      activity = await invoke<ActivityPage>("ai_activity_recent", { limit: 50 });
-    } catch (e) {
-      activityError = String(e);
-      activity = null;
-    } finally {
-      activityLoading = false;
+      await invoke("ai_behaviour_set_enabled", { name, enabled: v });
+      behaviourWriteFailed = { ...behaviourWriteFailed, [name]: false };
+    } catch {
+      behaviours = behaviours && {
+        ...behaviours,
+        behaviours: behaviours.behaviours.map((b) =>
+          b.name === name ? { ...b, enabled: !v } : b,
+        ),
+      };
+      behaviourWriteFailed = { ...behaviourWriteFailed, [name]: true };
     }
   }
 
@@ -179,7 +162,7 @@
     model = ai.getValue<string>("provider.model") ?? "";
     contextWindow = ai.getValue<number>("provider.context_window") ?? 8192;
     await refreshStatus();
-    await loadActivity();
+    await loadBehaviours();
   });
 
   async function setEnabled(v: boolean) {
@@ -220,13 +203,13 @@
 
 <Page
   title="AI"
-  description="On-device and cloud AI features. Off by default, so you stay in control of what the assistant can read and do."
+  description="On-device and cloud AI features. Off by default, so you stay in control of what the assistant can read and do. What it has done shows in the AI app."
 >
   <SectionGrid>
     <Group label="AI Layer">
       <Row
         label="Enable AI features"
-        description="Lets the assistant answer questions and run behaviours. Nothing runs until you turn this on."
+        description="Lets the assistant answer questions and work in the background. Nothing runs until you turn this on."
         id="ai-enable"
       >
         {#snippet control()}
@@ -252,13 +235,13 @@
           <Input value={model} placeholder="llama3:8b" oninput={(e) => setModel(e.currentTarget.value)} />
         {/snippet}
       </Row>
-      <Row label="Context window" description="Usable input tokens; the loop compacts to fit." id="ai-context-window">
+      <Row label="Context window" description="How much text the model can take in at once, in tokens." id="ai-context-window">
         {#snippet control()}
           <NumberInput value={contextWindow} min={2048} max={131072} step={1024} unit="tok" onchange={setContextWindow} />
         {/snippet}
       </Row>
       {#if providerRestartPending}
-        <Row label="Restart needed" description="The provider change applies after the AI daemon restarts." id="ai-provider-restart">
+        <Row label="Restart needed" description="The provider change applies after the assistant restarts." id="ai-provider-restart">
           {#snippet control()}
             <span class="meta"><Sparkles size={12} strokeWidth={1.5} />pending</span>
           {/snippet}
@@ -296,7 +279,7 @@
       </Row>
       <Row
         label="Always-confirm rule"
-        description="High-impact actions (delete, send, install) and anything triggered by external content always ask first, regardless of mode."
+        description="High-impact actions (delete, send, install) and anything triggered by outside content always ask first, regardless of mode."
         id="ai-confirm-rule"
       >
         {#snippet control()}
@@ -306,7 +289,7 @@
       <Row
         label="Autonomous apps"
         description={autonomousApps.length === 0
-          ? "No app may act autonomously. Add an app id to allow it (per-app only; never global)."
+          ? "No app may act on its own. Add an app id to allow it (per app only, never global)."
           : "These apps may act without confirmation in their own scope."}
         id="ai-autonomous-apps"
       >
@@ -320,36 +303,93 @@
       </Row>
     </Group>
 
+    <Group label="Behaviours">
+      <Row
+        label="What it may do on its own"
+        description="Each behaviour is one background task. Turn them on or off here; everything they do shows in the AI app."
+        id="ai-behaviours"
+      ></Row>
+      {#if behavioursUnavailable}
+        <Row
+          label="Behaviour list unavailable"
+          description="Can't read the behaviour list right now."
+          id="ai-behaviours-unavailable"
+        >
+          {#snippet control()}<AlertCircle size={16} class="ai-error-icon" />{/snippet}
+        </Row>
+      {:else if behaviours}
+        {#if behaviours.behaviours.length === 0}
+          <Row
+            label="No behaviours installed"
+            description="When apps or the system add background tasks, they appear here."
+            id="ai-behaviours-empty"
+          ></Row>
+        {/if}
+        {#each behaviours.behaviours as b (b.name)}
+          <Row
+            label={b.name}
+            description={behaviourWriteFailed[b.name]
+              ? "Could not save this change."
+              : b.description}
+            id={`ai-behaviour-${b.name}`}
+          >
+            {#snippet control()}
+              <Switch
+                value={b.enabled}
+                ariaLabel={`Enable ${b.name}`}
+                onchange={(v: boolean) => setBehaviourEnabled(b.name, v)}
+              />
+            {/snippet}
+          </Row>
+        {/each}
+        {#if behaviours.errors.length > 0}
+          <Row
+            label="Some behaviours could not be read"
+            description={behaviours.errors.join("; ")}
+            id="ai-behaviours-errors"
+          >
+            {#snippet control()}<AlertCircle size={16} class="ai-error-icon" />{/snippet}
+          </Row>
+        {/if}
+      {/if}
+    </Group>
+
     <Group label="Execution">
       <Row
-        label="Allow safe curation to write"
-        description="Lets deterministic curation workflows (e.g. auto-tagging files to projects) write the graph without a per-action prompt. Review results in Activity. Off by default; the write still passes the full gate."
+        label="Let it make small changes"
+        description="Small, reversible changes like sorting files into projects, made without asking each time. Every change shows in the AI app and still passes the safety checks. Off by default."
         id="ai-executor-live"
       >
         {#snippet control()}
-          <Switch value={executorLive} ariaLabel="Allow safe curation to write" onchange={setExecutorLive} />
+          <Switch value={executorLive} ariaLabel="Let it make small changes" onchange={setExecutorLive} />
         {/snippet}
       </Row>
     </Group>
 
     <Group label="Status">
       {#if statusError}
-        <Row label="Status unavailable" description={statusError} id="ai-status-error">
-          {#snippet control()}<AlertCircle size={16} class="ai-error-icon" />{/snippet}
+        <Row
+          label="Status unavailable"
+          description="Can't check the services right now."
+          id="ai-status-error"
+        >
+          {#snippet control()}
+            <span title={statusError}><AlertCircle size={16} class="ai-error-icon" /></span>
+          {/snippet}
         </Row>
       {:else}
-        <Row label="AI Daemon" description="Answers queries and runs the Cypher pipeline." id="ai-daemon-status">
+        <Row label="Assistant service" description="Answers your questions in the AI app." id="ai-daemon-status">
           {#snippet control()}
             <span class="meta" class:on={status?.daemonRunning}>{status?.daemonRunning ? "Running" : "Stopped"}</span>
           {/snippet}
         </Row>
-        <Row label="Network Proxy" description="The only path AI traffic takes to leave this machine." id="ai-proxy-status">
+        <Row label="Network gate" description="The only path AI traffic can take to leave this machine." id="ai-proxy-status">
           {#snippet control()}
             <span class="meta" class:on={status?.proxyRunning}>{status?.proxyRunning ? "Running" : "Stopped"}</span>
           {/snippet}
         </Row>
       {/if}
-      <Row label="Refresh" description="Re-probe the daemon and proxy." id="ai-refresh">
+      <Row label="Refresh" description="Check the services again." id="ai-refresh">
         {#snippet control()}
           <Button variant="ghost" size="sm" disabled={statusLoading} onclick={refreshStatus}>
             <RefreshCw size={14} class={statusLoading ? "ai-spin" : ""} />
@@ -362,88 +402,23 @@
     <Group label="What's happening now">
       <Row
         label="Explain my system"
-        description="A plain-language summary of what your computer is doing right now, grounded in the knowledge graph, live processes and any flagged anomalies. Needs the Full read tier."
+        description="A plain summary of what your computer is doing right now. Needs the Full read level."
         id="ai-explain"
       >
         {#snippet control()}
           <Button variant="outline" size="sm" disabled={explaining} onclick={runExplain}>
             <Sparkles size={14} class={explaining ? "ai-spin" : ""} />
-            {explaining ? "Thinking…" : "Explain"}
+            {explaining ? "Working" : "Explain"}
           </Button>
         {/snippet}
         {#snippet below()}
           {#if explainError}
-            <p class="explain-error">{explainError}</p>
+            <p class="explain-error" title={explainError}>Could not build an explanation. Try again.</p>
           {:else if explanation}
             <p class="explain-text">{explanation}</p>
           {/if}
         {/snippet}
       </Row>
-    </Group>
-
-    <Group label="Activity" class="span-full">
-      <div class="activity-head" id="ai-activity">
-        <div class="activity-head-text">
-          <History size={15} strokeWidth={1.75} />
-          <span>
-            What the assistant has done. Read-only, from the tamper-evident audit
-            ledger.{#if activity && activity.total > 0}
-              <span class="activity-count">{activity.total} total</span>{/if}
-          </span>
-        </div>
-        <Button variant="ghost" size="sm" disabled={activityLoading} onclick={loadActivity}>
-          <RefreshCw size={14} class={activityLoading ? "ai-spin" : ""} />
-          Refresh
-        </Button>
-      </div>
-
-      {#if activity?.tampered}
-        <div class="activity-banner">
-          <ShieldAlert size={16} />
-          The audit ledger reports tampering. The entries below may be incomplete.
-        </div>
-      {/if}
-
-      {#if activityError}
-        <p class="activity-empty">Activity unavailable: {activityError}</p>
-      {:else if !activity || !activity.available}
-        <p class="activity-empty">
-          The audit daemon is not running, so there is no activity to show yet.
-        </p>
-      {:else if activity.entries.length === 0}
-        <p class="activity-empty">No AI activity recorded yet.</p>
-      {:else}
-        <ul class="activity-list">
-          {#each activity.entries as entry (entry.entryRef)}
-            {@const meta = KIND_META[entry.kind] ?? { label: entry.kind, tone: "neutral" }}
-            <li class="activity-item">
-              <span class="activity-badge" data-tone={meta.tone}>{meta.label}</span>
-              <div class="activity-body">
-                <div class="activity-line">
-                  <span class="activity-subject">{entry.subject}</span>
-                  <span class="activity-outcome" data-outcome={entry.outcome}>{entry.outcome}</span>
-                </div>
-                <div class="activity-detail">
-                  <span>{entry.actor}</span>
-                  {#if entry.relations.length > 0}
-                    <span class="activity-sep">·</span>
-                    <span>{entry.relations.join(", ")}</span>
-                  {/if}
-                  {#if entry.resultCount !== null}
-                    <span class="activity-sep">·</span>
-                    <span>{entry.resultCount} result{entry.resultCount === 1 ? "" : "s"}</span>
-                  {/if}
-                  {#if entry.durationMs !== null}
-                    <span class="activity-sep">·</span>
-                    <span>{entry.durationMs} ms</span>
-                  {/if}
-                </div>
-              </div>
-              <time class="activity-time">{relativeTime(entry.timestampMicros)}</time>
-            </li>
-          {/each}
-        </ul>
-      {/if}
     </Group>
   </SectionGrid>
 </Page>
@@ -469,132 +444,6 @@
   }
   :global(.ai-error-icon) {
     color: var(--destructive);
-  }
-
-  .activity-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 0.25rem;
-  }
-  .activity-head-text {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    font-size: 0.8125rem;
-    color: color-mix(in srgb, var(--foreground) 60%, transparent);
-    line-height: 1.4;
-  }
-  .activity-head-text :global(svg) {
-    flex-shrink: 0;
-    margin-top: 0.1rem;
-  }
-  .activity-count {
-    margin-left: 0.375rem;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
-  }
-  .activity-banner {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.625rem 0.75rem;
-    margin-bottom: 0.75rem;
-    border-radius: 0.5rem;
-    font-size: 0.8125rem;
-    color: var(--destructive);
-    background: color-mix(in srgb, var(--destructive) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--destructive) 30%, transparent);
-  }
-  .activity-empty {
-    margin: 0;
-    padding: 1rem 0;
-    font-size: 0.8125rem;
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
-  }
-  .activity-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-  }
-  .activity-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    padding: 0.625rem 0;
-    border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
-  }
-  .activity-item:first-child {
-    border-top: none;
-  }
-  .activity-badge {
-    flex-shrink: 0;
-    min-width: 5.5rem;
-    text-align: center;
-    padding: 0.125rem 0.5rem;
-    border-radius: 0.375rem;
-    font-size: 0.6875rem;
-    font-weight: 500;
-    letter-spacing: 0.01em;
-    color: color-mix(in srgb, var(--foreground) 75%, transparent);
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
-  }
-  .activity-badge[data-tone="ok"] {
-    color: #16a34a;
-    background: color-mix(in srgb, #16a34a 14%, transparent);
-  }
-  .activity-badge[data-tone="warn"] {
-    color: var(--destructive);
-    background: color-mix(in srgb, var(--destructive) 14%, transparent);
-  }
-  .activity-badge[data-tone="info"] {
-    color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-  }
-  .activity-body {
-    flex: 1;
-    min-width: 0;
-  }
-  .activity-line {
-    display: flex;
-    align-items: baseline;
-    gap: 0.5rem;
-  }
-  .activity-subject {
-    font-size: 0.8125rem;
-    color: var(--foreground);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .activity-outcome {
-    flex-shrink: 0;
-    font-size: 0.6875rem;
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
-  }
-  .activity-outcome[data-outcome="denied"],
-  .activity-outcome[data-outcome="error"] {
-    color: var(--destructive);
-  }
-  .activity-detail {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.25rem;
-    margin-top: 0.125rem;
-    font-size: 0.75rem;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
-  }
-  .activity-sep {
-    opacity: 0.5;
-  }
-  .activity-time {
-    flex-shrink: 0;
-    font-size: 0.75rem;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
-    white-space: nowrap;
   }
   .explain-text {
     margin: 0.5rem 0 0;
