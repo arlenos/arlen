@@ -10,15 +10,27 @@
 version: "0.5"
 
 processes:
+  # cosmic-comp connects to the host session (wayland-1, like `just compositor`)
+  # and creates the nested wayland-2 the shell renders into. The stale wayland-2
+  # from a prior run is cleared first so the readiness probe only passes once the
+  # fresh nested socket exists.
   compositor:
-    command: 'cd "${COMPOSITOR_PATH:-../compositor}" && DISPLAY="" WAYLAND_DISPLAY=wayland-2 cargo run --bin cosmic-comp'
+    command: 'cd "${COMPOSITOR_PATH:-../compositor}" && rm -f "${XDG_RUNTIME_DIR}/wayland-2" "${XDG_RUNTIME_DIR}/wayland-2.lock" && DISPLAY="" WAYLAND_DISPLAY=wayland-1 cargo run --bin cosmic-comp'
+    readiness_probe:
+      exec:
+        command: 'test -S "${XDG_RUNTIME_DIR}/wayland-2"'
+      initial_delay_seconds: 3
+      period_seconds: 2
+      failure_threshold: 60
     availability:
       restart: "on_failure"
 
+  # Waits for the nested compositor to actually present wayland-2 (process_healthy),
+  # not just to have started, so the shell never races a not-yet-ready display.
   desktop-shell:
     command: 'WAYLAND_DISPLAY=wayland-2 cargo tauri dev'
     working_dir: "apps/desktop-shell"
     depends_on:
-      compositor: { condition: process_started }
+      compositor: { condition: process_healthy }
     availability:
       restart: "on_failure"

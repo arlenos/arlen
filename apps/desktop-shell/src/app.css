@@ -169,9 +169,23 @@
   --ring:                var(--color-accent);
 }
 
-/* Context menus (portaled) must sit above popovers (z-100). */
-[data-context-menu-content] { z-index: 300 !important; }
-[data-context-menu-sub-content] { z-index: 310 !important; }
+/* ============================================================
+   The shell z-scale (one place, keep ordered):
+     90  popover/panel backdrops
+     95  topbar
+     100 indicator popovers
+     110 quick-settings dropdowns
+     120 workspace overlay
+     300 portaled context menus, 310 their submenus
+     500 dialogs
+     10001 the drag ghost (above everything)
+   Context menus are portaled bits-ui content; the kit component
+   carries a layered Tailwind `z-50` utility, which unlayered author
+   CSS like this always outranks. bits-ui copies the COMPUTED z-index
+   onto its floating wrapper, so this rule is the intended channel.
+   ============================================================ */
+[data-context-menu-content] { z-index: 300; }
+[data-context-menu-sub-content] { z-index: 310; }
 
 /* Themed scrollbar: applied to any element with `.themed-scroll`
    plus an `overflow: auto/scroll`. Uses WebKit pseudo-elements
@@ -298,17 +312,25 @@
 
 /* Toast renderer overrides — driven by `shell.toml [toast]` via the
    toastConfig store. The width comes through inline style; here we
-   only define the optional animation flavours. */
-.arlen-toast-anim-fade {
+   only define the optional animation flavours.
+
+   Specificity note: svelte-sonner (1.1.0) drives enter/exit with
+   state-attribute selectors up to
+   [data-sonner-toast][data-removed=true][data-front=false]
+   [data-swipe-out=false][data-expanded=true]  → (0,5,0),
+   injected after this file. The `:not(#_)` pair lifts these class
+   rules to (2,1,0): above anything the library ships, still plain
+   author CSS, no !important. `#_` matches nothing by design. */
+.arlen-toast-anim-fade:not(#_):not(#_) {
   /* Fade in/out instead of svelte-sonner's default slide. */
-  animation-name: arlen-toast-fade !important;
-  transform: none !important;
+  animation-name: arlen-toast-fade;
+  transform: none;
 }
-.arlen-toast-anim-none {
+.arlen-toast-anim-none:not(#_):not(#_) {
   /* Skip animation entirely. */
-  animation: none !important;
-  transform: none !important;
-  transition: none !important;
+  animation: none;
+  transform: none;
+  transition: none;
 }
 @keyframes arlen-toast-fade {
   from { opacity: 0; }
@@ -333,10 +355,9 @@
   }
 }
 
-/* Pull Sonner toasts closer to the right edge of the screen. */
-[data-sonner-toaster][data-x-position="right"] {
-  right: 8px !important;
-}
+/* The toaster's right-edge inset lives on the <Toaster offset={{right}}>
+   prop in +layout.svelte (the library applies per-side offsets itself);
+   no CSS override needed. */
 
 /* ============================================================
    Toast layout: two-row grid.
@@ -347,36 +368,36 @@
    without touching sonner's DOM order, so `arlen-toast-anim-*`
    still drives in/out animation unchanged.
    ============================================================ */
-[data-sonner-toast][data-styled="true"] {
-  display: grid !important;
-  grid-template-columns: auto 1fr 1fr !important;
-  column-gap: 12px !important;
-  row-gap: 10px !important;
-  align-items: center !important;
-  padding: 14px !important;
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  column-gap: 12px;
+  row-gap: 10px;
+  align-items: center;
+  padding: 14px;
   /* Runtime corner radius — scales with appearance.toml [window].corner_radius. */
-  border-radius: var(--radius-card) !important;
+  border-radius: var(--radius-card);
   /* Click-to-focus-app: signal that the body is interactive. Action
      buttons get their own cursor via browser default. */
   cursor: pointer;
 }
-[data-sonner-toast][data-styled="true"] [data-icon] {
-  grid-column: 1 !important;
-  grid-row: 1 !important;
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-icon] {
+  grid-column: 1;
+  grid-row: 1;
 }
-[data-sonner-toast][data-styled="true"] [data-content] {
-  grid-column: 2 / 4 !important;
-  grid-row: 1 !important;
-  min-width: 0 !important;
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-content] {
+  grid-column: 2 / 4;
+  grid-row: 1;
+  min-width: 0;
 }
-[data-sonner-toast][data-styled="true"] [data-title] {
-  font-size: 0.875rem !important;   /* 14px */
-  font-weight: 600 !important;
-  line-height: 1.35 !important;
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-title] {
+  font-size: 0.875rem;   /* 14px */
+  font-weight: 600;
+  line-height: 1.35;
 }
-[data-sonner-toast][data-styled="true"] [data-description] {
-  font-size: 0.8125rem !important;  /* 13px */
-  line-height: 1.45 !important;
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-description] {
+  font-size: 0.8125rem;  /* 13px */
+  line-height: 1.45;
   opacity: 0.8;
   margin-top: 2px;
 }
@@ -400,33 +421,33 @@
    layout. The shared full-width column (2/4) plus
    `justify-self: stretch` keeps each button bar-wide so they read
    as primary CTAs rather than inline pills. */
-[data-sonner-toast][data-styled="true"] [data-button],
-[data-sonner-toast][data-styled="true"] [data-cancel] {
-  grid-row: auto !important;
-  grid-column: 2 / 4 !important;
-  margin: 6px 0 0 0 !important;
-  justify-self: stretch !important;
-  white-space: nowrap !important;
-  padding: 7px 12px !important;
-  border-radius: var(--radius-input) !important;
-  background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent) !important;
-  border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent) !important;
-  color: var(--color-fg-shell) !important;
-  font-size: 0.8125rem !important;
-  font-weight: 500 !important;
-  cursor: pointer !important;
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-button],
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-cancel] {
+  grid-row: auto;
+  grid-column: 2 / 4;
+  margin: 6px 0 0 0;
+  justify-self: stretch;
+  white-space: nowrap;
+  padding: 7px 12px;
+  border-radius: var(--radius-input);
+  background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
+  color: var(--color-fg-shell);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
   transition:
     background-color var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out),
-    transform var(--duration-micro) var(--ease-out) !important;
+    transform var(--duration-micro) var(--ease-out);
 }
-[data-sonner-toast][data-styled="true"] [data-button]:hover,
-[data-sonner-toast][data-styled="true"] [data-cancel]:hover {
-  background: color-mix(in srgb, var(--color-fg-shell) 14%, transparent) !important;
-  border-color: color-mix(in srgb, var(--color-fg-shell) 25%, transparent) !important;
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-button]:hover,
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-cancel]:hover {
+  background: color-mix(in srgb, var(--color-fg-shell) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-fg-shell) 25%, transparent);
 }
-[data-sonner-toast][data-styled="true"] [data-button]:active,
-[data-sonner-toast][data-styled="true"] [data-cancel]:active {
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-button]:active,
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-cancel]:active {
   transform: scale(0.97);
 }
 
@@ -439,34 +460,34 @@
    so it sits neatly in the toast's upper-right. Opacity is 0 by
    default and fades in on parent hover using motion tokens.
    ============================================================ */
-[data-sonner-toast][data-styled="true"] [data-close-button] {
-  position: absolute !important;
-  top: 8px !important;
-  right: 8px !important;
-  left: auto !important;
-  transform: none !important;
-  width: 24px !important;
-  height: 24px !important;
-  border-radius: var(--radius-chip) !important;
-  background: transparent !important;
-  border: none !important;
-  color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent) !important;
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-button] {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  left: auto;
+  transform: none;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-chip);
+  background: transparent;
+  border: none;
+  color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);
   opacity: 0;
   transition:
     opacity var(--duration-fast) var(--ease-out),
     background-color var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out) !important;
+    color var(--duration-fast) var(--ease-out);
 }
-[data-sonner-toast][data-styled="true"] [data-close-button] svg {
-  width: 16px !important;
-  height: 16px !important;
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-button] svg {
+  width: 16px;
+  height: 16px;
 }
-[data-sonner-toast][data-styled="true"]:hover [data-close-button] {
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"]:hover [data-close-button] {
   opacity: 0.65;
 }
-[data-sonner-toast][data-styled="true"] [data-close-button]:hover {
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-button]:hover {
   opacity: 1;
-  background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent) !important;
+  background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent);
 }
 
 /* Critical notifications rely on svelte-sonner's `richColors` path

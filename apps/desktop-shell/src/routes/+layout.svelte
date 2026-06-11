@@ -167,13 +167,17 @@
 <WindowHeader />
 <BluetoothPairingDialog />
 <AuthorizationDialog />
+<!-- Per-side offsets: the vertical offset tracks the open panel
+     (panel-avoidance math above); the right edge is the shell's own
+     8px. Setting both here keeps the geometry where the element is
+     configured instead of fighting the library CSS. -->
 <Toaster
   position={$toastConfig.position}
   richColors
   expand={false}
   closeButton
   theme="dark"
-  offset={toasterOffset}
+  offset={{ top: toasterOffset, right: 8 }}
   toastOptions={{
     style: `width: ${$toastConfig.width}px;`,
     class: `arlen-toast arlen-toast-anim-${$toastConfig.animation}`,
