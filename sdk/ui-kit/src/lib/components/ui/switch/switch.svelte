@@ -49,9 +49,8 @@
   .sw {
     position: relative;
     border-radius: var(--radius-input);
-    border: 1px solid
-      color-mix(in srgb, var(--foreground) 14%, transparent);
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    border: 1px solid var(--control-border);
+    background: var(--control-bg-strong);
     padding: 0;
     flex-shrink: 0;
     transition:
@@ -80,7 +79,7 @@
   }
 
   .sw:hover:not(:disabled):not(.on) {
-    border-color: color-mix(in srgb, var(--foreground) 25%, transparent);
+    border-color: var(--control-border-hover);
   }
 
   .sw.on {
@@ -89,7 +88,7 @@
   }
 
   .sw:disabled {
-    opacity: 0.5;
+    opacity: var(--control-disabled-opacity, 0.5);
   }
 
   .thumb {

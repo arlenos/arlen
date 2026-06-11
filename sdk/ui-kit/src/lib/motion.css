@@ -34,6 +34,21 @@
   --ease-default:     var(--ease-in-out);
   --ease-enter:       var(--ease-out);
   --ease-exit:        var(--ease-in-out);
+
+  /* Control chrome - the one bordered-tinted-box recipe every kit
+     input control draws (number-input, switch, fill-slider,
+     popover-select, color-picker, segmented-control). The recipe
+     used to be copy-pasted per component with drifting alphas
+     (borders 10-15%, backgrounds 4-8%); these tokens are the single
+     register. `--control-bg-strong` is the filled-track variant
+     (switch track, slider track); plain `--control-bg` is the
+     container fill. */
+  --control-border:        color-mix(in srgb, var(--foreground) 12%, transparent);
+  --control-border-hover:  color-mix(in srgb, var(--foreground) 22%, transparent);
+  --control-bg:            color-mix(in srgb, var(--foreground) 5%, transparent);
+  --control-bg-strong:     color-mix(in srgb, var(--foreground) 8%, transparent);
+  --control-bg-hover:      color-mix(in srgb, var(--foreground) 10%, transparent);
+  --control-disabled-opacity: 0.5;
 }
 
 @media (prefers-reduced-motion: reduce) {

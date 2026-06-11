@@ -182,7 +182,7 @@
     aria-label={ariaLabel}
     onclick={toggle}
   >
-    <span class="trigger-label" class:is-placeholder={!current}>
+    <span class="ps-label" class:is-placeholder={!current}>
       {#if current && renderLabel}
         {@render renderLabel(current, true)}
       {:else if current}
@@ -191,7 +191,7 @@
         {placeholder}
       {/if}
     </span>
-    <ChevronDown size={12} strokeWidth={2} class="trigger-chev" />
+    <ChevronDown size={12} strokeWidth={2} class="ps-chev" />
   </button>
 </div>
 
@@ -214,7 +214,7 @@
         class:selected
         onclick={() => select(opt.value)}
       >
-        <span class="item-label">
+        <span class="ps-label">
           {#if renderLabel}
             {@render renderLabel(opt, selected)}
           {:else}
@@ -222,7 +222,7 @@
           {/if}
         </span>
         {#if selected}
-          <Check size={12} strokeWidth={2.5} class="item-check" />
+          <Check size={12} strokeWidth={2.5} class="ps-check" />
         {/if}
       </button>
     {/each}
@@ -230,10 +230,6 @@
 {/if}
 
 <style>
-  .wrap {
-    position: relative;
-  }
-
   /* ── Trigger ──────────────────────────────────────── */
   .trigger {
     display: flex;
@@ -243,16 +239,15 @@
     height: var(--height-control, 28px);
     padding: 0 0.625rem 0 0.75rem;
     border-radius: var(--radius-input);
-    background: color-mix(in srgb, var(--foreground) 5%, transparent);
-    border: 1px solid
-      color-mix(in srgb, var(--foreground) 10%, transparent);
+    background: var(--control-bg);
+    border: 1px solid var(--control-border);
     font-family: inherit;
     transition:
-      background-color 150ms ease,
-      border-color 150ms ease;
+      background-color var(--duration-fast, 150ms) var(--ease-out, ease),
+      border-color var(--duration-fast, 150ms) var(--ease-out, ease);
   }
   .trigger:disabled {
-    opacity: 0.5;
+    opacity: var(--control-disabled-opacity, 0.5);
   }
 
   .trigger:hover {
@@ -261,11 +256,13 @@
   }
 
   .trigger.open {
-    background: color-mix(in srgb, var(--foreground) 10%, transparent);
+    background: var(--control-bg-hover);
     border-color: color-mix(in srgb, var(--foreground) 20%, transparent);
   }
 
-  .trigger-label {
+  /* One label class serves the trigger and the menu items — the
+     two used to be byte-identical copies. */
+  .ps-label {
     flex: 1;
     min-width: 0;
     font-size: 0.75rem;
@@ -278,18 +275,18 @@
     text-overflow: ellipsis;
   }
 
-  .trigger-label.is-placeholder {
+  .ps-label.is-placeholder {
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
     font-weight: 400;
   }
 
-  :global(.trigger-chev) {
+  :global(.ps-chev) {
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
     flex-shrink: 0;
-    transition: transform 150ms ease;
+    transition: transform var(--duration-fast, 150ms) var(--ease-out, ease);
   }
 
-  .trigger.open :global(.trigger-chev) {
+  .trigger.open :global(.ps-chev) {
     transform: rotate(180deg);
   }
 
@@ -307,13 +304,13 @@
     overflow-y: auto;
     padding: 4px;
     border-radius: var(--radius-input);
-    background: color-mix(in srgb, var(--background) 94%, var(--foreground) 8%);
+    background: color-mix(in srgb, var(--background) 92%, var(--foreground) 8%);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 15%, transparent);
     box-shadow:
       0 10px 30px -10px rgba(0, 0, 0, 0.6),
       0 4px 12px -4px rgba(0, 0, 0, 0.4);
-    animation: menu-in 120ms cubic-bezier(0.4, 0, 0.2, 1);
+    animation: menu-in var(--duration-fast, 150ms) var(--easing-default, ease-out);
   }
 
   @keyframes menu-in {
@@ -338,7 +335,7 @@
     background: transparent;
     border-radius: var(--radius-input);
     font-family: inherit;
-    transition: background-color 100ms ease;
+    transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
 
   .item:hover {
@@ -349,21 +346,8 @@
     background: color-mix(in srgb, var(--foreground) 6%, transparent);
   }
 
-  .item-label {
-    flex: 1;
-    min-width: 0;
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--foreground);
-    line-height: 1;
-    text-align: left;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  :global(.item-check) {
-    color: var(--color-accent);
+  :global(.ps-check) {
+    color: var(--color-accent, var(--primary));
     flex-shrink: 0;
   }
 </style>

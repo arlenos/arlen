@@ -93,8 +93,8 @@
     gap: 2px;
     padding: 2px;
     border-radius: var(--radius-input);
-    background: color-mix(in srgb, var(--foreground) 6%, transparent);
-    border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+    background: var(--control-bg);
+    border: 1px solid var(--control-border);
   }
 
   .seg-pill {
@@ -114,7 +114,7 @@
   }
 
   .seg-pill:hover:not(:disabled):not(.active) {
-    background: color-mix(in srgb, var(--foreground) 10%, transparent);
+    background: var(--control-bg-hover);
     color: var(--foreground);
   }
 
@@ -125,6 +125,6 @@
   }
 
   .seg:has(.seg-pill:disabled) {
-    opacity: 0.5;
+    opacity: var(--control-disabled-opacity, 0.5);
   }
 </style>

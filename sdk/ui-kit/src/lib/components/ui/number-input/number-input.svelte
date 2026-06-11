@@ -138,16 +138,20 @@
     display: inline-flex;
     align-items: stretch;
     border-radius: var(--radius-input);
-    border: 1px solid
-      color-mix(in srgb, var(--foreground) 12%, transparent);
-    background: color-mix(in srgb, var(--foreground) 4%, transparent);
+    border: 1px solid var(--control-border);
+    background: var(--control-bg);
     overflow: hidden;
-    /* Inner buttons share a divider using `:not(:first-child)` so we
-     * don't need two distinct button classes. */
+    transition: border-color var(--duration-fast, 150ms) var(--ease-out, ease);
+  }
+
+  /* Keyboard focus lands on the inner input (its own outline is
+     suppressed below) — the control's border carries the ring. */
+  .wrap:focus-within {
+    border-color: var(--color-accent, var(--primary));
   }
 
   .wrap.disabled {
-    opacity: 0.5;
+    opacity: var(--control-disabled-opacity, 0.5);
   }
 
   .btn {
@@ -161,33 +165,35 @@
     border: none;
     color: var(--foreground);
     padding: 0;
-    transition: background-color 120ms ease;
+    transition: background-color var(--duration-fast, 150ms) var(--ease-out, ease);
   }
 
   .btn:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--foreground) 10%, transparent);
+    background: var(--control-bg-hover);
   }
 
   .btn:active:not(:disabled) {
     background: color-mix(in srgb, var(--foreground) 16%, transparent);
   }
 
+  /* A stepper at its bound dims individually; when the whole
+     control is disabled the wrap's opacity already covers it —
+     compounding the two used to fade the buttons to ~0.18. */
   .btn:disabled {
     opacity: 0.35;
   }
-
-  .btn + .field {
-    border-left: 1px solid
-      color-mix(in srgb, var(--foreground) 12%, transparent);
+  .wrap.disabled .btn:disabled {
+    opacity: 1;
   }
+
+  .btn + .field,
   .field + .btn {
-    border-left: 1px solid
-      color-mix(in srgb, var(--foreground) 12%, transparent);
+    border-left: 1px solid var(--control-border);
   }
 
   .field {
     /* Center both the input and the unit vertically against the
-     * 36px button height. `align-items: center` keeps them on the
+     * control-height buttons. `align-items: center` keeps them on the
      * same optical midline; baseline would pull the input upwards
      * because <input>'s baseline sits above its box centre. */
     display: inline-flex;

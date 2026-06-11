@@ -196,9 +196,9 @@
     flex-direction: column;
     gap: 8px;
     padding: 10px;
-    background: var(--color-bg-card, #171717);
-    border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
-    border-radius: var(--radius-md, 8px);
+    background: var(--background);
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-input);
     box-shadow: var(--shadow-lg, 0 8px 32px rgba(0, 0, 0, 0.3));
     width: 220px;
   }
@@ -206,7 +206,7 @@
   .cp-pad {
     position: relative;
     height: 140px;
-    border-radius: var(--radius-sm, 6px);
+    border-radius: var(--radius-button);
     background:
       linear-gradient(to bottom, transparent, #000),
       linear-gradient(to right, #fff, hsl(var(--pad-hue, 0), 100%, 50%));
@@ -233,7 +233,7 @@
     flex: 1;
     appearance: none;
     height: 12px;
-    border-radius: 999px;
+    border-radius: var(--radius-full, 9999px);
     background: linear-gradient(
       to right,
       hsl(0, 100%, 50%),
@@ -270,27 +270,28 @@
   }
 
   .cp-swatch {
-    width: 28px;
-    height: 28px;
-    border-radius: var(--radius-sm, 6px);
-    border: 1px solid color-mix(in srgb, var(--color-fg-shell, #fff) 15%, transparent);
+    width: var(--height-control, 28px);
+    height: var(--height-control, 28px);
+    border-radius: var(--radius-button);
+    border: 1px solid color-mix(in srgb, var(--foreground) 15%, transparent);
     flex-shrink: 0;
   }
 
   .cp-hex {
     flex: 1;
-    height: 28px;
-    background: color-mix(in srgb, var(--color-fg-shell, #fff) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-fg-shell, #fff) 10%, transparent);
-    border-radius: var(--radius-sm, 6px);
-    color: var(--color-fg-shell, #fff);
+    height: var(--height-control, 28px);
+    background: var(--control-bg);
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-button);
+    color: var(--foreground);
     font-family: ui-monospace, SFMono-Regular, monospace;
-    font-size: 0.85rem;
+    font-size: 0.8125rem;
     padding: 0 8px;
     outline: none;
+    transition: border-color var(--duration-fast, 150ms) var(--ease-out, ease);
   }
 
-  .cp-hex:focus {
-    border-color: var(--color-accent);
+  .cp-hex:focus-visible {
+    border-color: var(--color-accent, var(--primary));
   }
 </style>
