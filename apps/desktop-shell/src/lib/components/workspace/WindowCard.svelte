@@ -130,9 +130,9 @@
     cursor: grab;
     color: var(--color-fg-shell);
     transition:
-      transform 100ms ease,
-      background-color 100ms ease,
-      opacity 100ms ease;
+      transform var(--duration-micro, 100ms) ease,
+      background-color var(--duration-micro, 100ms) ease,
+      opacity var(--duration-micro, 100ms) ease;
   }
 
   .window-card:hover {
@@ -252,8 +252,8 @@
     gap: 3px;
     opacity: 0.72;
     transition:
-      transform 100ms ease,
-      background-color 100ms ease,
+      transform var(--duration-micro, 100ms) ease,
+      background-color var(--duration-micro, 100ms) ease,
       opacity var(--duration-fast, 150ms) ease;
   }
   :global(.window-card.window-card-minimized:hover) {

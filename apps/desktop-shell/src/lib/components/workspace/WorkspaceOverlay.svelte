@@ -112,8 +112,8 @@
     pointer-events: none;
     opacity: 0;
     transition:
-      opacity 150ms ease-out,
-      transform 150ms ease-out;
+      opacity var(--duration-fast, 150ms) ease-out,
+      transform var(--duration-fast, 150ms) ease-out;
   }
 
   .overlay-visible {

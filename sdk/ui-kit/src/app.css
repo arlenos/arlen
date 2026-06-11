@@ -69,6 +69,7 @@
        - Use Shadcn Tooltip component exclusively
      ============================================================ */
   --duration-instant:  80ms;   /* pressed states, immediate feedback */
+  --duration-micro:   100ms;   /* card hovers, focus rings, tiny moves */
   --duration-fast:    150ms;   /* hover transitions, tooltips */
   --duration-medium:  200ms;   /* expand/collapse, panel open */
   --duration-slow:    350ms;   /* page transitions, large layout shifts */
@@ -146,6 +147,7 @@
 
   /* Animation timing - enables duration-fast, duration-medium, etc. utilities */
   --duration-instant: var(--duration-instant);
+  --duration-micro:   var(--duration-micro);
   --duration-fast:    var(--duration-fast);
   --duration-medium:  var(--duration-medium);
   --duration-slow:    var(--duration-slow);
@@ -223,6 +225,7 @@
 @media (prefers-reduced-motion: reduce) {
   :root {
     --duration-instant: 0ms;
+    --duration-micro:   0ms;
     --duration-fast:    0ms;
     --duration-medium:  0ms;
     --duration-slow:    0ms;
