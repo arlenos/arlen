@@ -1,0 +1,260 @@
+//! The Arlen terminal IPC contract: the data shapes the terminal backend and its
+//! UI agree on (`terminal-ui-plan.md` §5).
+//!
+//! These types are the **embeddable core**. Both `apps/terminal` and an embedded
+//! terminal pane (the file manager hosts one, FM-R6, with bidirectional cwd sync)
+//! speak them, so they live in this Tauri-agnostic crate rather than the app
+//! shell, and are never woven into one host and retrofitted. The arlen-ui session
+//! mirrors these shapes in its mock until the real backend (TM-R1) wires them.
+//!
+//! # The command surface
+//!
+//! The Tauri host (`apps/terminal/src-tauri`, the thin host of TM-R1) exposes
+//! these commands over the types in this crate; the contract the UI mocks is:
+//!
+//! - `terminal_sessions() -> Vec<Session>` — the open shells (sidebar tabs).
+//! - `terminal_blocks(session_id: String) -> Vec<Block>` — a session's blocks.
+//! - `terminal_input(session_id: String, input: String) -> Result<(), String>` —
+//!   feed input to a session's shell.
+//! - `terminal_new_session() -> Result<Session, String>` — open a new shell.
+//! - `terminal_history_search(query: String, filters: HistoryFilters) -> Vec<Block>`
+//!   — the `⌃R` search over past blocks.
+//! - `terminal_projects() -> Vec<Project>` — the graph-backed projects to scope to.
+//! - `ai_capability()` — the `◆` capability indicator, reused from the harness.
+
+use serde::{Deserialize, Serialize};
+
+/// Who issued the command in a block: the user typed it, or the agent ran it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Origin {
+    /// The user typed the command.
+    You,
+    /// The AI agent ran the command on the user's behalf.
+    Agent,
+}
+
+/// What a block's body is, so the UI knows whether to reserve a transparent grid
+/// hole (text) or render a GUI component (everything else). `terminal-ui-plan.md`
+/// §3-§5: the backend ships one bit per block, text-grid vs GUI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BlockBodyKind {
+    /// Plain terminal text, painted by the fast grid (a reserved transparent hole
+    /// in the DOM). The default for ordinary command output.
+    Grid,
+    /// A structured table the UI renders as a real grid component.
+    Table,
+    /// An image (Kitty/iTerm graphics, or an explain/artifact image).
+    Image,
+    /// A link card.
+    Link,
+    /// An artifact (the arlen-artifact system).
+    Artifact,
+    /// An agent-drafted interactive widget.
+    Widget,
+}
+
+/// The git state of a block's working directory, when it is a repository.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitInfo {
+    /// The current branch name.
+    pub branch: String,
+    /// The number of dirty (modified or untracked) entries.
+    pub dirty_count: u32,
+}
+
+/// One command plus its result: the unit the terminal renders as a block. A block
+/// is the projection of a future KG command node carrying its cwd, exit, timing
+/// and origin.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Block {
+    /// Stable id of the block.
+    pub id: String,
+    /// The command line that ran.
+    pub command: String,
+    /// The exit code, once the command finishes; `None` while it is still
+    /// running.
+    pub exit_code: Option<i32>,
+    /// Wall-clock duration in milliseconds, once finished; `None` while running.
+    pub duration_ms: Option<u64>,
+    /// The working directory the command ran in.
+    pub cwd: String,
+    /// The git state of `cwd`, or `None` when it is not a repository.
+    pub git: Option<GitInfo>,
+    /// Who issued the command.
+    pub origin: Origin,
+    /// What kind of body this block carries (text grid vs a GUI component).
+    pub body_kind: BlockBodyKind,
+    /// The body payload, interpreted per `body_kind` and opaque to this contract:
+    /// grid text for [`BlockBodyKind::Grid`], the component model for the GUI
+    /// kinds. The UI dispatches on `body_kind`, so the wire shape stays one field.
+    pub body: serde_json::Value,
+}
+
+/// The lifecycle of a shell session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SessionStatus {
+    /// The shell is alive.
+    Running,
+    /// The shell has exited.
+    Exited,
+}
+
+/// A running (or finished) shell, surfaced as a tab in the sidebar with its cwd,
+/// status and last exit.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Session {
+    /// Stable id of the session.
+    pub id: String,
+    /// The session's current working directory.
+    pub cwd: String,
+    /// Whether the shell is alive or has exited.
+    pub status: SessionStatus,
+    /// The exit code of the last finished command, or `None` if none has run.
+    pub last_exit: Option<i32>,
+}
+
+/// A project the terminal can scope history and sessions to (graph-backed; the
+/// projection of a KG `Project`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Project {
+    /// Stable id of the project.
+    pub id: String,
+    /// Human-readable project name.
+    pub name: String,
+    /// The project's root path.
+    pub path: String,
+}
+
+/// Filters for a history (`⌃R`) search over past blocks. All fields are
+/// optional/default-off, so an empty filter set matches every block.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryFilters {
+    /// Restrict to blocks whose working directory is at or under this path.
+    pub cwd: Option<String>,
+    /// Restrict to a given origin (the user or the agent).
+    pub origin: Option<Origin>,
+    /// Restrict to a given project id.
+    pub project_id: Option<String>,
+    /// Only blocks that failed (a non-zero exit code).
+    pub only_failures: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn block_serializes_to_the_exact_contract_shape() {
+        let b = Block {
+            id: "b1".into(),
+            command: "ls -la".into(),
+            exit_code: Some(0),
+            duration_ms: Some(12),
+            cwd: "/home/x".into(),
+            git: Some(GitInfo {
+                branch: "main".into(),
+                dirty_count: 3,
+            }),
+            origin: Origin::You,
+            body_kind: BlockBodyKind::Grid,
+            body: json!({ "text": "total 0" }),
+        };
+        let v = serde_json::to_value(&b).unwrap();
+        assert_eq!(
+            v,
+            json!({
+                "id": "b1",
+                "command": "ls -la",
+                "exit_code": 0,
+                "duration_ms": 12,
+                "cwd": "/home/x",
+                "git": { "branch": "main", "dirty_count": 3 },
+                "origin": "you",
+                "body_kind": "grid",
+                "body": { "text": "total 0" }
+            })
+        );
+        // The shape round-trips, so the UI's mock and the real backend agree.
+        assert_eq!(serde_json::from_value::<Block>(v).unwrap(), b);
+    }
+
+    #[test]
+    fn a_running_block_reports_null_exit_duration_and_git() {
+        let b = Block {
+            id: "b".into(),
+            command: "sleep 9".into(),
+            exit_code: None,
+            duration_ms: None,
+            cwd: "/".into(),
+            git: None,
+            origin: Origin::Agent,
+            body_kind: BlockBodyKind::Grid,
+            body: json!(null),
+        };
+        let v = serde_json::to_value(&b).unwrap();
+        assert_eq!(v["exit_code"], json!(null));
+        assert_eq!(v["duration_ms"], json!(null));
+        assert_eq!(v["git"], json!(null));
+        assert_eq!(v["origin"], json!("agent"));
+    }
+
+    #[test]
+    fn body_kinds_render_to_the_contract_strings() {
+        for (kind, s) in [
+            (BlockBodyKind::Grid, "grid"),
+            (BlockBodyKind::Table, "table"),
+            (BlockBodyKind::Image, "image"),
+            (BlockBodyKind::Link, "link"),
+            (BlockBodyKind::Artifact, "artifact"),
+            (BlockBodyKind::Widget, "widget"),
+        ] {
+            assert_eq!(serde_json::to_value(kind).unwrap(), json!(s));
+        }
+    }
+
+    #[test]
+    fn session_serializes_to_the_exact_contract_shape() {
+        let s = Session {
+            id: "s1".into(),
+            cwd: "/w".into(),
+            status: SessionStatus::Running,
+            last_exit: Some(1),
+        };
+        assert_eq!(
+            serde_json::to_value(&s).unwrap(),
+            json!({ "id": "s1", "cwd": "/w", "status": "running", "last_exit": 1 })
+        );
+        assert_eq!(
+            serde_json::to_value(SessionStatus::Exited).unwrap(),
+            json!("exited")
+        );
+    }
+
+    #[test]
+    fn an_empty_history_filter_is_the_default_and_round_trips() {
+        let f = HistoryFilters::default();
+        let v = serde_json::to_value(&f).unwrap();
+        assert_eq!(
+            v,
+            json!({ "cwd": null, "origin": null, "project_id": null, "only_failures": false })
+        );
+        assert_eq!(serde_json::from_value::<HistoryFilters>(v).unwrap(), f);
+    }
+
+    #[test]
+    fn project_serializes_to_the_contract_shape() {
+        let p = Project {
+            id: "p1".into(),
+            name: "arlen".into(),
+            path: "/home/x/arlen".into(),
+        };
+        assert_eq!(
+            serde_json::to_value(&p).unwrap(),
+            json!({ "id": "p1", "name": "arlen", "path": "/home/x/arlen" })
+        );
+    }
+}
