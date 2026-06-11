@@ -28,7 +28,9 @@
 
 {#each groups as group (group.label)}
   {#if group.places.length > 0}
-    <SidebarGroup>
+    <SidebarGroup
+      class={group.railHidden ? "group-data-[collapsible=icon]:hidden" : ""}
+    >
       <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
       <SidebarMenu>
         {#each group.places as place (place.path)}

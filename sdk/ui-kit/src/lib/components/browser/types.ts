@@ -57,6 +57,9 @@ export interface Place {
 export interface PlaceGroup {
   label: string;
   places: Place[];
+  /// Hide the group in the collapsed icon rail (for groups whose
+  /// icons are not distinctive enough to stand alone).
+  railHidden?: boolean;
 }
 
 /// Join a directory path and an entry name (the kit owns this
