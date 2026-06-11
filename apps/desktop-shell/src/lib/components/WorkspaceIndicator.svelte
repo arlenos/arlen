@@ -714,22 +714,26 @@
   /// more drags).
   let lastDropTime = 0;
 
-  function handleColumnClick(id: string) {
+  function handleColumnClick(id: string, e: MouseEvent) {
+    // Window-card clicks are fully handled in the card's own
+    // pointerdown/up pair (activate / ctrl-toggle / drag) — never
+    // double-handle them here. Without this guard the bubbled click
+    // activates the workspace and closes the overlay, which breaks
+    // ctrl+click multi-select (spec: toggle, don't activate, don't
+    // close) and races the card's own activate_window on plain
+    // clicks. Scoped to button cards so the inert "+N" overflow
+    // badge still activates the column.
+    if (
+      e.target instanceof Element &&
+      e.target.closest("button.window-card")
+    ) {
+      return;
+    }
     // Swallow the click synthesized by the browser after a drag-drop.
     // 300ms is generous: a real user click lands within a few ms of
     // pointerup, a synthetic click after drag is even tighter.
     if (performance.now() - lastDropTime < 300) return;
     activateWorkspace(id);
-    overlayVisible = false;
-    invoke("set_popover_input_region", { expanded: false }).catch(() => {});
-  }
-
-  /// Clicking a window card focuses the window. The compositor's
-  /// `toplevel_management::activate` handler also switches to the
-  /// window's workspace if needed, so one call covers both.
-  function handleWindowClick(win: WindowInfo, e: Event) {
-    e.stopPropagation();
-    invoke("activate_window", { id: win.id }).catch(() => {});
     overlayVisible = false;
     invoke("set_popover_input_region", { expanded: false }).catch(() => {});
   }
@@ -859,6 +863,38 @@
   let ghostLastX = 0;
   let ghostRotation = 0;
 
+  /// Applies the float-effect to a ghost element as inline styles.
+  ///
+  /// The ghost lives on `document.body`, outside the component's
+  /// scoped subtree, and single-drag clones carry the full scoped
+  /// `.window-card` ruleset via the copied hash class — inline
+  /// properties are the one layer that outranks those declarations
+  /// without a specificity fight. JS already owns the ghost's whole
+  /// lifecycle (build, position, tilt, remove), so its float look
+  /// lives here too.
+  function applyGhostFloatStyle(el: HTMLElement): void {
+    Object.assign(el.style, {
+      position: "fixed",
+      top: "0",
+      left: "0",
+      // Above everything in the shell z-scale (see the table in
+      // app.css) — the ghost trails the pointer across all chrome.
+      zIndex: "10001",
+      pointerEvents: "none",
+      opacity: "0.95",
+      // Initial value before the first positionGhost call lands, so
+      // rotation=0 looks clean during the single frame between
+      // appendChild and the first pointermove.
+      transform: "translate3d(0, 0, 0) rotate(0deg) scale(1.05)",
+      boxShadow:
+        "0 12px 32px rgba(0, 0, 0, 0.35), 0 4px 8px rgba(0, 0, 0, 0.2)",
+      transition: "none",
+      cursor: "grabbing",
+      outline: "none",
+      willChange: "transform",
+    });
+  }
+
   /// Builds a drag-ghost element.
   ///
   /// Single-window drag: clones the source card directly.
@@ -880,6 +916,7 @@
       const clone = sourceCard.cloneNode(true) as HTMLElement;
       clone.removeAttribute("draggable");
       clone.classList.add("drag-ghost");
+      applyGhostFloatStyle(clone);
       clone.style.width = `${rect.width}px`;
       clone.style.height = `${rect.height}px`;
       document.body.appendChild(clone);
@@ -894,6 +931,10 @@
     const visible = Math.min(targets.length, STACK_VISIBLE);
     const container = document.createElement("div");
     container.classList.add("drag-ghost", "drag-ghost-stack");
+    applyGhostFloatStyle(container);
+    // The container is a bare positioning frame — the inner clones
+    // carry their own card look and per-card shadow instead.
+    container.style.boxShadow = "none";
     container.style.width = `${rect.width + (visible - 1) * STACK_OFFSET_PX}px`;
     container.style.height = `${rect.height + (visible - 1) * STACK_OFFSET_PX}px`;
 
@@ -918,6 +959,9 @@
       clone.style.left = `${i * STACK_OFFSET_PX}px`;
       clone.style.width = `${rect.width}px`;
       clone.style.height = `${rect.height}px`;
+      // Per-card shadow so the layering reads even though the
+      // container itself casts none.
+      clone.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.3)";
       container.appendChild(clone);
     }
 
@@ -1542,7 +1586,7 @@
             tabindex="0"
             aria-label={fullLabel(ws, i)}
             data-ws-id={ws.id}
-            onclick={() => handleColumnClick(ws.id)}
+            onclick={(e) => handleColumnClick(ws.id, e)}
           >
             <div class="ws-number">{i + 1}</div>
             <!-- Project label: populated by `projectPerWorkspace` when
@@ -2014,45 +2058,11 @@
 
   /* ── Drag ghost ──────────────────────────────────────────────────────
      The ghost is appended to `document.body`, outside the component's
-     scoped DOM subtree. Svelte's scoped `.window-card` styles still
-     apply to the clone because the clone carries the generated hash
-     class attribute; `:global(.drag-ghost)` layers in only the
-     float-effect (rotation, shadow, z-index, pointer-events none). */
-  :global(.drag-ghost) {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    z-index: 10001 !important;
-    pointer-events: none !important;
-    opacity: 0.95 !important;
-    /* Inline transform from JS drives position AND rotation via
-       translate3d() + rotate(). This static declaration is only the
-       initial value before the first positionGhost call lands, so
-       rotation=0 looks clean during the single frame between
-       `document.body.appendChild(clone)` and the first pointermove. */
-    transform: translate3d(0, 0, 0) rotate(0deg) scale(1.05);
-    box-shadow:
-      0 12px 32px rgba(0, 0, 0, 0.35),
-      0 4px 8px rgba(0, 0, 0, 0.2) !important;
-    transition: none !important;
-    cursor: grabbing !important;
-    outline: none !important;
-    will-change: transform;
-  }
-
-  /* Multi-drag stack: container owns position/transform; the
-     inner card clones sit absolutely at staggered offsets so the
-     user sees a 3-card stack trailing the pointer. Each inner
-     clone gets its own subtle shadow so the layering reads even
-     when the outer .drag-ghost shadow is diffuse. */
-  :global(.drag-ghost-stack) {
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-  }
-  :global(.drag-ghost-stack .drag-ghost-card) {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  }
+     scoped DOM subtree, and JS owns its whole lifecycle — the float
+     look is applied as inline styles in `applyGhostFloatStyle` (the
+     only layer that beats the scoped `.window-card` rules the clone
+     carries). Only the overflow badge, a fresh span with nothing to
+     fight, is styled here. */
   :global(.drag-ghost-badge) {
     position: absolute;
     right: -6px;
@@ -2065,7 +2075,10 @@
     padding: 0 6px;
     border-radius: var(--radius-full);
     background: var(--color-accent);
-    color: white;
+    /* The accent is a light monochrome in the default theme — plain
+       `white` washes out on it; the inverse foreground keeps the
+       count readable on any accent. */
+    color: var(--color-fg-inverse);
     font-size: 11px;
     font-weight: 600;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
