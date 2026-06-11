@@ -51,9 +51,17 @@
     onundo: (entry: ActivityEntry) => Promise<boolean>;
   } = $props();
 
+  // Explicit filter labels; "Internet" and "Blocked" do not pluralize.
+  const CATEGORY_LABELS: Record<string, string> = {
+    change: "Changes",
+    lookup: "Lookups",
+    question: "Questions",
+    internet: "Internet",
+    blocked: "Blocked",
+  };
   const CATEGORY_OPTIONS = [
     { value: "all", label: "All activity" },
-    ...FILTER_CATEGORIES.map((c) => ({ value: c.key, label: `${c.label}s` })),
+    ...FILTER_CATEGORIES.map((c) => ({ value: c.key, label: CATEGORY_LABELS[c.key] ?? c.label })),
   ];
   const OUTCOME_OPTIONS = [
     { value: "all", label: "All outcomes" },

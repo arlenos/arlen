@@ -33,8 +33,10 @@
 <Tooltip.Root instant>
   <Tooltip.Trigger>
     {#snippet child({ props })}
-      <!-- The explicit id wins over the trigger's generated one so canon
-           anchor ids stay stable; the tooltip still tracks the element. -->
+      {@const { onclick: triggerClick, ...rest } = props as Record<string, unknown>}
+      <!-- The trigger's own click handler is chained, not clobbered, and the
+           explicit id wins over the generated one so canon anchor ids stay
+           stable; the tooltip still tracks the element. -->
       <button
         type="button"
         class="ia"
@@ -42,9 +44,12 @@
         class:active
         aria-label={label}
         {disabled}
-        {onclick}
-        {...props}
+        {...rest}
         {...id ? { id } : {}}
+        onclick={(e: MouseEvent) => {
+          (triggerClick as ((ev: MouseEvent) => void) | undefined)?.(e);
+          onclick?.(e);
+        }}
       >
         {@render children?.()}
       </button>
