@@ -45,35 +45,6 @@ fn resolve_socket(env_val: Option<&str>, xdg: Option<&str>, file_name: &str) -> 
     format!("/run/arlen/{file_name}")
 }
 
-#[cfg(test)]
-mod socket_path_tests {
-    use super::resolve_socket;
-
-    #[test]
-    fn env_override_wins() {
-        let p = resolve_socket(Some("/pinned.sock"), Some("/run/user/1000"), "knowledge.sock");
-        assert_eq!(p, "/pinned.sock");
-    }
-
-    #[test]
-    fn empty_env_falls_through_to_xdg() {
-        let p = resolve_socket(Some(""), Some("/run/user/1000"), "knowledge.sock");
-        assert_eq!(p, "/run/user/1000/arlen/knowledge.sock");
-    }
-
-    #[test]
-    fn xdg_is_per_user() {
-        let p = resolve_socket(None, Some("/run/user/1000"), "event-bus-consumer.sock");
-        assert_eq!(p, "/run/user/1000/arlen/event-bus-consumer.sock");
-    }
-
-    #[test]
-    fn run_arlen_last_resort() {
-        let p = resolve_socket(None, None, "event-bus-producer.sock");
-        assert_eq!(p, "/run/arlen/event-bus-producer.sock");
-    }
-}
-
 /// The content-addressed merge identity of a relation fact: a length-delimited
 /// SHA-256 over the content tuple `(from_label, from_id, rel, to_label, to_id)`,
 /// rendered as lowercase hex (graph-drift.md §2 / GD-R1).
@@ -112,4 +83,33 @@ pub(crate) fn content_merge_key(
         let _ = write!(hex, "{b:02x}");
     }
     hex
+}
+
+#[cfg(test)]
+mod socket_path_tests {
+    use super::resolve_socket;
+
+    #[test]
+    fn env_override_wins() {
+        let p = resolve_socket(Some("/pinned.sock"), Some("/run/user/1000"), "knowledge.sock");
+        assert_eq!(p, "/pinned.sock");
+    }
+
+    #[test]
+    fn empty_env_falls_through_to_xdg() {
+        let p = resolve_socket(Some(""), Some("/run/user/1000"), "knowledge.sock");
+        assert_eq!(p, "/run/user/1000/arlen/knowledge.sock");
+    }
+
+    #[test]
+    fn xdg_is_per_user() {
+        let p = resolve_socket(None, Some("/run/user/1000"), "event-bus-consumer.sock");
+        assert_eq!(p, "/run/user/1000/arlen/event-bus-consumer.sock");
+    }
+
+    #[test]
+    fn run_arlen_last_resort() {
+        let p = resolve_socket(None, None, "event-bus-producer.sock");
+        assert_eq!(p, "/run/arlen/event-bus-producer.sock");
+    }
 }

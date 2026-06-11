@@ -1,9 +1,9 @@
-/// Event Bus integration for config change notifications.
-///
-/// Emits `config.changed` events when config files change on disk,
-/// and `config.reload_requested` for manual reload triggers.
-///
-/// See `docs/architecture/config-system.md` (Live Reload section).
+//! Event Bus integration for config change notifications.
+//!
+//! Emits `config.changed` events when config files change on disk,
+//! and `config.reload_requested` for manual reload triggers.
+//!
+//! See `docs/architecture/config-system.md` (Live Reload section).
 
 use std::io::Write;
 use std::os::unix::net::UnixStream;
@@ -53,6 +53,12 @@ pub struct ConfigChangedPayload {
 pub struct ConfigEventEmitter {
     socket_path: PathBuf,
     session_id: String,
+}
+
+impl Default for ConfigEventEmitter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ConfigEventEmitter {
