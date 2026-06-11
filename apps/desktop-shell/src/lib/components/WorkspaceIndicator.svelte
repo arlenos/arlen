@@ -21,9 +21,7 @@
   import type { MinimizedWindow } from "$lib/stores/minimizedWindows.js";
   import {
     selectedWindowIds,
-    toggleSelection,
     clearSelection,
-    selectionSnapshot,
     pruneSelection,
   } from "$lib/stores/overlaySelection.js";
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu/index.js";
@@ -50,6 +48,7 @@
     tileSideBySide,
   } from "$lib/workspace/actions.js";
   import { createDragEngine } from "$lib/workspace/drag.svelte.js";
+  import { createKeyboardNav } from "$lib/workspace/keyboard.svelte.js";
 
   /// Output context published by the parent TopBar. The
   /// connector is `null` until the registry replies; in that
@@ -274,43 +273,38 @@
 
   // ── Keyboard navigation ─────────────────────────────────────────────────
   //
-  // Activated by the compositor's `workspace_overlay_open` event
-  // (Super+Tab by default; see `compositor/src/config/mod.rs`). When
-  // active, a focus ring sits on `focusedWindowId` and arrow / Tab /
-  // 1-9 keys move it. The hover open path leaves `focusedWindowId`
-  // null and shows no ring — keyboard mode toggles on first nav key.
-  //
-  // FOCUS GRAB CAVEAT: the topbar layer-shell surface only receives
-  // DOM keydown events when GTK has routed keyboard focus to it.
-  // After Super+Tab the compositor consumes the keystroke and emits
-  // the open event but does not move keyboard focus to the shell, so
-  // we explicitly call `.focus()` on the overlay element below to
-  // request it from WebKitGTK. Whether the compositor actually grants
-  // it depends on the layer's `keyboard_interactivity` mode; for
-  // V1 we rely on OnDemand + focus-call. If keys still don't fire
-  // for the user, the next iteration moves the keyboard-grab into
-  // the compositor side.
-  let focusedWindowId = $state<string | null>(null);
+  // The controller lives in `$lib/workspace/keyboard.svelte.ts`
+  // (including the focus-grab caveat documented there). The
+  // component provides the live workspace view, the overlay
+  // visibility, and the two close paths, and wires `kb.onKeydown`
+  // to the document in the mount effect below.
+
   // Svelte 5 wants `bind:this` targets to be `$state` so its
   // reactivity tracker doesn't get confused. We never read this
   // reactively, only call `.focus()` imperatively, but the warning
   // is correct on principle.
   let overlayEl = $state<HTMLDivElement | null>(null);
 
-  /// Flat ordering of all visible windows: workspace by workspace,
-  /// in the order their cards render. Used by Tab / Shift+Tab to
-  /// cycle across workspace boundaries.
-  const flatWindowOrder = $derived.by(() => {
-    const order: { winId: string; wsId: string }[] = [];
-    for (const ws of workspacesView) {
-      for (const w of $windows) {
-        if (w.workspace_ids.includes(ws.id)) {
-          order.push({ winId: w.id, wsId: ws.id });
-        }
-      }
-    }
-    return order;
+  /// The two overlay close paths, strictly distinct: `hideOverlay`
+  /// flips state only — the compositor input region stays expanded;
+  /// `closeOverlayAndCollapse` additionally collapses it. Which one
+  /// a caller uses is part of its contract, never interchangeable.
+  function hideOverlay(): void {
+    overlayVisible = false;
+  }
+
+  function closeOverlayAndCollapse(): void {
+    overlayVisible = false;
+    invoke("set_popover_input_region", { expanded: false }).catch(() => {});
+  }
+
+  const kb = createKeyboardNav({
+    getWorkspaces: () => workspacesView,
+    isOverlayVisible: () => overlayVisible,
+    hideOverlay,
+    closeOverlayAndCollapse,
   });
+
 
   /// The context-menu / keyboard actions live in
   /// `$lib/workspace/actions.ts`. The two below additionally close
@@ -320,302 +314,12 @@
   /// windows on its own).
   function restoreAllSelectedAndClose(): void {
     restoreAllSelected();
-    overlayVisible = false;
+    hideOverlay();
   }
 
   function tileSideBySideAndClose(ids: [string, string]): void {
     tileSideBySide(ids);
-    overlayVisible = false;
-  }
-
-  function pickInitialFocus(): string | null {
-    // Prefer the currently active window so the first Tab move is
-    // semantically "show me the next thing after where I am".
-    const active = $windows.find((w) => w.active);
-    if (active) return active.id;
-    const activeWs = workspacesView.find((w) => w.active);
-    if (activeWs) {
-      const wins = $windows.filter((w) =>
-        w.workspace_ids.includes(activeWs.id),
-      );
-      if (wins.length > 0) return wins[0].id;
-    }
-    return flatWindowOrder[0]?.winId ?? null;
-  }
-
-  function cycleWindow(direction: 1 | -1) {
-    const order = flatWindowOrder;
-    if (order.length === 0) return;
-    if (focusedWindowId === null) {
-      focusedWindowId = pickInitialFocus();
-      return;
-    }
-    const idx = order.findIndex((e) => e.winId === focusedWindowId);
-    if (idx < 0) {
-      focusedWindowId = order[0].winId;
-      return;
-    }
-    const next = (idx + direction + order.length) % order.length;
-    focusedWindowId = order[next].winId;
-  }
-
-  function navigateWorkspace(direction: 1 | -1) {
-    if (workspacesView.length === 0) return;
-    let currentWsIdx = -1;
-    if (focusedWindowId) {
-      const win = $windows.find((w) => w.id === focusedWindowId);
-      if (win) {
-        currentWsIdx = workspacesView.findIndex((ws) =>
-          win.workspace_ids.includes(ws.id),
-        );
-      }
-    }
-    if (currentWsIdx < 0) {
-      currentWsIdx = workspacesView.findIndex((ws) => ws.active);
-    }
-    const wsIdx =
-      (currentWsIdx + direction + workspacesView.length) %
-      workspacesView.length;
-    const wsId = workspacesView[wsIdx].id;
-    const wins = $windows.filter((w) => w.workspace_ids.includes(wsId));
-    focusedWindowId = wins[0]?.id ?? null;
-  }
-
-  function navigateColumn(direction: 1 | -1) {
-    if (!focusedWindowId) {
-      focusedWindowId = pickInitialFocus();
-      return;
-    }
-    const win = $windows.find((w) => w.id === focusedWindowId);
-    if (!win) return;
-    const wsId = win.workspace_ids[0];
-    const wins = $windows.filter((w) => w.workspace_ids.includes(wsId));
-    const idx = wins.findIndex((w) => w.id === focusedWindowId);
-    if (idx < 0 || wins.length === 0) return;
-    const next = (idx + direction + wins.length) % wins.length;
-    focusedWindowId = wins[next].id;
-  }
-
-  function jumpToWorkspaceN(n: number) {
-    const ws = workspacesView[n - 1];
-    if (!ws) return;
-    const wins = $windows.filter((w) => w.workspace_ids.includes(ws.id));
-    focusedWindowId = wins[0]?.id ?? null;
-  }
-
-  function activateFocused() {
-    const id = focusedWindowId;
-    if (!id) return;
-    // Enter on a minimized card restores instead of activating —
-    // activate alone wouldn't un-minimize on cosmic, it just toggles
-    // focus. restoreWindow calls both unset_minimized and activate,
-    // which is what the user expects.
-    const win = $windows.find((w) => w.id === id);
-    if (win?.minimized) {
-      restoreWindow(id);
-    } else {
-      invoke("activate_window", { id }).catch(() => {});
-    }
-    closeOverlayKeyboard();
-  }
-
-  function closeOverlayKeyboard() {
-    overlayVisible = false;
-    focusedWindowId = null;
-    invoke("set_popover_input_region", { expanded: false }).catch(() => {});
-  }
-
-  /// Two-key "go to" gesture: press `g`, then within `GOTO_TIMEOUT_MS`
-  /// press a digit 1-9 to jump to that workspace AND close the Map.
-  /// Any other key cancels the pending state. Matches vim `g` prefix
-  /// behaviour — familiar to keyboard-first users.
-  const GOTO_TIMEOUT_MS = 800;
-  let gotoPending = $state(false);
-  let gotoPendingTimer: ReturnType<typeof setTimeout> | null = null;
-
-  function startGotoPending(): void {
-    gotoPending = true;
-    if (gotoPendingTimer) clearTimeout(gotoPendingTimer);
-    gotoPendingTimer = setTimeout(() => {
-      gotoPending = false;
-      gotoPendingTimer = null;
-    }, GOTO_TIMEOUT_MS);
-  }
-
-  function cancelGotoPending(): void {
-    gotoPending = false;
-    if (gotoPendingTimer) {
-      clearTimeout(gotoPendingTimer);
-      gotoPendingTimer = null;
-    }
-  }
-
-  /// Fire `d` / Delete / `m` / `f` / Space against the currently-
-  /// focused window, branching on selection size. Centralised so the
-  /// handler switch stays compact.
-
-  function actionDelete(): void {
-    const sel = selectionSnapshot();
-    if (sel.length > 0) {
-      closeAllSelected();
-      return;
-    }
-    if (focusedWindowId) {
-      closeWindowAction(focusedWindowId);
-    }
-  }
-
-  function actionMinimizeToggle(): void {
-    const sel = selectionSnapshot();
-    if (sel.length > 1) {
-      // Multi: if any is active, minimize; else restore.
-      const selWindows = sel
-        .map((id) => $windows.find((w) => w.id === id))
-        .filter((w): w is WindowInfo => Boolean(w));
-      const anyActive = selWindows.some((w) => !w.minimized);
-      if (anyActive) {
-        minimizeAllSelected();
-      } else {
-        restoreAllSelectedAndClose();
-      }
-      return;
-    }
-    const id = focusedWindowId;
-    if (!id) return;
-    const w = $windows.find((x) => x.id === id);
-    if (!w) return;
-    if (w.minimized) {
-      restoreWindow(id);
-      closeOverlayKeyboard();
-    } else {
-      minimizeWindow(id);
-    }
-  }
-
-  function actionFullscreen(): void {
-    const id = focusedWindowId;
-    if (!id) return;
-    const w = $windows.find((x) => x.id === id);
-    if (!w) return;
-    fullscreenWindowAction(id, w.fullscreen ?? false);
-  }
-
-  function actionToggleSelection(): void {
-    if (focusedWindowId) {
-      toggleSelection(focusedWindowId);
-    }
-  }
-
-  function onKeydown(e: KeyboardEvent) {
-    if (!overlayVisible) return;
-
-    // Vim-key alias resolution. `e.key` for letters respects Shift
-    // and CapsLock, so `e.key` on `h` is always "h" (lowercase) when
-    // CapsLock is off and "H" when on — we case-insensitise by
-    // lowering. Shift+H -> "H" means `Shift+m` (Move dialog) still
-    // works because Shift+M arrives as "M" and we inspect shiftKey
-    // independently.
-    const rawKey = e.key;
-    const key = rawKey.length === 1 ? rawKey.toLowerCase() : rawKey;
-
-    // `g` pending state: if the user pressed `g` within the last
-    // `GOTO_TIMEOUT_MS`, a digit now means "go to workspace N and
-    // close the Map", not just "focus workspace N". Any other key
-    // cancels pending (including `g` pressed twice — harmless).
-    if (gotoPending && key >= "1" && key <= "9") {
-      cancelGotoPending();
-      clearSelection();
-      jumpToWorkspaceN(parseInt(key, 10));
-      const ws = workspacesView[parseInt(key, 10) - 1];
-      if (ws) activateWorkspace(ws.id);
-      closeOverlayKeyboard();
-      e.preventDefault();
-      e.stopPropagation();
-      return;
-    }
-    if (gotoPending && key !== "g") {
-      // Any other key while pending cancels — the user changed mind.
-      cancelGotoPending();
-      // Fall through to normal handling of this key.
-    }
-
-    let handled = true;
-    switch (key) {
-      // Navigation: arrows + vim hjkl
-      case "Tab":
-        clearSelection();
-        cycleWindow(e.shiftKey ? -1 : 1);
-        break;
-      case "ArrowLeft":
-      case "h":
-        clearSelection();
-        navigateWorkspace(-1);
-        break;
-      case "ArrowRight":
-      case "l":
-        clearSelection();
-        navigateWorkspace(1);
-        break;
-      case "ArrowUp":
-      case "k":
-        navigateColumn(-1);
-        break;
-      case "ArrowDown":
-      case "j":
-        navigateColumn(1);
-        break;
-      case "g":
-        // Start pending-goto mode. Any digit within the timeout
-        // jumps and closes; any other key cancels.
-        startGotoPending();
-        break;
-      // Actions
-      case "Enter":
-        clearSelection();
-        activateFocused();
-        break;
-      case "d":
-      case "Delete":
-        actionDelete();
-        break;
-      case "m":
-        if (e.shiftKey) {
-          // Shift+M: Move dialog — placeholder, spec calls this a
-          // keyboard alternative to the context menu "Move to"
-          // submenu. The existing context menu already covers this,
-          // a dedicated dialog is future work.
-          // TODO: render a workspace-picker overlay here.
-          handled = false;
-        } else {
-          actionMinimizeToggle();
-        }
-        break;
-      case "f":
-        actionFullscreen();
-        break;
-      case " ":
-      case "Space":
-        actionToggleSelection();
-        break;
-      case "Escape":
-        if (selectionSnapshot().length > 0) {
-          clearSelection();
-        } else {
-          closeOverlayKeyboard();
-        }
-        break;
-      default:
-        if (key >= "1" && key <= "9") {
-          clearSelection();
-          jumpToWorkspaceN(parseInt(key, 10));
-        } else {
-          handled = false;
-        }
-    }
-    if (handled) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
+    hideOverlay();
   }
 
   /// Forwards the compositor's `workspace_overlay_open` event into
@@ -625,11 +329,11 @@
   /// macOS Cmd+Tab style).
   function onWorkspaceOverlayOpenEvent() {
     if (overlayVisible) {
-      cycleWindow(1);
+      kb.cycleWindow(1);
       return;
     }
     openOverlay();
-    focusedWindowId = pickInitialFocus();
+    kb.seedInitialFocus();
     // Try to grab DOM focus on the overlay so subsequent keys land
     // here. Layer-shell focus semantics are compositor-driven, so
     // this is best-effort — if the user's Tab still doesn't land
@@ -657,8 +361,7 @@
     // pointerup, a synthetic click after drag is even tighter.
     if (performance.now() - drag.lastDropTime < 300) return;
     activateWorkspace(id);
-    overlayVisible = false;
-    invoke("set_popover_input_region", { expanded: false }).catch(() => {});
+    closeOverlayAndCollapse();
   }
 
   /// Pre-compute a Map<wsId, WindowInfo[]> once per render tick rather
@@ -694,10 +397,7 @@
   // forwards the card pointer handlers.
   const drag = createDragEngine({
     getWorkspaces: () => workspacesView,
-    closeOverlayAndCollapse: () => {
-      overlayVisible = false;
-      invoke("set_popover_input_region", { expanded: false }).catch(() => {});
-    },
+    closeOverlayAndCollapse,
   });
 
   // ── Icon resolution cache ────────────────────────────────────────────────
@@ -732,11 +432,11 @@
         console.warn("workspace-overlay-open subscribe failed", e),
       );
 
-    document.addEventListener("keydown", onKeydown);
+    document.addEventListener("keydown", kb.onKeydown);
     document.addEventListener("keydown", drag.onDragEscape);
 
     return () => {
-      document.removeEventListener("keydown", onKeydown);
+      document.removeEventListener("keydown", kb.onKeydown);
       document.removeEventListener("keydown", drag.onDragEscape);
       if (unlistenWsOverlay) unlistenWsOverlay();
       if (hoverTimer) clearTimeout(hoverTimer);
@@ -971,7 +671,7 @@
                             class="window-card"
                             class:window-card-dragging={drag.dragState?.windowId ===
                               win.id}
-                            class:window-card-keyboard-focus={focusedWindowId ===
+                            class:window-card-keyboard-focus={kb.focusedWindowId ===
                               win.id}
                             class:window-card-selected={$selectedWindowIds.has(
                               win.id,
@@ -1054,7 +754,7 @@
                             class="window-card window-card-minimized"
                             class:window-card-dragging={drag.dragState?.windowId ===
                               m.windowId}
-                            class:window-card-keyboard-focus={focusedWindowId ===
+                            class:window-card-keyboard-focus={kb.focusedWindowId ===
                               m.windowId}
                             class:window-card-selected={$selectedWindowIds.has(
                               m.windowId,
