@@ -3,20 +3,37 @@
   /// breadcrumb as the single location display (Ctrl+L turns it into
   /// the editable path field), and the hidden-files toggle. View
   /// switch and search join with their increments.
-  import { ArrowLeft, ArrowRight, ArrowUp, Eye, EyeOff } from "lucide-svelte";
+  import {
+    ArrowLeft,
+    ArrowRight,
+    ArrowUp,
+    Columns2,
+    Eye,
+    EyeOff,
+  } from "lucide-svelte";
   import { Toolbar } from "@arlen/ui-kit/components/ui/toolbar";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
-  import { Breadcrumb, type BrowserState } from "@arlen/ui-kit/components/browser";
+  import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
+  import {
+    Breadcrumb,
+    type BrowserState,
+    type ViewMode,
+  } from "@arlen/ui-kit/components/browser";
 
   let {
     controller,
     homePath,
     pathEditing = $bindable(false),
+    split = false,
+    onsplittoggle,
   }: {
     controller: BrowserState;
     homePath?: string;
     /// Bindable: the layout's Ctrl+L flips it.
     pathEditing?: boolean;
+    /// The dual-pane layout is on.
+    split?: boolean;
+    onsplittoggle?: () => void;
   } = $props();
 
   const path = $derived(controller.path);
@@ -24,6 +41,13 @@
   const canForward = $derived(controller.canForward);
   const canUp = $derived(controller.canUp);
   const showHidden = $derived(controller.showHidden);
+  const viewMode = $derived(controller.viewMode);
+
+  const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
+    { value: "list", label: "List" },
+    { value: "grid", label: "Grid" },
+    { value: "miller", label: "Columns" },
+  ];
 </script>
 
 <Toolbar class="fm-toolbar">
@@ -62,6 +86,20 @@
     </div>
   {/snippet}
   {#snippet end()}
+    <SegmentedControl
+      ariaLabel="View"
+      options={VIEW_OPTIONS}
+      value={$viewMode}
+      onchange={(v) => viewMode.set(v as ViewMode)}
+    />
+    <IconAction
+      label={split ? "Close the second pane" : "Split into two panes"}
+      size="control"
+      active={split}
+      onclick={() => onsplittoggle?.()}
+    >
+      <Columns2 size={15} strokeWidth={1.75} />
+    </IconAction>
     <IconAction
       label={$showHidden ? "Hide hidden files" : "Show hidden files"}
       size="control"

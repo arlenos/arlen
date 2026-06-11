@@ -9,12 +9,14 @@
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import {
+    createBrowserState,
     FileBrowser,
     joinPath,
+    type BrowserState,
     type FileEntry,
     type Place,
   } from "@arlen/ui-kit/components/browser";
-  import { openPath } from "$lib/adapter";
+  import { fmAdapter, openPath } from "$lib/adapter";
   import { activeController, newTab, tabs } from "$lib/stores/tabs";
   import { loadPlaces } from "$lib/stores/places";
   import { pathEditing } from "$lib/stores/ui";
@@ -25,14 +27,42 @@
   import OpsOverlays from "$lib/components/OpsOverlays.svelte";
 
   const homePath = writable("/home");
-  let selected = $state<FileEntry[]>([]);
   let renamingName = $state<string | null>(null);
   let confirmDelete = $state(false);
 
-  // The visible listing, mirrored for the status line.
+  // Dual pane: the second pane is its own controller (its own
+  // history and selection); the toolbar, status line and operations
+  // follow whichever pane holds the focus.
+  let splitView = $state(false);
+  let paneB = $state<BrowserState | null>(null);
+  let focusedPane = $state<"a" | "b">("a");
+  let selectedA = $state<FileEntry[]>([]);
+  let selectedB = $state<FileEntry[]>([]);
+
+  const focusedController = $derived(
+    splitView && focusedPane === "b" && paneB ? paneB : $activeController,
+  );
+  const selected = $derived(
+    splitView && focusedPane === "b" ? selectedB : selectedA,
+  );
+
+  function toggleSplit() {
+    if (splitView) {
+      splitView = false;
+      focusedPane = "a";
+      paneB = null;
+      selectedB = [];
+    } else {
+      paneB = createBrowserState(fmAdapter, { initial: currentPath() });
+      splitView = true;
+    }
+  }
+
+  // The visible listing of the focused pane, mirrored for the status
+  // line.
   let entries = $state<FileEntry[]>([]);
   $effect(() => {
-    const c = $activeController;
+    const c = focusedController;
     if (!c) return;
     return c.entries.subscribe((list) => (entries = list));
   });
@@ -40,11 +70,11 @@
   // empty — the browser republishes on interaction.
   $effect(() => {
     void $activeController;
-    selected = [];
+    selectedA = [];
   });
 
   const currentPath = (): string => {
-    const c = get(activeController);
+    const c = focusedController;
     return c ? get(c.path) : "/";
   };
   const selectedPaths = (): string[] => {
@@ -73,6 +103,13 @@
   function onOpsKeydown(e: KeyboardEvent) {
     const target = e.target as HTMLElement | null;
     if (target?.closest("input, textarea")) return;
+    if (e.key === "Tab" && splitView) {
+      e.preventDefault();
+      focusedPane = focusedPane === "a" ? "b" : "a";
+      const panes = document.querySelectorAll<HTMLElement>(".file-browser");
+      panes[focusedPane === "a" ? 0 : 1]?.focus();
+      return;
+    }
     if (e.key === "Delete" && !e.shiftKey) {
       e.preventDefault();
       void trashSelection();
@@ -113,24 +150,51 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="fm" onkeydown={onOpsKeydown}>
   <TabStrip />
-  {#if $activeController}
+  {#if $activeController && focusedController}
     <FmToolbar
-      controller={$activeController}
+      controller={focusedController}
       homePath={$homePath}
       bind:pathEditing={$pathEditing}
+      split={splitView}
+      onsplittoggle={toggleSplit}
     />
     <ContextMenu.Root>
       <ContextMenu.Trigger class="fm-browse">
-        <FileBrowser
-          controller={$activeController}
-          bind:renamingName
-          onactivate={(entry, path) => {
-            if (entry.kind !== "directory") void openPath(path);
-          }}
-          onselection={(list) => (selected = list)}
-          onrenamecommit={(entry, newName) =>
-            runOp("rename", [joinPath(currentPath(), entry.name)], newName)}
-        />
+        <div class="fm-panes" class:split={splitView}>
+          <div
+            class="fm-pane"
+            class:pane-focused={splitView && focusedPane === "a"}
+            onfocusin={() => (focusedPane = "a")}
+          >
+            <FileBrowser
+              controller={$activeController}
+              bind:renamingName
+              onactivate={(entry, path) => {
+                if (entry.kind !== "directory") void openPath(path);
+              }}
+              onselection={(list) => (selectedA = list)}
+              onrenamecommit={(entry, newName) =>
+                runOp("rename", [joinPath(currentPath(), entry.name)], newName)}
+            />
+          </div>
+          {#if splitView && paneB}
+            <div
+              class="fm-pane"
+              class:pane-focused={focusedPane === "b"}
+              onfocusin={() => (focusedPane = "b")}
+            >
+              <FileBrowser
+                controller={paneB}
+                onactivate={(entry, path) => {
+                  if (entry.kind !== "directory") void openPath(path);
+                }}
+                onselection={(list) => (selectedB = list)}
+                onrenamecommit={(entry, newName) =>
+                  runOp("rename", [joinPath(currentPath(), entry.name)], newName)}
+              />
+            </div>
+          {/if}
+        </div>
       </ContextMenu.Trigger>
       <ContextMenu.Content class="w-52">
         {#if selected.length > 0}
@@ -225,5 +289,26 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
+  }
+
+  .fm-panes {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+  .fm-pane {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+  }
+  .fm-panes.split .fm-pane + .fm-pane {
+    border-left: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+  }
+  /* The focused pane carries a quiet top rule so the toolbar's
+     subject is visible; only meaningful with two panes. */
+  .fm-panes.split .fm-pane.pane-focused {
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-accent, var(--primary)) 35%, transparent);
   }
 </style>
