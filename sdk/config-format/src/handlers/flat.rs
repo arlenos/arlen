@@ -66,6 +66,21 @@ mod tests {
     }
 
     #[test]
+    fn inserting_the_first_key_into_an_empty_config_succeeds() {
+        // A fresh / empty config must accept its first key through the checked
+        // path: the self-check treats empty text as zero lines, so the insert is
+        // not wrongly rejected as a lost-content edit (the empty-file regression).
+        let h = FlatHandler;
+        let out =
+            crate::selfcheck::checked_set(&h, "", "greeting", &ConfigValue::String("hi".into()))
+                .expect("first insert into an empty config should pass the self-check");
+        assert_eq!(
+            h.read(&out).unwrap().get("greeting"),
+            Some(&ConfigValue::String("hi".to_string()))
+        );
+    }
+
+    #[test]
     fn set_preserves_comments() {
         let h = FlatHandler;
         let src = "# a flat config\nname = arlen\nretries = 3\n";

@@ -117,28 +117,49 @@ fn verify(
 
 /// Assert that every modelled key other than `target` is identical between the
 /// original and candidate models (same set of keys, same values).
+///
+/// The two passes look each key up through a map built once per side, so the
+/// check is O(N), not O(N^2) over [`ConfigModel::get`]'s linear scan: a large
+/// config (tens of thousands of keys) is edited in linear time, not quadratic.
+/// The map keeps the FIRST occurrence of a (malformed) duplicate key, matching
+/// `get`'s document-order semantics; both passes iterate the entries in document
+/// order so a reported collateral key is deterministic.
 fn check_siblings_unchanged(
     original: &ConfigModel,
     candidate: &ConfigModel,
     target: &str,
 ) -> Result<(), SelfCheckError> {
+    use std::collections::HashMap;
+
+    // First-occurrence-wins index of the candidate, for O(1) sibling lookup.
+    let mut candidate_index: HashMap<&str, &ConfigValue> =
+        HashMap::with_capacity(candidate.len());
+    for (k, v) in candidate.entries() {
+        candidate_index.entry(k.as_str()).or_insert(v);
+    }
+
     // No original sibling changed value or disappeared.
     for (k, v) in original.entries() {
         if k == target {
             continue;
         }
-        match candidate.get(k) {
+        match candidate_index.get(k.as_str()) {
             Some(cv) if cv.same_value(v) => {}
-            Some(_) => return Err(SelfCheckError::CollateralChange { key: k.clone() }),
-            None => return Err(SelfCheckError::CollateralChange { key: k.clone() }),
+            _ => return Err(SelfCheckError::CollateralChange { key: k.clone() }),
         }
     }
+
     // No new sibling appeared in the candidate.
+    let mut original_index: HashMap<&str, &ConfigValue> =
+        HashMap::with_capacity(original.len());
+    for (k, v) in original.entries() {
+        original_index.entry(k.as_str()).or_insert(v);
+    }
     for (k, _) in candidate.entries() {
         if k == target {
             continue;
         }
-        if original.get(k).is_none() {
+        if !original_index.contains_key(k.as_str()) {
             return Err(SelfCheckError::CollateralChange { key: k.clone() });
         }
     }
@@ -193,6 +214,13 @@ fn check_unmodelled_preserved(
 /// so a value rewrite of the target is excluded from the comparison while every
 /// comment / blank / neighbour line is retained.
 fn lines_excluding_target(handler: &dyn FormatHandler, text: &str, target: &str) -> Vec<String> {
+    // Empty text is ZERO lines, matching the line model's own split (which yields
+    // no lines for ""). Without this, `"".split('\n')` yields a phantom `[""]`
+    // that is not a subsequence of a candidate carrying the first inserted key, so
+    // inserting the very first key into an empty config would wrongly fail closed.
+    if text.is_empty() {
+        return Vec::new();
+    }
     text.split('\n')
         .filter(|line| !line_is_target(handler, line, target))
         .map(|l| l.to_string())
@@ -224,6 +252,17 @@ fn line_is_target(handler: &dyn FormatHandler, line: &str, target: &str) -> bool
     }
     // Section-stripped match: an INI key line read alone yields the bare local
     // key; accept it when it equals the target's last segment.
+    //
+    // KNOWN LIMITATION (latent, no shipped handler hits it): this bare-last-segment
+    // match also excludes a sibling key in a DIFFERENT section that shares the
+    // target's last segment (target `a.x` excludes a `[b] x = ...` line). A handler
+    // that reformatted ONLY that sibling's comment/whitespace while leaving its
+    // value intact would escape this (c) check. Assertion (b) still catches any
+    // sibling VALUE change, so the gap is confined to a value-preserving cosmetic
+    // rewrite of a same-last-segment cross-section sibling. The precise fix is
+    // section-context line identification (track the section while scanning, match
+    // the full `section.local` path); the built-in line-model handlers never
+    // rewrite a sibling line, so it is deferred rather than risk the safety code.
     match target.rsplit_once('.') {
         Some((_, last)) => only == last,
         None => false,
