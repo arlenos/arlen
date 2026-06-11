@@ -1,30 +1,41 @@
 //! The Arlen online-accounts daemon (`org.arlen.Accounts1`).
 //!
-//! Skeleton (OA-R1, this slice): resolve and load the account configs, surfacing
-//! malformed ones rather than silently granting them, and prepare the capability
-//! gate. The D-Bus ObjectManager + per-service interfaces, the SO_PEERCRED +
-//! `path_to_app_id` caller-auth at every method boundary, and the Secret Service
-//! token handout are the next slice (online-accounts-plan.md OA-R1).
+//! Loads the account configs (surfacing malformed ones rather than granting
+//! them) and serves the capability-gated D-Bus surface. Every method resolves the
+//! caller's app id and consults the gate, so an app reaches only its granted
+//! accounts. The per-account ObjectManager objects, the typed per-service
+//! interfaces and the Secret Service token handout build on this skeleton.
 
 use online_accounts::config;
-use online_accounts::gate::AccessGate;
+use online_accounts::dbus::AccountsDaemon;
+use zbus::connection;
 
-fn main() {
-    let Some(dir) = config::accounts_dir() else {
-        eprintln!("arlen-accountsd: no config home; nothing to serve");
-        return;
-    };
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+
+    let dir = config::accounts_dir().ok_or("no config home for account configs")?;
     let (accounts, errors) = config::load_accounts(&dir);
     for (path, err) in &errors {
         // A malformed config is reported and skipped, never granted.
-        eprintln!("arlen-accountsd: skipping {}: {err}", path.display());
+        tracing::warn!(path = %path.display(), %err, "skipping malformed account config");
     }
-    // The gate is ready over the loaded set; the D-Bus surface that resolves the
-    // caller and consults it is the next slice.
-    let _gate = AccessGate::new(&accounts);
-    eprintln!(
-        "arlen-accountsd: loaded {} account(s) from {}; D-Bus serve not yet wired (OA-R1 next slice)",
-        accounts.len(),
-        dir.display()
-    );
+    tracing::info!(count = accounts.len(), dir = %dir.display(), "accounts loaded");
+
+    let _conn = connection::Builder::session()?
+        .name("org.arlen.Accounts1")?
+        .serve_at("/org/arlen/Accounts1", AccountsDaemon::new(accounts))?
+        .build()
+        .await?;
+    tracing::info!("org.arlen.Accounts1 serving; the per-app gate mediates every method");
+
+    // Serve until terminated.
+    tokio::signal::ctrl_c().await?;
+    tracing::info!("shutting down");
+    Ok(())
 }
