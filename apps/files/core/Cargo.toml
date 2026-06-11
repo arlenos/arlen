@@ -1,0 +1,17 @@
+[package]
+name = "arlen-file-browser-core"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen file manager: the embeddable file-browser core (entry model, scoped listing, sort, breadcrumb)"
+authors = ["Arlen"]
+
+[lib]
+
+[dependencies]
+cap-std = "3"
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[workspace]
