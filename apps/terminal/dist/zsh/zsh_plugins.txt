@@ -1,0 +1,13 @@
+# Arlen curated zsh default plugin set (TM-R2, terminal.md §3).
+#
+# antidote resolves and orders these at IMAGE BUILD into a single static,
+# .zwc-compiled bundle (so the first shell start is warm). A default-plugin
+# update ships with an OS update, not a `git pull`.
+#
+# Only the zsh-function plugins live here. The binaries (starship, fzf, zoxide,
+# eza, bat, ripgrep, fd) are installed as packages and wired up in zshrc, not as
+# antidote plugins. fast-syntax-highlighting must load LAST (it wraps the line
+# editor), so it is listed after autosuggestions - antidote preserves order.
+
+zsh-users/zsh-autosuggestions
+zdharma-continuum/fast-syntax-highlighting
