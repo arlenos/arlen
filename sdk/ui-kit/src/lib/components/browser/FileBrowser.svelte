@@ -12,6 +12,8 @@
   import { joinPath } from "./types";
   import { Selection } from "./selection";
   import FileList from "./FileList.svelte";
+  import FileGrid from "./FileGrid.svelte";
+  import MillerColumns from "./MillerColumns.svelte";
 
   let {
     controller,
@@ -54,6 +56,7 @@
   const error = $derived(controller.error);
   const sortKey = $derived(controller.sortKey);
   const ascending = $derived(controller.ascending);
+  const viewMode = $derived(controller.viewMode);
 
   const visible = $derived(filter ? $entries.filter(filter) : $entries);
 
@@ -122,7 +125,13 @@
     const key = e.key;
     if (key === "ArrowDown" || key === "ArrowUp") {
       e.preventDefault();
-      selection.moveCursor(key === "ArrowDown" ? 1 : -1, e.shiftKey);
+      const stride = $viewMode === "grid" ? gridColumns() : 1;
+      selection.moveCursor(key === "ArrowDown" ? stride : -stride, e.shiftKey);
+      publish();
+      scrollCursorIntoView();
+    } else if (($viewMode === "grid") && (key === "ArrowLeft" || key === "ArrowRight")) {
+      e.preventDefault();
+      selection.moveCursor(key === "ArrowRight" ? 1 : -1, e.shiftKey);
       publish();
       scrollCursorIntoView();
     } else if (key === "Home" || key === "End") {
@@ -162,8 +171,20 @@
     const i = selection.cursor();
     if (i === null) return;
     rootEl
-      ?.querySelectorAll(".file-row")
+      ?.querySelectorAll(".file-row, .file-tile")
       [i]?.scrollIntoView({ block: "nearest" });
+  }
+
+  /// Tiles per grid row, measured from layout (the first tile whose
+  /// top differs from the first marks the wrap).
+  function gridColumns(): number {
+    const tiles = rootEl?.querySelectorAll(".file-tile");
+    if (!tiles || tiles.length < 2) return 1;
+    const top = (tiles[0] as HTMLElement).offsetTop;
+    for (let i = 1; i < tiles.length; i++) {
+      if ((tiles[i] as HTMLElement).offsetTop !== top) return i;
+    }
+    return tiles.length;
   }
 </script>
 
@@ -190,6 +211,21 @@
     <div class="fb-state">
       <span class="fb-state-title">This folder is empty</span>
     </div>
+  {:else if $viewMode === "grid"}
+    <FileGrid
+      entries={visible}
+      {selectedIndices}
+      {cursorIndex}
+      {icon}
+      {onrowevent}
+    />
+  {:else if $viewMode === "miller"}
+    <MillerColumns
+      {controller}
+      {selectedIndices}
+      {cursorIndex}
+      {onrowevent}
+    />
   {:else}
     <FileList
       entries={visible}
