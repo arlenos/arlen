@@ -262,7 +262,21 @@ fn parse_response(raw: &[u8]) -> Result<serde_json::Value, RcError> {
                     "unsupported transfer-encoding: {value}"
                 )));
             }
-            "content-length" => content_length = value.parse::<usize>().ok(),
+            // A Content-Length is authoritative-or-fatal (RFC 9112 6.3): a
+            // duplicate, an unparseable, or a non-digit value is a framing fault,
+            // never silently dropped - else a "good then bad" pair would disable
+            // the cross-check below and let a peer smuggle trailing bytes.
+            "content-length" => {
+                if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+                    return Err(RcError::Transport(format!("bad content-length: {value}")));
+                }
+                let cl = value
+                    .parse::<usize>()
+                    .map_err(|_| RcError::Transport(format!("content-length overflow: {value}")))?;
+                if content_length.replace(cl).is_some() {
+                    return Err(RcError::Transport("duplicate content-length".into()));
+                }
+            }
             _ => {}
         }
     }
@@ -534,23 +548,54 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_method_with_a_crlf_is_refused_before_connecting() {
-        // A method carrying CRLF (or any non-rc-charset byte) must never reach the
-        // request line; the guard rejects it without opening a socket.
+    async fn a_method_outside_the_rc_charset_is_refused_before_connecting() {
+        // A method carrying CRLF, a space, a tab, or any non-rc-charset byte (or an
+        // empty method) must never reach the request line; the guard rejects it
+        // with the distinct "invalid rc method" fault, BEFORE any socket connect.
         let dir = tempfile::tempdir().unwrap();
         let sock = dir.path().join("unused.sock");
         let t = UnixRcTransport::new(&sock);
-        for bad in ["core/version\r\nX: y", "core version", "", "core/../etc"] {
+        for bad in ["core/version\r\nX: y", "core version", "", "core\tversion", "core?x=1"] {
             let err = t.call(bad, serde_json::json!({})).await.unwrap_err();
-            assert!(matches!(err, RcError::Transport(_)), "{bad:?} -> {err:?}");
+            match err {
+                RcError::Transport(m) => assert!(
+                    m.contains("invalid rc method"),
+                    "{bad:?} should be guard-rejected, got {m:?}"
+                ),
+                other => panic!("{bad:?} -> {other:?}"),
+            }
         }
         // A legitimate method passes the guard (and then fails only on the dead
-        // socket), proving the guard does not over-reject real rc paths.
+        // socket - a DISTINCT "connect" fault), proving the guard does not
+        // over-reject real rc paths.
         let err = t.call("mount/listmounts", serde_json::json!({})).await.unwrap_err();
         assert!(
             matches!(&err, RcError::Transport(m) if m.contains("connect")),
             "got {err:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn a_duplicate_content_length_is_a_transport_error() {
+        // Two Content-Length headers (the request-smuggling shape): a framing fault,
+        // never a silently-disabled cross-check.
+        let raw =
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}"
+                .to_vec();
+        let (_dir, sock) = mock_rcd(raw);
+        let t = UnixRcTransport::new(&sock);
+        let err = t.call("core/version", serde_json::json!({})).await.unwrap_err();
+        assert!(matches!(err, RcError::Transport(_)), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn an_unparseable_content_length_is_a_transport_error() {
+        let raw =
+            b"HTTP/1.1 200 OK\r\nContent-Length: xyz\r\nConnection: close\r\n\r\n{}".to_vec();
+        let (_dir, sock) = mock_rcd(raw);
+        let t = UnixRcTransport::new(&sock);
+        let err = t.call("core/version", serde_json::json!({})).await.unwrap_err();
+        assert!(matches!(err, RcError::Transport(_)), "got {err:?}");
     }
 
     #[tokio::test]
