@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.arlen.Accounts1
+Exec=/usr/lib/arlen/libexec/arlen-accountsd
+SystemdService=arlen-accountsd.service
