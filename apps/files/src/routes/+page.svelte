@@ -25,10 +25,37 @@
   import TabStrip from "$lib/components/TabStrip.svelte";
   import FmStatusBar from "$lib/components/FmStatusBar.svelte";
   import OpsOverlays from "$lib/components/OpsOverlays.svelte";
+  import FmSearchBar from "$lib/components/FmSearchBar.svelte";
+  import FmSearchResults from "$lib/components/FmSearchResults.svelte";
+  import FmInfoPanel from "$lib/components/FmInfoPanel.svelte";
+  import { savedSearches } from "$lib/stores/places";
+  import { searchOpen, searchResults, closeSearch } from "$lib/stores/search";
 
   const homePath = writable("/home");
   let renamingName = $state<string | null>(null);
   let confirmDelete = $state(false);
+  let infoOpen = $state(false);
+
+  // What the info panel inspects: the single selected entry, or the
+  // folder itself when nothing is selected.
+  const infoTarget = $derived.by(() => {
+    if (selected.length === 1) {
+      return {
+        path: joinPath(currentPath(), selected[0].name),
+        entry: selected[0],
+      };
+    }
+    return { path: currentPath(), entry: null };
+  });
+
+  /// Save the current query into the Searches sidebar group (session
+  /// only; persisting needs a contract command, flagged).
+  function saveSearch(query: string) {
+    savedSearches.update((list) => [
+      ...list,
+      { id: `local-${list.length + 1}-${query}`, name: query, query },
+    ]);
+  }
 
   // Dual pane: the second pane is its own controller (its own
   // history and selection); the toolbar, status line and operations
@@ -157,9 +184,20 @@
       bind:pathEditing={$pathEditing}
       split={splitView}
       onsplittoggle={toggleSplit}
+      searchOpen={$searchOpen}
+      onsearchtoggle={() => ($searchOpen ? closeSearch() : searchOpen.set(true))}
+      {infoOpen}
+      oninfotoggle={() => (infoOpen = !infoOpen)}
     />
+    <FmSearchBar path={currentPath()} onsave={saveSearch} />
     <ContextMenu.Root>
       <ContextMenu.Trigger class="fm-browse">
+        {#if $searchOpen && $searchResults !== null}
+          <FmSearchResults
+            basePath={currentPath()}
+            onjump={(dir) => focusedController?.navigate(dir)}
+          />
+        {:else}
         <div class="fm-panes" class:split={splitView}>
           <div
             class="fm-pane"
@@ -194,7 +232,15 @@
               />
             </div>
           {/if}
+          {#if infoOpen}
+            <FmInfoPanel
+              path={infoTarget.path}
+              entry={infoTarget.entry}
+              onclose={() => (infoOpen = false)}
+            />
+          {/if}
         </div>
+        {/if}
       </ContextMenu.Trigger>
       <ContextMenu.Content class="w-52">
         {#if selected.length > 0}
