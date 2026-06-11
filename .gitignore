@@ -1,4 +1,9 @@
 
+# Rust build artifacts. No leading slash, so it matches the target/ dir of every
+# crate AND of every nested standalone-workspace crate (contracts/*, daemons/*,
+# forage/*), not only a root-level target/.
+target/
+
 # Architecture specs live in the private arlenos/arlen-docs repo, cloned here for local use.
 docs/
 
