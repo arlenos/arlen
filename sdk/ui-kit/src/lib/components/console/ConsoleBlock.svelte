@@ -182,9 +182,11 @@
     background: var(--color-accent, var(--primary));
     animation: cb-running-pulse 1.6s ease-in-out infinite;
   }
+  /* The pulse floor stays high enough that a still frame never
+     reads the accent dot as gray. */
   @keyframes cb-running-pulse {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.35; }
+    50% { opacity: 0.5; }
   }
 
   .cb-origin {
@@ -193,14 +195,10 @@
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
+  /* Failure is marked by the word in error color, nothing more — the
+     same rendering the sidebar history rows use. */
   .cb-exit {
     flex-shrink: 0;
-    height: var(--height-tag, 20px);
-    display: inline-flex;
-    align-items: center;
-    padding: 0 8px;
-    border-radius: var(--radius-chip);
-    background: color-mix(in srgb, var(--color-error) 14%, transparent);
     color: var(--color-error);
     font-size: 0.75rem;
     font-weight: 500;
