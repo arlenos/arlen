@@ -5,16 +5,11 @@
   /// (terminal.md §4.6: full line per block, git inline, colors and
   /// font from the theme).
   import type { GitInfo } from "$lib/contract";
+  import { tildify } from "$lib/paths";
 
   let { cwd, git = null }: { cwd: string; git?: GitInfo | null } = $props();
 
-  /// `/home/<user>` becomes `~` for display. The contract ships
-  /// absolute paths; this is presentation only.
-  const shownPath = $derived.by(() => {
-    const m = cwd.match(/^\/home\/[^/]+(\/.*)?$/);
-    if (!m) return cwd;
-    return "~" + (m[1] ?? "");
-  });
+  const shownPath = $derived(tildify(cwd));
 </script>
 
 <span class="prompt-line">
@@ -55,6 +50,6 @@
   }
 
   .pl-dirty {
-    color: var(--color-warning, #eab308);
+    color: var(--color-warning);
   }
 </style>

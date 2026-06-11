@@ -18,17 +18,17 @@
 
 <style>
   .output-frame {
-    position: relative;
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 2%, transparent);
     overflow: hidden;
   }
 
+  /* The tag holds its own line so framed content never runs into it. */
   .of-tag {
-    position: absolute;
-    top: 4px;
-    right: 8px;
+    display: block;
+    text-align: right;
+    padding: 4px 8px 0;
     font-size: 0.625rem;
     letter-spacing: 0.02em;
     color: color-mix(in srgb, var(--foreground) 35%, transparent);
@@ -36,6 +36,6 @@
   }
 
   .of-content {
-    padding: 10px;
+    padding: 2px 10px 10px;
   }
 </style>
