@@ -25,6 +25,11 @@ export const sessionsLoaded = writable(false);
 /// differently and auto-create never fires into a dead backend.
 export const sessionsError = writable(false);
 
+/// True when the very first successful load found no sessions — a
+/// fresh launch. The sidebar starts collapsed then: nothing to
+/// switch between, the stream and composer get the room.
+export const firstLoadWasEmpty = writable(false);
+
 // One auto-create per app run. The pre-engine stubs answer
 // new_session with an unlisted session, so without this guard the
 // empty list would re-trigger the create on every reload.
@@ -53,6 +58,7 @@ export async function loadSessions(): Promise<void> {
 
   if (list.length === 0 && !autoCreateTried) {
     autoCreateTried = true;
+    firstLoadWasEmpty.set(true);
     await newSession();
   }
 }

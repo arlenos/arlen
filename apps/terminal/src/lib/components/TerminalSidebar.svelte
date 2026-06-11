@@ -16,6 +16,7 @@
     SidebarMenuButton,
     SidebarMenuItem,
     SidebarRail,
+    useSidebar,
   } from "@arlen/ui-kit/components/ui/sidebar";
   import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import { Plus } from "lucide-svelte";
@@ -25,10 +26,24 @@
     sessions,
     activeSessionId,
     sessionsLoaded,
+    firstLoadWasEmpty,
     newSession,
     selectSession,
   } from "$lib/stores/sessions";
   import { openHistoryPalette } from "$lib/stores/history";
+
+  const sidebar = useSidebar();
+
+  // A fresh launch (nothing to switch between) starts with the rail
+  // collapsed; the stream and composer get the room. Opening it back
+  // up stays the user's call.
+  let collapsedOnFreshLaunch = false;
+  $effect(() => {
+    if ($firstLoadWasEmpty && !collapsedOnFreshLaunch) {
+      collapsedOnFreshLaunch = true;
+      sidebar.open = false;
+    }
+  });
 
   function sessionFailed(s: Session): boolean {
     return s.status === "running" && s.last_exit !== null && s.last_exit !== 0;
