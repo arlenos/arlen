@@ -1,0 +1,15 @@
+[package]
+name = "arlen-lock-auth"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen lock-screen / greeter shared auth backend: the factor-tier enforcement (convenience factors unlock a warm session; only a strong factor releases the home/FDE key). The PAM bridge and the concrete factor backends build on this pure security core."
+authors = ["Arlen"]
+
+[lib]
+name = "arlen_lock_auth"
+
+[dependencies]
+
+[dev-dependencies]
+
+[workspace]
