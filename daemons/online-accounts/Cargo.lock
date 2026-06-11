@@ -534,7 +534,9 @@ name = "online-accounts"
 version = "0.1.0"
 dependencies = [
  "arlen-permissions",
+ "async-trait",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
