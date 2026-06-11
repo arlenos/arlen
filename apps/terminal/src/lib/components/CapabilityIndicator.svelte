@@ -6,7 +6,6 @@
   /// live in its popover, so the resting composer carries no prose.
   import { onMount } from "svelte";
   import { writable } from "svelte/store";
-  import { Button } from "@arlen/ui-kit/components/ui/button";
   import * as Popover from "@arlen/ui-kit/components/ui/popover";
   import { readCapability, type Capability } from "$lib/contract";
 
@@ -71,8 +70,8 @@
           <p class="cap-facts">{facts($capability)}</p>
         {/if}
       {:else}
-        <p class="cap-line">Can't reach the assistant right now.</p>
-        <Button variant="outline" size="sm" onclick={load}>Try again</Button>
+        <p class="cap-line">AI is not reachable right now.</p>
+        <button class="cap-retry" onclick={load}>Try again</button>
       {/if}
     </Popover.Content>
   </Popover.Root>
@@ -129,5 +128,20 @@
     font-size: 0.75rem;
     line-height: 1.5;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+
+  .cap-retry {
+    height: var(--height-control, 28px);
+    padding: 0 12px;
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-input);
+    background: var(--control-bg);
+    color: var(--foreground);
+    font-size: 0.75rem;
+    font-weight: 500;
+    transition: background-color var(--duration-fast, 150ms) var(--ease-out, ease);
+  }
+  .cap-retry:hover {
+    background: var(--control-bg-hover);
   }
 </style>

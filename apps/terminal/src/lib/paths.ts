@@ -23,12 +23,15 @@ export function shortPath(path: string): string {
 /// leaf always survives, and every row speaks the same shape
 /// (`~/Repositories/arlen`, `…/arlen/docs`). Mono rendering makes
 /// the character budget exact.
-export function displayPath(path: string, maxChars = 24): string {
+export function displayPath(path: string, maxChars = 26): string {
   const t = tildify(path);
   if (t.length <= maxChars) return t;
   const parts = t.split("/").filter((x) => x.length > 0);
-  while (parts.length > 1 && ("…/" + parts.join("/")).length > maxChars + 1) {
+  while (parts.length > 1 && ("…/" + parts.join("/")).length > maxChars) {
     parts.shift();
   }
-  return "…/" + parts.join("/");
+  const candidate = "…/" + parts.join("/");
+  // An ellipsis that does not actually shorten anything only loses
+  // information; keep the honest full form then.
+  return candidate.length >= t.length ? t : candidate;
 }

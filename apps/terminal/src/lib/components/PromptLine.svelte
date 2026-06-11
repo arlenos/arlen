@@ -35,13 +35,25 @@
     font-size: 0.8125rem;
     line-height: 1.5;
     min-width: 0;
+    max-width: 100%;
+    white-space: nowrap;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
+  /* Under pressure only the path gives way (ellipsis); branch and
+     dirty count stay whole — a clipped branch name is worse than a
+     shortened path. */
   .pl-path {
+    flex-shrink: 1;
+    min-width: 4ch;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .pl-sep,
+  .pl-branch,
+  .pl-dirty {
+    flex-shrink: 0;
   }
 
   .pl-sep {

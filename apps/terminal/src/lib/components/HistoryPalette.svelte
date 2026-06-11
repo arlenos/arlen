@@ -116,6 +116,11 @@
           >
             Agent
           </Toggle>
+          {#if $projects.length > 0}
+            <!-- Attribute filters left, project scopes right of the
+                 word: "Failures Agent in Arlen" reads as a sentence. -->
+            <span class="hp-in" aria-hidden="true">in</span>
+          {/if}
           {#each $projects as p (p.id)}
             <Toggle
               id={`terminal-history-project-${p.id}`}
@@ -193,6 +198,11 @@
     font-size: 0.75rem;
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+  .hp-in {
+    align-self: center;
+    font-size: 0.75rem;
+    color: color-mix(in srgb, var(--foreground) 35%, transparent);
   }
   .hp-chips :global(.hp-chip[data-state="on"]) {
     background: color-mix(in srgb, var(--color-accent, var(--primary)) 15%, transparent);
