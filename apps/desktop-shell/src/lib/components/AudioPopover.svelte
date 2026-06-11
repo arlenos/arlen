@@ -240,7 +240,7 @@
     width: var(--height-control, 28px); height: var(--height-control, 28px); display: flex; align-items: center; justify-content: center;
     background: transparent; border: none; border-radius: var(--radius-chip);
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
-    cursor: pointer; padding: 0; flex-shrink: 0;
+    padding: 0; flex-shrink: 0;
     transition: all 100ms ease;
   }
   .vol-icon-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); color: var(--color-fg-shell); }
@@ -263,7 +263,7 @@
     display: flex; align-items: center; gap: 6px;
     padding: 4px 0; background: transparent; border: none;
     color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
-    font-size: 0.75rem; font-weight: 500; cursor: pointer; width: 100%; text-align: left;
+    font-size: 0.75rem; font-weight: 500; width: 100%; text-align: left;
     transition: color 0.1s ease;
   }
   .apps-header:hover { color: var(--color-fg-shell); }

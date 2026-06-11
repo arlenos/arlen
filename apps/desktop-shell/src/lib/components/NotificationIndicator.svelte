@@ -61,7 +61,6 @@
     border: none;
     background: transparent;
     border-radius: var(--radius-chip);
-    cursor: pointer;
     color: var(--foreground);
     transition: background-color 150ms ease;
   }

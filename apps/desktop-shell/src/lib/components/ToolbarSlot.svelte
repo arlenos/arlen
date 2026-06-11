@@ -96,8 +96,7 @@
     border: none;
     background: transparent;
     color: var(--color-fg);
-    border-radius: 4px;
-    cursor: pointer;
+    border-radius: var(--radius-chip);
     transition: background 0.1s;
   }
   .qa-btn:hover {
@@ -119,7 +118,6 @@
     border: none;
     background: transparent;
     color: var(--color-fg-muted);
-    cursor: pointer;
     padding: 2px 4px;
     border-radius: 3px;
   }

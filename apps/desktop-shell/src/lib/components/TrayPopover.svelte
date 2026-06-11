@@ -129,7 +129,7 @@
   .tray-item {
     display: flex; align-items: center; gap: 10px;
     padding: 8px 10px; background: transparent; border: none; border-radius: var(--radius-input);
-    color: var(--color-fg-shell); cursor: pointer; text-align: left; width: 100%;
+    color: var(--color-fg-shell); text-align: left; width: 100%;
     transition: background-color 0.1s ease;
   }
   .tray-item:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }

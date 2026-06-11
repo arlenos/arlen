@@ -175,7 +175,7 @@
 </div>
 
 <style>
-  .mod-panel { padding: 16px; color: var(--color-fg-primary, #fafafa); }
+  .mod-panel { padding: 16px; color: var(--color-fg-primary); }
   .mod-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
   .mod-header h2 { font-size: 1rem; font-weight: 600; margin: 0; }
   .mod-empty { text-align: center; padding: 32px; opacity: 0.4; font-size: 0.875rem; }
@@ -208,7 +208,7 @@
   .mod-expand {
     width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
     background: transparent; border: none; border-radius: var(--radius-sm, 4px);
-    color: var(--color-fg-shell); cursor: pointer; padding: 0; opacity: 0.5;
+    color: var(--color-fg-shell); padding: 0; opacity: 0.5;
   }
   .mod-expand:hover { opacity: 1; background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
 
@@ -217,7 +217,6 @@
     font-size: 0.6875rem; font-weight: 500;
     background: color-mix(in srgb, var(--color-warning) 15%, transparent);
     color: var(--color-warning); border: none; border-radius: var(--radius-sm, 4px);
-    cursor: pointer;
   }
   .mod-reenable:hover { background: color-mix(in srgb, var(--color-warning) 25%, transparent); }
 

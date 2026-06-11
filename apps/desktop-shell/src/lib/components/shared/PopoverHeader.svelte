@@ -61,7 +61,7 @@
     display: flex; align-items: center; justify-content: center;
     background: transparent; border: none; border-radius: var(--radius-chip);
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
-    cursor: pointer; padding: 0;
+    padding: 0;
     flex-shrink: 0;
   }
   .pop-settings-btn:hover {

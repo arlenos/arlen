@@ -233,7 +233,6 @@
         color: inherit;
         border-top-left-radius: var(--radius-input);
         border-top-right-radius: var(--radius-input);
-        cursor: pointer;
         font-size: 12px;
         line-height: 1;
         transition:
@@ -289,7 +288,6 @@
         border-radius: var(--radius-input);
         background: transparent;
         color: inherit;
-        cursor: pointer;
         font-size: 14px;
         /*
           Micro-duration transforms + fast background/color fades.

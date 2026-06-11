@@ -104,7 +104,7 @@
         isParseError
           ? "Quick Settings layout file is malformed. Using "
             + (hasLoadedOnce ? "last good state" : "defaults")
-            + " — fix or reset the file in Settings."
+            + ". Fix or reset the file in Settings."
           : "Could not read Quick Settings layout: " + err,
         { duration: 8000 },
       );
@@ -288,7 +288,6 @@
     background: transparent;
     border: none;
     color: var(--color-accent);
-    cursor: pointer;
     padding: 0;
     font: inherit;
     text-decoration: underline;

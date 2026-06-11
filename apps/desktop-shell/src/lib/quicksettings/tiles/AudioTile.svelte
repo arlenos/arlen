@@ -119,7 +119,6 @@
     background: transparent;
     border: none;
     color: var(--color-fg-shell);
-    cursor: pointer;
     padding: 2px;
     border-radius: var(--radius-chip);
   }

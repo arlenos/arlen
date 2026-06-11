@@ -172,7 +172,7 @@
 </div>
 
 <style>
-  .perm-panel { padding: 16px; color: var(--color-fg-primary, #fafafa); }
+  .perm-panel { padding: 16px; color: var(--color-fg-primary); }
   .perm-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
   .perm-header h2 { font-size: 1rem; font-weight: 600; margin: 0; }
   .perm-empty { text-align: center; padding: 32px; opacity: 0.4; font-size: 0.875rem; }
@@ -185,7 +185,7 @@
     display: flex; align-items: center; gap: 10px; width: 100%;
     padding: 10px 12px; background: transparent; border: none;
     color: var(--color-fg-primary, var(--color-fg-shell));
-    font-size: 0.8125rem; cursor: pointer; text-align: left;
+    font-size: 0.8125rem; text-align: left;
     border-radius: var(--radius-md, 8px);
     transition: background-color var(--duration-fast, 100ms) ease;
   }

@@ -153,7 +153,6 @@
     color: color-mix(in srgb, var(--color-fg-shell) 65%, transparent);
     font-size: 0.75rem;
     font-weight: 500;
-    cursor: pointer;
     transition: background-color 100ms ease, color 100ms ease, border-color 100ms ease;
   }
   .notif-clear-btn:hover {
@@ -200,7 +199,6 @@
     transition: background-color 100ms ease;
   }
   .notif-group-header.collapsible {
-    cursor: pointer;
   }
   .notif-group-header.collapsible:hover {
     background: color-mix(in srgb, var(--color-fg-shell) 6%, transparent);

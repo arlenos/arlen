@@ -167,7 +167,6 @@
     border: none;
     border-radius: var(--radius-chip);
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
-    cursor: pointer;
     padding: 0;
     transition: background-color 100ms ease, color 100ms ease;
   }
@@ -190,7 +189,6 @@
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     color: var(--color-fg-shell);
-    cursor: pointer;
     transition: background-color 100ms ease, border-color 100ms ease;
   }
   .notif-action-btn:hover {

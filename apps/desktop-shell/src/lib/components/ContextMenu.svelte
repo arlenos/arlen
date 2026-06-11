@@ -201,7 +201,6 @@
         padding: 6px 12px;
         background: none;
         border: none;
-        cursor: pointer;
         font-size: 0.875rem;
         text-align: left;
         color: var(--color-fg-primary, var(--color-fg-shell));
