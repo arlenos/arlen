@@ -100,7 +100,7 @@
   }
   .c-warn {
     background: var(--color-warning, #eab308);
-    color: var(--color-warn-foreground, #ffffff);
+    color: var(--color-warning-foreground, #ffffff);
   }
   .c-error {
     background: var(--color-error, #ef4444);

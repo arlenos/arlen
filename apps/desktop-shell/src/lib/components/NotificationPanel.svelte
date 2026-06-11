@@ -49,7 +49,7 @@
       <button
         class="notif-clear-btn"
         onclick={() => clearAll()}
-        title="Clear all"
+        aria-label="Clear all notifications"
       >
         <Trash2 size={14} strokeWidth={1.75} />
         <span>Clear</span>

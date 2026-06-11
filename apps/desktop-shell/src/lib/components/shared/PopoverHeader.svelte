@@ -1,12 +1,21 @@
 <script lang="ts">
-  /// Shared popover header with icon, title, optional toggle, and settings button.
+  /// Shared popover header with icon, title, optional toggle, and an
+  /// optional settings shortcut.
+  ///
+  /// The gear renders only when the consumer provides `onSettings`
+  /// (the deep-link into the matching Settings panel). It used to
+  /// fall back to closing the popover, which made a button labelled
+  /// Settings silently act as Close — once Settings grows the device
+  /// panels, consumers pass the real handler and the gear returns.
 
   import { Settings } from "lucide-svelte";
-  import { closePopover } from "$lib/stores/activePopover.js";
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import Switch from "@arlen/ui-kit/components/ui/switch/switch.svelte";
 
   interface Props {
-    icon: any;
+    /// A lucide icon component; they all share one signature, so
+    /// any concrete one types the slot.
+    icon: typeof Settings;
     title: string;
     onSettings?: () => void;
     toggled?: boolean;
@@ -23,16 +32,26 @@
     <Switch
       value={toggled ?? false}
       onchange={() => onToggle?.()}
-      ariaLabel="{title} toggle"
+      ariaLabel="Turn {title} on or off"
     />
   {/if}
-  <button
-    class="pop-settings-btn"
-    onclick={(e) => { e.stopPropagation(); onSettings ? onSettings() : closePopover(); }}
-    title="Settings"
-  >
-    <Settings size={14} strokeWidth={1.5} />
-  </button>
+  {#if onSettings}
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        {#snippet child({ props })}
+          <button
+            {...props}
+            class="pop-settings-btn"
+            aria-label="{title} settings"
+            onclick={(e) => { e.stopPropagation(); onSettings(); }}
+          >
+            <Settings size={14} strokeWidth={1.5} />
+          </button>
+        {/snippet}
+      </Tooltip.Trigger>
+      <Tooltip.TooltipContent side="bottom">Settings</Tooltip.TooltipContent>
+    </Tooltip.Root>
+  {/if}
 </div>
 
 <style>
