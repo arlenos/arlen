@@ -6,7 +6,7 @@
   /// state, this component owns the row mapping into user language.
   import { RefreshCw, ShieldAlert } from "@lucide/svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { Select } from "@arlen/ui-kit/components/ui/select";
+  import PopoverSelect from "@arlen/ui-kit/components/ui/popover-select/popover-select.svelte";
   import TimelineRow from "./TimelineRow.svelte";
   import AlertBanner from "./AlertBanner.svelte";
   import { relativeTime } from "$lib/time";
@@ -115,9 +115,27 @@
     {/if}
   </p>
   <div class="controls">
-    <Select class="filter" bind:value={category} options={CATEGORY_OPTIONS} ariaLabel="Filter by type" />
-    <Select class="filter" bind:value={outcome} options={OUTCOME_OPTIONS} ariaLabel="Filter by outcome" />
-    <Select class="filter" bind:value={timeWindow} options={TIME_OPTIONS} ariaLabel="Filter by time" />
+    <PopoverSelect
+      value={category}
+      options={CATEGORY_OPTIONS}
+      width="8.5rem"
+      ariaLabel="Filter by type"
+      onchange={(v) => (category = v)}
+    />
+    <PopoverSelect
+      value={outcome}
+      options={OUTCOME_OPTIONS}
+      width="8.5rem"
+      ariaLabel="Filter by outcome"
+      onchange={(v) => (outcome = v)}
+    />
+    <PopoverSelect
+      value={timeWindow}
+      options={TIME_OPTIONS}
+      width="8.5rem"
+      ariaLabel="Filter by time"
+      onchange={(v) => (timeWindow = v)}
+    />
     <Button variant="ghost" size="sm" disabled={loading} onclick={onrefresh}>
       <RefreshCw size={14} class={loading ? "spin" : ""} />
       Refresh
@@ -199,9 +217,6 @@
     flex-wrap: wrap;
     gap: 0.5rem;
     flex-shrink: 0;
-  }
-  .controls :global(.filter) {
-    width: 8.5rem;
   }
   .empty {
     margin: 0;

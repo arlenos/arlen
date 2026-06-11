@@ -67,7 +67,6 @@
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     font-size: 0.6875rem;
     font-weight: 600;
-    cursor: pointer;
     transition:
       background-color 120ms ease,
       border-color 120ms ease,

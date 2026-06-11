@@ -52,7 +52,6 @@
     border: 1px solid
       color-mix(in srgb, var(--foreground) 14%, transparent);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
-    cursor: pointer;
     padding: 0;
     flex-shrink: 0;
     transition:
@@ -91,7 +90,6 @@
 
   .sw:disabled {
     opacity: 0.5;
-    cursor: not-allowed;
   }
 
   .thumb {

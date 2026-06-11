@@ -245,7 +245,6 @@
       hsl(360, 100%, 50%)
     );
     margin: 0;
-    cursor: pointer;
   }
 
   .cp-hue::-webkit-slider-thumb {
@@ -255,7 +254,6 @@
     border-radius: 50%;
     background: #fff;
     border: 2px solid rgba(0, 0, 0, 0.5);
-    cursor: pointer;
   }
   .cp-hue::-moz-range-thumb {
     width: 14px;
@@ -263,7 +261,6 @@
     border-radius: 50%;
     background: #fff;
     border: 2px solid rgba(0, 0, 0, 0.5);
-    cursor: pointer;
   }
 
   .cp-row {

@@ -5,6 +5,7 @@
   /// (tool name, component, duration, reference) lives behind the chevron,
   /// honest and unabridged. Two-layer transparency.
   import { ChevronDown, Undo2 } from "@lucide/svelte";
+  import IconAction from "$lib/components/IconAction.svelte";
   import type { Tone } from "$lib/ledger";
 
   interface Annotation {
@@ -102,16 +103,9 @@
       <time class="time">{time}</time>
     {/if}
     {#if details.length > 0}
-      <button
-        type="button"
-        class="expand"
-        class:open
-        aria-label={open ? "Hide details" : "Show details"}
-        title={open ? "Hide details" : "Show details"}
-        onclick={() => (open = !open)}
-      >
-        <ChevronDown size={14} strokeWidth={2} />
-      </button>
+      <IconAction label={open ? "Hide details" : "Show details"} onclick={() => (open = !open)}>
+        <span class="chevron" class:open><ChevronDown size={14} strokeWidth={2} /></span>
+      </IconAction>
     {/if}
   </div>
 </li>
@@ -256,7 +250,6 @@
     border-radius: var(--radius-button);
     font-size: 0.75rem;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
-    cursor: pointer;
     transition:
       background-color var(--duration-fast) var(--ease-out),
       color var(--duration-fast) var(--ease-out);
@@ -267,29 +260,12 @@
   }
   .undo:disabled {
     opacity: 0.5;
-    cursor: default;
   }
-  .expand {
+  .chevron {
     display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--height-control-compact, 24px);
-    height: var(--height-control-compact, 24px);
-    border: none;
-    background: transparent;
-    border-radius: var(--radius-button);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
-    cursor: pointer;
-    transition:
-      transform var(--duration-fast) var(--ease-out),
-      background-color var(--duration-fast) var(--ease-out),
-      color var(--duration-fast) var(--ease-out);
+    transition: transform var(--duration-fast) var(--ease-out);
   }
-  .expand:hover {
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
-    color: var(--foreground);
-  }
-  .expand.open {
+  .chevron.open {
     transform: rotate(180deg);
   }
 </style>

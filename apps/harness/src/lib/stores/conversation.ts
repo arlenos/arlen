@@ -234,8 +234,16 @@ function titleFrom(msgs: Message[]): string {
   return t.length > 48 ? `${t.slice(0, 48)}…` : t;
 }
 
-/// Create a new, empty conversation and make it active.
+/// Create a new, empty conversation and make it active. Idempotent on an
+/// already-empty active chat: asking for a new chat while sitting on a blank
+/// one focuses that one instead of stacking another blank.
 export function newSession(): string {
+  const activeId = get(activeSessionId);
+  const active = activeId
+    ? get(sessions).find((s) => s.id === activeId)
+    : undefined;
+  if (active && active.messages.length === 0) return active.id;
+
   // A UUID, not a per-run counter, so a session restored from a previous run
   // can never collide with a new one.
   const id = crypto.randomUUID();

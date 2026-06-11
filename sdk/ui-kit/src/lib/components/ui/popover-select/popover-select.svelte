@@ -239,7 +239,6 @@
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 10%, transparent);
-    cursor: pointer;
     font-family: inherit;
     transition:
       background-color 150ms ease,
@@ -328,7 +327,6 @@
     border: none;
     background: transparent;
     border-radius: var(--radius-input);
-    cursor: pointer;
     font-family: inherit;
     transition: background-color 100ms ease;
   }

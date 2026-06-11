@@ -47,7 +47,7 @@
   {rows}
   data-slot="textarea"
   class={cn(
-    "w-full resize-none rounded-input border border-border bg-input px-3 py-1.5 text-sm leading-5 transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+    "w-full resize-none rounded-input border border-border bg-input px-3 py-1.5 text-sm leading-5 transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
     className
   )}
   {...restProps}

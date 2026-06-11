@@ -75,7 +75,6 @@
     display: flex;
     align-items: center;
     width: 100%;
-    cursor: pointer;
   }
   /* Wrapper height matches the standard inline-control register
      (28 / 24) so the click area aligns vertically with sibling
@@ -94,7 +93,6 @@
   }
   .ln-fill-slider.disabled {
     opacity: 0.5;
-    cursor: not-allowed;
   }
 
   /* Track is the VISIBLE bar — not the wrapper. It's centred

@@ -173,7 +173,6 @@
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 12%, transparent);
     border-radius: var(--radius-card);
     color: var(--color-fg-shell);
-    cursor: pointer;
     text-align: left;
     overflow: hidden;
     transition: background-color 100ms ease, border-color 100ms ease;
@@ -211,7 +210,6 @@
 
   .qs-tile:disabled {
     opacity: 0.4;
-    cursor: not-allowed;
   }
 
   .qs-tile-head {
@@ -286,9 +284,6 @@
     min-height: var(--height-control, 28px);
     margin-top: auto;
     transition: background-color 100ms ease;
-  }
-  .qs-tile-strip.is-interactive {
-    cursor: pointer;
   }
   .qs-tile-strip.is-interactive:hover {
     background: color-mix(in srgb, var(--color-fg-shell) 14%, transparent);

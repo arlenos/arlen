@@ -1,6 +1,8 @@
 <script lang="ts">
   /// The no-messages surface, one designed variant per capability state. No
   /// decorative icon; the words and the starters carry it.
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+
   let {
     variant,
     onstarter,
@@ -38,7 +40,7 @@
   {:else}
     <p class="title">Can't reach the assistant</p>
     <p class="sub">It did not answer. Try again in a moment.</p>
-    <button type="button" class="starter" onclick={onretry}>Try again</button>
+    <Button variant="outline" size="sm" class="mt-2" onclick={onretry}>Try again</Button>
   {/if}
 </div>
 
@@ -83,7 +85,6 @@
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 75%, transparent);
     font-size: 0.8125rem;
-    cursor: pointer;
     transition:
       background-color var(--duration-fast) var(--ease-out),
       color var(--duration-fast) var(--ease-out);

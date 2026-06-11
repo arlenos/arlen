@@ -19,6 +19,7 @@
   } from "@lucide/svelte";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import IconAction from "$lib/components/IconAction.svelte";
   import ToolCallCard from "./ToolCallCard.svelte";
   import { renderMarkdown } from "$lib/markdown";
   import { externalLinks } from "$lib/externalLinks";
@@ -112,9 +113,9 @@
         The assistant could not answer. <code>{message.text}</code>
       </span>
       {#if canRegenerate}
-        <button type="button" class="error-retry" disabled={$busy} onclick={doRegenerate}>
+        <Button variant="outline" size="sm" class="self-center" disabled={$busy} onclick={doRegenerate}>
           Try again
-        </button>
+        </Button>
       {/if}
     </div>
   {:else}
@@ -170,50 +171,37 @@
   {#if !message.pending && !editing}
     <div class="actions">
       {#if message.text}
-        <button type="button" class="action" title="Copy" aria-label="Copy" onclick={copyText}>
+        <IconAction label="Copy" onclick={copyText}>
           {#if copied}<Check size={13} strokeWidth={2} />{:else}<Copy size={13} strokeWidth={2} />{/if}
-        </button>
+        </IconAction>
       {/if}
-      <button
-        type="button"
-        class="action"
-        class:active={message.pinned}
-        title={message.pinned ? "Remove bookmark" : "Bookmark"}
-        aria-label={message.pinned ? "Remove bookmark" : "Bookmark"}
+      <IconAction
+        label={message.pinned ? "Remove bookmark" : "Bookmark"}
+        active={message.pinned}
         onclick={() => togglePin(message.id)}
       >
         <Bookmark size={13} strokeWidth={2} fill={message.pinned ? "currentColor" : "none"} />
-      </button>
+      </IconAction>
       {#if canEdit}
-        <button type="button" class="action" title="Edit and send again" aria-label="Edit and send again" onclick={beginEdit}>
+        <IconAction label="Edit and send again" onclick={beginEdit}>
           <Pencil size={13} strokeWidth={2} />
-        </button>
+        </IconAction>
       {/if}
-      <button
-        type="button"
-        class="action"
-        title="Branch into a new chat from here"
-        aria-label="Branch into a new chat from here"
+      <IconAction
+        label="Branch into a new chat from here"
         disabled={$busy}
         onclick={() => fork(message.id)}
       >
         <GitBranch size={13} strokeWidth={2} />
-      </button>
+      </IconAction>
       {#if canRegenerate}
-        <button type="button" class="action" title="Try again" aria-label="Try again" disabled={$busy} onclick={doRegenerate}>
+        <IconAction label="Try again" disabled={$busy} onclick={doRegenerate}>
           <RotateCcw size={13} strokeWidth={2} />
-        </button>
+        </IconAction>
       {/if}
-      <button
-        type="button"
-        class="action"
-        title="Delete this turn"
-        aria-label="Delete this turn"
-        disabled={$busy}
-        onclick={() => deleteTurn(message.id)}
-      >
+      <IconAction label="Delete this turn" disabled={$busy} onclick={() => deleteTurn(message.id)}>
         <Trash2 size={13} strokeWidth={2} />
-      </button>
+      </IconAction>
     </div>
   {/if}
 </div>
@@ -279,26 +267,6 @@
     border-radius: var(--radius-chip);
     word-break: break-word;
   }
-  .error-retry {
-    flex-shrink: 0;
-    align-self: center;
-    height: var(--height-control-compact, 24px);
-    padding: 0 0.5rem;
-    border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
-    background: transparent;
-    border-radius: var(--radius-button);
-    font-size: 0.75rem;
-    color: var(--color-error);
-    cursor: pointer;
-    transition: background-color var(--duration-fast) var(--ease-out);
-  }
-  .error-retry:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-error) 12%, transparent);
-  }
-  .error-retry:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
   .tools {
     display: flex;
     flex-direction: column;
@@ -352,32 +320,6 @@
   .turn:hover .actions,
   .actions:focus-within {
     opacity: 1;
-  }
-  .action {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--height-control-compact, 24px);
-    height: var(--height-control-compact, 24px);
-    border: none;
-    background: transparent;
-    border-radius: var(--radius-button);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
-    cursor: pointer;
-    transition:
-      background-color var(--duration-fast) var(--ease-out),
-      color var(--duration-fast) var(--ease-out);
-  }
-  .action:hover {
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
-    color: var(--foreground);
-  }
-  .action.active {
-    color: var(--foreground);
-  }
-  .action:disabled {
-    opacity: 0.4;
-    cursor: default;
   }
   .dots {
     display: inline-flex;

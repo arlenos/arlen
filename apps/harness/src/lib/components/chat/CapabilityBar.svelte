@@ -3,6 +3,7 @@
   /// plain sentence, anchored by the capability glyph. The technical facts
   /// (model, provider, per-question independence) live in the tooltip. This
   /// is the in-body capability strip; nothing about it lives in the header.
+  import { Button } from "@arlen/ui-kit/components/ui/button";
   import type { Capability } from "$lib/capability";
   import { statusSentence, statusTooltip } from "$lib/display";
 
@@ -20,21 +21,30 @@
 </script>
 
 {#if loaded}
-  <p class="status" title={capability ? statusTooltip(capability) : undefined}>
+  <div class="status">
     {#if capability}
-      <span class="glyph" class:off={!capability.enabled} aria-hidden="true">◆</span>
-      {statusSentence(capability)}
+      <p class="line" title={statusTooltip(capability)}>
+        <span class="glyph" class:off={!capability.enabled} aria-hidden="true">◆</span>
+        {statusSentence(capability)}
+      </p>
     {:else}
-      Can't reach the assistant right now.
-      <button type="button" class="retry" onclick={onretry}>Try again</button>
+      <p class="line">Can't reach the assistant right now.</p>
+      <Button variant="outline" size="sm" onclick={onretry}>Try again</Button>
     {/if}
-  </p>
+  </div>
 {/if}
 
 <style>
   .status {
-    margin: 0.5rem 0 0;
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+    min-width: 0;
+  }
+  .line {
+    margin: 0;
     font-size: 0.75rem;
     line-height: 1.4;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
@@ -48,15 +58,5 @@
   }
   .glyph.off {
     color: color-mix(in srgb, var(--foreground) 35%, transparent);
-  }
-  .retry {
-    border: none;
-    background: transparent;
-    padding: 0;
-    margin-left: 0.25rem;
-    font-size: 0.75rem;
-    color: var(--foreground);
-    text-decoration: underline;
-    cursor: pointer;
   }
 </style>

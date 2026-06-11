@@ -107,7 +107,6 @@
     padding: 4px 12px;
     min-height: var(--height-control-compact, 24px);
     border-radius: calc(var(--radius-input) - 2px);
-    cursor: pointer;
     transition:
       background-color var(--duration-fast) var(--ease-out),
       color var(--duration-fast) var(--ease-out),
@@ -127,8 +126,5 @@
 
   .seg:has(.seg-pill:disabled) {
     opacity: 0.5;
-  }
-  .seg-pill:disabled {
-    cursor: not-allowed;
   }
 </style>

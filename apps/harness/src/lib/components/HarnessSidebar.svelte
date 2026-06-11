@@ -22,6 +22,7 @@
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import * as DropdownMenu from "@arlen/ui-kit/components/ui/dropdown-menu";
+  import IconAction from "$lib/components/IconAction.svelte";
   import {
     Activity,
     Copy,
@@ -100,16 +101,11 @@
     <SidebarGroup>
       <SidebarGroupLabel>
         <span>History</span>
-        <button
-          id="harness-new-chat"
-          type="button"
-          class="ml-auto flex size-6 items-center justify-center rounded-chip text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
-          title="New chat (Ctrl+N)"
-          aria-label="New chat"
-          onclick={startNew}
-        >
-          <Plus size={14} strokeWidth={2} />
-        </button>
+        <span class="ml-auto">
+          <IconAction id="harness-new-chat" label="New chat (Ctrl+N)" onclick={startNew}>
+            <Plus size={14} strokeWidth={2} />
+          </IconAction>
+        </span>
       </SidebarGroupLabel>
       {#if $orderedSessions.length > 0}
         <div class="relative mb-1">

@@ -205,7 +205,6 @@
     border: none;
     border-radius: var(--topbar-applet-radius, var(--radius-chip));
     color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
-    cursor: pointer;
     transition:
       background-color var(--duration-fast, 100ms) var(--ease-out, ease),
       color var(--duration-fast, 100ms) var(--ease-out, ease),
@@ -238,9 +237,6 @@
   }
   .applet:active:not(:disabled) {
     transform: scale(0.96);
-  }
-  .applet:disabled {
-    cursor: not-allowed;
   }
 
   /* Popover-open state: accent-coloured icon + subtle bg-tint.

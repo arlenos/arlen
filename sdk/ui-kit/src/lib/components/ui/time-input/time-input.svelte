@@ -52,6 +52,5 @@
   /* Reskin native control widgets where supported. */
   .time::-webkit-calendar-picker-indicator {
     filter: invert(0.6);
-    cursor: pointer;
   }
 </style>
