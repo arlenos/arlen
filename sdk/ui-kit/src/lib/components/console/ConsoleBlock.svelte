@@ -40,7 +40,8 @@
     /// on agent-issued blocks); null renders nothing, so the common
     /// you-ran path stays silent.
     originLabel?: string | null;
-    /// The prompt context line above the header (path + git).
+    /// The prompt context (path + git), rendered inline before the
+    /// marker — one line like a real shell prompt.
     context?: Snippet;
     /// The origin marker rendered before the command (prompt char).
     marker?: Snippet;
@@ -65,11 +66,10 @@
 </script>
 
 <div class="console-block" class:failed={exitCode !== null && exitCode !== 0}>
-  {#if context}
-    <div class="cb-context">{@render context()}</div>
-  {/if}
-
   <div class="cb-header">
+    {#if context}
+      <span class="cb-context">{@render context()}</span>
+    {/if}
     {#if marker}
       <span class="cb-marker">{@render marker()}</span>
     {/if}
@@ -113,8 +113,14 @@
       color-mix(in srgb, var(--foreground) 7%, transparent);
   }
 
+  /* The prompt context sits inline before the command, one line like
+     a real shell prompt; it yields (truncates) before the command
+     ever has to. */
   .cb-context {
-    padding: 0 16px 2px;
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: 45%;
+    overflow: hidden;
   }
 
   .cb-header {
