@@ -53,8 +53,8 @@
   }
 
   .lr-target {
-    font-size: 0.6875rem;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    font-size: 0.8125rem;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -64,6 +64,6 @@
   .link-render-inert {
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 0.8125rem;
-    color: color-mix(in srgb, var(--foreground) 70%, transparent);
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 </style>

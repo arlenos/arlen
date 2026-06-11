@@ -46,14 +46,14 @@
     width: 100%;
     border-collapse: collapse;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     line-height: 1.5;
   }
 
   th {
     text-align: left;
     font-weight: 600;
-    color: color-mix(in srgb, var(--foreground) 60%, transparent);
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
     padding: 2px 14px 4px 0;
     border-bottom: 1px solid
       color-mix(in srgb, var(--foreground) 12%, transparent);
