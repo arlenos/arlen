@@ -1,9 +1,10 @@
 <script lang="ts">
   /// The console sidebar: SESSIONS (the running shells, sessions are
   /// the tabs), HISTORY (search over past blocks, Ctrl+R) and
-  /// PROJECTS (scopes the history). Sessions carry their cwd short
-  /// form, a status dot and the last exit code; history rows hand
-  /// their command to the composer on click.
+  /// PROJECTS (scopes the history). One-line rows on one text edge;
+  /// the right-hand dot rail carries session status (green running,
+  /// gray exited, red failed) and the tooltip carries what the dot
+  /// alone cannot say.
   import { onMount, tick } from "svelte";
   import { writable } from "svelte/store";
   import {
@@ -21,8 +22,8 @@
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Toggle } from "@arlen/ui-kit/components/ui/toggle";
   import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
-  import { Folder, Plus, TerminalSquare } from "lucide-svelte";
-  import { terminalProjects, type Project } from "$lib/contract";
+  import { Plus } from "lucide-svelte";
+  import { terminalProjects, type Project, type Session } from "$lib/contract";
   import { shortPath } from "$lib/paths";
   import {
     sessions,
@@ -87,12 +88,23 @@
       $historyProjectId !== null,
   );
 
+  function sessionFailed(s: Session): boolean {
+    return s.status === "running" && s.last_exit !== null && s.last_exit !== 0;
+  }
+
+  /// The tooltip says what the dot cannot: which state, and which
+  /// exit code when the last command failed.
+  function sessionTitle(s: Session): string {
+    if (s.status === "exited") return `${s.cwd} (exited)`;
+    if (sessionFailed(s)) return `${s.cwd} (last command exited ${s.last_exit})`;
+    return s.cwd;
+  }
 </script>
 
 <Sidebar collapsible="icon">
   <SidebarHeader class="h-10 flex-row items-center justify-between py-0">
     <span
-      class="px-2 text-xs font-semibold tracking-wide text-sidebar-foreground/70 group-data-[collapsible=icon]:hidden"
+      class="px-2 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/55 group-data-[collapsible=icon]:hidden"
     >
       Terminal
     </span>
@@ -129,29 +141,24 @@
           <SidebarMenuItem>
             <SidebarMenuButton
               isActive={s.id === $activeSessionId}
-              tooltip={s.cwd}
+              tooltip={sessionTitle(s)}
               onclick={() => selectSession(s.id)}
             >
-              <TerminalSquare />
-              <span class="ts-session-label">
-                <span class="ts-session-cwd">{shortPath(s.cwd)}</span>
-                <span class="ts-session-meta">
-                  <span
-                    class="ts-dot"
-                    class:ts-dot-exited={s.status === "exited"}
-                    class:ts-dot-failed={s.status === "running" &&
-                      s.last_exit !== null &&
-                      s.last_exit !== 0}
-                  ></span>
-                  {#if s.status === "exited"}
-                    exited
-                  {:else if s.last_exit !== null && s.last_exit !== 0}
-                    exit {s.last_exit}
-                  {:else}
-                    running
-                  {/if}
-                </span>
+              <!-- Collapsed rail: the dot IS the session. Expanded: it
+                   sits on the right rail, clear of the truncating text. -->
+              <span
+                class="ts-dot hidden group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:block"
+                class:ts-dot-exited={s.status === "exited"}
+                class:ts-dot-failed={sessionFailed(s)}
+              ></span>
+              <span class="ts-text group-data-[collapsible=icon]:hidden">
+                {shortPath(s.cwd)}
               </span>
+              <span
+                class="ts-dot ml-auto group-data-[collapsible=icon]:hidden"
+                class:ts-dot-exited={s.status === "exited"}
+                class:ts-dot-failed={sessionFailed(s)}
+              ></span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         {/each}
@@ -200,21 +207,13 @@
         {#each $historyResults.slice(0, HISTORY_LIMIT) as b (b.id)}
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip={b.command}
+              tooltip={`${b.command} (in ${shortPath(b.cwd)})`}
               onclick={() => prefillComposer(b.command)}
             >
-              <span class="ts-session-label">
-                <span class="ts-session-cwd">
-                  {#if b.origin === "agent"}<span class="ts-agent" aria-hidden="true">✦</span>{/if}
-                  {b.command}
-                </span>
-                <span class="ts-session-meta">
-                  {shortPath(b.cwd)}
-                  {#if b.exit_code !== null && b.exit_code !== 0}
-                    <span class="ts-exit">exit {b.exit_code}</span>
-                  {/if}
-                </span>
-              </span>
+              <span class="ts-text">{b.command}</span>
+              {#if b.exit_code !== null && b.exit_code !== 0}
+                <span class="ts-exit ml-auto">exit {b.exit_code}</span>
+              {/if}
             </SidebarMenuButton>
           </SidebarMenuItem>
         {/each}
@@ -240,11 +239,7 @@
               tooltip={p.path}
               onclick={() => toggleProject(p.id)}
             >
-              <Folder />
-              <span class="ts-session-label">
-                <span class="ts-project-name">{p.name}</span>
-                <span class="ts-session-meta">{shortPath(p.path)}</span>
-              </span>
+              <span class="ts-text">{p.name}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         {/each}
@@ -265,7 +260,7 @@
     border: none;
     border-radius: var(--radius-chip);
     background: transparent;
-    color: color-mix(in srgb, var(--sidebar-foreground) 60%, transparent);
+    color: color-mix(in srgb, var(--sidebar-foreground) 55%, transparent);
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .ts-new-btn:hover {
@@ -273,31 +268,48 @@
     color: var(--sidebar-foreground);
   }
 
+  /* Row text: console content voice (13px mono), truncating. The kit
+     button's text-sm never reaches a bare text node. */
+  .ts-text {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .ts-empty {
-    padding: 6px 8px;
+    padding: 4px 8px;
     font-size: 0.75rem;
-    line-height: 1.4;
-    color: color-mix(in srgb, var(--sidebar-foreground) 50%, transparent);
+    line-height: 1.5;
+    color: color-mix(in srgb, var(--sidebar-foreground) 55%, transparent);
   }
 
   .ts-search {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 0 8px 6px;
+    gap: 8px;
+    padding: 0 0 8px;
+  }
+  /* Text edge law: group 8px + border 1px + 7px = 16px, the same
+     edge every other sidebar text sits on. */
+  .ts-search :global(input) {
+    padding-inline: 7px;
   }
   .ts-chips {
     display: flex;
-    gap: 6px;
+    gap: 8px;
   }
   .ts-search :global(.ts-chip) {
     height: var(--height-control-compact, 24px);
-    padding: 0 8px;
+    padding: 0 7px;
     border: 1px solid var(--control-border);
     border-radius: var(--radius-chip);
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     font-weight: 500;
-    color: color-mix(in srgb, var(--sidebar-foreground) 60%, transparent);
+    color: color-mix(in srgb, var(--sidebar-foreground) 55%, transparent);
   }
   .ts-search :global(.ts-chip[data-state="on"]) {
     background: color-mix(in srgb, var(--color-accent, var(--primary)) 15%, transparent);
@@ -305,43 +317,21 @@
     color: var(--color-accent, var(--primary));
   }
 
-  .ts-session-label {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    min-width: 0;
-  }
-  .ts-session-cwd {
-    font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.75rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .ts-session-meta {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.6875rem;
-    color: color-mix(in srgb, var(--sidebar-foreground) 50%, transparent);
-  }
-  .ts-agent {
-    color: var(--color-accent, var(--primary));
-  }
   .ts-exit {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
     color: var(--color-error);
   }
   .ts-more {
     padding: 4px 8px 0;
-    font-size: 0.6875rem;
-    color: color-mix(in srgb, var(--sidebar-foreground) 45%, transparent);
-  }
-  .ts-project-name {
     font-size: 0.75rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    line-height: 1.5;
+    color: color-mix(in srgb, var(--sidebar-foreground) 55%, transparent);
   }
+
+  /* The one dot language: green alive, gray exited, red failed.
+     Fills are deliberately outside the text dim scale. */
   .ts-dot {
     width: 6px;
     height: 6px;
