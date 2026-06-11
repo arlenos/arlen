@@ -63,7 +63,7 @@ async fn listen_consumers(path: &str, registry: Arc<ConsumerRegistry>) -> Result
 /// credential-read error, so the caller drops the connection rather than fall
 /// back to a trusted identity: an unreadable peer cred fails CLOSED, never open
 /// to uid 0 (root, which would skip the restamp and bypass every consumer
-/// filter). On a connected AF_UNIX stream the kernel fixes peercred at connect,
+/// filter). On a connected `AF_UNIX` stream the kernel fixes peercred at connect,
 /// so this error path is not normally reachable; it is the fail-safe default.
 fn peer_uid(stream: &UnixStream) -> Option<u32> {
     stream.peer_cred().ok().map(|cred| cred.uid())
