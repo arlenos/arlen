@@ -130,6 +130,9 @@ function applyDropAction(
   }
 }
 
+/// The engine handle components receive — see `createDragEngine`.
+export type DragEngine = ReturnType<typeof createDragEngine>;
+
 /// Creates the per-instance drag engine. Reactive fields
 /// (`dragState`, `dragOverWs`, `dragOverSection`) are exposed as
 /// getters over `$state` so templates track them; the in-flight

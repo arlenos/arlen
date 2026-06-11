@@ -57,6 +57,9 @@ export interface KeyboardNavDeps {
 /// behaviour — familiar to keyboard-first users.
 const GOTO_TIMEOUT_MS = 800;
 
+/// The controller handle components receive — see `createKeyboardNav`.
+export type KeyboardNav = ReturnType<typeof createKeyboardNav>;
+
 /// Creates the per-instance keyboard controller. `focusedWindowId`
 /// is exposed as a getter over `$state` so the card templates track
 /// the focus ring reactively.
