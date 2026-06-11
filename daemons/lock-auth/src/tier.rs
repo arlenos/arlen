@@ -167,6 +167,70 @@ pub fn evaluate(factor: &Factor, state: &SessionState, policy: &TierPolicy) -> U
     }
 }
 
+impl SessionState {
+    /// A COLD session: no home key, the strong-auth window maximally elapsed, no
+    /// failures. The state after a reboot or a deactivate key-discard, in which
+    /// [`evaluate`] forces a strong factor before anything unlocks.
+    pub fn cold() -> Self {
+        SessionState {
+            home_key_loaded: false,
+            // Maximally elapsed so the window check forces strong for any finite
+            // policy window; `home_key_loaded == false` already forces it, this is
+            // belt-and-braces for a warm-then-cold transition.
+            since_strong_auth: Duration::MAX,
+            failed_attempts: 0,
+        }
+    }
+
+    /// The discrete state transition after a single unlock attempt with `factor`
+    /// that [`evaluate`] resolved to `outcome`. This advances only the DISCRETE
+    /// counters: advancing `since_strong_auth` by wall-clock time is the
+    /// integration layer's job (it samples a clock before each [`evaluate`]); this
+    /// resets that window only on a strong success.
+    ///
+    /// The security-relevant rules:
+    /// - a STRONG success ([`UnlockOutcome::KeyRelease`], or a [`Tier::Strong`]
+    ///   [`UnlockOutcome::WarmUnlock`]) loads the key (key-release) or keeps it,
+    ///   restarts the strong-auth window, and clears the failure streak;
+    /// - a CONVENIENCE [`UnlockOutcome::WarmUnlock`] clears the failure streak
+    ///   (it proves presence) but does NOT restart the strong-auth window and does
+    ///   NOT load the key - only a strong factor may cross either boundary. A
+    ///   convenience success only ever happens on an already-warm session, so it
+    ///   never affects the cold-session key-release escalation;
+    /// - a [`UnlockOutcome::Denied`] attempt advances the failure counter
+    ///   (saturating) and changes nothing else, so K consecutive denials force a
+    ///   strong factor.
+    pub fn after_attempt(&self, factor: &Factor, outcome: &UnlockOutcome) -> SessionState {
+        match outcome {
+            UnlockOutcome::KeyRelease => SessionState {
+                home_key_loaded: true,
+                since_strong_auth: Duration::ZERO,
+                failed_attempts: 0,
+            },
+            UnlockOutcome::WarmUnlock => {
+                if factor.tier() == Tier::Strong {
+                    SessionState {
+                        home_key_loaded: true,
+                        since_strong_auth: Duration::ZERO,
+                        failed_attempts: 0,
+                    }
+                } else {
+                    SessionState {
+                        home_key_loaded: self.home_key_loaded,
+                        since_strong_auth: self.since_strong_auth,
+                        failed_attempts: 0,
+                    }
+                }
+            }
+            UnlockOutcome::Denied(_) => SessionState {
+                home_key_loaded: self.home_key_loaded,
+                since_strong_auth: self.since_strong_auth,
+                failed_attempts: self.failed_attempts.saturating_add(1),
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -349,5 +413,120 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn cold_forces_a_strong_factor() {
+        let p = TierPolicy::default();
+        let cold = SessionState::cold();
+        assert!(!cold.home_key_loaded);
+        // A convenience factor is refused on a cold session.
+        assert_eq!(
+            evaluate(&Factor::Fingerprint, &cold, &p),
+            UnlockOutcome::Denied(DenyReason::StrongAuthRequired)
+        );
+        // A strong factor releases the key.
+        assert_eq!(
+            evaluate(&Factor::Password, &cold, &p),
+            UnlockOutcome::KeyRelease
+        );
+    }
+
+    #[test]
+    fn a_key_release_loads_the_key_and_clears_the_window_and_failures() {
+        let before = SessionState {
+            home_key_loaded: false,
+            since_strong_auth: Duration::from_secs(999_999),
+            failed_attempts: 4,
+        };
+        let after = before.after_attempt(&Factor::Password, &UnlockOutcome::KeyRelease);
+        assert!(after.home_key_loaded);
+        assert_eq!(after.since_strong_auth, Duration::ZERO);
+        assert_eq!(after.failed_attempts, 0);
+    }
+
+    #[test]
+    fn a_denied_attempt_advances_the_failure_counter_and_saturates() {
+        let s = warm();
+        let after = s.after_attempt(
+            &Factor::Password,
+            &UnlockOutcome::Denied(DenyReason::StrongAuthRequired),
+        );
+        assert_eq!(after.failed_attempts, 1);
+        assert_eq!(after.home_key_loaded, s.home_key_loaded);
+        assert_eq!(after.since_strong_auth, s.since_strong_auth);
+        // Saturates rather than overflowing.
+        let maxed = SessionState {
+            failed_attempts: u32::MAX,
+            ..warm()
+        };
+        let after = maxed.after_attempt(
+            &Factor::Fingerprint,
+            &UnlockOutcome::Denied(DenyReason::StrongAuthRequired),
+        );
+        assert_eq!(after.failed_attempts, u32::MAX);
+    }
+
+    #[test]
+    fn a_convenience_success_clears_failures_but_keeps_the_window_and_key_flag() {
+        let s = SessionState {
+            home_key_loaded: true,
+            since_strong_auth: HOUR,
+            failed_attempts: 3,
+        };
+        let after = s.after_attempt(&Factor::Fingerprint, &UnlockOutcome::WarmUnlock);
+        assert_eq!(after.failed_attempts, 0, "a success clears the failure streak");
+        assert_eq!(
+            after.since_strong_auth, HOUR,
+            "convenience never restarts the strong-auth window"
+        );
+        assert!(after.home_key_loaded, "convenience never loads the key");
+    }
+
+    #[test]
+    fn a_strong_warm_reauth_restarts_the_window() {
+        let s = SessionState {
+            home_key_loaded: true,
+            since_strong_auth: Duration::from_secs(999_999),
+            failed_attempts: 2,
+        };
+        let after = s.after_attempt(&Factor::Password, &UnlockOutcome::WarmUnlock);
+        assert!(after.home_key_loaded);
+        assert_eq!(after.since_strong_auth, Duration::ZERO);
+        assert_eq!(after.failed_attempts, 0);
+    }
+
+    #[test]
+    fn k_denials_drive_a_warm_session_to_force_strong_and_a_strong_auth_recovers() {
+        let p = TierPolicy::default();
+        // Start warm and inside the window: convenience works.
+        let mut s = SessionState {
+            home_key_loaded: true,
+            since_strong_auth: HOUR,
+            failed_attempts: 0,
+        };
+        assert_eq!(
+            evaluate(&Factor::Fingerprint, &s, &p),
+            UnlockOutcome::WarmUnlock
+        );
+        // Drive `max_failed_attempts` denials through the transition.
+        for _ in 0..p.max_failed_attempts {
+            s = s.after_attempt(
+                &Factor::Fingerprint,
+                &UnlockOutcome::Denied(DenyReason::StrongAuthRequired),
+            );
+        }
+        // Now convenience is force-refused even though the key is still loaded.
+        assert_eq!(
+            evaluate(&Factor::Fingerprint, &s, &p),
+            UnlockOutcome::Denied(DenyReason::StrongAuthRequired)
+        );
+        // A strong warm re-auth clears the failures and convenience works again.
+        let outcome = evaluate(&Factor::Password, &s, &p);
+        s = s.after_attempt(&Factor::Password, &outcome);
+        assert_eq!(
+            evaluate(&Factor::Fingerprint, &s, &p),
+            UnlockOutcome::WarmUnlock
+        );
     }
 }
