@@ -19,7 +19,7 @@
   } from "@lucide/svelte";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import IconAction from "$lib/components/IconAction.svelte";
+  import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import ToolCallCard from "./ToolCallCard.svelte";
   import { renderMarkdown } from "$lib/markdown";
   import { externalLinks } from "$lib/externalLinks";

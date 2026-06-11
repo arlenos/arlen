@@ -37,6 +37,7 @@ export { ConfirmDialog } from "./confirm-dialog";
 export { DaysPicker } from "./days-picker";
 export { FillSlider } from "./fill-slider";
 export { Group } from "./group";
+export { IconAction } from "./icon-action";
 export { NumberInput } from "./number-input";
 export { Page } from "./page";
 export { PopoverSelect, type PopoverSelectOption } from "./popover-select";

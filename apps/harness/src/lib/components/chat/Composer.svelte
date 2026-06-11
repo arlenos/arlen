@@ -13,7 +13,7 @@
   import { ArrowUp, File as FileIcon, Folder, Paperclip } from "@lucide/svelte";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import IconAction from "$lib/components/IconAction.svelte";
+  import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import ContextChips from "./ContextChips.svelte";
   import {
     activeSessionId,

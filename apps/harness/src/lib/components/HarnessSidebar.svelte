@@ -22,7 +22,7 @@
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import * as DropdownMenu from "@arlen/ui-kit/components/ui/dropdown-menu";
-  import IconAction from "$lib/components/IconAction.svelte";
+  import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import {
     Activity,
     Copy,

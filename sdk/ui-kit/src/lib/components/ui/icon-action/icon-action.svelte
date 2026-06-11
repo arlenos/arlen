@@ -1,11 +1,11 @@
 <script lang="ts">
   /// Icon-only action button with a themed tooltip: the quiet ghost
-  /// register for secondary actions (message hover row, ledger chevron,
-  /// sidebar new-chat, composer attach). The tooltip is the kit one, not
+  /// register for secondary actions (a message's hover row, a list row's
+  /// chevron, a group label's add button). The tooltip is the kit one, not
   /// the browser-native title bubble; the label doubles as the accessible
-  /// name. Candidate for the kit once a second app needs it.
+  /// name.
   import type { Snippet } from "svelte";
-  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
+  import * as Tooltip from "../tooltip/index.js";
 
   let {
     label,
