@@ -1,0 +1,19 @@
+[package]
+name = "arlen-integration-packages"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen integration packages: the adapter interpreter (IP-R2). Parses an untrusted community Settings-adapter manifest and confines its source paths to the user-config allowlist; the format-preserving I/O is arlen-config-format, the write engine and the Settings render build on this."
+authors = ["Arlen"]
+
+[lib]
+name = "arlen_integration_packages"
+
+[dependencies]
+arlen-config-format = { path = "../../sdk/config-format" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+thiserror = "1"
+
+[dev-dependencies]
+
+[workspace]
