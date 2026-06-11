@@ -95,6 +95,11 @@
   --space-section: 1.5rem;   /* Gap between sections / SectionGrid column gap */
   --space-page:    1.5rem;   /* Page horizontal + top padding */
 
+  /* One width for boxy value controls (select, input, number, slider) on
+     the right side of settings rows, so stacked rows raster into a clean
+     control column. Binary controls (switch, button) keep natural width. */
+  --width-row-control: 200px;
+
   /* ============================================================
      Shadcn/ui variable mapping (app surface context)
      Components default to app-surface colors unless inside
