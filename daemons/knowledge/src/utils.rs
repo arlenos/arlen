@@ -45,6 +45,33 @@ fn resolve_socket(env_val: Option<&str>, xdg: Option<&str>, file_name: &str) -> 
     format!("/run/arlen/{file_name}")
 }
 
+/// Pure precedence for a per-user DATA path (the graph + SQLite store),
+/// backing the daemon's `pick_data_path` and testable without env. A
+/// non-empty `pinned` env wins (the launcher / systemd-unit contract),
+/// else `$XDG_DATA_HOME/arlen/<name>`, else `$HOME/.local/share/arlen/<name>`
+/// (matching the unit's pinned `~/.local/share/arlen/...`), else the
+/// system-wide `system_default` as a last resort. The per-user default
+/// keeps two profile-uids from sharing one store even absent the env, the
+/// same fail-safe the socket layer has (profile-system-plan.md PR-R1).
+pub(crate) fn resolve_data_path(
+    pinned: Option<&str>,
+    xdg: Option<&str>,
+    home: Option<&str>,
+    name: &str,
+    system_default: &str,
+) -> String {
+    if let Some(p) = pinned.filter(|s| !s.is_empty()) {
+        return p.to_string();
+    }
+    if let Some(dir) = xdg.filter(|s| !s.is_empty()) {
+        return format!("{dir}/arlen/{name}");
+    }
+    if let Some(h) = home.filter(|s| !s.is_empty()) {
+        return format!("{h}/.local/share/arlen/{name}");
+    }
+    system_default.to_string()
+}
+
 /// The content-addressed merge identity of a relation fact: a length-delimited
 /// SHA-256 over the content tuple `(from_label, from_id, rel, to_label, to_id)`,
 /// rendered as lowercase hex (graph-drift.md §2 / GD-R1).
@@ -111,5 +138,43 @@ mod socket_path_tests {
     fn run_arlen_last_resort() {
         let p = resolve_socket(None, None, "event-bus-producer.sock");
         assert_eq!(p, "/run/arlen/event-bus-producer.sock");
+    }
+
+    use super::resolve_data_path;
+
+    #[test]
+    fn data_env_override_wins() {
+        let p = resolve_data_path(
+            Some("/pinned/events.db"),
+            Some("/home/u/.local/share"),
+            Some("/home/u"),
+            "events.db",
+            "/var/lib/arlen/knowledge/events.db",
+        );
+        assert_eq!(p, "/pinned/events.db");
+    }
+
+    #[test]
+    fn data_falls_through_to_xdg_then_home_then_system() {
+        // XDG_DATA_HOME wins over HOME.
+        assert_eq!(
+            resolve_data_path(None, Some("/x/share"), Some("/home/u"), "graph", "/var/lib/arlen/knowledge/graph"),
+            "/x/share/arlen/graph"
+        );
+        // No XDG: derive from HOME (matching the unit's ~/.local/share/arlen).
+        assert_eq!(
+            resolve_data_path(None, None, Some("/home/u"), "events.db", "/var/lib/arlen/knowledge/events.db"),
+            "/home/u/.local/share/arlen/events.db"
+        );
+        // Neither: the system path is the last resort.
+        assert_eq!(
+            resolve_data_path(None, None, None, "graph", "/var/lib/arlen/knowledge/graph"),
+            "/var/lib/arlen/knowledge/graph"
+        );
+        // An empty XDG falls through (not treated as a valid base).
+        assert_eq!(
+            resolve_data_path(None, Some(""), Some("/home/u"), "events.db", "/sys/events.db"),
+            "/home/u/.local/share/arlen/events.db"
+        );
     }
 }
