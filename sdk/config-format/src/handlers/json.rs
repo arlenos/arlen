@@ -48,7 +48,7 @@ impl FormatHandler for JsonHandler {
         let root = parse_root(text)?;
         let mut entries = Vec::new();
         if let Some(value) = root.value() {
-            collect(&value, &mut String::new(), &mut entries, 0)?;
+            collect(&value, "", &mut entries, 0)?;
         }
         Ok(ConfigModel::from_entries(entries))
     }
@@ -100,7 +100,7 @@ fn parse_to_edit(e: ParseError) -> EditError {
 /// [`ConfigValue::Opaque`] at its own path (a structured value, never flattened).
 fn collect(
     node: &CstNode,
-    prefix: &mut String,
+    prefix: &str,
     out: &mut Vec<(KeyPath, ConfigValue)>,
     depth: usize,
 ) -> Result<(), ParseError> {
@@ -115,8 +115,7 @@ fn collect(
             let Some(value) = prop.value() else { continue };
             let path = join_path(prefix, &name);
             if value.as_object().is_some() {
-                let mut p = path;
-                collect(&value, &mut p, out, depth + 1)?;
+                collect(&value, &path, out, depth + 1)?;
             } else {
                 out.push((path, classify(&value)));
             }
@@ -145,7 +144,9 @@ fn classify(node: &CstNode) -> ConfigValue {
         return ConfigValue::Opaque;
     }
     if let Some(n) = node.as_number_lit() {
-        let raw = n.value();
+        // The CST keeps the number as its raw token text (no typed accessor in
+        // this jsonc-parser version); its `Display` emits that text verbatim.
+        let raw = n.to_string();
         if let Ok(i) = raw.parse::<i64>() {
             return ConfigValue::Int(i);
         }
