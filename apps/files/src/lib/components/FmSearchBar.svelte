@@ -97,7 +97,7 @@
       disabled={$searchQuery.trim().length === 0}
       onclick={() => onsave?.($searchQuery.trim())}
     >
-      Save as place
+      Save search
     </button>
     <button class="sb-close" aria-label="Close search" onclick={() => closeSearch()}>
       <X size={14} strokeWidth={2} />

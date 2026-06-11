@@ -34,6 +34,9 @@ export async function loadPlaces(): Promise<void> {
     const projects = await invoke<Project[]>("files_projects");
     groups.push({
       label: "Projects",
+      // The rail would show two identical glyphs; the group only
+      // makes sense expanded.
+      railHidden: true,
       places: projects.map((p) => ({
         label: p.name,
         icon: "project",
