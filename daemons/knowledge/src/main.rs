@@ -92,8 +92,7 @@ async fn main() -> Result<()> {
 
     info!("starting knowledge daemon");
 
-    let consumer_socket = std::env::var("ARLEN_CONSUMER_SOCKET")
-        .unwrap_or_else(|_| DEFAULT_CONSUMER_SOCKET.to_string());
+    let consumer_socket = crate::utils::socket_path("ARLEN_CONSUMER_SOCKET", "event-bus-consumer.sock");
     let db_path = std::env::var("ARLEN_DB_PATH")
         .unwrap_or_else(|_| DEFAULT_DB_PATH.to_string());
     let graph_path = std::env::var("ARLEN_GRAPH_PATH")

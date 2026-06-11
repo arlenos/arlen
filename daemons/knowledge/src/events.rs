@@ -10,8 +10,6 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tracing::{debug, warn};
 
-const DEFAULT_EVENT_BUS: &str = "/run/arlen/event-bus-consumer.sock";
-
 /// Parsed events relevant to the Graph Daemon.
 #[derive(Debug, Clone)]
 pub enum GraphEvent {
@@ -32,8 +30,7 @@ pub enum GraphEvent {
 ///   Line 2: comma-separated event patterns
 ///   Line 3: UID filter
 pub async fn connect(consumer_id: &str, uid: u32) -> Result<UnixStream> {
-    let socket_path = std::env::var("ARLEN_CONSUMER_SOCKET")
-        .unwrap_or_else(|_| DEFAULT_EVENT_BUS.to_string());
+    let socket_path = crate::utils::socket_path("ARLEN_CONSUMER_SOCKET", "event-bus-consumer.sock");
 
     let mut stream = UnixStream::connect(&socket_path).await?;
 

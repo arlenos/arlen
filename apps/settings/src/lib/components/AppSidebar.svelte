@@ -150,10 +150,13 @@
 </script>
 
 <Sidebar collapsible="icon">
-  <!-- The header band matches the content header's height and shares its
-       bottom seam, so sidebar top and titlebar read as one continuous bar
-       across the window; the search keeps its full 36px hero size inside. -->
-  <SidebarHeader class="h-12 justify-center border-b border-sidebar-border py-0">
+  <!-- The header band matches the content header's height so the search and
+       the titlebar align; the seam line shows only while the sidebar is
+       collapsed to the icon rail (Tim's call: no line through the expanded
+       sidebar). -->
+  <SidebarHeader
+    class="h-12 justify-center py-0 border-sidebar-border group-data-[collapsible=icon]:border-b"
+  >
     <!--
       Search replaces the static "Settings · Arlen OS" branding
       that lived here. The block was decorative and the slot is on

@@ -35,9 +35,6 @@ use crate::schema::SchemaRegistry;
 use crate::utils::{content_merge_key, escape_cypher};
 use crate::write::{create_relation, retract_relation, RelationResult};
 
-/// Producer socket default (overridable via `ARLEN_PRODUCER_SOCKET`).
-const DEFAULT_PRODUCER_SOCKET: &str = "/run/arlen/event-bus-producer.sock";
-
 /// One `graph.rate_limited` event per app at most this often, so a
 /// query flood does not hammer the Event Bus producer.
 const EMIT_THROTTLE: Duration = Duration::from_secs(5);
@@ -83,8 +80,7 @@ struct RateLimitEmitter {
 
 impl RateLimitEmitter {
     fn new() -> Self {
-        let path = std::env::var("ARLEN_PRODUCER_SOCKET")
-            .unwrap_or_else(|_| DEFAULT_PRODUCER_SOCKET.to_string());
+        let path = crate::utils::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock");
         Self {
             socket_path: PathBuf::from(path),
         }
