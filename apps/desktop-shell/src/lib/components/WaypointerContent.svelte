@@ -4,7 +4,7 @@
   import { waypointerVisible, initWaypointerListeners, closeWaypointer } from "$lib/stores/waypointer.js";
   import {
     fetchAllApps, searchApps, launchApp as launchAppCmd, evaluateInput, executeShellCommand,
-    openUrl, webSearch, type AppEntry, type WaypointerResult,
+    openUrl, webSearch, type AppEntry, type WaypointerResult as InlineEvalResult,
   } from "$lib/stores/waypointerActions.js";
   import {
     windowResults, updateWindowResults, clearWindowResults,
@@ -19,16 +19,20 @@
     type UnicodeChar,
   } from "$lib/stores/waypointerUnicode.js";
   import {
-    Command, CommandInput, CommandList, CommandEmpty,
-    CommandGroup, CommandItem, CommandSeparator, CommandShortcut,
+    Command, CommandInput, CommandList,
+    CommandGroup, CommandItem, CommandSeparator,
   } from "@arlen/ui-kit/components/ui/command/index.js";
-  import { Search, AppWindow, Calculator, ArrowRightLeft, TerminalSquare, BookOpen, Clock, Globe, Link, Skull, FolderKanban, X, Settings2 } from "lucide-svelte";
+  import { AppWindow, BookOpen, Globe, Skull, FolderKanban, X, Settings2 } from "lucide-svelte";
   import { activeProjects, activateFocus, deactivateFocus, isFocused, focusState, loadProjects } from "$lib/stores/projects.js";
   import {
     settingsResults, searchSettings, clearSettingsResults,
     reloadSettingsIndex, openSettingsDeepLink,
   } from "$lib/stores/settingsSearch.js";
   import WaypointerSettingInline from "./WaypointerSettingInline.svelte";
+  import WaypointerResult from "./waypointer/WaypointerResult.svelte";
+  import WaypointerInlinePreview, {
+    type SpecialMode,
+  } from "./waypointer/WaypointerInlinePreview.svelte";
   import {
     recentAppsStore, recentFilesStore,
     loadRecents, recordAppLaunch, openRecentFile, clearRecents,
@@ -350,7 +354,7 @@
       }
 
       // Check inline math/unit result.
-      let r: WaypointerResult | null = null;
+      let r: InlineEvalResult | null = null;
       inlineResult.subscribe((v) => { r = v; })();
       if (r) {
         e.preventDefault();
@@ -375,16 +379,10 @@
     }
   }
 
-  interface WaypointerResult {
-    result_type: string;
-    display: string;
-    copy_value: string;
-  }
+  // Types live with WaypointerInlinePreview, which renders the card
+  // these stores drive.
+  const inlineResult = writable<InlineEvalResult | null>(null);
 
-  const inlineResult = writable<WaypointerResult | null>(null);
-
-  // Special mode: '>' = shell command, '#' = man page.
-  type SpecialMode = "shell" | "man" | "url" | "search" | "kill" | "unicode" | "projects" | null;
   const specialMode = writable<SpecialMode>(null);
   const specialArg = writable<string>("");
 
@@ -519,7 +517,7 @@
           const hint = document.getElementById("wp-inline-hint");
           if (wrap) { wrap.style.display = topic ? "" : "none"; wrap.style.paddingBottom = "8px"; }
           if (el) el.textContent = topic ? `man ${topic}` : "Type a topic...";
-          if (hint) hint.textContent = "Open man page";
+          if (hint) hint.textContent = "Open manual page";
           const list2 = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
           if (list2) list2.style.display = "none";
           return;
@@ -536,7 +534,7 @@
           const el = document.getElementById("wp-inline-result");
           const hint = document.getElementById("wp-inline-hint");
           if (wrap) { wrap.style.display = searchQuery ? "" : "none"; wrap.style.paddingBottom = "8px"; }
-          if (el) el.textContent = searchQuery ? `Search: ${searchQuery}` : "Type a search query...";
+          if (el) el.textContent = searchQuery ? `Search: ${searchQuery}` : "Type to search the web...";
           if (hint) hint.textContent = "Search DuckDuckGo";
           const listS = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
           if (listS) listS.style.display = "none";
@@ -589,7 +587,7 @@
           const hint = document.getElementById("wp-inline-hint");
           if (wrap) { wrap.style.display = ""; wrap.style.paddingBottom = "8px"; }
           if (el) el.textContent = trimmed;
-          if (hint) hint.textContent = "Open URL";
+          if (hint) hint.textContent = "Open link";
           const listU = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
           if (listU) listU.style.display = "none";
           return;
@@ -640,7 +638,18 @@
             if (r) {
               if (el) el.textContent = r.display;
               const hint = document.getElementById("wp-inline-hint");
-              if (hint) hint.textContent = r.result_type === "error" ? "Open Calculator" : "Copy";
+              if (hint) {
+                // Only promise a calculator when one actually
+                // resolves — Enter on the error row launches the
+                // first app matching these names and silently does
+                // nothing otherwise.
+                const calcAvailable = allApps.some((a) =>
+                  a.name.toLowerCase().includes("calculator") ||
+                  a.name.toLowerCase().includes("rechner"));
+                hint.textContent = r.result_type === "error"
+                  ? (calcAvailable ? "Open Calculator" : "")
+                  : "Copy";
+              }
               if (wrap) wrap.style.display = "";
               // Hide list and add padding when no app results visible.
               const hasItems = list?.querySelector("[data-slot='command-item']");
@@ -660,7 +669,22 @@
     return () => clearInterval(pollInterval);
   });
 
-  function handleInlineAction(result: WaypointerResult) {
+  /// Click dispatch for the inline preview card — the per-mode
+  /// actions stay here with the rest of the domain wiring.
+  function activateInlinePreview() {
+    let mode: SpecialMode = null;
+    let arg = "";
+    specialMode.subscribe((v) => { mode = v; })();
+    specialArg.subscribe((v) => { arg = v; })();
+    if (mode === "shell" && arg) { runShellCommand(arg, false); return; }
+    if (mode === "man" && arg) { openManPage(arg); return; }
+    if (mode === "url" && arg) { openUrlAction(arg); return; }
+    if (mode === "search" && arg) { webSearchAction(arg); return; }
+    const r = $inlineResult;
+    if (r) handleInlineAction(r);
+  }
+
+  function handleInlineAction(result: InlineEvalResult) {
     if (result.result_type === "error") {
       // Launch a calculator app from the index.
       const calc = allApps.find((a) =>
@@ -727,49 +751,17 @@
   <div class="wp-card shell-surface" onclick={(e) => e.stopPropagation()}>
     <Command class="wp-root" shouldFilter={false} bind:value={commandValue}>
       <CommandInput
-        placeholder="Search apps..."
+        placeholder="Search..."
         bind:value={query}
         bind:ref={inputRef}
         autofocus
       />
 
-      <!-- Inline result: above the scrollable list, always in DOM -->
-      <div id="wp-inline-wrap" style="display: none; padding: 6px 6px 2px;">
-        <div class="wp-inline-card" onclick={() => {
-          let mode: SpecialMode = null;
-          let arg = "";
-          specialMode.subscribe((v) => { mode = v; })();
-          specialArg.subscribe((v) => { arg = v; })();
-          if (mode === "shell" && arg) { runShellCommand(arg, false); return; }
-          if (mode === "man" && arg) { openManPage(arg); return; }
-          if (mode === "url" && arg) { openUrlAction(arg); return; }
-          if (mode === "search" && arg) { webSearchAction(arg); return; }
-          const r = $inlineResult;
-          if (r) handleInlineAction(r);
-        }}>
-          <span id="wp-inline-icon" class="wp-inline-icon">
-            {#if $specialMode === "shell"}
-              <TerminalSquare size={18} strokeWidth={1.5} />
-            {:else if $specialMode === "man"}
-              <BookOpen size={18} strokeWidth={1.5} />
-            {:else if $specialMode === "url"}
-              <Globe size={18} strokeWidth={1.5} />
-            {:else if $specialMode === "search"}
-              <Search size={18} strokeWidth={1.5} />
-            {:else if $specialMode === "kill"}
-              <Skull size={18} strokeWidth={1.5} />
-            {:else if $inlineResult?.result_type === "datetime"}
-              <Clock size={18} strokeWidth={1.5} />
-            {:else if $inlineResult?.result_type === "unit"}
-              <ArrowRightLeft size={18} strokeWidth={1.5} />
-            {:else}
-              <Calculator size={18} strokeWidth={1.5} />
-            {/if}
-          </span>
-          <span id="wp-inline-result" class="wp-inline-result"></span>
-          <span id="wp-inline-hint" class="wp-inline-hint">Copy</span>
-        </div>
-      </div>
+      <WaypointerInlinePreview
+        {specialMode}
+        {inlineResult}
+        onActivate={activateInlinePreview}
+      />
 
       <CommandList
         class="wp-list {kbActive ? 'wp-kb-active' : ''}"
@@ -797,13 +789,11 @@
                   close();
                 }}
               >
-                <ActionIcon size={16} strokeWidth={1.5} class="shrink-0 opacity-70" />
-                <div class="wp-app-info">
-                  <span class="wp-app-name">{action.title}</span>
-                  {#if action.description}
-                    <span class="wp-app-desc">{action.description}</span>
-                  {/if}
-                </div>
+                <WaypointerResult
+                  icon={ActionIcon}
+                  title={action.title}
+                  description={action.description}
+                />
               </CommandItem>
             {/each}
           </CommandGroup>
@@ -827,13 +817,11 @@
                   close();
                 }}
               >
-                <Settings2 size={16} strokeWidth={1.5} class="shrink-0 opacity-70" />
-                <div class="wp-app-info">
-                  <span class="wp-app-name">{qa.title}</span>
-                  {#if qa.description}
-                    <span class="wp-app-desc">{qa.description}</span>
-                  {/if}
-                </div>
+                <WaypointerResult
+                  icon={Settings2}
+                  title={qa.title}
+                  description={qa.description}
+                />
               </CommandItem>
             {/each}
           </CommandGroup>
@@ -850,17 +838,12 @@
                 value={`recent-app-${app.exec}`}
                 onSelect={() => launchAppAndClose(app)}
               >
-                {#if app.icon_data}
-                  <img src={app.icon_data} alt="" class="wp-app-icon" />
-                {:else}
-                  <AppWindow size={16} strokeWidth={1.5} class="wp-fallback-icon" />
-                {/if}
-                <div class="wp-app-info">
-                  <span class="wp-app-name">{app.name}</span>
-                  {#if app.description}
-                    <span class="wp-app-desc">{app.description}</span>
-                  {/if}
-                </div>
+                <WaypointerResult
+                  iconUrl={app.icon_data}
+                  fallbackIcon={AppWindow}
+                  title={app.name}
+                  description={app.description}
+                />
               </CommandItem>
             {/each}
           </CommandGroup>
@@ -876,11 +859,12 @@
                 value={`recent-file-${file.path}`}
                 onSelect={() => openRecentFileAndClose(file)}
               >
-                <FileIcon size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
-                <div class="wp-app-info">
-                  <span class="wp-app-name">{shortPath(file.path)}</span>
-                  <span class="wp-app-desc">{file.path}</span>
-                </div>
+                <WaypointerResult
+                  icon={FileIcon}
+                  emphasis={60}
+                  title={shortPath(file.path)}
+                  description={file.path}
+                />
               </CommandItem>
             {/each}
           </CommandGroup>
@@ -894,20 +878,13 @@
                 value={`window-${win.id}`}
                 onSelect={() => switchToWindow(win)}
               >
-                {#if icon}
-                  <span class="wp-win-icon-wrap">
-                    <img src={icon} alt="" class="wp-app-icon" />
-                    <span class="wp-win-badge">
-                      <AppWindow size={8} strokeWidth={2} />
-                    </span>
-                  </span>
-                {:else}
-                  <AppWindow size={16} strokeWidth={1.5} />
-                {/if}
-                <div class="wp-app-info">
-                  <span class="wp-app-name">{win.title}</span>
-                  <span class="wp-app-desc">{win.app_id}</span>
-                </div>
+                <WaypointerResult
+                  iconUrl={icon}
+                  badge="window"
+                  fallbackIcon={AppWindow}
+                  title={win.title}
+                  description={win.app_id}
+                />
               </CommandItem>
             {/each}
           </CommandGroup>
@@ -917,27 +894,20 @@
         {/if}
 
         {#if $processResults.length > 0}
-          <CommandGroup heading="Processes (Enter: SIGTERM / Shift+Enter: SIGKILL)">
+          <CommandGroup heading="Processes">
             {#each $processResults as proc (proc.pid)}
               {@const procIcon = appIconFor(proc.name)}
               <CommandItem
                 value={`proc-${proc.pid}`}
                 onSelect={() => killProcessAction(proc, false)}
               >
-                {#if procIcon}
-                  <span class="wp-win-icon-wrap">
-                    <img src={procIcon} alt="" class="wp-app-icon" />
-                    <span class="wp-win-badge wp-kill-badge">
-                      <Skull size={8} strokeWidth={2} />
-                    </span>
-                  </span>
-                {:else}
-                  <Skull size={16} strokeWidth={1.5} />
-                {/if}
-                <div class="wp-app-info">
-                  <span class="wp-app-name">{proc.name}</span>
-                  <span class="wp-app-desc">PID: {proc.pid} · {formatBytes(proc.memory_bytes)}</span>
-                </div>
+                <WaypointerResult
+                  iconUrl={procIcon}
+                  badge="kill"
+                  fallbackIcon={Skull}
+                  title={proc.name}
+                  description={`PID ${proc.pid}, ${formatBytes(proc.memory_bytes)}`}
+                />
               </CommandItem>
             {/each}
           </CommandGroup>
@@ -950,11 +920,11 @@
                 value={`unicode-${uc.codepoint}`}
                 onSelect={() => copyUnicodeChar(uc)}
               >
-                <span class="wp-unicode-char">{uc.char_str}</span>
-                <div class="wp-app-info">
-                  <span class="wp-app-name">{uc.name}</span>
-                  <span class="wp-app-desc">{uc.codepoint_hex}</span>
-                </div>
+                <WaypointerResult
+                  glyph={uc.char_str}
+                  title={uc.name}
+                  description={uc.codepoint_hex}
+                />
               </CommandItem>
             {/each}
           </CommandGroup>
@@ -967,21 +937,12 @@
                 value={app.name}
                 onSelect={() => launchAppAndClose(app)}
               >
-                {#if app.icon_data}
-                  <img
-                    src={app.icon_data}
-                    alt=""
-                    class="wp-app-icon"
-                  />
-                {:else}
-                  <AppWindow size={16} strokeWidth={1.5} class="wp-fallback-icon" />
-                {/if}
-                <div class="wp-app-info">
-                  <span class="wp-app-name">{app.name}</span>
-                  {#if app.description}
-                    <span class="wp-app-desc">{app.description}</span>
-                  {/if}
-                </div>
+                <WaypointerResult
+                  iconUrl={app.icon_data}
+                  fallbackIcon={AppWindow}
+                  title={app.name}
+                  description={app.description}
+                />
               </CommandItem>
             {/each}
           </CommandGroup>
@@ -992,19 +953,21 @@
           <CommandGroup heading="Projects">
             {#if $isFocused}
               <CommandItem value="focus-exit" onSelect={() => { deactivateFocus(); close(); }}>
-                <X size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
-                <div class="wp-app-info">
-                  <span class="wp-app-name">Exit Focus: {$focusState.projectName}</span>
-                </div>
+                <WaypointerResult
+                  icon={X}
+                  emphasis={60}
+                  title={`Exit Focus: ${$focusState.projectName}`}
+                />
               </CommandItem>
             {/if}
             {#each filteredProjects as project (project.id)}
               <CommandItem value={`focus-${project.id}`} onSelect={() => { activateFocus(project); close(); }}>
-                <FolderKanban size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
-                <div class="wp-app-info">
-                  <span class="wp-app-name">{project.name}</span>
-                  <span class="wp-app-desc">{project.rootPath}</span>
-                </div>
+                <WaypointerResult
+                  icon={FolderKanban}
+                  emphasis={60}
+                  title={project.name}
+                  description={project.rootPath}
+                />
               </CommandItem>
             {/each}
           </CommandGroup>
@@ -1018,20 +981,22 @@
                 value={`clip-item-${entry.id}`}
                 onSelect={() => { copyClipboardEntry(entry); close(); }}
               >
-                <Clipboard size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
-                <div class="wp-app-info">
-                  <span class="wp-app-name">{entry.title}</span>
-                  {#if entry.description}
-                    <span class="wp-app-desc">{entry.description}</span>
-                  {/if}
-                </div>
-                <button
-                  class="wp-inline-btn"
-                  title="Delete entry"
-                  onclick={(e) => { e.stopPropagation(); deleteClipboardEntry(entry); }}
+                <WaypointerResult
+                  icon={Clipboard}
+                  emphasis={60}
+                  title={entry.title}
+                  description={entry.description}
                 >
-                  <Trash2 size={12} strokeWidth={1.5} />
-                </button>
+                  {#snippet trailing()}
+                    <button
+                      class="wp-inline-btn"
+                      aria-label="Remove from history"
+                      onclick={(e) => { e.stopPropagation(); deleteClipboardEntry(entry); }}
+                    >
+                      <Trash2 size={12} strokeWidth={1.5} />
+                    </button>
+                  {/snippet}
+                </WaypointerResult>
               </CommandItem>
             {/each}
             {#if $clipboardEnabled && $clipboardResults.length >= 2}
@@ -1039,11 +1004,12 @@
                 value="clip-clear-all"
                 onSelect={() => { clearAllClipboard(); close(); }}
               >
-                <Trash2 size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
-                <div class="wp-app-info">
-                  <span class="wp-app-name">Clear clipboard history</span>
-                  <span class="wp-app-desc">Drop all {$clipboardResults.length} entries</span>
-                </div>
+                <WaypointerResult
+                  icon={Trash2}
+                  emphasis={60}
+                  title="Clear clipboard history"
+                  description="Removes the entire history"
+                />
               </CommandItem>
             {/if}
           </CommandGroup>
@@ -1058,13 +1024,12 @@
                 value={`file-${file.id}`}
                 onSelect={() => { openFileResult(file); close(); }}
               >
-                <FileIconComponent size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
-                <div class="wp-app-info">
-                  <span class="wp-app-name">{file.title}</span>
-                  {#if file.description}
-                    <span class="wp-app-desc">{file.description}</span>
-                  {/if}
-                </div>
+                <WaypointerResult
+                  icon={FileIconComponent}
+                  emphasis={60}
+                  title={file.title}
+                  description={file.description}
+                />
               </CommandItem>
             {/each}
           </CommandGroup>
@@ -1078,13 +1043,12 @@
                 value={`dict-${def.id}`}
                 onSelect={() => { close(); }}
               >
-                <BookOpen size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
-                <div class="wp-app-info">
-                  <span class="wp-app-name">{def.title}</span>
-                  {#if def.description}
-                    <span class="wp-app-desc">{def.description}</span>
-                  {/if}
-                </div>
+                <WaypointerResult
+                  icon={BookOpen}
+                  emphasis={60}
+                  title={def.title}
+                  description={def.description}
+                />
               </CommandItem>
             {/each}
           </CommandGroup>
@@ -1101,17 +1065,21 @@
                   close();
                 }}
               >
-                <Settings2 size={16} strokeWidth={1.5} class="shrink-0 opacity-60" />
-                <div class="wp-app-info" style="flex: 1; min-width: 0;">
-                  <span class="wp-app-name">{sr.setting.title}</span>
-                  <span class="wp-app-desc">{sr.setting.section}</span>
-                </div>
-                {#if sr.setting.inlineAction}
-                  <WaypointerSettingInline
-                    action={sr.setting.inlineAction}
-                    {query}
-                  />
-                {/if}
+                <WaypointerResult
+                  icon={Settings2}
+                  emphasis={60}
+                  title={sr.setting.title}
+                  description={sr.setting.section}
+                >
+                  {#snippet trailing()}
+                    {#if sr.setting.inlineAction}
+                      <WaypointerSettingInline
+                        action={sr.setting.inlineAction}
+                        {query}
+                      />
+                    {/if}
+                  {/snippet}
+                </WaypointerResult>
               </CommandItem>
             {/each}
           </CommandGroup>
@@ -1134,27 +1102,50 @@
                   closeWaypointer();
                 }}
               >
-                <Globe size={16} strokeWidth={1.5} class="wp-fallback-icon" />
-                <div class="wp-app-info">
-                  <span class="wp-app-name">{result.title}</span>
-                  {#if result.description}
-                    <span class="wp-app-desc">{result.description}</span>
-                  {/if}
-                </div>
+                <WaypointerResult
+                  fallbackIcon={Globe}
+                  title={result.title}
+                  description={result.description}
+                />
               </CommandItem>
             {/each}
           </CommandGroup>
         {/if}
       </CommandList>
+
+      <!-- Subdued footer: contextual hints in plain words. Kill mode
+           explains its two shortcuts (they used to live in the group
+           heading as signal names); the empty landing shows the
+           prefix cheatsheet so the blank state teaches instead of
+           staring back. -->
+      {#if $specialMode === "kill"}
+        <div class="wp-footer">
+          <span>Enter quits the app</span>
+          <span>Shift+Enter force-quits</span>
+        </div>
+      {:else if query.trim().length === 0}
+        <div class="wp-footer">
+          <span>&gt; command</span>
+          <span># manual</span>
+          <span>? web search</span>
+          <span>p: projects</span>
+        </div>
+      {/if}
     </Command>
   </div>
 </div>
 
 <style>
+  /* The waypointer webview is a transparent layer-shell overlay —
+     the page itself must never paint. The competing declarations
+     (Tailwind preflight, the app.css body rule) all live in
+     @layer base, and unlayered author rules like these win over any
+     layered rule regardless of specificity, so no escalation is
+     needed. */
   :global(html), :global(body) {
-    background: transparent !important;
-    overflow: hidden !important;
-    height: 100% !important;
+    background: transparent;
+    overflow: hidden;
+    height: 100%;
   }
 
   .wp-backdrop {
@@ -1167,7 +1158,7 @@
     padding-top: 25vh;
     background: var(--color-bg-overlay);
     overflow: hidden;
-    animation: wp-backdrop-fade 150ms ease-out both;
+    animation: wp-backdrop-fade var(--duration-fast, 150ms) ease-out both;
   }
 
   .wp-card {
@@ -1179,12 +1170,15 @@
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     box-shadow: var(--shadow-lg);
     overflow: hidden;
-    animation: wp-fade-in 150ms ease-out both;
+    animation: wp-fade-in var(--duration-fast, 150ms) ease-out both;
   }
 
+  /* The card surface. The kit Command primitive deliberately ships
+     unpainted — the consumer owns its colors (see the comment in
+     ui-kit command.svelte). */
   :global(.wp-root) {
-    background: var(--color-bg-shell) !important;
-    color: var(--color-fg-shell) !important;
+    background: var(--color-bg-shell);
+    color: var(--color-fg-shell);
   }
 
   :global(.wp-list) {
@@ -1198,103 +1192,23 @@
     display: none;
   }
 
-  .wp-inline-card {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    border-radius: var(--radius-input);
-    background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
-    color: var(--color-fg-shell);
-  }
-
-  .wp-inline-result {
-    font-size: 1.125rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-  }
-
-  .wp-inline-hint {
-    margin-left: auto;
-    font-size: 0.6875rem;
-    opacity: 0.35;
-  }
-
-  .wp-win-icon-wrap {
-    position: relative;
-    width: 20px;
-    height: 20px;
-    flex-shrink: 0;
-  }
-
-  .wp-win-badge {
-    position: absolute;
-    bottom: -3px;
-    right: -3px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 12px;
-    height: 12px;
-    background: var(--color-bg-shell);
-    border-radius: var(--radius-chip);
-    color: var(--color-fg-shell);
-    opacity: 0.7;
-  }
-
-  :global(.wp-kill-badge) {
-    color: var(--color-error);
-    opacity: 0.9;
-  }
-
-  .wp-unicode-char {
-    font-size: 1.25rem;
-    line-height: 1;
-    width: 24px;
-    text-align: center;
-    flex-shrink: 0;
-  }
-
-  .wp-app-icon {
-    width: 20px;
-    height: 20px;
-    border-radius: var(--radius-chip);
-    object-fit: contain;
-    flex-shrink: 0;
-  }
-
-  :global(.wp-fallback-icon) {
-    width: 20px;
-    height: 20px;
-    flex-shrink: 0;
-    opacity: 0.4;
-  }
-
-  .wp-app-info {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    min-width: 0;
-  }
-
-  .wp-app-name {
-    font-size: 0.8125rem;
-    line-height: 1.3;
-  }
-
-  .wp-app-desc {
-    font-size: 0.6875rem;
-    line-height: 1.3;
-    opacity: 0.45;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+  /* Row anatomy and the inline-preview card live in
+     waypointer/WaypointerResult.svelte and
+     waypointer/WaypointerInlinePreview.svelte. */
 
   .wp-empty {
     padding: 1.5rem 1rem;
     text-align: center;
     font-size: 0.8125rem;
+    color: color-mix(in srgb, var(--color-fg-shell) 45%, transparent);
+  }
+
+  .wp-footer {
+    display: flex;
+    gap: 14px;
+    padding: 6px 12px;
+    border-top: 1px solid color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
+    font-size: 0.6875rem;
     color: color-mix(in srgb, var(--color-fg-shell) 45%, transparent);
   }
 
