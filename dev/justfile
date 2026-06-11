@@ -37,12 +37,32 @@ setup:
     rm -rf "$tmp"
     echo "installed to $HOME/.local/bin/process-compose (ensure ~/.local/bin is on PATH)"
 
-# Full daemon stack via process-compose (TUI). Pass extra args through, e.g. -D for detached.
+# Full daemon stack via process-compose (TUI). `--profile shell` / `--profile portal`
+# compose in the graphical overlays; other args pass through, e.g. -D for detached.
 dev *ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
     if ! command -v process-compose >/dev/null 2>&1; then echo "process-compose missing; run 'just setup'" >&2; exit 1; fi
-    cd "{{ROOT}}" && process-compose -f "{{justfile_directory()}}/process-compose.yaml" up {{ARGS}}
+    dir="{{justfile_directory()}}"
+    # The pinned process-compose (v1.40.1) has no --profile flag and ignores the
+    # `profiles:` field, so translate `--profile <name>` into a composed overlay file.
+    configs=(-f "$dir/process-compose.yaml")
+    passthrough=()
+    args=({{ARGS}})
+    i=0
+    while [ "$i" -lt "${#args[@]}" ]; do
+      if [ "${args[$i]}" = "--profile" ]; then
+        i=$((i + 1))
+        name="${args[$i]:-}"
+        overlay="$dir/process-compose.$name.yaml"
+        if [ ! -f "$overlay" ]; then echo "unknown profile '$name' (no $overlay)" >&2; exit 1; fi
+        configs+=(-f "$overlay")
+      else
+        passthrough+=("${args[$i]}")
+      fi
+      i=$((i + 1))
+    done
+    cd "{{ROOT}}" && process-compose "${configs[@]}" up ${passthrough[@]+"${passthrough[@]}"}
 
 # Quick loop: one Tauri app via cargo tauri dev (needs a running compositor).
 dev-ui app:

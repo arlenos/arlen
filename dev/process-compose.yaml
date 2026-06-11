@@ -118,36 +118,8 @@ processes:
     availability:
       restart: "on_failure"
 
-  # Graphical layer: only with `--profile shell`. The compositor is a separate
-  # repo (COMPOSITOR_PATH); DISPLAY="" forces the Wayland backend so
-  # wlr-layer-shell is advertised, and the shell attaches to its nested display.
-  compositor:
-    command: 'cd "${COMPOSITOR_PATH:-../compositor}" && DISPLAY="" WAYLAND_DISPLAY=wayland-2 cargo run --bin cosmic-comp'
-    profiles: ["shell"]
-    availability:
-      restart: "on_failure"
-
-  desktop-shell:
-    command: 'WAYLAND_DISPLAY=wayland-2 cargo tauri dev'
-    working_dir: "apps/desktop-shell"
-    profiles: ["shell"]
-    depends_on:
-      compositor: { condition: process_started }
-    availability:
-      restart: "on_failure"
-
-  # Portal stack: only with `--profile portal` (the old start-dev --with-portal).
-  # The portal daemon spawns its picker UI on the nested display.
-  portal-daemon:
-    command: 'WAYLAND_DISPLAY=wayland-2 cargo run --bin xdg-desktop-portal-arlen'
-    working_dir: "daemons/xdg-portal"
-    profiles: ["portal"]
-    availability:
-      restart: "on_failure"
-
-  settings:
-    command: 'WAYLAND_DISPLAY=wayland-2 cargo tauri dev'
-    working_dir: "apps/settings"
-    profiles: ["portal"]
-    availability:
-      restart: "on_failure"
+  # The graphical layer (compositor + desktop-shell) and the portal stack live in
+  # process-compose.shell.yaml / process-compose.portal.yaml and are composed in by
+  # `just dev --profile shell` / `--profile portal`. They are kept out of this base
+  # file because the pinned process-compose (v1.40.1) ignores the `profiles:` field,
+  # so profile gating is done by composing config files, not by a --profile flag.

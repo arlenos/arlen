@@ -1,0 +1,22 @@
+# Portal overlay for `just dev --profile portal` (the old start-dev --with-portal):
+# the xdg-desktop-portal daemon + the settings app, on the nested display. Loaded
+# on top of process-compose.yaml (which provides the ARLEN_* environment). Kept
+# separate because the pinned process-compose (v1.40.1) ignores `profiles:`, so
+# profile gating is done by composing config files instead.
+#
+# The portal stack expects the nested compositor from the shell overlay, so run it
+# together: `just dev --profile shell --profile portal`.
+version: "0.5"
+
+processes:
+  portal-daemon:
+    command: 'WAYLAND_DISPLAY=wayland-2 cargo run --bin xdg-desktop-portal-arlen'
+    working_dir: "daemons/xdg-portal"
+    availability:
+      restart: "on_failure"
+
+  settings:
+    command: 'WAYLAND_DISPLAY=wayland-2 cargo tauri dev'
+    working_dir: "apps/settings"
+    availability:
+      restart: "on_failure"
