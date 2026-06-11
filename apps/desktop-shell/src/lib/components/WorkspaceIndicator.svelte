@@ -34,6 +34,23 @@
   import { listen } from "@tauri-apps/api/event";
   import type { UnlistenFn } from "@tauri-apps/api/event";
   import { AppWindow } from "lucide-svelte";
+  import {
+    pillLabel,
+    fullLabel,
+    truncateTitle,
+    visibleSlice,
+  } from "$lib/workspace/format.js";
+  import {
+    closeWindowAction,
+    fullscreenWindowAction,
+    tileWindowAction,
+    moveWindowToWorkspaceAction,
+    closeAllSelected,
+    minimizeAllSelected,
+    restoreAllSelected,
+    moveAllSelectedToWorkspace,
+    tileSideBySide,
+  } from "$lib/workspace/actions.js";
 
   /// Output context published by the parent TopBar. The
   /// connector is `null` until the registry replies; in that
@@ -252,14 +269,6 @@
   // would also snap the overlay shut the instant the user released
   // a drag on the outside edge — neither is desired UX.
 
-  function pillLabel(_ws: WorkspaceInfo, i: number): string {
-    return String(i + 1);
-  }
-
-  function fullLabel(ws: WorkspaceInfo, i: number): string {
-    return ws.name.trim() || `Workspace ${i + 1}`;
-  }
-
   function handlePillClick(id: string) {
     activateWorkspace(id);
   }
@@ -304,94 +313,19 @@
     return order;
   });
 
-  /// ─── Context menu actions ─────────────────────────────────────
-  ///
-  /// Thin wrappers around `invoke(...)` so the context-menu items
-  /// stay declarative in the template. Each returns void — nothing
-  /// in the menu path reads a return value. Failures are logged but
-  /// never surface to the user: the menu is fire-and-forget, and
-  /// the UI re-renders from live Wayland state regardless.
-
-  function closeWindowAction(windowId: string): void {
-    invoke("close_window", { windowId }).catch((e) =>
-      console.warn("close_window failed:", e),
-    );
-  }
-
-  function fullscreenWindowAction(
-    windowId: string,
-    currentlyFullscreen: boolean,
-  ): void {
-    invoke("fullscreen_window", {
-      windowId,
-      enabled: !currentlyFullscreen,
-    }).catch((e) => console.warn("fullscreen_window failed:", e));
-  }
-
-  function tileWindowAction(
-    windowId: string,
-    direction: "left" | "right",
-  ): void {
-    invoke("tile_window", { windowId, direction }).catch((e) =>
-      console.warn("tile_window failed:", e),
-    );
-  }
-
-  function moveWindowToWorkspaceAction(windowId: string, wsId: string): void {
-    invoke("window_move_to_workspace", {
-      windowId,
-      targetWorkspaceId: wsId,
-    }).catch((e) => console.warn("window_move_to_workspace failed:", e));
-  }
-
-  /// Multi-action helpers. Each snapshots the selection at invoke
-  /// time so subsequent re-renders (from the actions themselves
-  /// causing state transitions) don't cause iteration to drop
-  /// mid-loop.
-  function closeAllSelected(): void {
-    for (const id of selectionSnapshot()) closeWindowAction(id);
-    clearSelection();
-  }
-
-  function minimizeAllSelected(): void {
-    for (const id of selectionSnapshot()) {
-      const w = $windows.find((x) => x.id === id);
-      if (w && !w.minimized) minimizeWindow(id);
-    }
-    clearSelection();
-  }
-
-  function restoreAllSelected(): void {
-    for (const id of selectionSnapshot()) {
-      const w = $windows.find((x) => x.id === id);
-      if (w && w.minimized) restoreWindow(id);
-    }
-    clearSelection();
+  /// The context-menu / keyboard actions live in
+  /// `$lib/workspace/actions.ts`. The two below additionally close
+  /// the overlay — state-only, exactly as the original inline
+  /// versions did: these paths never collapse the input region
+  /// themselves (the compositor refocuses the restored / tiled
+  /// windows on its own).
+  function restoreAllSelectedAndClose(): void {
+    restoreAllSelected();
     overlayVisible = false;
   }
 
-  function moveAllSelectedToWorkspace(wsId: string): void {
-    for (const id of selectionSnapshot()) {
-      const w = $windows.find((x) => x.id === id);
-      if (!w) continue;
-      if (w.minimized) {
-        // Multi-move keeps minimize state — use plain move, NOT
-        // restoreWindowToWorkspace (which un-minimizes on arrival).
-        invoke("window_move_to_workspace", {
-          windowId: id,
-          targetWorkspaceId: wsId,
-        }).catch(() => {});
-      } else {
-        moveWindowToWorkspaceAction(id, wsId);
-      }
-    }
-    clearSelection();
-  }
-
-  function tileSideBySide(ids: [string, string]): void {
-    tileWindowAction(ids[0], "left");
-    tileWindowAction(ids[1], "right");
-    clearSelection();
+  function tileSideBySideAndClose(ids: [string, string]): void {
+    tileSideBySide(ids);
     overlayVisible = false;
   }
 
@@ -543,7 +477,7 @@
       if (anyActive) {
         minimizeAllSelected();
       } else {
-        restoreAllSelected();
+        restoreAllSelectedAndClose();
       }
       return;
     }
@@ -738,14 +672,6 @@
     invoke("set_popover_input_region", { expanded: false }).catch(() => {});
   }
 
-  function visibleSlice(list: WindowInfo[]): {
-    shown: WindowInfo[];
-    overflow: number;
-  } {
-    if (list.length <= 6) return { shown: list, overflow: 0 };
-    return { shown: list.slice(0, 5), overflow: list.length - 5 };
-  }
-
   /// Pre-compute a Map<wsId, WindowInfo[]> once per render tick rather
   /// than filtering `$windows` inline for each of the 9 workspace
   /// columns. With 30+ windows this drops overlay render cost from
@@ -770,18 +696,7 @@
     return windowsByWorkspace.get(wsId) ?? [];
   }
 
-  function truncateTitle(title: string, appId: string): string {
-    const source = title.trim() || appId || "";
-    if (source.length <= 10) return source;
-    return source.slice(0, 9) + "\u2026";
-  }
-
   // ── Drag & Drop ──────────────────────────────────────────────────────────
-  //
-  // Native HTML5 drag. No custom ghost — the browser renders a default
-  // drag image from the source element, which is good enough for V1
-  // and keeps the component stable (custom ghosts previously caused
-  // shell freezes; see debug session 2026-04-19).
 
   /// Drag state. `kind` distinguishes active vs. minimized source
   /// cards so the drop handler knows which row to target on same-
@@ -1437,7 +1352,7 @@
       <ContextMenu.Item onclick={minimizeAllSelected}>Minimize All</ContextMenu.Item>
     {/if}
     {#if anyMinimized}
-      <ContextMenu.Item onclick={restoreAllSelected}>Restore All</ContextMenu.Item>
+      <ContextMenu.Item onclick={restoreAllSelectedAndClose}>Restore All</ContextMenu.Item>
     {/if}
     {#if moveTargets.length > 0}
       <ContextMenu.Separator />
@@ -1456,7 +1371,7 @@
     {/if}
     {#if twoActive}
       <ContextMenu.Separator />
-      <ContextMenu.Item onclick={() => tileSideBySide([sel[0], sel[1]])}>
+      <ContextMenu.Item onclick={() => tileSideBySideAndClose([sel[0], sel[1]])}>
         Tile Side by Side
       </ContextMenu.Item>
     {/if}
