@@ -47,6 +47,7 @@
       <button
         class="fl-col"
         class:right={col.align === "right"}
+        role="columnheader"
         onclick={() => onsort?.(col.key)}
         aria-sort={sortKey === col.key ? (ascending ? "ascending" : "descending") : undefined}
       >

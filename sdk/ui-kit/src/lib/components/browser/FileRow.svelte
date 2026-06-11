@@ -40,6 +40,7 @@
   class:focused
   class:hidden-entry={entry.is_hidden}
   role="row"
+  tabindex={-1}
   aria-selected={selected}
   onclick={onrowclick}
   ondblclick={onrowdblclick}
