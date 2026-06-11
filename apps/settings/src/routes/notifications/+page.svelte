@@ -45,6 +45,7 @@
   import { PositionPicker } from "@arlen/ui-kit/components/ui/position-picker";
   import AppPicker from "$lib/components/appearance/AppPicker.svelte";
   import AppRuleCard from "$lib/components/appearance/AppRuleCard.svelte";
+  import { tauriAvailable } from "$lib/tauri";
 
   // ── Boot ───────────────────────────────────────────────────────────
 
@@ -67,6 +68,7 @@
     shell.load();
     refreshKnownApps();
 
+    if (!tauriAvailable) return;
     listen("config:notifications:changed", () => notifications.load()).then(
       (fn) => unlisteners.push(fn),
     );

@@ -20,6 +20,7 @@
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import type { ApplyHandle, MonitorConfig } from "$lib/stores/displays";
+  import { tauriAvailable } from "$lib/tauri";
   import { Check, Pencil, Play, Trash2 } from "lucide-svelte";
 
   interface OutputInfoSummary {
@@ -76,6 +77,7 @@
     await reload();
     // Refresh whenever the live monitor list changes — that's the
     // only signal the `is_current` flag depends on.
+    if (!tauriAvailable) return;
     unlistenChanged = await listen("displays:changed", () => reload());
   });
 
