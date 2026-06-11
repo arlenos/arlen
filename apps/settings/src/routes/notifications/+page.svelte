@@ -39,7 +39,7 @@
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
-  import { ValueSlider } from "$lib/components/ui/value-slider";
+  import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { TimeInput } from "@arlen/ui-kit/components/ui/time-input";
   import { DaysPicker } from "@arlen/ui-kit/components/ui/days-picker";
   import { PositionPicker } from "@arlen/ui-kit/components/ui/position-picker";

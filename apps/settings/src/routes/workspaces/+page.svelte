@@ -12,9 +12,9 @@
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
-  import { ValueSlider } from "$lib/components/ui/value-slider";
+  import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
-  import { AddRemoveList } from "$lib/components/ui/add-remove-list";
+  import { AddRemoveList } from "@arlen/ui-kit/components/ui/add-remove-list";
   import AddWindowRuleDialog from "$lib/components/workspaces/AddWindowRuleDialog.svelte";
   import {
     compositor,

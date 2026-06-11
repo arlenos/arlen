@@ -7,9 +7,10 @@
   import { breadcrumbs } from "$lib/stores/navigation";
   import { SidebarTrigger } from "@arlen/ui-kit/components/ui/sidebar";
   import { Separator } from "@arlen/ui-kit/components/ui/separator";
-  import WindowControls from "./WindowControls.svelte";
+  import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { ChevronRight } from "lucide-svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { windowMode } from "@arlen/tauri-plugin-menu";
 
   function isInteractive(e: Event): boolean {
     const target = e.target as HTMLElement | null;
@@ -65,5 +66,7 @@
 
   <div class="flex-1"></div>
 
-  <WindowControls />
+  <!-- Minimizing a tiled surface breaks the layout in the tiling WM, so the
+       button hides while the compositor reports the window as tiled. -->
+  <WindowButtons showMinimize={$windowMode !== "tiled"} />
 </header>
