@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::graph::{CellValue, GraphHandle, RowSet};
 use crate::time::{dt_to_micros, micros_to_dt};
-use crate::utils::escape_cypher;
+use crate::utils::{content_merge_key, escape_cypher};
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -482,12 +482,20 @@ impl ProjectStore {
 
     /// Create a FILE_PART_OF edge from a File node to a Project node.
     pub async fn link_file(&self, file_id: &str, project_id: Uuid) -> Result<()> {
+        let pid_str = project_id.to_string();
         let fid = escape_cypher(file_id);
-        let pid = escape_cypher(&project_id.to_string());
+        let pid = escape_cypher(&pid_str);
+        // The content-addressed merge key (GD-R1), from the RAW ids so it matches
+        // the agent write path's key for the same membership (both use the bare
+        // File/Project labels and the same node ids), letting a future merge
+        // dedup a promoted edge and an agent-written one to one identity. `ON
+        // CREATE SET` stamps only a newly-created edge (no backfill of an
+        // existing one, consistent with the bitemporal stamps' no-backfill rule).
+        let merge_key = content_merge_key("File", file_id, "FILE_PART_OF", "Project", &pid_str);
         self.graph
             .write(format!(
                 "MATCH (f:File {{id: '{fid}'}}), (p:Project {{id: '{pid}'}})
-                 MERGE (f)-[:FILE_PART_OF]->(p)"
+                 MERGE (f)-[r:FILE_PART_OF]->(p) ON CREATE SET r.merge_key = '{merge_key}'"
             ))
             .await?;
         Ok(())
@@ -803,6 +811,43 @@ mod tests {
         let files = store.get_project_files(p.id).await.unwrap();
         assert_eq!(files.len(), 1);
         assert_eq!(files[0], file_path);
+    }
+
+    #[tokio::test]
+    async fn link_file_stamps_the_content_merge_key_matching_the_agent_path() {
+        // GD-R1: the promotion pipeline stamps the SAME content merge key the
+        // agent write path would for this membership, so a future cross-device
+        // merge dedups a promoted edge and an agent-written one to one identity.
+        let (store, _tmp) = setup().await;
+        let p = Project::new_inferred("test".into(), "/a".into(), 90);
+        store.create(&p).await.unwrap();
+        let file_path = "/a/src/main.rs";
+        store
+            .graph
+            .write(format!(
+                "CREATE (f:File {{id: '{file_path}', path: '{file_path}', \
+                 app_id: 'test', last_accessed: 0}})"
+            ))
+            .await
+            .unwrap();
+        store.link_file(file_path, p.id).await.unwrap();
+
+        let row = store
+            .graph
+            .query_rows(format!(
+                "MATCH (:File {{id: '{file_path}'}})-[r:FILE_PART_OF]->(:Project {{id: '{}'}}) \
+                 RETURN r.merge_key AS mk",
+                p.id
+            ))
+            .await
+            .unwrap();
+        let stamped = row.rows[0][0].as_str();
+        // Same helper, same content tuple (bare labels + the same node ids) the
+        // agent path uses, so the keys are equal across the two creation paths.
+        let expected =
+            content_merge_key("File", file_path, "FILE_PART_OF", "Project", &p.id.to_string());
+        assert_eq!(stamped, expected, "the promoted edge carries the content merge key");
+        assert_eq!(stamped.len(), 64, "the merge key is the fixed-length hex digest");
     }
 
     #[tokio::test]
