@@ -1,1 +1,0 @@
-/home/tim/Repositories/arlen/contracts/artifact/target/debug/arlen-artifact: /home/tim/Repositories/arlen/contracts/artifact/src/bin/arlen-artifact.rs /home/tim/Repositories/arlen/contracts/artifact/src/build.rs /home/tim/Repositories/arlen/contracts/artifact/src/lib.rs /home/tim/Repositories/arlen/contracts/artifact/src/osc.rs
