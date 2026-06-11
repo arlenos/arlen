@@ -10,21 +10,31 @@
     columns: string[];
     cells: string[][];
   } = $props();
+
+  /// Columns whose cells all read as numbers align right, so values
+  /// line up for comparison.
+  const numeric = $derived(
+    columns.map(
+      (_, i) =>
+        cells.length > 0 &&
+        cells.every((row) => /^-?[\d.,]+%?$/.test((row[i] ?? "").trim())),
+    ),
+  );
 </script>
 
 <table class="table-lens">
   <thead>
     <tr>
-      {#each columns as col}
-        <th>{col}</th>
+      {#each columns as col, i}
+        <th class:num={numeric[i]}>{col}</th>
       {/each}
     </tr>
   </thead>
   <tbody>
     {#each cells as row}
       <tr>
-        {#each row as cell}
-          <td>{cell}</td>
+        {#each row as cell, i}
+          <td class:num={numeric[i]}>{cell}</td>
         {/each}
       </tr>
     {/each}
@@ -58,5 +68,10 @@
 
   tbody tr:last-child td {
     border-bottom: none;
+  }
+
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
   }
 </style>

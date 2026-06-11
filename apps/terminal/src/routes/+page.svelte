@@ -46,7 +46,7 @@
   <div class="stream">
     {#if $sessionsLoaded && $activeSessionId === null}
       <div class="stream-empty">
-        <span class="stream-empty-title">No shell is open</span>
+        <span class="stream-empty-title">No session is open</span>
         <span class="stream-empty-hint">
           Start one with the plus button in the sidebar or Ctrl+T.
         </span>
@@ -56,7 +56,7 @@
       </div>
     {:else if $blocksLoaded && $blocks.length === 0 && $activeSessionId !== null}
       <div class="stream-empty">
-        <span class="stream-empty-title">Fresh shell</span>
+        <span class="stream-empty-title">Fresh session</span>
         <span class="stream-empty-hint">
           Commands you run appear here as blocks.
         </span>

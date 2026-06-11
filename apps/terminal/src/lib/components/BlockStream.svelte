@@ -43,7 +43,7 @@
   <div class="jump-wrap">
     <button class="jump-btn" onclick={jumpToLatest}>
       <ArrowDown size={12} strokeWidth={2} />
-      Latest
+      Jump to latest
     </button>
   </div>
 {/if}

@@ -70,18 +70,24 @@
         </p>
       {/if}
     {:else}
-      <p class="line">Can't reach the assistant right now.</p>
+      <p class="line">
+        <span class="glyph off" aria-hidden="true">◆</span>
+        Can't reach the assistant right now.
+      </p>
       <Button variant="outline" size="sm" onclick={load}>Try again</Button>
     {/if}
   </div>
 {/if}
 
 <style>
+  /* A fixed minimum keeps the composer from shifting when the state
+     swaps the sentence for the retry row. */
   .strip {
     display: flex;
     align-items: center;
     gap: 0.75rem;
     margin-top: 6px;
+    min-height: var(--height-control, 28px);
     min-width: 0;
   }
   .line {

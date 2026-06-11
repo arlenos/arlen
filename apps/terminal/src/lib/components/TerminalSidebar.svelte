@@ -23,6 +23,7 @@
   import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import { Folder, Plus, TerminalSquare } from "lucide-svelte";
   import { terminalProjects, type Project } from "$lib/contract";
+  import { shortPath } from "$lib/paths";
   import {
     sessions,
     activeSessionId,
@@ -77,13 +78,15 @@
     queueHistorySearch();
   }
 
-  /// Last two path segments, like the recent-files rows elsewhere.
-  function shortCwd(p: string): string {
-    const parts = p.split("/").filter((x) => x.length > 0);
-    if (parts.length === 0) return "/";
-    if (parts.length === 1) return "/" + parts[0];
-    return parts[parts.length - 2] + "/" + parts[parts.length - 1];
-  }
+  /// Whether the user narrowed the history; decides between the
+  /// no-matches line and the nothing-here-yet line.
+  const historyFiltered = $derived(
+    $historyQuery.trim().length > 0 ||
+      $historyOnlyFailures ||
+      $historyAgentOnly ||
+      $historyProjectId !== null,
+  );
+
 </script>
 
 <Sidebar collapsible="icon">
@@ -119,7 +122,7 @@
       <SidebarMenu>
         {#if $sessionsLoaded && $sessions.length === 0}
           <div class="ts-empty group-data-[collapsible=icon]:hidden">
-            No open shells. Start one with the plus button or Ctrl+T.
+            No open sessions. Start one with the plus button or Ctrl+T.
           </div>
         {/if}
         {#each $sessions as s (s.id)}
@@ -131,7 +134,7 @@
             >
               <TerminalSquare />
               <span class="ts-session-label">
-                <span class="ts-session-cwd">{shortCwd(s.cwd)}</span>
+                <span class="ts-session-cwd">{shortPath(s.cwd)}</span>
                 <span class="ts-session-meta">
                   <span
                     class="ts-dot"
@@ -190,7 +193,9 @@
       </div>
       <SidebarMenu>
         {#if $historyLoaded && $historyResults.length === 0}
-          <div class="ts-empty">No matching commands.</div>
+          <div class="ts-empty">
+            {historyFiltered ? "No matching commands." : "Nothing to search yet."}
+          </div>
         {/if}
         {#each $historyResults.slice(0, HISTORY_LIMIT) as b (b.id)}
           <SidebarMenuItem>
@@ -204,7 +209,7 @@
                   {b.command}
                 </span>
                 <span class="ts-session-meta">
-                  {shortCwd(b.cwd)}
+                  {shortPath(b.cwd)}
                   {#if b.exit_code !== null && b.exit_code !== 0}
                     <span class="ts-exit">exit {b.exit_code}</span>
                   {/if}
@@ -215,7 +220,8 @@
         {/each}
         {#if $historyResults.length > HISTORY_LIMIT}
           <div class="ts-more">
-            Showing {HISTORY_LIMIT} of {$historyResults.length}.
+            Showing {HISTORY_LIMIT} of {$historyResults.length}. Search to see
+            the rest.
           </div>
         {/if}
       </SidebarMenu>
@@ -237,7 +243,7 @@
               <Folder />
               <span class="ts-session-label">
                 <span class="ts-project-name">{p.name}</span>
-                <span class="ts-session-meta">{shortCwd(p.path)}</span>
+                <span class="ts-session-meta">{shortPath(p.path)}</span>
               </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -292,6 +298,11 @@
     font-size: 0.6875rem;
     font-weight: 500;
     color: color-mix(in srgb, var(--sidebar-foreground) 60%, transparent);
+  }
+  .ts-search :global(.ts-chip[data-state="on"]) {
+    background: color-mix(in srgb, var(--color-accent, var(--primary)) 15%, transparent);
+    border-color: color-mix(in srgb, var(--color-accent, var(--primary)) 35%, transparent);
+    color: var(--color-accent, var(--primary));
   }
 
   .ts-session-label {
