@@ -1,0 +1,23 @@
+[package]
+name = "online-accounts"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen online-accounts daemon: capability-gated account service (org.arlen.Accounts1)"
+authors = ["Arlen"]
+
+[lib]
+name = "online_accounts"
+
+[[bin]]
+name = "arlen-accountsd"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[workspace]
