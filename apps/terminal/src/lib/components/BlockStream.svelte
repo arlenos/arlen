@@ -4,11 +4,8 @@
   /// the user is there; scrolling up parks the view and offers a
   /// jump-to-latest pill instead of yanking it back down.
   import { ArrowDown } from "lucide-svelte";
-  import { ConsoleBlock } from "@arlen/ui-kit/components/console";
   import type { Block } from "$lib/contract";
-  import PromptLine from "./PromptLine.svelte";
-  import OriginMarker from "./OriginMarker.svelte";
-  import BlockBody from "./BlockBody.svelte";
+  import StreamBlock from "./StreamBlock.svelte";
 
   let { blocks }: { blocks: Block[] } = $props();
 
@@ -38,20 +35,7 @@
 
 <div class="block-stream" bind:this={scroller} onscroll={onScroll}>
   {#each blocks as block (block.id)}
-    <ConsoleBlock
-      command={block.command}
-      exitCode={block.exit_code}
-      durationMs={block.duration_ms}
-      running={block.exit_code === null && block.duration_ms === null}
-    >
-      {#snippet context()}
-        <PromptLine cwd={block.cwd} git={block.git} />
-      {/snippet}
-      {#snippet marker()}
-        <OriginMarker origin={block.origin} />
-      {/snippet}
-      <BlockBody {block} />
-    </ConsoleBlock>
+    <StreamBlock {block} />
   {/each}
 </div>
 
