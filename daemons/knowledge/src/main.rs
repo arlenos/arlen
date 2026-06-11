@@ -57,6 +57,36 @@ fn pick_daemon_socket() -> String {
     crate::utils::socket_path("ARLEN_DAEMON_SOCKET", "knowledge.sock")
 }
 
+/// Resolve a per-user data path: an explicit `env_var` wins (the
+/// launcher / systemd-unit contract), else `$XDG_DATA_HOME/arlen/<name>`
+/// (the per-user store, i.e. `~/.local/share/arlen/<name>`, matching the
+/// unit's pinned paths), else the system-wide `system_default` as a last
+/// resort. A per-uid default keeps two profiles from sharing one graph +
+/// SQLite store even when no launcher pins the env, the same fail-safe the
+/// socket layer already has (profile-system-plan.md PR-R1). The derived
+/// per-user parent is created best-effort so the daemon opens cleanly in a
+/// dev session; an env-pinned path's parent is the launcher's to own.
+fn pick_data_path(env_var: &str, name: &str, system_default: &str) -> String {
+    let pinned = std::env::var(env_var).ok().filter(|s| !s.is_empty());
+    let xdg = std::env::var("XDG_DATA_HOME").ok();
+    let home = std::env::var("HOME").ok();
+    let path = crate::utils::resolve_data_path(
+        pinned.as_deref(),
+        xdg.as_deref(),
+        home.as_deref(),
+        name,
+        system_default,
+    );
+    // Best-effort: create the per-user parent so the daemon opens cleanly
+    // in a dev session. An env-pinned path's parent is the launcher's.
+    if pinned.is_none() {
+        if let Some(parent) = std::path::Path::new(&path).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+    }
+    path
+}
+
 /// Check whether `path` is currently a mount point. Reads
 /// `/proc/self/mountinfo` directly so we don't depend on the
 /// `mountpoint(1)` binary being installed. Returns `false` on any
@@ -93,10 +123,8 @@ async fn main() -> Result<()> {
     info!("starting knowledge daemon");
 
     let consumer_socket = crate::utils::socket_path("ARLEN_CONSUMER_SOCKET", "event-bus-consumer.sock");
-    let db_path = std::env::var("ARLEN_DB_PATH")
-        .unwrap_or_else(|_| DEFAULT_DB_PATH.to_string());
-    let graph_path = std::env::var("ARLEN_GRAPH_PATH")
-        .unwrap_or_else(|_| DEFAULT_GRAPH_PATH.to_string());
+    let db_path = pick_data_path("ARLEN_DB_PATH", "events.db", DEFAULT_DB_PATH);
+    let graph_path = pick_data_path("ARLEN_GRAPH_PATH", "graph", DEFAULT_GRAPH_PATH);
     let daemon_socket = pick_daemon_socket();
     let timeline_mount = std::env::var("ARLEN_TIMELINE_MOUNT").unwrap_or_else(|_| {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
