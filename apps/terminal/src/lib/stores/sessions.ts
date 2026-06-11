@@ -20,30 +20,58 @@ export const activeSessionId = writable<string | null>(null);
 /// shows nothing instead of claiming "no sessions".
 export const sessionsLoaded = writable(false);
 
+/// True when the last sessions load FAILED. An unreachable backend is
+/// not the same as an honestly empty list; the page renders the two
+/// differently and auto-create never fires into a dead backend.
+export const sessionsError = writable(false);
+
+// One auto-create per app run. The pre-engine stubs answer
+// new_session with an unlisted session, so without this guard the
+// empty list would re-trigger the create on every reload.
+let autoCreateTried = false;
+
 /// Loads the session list. Keeps the active selection when it still
-/// exists, otherwise falls back to the first session.
+/// exists, otherwise falls back to the first session. On the first
+/// successful EMPTY load it opens a session unasked, so a fresh
+/// launch lands ready to type.
 export async function loadSessions(): Promise<void> {
+  let list: Session[];
   try {
-    const list = await terminalSessions();
-    sessions.set(list);
-    const active = get(activeSessionId);
-    if (!active || !list.some((s) => s.id === active)) {
-      activeSessionId.set(list[0]?.id ?? null);
-    }
+    list = await terminalSessions();
   } catch {
-    // Unreachable backend: keep whatever we had; the stream renders
-    // its own empty state.
+    sessionsError.set(true);
+    sessionsLoaded.set(true);
+    return;
+  }
+  sessionsError.set(false);
+  sessions.set(list);
+  const active = get(activeSessionId);
+  if (!active || !list.some((s) => s.id === active)) {
+    activeSessionId.set(list[0]?.id ?? null);
   }
   sessionsLoaded.set(true);
+
+  if (list.length === 0 && !autoCreateTried) {
+    autoCreateTried = true;
+    await newSession();
+  }
 }
 
-/// Opens a new shell and selects it. Safe to call repeatedly — every
-/// call is its own session by contract.
+/// Opens a new shell and selects it — but only adopts the returned id
+/// when the backend actually lists the session afterwards (the
+/// pre-engine stubs do not, and a phantom selection would point the
+/// stream at nothing).
 export async function newSession(): Promise<void> {
   try {
     const s = await terminalNewSession();
-    await loadSessions();
-    if (s.id) activeSessionId.set(s.id);
+    const list = await terminalSessions();
+    sessionsError.set(false);
+    sessions.set(list);
+    if (s.id && list.some((x) => x.id === s.id)) {
+      activeSessionId.set(s.id);
+    } else if (!get(activeSessionId) && list.length > 0) {
+      activeSessionId.set(list[0].id);
+    }
   } catch {
     // The backend refused; the list stays as it is.
   }

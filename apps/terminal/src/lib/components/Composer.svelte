@@ -2,19 +2,25 @@
   /// The command composer pinned under the stream: a prompt glyph, a
   /// growing mono textarea and the capability strip below. Enter runs
   /// the command through `terminal_input`, Shift+Enter breaks the
-  /// line. A history row click lands here via the prefill store.
+  /// line. A history row click lands here via the prefill store; a
+  /// new active session pulls focus here so typing starts without a
+  /// click — unless something else (the history search) already
+  /// holds it.
+  import { tick } from "svelte";
   import { writable } from "svelte/store";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
-  import { terminalInput } from "$lib/contract";
+  import { terminalInput, type Session } from "$lib/contract";
   import { composerPrefill } from "$lib/stores/composer";
   import CapabilityStrip from "./CapabilityStrip.svelte";
 
   let {
-    sessionId,
+    session,
     onsent,
   }: {
-    /// The session the input goes to; null disables the composer.
-    sessionId: string | null;
+    /// The active session; null disables the composer. An exited
+    /// session also disables it — input into a dead shell goes
+    /// nowhere, the placeholder says how to get a live one.
+    session: Session | null;
     /// Called after the backend accepted the input, so the page can
     /// refresh the block stream.
     onsent?: () => void;
@@ -23,6 +29,15 @@
   let draft = $state("");
   let textareaRef = $state<HTMLTextAreaElement | null>(null);
   const busy = writable(false);
+
+  const usable = $derived(session !== null && session.status === "running");
+  const placeholder = $derived(
+    session === null
+      ? "Open a session to run commands"
+      : session.status === "exited"
+        ? "Session ended. Ctrl+T starts a new one."
+        : "Run a command",
+  );
 
   // Take a pending prefill (a history row click) as the draft.
   $effect(() => {
@@ -34,12 +49,28 @@
     }
   });
 
+  // Focus follows the active session, without stealing: only when
+  // nothing else holds focus (the Ctrl+R search keeps its claim).
+  let focusedSession: string | null = null;
+  $effect(() => {
+    const id = usable ? (session?.id ?? null) : null;
+    if (id === focusedSession) return;
+    focusedSession = id;
+    if (id === null) return;
+    tick().then(() => {
+      const ae = document.activeElement;
+      if (!ae || ae === document.body || ae === textareaRef) {
+        textareaRef?.focus();
+      }
+    });
+  });
+
   async function submit() {
     const text = draft;
-    if (!text.trim() || $busy || !sessionId) return;
+    if (!text.trim() || $busy || !usable || !session) return;
     busy.set(true);
     try {
-      await terminalInput(sessionId, text);
+      await terminalInput(session.id, text);
       draft = "";
       onsent?.();
     } catch {
@@ -57,7 +88,7 @@
 </script>
 
 <div class="composer-zone">
-  <div class="composer" class:disabled={sessionId === null}>
+  <div class="composer" class:disabled={!usable}>
     <span class="prompt-glyph" aria-hidden="true">❯</span>
     <Textarea
       id="terminal-composer-input"
@@ -66,8 +97,8 @@
       rows={1}
       maxRows={6}
       class="composer-input"
-      placeholder={sessionId ? "Run a command" : "Open a session to run commands"}
-      disabled={sessionId === null || $busy}
+      {placeholder}
+      disabled={!usable || $busy}
       aria-label="Command input"
       onkeydown={onKeydown}
     />
