@@ -15,7 +15,9 @@
 //! (WP-R4) and the renderer client build on it.
 
 pub mod manifest;
+pub mod schedule;
 
 pub use manifest::{
     ManifestError, Scale, Source, TimePhase, TimeVariant, WallpaperKind, WallpaperManifest,
 };
+pub use schedule::{active_source, phase_at, source_for_monitor, TimeContext};
