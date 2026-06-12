@@ -162,6 +162,13 @@ const MAX_DECODE_ALLOC: u64 = 256 * 1024 * 1024;
 /// on its longest side (aspect preserved, never upscaled), and re-encoded as
 /// PNG (which also strips the source file's metadata). A decode failure is
 /// fail-closed: no thumbnail is produced.
+///
+/// MEMORY: [`MAX_DECODE_ALLOC`] bounds the DECODE allocation only. The
+/// subsequent downscale and PNG re-encode allocate further (bounded by the
+/// already-capped decoded dimensions, not by `image::Limits`), so the worker's
+/// peak is somewhat above `MAX_DECODE_ALLOC`. It is still fail-closed (an OOM
+/// kills only the worker), but a hard memory ceiling on the worker (a cgroup or
+/// rlimit) is the robust follow-up if a constrained host needs a real bound.
 #[cfg(feature = "thumbnail")]
 pub fn generate_thumbnail(image_bytes: &[u8], max_dim: u32) -> Result<Vec<u8>, SandboxError> {
     if image_bytes.len() > MAX_BYTES {
@@ -291,6 +298,16 @@ fn run_worker(sandbox_bin: &Path, input: &[u8]) -> Result<Vec<u8>, SandboxError>
         .map_err(|_| SandboxError::Process("stdout reader panicked".to_string()))?;
 
     if !status.success() {
+        // Exit code 3 is both workers' convention for "could not install the
+        // sandbox" (`apply_sandbox` failed). Surface that distinctly so a host
+        // where the sandbox never engages is observable, instead of being masked
+        // as a routine parse/decode failure (which is exit 5). Both still fail
+        // closed; this only separates the two so a degraded sandbox is visible.
+        if status.code() == Some(3) {
+            return Err(SandboxError::Setup(
+                "worker could not install the sandbox".to_string(),
+            ));
+        }
         return Err(SandboxError::WorkerFailed(format!("exit status {status}")));
     }
     if output.len() > MAX_BYTES {
@@ -307,6 +324,13 @@ fn run_worker(sandbox_bin: &Path, input: &[u8]) -> Result<Vec<u8>, SandboxError>
 /// PNG thumbnail, which is returned. The worker is killed if it runs past the
 /// time budget, and both input and output are bounded by [`MAX_BYTES`]. Any
 /// failure is a [`SandboxError`]; the caller produces no thumbnail on error.
+///
+/// TRUST CONTRACT: `sandbox_bin` MUST be a trusted, fixed path to the genuine
+/// `arlen-thumbnail-sandbox` binary (a system install path, not a relative or
+/// attacker-influenceable one). The containment guarantee rests on the spawned
+/// process actually being the locked-down worker; the decode runs with whatever
+/// sandbox *that* binary installs, so a substituted binary defeats it. Same
+/// contract as [`parse_document`].
 #[cfg(feature = "thumbnail")]
 pub fn thumbnail(sandbox_bin: &Path, image: &[u8]) -> Result<Vec<u8>, SandboxError> {
     run_worker(sandbox_bin, image)
