@@ -41,6 +41,28 @@ fn shell_present() -> bool {
     std::path::Path::new("/run/arlen/event-bus-producer.sock").exists()
 }
 
+/// Export `ARLEN_TERM_ZDOTDIR` so a spawned shell sources the block-mark
+/// integration via the curated zsh config (TM-R2/R3). Honors an explicit
+/// override; otherwise prefers the installed location and falls back to the
+/// in-repo dir for `cargo tauri dev`. Does nothing when none exists - the shell
+/// then uses its normal startup, and in a production image the system zshrc
+/// sources the integration directly. Called once at startup before any spawn.
+fn ensure_curated_zdotdir() {
+    if std::env::var_os(arlen_terminal_engine::ZDOTDIR_ENV).is_some() {
+        return;
+    }
+    const CANDIDATES: &[&str] = &[
+        "/usr/share/arlen/terminal/zdotdir",
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../integration/zdotdir"),
+    ];
+    for dir in CANDIDATES {
+        if std::path::Path::new(dir).is_dir() {
+            std::env::set_var(arlen_terminal_engine::ZDOTDIR_ENV, dir);
+            return;
+        }
+    }
+}
+
 /// Route a log line from the frontend into the Rust logger so it shows
 /// up in the same stdout stream as backend logs.
 #[tauri::command]
@@ -141,6 +163,7 @@ fn terminal_projects() -> Vec<Project> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    ensure_curated_zdotdir();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
