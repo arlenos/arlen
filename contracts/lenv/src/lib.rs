@@ -16,6 +16,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod tofu;
+
 use serde::Deserialize;
 
 /// A parse or validation failure. Nothing is installed on error; the caller
