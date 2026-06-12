@@ -17,6 +17,14 @@ use cap_std::ambient_authority;
 use cap_std::fs::Dir;
 use serde::Serialize;
 
+/// Whether the app runs under the Arlen shell (the event-bus socket
+/// exists): the UI then leaves its chrome to the global topbar and
+/// hides the local fallback toolbar.
+#[tauri::command]
+fn shell_present() -> bool {
+    std::path::Path::new("/run/arlen/event-bus-producer.sock").exists()
+}
+
 /// Route a log line from the frontend into the Rust logger so it shows
 /// up in the same stdout stream as backend logs.
 #[tauri::command]
@@ -324,7 +332,9 @@ pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_arlen_shell::init())
         .invoke_handler(tauri::generate_handler![
+            shell_present,
             frontend_log,
             files_list,
             files_breadcrumb,

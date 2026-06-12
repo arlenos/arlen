@@ -21,10 +21,15 @@ interface SavedSearch {
 export const placeGroups = writable<PlaceGroup[]>([]);
 export const savedSearches = writable<SavedSearch[]>([]);
 
+/// The home place's path; the breadcrumb collapses it to "Home".
+export const homePath = writable("/home");
+
 export async function loadPlaces(): Promise<void> {
   const groups: PlaceGroup[] = [];
   try {
     const places = await invoke<{ orte: Place[]; geraete: Place[] }>("files_places");
+    const home = places.orte.find((p) => p.icon === "home");
+    if (home) homePath.set(home.path);
     groups.push({ label: "Places", places: places.orte });
     groups.push({ label: "Devices", places: places.geraete });
   } catch {

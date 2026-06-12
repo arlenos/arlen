@@ -18,7 +18,8 @@
   import { activeController, newTab, tabs } from "$lib/stores/tabs";
   import { focusedController, focusedPane, paneB, splitView } from "$lib/stores/panes";
   import { loadPlaces } from "$lib/stores/places";
-  import { pathEditing } from "$lib/stores/ui";
+  import { infoOpen, pathEditing } from "$lib/stores/ui";
+  import { shellPresent } from "$lib/stores/topbar";
   import { clipboard, paste, runOp } from "$lib/stores/ops";
   import FmToolbar from "$lib/components/FmToolbar.svelte";
   import FmStatusBar from "$lib/components/FmStatusBar.svelte";
@@ -32,7 +33,6 @@
   const homePath = writable("/home");
   let renamingName = $state<string | null>(null);
   let confirmDelete = $state(false);
-  let infoOpen = $state(false);
 
   // What the info panel inspects: the single selected entry, or the
   // folder itself when nothing is selected.
@@ -165,15 +165,17 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="fm" onkeydown={onOpsKeydown}>
   {#if $activeController && $focusedController}
+    {#if !$shellPresent}
     <FmToolbar
       controller={$focusedController}
       homePath={$homePath}
       bind:pathEditing={$pathEditing}
       searchOpen={$searchOpen}
       onsearchtoggle={() => ($searchOpen ? closeSearch() : searchOpen.set(true))}
-      {infoOpen}
-      oninfotoggle={() => (infoOpen = !infoOpen)}
+      infoOpen={$infoOpen}
+      oninfotoggle={() => infoOpen.update((v) => !v)}
     />
+    {/if}
     <FmSearchBar path={currentPath()} onsave={saveSearch} />
     <ContextMenu.Root>
       <ContextMenu.Trigger class="fm-browse">
@@ -217,11 +219,11 @@
               />
             </div>
           {/if}
-          {#if infoOpen}
+          {#if $infoOpen}
             <FmInfoPanel
               path={infoTarget.path}
               entry={infoTarget.entry}
-              onclose={() => (infoOpen = false)}
+              onclose={() => (infoOpen.set(false))}
             />
           {/if}
         </div>

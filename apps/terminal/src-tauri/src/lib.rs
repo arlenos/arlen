@@ -19,6 +19,13 @@ struct SessionRegistry {
     next_id: u64,
 }
 
+/// Whether the app runs under the Arlen shell (the event-bus socket
+/// exists); the topbar quick actions only make sense there.
+#[tauri::command]
+fn shell_present() -> bool {
+    std::path::Path::new("/run/arlen/event-bus-producer.sock").exists()
+}
+
 /// Route a log line from the frontend into the Rust logger so it shows
 /// up in the same stdout stream as backend logs.
 #[tauri::command]
@@ -81,11 +88,13 @@ pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_arlen_shell::init())
         .manage(Mutex::new(SessionRegistry {
             sessions: Vec::new(),
             next_id: 0,
         }))
         .invoke_handler(tauri::generate_handler![
+            shell_present,
             frontend_log,
             terminal_sessions,
             terminal_blocks,
