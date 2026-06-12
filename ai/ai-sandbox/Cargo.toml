@@ -38,6 +38,6 @@ seccompiler = "0.5"
 libc = "0.2"
 
 [dev-dependencies]
-# Synthesise test images for the thumbnail integration test (gated on the
-# `thumbnail` feature; only compiled when that feature is enabled).
-image = { version = "0.25", default-features = false, features = ["png"] }
+# Synthesise test images (multiple formats) for the thumbnail integration test,
+# to exercise each enabled decoder under the live sandbox.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp"] }
