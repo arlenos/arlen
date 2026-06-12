@@ -17,7 +17,7 @@
   import { openPath } from "$lib/adapter";
   import { activeController, newTab, tabs } from "$lib/stores/tabs";
   import { focusedController, focusedPane, paneB, splitView } from "$lib/stores/panes";
-  import { loadPlaces } from "$lib/stores/places";
+  import { addBookmark, loadPlaces } from "$lib/stores/places";
   import { infoOpen, pathEditing } from "$lib/stores/ui";
   import { shellPresent } from "$lib/stores/topbar";
   import { clipboard, paste, runOp } from "$lib/stores/ops";
@@ -245,6 +245,11 @@
           {#if selected.length === 1 && selected[0]?.kind === "directory"}
             <ContextMenu.Item onclick={() => newTab(joinPath(currentPath(), selected[0].name))}>
               Open in new tab
+            </ContextMenu.Item>
+            <ContextMenu.Item
+              onclick={() => addBookmark(joinPath(currentPath(), selected[0].name))}
+            >
+              Pin to sidebar
             </ContextMenu.Item>
           {/if}
           <ContextMenu.Separator />

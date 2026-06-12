@@ -19,6 +19,26 @@ interface SavedSearch {
 }
 
 export const placeGroups = writable<PlaceGroup[]>([]);
+
+/// Pin a folder to the sidebar and refresh the groups.
+export async function addBookmark(path: string): Promise<void> {
+  try {
+    await invoke("files_bookmark_add", { path });
+  } catch {
+    return;
+  }
+  await loadPlaces();
+}
+
+/// Unpin a folder.
+export async function removeBookmark(path: string): Promise<void> {
+  try {
+    await invoke("files_bookmark_remove", { path });
+  } catch {
+    return;
+  }
+  await loadPlaces();
+}
 export const savedSearches = writable<SavedSearch[]>([]);
 
 /// The home place's path; the breadcrumb collapses it to "Home".
@@ -34,6 +54,16 @@ export async function loadPlaces(): Promise<void> {
     groups.push({ label: "Devices", places: places.geraete });
   } catch {
     // Unreachable backend: the sidebar stays empty rather than fake.
+  }
+  try {
+    const bookmarks = await invoke<Place[]>("files_bookmarks");
+    groups.push({
+      label: "Bookmarks",
+      railHidden: true,
+      places: bookmarks.map((b) => ({ ...b, removable: true })),
+    });
+  } catch {
+    // No bookmark store: the group does not render.
   }
   try {
     const projects = await invoke<Project[]>("files_projects");

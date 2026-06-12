@@ -65,6 +65,10 @@ pub enum SandboxError {
     /// The input or the produced text exceeded [`MAX_BYTES`].
     #[error("document too large")]
     TooLarge,
+    /// An untrusted image could not be decoded, or the thumbnail could not be
+    /// encoded. Fail-closed: no thumbnail is produced.
+    #[error("image decode/encode failed: {0}")]
+    Decode(String),
 }
 
 /// Extract inert plain text from raw document bytes.

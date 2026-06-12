@@ -300,6 +300,74 @@ fn files_open(path: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Persistent FM state in `~/.config/arlen/files.toml` (the TOML
+/// rule). Today that is the bookmark list; defaults stay in Settings.
+#[derive(serde::Deserialize, Serialize, Default)]
+struct FilesConfig {
+    #[serde(default)]
+    bookmarks: Vec<String>,
+}
+
+fn files_config_path() -> Result<std::path::PathBuf, String> {
+    Ok(dirs::config_dir()
+        .ok_or("no config dir")?
+        .join("arlen")
+        .join("files.toml"))
+}
+
+fn read_files_config() -> FilesConfig {
+    files_config_path()
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| toml::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn write_files_config(config: &FilesConfig) -> Result<(), String> {
+    let path = files_config_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let body = toml::to_string_pretty(config).map_err(|e| e.to_string())?;
+    std::fs::write(path, body).map_err(|e| e.to_string())
+}
+
+/// The pinned folders, as places (label = folder name).
+#[tauri::command]
+fn files_bookmarks() -> Vec<Place> {
+    read_files_config()
+        .bookmarks
+        .iter()
+        .map(|p| Place {
+            label: Path::new(p)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| p.clone()),
+            icon: "bookmark".to_string(),
+            path: p.clone(),
+        })
+        .collect()
+}
+
+/// Pin a folder; idempotent.
+#[tauri::command]
+fn files_bookmark_add(path: String) -> Result<(), String> {
+    let mut config = read_files_config();
+    if !config.bookmarks.contains(&path) {
+        config.bookmarks.push(path);
+        write_files_config(&config)?;
+    }
+    Ok(())
+}
+
+/// Unpin a folder; idempotent.
+#[tauri::command]
+fn files_bookmark_remove(path: String) -> Result<(), String> {
+    let mut config = read_files_config();
+    config.bookmarks.retain(|p| p != &path);
+    write_files_config(&config)
+}
+
 /// The Projekte sidebar section (KG; empty until structured reads land).
 #[derive(Serialize)]
 struct Project {
@@ -342,6 +410,9 @@ pub fn run() {
             files_info,
             files_search,
             files_op,
+            files_bookmarks,
+            files_bookmark_add,
+            files_bookmark_remove,
             files_open,
             files_projects,
             files_saved_searches,

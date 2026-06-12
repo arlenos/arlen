@@ -17,7 +17,7 @@
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { PlacesSidebar, placeIcon } from "@arlen/ui-kit/components/browser";
   import { activeController } from "$lib/stores/tabs";
-  import { placeGroups, savedSearches } from "$lib/stores/places";
+  import { placeGroups, removeBookmark, savedSearches } from "$lib/stores/places";
   import { runSearch, searchOpen, searchQuery } from "$lib/stores/search";
 
   const SearchIcon = placeIcon("search");
@@ -54,6 +54,7 @@
       groups={$placeGroups}
       {activePath}
       onnavigate={(place) => $activeController?.navigate(place.path)}
+      onremove={(place) => removeBookmark(place.path)}
     />
     {#if $savedSearches.length > 0}
       <SidebarGroup class="group-data-[collapsible=icon]:hidden">
