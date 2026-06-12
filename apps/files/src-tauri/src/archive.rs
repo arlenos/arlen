@@ -301,6 +301,65 @@ pub fn zip_extract<R: Read + Seek>(reader: R, dest: &Dir) -> Result<(), String> 
     Ok(())
 }
 
+/// Append one source (a file, or a directory subtree, read through `root`) to a
+/// zip writer under `archive_path`. Symlinks and special files are skipped.
+fn zip_add_entry<W: Write + Seek>(
+    zw: &mut zip::ZipWriter<W>,
+    root: &Dir,
+    src: &Path,
+    archive_path: &Path,
+    opts: zip::write::SimpleFileOptions,
+) -> Result<(), String> {
+    let meta = root
+        .symlink_metadata(src)
+        .map_err(|e| format!("stat {}: {e}", src.display()))?;
+    let ft = meta.file_type();
+    let name = archive_path.to_string_lossy().into_owned();
+    if ft.is_dir() {
+        zw.add_directory(name, opts)
+            .map_err(|e| format!("add dir {}: {e}", archive_path.display()))?;
+        let read_dir = root
+            .read_dir(src)
+            .map_err(|e| format!("read dir {}: {e}", src.display()))?;
+        for entry in read_dir {
+            let entry = entry.map_err(|e| format!("read entry: {e}"))?;
+            let child = entry.file_name();
+            zip_add_entry(zw, root, &src.join(&child), &archive_path.join(&child), opts)?;
+        }
+    } else if ft.is_file() {
+        zw.start_file(name, opts)
+            .map_err(|e| format!("add file {}: {e}", archive_path.display()))?;
+        let mut f = root
+            .open(src)
+            .map_err(|e| format!("open {}: {e}", src.display()))?;
+        io::copy(&mut f, zw).map_err(|e| format!("write {}: {e}", archive_path.display()))?;
+    }
+    // Symlinks and special files are skipped.
+    Ok(())
+}
+
+/// Compress `sources` (root-relative paths) into a zip written to `writer`. Each
+/// source is stored under its basename. Read through the `root` capability;
+/// symlinks and special files are skipped. The writer needs `Seek` (a zip's
+/// central directory is written at the end).
+pub fn zip_compress<W: Write + Seek>(
+    root: &Dir,
+    sources: &[String],
+    writer: W,
+) -> Result<(), String> {
+    let mut zw = zip::ZipWriter::new(writer);
+    let opts = zip::write::SimpleFileOptions::default();
+    for s in sources {
+        let src = Path::new(s);
+        let base = src
+            .file_name()
+            .ok_or_else(|| format!("source has no name: {s}"))?;
+        zip_add_entry(&mut zw, root, src, Path::new(base), opts)?;
+    }
+    zw.finish().map_err(|e| format!("finish zip: {e}"))?;
+    Ok(())
+}
+
 /// List a zip's entries without extracting. Bounded by [`MAX_ENTRIES`].
 pub fn zip_list<R: Read + Seek>(reader: R) -> Result<Vec<ArchiveEntry>, String> {
     let mut archive = zip::ZipArchive::new(reader).map_err(|e| format!("open zip: {e}"))?;
@@ -486,6 +545,18 @@ mod tests {
         zip_extract(io::Cursor::new(bytes), &dir).unwrap();
         assert_eq!(std::fs::read(tmp.path().join("readme.txt")).unwrap(), b"hello");
         assert_eq!(std::fs::read(tmp.path().join("docs/guide.md")).unwrap(), b"# guide");
+    }
+
+    #[test]
+    fn zip_compress_then_extract_round_trips_a_file_and_a_dir() {
+        let (_src_tmp, src) = source_tree();
+        let mut buf = io::Cursor::new(Vec::new());
+        zip_compress(&src, &["top.txt".to_string(), "proj".to_string()], &mut buf).unwrap();
+
+        let (out_tmp, out) = dest();
+        zip_extract(io::Cursor::new(buf.into_inner()), &out).unwrap();
+        assert_eq!(std::fs::read(out_tmp.path().join("top.txt")).unwrap(), b"top");
+        assert_eq!(std::fs::read(out_tmp.path().join("proj/inner.txt")).unwrap(), b"inner");
     }
 
     #[test]

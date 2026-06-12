@@ -468,14 +468,17 @@ async fn files_compress(sources: Vec<String>, dest: String) -> Result<(), String
             .and_then(|n| n.to_str())
             .ok_or_else(|| "destination has no name".to_string())?
             .to_string();
-        if !archive::is_extractable_tar(&name) {
+        if !archive::is_extractable(&name) {
             return Err(format!("unsupported archive format: {name}"));
         }
-        let gzip = archive::is_gzip_tar(&name);
         let r = root()?;
         let rels: Vec<String> = sources.iter().map(|s| rel(s)).collect();
         let out = r.create(rel(&dest)).map_err(|e| e.to_string())?;
-        archive::compress(&r, &rels, out, gzip)
+        if archive::is_zip(&name) {
+            archive::zip_compress(&r, &rels, out)
+        } else {
+            archive::compress(&r, &rels, out, archive::is_gzip_tar(&name))
+        }
     })
     .await
     .map_err(|e| e.to_string())?
