@@ -11,6 +11,13 @@ path = "src/lib.rs"
 name = "arlen-doc-sandbox"
 path = "src/bin/arlen-doc-sandbox.rs"
 
+# The sandboxed image thumbnailer. Behind the `thumbnail` feature so document-
+# parsing consumers (the AI layer) do not pull the image-decode dependency.
+[[bin]]
+name = "arlen-thumbnail-sandbox"
+path = "src/bin/arlen-thumbnail-sandbox.rs"
+required-features = ["thumbnail"]
+
 [features]
 # Image thumbnailing: pulls the `image` decoders and builds the thumbnail
 # worker. Off by default so a doc-parse-only consumer stays lean.
@@ -29,3 +36,8 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 landlock = "0.4"
 seccompiler = "0.5"
 libc = "0.2"
+
+[dev-dependencies]
+# Synthesise test images for the thumbnail integration test (gated on the
+# `thumbnail` feature; only compiled when that feature is enabled).
+image = { version = "0.25", default-features = false, features = ["png"] }
