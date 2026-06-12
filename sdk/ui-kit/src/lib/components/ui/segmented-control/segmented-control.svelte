@@ -2,6 +2,16 @@
   /// Single-select pill row (action mode, schedule modes, access tier, …).
   /// Canonical replacement for the bespoke `seg-pill` markup re-invented per
   /// page. Bindable `value` + `onchange`, forwards `id` for deep-link/search.
+  /// An option with an `icon` renders as a compact glyph pill (toolbar
+  /// view switchers); its label becomes the accessible name and tooltip.
+  import type { Component } from "svelte";
+  import * as Tooltip from "../tooltip";
+
+  /// Any icon component taking size/strokeWidth (a Lucide icon from
+  /// whichever package instance the host app carries — the nominal
+  /// Lucide types differ across installs, the shape does not).
+  type IconLike = Component<{ size?: number | string; strokeWidth?: number | string }>;
+
   let {
     options,
     value = $bindable(),
@@ -11,8 +21,9 @@
     onchange,
     class: className,
   }: {
-    /// The selectable options, in display order.
-    options: { value: string; label: string }[];
+    /// The selectable options, in display order. With `icon` set the
+    /// pill shows the glyph only; `label` stays the accessible name.
+    options: { value: string; label: string; icon?: IconLike }[];
     /// The currently selected value (bindable).
     value: string;
     /// Optional anchor id for deep-link scroll-to-setting.
@@ -70,20 +81,47 @@
 
 <div class="seg {className ?? ''}" {id} role="radiogroup" aria-label={ariaLabel}>
   {#each options as opt, i (opt.value)}
-    <button
-      bind:this={btns[i]}
-      type="button"
-      role="radio"
-      aria-checked={value === opt.value}
-      tabindex={i === tabbableIndex ? 0 : -1}
-      {disabled}
-      class="seg-pill"
-      class:active={value === opt.value}
-      onclick={() => select(opt.value)}
-      onkeydown={(e) => onKeydown(e, i)}
-    >
-      {opt.label}
-    </button>
+    {#if opt.icon}
+      {@const Icon = opt.icon}
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <button
+              {...props}
+              bind:this={btns[i]}
+              type="button"
+              role="radio"
+              aria-checked={value === opt.value}
+              tabindex={i === tabbableIndex ? 0 : -1}
+              {disabled}
+              class="seg-pill icon-pill"
+              class:active={value === opt.value}
+              aria-label={opt.label}
+              onclick={() => select(opt.value)}
+              onkeydown={(e) => onKeydown(e, i)}
+            >
+              <Icon size={15} strokeWidth={1.75} />
+            </button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.TooltipContent side="bottom">{opt.label}</Tooltip.TooltipContent>
+      </Tooltip.Root>
+    {:else}
+      <button
+        bind:this={btns[i]}
+        type="button"
+        role="radio"
+        aria-checked={value === opt.value}
+        tabindex={i === tabbableIndex ? 0 : -1}
+        {disabled}
+        class="seg-pill"
+        class:active={value === opt.value}
+        onclick={() => select(opt.value)}
+        onkeydown={(e) => onKeydown(e, i)}
+      >
+        {opt.label}
+      </button>
+    {/if}
   {/each}
 </div>
 
@@ -111,6 +149,14 @@
       background-color var(--duration-fast) var(--ease-out),
       color var(--duration-fast) var(--ease-out),
       border-color var(--duration-fast) var(--ease-out);
+  }
+
+  .seg-pill.icon-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    width: calc(var(--height-control, 28px) + 2px);
   }
 
   .seg-pill:hover:not(:disabled):not(.active) {
