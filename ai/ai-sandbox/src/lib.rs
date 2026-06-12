@@ -141,6 +141,18 @@ fn is_invisible_or_format(ch: char) -> bool {
 #[cfg(feature = "thumbnail")]
 pub const THUMBNAIL_MAX_DIM: u32 = 256;
 
+/// Largest decoded image dimension (px per side) accepted before thumbnailing.
+/// Caps a decompression bomb's pixel buffer: 16384 covers any real photo while
+/// refusing an absurd canvas. A source larger than this is a decode error.
+#[cfg(feature = "thumbnail")]
+const MAX_DECODE_DIM: u32 = 16_384;
+
+/// The decoder's allocation budget (bytes). Bounds the working memory a hostile
+/// image can force the decoder to allocate. 256 MiB comfortably decodes a
+/// `MAX_DECODE_DIM`-class image while refusing a bomb that would OOM the worker.
+#[cfg(feature = "thumbnail")]
+const MAX_DECODE_ALLOC: u64 = 256 * 1024 * 1024;
+
 /// Decode an untrusted image and produce a downscaled PNG thumbnail.
 ///
 /// This is the transformation that runs **inside** the sandbox. Image decoders
@@ -155,8 +167,21 @@ pub fn generate_thumbnail(image_bytes: &[u8], max_dim: u32) -> Result<Vec<u8>, S
     if image_bytes.len() > MAX_BYTES {
         return Err(SandboxError::TooLarge);
     }
-    let decoded =
-        image::load_from_memory(image_bytes).map_err(|e| SandboxError::Decode(e.to_string()))?;
+    // Bound the DECODE, not just the input. A small highly-compressed file can
+    // decode to a gigantic pixel buffer (a decompression bomb); the worker has
+    // no memory cgroup, so cap the decoded dimensions and the decoder's
+    // allocation budget. A bomb is refused as a decode error, fail-closed.
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(image_bytes))
+        .with_guessed_format()
+        .map_err(|e| SandboxError::Decode(format!("format: {e}")))?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_DECODE_DIM);
+    limits.max_image_height = Some(MAX_DECODE_DIM);
+    limits.max_alloc = Some(MAX_DECODE_ALLOC);
+    reader.limits(limits);
+    let decoded = reader
+        .decode()
+        .map_err(|e| SandboxError::Decode(e.to_string()))?;
     let dim = max_dim.max(1);
     // Only downscale. Re-encoding an already-small image still sanitises it (it
     // drops the source metadata and format quirks), but it is never enlarged.
