@@ -334,6 +334,36 @@ async fn files_extract(archive: String, dest: String) -> Result<(), String> {
     .map_err(|e| e.to_string())?
 }
 
+/// Compress `sources` into the tar-family archive at `dest` (`.tar`, `.tar.gz`,
+/// `.tgz`, chosen by `dest`'s extension).
+///
+/// Runs off the listing path. Each source is stored under its basename, so
+/// extraction restores the selected items without their absolute prefix. Sources
+/// are read through the root capability; symlinks and special files are skipped.
+#[tauri::command]
+async fn files_compress(sources: Vec<String>, dest: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if sources.is_empty() {
+            return Err("nothing to compress".to_string());
+        }
+        let name = Path::new(&dest)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| "destination has no name".to_string())?
+            .to_string();
+        if !archive::is_extractable_tar(&name) {
+            return Err(format!("unsupported archive format: {name}"));
+        }
+        let gzip = archive::is_gzip_tar(&name);
+        let r = root()?;
+        let rels: Vec<String> = sources.iter().map(|s| rel(s)).collect();
+        let out = r.create(rel(&dest)).map_err(|e| e.to_string())?;
+        archive::compress(&r, &rels, out, gzip)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Open a path with the default handler.
 #[tauri::command]
 fn files_open(path: String) -> Result<(), String> {
@@ -460,6 +490,7 @@ pub fn run() {
             files_bookmark_remove,
             files_open,
             files_extract,
+            files_compress,
             files_projects,
             files_saved_searches,
             thumbnail::files_thumbnail,

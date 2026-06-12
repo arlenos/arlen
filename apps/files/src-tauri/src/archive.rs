@@ -12,7 +12,7 @@
 //! off the listing path (it can be slow); a failure leaves a partial extraction
 //! the user can delete, the conventional archive-tool behaviour.
 
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::path::{Component, Path};
 
 use cap_std::fs::Dir;
@@ -112,6 +112,84 @@ pub fn extract_named<R: Read>(name: &str, reader: R, dest: &Dir) -> Result<(), S
     }
 }
 
+/// Append one source (a file, or a directory subtree, read through `root`) to
+/// the tar `builder` under `archive_path`. Symlinks and special files are
+/// skipped, for parity with [`extract_tar`].
+fn append_entry<W: Write>(
+    builder: &mut tar::Builder<W>,
+    root: &Dir,
+    src: &Path,
+    archive_path: &Path,
+) -> Result<(), String> {
+    let meta = root
+        .symlink_metadata(src)
+        .map_err(|e| format!("stat {}: {e}", src.display()))?;
+    let ft = meta.file_type();
+    if ft.is_dir() {
+        let mut h = tar::Header::new_gnu();
+        h.set_entry_type(tar::EntryType::Directory);
+        h.set_mode(0o755);
+        h.set_size(0);
+        builder
+            .append_data(&mut h, archive_path, io::empty())
+            .map_err(|e| format!("append dir {}: {e}", archive_path.display()))?;
+        let read_dir = root
+            .read_dir(src)
+            .map_err(|e| format!("read dir {}: {e}", src.display()))?;
+        for entry in read_dir {
+            let entry = entry.map_err(|e| format!("read entry: {e}"))?;
+            let name = entry.file_name();
+            append_entry(builder, root, &src.join(&name), &archive_path.join(&name))?;
+        }
+    } else if ft.is_file() {
+        let mut f = root
+            .open(src)
+            .map_err(|e| format!("open {}: {e}", src.display()))?;
+        let mut h = tar::Header::new_gnu();
+        h.set_size(meta.len());
+        h.set_mode(0o644);
+        builder
+            .append_data(&mut h, archive_path, &mut f)
+            .map_err(|e| format!("append {}: {e}", archive_path.display()))?;
+    }
+    // Symlinks and special files are skipped.
+    Ok(())
+}
+
+/// Compress `sources` (root-relative paths) into a tar - gzip when `gzip` - written
+/// to `writer`. Each source is stored under its basename, so extraction restores
+/// the selected items without their absolute prefix. Read through the `root`
+/// capability; symlinks and special files are skipped.
+pub fn compress<W: Write>(
+    root: &Dir,
+    sources: &[String],
+    writer: W,
+    gzip: bool,
+) -> Result<(), String> {
+    fn add_all<W: Write>(b: &mut tar::Builder<W>, root: &Dir, sources: &[String]) -> Result<(), String> {
+        for s in sources {
+            let src = Path::new(s);
+            let base = src
+                .file_name()
+                .ok_or_else(|| format!("source has no name: {s}"))?;
+            append_entry(b, root, src, Path::new(base))?;
+        }
+        Ok(())
+    }
+    if gzip {
+        let enc = flate2::write::GzEncoder::new(writer, flate2::Compression::default());
+        let mut b = tar::Builder::new(enc);
+        add_all(&mut b, root, sources)?;
+        let enc = b.into_inner().map_err(|e| format!("finish tar: {e}"))?;
+        enc.finish().map_err(|e| format!("finish gzip: {e}"))?;
+    } else {
+        let mut b = tar::Builder::new(writer);
+        add_all(&mut b, root, sources)?;
+        b.finish().map_err(|e| format!("finish tar: {e}"))?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,6 +282,45 @@ mod tests {
         let (tmp, dir) = dest();
         extract_tar(tar.as_slice(), &dir).unwrap();
         assert!(!tmp.path().join("link").exists(), "the symlink was not extracted");
+    }
+
+    /// A source tree with a top-level file and a subdir-with-file.
+    fn source_tree() -> (tempfile::TempDir, Dir) {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("top.txt"), b"top").unwrap();
+        std::fs::create_dir(tmp.path().join("proj")).unwrap();
+        std::fs::write(tmp.path().join("proj/inner.txt"), b"inner").unwrap();
+        let dir = Dir::open_ambient_dir(tmp.path(), ambient_authority()).unwrap();
+        (tmp, dir)
+    }
+
+    #[test]
+    fn compress_then_extract_round_trips_a_file_and_a_dir() {
+        let (_src_tmp, src) = source_tree();
+        let mut buf = Vec::new();
+        compress(
+            &src,
+            &["top.txt".to_string(), "proj".to_string()],
+            &mut buf,
+            false,
+        )
+        .unwrap();
+
+        let (out_tmp, out) = dest();
+        extract_tar(buf.as_slice(), &out).unwrap();
+        assert_eq!(std::fs::read(out_tmp.path().join("top.txt")).unwrap(), b"top");
+        assert_eq!(std::fs::read(out_tmp.path().join("proj/inner.txt")).unwrap(), b"inner");
+    }
+
+    #[test]
+    fn gzip_compress_then_extract_round_trips() {
+        let (_src_tmp, src) = source_tree();
+        let mut buf = Vec::new();
+        compress(&src, &["top.txt".to_string()], &mut buf, true).unwrap();
+
+        let (out_tmp, out) = dest();
+        extract_tar(flate2::read::GzDecoder::new(buf.as_slice()), &out).unwrap();
+        assert_eq!(std::fs::read(out_tmp.path().join("top.txt")).unwrap(), b"top");
     }
 
     #[test]
