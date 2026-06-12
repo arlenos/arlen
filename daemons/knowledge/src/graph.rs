@@ -511,6 +511,34 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create UserAction table: {e}"))?;
 
+    // Reserved git node types. The foundation reserves Commit and Branch from the
+    // start so a future git-ingestion tier can add rows without a schema
+    // migration (Arlen's no-migration promise). No producer writes them yet;
+    // fields beyond these conventional ones are added additively via
+    // `ALTER TABLE ... ADD IF NOT EXISTS` when the ingestion lands, the same way
+    // the other tables evolve.
+    conn.query(
+        "CREATE NODE TABLE IF NOT EXISTS Commit(
+            id           STRING,
+            message      STRING,
+            author       STRING,
+            author_email STRING,
+            committed_at INT64,
+            PRIMARY KEY(id)
+        )",
+    )
+    .map_err(|e| anyhow!("create Commit table: {e}"))?;
+
+    conn.query(
+        "CREATE NODE TABLE IF NOT EXISTS Branch(
+            id   STRING,
+            name STRING,
+            head STRING,
+            PRIMARY KEY(id)
+        )",
+    )
+    .map_err(|e| anyhow!("create Branch table: {e}"))?;
+
     // Relationship tables
     conn.query(
         "CREATE REL TABLE IF NOT EXISTS ACCESSED_BY(FROM File TO App)",
@@ -885,6 +913,40 @@ mod tests {
             .expect("op-id-keyed read works after convergence");
         let rows = qr.by_ref().count();
         assert_eq!(rows, 1, "the op-id edge is queryable after convergence");
+    }
+
+    #[test]
+    fn create_schema_reserves_the_git_node_types() {
+        // The foundation reserves Commit and Branch from the start: they must be
+        // createable on a fresh store and accept a row, so a future git-ingestion
+        // tier needs no schema migration. Idempotent on an existing store.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("graph");
+        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+
+        create_schema(&conn).expect("create_schema reserves the git tables");
+        create_schema(&conn).expect("create_schema is idempotent");
+
+        conn.query(
+            "CREATE (:Commit {id:'abc123', message:'init', author:'A', \
+             author_email:'a@x', committed_at:1})",
+        )
+        .expect("a Commit node writes with its conventional columns");
+        conn.query("CREATE (:Branch {id:'b1', name:'main', head:'abc123'})")
+            .expect("a Branch node writes");
+
+        let mut qr = conn
+            .query("MATCH (b:Branch {id:'b1'}) RETURN b.head")
+            .expect("the Branch is queryable");
+        let head: Vec<String> = qr
+            .by_ref()
+            .filter_map(|row| match row.first() {
+                Some(Value::String(s)) => Some(s.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(head, vec!["abc123".to_string()], "the reserved Branch round-trips");
     }
 
     #[test]
