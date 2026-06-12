@@ -44,6 +44,7 @@ version = "0.1.0"
 dependencies = [
  "arlen-config-format",
  "cap-std",
+ "semver",
  "serde",
  "tempfile",
  "thiserror 1.0.69",

@@ -23,6 +23,7 @@
 pub mod adapter;
 pub mod allowlist;
 pub mod exec;
+pub mod manifest;
 pub mod resolve;
 pub mod write;
 
