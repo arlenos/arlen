@@ -31,6 +31,13 @@ pub const NONCE_ENV: &str = "ARLEN_TERM_NONCE";
 /// shell uses its normal startup.
 pub const ZDOTDIR_ENV: &str = "ARLEN_TERM_ZDOTDIR";
 
+/// Env var the engine sets to the user's REAL config dir when it overrides
+/// `ZDOTDIR` with the curated one. The curated config restores this (or `$HOME`)
+/// and sources the user's own `.zshrc` before the integration, so the marks fire
+/// without replacing the user's zsh setup. Must match the name the curated
+/// `.zshenv`/`.zprofile`/`.zshrc` read.
+pub const USER_ZDOTDIR_ENV: &str = "ARLEN_USER_ZDOTDIR";
+
 /// Map any backend error into an `io::Error` for the [`VtEngine`] seam.
 fn io_err(e: impl std::fmt::Display) -> std::io::Error {
     std::io::Error::other(e.to_string())
@@ -83,12 +90,18 @@ impl PtyEngine {
         cmd.env("TERM", "xterm-256color");
         cmd.env(NONCE_ENV, &nonce);
         // Point the spawned shell at the curated zsh config dir when one is
-        // provided: its `.zshrc` sources the TM-R3 integration script that, seeing
-        // the nonce above, emits the OSC 133/633 block marks this engine scans.
-        // Without it the shell uses its normal startup (in production the
-        // system-installed curated zshrc sources the integration); the engine
-        // stays silent rather than guessing a path.
+        // provided: its `.zshrc` sources the user's own `.zshrc` and then the
+        // TM-R3 integration script, which (seeing the nonce above) emits the OSC
+        // 133/633 block marks this engine scans. The user's real config dir is
+        // forwarded as `ARLEN_USER_ZDOTDIR` so the curated config restores it
+        // (the marks fire without dropping the user's setup). Without the override
+        // the shell uses its normal startup (in production the system-installed
+        // curated zshrc sources the integration); the engine stays silent rather
+        // than guessing a path.
         if let Some(zdotdir) = std::env::var_os(ZDOTDIR_ENV) {
+            if let Some(user_zdotdir) = std::env::var_os("ZDOTDIR") {
+                cmd.env(USER_ZDOTDIR_ENV, user_zdotdir);
+            }
             cmd.env("ZDOTDIR", zdotdir);
         }
         if let Some(dir) = cwd {
@@ -265,6 +278,72 @@ mod tests {
                 command: "ls -la; echo hi".into()
             }),
             "the script's nonced 633;E decoded to the exact command line, got {found:?}"
+        );
+    }
+
+    /// On-host (needs zsh + a PTY): the CURATED ZDOTDIR injection. The engine is
+    /// pointed at the curated config dir (`ARLEN_TERM_ZDOTDIR`) with a throwaway
+    /// user config dir (`ZDOTDIR`); the curated `.zshrc` must source the user's
+    /// own `.zshrc` (proven by a marker file it writes) AND the integration
+    /// script (proven by the interactive shell's first precmd emitting a
+    /// `CwdChanged`/`PromptStart` mark). Confirms marks fire through the curated
+    /// dir without dropping the user's setup. `#[ignore]`d (on-host); run with
+    /// `--ignored --test-threads=1` (it mutates process env).
+    #[test]
+    #[ignore]
+    fn the_curated_zdotdir_sources_the_user_rc_and_the_integration() {
+        let curated = concat!(env!("CARGO_MANIFEST_DIR"), "/../integration/zdotdir");
+        let tmp = std::env::temp_dir().join(format!("arlen-term-zdotdir-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&tmp);
+        let marker = tmp.join("user-rc-ran");
+        let _ = std::fs::remove_file(&marker);
+        // The throwaway "user" .zshrc: prove it ran by touching a marker, and be
+        // a no-op interactive shell otherwise (no prompt framework to hang on).
+        std::fs::write(tmp.join(".zshrc"), format!("touch {}\n", marker.display())).unwrap();
+
+        let prev_zdotdir = std::env::var_os("ZDOTDIR");
+        let prev_curated = std::env::var_os(ZDOTDIR_ENV);
+        std::env::set_var("ZDOTDIR", &tmp);
+        std::env::set_var(ZDOTDIR_ENV, curated);
+
+        let mut eng = PtyEngine::spawn("zsh", &["-i"], None, 80, 24).unwrap();
+
+        // The first interactive precmd emits 633;A (PromptStart) + OSC 7
+        // (CwdChanged) - only if the curated .zshrc sourced the integration.
+        let mut found = Vec::new();
+        for _ in 0..100 {
+            found.extend(eng.drain_events());
+            let integration_ran = found.iter().any(|e| {
+                matches!(e, VtEvent::PromptStart | VtEvent::CwdChanged { .. })
+            });
+            if integration_ran && marker.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        drop(eng);
+
+        // Restore process env before asserting (so a failure does not leak state).
+        match prev_zdotdir {
+            Some(v) => std::env::set_var("ZDOTDIR", v),
+            None => std::env::remove_var("ZDOTDIR"),
+        }
+        match prev_curated {
+            Some(v) => std::env::set_var(ZDOTDIR_ENV, v),
+            None => std::env::remove_var(ZDOTDIR_ENV),
+        }
+        let user_ran = marker.exists();
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        assert!(
+            user_ran,
+            "the curated .zshrc sourced the user's .zshrc (marker written)"
+        );
+        assert!(
+            found
+                .iter()
+                .any(|e| matches!(e, VtEvent::PromptStart | VtEvent::CwdChanged { .. })),
+            "the curated .zshrc sourced the integration (a prompt/cwd mark fired), got {found:?}"
         );
     }
 
