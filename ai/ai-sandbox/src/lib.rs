@@ -184,7 +184,21 @@ pub fn generate_thumbnail(image_bytes: &[u8], max_dim: u32) -> Result<Vec<u8>, S
 /// [`MAX_BYTES`]. Any failure is a [`SandboxError`]; the caller passes
 /// no text to the model on error.
 pub fn parse_document(sandbox_bin: &Path, document: &[u8]) -> Result<String, SandboxError> {
-    if document.len() > MAX_BYTES {
+    let output = run_worker(sandbox_bin, document)?;
+    // The worker already emitted valid UTF-8 from extract_text.
+    String::from_utf8(output).map_err(|e| SandboxError::Process(format!("non-utf8 output: {e}")))
+}
+
+/// Spawn the sandbox worker `sandbox_bin`, feed it `input` on stdin, and return
+/// its stdout (capped at [`MAX_BYTES`]).
+///
+/// Shared by [`parse_document`] and the thumbnail worker. It owns the
+/// deadlock-safe threaded piping (stdin and stdout each on their own thread so a
+/// large input cannot deadlock against a full output pipe), the
+/// [`PARSE_TIMEOUT`] budget with a kill, and the exit-status and output-size
+/// checks. The caller interprets the returned bytes (text, an image, ...).
+fn run_worker(sandbox_bin: &Path, input: &[u8]) -> Result<Vec<u8>, SandboxError> {
+    if input.len() > MAX_BYTES {
         return Err(SandboxError::TooLarge);
     }
 
@@ -199,15 +213,15 @@ pub fn parse_document(sandbox_bin: &Path, document: &[u8]) -> Result<String, San
         .spawn()
         .map_err(|e| SandboxError::Process(format!("spawn: {e}")))?;
 
-    // Feed stdin from a thread so a large document cannot deadlock
+    // Feed stdin from a thread so a large input cannot deadlock
     // against a full stdout pipe.
     let mut stdin = child
         .stdin
         .take()
         .ok_or_else(|| SandboxError::Process("no stdin".to_string()))?;
-    let input = document.to_vec();
+    let owned = input.to_vec();
     let writer = std::thread::spawn(move || {
-        let _ = stdin.write_all(&input);
+        let _ = stdin.write_all(&owned);
         // Drop closes stdin so the worker sees EOF.
     });
 
@@ -252,16 +266,25 @@ pub fn parse_document(sandbox_bin: &Path, document: &[u8]) -> Result<String, San
         .map_err(|_| SandboxError::Process("stdout reader panicked".to_string()))?;
 
     if !status.success() {
-        return Err(SandboxError::WorkerFailed(format!(
-            "exit status {status}"
-        )));
+        return Err(SandboxError::WorkerFailed(format!("exit status {status}")));
     }
     if output.len() > MAX_BYTES {
         return Err(SandboxError::TooLarge);
     }
-    // The worker already emitted valid UTF-8 from extract_text.
-    String::from_utf8(output)
-        .map_err(|e| SandboxError::Process(format!("non-utf8 output: {e}")))
+    Ok(output)
+}
+
+/// Generate a thumbnail by running the sandboxed image worker as a subprocess.
+///
+/// `sandbox_bin` is the path to the `arlen-thumbnail-sandbox` binary. The
+/// untrusted `image` bytes are written to the worker's stdin; the worker decodes
+/// and downscales them inside its Landlock + seccomp lockdown and writes back the
+/// PNG thumbnail, which is returned. The worker is killed if it runs past the
+/// time budget, and both input and output are bounded by [`MAX_BYTES`]. Any
+/// failure is a [`SandboxError`]; the caller produces no thumbnail on error.
+#[cfg(feature = "thumbnail")]
+pub fn thumbnail(sandbox_bin: &Path, image: &[u8]) -> Result<Vec<u8>, SandboxError> {
+    run_worker(sandbox_bin, image)
 }
 
 #[cfg(test)]
