@@ -21,7 +21,7 @@ use crate::ops::{self, ConflictPolicy, OpResult};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UndoableOp {
     /// A new entry was created at `path` (new-folder, copy, duplicate). Inverse:
-    /// delete it.
+    /// trash it (recoverable, never a permanent delete).
     Created {
         /// The root-relative path of the created entry.
         path: PathBuf,
@@ -57,7 +57,12 @@ pub enum UndoableOp {
 /// fail rather than clobber.
 pub fn apply_inverse(op: &UndoableOp, dir: &Dir, trash: &Dir) -> OpResult<()> {
     match op {
-        UndoableOp::Created { path } => ops::delete_permanent(dir, path),
+        // Undo a create by TRASHING the entry, never permanently deleting it: an
+        // accidental undo (e.g. of a folder the user has since filled with files)
+        // must stay recoverable from the trash.
+        UndoableOp::Created { path } => {
+            ops::trash_entry(dir, path, trash, path.as_path()).map(|_| ())
+        }
         UndoableOp::Renamed {
             parent,
             from_name,
@@ -140,15 +145,20 @@ mod tests {
     }
 
     #[test]
-    fn undo_of_a_created_entry_deletes_it() {
+    fn undo_of_a_created_entry_trashes_it_recoverably() {
         let (tmp, dir, trash) = fixture();
         std::fs::create_dir(tmp.path().join("root/newdir")).unwrap();
+        // The user filled the new folder before undoing - that content must not be
+        // permanently lost.
+        std::fs::write(tmp.path().join("root/newdir/keep.txt"), b"important").unwrap();
         let mut stack = UndoStack::new();
         stack.record(vec![UndoableOp::Created {
             path: PathBuf::from("newdir"),
         }]);
         assert!(stack.undo(&dir, &trash).unwrap());
+        // Gone from the listing, but recoverable from the trash (not destroyed).
         assert!(!tmp.path().join("root/newdir").exists());
+        assert!(tmp.path().join("trash/files/newdir/keep.txt").exists());
         assert!(!stack.can_undo());
     }
 
