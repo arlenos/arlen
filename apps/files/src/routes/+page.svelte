@@ -1,36 +1,32 @@
 <script lang="ts">
-  /// The browser surface: tab strip, toolbar, the shared FileBrowser
-  /// on the active tab's controller, status line — plus the FM-only
-  /// operations layer: context menu, clipboard, rename, trash and the
-  /// permanent-delete confirmation.
+  /// The browser surface: the shared FileBrowser on the active tab's
+  /// controller, the status line — plus the FM-only operations layer:
+  /// context menu, clipboard, rename, trash and the permanent-delete
+  /// confirmation. The chrome (nav, breadcrumb, tabs, toggles) lives
+  /// in the layout's headerbar.
   import { onMount, tick } from "svelte";
-  import { get, writable } from "svelte/store";
-  import { invoke } from "@tauri-apps/api/core";
+  import { get } from "svelte/store";
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import {
     FileBrowser,
     joinPath,
     type FileEntry,
-    type Place,
   } from "@arlen/ui-kit/components/browser";
   import { openPath } from "$lib/adapter";
   import { activeController, newTab, tabs } from "$lib/stores/tabs";
   import { focusedController, focusedPane, paneB, splitView } from "$lib/stores/panes";
-  import { addBookmark, loadPlaces } from "$lib/stores/places";
-  import { infoOpen, pathEditing } from "$lib/stores/ui";
-  import { shellPresent } from "$lib/stores/topbar";
+  import { addBookmark, homePath, loadPlaces } from "$lib/stores/places";
+  import { infoOpen } from "$lib/stores/ui";
   import { clipboard, paste, runOp } from "$lib/stores/ops";
-  import FmToolbar from "$lib/components/FmToolbar.svelte";
   import FmStatusBar from "$lib/components/FmStatusBar.svelte";
   import OpsOverlays from "$lib/components/OpsOverlays.svelte";
   import FmSearchBar from "$lib/components/FmSearchBar.svelte";
   import FmSearchResults from "$lib/components/FmSearchResults.svelte";
   import FmInfoPanel from "$lib/components/FmInfoPanel.svelte";
   import { savedSearches } from "$lib/stores/places";
-  import { searchOpen, searchResults, closeSearch } from "$lib/stores/search";
+  import { searchOpen, searchResults } from "$lib/stores/search";
 
-  const homePath = writable("/home");
   let renamingName = $state<string | null>(null);
   let confirmDelete = $state(false);
 
@@ -150,32 +146,14 @@
   );
 
   onMount(async () => {
-    try {
-      const places = await invoke<{ orte: Place[] }>("files_places");
-      const home = places.orte.find((p) => p.icon === "home");
-      if (home) homePath.set(home.path);
-      if ($tabs.length === 0) newTab(home?.path ?? "/home");
-    } catch {
-      if ($tabs.length === 0) newTab("/home");
-    }
     await loadPlaces();
+    if (get(tabs).length === 0) newTab(get(homePath));
   });
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="fm" onkeydown={onOpsKeydown}>
   {#if $activeController && $focusedController}
-    {#if !$shellPresent}
-    <FmToolbar
-      controller={$focusedController}
-      homePath={$homePath}
-      bind:pathEditing={$pathEditing}
-      searchOpen={$searchOpen}
-      onsearchtoggle={() => ($searchOpen ? closeSearch() : searchOpen.set(true))}
-      infoOpen={$infoOpen}
-      oninfotoggle={() => infoOpen.update((v) => !v)}
-    />
-    {/if}
     <FmSearchBar path={currentPath()} onsave={saveSearch} />
     <ContextMenu.Root>
       <ContextMenu.Trigger class="fm-browse">

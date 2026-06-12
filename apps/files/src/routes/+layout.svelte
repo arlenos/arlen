@@ -1,9 +1,11 @@
 <script lang="ts">
   /// Root layout: the file manager shell (file-manager-ui-plan.md).
-  /// Headerless CSD like the terminal: a slim drag strip with the
-  /// sidebar trigger and the window controls; everything essential
-  /// lives in the toolbar and the content below. Global shortcuts:
-  /// Ctrl+T tab, Ctrl+W close tab, Ctrl+L edit the path.
+  /// One chrome row — the headerbar carries everything: sidebar
+  /// trigger, back/forward/up, the breadcrumb (outside the shell;
+  /// under it the topbar shows the path), tabs, the search and info
+  /// toggles, the view controls and the window buttons. Global
+  /// shortcuts: Ctrl+T tab, Ctrl+W close tab, Ctrl+L edit the path,
+  /// Ctrl+H hidden, Ctrl+F search, Ctrl+I info, F3 split.
   import "../app.css";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import {
@@ -12,13 +14,17 @@
     SidebarTrigger,
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
+  import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
+  import { Info, Search } from "lucide-svelte";
   import { tauriAvailable } from "$lib/tauri";
   import FmSidebar from "$lib/components/FmSidebar.svelte";
+  import FmHeaderNav from "$lib/components/FmHeaderNav.svelte";
   import TabStrip from "$lib/components/TabStrip.svelte";
   import FmViewControls from "$lib/components/FmViewControls.svelte";
   import { newTab, closeTab, activeTabId } from "$lib/stores/tabs";
   import { focusedController, toggleSplit } from "$lib/stores/panes";
-  import { initTopbar } from "$lib/stores/topbar";
+  import { homePath } from "$lib/stores/places";
+  import { initTopbar, shellPresent } from "$lib/stores/topbar";
   import { onMount } from "svelte";
   import { infoOpen, pathEditing } from "$lib/stores/ui";
   import { closeSearch, searchOpen } from "$lib/stores/search";
@@ -29,6 +35,11 @@
   onMount(() => {
     void initTopbar();
   });
+
+  function toggleSearch() {
+    if (get(searchOpen)) closeSearch();
+    else searchOpen.set(true);
+  }
 
   function onWindowKeydown(e: KeyboardEvent) {
     if (e.key === "F3" && !e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -46,8 +57,7 @@
     }
     if (key === "f") {
       e.preventDefault();
-      if (get(searchOpen)) closeSearch();
-      else searchOpen.set(true);
+      toggleSearch();
       return;
     }
     if (key === "i") {
@@ -100,10 +110,43 @@
       class="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-background pl-2 pr-2"
     >
       <SidebarTrigger class="-ml-1" />
-      <div class="flex min-w-0 flex-1 items-center gap-1 pl-1">
-        <TabStrip />
-      </div>
-      <FmViewControls />
+      {#if $focusedController}
+        <FmHeaderNav
+          controller={$focusedController}
+          homePath={$homePath}
+          showCrumb={!$shellPresent}
+          bind:pathEditing={$pathEditing}
+        />
+        {#if $shellPresent && !$pathEditing}
+          <!-- No crumb in the middle: the tabs take the flexible room. -->
+          <div class="flex min-w-0 flex-1 items-center gap-1">
+            <TabStrip />
+          </div>
+        {:else}
+          <TabStrip />
+        {/if}
+        <div class="flex items-center gap-1">
+          <IconAction
+            label="Search"
+            size="control"
+            active={$searchOpen}
+            onclick={toggleSearch}
+          >
+            <Search size={15} strokeWidth={1.75} />
+          </IconAction>
+          <IconAction
+            label={$infoOpen ? "Close info" : "Show info"}
+            size="control"
+            active={$infoOpen}
+            onclick={() => infoOpen.update((v) => !v)}
+          >
+            <Info size={15} strokeWidth={1.75} />
+          </IconAction>
+        </div>
+        <FmViewControls />
+      {:else}
+        <div class="flex-1"></div>
+      {/if}
       {#if tauriAvailable}
         <WindowButtons />
       {/if}

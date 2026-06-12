@@ -61,19 +61,22 @@
     overflow: hidden;
   }
 
+  /* Every tab is a quiet pill: next to the breadcrumb in the merged
+     headerbar, a bare inactive label would read as another crumb. */
   .ts-tab {
     display: inline-flex;
     align-items: center;
     height: var(--height-control, 28px);
     border-radius: var(--radius-input);
+    background: color-mix(in srgb, var(--foreground) 4%, transparent);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .ts-tab:hover {
-    background: color-mix(in srgb, var(--foreground) 5%, transparent);
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
   }
   .ts-tab.active {
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    background: color-mix(in srgb, var(--foreground) 10%, transparent);
     color: var(--foreground);
   }
 
