@@ -10,5 +10,7 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 thiserror = "1"
 sha2 = "0.10"
+# Verify the org's detached Ed25519 signature over the .lenv bytes (TOFU trust).
+ed25519-dalek = "2"
 
 [workspace]
