@@ -51,6 +51,8 @@ export interface Place {
   icon: string;
   path: string;
   offline?: boolean;
+  /// The row offers a quiet hover remove (user bookmarks).
+  removable?: boolean;
 }
 
 /// One sidebar group of places.

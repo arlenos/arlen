@@ -117,12 +117,57 @@
     onactivate?.(entry, joinPath($path, entry.name));
   }
 
+  // Type-ahead: printable keys accumulate a 1s prefix buffer and
+  // jump the cursor to the next matching name. The vim keys hjkl and
+  // the g chord take precedence over type-ahead by design (the
+  // ranger trade-off); names starting with those letters are reached
+  // by arrows or a longer prefix.
+  let typeBuffer = "";
+  let typeTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingG = false;
+
+  function typeAhead(ch: string) {
+    typeBuffer += ch.toLowerCase();
+    if (typeTimer) clearTimeout(typeTimer);
+    typeTimer = setTimeout(() => (typeBuffer = ""), 1000);
+    const start = (selection.cursor() ?? -1) + (typeBuffer.length === 1 ? 1 : 0);
+    const n = visible.length;
+    for (let off = 0; off < n; off++) {
+      const i = (start + off) % n;
+      if (visible[i]?.name.toLowerCase().startsWith(typeBuffer)) {
+        selection.click(i);
+        publish();
+        scrollCursorIntoView();
+        return;
+      }
+    }
+  }
+
   /// The desktop keyboard grammar: arrows move the cursor (Shift
   /// extends), Home/End jump, Enter activates, Backspace goes up,
   /// Ctrl+A selects all, Escape clears, F2 renames the cursor entry.
+  /// The vim layer: j/k down/up, h up-a-folder, l descend, gg/G ends.
   function onkeydown(e: KeyboardEvent) {
     if (renamingName !== null) return;
-    const key = e.key;
+    let key = e.key;
+    // g is a chord prefix: gg jumps to the first entry.
+    if (pendingG) {
+      pendingG = false;
+      if (key === "g" && !e.ctrlKey && !e.metaKey) {
+        key = "Home";
+      }
+    } else if (key === "g" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      pendingG = true;
+      setTimeout(() => (pendingG = false), 500);
+      return;
+    }
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (key === "j") key = "ArrowDown";
+      else if (key === "k") key = "ArrowUp";
+      else if (key === "h") key = "Backspace";
+      else if (key === "l") key = "Enter";
+      else if (key === "G") key = "End";
+    }
     if (key === "ArrowDown" || key === "ArrowUp") {
       e.preventDefault();
       const stride = $viewMode === "grid" ? gridColumns() : 1;
@@ -163,7 +208,92 @@
         e.preventDefault();
         renamingName = entry.name;
       }
+    } else if (
+      key.length === 1 &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      /[\x20-\x7e]/.test(key)
+    ) {
+      e.preventDefault();
+      typeAhead(key);
     }
+  }
+
+  // ── rubber-band (marquee) selection ──────────────────────────────
+  // Drag from empty space draws the rectangle; intersection selects
+  // (Ctrl adds). The list intersects via the row metric, so windowed
+  // rows off-DOM still select; the grid reads tile rects.
+  let marquee = $state<{ x: number; y: number; w: number; h: number } | null>(null);
+  let marqueeStart: { x: number; y: number; additive: boolean } | null = null;
+
+  function contentPoint(e: PointerEvent): { x: number; y: number } {
+    const r = rootEl!.getBoundingClientRect();
+    return {
+      x: e.clientX - r.left + rootEl!.scrollLeft,
+      y: e.clientY - r.top + rootEl!.scrollTop,
+    };
+  }
+
+  function onpointerdown(e: PointerEvent) {
+    if (e.button !== 0 || !rootEl || $viewMode === "miller") return;
+    const t = e.target as HTMLElement;
+    if (t.closest(".file-row, .file-tile, button, input, .mc-row")) return;
+    marqueeStart = { ...contentPoint(e), additive: e.ctrlKey || e.metaKey };
+    rootEl.setPointerCapture(e.pointerId);
+  }
+
+  function onpointermove(e: PointerEvent) {
+    if (!marqueeStart || !rootEl) return;
+    const p = contentPoint(e);
+    const x = Math.min(marqueeStart.x, p.x);
+    const y = Math.min(marqueeStart.y, p.y);
+    const w = Math.abs(p.x - marqueeStart.x);
+    const h = Math.abs(p.y - marqueeStart.y);
+    if (!marquee && w < 4 && h < 4) return;
+    marquee = { x, y, w, h };
+    applyMarquee();
+  }
+
+  function onpointerup() {
+    if (!marqueeStart) return;
+    const wasDrag = marquee !== null;
+    marqueeStart = null;
+    marquee = null;
+    if (!wasDrag) {
+      // A plain click on empty space clears the selection.
+      selection.clear();
+      publish();
+    }
+  }
+
+  function applyMarquee() {
+    if (!marquee || !rootEl) return;
+    const hits: number[] = [];
+    if ($viewMode === "list") {
+      const headerPx = 28;
+      const pad = 4;
+      const rowPx = 32;
+      const top = marquee.y - headerPx - pad;
+      const bottom = top + marquee.h;
+      const lo = Math.max(0, Math.floor(top / rowPx));
+      const hi = Math.min(visible.length - 1, Math.floor(bottom / rowPx));
+      for (let i = lo; i <= hi; i++) hits.push(i);
+    } else {
+      const base = rootEl.getBoundingClientRect();
+      const nodes = rootEl.querySelectorAll(".file-tile");
+      nodes.forEach((node, i) => {
+        const r = node.getBoundingClientRect();
+        const x = r.left - base.left + rootEl!.scrollLeft;
+        const y = r.top - base.top + rootEl!.scrollTop;
+        const m = marquee!;
+        if (x < m.x + m.w && x + r.width > m.x && y < m.y + m.h && y + r.height > m.y) {
+          hits.push(i);
+        }
+      });
+    }
+    selection.setSelected(hits, marqueeStart?.additive ?? false);
+    publish();
   }
 
   let rootEl = $state<HTMLDivElement | null>(null);
@@ -209,6 +339,9 @@
   aria-label="File browser"
   tabindex="0"
   onkeydown={onkeydown}
+  onpointerdown={onpointerdown}
+  onpointermove={onpointermove}
+  onpointerup={onpointerup}
   oncontextmenu={(e) => {
     if (!(e.target as HTMLElement).closest(".file-row")) {
       oncontextmenu?.(null, e);
@@ -267,10 +400,17 @@
       }}
     />
   {/if}
+  {#if marquee}
+    <div
+      class="fb-marquee"
+      style="left: {marquee.x}px; top: {marquee.y}px; width: {marquee.w}px; height: {marquee.h}px;"
+    ></div>
+  {/if}
 </div>
 
 <style>
   .file-browser {
+    position: relative;
     display: flex;
     flex-direction: column;
     flex: 1;
@@ -281,6 +421,15 @@
        drops the metadata columns instead of crushing the names. */
     container-type: inline-size;
     container-name: browser;
+  }
+
+  .fb-marquee {
+    position: absolute;
+    z-index: 2;
+    pointer-events: none;
+    border: 1px solid color-mix(in srgb, var(--color-accent, var(--primary)) 45%, transparent);
+    background: color-mix(in srgb, var(--color-accent, var(--primary)) 10%, transparent);
+    border-radius: var(--radius-chip);
   }
 
   .fb-state {

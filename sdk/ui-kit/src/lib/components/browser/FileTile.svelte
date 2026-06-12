@@ -10,6 +10,7 @@
     entry,
     selected = false,
     focused = false,
+    badge = null,
     icon,
     ontileclick,
     ontiledblclick,
@@ -18,6 +19,10 @@
     entry: FileEntry;
     selected?: boolean;
     focused?: boolean;
+    /// The quiet bottom-right corner signal (filetype on thumbnails,
+    /// later the KG-state overlay). Null renders nothing — the corner
+    /// stays empty on plain icons by design.
+    badge?: string | null;
     icon?: Snippet<[FileEntry]>;
     ontileclick?: (e: MouseEvent) => void;
     ontiledblclick?: (e: MouseEvent) => void;
@@ -44,6 +49,9 @@
       {@render icon(entry)}
     {:else}
       <Icon size={32} strokeWidth={1.25} />
+    {/if}
+    {#if badge}
+      <span class="ft-badge">{badge}</span>
     {/if}
   </span>
   <span class="ft-name">{entry.name}</span>
@@ -73,8 +81,23 @@
   }
 
   .ft-icon {
+    position: relative;
     display: inline-flex;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+  .ft-badge {
+    position: absolute;
+    right: -6px;
+    bottom: -2px;
+    padding: 0 4px;
+    border-radius: var(--radius-chip);
+    background: color-mix(in srgb, var(--background) 85%, var(--foreground) 15%);
+    color: color-mix(in srgb, var(--foreground) 70%, transparent);
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    line-height: 1.5;
   }
 
   .ft-name {

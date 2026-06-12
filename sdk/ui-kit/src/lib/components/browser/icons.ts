@@ -6,6 +6,7 @@
 import type { Icon } from "@lucide/svelte";
 import {
   Archive,
+  Bookmark,
   Cloud,
   Download,
   File,
@@ -67,6 +68,7 @@ const PLACE_ICONS: Record<string, typeof Icon> = {
   trash: Trash2,
   project: FolderDot,
   search: Search,
+  bookmark: Bookmark,
 };
 
 export function placeIcon(key: string): typeof Icon {
