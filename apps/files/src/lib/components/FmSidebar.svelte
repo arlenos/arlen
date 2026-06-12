@@ -49,7 +49,7 @@
     </span>
   </SidebarHeader>
 
-  <SidebarContent>
+  <SidebarContent class="fm-sidebar-scroll">
     <PlacesSidebar
       groups={$placeGroups}
       {activePath}
@@ -80,6 +80,20 @@
 </Sidebar>
 
 <style>
+  /* A sticky fade at the scroll edge says "more below" instead of a
+     hard mid-row cut. */
+  :global(.fm-sidebar-scroll)::after {
+    content: "";
+    position: sticky;
+    bottom: 0;
+    display: block;
+    height: 16px;
+    margin-top: -16px;
+    flex-shrink: 0;
+    background: linear-gradient(to bottom, transparent, var(--sidebar));
+    pointer-events: none;
+  }
+
   .fs-label {
     font-size: 0.8125rem;
     min-width: 0;

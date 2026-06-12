@@ -187,7 +187,7 @@
     flex-shrink: 0;
   }
   .ts-dot-exited {
-    background: color-mix(in srgb, var(--sidebar-foreground) 30%, transparent);
+    background: color-mix(in srgb, var(--sidebar-foreground) 40%, transparent);
   }
   .ts-dot-failed {
     background: var(--color-error);

@@ -8,18 +8,22 @@
   /// design (the multiline costume is M4).
   import { tick } from "svelte";
   import { writable } from "svelte/store";
-  import { terminalInput, type Session } from "$lib/contract";
+  import { terminalInput, type GitInfo, type Session } from "$lib/contract";
   import { composerPrefill } from "$lib/stores/composer";
   import PromptLine from "./PromptLine.svelte";
 
   let {
     session,
+    git = null,
     onsent,
   }: {
     /// The active session; null hides the prompt entirely (the page
     /// shows its failure state instead). An exited session shows the
     /// line disabled with the restart hint as its placeholder.
     session: Session | null;
+    /// Git state for the live prompt — the host hands down the last
+    /// block's (live git belongs to the engine seam, flagged).
+    git?: GitInfo | null;
     /// Called after the backend accepted the input, so the page can
     /// refresh the block stream.
     onsent?: () => void;
@@ -90,7 +94,7 @@
 
 {#if session}
   <div class="active-prompt">
-    <PromptLine cwd={session.cwd} />
+    <PromptLine cwd={session.cwd} {git} />
     <div class="ap-line">
       <span class="ap-char" aria-hidden="true">❯</span>
       <input
@@ -124,12 +128,15 @@
     align-items: baseline;
     gap: 8px;
   }
+  /* Full strength: this is THE input spot; the resting block
+     markers stay dimmed. Chevron from plain JetBrains Mono (the NF
+     Mono variant squeezes it). */
   .ap-char {
     flex-shrink: 0;
-    font-family: var(--font-mono, ui-monospace, monospace);
+    font-family: "JetBrains Mono", var(--font-mono, ui-monospace, monospace);
     font-size: 0.8125rem;
     line-height: 1.5;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: var(--foreground);
   }
   /* The input is bare text in the stream: no border, no background,
      no focus ring — the blinking caret is the affordance. */

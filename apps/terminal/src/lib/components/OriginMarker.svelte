@@ -18,7 +18,11 @@
 {/if}
 
 <style>
+  /* The chevron comes from plain JetBrains Mono — the Nerd Font Mono
+     variant squeezes U+276F into a half cell and it reads like a
+     closing paren. */
   .om {
+    font-family: "JetBrains Mono", var(--font-mono, ui-monospace, monospace);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .om-agent {
