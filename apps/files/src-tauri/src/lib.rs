@@ -10,8 +10,10 @@ mod archive;
 mod capability;
 mod thumbnail;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
+use arlen_file_browser_core::undo::{UndoStack, UndoableOp};
 use arlen_file_browser_core::{
     breadcrumb, list_dir, ops, properties, search, sort_entries, Crumb, FileEntry, SortKey,
 };
@@ -263,63 +265,105 @@ fn files_op(
     src: Vec<String>,
     dst: Option<String>,
     policy: Option<String>,
+    undo: tauri::State<'_, Mutex<UndoStack>>,
 ) -> Result<(), String> {
     let dir = root()?;
     let pol = conflict_policy(policy.as_deref());
+    // The undoable ops this call produced; recorded as one batch on full success
+    // (a permanent delete records nothing - it has no inverse). A `Skipped`
+    // outcome contributes no undo entry.
+    let mut undoable: Vec<UndoableOp> = Vec::new();
     match kind.as_str() {
         "new_folder" => {
             let parent = dst.ok_or("new_folder needs the destination folder")?;
             let name = src.first().ok_or("new_folder needs a name")?;
-            ops::new_folder(&dir, rel(&parent), name)
-                .map(|_| ())
-                .map_err(|e| e.to_string())
+            if let ops::OpOutcome::Created { target } =
+                ops::new_folder(&dir, rel(&parent), name).map_err(|e| e.to_string())?
+            {
+                undoable.push(UndoableOp::Created { path: target });
+            }
         }
         "rename" => {
             let from = src.first().ok_or("rename needs a source")?;
             let to = dst.ok_or("rename needs the new name")?;
             let (parent, from_name) = split_parent(from)?;
-            ops::rename(&dir, rel(&parent), &from_name, &to)
-                .map(|_| ())
-                .map_err(|e| e.to_string())
+            ops::rename(&dir, rel(&parent), &from_name, &to).map_err(|e| e.to_string())?;
+            undoable.push(UndoableOp::Renamed {
+                parent: PathBuf::from(rel(&parent)),
+                from_name,
+                to_name: to,
+            });
         }
         "trash" => {
             let trash = trash_dir()?;
             for s in &src {
-                ops::trash_entry(&dir, rel(s), &trash, Path::new(s))
+                let trashed = ops::trash_entry(&dir, rel(s), &trash, Path::new(s))
                     .map_err(|e| e.to_string())?;
+                undoable.push(UndoableOp::Trashed {
+                    trashed_name: trashed.trashed_name,
+                    original: PathBuf::from(rel(s)),
+                });
             }
-            Ok(())
         }
         "copy" | "move" => {
             let dest_dir = dst.ok_or("copy and move need the destination folder")?;
             for s in &src {
                 let (_, name) = split_parent(s)?;
                 let target = format!("{}/{}", dest_dir.trim_end_matches('/'), name);
-                let r = if kind == "copy" {
+                let outcome = if kind == "copy" {
                     ops::copy_entry(&dir, rel(s), &dir, rel(&target), pol)
                 } else {
                     ops::move_entry(&dir, rel(s), &dir, rel(&target), pol)
-                };
-                r.map(|_| ()).map_err(|e| e.to_string())?;
+                }
+                .map_err(|e| e.to_string())?;
+                match outcome {
+                    ops::OpOutcome::Created { target } if kind == "copy" => {
+                        undoable.push(UndoableOp::Created { path: target });
+                    }
+                    ops::OpOutcome::Renamed { target } if kind == "move" => {
+                        let (orig_parent, _) = split_parent(s)?;
+                        undoable.push(UndoableOp::Moved {
+                            current: target,
+                            original_parent: PathBuf::from(rel(&orig_parent)),
+                        });
+                    }
+                    _ => {} // Skipped (or a mismatched shape): nothing to undo.
+                }
             }
-            Ok(())
         }
         "duplicate" => {
             for s in &src {
-                ops::copy_entry(&dir, rel(s), &dir, rel(s), ops::ConflictPolicy::Rename)
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())?;
+                if let ops::OpOutcome::Created { target } =
+                    ops::copy_entry(&dir, rel(s), &dir, rel(s), ops::ConflictPolicy::Rename)
+                        .map_err(|e| e.to_string())?
+                {
+                    undoable.push(UndoableOp::Created { path: target });
+                }
             }
-            Ok(())
         }
         "delete" => {
             for s in &src {
                 ops::delete_permanent(&dir, rel(s)).map_err(|e| e.to_string())?;
             }
-            Ok(())
+            // A permanent delete has no inverse; nothing is recorded.
         }
-        other => Err(format!("unknown operation: {other}")),
+        other => return Err(format!("unknown operation: {other}")),
     }
+    if let Ok(mut stack) = undo.lock() {
+        stack.record(undoable);
+    }
+    Ok(())
+}
+
+/// Undo the most recent file operation (`Ctrl+Z`). Pops the last recorded batch
+/// and applies each inverse through the ops; `Ok(false)` when there is nothing to
+/// undo. A permanent delete was never recorded, so it is never offered as undo.
+#[tauri::command]
+fn files_undo(undo: tauri::State<'_, Mutex<UndoStack>>) -> Result<bool, String> {
+    let dir = root()?;
+    let trash = trash_dir()?;
+    let mut stack = undo.lock().map_err(|e| e.to_string())?;
+    stack.undo(&dir, &trash).map_err(|e| e.to_string())
 }
 
 /// A root-relative core path to the real absolute filesystem path. The FM core
@@ -529,6 +573,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
         .manage(thumbnail::ThumbnailLimiter::new())
+        .manage(Mutex::new(UndoStack::new()))
         .invoke_handler(tauri::generate_handler![
             shell_present,
             frontend_log,
@@ -538,6 +583,7 @@ pub fn run() {
             files_info,
             files_search,
             files_op,
+            files_undo,
             files_bookmarks,
             files_bookmark_add,
             files_bookmark_remove,
