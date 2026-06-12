@@ -14,6 +14,7 @@
 pub mod bulk_rename;
 pub mod ops;
 pub mod search;
+pub mod undo;
 pub mod selection;
 pub mod thumbnail_cache;
 
