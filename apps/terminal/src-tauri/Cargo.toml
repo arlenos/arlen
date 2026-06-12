@@ -30,3 +30,6 @@ arlen-terminal-engine = { path = "../engine" }
 # capability strip (same reader as the harness).
 toml = "0.8"
 dirs = "5"
+
+[dev-dependencies]
+tempfile = "3"

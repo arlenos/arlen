@@ -8,6 +8,7 @@
 //! `arlen_terminal_core::stub` until then.
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Instant;
 
@@ -186,6 +187,88 @@ fn terminal_projects() -> Vec<Project> {
     stub::projects()
 }
 
+/// The terminal's persisted config (`~/.config/arlen/terminal.toml`). Today the
+/// monospace font size - terminal-ui-plan.md §5b, the load-bearing readability
+/// setting ("the text is too small"); the zoom shortcuts apply a transient delta
+/// over this base, and the grid font size the cosmic-comp subsurface reads is
+/// driven from it once that render lands.
+#[derive(serde::Deserialize, serde::Serialize, Clone, Debug, PartialEq)]
+struct TerminalConfig {
+    /// Monospace font size in px for the terminal text.
+    #[serde(default = "default_font_size")]
+    font_size: f32,
+}
+
+/// A readable default, larger than a typical terminal's (the shipped default read
+/// too small).
+fn default_font_size() -> f32 {
+    14.0
+}
+
+impl Default for TerminalConfig {
+    fn default() -> Self {
+        Self {
+            font_size: default_font_size(),
+        }
+    }
+}
+
+/// Clamp a font size to a sane on-screen range, so a bad value can never make the
+/// terminal unreadable or break layout; a non-finite value falls back to default.
+fn clamp_font_size(px: f32) -> f32 {
+    if px.is_finite() {
+        px.clamp(6.0, 72.0)
+    } else {
+        default_font_size()
+    }
+}
+
+/// `$XDG_CONFIG_HOME/arlen/terminal.toml` (else `~/.config/...`).
+fn terminal_config_path() -> Option<PathBuf> {
+    dirs::config_dir().map(|d| d.join("arlen").join("terminal.toml"))
+}
+
+/// Load the config from `path`, or the default when absent / unreadable /
+/// invalid - a broken config never breaks the terminal, it falls back to the
+/// readable default. The stored size is clamped on read too.
+fn load_config(path: &Path) -> TerminalConfig {
+    match std::fs::read_to_string(path) {
+        Ok(text) => {
+            let mut cfg: TerminalConfig = toml::from_str(&text).unwrap_or_default();
+            cfg.font_size = clamp_font_size(cfg.font_size);
+            cfg
+        }
+        Err(_) => TerminalConfig::default(),
+    }
+}
+
+/// Persist the config to `path`, creating the parent directory.
+fn save_config(path: &Path, config: &TerminalConfig) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let text = toml::to_string(config).map_err(|e| e.to_string())?;
+    std::fs::write(path, text).map_err(|e| e.to_string())
+}
+
+/// The terminal config the UI applies to its text (defaulting when unset).
+#[tauri::command]
+fn terminal_config_get() -> TerminalConfig {
+    terminal_config_path()
+        .map(|p| load_config(&p))
+        .unwrap_or_default()
+}
+
+/// Persist a new font size (clamped to a sane range).
+#[tauri::command]
+fn terminal_config_set(font_size: f32) -> Result<(), String> {
+    let path = terminal_config_path().ok_or("no config directory")?;
+    let config = TerminalConfig {
+        font_size: clamp_font_size(font_size),
+    };
+    save_config(&path, &config)
+}
+
 /// Tauri application entry point invoked from `main.rs`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -207,7 +290,9 @@ pub fn run() {
             terminal_input,
             terminal_new_session,
             terminal_history_search,
-            terminal_projects
+            terminal_projects,
+            terminal_config_get,
+            terminal_config_set
         ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-terminal");
@@ -215,7 +300,10 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::shell_candidates;
+    use super::{
+        clamp_font_size, default_font_size, load_config, save_config, shell_candidates,
+        TerminalConfig,
+    };
 
     #[test]
     fn shell_candidates_prefer_zsh_and_end_at_bin_sh() {
@@ -224,5 +312,31 @@ mod tests {
         assert_eq!(c.last().map(String::as_str), Some("/bin/sh"));
         // zsh is never listed twice even when $SHELL is a zsh path.
         assert_eq!(c.iter().filter(|s| s.ends_with("zsh")).count(), 1);
+    }
+
+    #[test]
+    fn clamp_keeps_sane_sizes_and_rejects_insane() {
+        assert_eq!(clamp_font_size(14.0), 14.0);
+        assert_eq!(clamp_font_size(1.0), 6.0);
+        assert_eq!(clamp_font_size(1000.0), 72.0);
+        assert_eq!(clamp_font_size(f32::NAN), default_font_size());
+    }
+
+    #[test]
+    fn a_missing_config_is_the_default() {
+        let cfg = load_config(std::path::Path::new("/no/such/terminal.toml"));
+        assert_eq!(cfg, TerminalConfig::default());
+        assert_eq!(cfg.font_size, default_font_size());
+    }
+
+    #[test]
+    fn config_round_trips_and_clamps_on_read() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("terminal.toml");
+        save_config(&path, &TerminalConfig { font_size: 18.0 }).unwrap();
+        assert_eq!(load_config(&path).font_size, 18.0);
+        // A hand-edited absurd value is clamped on read, never breaking the UI.
+        std::fs::write(&path, "font_size = 9999.0").unwrap();
+        assert_eq!(load_config(&path).font_size, 72.0);
     }
 }
