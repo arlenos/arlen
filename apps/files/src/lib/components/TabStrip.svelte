@@ -1,7 +1,8 @@
 <script lang="ts">
-  /// The tab row: visible only with more than one tab open (a single
-  /// location needs no tab chrome). A tab shows its folder name; the
-  /// close affordance appears on hover, Ctrl+W closes the active one.
+  /// The tabs, living in the headerbar (two-level chrome): visible
+  /// only with more than one tab open. A tab shows its folder name;
+  /// the close affordance appears on hover, Ctrl+W closes the active
+  /// one. The gaps around the chips stay window-drag area.
   import { X } from "lucide-svelte";
   import { get } from "svelte/store";
   import { activeTabId, closeTab, selectTab, tabs, type Tab } from "$lib/stores/tabs";
@@ -56,15 +57,15 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 8px 0;
-    border-bottom: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+    min-width: 0;
+    overflow: hidden;
   }
 
   .ts-tab {
     display: inline-flex;
     align-items: center;
     height: var(--height-control, 28px);
-    border-radius: var(--radius-input) var(--radius-input) 0 0;
+    border-radius: var(--radius-input);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
   }

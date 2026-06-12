@@ -9,20 +9,18 @@
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import {
-    createBrowserState,
     FileBrowser,
     joinPath,
-    type BrowserState,
     type FileEntry,
     type Place,
   } from "@arlen/ui-kit/components/browser";
-  import { fmAdapter, openPath } from "$lib/adapter";
+  import { openPath } from "$lib/adapter";
   import { activeController, newTab, tabs } from "$lib/stores/tabs";
+  import { focusedController, focusedPane, paneB, splitView } from "$lib/stores/panes";
   import { loadPlaces } from "$lib/stores/places";
   import { pathEditing } from "$lib/stores/ui";
   import { clipboard, paste, runOp } from "$lib/stores/ops";
   import FmToolbar from "$lib/components/FmToolbar.svelte";
-  import TabStrip from "$lib/components/TabStrip.svelte";
   import FmStatusBar from "$lib/components/FmStatusBar.svelte";
   import OpsOverlays from "$lib/components/OpsOverlays.svelte";
   import FmSearchBar from "$lib/components/FmSearchBar.svelte";
@@ -57,45 +55,29 @@
     ]);
   }
 
-  // Dual pane: the second pane is its own controller (its own
-  // history and selection); the toolbar, status line and operations
-  // follow whichever pane holds the focus.
-  let splitView = $state(false);
-  let paneB = $state<BrowserState | null>(null);
-  let focusedPane = $state<"a" | "b">("a");
+  // Dual pane state lives in the panes store (the headerbar's view
+  // controls drive it); the page keeps only the per-pane selections.
   let selectedA = $state<FileEntry[]>([]);
   let selectedB = $state<FileEntry[]>([]);
 
-  const focusedController = $derived(
-    splitView && focusedPane === "b" && paneB ? paneB : $activeController,
-  );
   const selected = $derived(
-    splitView && focusedPane === "b" ? selectedB : selectedA,
+    $splitView && $focusedPane === "b" ? selectedB : selectedA,
   );
-
-  function toggleSplit() {
-    if (splitView) {
-      splitView = false;
-      focusedPane = "a";
-      paneB = null;
-      selectedB = [];
-    } else {
-      paneB = createBrowserState(fmAdapter, { initial: currentPath() });
-      splitView = true;
-    }
-  }
+  $effect(() => {
+    if (!$splitView) selectedB = [];
+  });
 
   // The visible listing of the focused pane, mirrored for the status
   // line, plus whether its listing failed (the bar then stays quiet).
   let entries = $state<FileEntry[]>([]);
   let listingError = $state(false);
   $effect(() => {
-    const c = focusedController;
+    const c = $focusedController;
     if (!c) return;
     return c.entries.subscribe((list) => (entries = list));
   });
   $effect(() => {
-    const c = focusedController;
+    const c = $focusedController;
     if (!c) return;
     return c.error.subscribe((e) => (listingError = e !== null));
   });
@@ -107,7 +89,7 @@
   });
 
   const currentPath = (): string => {
-    const c = focusedController;
+    const c = get(focusedController);
     return c ? get(c.path) : "/";
   };
   const selectedPaths = (): string[] => {
@@ -136,11 +118,11 @@
   function onOpsKeydown(e: KeyboardEvent) {
     const target = e.target as HTMLElement | null;
     if (target?.closest("input, textarea")) return;
-    if (e.key === "Tab" && splitView) {
+    if (e.key === "Tab" && $splitView) {
       e.preventDefault();
-      focusedPane = focusedPane === "a" ? "b" : "a";
+      focusedPane.update((p) => (p === "a" ? "b" : "a"));
       const panes = document.querySelectorAll<HTMLElement>(".file-browser");
-      panes[focusedPane === "a" ? 0 : 1]?.focus();
+      panes[get(focusedPane) === "a" ? 0 : 1]?.focus();
       return;
     }
     if (e.key === "Delete" && !e.shiftKey) {
@@ -182,14 +164,11 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="fm" onkeydown={onOpsKeydown}>
-  <TabStrip />
-  {#if $activeController && focusedController}
+  {#if $activeController && $focusedController}
     <FmToolbar
-      controller={focusedController}
+      controller={$focusedController}
       homePath={$homePath}
       bind:pathEditing={$pathEditing}
-      split={splitView}
-      onsplittoggle={toggleSplit}
       searchOpen={$searchOpen}
       onsearchtoggle={() => ($searchOpen ? closeSearch() : searchOpen.set(true))}
       {infoOpen}
@@ -201,14 +180,14 @@
         {#if $searchOpen && $searchResults !== null}
           <FmSearchResults
             basePath={currentPath()}
-            onjump={(dir) => focusedController?.navigate(dir)}
+            onjump={(dir) => $focusedController?.navigate(dir)}
           />
         {:else}
-        <div class="fm-panes" class:split={splitView}>
+        <div class="fm-panes" class:split={$splitView}>
           <div
             class="fm-pane"
-            class:pane-focused={splitView && focusedPane === "a"}
-            onfocusin={() => (focusedPane = "a")}
+            class:pane-focused={$splitView && $focusedPane === "a"}
+            onfocusin={() => focusedPane.set("a")}
           >
             <FileBrowser
               controller={$activeController}
@@ -221,14 +200,14 @@
                 runOp("rename", [joinPath(currentPath(), entry.name)], newName)}
             />
           </div>
-          {#if splitView && paneB}
+          {#if $splitView && $paneB}
             <div
               class="fm-pane"
-              class:pane-focused={focusedPane === "b"}
-              onfocusin={() => (focusedPane = "b")}
+              class:pane-focused={$focusedPane === "b"}
+              onfocusin={() => focusedPane.set("b")}
             >
               <FileBrowser
-                controller={paneB}
+                controller={$paneB}
                 onactivate={(entry, path) => {
                   if (entry.kind !== "directory") void openPath(path);
                 }}

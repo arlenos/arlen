@@ -14,6 +14,8 @@
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { tauriAvailable } from "$lib/tauri";
   import FmSidebar from "$lib/components/FmSidebar.svelte";
+  import TabStrip from "$lib/components/TabStrip.svelte";
+  import FmViewControls from "$lib/components/FmViewControls.svelte";
   import { newTab, closeTab, activeTabId } from "$lib/stores/tabs";
   import { pathEditing } from "$lib/stores/ui";
   import { get } from "svelte/store";
@@ -68,7 +70,10 @@
       class="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-background pl-2 pr-2"
     >
       <SidebarTrigger class="-ml-1" />
-      <div class="flex-1"></div>
+      <div class="flex min-w-0 flex-1 items-center gap-1 pl-1">
+        <TabStrip />
+      </div>
+      <FmViewControls />
       {#if tauriAvailable}
         <WindowButtons />
       {/if}
