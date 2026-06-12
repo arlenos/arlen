@@ -13,4 +13,8 @@
 ARLEN_CURATED_ZDOTDIR=$ZDOTDIR
 ZDOTDIR=${ARLEN_USER_ZDOTDIR:-$HOME}
 [[ -f $ZDOTDIR/.zshrc ]] && source $ZDOTDIR/.zshrc
-source $ARLEN_CURATED_ZDOTDIR/arlen-shell-integration.zsh
+# The integration script is the sibling of this curated dir (`:h` is the parent);
+# guard so a missing script degrades to a plain shell instead of erroring at the
+# user.
+[[ -f ${ARLEN_CURATED_ZDOTDIR:h}/arlen-shell-integration.zsh ]] \
+  && source ${ARLEN_CURATED_ZDOTDIR:h}/arlen-shell-integration.zsh
