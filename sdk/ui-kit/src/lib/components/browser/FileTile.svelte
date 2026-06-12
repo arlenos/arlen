@@ -40,6 +40,14 @@
 
   const Icon = $derived(entryIcon(entry));
 
+  // Zero-width break opportunities after _/- and before dots: a
+  // two-line name breaks at a separator ("IMG_0003" / ".webp"), not
+  // mid-extension ("…web" / "p"); overflow-wrap stays the last
+  // resort for separator-less names.
+  const wrapName = $derived(
+    entry.name.replace(/([_-])/g, "$1\u200b").replace(/\./g, "\u200b."),
+  );
+
   let loaded = $state(false);
   let failed = $state(false);
   $effect(() => {
@@ -85,7 +93,7 @@
       <span class="ft-badge">{badge}</span>
     {/if}
   </span>
-  <span class="ft-name">{entry.name}</span>
+  <span class="ft-name">{wrapName}</span>
 </div>
 
 <style>
