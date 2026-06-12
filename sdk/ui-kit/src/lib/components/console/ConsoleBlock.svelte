@@ -17,7 +17,6 @@
     exitCode = null,
     durationMs = null,
     running = false,
-    originLabel = null,
     context,
     marker,
     lens,
@@ -36,10 +35,6 @@
     /// True while the command is still executing — shows the quiet
     /// running indicator instead of the result.
     running?: boolean;
-    /// Optional origin word in the header meta cluster (e.g. "agent"
-    /// on agent-issued blocks); null renders nothing, so the common
-    /// you-ran path stays silent.
-    originLabel?: string | null;
     /// The prompt context (path + git), rendered inline before the
     /// marker — one line like a real shell prompt.
     context?: Snippet;
@@ -80,9 +75,6 @@
     {/if}
     {#if actions}
       <span class="cb-actions">{@render actions()}</span>
-    {/if}
-    {#if originLabel}
-      <span class="cb-origin">{originLabel}</span>
     {/if}
     {#if running}
       <span class="cb-running" aria-label="Still running">
@@ -193,12 +185,6 @@
   @keyframes cb-running-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.65; }
-  }
-
-  .cb-origin {
-    flex-shrink: 0;
-    font-size: 0.75rem;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
   /* Failure is marked by the word in error color, nothing more — the
