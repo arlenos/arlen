@@ -7,8 +7,6 @@
 //! wires in. Everything else is a one-line wrapper over
 //! `arlen_terminal_core::stub` until then.
 
-mod capability;
-
 use std::sync::Mutex;
 
 use arlen_terminal_core::{stub, Block, HistoryFilters, Project, Session};
@@ -94,8 +92,7 @@ pub fn run() {
             terminal_input,
             terminal_new_session,
             terminal_history_search,
-            terminal_projects,
-            capability::ai_capability
+            terminal_projects
         ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-terminal");
