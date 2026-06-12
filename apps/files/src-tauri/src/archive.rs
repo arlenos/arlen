@@ -16,6 +16,7 @@ use std::io::{self, Read, Write};
 use std::path::{Component, Path};
 
 use cap_std::fs::Dir;
+use serde::Serialize;
 
 /// Total extracted bytes a single archive may produce. A generous sanity bound
 /// (real archives are far smaller); it exists only to stop a tiny bomb expanding
@@ -190,6 +191,53 @@ pub fn compress<W: Write>(
     Ok(())
 }
 
+/// One entry in an archive listing (FM-R12 browse-into-archive). Read-only
+/// metadata: nothing is written to disk, so listing carries no extraction risk.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ArchiveEntry {
+    /// The entry path inside the archive.
+    pub path: String,
+    /// The uncompressed size in bytes (0 for directories).
+    pub size: u64,
+    /// Whether the entry is a directory.
+    pub is_dir: bool,
+}
+
+/// List the entries of a tar stream without extracting anything. Bounded by
+/// [`MAX_ENTRIES`] so a malicious archive cannot make the listing unbounded.
+pub fn list_tar<R: Read>(reader: R) -> Result<Vec<ArchiveEntry>, String> {
+    let mut archive = tar::Archive::new(reader);
+    let entries = archive.entries().map_err(|e| format!("read archive: {e}"))?;
+    let mut out = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("read entry: {e}"))?;
+        if out.len() as u64 >= MAX_ENTRIES {
+            return Err("archive has too many entries".to_string());
+        }
+        let path = entry
+            .path()
+            .map_err(|e| format!("entry path: {e}"))?
+            .to_string_lossy()
+            .into_owned();
+        let is_dir = entry.header().entry_type().is_dir();
+        let size = entry.header().size().unwrap_or(0);
+        out.push(ArchiveEntry { path, size, is_dir });
+    }
+    Ok(out)
+}
+
+/// List a tar-family archive read from `reader`, choosing the decompressor from
+/// `name`'s extension.
+pub fn list_named<R: Read>(name: &str, reader: R) -> Result<Vec<ArchiveEntry>, String> {
+    if is_gzip_tar(name) {
+        list_tar(flate2::read::GzDecoder::new(reader))
+    } else if is_extractable_tar(name) {
+        list_tar(reader)
+    } else {
+        Err(format!("unsupported archive format: {name}"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,6 +369,18 @@ mod tests {
         let (out_tmp, out) = dest();
         extract_tar(flate2::read::GzDecoder::new(buf.as_slice()), &out).unwrap();
         assert_eq!(std::fs::read(out_tmp.path().join("top.txt")).unwrap(), b"top");
+    }
+
+    #[test]
+    fn list_reports_entries_without_extracting() {
+        let tar = tar_of(&[("readme.txt", b"hello"), ("docs/guide.md", b"# guide")]);
+        let entries = list_tar(tar.as_slice()).unwrap();
+        let names: Vec<&str> = entries.iter().map(|e| e.path.as_str()).collect();
+        assert!(names.contains(&"readme.txt"));
+        assert!(names.contains(&"docs/guide.md"));
+        let readme = entries.iter().find(|e| e.path == "readme.txt").unwrap();
+        assert_eq!(readme.size, 5);
+        assert!(!readme.is_dir);
     }
 
     #[test]
