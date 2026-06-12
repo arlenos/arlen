@@ -25,6 +25,12 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize}
 /// secret that proves they came from the trusted shell, not from forged output.
 pub const NONCE_ENV: &str = "ARLEN_TERM_NONCE";
 
+/// Env var naming the curated-zsh config dir to set as `ZDOTDIR` for a spawned
+/// shell, so its `.zshrc` sources the TM-R3 integration script. The host or the
+/// production install points it at the curated zsh directory; unset means the
+/// shell uses its normal startup.
+pub const ZDOTDIR_ENV: &str = "ARLEN_TERM_ZDOTDIR";
+
 /// Map any backend error into an `io::Error` for the [`VtEngine`] seam.
 fn io_err(e: impl std::fmt::Display) -> std::io::Error {
     std::io::Error::other(e.to_string())
@@ -76,6 +82,15 @@ impl PtyEngine {
         cmd.args(args);
         cmd.env("TERM", "xterm-256color");
         cmd.env(NONCE_ENV, &nonce);
+        // Point the spawned shell at the curated zsh config dir when one is
+        // provided: its `.zshrc` sources the TM-R3 integration script that, seeing
+        // the nonce above, emits the OSC 133/633 block marks this engine scans.
+        // Without it the shell uses its normal startup (in production the
+        // system-installed curated zshrc sources the integration); the engine
+        // stays silent rather than guessing a path.
+        if let Some(zdotdir) = std::env::var_os(ZDOTDIR_ENV) {
+            cmd.env("ZDOTDIR", zdotdir);
+        }
         if let Some(dir) = cwd {
             cmd.cwd(dir);
         }
