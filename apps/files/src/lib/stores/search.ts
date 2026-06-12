@@ -41,6 +41,46 @@ export const searchTime = writable<TimeFacet>("any");
 export const searchResults = writable<SearchHit[] | null>(null);
 export const searchTruncated = writable(false);
 
+/// Result ordering, client-side over the hits (the backend walk has
+/// no order contract). "folder" sorts by the hit's containing path.
+export type SearchSortKey = "name" | "folder" | "modified";
+export const searchSortKey = writable<SearchSortKey>("name");
+export const searchAscending = writable(true);
+
+export function setSearchSort(key: SearchSortKey): void {
+  if (get(searchSortKey) === key) {
+    searchAscending.update((a) => !a);
+  } else {
+    searchSortKey.set(key);
+    searchAscending.set(true);
+  }
+}
+
+export function sortHits(
+  hits: SearchHit[],
+  key: SearchSortKey,
+  ascending: boolean,
+): SearchHit[] {
+  const dirOf = (rel: string) => rel.split("/").slice(0, -1).join("/");
+  const cmp = (a: SearchHit, b: SearchHit): number => {
+    let r = 0;
+    if (key === "modified") {
+      r = (a.entry.modified_unix ?? 0) - (b.entry.modified_unix ?? 0);
+    } else if (key === "folder") {
+      r = dirOf(a.rel_path).localeCompare(dirOf(b.rel_path), undefined, {
+        sensitivity: "base",
+      });
+    }
+    if (r === 0) {
+      r = a.entry.name.localeCompare(b.entry.name, undefined, {
+        sensitivity: "base",
+      });
+    }
+    return ascending ? r : -r;
+  };
+  return [...hits].sort(cmp);
+}
+
 const EXT_FACETS: Record<string, TypeFacet> = {};
 const put = (facet: TypeFacet, exts: string[]) => {
   for (const e of exts) EXT_FACETS[e] = facet;
