@@ -394,6 +394,29 @@ async fn files_compress(sources: Vec<String>, dest: String) -> Result<(), String
     .map_err(|e| e.to_string())?
 }
 
+/// List the entries of a tar-family archive without extracting it (FM-R12
+/// browse-into-archive). Read-only: the archive is read through the root
+/// capability and only entry metadata is returned, so the UI can navigate into a
+/// `.tar`/`.tar.gz`/`.tgz` as a read-scoped folder.
+#[tauri::command]
+async fn files_archive_list(archive: String) -> Result<Vec<archive::ArchiveEntry>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let name = Path::new(&archive)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| "archive has no name".to_string())?
+            .to_string();
+        if !archive::is_extractable_tar(&name) {
+            return Err(format!("unsupported archive format: {name}"));
+        }
+        let r = root()?;
+        let file = r.open(rel(&archive)).map_err(|e| e.to_string())?;
+        archive::list_named(&name, file)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Open a path with the default handler.
 #[tauri::command]
 fn files_open(path: String) -> Result<(), String> {
@@ -521,6 +544,7 @@ pub fn run() {
             files_open,
             files_extract,
             files_compress,
+            files_archive_list,
             files_templates,
             files_projects,
             files_saved_searches,
