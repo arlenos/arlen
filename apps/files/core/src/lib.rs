@@ -11,6 +11,7 @@
 //! Tauri-agnostic data core (entries, scoped listing, sorting, the breadcrumb
 //! model, keyboard-selection helpers) shared across hosts.
 
+pub mod bulk_rename;
 pub mod ops;
 pub mod search;
 pub mod selection;
