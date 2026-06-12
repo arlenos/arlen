@@ -291,11 +291,25 @@ fn files_op(
     }
 }
 
+/// A root-relative core path to the real absolute filesystem path. The FM core
+/// addresses everything relative to the host root (`/`, see [`rel`]); `xdg-open`
+/// needs a real absolute path, since a relative one resolves against the FM
+/// process's own cwd and fails ("folder not found"). Idempotent for a path the UI
+/// already sent absolute; `.`/empty/`/` map to the root.
+fn abs(path: &str) -> String {
+    let trimmed = path.trim_start_matches('/');
+    if trimmed.is_empty() || trimmed == "." {
+        "/".to_string()
+    } else {
+        format!("/{trimmed}")
+    }
+}
+
 /// Open a path with the default handler.
 #[tauri::command]
 fn files_open(path: String) -> Result<(), String> {
     std::process::Command::new("xdg-open")
-        .arg(&path)
+        .arg(abs(&path))
         .spawn()
         .map(|_| ())
         .map_err(|e| e.to_string())
@@ -423,4 +437,26 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-files");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::abs;
+
+    #[test]
+    fn abs_makes_a_root_relative_path_absolute() {
+        assert_eq!(abs("home/tim/notes.txt"), "/home/tim/notes.txt");
+    }
+
+    #[test]
+    fn abs_is_idempotent_for_an_already_absolute_path() {
+        assert_eq!(abs("/home/tim/notes.txt"), "/home/tim/notes.txt");
+    }
+
+    #[test]
+    fn abs_maps_root_and_empty_to_slash() {
+        assert_eq!(abs("."), "/");
+        assert_eq!(abs(""), "/");
+        assert_eq!(abs("/"), "/");
+    }
 }
