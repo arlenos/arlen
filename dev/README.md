@@ -29,7 +29,8 @@ just                  # list recipes
 just dev              # full daemon stack via process-compose (TUI)
 just dev --profile shell    # + nested compositor + desktop-shell
 just dev --profile portal   # + xdg-portal + settings (the old --with-portal)
-just dev-ui harness   # quick: one Tauri app via cargo tauri dev (fast UI loop)
+just dev-ui <app>     # quick: one Tauri app via cargo tauri dev (fast UI loop)
+                      #   apps: harness, settings, desktop-shell, terminal, files
 just vm               # eBPF kernel-layer in QEMU
 ```
 
