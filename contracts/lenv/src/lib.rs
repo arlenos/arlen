@@ -1,0 +1,344 @@
+//! The Signed Profile Package (`.lenv`) format contract (profile-system-plan.md,
+//! "Signed Profile Packages (`.lenv`, the BYOD model)").
+//!
+//! A `.lenv` is an org-signed TOML the user installs themselves: "the
+//! organization controls their context, the user controls their device." This
+//! crate is the FORMAT layer - the policy schema, parsing + validation, the
+//! full-policy summary shown before install (nothing hidden), the declared-expiry
+//! revocation check and the publisher key fingerprint for the TOFU prompt. It is
+//! deliberately data-only and signature-agnostic: verifying the org signature,
+//! pinning the key (TOFU), the enrollment-link import and the `systemd-homed`
+//! install lifecycle (PR-R2) build ON this layer; the technically-enforced org
+//! limits (the org cannot read the personal profile, cannot wipe the device,
+//! cannot prevent uninstall) are properties of the UID boundary, not of this
+//! file, so nothing here grants the org any capability - it only declares intent
+//! the installer surfaces and the profile enforces.
+
+#![forbid(unsafe_code)]
+
+use serde::Deserialize;
+
+/// A parse or validation failure. Nothing is installed on error; the caller
+/// rejects the package.
+#[derive(Debug, thiserror::Error)]
+pub enum LenvError {
+    /// The TOML could not be parsed.
+    #[error("invalid .lenv TOML: {0}")]
+    Toml(String),
+    /// A required field was empty or a value was out of range.
+    #[error("invalid .lenv: {0}")]
+    Invalid(String),
+}
+
+/// Package metadata: who published it, its version, and the user-protecting
+/// declarations (expiry, uninstall notification).
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct Meta {
+    /// The publisher (organization) name, shown in the TOFU prompt.
+    pub publisher: String,
+    /// The package version (org-incremented; the tamper-evident config version).
+    pub version: u32,
+    /// Optional declared expiry as a Unix timestamp (seconds). The profile's
+    /// org context lapses after this; absent means no declared expiry.
+    #[serde(default)]
+    pub expires_at: Option<i64>,
+    /// Whether the org is notified when the user uninstalls. Even when `true`,
+    /// uninstall always proceeds - this only declares a notification, never a
+    /// veto (a user-controlled-device limit).
+    #[serde(default)]
+    pub notify_on_uninstall: bool,
+}
+
+/// The declared cross-profile transfer stance. The Transfer Daemon (PR-R4)
+/// interprets the full directional rule set; the `.lenv` declares the org's
+/// default stance for this context.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
+pub struct Transfer {
+    /// The default transfer policy: `"deny"` (default), `"prompt"` or `"allow"`.
+    #[serde(default)]
+    pub policy: Option<String>,
+}
+
+/// The declared network policy for the profile context.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
+pub struct Network {
+    /// Require an active VPN for the profile's network use.
+    #[serde(default)]
+    pub require_vpn: bool,
+    /// Hosts/domains explicitly permitted outbound (empty means no allowlist).
+    #[serde(default)]
+    pub allow_outbound: Vec<String>,
+    /// Hosts/domains explicitly blocked outbound.
+    #[serde(default)]
+    pub block_outbound: Vec<String>,
+}
+
+/// The declared app policy.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
+pub struct Apps {
+    /// Apps the org provisions/requires in the context.
+    #[serde(default)]
+    pub required: Vec<String>,
+    /// Apps the org blocks in the context.
+    #[serde(default)]
+    pub blocked: Vec<String>,
+}
+
+/// The declared knowledge-graph policy for the profile context.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
+pub struct Graph {
+    /// Whether the AI layer may access the profile's KG in this context.
+    #[serde(default)]
+    pub ai_access: bool,
+    /// Whether KG export is permitted in this context.
+    #[serde(default)]
+    pub export: bool,
+}
+
+/// A bundled `.project` template, written to `~/.projects/<name>/` on first login
+/// as a starting config (registered as a `Project` node, never synced back).
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct ProjectTemplate {
+    /// The project directory name under `~/.projects/`.
+    pub name: String,
+    /// The `.project` TOML content written for it.
+    pub content: String,
+}
+
+/// The bundled project templates.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
+pub struct Projects {
+    /// The templates to install on first login.
+    #[serde(default)]
+    pub template: Vec<ProjectTemplate>,
+}
+
+/// A parsed `.lenv` Signed Profile Package.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct LenvPackage {
+    /// Package metadata.
+    pub meta: Meta,
+    /// Cross-profile transfer stance.
+    #[serde(default)]
+    pub transfer: Transfer,
+    /// Network policy.
+    #[serde(default)]
+    pub network: Network,
+    /// App policy.
+    #[serde(default)]
+    pub apps: Apps,
+    /// Knowledge-graph policy.
+    #[serde(default)]
+    pub graph: Graph,
+    /// Bundled project templates.
+    #[serde(default)]
+    pub projects: Projects,
+}
+
+/// Whether a project template name is a safe single path component (it becomes a
+/// directory under `~/.projects/`).
+fn is_safe_name(name: &str) -> bool {
+    !name.is_empty()
+        && name != "."
+        && name != ".."
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+}
+
+impl LenvPackage {
+    /// Parse and validate a `.lenv` TOML document. Validates the publisher is
+    /// named, the transfer policy (if given) is a known stance, and every project
+    /// template name is a safe path component.
+    pub fn parse(toml_str: &str) -> Result<Self, LenvError> {
+        let pkg: LenvPackage = toml::from_str(toml_str).map_err(|e| LenvError::Toml(e.to_string()))?;
+        if pkg.meta.publisher.trim().is_empty() {
+            return Err(LenvError::Invalid("meta.publisher must be named".to_string()));
+        }
+        if let Some(p) = pkg.transfer.policy.as_deref() {
+            if !matches!(p, "deny" | "prompt" | "allow") {
+                return Err(LenvError::Invalid(format!(
+                    "transfer.policy must be deny/prompt/allow, got {p:?}"
+                )));
+            }
+        }
+        for t in &pkg.projects.template {
+            if !is_safe_name(&t.name) {
+                return Err(LenvError::Invalid(format!(
+                    "project template name is not a safe path component: {:?}",
+                    t.name
+                )));
+            }
+        }
+        Ok(pkg)
+    }
+
+    /// Whether the package's declared org context has expired as of `now_unix`
+    /// (Unix seconds). A package with no declared expiry never expires.
+    pub fn is_expired(&self, now_unix: i64) -> bool {
+        matches!(self.meta.expires_at, Some(exp) if now_unix >= exp)
+    }
+
+    /// The full policy summary shown before install: one human-readable line per
+    /// declared limit, so nothing the org enforces is hidden from the user.
+    pub fn policy_summary(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        out.push(format!(
+            "Published by {} (version {})",
+            self.meta.publisher, self.meta.version
+        ));
+        if let Some(exp) = self.meta.expires_at {
+            out.push(format!("This context expires at {exp} (Unix time)"));
+        }
+        if self.meta.notify_on_uninstall {
+            out.push("The publisher is notified if you uninstall (uninstall still proceeds)".to_string());
+        }
+        if let Some(p) = self.transfer.policy.as_deref() {
+            out.push(format!("Cross-profile transfer: {p}"));
+        }
+        if self.network.require_vpn {
+            out.push("Requires an active VPN".to_string());
+        }
+        if !self.network.allow_outbound.is_empty() {
+            out.push(format!(
+                "Network limited to: {}",
+                self.network.allow_outbound.join(", ")
+            ));
+        }
+        if !self.network.block_outbound.is_empty() {
+            out.push(format!("Network blocks: {}", self.network.block_outbound.join(", ")));
+        }
+        if !self.apps.required.is_empty() {
+            out.push(format!("Provisions apps: {}", self.apps.required.join(", ")));
+        }
+        if !self.apps.blocked.is_empty() {
+            out.push(format!("Blocks apps: {}", self.apps.blocked.join(", ")));
+        }
+        out.push(format!(
+            "AI access to this context's knowledge graph: {}",
+            if self.graph.ai_access { "allowed" } else { "denied" }
+        ));
+        out.push(format!(
+            "Knowledge-graph export: {}",
+            if self.graph.export { "allowed" } else { "denied" }
+        ));
+        if !self.projects.template.is_empty() {
+            let names: Vec<&str> = self.projects.template.iter().map(|t| t.name.as_str()).collect();
+            out.push(format!("Installs starter projects: {}", names.join(", ")));
+        }
+        out
+    }
+}
+
+/// The publisher key fingerprint for the TOFU prompt: SHA-256 of the raw public
+/// key bytes, lowercase hex in colon-separated byte groups (the form shown to the
+/// user to confirm on first install).
+pub fn key_fingerprint(public_key: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(public_key);
+    digest
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<Vec<_>>()
+        .join(":")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SAMPLE: &str = r#"
+        [meta]
+        publisher = "Acme Corp"
+        version = 3
+        expires_at = 2000000000
+        notify_on_uninstall = true
+
+        [transfer]
+        policy = "prompt"
+
+        [network]
+        require_vpn = true
+        block_outbound = ["facebook.com"]
+
+        [apps]
+        required = ["com.acme.vpn"]
+        blocked = ["com.example.game"]
+
+        [graph]
+        ai_access = false
+        export = false
+
+        [[projects.template]]
+        name = "onboarding"
+        content = "[project]\nname = \"Onboarding\""
+    "#;
+
+    #[test]
+    fn parses_a_full_package() {
+        let p = LenvPackage::parse(SAMPLE).unwrap();
+        assert_eq!(p.meta.publisher, "Acme Corp");
+        assert_eq!(p.meta.version, 3);
+        assert!(p.network.require_vpn);
+        assert_eq!(p.apps.required, vec!["com.acme.vpn"]);
+        assert_eq!(p.projects.template.len(), 1);
+        assert_eq!(p.projects.template[0].name, "onboarding");
+    }
+
+    #[test]
+    fn a_minimal_package_uses_defaults() {
+        let p = LenvPackage::parse("[meta]\npublisher = \"Org\"\nversion = 1").unwrap();
+        assert!(!p.network.require_vpn);
+        assert!(p.apps.required.is_empty());
+        assert!(!p.graph.ai_access);
+        assert!(p.transfer.policy.is_none());
+    }
+
+    #[test]
+    fn an_empty_publisher_is_rejected() {
+        let err = LenvPackage::parse("[meta]\npublisher = \"  \"\nversion = 1").unwrap_err();
+        assert!(matches!(err, LenvError::Invalid(_)));
+    }
+
+    #[test]
+    fn an_unknown_transfer_policy_is_rejected() {
+        let toml = "[meta]\npublisher=\"O\"\nversion=1\n[transfer]\npolicy=\"whatever\"";
+        assert!(matches!(LenvPackage::parse(toml), Err(LenvError::Invalid(_))));
+    }
+
+    #[test]
+    fn a_traversing_template_name_is_rejected() {
+        let toml = "[meta]\npublisher=\"O\"\nversion=1\n[[projects.template]]\nname=\"../escape\"\ncontent=\"x\"";
+        assert!(matches!(LenvPackage::parse(toml), Err(LenvError::Invalid(_))));
+    }
+
+    #[test]
+    fn expiry_is_checked_against_now() {
+        let p = LenvPackage::parse(SAMPLE).unwrap();
+        assert!(!p.is_expired(1_000_000_000));
+        assert!(p.is_expired(2_000_000_001));
+        let no_exp = LenvPackage::parse("[meta]\npublisher=\"O\"\nversion=1").unwrap();
+        assert!(!no_exp.is_expired(i64::MAX));
+    }
+
+    #[test]
+    fn the_summary_hides_nothing_material() {
+        let p = LenvPackage::parse(SAMPLE).unwrap();
+        let s = p.policy_summary().join("\n");
+        assert!(s.contains("Acme Corp"));
+        assert!(s.contains("VPN"));
+        assert!(s.contains("facebook.com"));
+        assert!(s.contains("com.acme.vpn"));
+        assert!(s.contains("knowledge graph: denied"));
+        assert!(s.contains("onboarding"));
+        assert!(s.contains("notified if you uninstall"));
+    }
+
+    #[test]
+    fn fingerprint_is_stable_colon_grouped_hex() {
+        let fp = key_fingerprint(&[0u8; 32]);
+        assert_eq!(fp.split(':').count(), 32);
+        assert_eq!(fp, key_fingerprint(&[0u8; 32]));
+        assert_ne!(fp, key_fingerprint(&[1u8; 32]));
+    }
+}

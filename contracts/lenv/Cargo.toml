@@ -1,0 +1,14 @@
+[package]
+name = "arlen-lenv"
+version = "0.1.0"
+edition = "2021"
+description = "Signed Profile Package (.lenv) format contract: the TOML policy schema, parse + validation, the pre-install full-policy summary, the declared-expiry revocation check and the publisher key fingerprint, shared by the installer, the profile daemon and Settings (profile-system-plan.md PR-R7)"
+authors = ["Arlen"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+thiserror = "1"
+sha2 = "0.10"
+
+[workspace]
