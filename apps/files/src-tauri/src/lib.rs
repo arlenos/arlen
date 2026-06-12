@@ -6,6 +6,7 @@
 //! richly in the meantime. Filesystem mutations (`files_op`) arrive
 //! with the operations UI.
 
+mod archive;
 mod capability;
 mod thumbnail;
 
@@ -305,6 +306,34 @@ fn abs(path: &str) -> String {
     }
 }
 
+/// Extract a tar-family archive (`.tar`, `.tar.gz`, `.tgz`) into `dest`.
+///
+/// Runs off the listing path (extraction can be slow). Entries are written
+/// through a cap-std capability opened at `dest`, so a traversing or escaping
+/// entry is refused by the capability; only regular files and directories are
+/// extracted (symlinks/special files are skipped) and the total size and entry
+/// count are bounded. `dest` is created if absent.
+#[tauri::command]
+async fn files_extract(archive: String, dest: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let name = Path::new(&archive)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| "archive has no name".to_string())?
+            .to_string();
+        if !archive::is_extractable_tar(&name) {
+            return Err(format!("unsupported archive format: {name}"));
+        }
+        let r = root()?;
+        let file = r.open(rel(&archive)).map_err(|e| e.to_string())?;
+        r.create_dir_all(rel(&dest)).map_err(|e| e.to_string())?;
+        let dest_dir = r.open_dir(rel(&dest)).map_err(|e| e.to_string())?;
+        archive::extract_named(&name, file, &dest_dir)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Open a path with the default handler.
 #[tauri::command]
 fn files_open(path: String) -> Result<(), String> {
@@ -430,6 +459,7 @@ pub fn run() {
             files_bookmark_add,
             files_bookmark_remove,
             files_open,
+            files_extract,
             files_projects,
             files_saved_searches,
             thumbnail::files_thumbnail,
