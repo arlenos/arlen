@@ -117,15 +117,42 @@ fn terminal_input(
     live.engine.send_input(input.as_bytes()).map_err(|e| e.to_string())
 }
 
-/// Open a new shell: spawn a real zsh on a PTY via the engine (which sources the
-/// curated integration when `ARLEN_TERM_ZDOTDIR` points at it, so the block marks
-/// fire), assign the id, and remember the live session.
+/// The shells to try, in preference order, when opening a session. zsh is first
+/// because the block-mark integration is zsh-only (the marks fire only there);
+/// `$SHELL` and `/bin/sh` are fallbacks so the terminal still opens a working
+/// shell on a machine without zsh (the command frames just will not assemble).
+/// `$SHELL` is skipped when it is already zsh (the first entry covers it).
+fn shell_candidates() -> Vec<String> {
+    let mut out = vec!["zsh".to_string()];
+    if let Ok(sh) = std::env::var("SHELL") {
+        if !sh.is_empty() && !sh.ends_with("/zsh") && sh != "zsh" {
+            out.push(sh);
+        }
+    }
+    out.push("/bin/sh".to_string());
+    out
+}
+
+/// Open a new shell: spawn a real shell on a PTY via the engine (preferring zsh,
+/// which sources the curated integration when `ARLEN_TERM_ZDOTDIR` points at it,
+/// so the block marks fire), assign the id, and remember the live session. Falls
+/// back through [`shell_candidates`] so a machine without zsh still gets a shell.
 #[tauri::command]
 fn terminal_new_session(registry: State<Mutex<SessionRegistry>>) -> Result<Session, String> {
     let home = dirs::home_dir()
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|| "/".to_string());
-    let engine = PtyEngine::spawn_zsh(Some(&home), 80, 24).map_err(|e| e.to_string())?;
+    let mut last_err = String::from("no shell candidates");
+    let engine = shell_candidates()
+        .iter()
+        .find_map(|prog| match PtyEngine::spawn(prog, &[], Some(&home), 80, 24) {
+            Ok(eng) => Some(eng),
+            Err(e) => {
+                last_err = format!("{prog}: {e}");
+                None
+            }
+        })
+        .ok_or_else(|| format!("could not start a shell ({last_err})"))?;
     let mut reg = registry.lock().map_err(|e| e.to_string())?;
     reg.next_id += 1;
     let id = format!("s{}", reg.next_id);
@@ -184,4 +211,18 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-terminal");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shell_candidates;
+
+    #[test]
+    fn shell_candidates_prefer_zsh_and_end_at_bin_sh() {
+        let c = shell_candidates();
+        assert_eq!(c.first().map(String::as_str), Some("zsh"));
+        assert_eq!(c.last().map(String::as_str), Some("/bin/sh"));
+        // zsh is never listed twice even when $SHELL is a zsh path.
+        assert_eq!(c.iter().filter(|s| s.ends_with("zsh")).count(), 1);
+    }
 }
