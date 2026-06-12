@@ -23,6 +23,9 @@ env_logger = "0.11"
 # each stub as a one-line command; the engine replaces the stubs when
 # it lands behind the same signatures.
 arlen-terminal-core = { path = "../core" }
+# The concrete VT engine: spawns the zsh PTY and surfaces its OSC marks as
+# VtEvents the command layer drains into blocks (replaces the core stubs).
+arlen-terminal-engine = { path = "../engine" }
 # Read the AI capability context from ai.toml for the composer's
 # capability strip (same reader as the harness).
 toml = "0.8"
