@@ -15,16 +15,33 @@
   import { tauriAvailable } from "$lib/tauri";
   import FmSidebar from "$lib/components/FmSidebar.svelte";
   import TabStrip from "$lib/components/TabStrip.svelte";
-  import FmViewControls from "$lib/components/FmViewControls.svelte";
   import { newTab, closeTab, activeTabId } from "$lib/stores/tabs";
+  import { focusedController, toggleSplit } from "$lib/stores/panes";
+  import { initTopbar } from "$lib/stores/topbar";
+  import { onMount } from "svelte";
   import { pathEditing } from "$lib/stores/ui";
   import { get } from "svelte/store";
 
   let { children } = $props();
 
+  onMount(() => {
+    void initTopbar();
+  });
+
   function onWindowKeydown(e: KeyboardEvent) {
+    if (e.key === "F3" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault();
+      toggleSplit();
+      return;
+    }
     if (!e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
     const key = e.key.toLowerCase();
+    if (key === "h") {
+      e.preventDefault();
+      const c = get(focusedController);
+      if (c) void c.setShowHidden(!get(c.showHidden));
+      return;
+    }
     if (key === "t") {
       e.preventDefault();
       newTab();
@@ -73,7 +90,6 @@
       <div class="flex min-w-0 flex-1 items-center gap-1 pl-1">
         <TabStrip />
       </div>
-      <FmViewControls />
       {#if tauriAvailable}
         <WindowButtons />
       {/if}

@@ -18,10 +18,16 @@
   import { tauriAvailable } from "$lib/tauri";
   import TerminalSidebar from "$lib/components/TerminalSidebar.svelte";
   import HistoryPalette from "$lib/components/HistoryPalette.svelte";
+  import { onMount } from "svelte";
   import { newSession } from "$lib/stores/sessions";
   import { historyPaletteOpen } from "$lib/stores/history";
+  import { initTopbar } from "$lib/topbar";
 
   let { children } = $props();
+
+  onMount(() => {
+    void initTopbar();
+  });
 
   // The two global shortcuts (terminal.md §4): Ctrl+T opens a new
   // session, Ctrl+R the history palette. They work from anywhere,

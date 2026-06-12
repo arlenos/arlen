@@ -7,6 +7,7 @@
   import { Toolbar } from "@arlen/ui-kit/components/ui/toolbar";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { Breadcrumb, type BrowserState } from "@arlen/ui-kit/components/browser";
+  import FmViewControls from "./FmViewControls.svelte";
 
   let {
     controller,
@@ -71,6 +72,7 @@
     </div>
   {/snippet}
   {#snippet end()}
+    <FmViewControls />
     <IconAction
       label="Search"
       size="control"
