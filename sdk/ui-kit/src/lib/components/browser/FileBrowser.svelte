@@ -12,7 +12,12 @@
   import { joinPath } from "./types";
   import { Selection } from "./selection";
   import FileList from "./FileList.svelte";
-  import FileGrid from "./FileGrid.svelte";
+  import FileGrid, {
+    GRID_GAP_PX,
+    GRID_PAD_PX,
+    TILE_PX,
+    type GridMetrics,
+  } from "./FileGrid.svelte";
   import MillerColumns from "./MillerColumns.svelte";
 
   let {
@@ -57,8 +62,14 @@
   const sortKey = $derived(controller.sortKey);
   const ascending = $derived(controller.ascending);
   const viewMode = $derived(controller.viewMode);
+  const thumbnails = $derived(controller.thumbnails);
 
   const visible = $derived(filter ? $entries.filter(filter) : $entries);
+
+  // The grid reports its measured geometry; keyboard stride, cursor
+  // scrolling and the marquee compute from it (windowed tiles are
+  // off-DOM, so rect reads would lie).
+  let gridMetrics = $state<GridMetrics | null>(null);
 
   // Selection is synchronous view state (the documented exception to
   // the stores rule); it rebases whenever the listing identity
@@ -280,17 +291,31 @@
       const hi = Math.min(visible.length - 1, Math.floor(bottom / rowPx));
       for (let i = lo; i <= hi; i++) hits.push(i);
     } else {
-      const base = rootEl.getBoundingClientRect();
-      const nodes = rootEl.querySelectorAll(".file-tile");
-      nodes.forEach((node, i) => {
-        const r = node.getBoundingClientRect();
-        const x = r.left - base.left + rootEl!.scrollLeft;
-        const y = r.top - base.top + rootEl!.scrollTop;
-        const m = marquee!;
-        if (x < m.x + m.w && x + r.width > m.x && y < m.y + m.h && y + r.height > m.y) {
-          hits.push(i);
+      // The grid windows its tiles, so intersection runs on the same
+      // metric the grid reported — scrolled-away tiles still select.
+      const g = gridMetrics;
+      if (!g) return;
+      const m = marquee;
+      const strideY = TILE_PX + GRID_GAP_PX;
+      const strideX = g.colW + GRID_GAP_PX;
+      const rowLo = Math.max(0, Math.floor((m.y - GRID_PAD_PX) / strideY));
+      const rowHi = Math.floor((m.y + m.h - GRID_PAD_PX) / strideY);
+      const colLo = Math.max(0, Math.floor((m.x - GRID_PAD_PX) / strideX));
+      const colHi = Math.min(
+        g.columns - 1,
+        Math.floor((m.x + m.w - GRID_PAD_PX) / strideX),
+      );
+      for (let r = rowLo; r <= rowHi; r++) {
+        const ry = GRID_PAD_PX + r * strideY;
+        // A marquee living entirely in the gap band hits nothing.
+        if (ry + TILE_PX <= m.y || ry >= m.y + m.h) continue;
+        for (let c = colLo; c <= colHi; c++) {
+          const cx = GRID_PAD_PX + c * strideX;
+          if (cx + g.colW <= m.x || cx >= m.x + m.w) continue;
+          const i = r * g.columns + c;
+          if (i < visible.length) hits.push(i);
         }
-      });
+      }
     }
     selection.setSelected(hits, marqueeStart?.additive ?? false);
     publish();
@@ -313,21 +338,26 @@
       }
       return;
     }
+    if ($viewMode === "grid") {
+      // Same story as the list: the target tile may be windowed out,
+      // so the scroll math runs on the grid metric.
+      const cols = gridMetrics?.columns ?? 1;
+      const top = GRID_PAD_PX + Math.floor(i / cols) * (TILE_PX + GRID_GAP_PX);
+      if (top < rootEl.scrollTop) {
+        rootEl.scrollTop = top;
+      } else if (top + TILE_PX > rootEl.scrollTop + rootEl.clientHeight) {
+        rootEl.scrollTop = top + TILE_PX - rootEl.clientHeight;
+      }
+      return;
+    }
     rootEl
       .querySelectorAll(".file-row, .file-tile")
       [i]?.scrollIntoView({ block: "nearest" });
   }
 
-  /// Tiles per grid row, measured from layout (the first tile whose
-  /// top differs from the first marks the wrap).
+  /// Tiles per grid row, from the grid's reported metric.
   function gridColumns(): number {
-    const tiles = rootEl?.querySelectorAll(".file-tile");
-    if (!tiles || tiles.length < 2) return 1;
-    const top = (tiles[0] as HTMLElement).offsetTop;
-    for (let i = 1; i < tiles.length; i++) {
-      if ((tiles[i] as HTMLElement).offsetTop !== top) return i;
-    }
-    return tiles.length;
+    return gridMetrics?.columns ?? 1;
   }
 </script>
 
@@ -368,12 +398,23 @@
       <span class="fb-state-title">This folder is empty</span>
     </div>
   {:else if $viewMode === "grid"}
+    <!-- Thumbnails ride the grid only (the doc's default; "on-demand
+         in list view" has no specified control yet — flagged, not
+         invented). -->
     <FileGrid
       entries={visible}
       {selectedIndices}
       {cursorIndex}
       {icon}
       {onrowevent}
+      thumbnails={controller.hasThumbnails ? $thumbnails : undefined}
+      thumbKey={controller.hasThumbnails
+        ? (e) => controller.thumbnailKeyFor(e)
+        : undefined}
+      requestThumbnail={controller.hasThumbnails
+        ? (e) => controller.requestThumbnail(e)
+        : undefined}
+      onmetrics={(m) => (gridMetrics = m)}
     />
   {:else if $viewMode === "miller"}
     <MillerColumns
