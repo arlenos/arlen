@@ -144,7 +144,7 @@
   }
   .fl-header {
     gap: 8px;
-    padding: 0 8px;
+    padding: 0 16px;
     border-bottom: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
     position: sticky;
     top: 0;
@@ -179,6 +179,6 @@
   .fl-body {
     display: flex;
     flex-direction: column;
-    padding: 4px 0;
+    padding: 4px 8px;
   }
 </style>

@@ -4,12 +4,12 @@
   /// toggle. Location-level controls stay in the toolbar — this row
   /// is "how I look at it", the toolbar is "where I am".
   import {
-    Columns2,
     Columns3,
     Eye,
     EyeOff,
     LayoutGrid,
     List,
+    SquareSplitHorizontal,
   } from "@lucide/svelte";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
@@ -51,7 +51,7 @@
       active={$splitView}
       onclick={() => toggleSplit()}
     >
-      <Columns2 size={15} strokeWidth={1.75} />
+      <SquareSplitHorizontal size={15} strokeWidth={1.75} />
     </IconAction>
     <IconAction
       label={hidden ? "Hide hidden files" : "Show hidden files"}

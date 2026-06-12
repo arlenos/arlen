@@ -46,6 +46,18 @@
   const activeSession = $derived(
     $sessions.find((s) => s.id === $activeSessionId) ?? null,
   );
+
+  // The live prompt inherits the last block's git for its cwd — the
+  // truth as of the last command; live git is the engine's job.
+  const promptGit = $derived.by(() => {
+    const cwd = activeSession?.cwd;
+    if (!cwd) return null;
+    for (let i = $blocks.length - 1; i >= 0; i--) {
+      const b = $blocks[i];
+      if (b.cwd === cwd && b.git) return b.git;
+    }
+    return null;
+  });
 </script>
 
 <div class="console">
@@ -70,6 +82,7 @@
       <BlockStream blocks={$blocks}>
         <Composer
           session={activeSession}
+          git={promptGit}
           onsent={() => loadBlocks($activeSessionId)}
         />
       </BlockStream>

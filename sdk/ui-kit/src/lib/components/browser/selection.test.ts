@@ -85,6 +85,23 @@ describe("selection conformance with core/src/selection.rs", () => {
   });
 });
 
+describe("the marquee extension: setSelected", () => {
+  it("replaces with an arbitrary set and clamps out-of-range", () => {
+    const s = new Selection(5);
+    s.click(0);
+    s.setSelected([1, 3, 9]);
+    expect(s.indices()).toEqual([1, 3]);
+    expect(s.cursor()).toBe(3);
+  });
+
+  it("keeps the existing selection when additive", () => {
+    const s = new Selection(5);
+    s.click(0);
+    s.setSelected([2, 4], true);
+    expect(s.indices()).toEqual([0, 2, 4]);
+  });
+});
+
 describe("the documented divergence: remap on re-sort", () => {
   it("carries the selection by name across a re-list of the same dir", () => {
     const s = new Selection(3);
