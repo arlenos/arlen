@@ -42,6 +42,10 @@ tokio = { version = "1", features = ["sync"] }
 # destination, so a traversing entry is refused by construction.
 tar = "0.4"
 flate2 = "1"
+# The knowledge-graph client for the info panel's KG sections (provenance: who/
+# what accessed a file, via the caller-scoped 0x04 read). Best-effort - the panel
+# shows conventional metadata regardless, and an out-of-scope read is empty.
+os-sdk = { path = "../../../sdk/os-sdk" }
 
 [dev-dependencies]
 tempfile = "3"

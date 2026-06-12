@@ -192,14 +192,53 @@ struct Info {
     zugriff: Zugriff,
 }
 
-/// Get-Info for one path: real metadata, empty KG sections for now.
+/// Map a caller-scoped provenance view into the info panel's `woher` lines.
+/// Only the caller's own identity is named; a foreign actor is summarised, never
+/// named (the daemon already enforces the co-tenant no-leak, this preserves it).
+fn provenance_to_woher(view: &os_sdk::graph::ProvenanceView) -> Vec<ProvenanceEntry> {
+    let mut out: Vec<ProvenanceEntry> = view
+        .actors
+        .iter()
+        .map(|actor| ProvenanceEntry {
+            label: "Accessed by".to_string(),
+            detail: actor.clone(),
+        })
+        .collect();
+    if view.accessed_by_others {
+        out.push(ProvenanceEntry {
+            label: "Also accessed by".to_string(),
+            detail: "another app".to_string(),
+        });
+    }
+    out
+}
+
+/// Read a file's provenance from the knowledge graph (the caller-scoped 0x04
+/// op). Best-effort: an out-of-scope object, an absent daemon or any error yields
+/// no lines, so the info panel still shows the conventional metadata.
+async fn read_woher(path: &str) -> Vec<ProvenanceEntry> {
+    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
+    // The File node id in the graph is the file's absolute path.
+    match client.read_provenance(&abs(path)).await {
+        Ok(Some(view)) => provenance_to_woher(&view),
+        _ => Vec::new(),
+    }
+}
+
+/// Get-Info for one path: conventional metadata plus the KG provenance section.
+/// The relationships and capability sections stay empty until those reads land.
 #[tauri::command]
-fn files_info(path: String) -> Result<Info, String> {
-    let dir = root()?;
-    let conventional = properties(&dir, rel(&path)).map_err(|e| e.to_string())?;
+async fn files_info(path: String) -> Result<Info, String> {
+    // Conventional metadata first (the cap-std dir is dropped before the await).
+    let conventional = {
+        let dir = root()?;
+        properties(&dir, rel(&path)).map_err(|e| e.to_string())?
+    };
+    let woher = read_woher(&path).await;
     Ok(Info {
         conventional,
-        woher: Vec::new(),
+        woher,
         verwandt: Vec::new(),
         zugriff: Zugriff {
             readable_by: Vec::new(),
@@ -603,7 +642,29 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::abs;
+    use super::{abs, provenance_to_woher};
+
+    #[test]
+    fn woher_names_only_own_actors_and_summarises_others() {
+        let view = os_sdk::graph::ProvenanceView {
+            actors: vec!["com.acme.editor".to_string()],
+            accessed_by_others: true,
+        };
+        let lines = provenance_to_woher(&view);
+        // The caller's own actor is named; the foreign actor is only summarised.
+        assert!(lines.iter().any(|l| l.detail == "com.acme.editor"));
+        assert!(lines.iter().any(|l| l.detail == "another app"));
+        assert!(!lines.iter().any(|l| l.detail.contains("co-tenant")));
+    }
+
+    #[test]
+    fn woher_is_empty_with_no_actors_and_no_others() {
+        let view = os_sdk::graph::ProvenanceView {
+            actors: vec![],
+            accessed_by_others: false,
+        };
+        assert!(provenance_to_woher(&view).is_empty());
+    }
 
     #[test]
     fn abs_makes_a_root_relative_path_absolute() {
