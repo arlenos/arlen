@@ -41,6 +41,10 @@ export interface SortSpec {
 /// out, and never composes paths above its `root`.
 export interface BrowserAdapter {
   list(path: string, sort: SortSpec): Promise<FileEntry[]>;
+  /// A renderable URL (data: or asset:) for the entry's thumbnail, or
+  /// null when the host has none — the tile keeps its icon. Called
+  /// lazily per visible grid tile, never on the listing path.
+  thumbnail?(path: string, entry: FileEntry): Promise<string | null>;
 }
 
 /// A navigable place in the sidebar (label + icon key + path). The
