@@ -14,6 +14,7 @@
 pub mod ops;
 pub mod search;
 pub mod selection;
+pub mod thumbnail_cache;
 
 use std::cmp::Ordering;
 use std::io;
