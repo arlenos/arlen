@@ -28,3 +28,12 @@ cap-std = "3"
 # indicator (same reader as the harness and the terminal).
 toml = "0.8"
 dirs = "5"
+# The sandboxed image thumbnailer (decode in a Landlock+seccomp subprocess). The
+# host is the integration point that owns this dependency; the core stays
+# decode-free behind its generator seam. `base64` encodes the cached PNG into the
+# data-URL the tile's <img> loads.
+arlen-ai-sandbox = { path = "../../../ai/ai-sandbox", features = ["thumbnail"] }
+base64 = "0.22"
+
+[dev-dependencies]
+tempfile = "3"
