@@ -136,6 +136,45 @@ fn is_invisible_or_format(ch: char) -> bool {
     )
 }
 
+/// The longest-side dimension (px) of a generated thumbnail. Thumbnails are
+/// cached at this size; the UI scales down for smaller displays.
+#[cfg(feature = "thumbnail")]
+pub const THUMBNAIL_MAX_DIM: u32 = 256;
+
+/// Decode an untrusted image and produce a downscaled PNG thumbnail.
+///
+/// This is the transformation that runs **inside** the sandbox. Image decoders
+/// are a memory-unsafe attack surface (the same class as the document parser),
+/// so the decode happens in the locked-down worker and only the re-encoded
+/// thumbnail bytes leave. The image is decoded, scaled to fit within `max_dim`
+/// on its longest side (aspect preserved, never upscaled), and re-encoded as
+/// PNG (which also strips the source file's metadata). A decode failure is
+/// fail-closed: no thumbnail is produced.
+#[cfg(feature = "thumbnail")]
+pub fn generate_thumbnail(image_bytes: &[u8], max_dim: u32) -> Result<Vec<u8>, SandboxError> {
+    if image_bytes.len() > MAX_BYTES {
+        return Err(SandboxError::TooLarge);
+    }
+    let decoded =
+        image::load_from_memory(image_bytes).map_err(|e| SandboxError::Decode(e.to_string()))?;
+    let dim = max_dim.max(1);
+    // Only downscale. Re-encoding an already-small image still sanitises it (it
+    // drops the source metadata and format quirks), but it is never enlarged.
+    let thumb = if decoded.width() <= dim && decoded.height() <= dim {
+        decoded
+    } else {
+        decoded.thumbnail(dim, dim)
+    };
+    let mut out = Vec::new();
+    thumb
+        .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+        .map_err(|e| SandboxError::Decode(e.to_string()))?;
+    if out.len() > MAX_BYTES {
+        return Err(SandboxError::TooLarge);
+    }
+    Ok(out)
+}
+
 /// Parse a document by running the sandbox worker as a subprocess.
 ///
 /// `sandbox_bin` is the path to the `arlen-doc-sandbox` binary. The
@@ -279,5 +318,48 @@ mod tests {
     fn extract_rejects_oversize_input() {
         let big = vec![b'x'; MAX_BYTES + 1];
         assert!(matches!(extract_text(&big), Err(SandboxError::TooLarge)));
+    }
+}
+
+#[cfg(all(test, feature = "thumbnail"))]
+mod thumbnail_tests {
+    use super::*;
+    use image::GenericImageView;
+
+    /// A synthetic PNG of `w`x`h` to feed the thumbnailer.
+    fn png_bytes(w: u32, h: u32) -> Vec<u8> {
+        let img = image::RgbImage::from_fn(w, h, |x, _| image::Rgb([(x % 256) as u8, 128, 200]));
+        let mut out = Vec::new();
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+            .unwrap();
+        out
+    }
+
+    #[test]
+    fn downscales_a_large_image_within_the_box_preserving_aspect() {
+        let thumb = generate_thumbnail(&png_bytes(800, 400), 256).unwrap();
+        let (w, h) = image::load_from_memory(&thumb).unwrap().dimensions();
+        // 2:1 aspect preserved, long side hits the 256 box.
+        assert_eq!((w, h), (256, 128));
+    }
+
+    #[test]
+    fn does_not_upscale_a_small_image() {
+        let thumb = generate_thumbnail(&png_bytes(64, 48), 256).unwrap();
+        let (w, h) = image::load_from_memory(&thumb).unwrap().dimensions();
+        assert_eq!((w, h), (64, 48));
+    }
+
+    #[test]
+    fn refuses_non_image_bytes_fail_closed() {
+        let err = generate_thumbnail(b"this is plainly not an image", 256).unwrap_err();
+        assert!(matches!(err, SandboxError::Decode(_)));
+    }
+
+    #[test]
+    fn refuses_oversize_input() {
+        let big = vec![0u8; MAX_BYTES + 1];
+        assert!(matches!(generate_thumbnail(&big, 256), Err(SandboxError::TooLarge)));
     }
 }
