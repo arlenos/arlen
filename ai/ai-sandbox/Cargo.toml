@@ -11,9 +11,26 @@ path = "src/lib.rs"
 name = "arlen-doc-sandbox"
 path = "src/bin/arlen-doc-sandbox.rs"
 
+# The sandboxed image thumbnailer. Behind the `thumbnail` feature so document-
+# parsing consumers (the AI layer) do not pull the image-decode dependency.
+[[bin]]
+name = "arlen-thumbnail-sandbox"
+path = "src/bin/arlen-thumbnail-sandbox.rs"
+required-features = ["thumbnail"]
+
+[features]
+# Image thumbnailing: pulls the `image` decoders and builds the thumbnail
+# worker. Off by default so a doc-parse-only consumer stays lean.
+thumbnail = ["dep:image"]
+
 [dependencies]
 thiserror = "2"
 tracing = "0.1"
+# Untrusted image decoding for the sandboxed thumbnailer (the `thumbnail`
+# feature). Decoders are a memory-unsafe attack surface, so the decode runs
+# inside the worker's Landlock + seccomp lockdown; only the re-encoded
+# thumbnail leaves. Default features off so only the explicit codecs link.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"], optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.4"
