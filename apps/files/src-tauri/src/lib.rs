@@ -402,6 +402,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
+        .manage(thumbnail::ThumbnailLimiter::new())
         .invoke_handler(tauri::generate_handler![
             shell_present,
             frontend_log,

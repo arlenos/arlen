@@ -34,6 +34,9 @@ dirs = "5"
 # data-URL the tile's <img> loads.
 arlen-ai-sandbox = { path = "../../../ai/ai-sandbox", features = ["thumbnail"] }
 base64 = "0.22"
+# Already in the tree via tauri; `sync` carries the semaphore bounding
+# concurrent sandboxed decodes.
+tokio = { version = "1", features = ["sync"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -76,6 +76,14 @@ fn read_capped(source: &Path) -> Result<Vec<u8>, ThumbnailError> {
     Ok(buf)
 }
 
+/// The cached PNG as the data-URL the tile's `<img>` loads.
+fn encode(cached: &Path) -> Result<String, String> {
+    let png = std::fs::read(cached).map_err(|e| e.to_string())?;
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
+    Ok(format!("data:image/png;base64,{b64}"))
+}
+
 /// The pure command logic: a data-URL of `path`'s thumbnail, or `None` when it is
 /// not a thumbnailable image or generation failed (the tile then shows its icon).
 /// Generation/cache go through `cache` + `gen`, so this is testable with a mock.
@@ -92,22 +100,61 @@ fn thumbnail_data_url(
         // A non-image or a decode failure: no thumbnail, fall back to the icon.
         Err(_) => return Ok(None),
     };
-    let png = std::fs::read(&cached).map_err(|e| e.to_string())?;
-    use base64::Engine;
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
-    Ok(Some(format!("data:image/png;base64,{b64}")))
+    encode(&cached).map(Some)
+}
+
+/// Bounds concurrent sandboxed decodes: every cache miss is a worker
+/// subprocess plus an up-to-16MiB read, and the windowed grid can ask for a
+/// whole viewport of tiles at once. Cache hits bypass the limit entirely.
+pub struct ThumbnailLimiter(tokio::sync::Semaphore);
+
+impl ThumbnailLimiter {
+    /// Four concurrent decodes: enough to keep a viewport's worth of misses
+    /// flowing without forking a process storm.
+    pub fn new() -> Self {
+        Self(tokio::sync::Semaphore::new(4))
+    }
+}
+
+impl Default for ThumbnailLimiter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Return a data-URL thumbnail for `path`, generating and caching it on a miss.
 ///
 /// Call this OFF the listing path (lazily per visible tile): a miss spawns the
-/// sandboxed decoder subprocess. Returns `None` for a non-image or on any
-/// failure, so the tile falls back to its icon.
+/// sandboxed decoder subprocess, bounded by the limiter. A cache hit is served
+/// outside the limit (a stat + read + encode never queues behind decodes).
+/// Returns `None` for a non-image or on any failure, so the tile falls back to
+/// its icon.
 #[tauri::command]
-pub async fn files_thumbnail(path: String) -> Result<Option<String>, String> {
+pub async fn files_thumbnail(
+    path: String,
+    limiter: tauri::State<'_, ThumbnailLimiter>,
+) -> Result<Option<String>, String> {
     let Some(dir) = thumbnail_cache_dir() else {
         return Ok(None);
     };
+    if !is_thumbnailable(Path::new(&path)) {
+        return Ok(None);
+    }
+
+    let hit = {
+        let dir = dir.clone();
+        let p = path.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            ThumbnailCache::new(dir).lookup(Path::new(&p)).ok().flatten()
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    };
+    if let Some(cached) = hit {
+        return encode(&cached).map(Some);
+    }
+
+    let _permit = limiter.0.acquire().await.map_err(|e| e.to_string())?;
     let bin = thumbnail_sandbox_bin();
     // Off the async runtime: a miss spawns the worker and blocks on its output.
     tauri::async_runtime::spawn_blocking(move || {
@@ -176,6 +223,20 @@ mod tests {
         };
         assert_eq!(thumbnail_data_url(&cache, &gen, &src).unwrap(), None);
         assert_eq!(gen.calls.get(), 0, "a non-image never spawns the generator");
+    }
+
+    #[test]
+    fn encode_round_trips_the_cached_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cached = tmp.path().join("x.png");
+        std::fs::write(&cached, b"PNGBYTES").unwrap();
+        let url = encode(&cached).unwrap();
+        let prefix = "data:image/png;base64,";
+        use base64::Engine;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(&url[prefix.len()..])
+            .unwrap();
+        assert_eq!(decoded, b"PNGBYTES");
     }
 
     #[test]
