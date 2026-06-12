@@ -28,6 +28,12 @@ pub enum LenvError {
     /// A required field was empty or a value was out of range.
     #[error("invalid .lenv: {0}")]
     Invalid(String),
+    /// The verifying key or signature was not the expected length / shape.
+    #[error("invalid signing material: {0}")]
+    BadKey(String),
+    /// The org signature did not verify against the key over the .lenv bytes.
+    #[error("signature verification failed")]
+    BadSignature,
 }
 
 /// Package metadata: who published it, its version, and the user-protecting
@@ -230,6 +236,38 @@ impl LenvPackage {
     }
 }
 
+/// Verify the org's detached Ed25519 signature over the raw `.lenv` bytes
+/// (the signed content is the whole file, so the policy TOML the user inspects is
+/// exactly what was signed - no canonicalization gap). `verifying_key` is the
+/// org's 32-byte Ed25519 public key, `signature` its 64-byte signature. The
+/// caller obtains the key out of band (the enrollment link) or confirms its
+/// [`key_fingerprint`] on first install (TOFU); this only checks the signature.
+pub fn verify_signature(
+    lenv_bytes: &[u8],
+    signature: &[u8],
+    verifying_key: &[u8],
+) -> Result<(), LenvError> {
+    use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+    let key_bytes: [u8; 32] = verifying_key
+        .try_into()
+        .map_err(|_| LenvError::BadKey("verifying key must be 32 bytes".to_string()))?;
+    let key = VerifyingKey::from_bytes(&key_bytes)
+        .map_err(|e| LenvError::BadKey(format!("invalid Ed25519 key: {e}")))?;
+    let sig_bytes: [u8; 64] = signature
+        .try_into()
+        .map_err(|_| LenvError::BadKey("signature must be 64 bytes".to_string()))?;
+    let sig = Signature::from_bytes(&sig_bytes);
+    key.verify(lenv_bytes, &sig).map_err(|_| LenvError::BadSignature)
+}
+
+/// Whether `verifying_key`'s [`key_fingerprint`] equals `pinned` (the fingerprint
+/// confirmed at first install / imported via the enrollment link). The TOFU
+/// check on every later update: a key whose fingerprint does not match the pin is
+/// a different publisher, never silently accepted.
+pub fn fingerprint_matches(verifying_key: &[u8], pinned: &str) -> bool {
+    key_fingerprint(verifying_key) == pinned
+}
+
 /// The publisher key fingerprint for the TOFU prompt: SHA-256 of the raw public
 /// key bytes, lowercase hex in colon-separated byte groups (the form shown to the
 /// user to confirm on first install).
@@ -332,6 +370,64 @@ mod tests {
         assert!(s.contains("knowledge graph: denied"));
         assert!(s.contains("onboarding"));
         assert!(s.contains("notified if you uninstall"));
+    }
+
+    /// A deterministic test keypair from a fixed seed: (verifying_key_bytes,
+    /// sign-fn).
+    fn keypair(seed: u8) -> ed25519_dalek::SigningKey {
+        ed25519_dalek::SigningKey::from_bytes(&[seed; 32])
+    }
+
+    #[test]
+    fn a_valid_signature_verifies_and_a_tamper_does_not() {
+        use ed25519_dalek::Signer;
+        let sk = keypair(1);
+        let vk = sk.verifying_key().to_bytes();
+        let lenv = SAMPLE.as_bytes();
+        let sig = sk.sign(lenv).to_bytes();
+
+        assert!(verify_signature(lenv, &sig, &vk).is_ok());
+        // A single flipped byte in the content fails verification.
+        let mut tampered = SAMPLE.as_bytes().to_vec();
+        tampered[0] ^= 0xff;
+        assert!(matches!(
+            verify_signature(&tampered, &sig, &vk),
+            Err(LenvError::BadSignature)
+        ));
+    }
+
+    #[test]
+    fn a_signature_from_another_key_does_not_verify() {
+        use ed25519_dalek::Signer;
+        let signer = keypair(1);
+        let other_vk = keypair(2).verifying_key().to_bytes();
+        let lenv = SAMPLE.as_bytes();
+        let sig = signer.sign(lenv).to_bytes();
+        assert!(matches!(
+            verify_signature(lenv, &sig, &other_vk),
+            Err(LenvError::BadSignature)
+        ));
+    }
+
+    #[test]
+    fn malformed_key_or_signature_is_rejected() {
+        assert!(matches!(
+            verify_signature(b"x", &[0u8; 64], &[0u8; 16]),
+            Err(LenvError::BadKey(_))
+        ));
+        assert!(matches!(
+            verify_signature(b"x", &[0u8; 10], &[0u8; 32]),
+            Err(LenvError::BadKey(_))
+        ));
+    }
+
+    #[test]
+    fn tofu_fingerprint_match() {
+        let vk = keypair(1).verifying_key().to_bytes();
+        let pinned = key_fingerprint(&vk);
+        assert!(fingerprint_matches(&vk, &pinned));
+        let other = keypair(2).verifying_key().to_bytes();
+        assert!(!fingerprint_matches(&other, &pinned));
     }
 
     #[test]
