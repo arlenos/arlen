@@ -23,6 +23,14 @@ zbus = { version = "5", default-features = false, features = ["tokio"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "net", "io-util"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Token vault crypto: each account's tokens are AEAD-encrypted at rest under a
+# per-account subkey HKDF-derived from the daemon's master secret. ChaCha20-
+# Poly1305 needs no AES-NI and is constant-time; getrandom supplies the nonce.
+chacha20poly1305 = "0.10"
+hkdf = "0.12"
+sha2 = "0.10"
+zeroize = "1"
+getrandom = "0.2"
 
 [dev-dependencies]
 tempfile = "3"
