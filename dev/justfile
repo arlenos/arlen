@@ -71,8 +71,21 @@ dev *ARGS:
     # never collides with whatever else holds 8080 on the machine.
     cd "{{ROOT}}" && process-compose "${configs[@]}" -U up ${passthrough[@]+"${passthrough[@]}"}
 
+# Build the sandboxed thumbnail worker the files app spawns for its grid
+# thumbnails (ai-sandbox `thumbnail` feature).
+thumbnail-worker:
+    cargo build --manifest-path "{{ROOT}}/ai/Cargo.toml" -p arlen-ai-sandbox --features thumbnail --bin arlen-thumbnail-sandbox
+
 # Quick loop: one Tauri app via cargo tauri dev (needs a running compositor).
+# The files app additionally gets the freshly built thumbnail worker via
+# ARLEN_THUMBNAIL_SANDBOX_BIN (the installed libexec path does not exist in dev).
 dev-ui app:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{app}}" = "files" ]; then
+        just thumbnail-worker
+        export ARLEN_THUMBNAIL_SANDBOX_BIN="{{ROOT}}/ai/target/debug/arlen-thumbnail-sandbox"
+    fi
     cd "{{ROOT}}/apps/{{app}}" && cargo tauri dev
 
 # eBPF kernel-layer in QEMU (off-host, by design).
