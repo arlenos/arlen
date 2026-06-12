@@ -18,10 +18,21 @@ name = "arlen-thumbnail-sandbox"
 path = "src/bin/arlen-thumbnail-sandbox.rs"
 required-features = ["thumbnail"]
 
+# The sandboxed music cover-art thumbnailer. Extracts a file's embedded album
+# art and thumbnails it; behind the `music` feature so non-music consumers pull
+# neither the metadata reader nor the image decoders.
+[[bin]]
+name = "arlen-music-thumbnail-sandbox"
+path = "src/bin/arlen-music-thumbnail-sandbox.rs"
+required-features = ["music"]
+
 [features]
 # Image thumbnailing: pulls the `image` decoders and builds the thumbnail
 # worker. Off by default so a doc-parse-only consumer stays lean.
 thumbnail = ["dep:image"]
+# Music cover-art thumbnailing: pulls the `lofty` metadata reader to extract the
+# embedded picture, then reuses the image path to decode and downscale it.
+music = ["thumbnail", "dep:lofty"]
 
 [dependencies]
 thiserror = "2"
@@ -31,6 +42,11 @@ tracing = "0.1"
 # inside the worker's Landlock + seccomp lockdown; only the re-encoded
 # thumbnail leaves. Default features off so only the explicit codecs link.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"], optional = true }
+# Audio metadata reader for the music cover-art thumbnailer (the `music`
+# feature). Parsing an untrusted media container is a memory-unsafe attack
+# surface, so the extraction runs inside the worker's lockdown alongside the
+# decode; only the re-encoded thumbnail leaves.
+lofty = { version = "0.24", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.4"

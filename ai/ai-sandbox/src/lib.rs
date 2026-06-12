@@ -207,6 +207,44 @@ pub fn generate_thumbnail(image_bytes: &[u8], max_dim: u32) -> Result<Vec<u8>, S
     Ok(out)
 }
 
+/// Extract the first embedded cover-art picture from raw audio-file bytes.
+///
+/// Runs INSIDE the sandbox worker: parsing an untrusted media container header
+/// (lofty) is the same memory-unsafe attack surface as an image decode, so it is
+/// locked down the same way. It works purely in memory (a cursor, no filesystem),
+/// so it runs under the worker's deny-all Landlock. Returns the embedded picture
+/// bytes (the source JPEG/PNG, as stored) for the caller to decode and downscale
+/// through [`generate_thumbnail`]; returns `Ok(None)` when the file carries no
+/// embedded picture (the common case for music without art, a fall-to-icon
+/// outcome, not a failure). A container that cannot be parsed is a
+/// [`SandboxError::Decode`], fail-closed.
+#[cfg(feature = "music")]
+pub fn extract_album_art(audio_bytes: &[u8]) -> Result<Option<Vec<u8>>, SandboxError> {
+    use lofty::config::ParseOptions;
+    use lofty::file::TaggedFileExt;
+    use lofty::probe::Probe;
+    if audio_bytes.len() > MAX_BYTES {
+        return Err(SandboxError::TooLarge);
+    }
+    // Skip audio-property parsing: cover art lives in the tags, so reading
+    // bitrate/duration would only add work and fail on a file with an unusual or
+    // missing audio stream that still carries readable art.
+    let tagged = Probe::new(std::io::Cursor::new(audio_bytes))
+        .guess_file_type()
+        .map_err(|e| SandboxError::Decode(format!("probe: {e}")))?
+        .options(ParseOptions::new().read_properties(false))
+        .read()
+        .map_err(|e| SandboxError::Decode(format!("read tags: {e}")))?;
+    // The first picture of the primary tag (cover art is conventionally there),
+    // falling back to any tag the container carries.
+    let picture = tagged
+        .primary_tag()
+        .or_else(|| tagged.first_tag())
+        .and_then(|tag| tag.pictures().first())
+        .map(|pic| pic.data().to_vec());
+    Ok(picture)
+}
+
 /// Parse a document by running the sandbox worker as a subprocess.
 ///
 /// `sandbox_bin` is the path to the `arlen-doc-sandbox` binary. The
@@ -336,6 +374,31 @@ pub fn thumbnail(sandbox_bin: &Path, image: &[u8]) -> Result<Vec<u8>, SandboxErr
     run_worker(sandbox_bin, image)
 }
 
+/// Generate a thumbnail of an audio file's embedded cover art by running the
+/// sandboxed music worker as a subprocess.
+///
+/// `sandbox_bin` is the path to the `arlen-music-thumbnail-sandbox` binary. The
+/// untrusted `audio` bytes are written to the worker's stdin; the worker extracts
+/// the embedded picture and downscales it inside its Landlock + seccomp lockdown,
+/// then writes back the PNG thumbnail. Returns `Ok(None)` when the file has no
+/// usable embedded art (the worker produces no output), so the caller falls back
+/// to a music-type icon. Any failure is a [`SandboxError`]; the caller produces
+/// no thumbnail on error.
+///
+/// TRUST CONTRACT: same as [`thumbnail`] - `sandbox_bin` MUST be the genuine,
+/// fixed worker path; the containment rests on the spawned process being the
+/// real locked-down worker.
+#[cfg(feature = "music")]
+pub fn album_art_thumbnail(
+    sandbox_bin: &Path,
+    audio: &[u8],
+) -> Result<Option<Vec<u8>>, SandboxError> {
+    let out = run_worker(sandbox_bin, audio)?;
+    // Empty output is the worker's "no usable art" signal (a real PNG thumbnail
+    // is never empty); map it to a fall-back-to-icon outcome.
+    Ok((!out.is_empty()).then_some(out))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -433,5 +496,92 @@ mod thumbnail_tests {
     fn refuses_oversize_input() {
         let big = vec![0u8; MAX_BYTES + 1];
         assert!(matches!(generate_thumbnail(&big, 256), Err(SandboxError::TooLarge)));
+    }
+}
+
+#[cfg(all(test, feature = "music"))]
+mod music_tests {
+    use super::*;
+
+    /// A tiny PNG to embed as synthetic cover art.
+    fn tiny_png() -> Vec<u8> {
+        let img = image::RgbImage::from_pixel(2, 2, image::Rgb([200, 30, 30]));
+        let mut buf = Vec::new();
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+            .unwrap();
+        buf
+    }
+
+    /// A 3-byte big-endian length, the FLAC metadata-block size field.
+    fn be24(v: u32) -> [u8; 3] {
+        [(v >> 16) as u8, (v >> 8) as u8, v as u8]
+    }
+
+    /// A minimal in-memory FLAC: the `fLaC` magic, a STREAMINFO block, and
+    /// optionally a PICTURE block carrying `png` as front cover. Audio frames are
+    /// omitted - the reader is driven with `read_properties(false)`, so the
+    /// metadata blocks alone parse. This is a real recognisable container (a bare
+    /// tag dump is not), so the cover-art path is exercised end to end.
+    fn minimal_flac(png: Option<&[u8]>) -> Vec<u8> {
+        let mut f = Vec::new();
+        f.extend_from_slice(b"fLaC");
+        // STREAMINFO (type 0): last only when there is no PICTURE block after it.
+        let last_streaminfo = if png.is_some() { 0x00 } else { 0x80 };
+        f.push(last_streaminfo);
+        f.extend_from_slice(&be24(34));
+        let mut si = [0u8; 34];
+        si[0..2].copy_from_slice(&4096u16.to_be_bytes()); // min block size
+        si[2..4].copy_from_slice(&4096u16.to_be_bytes()); // max block size
+        // sample_rate(20) | channels-1(3) | bps-1(5) | total_samples(36).
+        let packed: u64 = (44_100u64 << 44) | (1u64 << 41) | (15u64 << 36);
+        si[10..18].copy_from_slice(&packed.to_be_bytes());
+        f.extend_from_slice(&si);
+        if let Some(png) = png {
+            // PICTURE (type 6), marked last block.
+            let mut pic = Vec::new();
+            pic.extend_from_slice(&3u32.to_be_bytes()); // front cover
+            let mime = b"image/png";
+            pic.extend_from_slice(&(mime.len() as u32).to_be_bytes());
+            pic.extend_from_slice(mime);
+            pic.extend_from_slice(&0u32.to_be_bytes()); // description length
+            pic.extend_from_slice(&0u32.to_be_bytes()); // width
+            pic.extend_from_slice(&0u32.to_be_bytes()); // height
+            pic.extend_from_slice(&0u32.to_be_bytes()); // colour depth
+            pic.extend_from_slice(&0u32.to_be_bytes()); // colours used
+            pic.extend_from_slice(&(png.len() as u32).to_be_bytes());
+            pic.extend_from_slice(png);
+            f.push(0x86); // last=1, type=6
+            f.extend_from_slice(&be24(pic.len() as u32));
+            f.extend_from_slice(&pic);
+        }
+        f
+    }
+
+    #[test]
+    fn extracts_the_embedded_cover_art() {
+        let png = tiny_png();
+        let file = minimal_flac(Some(&png));
+        let art = extract_album_art(&file).unwrap();
+        assert_eq!(art.as_deref(), Some(png.as_slice()), "the exact embedded bytes");
+    }
+
+    #[test]
+    fn a_file_without_a_picture_yields_none() {
+        let file = minimal_flac(None);
+        assert_eq!(extract_album_art(&file).unwrap(), None);
+    }
+
+    #[test]
+    fn unparseable_input_is_fail_closed_not_a_panic() {
+        // Random bytes are not a recognisable container: an error, never a panic
+        // or a forged picture.
+        assert!(extract_album_art(b"this is not an audio container at all").is_err());
+    }
+
+    #[test]
+    fn refuses_oversize_input() {
+        let big = vec![0u8; MAX_BYTES + 1];
+        assert!(matches!(extract_album_art(&big), Err(SandboxError::TooLarge)));
     }
 }
