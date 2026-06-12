@@ -128,6 +128,36 @@ fn files_places() -> Places {
     Places { orte, geraete }
 }
 
+/// The "New from template" entries: the files in the XDG Templates directory
+/// (`~/Templates`), sorted by name. The UI offers these in a New menu; creating
+/// one is a copy of the chosen template's `path` into the target folder via the
+/// existing `files_op` copy, so no separate create command is needed.
+#[tauri::command]
+fn files_templates() -> Vec<Place> {
+    let Some(dir) = dirs::template_dir() else {
+        return Vec::new();
+    };
+    let Ok(read_dir) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut out: Vec<Place> = read_dir
+        .flatten()
+        .filter(|e| e.path().is_file())
+        .filter_map(|e| {
+            let path = e.path();
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .map(|name| Place {
+                    label: name.to_string(),
+                    icon: "file".to_string(),
+                    path: path.to_string_lossy().into_owned(),
+                })
+        })
+        .collect();
+    out.sort_by(|a, b| a.label.cmp(&b.label));
+    out
+}
+
 /// One provenance line in the info panel (KG shape; empty until the
 /// structured reads land).
 #[derive(Serialize)]
@@ -491,6 +521,7 @@ pub fn run() {
             files_open,
             files_extract,
             files_compress,
+            files_templates,
             files_projects,
             files_saved_searches,
             thumbnail::files_thumbnail,
