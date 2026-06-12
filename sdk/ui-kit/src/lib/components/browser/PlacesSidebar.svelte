@@ -11,6 +11,7 @@
     SidebarMenuButton,
     SidebarMenuItem,
   } from "../ui/sidebar";
+  import { X } from "@lucide/svelte";
   import { placeIcon } from "./icons";
   import type { Place, PlaceGroup } from "./types";
 
@@ -18,11 +19,14 @@
     groups,
     activePath,
     onnavigate,
+    onremove,
   }: {
     groups: PlaceGroup[];
     /// The current location; the matching place row renders active.
     activePath?: string;
     onnavigate?: (place: Place) => void;
+    /// A removable place's hover affordance was clicked.
+    onremove?: (place: Place) => void;
   } = $props();
 </script>
 
@@ -48,6 +52,26 @@
               {#if place.offline}
                 <span class="ps-dot ml-auto group-data-[collapsible=icon]:hidden"></span>
               {/if}
+              {#if place.removable}
+                <span
+                  class="ps-remove ml-auto group-data-[collapsible=icon]:hidden"
+                  role="button"
+                  tabindex="-1"
+                  aria-label={`Unpin ${place.label}`}
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    onremove?.(place);
+                  }}
+                  onkeydown={(e) => {
+                    if (e.key === "Enter") {
+                      e.stopPropagation();
+                      onremove?.(place);
+                    }
+                  }}
+                >
+                  <X size={12} strokeWidth={2} />
+                </span>
+              {/if}
             </SidebarMenuButton>
           </SidebarMenuItem>
         {/each}
@@ -67,6 +91,26 @@
   .ps-label.offline {
     color: color-mix(in srgb, var(--sidebar-foreground) 55%, transparent);
   }
+  .ps-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-shrink: 0;
+    border-radius: var(--radius-chip);
+    color: color-mix(in srgb, var(--sidebar-foreground) 55%, transparent);
+    opacity: 0;
+    transition: opacity var(--duration-micro, 100ms) var(--ease-out, ease);
+  }
+  :global([data-sidebar="menu-button"]:hover) .ps-remove {
+    opacity: 1;
+  }
+  .ps-remove:hover {
+    background: color-mix(in srgb, var(--sidebar-foreground) 10%, transparent);
+    color: var(--sidebar-foreground);
+  }
+
   /* The one dot language: gray = not connected. */
   .ps-dot {
     width: 6px;

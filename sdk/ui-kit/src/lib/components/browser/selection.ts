@@ -123,6 +123,25 @@ export class Selection {
     }
   }
 
+  /// Replace the selection with an arbitrary index set (the marquee:
+  /// a grid rectangle is non-contiguous in index space). An extension
+  /// over the Rust model — flagged, not silently divergent. `additive`
+  /// keeps the existing selection.
+  setSelected(indices: number[], additive = false): void {
+    if (!additive) this.selected.clear();
+    let last: number | null = null;
+    for (const i of indices) {
+      if (i >= 0 && i < this.count) {
+        this.selected.add(i);
+        last = i;
+      }
+    }
+    if (last !== null) {
+      this.anchor = last;
+      this.cursorIndex = last;
+    }
+  }
+
   /// Select every entry; anchor at 0, cursor at the last.
   selectAll(): void {
     this.selected = new Set(Array.from({ length: this.count }, (_, i) => i));
