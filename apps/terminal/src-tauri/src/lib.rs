@@ -7,15 +7,30 @@
 //! wires in. Everything else is a one-line wrapper over
 //! `arlen_terminal_core::stub` until then.
 
+use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::Instant;
 
-use arlen_terminal_core::{stub, Block, HistoryFilters, Project, Session};
+use arlen_terminal_core::blocks::BlockAssembler;
+use arlen_terminal_core::vt::VtEngine;
+use arlen_terminal_core::{stub, Block, HistoryFilters, Project, Session, SessionStatus};
+use arlen_terminal_engine::PtyEngine;
 use tauri::State;
 
-/// The open sessions, host-owned. The id is assigned here; the engine
-/// will key its PTYs by it.
+/// A live shell: the contract [`Session`] the UI sees, the [`PtyEngine`] driving
+/// its real PTY, and the [`BlockAssembler`] turning the engine's OSC-mark events
+/// into command blocks.
+struct LiveSession {
+    session: Session,
+    engine: PtyEngine,
+    assembler: BlockAssembler,
+}
+
+/// The open shells, host-owned and keyed by id. `order` preserves creation order
+/// for the sidebar; the id is assigned here and keys the engine's PTY.
 struct SessionRegistry {
-    sessions: Vec<Session>,
+    sessions: HashMap<String, LiveSession>,
+    order: Vec<String>,
     next_id: u64,
 }
 
@@ -37,36 +52,76 @@ fn frontend_log(level: String, msg: String) {
     }
 }
 
-/// The open shells, from the host registry.
+/// The open shells, from the host registry, in creation order.
 #[tauri::command]
 fn terminal_sessions(registry: State<Mutex<SessionRegistry>>) -> Vec<Session> {
-    registry
-        .lock()
-        .map(|r| r.sessions.clone())
-        .unwrap_or_default()
+    let Ok(reg) = registry.lock() else {
+        return Vec::new();
+    };
+    reg.order
+        .iter()
+        .filter_map(|id| reg.sessions.get(id).map(|s| s.session.clone()))
+        .collect()
 }
 
-/// A session's blocks.
+/// A session's blocks: drain the engine's new OSC-mark events into the session's
+/// assembler and return the assembled command blocks. Called off the listing path
+/// by the UI polling; a missing session yields an empty list rather than an error.
 #[tauri::command]
-fn terminal_blocks(session_id: String) -> Vec<Block> {
-    stub::blocks(&session_id)
+fn terminal_blocks(session_id: String, registry: State<Mutex<SessionRegistry>>) -> Vec<Block> {
+    let Ok(mut reg) = registry.lock() else {
+        return Vec::new();
+    };
+    let Some(live) = reg.sessions.get_mut(&session_id) else {
+        return Vec::new();
+    };
+    let events = live.engine.drain_events();
+    live.assembler.consume(&events, Instant::now());
+    live.assembler.blocks()
 }
 
-/// Feed input to a session's shell.
+/// Feed input (keystrokes) to a session's shell PTY.
 #[tauri::command]
-fn terminal_input(session_id: String, input: String) -> Result<(), String> {
-    stub::input(&session_id, &input)
+fn terminal_input(
+    session_id: String,
+    input: String,
+    registry: State<Mutex<SessionRegistry>>,
+) -> Result<(), String> {
+    let mut reg = registry.lock().map_err(|e| e.to_string())?;
+    let live = reg
+        .sessions
+        .get_mut(&session_id)
+        .ok_or_else(|| format!("no such session: {session_id}"))?;
+    live.engine.send_input(input.as_bytes()).map_err(|e| e.to_string())
 }
 
-/// Open a new shell: the stub provides the shape and home cwd, the
-/// registry assigns the id and remembers the session.
+/// Open a new shell: spawn a real zsh on a PTY via the engine (which sources the
+/// curated integration when `ARLEN_TERM_ZDOTDIR` points at it, so the block marks
+/// fire), assign the id, and remember the live session.
 #[tauri::command]
 fn terminal_new_session(registry: State<Mutex<SessionRegistry>>) -> Result<Session, String> {
+    let home = dirs::home_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "/".to_string());
+    let engine = PtyEngine::spawn_zsh(Some(&home), 80, 24).map_err(|e| e.to_string())?;
     let mut reg = registry.lock().map_err(|e| e.to_string())?;
-    let mut session = stub::new_session()?;
     reg.next_id += 1;
-    session.id = format!("s{}", reg.next_id);
-    reg.sessions.push(session.clone());
+    let id = format!("s{}", reg.next_id);
+    let session = Session {
+        id: id.clone(),
+        cwd: home.clone(),
+        status: SessionStatus::Running,
+        last_exit: None,
+    };
+    reg.sessions.insert(
+        id.clone(),
+        LiveSession {
+            session: session.clone(),
+            engine,
+            assembler: BlockAssembler::new(home),
+        },
+    );
+    reg.order.push(id);
     Ok(session)
 }
 
@@ -90,7 +145,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
         .manage(Mutex::new(SessionRegistry {
-            sessions: Vec::new(),
+            sessions: HashMap::new(),
+            order: Vec::new(),
             next_id: 0,
         }))
         .invoke_handler(tauri::generate_handler![
