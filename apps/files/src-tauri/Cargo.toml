@@ -42,6 +42,10 @@ tokio = { version = "1", features = ["sync"] }
 # destination, so a traversing entry is refused by construction.
 tar = "0.4"
 flate2 = "1"
+# .zip support (the common cross-platform archive). Default features off so only
+# the deflate decompressor links; entries are written through the same
+# destination-scoped capability as the tar path, so traversal is refused.
+zip = { version = "2", default-features = false, features = ["deflate"] }
 # The knowledge-graph client for the info panel's KG sections (provenance: who/
 # what accessed a file, via the caller-scoped 0x04 read). Best-effort - the panel
 # shows conventional metadata regardless, and an out-of-scope read is empty.

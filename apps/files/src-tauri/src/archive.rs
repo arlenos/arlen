@@ -12,11 +12,15 @@
 //! off the listing path (it can be slow); a failure leaves a partial extraction
 //! the user can delete, the conventional archive-tool behaviour.
 
-use std::io::{self, Read, Write};
+use std::io::{self, Read, Seek, Write};
 use std::path::{Component, Path};
 
 use cap_std::fs::Dir;
 use serde::Serialize;
+
+/// The unix mode bit marking a symlink (`S_IFLNK`), used to skip symlink entries
+/// in a zip for parity with the tar path.
+const S_IFLNK: u32 = 0o120000;
 
 /// Total extracted bytes a single archive may produce. A generous sanity bound
 /// (real archives are far smaller); it exists only to stop a tiny bomb expanding
@@ -238,6 +242,83 @@ pub fn list_named<R: Read>(name: &str, reader: R) -> Result<Vec<ArchiveEntry>, S
     }
 }
 
+/// Whether a filename is a `.zip` archive.
+pub fn is_zip(name: &str) -> bool {
+    name.to_ascii_lowercase().ends_with(".zip")
+}
+
+/// Whether a filename is any archive this module can extract or list (tar-family
+/// or zip).
+pub fn is_extractable(name: &str) -> bool {
+    is_extractable_tar(name) || is_zip(name)
+}
+
+/// Extract a zip into `dest`. Like the tar path: entries are written through the
+/// destination capability (traversal refused), the zip crate's own
+/// `enclosed_name` guard rejects an escaping name before that, only regular files
+/// and directories are written (symlinks are skipped via the unix mode), and the
+/// total size and entry count are bounded.
+pub fn zip_extract<R: Read + Seek>(reader: R, dest: &Dir) -> Result<(), String> {
+    let mut archive = zip::ZipArchive::new(reader).map_err(|e| format!("open zip: {e}"))?;
+    if archive.len() as u64 > MAX_ENTRIES {
+        return Err("archive has too many entries".to_string());
+    }
+    let mut total: u64 = 0;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| format!("read entry: {e}"))?;
+        // The zip crate's traversal guard: `None` for a name that would escape.
+        let path = match entry.enclosed_name() {
+            Some(p) => p,
+            None => return Err(format!("unsafe zip entry path: {}", entry.name())),
+        };
+        if !is_safe_relative(&path) {
+            return Err(format!("unsafe zip entry path: {}", path.display()));
+        }
+        if entry.is_dir() {
+            dest.create_dir_all(&path)
+                .map_err(|e| format!("create dir {}: {e}", path.display()))?;
+            continue;
+        }
+        // Skip symlinks (a zip stores them as files with the target as content).
+        if entry.unix_mode().is_some_and(|m| m & S_IFLNK == S_IFLNK) {
+            continue;
+        }
+        if let Some(parent) = path.parent() {
+            if parent.components().next().is_some() {
+                dest.create_dir_all(parent)
+                    .map_err(|e| format!("create parent {}: {e}", parent.display()))?;
+            }
+        }
+        total = total.saturating_add(entry.size());
+        if total > MAX_TOTAL_BYTES {
+            return Err("archive exceeds the extraction size limit".to_string());
+        }
+        let mut out = dest
+            .create(&path)
+            .map_err(|e| format!("create file {}: {e}", path.display()))?;
+        io::copy(&mut entry, &mut out).map_err(|e| format!("write {}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
+/// List a zip's entries without extracting. Bounded by [`MAX_ENTRIES`].
+pub fn zip_list<R: Read + Seek>(reader: R) -> Result<Vec<ArchiveEntry>, String> {
+    let mut archive = zip::ZipArchive::new(reader).map_err(|e| format!("open zip: {e}"))?;
+    if archive.len() as u64 > MAX_ENTRIES {
+        return Err("archive has too many entries".to_string());
+    }
+    let mut out = Vec::with_capacity(archive.len());
+    for i in 0..archive.len() {
+        let entry = archive.by_index(i).map_err(|e| format!("read entry: {e}"))?;
+        out.push(ArchiveEntry {
+            path: entry.name().to_string(),
+            size: entry.size(),
+            is_dir: entry.is_dir(),
+        });
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -381,6 +462,49 @@ mod tests {
         let readme = entries.iter().find(|e| e.path == "readme.txt").unwrap();
         assert_eq!(readme.size, 5);
         assert!(!readme.is_dir);
+    }
+
+    /// Build an in-memory zip from (name, contents) entries.
+    fn zip_of(files: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut w = zip::ZipWriter::new(io::Cursor::new(Vec::new()));
+        let opts = zip::write::SimpleFileOptions::default();
+        for (name, data) in files {
+            w.start_file(*name, opts).unwrap();
+            w.write_all(data).unwrap();
+        }
+        w.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn zip_extracts_and_lists() {
+        let bytes = zip_of(&[("readme.txt", b"hello"), ("docs/guide.md", b"# guide")]);
+        // List.
+        let entries = zip_list(io::Cursor::new(bytes.clone())).unwrap();
+        assert!(entries.iter().any(|e| e.path == "readme.txt" && e.size == 5));
+        // Extract.
+        let (tmp, dir) = dest();
+        zip_extract(io::Cursor::new(bytes), &dir).unwrap();
+        assert_eq!(std::fs::read(tmp.path().join("readme.txt")).unwrap(), b"hello");
+        assert_eq!(std::fs::read(tmp.path().join("docs/guide.md")).unwrap(), b"# guide");
+    }
+
+    #[test]
+    fn a_traversing_zip_entry_is_rejected() {
+        let bytes = zip_of(&[("../escape.txt", b"x")]);
+        let (tmp, dir) = dest();
+        let err = zip_extract(io::Cursor::new(bytes), &dir).unwrap_err();
+        assert!(err.contains("unsafe"), "got {err}");
+        assert!(!tmp.path().parent().unwrap().join("escape.txt").exists());
+    }
+
+    #[test]
+    fn zip_format_detection() {
+        assert!(is_zip("x.zip"));
+        assert!(is_zip("X.ZIP"));
+        assert!(!is_zip("x.tar"));
+        assert!(is_extractable("x.zip"));
+        assert!(is_extractable("x.tar.gz"));
+        assert!(!is_extractable("x.rar"));
     }
 
     #[test]
