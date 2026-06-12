@@ -7,6 +7,7 @@
 //! with the operations UI.
 
 mod capability;
+mod thumbnail;
 
 use std::path::Path;
 
@@ -416,6 +417,7 @@ pub fn run() {
             files_open,
             files_projects,
             files_saved_searches,
+            thumbnail::files_thumbnail,
             capability::ai_capability
         ])
         .run(tauri::generate_context!())
