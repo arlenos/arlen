@@ -85,26 +85,46 @@ pub struct RenamePreview {
     pub conflict: ConflictKind,
 }
 
+/// If `hay` case-insensitively starts with `lower_find` (already lowercased),
+/// the number of bytes of `hay` that span the match, else `None`. Scans `hay`
+/// char by char, lowercasing each, so it never indexes across the byte-length
+/// difference between a string and its lowercase (which Unicode case-folding can
+/// introduce, e.g. `İ` -> `i̇`).
+fn ci_match_len(hay: &str, lower_find: &str) -> Option<usize> {
+    if lower_find.is_empty() {
+        return None;
+    }
+    let mut lowered = String::new();
+    let mut consumed = 0;
+    for ch in hay.chars() {
+        lowered.extend(ch.to_lowercase());
+        consumed += ch.len_utf8();
+        if lowered.len() >= lower_find.len() {
+            return lowered.starts_with(lower_find).then_some(consumed);
+        }
+    }
+    // `hay` ran out before covering `lower_find`.
+    lowered.starts_with(lower_find).then_some(consumed)
+}
+
 /// Case-insensitive literal replace of every occurrence of `find` in `haystack`.
+/// UTF-8 safe across case-folding length changes (it never byte-indexes the
+/// lowercased form against the original).
 fn replace_ci(haystack: &str, find: &str, replace: &str) -> String {
     if find.is_empty() {
         return haystack.to_string();
     }
-    let lower_hay = haystack.to_lowercase();
     let lower_find = find.to_lowercase();
     let mut out = String::with_capacity(haystack.len());
-    let mut i = 0;
-    while i < haystack.len() {
-        // Match on the lowercased forms but copy the original bytes, so the
-        // surrounding case is preserved and only the matched span is replaced.
-        if lower_hay[i..].starts_with(&lower_find) {
+    let mut rest = haystack;
+    while !rest.is_empty() {
+        if let Some(matched) = ci_match_len(rest, &lower_find) {
             out.push_str(replace);
-            i += find.len();
+            rest = &rest[matched..];
         } else {
-            // Advance one char (not one byte) to stay on UTF-8 boundaries.
-            let ch = haystack[i..].chars().next().unwrap();
+            let ch = rest.chars().next().unwrap();
             out.push(ch);
-            i += ch.len_utf8();
+            rest = &rest[ch.len_utf8()..];
         }
     }
     out
@@ -240,6 +260,20 @@ mod tests {
         };
         let out = plan_rename(&names(&["IMG_1.JPG"]), &rule);
         assert_eq!(out[0].new, "Photo_1.JPG");
+    }
+
+    #[test]
+    fn case_insensitive_replace_is_unicode_safe() {
+        // `İ` (U+0130) lowercases to a LONGER string than itself; the previous
+        // byte-indexed matcher panicked on that misalignment. This must just work.
+        let rule = RenameRule {
+            find: Some("i".to_string()),
+            replace: "X".to_string(),
+            find_case_insensitive: true,
+            ..Default::default()
+        };
+        let out = plan_rename(&names(&["\u{0130}MG.jpg"]), &rule);
+        assert!(out[0].new.starts_with('X'), "matched case-insensitively, got {}", out[0].new);
     }
 
     #[test]
