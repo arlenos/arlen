@@ -20,7 +20,6 @@
   exitCode={block.exit_code}
   durationMs={block.duration_ms}
   running={block.exit_code === null && block.duration_ms === null}
-  originLabel={block.origin === "agent" ? "agent" : null}
 >
   {#snippet context()}
     <PromptLine cwd={block.cwd} git={block.git} />
