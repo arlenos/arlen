@@ -480,14 +480,14 @@ pub async fn get_focus_state(
 
 // ── Event Bus Emission ──────────────────────────────────────────────────
 
-mod proto {
+pub(crate) mod proto {
     #![allow(dead_code, clippy::doc_markdown)]
     include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 
 const PRODUCER_SOCKET: &str = "/run/arlen/event-bus-producer.sock";
 
-fn emit_to_event_bus(event_type: &str, payload: Vec<u8>) {
+pub(crate) fn emit_to_event_bus(event_type: &str, payload: Vec<u8>) {
     let socket = std::env::var("ARLEN_PRODUCER_SOCKET")
         .unwrap_or_else(|_| PRODUCER_SOCKET.to_string());
 

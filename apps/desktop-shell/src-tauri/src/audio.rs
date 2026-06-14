@@ -684,10 +684,53 @@ pub async fn get_audio_full_state() -> Result<AudioFullState, String> {
     })
 }
 
+/// Whether a `pactl subscribe` line signals the device SET changed (a sink or
+/// source was added or removed) rather than a value change (volume/mute/default).
+/// Drives the `audio.state` `device_list_changed` flag so a consumer knows to
+/// re-fetch the device list, not just re-read the volume.
+fn audio_event_is_device_change(line: &str) -> bool {
+    line.contains("'new'") || line.contains("'remove'")
+}
+
+/// Read a single trimmed `pactl` value (e.g. `get-default-sink`), or `None`.
+fn pactl_value(arg: &str) -> Option<String> {
+    let out = std::process::Command::new("pactl").arg(arg).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!v.is_empty()).then_some(v)
+}
+
+/// Build the `audio.state` snapshot for the event bus from the current default
+/// sink/source. Returns `None` if the core volume/mute read fails (then no
+/// snapshot is published, rather than a half-filled one).
+fn build_audio_state(device_list_changed: bool) -> Option<crate::projects::proto::AudioStatePayload> {
+    let status = get_audio_status_impl().ok()?;
+    Some(crate::projects::proto::AudioStatePayload {
+        default_sink: pactl_value("get-default-sink").unwrap_or_default(),
+        default_source: pactl_value("get-default-source").unwrap_or_default(),
+        volume: status.volume as u32,
+        muted: status.muted,
+        device_list_changed,
+    })
+}
+
+/// Publish the current audio snapshot on the event bus (SST-R2). Best-effort:
+/// a failed read simply skips this publish.
+fn emit_audio_state(device_list_changed: bool) {
+    use prost::Message;
+    if let Some(payload) = build_audio_state(device_list_changed) {
+        crate::projects::emit_to_event_bus("audio.state", payload.encode_to_vec());
+    }
+}
+
 /// Start monitoring PulseAudio/PipeWire events for audio state changes.
 ///
 /// Uses `pactl subscribe` which outputs a line on every sink/source change.
-/// Emits `audio-changed` Tauri events.
+/// Emits an `audio-changed` Tauri event (for the popover) and publishes an
+/// `audio.state` snapshot on the event bus (SST-R2, for apps/AI), both
+/// debounced to one per change burst.
 pub fn start_monitor(app: tauri::AppHandle) {
     std::thread::Builder::new()
         .name("audio-monitor".into())
@@ -730,16 +773,22 @@ fn run_audio_monitor(app: tauri::AppHandle) {
         // Coalesce into one frontend event per 150ms window.
         let mut last_emit = std::time::Instant::now()
             - std::time::Duration::from_secs(1);
+        // Accumulated across a debounce window: if any line in it added/removed a
+        // device, the published snapshot's device_list_changed is set.
+        let mut pending_device_change = false;
 
         for line in reader.lines() {
             let Ok(line) = line else { break };
             // pactl subscribe outputs lines like:
             // Event 'change' on sink #123
-            // Event 'change' on source #456
+            // Event 'new' on source #456
             if line.contains("sink") || line.contains("source") || line.contains("server") {
+                pending_device_change |= audio_event_is_device_change(&line);
                 let now = std::time::Instant::now();
                 if now.duration_since(last_emit) >= std::time::Duration::from_millis(150) {
                     let _ = app.emit("audio-changed", ());
+                    emit_audio_state(pending_device_change);
+                    pending_device_change = false;
                     last_emit = now;
                 }
             }
@@ -747,5 +796,19 @@ fn run_audio_monitor(app: tauri::AppHandle) {
 
         log::warn!("audio: pactl subscribe ended, reconnecting in 2s");
         std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::audio_event_is_device_change;
+
+    #[test]
+    fn device_change_is_detected_for_new_and_remove_only() {
+        assert!(audio_event_is_device_change("Event 'new' on sink #42"));
+        assert!(audio_event_is_device_change("Event 'remove' on source #7"));
+        // A value change (volume/mute/default) is not a device-set change.
+        assert!(!audio_event_is_device_change("Event 'change' on sink #42"));
+        assert!(!audio_event_is_device_change("Event 'change' on server #0"));
     }
 }
