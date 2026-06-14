@@ -16,6 +16,11 @@ processes:
   # fresh nested socket exists.
   compositor:
     command: 'cd "${COMPOSITOR_PATH}" && rm -f "${XDG_RUNTIME_DIR}/wayland-2" "${XDG_RUNTIME_DIR}/wayland-2.lock" && DISPLAY="" WAYLAND_DISPLAY=wayland-1 cargo run --bin cosmic-comp'
+    # Capture the compositor's own stdout/stderr (Rust tracing output) to a
+    # file. process-compose's main log only records orchestration events, not
+    # per-process output, so without this the compositor's INFO/debug lines are
+    # only in the TUI buffer. A file makes them greppable for render debugging.
+    log_location: "/tmp/arlen-compositor.log"
     readiness_probe:
       exec:
         command: 'test -S "${XDG_RUNTIME_DIR}/wayland-2"'
