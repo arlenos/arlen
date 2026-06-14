@@ -12,6 +12,7 @@
 
 pub mod battery;
 pub mod dbus;
+pub mod lid;
 pub mod logind;
 pub mod power;
 pub mod profiles;
