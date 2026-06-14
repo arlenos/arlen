@@ -21,7 +21,7 @@ const CONSUMER_ID: &str = "desktop-shell";
 /// topbar-toolbar.md) lands in a Phase-6 hardening pass once
 /// pid→app_id mapping infrastructure exists.
 const SUBSCRIPTIONS: &str =
-    "window.,config.,project.,app.toolbar.,app.shortcut.,app.badge.,app.ambient.";
+    "window.,config.,project.,app.toolbar.,app.shortcut.,app.badge.,app.ambient.,power.";
 
 /// Window event payload forwarded to the TypeScript frontend.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -161,6 +161,11 @@ fn forward_to_frontend(
         forward_badge_event(app, event_type, &event.payload);
         return;
     }
+    if event_type.starts_with("power.") {
+        forward_power_event(app, event_type, &event.payload);
+        return;
+    }
+
     if event_type.starts_with("app.ambient.") {
         forward_ambient_event(app, event_type, &event.payload);
         return;
@@ -427,6 +432,31 @@ fn forward_ambient_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
             }
         }
         _ => {}
+    }
+}
+
+/// Forward the power daemon's `power.state` snapshot to the frontend as
+/// `arlen://power-changed` (SST-R2 / PWR-R1 consumer side), so the battery
+/// indicator can read one shared, daemon-published value instead of forking
+/// UPower itself. The coarse `power.*` transitions (low / critical / recovered
+/// / profile-changed) are for a notification consumer, not the indicator, so
+/// they are ignored here. The frontend keeps its own poll fallback for when the
+/// power daemon is absent, so this is purely additive.
+fn forward_power_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
+    use prost::Message;
+    if event_type == "power.state" {
+        if let Ok(p) = proto::PowerStatePayload::decode(payload) {
+            let json = serde_json::json!({
+                "onBattery": p.on_battery,
+                "percentage": p.percentage,
+                "state": p.state,
+                "timeToEmptySeconds": p.time_to_empty_seconds,
+                "timeToFullSeconds": p.time_to_full_seconds,
+                "lidState": p.lid_state,
+                "profile": p.profile,
+            });
+            let _ = app.emit("arlen://power-changed", &json);
+        }
     }
 }
 

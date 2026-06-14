@@ -473,3 +473,17 @@ message NetworkStatePayload {
   uint32 signal          = 5;  // 0-100, 0 when not wifi
   bool   vpn_active      = 6;
 }
+
+// Event type: "power.state" - the coarse power snapshot published by the power
+// daemon (org.arlen.Power1). The shell consumes it (SST-R2 / PWR-R1 consumer
+// side) so the battery indicator reads one shared value instead of forking
+// UPower. Mirrors the canonical contracts/event definition.
+message PowerStatePayload {
+  bool   on_battery            = 1;  // true on battery, false on AC
+  uint32 percentage            = 2;  // battery charge, 0-100
+  string state                 = 3;  // "charging"|"discharging"|"full"|"empty"|"unknown"
+  int64  time_to_empty_seconds = 4;  // 0 when unknown or charging
+  int64  time_to_full_seconds  = 5;  // 0 when unknown or discharging
+  string lid_state             = 6;  // "open"|"closed"|"none"
+  string profile               = 7;  // "performance"|"balanced"|"power-saver"|"unknown"
+}
