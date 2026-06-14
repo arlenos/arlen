@@ -768,6 +768,12 @@ fn run_audio_monitor(app: tauri::AppHandle) {
         };
         let reader = std::io::BufReader::new(stdout);
 
+        // Publish the current snapshot once on (re)connect so a consumer that
+        // subscribed after the last change still gets the present audio state
+        // without waiting for the next one (net/audio have no pull fallback,
+        // unlike power's org.arlen.Power1).
+        emit_audio_state(false);
+
         // Debounce: PulseAudio fires bursts of events for a single
         // user action (e.g. a volume change emits 3-5 events in <50ms).
         // Coalesce into one frontend event per 150ms window.

@@ -683,6 +683,12 @@ async fn run_network_monitor(app: tauri::AppHandle) -> Result<(), zbus::Error> {
 
     log::info!("network: signal monitor started");
 
+    // Publish the current snapshot once on (re)connect so a consumer that
+    // subscribed after the last change still gets the present network state
+    // without waiting for the next transition (net/audio have no pull fallback,
+    // unlike power's org.arlen.Power1).
+    emit_network_state().await;
+
     // NetworkManager fires bursts of PropertiesChanged for a single transition;
     // the frontend `network-changed` is left undebounced (it self-throttles),
     // but the `network.state` publish spawns an nmcli read, so coalesce it to one
