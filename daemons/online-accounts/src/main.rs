@@ -26,6 +26,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // A malformed config is reported and skipped, never granted.
         tracing::warn!(path = %path.display(), %err, "skipping malformed account config");
     }
+    // Startup diagnostic only; the daemon re-reads the configs per call so a
+    // grant change (add or revoke) takes effect without a restart.
     tracing::info!(count = accounts.len(), dir = %dir.display(), "accounts loaded");
 
     // The token vault: AEAD-encrypted tokens under the persistent master secret.
@@ -39,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let _conn = connection::Builder::session()?
         .name("org.arlen.Accounts1")?
-        .serve_at("/org/arlen/Accounts1", AccountsDaemon::new(accounts, vault))?
+        .serve_at("/org/arlen/Accounts1", AccountsDaemon::new(dir, vault))?
         .build()
         .await?;
     tracing::info!("org.arlen.Accounts1 serving; the per-app gate mediates every method");

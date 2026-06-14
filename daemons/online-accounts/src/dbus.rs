@@ -23,25 +23,43 @@
 //! `pid_start_time` recheck closes only PID *recycling* during resolution, not
 //! same-PID `exec`. The eventual close is the same inode-attestation F3 work.
 
+use std::path::PathBuf;
+
 use zbus::interface;
 
-use crate::config::{AccountConfig, Service};
+use crate::config::{self, AccountConfig, Service};
 use crate::gate::{Access, AccessGate};
 use crate::vault::Vault;
 
-/// The accounts daemon's served object: the loaded account set, gated per-caller,
+/// The accounts daemon's served object: the account-config directory (re-read
+/// per call so grant changes take effect immediately, see [`current_accounts`])
 /// plus the token vault the gated handout reads from.
 pub struct AccountsDaemon {
-    accounts: Vec<AccountConfig>,
+    accounts_dir: PathBuf,
     vault: Vault,
 }
 
 impl AccountsDaemon {
-    /// A daemon over the loaded accounts and the token vault. The vault holds
-    /// the AEAD-encrypted tokens; `GetAccessToken` reads it only after the gate
-    /// admits the caller.
-    pub fn new(accounts: Vec<AccountConfig>, vault: Vault) -> Self {
-        Self { accounts, vault }
+    /// A daemon over the account-config directory and the token vault. The vault
+    /// holds the AEAD-encrypted tokens; `GetAccessToken` reads it only after the
+    /// gate admits the caller.
+    pub fn new(accounts_dir: PathBuf, vault: Vault) -> Self {
+        Self {
+            accounts_dir,
+            vault,
+        }
+    }
+
+    /// The current account set, re-read from disk on every call. A capability
+    /// daemon must honour a grant change the instant it is saved: a grant
+    /// **revoked** by editing the config would otherwise keep working until the
+    /// daemon restarted (a real gap). Re-reading per call has no staleness window
+    /// (stronger than a watched cache) at the cost of a few small TOML reads,
+    /// negligible for the infrequent capability calls. A config that became
+    /// malformed drops that account (fail-closed), so a broken grant denies
+    /// rather than serves.
+    fn current_accounts(&self) -> Vec<AccountConfig> {
+        config::load_accounts(&self.accounts_dir).0
     }
 }
 
@@ -59,7 +77,8 @@ impl AccountsDaemon {
         let Ok(caller) = resolve_caller_app_id(&header, connection).await else {
             return Vec::new();
         };
-        AccessGate::new(&self.accounts)
+        let accounts = self.current_accounts();
+        AccessGate::new(&accounts)
             .granted_accounts(&caller)
             .into_iter()
             .map(|a| {
@@ -106,7 +125,8 @@ impl AccountsDaemon {
         let Some(service) = Service::parse(&service) else {
             return Err(zbus::fdo::Error::AccessDenied("unknown service".into()));
         };
-        let scope = match AccessGate::new(&self.accounts).access(&caller, &account_id, service) {
+        let accounts = self.current_accounts();
+        let scope = match AccessGate::new(&accounts).access(&caller, &account_id, service) {
             Access::Granted { scope } => scope.unwrap_or_default(),
             Access::Refused => {
                 return Err(zbus::fdo::Error::AccessDenied(
