@@ -32,6 +32,7 @@
     PinOff,
     Plus,
     Search,
+    ShieldCheck,
     Trash2,
   } from "@lucide/svelte";
   import {
@@ -46,7 +47,10 @@
   import { sessionMatches } from "$lib/search";
   import { conversationToMarkdown } from "$lib/export";
 
-  const onChat = $derived(!$page.url.pathname.startsWith("/agent"));
+  const path = $derived($page.url.pathname);
+  const onAgent = $derived(path.startsWith("/agent"));
+  const onTransparency = $derived(path.startsWith("/transparency"));
+  const onChat = $derived(!onAgent && !onTransparency);
 
   let query = $state("");
   // The conversation being renamed inline, and the draft title. `null` when no
@@ -205,12 +209,22 @@
     <SidebarMenu>
       <SidebarMenuItem>
         <SidebarMenuButton
-          isActive={!onChat}
+          isActive={onAgent}
           tooltip="Activity"
           onclick={() => goto("/agent")}
         >
           <Activity strokeWidth={1.75} />
           <span>Activity</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          isActive={onTransparency}
+          tooltip="Transparency"
+          onclick={() => goto("/transparency")}
+        >
+          <ShieldCheck strokeWidth={1.75} />
+          <span>Transparency</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
     </SidebarMenu>

@@ -51,6 +51,7 @@ dependencies = [
 name = "arlen-powerd"
 version = "0.1.0"
 dependencies = [
+ "arlen-permissions",
  "os-sdk",
  "prost",
  "sd-notify",

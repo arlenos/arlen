@@ -35,7 +35,9 @@
   const viewTitle = $derived(
     $page.url.pathname.startsWith("/agent")
       ? "Activity"
-      : $activeTitle || "Chat",
+      : $page.url.pathname.startsWith("/transparency")
+        ? "Transparency"
+        : $activeTitle || "Chat",
   );
 
   // Window drag via explicit pointerdown + startDragging(), because the
