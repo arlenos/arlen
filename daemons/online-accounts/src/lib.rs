@@ -12,5 +12,6 @@
 pub mod config;
 pub mod dbus;
 pub mod gate;
+pub mod master;
 pub mod rc;
 pub mod vault;

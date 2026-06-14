@@ -28,6 +28,22 @@ pub enum Service {
     Photos,
 }
 
+impl Service {
+    /// Parse the lowercase wire name a caller passes to `GetAccessToken`
+    /// (`"files"`, `"calendar"`, …). An unknown service is `None` so the daemon
+    /// refuses it rather than guessing a scope.
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "files" => Service::Files,
+            "calendar" => Service::Calendar,
+            "mail" => Service::Mail,
+            "contacts" => Service::Contacts,
+            "photos" => Service::Photos,
+            _ => return None,
+        })
+    }
+}
+
 /// One per-app capability grant: which app may use which of this account's
 /// services, and the least-privilege OAuth scope the grant maps to. The presence
 /// of a grant IS the capability - absence means no access (fail-closed).
@@ -144,6 +160,19 @@ pub fn load_accounts(dir: &Path) -> (Vec<AccountConfig>, Vec<(std::path::PathBuf
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn service_parse_round_trips_and_rejects_unknown() {
+        assert_eq!(Service::parse("files"), Some(Service::Files));
+        assert_eq!(Service::parse("calendar"), Some(Service::Calendar));
+        assert_eq!(Service::parse("mail"), Some(Service::Mail));
+        assert_eq!(Service::parse("contacts"), Some(Service::Contacts));
+        assert_eq!(Service::parse("photos"), Some(Service::Photos));
+        // Unknown or mis-cased names are refused (the daemon won't guess a scope).
+        assert_eq!(Service::parse("Files"), None);
+        assert_eq!(Service::parse("drive"), None);
+        assert_eq!(Service::parse(""), None);
+    }
 
     #[test]
     fn parses_an_account_with_grants() {
