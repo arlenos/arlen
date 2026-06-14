@@ -51,11 +51,15 @@ async fn main() {
     // without forking UPower. Served on the SESSION bus (this is a per-user
     // daemon); UPower reads stay on the system bus above.
     let shared: SharedState = Arc::new(RwLock::new(PowerState::default()));
-    let _dbus = match serve_dbus(shared.clone()).await {
+    // Held for the daemon lifetime to keep the org.arlen.Power1 name owned, and
+    // reused to send the low/critical battery notifications (PWR-R6) over the
+    // same session bus.
+    let session_bus = match serve_dbus(shared.clone()).await {
         Some(conn) => Some(conn),
         None => {
             // A missing session bus must not stop the event-bus publish path:
-            // the push channel still works, only the pull surface is absent.
+            // the push channel still works, only the pull surface (and the
+            // low-battery notification) is absent.
             warn!("org.arlen.Power1 unavailable; continuing with event-bus publish only");
             None
         }
@@ -100,6 +104,16 @@ async fn main() {
                             let next = battery::next_level(level, state.percentage, state.on_battery);
                             if let Some(evt) = battery::transition_event(level, next) {
                                 emit_transition(&emitter, evt, String::new()).await;
+                                // PWR-R6: alert the user once on entering low /
+                                // critical (a no-op for the recovered transition).
+                                if let Some(conn) = session_bus.as_ref() {
+                                    arlen_powerd::notify::send_battery_notification(
+                                        conn,
+                                        next,
+                                        state.percentage,
+                                    )
+                                    .await;
+                                }
                             }
                             level = next;
 
