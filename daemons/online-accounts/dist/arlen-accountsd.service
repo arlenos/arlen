@@ -22,12 +22,14 @@ ExecStart=/usr/lib/arlen/libexec/arlen-accountsd
 Restart=on-failure
 RestartSec=2
 
-# It only READS the account configs and serves over the bus; it writes nothing to
-# the home today, so ProtectHome=read-only is sufficient. (OA-R3's confined-rclone
-# mount management will add a ReadWritePaths for the runtime dir and the mount
-# point when it lands; this unit is then tightened to exactly those paths.)
+# It reads the account configs and serves over the bus, and writes the token
+# vault (the master secret + the AEAD-encrypted token records) under the state
+# dir. Home stays read-only except that one writable hole; ProtectSystem=strict
+# keeps /usr + /etc read-only. (OA-R3's confined-rclone mount management adds the
+# runtime dir + mount point when it lands.)
 ProtectSystem=strict
 ProtectHome=read-only
+ReadWritePaths=%h/.local/state/arlen
 RestrictAddressFamilies=AF_UNIX
 PrivateTmp=yes
 PrivateDevices=yes
