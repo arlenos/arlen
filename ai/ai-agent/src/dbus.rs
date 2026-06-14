@@ -202,6 +202,25 @@ impl AgentInterface {
             Err(e) => format!("error: {e}"),
         }
     }
+
+    /// The agent's working-set **shape** as a JSON object (AIT-R1): the live
+    /// loop status and, per enabled behaviour, its name, kind and declared read
+    /// scope. Shape only, never content - it answers "what can the AI hold" (the
+    /// configured reach) and "what is it doing now" (the status), never a node
+    /// or a field of the user's data. When the master `[ai] enabled` switch is
+    /// off nothing is enabled, so `behaviours` is empty.
+    ///
+    /// The behaviour set is read live from the configured sources on each call
+    /// (mirroring `compensate`'s live config read), so a Settings change is
+    /// reflected without a daemon restart. A live held-slice node-count is a
+    /// follow-up needing an engine ingestion hook (see `working_set`'s module
+    /// doc); today's slices are ephemeral per gate decision.
+    async fn working_set(&self) -> String {
+        let status = load_status(&self.status).as_str();
+        let outcome = crate::loader::load_configured();
+        let shape = crate::working_set::working_set_shape(status, &outcome);
+        serde_json::to_string(&shape).unwrap_or_else(|_| "{}".to_string())
+    }
 }
 
 /// Whether the executor is currently live, re-read from `ai.toml` so a runtime
