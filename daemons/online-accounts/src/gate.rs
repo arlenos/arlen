@@ -47,12 +47,18 @@ impl<'a> AccessGate<'a> {
     }
 
     /// The access decision for `caller_app_id` on `(account_id, service)`.
-    /// `Granted` only when an account with that id carries a grant for this app
-    /// that includes this service; everything else is `Refused`.
+    /// `Granted` only when an account with that id **offers** this service AND
+    /// carries a grant for this app that includes it; everything else is
+    /// `Refused`. Requiring `account.services` too means an over-broad grant
+    /// naming a service the account does not offer cannot mint a token (a grant
+    /// can only ever narrow, never widen, what the account exposes).
     pub fn access(&self, caller_app_id: &str, account_id: &str, service: Service) -> Access {
         let Some(account) = self.accounts.iter().find(|a| a.id == account_id) else {
             return Access::Refused;
         };
+        if !account.services.contains(&service) {
+            return Access::Refused;
+        }
         for grant in &account.grants {
             if grant.app_id == caller_app_id && grant.services.contains(&service) {
                 return Access::Granted {
@@ -135,6 +141,19 @@ mod tests {
             gate.access("org.arlen.files", "nonexistent", Service::Files),
             Access::Refused
         );
+    }
+
+    #[test]
+    fn a_grant_for_a_service_the_account_does_not_offer_is_refused() {
+        // The account offers Files + Calendar (the helper); a grant naming Mail
+        // (not offered) must not mint a token - a grant can only narrow, never
+        // widen, what the account exposes.
+        let accounts = vec![account(
+            "a",
+            vec![grant("org.arlen.mail", vec![Service::Mail], Some("mail.all"))],
+        )];
+        let gate = AccessGate::new(&accounts);
+        assert_eq!(gate.access("org.arlen.mail", "a", Service::Mail), Access::Refused);
     }
 
     #[test]
