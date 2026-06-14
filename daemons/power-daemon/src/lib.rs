@@ -11,6 +11,7 @@
 //! binary wires it to the live system bus and the event-bus producer.
 
 pub mod battery;
+pub mod config;
 pub mod dbus;
 pub mod lid;
 pub mod logind;

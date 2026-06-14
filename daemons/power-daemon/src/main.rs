@@ -11,7 +11,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use arlen_powerd::battery::{self, BatteryLevel};
+use arlen_powerd::config::PowerConfig;
 use arlen_powerd::dbus::{PowerInterface, SharedState};
+use arlen_powerd::logind;
 use arlen_powerd::power::PowerState;
 use os_sdk::event::{EventEmitter, UnixEventEmitter};
 use prost::Message as _;
@@ -67,10 +69,21 @@ async fn main() {
 
     let _ = sd_notify::notify(false, &[sd_notify::NotifyState::Ready]);
 
+    // The critical-battery auto-action config (off by default; PWR-R6).
+    let power_config = PowerConfig::load();
+    info!(
+        critical_action = ?power_config.critical_action.action,
+        floor = power_config.critical_action.floor,
+        "power config loaded"
+    );
+
     let mut last: Option<PowerState> = None;
     // The hysteretic battery level depends on the previous level, so it is
     // tracked across ticks separately from the raw snapshot.
     let mut level = BatteryLevel::Normal;
+    // Latch so the critical auto-action fires once per descent below the floor,
+    // reset when the machine charges or rises back above it.
+    let mut critical_acted = false;
     let mut ticker = tokio::time::interval(POLL_INTERVAL);
 
     loop {
@@ -130,6 +143,34 @@ async fn main() {
                                         state.profile.clone(),
                                     )
                                     .await;
+                                }
+                            }
+
+                            // PWR-R6 critical-battery auto-action (off by
+                            // default). Reset the latch once off the floor (on AC
+                            // or risen above it), then fire the configured action
+                            // once on the descent below it.
+                            if !state.on_battery
+                                || state.percentage > power_config.critical_action.floor
+                            {
+                                critical_acted = false;
+                            }
+                            if let Some(action) = power_config.critical_action(
+                                state.percentage,
+                                state.on_battery,
+                                critical_acted,
+                            ) {
+                                warn!(
+                                    percentage = state.percentage,
+                                    action = action.as_str(),
+                                    "critical battery: performing the configured auto-action"
+                                );
+                                match logind::perform(&conn, action).await {
+                                    Ok(()) => critical_acted = true,
+                                    Err(e) => warn!(
+                                        "critical battery auto-action {} failed: {e}",
+                                        action.as_str()
+                                    ),
                                 }
                             }
 
