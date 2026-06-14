@@ -32,7 +32,7 @@ dirs = "5"
 # host is the integration point that owns this dependency; the core stays
 # decode-free behind its generator seam. `base64` encodes the cached PNG into the
 # data-URL the tile's <img> loads.
-arlen-ai-sandbox = { path = "../../../ai/ai-sandbox", features = ["thumbnail"] }
+arlen-ai-sandbox = { path = "../../../ai/ai-sandbox", features = ["thumbnail", "music"] }
 base64 = "0.22"
 # Already in the tree via tauri; `sync` carries the semaphore bounding
 # concurrent sandboxed decodes.
