@@ -12,3 +12,4 @@
 
 pub mod dbus;
 pub mod power;
+pub mod profiles;
