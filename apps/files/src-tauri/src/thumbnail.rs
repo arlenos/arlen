@@ -22,13 +22,40 @@ use arlen_file_browser_core::thumbnail_cache::{
 /// ever spawning the sandbox worker (it would only fail), keeping the command
 /// cheap for the common non-image case.
 fn is_thumbnailable(path: &Path) -> bool {
-    matches!(
-        path.extension()
-            .and_then(|e| e.to_str())
-            .map(|e| e.to_ascii_lowercase())
-            .as_deref(),
-        Some("png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp")
-    )
+    thumb_kind(path) == Some(ThumbKind::Image)
+}
+
+/// Whether the path is an audio file whose embedded cover art can be thumbnailed.
+fn is_audio(path: &Path) -> bool {
+    thumb_kind(path) == Some(ThumbKind::Music)
+}
+
+/// What kind of thumbnail a path is eligible for, decided cheaply by extension
+/// so a non-thumbnailable file never spawns a worker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ThumbKind {
+    /// A raster image, decoded directly by the image worker.
+    Image,
+    /// An audio file whose embedded cover art is extracted and decoded by the
+    /// music worker.
+    Music,
+}
+
+/// The thumbnail kind for a path, or `None` when it is neither a supported image
+/// nor a supported audio file (the tile then shows its icon, no worker spawned).
+fn thumb_kind(path: &Path) -> Option<ThumbKind> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase());
+    match ext.as_deref() {
+        Some("png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp") => Some(ThumbKind::Image),
+        // Audio containers lofty reads embedded cover art from.
+        Some("mp3" | "flac" | "m4a" | "m4b" | "ogg" | "oga" | "opus" | "aiff" | "aif" | "wav") => {
+            Some(ThumbKind::Music)
+        }
+        _ => None,
+    }
 }
 
 /// The path to the sandboxed thumbnail worker: the `ARLEN_THUMBNAIL_SANDBOX_BIN`
@@ -60,6 +87,40 @@ impl ThumbnailGenerator for SandboxedThumbnailGenerator {
     }
 }
 
+/// The path to the sandboxed music cover-art worker: the
+/// `ARLEN_MUSIC_THUMBNAIL_SANDBOX_BIN` override (dev / test) else the installed
+/// libexec path. If the binary is absent the generator fails and the tile falls
+/// back to its music icon.
+fn music_thumbnail_sandbox_bin() -> PathBuf {
+    std::env::var_os("ARLEN_MUSIC_THUMBNAIL_SANDBOX_BIN")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/usr/lib/arlen/libexec/arlen-music-thumbnail-sandbox"))
+}
+
+/// A generator that reads an audio file's bytes and extracts+decodes its
+/// embedded cover art in the sandboxed music worker. Reading the file is safe;
+/// the untrusted metadata parse and image decode both run behind the worker's
+/// lockdown. An audio file with no usable embedded art is a generation "failure"
+/// (so the tile shows its music icon), distinct from a real error but mapped the
+/// same way: no thumbnail is cached.
+struct MusicThumbnailGenerator {
+    sandbox_bin: PathBuf,
+}
+
+impl ThumbnailGenerator for MusicThumbnailGenerator {
+    fn generate(&self, source: &Path) -> Result<Vec<u8>, ThumbnailError> {
+        let bytes = read_capped(source)?;
+        match arlen_ai_sandbox::album_art_thumbnail(&self.sandbox_bin, &bytes) {
+            Ok(Some(png)) => Ok(png),
+            // No embedded art: fall back to the icon without caching an empty
+            // thumbnail (a re-view re-probes, matching the image decode-failure
+            // path; negative caching is not worth a stale-on-retag risk).
+            Ok(None) => Err(ThumbnailError::Generate("no embedded cover art".to_string())),
+            Err(e) => Err(ThumbnailError::Generate(e.to_string())),
+        }
+    }
+}
+
 /// Read up to the sandbox's byte cap; a larger file is refused (it would be
 /// rejected by the worker anyway) without loading it whole.
 fn read_capped(source: &Path) -> Result<Vec<u8>, ThumbnailError> {
@@ -84,20 +145,24 @@ fn encode(cached: &Path) -> Result<String, String> {
     Ok(format!("data:image/png;base64,{b64}"))
 }
 
-/// The pure command logic: a data-URL of `path`'s thumbnail, or `None` when it is
-/// not a thumbnailable image or generation failed (the tile then shows its icon).
-/// Generation/cache go through `cache` + `gen`, so this is testable with a mock.
+/// The pure command logic: a data-URL of `path`'s thumbnail, or `None` when the
+/// path is not `supported`, has no thumbnail, or generation failed (the tile
+/// then shows its icon). `supported` gates the spawn so an unsupported path
+/// never reaches the worker; generation/cache go through `cache` + `gen`, so
+/// this is testable with a mock.
 fn thumbnail_data_url(
     cache: &ThumbnailCache,
     gen: &dyn ThumbnailGenerator,
     path: &Path,
+    supported: fn(&Path) -> bool,
 ) -> Result<Option<String>, String> {
-    if !is_thumbnailable(path) {
+    if !supported(path) {
         return Ok(None);
     }
     let cached = match cache.get_or_generate(path, gen) {
         Ok(p) => p,
-        // A non-image or a decode failure: no thumbnail, fall back to the icon.
+        // Unsupported, no embedded art, or a decode failure: no thumbnail, fall
+        // back to the icon.
         Err(_) => return Ok(None),
     };
     encode(&cached).map(Some)
@@ -137,9 +202,11 @@ pub async fn files_thumbnail(
     let Some(dir) = thumbnail_cache_dir() else {
         return Ok(None);
     };
-    if !is_thumbnailable(Path::new(&path)) {
+    // Decide the kind once: a non-thumbnailable path returns early, never
+    // spawning a worker.
+    let Some(kind) = thumb_kind(Path::new(&path)) else {
         return Ok(None);
-    }
+    };
 
     let hit = {
         let dir = dir.clone();
@@ -155,12 +222,25 @@ pub async fn files_thumbnail(
     }
 
     let _permit = limiter.0.acquire().await.map_err(|e| e.to_string())?;
-    let bin = thumbnail_sandbox_bin();
-    // Off the async runtime: a miss spawns the worker and blocks on its output.
+    // Off the async runtime: a miss spawns the matching worker and blocks on its
+    // output. The image and music workers share the cache (path+mtime keyed) and
+    // the limiter; only the generator and its support gate differ by kind.
     tauri::async_runtime::spawn_blocking(move || {
         let cache = ThumbnailCache::new(dir);
-        let gen = SandboxedThumbnailGenerator { sandbox_bin: bin };
-        thumbnail_data_url(&cache, &gen, Path::new(&path))
+        match kind {
+            ThumbKind::Image => {
+                let gen = SandboxedThumbnailGenerator {
+                    sandbox_bin: thumbnail_sandbox_bin(),
+                };
+                thumbnail_data_url(&cache, &gen, Path::new(&path), is_thumbnailable)
+            }
+            ThumbKind::Music => {
+                let gen = MusicThumbnailGenerator {
+                    sandbox_bin: music_thumbnail_sandbox_bin(),
+                };
+                thumbnail_data_url(&cache, &gen, Path::new(&path), is_audio)
+            }
+        }
     })
     .await
     .map_err(|e| e.to_string())?
@@ -192,6 +272,18 @@ mod tests {
     }
 
     #[test]
+    fn thumb_kind_classifies_image_audio_and_other() {
+        assert_eq!(thumb_kind(Path::new("/x/a.png")), Some(ThumbKind::Image));
+        assert_eq!(thumb_kind(Path::new("/x/song.MP3")), Some(ThumbKind::Music));
+        assert_eq!(thumb_kind(Path::new("/x/song.flac")), Some(ThumbKind::Music));
+        assert_eq!(thumb_kind(Path::new("/x/song.opus")), Some(ThumbKind::Music));
+        assert!(is_audio(Path::new("/x/track.m4a")));
+        assert!(!is_audio(Path::new("/x/a.png")));
+        assert_eq!(thumb_kind(Path::new("/x/notes.txt")), None);
+        assert_eq!(thumb_kind(Path::new("/x/noext")), None);
+    }
+
+    #[test]
     fn data_url_wraps_the_cached_png_for_an_image() {
         let tmp = tempfile::tempdir().unwrap();
         let src = tmp.path().join("a.png");
@@ -201,7 +293,9 @@ mod tests {
             calls: Cell::new(0),
             bytes: b"FAKE-PNG-BYTES".to_vec(),
         };
-        let url = thumbnail_data_url(&cache, &gen, &src).unwrap().unwrap();
+        let url = thumbnail_data_url(&cache, &gen, &src, is_thumbnailable)
+            .unwrap()
+            .unwrap();
         let prefix = "data:image/png;base64,";
         assert!(url.starts_with(prefix), "got {url}");
         use base64::Engine;
@@ -212,7 +306,29 @@ mod tests {
     }
 
     #[test]
-    fn a_non_image_returns_none_without_generating() {
+    fn data_url_wraps_extracted_cover_art_for_audio() {
+        // The music path shares the same cache+encode; only the support gate and
+        // the generator (which would extract+decode the embedded art) differ.
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("track.flac");
+        std::fs::write(&src, b"pretend-audio").unwrap();
+        let cache = ThumbnailCache::new(tmp.path().join("cache"));
+        let gen = MockGen {
+            calls: Cell::new(0),
+            bytes: b"COVER-PNG".to_vec(),
+        };
+        let url = thumbnail_data_url(&cache, &gen, &src, is_audio)
+            .unwrap()
+            .unwrap();
+        use base64::Engine;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(&url["data:image/png;base64,".len()..])
+            .unwrap();
+        assert_eq!(decoded, b"COVER-PNG");
+    }
+
+    #[test]
+    fn an_unsupported_path_returns_none_without_generating() {
         let tmp = tempfile::tempdir().unwrap();
         let src = tmp.path().join("notes.txt");
         std::fs::write(&src, b"text").unwrap();
@@ -221,8 +337,16 @@ mod tests {
             calls: Cell::new(0),
             bytes: vec![],
         };
-        assert_eq!(thumbnail_data_url(&cache, &gen, &src).unwrap(), None);
-        assert_eq!(gen.calls.get(), 0, "a non-image never spawns the generator");
+        // Neither the image nor the audio gate admits a .txt, so no worker spawns.
+        assert_eq!(
+            thumbnail_data_url(&cache, &gen, &src, is_thumbnailable).unwrap(),
+            None
+        );
+        assert_eq!(
+            thumbnail_data_url(&cache, &gen, &src, is_audio).unwrap(),
+            None
+        );
+        assert_eq!(gen.calls.get(), 0, "an unsupported path never spawns the generator");
     }
 
     #[test]
@@ -251,6 +375,9 @@ mod tests {
         let src = tmp.path().join("broken.png");
         std::fs::write(&src, b"not really a png").unwrap();
         let cache = ThumbnailCache::new(tmp.path().join("cache"));
-        assert_eq!(thumbnail_data_url(&cache, &FailGen, &src).unwrap(), None);
+        assert_eq!(
+            thumbnail_data_url(&cache, &FailGen, &src, is_thumbnailable).unwrap(),
+            None
+        );
     }
 }
