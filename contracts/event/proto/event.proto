@@ -474,4 +474,55 @@ message PermissionChangedPayload {
   // connections from this app_id".
   bool exists = 2;
 }
+
+// ── System Services: Power / Network / Audio state ──────────────────────
+// The system-state contract (system-services-plan.md SST-R1): the
+// power-daemon publishes `power.state` + the coarse `power.*` transitions;
+// the shell's network/audio monitors publish `network.state` / `audio.state`
+// onto the same wire, so the bus, Knowledge Graph and AI layer see system
+// state through one capability-scoped shape instead of a shell CLI fork.
+
+// A coarse power-state snapshot, published on change.
+// Event type: "power.state". Battery-percentage churn is NOT graph-promoted
+// (live read only); the coarse transitions below ARE local provenance.
+message PowerStatePayload {
+  bool   on_battery            = 1;  // true on battery, false on AC
+  uint32 percentage            = 2;  // battery charge, 0-100
+  string state                 = 3;  // "charging"|"discharging"|"full"|"empty"|"unknown"
+  int64  time_to_empty_seconds = 4;  // 0 when unknown or charging
+  int64  time_to_full_seconds  = 5;  // 0 when unknown or discharging
+  string lid_state             = 6;  // "open"|"closed"|"none"
+  string profile               = 7;  // "performance"|"balanced"|"power-saver"|"unknown"
+}
+
+// A coarse power transition, promoted to the Knowledge Graph as local
+// provenance ("the machine slept here"). Event types: "power.suspend",
+// "power.resume", "power.lid_closed", "power.lid_opened",
+// "power.profile_changed", "power.critical".
+message PowerTransitionPayload {
+  // Optional detail: the new profile for "power.profile_changed"
+  // (performance|balanced|power-saver), empty for the other transitions.
+  string detail = 1;
+}
+
+// The user's connectivity state, published on change. A session-level fact
+// ("connectivity changed"), DISTINCT from the eBPF per-socket
+// NetworkConnectionPayload. Event type: "network.state". Not graph-promoted
+// by default (SSID history is movement-profile-adjacent).
+message NetworkStatePayload {
+  bool   connected       = 1;
+  string connection_type = 2;  // "wifi"|"ethernet"|"none"
+  string ssid            = 3;  // empty when not wifi
+  string interface       = 4;  // e.g. "wlan0", "eth0"
+  uint32 signal          = 5;  // 0-100, 0 when not wifi
+  bool   vpn_active      = 6;
+}
+
+// The audio state, published on change. Event type: "audio.state".
+message AudioStatePayload {
+  string default_sink        = 1;  // active output device id
+  string default_source      = 2;  // active input device id
+  uint32 volume              = 3;  // default sink volume, 0-100
+  bool   muted               = 4;  // default sink mute
+  bool   device_list_changed = 5;  // true when the device set changed
 }
