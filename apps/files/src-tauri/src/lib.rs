@@ -226,8 +226,52 @@ async fn read_woher(path: &str) -> Vec<ProvenanceEntry> {
     }
 }
 
-/// Get-Info for one path: conventional metadata plus the KG provenance section.
-/// The relationships and capability sections stay empty until those reads land.
+/// Escape a string for safe interpolation as a single-quoted Cypher literal:
+/// backslash first (so an escaped quote is not double-escaped), then the quote.
+/// The KG read path already denies writes and authority labels, so the bounded
+/// risk is reading within the caller's own scope; escaping keeps a quote in a
+/// real filename from breaking (or perturbing) the query.
+fn escape_cypher_literal(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('\'', "\\'")
+}
+
+/// Map the project-membership rows (`{ name }`) into the info panel's
+/// relationship lines. Pure, so the shaping is unit-tested without a daemon.
+fn verwandt_from_rows(rows: &[std::collections::HashMap<String, serde_json::Value>]) -> Vec<Relation> {
+    rows.iter()
+        .filter_map(|r| r.get("name").and_then(|v| v.as_str()))
+        .map(|name| Relation {
+            label: "Part of project".to_string(),
+            target: name.to_string(),
+        })
+        .collect()
+}
+
+/// Read a file's KG relationships (its `FILE_PART_OF` project membership) via
+/// the structured read op. Best-effort: an out-of-scope object, an absent
+/// daemon or any error yields no lines, so the info panel still shows the
+/// conventional metadata and the provenance section.
+async fn read_verwandt(path: &str) -> Vec<Relation> {
+    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
+    // The File node id in the graph is the file's absolute path. The id is
+    // escaped before interpolation (filenames may contain a quote); the read
+    // path denies writes + authority labels, so the bounded reach is the
+    // caller's own read scope.
+    let cypher = format!(
+        "MATCH (f:File {{id: '{}'}})-[:FILE_PART_OF]->(p:Project) RETURN p.name AS name LIMIT 16",
+        escape_cypher_literal(&abs(path))
+    );
+    match client.query_rows(&cypher).await {
+        Ok(rows) => verwandt_from_rows(&rows),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Get-Info for one path: conventional metadata plus the KG provenance and
+/// relationship sections. The capability section's reader enumeration stays
+/// empty (the per-file authority read is system-scoped, denied to the FM); the
+/// manage-access deep-link is the honest non-enumerable entry point.
 #[tauri::command]
 async fn files_info(path: String) -> Result<Info, String> {
     // Conventional metadata first (the cap-std dir is dropped before the await).
@@ -236,10 +280,11 @@ async fn files_info(path: String) -> Result<Info, String> {
         properties(&dir, rel(&path)).map_err(|e| e.to_string())?
     };
     let woher = read_woher(&path).await;
+    let verwandt = read_verwandt(&path).await;
     Ok(Info {
         conventional,
         woher,
-        verwandt: Vec::new(),
+        verwandt,
         zugriff: Zugriff {
             readable_by: Vec::new(),
             manage_link: "settings://permissions".to_string(),
@@ -653,7 +698,35 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{abs, provenance_to_woher};
+    use super::{abs, escape_cypher_literal, provenance_to_woher, verwandt_from_rows};
+    use std::collections::HashMap;
+
+    #[test]
+    fn verwandt_maps_project_rows_to_relations() {
+        let mut row = HashMap::new();
+        row.insert("name".to_string(), serde_json::json!("Arlen"));
+        let rels = verwandt_from_rows(&[row]);
+        assert_eq!(rels.len(), 1);
+        assert_eq!(rels[0].label, "Part of project");
+        assert_eq!(rels[0].target, "Arlen");
+    }
+
+    #[test]
+    fn verwandt_skips_rows_without_a_name() {
+        let empty: HashMap<String, serde_json::Value> = HashMap::new();
+        let mut non_string = HashMap::new();
+        non_string.insert("name".to_string(), serde_json::json!(42));
+        assert!(verwandt_from_rows(&[empty, non_string]).is_empty());
+    }
+
+    #[test]
+    fn cypher_literal_escapes_quote_and_backslash() {
+        // Backslash first, so an escaped quote is not double-escaped.
+        assert_eq!(escape_cypher_literal("a'b"), "a\\'b");
+        assert_eq!(escape_cypher_literal("a\\b"), "a\\\\b");
+        assert_eq!(escape_cypher_literal("/home/tim/it's a\\dir"), "/home/tim/it\\'s a\\\\dir");
+        assert_eq!(escape_cypher_literal("/plain/path"), "/plain/path");
+    }
 
     #[test]
     fn woher_names_only_own_actors_and_summarises_others() {
