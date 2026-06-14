@@ -459,3 +459,17 @@ message AudioStatePayload {
   bool   muted               = 4;  // default sink mute
   bool   device_list_changed = 5;  // true when the device set changed
 }
+
+// Event type: "network.state" - the network popover snapshot published by the
+// shell's NetworkManager D-Bus signal monitor on every connectivity change
+// (SST-R2), so apps and the AI layer consume one shared value. Distinct from
+// the eBPF per-socket network.connect facts; this is the popover snapshot.
+// Mirrors the canonical contracts/event definition.
+message NetworkStatePayload {
+  bool   connected       = 1;
+  string connection_type = 2;  // "wifi"|"ethernet"|"none"
+  string ssid            = 3;  // empty when not wifi
+  string interface       = 4;  // e.g. "wlan0", "eth0"
+  uint32 signal          = 5;  // 0-100, 0 when not wifi
+  bool   vpn_active      = 6;
+}
