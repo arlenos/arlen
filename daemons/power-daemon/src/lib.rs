@@ -10,4 +10,5 @@
 //! The state-aggregation core is pure and unit-tested ([`power`]); the daemon
 //! binary wires it to the live system bus and the event-bus producer.
 
+pub mod dbus;
 pub mod power;
