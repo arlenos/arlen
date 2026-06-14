@@ -1,0 +1,44 @@
+[Unit]
+Description=Arlen power daemon (user service)
+Documentation=https://github.com/arlenos/arlen
+# arlen-powerd aggregates UPower battery/AC/lid state into a coarse PowerState,
+# publishes power.state on the event bus (push) and serves the latest snapshot
+# over org.arlen.Power1 on the session bus (pull), so the shell battery
+# indicator and the AI layer consume one shared value instead of each forking
+# UPower. It reads UPower as a client on the system bus and talks only over
+# AF_UNIX (the session bus and the event-bus producer socket). Suspend/idle/
+# profile management (PWR-R2..R7) lands here behind a capability gate later.
+
+[Service]
+# Type=dbus: the service is "started" once it owns its bus name, which also lets
+# the session bus D-Bus-activate it on first use (see dist/dbus/).
+Type=dbus
+BusName=org.arlen.Power1
+# Production binary path (system-wide install). Dev runs invoke the debug binary
+# directly; this file is the canonical production unit.
+ExecStart=/usr/lib/arlen/libexec/arlen-powerd
+# A failure to acquire the bus name or the producer socket exits non-zero;
+# restart with back-off so a persistent fault surfaces rather than crash-looping.
+Restart=on-failure
+RestartSec=2
+
+# It only READS UPower and serves over the bus + publishes to the event bus; it
+# writes nothing under the home, so ProtectHome=read-only is sufficient. Power
+# actions (PWR-R2 suspend, PWR-R5 profiles) add no home writes either; they talk
+# to logind / power-profiles-daemon over the system bus.
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target
