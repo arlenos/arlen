@@ -1,17 +1,20 @@
 //! `arlen-powerd` — the Arlen power daemon (system-services-plan.md PWR-R1).
 //!
 //! Reads UPower on the system bus, aggregates a coarse [`PowerState`], and
-//! publishes `power.state` on the event bus whenever it changes. A poll loop
-//! is sufficient for the coarse snapshot (UPower only changes state every few
-//! seconds); the signal-driven refresh and the `org.arlen.Power1` D-Bus + query
-//! socket are the next PWR-R1 increment, and suspend/idle/profile management
-//! (PWR-R2..R7) build on top.
+//! both publishes `power.state` on the event bus (push) and serves the latest
+//! snapshot over `org.arlen.Power1` on the session bus (pull) whenever it
+//! changes. A poll loop is sufficient for the coarse snapshot (UPower only
+//! changes state every few seconds); the signal-driven refresh is a later
+//! refinement, and suspend/idle/profile management (PWR-R2..R7) builds on top.
 
+use std::sync::Arc;
 use std::time::Duration;
 
+use arlen_powerd::dbus::{PowerInterface, SharedState};
 use arlen_powerd::power::PowerState;
 use os_sdk::event::{EventEmitter, UnixEventEmitter};
 use prost::Message as _;
+use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
 /// UPower well-known name + the aggregate display-device path.
@@ -42,6 +45,21 @@ async fn main() {
     // retry on each poll, so a late dbus/UPower start recovers without a crash.
     let mut sysbus = connect_system_bus().await;
 
+    // The shared snapshot the org.arlen.Power1 interface serves. The poll loop
+    // writes the latest reading; pull consumers (shell, apps, SDK) read it
+    // without forking UPower. Served on the SESSION bus (this is a per-user
+    // daemon); UPower reads stay on the system bus above.
+    let shared: SharedState = Arc::new(RwLock::new(PowerState::default()));
+    let _dbus = match serve_dbus(shared.clone()).await {
+        Some(conn) => Some(conn),
+        None => {
+            // A missing session bus must not stop the event-bus publish path:
+            // the push channel still works, only the pull surface is absent.
+            warn!("org.arlen.Power1 unavailable; continuing with event-bus publish only");
+            None
+        }
+    };
+
     let _ = sd_notify::notify(false, &[sd_notify::NotifyState::Ready]);
 
     let mut last: Option<PowerState> = None;
@@ -63,6 +81,9 @@ async fn main() {
                 match read_power_state(&conn).await {
                     Some(state) => {
                         if last.as_ref() != Some(&state) {
+                            // Update the pull snapshot first so a consumer that
+                            // reacts to the push event reads the fresh value.
+                            *shared.write().await = state.clone();
                             let bytes = state.to_payload().encode_to_vec();
                             match emitter.emit("power.state", bytes).await {
                                 Ok(()) => debug!(?state, "published power.state"),
@@ -93,6 +114,40 @@ async fn connect_system_bus() -> Option<zbus::Connection> {
         Ok(c) => Some(c),
         Err(e) => {
             warn!("system bus unavailable: {e}");
+            None
+        }
+    }
+}
+
+/// Path under which the power interface is served.
+const POWER_OBJECT_PATH: &str = "/org/arlen/Power1";
+/// The well-known name the power interface owns on the session bus.
+const POWER_BUS_NAME: &str = "org.arlen.Power1";
+
+/// Claim `org.arlen.Power1` on the session bus and serve the shared snapshot.
+///
+/// Returns the owning connection (it must be held for the lifetime of the
+/// daemon to keep the name) or `None` if the session bus is unavailable, so
+/// the event-bus publish path keeps working without the pull surface.
+async fn serve_dbus(shared: SharedState) -> Option<zbus::Connection> {
+    let iface = PowerInterface::new(shared);
+    match zbus::connection::Builder::session()
+        .and_then(|b| b.name(POWER_BUS_NAME))
+        .and_then(|b| b.serve_at(POWER_OBJECT_PATH, iface))
+        .map(|b| b.build())
+    {
+        Ok(fut) => match fut.await {
+            Ok(conn) => {
+                info!(name = POWER_BUS_NAME, path = POWER_OBJECT_PATH, "serving power interface");
+                Some(conn)
+            }
+            Err(e) => {
+                warn!("failed to serve {POWER_BUS_NAME}: {e}");
+                None
+            }
+        },
+        Err(e) => {
+            warn!("failed to build session connection for {POWER_BUS_NAME}: {e}");
             None
         }
     }
