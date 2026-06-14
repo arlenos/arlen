@@ -11,8 +11,17 @@
 //!
 //! This is sound ONLY because the daemon serves on the session BUS (see `main`):
 //! the bus authoritatively stamps the sender and answers the PID query, so a
-//! caller cannot forge another connection's identity. A peer-to-peer (busless)
+//! caller cannot forge ANOTHER connection's identity. A peer-to-peer (busless)
 //! variant would not have that guarantee and must not copy this resolution.
+//!
+//! Residual (the same ambient limit every `/proc/exe` identity model in the repo
+//! carries, the documented F3 gap): the attested PID is the connection's, but a
+//! granted app could `exec` a different binary into the same PID after connecting
+//! (the PID and its start time are unchanged by `exec`), or pass its bus
+//! connection to a child. So the resolution is unforgeable against a *different*
+//! connection, not against in-process `exec` on the *same* one; the per-request
+//! `pid_start_time` recheck closes only PID *recycling* during resolution, not
+//! same-PID `exec`. The eventual close is the same inode-attestation F3 work.
 
 use zbus::interface;
 
@@ -64,13 +73,20 @@ impl AccountsDaemon {
             .collect()
     }
 
-    /// Hand out an access token for `(account_id, service)` to the calling app,
-    /// gated on its per-app grant - the Arlen differentiator over GOA/KDE, where
-    /// any app reads the shared keyring. Returns `(token, scope)`; refuses with
-    /// `AccessDenied` when the caller is unresolved, holds no grant for this
-    /// account+service, or the service name is unknown, and `Failed` when the
-    /// grant exists but no token is stored yet (the OAuth flow that populates the
-    /// vault is OA-R2).
+    /// Hand out an access token for the account to the calling app at the
+    /// service's least-privilege scope, gated on its per-app grant - the Arlen
+    /// differentiator over GOA/KDE, where any app reads the shared keyring.
+    /// Returns `(token, scope)`; refuses with `AccessDenied` when the caller is
+    /// unresolved, holds no grant for this account+service, the account does not
+    /// offer the service, or the service name is unknown, and a single generic
+    /// `Failed("token unavailable")` for any post-grant vault outcome (no token
+    /// yet / read error) so the error channel does not leak provisioning state.
+    ///
+    /// Token isolation note: the stored credential is **per account** (one
+    /// refresh/access token), so `service` selects the OAuth `scope` handed out,
+    /// not a distinct secret per service; the handout returns the account's token
+    /// narrowed to the granted scope. The OAuth flow that populates the vault is
+    /// OA-R2; until then a granted call returns `Failed` (no token stored yet).
     ///
     /// PID-reuse guard: the caller's `(pid, start_time)` is captured and
     /// re-verified across the `/proc`-based identity resolution, so a recycled
@@ -98,17 +114,17 @@ impl AccountsDaemon {
                 ))
             }
         };
-        // The grant is held; read the token from the vault. A vault error or a
-        // non-UTF-8 record fails closed (no token leaks, no panic).
+        // The grant is held; read the token from the vault. Every post-grant
+        // failure (no token yet, a non-UTF-8 record, a vault I/O/decrypt error)
+        // collapses to ONE generic error so a granted caller cannot distinguish
+        // "no token provisioned yet" from a transient read error (the error
+        // channel leaks no provisioning state); fail-closed, no token leaks, no
+        // panic.
+        let unavailable = || zbus::fdo::Error::Failed("token unavailable".into());
         match self.vault.load(&account_id) {
-            Ok(Some(bytes)) => match String::from_utf8(bytes) {
-                Ok(token) => Ok((token, scope)),
-                Err(_) => Err(zbus::fdo::Error::Failed("stored token is not valid UTF-8".into())),
-            },
-            Ok(None) => Err(zbus::fdo::Error::Failed(
-                "no token stored for this account yet".into(),
-            )),
-            Err(_) => Err(zbus::fdo::Error::Failed("vault read failed".into())),
+            Ok(Some(bytes)) => String::from_utf8(bytes).map(|t| (t, scope)).map_err(|_| unavailable()),
+            Ok(None) => Err(unavailable()),
+            Err(_) => Err(unavailable()),
         }
     }
 }

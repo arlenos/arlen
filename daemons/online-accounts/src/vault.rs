@@ -56,10 +56,16 @@ pub struct Vault {
     dir: PathBuf,
 }
 
+/// The longest accepted account id. A real account id is a short reverse-DNS-ish
+/// stem; this caps a caller-supplied id so the handout cannot turn into an
+/// arbitrary-length filename probe before any disk I/O.
+const MAX_ACCOUNT_ID_LEN: usize = 128;
+
 /// Whether `id` is a safe single path component (it becomes a filename): non-empty,
-/// no separators, no `.`/`..`, ordinary id characters only.
+/// length-bounded, no separators, no `.`/`..`, ordinary id characters only.
 fn is_valid_account(id: &str) -> bool {
     !id.is_empty()
+        && id.len() <= MAX_ACCOUNT_ID_LEN
         && id != "."
         && id != ".."
         && id
