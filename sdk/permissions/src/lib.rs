@@ -272,6 +272,29 @@ pub struct SystemPermissions {
     pub autostart: bool,
     #[serde(default)]
     pub background: bool,
+    /// Power-action grants (suspend/power-off, profile changes) the power
+    /// daemon (`org.arlen.Power1`) mediates. Default-empty: no app may suspend
+    /// or change the power profile without an explicit grant (PWR-R7).
+    #[serde(default)]
+    pub power: PowerPermissions,
+}
+
+/// The power-action capability scope (system-services-plan.md PWR-R7).
+///
+/// The power daemon holds the logind / power-profiles-daemon trust; a caller
+/// reaches a sleep/power-off or profile change only with the matching grant
+/// here, resolved from the caller's profile by its attested app id. Nothing is
+/// granted by default, so an unprofiled or unprivileged app cannot suspend the
+/// machine or change its profile.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PowerPermissions {
+    /// May request a sleep/power-off action (suspend, hibernate, power-off,
+    /// reboot, and the sleep variants) via `org.arlen.Power1`.
+    #[serde(default)]
+    pub suspend: bool,
+    /// May change the active power profile (performance/balanced/power-saver).
+    #[serde(default)]
+    pub set_profile: bool,
 }
 
 // ── Search ──
