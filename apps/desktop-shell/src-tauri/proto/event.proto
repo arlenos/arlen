@@ -446,3 +446,16 @@ message AmbientSetPayload {
 message AmbientClearedPayload {
   string app_id = 1;
 }
+
+// Event type: "audio.state" - the audio popover snapshot published by the
+// shell's pactl-subscribe monitor on every sink/source change (SST-R2), so
+// apps and the AI layer consume one shared value instead of each polling
+// wpctl/pactl. Distinct from the eBPF per-socket facts; this is the popover
+// snapshot. Mirrors the canonical contracts/event definition.
+message AudioStatePayload {
+  string default_sink        = 1;  // active output device id
+  string default_source      = 2;  // active input device id
+  uint32 volume              = 3;  // default sink volume, 0-100
+  bool   muted               = 4;  // default sink mute
+  bool   device_list_changed = 5;  // true when the device set changed
+}
