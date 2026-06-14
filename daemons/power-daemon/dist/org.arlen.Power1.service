@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.arlen.Power1
+Exec=/usr/lib/arlen/libexec/arlen-powerd
+SystemdService=arlen-powerd.service
