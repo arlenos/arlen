@@ -28,17 +28,52 @@ pub type SharedState = Arc<RwLock<PowerState>>;
 /// bus-attested app id.
 pub struct PowerInterface {
     state: SharedState,
-    /// The system-bus connection used to drive logind / p-p-d for actions.
-    /// `None` if the system bus was unavailable at startup, in which case every
-    /// action fails closed.
-    system_bus: Option<zbus::Connection>,
+    /// The system-bus connection used to drive logind / p-p-d for actions, held
+    /// behind a lock so it can be (re)established lazily: `None` when the system
+    /// bus was unavailable at startup, refreshed on the next action. An action
+    /// for which a connection cannot be obtained fails closed.
+    system_bus: Arc<RwLock<Option<zbus::Connection>>>,
 }
 
 impl PowerInterface {
     /// Wrap the shared snapshot (the poll loop updates it) and the system-bus
-    /// connection used for privileged actions.
+    /// connection used for privileged actions. `system_bus` may be `None` (the
+    /// bus was down at startup); [`action_bus`](Self::action_bus) reconnects on
+    /// demand, so a momentarily-unavailable bus at boot does not permanently
+    /// disable the action surface.
     pub fn new(state: SharedState, system_bus: Option<zbus::Connection>) -> Self {
-        Self { state, system_bus }
+        Self {
+            state,
+            system_bus: Arc::new(RwLock::new(system_bus)),
+        }
+    }
+
+    /// A live system-bus connection for an action, reconnecting if none is held.
+    ///
+    /// The poll loop keeps its own read connection; this is the action path's,
+    /// and unlike a once-at-startup connection it recovers if the system bus was
+    /// down when the daemon started (the reviewed availability gap). Returns
+    /// `None` only when a connection cannot be established right now (the action
+    /// then fails closed). Double-checked so a burst of concurrent actions opens
+    /// at most one new connection.
+    async fn action_bus(&self) -> Option<zbus::Connection> {
+        if let Some(c) = self.system_bus.read().await.as_ref() {
+            return Some(c.clone());
+        }
+        let mut guard = self.system_bus.write().await;
+        if let Some(c) = guard.as_ref() {
+            return Some(c.clone());
+        }
+        match zbus::Connection::system().await {
+            Ok(c) => {
+                *guard = Some(c.clone());
+                Some(c)
+            }
+            Err(e) => {
+                warn!("power action: system bus reconnect failed: {e}");
+                None
+            }
+        }
     }
 }
 
@@ -105,10 +140,29 @@ impl PowerInterface {
         let act = PowerAction::parse(&action)
             .ok_or_else(|| zbus::fdo::Error::InvalidArgs(format!("unknown power action: {action}")))?;
         let bus = self
-            .system_bus
-            .as_ref()
+            .action_bus()
+            .await
             .ok_or_else(|| zbus::fdo::Error::Failed("system bus unavailable".into()))?;
-        logind::perform(bus, act)
+        // Probe logind first so an action it cannot perform (no hardware support,
+        // or a session not authorised for it) returns a precise reason rather than
+        // a generic failure from the non-interactive call.
+        match logind::can_perform(&bus, act).await {
+            Ok(av) if av.is_available() => {}
+            Ok(av) => {
+                return Err(zbus::fdo::Error::Failed(format!(
+                    "logind reports {} unavailable ({})",
+                    act.as_str(),
+                    av.as_str()
+                )))
+            }
+            Err(e) => {
+                return Err(zbus::fdo::Error::Failed(format!(
+                    "logind can-{} query failed: {e}",
+                    act.as_str()
+                )))
+            }
+        }
+        logind::perform(&bus, act)
             .await
             .map_err(|e| zbus::fdo::Error::Failed(format!("logind {}: {e}", act.as_str())))?;
         info!(action = act.as_str(), "performed power action");
@@ -130,10 +184,10 @@ impl PowerInterface {
             ));
         }
         let bus = self
-            .system_bus
-            .as_ref()
+            .action_bus()
+            .await
             .ok_or_else(|| zbus::fdo::Error::Failed("system bus unavailable".into()))?;
-        profiles::set_active_profile(bus, &profile)
+        profiles::set_active_profile(&bus, &profile)
             .await
             .map_err(|e| zbus::fdo::Error::Failed(format!("set profile {profile}: {e}")))?;
         info!(profile = %profile, "changed power profile");

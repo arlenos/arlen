@@ -121,6 +121,17 @@ impl Availability {
     pub fn is_available(self) -> bool {
         matches!(self, Availability::Yes)
     }
+
+    /// A short reason string for the unavailable case (used in the error a
+    /// caller sees when logind will not perform the action).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Availability::Yes => "yes",
+            Availability::No => "no",
+            Availability::Challenge => "requires authentication",
+            Availability::NotApplicable => "not applicable",
+        }
+    }
 }
 
 /// Build a `Manager` proxy on the system bus.
@@ -198,5 +209,8 @@ mod tests {
         assert_eq!(Availability::from_logind("weird"), Availability::No);
         assert!(Availability::Yes.is_available());
         assert!(!Availability::Challenge.is_available());
+        // The reason string is set for every variant (the unavailable error path).
+        assert_eq!(Availability::Challenge.as_str(), "requires authentication");
+        assert_eq!(Availability::No.as_str(), "no");
     }
 }
