@@ -613,9 +613,48 @@ async fn check_vpn() -> bool {
 // D-Bus signal monitor
 // ---------------------------------------------------------------------------
 
+/// Map a [`NetworkStatus`] to the `network.state` event-bus snapshot. Pure, so
+/// the field mapping is unit-tested without nmcli. `ssid` carries the name only
+/// for wifi; a disconnected status reports `connection_type = "none"` (the
+/// canonical vocabulary); `interface` is left empty (the status read does not
+/// query the device name).
+fn network_state_payload(status: &NetworkStatus) -> crate::projects::proto::NetworkStatePayload {
+    let is_wifi = status.connection_type == "wifi";
+    crate::projects::proto::NetworkStatePayload {
+        connected: status.connected,
+        connection_type: if status.connected {
+            status.connection_type.clone()
+        } else {
+            "none".to_string()
+        },
+        ssid: if is_wifi {
+            status.name.clone().unwrap_or_default()
+        } else {
+            String::new()
+        },
+        interface: String::new(),
+        signal: status.signal_strength.unwrap_or(0) as u32,
+        vpn_active: status.vpn_active,
+    }
+}
+
+/// Publish the current network snapshot on the event bus (SST-R2). Best-effort:
+/// a failed status read simply skips this publish.
+async fn emit_network_state() {
+    use prost::Message;
+    if let Ok(status) = get_network_status().await {
+        crate::projects::emit_to_event_bus(
+            "network.state",
+            network_state_payload(&status).encode_to_vec(),
+        );
+    }
+}
+
 /// Start monitoring NetworkManager D-Bus signals for live state updates.
 ///
-/// Emits `network-changed` Tauri events when connectivity state changes.
+/// Emits `network-changed` Tauri events (for the popover) and publishes a
+/// debounced `network.state` snapshot on the event bus (SST-R2, for apps/AI)
+/// when connectivity state changes.
 pub fn start_monitor(app: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
         if let Err(e) = run_network_monitor(app).await {
@@ -626,6 +665,7 @@ pub fn start_monitor(app: tauri::AppHandle) {
 
 async fn run_network_monitor(app: tauri::AppHandle) -> Result<(), zbus::Error> {
     use futures_util::StreamExt;
+    use std::time::{Duration, Instant};
     use tauri::Emitter;
 
     let conn = zbus::Connection::system().await?;
@@ -643,9 +683,72 @@ async fn run_network_monitor(app: tauri::AppHandle) -> Result<(), zbus::Error> {
 
     log::info!("network: signal monitor started");
 
+    // NetworkManager fires bursts of PropertiesChanged for a single transition;
+    // the frontend `network-changed` is left undebounced (it self-throttles),
+    // but the `network.state` publish spawns an nmcli read, so coalesce it to one
+    // per 200ms window.
+    let mut last_state_emit = Instant::now() - Duration::from_secs(1);
+
     while let Some(_signal) = stream.next().await {
         let _ = app.emit("network-changed", ());
+        let now = Instant::now();
+        if now.duration_since(last_state_emit) >= Duration::from_millis(200) {
+            emit_network_state().await;
+            last_state_emit = now;
+        }
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{network_state_payload, NetworkStatus};
+
+    #[test]
+    fn payload_maps_wifi_fields() {
+        let status = NetworkStatus {
+            connection_type: "wifi".into(),
+            connected: true,
+            name: Some("HomeNet".into()),
+            signal_strength: Some(72),
+            vpn_active: true,
+        };
+        let p = network_state_payload(&status);
+        assert!(p.connected);
+        assert_eq!(p.connection_type, "wifi");
+        assert_eq!(p.ssid, "HomeNet");
+        assert_eq!(p.signal, 72);
+        assert!(p.vpn_active);
+    }
+
+    #[test]
+    fn payload_leaves_ssid_empty_for_ethernet() {
+        let status = NetworkStatus {
+            connection_type: "ethernet".into(),
+            connected: true,
+            name: Some("Wired connection 1".into()),
+            signal_strength: None,
+            vpn_active: false,
+        };
+        let p = network_state_payload(&status);
+        assert_eq!(p.connection_type, "ethernet");
+        assert_eq!(p.ssid, "", "ethernet has no ssid");
+        assert_eq!(p.signal, 0, "no signal when not wifi");
+    }
+
+    #[test]
+    fn disconnected_maps_to_none() {
+        let status = NetworkStatus {
+            connection_type: "disconnected".into(),
+            connected: false,
+            name: None,
+            signal_strength: None,
+            vpn_active: false,
+        };
+        let p = network_state_payload(&status);
+        assert!(!p.connected);
+        assert_eq!(p.connection_type, "none");
+        assert_eq!(p.ssid, "");
+    }
 }
