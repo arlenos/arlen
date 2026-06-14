@@ -634,7 +634,7 @@ fn files_bookmark_remove(path: String) -> Result<(), String> {
     write_files_config(&config)
 }
 
-/// The Projekte sidebar section (KG; empty until structured reads land).
+/// The Projekte sidebar section (the live `FILE_PART_OF` projects from the KG).
 #[derive(Serialize)]
 struct Project {
     id: String,
@@ -642,9 +642,38 @@ struct Project {
     path: String,
 }
 
+/// Map project rows (`{ id, name, path }`) into sidebar entries, skipping any
+/// row missing the id or name. Pure, so the shaping is unit-tested without a
+/// daemon.
+fn projects_from_rows(rows: &[std::collections::HashMap<String, serde_json::Value>]) -> Vec<Project> {
+    rows.iter()
+        .filter_map(|r| {
+            let id = r.get("id").and_then(|v| v.as_str())?;
+            let name = r.get("name").and_then(|v| v.as_str())?;
+            let path = r.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            Some(Project {
+                id: id.to_string(),
+                name: name.to_string(),
+                path: path.to_string(),
+            })
+        })
+        .collect()
+}
+
+/// The live projects for the sidebar's Projects section. Best-effort: an absent
+/// daemon or an out-of-scope read yields no entries (the rest of the sidebar
+/// still renders). Only live projects are shown (`expired_at IS NULL`); archived
+/// ones are omitted. The query is static (no interpolation), so no escaping.
 #[tauri::command]
-fn files_projects() -> Vec<Project> {
-    Vec::new()
+async fn files_projects() -> Vec<Project> {
+    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
+    let cypher = "MATCH (p:Project) WHERE p.expired_at IS NULL \
+                  RETURN p.id AS id, p.name AS name, p.root_path AS path LIMIT 64";
+    match client.query_rows(cypher).await {
+        Ok(rows) => projects_from_rows(&rows),
+        Err(_) => Vec::new(),
+    }
 }
 
 /// The Suchen sidebar section (KG; empty until structured reads land).
@@ -698,8 +727,29 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{abs, escape_cypher_literal, provenance_to_woher, verwandt_from_rows};
+    use super::{abs, escape_cypher_literal, projects_from_rows, provenance_to_woher, verwandt_from_rows};
     use std::collections::HashMap;
+
+    #[test]
+    fn projects_map_rows_and_skip_incomplete_ones() {
+        let mut full = HashMap::new();
+        full.insert("id".to_string(), serde_json::json!("proj-1"));
+        full.insert("name".to_string(), serde_json::json!("Arlen"));
+        full.insert("path".to_string(), serde_json::json!("/home/tim/arlen"));
+        // A row missing the name is skipped; a missing path defaults to empty.
+        let mut no_name = HashMap::new();
+        no_name.insert("id".to_string(), serde_json::json!("proj-2"));
+        let mut no_path = HashMap::new();
+        no_path.insert("id".to_string(), serde_json::json!("proj-3"));
+        no_path.insert("name".to_string(), serde_json::json!("Loose"));
+
+        let projects = projects_from_rows(&[full, no_name, no_path]);
+        assert_eq!(projects.len(), 2);
+        assert_eq!(projects[0].name, "Arlen");
+        assert_eq!(projects[0].path, "/home/tim/arlen");
+        assert_eq!(projects[1].name, "Loose");
+        assert_eq!(projects[1].path, "");
+    }
 
     #[test]
     fn verwandt_maps_project_rows_to_relations() {
