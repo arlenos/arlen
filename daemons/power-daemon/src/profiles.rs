@@ -45,6 +45,20 @@ pub async fn read_active_profile(conn: &zbus::Connection) -> Option<String> {
     Some(normalize_profile(&active))
 }
 
+/// Set the active power profile via `power-profiles-daemon` (PWR-R5 set half,
+/// reached only through the PWR-R7 capability gate). Refuses anything outside
+/// the canonical set before touching the bus, so a caller cannot push an
+/// arbitrary string into p-p-d's `ActiveProfile`.
+pub async fn set_active_profile(conn: &zbus::Connection, profile: &str) -> zbus::Result<()> {
+    let normalized = normalize_profile(profile);
+    if normalized == PROFILE_UNKNOWN {
+        return Err(zbus::Error::Unsupported);
+    }
+    let proxy = zbus::Proxy::new(conn, PPD_BUS, PPD_PATH, PPD_IFACE).await?;
+    proxy.set_property("ActiveProfile", normalized).await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
