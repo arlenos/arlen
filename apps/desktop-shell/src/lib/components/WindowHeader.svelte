@@ -27,16 +27,17 @@
 </script>
 
 <!--
-  The compositor rasterises no header itself; the shell draws every
-  eligible window header here. A plain window (`stack_id === 0`)
-  shows its title in the drag area; a stack (`stack_id !== 0`) shows
-  the integrated tab strip (Feature 3). Either way the window
-  controls sit on the right. The compositor gates emission on
-  `should_emit_shell_header_events`, which now mirrors the
-  render-eligibility policy, so this `#each` receives one entry per
-  window with a header.
+  Feature 4-C: non-stacked SSD windows are now drawn directly by
+  the compositor via `CosmicWindow::header_render_element`. The
+  compositor no longer emits `window_header_show`/`_update` for
+  those — see `should_emit_shell_header_events` in the shell side.
+  This component is still the author for STACK headers (`stack_id
+  !== 0`), where tabs are integrated with the window controls (see
+  Feature 3). The filter below makes that explicit so a stray
+  stale store entry from a pre-Feature-4-C build can't leak a
+  duplicate header on-screen.
 -->
-{#each [...$windowHeaders.values()] as hdr (hdr.surface_id)}
+{#each [...$windowHeaders.values()].filter((hdr) => hdr.stack_id !== 0) as hdr (hdr.surface_id)}
     {@const tabs = tabsFor(hdr.stack_id)}
     <!--
       `transform: translate3d()` rather than `left/top` so position
@@ -88,33 +89,21 @@
               region in windowHeaders.ts covers both the tab strip
               and the button strip.
             -->
-        {#if hdr.stack_id !== 0}
-            <div class="header-tabs" role="tablist" aria-label="Window tabs">
-                {#each tabs as tab (tab.index)}
-                    <button
-                        type="button"
-                        role="tab"
-                        class="header-tab"
-                        class:header-tab-active={tab.active}
-                        onclick={() => activateTab(tab.stackId, tab.index)}
-                        aria-selected={tab.active}
-                    >
-                        <span class="header-tab-title" title={tab.title}>{tab.title}</span>
-                    </button>
-                {/each}
-            </div>
-            <div class="header-drag header-drag-grow"></div>
-        {:else}
-            <!--
-              Plain single-window header: the window title fills the
-              drag area. `pointer-events: none` (inherited from
-              `.header-drag`) keeps a title-bar drag falling through to
-              the compositor's native SSD move routing.
-            -->
-            <div class="header-drag">
-                <span class="header-title" title={hdr.title}>{hdr.title}</span>
-            </div>
-        {/if}
+        <div class="header-tabs" role="tablist" aria-label="Window tabs">
+            {#each tabs as tab (tab.index)}
+                <button
+                    type="button"
+                    role="tab"
+                    class="header-tab"
+                    class:header-tab-active={tab.active}
+                    onclick={() => activateTab(tab.stackId, tab.index)}
+                    aria-selected={tab.active}
+                >
+                    <span class="header-tab-title" title={tab.title}>{tab.title}</span>
+                </button>
+            {/each}
+        </div>
+        <div class="header-drag header-drag-grow"></div>
 
         <div class="header-buttons">
             {#if hdr.has_minimize}
@@ -264,15 +253,6 @@
         user-select: none;
         -webkit-user-select: none;
         pointer-events: none;
-    }
-
-    /* Plain single-window title, filling the drag area. */
-    .header-title {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-size: 13px;
-        line-height: 1;
     }
 
     .header-buttons {
