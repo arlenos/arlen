@@ -177,6 +177,11 @@ async fn read_power_state(conn: &zbus::Connection) -> Option<PowerState> {
         return None;
     }
 
+    // The active power profile is read best-effort from power-profiles-daemon
+    // (also on the system bus); its absence leaves the field at "unknown"
+    // rather than failing the whole snapshot.
+    let profile = arlen_powerd::profiles::read_active_profile(conn).await;
+
     Some(PowerState::from_upower(
         on_battery,
         percentage,
@@ -185,7 +190,7 @@ async fn read_power_state(conn: &zbus::Connection) -> Option<PowerState> {
         time_to_full,
         lid_present,
         lid_closed,
-        None,
+        profile,
     ))
 }
 
