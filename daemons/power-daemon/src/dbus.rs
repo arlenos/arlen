@@ -151,11 +151,13 @@ impl PowerInterface {
     /// binary, no profile) yields an empty grant, so an unprofiled or
     /// unidentifiable caller is denied.
     ///
-    /// Residual (documented, low for a per-user power daemon): the sub-millisecond
-    /// PID-reuse window between the bus attesting the PID and reading `/proc`. The
-    /// blast radius is bounded to actions the user can already take on their own
-    /// machine; the `pid_start_time` capture-recheck (the knowledge-daemon
-    /// pattern) is the close, deferred with online-accounts'.
+    /// The resolution carries a PID-reuse guard (`pid_start_time` captured and
+    /// re-checked across the `/proc` read), the same close the online-accounts
+    /// token handout uses, so a PID recycled during resolution cannot be resolved
+    /// to a different app. The remaining residual is the repo-wide F3 limit (a
+    /// granted app `exec`ing a different binary into the same PID on the same
+    /// connection), bounded here to actions the user can already take on their
+    /// own machine.
     async fn caller_power_grant(
         &self,
         header: &zbus::message::Header<'_>,
@@ -178,15 +180,21 @@ impl PowerInterface {
     }
 }
 
-/// Resolve the calling app's Arlen identity from the D-Bus connection.
+/// Resolve the calling app's Arlen identity from the D-Bus connection, with a
+/// PID-reuse guard.
 ///
 /// The session bus daemon attests the sender's PID (`GetConnectionUnixProcessID`,
 /// not a client-supplied value), and `app_id_from_pid` resolves `/proc/<pid>/exe`
-/// through the F3 `path_to_app_id` chain. Any failure is an `Err` (fail-closed).
+/// through the F3 `path_to_app_id` chain. The caller PID's start time is captured
+/// before and re-checked after the `/proc` read, so a PID recycled to a different
+/// process during resolution is rejected (the knowledge-daemon / online-accounts
+/// pattern). Every method using this resolver hands out a privileged action, so
+/// the guard is applied unconditionally. Any failure is an `Err` (fail-closed).
 async fn resolve_caller_app_id(
     header: &zbus::message::Header<'_>,
     connection: &zbus::Connection,
 ) -> Result<String, String> {
+    use arlen_permissions::identity::{app_id_from_pid, pid_start_time};
     let sender = header
         .sender()
         .ok_or_else(|| "no sender in message".to_string())?;
@@ -197,5 +205,11 @@ async fn resolve_caller_app_id(
         .get_connection_unix_process_id(sender.clone().into())
         .await
         .map_err(|e| format!("get caller pid: {e}"))?;
-    arlen_permissions::identity::app_id_from_pid(pid).map_err(|e| format!("resolve app id: {e}"))
+    let start_before = pid_start_time(pid).map_err(|e| format!("pid start time: {e}"))?;
+    let app_id = app_id_from_pid(pid).map_err(|e| format!("resolve app id: {e}"))?;
+    let start_after = pid_start_time(pid).map_err(|e| format!("pid start time: {e}"))?;
+    if start_before != start_after {
+        return Err("pid recycled during resolution".to_string());
+    }
+    Ok(app_id)
 }
