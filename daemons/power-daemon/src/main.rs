@@ -10,6 +10,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use arlen_powerd::battery::{self, BatteryLevel};
 use arlen_powerd::dbus::{PowerInterface, SharedState};
 use arlen_powerd::power::PowerState;
 use os_sdk::event::{EventEmitter, UnixEventEmitter};
@@ -63,6 +64,9 @@ async fn main() {
     let _ = sd_notify::notify(false, &[sd_notify::NotifyState::Ready]);
 
     let mut last: Option<PowerState> = None;
+    // The hysteretic battery level depends on the previous level, so it is
+    // tracked across ticks separately from the raw snapshot.
+    let mut level = BatteryLevel::Normal;
     let mut ticker = tokio::time::interval(POLL_INTERVAL);
 
     loop {
@@ -89,6 +93,32 @@ async fn main() {
                                 Ok(()) => debug!(?state, "published power.state"),
                                 Err(e) => warn!("power.state emit failed: {e}"),
                             }
+
+                            // Coarse battery-level transition (PWR-R6): publish
+                            // power.low / power.critical / power.recovered once
+                            // per crossing, not on every percentage tick.
+                            let next = battery::next_level(level, state.percentage, state.on_battery);
+                            if let Some(evt) = battery::transition_event(level, next) {
+                                emit_transition(&emitter, evt, String::new()).await;
+                            }
+                            level = next;
+
+                            // Coarse profile change (PWR-R6): publish
+                            // power.profile_changed when the active profile
+                            // actually changes to a known value.
+                            if let Some(prev) = last.as_ref() {
+                                if prev.profile != state.profile
+                                    && state.profile != arlen_powerd::profiles::PROFILE_UNKNOWN
+                                {
+                                    emit_transition(
+                                        &emitter,
+                                        "power.profile_changed",
+                                        state.profile.clone(),
+                                    )
+                                    .await;
+                                }
+                            }
+
                             last = Some(state);
                         }
                     }
@@ -105,6 +135,18 @@ async fn main() {
                 break;
             }
         }
+    }
+}
+
+/// Publish a coarse `power.*` transition with an optional detail string. These
+/// are the events safe to graph-promote (a crossing, a profile change), unlike
+/// the percentage-churning `power.state`. Best-effort: a publish failure is
+/// logged, never fatal.
+async fn emit_transition(emitter: &UnixEventEmitter, event_type: &str, detail: String) {
+    let bytes = os_sdk::proto::PowerTransitionPayload { detail }.encode_to_vec();
+    match emitter.emit(event_type, bytes).await {
+        Ok(()) => debug!(event_type, "published power transition"),
+        Err(e) => warn!("{event_type} emit failed: {e}"),
     }
 }
 
