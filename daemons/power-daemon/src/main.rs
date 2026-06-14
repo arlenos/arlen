@@ -171,8 +171,15 @@ const POWER_BUS_NAME: &str = "org.arlen.Power1";
 /// Returns the owning connection (it must be held for the lifetime of the
 /// daemon to keep the name) or `None` if the session bus is unavailable, so
 /// the event-bus publish path keeps working without the pull surface.
+///
+/// The interface also drives logind / power-profiles-daemon for the gated
+/// actions; it does so on its own dedicated **system-bus** connection (the poll
+/// loop's read connection reconnects independently), so a service restart on
+/// the system bus does not disturb the read path and vice versa. If the system
+/// bus is unavailable at startup the actions fail closed.
 async fn serve_dbus(shared: SharedState) -> Option<zbus::Connection> {
-    let iface = PowerInterface::new(shared);
+    let action_bus = connect_system_bus().await;
+    let iface = PowerInterface::new(shared, action_bus);
     match zbus::connection::Builder::session()
         .and_then(|b| b.name(POWER_BUS_NAME))
         .and_then(|b| b.serve_at(POWER_OBJECT_PATH, iface))
