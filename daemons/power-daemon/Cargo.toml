@@ -1,0 +1,25 @@
+[package]
+name = "arlen-powerd"
+version = "0.1.0"
+edition = "2021"
+description = "Power daemon: aggregates UPower battery/AC/lid state and publishes power.* on the event bus; the home for suspend/idle/profile management behind a capability gate (system-services-plan.md)"
+
+[[bin]]
+name = "arlen-powerd"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+sd-notify = "0.4"
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+prost = "0.13"
+
+# The event-bus producer emitter + the generated power.state payload type.
+os-sdk = { path = "../../sdk/os-sdk" }
