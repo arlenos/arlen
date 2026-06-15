@@ -96,6 +96,10 @@ pub struct Symbol {
     pub kind: SymbolKind,
     /// 1-based line of the name.
     pub line: usize,
+    /// 1-based column of the name. Carried so two same-name same-line definitions
+    /// (e.g. two `impl` blocks' `fn x` on one line) get distinct symbol ids -
+    /// without it they collide on the KG primary key and stall promotion.
+    pub column: usize,
 }
 
 /// What kind of outgoing reference a [`Reference`] is.
@@ -200,6 +204,7 @@ pub fn extract_rust(source: &str) -> FileIndex {
             let cap_name = capture_names[cap.index as usize];
             let node = cap.node;
             let line = node.start_position().row + 1;
+            let column = node.start_position().column + 1;
             // The captured text is the name node's bytes; lossless utf8 only.
             let Ok(text) = node.utf8_text(bytes) else {
                 continue;
@@ -227,6 +232,7 @@ pub fn extract_rust(source: &str) -> FileIndex {
                             name: text.to_string(),
                             kind,
                             line,
+                            column,
                         });
                     }
                 }
@@ -300,9 +306,12 @@ fn import_names(use_text: &str) -> Vec<String> {
         }
     }
 
-    // Braced group: `a::b::{c, d as e, f}` -> each tail.
-    if let Some(open) = body.find('{') {
-        if let Some(close) = body.rfind('}') {
+    // Braced group: `a::b::{c, d as e, f}` -> each tail. The `open < close` guard
+    // is load-bearing: tree-sitter error-recovers a malformed `use a::}{;` into a
+    // use_declaration whose text has the braces reversed, and slicing `open+1..close`
+    // with open > close would panic (the no-panic contract this function promises).
+    if let (Some(open), Some(close)) = (body.find('{'), body.rfind('}')) {
+        if open < close {
             let inner = &body[open + 1..close];
             return inner
                 .split(',')
@@ -445,6 +454,26 @@ mod tests {
         // Error-tolerant: a broken file still yields what tree-sitter recovers.
         let idx = extract_rust("fn ok() {} fn broken( { let ");
         assert!(names_of(&idx, SymbolKind::Function).contains(&"ok"));
+        // A reversed-brace use is recovered by tree-sitter into a use_declaration
+        // whose text has `}` before `{`; the slice guard must not panic.
+        let _ = extract_rust("use a::}{;\nfn f() {}");
+        let _ = extract_rust("use ::{;");
+    }
+
+    #[test]
+    fn same_name_definitions_on_one_line_get_distinct_columns() {
+        // Two methods named `x` on a single valid line: without a distinct column
+        // their symbol ids would collide on the KG primary key and stall the whole
+        // promotion pipeline. They must differ in column.
+        let idx = extract_rust("impl A{fn x(&self){}} impl B{fn x(&self){}}");
+        let xs: Vec<&Symbol> = idx
+            .symbols
+            .iter()
+            .filter(|s| s.name == "x" && s.kind == SymbolKind::Method)
+            .collect();
+        assert_eq!(xs.len(), 2, "both methods extracted");
+        assert_eq!(xs[0].line, xs[1].line, "on the same line");
+        assert_ne!(xs[0].column, xs[1].column, "but distinct columns");
     }
 
     #[test]

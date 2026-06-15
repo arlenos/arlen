@@ -18,7 +18,9 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use arlen_code_indexer::extract::extract_rust;
-use arlen_code_indexer::index::{build_payload, is_rust_file, path_under_any};
+use arlen_code_indexer::index::{
+    build_payload, is_rust_file, path_has_traversal, path_under_any, was_truncated, MAX_FILE_BYTES,
+};
 use os_sdk::event::{EventEmitter, UnixEventEmitter};
 use os_sdk::graph::UnixGraphClient;
 use os_sdk::proto::{Event, FileOpenedPayload};
@@ -135,6 +137,12 @@ impl Indexer {
         if path.is_empty() || !is_rust_file(&path) {
             return;
         }
+        // Reject a `..`-traversal path: the project-scope check below is textual,
+        // so a traversal that is textually under a root must be dropped here lest
+        // it read a file outside the project (the per-file isolation / §6 scope).
+        if path_has_traversal(&path) {
+            return;
+        }
 
         // Project scope: only index files under a live project root.
         self.refresh_roots_if_stale().await;
@@ -147,6 +155,11 @@ impl Indexer {
             Ok(m) => m,
             Err(_) => return, // gone / unreadable: nothing to index
         };
+        // Cost budget (§6): never read a giant / generated file whole into RAM.
+        if meta.len() > MAX_FILE_BYTES {
+            debug!(%path, bytes = meta.len(), "skipping oversized file");
+            return;
+        }
         let mtime = meta.modified().ok();
         let key = PathBuf::from(&path);
         if let (Some(mt), Some(prev)) = (mtime, self.last_indexed.get(&key)) {
@@ -164,6 +177,9 @@ impl Indexer {
             }
         };
         let file_index = extract_rust(&source);
+        if was_truncated(&file_index) {
+            warn!(%path, symbols = file_index.symbols.len(), "file exceeds the symbol cap; indexing a truncated set");
+        }
         let payload = build_payload(&path, &file_index);
         let symbols = payload.symbols.len();
         match self.emitter.emit("code.indexed", payload.encode_to_vec()).await {
