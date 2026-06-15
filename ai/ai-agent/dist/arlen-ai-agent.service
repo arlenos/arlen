@@ -1,0 +1,47 @@
+[Unit]
+Description=Arlen AI agent (user service)
+Documentation=https://github.com/arlenos/arlen
+# The autonomous, event-triggered agent loop: it subscribes to the event bus,
+# reads and writes the knowledge graph over its Unix socket, reaches the model
+# only through ai-proxy (over the session bus), audits through the audit daemon,
+# and seals its undo-log through ai-undo-signer. Every dependency is local IPC,
+# so this process has no IP egress on its own path; the outbound HTTPS to a
+# provider lives solely in ai-proxy.
+
+[Service]
+Type=simple
+# Production binary path (system-wide install). Dev runs invoke the debug
+# binary directly; this file is the canonical production unit.
+ExecStart=/usr/lib/arlen/libexec/arlen-ai-agent
+Restart=on-failure
+RestartSec=2
+
+# Egress backstop (GAP-1). The real per-app network enforcer (a launcher-owned
+# netns + forwarding proxy) is not built yet, so the agent must not be able to
+# reach the network on its own. It needs none: every dependency is AF_UNIX (the
+# session bus to ai-proxy, the knowledge socket, the event bus, audit, the undo
+# signer). Two layers: RestrictAddressFamilies=AF_UNIX forbids creating an IP
+# socket at all, and IPAddressDeny=any blocks IP traffic as defence in depth. A
+# compromised agent therefore cannot exfiltrate even though the general enforcer
+# is pending.
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+
+ProtectSystem=strict
+ProtectHome=read-only
+# State (caches, any local working files) and the runtime sockets.
+ReadWritePaths=%h/.local/state/arlen
+ReadWritePaths=/run/user/%U/arlen
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target
