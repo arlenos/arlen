@@ -16,7 +16,12 @@
 
 pub mod audit;
 pub mod auth;
+#[cfg(feature = "pam")]
+pub mod pam_verifier;
 pub mod tier;
+
+#[cfg(feature = "pam")]
+pub use pam_verifier::{PamVerifier, DEFAULT_HOMED_SERVICE};
 
 pub use audit::auth_audit_event;
 pub use auth::{
