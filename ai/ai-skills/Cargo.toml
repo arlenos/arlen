@@ -1,0 +1,13 @@
+[package]
+name = "arlen-ai-skills"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# The behaviour manifest re-exports the read-tier capability vocabulary
+# (AccessTier / BaselineMode) from ai-core, so a skill's declared `reads`
+# maps to the same tier the rest of the AI layer enforces.
+arlen-ai-core = { path = "../ai-core" }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+thiserror = "2"

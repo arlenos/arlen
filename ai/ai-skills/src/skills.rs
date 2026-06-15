@@ -138,7 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn whenToUse_parses_and_summarises() {
+    fn when_to_use_parses_and_summarises() {
         let s = skill("tidy", Some("clean up the downloads folder"), Status::Enabled);
         assert_eq!(
             s.behaviour.manifest.when_to_use.as_deref(),
@@ -152,7 +152,7 @@ mod tests {
     }
 
     #[test]
-    fn absent_whenToUse_is_none_and_never_matches() {
+    fn absent_when_to_use_is_none_and_never_matches() {
         // A skill with no whenToUse still loads (the field is optional) but is
         // never agent-matched.
         let s = skill("plain", None, Status::Enabled);

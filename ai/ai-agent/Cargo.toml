@@ -28,6 +28,7 @@ arlen-ai-core = { path = "../ai-core" }
 arlen-ai-providers = { path = "../ai-providers" }
 arlen-ai-classifier = { path = "../ai-classifier" }
 arlen-ai-sandbox = { path = "../ai-sandbox" }
+arlen-ai-skills = { path = "../ai-skills" }
 arlen-ai-undo-core = { path = "../ai-undo-core" }
 arlen-ai-undo-proto = { path = "../ai-undo-proto" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync"] }
