@@ -16,6 +16,7 @@ pub fn language_for_path(path: &str) -> Option<Language> {
         "py" | "pyi" => Language::Python,
         "ts" | "mts" | "cts" => Language::TypeScript,
         "tsx" => Language::Tsx,
+        "svelte" => Language::Svelte,
         _ => return None,
     })
 }
@@ -183,6 +184,7 @@ mod tests {
         assert_eq!(language_for_path("/p/index.ts"), Some(Language::TypeScript));
         assert_eq!(language_for_path("/p/mod.mts"), Some(Language::TypeScript));
         assert_eq!(language_for_path("/p/App.tsx"), Some(Language::Tsx));
+        assert_eq!(language_for_path("/p/Card.svelte"), Some(Language::Svelte));
         assert_eq!(language_for_path("/p/README.md"), None);
         assert_eq!(language_for_path("/p/Makefile"), None, "no extension");
         assert_eq!(language_for_path("/p/.gitignore"), None, "dotfile, not a .rs/.py/.ts");

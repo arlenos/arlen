@@ -171,6 +171,10 @@ pub enum Language {
     TypeScript,
     /// TSX (`.tsx`) - TypeScript with JSX; a distinct grammar.
     Tsx,
+    /// Svelte (`.svelte`) - the code lives in `<script>` block(s), extracted via
+    /// the TypeScript grammar (no separate svelte grammar; the markup declares
+    /// no symbols).
+    Svelte,
 }
 
 impl Language {
@@ -182,15 +186,21 @@ impl Language {
             Language::Rust => "rust",
             Language::Python => "python",
             Language::TypeScript | Language::Tsx => "typescript",
+            Language::Svelte => "svelte",
         }
     }
 
-    /// The tree-sitter grammar for this language.
+    /// The tree-sitter grammar for this language. Svelte has no single grammar
+    /// (it delegates to TypeScript per `<script>` block in [`extract_svelte`],
+    /// which short-circuits before this is called); the TS grammar is the inert
+    /// fallback so the match stays total.
     fn grammar(self) -> tree_sitter::Language {
         match self {
             Language::Rust => tree_sitter_rust::LANGUAGE.into(),
             Language::Python => tree_sitter_python::LANGUAGE.into(),
-            Language::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            Language::TypeScript | Language::Svelte => {
+                tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()
+            }
             Language::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
         }
     }
@@ -200,7 +210,7 @@ impl Language {
         match self {
             Language::Rust => RUST_QUERY,
             Language::Python => PYTHON_QUERY,
-            Language::TypeScript | Language::Tsx => TYPESCRIPT_QUERY,
+            Language::TypeScript | Language::Tsx | Language::Svelte => TYPESCRIPT_QUERY,
         }
     }
 }
@@ -279,6 +289,11 @@ const TYPESCRIPT_QUERY: &str = r#"
 /// (name, kind, line); a genuinely duplicated name on different lines is kept
 /// (it is a real second definition the resolver must disambiguate).
 pub fn extract(language: Language, source: &str) -> FileIndex {
+    // Svelte is not a single grammar: its symbols live in `<script>` block(s),
+    // extracted via the TypeScript grammar with the block's line offset applied.
+    if language == Language::Svelte {
+        return extract_svelte(source);
+    }
     let mut parser = tree_sitter::Parser::new();
     let grammar = language.grammar();
     if parser.set_language(&grammar).is_err() {
@@ -378,6 +393,60 @@ pub fn extract(language: Language, source: &str) -> FileIndex {
 /// over the generalised [`extract`]).
 pub fn extract_rust(source: &str) -> FileIndex {
     extract(Language::Rust, source)
+}
+
+/// Extract a Svelte component. Its code lives in `<script>` block(s) (TS or JS;
+/// the TS grammar parses both); the markup declares no symbols. Each block's
+/// inner content is run through the TypeScript extractor and its 1-based line
+/// numbers are offset back to the block's position in the `.svelte` file, so a
+/// symbol's `source_location` points at the real line. A module-context block
+/// and the instance block are both handled.
+fn extract_svelte(source: &str) -> FileIndex {
+    let mut out = FileIndex::default();
+    for (inner, start_line) in svelte_script_blocks(source) {
+        let block = extract(Language::TypeScript, inner);
+        // The block's first inner line sits at file line `start_line`, so an
+        // inner line N maps to file line `start_line + (N - 1)`.
+        let offset = start_line.saturating_sub(1);
+        for mut s in block.symbols {
+            s.line += offset;
+            out.symbols.push(s);
+        }
+        for mut r in block.references {
+            r.line += offset;
+            out.references.push(r);
+        }
+    }
+    out
+}
+
+/// Find each `<script>...</script>` block in a Svelte file: returns
+/// `(inner_text, 1-based file line of the inner content's start)`. Case-
+/// insensitive on the tag and tolerant of attributes (`lang="ts"`,
+/// `context="module"`). Fail-safe: a malformed / unterminated tag ends the scan
+/// rather than panicking. The lowercased copy is only used to LOCATE ASCII tag
+/// bytes (ASCII lowercasing is length-preserving, so byte offsets align with
+/// `source`); the returned slices come from `source`.
+fn svelte_script_blocks(source: &str) -> Vec<(&str, usize)> {
+    let lower = source.to_ascii_lowercase();
+    let mut blocks = Vec::new();
+    let mut pos = 0;
+    while let Some(rel) = lower[pos..].find("<script") {
+        let tag_start = pos + rel;
+        let Some(gt_rel) = lower[tag_start..].find('>') else {
+            break;
+        };
+        let inner_start = tag_start + gt_rel + 1;
+        let Some(close_rel) = lower[inner_start..].find("</script") else {
+            break;
+        };
+        let inner_end = inner_start + close_rel;
+        let inner = &source[inner_start..inner_end];
+        let start_line = source[..inner_start].bytes().filter(|&b| b == b'\n').count() + 1;
+        blocks.push((inner, start_line));
+        pos = inner_end;
+    }
+    blocks
 }
 
 /// Map a definition capture name to its [`SymbolKind`].
@@ -688,6 +757,33 @@ class Widget {
         let calls = refs_of(&idx, RefKind::Call);
         assert!(calls.contains(&"foo"), "direct call");
         assert!(calls.contains(&"helper"), "member call");
+    }
+
+    #[test]
+    fn extracts_svelte_script_symbols_with_correct_line_offset() {
+        // Symbols live in the <script> block; the markup declares none. Two
+        // blocks (module + instance) are both extracted, and line numbers are
+        // offset back to the .svelte file.
+        let src = "<script context=\"module\">\nexport function load() {}\n</script>\n\n<script lang=\"ts\">\nimport { onMount } from \"svelte\";\nfunction handleClick() { doThing(); }\n</script>\n\n<button on:click={handleClick}>x</button>\n";
+        let idx = extract(Language::Svelte, src);
+        let fns = names_of(&idx, SymbolKind::Function);
+        assert!(fns.contains(&"load"), "module-block function");
+        assert!(fns.contains(&"handleClick"), "instance-block function");
+        assert!(refs_of(&idx, RefKind::Import).contains(&"onMount"), "script import");
+        assert!(refs_of(&idx, RefKind::Call).contains(&"doThing"), "script call");
+        // `handleClick` is on file line 7 (1=module-open, 2=load, 3=/script,
+        // 4=blank, 5=instance-open, 6=import, 7=handleClick), proving the offset.
+        let hc = idx.symbols.iter().find(|s| s.name == "handleClick").unwrap();
+        assert_eq!(hc.line, 7, "line offset maps the inner line to the .svelte file");
+    }
+
+    #[test]
+    fn a_svelte_file_with_no_script_yields_nothing() {
+        let idx = extract(Language::Svelte, "<h1>hello</h1>\n");
+        assert!(idx.symbols.is_empty() && idx.references.is_empty());
+        // A malformed/unterminated script tag must not panic.
+        let _ = extract(Language::Svelte, "<script>fn broken(");
+        let _ = extract(Language::Svelte, "<script");
     }
 
     #[test]
