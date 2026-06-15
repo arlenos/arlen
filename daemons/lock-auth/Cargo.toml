@@ -12,6 +12,10 @@ name = "arlen_lock_auth"
 audit-proto = { path = "../../contracts/audit-proto" }
 greetd_ipc = { version = "0.10", optional = true, default-features = false, features = ["sync-codec"] }
 pam = { version = "0.8", optional = true }
+# The fprintd verifier uses zbus's blocking API (default features include the
+# self-contained async-io backend), so the synchronous FactorVerifier::verify
+# can drive the fprintd D-Bus conversation on its own thread without a runtime.
+zbus = { version = "5", optional = true }
 
 [dev-dependencies]
 
@@ -24,3 +28,4 @@ pam = { version = "0.8", optional = true }
 # conversation); each is built and verified on hardware, like PWR-R2's metal path.
 pam = ["dep:pam"]
 greetd = ["dep:greetd_ipc"]
+fprintd = ["dep:zbus"]
