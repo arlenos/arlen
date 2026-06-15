@@ -82,17 +82,22 @@ async fn compact_semantic_nodes(graph: &GraphHandle) -> Result<()> {
 
     // Find distinct apps that have old, non-pinned File nodes.
     let apps_result = graph
-        .query(format!(
+        .query_rows(format!(
             "MATCH (f:File)-[:ACCESSED_BY]->(a:App)
              WHERE f.last_accessed < {cutoff}
              AND NOT EXISTS {{
                  MATCH (p:PinnedMarker) WHERE p.node_id = f.id AND p.node_type = 'File'
              }}
-             RETURN DISTINCT a.id"
+             RETURN DISTINCT a.id AS id"
         ))
         .await?;
 
-    let app_ids = parse_string_rows(&apps_result);
+    let app_ids: Vec<String> = apps_result
+        .rows
+        .iter()
+        .filter_map(|r| r.first().map(|c| c.as_str().to_string()))
+        .filter(|s| !s.is_empty())
+        .collect();
     if app_ids.is_empty() {
         debug!("retention: no apps with old nodes to compact");
         return Ok(());
@@ -118,17 +123,22 @@ async fn compact_app_files(graph: &GraphHandle, app_id: &str, cutoff: i64) -> Re
 
     // Aggregate old non-pinned File nodes for this app.
     let agg_result = graph
-        .query(format!(
+        .query_rows(format!(
             "MATCH (f:File)-[:ACCESSED_BY]->(a:App {{id: '{app_esc}'}})
              WHERE f.last_accessed < {cutoff}
              AND NOT EXISTS {{
                  MATCH (p:PinnedMarker) WHERE p.node_id = f.id AND p.node_type = 'File'
              }}
-             RETURN count(f), min(f.last_accessed), max(f.last_accessed)"
+             RETURN count(f) AS cnt, min(f.last_accessed) AS lo, max(f.last_accessed) AS hi"
         ))
         .await?;
 
-    let (count, period_start, period_end) = parse_aggregation(&agg_result);
+    let (count, period_start, period_end) = agg_result
+        .rows
+        .first()
+        .filter(|r| r.len() >= 3)
+        .map(|r| (r[0].as_i64(), r[1].as_i64(), r[2].as_i64()))
+        .unwrap_or((0, 0, 0));
     if count == 0 {
         return Ok(());
     }
@@ -178,40 +188,80 @@ async fn compact_app_files(graph: &GraphHandle, app_id: &str, cutoff: i64) -> Re
     Ok(())
 }
 
-/// Parse a Cypher result that returns rows of a single string column.
-///
-/// The lbug query result is a formatted string table. This parser
-/// extracts non-header, non-empty lines as string values.
-fn parse_string_rows(result: &str) -> Vec<String> {
-    result
-        .lines()
-        .filter(|line| !line.is_empty() && !line.starts_with('-') && !line.contains("a.id"))
-        .map(|line| line.trim().trim_matches('|').trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
-}
 
-/// Parse an aggregation result: count, min, max from a single-row result.
-///
-/// Returns (0, 0, 0) if the result cannot be parsed.
-fn parse_aggregation(result: &str) -> (i64, i64, i64) {
-    let values: Vec<&str> = result
-        .lines()
-        .filter(|line| !line.is_empty() && !line.starts_with('-') && !line.contains("count"))
-        .flat_map(|line| {
-            line.split('|')
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .collect::<Vec<_>>()
-        })
-        .collect();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
 
-    if values.len() >= 3 {
-        let count = values[0].parse().unwrap_or(0);
-        let min = values[1].parse().unwrap_or(0);
-        let max = values[2].parse().unwrap_or(0);
-        (count, min, max)
-    } else {
-        (0, 0, 0)
+    async fn setup() -> (GraphHandle, TempDir) {
+        let tmp = TempDir::new().unwrap();
+        let graph =
+            crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        time::sleep(Duration::from_millis(500)).await;
+        (graph, tmp)
+    }
+
+    #[tokio::test]
+    async fn compact_app_files_summarises_old_files_and_deletes_them() {
+        // Coverage for the Tier-2 compaction (a core graph-write path): an old
+        // File accessed by an app is folded into a Summary node carrying its
+        // schema columns, then the original File is deleted. This guards the
+        // Summary write against a future schema/SET drift (the undefined-column
+        // class of bug that stalled window.focused).
+        let (graph, _tmp) = setup().await;
+        graph
+            .write("CREATE (a:App {id: 'com.example.editor', name: 'Editor'})".into())
+            .await
+            .unwrap();
+        graph
+            .write(
+                "CREATE (f:File {id: '/old/notes.md', path: '/old/notes.md', last_accessed: 1000})"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        graph
+            .write(
+                "MATCH (f:File {id: '/old/notes.md'}), (a:App {id: 'com.example.editor'}) \
+                 MERGE (f)-[:ACCESSED_BY]->(a)"
+                    .into(),
+            )
+            .await
+            .unwrap();
+
+        // cutoff well after the file's last_accessed, so it is "old".
+        compact_app_files(&graph, "com.example.editor", 10_000)
+            .await
+            .expect("compaction writes the Summary without error");
+
+        let summ = graph
+            .query_rows(
+                "MATCH (s:Summary) RETURN s.type AS t, s.app_id AS a, s.access_count AS c".into(),
+            )
+            .await
+            .unwrap();
+        let row = summ.rows.first().expect("a Summary node was created");
+        assert_eq!(row[0].as_str(), "file_access");
+        assert_eq!(row[1].as_str(), "com.example.editor");
+        assert_eq!(row[2].as_i64(), 1);
+
+        // The SUMMARIZES edge to the app exists.
+        let edge = graph
+            .query_rows(
+                "MATCH (:Summary)-[:SUMMARIZES]->(:App {id: 'com.example.editor'}) \
+                 RETURN count(*) AS c"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(edge.rows[0][0].as_i64(), 1, "the summary points at the app");
+
+        // The compacted File node is deleted.
+        let files = graph
+            .query_rows("MATCH (f:File {id: '/old/notes.md'}) RETURN count(*) AS c".into())
+            .await
+            .unwrap();
+        assert_eq!(files.rows[0][0].as_i64(), 0, "the old file is compacted away");
     }
 }
