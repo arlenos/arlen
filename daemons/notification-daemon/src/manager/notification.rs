@@ -10,7 +10,9 @@ use tokio::sync::{broadcast, Mutex};
 
 use crate::audit::notification_event;
 use crate::config::{Config, DndMode};
-use crate::dbus::server::{CloseReason, Notification, NotifyEvent, determine_priority};
+use crate::dbus::server::{
+    clamp_critical, determine_priority, CloseReason, Notification, NotifyEvent,
+};
 use crate::dnd::{DndState, SuppressResult};
 use crate::manager::grouping::derive_group_key;
 use crate::manager::rate_limiter::RateLimiter;
@@ -67,6 +69,10 @@ impl NotificationManager {
 
     /// Handle an incoming notification from D-Bus.
     ///
+    /// `may_set_critical` is the caller's authority to raise a DND-piercing
+    /// `Critical` priority (GAP-7), decided from its attested identity by the
+    /// D-Bus layer. When false, a determined `Critical` is clamped to `High`.
+    ///
     /// Returns the notification ID if stored, or 0 if rate-limited.
     pub async fn handle_notify(
         &self,
@@ -79,6 +85,7 @@ impl NotificationManager {
         urgency: u8,
         category: &str,
         expire_timeout: i32,
+        may_set_critical: bool,
     ) -> u32 {
         // 1. Validate/sanitize input.
         let input = sanitize_input(app_name, summary, body, app_icon, actions);
@@ -95,8 +102,13 @@ impl NotificationManager {
             }
         }
 
-        // 3. Determine priority.
-        let priority = determine_priority(urgency, expire_timeout, category);
+        // 3. Determine priority, then clamp a DND-piercing Critical to High
+        //    unless the caller is a trusted system notifier (GAP-7). The clamp
+        //    covers Critical however it was reached (urgency 2 or never-expire).
+        let priority = clamp_critical(
+            determine_priority(urgency, expire_timeout, category),
+            may_set_critical,
+        );
 
         // 4. Build notification.
         let notification = Notification {
@@ -305,7 +317,7 @@ mod tests {
         let (mgr, mut rx) = make_manager().await;
 
         let id = mgr
-            .handle_notify(1, "Firefox", "", "Done", "file.zip", &[], 1, "", -1)
+            .handle_notify(1, "Firefox", "", "Done", "file.zip", &[], 1, "", -1, true)
             .await;
         assert_eq!(id, 1);
 
@@ -328,7 +340,7 @@ mod tests {
         let mgr = NotificationManager::new(db, config, tx);
 
         let id = mgr
-            .handle_notify(1, "App", "", "Hello", "", &[], 1, "", -1)
+            .handle_notify(1, "App", "", "Hello", "", &[], 1, "", -1, true)
             .await;
         assert_eq!(id, 1);
 
@@ -348,7 +360,7 @@ mod tests {
         let (tx, mut rx) = broadcast::channel(64);
         let mgr = NotificationManager::new(db, config, tx);
 
-        mgr.handle_notify(1, "App", "", "ALERT", "", &[], 2, "", -1)
+        mgr.handle_notify(1, "App", "", "ALERT", "", &[], 2, "", -1, true)
             .await;
 
         // Critical should broadcast even with DND on.
@@ -357,19 +369,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_untrusted_critical_is_clamped_to_high() {
+        use crate::dbus::server::Priority;
+        let (mgr, _rx) = make_manager().await;
+
+        // urgency 2 from an untrusted caller (may_set_critical = false) must be
+        // stored as High, not the DND-piercing Critical (GAP-7).
+        mgr.handle_notify(1, "Spoofer", "", "ALERT", "", &[], 2, "", -1, false)
+            .await;
+        let n = mgr.db.get_notification(1).await.unwrap().unwrap();
+        assert_eq!(n.priority, Priority::High);
+
+        // The same notification from a trusted caller keeps Critical.
+        mgr.handle_notify(2, "powerd", "", "ALERT", "", &[], 2, "", -1, true)
+            .await;
+        let n = mgr.db.get_notification(2).await.unwrap().unwrap();
+        assert_eq!(n.priority, Priority::Critical);
+    }
+
+    #[tokio::test]
     async fn test_handle_notify_rate_limited() {
         let (mgr, _rx) = make_manager().await;
 
         for i in 1..=10 {
             let id = mgr
-                .handle_notify(i, "Spammy", "", "msg", "", &[], 1, "", -1)
+                .handle_notify(i, "Spammy", "", "msg", "", &[], 1, "", -1, true)
                 .await;
             assert_eq!(id, i);
         }
 
         // 11th should be rate-limited (returns 0).
         let id = mgr
-            .handle_notify(11, "Spammy", "", "msg", "", &[], 1, "", -1)
+            .handle_notify(11, "Spammy", "", "msg", "", &[], 1, "", -1, true)
             .await;
         assert_eq!(id, 0);
     }
@@ -377,7 +408,7 @@ mod tests {
     #[tokio::test]
     async fn test_handle_close() {
         let (mgr, mut rx) = make_manager().await;
-        mgr.handle_notify(1, "App", "", "Hello", "", &[], 1, "", -1)
+        mgr.handle_notify(1, "App", "", "Hello", "", &[], 1, "", -1, true)
             .await;
         let _ = rx.try_recv(); // Drain the Added event.
 
@@ -395,7 +426,7 @@ mod tests {
         let (mgr, mut rx) = make_manager().await;
 
         // Before focus: Slack notification passes.
-        mgr.handle_notify(1, "Slack", "", "Msg", "hi", &[], 1, "", -1)
+        mgr.handle_notify(1, "Slack", "", "Msg", "hi", &[], 1, "", -1, true)
             .await;
         let _ = rx.try_recv(); // Drain.
 
@@ -403,20 +434,20 @@ mod tests {
         mgr.activate_focus("proj-1".into(), vec!["Slack".into()])
             .await;
 
-        mgr.handle_notify(2, "Slack", "", "Msg2", "hi", &[], 1, "", -1)
+        mgr.handle_notify(2, "Slack", "", "Msg2", "hi", &[], 1, "", -1, true)
             .await;
         // Suppressed by focus — no broadcast.
         assert!(rx.try_recv().is_err());
 
         // A different app still passes.
-        mgr.handle_notify(3, "Firefox", "", "Done", "", &[], 1, "", -1)
+        mgr.handle_notify(3, "Firefox", "", "Done", "", &[], 1, "", -1, true)
             .await;
         let event = rx.try_recv().unwrap();
         assert!(matches!(event, NotifyEvent::Added(_)));
 
         // Deactivate -> Slack passes again.
         mgr.deactivate_focus().await;
-        mgr.handle_notify(4, "Slack", "", "Msg3", "hi", &[], 1, "", -1)
+        mgr.handle_notify(4, "Slack", "", "Msg3", "hi", &[], 1, "", -1, true)
             .await;
         let event = rx.try_recv().unwrap();
         assert!(matches!(event, NotifyEvent::Added(_)));
@@ -428,7 +459,7 @@ mod tests {
         mgr.activate_focus("p".into(), vec!["Slack".into()]).await;
 
         // urgency=2 -> critical, bypasses focus suppression.
-        mgr.handle_notify(1, "Slack", "", "ALERT", "", &[], 2, "", -1)
+        mgr.handle_notify(1, "Slack", "", "ALERT", "", &[], 2, "", -1, true)
             .await;
         let event = rx.try_recv().unwrap();
         assert!(matches!(event, NotifyEvent::Added(_)));
@@ -439,7 +470,7 @@ mod tests {
         let (mgr, mut rx) = make_manager().await;
         mgr.set_fullscreen(true).await;
 
-        mgr.handle_notify(1, "App", "", "Hello", "", &[], 1, "", -1)
+        mgr.handle_notify(1, "App", "", "Hello", "", &[], 1, "", -1, true)
             .await;
 
         // Should NOT broadcast (queued).
@@ -457,7 +488,7 @@ mod tests {
         let (mgr, _rx) = make_manager().await;
         let long_name = "X".repeat(200);
 
-        mgr.handle_notify(1, &long_name, "", "", "body", &[], 1, "", -1)
+        mgr.handle_notify(1, &long_name, "", "", "body", &[], 1, "", -1, true)
             .await;
 
         let n = mgr.db.get_notification(1).await.unwrap().unwrap();
