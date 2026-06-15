@@ -714,6 +714,56 @@ impl<'a> Dispatcher<'a> {
         outcomes
     }
 
+    /// Run a single named behaviour directly (PR-5 part 3b: the user-invoke /
+    /// `TriggerKind::Manual` entry), bypassing event-routing and coalescing — a
+    /// manual invoke is explicit, so it always runs (once) rather than matching a
+    /// bus event or being deduplicated. The synthetic event carries no external
+    /// content (a user invoke is trusted, not attacker-supplied), so the S17
+    /// external screen is skipped; an agent skill still needs a provider, a
+    /// budget and an in-scope read tier, else it is `Skipped` exactly as on the
+    /// event path. Returns `None` when no loaded behaviour has that name; a
+    /// disabled behaviour is found but refused (enablement is the trust gate, the
+    /// same as the event path's `matching_behaviours` filter), so it never runs
+    /// on a manual invoke either.
+    pub async fn dispatch_named(&self, name: &str) -> Option<Vec<DispatchOutcome>> {
+        let lb = self
+            .behaviours
+            .iter()
+            .find(|lb| lb.behaviour.manifest.name == name)?;
+        if !lb.status.is_enabled() {
+            return Some(vec![DispatchOutcome::Skipped {
+                behaviour: name.to_string(),
+                reason: "behaviour is not enabled".to_string(),
+            }]);
+        }
+        // A trusted, user-initiated invocation: no bus event, no external
+        // content. The id correlates the resulting gate/audit entries.
+        let event = AgentEvent {
+            id: format!("manual:{name}"),
+            event_type: "manual.invoke".to_string(),
+            fields: std::collections::BTreeMap::new(),
+            external_content: false,
+        };
+        if lb.behaviour.manifest.kind == BehaviourKind::Agent {
+            if let Some(reason) = agent_skip_reason(
+                &lb.behaviour.manifest,
+                self.read_tier,
+                self.provider.is_some(),
+            ) {
+                return Some(vec![DispatchOutcome::Skipped {
+                    behaviour: name.to_string(),
+                    reason,
+                }]);
+            }
+            let provider = self
+                .provider
+                .expect("agent_skip_reason returns a reason when no provider");
+            let start = self.clock.now();
+            return Some(self.run_agent_loop(lb, &event, provider, start).await);
+        }
+        Some(vec![self.dispatch_one(lb, &event).await])
+    }
+
     /// Screen this event's external content (S17), returning the verdict the
     /// dispatcher acts on. `Off` is [`Verdict::Allow`] (external content flows
     /// under the gate's confirmation containment); `FailClosed` is
@@ -2140,6 +2190,52 @@ tools:
         let recorded = audit.recorded().await;
         assert_eq!(recorded[0].structural.subject, "agent.auto-tag-by-project");
         assert_eq!(recorded[0].call_chain_id.as_deref(), Some("e1:auto-tag-by-project"));
+    }
+
+    #[tokio::test]
+    async fn dispatch_named_runs_an_enabled_behaviour_bypassing_its_trigger() {
+        let behaviours = [loaded(AUTO_TAG, Status::Enabled)];
+        let handlers = registry(Box::new(StubPropose));
+        let cap = Capability::new(AccessTier::Full, ActionPermissions::suggest_only());
+        let audit = MockAuditSink::accepting();
+        let obs = NullObserver;
+        let graph = EmptyGraph;
+        let d = Dispatcher::new(&behaviours, &handlers, &graph, AccessTier::Full, gate(&audit, &obs, &cap), None, &TEST_CLOCK);
+
+        // An unknown name resolves to no loaded skill.
+        assert!(d.dispatch_named("no-such-skill").await.is_none());
+
+        // A known, enabled skill runs directly even though its trigger is an
+        // event (`file.opened`), not manual: the manual invoke bypasses routing.
+        let outcomes = d
+            .dispatch_named("auto-tag-by-project")
+            .await
+            .expect("runs the named skill");
+        assert_eq!(outcomes.len(), 1);
+        assert!(matches!(
+            &outcomes[0],
+            DispatchOutcome::Decided { behaviour, .. } if behaviour == "auto-tag-by-project"
+        ));
+    }
+
+    #[tokio::test]
+    async fn dispatch_named_refuses_a_disabled_behaviour() {
+        let disabled = [loaded(AUTO_TAG, Status::Disabled(DisableReason::NotEnabledInSettings))];
+        let handlers = registry(Box::new(StubPropose));
+        let cap = Capability::new(AccessTier::Full, ActionPermissions::suggest_only());
+        let audit = MockAuditSink::accepting();
+        let obs = NullObserver;
+        let graph = EmptyGraph;
+        let d = Dispatcher::new(&disabled, &handlers, &graph, AccessTier::Full, gate(&audit, &obs, &cap), None, &TEST_CLOCK);
+
+        // Found by name but refused: enablement is the trust gate even for a
+        // manual invoke, so a disabled skill never runs.
+        let outcomes = d.dispatch_named("auto-tag-by-project").await.expect("found");
+        assert_eq!(outcomes.len(), 1);
+        assert!(matches!(
+            &outcomes[0],
+            DispatchOutcome::Skipped { reason, .. } if reason.contains("not enabled")
+        ));
     }
 
     #[tokio::test]
