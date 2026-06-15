@@ -53,34 +53,47 @@ impl<B: PrintBackend> PrintService<B> {
     /// Submit a print job to the user-chosen `printer` on behalf of `app_id`,
     /// then record it.
     ///
-    /// The submission is attempted first; only an ACCEPTED job is recorded (so
-    /// the ledger reflects what actually printed). The audit is best-effort - a
-    /// sink failure is logged but does not fail the print, because printing is a
-    /// user-driven action that must not be blocked by a logging hiccup. The
-    /// document bytes are never audited; only the app id, the printer and the
-    /// local/network destination are.
+    /// The submission is the source of truth and is attempted FIRST, so an
+    /// otherwise-valid print is never failed because a separate printer
+    /// enumeration hiccuped. Every attempt - accepted or rejected - is then
+    /// recorded (best-effort: a sink failure is logged, never fails the print,
+    /// because printing is a user-driven action). The destination (local vs
+    /// network) for the audit is resolved opportunistically; if it cannot be
+    /// resolved, the record defaults to NETWORK - never under-stating the
+    /// print-as-egress fact (printing-plan.md §4.2). The document bytes are
+    /// never audited; only the app id, the printer and the destination are.
     pub async fn submit(
         &self,
         app_id: &str,
         submission: &PrintSubmission<'_>,
     ) -> Result<i32, PrintError> {
-        // Resolve the chosen printer first so the audit can carry its
-        // destination (local vs network) even before the job id is known.
-        let printer = self
-            .backend
-            .printers()
-            .await?
-            .into_iter()
-            .find(|p| p.name == submission.printer)
-            .ok_or_else(|| PrintError::NotFound(submission.printer.to_string()))?;
-
         let result = self.backend.submit(submission).await;
         let outcome = match &result {
             Ok(_) => "ok",
             Err(_) => "error",
         };
-        // Record the attempt (best-effort): both the accepted job and a rejected
-        // one are worth a ledger line, with no document content either way.
+
+        // Resolve the destination for the audit, conservatively. A failed
+        // enumeration (or an unknown printer) must not hide egress, so an
+        // unresolved destination is recorded as a network print rather than
+        // assumed local.
+        let printer = match self.backend.printers().await {
+            Ok(printers) => printers.into_iter().find(|p| p.name == submission.printer),
+            Err(_) => None,
+        }
+        .unwrap_or_else(|| {
+            Printer::new(
+                submission.printer,
+                // A bare network-scheme URI so classify_destination yields
+                // Network: an unknown destination is treated as egress.
+                "ipp://unknown/",
+                None,
+                None,
+                None,
+                crate::model::PrinterState::Unknown(0),
+                false,
+            )
+        });
         let event = print_audit_event(app_id, &printer, outcome);
         if let Err(e) = self.audit.submit(event).await {
             tracing::warn!("print audit record failed (print still proceeded): {e}");
@@ -127,7 +140,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn submitting_to_an_unknown_printer_is_not_found_and_not_recorded() {
+    async fn an_unknown_printer_is_not_found_and_recorded_conservatively_as_egress() {
         let (svc, audit) = service(vec![printer("Office", "usb://x/y")]);
         let sub = PrintSubmission {
             printer: "Ghost",
@@ -137,8 +150,12 @@ mod tests {
             options: JobOptions::default(),
         };
         assert_eq!(svc.submit("app", &sub).await, Err(PrintError::NotFound("Ghost".into())));
-        // No printer resolved -> nothing recorded (we record real attempts only).
-        assert!(audit.recorded().await.is_empty());
+        // The attempt is recorded; an unresolved destination is conservatively
+        // network (never under-state egress) and the outcome is the error.
+        let recorded = audit.recorded().await;
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(recorded[0].structural.outcome, "error");
+        assert_eq!(recorded[0].kind, AuditKind::NetworkCall, "unresolved dest -> egress");
     }
 
     #[tokio::test]

@@ -85,9 +85,16 @@ fn attr_bool(group: &IppAttributeGroup, name: &str) -> Option<bool> {
     v.as_boolean().copied()
 }
 
-/// An IPP integer-or-enum value as i32.
+/// An IPP integer-or-enum value as i32. A cupsd may send a `1setOf` (a single
+/// logical value wrapped in an `Array`); unwrap a one-element array so a
+/// multi-valued `job-id`/state is read rather than silently dropped (an
+/// untrusted/malformed server otherwise makes a real job invisible in the
+/// queue). A genuinely multi-element or non-integer value stays `None`.
 fn value_int(v: &IppValue) -> Option<i32> {
-    v.as_integer().or_else(|| v.as_enum()).copied()
+    match v {
+        IppValue::Array(items) if items.len() == 1 => value_int(&items[0]),
+        _ => v.as_integer().or_else(|| v.as_enum()).copied(),
+    }
 }
 
 /// Build a [`Printer`] from a `printer-attributes` group. Returns `None` if the
@@ -265,7 +272,10 @@ fn job_option_attributes(opts: &crate::backend::JobOptions) -> Vec<IppAttribute>
         }
     };
     if let Some(copies) = opts.copies {
-        push("copies", IppValue::Integer(copies as i32));
+        // IPP `copies` must be >= 1; clamp into a sane range rather than emit 0
+        // or a value that wraps negative on the i32 cast.
+        let n = copies.clamp(1, 9999) as i32;
+        push("copies", IppValue::Integer(n));
     }
     if let Some(duplex) = opts.duplex {
         if let Ok(kw) = duplex.ipp_keyword().parse() {
@@ -364,6 +374,27 @@ mod tests {
     fn job_from_group_needs_an_id() {
         let g = group(DelimiterTag::JobAttributes, vec![("job-state", IppValue::Enum(3))]);
         assert!(job_from_group(&g, "Office").is_none());
+    }
+
+    #[test]
+    fn a_single_element_array_job_id_is_read_not_dropped() {
+        // A cupsd 1setOf with one element must not make the job vanish.
+        let g = group(
+            DelimiterTag::JobAttributes,
+            vec![
+                ("job-id", IppValue::Array(vec![IppValue::Integer(7)])),
+                ("job-state", IppValue::Enum(9)),
+            ],
+        );
+        let j = job_from_group(&g, "Office").expect("array-wrapped id is read");
+        assert_eq!(j.id, 7);
+        assert_eq!(j.state, JobState::Completed);
+        // A genuinely multi-element value stays None (we do not guess).
+        let bad = group(
+            DelimiterTag::JobAttributes,
+            vec![("job-id", IppValue::Array(vec![IppValue::Integer(1), IppValue::Integer(2)]))],
+        );
+        assert!(job_from_group(&bad, "Office").is_none());
     }
 
     #[test]
