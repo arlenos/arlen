@@ -22,9 +22,11 @@ pub mod backend;
 #[cfg(feature = "cups")]
 pub mod cups;
 pub mod model;
+pub mod service;
 
 pub use audit::print_audit_event;
 pub use backend::{ColorMode, Duplex, JobOptions, PrintBackend, PrintError, PrintSubmission};
+pub use service::PrintService;
 #[cfg(feature = "cups")]
 pub use cups::CupsBackend;
 pub use model::{classify_destination, Destination, Job, JobState, Printer, PrinterState};
