@@ -40,6 +40,12 @@ impl<B: PrintBackend> PrintService<B> {
         self.backend.printers().await
     }
 
+    /// The user's default printer, if one is configured (for the dialog to
+    /// pre-select). `Ok(None)` when there is no default.
+    pub async fn default_printer(&self) -> Result<Option<Printer>, PrintError> {
+        self.backend.default_printer().await
+    }
+
     /// Query the queue (all, or one printer's).
     pub async fn jobs(&self, printer: Option<&str>) -> Result<Vec<Job>, PrintError> {
         self.backend.jobs(printer).await
