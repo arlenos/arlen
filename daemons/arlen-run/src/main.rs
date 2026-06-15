@@ -28,6 +28,12 @@ mod egress;
 #[cfg(target_os = "linux")]
 mod landlock_apply;
 mod profile;
+// The app seccomp filter (GAP-6). The filter logic + allowlist land here; the
+// `bwrap --seccomp <fd>` delivery wiring in `spawn` consumes `compile_app_filter`
+// next, so it is built (and tested) ahead of its single caller.
+#[cfg(target_os = "linux")]
+#[allow(dead_code)]
+mod seccomp;
 mod spawn;
 
 /// The fail-closed exit-code contract. Any setup failure means the app never
