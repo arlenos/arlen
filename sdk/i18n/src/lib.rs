@@ -12,6 +12,9 @@ pub mod format;
 pub mod model;
 pub mod parse;
 
+pub mod catalog;
+
+pub use catalog::{Catalog, CatalogError, Localizer, fallback_chain};
 pub use format::{format, ArgValue, Args};
 pub use model::Message;
 pub use parse::{parse_message, ParseError};
