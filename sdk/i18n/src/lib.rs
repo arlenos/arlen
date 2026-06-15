@@ -8,8 +8,10 @@
 //! ICU4X ships its own MF2 formatter; the catalogs are stable through that swap,
 //! so the swap is an implementation change, not a content rewrite.
 
+pub mod format;
 pub mod model;
 pub mod parse;
 
+pub use format::{format, ArgValue, Args};
 pub use model::Message;
 pub use parse::{parse_message, ParseError};
