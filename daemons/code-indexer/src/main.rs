@@ -19,7 +19,8 @@ use std::time::{Duration, SystemTime};
 
 use arlen_code_indexer::extract::extract_rust;
 use arlen_code_indexer::index::{
-    build_payload, is_rust_file, path_has_traversal, path_under_any, was_truncated, MAX_FILE_BYTES,
+    build_payload, is_rust_file, path_has_traversal, path_in_ignored_dir, path_under_any,
+    was_truncated, MAX_FILE_BYTES,
 };
 use os_sdk::event::{EventEmitter, UnixEventEmitter};
 use os_sdk::graph::UnixGraphClient;
@@ -141,6 +142,13 @@ impl Indexer {
         // so a traversal that is textually under a root must be dropped here lest
         // it read a file outside the project (the per-file isolation / §6 scope).
         if path_has_traversal(&path) {
+            return;
+        }
+        // Skip build outputs / dependency caches / VCS dirs even under a project
+        // root: a generated `target/**/out.rs` or a vendored dep is not authored
+        // code, and parsing it on every build is the unbounded-cost trap
+        // (prior-art-lessons.md §3 guardrail 1).
+        if path_in_ignored_dir(&path) {
             return;
         }
 

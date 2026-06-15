@@ -39,6 +39,36 @@ pub fn is_rust_file(path: &str) -> bool {
     path.ends_with(".rs")
 }
 
+/// Directory names whose contents are never indexed even when they sit under a
+/// project root: build outputs, dependency caches and VCS metadata.
+///
+/// A generated `.rs` under `target/` (a build script's `OUT_DIR` output, or a
+/// macro-expansion artifact) is not the user's authored code. Parsing it wastes
+/// the per-file budget on every build (the unbounded-cost trap that gets a
+/// semantic indexer disabled - prior-art-lessons.md §3 guardrail 1) and pollutes
+/// the code graph with non-authored symbols. Only the cargo build dir and the
+/// universal VCS / package-cache dirs are listed - deliberately NOT generic
+/// names like `build`/`dist`, which a project may legitimately use for source.
+const IGNORED_DIR_COMPONENTS: &[&str] = &[
+    "target",       // cargo build output (incl. generated OUT_DIR/*.rs)
+    "node_modules", // npm / pnpm
+    "vendor",       // vendored dependencies
+    ".git",
+    ".hg",
+    ".svn",
+    ".jj",
+    ".cache",
+    "__pycache__",
+];
+
+/// Whether any path component is an ignored build/cache/VCS directory.
+///
+/// Component-exact (not substring), so a file named `target.rs` or a dir
+/// `my-targets/` is unaffected; only a `target/` (etc.) path segment matches.
+pub fn path_in_ignored_dir(path: &str) -> bool {
+    path.split('/').any(|c| IGNORED_DIR_COMPONENTS.contains(&c))
+}
+
 /// Whether a path contains a `..` component - a directory traversal that could
 /// escape the project root even while textually prefixed by it (e.g.
 /// `/proj/../../etc/x.rs`). [`path_under_any`] is a textual prefix check, so a
@@ -143,6 +173,21 @@ mod tests {
         assert!(is_rust_file("/p/src/lib.rs"));
         assert!(!is_rust_file("/p/README.md"));
         assert!(!is_rust_file("/p/build.rs.bak"));
+    }
+
+    #[test]
+    fn build_cache_and_vcs_dirs_are_ignored_by_component() {
+        // Generated / dependency / VCS content under a project is never indexed.
+        assert!(path_in_ignored_dir("/home/tim/proj/target/debug/build/x-123/out/gen.rs"));
+        assert!(path_in_ignored_dir("/home/tim/proj/node_modules/pkg/index.rs"));
+        assert!(path_in_ignored_dir("/home/tim/proj/.git/hooks/x.rs"));
+        assert!(path_in_ignored_dir("/home/tim/proj/vendor/dep/lib.rs"));
+        // Authored source is NOT ignored; the match is component-exact, so a
+        // file or dir whose NAME merely contains a keyword is unaffected.
+        assert!(!path_in_ignored_dir("/home/tim/proj/src/lib.rs"));
+        assert!(!path_in_ignored_dir("/home/tim/proj/src/target.rs"), "file named target.rs is fine");
+        assert!(!path_in_ignored_dir("/home/tim/proj/my-targets/build.rs"), "dir name containing 'target' is fine");
+        assert!(!path_in_ignored_dir("/home/tim/proj/build.rs"), "a top-level build.rs IS authored source");
     }
 
     #[test]
