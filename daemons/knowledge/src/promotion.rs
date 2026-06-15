@@ -815,6 +815,42 @@ mod shell_event_tests {
     }
 
     #[tokio::test]
+    async fn promote_window_focused_creates_app_session_and_event() {
+        // Coverage for the foundational window.focused path: it must promote
+        // without error (it SETs e.title on the Event node, so this also confirms
+        // the graph accepts that write) and wire the App -> Session ACTIVE_IN edge.
+        let (graph, _tmp) = setup().await;
+        let payload = WindowFocusedPayload {
+            app_id: "com.example.editor".into(),
+            window_title: "notes.md".into(),
+            prev_app_id: String::new(),
+        };
+        let mut buf = Vec::new();
+        payload.encode(&mut buf).unwrap();
+        promote_window_focused(&graph, "win1", &500, "sess-1", &buf)
+            .await
+            .expect("window.focused promotes without error");
+
+        let rs = graph
+            .query_rows("MATCH (e:Event {id: 'win1'}) RETURN e.type AS t, e.timestamp AS ts".into())
+            .await
+            .unwrap();
+        let row = rs.rows.first().expect("the window.focused Event exists");
+        assert_eq!(row[0].as_str(), "window.focused");
+        assert_eq!(row[1].as_i64(), 500);
+
+        let edge = graph
+            .query_rows(
+                "MATCH (:App {id: 'com.example.editor'})-[:ACTIVE_IN]->(:Session {id: 'sess-1'}) \
+                 RETURN count(*) AS c"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(edge.rows[0][0].as_i64(), 1, "the app is active in the session");
+    }
+
+    #[tokio::test]
     async fn presence_set_creates_user_action() {
         let (graph, _tmp) = setup().await;
         let payload = PresenceSetPayload {

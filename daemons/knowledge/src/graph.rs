@@ -494,6 +494,7 @@ fn create_schema(conn: &Connection) -> Result<()> {
             type       STRING,
             timestamp  INT64,
             source     STRING,
+            title      STRING,
             PRIMARY KEY(id)
         )",
     )
@@ -587,6 +588,13 @@ fn create_schema(conn: &Connection) -> Result<()> {
     // edge temporal columns.
     conn.query("ALTER TABLE Project ADD IF NOT EXISTS expired_at INT64")
         .map_err(|e| anyhow!("ensure Project.expired_at column: {e}"))?;
+
+    // The window/event title carried on a promoted Event (e.g. window.focused
+    // records the focused window's title). Without this column the window.focused
+    // promotion's `SET e.title` is a binder error that stalls the whole promotion
+    // batch. Convergent ADD IF NOT EXISTS for already-initialized DBs.
+    conn.query("ALTER TABLE Event ADD IF NOT EXISTS title STRING")
+        .map_err(|e| anyhow!("ensure Event.title column: {e}"))?;
 
     // The cgroup v2 id of the most recent open (Strand 4 attribution). A File node
     // is path-keyed, so this is the LATEST cgroup, not a history; NULL/0 means no
