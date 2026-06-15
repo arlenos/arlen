@@ -229,6 +229,20 @@ impl SessionState {
             },
         }
     }
+
+    /// The state transition after an attempt whose credential never VERIFIED
+    /// (a wrong password, a failed FIDO2 assertion, a backend error), so no
+    /// factor was ever classified. It is a denial: advance the failure counter
+    /// (saturating) and change nothing else, exactly like a tier-denied attempt.
+    /// Kept distinct from [`after_attempt`], which requires a verified factor the
+    /// failed path never produced.
+    pub fn record_failure(&self) -> SessionState {
+        SessionState {
+            home_key_loaded: self.home_key_loaded,
+            since_strong_auth: self.since_strong_auth,
+            failed_attempts: self.failed_attempts.saturating_add(1),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -465,6 +479,20 @@ mod tests {
             &UnlockOutcome::Denied(DenyReason::StrongAuthRequired),
         );
         assert_eq!(after.failed_attempts, u32::MAX);
+    }
+
+    #[test]
+    fn record_failure_advances_the_counter_and_saturates_without_a_factor() {
+        let s = warm();
+        let after = s.record_failure();
+        assert_eq!(after.failed_attempts, 1);
+        assert_eq!(after.home_key_loaded, s.home_key_loaded);
+        assert_eq!(after.since_strong_auth, s.since_strong_auth);
+        let maxed = SessionState {
+            failed_attempts: u32::MAX,
+            ..warm()
+        };
+        assert_eq!(maxed.record_failure().failed_attempts, u32::MAX);
     }
 
     #[test]
