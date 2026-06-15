@@ -24,7 +24,8 @@ use tokio::sync::watch;
 use arlen_ai_agent::behaviour::{BehaviourKind, ReadScope};
 use arlen_ai_agent::config::{AgentConfig, ProviderSettings};
 use arlen_ai_agent::dbus::{
-    new_status_handle, set_status, AgentInterface, LoopStatus, StatusHandle, AGENT_OBJECT_PATH,
+    new_status_handle, set_status, AgentInterface, LoopStatus, ManualInvoke, StatusHandle,
+    AGENT_OBJECT_PATH,
 };
 use arlen_ai_agent::engine::{
     reads_satisfied, DispatchOutcome, Dispatcher, ExecutionResult, ScreeningMode,
@@ -371,6 +372,7 @@ async fn establish_agent_connection(
     compensator: Compensator,
     graph: Arc<dyn GraphHandle>,
     receipts: Arc<Mutex<ReceiptStore<RetainedReceipt>>>,
+    manual_tx: tokio::sync::mpsc::Sender<ManualInvoke>,
 ) -> AgentConnection {
     use zbus::fdo::{RequestNameFlags, RequestNameReply};
 
@@ -387,6 +389,7 @@ async fn establish_agent_connection(
         compensator,
         graph,
         receipts,
+        manual_tx,
     };
     if let Err(e) = connection.object_server().at(AGENT_OBJECT_PATH, iface).await {
         tracing::warn!(error = %e, path = AGENT_OBJECT_PATH, "could not register agent interface; D-Bus behaviour status will not be available");
@@ -489,6 +492,7 @@ async fn recover_connection(
     compensator: Compensator,
     graph: Arc<dyn GraphHandle>,
     receipts: Arc<Mutex<ReceiptStore<RetainedReceipt>>>,
+    manual_tx: tokio::sync::mpsc::Sender<ManualInvoke>,
 ) -> bool {
     let mut backoff = SUBSCRIBE_BACKOFF_INITIAL;
     loop {
@@ -501,6 +505,7 @@ async fn recover_connection(
             compensator.clone(),
             Arc::clone(&graph),
             Arc::clone(&receipts),
+            manual_tx.clone(),
         )
         .await
         {
@@ -619,6 +624,13 @@ async fn run(
         Arc::new(LedgerAuditSink::at_default_socket()) as Arc<dyn AuditSink>,
     );
     let iface_graph: Arc<dyn GraphHandle> = Arc::new(UnixGraph::new(graph_socket()));
+    // User-invoke (`run_skill`) channel: the D-Bus interface (re-registered each
+    // epoch with a `manual_tx` clone) hands a named-skill request to the live
+    // dispatch loop. `manual_tx` is held here for the daemon's life so the
+    // channel never closes (its `recv()` never spuriously returns `None`);
+    // `manual_rx` is borrowed into each epoch's `dispatch_until_change`. Bounded:
+    // a backlog of invokes applies backpressure rather than growing unbounded.
+    let (manual_tx, mut manual_rx) = tokio::sync::mpsc::channel::<ManualInvoke>(8);
     loop {
         // At the very top of every epoch, before any (possibly slow) config
         // load, classifier provisioning, or resubscribe, report `subscribing`:
@@ -746,6 +758,7 @@ async fn run(
                 compensator.clone(),
                 Arc::clone(&iface_graph),
                 Arc::clone(&receipts),
+                manual_tx.clone(),
             )
             .await
             {
@@ -902,12 +915,14 @@ async fn run(
                     &mut shutdown_rx,
                     status,
                     &receipts,
+                    &mut manual_rx,
                     recover_connection(
                         connection,
                         Arc::clone(status),
                         compensator.clone(),
                         Arc::clone(&iface_graph),
                         Arc::clone(&receipts),
+                        manual_tx.clone(),
                     ),
                 )
                 .await
@@ -919,6 +934,7 @@ async fn run(
                     &mut shutdown_rx,
                     status,
                     &receipts,
+                    &mut manual_rx,
                     std::future::pending::<bool>(),
                 )
                 .await
@@ -962,6 +978,9 @@ enum DispatchStep {
     Event(AgentEvent),
     /// The event source closed permanently; rebuild to recover.
     SourceClosed,
+    /// A user-invoke (`run_skill`) request: run the named skill on the live
+    /// dispatcher, reply, and continue the epoch (not an epoch end).
+    Manual(ManualInvoke),
 }
 
 /// Pick the next dispatch action with a `biased` priority: a **config change /
@@ -976,6 +995,7 @@ enum DispatchStep {
 async fn next_dispatch_step(
     config_change: impl std::future::Future<Output = EpochEnd>,
     recovery: impl std::future::Future<Output = bool>,
+    manual: impl std::future::Future<Output = Option<ManualInvoke>>,
     next_event: impl std::future::Future<Output = Option<AgentEvent>>,
 ) -> DispatchStep {
     tokio::select! {
@@ -988,6 +1008,16 @@ async fn next_dispatch_step(
             DispatchStep::Recovered
         } else {
             DispatchStep::End(EpochEnd::Superseded)
+        },
+        // A user invoke. Polled before the event source so an explicit user
+        // action is not starved behind a busy event stream; it is rare (a
+        // human action) so it cannot in turn starve events. `None` is
+        // unreachable while the outer `manual_tx` is held for the daemon's
+        // life; a benign reload covers the impossible closed-channel case
+        // rather than busy-looping on an always-ready `None`.
+        req = manual => match req {
+            Some(invoke) => DispatchStep::Manual(invoke),
+            None => DispatchStep::End(EpochEnd::Reload),
         },
         maybe = next_event => match maybe {
             Some(event) => DispatchStep::Event(event),
@@ -1017,6 +1047,7 @@ async fn dispatch_until_change(
     shutdown_rx: &mut watch::Receiver<bool>,
     status: &StatusHandle,
     receipts: &std::sync::Mutex<ReceiptStore<RetainedReceipt>>,
+    manual_rx: &mut tokio::sync::mpsc::Receiver<ManualInvoke>,
     recovery: impl std::future::Future<Output = bool>,
 ) -> EpochEnd {
     tokio::pin!(recovery);
@@ -1028,6 +1059,7 @@ async fn dispatch_until_change(
         let event = match next_dispatch_step(
             wait_config_change(watcher, shutdown_rx),
             &mut recovery,
+            manual_rx.recv(),
             source.recv(),
         )
         .await
@@ -1045,6 +1077,28 @@ async fn dispatch_until_change(
             DispatchStep::SourceClosed => {
                 tracing::warn!("event source closed; rebuilding");
                 return EpochEnd::Reload;
+            }
+            // A user invoke: run the named skill on the LIVE dispatcher
+            // (current provider/config/grants), retain any write receipt and log
+            // the outcomes exactly as the event path does, reply to the caller,
+            // then continue the epoch. Not raced against a config change: a
+            // manual run is an explicit, bounded user action (an agent skill is
+            // bounded by its own budget), so it runs to completion rather than
+            // being abortable mid-run like an autonomous event dispatch.
+            DispatchStep::Manual(invoke) => {
+                set_status(status, LoopStatus::Busy);
+                let summary = match dispatcher.dispatch_named(&invoke.name).await {
+                    Some(outcomes) => {
+                        for outcome in &outcomes {
+                            log_dispatch_outcome(outcome);
+                            retain_receipt(receipts, outcome);
+                        }
+                        summarize_manual_run(&invoke.name, &outcomes)
+                    }
+                    None => format!("no-such-skill: {}", invoke.name),
+                };
+                let _ = invoke.respond.send(summary);
+                continue;
             }
             DispatchStep::Event(event) => event,
         };
@@ -1140,6 +1194,22 @@ fn retain_receipt(
             );
         }
     }
+}
+
+/// A short status summary for a user-invoke (`run_skill`) reply: the skill
+/// name, the number of outcomes, and how many were a gate decision (the
+/// meaningful "it proposed/acted" signal). Deliberately coarse — the per-outcome
+/// detail is logged via [`log_dispatch_outcome`], and the rich display is the
+/// harness's surface; this is just an at-a-glance acknowledgement to the caller.
+fn summarize_manual_run(name: &str, outcomes: &[DispatchOutcome]) -> String {
+    let decided = outcomes
+        .iter()
+        .filter(|o| matches!(o, DispatchOutcome::Decided { .. }))
+        .count();
+    format!(
+        "ran: {name} ({} outcome(s), {decided} decision(s))",
+        outcomes.len()
+    )
 }
 
 /// Surface a dispatch outcome. Decisions are also recorded in the audit
@@ -1493,6 +1563,7 @@ mod tests {
         let step = next_dispatch_step(
             pending::<EpochEnd>(),
             ready(true),
+            pending::<Option<ManualInvoke>>(),
             ready(Some(an_event())),
         )
         .await;
@@ -1505,6 +1576,7 @@ mod tests {
         let step = next_dispatch_step(
             pending::<EpochEnd>(),
             pending::<bool>(),
+            pending::<Option<ManualInvoke>>(),
             ready(Some(an_event())),
         )
         .await;
@@ -1513,12 +1585,13 @@ mod tests {
 
     #[tokio::test]
     async fn a_config_change_wins_over_recovery_and_a_buffered_event() {
-        use std::future::ready;
+        use std::future::{pending, ready};
         // Revocation safety: a config change beats both a ready recovery and a
         // buffered event.
         let step = next_dispatch_step(
             ready(EpochEnd::Reload),
             ready(true),
+            pending::<Option<ManualInvoke>>(),
             ready(Some(an_event())),
         )
         .await;
@@ -1534,9 +1607,43 @@ mod tests {
         let step = next_dispatch_step(
             pending::<EpochEnd>(),
             ready(false),
+            pending::<Option<ManualInvoke>>(),
             ready(Some(an_event())),
         )
         .await;
         assert!(matches!(step, DispatchStep::End(EpochEnd::Superseded)));
+    }
+
+    #[tokio::test]
+    async fn a_manual_invoke_is_taken_when_pending_recovery_and_no_event() {
+        use std::future::pending;
+        // A user invoke is picked (it is not starved behind the event source).
+        let (respond, _rx) = tokio::sync::oneshot::channel();
+        let invoke = ManualInvoke { name: "tidy".to_string(), respond };
+        let step = next_dispatch_step(
+            pending::<EpochEnd>(),
+            pending::<bool>(),
+            std::future::ready(Some(invoke)),
+            pending::<Option<AgentEvent>>(),
+        )
+        .await;
+        assert!(matches!(step, DispatchStep::Manual(_)));
+    }
+
+    #[tokio::test]
+    async fn a_config_change_wins_over_a_manual_invoke() {
+        use std::future::{pending, ready};
+        // Revocation safety holds for the manual arm too: a config change beats
+        // a ready user invoke.
+        let (respond, _rx) = tokio::sync::oneshot::channel();
+        let invoke = ManualInvoke { name: "tidy".to_string(), respond };
+        let step = next_dispatch_step(
+            ready(EpochEnd::Reload),
+            pending::<bool>(),
+            ready(Some(invoke)),
+            pending::<Option<AgentEvent>>(),
+        )
+        .await;
+        assert!(matches!(step, DispatchStep::End(EpochEnd::Reload)));
     }
 }
