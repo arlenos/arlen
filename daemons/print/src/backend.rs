@@ -110,6 +110,10 @@ pub struct PrintSubmission<'a> {
 pub trait PrintBackend: Send + Sync {
     /// Enumerate configured printer queues.
     async fn printers(&self) -> Result<Vec<Printer>, PrintError>;
+    /// The user's default printer, if one is configured. `Ok(None)` means there
+    /// is no default (a fresh system with printers but no chosen default); the
+    /// dialog then falls back to the first printer or no pre-selection.
+    async fn default_printer(&self) -> Result<Option<Printer>, PrintError>;
     /// Query the queue: all jobs, or just one printer's when `printer` is set.
     async fn jobs(&self, printer: Option<&str>) -> Result<Vec<Job>, PrintError>;
     /// Submit a job; returns the assigned `job-id`.
@@ -124,6 +128,7 @@ pub trait PrintBackend: Send + Sync {
 #[cfg(any(test, feature = "mock"))]
 pub struct MockBackend {
     printers: Vec<Printer>,
+    default_name: Option<String>,
     state: std::sync::Mutex<MockState>,
 }
 
@@ -138,14 +143,23 @@ struct MockState {
 
 #[cfg(any(test, feature = "mock"))]
 impl MockBackend {
-    /// A mock serving the given printers.
+    /// A mock serving the given printers, with no default configured.
     pub fn new(printers: Vec<Printer>) -> Self {
         Self {
             printers,
+            default_name: None,
             state: std::sync::Mutex::new(MockState {
                 next_id: 1,
                 ..Default::default()
             }),
+        }
+    }
+
+    /// A mock serving the given printers with `default_name` as the default.
+    pub fn with_default(printers: Vec<Printer>, default_name: impl Into<String>) -> Self {
+        Self {
+            default_name: Some(default_name.into()),
+            ..Self::new(printers)
         }
     }
 
@@ -160,6 +174,13 @@ impl MockBackend {
 impl PrintBackend for MockBackend {
     async fn printers(&self) -> Result<Vec<Printer>, PrintError> {
         Ok(self.printers.clone())
+    }
+
+    async fn default_printer(&self) -> Result<Option<Printer>, PrintError> {
+        Ok(self
+            .default_name
+            .as_ref()
+            .and_then(|n| self.printers.iter().find(|p| &p.name == n).cloned()))
     }
 
     async fn jobs(&self, printer: Option<&str>) -> Result<Vec<Job>, PrintError> {
@@ -271,6 +292,18 @@ mod tests {
         backend.cancel_job("Office", id).await.expect("cancel");
         assert!(backend.jobs(None).await.unwrap().is_empty());
         assert!(backend.cancel_job("Office", id).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn default_printer_is_reported_when_configured_else_none() {
+        let printers = vec![printer("Office", "ipp://p.lan/x"), printer("Desk", "usb://x/y")];
+        let none = MockBackend::new(printers.clone());
+        assert_eq!(none.default_printer().await.unwrap(), None, "no default configured");
+        let with = MockBackend::with_default(printers, "Desk");
+        assert_eq!(with.default_printer().await.unwrap().unwrap().name, "Desk");
+        // A default naming a printer that is not present resolves to None.
+        let stale = MockBackend::with_default(vec![printer("Office", "usb://x/y")], "Ghost");
+        assert_eq!(stale.default_printer().await.unwrap(), None);
     }
 
     #[test]

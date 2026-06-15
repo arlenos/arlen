@@ -166,6 +166,30 @@ impl PrintBackend for CupsBackend {
         Ok(printers)
     }
 
+    async fn default_printer(&self) -> Result<Option<Printer>, PrintError> {
+        let uri = self.base_uri()?;
+        // CUPS-Get-Default has no operation builder in the crate; construct the
+        // low-level request directly (the same shape CupsGetPrinters builds).
+        let req = IppRequestResponse::new(IppVersion::v1_1(), Operation::CupsGetDefault, None)
+            .map_err(|e| PrintError::Backend(format!("ipp request: {e}")))?;
+        let client = AsyncIppClient::new(uri);
+        let resp = client
+            .send(req)
+            .await
+            .map_err(|e| PrintError::Backend(e.to_string()))?;
+        // No default configured is reported by CUPS as a non-success status
+        // (e.g. client-error-not-found); that is `Ok(None)`, not an error.
+        if !resp.header().status_code().is_success() {
+            return Ok(None);
+        }
+        let printer = resp
+            .attributes()
+            .groups_of(DelimiterTag::PrinterAttributes)
+            .next()
+            .and_then(printer_from_group);
+        Ok(printer)
+    }
+
     async fn jobs(&self, printer: Option<&str>) -> Result<Vec<Job>, PrintError> {
         // CUPS Get-Jobs is per-printer; with no printer, query each queue.
         let names: Vec<String> = match printer {
