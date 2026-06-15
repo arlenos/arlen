@@ -851,6 +851,55 @@ mod shell_event_tests {
     }
 
     #[tokio::test]
+    async fn promote_badge_set_records_only_error_and_warning_badges() {
+        // Coverage for the last promoter: an error/warning badge becomes a
+        // UserAction (writing only schema columns); a success badge is not
+        // promoted. This guards the whole promotion pipeline against a future
+        // schema/SET drift (the class of bug that stalled window.focused).
+        let (graph, _tmp) = setup().await;
+        let err_badge = BadgeSetPayload {
+            app_id: "com.example.mail".into(),
+            variant: 2, // status
+            count: 0,
+            status: BadgeStatus::Error as i32,
+            progress_value: None,
+        };
+        let mut buf = Vec::new();
+        err_badge.encode(&mut buf).unwrap();
+        promote_badge_set(&graph, "badge1", &900, &buf)
+            .await
+            .expect("an error badge promotes without error");
+        let rs = graph
+            .query_rows(
+                "MATCH (u:UserAction {id: 'badge1'}) RETURN u.category AS c, u.action AS a, u.subject AS s"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        let row = rs.rows.first().expect("the error badge promoted to a UserAction");
+        assert_eq!(row[0].as_str(), "badge");
+        assert_eq!(row[1].as_str(), "error");
+        assert_eq!(row[2].as_str(), "com.example.mail");
+
+        // A success badge is not promoted (only error/warning are).
+        let ok_badge = BadgeSetPayload {
+            app_id: "com.example.mail".into(),
+            variant: 2,
+            count: 0,
+            status: BadgeStatus::Success as i32,
+            progress_value: None,
+        };
+        let mut buf2 = Vec::new();
+        ok_badge.encode(&mut buf2).unwrap();
+        promote_badge_set(&graph, "badge2", &901, &buf2).await.unwrap();
+        let none = graph
+            .query_rows("MATCH (u:UserAction {id: 'badge2'}) RETURN count(*) AS c".into())
+            .await
+            .unwrap();
+        assert_eq!(none.rows[0][0].as_i64(), 0, "a success badge is not promoted");
+    }
+
+    #[tokio::test]
     async fn presence_set_creates_user_action() {
         let (graph, _tmp) = setup().await;
         let payload = PresenceSetPayload {
