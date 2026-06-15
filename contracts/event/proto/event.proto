@@ -539,3 +539,21 @@ message ServiceEventPayload {
   string kind    = 2;  // the transition, e.g. "device-up"|"device-down"|"connected"|"disconnected"|"session-opened"|"session-closed"
   string detail  = 3;  // a coarse non-sensitive id (an interface name, a session id); never an SSID or secret
 }
+
+// One code symbol definition extracted from a file (code-graph-layer.md CG-R1).
+message CodeSymbolPayload {
+  string id              = 1;  // stable: "<source_file>#<kind>:<name>@<line>"
+  string name            = 2;  // the declared name
+  string source_location = 3;  // 1-based line (or "line:col")
+  string kind            = 4;  // function|method|struct|enum|trait|module|type_alias|const|static|macro
+}
+
+// The complete per-file code index, emitted on a file (re)parse. Event type
+// "code.indexed". The knowledge daemon replaces the file's prior CodeSymbols
+// with this set (per-file isolation, code-graph-layer.md §3) and fuses each to
+// the source File via a DEFINES edge. Cross-file call/import resolution is CG-R2.
+message CodeFileIndexPayload {
+  string source_file = 1;  // the File node id (absolute path)
+  string language    = 2;  // "rust"
+  repeated CodeSymbolPayload symbols = 3;
+}
