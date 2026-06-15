@@ -48,11 +48,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // SQLite storage all run in one place.
     let (dbus_server, event_rx) = NotificationServer::new();
     let event_tx = dbus_server.event_sender();
-    let manager = Arc::new(NotificationManager::new(
-        db.clone(),
-        config.clone(),
-        event_tx.clone(),
-    ));
+    let manager = Arc::new(
+        NotificationManager::new(db.clone(), config.clone(), event_tx.clone())
+            // GAP-2: each handled notification submits a content-free record
+            // (posting app + disposition, never the message) to arlen-auditd.
+            .with_audit(Arc::new(audit_proto::LedgerAuditSink::at_default_socket())),
+    );
     dbus_server.set_manager(manager.clone());
 
     // 4. Start D-Bus server.
