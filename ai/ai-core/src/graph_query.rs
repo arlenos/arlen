@@ -198,12 +198,58 @@ pub enum AccessTier {
     Full,
 }
 
+/// The active project a project-scoped read is anchored to.
+///
+/// When a [`QueryScope`] carries an anchor, the Cypher compiler
+/// restricts every `Project` / `File` / `Directory` node pattern to this
+/// one project's `FILE_PART_OF` / `DIR_PART_OF` subgraph (a mandatory,
+/// compile-time `WHERE EXISTS { ... }` the model cannot remove). Without
+/// it the `ProjectScoped` tier permits its labels across *all* projects;
+/// the anchor is what makes `context_scope = "project"` read only the
+/// active project. The id is the active Focus-Mode project's KG node id.
+#[derive(Debug, Clone)]
+pub struct ProjectAnchor {
+    project_id: String,
+}
+
+impl ProjectAnchor {
+    /// Anchor to the project with the given KG node id.
+    pub fn new(project_id: impl Into<String>) -> Self {
+        Self {
+            project_id: project_id.into(),
+        }
+    }
+
+    /// The anchored project's KG node id.
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+}
+
+/// The node and edge labels the project anchor itself references, so the
+/// post-build self-check (which checks the emitted Cypher references only
+/// expected labels) does not reject the anchor's own `EXISTS { ... }`
+/// pattern. The caller unions these into the expected set when the scope
+/// carries an anchor.
+pub const PROJECT_ANCHOR_LABELS: [&str; 3] = ["Project", "FILE_PART_OF", "DIR_PART_OF"];
+
 /// Capability scope: the set of node and edge labels the caller may
 /// touch. Derived from the caller's read tier (Foundation §8.4.6);
 /// Phase 9-γ S16 adds the dynamic session/project/time constraints.
+///
+/// A `ProjectScoped` scope additionally carries a [`ProjectAnchor`] (via
+/// [`QueryScope::for_project`]) restricting the read to the active
+/// project's subgraph; see that field for the fail-closed contract.
 #[derive(Debug, Clone)]
 pub struct QueryScope {
     allowed: std::collections::BTreeSet<String>,
+    /// When set, the Cypher compiler anchors every `Project`/`File`/
+    /// `Directory` pattern to this project. Only the project-scoped read
+    /// path sets it; the daemon must supply an empty scope (not an
+    /// anchorless `ProjectScoped` one) when no active project resolves,
+    /// so the closed case reads nothing rather than widening to all
+    /// projects.
+    project_anchor: Option<ProjectAnchor>,
 }
 
 impl QueryScope {
@@ -215,6 +261,7 @@ impl QueryScope {
     {
         Self {
             allowed: labels.into_iter().map(Into::into).collect(),
+            project_anchor: None,
         }
     }
 
@@ -224,7 +271,33 @@ impl QueryScope {
         let mut allowed = std::collections::BTreeSet::new();
         allowed.extend(schema.node_labels().map(str::to_string));
         allowed.extend(schema.edge_labels().map(str::to_string));
-        Self { allowed }
+        Self {
+            allowed,
+            project_anchor: None,
+        }
+    }
+
+    /// Attach a project anchor, restricting the compiled Cypher to the
+    /// given project's subgraph. Builder form of [`QueryScope::for_project`].
+    pub fn with_project_anchor(mut self, anchor: ProjectAnchor) -> Self {
+        self.project_anchor = Some(anchor);
+        self
+    }
+
+    /// The active-project anchor, if this is a project-scoped scope.
+    pub fn project_anchor(&self) -> Option<&ProjectAnchor> {
+        self.project_anchor.as_ref()
+    }
+
+    /// A project-anchored scope: the `ProjectScoped` label set plus a
+    /// mandatory anchor to `project_id`. This is the only correct way to
+    /// build a project-scoped read; a bare
+    /// [`for_tier`](QueryScope::for_tier)`(ProjectScoped)` permits the
+    /// tier's labels across every project, so the daemon uses this when
+    /// an active project resolves and an empty scope otherwise.
+    pub fn for_project(project_id: impl Into<String>, schema: &GraphSchema) -> Self {
+        Self::for_tier(AccessTier::ProjectScoped, schema)
+            .with_project_anchor(ProjectAnchor::new(project_id))
     }
 
     /// Build a scope for a Foundation §8.4 read tier.
@@ -479,8 +552,19 @@ impl GraphQuery {
     /// Build a read-only Cypher query string. Assumes [`validate`]
     /// has already succeeded against the same schema.
     ///
+    /// When `anchor` is `Some`, every `Project` / `File` / `Directory`
+    /// node pattern is constrained to that project's subgraph at compile
+    /// time (a mandatory `WHERE EXISTS { ... }` the model cannot remove),
+    /// so a project-scoped read returns only the active project's data.
+    /// The project id is interpolated as an escaped string literal (the
+    /// same encoding filter values use), so it cannot smuggle structure.
+    /// The caller passing the anchor must also union
+    /// [`PROJECT_ANCHOR_LABELS`] into the post-build self-check's expected
+    /// set, since the anchor references `FILE_PART_OF`/`DIR_PART_OF`/
+    /// `Project` that the bare DSL may not.
+    ///
     /// [`validate`]: GraphQuery::validate
-    pub fn to_cypher(&self) -> Result<String, BuildError> {
+    pub fn to_cypher(&self, anchor: Option<&ProjectAnchor>) -> Result<String, BuildError> {
         let mut cypher = String::new();
 
         // MATCH clause.
@@ -499,11 +583,23 @@ impl GraphQuery {
         }
         cypher.push('\n');
 
-        // WHERE clause: every filter on every node, AND-joined.
+        // WHERE clause: every filter on every node, AND-joined, plus the
+        // mandatory project anchor on each Project/File/Directory pattern
+        // when one is supplied.
         let mut conditions: Vec<String> = Vec::new();
         collect_conditions(&self.from, &mut conditions)?;
         for step in &self.traverse {
             collect_conditions(&step.to, &mut conditions)?;
+        }
+        if let Some(anchor) = anchor {
+            if let Some(c) = anchor_condition(&self.from, anchor)? {
+                conditions.push(c);
+            }
+            for step in &self.traverse {
+                if let Some(c) = anchor_condition(&step.to, anchor)? {
+                    conditions.push(c);
+                }
+            }
         }
         if !conditions.is_empty() {
             cypher.push_str("WHERE ");
@@ -668,6 +764,34 @@ fn collect_conditions(pattern: &NodePattern, out: &mut Vec<String>) -> Result<()
     Ok(())
 }
 
+/// The compile-time project anchor for one node pattern.
+///
+/// A `File`/`Directory` binding is constrained to the active project via
+/// a non-row-multiplying `EXISTS { MATCH (bind)-[:FILE_PART_OF|DIR_PART_OF]
+/// ->(:Project {id: ...}) }` (the `EXISTS` form was verified against the
+/// engine: a plain MATCH-join multiplies rows when a node has several
+/// membership edges, `EXISTS` does not). A `Project` binding is pinned
+/// directly by id. Every other label yields no anchor (the project-scoped
+/// label set is only Project/File/Directory, so no other binding reaches
+/// here, but a `None` is the safe answer regardless).
+fn anchor_condition(
+    pattern: &NodePattern,
+    anchor: &ProjectAnchor,
+) -> Result<Option<String>, BuildError> {
+    let lit = encode_literal(&TypedValue::Text(anchor.project_id().to_string()))?;
+    let bind = &pattern.bind;
+    Ok(match pattern.label.as_str() {
+        "File" => Some(format!(
+            "EXISTS {{ MATCH ({bind})-[:FILE_PART_OF]->(:Project {{id: {lit}}}) }}"
+        )),
+        "Directory" => Some(format!(
+            "EXISTS {{ MATCH ({bind})-[:DIR_PART_OF]->(:Project {{id: {lit}}}) }}"
+        )),
+        "Project" => Some(format!("{bind}.id = {lit}")),
+        _ => None,
+    })
+}
+
 /// Encode a typed value as a Cypher literal.
 ///
 /// Text values become single-quoted Cypher string literals with
@@ -739,10 +863,105 @@ mod tests {
     fn valid_simple_query_passes_and_builds() {
         let q = simple_file_query();
         q.validate(&schema(), &full_scope()).expect("valid");
-        let cypher = q.to_cypher().expect("builds");
+        let cypher = q.to_cypher(None).expect("builds");
         assert!(cypher.contains("MATCH (f:File)"));
         assert!(cypher.contains("RETURN f.path"));
         assert!(cypher.trim_end().ends_with("LIMIT 50"));
+    }
+
+    #[test]
+    fn no_anchor_emits_no_membership_predicate() {
+        // Without an anchor a File query is unconstrained across projects
+        // (the prior behaviour), so the membership predicate is absent.
+        let cypher = simple_file_query().to_cypher(None).expect("builds");
+        assert!(!cypher.contains("EXISTS"));
+        assert!(!cypher.contains("FILE_PART_OF"));
+    }
+
+    #[test]
+    fn project_anchor_injects_a_file_membership_exists() {
+        let scope = QueryScope::for_project("proj-1", &schema());
+        let q = simple_file_query();
+        q.validate(&schema(), &scope).expect("valid under project scope");
+        let cypher = q.to_cypher(scope.project_anchor()).expect("builds");
+        assert!(
+            cypher.contains("EXISTS { MATCH (f)-[:FILE_PART_OF]->(:Project {id: 'proj-1'}) }"),
+            "File binding is anchored to the active project, got: {cypher}"
+        );
+        // The anchor lands in the WHERE clause, before the final LIMIT.
+        assert!(cypher.trim_end().ends_with("LIMIT 50"));
+    }
+
+    #[test]
+    fn project_anchor_uses_dir_part_of_for_a_directory() {
+        let scope = QueryScope::for_project("proj-1", &schema());
+        let q = GraphQuery {
+            from: node("d", "Directory"),
+            traverse: vec![],
+            select: vec![field("d", "path")],
+            order_by: None,
+            limit: 10,
+        };
+        q.validate(&schema(), &scope).expect("valid");
+        let cypher = q.to_cypher(scope.project_anchor()).expect("builds");
+        assert!(
+            cypher.contains("EXISTS { MATCH (d)-[:DIR_PART_OF]->(:Project {id: 'proj-1'}) }"),
+            "Directory binding uses DIR_PART_OF, got: {cypher}"
+        );
+    }
+
+    #[test]
+    fn project_anchor_pins_a_project_binding_by_id() {
+        let scope = QueryScope::for_project("proj-1", &schema());
+        let q = GraphQuery {
+            from: node("p", "Project"),
+            traverse: vec![],
+            select: vec![field("p", "name")],
+            order_by: None,
+            limit: 10,
+        };
+        q.validate(&schema(), &scope).expect("valid");
+        let cypher = q.to_cypher(scope.project_anchor()).expect("builds");
+        // A Project binding is pinned directly, so a project-scoped read
+        // cannot enumerate other projects either.
+        assert!(cypher.contains("p.id = 'proj-1'"), "got: {cypher}");
+    }
+
+    #[test]
+    fn project_anchor_id_is_escaped_not_interpolated_raw() {
+        // A hostile project id cannot break out of the string literal: it
+        // is encoded the same way filter values are.
+        let scope = QueryScope::for_project("p' OR 1=1 //", &schema());
+        let cypher = simple_file_query()
+            .to_cypher(scope.project_anchor())
+            .expect("builds");
+        assert!(cypher.contains("'p\\' OR 1=1 //'"), "escaped, got: {cypher}");
+        // The raw, unescaped break-out never appears.
+        assert!(!cypher.contains("'p' OR 1=1"));
+    }
+
+    #[test]
+    fn for_project_carries_anchor_and_project_scoped_labels() {
+        let scope = QueryScope::for_project("proj-1", &schema());
+        assert!(scope.permits("File"));
+        assert!(scope.permits("Project"));
+        assert!(scope.permits("Directory"));
+        assert!(!scope.permits("Session"), "still the ProjectScoped label set");
+        assert_eq!(scope.project_anchor().map(|a| a.project_id()), Some("proj-1"));
+    }
+
+    #[test]
+    fn anchored_cypher_passes_the_post_build_self_check() {
+        // Defence-in-depth: the pipeline runs verify_built_cypher over the
+        // emitted Cypher with the DSL's labels plus the anchor's own
+        // labels. The anchor's EXISTS pattern must clear that check.
+        let scope = QueryScope::for_project("proj-1", &schema());
+        let q = simple_file_query();
+        let cypher = q.to_cypher(scope.project_anchor()).expect("builds");
+        let mut expected = q.referenced_labels();
+        expected.extend(PROJECT_ANCHOR_LABELS.iter().map(|s| s.to_string()));
+        crate::cypher::verify_built_cypher(&cypher, &expected)
+            .expect("the anchored cypher clears the self-check");
     }
 
     #[test]
@@ -842,7 +1061,7 @@ mod tests {
             limit: 25,
         };
         q.validate(&schema(), &full_scope()).expect("valid");
-        let cypher = q.to_cypher().expect("builds");
+        let cypher = q.to_cypher(None).expect("builds");
         assert!(cypher.contains("(f:File)-[:ACCESSED_BY]->(a:App)"));
         assert!(cypher.contains("RETURN f.path, a.name"));
     }
@@ -881,7 +1100,7 @@ mod tests {
             limit: 10,
         };
         q.validate(&schema(), &full_scope()).expect("valid");
-        let cypher = q.to_cypher().expect("builds");
+        let cypher = q.to_cypher(None).expect("builds");
         assert!(cypher.contains("(a:App)<-[:ACCESSED_BY]-(f:File)"));
     }
 
@@ -956,7 +1175,7 @@ mod tests {
             value: TypedValue::Int(1_747_000_000),
         }];
         q.validate(&schema(), &full_scope()).expect("valid");
-        let cypher = q.to_cypher().expect("builds");
+        let cypher = q.to_cypher(None).expect("builds");
         assert!(cypher.contains("WHERE f.last_accessed > 1747000000"));
     }
 
@@ -970,7 +1189,7 @@ mod tests {
             value: TypedValue::Text("o'clock' RETURN n //".to_string()),
         }];
         q.validate(&schema(), &full_scope()).expect("valid");
-        let cypher = q.to_cypher().expect("builds");
+        let cypher = q.to_cypher(None).expect("builds");
         // The single quotes inside the value must be escaped, so the
         // literal stays one token and cannot end the string early.
         assert!(cypher.contains(r"f.path CONTAINS 'o\'clock\' RETURN n //'"));
@@ -985,7 +1204,7 @@ mod tests {
             descending: true,
         });
         q.validate(&schema(), &full_scope()).expect("valid");
-        let cypher = q.to_cypher().expect("builds");
+        let cypher = q.to_cypher(None).expect("builds");
         assert!(cypher.contains("ORDER BY f.last_accessed DESC"));
     }
 
@@ -1010,10 +1229,10 @@ mod tests {
     fn limit_is_clamped_into_range() {
         let mut q = simple_file_query();
         q.limit = 0;
-        assert!(q.to_cypher().unwrap().trim_end().ends_with("LIMIT 1"));
+        assert!(q.to_cypher(None).unwrap().trim_end().ends_with("LIMIT 1"));
         q.limit = 99_999;
         assert!(q
-            .to_cypher()
+            .to_cypher(None)
             .unwrap()
             .trim_end()
             .ends_with(&format!("LIMIT {MAX_LIMIT}")));
@@ -1053,7 +1272,7 @@ mod tests {
         "#;
         let q: GraphQuery = serde_json::from_str(json).expect("parses");
         q.validate(&schema(), &full_scope()).expect("valid");
-        let cypher = q.to_cypher().expect("builds");
+        let cypher = q.to_cypher(None).expect("builds");
         assert!(cypher.contains("(f:File)-[:ACCESSED_BY]->(a:App)"));
         assert!(cypher.contains("WHERE f.last_accessed > 1747000000"));
         assert!(cypher.contains("ORDER BY f.last_accessed DESC"));

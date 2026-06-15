@@ -155,8 +155,19 @@ impl CypherPipeline {
     ) -> Result<String, PipelineError> {
         let (query, cypher) = self.generate_query(nl_prompt, scope).await?;
 
-        // Defence-in-depth self-check on the builder's own output.
-        verify_built_cypher(&cypher, &query.referenced_labels())
+        // Defence-in-depth self-check on the builder's own output. When a
+        // project anchor is in force the compiler also emits the anchor's
+        // own labels (FILE_PART_OF/DIR_PART_OF/Project), so they are added
+        // to the expected set the DSL declared.
+        let mut expected = query.referenced_labels();
+        if scope.project_anchor().is_some() {
+            expected.extend(
+                crate::graph_query::PROJECT_ANCHOR_LABELS
+                    .iter()
+                    .map(|s| s.to_string()),
+            );
+        }
+        verify_built_cypher(&cypher, &expected)
             .map_err(|e| PipelineError::Internal(e.to_string()))?;
 
         let rows = self.graph.run(&cypher).await?;
@@ -210,7 +221,9 @@ impl CypherPipeline {
         query
             .validate(&self.schema, scope)
             .map_err(|e| e.to_string())?;
-        let cypher = query.to_cypher().map_err(|e| e.to_string())?;
+        let cypher = query
+            .to_cypher(scope.project_anchor())
+            .map_err(|e| e.to_string())?;
         Ok((query, cypher))
     }
 
