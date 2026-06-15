@@ -7,6 +7,8 @@
 @source "../../../sdk/ui-kit/src/lib/components/**/*.{svelte,ts}";
 /* Canonical motion tokens + shared interaction classes. */
 @import "../../../sdk/ui-kit/src/lib/motion.css";
+/* Concentric-nesting radius utility (rounding-fix.md). */
+@import "../../../sdk/ui-kit/src/lib/radius.css";
 
 /* ============================================================
    Greeter dark defaults. The greeter runs before the session, so it

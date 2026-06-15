@@ -2,6 +2,8 @@
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
 @import "./lib/motion.css";
+/* Concentric-nesting radius utility (rounding-fix.md). */
+@import "./lib/radius.css";
 
 /* ============================================================
    Arlen Surface Tokens - Panda Theme (default)

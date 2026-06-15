@@ -54,7 +54,7 @@
     gap: 1rem;
     height: var(--height-row, 40px);
     padding: 0 0.5rem;
-    border-radius: var(--radius-button);
+    border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
   }
   .row:hover {
     background: color-mix(in srgb, var(--foreground) 8%, transparent);

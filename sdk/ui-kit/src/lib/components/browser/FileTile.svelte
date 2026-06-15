@@ -127,6 +127,10 @@
     align-items: center;
     justify-content: center;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    /* The thumbnail hugs the tile's media box; its corners follow the tile
+       radius minus the 2px the image is inset (rounding-fix.md). */
+    --container-radius: var(--radius-input);
+    --container-inset: 2px;
   }
   .ft-thumb {
     position: absolute;
@@ -134,7 +138,7 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-    border-radius: calc(var(--radius-input) - 2px);
+    border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
     opacity: 0;
     transition: opacity var(--duration-micro, 100ms) var(--ease-out, ease);
   }

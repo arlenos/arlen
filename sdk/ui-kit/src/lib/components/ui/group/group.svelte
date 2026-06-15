@@ -45,6 +45,10 @@
       color-mix(in srgb, var(--foreground) 10%, transparent);
     background: color-mix(in srgb, var(--foreground) 3%, transparent);
     /* No overflow:hidden, so dropdown menus can escape the card. */
+    /* Expose the card radius for concentric inset children (the rows are
+       flat full-bleed dividers, but an inset rounded child reads these). */
+    --container-radius: var(--radius-card);
+    --container-inset: var(--space-row, 0.75rem);
   }
 
   .group-card :global(> * + *) {

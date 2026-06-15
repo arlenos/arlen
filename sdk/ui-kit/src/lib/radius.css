@@ -1,0 +1,23 @@
+/* Concentric nesting (docs/architecture/rounding-fix.md).
+
+   Where a child is inset inside a rounded container and hugs its inside,
+   the child's corner radius must equal the container radius minus the
+   inset, clamped at 0, so the two corners are concentric (the gap between
+   them is constant all the way round). A fixed inner radius looks wrong:
+   too round when the inset is large, lumpy at the corner.
+
+   Convention: a rounded container sets --container-radius (its own radius)
+   and --container-inset (the padding the child is inset by). A hugging
+   child takes this class, or computes the same `max(0px, calc(...))` in its
+   own scoped style. The custom properties inherit, so a child reads the
+   nearest container; a menu nested inside a card is correct by construction
+   because the menu re-sets the properties for its own children.
+
+   Standalone elements and the outermost container keep their semantic
+   radius token; this is only for the hugging-inset case. */
+.rounded-concentric {
+  border-radius: max(
+    0px,
+    calc(var(--container-radius, 0px) - var(--container-inset, 0px))
+  );
+}

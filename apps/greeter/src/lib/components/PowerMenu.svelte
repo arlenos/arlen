@@ -45,7 +45,7 @@
     height: var(--height-row, 40px);
     padding: 0 0.625rem;
     border: none;
-    border-radius: var(--radius-button);
+    border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
     background: transparent;
     color: var(--foreground);
     font-size: calc(0.875rem * var(--greeter-scale, 1));

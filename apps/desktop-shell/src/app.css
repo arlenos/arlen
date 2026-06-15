@@ -8,6 +8,8 @@
 /* Canonical motion tokens + shared interaction classes.
    Single source of truth for both desktop-shell and app-settings. */
 @import "../../../sdk/ui-kit/src/lib/motion.css";
+/* Concentric-nesting radius utility (rounding-fix.md). */
+@import "../../../sdk/ui-kit/src/lib/radius.css";
 
 /* ============================================================
    Arlen Dark Theme - CSS variable defaults.

@@ -98,6 +98,10 @@
     height: calc(var(--height-control-prominent, 36px) * var(--greeter-scale, 1));
     padding: 0 0.25rem 0 0.75rem;
     border-radius: var(--radius-input);
+    /* The inline icon buttons hug the field's inside, so their corners
+       follow the field radius minus the 0.25rem inset. */
+    --container-radius: var(--radius-input);
+    --container-inset: 0.25rem;
     background: var(--color-bg-input);
     border: 1px solid var(--color-border);
     transition: border-color var(--duration-fast) var(--ease-out);
@@ -134,7 +138,7 @@
     width: calc(1.75rem * var(--greeter-scale, 1));
     height: calc(1.75rem * var(--greeter-scale, 1));
     border: none;
-    border-radius: var(--radius-input);
+    border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     transition:
