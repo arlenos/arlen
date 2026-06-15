@@ -2,7 +2,7 @@
 name = "arlen-code-indexer"
 version = "0.1.0"
 edition = "2021"
-description = "Tier-2 code-graph ingestion: parses project source per-file (tree-sitter), extracts CodeSymbol definitions + call/import references with confidence labels, and emits code.* events for the knowledge daemon to promote (code-graph-layer.md CG-R1)"
+description = "Tier-2 code-graph ingestion: parses project source per-file (tree-sitter; Rust, Python, TypeScript), extracts CodeSymbol definitions + call/import references with confidence labels, and emits code.* events for the knowledge daemon to promote (code-graph-layer.md CG-R1/CG-R3)"
 
 [[bin]]
 name = "arlen-code-indexer"
@@ -12,11 +12,14 @@ path = "src/main.rs"
 path = "src/lib.rs"
 
 [dependencies]
-# Per-file syntactic parsing. Rust first (dogfood Arlen's own codebase); the
-# stack-graph cross-file name-resolution is CG-R2 (no Rust TSG ships, so the
-# per-file extraction here is plain tree-sitter, resolution is deferred).
+# Per-file syntactic parsing, one grammar per language (CG-R3: Rust, Python,
+# TypeScript/TSX). The stack-graph cross-file name-resolution is CG-R2 (no Rust
+# TSG ships, so the per-file extraction here is plain tree-sitter, resolution is
+# deferred).
 tree-sitter = "0.26"
 tree-sitter-rust = "0.24"
+tree-sitter-python = "0.25"
+tree-sitter-typescript = "0.23"
 # The daemon host: consume file.opened from the event bus, query the graph for
 # project membership, emit code.indexed. Event envelope + the code payload come
 # from os-sdk's generated proto.

@@ -1,10 +1,15 @@
-//! The per-file Rust extraction core (code-graph-layer.md CG-R1).
+//! The per-file extraction core (code-graph-layer.md CG-R1 + CG-R3).
 //!
-//! Parses ONE Rust file in complete isolation (tree-sitter, purely syntactic, no
-//! build, no cross-file visibility) and returns its [`FileIndex`]: the
+//! Parses ONE source file in complete isolation (tree-sitter, purely syntactic,
+//! no build, no cross-file visibility) and returns its [`FileIndex`]: the
 //! `CodeSymbol` definitions it declares, and the outgoing references (calls,
 //! imports) it makes. This is the load-bearing "per-file isolation at index"
 //! design - a file-save re-runs only this, never a whole-project reindex.
+//!
+//! Multi-language ([`Language`]): Rust, Python and TypeScript share this one
+//! extractor. Each language brings its own tree-sitter grammar and capture query
+//! ([`Language::query`]); the classification, dedup and reference handling are
+//! shared. Adding a language is a grammar + a query, nothing more (CG-R3).
 //!
 //! What it does NOT do: resolve a reference to its target definition. A call to
 //! `bar()` records the NAME `bar`; which `CodeSymbol` it binds to is cross-file
@@ -65,6 +70,12 @@ pub enum SymbolKind {
     Static,
     /// A `macro_rules!` definition.
     Macro,
+    /// A class (Python `class`, TypeScript `class`). Rust has no class; this is
+    /// a shared-core kind for the object-oriented languages.
+    Class,
+    /// An interface (TypeScript `interface`). Distinct from a Rust `trait`
+    /// (which keeps [`SymbolKind::Trait`]) so the language's own vocabulary shows.
+    Interface,
 }
 
 impl SymbolKind {
@@ -81,6 +92,8 @@ impl SymbolKind {
             SymbolKind::Const => "const",
             SymbolKind::Static => "static",
             SymbolKind::Macro => "macro",
+            SymbolKind::Class => "class",
+            SymbolKind::Interface => "interface",
         }
     }
 }
@@ -145,8 +158,55 @@ pub struct FileIndex {
     pub references: Vec<Reference>,
 }
 
+/// A source language the extractor supports. Adding one is a grammar
+/// ([`Language::grammar`]) + a capture query ([`Language::query`]); the rest of
+/// the pipeline is language-agnostic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Language {
+    /// Rust (`.rs`).
+    Rust,
+    /// Python (`.py`, `.pyi`).
+    Python,
+    /// TypeScript (`.ts`, `.mts`, `.cts`) and TSX (`.tsx`).
+    TypeScript,
+    /// TSX (`.tsx`) - TypeScript with JSX; a distinct grammar.
+    Tsx,
+}
+
+impl Language {
+    /// The stable lowercase tag stored on the `code.indexed` payload + the graph.
+    pub fn as_key(self) -> &'static str {
+        match self {
+            // TSX is TypeScript-with-JSX; it tags as `typescript` in the graph
+            // (same language, the grammar split is an internal parsing detail).
+            Language::Rust => "rust",
+            Language::Python => "python",
+            Language::TypeScript | Language::Tsx => "typescript",
+        }
+    }
+
+    /// The tree-sitter grammar for this language.
+    fn grammar(self) -> tree_sitter::Language {
+        match self {
+            Language::Rust => tree_sitter_rust::LANGUAGE.into(),
+            Language::Python => tree_sitter_python::LANGUAGE.into(),
+            Language::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            Language::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
+        }
+    }
+
+    /// The capture query that tags this language's definitions + references.
+    fn query(self) -> &'static str {
+        match self {
+            Language::Rust => RUST_QUERY,
+            Language::Python => PYTHON_QUERY,
+            Language::TypeScript | Language::Tsx => TYPESCRIPT_QUERY,
+        }
+    }
+}
+
 /// The tree-sitter query that captures Rust definitions + references in one pass.
-/// Each pattern tags its capture so [`extract_rust`] can classify it. Methods
+/// Each pattern tags its capture so [`extract`] can classify it. Methods
 /// (a `function_item` under an `impl_item`) are distinguished from free
 /// functions by matching the impl-nested shape separately.
 const RUST_QUERY: &str = r#"
@@ -171,6 +231,46 @@ const RUST_QUERY: &str = r#"
 (use_declaration) @use
 "#;
 
+/// Python definitions + references. A `function_definition` inside a class body
+/// is captured `@method`; the broad `@function` also matches it and the shared
+/// (name, line) dedup drops the duplicate (the [`SymbolKind::Method`] wins).
+/// Imported names are captured directly (the `@import` node IS the name), so no
+/// text-parse is needed (unlike Rust's `use`).
+const PYTHON_QUERY: &str = r#"
+; --- definitions ---
+(function_definition name: (identifier) @function)
+(class_definition body: (block (function_definition name: (identifier) @method)))
+(class_definition name: (identifier) @class)
+
+; --- references ---
+(call function: (identifier) @call)
+(call function: (attribute attribute: (identifier) @call))
+(import_statement name: (dotted_name (identifier) @import))
+(import_from_statement name: (dotted_name (identifier) @import))
+(aliased_import alias: (identifier) @import)
+"#;
+
+/// TypeScript (and TSX) definitions + references. `function_declaration` and
+/// `method_definition` are distinct node types, so methods need no dedup. Const
+/// arrow functions (`const f = () => {}`) are intentionally not captured here -
+/// they are ambiguous between a value and a function, a later refinement.
+const TYPESCRIPT_QUERY: &str = r#"
+; --- definitions ---
+(function_declaration name: (identifier) @function)
+(method_definition name: (property_identifier) @method)
+(class_declaration name: (type_identifier) @class)
+(interface_declaration name: (type_identifier) @interface)
+(enum_declaration name: (identifier) @enum)
+(type_alias_declaration name: (type_identifier) @type_alias)
+
+; --- references ---
+(call_expression function: (identifier) @call)
+(call_expression function: (member_expression property: (property_identifier) @call))
+(import_specifier name: (identifier) @import)
+(import_clause (identifier) @import)
+(namespace_import (identifier) @import)
+"#;
+
 /// Extract the [`FileIndex`] from one Rust source file, in isolation.
 ///
 /// Purely syntactic: no build, no other-file visibility. A malformed file yields
@@ -178,16 +278,16 @@ const RUST_QUERY: &str = r#"
 /// did recognise, never a panic. Definitions are deduplicated only by
 /// (name, kind, line); a genuinely duplicated name on different lines is kept
 /// (it is a real second definition the resolver must disambiguate).
-pub fn extract_rust(source: &str) -> FileIndex {
+pub fn extract(language: Language, source: &str) -> FileIndex {
     let mut parser = tree_sitter::Parser::new();
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-    if parser.set_language(&language).is_err() {
+    let grammar = language.grammar();
+    if parser.set_language(&grammar).is_err() {
         return FileIndex::default();
     }
     let Some(tree) = parser.parse(source, None) else {
         return FileIndex::default();
     };
-    let Ok(query) = tree_sitter::Query::new(&language, RUST_QUERY) else {
+    let Ok(query) = tree_sitter::Query::new(&grammar, language.query()) else {
         return FileIndex::default();
     };
 
@@ -216,6 +316,17 @@ pub fn extract_rust(source: &str) -> FileIndex {
                     for name in import_names(text) {
                         references.push(Reference {
                             name,
+                            kind: RefKind::Import,
+                            line,
+                        });
+                    }
+                }
+                "import" => {
+                    // Python / TypeScript: the captured node IS the imported
+                    // name (no text-parse), recorded as an import reference.
+                    if is_ident(text) {
+                        references.push(Reference {
+                            name: text.to_string(),
                             kind: RefKind::Import,
                             line,
                         });
@@ -263,6 +374,12 @@ pub fn extract_rust(source: &str) -> FileIndex {
     }
 }
 
+/// Extract a Rust file (the CG-R1 entry point, kept as the Rust-specific wrapper
+/// over the generalised [`extract`]).
+pub fn extract_rust(source: &str) -> FileIndex {
+    extract(Language::Rust, source)
+}
+
 /// Map a definition capture name to its [`SymbolKind`].
 fn symbol_kind(capture: &str) -> Option<SymbolKind> {
     Some(match capture {
@@ -276,6 +393,8 @@ fn symbol_kind(capture: &str) -> Option<SymbolKind> {
         "const" => SymbolKind::Const,
         "static" => SymbolKind::Static,
         "macro" => SymbolKind::Macro,
+        "class" => SymbolKind::Class,
+        "interface" => SymbolKind::Interface,
         _ => return None,
     })
 }
@@ -499,7 +618,88 @@ mod tests {
         assert_eq!(Confidence::Extracted.as_key(), "extracted");
         assert_eq!(Confidence::Ambiguous.as_key(), "ambiguous");
         assert_eq!(SymbolKind::TypeAlias.as_key(), "type_alias");
+        assert_eq!(SymbolKind::Class.as_key(), "class");
+        assert_eq!(SymbolKind::Interface.as_key(), "interface");
         assert_eq!(RefKind::Call.as_key(), "calls");
         assert_eq!(RefKind::Import.as_key(), "imports");
+        assert_eq!(Language::Rust.as_key(), "rust");
+        assert_eq!(Language::Python.as_key(), "python");
+        assert_eq!(Language::TypeScript.as_key(), "typescript");
+        assert_eq!(Language::Tsx.as_key(), "typescript", "tsx tags as typescript");
+    }
+
+    #[test]
+    fn extracts_python_definitions_and_references() {
+        let src = r#"
+import os
+from collections import OrderedDict
+from typing import List as L
+
+def helper(x):
+    return x
+
+class Widget:
+    def render(self):
+        helper(1)
+        os.getcwd()
+"#;
+        let idx = extract(Language::Python, src);
+        assert!(names_of(&idx, SymbolKind::Function).contains(&"helper"), "module function");
+        assert!(names_of(&idx, SymbolKind::Class).contains(&"Widget"), "class");
+        assert_eq!(names_of(&idx, SymbolKind::Method), vec!["render"], "class method");
+        assert!(!names_of(&idx, SymbolKind::Function).contains(&"render"), "method not double-counted");
+        let imports = refs_of(&idx, RefKind::Import);
+        assert!(imports.contains(&"os"), "plain import");
+        assert!(imports.contains(&"OrderedDict"), "from-import name");
+        assert!(imports.contains(&"L"), "aliased import binds the alias");
+        let calls = refs_of(&idx, RefKind::Call);
+        assert!(calls.contains(&"helper"), "direct call");
+        assert!(calls.contains(&"getcwd"), "attribute call");
+    }
+
+    #[test]
+    fn extracts_typescript_definitions_and_references() {
+        let src = r#"
+import { foo, bar } from "./mod";
+import baz from "pkg";
+import * as ns from "ns";
+
+interface Shape { area(): number; }
+type Id = string;
+enum Color { Red, Green }
+
+function freeFn(): void { foo(); }
+
+class Widget {
+    render(): void { bar(); ns.helper(); }
+}
+"#;
+        let idx = extract(Language::TypeScript, src);
+        assert!(names_of(&idx, SymbolKind::Function).contains(&"freeFn"), "function declaration");
+        assert!(names_of(&idx, SymbolKind::Class).contains(&"Widget"), "class");
+        assert!(names_of(&idx, SymbolKind::Method).contains(&"render"), "method");
+        assert!(names_of(&idx, SymbolKind::Interface).contains(&"Shape"), "interface");
+        assert!(names_of(&idx, SymbolKind::TypeAlias).contains(&"Id"), "type alias");
+        assert!(names_of(&idx, SymbolKind::Enum).contains(&"Color"), "enum");
+        let imports = refs_of(&idx, RefKind::Import);
+        assert!(imports.contains(&"foo") && imports.contains(&"bar"), "named imports");
+        assert!(imports.contains(&"baz"), "default import");
+        assert!(imports.contains(&"ns"), "namespace import");
+        let calls = refs_of(&idx, RefKind::Call);
+        assert!(calls.contains(&"foo"), "direct call");
+        assert!(calls.contains(&"helper"), "member call");
+    }
+
+    #[test]
+    fn tsx_grammar_parses_a_component() {
+        // The TSX grammar (distinct from plain TS) handles JSX in a .tsx file.
+        let src = r#"
+function App(): JSX.Element {
+    return <div>{greet()}</div>;
+}
+"#;
+        let idx = extract(Language::Tsx, src);
+        assert!(names_of(&idx, SymbolKind::Function).contains(&"App"));
+        assert!(refs_of(&idx, RefKind::Call).contains(&"greet"));
     }
 }

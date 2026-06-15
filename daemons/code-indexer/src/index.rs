@@ -3,11 +3,22 @@
 //! applies. Kept pure so the id scheme, the language filter and the
 //! project-scope check are unit-tested without a running bus or graph.
 
-use crate::extract::{FileIndex, SymbolKind};
+use crate::extract::{FileIndex, Language, SymbolKind};
 use os_sdk::proto::{CodeFileIndexPayload, CodeSymbolPayload};
 
-/// The language tag the Rust extractor produces.
-pub const RUST_LANGUAGE: &str = "rust";
+/// The source language for a path, by extension, or `None` if the file is not a
+/// supported source file (the daemon then skips it without spawning a parse).
+/// CG-R3: Rust, Python and TypeScript/TSX.
+pub fn language_for_path(path: &str) -> Option<Language> {
+    let ext = path.rsplit('.').next().filter(|_| path.contains('.'))?;
+    Some(match ext {
+        "rs" => Language::Rust,
+        "py" | "pyi" => Language::Python,
+        "ts" | "mts" | "cts" => Language::TypeScript,
+        "tsx" => Language::Tsx,
+        _ => return None,
+    })
+}
 
 /// The most symbols promoted from one file. A generated / minified `.rs` can
 /// declare tens of thousands of symbols; the §6 anti-Nepomuk budget caps the
@@ -33,11 +44,6 @@ pub fn symbol_id(source_file: &str, kind: SymbolKind, name: &str, line: usize, c
 /// comfortably covers hand-written source; minified / generated blobs above it
 /// are skipped (and logged), never read.
 pub const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
-
-/// Whether a path is a Rust source file (CG-R1 is Rust-first).
-pub fn is_rust_file(path: &str) -> bool {
-    path.ends_with(".rs")
-}
 
 /// Directory names whose contents are never indexed even when they sit under a
 /// project root: build outputs, dependency caches and VCS metadata.
@@ -103,7 +109,7 @@ pub fn path_under_any(path: &str, roots: &[String]) -> bool {
 /// 1-based line as `source_location`. The references (calls/imports) the extractor
 /// found are NOT carried here: cross-file resolution is CG-R2, so CG-R1 promotes
 /// only the definitions and their File fusion.
-pub fn build_payload(source_file: &str, index: &FileIndex) -> CodeFileIndexPayload {
+pub fn build_payload(source_file: &str, language: Language, index: &FileIndex) -> CodeFileIndexPayload {
     let mut seen = std::collections::HashSet::new();
     let symbols = index
         .symbols
@@ -128,7 +134,7 @@ pub fn build_payload(source_file: &str, index: &FileIndex) -> CodeFileIndexPaylo
         .collect();
     CodeFileIndexPayload {
         source_file: source_file.to_string(),
-        language: RUST_LANGUAGE.to_string(),
+        language: language.as_key().to_string(),
         symbols,
     }
 }
@@ -168,11 +174,18 @@ mod tests {
         );
     }
 
+
     #[test]
-    fn rust_filter_matches_only_dot_rs() {
-        assert!(is_rust_file("/p/src/lib.rs"));
-        assert!(!is_rust_file("/p/README.md"));
-        assert!(!is_rust_file("/p/build.rs.bak"));
+    fn language_is_detected_by_extension() {
+        assert_eq!(language_for_path("/p/src/lib.rs"), Some(Language::Rust));
+        assert_eq!(language_for_path("/p/app.py"), Some(Language::Python));
+        assert_eq!(language_for_path("/p/types.pyi"), Some(Language::Python));
+        assert_eq!(language_for_path("/p/index.ts"), Some(Language::TypeScript));
+        assert_eq!(language_for_path("/p/mod.mts"), Some(Language::TypeScript));
+        assert_eq!(language_for_path("/p/App.tsx"), Some(Language::Tsx));
+        assert_eq!(language_for_path("/p/README.md"), None);
+        assert_eq!(language_for_path("/p/Makefile"), None, "no extension");
+        assert_eq!(language_for_path("/p/.gitignore"), None, "dotfile, not a .rs/.py/.ts");
     }
 
     #[test]
@@ -218,7 +231,7 @@ mod tests {
             ],
             references: vec![],
         };
-        let payload = build_payload("/p/lib.rs", &index);
+        let payload = build_payload("/p/lib.rs", Language::Rust, &index);
         assert_eq!(payload.source_file, "/p/lib.rs");
         assert_eq!(payload.language, "rust");
         assert_eq!(payload.symbols.len(), 2);
@@ -233,7 +246,7 @@ mod tests {
         // both ship - a duplicate primary key would stall promotion. Only one is kept.
         let dup = Symbol { name: "x".into(), kind: SymbolKind::Method, line: 1, column: 8 };
         let index = FileIndex { symbols: vec![dup.clone(), dup], references: vec![] };
-        assert_eq!(build_payload("/p/lib.rs", &index).symbols.len(), 1, "colliding id dropped");
+        assert_eq!(build_payload("/p/lib.rs", Language::Rust, &index).symbols.len(), 1, "colliding id dropped");
 
         // A file past the cap is truncated to MAX_SYMBOLS_PER_FILE (each id distinct
         // by column here), and was_truncated reports it.
@@ -242,6 +255,6 @@ mod tests {
             .collect();
         let big = FileIndex { symbols: many, references: vec![] };
         assert!(was_truncated(&big), "over-cap file is flagged");
-        assert_eq!(build_payload("/p/lib.rs", &big).symbols.len(), MAX_SYMBOLS_PER_FILE, "capped");
+        assert_eq!(build_payload("/p/lib.rs", Language::Rust, &big).symbols.len(), MAX_SYMBOLS_PER_FILE, "capped");
     }
 }
