@@ -69,6 +69,33 @@ fn peer_uid(stream: &UnixStream) -> Option<u32> {
     stream.peer_cred().ok().map(|cred| cred.uid())
 }
 
+/// Resolve whether the connected peer is an attested system-tier producer.
+///
+/// The peer's PID comes from `SO_PEERCRED` (kernel-attested, not self-declared);
+/// its `/proc/<pid>/exe` install path is classified by [`detect_tier`]. A
+/// system-tier producer is a root-owned binary under `/usr/bin/arlen-*` or
+/// `/usr/lib/arlen/...` (the eBPF kernel-layer, the compositor, the daemons).
+///
+/// Only the system tier is exempt from the EBK-2 uid restamp: the kernel-layer
+/// observes the whole machine and legitimately forwards events stamped with the
+/// *observed* process's uid, so overwriting that with its own peercred uid would
+/// collapse every kernel event onto one user and break per-user routing. Any
+/// resolution failure (no peercred, unreadable `/proc`) returns `false`
+/// (non-system), the fail-safe: a producer that cannot prove a system identity
+/// has its uid restamped from peercred.
+fn peer_is_system_producer(stream: &UnixStream) -> bool {
+    let Ok(cred) = stream.peer_cred() else {
+        return false;
+    };
+    let Some(pid) = cred.pid() else {
+        return false;
+    };
+    let Ok(exe) = std::fs::read_link(format!("/proc/{pid}/exe")) else {
+        return false;
+    };
+    arlen_permissions::detect_tier(&exe) == arlen_permissions::AppTier::System
+}
+
 /// Handle a single producer connection.
 /// Reads length-prefixed protobuf messages, stamps the UID from `SO_PEERCRED`,
 /// validates them, and dispatches.
@@ -77,7 +104,14 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
         warn!("could not read producer SO_PEERCRED, dropping connection");
         return Ok(());
     };
-    debug!(uid = producer_uid, "new producer connection");
+    // Resolved once at connect: peercred is fixed for the connection's life, so
+    // the tier never changes mid-stream. Drives the EBK-2 uid-restamp exemption.
+    let is_system_producer = peer_is_system_producer(&stream);
+    debug!(
+        uid = producer_uid,
+        system = is_system_producer,
+        "new producer connection"
+    );
 
     loop {
         let mut len_buf = [0u8; 4];
@@ -101,14 +135,17 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
 
         match Event::decode(buf.as_slice()) {
             Ok(mut event) => {
-                // Backfill the UID from SO_PEERCRED only when the producer left
-                // it unset (zero): the kernel-attested uid fills a self-declared
-                // zero. It does NOT override a non-zero self-declared uid, so a
-                // producer can still stamp another user's uid here (forgery is
-                // not yet prevented). Making the kernel-attested cred always win
-                // (or rejecting a mismatching self-declared uid) needs the
-                // producer-trust model and is the deferred fix (review EBK-2).
-                if event.uid == 0 && producer_uid != 0 {
+                // EBK-2: a non-system producer's uid is ALWAYS the
+                // kernel-attested SO_PEERCRED uid, overwriting any self-declared
+                // value, so a user app cannot stamp another user's uid to forge
+                // the source of an event. The system tier is exempt: the eBPF
+                // kernel-layer observes the whole machine and forwards events
+                // stamped with the observed process's uid, which must survive
+                // (overwriting it would collapse every kernel event onto the
+                // kernel-layer's own uid and break per-user routing). A producer
+                // whose identity could not be attested resolves as non-system,
+                // so it is restamped — fail-safe.
+                if !is_system_producer {
                     event.uid = producer_uid;
                 }
 
@@ -225,6 +262,20 @@ mod tests {
             uid,
             Some(expected),
             "peer_uid should return the current user's UID"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_peer_is_system_producer_false_for_non_system_binary() {
+        // The peer of a socket pair is this test binary, which runs from a
+        // cargo `target/` path — not `/usr/bin/arlen-*` or `/usr/lib/arlen/`.
+        // It must classify as non-system, so its events get the EBK-2 uid
+        // restamp. This also exercises the /proc/<pid>/exe resolution path and
+        // the fail-safe (an unresolvable peer is non-system).
+        let (sock_a, _sock_b) = tokio::net::UnixStream::pair().unwrap();
+        assert!(
+            !peer_is_system_producer(&sock_a),
+            "a non-system-path peer must not be treated as a system producer"
         );
     }
 }

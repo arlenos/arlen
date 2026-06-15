@@ -8,6 +8,10 @@ name = "event-bus"
 path = "src/main.rs"
 
 [dependencies]
+# Resolve the peer's attested app_id + tier (SO_PEERCRED pid → /proc/<pid>/exe →
+# path_to_app_id / detect_tier) so producer trust keys on the attested identity,
+# not a self-declared field (GAP-17 / EBK-2).
+arlen-permissions = { path = "../../sdk/permissions" }
 tokio = { version = "1", features = ["full"] }
 prost = "0.13"
 uuid = { version = "1", features = ["v7"] }
