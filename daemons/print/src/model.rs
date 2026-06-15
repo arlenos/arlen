@@ -168,12 +168,21 @@ fn host_of(uri: &str) -> Option<String> {
 }
 
 /// Whether a host string is the loopback / this-host (so a queue there is local).
+///
+/// An IP literal is checked NUMERICALLY (`127.0.0.0/8` and `::1` are loopback,
+/// per [`std::net::IpAddr::is_loopback`]); a non-IP host matches only the exact
+/// loopback names. This deliberately does NOT prefix-match `127.` on the raw
+/// string: a DNS host like `127.evil.com` or `127.0.0.1.evil.com` is a PUBLIC
+/// name that must classify Network, not Local - misclassifying it Local would
+/// hide the print-as-egress (the §4.2 boundary), so the parse-as-IP path is the
+/// only way a `127.x` value is trusted as loopback.
 fn is_loopback_host(host: &str) -> bool {
-    host == "localhost"
-        || host == "127.0.0.1"
-        || host.starts_with("127.")
-        || host == "::1"
-        || host == "ip6-localhost"
+    // Strip an IPv6 zone id (e.g. `fe80::1%eth0`) before parsing.
+    let bare = host.split('%').next().unwrap_or(host);
+    if let Ok(ip) = bare.parse::<std::net::IpAddr>() {
+        return ip.is_loopback();
+    }
+    matches!(host, "localhost" | "ip6-localhost" | "localhost.localdomain")
 }
 
 /// A configured printer queue.
@@ -279,7 +288,20 @@ mod tests {
         // A queue on this host is local even over ipp.
         assert_eq!(classify_destination("ipp://localhost:631/printers/PDF"), Destination::Local);
         assert_eq!(classify_destination("ipp://127.0.0.1/printers/X"), Destination::Local);
+        assert_eq!(classify_destination("ipp://127.0.0.2/printers/X"), Destination::Local, "all of 127/8 is loopback");
         assert_eq!(classify_destination("https://[::1]:631/ipp/print"), Destination::Local);
+        assert_eq!(classify_destination("https://[0:0:0:0:0:0:0:1]/ipp/print"), Destination::Local, "long-form ::1");
+    }
+
+    #[test]
+    fn a_dns_host_beginning_127_is_network_not_loopback() {
+        // The egress-hiding trap: a public DNS name that merely starts `127.`
+        // (or embeds the loopback IP as a subdomain) must NOT be treated as
+        // loopback - that would hide the print-as-egress.
+        assert_eq!(classify_destination("ipp://127.evil.com/ipp/print"), Destination::Network);
+        assert_eq!(classify_destination("ipp://127.0.0.1.evil.com/ipp/print"), Destination::Network);
+        assert_eq!(classify_destination("ipp://127.0.0.1456/ipp/print"), Destination::Network, "not a valid IP");
+        assert_eq!(classify_destination("ipps://localhost.evil.com/ipp/print"), Destination::Network);
     }
 
     #[test]
