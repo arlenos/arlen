@@ -15,14 +15,15 @@ async-trait = "0.1"
 # implementation, behind the `cups` feature so the default build and CI test the
 # pure model + the mock backend without pulling reqwest/TLS. The live IPP
 # round-trips are verified against a running cupsd on hardware (like PWR-R2).
-ipp = { version = "6", optional = true }
+ipp = { version = "6", optional = true, default-features = false, features = ["async-client"] }
+futures-util = { version = "0.3", optional = true, default-features = false, features = ["io"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 [features]
-cups = ["dep:ipp", "dep:tokio"]
+cups = ["dep:ipp", "dep:tokio", "dep:futures-util"]
 # Expose MockBackend to dependent crates' tests (the portal backend, PRN-R2).
 mock = []
 
