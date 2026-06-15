@@ -41,6 +41,12 @@ pub const QUERY_TOOL: &str = "query";
 /// can write valid Cypher without guessing labels.
 pub const SCHEMA_TOOL: &str = "describe_schema";
 
+/// Code-graph analysis tool (CG-R5): the token-free god-symbols + surprises over
+/// the whole `CodeSymbol` call graph. The daemon gates it to system-anchored
+/// callers; over MCP the agent reaches it as `knowledge-mcp` (a FirstParty
+/// principal), so a third-party app cannot use the agent as a proxy for it.
+pub const CODE_ANALYSIS_TOOL: &str = "code_analysis";
+
 /// System fallback path of the knowledge daemon's read-query socket, used
 /// when no env override and no per-user runtime dir is available.
 pub const DEFAULT_KNOWLEDGE_SOCKET: &str = "/run/arlen/knowledge.sock";
@@ -137,6 +143,23 @@ impl KnowledgeMcp {
             Arc::new(schema),
         )
     }
+
+    /// The MCP tool definition for the code-graph analysis (CG-R5). Takes no
+    /// arguments.
+    fn code_analysis_tool() -> Tool {
+        let schema: JsonObject = serde_json::from_value(serde_json::json!({
+            "type": "object",
+            "properties": {}
+        }))
+        .expect("the static code-analysis-tool input is a valid JSON object");
+        Tool::new_with_raw(
+            CODE_ANALYSIS_TOOL.to_owned(),
+            Some(Cow::Borrowed(
+                "Analyse the code graph: the god-symbols (the most-coupled functions/types by call degree) and surprises (the lone calls bridging two modules). Token-free graph metrics, returned as JSON {god_symbols, surprises} for explaining the codebase's structure.",
+            )),
+            Arc::new(schema),
+        )
+    }
 }
 
 /// Render the canonical graph schema as JSON: node labels with their typed
@@ -187,7 +210,7 @@ impl ServerHandler for KnowledgeMcp {
         // through the constructor rather than a struct literal.
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_instructions(
-                "Read-only access to the Arlen Knowledge Graph. 'describe_schema' lists the queryable node and edge types; 'query' runs a read Cypher query and returns the matching rows.",
+                "Read-only access to the Arlen Knowledge Graph. 'describe_schema' lists the queryable node and edge types; 'query' runs a read Cypher query and returns the matching rows; 'code_analysis' returns the code graph's god-symbols and surprises.",
             )
     }
 
@@ -199,6 +222,7 @@ impl ServerHandler for KnowledgeMcp {
         Ok(ListToolsResult::with_all_items(vec![
             Self::query_tool(),
             Self::schema_tool(),
+            Self::code_analysis_tool(),
         ]))
     }
 
@@ -230,6 +254,19 @@ impl ServerHandler for KnowledgeMcp {
                     ))])),
                 }
             }
+            CODE_ANALYSIS_TOOL => match self.graph.code_analysis().await {
+                Ok(analysis) => {
+                    let json =
+                        serde_json::to_string(&analysis).unwrap_or_else(|_| "{}".to_string());
+                    Ok(CallToolResult::success(vec![Content::text(json)]))
+                }
+                // A denied (not system-anchored) or failed analysis is a clean
+                // tool error, not a transport error: the caller sees the reason
+                // and the connection stays up.
+                Err(err) => Ok(CallToolResult::error(vec![Content::text(format!(
+                    "code analysis failed: {err}"
+                ))])),
+            },
             other => Err(McpError::invalid_request(
                 format!("unknown tool: {other}"),
                 None,
@@ -248,14 +285,27 @@ mod tests {
     }
 
     #[test]
+    fn code_analysis_tool_is_named_and_takes_no_args() {
+        let tool = KnowledgeMcp::code_analysis_tool();
+        assert_eq!(tool.name, CODE_ANALYSIS_TOOL);
+        let schema = serde_json::to_value(&*tool.input_schema).unwrap();
+        // No required arguments: the op is selected by name alone.
+        assert!(schema.get("required").is_none());
+        assert_eq!(schema["properties"], serde_json::json!({}));
+    }
+
+    #[test]
     fn schema_json_lists_every_node_and_edge() {
         let v = schema_json();
         let nodes = v["nodes"].as_array().expect("nodes array");
         let edges = v["edges"].as_array().expect("edges array");
-        // Mirrors the counts asserted in ai-core's graph_schema tests, so a
-        // schema change there surfaces here too.
-        assert_eq!(nodes.len(), 10, "all node labels rendered");
-        assert_eq!(edges.len(), 7, "all edge labels rendered");
+        // Render EVERY label the canonical schema declares, dropping none.
+        // Counted against the schema itself rather than a hardcoded number, so
+        // adding a node/edge type (e.g. the CodeSymbol/CALLS code graph) never
+        // silently desyncs this test from the schema it mirrors.
+        let schema = GraphSchema::knowledge_graph();
+        assert_eq!(nodes.len(), schema.node_labels().count(), "all node labels rendered");
+        assert_eq!(edges.len(), schema.edge_labels().count(), "all edge labels rendered");
         assert!(nodes.iter().any(|n| n["label"] == "File"), "File node present");
         assert!(
             edges.iter().all(|e| e["from"].is_string() && e["to"].is_string()),
