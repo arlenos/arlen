@@ -40,6 +40,7 @@ dependencies = [
  "arlen-ai-core",
  "arlen-ai-providers",
  "arlen-ai-sandbox",
+ "arlen-ai-skills",
  "arlen-ai-undo-core",
  "arlen-ai-undo-proto",
  "async-trait",
@@ -176,6 +177,16 @@ dependencies = [
  "seccompiler",
  "thiserror 2.0.18",
  "tracing",
+]
+
+[[package]]
+name = "arlen-ai-skills"
+version = "0.1.0"
+dependencies = [
+ "arlen-ai-core",
+ "serde",
+ "serde_yaml",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

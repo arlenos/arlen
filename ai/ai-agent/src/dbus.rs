@@ -35,7 +35,7 @@ use zbus::interface;
 
 use crate::config::AgentConfig;
 use crate::executor::{CompensationOutcome, Compensator};
-use crate::loader::ai_config_path;
+use crate::discovery::ai_config_path;
 use crate::receipt_store::{ReceiptStore, RetainedReceipt};
 use crate::seams::GraphHandle;
 
@@ -237,7 +237,7 @@ impl AgentInterface {
     /// doc); today's slices are ephemeral per gate decision.
     async fn working_set(&self) -> String {
         let status = load_status(&self.status).as_str();
-        let outcome = crate::loader::load_configured();
+        let outcome = crate::discovery::load_configured();
         let shape = crate::working_set::working_set_shape(status, &outcome);
         serde_json::to_string(&shape).unwrap_or_else(|_| "{}".to_string())
     }
@@ -250,7 +250,7 @@ impl AgentInterface {
     /// `working_set`), so a Settings change is reflected without a restart. The
     /// harness renders this list; running a picked skill is `run_skill`.
     async fn list_skills(&self) -> String {
-        let outcome = crate::loader::load_configured();
+        let outcome = crate::discovery::load_configured();
         let summaries = crate::skills::skill_summaries(&outcome.loaded);
         serde_json::to_string(&summaries).unwrap_or_else(|_| "[]".to_string())
     }
