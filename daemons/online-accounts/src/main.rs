@@ -3,8 +3,10 @@
 //! Loads the account configs (surfacing malformed ones rather than granting
 //! them) and serves the capability-gated D-Bus surface. Every method resolves the
 //! caller's app id and consults the gate, so an app reaches only its granted
-//! accounts. The per-account ObjectManager objects, the typed per-service
-//! interfaces and the Secret Service token handout build on this skeleton.
+//! accounts, and the token handout reads the encrypted vault only after the gate
+//! admits the caller. The per-account ObjectManager + typed per-service
+//! interfaces are deferred for a security reason (a naive same-uid enumeration
+//! would regress per-caller visibility); see the crate docs.
 
 use online_accounts::dbus::AccountsDaemon;
 use online_accounts::vault::{vault_dir, Vault};
