@@ -493,3 +493,16 @@ message AudioStatePayload {
   bool   muted               = 4;  // default sink mute
   bool   device_list_changed = 5;  // true when the device set changed
 }
+
+// A coarse system-service transition parsed from the systemd journal (the
+// journald Tier-2 ingestion, source "journald"). Event type: "system.service".
+// Carries only service-level lifecycle facts (a network device up/down, a
+// bluetooth device connect/disconnect, a login session open/close) and
+// deliberately NO sensitive detail: never a network SSID (the movement-profile
+// line system-services-plan.md draws), never a credential. Raw-tier ingestion
+// only; not graph-promoted by default.
+message ServiceEventPayload {
+  string service = 1;  // normalized origin: "network" | "bluetooth" | "session"
+  string kind    = 2;  // the transition, e.g. "device-up"|"device-down"|"connected"|"disconnected"|"session-opened"|"session-closed"
+  string detail  = 3;  // a coarse non-sensitive id (an interface name, a session id); never an SSID or secret
+}
