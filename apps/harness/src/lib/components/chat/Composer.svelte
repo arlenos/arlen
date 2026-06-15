@@ -342,6 +342,10 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-card);
     background: var(--color-bg-card);
+    /* The items hug the inside; their corners follow this radius minus the
+       0.25rem padding (rounding-fix.md). */
+    --container-radius: var(--radius-card);
+    --container-inset: 0.25rem;
     z-index: 20;
   }
   .mention-item {
@@ -356,7 +360,7 @@
     color: var(--foreground);
     font-size: 0.8125rem;
     text-align: left;
-    border-radius: var(--radius-chip);
+    border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
   }
   .mention-item.active {
     background: color-mix(in srgb, var(--foreground) 8%, transparent);

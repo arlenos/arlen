@@ -131,6 +131,10 @@
     gap: 2px;
     padding: 2px;
     border-radius: var(--radius-input);
+    /* The pills hug the inside; their corners follow this radius minus the
+       2px padding (rounding-fix.md). */
+    --container-radius: var(--radius-input);
+    --container-inset: 2px;
     background: var(--control-bg);
     border: 1px solid var(--control-border);
   }
@@ -144,7 +148,7 @@
     font-weight: 500;
     padding: 4px 12px;
     min-height: calc(var(--height-control, 28px) - 6px);
-    border-radius: calc(var(--radius-input) - 2px);
+    border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
     transition:
       background-color var(--duration-fast) var(--ease-out),
       color var(--duration-fast) var(--ease-out),

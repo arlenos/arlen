@@ -90,6 +90,10 @@
     min-width: 16rem;
     padding: 0.25rem;
     border-radius: var(--radius-input);
+    /* The menu items hug the inside; their corners follow this radius
+       minus the 0.25rem padding (rounding-fix.md). */
+    --container-radius: var(--radius-input);
+    --container-inset: 0.25rem;
     background: var(--color-bg-shell);
     border: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
     box-shadow: var(--shadow-md);

@@ -304,6 +304,10 @@
     overflow-y: auto;
     padding: 4px;
     border-radius: var(--radius-input);
+    /* Concentric nesting: the items hug the menu's inside, so their corners
+       follow the menu radius minus the 4px padding. */
+    --container-radius: var(--radius-input);
+    --container-inset: 4px;
     background: color-mix(in srgb, var(--background) 92%, var(--foreground) 8%);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 15%, transparent);
@@ -333,7 +337,7 @@
     padding: 0 0.625rem 0 0.75rem;
     border: none;
     background: transparent;
-    border-radius: var(--radius-input);
+    border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
     font-family: inherit;
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
