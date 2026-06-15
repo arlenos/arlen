@@ -192,6 +192,16 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-ai-agent" => {
             return Ok("ai-agent".to_string());
         }
+        // The online-accounts daemon, pinned canonically so its credential-handout
+        // audit (GAP-2) submits under the stable id `online-accounts`, the id the
+        // audit daemon's ADMITTED allowlist keys on. Rule (2) covers only
+        // /usr/bin/arlen-*, not /usr/lib/arlen/libexec, so without this entry the
+        // daemon resolves to UnknownBinary and its audit is silently refused. The
+        // root-owned system path is attested (not the same-uid-spoofable residual
+        // the $HOME-libexec daemons carry).
+        "/usr/lib/arlen/libexec/arlen-accountsd" => {
+            return Ok("online-accounts".to_string());
+        }
         // The Settings app, pinned canonically so it resolves to the stable
         // app_id `settings` (not the spoofable basename). The Living Capability
         // Graph revoke socket op admits only this app id (living-capability-graph.md
@@ -511,6 +521,24 @@ mod tests {
             assert!(
                 path_to_app_id(&PathBuf::from(spoofed)).is_err(),
                 "spoofed agent path {spoofed} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn test_app_id_from_path_online_accounts_canonical_libexec() {
+        // The accounts daemon's canonical binary must resolve to `online-accounts`,
+        // the id the audit daemon's ADMITTED allowlist keys on for the GAP-2
+        // credential-handout audit. Without this it resolves to UnknownBinary and
+        // the audit is silently refused.
+        let path = PathBuf::from("/usr/lib/arlen/libexec/arlen-accountsd");
+        assert_eq!(path_to_app_id(&path).unwrap(), "online-accounts");
+
+        // A same-basename binary in a writable location must not impersonate it.
+        for spoofed in ["/tmp/arlen-accountsd", "/home/attacker/arlen-accountsd"] {
+            assert!(
+                path_to_app_id(&PathBuf::from(spoofed)).is_err(),
+                "spoofed accountsd path {spoofed} must be rejected"
             );
         }
     }

@@ -42,6 +42,18 @@ impl Service {
             _ => return None,
         })
     }
+
+    /// The lowercase wire name (the inverse of [`parse`]). Used as a coarse,
+    /// content-free service label in the credential-handout audit.
+    pub fn as_key(&self) -> &'static str {
+        match self {
+            Service::Files => "files",
+            Service::Calendar => "calendar",
+            Service::Mail => "mail",
+            Service::Contacts => "contacts",
+            Service::Photos => "photos",
+        }
+    }
 }
 
 /// One per-app capability grant: which app may use which of this account's

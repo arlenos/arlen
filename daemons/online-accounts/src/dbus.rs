@@ -25,8 +25,10 @@
 
 use std::path::PathBuf;
 
+use audit_proto::{AuditSink, LedgerAuditSink};
 use zbus::interface;
 
+use crate::audit::credential_handout_event;
 use crate::config::{self, AccountConfig, Service};
 use crate::gate::{Access, AccessGate};
 use crate::vault::Vault;
@@ -37,6 +39,9 @@ use crate::vault::Vault;
 pub struct AccountsDaemon {
     accounts_dir: PathBuf,
     vault: Vault,
+    /// Content-free audit of the credential handout (GAP-2). One fresh one-shot
+    /// connection per submit, against the canonical ingest socket.
+    audit: LedgerAuditSink,
 }
 
 impl AccountsDaemon {
@@ -47,6 +52,7 @@ impl AccountsDaemon {
         Self {
             accounts_dir,
             vault,
+            audit: LedgerAuditSink::at_default_socket(),
         }
     }
 
@@ -125,6 +131,7 @@ impl AccountsDaemon {
         let Some(service) = Service::parse(&service) else {
             return Err(zbus::fdo::Error::AccessDenied("unknown service".into()));
         };
+        let service_key = service.as_key();
         let accounts = self.current_accounts();
         let scope = match AccessGate::new(&accounts).access(&caller, &account_id, service) {
             Access::Granted { scope } => scope.unwrap_or_default(),
@@ -141,11 +148,28 @@ impl AccountsDaemon {
         // channel leaks no provisioning state); fail-closed, no token leaks, no
         // panic.
         let unavailable = || zbus::fdo::Error::Failed("token unavailable".into());
-        match self.vault.load(&account_id) {
-            Ok(Some(bytes)) => String::from_utf8(bytes).map(|t| (t, scope)).map_err(|_| unavailable()),
-            Ok(None) => Err(unavailable()),
-            Err(_) => Err(unavailable()),
+        let token = match self.vault.load(&account_id) {
+            Ok(Some(bytes)) => match String::from_utf8(bytes) {
+                Ok(t) => t,
+                Err(_) => return Err(unavailable()),
+            },
+            Ok(None) => return Err(unavailable()),
+            Err(_) => return Err(unavailable()),
+        };
+        // GAP-2: record that a credential was released BEFORE handing it out, so
+        // no token leaves the daemon unaudited (S13 fail-closed: if the ledger is
+        // unreachable the handout fails rather than slipping through unrecorded).
+        // The record is content-free - caller + coarse service + outcome, never
+        // the token, the account id, or the credential value.
+        if self
+            .audit
+            .submit(credential_handout_event(&caller, service_key, "granted"))
+            .await
+            .is_err()
+        {
+            return Err(unavailable());
         }
+        Ok((token, scope))
     }
 }
 
