@@ -520,6 +520,42 @@ fn readable_system_labels(read_scopes: &[crate::token::EntityScope]) -> Vec<Stri
 /// the caller pairs it with `timing_noise()` so timing cannot either.
 const PROVENANCE_OUT_OF_SCOPE: &str = "ERROR: OutOfScope";
 
+/// The uniform denial for the code-analysis op (CG-R5): a caller that is not
+/// system-anchored may not run the whole-codebase analysis, and any failure
+/// returns the same shape (no oracle).
+const CODE_ANALYSIS_DENIED: &str = "ERROR: code analysis is not permitted for this caller";
+
+/// CG-R5: the whole-codebase analysis read — god-symbols (degree-centrality
+/// hubs) and surprises (sole cross-module call bridges) over the
+/// `CodeSymbol`/`CALLS` graph, token-free (no LLM; the AI explains on top).
+///
+/// Unlike the caller-scoped grant/provenance reads, this is an AGGREGATE over
+/// the entire code index, so it is gated to **system-anchored** callers (a
+/// resolved, non-`unknown` app id whose quota tier is above ThirdParty — the
+/// agent, the Knowledge app, Settings). That is the conservative default: a
+/// whole-codebase structural view (symbol ids are file paths) exceeds a
+/// ThirdParty app's per-label read scope, and denying it is always safe while
+/// widening later is the reversible direction. The result is the serialised
+/// [`crate::code_analysis::CodeAnalysis`]; every failure is the uniform denial.
+async fn handle_code_analysis(app_id: &str, graph: &GraphHandle) -> String {
+    let system_anchored = app_id != "unknown"
+        && QuotaConfig::arlen_default().tier_for_app(app_id) != AppTier::ThirdParty;
+    if !system_anchored {
+        return CODE_ANALYSIS_DENIED.to_string();
+    }
+    match crate::code_analysis::analyze_code_graph(
+        graph,
+        crate::code_analysis::DEFAULT_GOD_MIN_DEGREE,
+    )
+    .await
+    {
+        Ok(analysis) => {
+            serde_json::to_string(&analysis).unwrap_or_else(|_| CODE_ANALYSIS_DENIED.to_string())
+        }
+        Err(_) => CODE_ANALYSIS_DENIED.to_string(),
+    }
+}
+
 /// Co-tenant filter (provenance-halo.md §5): from an object's actor set, name
 /// only the caller's own access and collapse every foreign actor to a single
 /// "accessed by others" signal, so the provenance of a shared object never names
@@ -1676,6 +1712,40 @@ async fn handle_client(
             continue;
         }
 
+        // Code-analysis mode: a leading 0x09 byte selects the CG-R5 whole-codebase
+        // analysis (god-symbols + surprises over the CodeSymbol/CALLS graph,
+        // token-free). The handler gates it to system-anchored callers (the
+        // aggregate exceeds a ThirdParty's per-label read scope); query-rate-
+        // limited and 500 ms-bounded like the other read ops. NB 0x09 is the next
+        // free byte after 0x08 (typed read).
+        if buf.first() == Some(&0x09) {
+            let violation = {
+                let mut rs = rate.lock().await;
+                rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
+            };
+            let response = if let Some(reason) = violation {
+                format!("ERROR: RateLimited: {reason}")
+            } else {
+                match tokio::time::timeout(
+                    Duration::from_millis(500),
+                    handle_code_analysis(&app_id, &graph),
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(_elapsed) => CODE_ANALYSIS_DENIED.to_string(),
+                }
+            };
+            timing_noise().await;
+            let response_bytes = response.as_bytes();
+            let response_len = u32::try_from(response_bytes.len())
+                .expect("response too large")
+                .to_be_bytes();
+            stream.write_all(&response_len).await?;
+            stream.write_all(response_bytes).await?;
+            continue;
+        }
+
         // Access-grants mode: a leading 0x05 byte selects the caller-scoped grant
         // browse read (living-capability-graph.md §5). The caller's own grants
         // only (scoped by the attested app_id resolved at connect, never a request
@@ -2564,6 +2634,60 @@ mod tests {
         // An app with no grants gets an empty array, never an error or a leak.
         let none = handle_access_grants("com.c", &graph).await;
         assert_eq!(none, "[]", "no grants -> empty, not a leak: {none}");
+    }
+
+    #[tokio::test]
+    async fn code_analysis_is_gated_to_system_anchored_callers() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        // A small call graph: a.rs has a hub called by p, q, r, calling y in b.rs.
+        for id in [
+            "a.rs#fn:hub@1",
+            "a.rs#fn:p@2",
+            "a.rs#fn:q@3",
+            "a.rs#fn:r@4",
+            "b.rs#fn:y@5",
+        ] {
+            graph
+                .write(format!("CREATE (:CodeSymbol {{id: '{id}', name: 'n'}})"))
+                .await
+                .unwrap();
+        }
+        for (from, to) in [
+            ("a.rs#fn:p@2", "a.rs#fn:hub@1"),
+            ("a.rs#fn:q@3", "a.rs#fn:hub@1"),
+            ("a.rs#fn:r@4", "a.rs#fn:hub@1"),
+            ("a.rs#fn:hub@1", "b.rs#fn:y@5"),
+        ] {
+            graph
+                .write(format!(
+                    "MATCH (a:CodeSymbol {{id:'{from}'}}), (b:CodeSymbol {{id:'{to}'}}) \
+                     CREATE (a)-[:CALLS {{confidence:'extracted'}}]->(b)"
+                ))
+                .await
+                .unwrap();
+        }
+
+        // A resolved `unknown` and a ThirdParty app are denied the aggregate.
+        assert_eq!(handle_code_analysis("unknown", &graph).await, CODE_ANALYSIS_DENIED);
+        assert_eq!(
+            handle_code_analysis("com.example.thirdparty", &graph).await,
+            CODE_ANALYSIS_DENIED
+        );
+
+        // A system-anchored caller (the agent is FirstParty in the default quota
+        // config) receives the analysis as JSON, with the hub among the
+        // god-symbols (threshold default 5 is too high for this toy graph, so the
+        // analysis runs but flags no hub here; assert it parses and is the
+        // expected shape with the lone cross-module surprise).
+        let json = handle_code_analysis("ai-agent", &graph).await;
+        assert_ne!(json, CODE_ANALYSIS_DENIED, "the agent is system-anchored: {json}");
+        let v: serde_json::Value = serde_json::from_str(&json).expect("valid CodeAnalysis JSON");
+        assert!(v.get("god_symbols").is_some() && v.get("surprises").is_some());
+        let surprises = v["surprises"].as_array().unwrap();
+        assert_eq!(surprises.len(), 1, "the lone a.rs->b.rs bridge is the surprise: {json}");
+        assert_eq!(surprises[0]["from"], "a.rs#fn:hub@1");
+        assert_eq!(surprises[0]["to"], "b.rs#fn:y@5");
     }
 
     #[tokio::test]
