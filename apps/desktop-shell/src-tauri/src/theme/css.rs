@@ -63,6 +63,12 @@ pub fn to_css_variables(theme: &ArlenTheme, overrides: &UserOverrides) -> CssVar
     vars.insert("radius-card".into(),   format!("{}px", theme.effective_card()));
     vars.insert("radius-modal".into(),  format!("{}px", theme.effective_modal()));
     vars.insert("radius-full".into(),   format!("{}px", theme.effective_full()));
+    // The window-frame radius (rounding-fix.md PR-1): the single source for the
+    // app body's outer corners, matching the compositor-drawn header's top
+    // corners (both read `window_corners`) so the frame reads as one concentric
+    // shape. Uniform across corners, so the top-left ([0]) sets it; intensity is
+    // already applied by `effective_window_corners`.
+    vars.insert("radius-window".into(), format!("{}px", theme.effective_window_corners()[0]));
 
     // ── Spacing ──
     vars.insert("spacing-xs".into(), theme.spacing.xs.clone());
@@ -163,7 +169,7 @@ mod tests {
             "color-success", "color-warning", "color-error", "color-info",
             "color-border-default", "color-border-strong",
             "radius-chip", "radius-button", "radius-input",
-            "radius-card", "radius-modal", "radius-full",
+            "radius-card", "radius-modal", "radius-full", "radius-window",
             "spacing-xs", "spacing-sm", "spacing-md", "spacing-lg", "spacing-xl",
             "font-sans", "font-mono", "font-size-base", "line-height",
             "font-weight-normal", "font-weight-medium", "font-weight-bold",
@@ -197,6 +203,9 @@ mod tests {
         let css = to_css_variables(&theme, &UserOverrides::default());
         assert_eq!(css.variables.get("radius-chip"), Some(&"0px".into()));
         assert_eq!(css.variables.get("radius-button"), Some(&"0px".into()));
+        // The window-frame radius is intensity-scaled like the semantic radii,
+        // so a zero intensity sharpens it too (PR-1 single-source frame radius).
+        assert_eq!(css.variables.get("radius-window"), Some(&"0px".into()));
         // full STILL pill.
         assert_eq!(css.variables.get("radius-full"), Some(&"9999px".into()));
     }
