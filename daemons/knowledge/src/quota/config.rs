@@ -113,12 +113,31 @@ impl QuotaConfig {
         }
     }
 
+    // (debug only) cargo-run id of an AI-layer daemon. A locally-built
+    // `ai-agent`/`ai-daemon` resolves via `path_to_app_id` rule (5) to
+    // `dev.arlen-ai-{agent,daemon}`, not the canonical `ai-agent`/`ai-daemon`,
+    // so it would otherwise tier as ThirdParty and the graph write gate would
+    // refuse the dev agent's writes. This admits exactly those two ids as
+    // FirstParty in debug builds — the write-side analog of the audit daemon's
+    // `dev.*` ADMITTED allowance — so the executor can be exercised against a
+    // dev/test graph. Compiled out of release (`debug_assertions`), where only
+    // the canonical attested ids tier FirstParty.
+    #[cfg(debug_assertions)]
+    fn is_dev_ai_id_impl(app_id: &str) -> bool {
+        matches!(app_id, "dev.arlen-ai-agent" | "dev.arlen-ai-daemon")
+    }
+    #[cfg(not(debug_assertions))]
+    fn is_dev_ai_id_impl(_app_id: &str) -> bool {
+        false
+    }
+
     /// Determine the tier for an app.
     pub fn tier_for_app(&self, app_id: &str) -> AppTier {
         if app_id == "system" || app_id.starts_with("system.") {
             AppTier::System
         } else if self.first_party_apps.contains(&app_id.to_string())
             || app_id.starts_with("org.arlen.")
+            || Self::is_dev_ai_id_impl(app_id)
         {
             AppTier::FirstParty
         } else {
@@ -170,6 +189,19 @@ mod tests {
         let c = config();
         assert_eq!(c.tier_for_app("com.anki"), AppTier::ThirdParty);
         assert_eq!(c.tier_for_app("org.zotero"), AppTier::ThirdParty);
+    }
+
+    #[test]
+    fn test_tier_dev_ai_id_is_first_party_in_debug() {
+        // Tests run under debug_assertions, so the dev cargo-run ids of the AI
+        // daemons tier FirstParty here (the write-side analog of the audit
+        // daemon admitting `dev.*` producers in debug). A non-AI `dev.*` id is
+        // unaffected and stays ThirdParty.
+        let c = QuotaConfig::arlen_default();
+        assert_eq!(c.tier_for_app("dev.arlen-ai-agent"), AppTier::FirstParty);
+        assert_eq!(c.tier_for_app("dev.arlen-ai-daemon"), AppTier::FirstParty);
+        assert_eq!(c.tier_for_app("dev.arlen-knowledge"), AppTier::ThirdParty);
+        assert_eq!(c.tier_for_app("dev.evil"), AppTier::ThirdParty);
     }
 
     #[test]
