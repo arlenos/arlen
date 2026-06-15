@@ -445,8 +445,13 @@ async fn promote_code_indexed(graph: &GraphHandle, payload: &[u8]) -> Result<()>
     // The fusion anchor: the File node the symbols hang off (the activity graph
     // already carries its provenance/project/timeline).
     stmts.push(format!("MERGE (f:File {{id: '{file_esc}'}})"));
+    // Defence in depth at the write boundary: a duplicate id in the payload would
+    // make two `CREATE`s collide on the primary key, failing the whole transaction
+    // and stalling ALL promotion. The daemon already dedups, but a crafted bus
+    // message must not be able to wedge the pipeline - skip a repeated id here too.
+    let mut seen_ids = std::collections::HashSet::new();
     for sym in &p.symbols {
-        if sym.id.is_empty() || sym.name.is_empty() {
+        if sym.id.is_empty() || sym.name.is_empty() || !seen_ids.insert(sym.id.as_str()) {
             continue;
         }
         let id_esc = escape_cypher(&sym.id);
@@ -962,6 +967,36 @@ mod shell_event_tests {
             .unwrap();
         let names: Vec<&str> = after.rows.iter().map(|r| r[0].as_str()).collect();
         assert_eq!(names, vec!["Widget"], "the file's symbols are replaced, not accumulated");
+    }
+
+    #[tokio::test]
+    async fn promote_code_indexed_dedups_duplicate_ids_without_stalling() {
+        // A crafted/duplicate-id payload must NOT fail the transaction (a duplicate
+        // primary key would stall ALL promotion). The promoter dedups, so it
+        // promotes one symbol and succeeds.
+        use crate::proto::CodeSymbolPayload;
+        let (graph, _tmp) = setup().await;
+        let dup = CodeSymbolPayload {
+            id: "/p/lib.rs#function:f@1:1".to_string(),
+            name: "f".to_string(),
+            source_location: "1:1".to_string(),
+            kind: "function".to_string(),
+        };
+        let payload = CodeFileIndexPayload {
+            source_file: "/p/lib.rs".to_string(),
+            language: "rust".to_string(),
+            symbols: vec![dup.clone(), dup],
+        };
+        let mut buf = Vec::new();
+        payload.encode(&mut buf).unwrap();
+        promote_code_indexed(&graph, &buf)
+            .await
+            .expect("a duplicate-id payload promotes without a transaction failure");
+        let rs = graph
+            .query_rows("MATCH (s:CodeSymbol {source_file:'/p/lib.rs'}) RETURN s.id AS i".into())
+            .await
+            .unwrap();
+        assert_eq!(rs.rows.len(), 1, "the duplicate id is collapsed to one node");
     }
 
     #[tokio::test]
