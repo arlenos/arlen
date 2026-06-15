@@ -1,0 +1,23 @@
+[package]
+name = "arlen-journald-parser"
+version = "0.1.0"
+edition = "2021"
+description = "Tier-2 ingestion daemon: follows the systemd journal for NetworkManager/bluetoothd/systemd-logind and emits coarse, non-sensitive system.service events onto the event bus (foundation-gap-audit journald parser)"
+
+[[bin]]
+name = "arlen-journald-parser"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "io-util", "process"] }
+serde_json = "1"
+prost = "0.13"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+sd-notify = "0.4"
+
+# The event-bus producer emitter + the generated ServiceEventPayload type.
+os-sdk = { path = "../../sdk/os-sdk" }
