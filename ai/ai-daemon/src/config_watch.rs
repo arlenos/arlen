@@ -164,6 +164,7 @@ fn fail_closed(service: &AiDaemonService) {
     // concurrent query cannot catch a half-applied transition.
     service.set_admission(
         false,
+        access_tier_from_level(0),
         QueryScope::for_tier(access_tier_from_level(0), &GraphSchema::knowledge_graph()),
     );
 }
@@ -204,11 +205,9 @@ fn apply_config(service: &AiDaemonService, cfg: &Config) {
     let enabled = cfg.get::<bool>("ai.enabled").unwrap_or(false);
     let level = read_access_level(cfg);
     let effective_level = if enabled { level } else { 0 };
-    let scope = QueryScope::for_tier(
-        access_tier_from_level(effective_level),
-        &GraphSchema::knowledge_graph(),
-    );
-    service.set_admission(enabled, scope);
+    let tier = access_tier_from_level(effective_level);
+    let scope = QueryScope::for_tier(tier, &GraphSchema::knowledge_graph());
+    service.set_admission(enabled, tier, scope);
     tracing::info!(enabled, access_level = level, "ai.toml applied");
 }
 
