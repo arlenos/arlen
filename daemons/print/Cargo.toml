@@ -1,0 +1,29 @@
+[package]
+name = "arlen-print"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen CUPS/IPP integration backend (printing-plan.md PRN-R1): enumerate printers, submit jobs, query the queue, driverless discovery, plus the local-vs-network classification and the coarse print-audit. The portal Print backend (PRN-R2) and the Settings Printers panel build on this."
+authors = ["Arlen"]
+
+[lib]
+name = "arlen_print"
+
+[dependencies]
+audit-proto = { path = "../../contracts/audit-proto" }
+async-trait = "0.1"
+# The real CUPS client links no C library: `ipp` is a pure-Rust async IPP
+# implementation, behind the `cups` feature so the default build and CI test the
+# pure model + the mock backend without pulling reqwest/TLS. The live IPP
+# round-trips are verified against a running cupsd on hardware (like PWR-R2).
+ipp = { version = "6", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[features]
+cups = ["dep:ipp", "dep:tokio"]
+# Expose MockBackend to dependent crates' tests (the portal backend, PRN-R2).
+mock = []
+
+[workspace]
