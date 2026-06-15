@@ -225,6 +225,32 @@ impl EphemeralStack {
         std::fs::write(self.permissions_dir().join(format!("{app_id}.toml")), toml)
     }
 
+    /// Seed the agent's executor go-live profile: the exact `[graph]` grant the
+    /// shipped `ai-agent.toml` carries for the auto-tag workflow — read scope on
+    /// File/Project, the single `FILE_PART_OF` relation, and `instance_scope =
+    /// "all"` (both endpoints are system-owned nodes the agent does not own, so
+    /// linking them needs the privileged all-instances scope, or the write
+    /// socket refuses the relation as unanchored). Used by the live-executor
+    /// scenario so the dev agent (FirstParty in debug) can actually write the
+    /// edge. Mirrors `seed_full_profile_for`'s `[info]` shape so it also parses
+    /// under `ConnectionAuth` (the agent connects to the audit daemon too).
+    pub fn seed_executor_profile_for(&self, app_id: &str, tier: &str) -> std::io::Result<()> {
+        let toml = format!(
+            "[info]\napp_id = \"{app_id}\"\ntier = \"{tier}\"\n\n\
+             [graph]\nread = [\n\
+             \x20   \"system.File.id\",\n\
+             \x20   \"system.File.path\",\n\
+             \x20   \"system.Project.id\",\n\
+             \x20   \"system.Project.root_path\",\n\
+             ]\n\
+             relations = [\n\
+             \x20   {{ from = \"system.File\", to = \"system.Project\", type = \"FILE_PART_OF\" }},\n\
+             ]\n\
+             instance_scope = \"all\"\n"
+        );
+        std::fs::write(self.permissions_dir().join(format!("{app_id}.toml")), toml)
+    }
+
     /// Write the agent's `ai.toml` into the private config home (the path the
     /// ai-agent resolves via `XDG_CONFIG_HOME`), so a scenario can enable a
     /// behaviour, set the read tier, and pick the action mode. Must be called

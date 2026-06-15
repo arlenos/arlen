@@ -958,6 +958,147 @@ async fn the_agent_audits_a_workflow_proposal_in_suggest_mode() {
     }
 }
 
+/// IT-1 live executor (PR-5 part 2): with `[agent] executor_live = true` in the
+/// EPHEMERAL ai.toml, the auto-tag workflow does not just propose — the live
+/// executor actually writes the `FILE_PART_OF` edge through the knowledge write
+/// socket (the atomic conditional create). The dev agent resolves to
+/// `dev.arlen-ai-agent`, which tiers FirstParty in a debug build, so it passes
+/// the write gate; its profile grants exactly the one `FILE_PART_OF` relation
+/// with `instance_scope = "all"` (the shipped go-live grant). The test reads the
+/// edge as an ordinary ThirdParty caller via an UNTYPED `(:File)-->(:Project)`
+/// match (FILE_PART_OF is the only File->Project edge), which references only the
+/// File/Project node labels its read grant covers, so it never trips the RS-R1
+/// rel-type gate. Idempotency: re-emitting the same file.opened leaves exactly
+/// one edge (the conditional create is a no-op on the second write). The
+/// PRODUCTION `executor_live` default is untouched (only this ephemeral ai.toml
+/// flips it); run/verify is Tim's (`#[ignore]d` + FUSE-host-gated).
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge + audit-daemon + ai-agent binaries built (debug, FUSE host)"]
+async fn the_live_executor_writes_a_file_part_of_edge() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+
+    // The agent's go-live grant: read File/Project + the single FILE_PART_OF
+    // relation at instance_scope all (the shipped ai-agent.toml shape). tier
+    // "first-party" satisfies the profile schema; the daemon tiers the dev agent
+    // FirstParty by its resolved id in debug.
+    let agent_exe = arlen_integration::binary_path("ai", "arlen-ai-agent");
+    let agent_app_id = arlen_permissions::identity::path_to_app_id(&agent_exe)
+        .expect("resolve the agent's app id");
+    stack
+        .seed_executor_profile_for(&agent_app_id, "first-party")
+        .expect("seed the agent's executor profile");
+
+    // The test reads the resulting edge under its OWN read grant on File/Project.
+    stack
+        .seed_read_profile(&[
+            "system.File.id",
+            "system.File.path",
+            "system.Project.id",
+            "system.Project.root_path",
+        ])
+        .expect("seed the test caller's read profile");
+
+    let project_dir = stack.runtime_dir().join("proj");
+    std::fs::create_dir_all(project_dir.join(".git")).expect("create .git fixture");
+    stack
+        .seed_project_watch_dir(&project_dir)
+        .expect("point the watcher at the fixture");
+    // The one difference from the suggest-mode scenario: executor_live = true in
+    // the ephemeral config, so a proven workflow decision is executed, not just
+    // proposed. Production's shipped default stays false.
+    stack
+        .seed_ai_config(
+            "[ai]\nenabled = true\naccess_level = 2\naction_mode = \"supervised\"\n\n\
+             [agent]\nenabled = [\"auto-tag-by-project\"]\nexecutor_live = true\n",
+        )
+        .expect("seed ai.toml");
+
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+    stack
+        .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+        .expect("spawn audit-daemon");
+    stack
+        .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+        .expect("audit ingest socket");
+
+    let behaviours = arlen_integration::repo_path("ai/ai-agent/behaviours");
+    let behaviours = behaviours.to_string_lossy().into_owned();
+    stack
+        .spawn(
+            "ai",
+            "arlen-ai-agent",
+            &[
+                ("ARLEN_AGENT_BEHAVIOURS", behaviours.as_str()),
+                ("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent-arlen-it"),
+            ],
+        )
+        .expect("spawn ai-agent");
+
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let file_path = format!("{}/main.rs", project_dir.to_string_lossy());
+    // FILE_PART_OF is the only File->Project edge, so an untyped match proves it
+    // without naming the rel type (which the RS-R1 gate would refuse a ThirdParty
+    // caller). The agent must promote the File, prove the proposal, and have the
+    // live executor write the edge, so allow the promotion interval + executor.
+    let edge_query = format!("MATCH (f:File {{id: '{file_path}'}})-->(p:Project) RETURN p.id");
+    let deadline = Instant::now() + Duration::from_secs(50);
+    loop {
+        let payload = proto::FileOpenedPayload {
+            path: file_path.clone(),
+            app_id: "integration-test".to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        emitter
+            .emit("file.opened", payload)
+            .await
+            .expect("emit file.opened");
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        if let Ok(rows) = client.query_rows(&edge_query).await {
+            if !rows.is_empty() {
+                // The live executor wrote the edge. Re-emit once more and confirm
+                // the atomic conditional create did NOT duplicate it (op-id
+                // idempotency at the write boundary).
+                let payload = proto::FileOpenedPayload {
+                    path: file_path.clone(),
+                    app_id: "integration-test".to_string(),
+                    flags: 0,
+                }
+                .encode_to_vec();
+                emitter.emit("file.opened", payload).await.expect("re-emit");
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                let again = client.query_rows(&edge_query).await.expect("re-read the edge");
+                assert_eq!(
+                    again.len(),
+                    1,
+                    "the conditional create is idempotent: exactly one FILE_PART_OF edge, not {}",
+                    again.len()
+                );
+                return;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the live executor never wrote the FILE_PART_OF edge within 50s"
+        );
+    }
+}
+
 /// IT-1 window.focused promotion: a `window.focused` event promotes through to an
 /// `App` graph node, exercising the App/Session/Event/ACTIVE_IN subgraph that the
 /// file.opened scenarios (File/Project) never touch — a distinct promotion path.
