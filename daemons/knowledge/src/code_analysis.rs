@@ -22,7 +22,15 @@
 
 use std::collections::BTreeMap;
 
+use anyhow::Result;
 use serde::Serialize;
+
+use crate::graph::GraphHandle;
+
+/// Default god-symbol degree threshold for the live-graph analysis: a symbol
+/// coupled to at least this many distinct others (fan-in + fan-out) is a hub.
+/// Conservative so only genuine hubs surface, not every well-used helper.
+pub const DEFAULT_GOD_MIN_DEGREE: usize = 5;
 
 /// A high-degree-centrality symbol — an architectural hub.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -160,6 +168,42 @@ pub fn analyze(symbols: &[String], calls: &[(String, String)], god_min_degree: u
     }
 }
 
+/// Read the live `CodeSymbol`/`CALLS` subgraph and run [`analyze`] over it.
+///
+/// The full symbol set and every `CALLS` edge are read once each on the serial
+/// graph thread (the `capsule_neighbors` read pattern), then the pure [`analyze`]
+/// produces the result — so the graph layer only supplies the nodes and edges,
+/// never the metric. Reads of an empty graph yield an empty analysis. Used by
+/// the exposure step (CG-R5: a read op / `knowledge-mcp`) that surfaces the
+/// hubs and surprises to the AI and the Knowledge app.
+pub async fn analyze_code_graph(graph: &GraphHandle, god_min_degree: usize) -> Result<CodeAnalysis> {
+    let symbols_rs = graph
+        .query_rows("MATCH (s:CodeSymbol) RETURN s.id".to_string())
+        .await?;
+    let symbols: Vec<String> = symbols_rs
+        .rows
+        .iter()
+        .filter_map(|row| row.first())
+        .map(|c| c.as_str().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let calls_rs = graph
+        .query_rows("MATCH (a:CodeSymbol)-[:CALLS]->(b:CodeSymbol) RETURN a.id, b.id".to_string())
+        .await?;
+    let calls: Vec<(String, String)> = calls_rs
+        .rows
+        .iter()
+        .filter_map(|row| {
+            let from = row.first()?.as_str().to_string();
+            let to = row.get(1)?.as_str().to_string();
+            (!from.is_empty() && !to.is_empty()).then_some((from, to))
+        })
+        .collect();
+
+    Ok(analyze(&symbols, &calls, god_min_degree))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,5 +303,62 @@ mod tests {
         let first = analyze(&symbols, &calls, 1);
         let second = analyze(&symbols, &calls, 1);
         assert_eq!(first, second);
+    }
+
+    #[tokio::test]
+    async fn analyze_code_graph_reads_the_live_call_graph() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        // a.rs has a hub called by p, q, r and itself calling y in b.rs — the
+        // lone bridge between the two modules.
+        for id in [
+            "a.rs#fn:hub@1",
+            "a.rs#fn:p@2",
+            "a.rs#fn:q@3",
+            "a.rs#fn:r@4",
+            "b.rs#fn:y@5",
+        ] {
+            graph
+                .write(format!("CREATE (:CodeSymbol {{id: '{id}', name: 'n'}})"))
+                .await
+                .unwrap();
+        }
+        for (from, to) in [
+            ("a.rs#fn:p@2", "a.rs#fn:hub@1"),
+            ("a.rs#fn:q@3", "a.rs#fn:hub@1"),
+            ("a.rs#fn:r@4", "a.rs#fn:hub@1"),
+            ("a.rs#fn:hub@1", "b.rs#fn:y@5"),
+        ] {
+            graph
+                .write(format!(
+                    "MATCH (a:CodeSymbol {{id:'{from}'}}), (b:CodeSymbol {{id:'{to}'}}) \
+                     CREATE (a)-[:CALLS {{confidence:'extracted'}}]->(b)"
+                ))
+                .await
+                .unwrap();
+        }
+
+        let a = analyze_code_graph(&graph, 3).await.unwrap();
+        assert!(
+            a.god_symbols.iter().any(|g| g.id == "a.rs#fn:hub@1"),
+            "the hub (in 3, out 1) is a god-symbol: {:?}",
+            a.god_symbols
+        );
+        assert_eq!(
+            a.surprises.len(),
+            1,
+            "exactly the lone a.rs->b.rs bridge is a surprise: {:?}",
+            a.surprises
+        );
+        assert_eq!(a.surprises[0].from, "a.rs#fn:hub@1");
+        assert_eq!(a.surprises[0].to, "b.rs#fn:y@5");
+
+        // An empty graph yields an empty analysis.
+        let empty_tmp = tempfile::TempDir::new().unwrap();
+        let empty = crate::graph::spawn(empty_tmp.path().join("g").to_str().unwrap()).unwrap();
+        assert_eq!(
+            analyze_code_graph(&empty, 1).await.unwrap(),
+            CodeAnalysis::default()
+        );
     }
 }
