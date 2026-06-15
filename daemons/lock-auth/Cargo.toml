@@ -10,6 +10,7 @@ name = "arlen_lock_auth"
 
 [dependencies]
 audit-proto = { path = "../../contracts/audit-proto" }
+greetd_ipc = { version = "0.10", optional = true, default-features = false, features = ["sync-codec"] }
 pam = { version = "0.8", optional = true }
 
 [dev-dependencies]
@@ -17,4 +18,9 @@ pam = { version = "0.8", optional = true }
 [workspace]
 
 [features]
+# Both factor backends are off by default: the pure verify-tier-audit
+# composition is what CI builds and tests. `pam` links libpam (the password ->
+# systemd-homed key release) and `greetd` pulls greetd_ipc (the greeter's auth
+# conversation); each is built and verified on hardware, like PWR-R2's metal path.
 pam = ["dep:pam"]
+greetd = ["dep:greetd_ipc"]
