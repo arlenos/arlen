@@ -30,6 +30,9 @@ arlen-terminal-engine = { path = "../engine" }
 # capability strip (same reader as the harness).
 toml = "0.8"
 dirs = "5"
+# The knowledge-graph read client: terminal_projects scopes to the live KG
+# projects (the same Project nodes the file manager surfaces).
+os-sdk = { path = "../../../sdk/os-sdk" }
 
 [dev-dependencies]
 tempfile = "3"
