@@ -390,6 +390,29 @@ impl UnixGraphClient {
             .map_err(|e| QueryError::InvalidQuery(format!("malformed access_grants response: {e}")))
     }
 
+    /// Read the token-free code-graph analysis (CG-R5) via the read socket's
+    /// analysis op: god-symbols (degree-centrality hubs) and surprises (sole
+    /// cross-module call bridges) over the whole `CodeSymbol`/`CALLS` graph.
+    ///
+    /// A leading `0x09` byte selects the op and takes no request body. The daemon
+    /// gates it to system-anchored callers (the aggregate exceeds a ThirdParty's
+    /// per-label read scope) and returns the analysis as JSON; a daemon `ERROR:`
+    /// (not permitted, rate-limited) maps to [`QueryError`]. The result is parsed
+    /// as a `serde_json::Value` (shape `{god_symbols, surprises}`): the rich type
+    /// lives in the knowledge daemon, so the SDK exposes the validated JSON rather
+    /// than depending on the daemon crate. The consumer (`knowledge-mcp`, the
+    /// agent, the Knowledge app) navigates it; making it a shared typed result is
+    /// a contracts-crate follow-on. No LLM call is made.
+    pub async fn code_analysis(&self) -> Result<serde_json::Value, QueryError> {
+        let body = [0x09u8];
+        let bytes = self.round_trip(&body, MAX_TYPED_RESPONSE_BYTES).await?;
+        if bytes.starts_with(b"ERROR:") {
+            Self::check_error(&String::from_utf8_lossy(&bytes))?;
+        }
+        serde_json::from_slice::<serde_json::Value>(&bytes)
+            .map_err(|e| QueryError::InvalidQuery(format!("malformed code_analysis response: {e}")))
+    }
+
     /// Revoke a capability from an app's permission profile, narrowing-only
     /// (living-capability-graph.md §6), via the read socket's revoke op.
     ///
@@ -1082,6 +1105,40 @@ mod tests {
         assert_eq!(grants[0].app_id, "com.x");
         assert!(grants[0].live);
         assert_eq!(grants[0].reach, vec!["File".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn code_analysis_sends_the_prefix_and_parses_the_json() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-code-analysis-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+            // The op is selected by the single 0x09 prefix byte, no body.
+            assert_eq!(req, vec![0x09], "code_analysis is a bare 0x09 prefix");
+
+            let resp = br#"{"god_symbols":[{"id":"a.rs#fn:hub@1","in_degree":3,"out_degree":1}],"surprises":[{"from":"a.rs#fn:hub@1","to":"b.rs#fn:y@5","from_module":"a.rs","to_module":"b.rs"}]}"#;
+            conn.write_all(&(resp.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(resp).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let analysis = client.code_analysis().await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        let analysis = analysis.unwrap();
+        assert_eq!(analysis["god_symbols"][0]["id"], "a.rs#fn:hub@1");
+        assert_eq!(analysis["surprises"][0]["to"], "b.rs#fn:y@5");
     }
 
     #[tokio::test]
