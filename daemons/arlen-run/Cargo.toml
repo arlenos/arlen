@@ -16,6 +16,10 @@ dirs = "5"
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
 landlock = "0.4"
+# The third confinement layer: a deny-by-default seccomp allowlist compiled to
+# cBPF and handed to bwrap via --seccomp (the ai-sandbox idiom). 0.5 matches the
+# ai-sandbox pin so the workspace shares one build.
+seccompiler = "0.5"
 
 [dev-dependencies]
 tempfile = "3"
