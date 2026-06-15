@@ -27,6 +27,16 @@ const SUBSCRIBE_RETRY: Duration = Duration::from_secs(2);
 /// The active Focus-Mode project, shared between the bus-listener task and
 /// the query path. Cheap to clone (one `Arc`); the default is "no active
 /// project", which is the fail-closed state for project-scoped reads.
+///
+/// Trust boundary: the project id is taken from the `focus.activated`
+/// producer on the Event Bus, which today authenticates the UID but not the
+/// per-event-type publish right (GAP-17, planned). So the anchor confines a
+/// project-scoped read to *a* project the user owns that a co-resident
+/// same-UID process can select, not provably *the* genuinely-focused one,
+/// until per-producer publish authorization lands. The residual is bounded
+/// to the user's own KG data (no cross-user or cross-app-data escalation),
+/// and is strictly tighter than the prior state (project-scoped read of
+/// every project unconditionally).
 #[derive(Clone, Default)]
 pub struct ActiveProject {
     current: Arc<Mutex<Option<String>>>,
@@ -64,7 +74,7 @@ impl ActiveProject {
     fn apply(&self, event_type: &str, payload: &[u8]) {
         match event_type {
             "focus.activated" => match FocusActivatedPayload::decode(payload) {
-                Ok(p) if !p.project_id.is_empty() => self.set(Some(p.project_id)),
+                Ok(p) if !p.project_id.trim().is_empty() => self.set(Some(p.project_id)),
                 Ok(_) => warn!("active-project: focus.activated with empty project id"),
                 Err(err) => {
                     warn!(%err, "active-project: undecodable focus.activated payload")
@@ -123,10 +133,16 @@ mod tests {
     }
 
     #[test]
-    fn empty_project_id_does_not_set_an_active_project() {
+    fn empty_or_whitespace_project_id_does_not_set_an_active_project() {
         let ap = ActiveProject::new();
-        let payload = FocusActivatedPayload::default().encode_to_vec();
-        ap.apply("focus.activated", &payload);
+        ap.apply("focus.activated", &FocusActivatedPayload::default().encode_to_vec());
+        assert_eq!(ap.current(), None);
+        let blank = FocusActivatedPayload {
+            project_id: "   ".into(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        ap.apply("focus.activated", &blank);
         assert_eq!(ap.current(), None);
     }
 
