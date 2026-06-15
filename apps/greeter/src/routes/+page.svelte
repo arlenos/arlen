@@ -118,7 +118,9 @@
   <div class="bar">
     <div class="bar-side left"><A11yMenu /></div>
     <div class="bar-center">
-      {#if loaded && profiles && profiles.length > 0}
+      <!-- Only a real choice shows: one session (the normal case) needs no
+           chooser, so the bottom stays quiet. -->
+      {#if loaded && sessions.length > 1}
         <SessionSelect {sessions} value={sessionId} onchange={(id) => (sessionId = id)} />
       {/if}
     </div>
@@ -136,12 +138,13 @@
     height: 100%;
     padding: 2.5rem;
   }
-  /* Top zone: clock, pinned toward the upper third. */
+  /* Top zone: the clock sits high (near the upper fifth, the macOS login
+     proportion), so there is generous air between it and the centered
+     auth panel below. */
   .top {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: center;
-    padding-bottom: 1rem;
   }
   /* Center zone: the auth, dead center. */
   .center {
