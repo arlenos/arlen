@@ -108,6 +108,12 @@ pub enum AuditKind {
     /// An outbound call to an AI provider, made via the AI network
     /// proxy.
     NetworkCall,
+    /// A non-AI system action by an app or daemon worth recording but
+    /// outside the AI taxonomy: a notification surfaced to the user, a
+    /// package installed or removed, a file trashed. Carries only coarse
+    /// identifiers (the acting/posting app and a disposition), never the
+    /// action's content.
+    AppAction,
 }
 
 impl AuditKind {
@@ -122,6 +128,7 @@ impl AuditKind {
             Self::GraphAccess => "graph_access",
             Self::Permission => "permission",
             Self::NetworkCall => "network_call",
+            Self::AppAction => "app_action",
         }
     }
 
@@ -135,6 +142,7 @@ impl AuditKind {
             "graph_access" => Some(Self::GraphAccess),
             "permission" => Some(Self::Permission),
             "network_call" => Some(Self::NetworkCall),
+            "app_action" => Some(Self::AppAction),
             _ => None,
         }
     }
@@ -362,6 +370,7 @@ mod tests {
             AuditKind::GraphAccess,
             AuditKind::Permission,
             AuditKind::NetworkCall,
+            AuditKind::AppAction,
         ] {
             assert_eq!(AuditKind::from_wire(kind.as_str()), Some(kind));
         }

@@ -25,6 +25,10 @@ notify = "7"
 prost = "0.13"
 bytes = "1"
 libc = "0.2"
+# Content-free audit of notification display (GAP-2): each handled notify
+# submits a structural record (the posting app + its disposition, never the
+# message) to arlen-auditd, so what reaches the user lands in the ledger.
+audit-proto = { path = "../../contracts/audit-proto" }
 # HTML sanitisation for notification bodies. We do not support markup
 # rendering, so the allowlist is empty — this strips every tag while
 # keeping text content.

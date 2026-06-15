@@ -95,6 +95,7 @@ fn kind_label(kind: &AuditKind) -> &'static str {
         AuditKind::GraphAccess => "graph-access",
         AuditKind::Permission => "permission",
         AuditKind::NetworkCall => "network-call",
+        AuditKind::AppAction => "app-action",
     }
 }
 

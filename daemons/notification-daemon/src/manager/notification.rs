@@ -5,8 +5,10 @@
 
 use std::sync::Arc;
 
+use audit_proto::AuditSink;
 use tokio::sync::{broadcast, Mutex};
 
+use crate::audit::notification_event;
 use crate::config::{Config, DndMode};
 use crate::dbus::server::{CloseReason, Notification, NotifyEvent, determine_priority};
 use crate::dnd::{DndState, SuppressResult};
@@ -25,6 +27,11 @@ pub struct NotificationManager {
     events: broadcast::Sender<NotifyEvent>,
     /// Queued notifications waiting for fullscreen exit.
     fullscreen_queue: Mutex<Vec<Notification>>,
+    /// Content-free audit sink (GAP-2). Best-effort: a notification is
+    /// observed system activity, not a fail-closed capability exercise, so a
+    /// down ledger logs and is skipped rather than dropping the notification.
+    /// `None` in tests and when no sink is attached.
+    audit: Option<Arc<dyn AuditSink>>,
 }
 
 impl NotificationManager {
@@ -42,7 +49,15 @@ impl NotificationManager {
             rate_limiter: Mutex::new(RateLimiter::new()),
             events,
             fullscreen_queue: Mutex::new(Vec::new()),
+            audit: None,
         }
+    }
+
+    /// Attach the content-free audit sink (GAP-2). The daemon wires the
+    /// production `LedgerAuditSink`; left `None` it audits nothing.
+    pub fn with_audit(mut self, audit: Arc<dyn AuditSink>) -> Self {
+        self.audit = Some(audit);
+        self
     }
 
     /// Get the shared DND mode reference (for socket server).
@@ -147,6 +162,27 @@ impl NotificationManager {
             tracing::debug!(id, "manager: skipped storage (history disabled)");
         } else {
             tracing::debug!(id, "manager: skipped storage (DND drop)");
+        }
+
+        // Content-free GAP-2 audit of what the daemon did with this
+        // notification (the posting app + the disposition, never the message).
+        // Best-effort and off the reply path: spawned so a slow or down ledger
+        // never delays the D-Bus return, and a submit error logs rather than
+        // dropping the notification. `SuppressResult` is `Copy`, so reading the
+        // disposition here does not disturb the dispatch match below.
+        if let Some(sink) = self.audit.clone() {
+            let outcome = match suppress_result {
+                SuppressResult::Allow => "shown",
+                SuppressResult::Suppress => "suppressed",
+                SuppressResult::Queue => "queued",
+                SuppressResult::Drop => "dropped",
+            };
+            let app = input.app_name.clone();
+            tokio::spawn(async move {
+                if let Err(e) = sink.submit(notification_event(&app, outcome)).await {
+                    tracing::debug!("notification audit submit failed: {e}");
+                }
+            });
         }
 
         // 8. Act on result.

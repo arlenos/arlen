@@ -51,9 +51,16 @@ use crate::ledger::Ledger;
 /// because the agent then resolves to a `dev.*` id (admitted below).
 /// The graph daemon joins this set when graph-access auditing is wired.
 /// `online-accounts` audits each credential handout (`GetAccessToken`,
-/// GAP-2); it resolves to this id via the canonical libexec path entry in
+/// GAP-2) and `notifyd` audits each notification disposition (GAP-2); both
+/// resolve to these ids via their canonical libexec path entries in
 /// `path_to_app_id`.
-const ADMITTED: &[&str] = &["ai-daemon", "ai-proxy", "ai-agent", "online-accounts"];
+const ADMITTED: &[&str] = &[
+    "ai-daemon",
+    "ai-proxy",
+    "ai-agent",
+    "online-accounts",
+    "notifyd",
+];
 
 /// Resolve the ingest socket path:
 /// `$XDG_RUNTIME_DIR/arlen/audit-ingest.sock`, falling back to
@@ -302,7 +309,7 @@ mod tests {
     /// `ADMITTED` directly is independent of the build profile.
     #[test]
     fn audit_producers_are_admitted_in_release() {
-        for producer in ["ai-daemon", "ai-proxy", "ai-agent", "online-accounts"] {
+        for producer in ["ai-daemon", "ai-proxy", "ai-agent", "online-accounts", "notifyd"] {
             assert!(
                 ADMITTED.contains(&producer),
                 "{producer} must be in ADMITTED, not rely on the debug dev.* fallback"
