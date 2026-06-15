@@ -831,6 +831,44 @@ fn create_schema(conn: &Connection) -> Result<()> {
     conn.query("CREATE REL TABLE IF NOT EXISTS LAST_EXERCISED(FROM CapabilityUse TO Event)")
         .map_err(|e| anyhow!("create LAST_EXERCISED rel: {e}"))?;
 
+    // The code-graph layer (code-graph-layer.md §4): a per-language-extensible
+    // core, fused into the activity graph via a symbol's `source_file` being an
+    // existing File node. `CodeSymbol` is a definition (function/method/type/
+    // module/...). The code-indexer (a Tier-2 daemon) extracts these per-file and
+    // the daemon promotes them; cross-file edge resolution is CG-R2.
+    conn.query(
+        "CREATE NODE TABLE IF NOT EXISTS CodeSymbol(
+            id              STRING,
+            name            STRING,
+            source_file     STRING,
+            source_location STRING,
+            language        STRING,
+            kind            STRING,
+            PRIMARY KEY(id)
+        )",
+    )
+    .map_err(|e| anyhow!("create CodeSymbol table: {e}"))?;
+
+    // The code edges. DEFINES is file -> symbol (intra-file, resolvable at index,
+    // EXTRACTED). CALLS/IMPORTS/REFERENCES are symbol -> symbol, materialised by
+    // the CG-R2 cross-file resolution; each carries a `confidence`
+    // (extracted/inferred/ambiguous, code-graph-layer.md §5) - never a heuristic
+    // presented as ground truth.
+    conn.query("CREATE REL TABLE IF NOT EXISTS DEFINES(FROM File TO CodeSymbol, confidence STRING)")
+        .map_err(|e| anyhow!("create DEFINES rel: {e}"))?;
+    conn.query(
+        "CREATE REL TABLE IF NOT EXISTS CALLS(FROM CodeSymbol TO CodeSymbol, confidence STRING)",
+    )
+    .map_err(|e| anyhow!("create CALLS rel: {e}"))?;
+    conn.query(
+        "CREATE REL TABLE IF NOT EXISTS IMPORTS(FROM CodeSymbol TO CodeSymbol, confidence STRING)",
+    )
+    .map_err(|e| anyhow!("create IMPORTS rel: {e}"))?;
+    conn.query(
+        "CREATE REL TABLE IF NOT EXISTS REFERENCES(FROM CodeSymbol TO CodeSymbol, confidence STRING)",
+    )
+    .map_err(|e| anyhow!("create REFERENCES rel: {e}"))?;
+
     debug!("schema created");
     Ok(())
 }
@@ -955,6 +993,67 @@ mod tests {
             })
             .collect();
         assert_eq!(head, vec!["abc123".to_string()], "the reserved Branch round-trips");
+    }
+
+    #[test]
+    fn create_schema_builds_the_code_graph_tables() {
+        // The code-graph layer (code-graph-layer.md §4): a CodeSymbol fused to its
+        // File via DEFINES, and CodeSymbol->CodeSymbol edges carrying a confidence
+        // label. All createable on a fresh store, idempotent on an existing one.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("graph");
+        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+
+        create_schema(&conn).expect("create_schema builds the code tables");
+        create_schema(&conn).expect("create_schema is idempotent");
+
+        // A file defines two symbols; one calls the other (the call carries a
+        // confidence). The File node fuses the code layer to the activity layer.
+        conn.query("CREATE (:File {id:'/p/lib.rs', path:'/p/lib.rs'})").unwrap();
+        conn.query(
+            "CREATE (:CodeSymbol {id:'/p/lib.rs#function:helper@1', name:'helper', \
+             source_file:'/p/lib.rs', source_location:'1', language:'rust', kind:'function'})",
+        )
+        .expect("a CodeSymbol writes with its core columns");
+        conn.query(
+            "CREATE (:CodeSymbol {id:'/p/lib.rs#function:main@2', name:'main', \
+             source_file:'/p/lib.rs', source_location:'2', language:'rust', kind:'function'})",
+        )
+        .unwrap();
+        conn.query(
+            "MATCH (f:File {id:'/p/lib.rs'}), (s:CodeSymbol {id:'/p/lib.rs#function:helper@1'}) \
+             CREATE (f)-[:DEFINES {confidence:'extracted'}]->(s)",
+        )
+        .expect("a DEFINES edge with confidence writes");
+        conn.query(
+            "MATCH (a:CodeSymbol {id:'/p/lib.rs#function:main@2'}), \
+             (b:CodeSymbol {id:'/p/lib.rs#function:helper@1'}) \
+             CREATE (a)-[:CALLS {confidence:'inferred'}]->(b)",
+        )
+        .expect("a CALLS edge with confidence writes");
+
+        // The defining file and the call's confidence both read back.
+        let mut qr = conn
+            .query(
+                "MATCH (:File {id:'/p/lib.rs'})-[d:DEFINES]->(s:CodeSymbol {name:'helper'}) \
+                 RETURN d.confidence",
+            )
+            .expect("the DEFINES edge is queryable");
+        let conf: Vec<String> = qr
+            .by_ref()
+            .filter_map(|row| match row.first() {
+                Some(Value::String(s)) => Some(s.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(conf, vec!["extracted".to_string()], "the DEFINES confidence round-trips");
+
+        let calls = conn
+            .query("MATCH (:CodeSymbol)-[c:CALLS {confidence:'inferred'}]->(:CodeSymbol) RETURN c")
+            .expect("the CALLS edge is queryable")
+            .count();
+        assert_eq!(calls, 1, "the inferred call edge round-trips");
     }
 
     #[test]
