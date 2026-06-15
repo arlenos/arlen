@@ -11,6 +11,10 @@ path = "src/main.rs"
 [dependencies]
 arlen-modules = { path = "../../../sdk/modules" }
 arlen-permissions = { path = "../../../sdk/permissions" }
+# Content-free audit of install/uninstall (GAP-2): each completed job submits a
+# structural record (the action, the source and the outcome, never a filesystem
+# path) to arlen-auditd, so software-changing actions land in the ledger.
+audit-proto = { path = "../../../contracts/audit-proto" }
 zbus = { version = "5", default-features = false, features = ["tokio"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
 tracing = "0.1"

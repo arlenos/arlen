@@ -7,11 +7,13 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use audit_proto::{AuditSink, LedgerAuditSink};
 use serde::Serialize;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 use zbus::Connection;
 
+use crate::audit::install_action_event;
 use crate::install;
 
 /// Job types supported by the daemon.
@@ -181,6 +183,10 @@ pub async fn run_worker(queue: std::sync::Arc<JobQueue>, conn: Connection) {
 
     tracing::info!("job worker started");
 
+    // Content-free GAP-2 audit sink. Best-effort: building it is just storing
+    // the ingest socket path, and each submit is off the critical path.
+    let audit = LedgerAuditSink::at_default_socket();
+
     while let Some(job) = rx.recv().await {
         let job_id = job.id.clone();
         tracing::info!("job {job_id}: starting {:?}", job.kind);
@@ -203,6 +209,27 @@ pub async fn run_worker(queue: std::sync::Arc<JobQueue>, conn: Connection) {
                 run_uninstall_flatpak(&queue, &conn, &job_id, app_id).await
             }
         };
+
+        // Content-free GAP-2 audit of the completed action (action, source and
+        // outcome — never a filesystem path or package contents). Captured here
+        // before `result` is consumed by the match below; `job.kind` is matched
+        // by reference so it stays available. Best-effort: the action has
+        // already been applied, so a down ledger logs rather than failing it.
+        let outcome = if result.is_ok() { "ok" } else { "failed" };
+        let (action, source, subject_id) = match &job.kind {
+            JobKind::InstallPackage { .. } => ("install", "lunpkg", None),
+            JobKind::InstallFlatpak { app_id, .. } => ("install", "flatpak", Some(app_id.as_str())),
+            JobKind::Uninstall { app_id } => ("uninstall", "lunpkg", Some(app_id.as_str())),
+            JobKind::UninstallFlatpak { app_id } => {
+                ("uninstall", "flatpak", Some(app_id.as_str()))
+            }
+        };
+        if let Err(e) = audit
+            .submit(install_action_event(action, source, subject_id, outcome))
+            .await
+        {
+            tracing::debug!("install audit submit failed: {e}");
+        }
 
         match result {
             Ok(()) => {
