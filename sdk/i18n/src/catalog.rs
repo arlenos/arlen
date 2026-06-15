@@ -129,31 +129,37 @@ impl Localizer {
 
 /// The locale fallback chain from `requested` down to `source`.
 ///
-/// Strips subtags most-specific first: `de-AT → de → en` (the source). The
-/// source locale is always the final entry (so a key authored in the source
-/// always resolves), and duplicates are removed while preserving order. Example:
-/// `fallback_chain("de-AT", "en") == ["de-AT", "de", "en"]`.
+/// Strips one subtag at a time, most-specific first, so every intermediate is
+/// consulted: `zh-Hant-TW → zh-Hant → zh`, `de-AT → de`. The `source` locale is
+/// always the final entry (the guaranteed floor, so a key authored in the source
+/// always resolves), and duplicates are removed while order is preserved.
+/// Examples: `fallback_chain("de-AT", "en") == ["de-AT", "de", "en"]`;
+/// `fallback_chain("zh-Hant-TW", "en") == ["zh-Hant-TW", "zh-Hant", "zh", "en"]`.
+///
+/// String-based subtag stripping (on the canonical `to_string` form) keeps this
+/// decoupled from the locale struct's subtag fields; a CLDR-exact parent chain
+/// (`LocaleFallbacker`) is a later refinement if script-default mappings matter.
 pub fn fallback_chain(requested: &Locale, source: &Locale) -> Vec<Locale> {
     let mut chain: Vec<Locale> = Vec::new();
-    // The requested locale as given.
-    chain.push(requested.clone());
-    // The language-only form (the subtag before the first `-`), if the request
-    // carried a region/script/variant. Done on the string form to avoid coupling
-    // to the locale struct's subtag fields.
+    let push_unique = |loc: Locale, chain: &mut Vec<Locale>| {
+        if !chain.contains(&loc) {
+            chain.push(loc);
+        }
+    };
+
+    // Strip `-`-segments off the requested locale's string form, one at a time.
     let req_str = requested.to_string();
-    if let Some(lang) = req_str.split('-').next() {
-        if lang != req_str {
-            if let Ok(lang_only) = lang.parse::<Locale>() {
-                if !chain.contains(&lang_only) {
-                    chain.push(lang_only);
-                }
-            }
+    let segments: Vec<&str> = req_str.split('-').collect();
+    for take in (1..=segments.len()).rev() {
+        let candidate = segments[..take].join("-");
+        if let Ok(loc) = candidate.parse::<Locale>() {
+            push_unique(loc, &mut chain);
         }
     }
-    // The source locale, last, as the guaranteed floor.
-    if !chain.contains(source) {
-        chain.push(source.clone());
-    }
+    // The source locale is the guaranteed resolution floor: append it last when
+    // the request did not already include it (when it did, it keeps its natural
+    // most-specific position rather than being forced to the end).
+    push_unique(source.clone(), &mut chain);
     chain
 }
 
@@ -198,6 +204,15 @@ mod tests {
         assert_eq!(fallback_chain(&loc("fr"), &loc("en")), vec![loc("fr"), loc("en")]);
         // Requesting the source: no duplicate.
         assert_eq!(fallback_chain(&loc("en"), &loc("en")), vec![loc("en")]);
+        // A script-bearing tag consults every intermediate (the M2 fix): the
+        // `zh-Hant` shared Traditional catalog is not skipped.
+        assert_eq!(
+            fallback_chain(&loc("zh-Hant-TW"), &loc("en")),
+            vec![loc("zh-Hant-TW"), loc("zh-Hant"), loc("zh"), loc("en")]
+        );
+        // Requested == source with a region: the source stays most-specific-first
+        // (it is in the chain as the floor), not forced to the end.
+        assert_eq!(fallback_chain(&loc("de-AT"), &loc("de-AT")), vec![loc("de-AT"), loc("de")]);
     }
 
     #[test]
