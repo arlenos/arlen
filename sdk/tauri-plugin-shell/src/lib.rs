@@ -104,21 +104,33 @@ pub struct ShellState {
     /// the SDK forwarder task; if a receiver is still in the
     /// slot (`Pending`) it is dropped along with it.
     pub annotation_subs: Arc<Mutex<HashMap<SubscriptionKey, SubscriptionSlot>>>,
-    /// App id used by the toolbar action-invoked filter.
-    /// `ARLEN_APP_ID` at plugin init; falls back to "unknown".
+    /// The app's bus identity - the toolbar/menu correlation key the shell
+    /// matches against the focused window's app_id. `ARLEN_APP_ID` if set, else
+    /// the Tauri bundle identifier; never the old "unknown", which matched no
+    /// focused window so an app's toolbar/menu never appeared (PR-4).
     pub app_id: String,
 }
 
 impl ShellState {
-    fn new() -> Self {
+    fn new(default_app_id: &str) -> Self {
         let producer_socket = std::env::var("ARLEN_PRODUCER_SOCKET")
             .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".to_string());
         let consumer_socket = std::env::var("ARLEN_CONSUMER_SOCKET")
             .unwrap_or_else(|_| "/run/arlen/event-bus-consumer.sock".to_string());
         let daemon_socket = std::env::var("ARLEN_DAEMON_SOCKET")
             .unwrap_or_else(|_| "/run/arlen/knowledge.sock".to_string());
-        let app_id =
-            std::env::var("ARLEN_APP_ID").unwrap_or_else(|_| "unknown".to_string());
+        // The app's bus identity. `ARLEN_APP_ID` wins (a launcher can pin it);
+        // otherwise the Tauri bundle identifier, which is the app's Wayland
+        // toplevel app_id the shell correlates the toolbar/menu slot against. The
+        // old "unknown" default matched no focused window, so an app's toolbar
+        // never appeared (PR-4).
+        let app_id = std::env::var("ARLEN_APP_ID").unwrap_or_else(|_| {
+            if default_app_id.is_empty() {
+                "unknown".to_string()
+            } else {
+                default_app_id.to_string()
+            }
+        });
 
         // One emitter shared across the write-side surfaces; one
         // graph client for annotation reads; one consumer for
@@ -181,7 +193,10 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::ambient_clear,
         ])
         .setup(|app, _api| {
-            let state = ShellState::new();
+            // Default the bus identity to the app's bundle identifier (the
+            // Wayland toplevel app_id), so the shell can correlate this app's
+            // toolbar/menu to its focused window (PR-4).
+            let state = ShellState::new(&app.config().identifier);
             spawn_action_invoked_consumer(app, &state);
             app.manage(state);
             Ok(())
