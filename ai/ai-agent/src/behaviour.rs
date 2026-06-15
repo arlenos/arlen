@@ -45,11 +45,11 @@
 use std::collections::BTreeMap;
 
 pub use arlen_ai_core::capability::{AccessTier, BaselineMode};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Where a behaviour sits on the workflow↔agent spectrum.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BehaviourKind {
     /// Developer-defined control flow (a code handler); little or no LLM.
@@ -179,6 +179,13 @@ pub struct BehaviourManifest {
     pub name: String,
     /// One line shown for routing/selection; preloaded.
     pub description: String,
+    /// Optional natural-language hint for agent-matching: when a free-form
+    /// task should select this skill (the Agent-Skills `whenToUse` field,
+    /// `ai-agent-design.md` §3). Drives the daemon's match-before-plain-answer
+    /// and is shown in the user-invoke list. Absent → the skill is never
+    /// agent-matched (it can still be event-triggered or user-invoked by name).
+    #[serde(default, rename = "whenToUse")]
+    pub when_to_use: Option<String>,
     /// Workflow or agent.
     pub kind: BehaviourKind,
     /// What dispatches it.
