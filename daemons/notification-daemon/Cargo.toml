@@ -9,6 +9,10 @@ name = "arlen-notifyd"
 path = "src/main.rs"
 
 [dependencies]
+# Resolve the D-Bus sender's attested app_id (SO_PEERCRED → /proc/<pid>/exe →
+# path_to_app_id) so the Critical-tier clamp (GAP-7) keys on a trusted system
+# notifier rather than a self-declared one.
+arlen-permissions = { path = "../../sdk/permissions" }
 zbus = { version = "5", default-features = false, features = ["tokio"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "net", "io-util"] }
 tracing = "0.1"

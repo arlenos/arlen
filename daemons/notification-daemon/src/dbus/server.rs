@@ -132,6 +132,70 @@ pub fn determine_priority(urgency: u8, expire_timeout: i32, category: &str) -> P
     }
 }
 
+/// Resolved app ids permitted to raise a DND-piercing `Critical` notification
+/// (GAP-7). Critical is the only tier that pierces Do-Not-Disturb and shows a
+/// persistent toast, so an arbitrary `notify-send -u critical` from any app
+/// must not claim it. These are the system alert sources: the power daemon
+/// (critical-battery) and the anomaly detector (security alerts), both
+/// root-owned `/usr/lib/arlen/libexec/` binaries with canonical
+/// `path_to_app_id` entries. A new trusted Critical source must be added here.
+const CRITICAL_NOTIFIER_ALLOWLIST: &[&str] = &["powerd", "anomalyd"];
+
+/// Whether a caller may keep a `Critical` priority, by attested identity. Root
+/// (uid 0) is always allowed as a belt for a future system alerter; otherwise
+/// the resolved app id must be a known system notifier. An unresolved caller
+/// (`None`) is untrusted — Critical fails closed to High rather than letting an
+/// app that cannot prove a system identity pierce DND.
+fn caller_may_set_critical(uid: Option<u32>, app_id: Option<&str>) -> bool {
+    if uid == Some(0) {
+        return true;
+    }
+    matches!(app_id, Some(id) if CRITICAL_NOTIFIER_ALLOWLIST.contains(&id))
+}
+
+/// Clamp a determined priority to a caller's authority. A `Critical` raised by
+/// an untrusted caller is demoted to `High` (still important, an 8s toast, but
+/// it does not pierce Do-Not-Disturb or persist). Every other priority is
+/// returned unchanged; a trusted caller's `Critical` survives.
+pub fn clamp_critical(priority: Priority, may_set_critical: bool) -> Priority {
+    if priority == Priority::Critical && !may_set_critical {
+        Priority::High
+    } else {
+        priority
+    }
+}
+
+/// Resolve the calling app's Arlen identity and uid from the D-Bus connection.
+///
+/// The session bus daemon attests the sender's PID and uid
+/// (`GetConnectionUnixProcessID` / `GetConnectionUnixUser`, not client-supplied
+/// values), and `app_id_from_pid` resolves `/proc/<pid>/exe` through the F3
+/// `path_to_app_id` chain — the same identity model the other daemons use. Any
+/// failure yields `None`, which [`caller_may_set_critical`] treats as untrusted
+/// (fail-closed for the Critical privilege). No PID-reuse guard: the only
+/// consequence of a sub-millisecond reuse race here is one notification's DND
+/// tier, far below a token handout.
+async fn resolve_caller(
+    header: &zbus::message::Header<'_>,
+    connection: &zbus::Connection,
+) -> (Option<u32>, Option<String>) {
+    let Some(sender) = header.sender() else {
+        return (None, None);
+    };
+    let Ok(proxy) = zbus::fdo::DBusProxy::new(connection).await else {
+        return (None, None);
+    };
+    let uid = proxy
+        .get_connection_unix_user(sender.clone().into())
+        .await
+        .ok();
+    let app_id = match proxy.get_connection_unix_process_id(sender.clone().into()).await {
+        Ok(pid) => arlen_permissions::identity::app_id_from_pid(pid).ok(),
+        Err(_) => None,
+    };
+    (uid, app_id)
+}
+
 /// Parse the actions array from D-Bus (flat list of alternating key/label pairs)
 /// into a `Vec<(String, String)>`.
 fn parse_actions(raw: &[String]) -> Vec<(String, String)> {
@@ -210,6 +274,8 @@ impl NotificationServer {
         actions: Vec<String>,
         hints: HashMap<String, OwnedValue>,
         expire_timeout: i32,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
     ) -> u32 {
         let id = if replaces_id > 0 {
             replaces_id
@@ -253,6 +319,19 @@ impl NotificationServer {
             "D-Bus notify received"
         );
 
+        // Resolve the caller's attested identity to decide whether it may raise
+        // a DND-piercing Critical (GAP-7). Fail-closed: an unresolved caller is
+        // untrusted, so its Critical is later clamped to High.
+        let (caller_uid, caller_app_id) = resolve_caller(&header, connection).await;
+        let may_set_critical = caller_may_set_critical(caller_uid, caller_app_id.as_deref());
+        if !may_set_critical {
+            tracing::debug!(
+                app_name,
+                caller = caller_app_id.as_deref().unwrap_or("<unresolved>"),
+                "notify: caller not trusted for Critical; will clamp"
+            );
+        }
+
         // Delegate to the manager. Ownership of the full pipeline
         // (validation, rate limit, DND, SQLite persistence, broadcast)
         // lives there; this D-Bus method is now a thin adapter.
@@ -274,6 +353,7 @@ impl NotificationServer {
                 urgency,
                 &category,
                 expire_timeout,
+                may_set_critical,
             )
             .await
     }
@@ -437,6 +517,40 @@ mod tests {
         );
         // urgency=0 should be low even with "im.received" category.
         assert_eq!(determine_priority(0, -1, "im.received"), Priority::Low);
+    }
+
+    // ── Critical-tier clamp (GAP-7) ─────────────────────────────────────
+
+    #[test]
+    fn untrusted_critical_clamps_to_high() {
+        assert_eq!(
+            clamp_critical(Priority::Critical, false),
+            Priority::High,
+            "an untrusted caller's Critical must demote to High"
+        );
+        assert_eq!(
+            clamp_critical(Priority::Critical, true),
+            Priority::Critical,
+            "a trusted caller keeps Critical"
+        );
+        // Non-Critical priorities are never touched by the clamp.
+        for p in [Priority::Low, Priority::Normal, Priority::High] {
+            assert_eq!(clamp_critical(p, false), p);
+            assert_eq!(clamp_critical(p, true), p);
+        }
+    }
+
+    #[test]
+    fn only_system_notifiers_and_root_may_set_critical() {
+        // The trusted system alert sources.
+        assert!(caller_may_set_critical(None, Some("powerd")));
+        assert!(caller_may_set_critical(Some(1000), Some("anomalyd")));
+        // Root is allowed regardless of resolved app id.
+        assert!(caller_may_set_critical(Some(0), None));
+        // An arbitrary app is not.
+        assert!(!caller_may_set_critical(Some(1000), Some("com.example.spammer")));
+        // An unresolved caller fails closed (untrusted).
+        assert!(!caller_may_set_critical(None, None));
     }
 
     // ── Actions parsing ─────────────────────────────────────────────────

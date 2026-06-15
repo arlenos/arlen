@@ -222,6 +222,20 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-installd" => {
             return Ok("installd".to_string());
         }
+        // The power daemon and the anomaly detector, pinned canonically. Both
+        // install under /usr/lib/arlen/libexec/ (not /usr/bin/arlen-*), so rule
+        // (2) misses them and they would otherwise resolve to UnknownBinary.
+        // They are the trusted sources of DND-piercing Critical notifications
+        // (critical battery, security alerts), so the notification daemon's
+        // Critical-tier clamp (GAP-7) keys on these stable ids; an unattested
+        // path resolving them would let a same-uid peer impersonate a system
+        // alerter and pierce Do-Not-Disturb.
+        "/usr/lib/arlen/libexec/arlen-powerd" => {
+            return Ok("powerd".to_string());
+        }
+        "/usr/lib/arlen/libexec/arlen-anomalyd" => {
+            return Ok("anomalyd".to_string());
+        }
         // The Settings app, pinned canonically so it resolves to the stable
         // app_id `settings` (not the spoofable basename). The Living Capability
         // Graph revoke socket op admits only this app id (living-capability-graph.md
@@ -595,6 +609,33 @@ mod tests {
             assert!(
                 path_to_app_id(&PathBuf::from(spoofed)).is_err(),
                 "spoofed installd path {spoofed} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn test_app_id_from_path_critical_notifiers_canonical_libexec() {
+        // The power daemon and anomaly detector must resolve to their stable
+        // ids: they are the trusted Critical-notification sources the GAP-7
+        // clamp keys on. They live under libexec, so without these entries they
+        // resolve to UnknownBinary and their legit Critical would be clamped.
+        assert_eq!(
+            path_to_app_id(&PathBuf::from("/usr/lib/arlen/libexec/arlen-powerd")).unwrap(),
+            "powerd"
+        );
+        assert_eq!(
+            path_to_app_id(&PathBuf::from("/usr/lib/arlen/libexec/arlen-anomalyd")).unwrap(),
+            "anomalyd"
+        );
+
+        // A same-basename binary in a writable location must not impersonate them.
+        for spoofed in [
+            "/tmp/arlen-powerd",
+            "/home/attacker/arlen-anomalyd",
+        ] {
+            assert!(
+                path_to_app_id(&PathBuf::from(spoofed)).is_err(),
+                "spoofed critical-notifier path {spoofed} must be rejected"
             );
         }
     }
