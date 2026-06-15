@@ -14,9 +14,11 @@
 //! and it is force-required after reboot, after a bounded time window, and after
 //! too many failed attempts. A convenience factor can never cross that line.
 
+pub mod audit;
 pub mod auth;
 pub mod tier;
 
+pub use audit::auth_audit_event;
 pub use auth::{
     authenticate, AuthEvent, AuthOutcome, AuthResult, FactorKind, FactorVerifier, Presentation,
     RefuseReason, Surface, VerifyError,
