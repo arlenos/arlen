@@ -49,14 +49,14 @@ impl ArgValue {
     }
 
     /// The value as a [`Decimal`] for locale-aware number formatting + plural
-    /// selection, when it is an integer. A `Float` formats via its plain
-    /// rendering for now (locale-aware fractional formatting needs ICU's float
-    /// path / a precision policy - a later refinement; counts, the plural
-    /// operands, are integers and fully covered).
+    /// selection, when it is numeric. A `Float` round-trips to a decimal so it
+    /// too formats with the locale's grouping + decimal separator.
     fn as_decimal(&self) -> Option<Decimal> {
         match self {
             ArgValue::Integer(n) => Some(Decimal::from(*n)),
-            ArgValue::Float(_) => None,
+            ArgValue::Float(f) => {
+                Decimal::try_from_f64(*f, fixed_decimal::FloatPrecision::RoundTrip).ok()
+            }
             // A numeric-looking text value is accepted so a catalog can pass a
             // pre-formatted count; a non-numeric text is not a number.
             ArgValue::Text(s) => s.parse::<i64>().ok().map(Decimal::from),
@@ -190,29 +190,31 @@ fn select_variant<'v>(
         .map(|s| resolve_selector(s, locale, args, env))
         .collect();
 
-    let mut best: Option<(&Variant, usize)> = None;
+    let mut best: Option<(&Variant, u32)> = None;
     for variant in variants {
         if variant.keys.len() != keys.len() {
             continue;
         }
-        let mut catch_alls = 0;
+        // Score each key by match STRENGTH: an exact-value match (`1`) beats a
+        // plural-category match (`one`) beats the catch-all `*`, regardless of
+        // source order. A variant matches only if every key matches; its score
+        // is the summed strength, so the most-specific matching variant wins.
+        let mut score = 0u32;
         let mut matched = true;
         for (vk, sel) in variant.keys.iter().zip(&keys) {
             match vk {
-                VariantKey::CatchAll => catch_alls += 1,
-                VariantKey::Literal(lit) => {
-                    if !sel.matches(lit) {
+                VariantKey::CatchAll => {} // strength 0
+                VariantKey::Literal(lit) => match sel.strength(lit) {
+                    Some(s) => score += s as u32,
+                    None => {
                         matched = false;
                         break;
                     }
-                }
+                },
             }
         }
-        if matched {
-            // Most specific (fewest catch-alls) wins; ties keep the earlier one.
-            if best.is_none_or(|(_, best_ca)| catch_alls < best_ca) {
-                best = Some((variant, catch_alls));
-            }
+        if matched && best.is_none_or(|(_, best_score)| score > best_score) {
+            best = Some((variant, score));
         }
     }
     best.map(|(v, _)| v)
@@ -236,16 +238,22 @@ enum SelectorKey {
 }
 
 impl SelectorKey {
-    /// Whether a variant's literal key matches this selector value. A numeric
-    /// selector matches BOTH an exact numeric literal (`0`/`1`) AND the plural
-    /// category name (`one`/`other`), per MF2; the more specific exact key wins
-    /// via the catch-all ranking in [`select_variant`].
-    fn matches(&self, lit: &str) -> bool {
+    /// The match STRENGTH of a variant's literal key against this selector, or
+    /// `None` if it does not match. An exact-value match scores `2`, a plural-
+    /// category match `1`, so [`select_variant`] prefers the exact key over the
+    /// category key regardless of their source order (the MF2 specificity rule).
+    fn strength(&self, lit: &str) -> Option<u8> {
         match self {
             SelectorKey::Plural { exact, category } => {
-                lit == exact || plural_category_key(*category) == lit
+                if lit == exact {
+                    Some(2)
+                } else if plural_category_key(*category) == lit {
+                    Some(1)
+                } else {
+                    None
+                }
             }
-            SelectorKey::Exact(v) => v == lit,
+            SelectorKey::Exact(v) => (v == lit).then_some(2),
         }
     }
 }
@@ -325,6 +333,9 @@ mod tests {
         let de: Locale = "de".parse().unwrap();
         // de groups with dots.
         assert_eq!(format(&m, &de, &args(&[("n", ArgValue::Integer(1234567))])), "1.234.567");
+        // A float formats with the locale's grouping + decimal separator too.
+        assert_eq!(format(&m, &de, &args(&[("n", ArgValue::Float(1234.5))])), "1.234,5");
+        assert_eq!(format(&m, &en(), &args(&[("n", ArgValue::Float(1234.5))])), "1,234.5");
     }
 
     #[test]
@@ -342,6 +353,17 @@ mod tests {
         assert_eq!(format(&m, &en(), &args(&[("count", ArgValue::Integer(0))])), "no items");
         assert_eq!(format(&m, &en(), &args(&[("count", ArgValue::Integer(1))])), "one item");
         assert_eq!(format(&m, &en(), &args(&[("count", ArgValue::Integer(3))])), "3 items");
+    }
+
+    #[test]
+    fn an_exact_key_beats_the_category_even_when_listed_after_it() {
+        // Specificity, not source order, decides: `1` (exact) must win over
+        // `one` (category) for count=1 even though `one` is listed first.
+        let src = ".match {$n :number}\none {{category}}\n1 {{exact}}\n* {{star}}";
+        let m = parse_message(src).unwrap();
+        assert_eq!(format(&m, &en(), &args(&[("n", ArgValue::Integer(1))])), "exact");
+        // count=2: no exact key, category `one` does not match -> `*`.
+        assert_eq!(format(&m, &en(), &args(&[("n", ArgValue::Integer(2))])), "star");
     }
 
     #[test]
