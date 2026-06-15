@@ -16,10 +16,14 @@
 
 pub mod audit;
 pub mod auth;
+#[cfg(feature = "greetd")]
+pub mod greetd_client;
 #[cfg(feature = "pam")]
 pub mod pam_verifier;
 pub mod tier;
 
+#[cfg(feature = "greetd")]
+pub use greetd_client::{AuthStep, GreetdClient, GreetdError, GREETD_SOCK_ENV};
 #[cfg(feature = "pam")]
 pub use pam_verifier::{PamVerifier, DEFAULT_HOMED_SERVICE};
 
