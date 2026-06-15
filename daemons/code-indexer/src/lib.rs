@@ -12,3 +12,4 @@
 //! a file-save costs one file's parse, never a whole-project reindex.
 
 pub mod extract;
+pub mod index;
