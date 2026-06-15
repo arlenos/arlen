@@ -1,25 +1,26 @@
 //! `arlen-code-indexer` - the Tier-2 code-graph ingestion daemon
 //! (code-graph-layer.md CG-R1).
 //!
-//! Consumes `file.opened` from the event bus; for each project-scoped Rust file
-//! whose content has changed since it was last seen, it re-parses ONLY that file
-//! (per-file isolation) and emits a `code.indexed` event the knowledge daemon
-//! promotes into `CodeSymbol` + `DEFINES`. Per-user daemon (the journald-parser
-//! shape): it reads the user's own project source and emits onto the per-uid
-//! event bus.
+//! Consumes `file.opened` from the event bus; for each project-scoped source
+//! file (Rust, Python, TypeScript) whose content has changed since it was last
+//! seen, it re-parses ONLY that file (per-file isolation) and emits a
+//! `code.indexed` event the knowledge daemon promotes into `CodeSymbol` +
+//! `DEFINES`. Per-user daemon (the journald-parser shape): it reads the user's
+//! own project source and emits onto the per-uid event bus.
 //!
-//! The anti-Nepomuk guardrails (§6) live here: only `.rs` files (Rust-first),
-//! only files under a live `Project` root (never the whole disk), and an
-//! mtime de-dup so a mere re-open of an unchanged file does not re-parse. The
-//! project roots are cached from the graph and refreshed on a slow timer.
+//! The anti-Nepomuk guardrails (§6) live here: only supported source extensions
+//! (`language_for_path`), only files under a live `Project` root (never the
+//! whole disk), skipping build/cache/VCS dirs, and an mtime de-dup so a mere
+//! re-open of an unchanged file does not re-parse. The project roots are cached
+//! from the graph and refreshed on a slow timer.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
-use arlen_code_indexer::extract::extract_rust;
+use arlen_code_indexer::extract::extract;
 use arlen_code_indexer::index::{
-    build_payload, is_rust_file, path_has_traversal, path_in_ignored_dir, path_under_any,
+    build_payload, language_for_path, path_has_traversal, path_in_ignored_dir, path_under_any,
     was_truncated, MAX_FILE_BYTES,
 };
 use os_sdk::event::{EventEmitter, UnixEventEmitter};
@@ -135,9 +136,14 @@ impl Indexer {
             return;
         };
         let path = payload.path;
-        if path.is_empty() || !is_rust_file(&path) {
+        if path.is_empty() {
             return;
         }
+        // Only index a supported source language (Rust / Python / TypeScript);
+        // anything else is skipped without spawning a parse.
+        let Some(language) = language_for_path(&path) else {
+            return;
+        };
         // Reject a `..`-traversal path: the project-scope check below is textual,
         // so a traversal that is textually under a root must be dropped here lest
         // it read a file outside the project (the per-file isolation / §6 scope).
@@ -184,11 +190,11 @@ impl Indexer {
                 return;
             }
         };
-        let file_index = extract_rust(&source);
+        let file_index = extract(language, &source);
         if was_truncated(&file_index) {
             warn!(%path, symbols = file_index.symbols.len(), "file exceeds the symbol cap; indexing a truncated set");
         }
-        let payload = build_payload(&path, &file_index);
+        let payload = build_payload(&path, language, &file_index);
         let symbols = payload.symbols.len();
         match self.emitter.emit("code.indexed", payload.encode_to_vec()).await {
             Ok(()) => {
