@@ -11,6 +11,7 @@ mod proto {
 mod auth;
 mod backup;
 mod capsule;
+mod code_analysis;
 mod daemon;
 mod db;
 mod events;
