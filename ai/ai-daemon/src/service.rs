@@ -20,7 +20,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use arlen_ai_core::audit::{self, AuditSink};
-use arlen_ai_core::graph_query::QueryScope;
+use arlen_ai_core::graph_query::{AccessTier, QueryScope};
+use arlen_ai_core::graph_schema::GraphSchema;
 use arlen_ai_core::mcp::McpClient;
 use arlen_ai_core::screen::Screener;
 use arlen_ai_core::pipeline::{QueryRunner, RunFailure};
@@ -30,6 +31,7 @@ use arlen_ai_explanation::{
 };
 use tokio_util::sync::CancellationToken;
 
+use crate::active_project::ActiveProject;
 use crate::registry::{AuthError, CompletionOutcome, CreatedQuery, QueryRegistry, QueryStatus};
 use crate::tool_loop::{loop_outcome_to_answer, run_tool_loop, ToolStep};
 
@@ -297,6 +299,11 @@ impl Drop for InflightGuard {
 struct Admission {
     enabled: bool,
     scope: QueryScope,
+    /// The read tier the scope was built for. The label allowlist alone
+    /// cannot tell `ProjectScoped` apart from a hand-built scope, and the
+    /// query path needs to know when a read must be anchored to the active
+    /// project (GAP-21), so the tier is carried explicitly.
+    tier: AccessTier,
 }
 
 /// Daemon service.
@@ -334,6 +341,12 @@ pub struct AiDaemonService {
     /// before they reach the model. Defaults to [`Screener::off`] (no
     /// classifier provisioned) until [`Self::with_screening`] wires one.
     screener: Screener,
+    /// The live active-project source (Focus Mode, via the Event Bus). A
+    /// `ProjectScoped` read is anchored to `active_project.current()`;
+    /// when none is active the read is refused, never widened to all
+    /// projects (GAP-21). Defaults to "no active project" (fail-closed)
+    /// until the binary wires the bus listener via [`Self::with_active_project`].
+    active_project: ActiveProject,
 }
 
 /// The wired interactive tool-use capability: the MCP client (shared with
@@ -390,6 +403,9 @@ impl AiDaemonService {
             admission: Arc::new(Mutex::new(Admission {
                 enabled: false,
                 scope,
+                // Fail-closed start: the watcher publishes the real tier on
+                // its first apply; until then the daemon is disabled.
+                tier: AccessTier::Minimal,
             })),
             audit,
             inflight: Arc::new(Mutex::new(InflightTracker::default())),
@@ -399,6 +415,7 @@ impl AiDaemonService {
             explain: None,
             tool_loop: None,
             screener: Screener::off(),
+            active_project: ActiveProject::new(),
         }
     }
 
@@ -509,21 +526,34 @@ impl AiDaemonService {
         self.lock_admission().enabled
     }
 
-    /// Replace the read-access scope, leaving the enabled flag as it is.
-    pub fn set_scope(&self, scope: QueryScope) {
-        self.lock_admission().scope = scope;
+    /// Attach the live active-project source (Focus Mode). Builder used by
+    /// the binary; tests that exercise the anchor inject one directly.
+    pub fn with_active_project(mut self, active_project: ActiveProject) -> Self {
+        self.active_project = active_project;
+        self
     }
 
-    /// Publish the enabled flag and the read scope together, atomically.
+    /// Replace the read-access scope and its tier, leaving the enabled flag
+    /// as it is. A test affordance; the config watcher uses
+    /// [`set_admission`](Self::set_admission).
+    pub fn set_scope(&self, tier: AccessTier, scope: QueryScope) {
+        let mut adm = self.lock_admission();
+        adm.scope = scope;
+        adm.tier = tier;
+    }
+
+    /// Publish the enabled flag, the read tier, and the read scope together,
+    /// atomically.
     ///
     /// This is the setter the config watcher uses on every reload, so a
     /// concurrent query can never observe a torn pair (one field from a
     /// new config epoch, the other from an old one). Single-field
     /// setters exist for startup and tests, where no query races the
     /// update.
-    pub fn set_admission(&self, enabled: bool, scope: QueryScope) {
+    pub fn set_admission(&self, enabled: bool, tier: AccessTier, scope: QueryScope) {
         let mut adm = self.lock_admission();
         adm.enabled = enabled;
+        adm.tier = tier;
         adm.scope = scope;
     }
 
@@ -558,10 +588,31 @@ impl AiDaemonService {
         // tier) is rejected up front so the pipeline never runs and no
         // provider call is spent on a query that would always fail
         // validation.
-        let Admission { enabled, scope } = self.lock_admission().clone();
+        let Admission {
+            enabled,
+            scope,
+            tier,
+        } = self.lock_admission().clone();
         if !enabled {
             return Err(QueryError::Disabled);
         }
+        // GAP-21: a project-scoped read must be anchored to the active
+        // Focus-Mode project's subgraph, resolved per-query (the active
+        // project changes at runtime, independent of the config epoch).
+        // Fail-closed: with no active project the read is refused, never
+        // widened to the tier's labels across all projects. The anchored
+        // scope is carried into dispatch, so a project switch mid-query
+        // cannot retarget an already-admitted read.
+        let scope = if tier == AccessTier::ProjectScoped {
+            match self.active_project.current() {
+                Some(project_id) => {
+                    QueryScope::for_project(project_id, &GraphSchema::knowledge_graph())
+                }
+                None => return Err(QueryError::NoGraphAccess),
+            }
+        } else {
+            scope
+        };
         if scope.is_empty() {
             return Err(QueryError::NoGraphAccess);
         }
@@ -662,7 +713,14 @@ impl AiDaemonService {
         caller: CallerIdentity,
         now_unix: i64,
     ) -> Result<String, ExplainError> {
-        let Admission { enabled, scope } = self.lock_admission().clone();
+        // Explanation Mode reads a fixed label set through a separate
+        // reader (not the DSL pipeline), so the GAP-21 project anchor does
+        // not apply here; a project-scoped explanation still reads its
+        // label set across projects until the Explainer gains its own
+        // project filter (a follow-up).
+        let Admission {
+            enabled, scope, ..
+        } = self.lock_admission().clone();
         if !enabled {
             return Err(ExplainError::Disabled);
         }
@@ -1091,7 +1149,7 @@ mod tests {
         assert!(matches!(err, QueryError::NoGraphAccess));
 
         // Raising the tier live admits the next query without a restart.
-        svc.set_scope(full_scope());
+        svc.set_scope(AccessTier::Full, full_scope());
         let h = svc
             .query("q".to_string(), caller)
             .await
@@ -1139,7 +1197,7 @@ mod tests {
         // Change the live scope to Minimal after admission but before
         // the gated runner observes it. The query must still run under
         // the scope it was admitted with, never a re-read snapshot.
-        svc.set_scope(QueryScope::new(Vec::<&str>::new()));
+        svc.set_scope(AccessTier::Minimal, QueryScope::new(Vec::<&str>::new()));
         gate.notify_one();
         let _ = wait_for_terminal(&svc, &h, ":1.7").await;
         assert_eq!(
@@ -1236,6 +1294,55 @@ mod tests {
             .await
             .expect_err("empty scope rejects");
         assert_eq!(err.code(), "no-graph-access");
+    }
+
+    #[tokio::test]
+    async fn project_scoped_read_is_refused_without_an_active_project() {
+        // GAP-21 fail-closed: a project-scoped admission with no active
+        // Focus-Mode project must refuse the read, never widen to reading
+        // the tier's labels across every project.
+        let scope =
+            QueryScope::for_tier(AccessTier::ProjectScoped, &GraphSchema::knowledge_graph());
+        let svc = AiDaemonService::new(
+            Arc::new(StubRunner {
+                reply: Ok("never reached".to_string()),
+                gate: None,
+            }),
+            full_scope(),
+            audit_sink(),
+        );
+        svc.set_admission(true, AccessTier::ProjectScoped, scope);
+        let err = svc
+            .query("hi".to_string(), caller_id(":1.42", "/usr/bin/app-a"))
+            .await
+            .expect_err("no active project refuses");
+        assert_eq!(err.code(), "no-graph-access");
+    }
+
+    #[tokio::test]
+    async fn project_scoped_read_is_admitted_when_a_project_is_active() {
+        // With an active project the read is admitted under the anchored
+        // (non-empty) scope, so a handle is returned rather than
+        // NoGraphAccess.
+        let scope =
+            QueryScope::for_tier(AccessTier::ProjectScoped, &GraphSchema::knowledge_graph());
+        let active = ActiveProject::new();
+        active.set_current_for_test(Some("proj-1".to_string()));
+        let svc = AiDaemonService::new(
+            Arc::new(StubRunner {
+                reply: Ok("answer".to_string()),
+                gate: None,
+            }),
+            full_scope(),
+            audit_sink(),
+        )
+        .with_active_project(active);
+        svc.set_admission(true, AccessTier::ProjectScoped, scope);
+        let handle = svc
+            .query("hi".to_string(), caller_id(":1.42", "/usr/bin/app-a"))
+            .await
+            .expect("active project admits the read");
+        assert!(!handle.query_id.is_empty());
     }
 
     #[tokio::test]

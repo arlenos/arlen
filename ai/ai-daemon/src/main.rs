@@ -22,6 +22,7 @@ use arlen_ai_core::graph_query::QueryScope;
 use arlen_ai_core::graph_schema::GraphSchema;
 use arlen_ai_core::pipeline::{CypherPipeline, GraphQuerier, QueryRunner};
 use arlen_ai_core::provider::AIProvider;
+use arlen_ai_daemon::active_project::ActiveProject;
 use arlen_ai_daemon::authz::AuthorizationStore;
 use arlen_ai_daemon::config_watch;
 use arlen_ai_daemon::graph_adapter::OsSdkGraphQuerier;
@@ -190,6 +191,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // client handle that discovery keeps connected.
     let discovery = Arc::new(McpDiscovery::new(audit.clone()));
 
+    // The live active-project source (Focus Mode, over the Event Bus). It
+    // anchors project-scoped reads to the active project (GAP-21); shared
+    // between the service (reads it per query) and the bus listener spawned
+    // below (updates it on focus.activated/deactivated).
+    let active_project = ActiveProject::new();
+
     let service = Arc::new(
         AiDaemonService::new(
             runner,
@@ -209,7 +216,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .with_screening(arlen_ai_core::screen::Screener::from_config(
             &config_watch::load_ai_text(),
-        )),
+        ))
+        .with_active_project(active_project.clone()),
     );
     config_watch::spawn_config_watch(service.clone());
 
@@ -243,6 +251,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // installs and removals for the rest of the session.
     let consumer = UnixEventConsumer::new(resolve_event_consumer_socket());
     tokio::spawn(discovery.run(consumer));
+
+    // Track the active Focus-Mode project over the Event Bus `focus.`
+    // namespace, so a project-scoped read anchors to it (its own consumer
+    // connection: the bus enforces one filter per connection).
+    let focus_consumer = UnixEventConsumer::new(resolve_event_consumer_socket());
+    tokio::spawn(active_project.run(focus_consumer));
 
     tokio::signal::ctrl_c().await?;
     tracing::info!("arlen-ai-daemon shutting down");
