@@ -11,6 +11,7 @@ name = "arlen_print"
 [dependencies]
 audit-proto = { path = "../../contracts/audit-proto" }
 async-trait = "0.1"
+tracing = "0.1"
 # The real CUPS client links no C library: `ipp` is a pure-Rust async IPP
 # implementation, behind the `cups` feature so the default build and CI test the
 # pure model + the mock backend without pulling reqwest/TLS. The live IPP
@@ -21,6 +22,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = tr
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+audit-proto = { path = "../../contracts/audit-proto", features = ["test-util"] }
 
 [features]
 cups = ["dep:ipp", "dep:tokio", "dep:futures-util"]
