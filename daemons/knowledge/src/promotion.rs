@@ -3,7 +3,7 @@ use crate::project::ProjectStore;
 use crate::proto::{
     AnnotationClearPayload, AnnotationSetPayload, BadgeSetPayload, BadgeStatus,
     CodeFileIndexPayload, FileOpenedPayload, PresenceClearPayload, PresenceSetPayload,
-    TimelineRecordPayload, WindowFocusedPayload,
+    ShortcutActionInvokedPayload, TimelineRecordPayload, WindowFocusedPayload,
 };
 use crate::utils::escape_cypher;
 use anyhow::Result;
@@ -205,6 +205,15 @@ async fn run_pass(
             }
             "app.annotation.cleared" => promote_annotation_cleared(graph, payload).await,
             "app.badge.set" => promote_badge_set(graph, id, timestamp, payload).await,
+            // User interactions (toolbar / shortcut / menu) become UserAction
+            // nodes, so the KG carries a native interaction history (the GAP-10
+            // follow-up: previously these were queryable RAW events only). One
+            // arm, three shape-identical surfaces.
+            "app.toolbar.action_invoked"
+            | "app.shortcut.action_invoked"
+            | "app.menu.action_invoked" => {
+                promote_action_invoked(graph, id, event_type, timestamp, payload).await
+            }
             // Coarse power transitions become timeline Event nodes (§3f). The
             // high-frequency `power.state` snapshot is deliberately NOT listed,
             // so battery-% churn is never promoted.
@@ -756,6 +765,57 @@ async fn promote_badge_set(
     Ok(())
 }
 
+/// Promote a `*.action_invoked` event (toolbar / shortcut / menu) into a
+/// UserAction node, so a user's interactions become KG-native history (the
+/// "what did I export last Tuesday" query). `category` is the surface, `action`
+/// the app-defined dispatch id, `subject` the app id. Content-free per S13: only
+/// the structural action label, never a payload body. The three surfaces share
+/// this arm because their payloads are byte-identical (`app_id`, `action`,
+/// `window_id`); `window_id` is irrelevant to the interaction record.
+async fn promote_action_invoked(
+    graph: &GraphHandle,
+    event_id: &str,
+    event_type: &str,
+    timestamp: &i64,
+    payload: &[u8],
+) -> Result<()> {
+    let p = ShortcutActionInvokedPayload::decode(payload)?;
+    let category = match event_type {
+        "app.toolbar.action_invoked" => "toolbar",
+        "app.shortcut.action_invoked" => "shortcut",
+        "app.menu.action_invoked" => "menu",
+        _ => "action",
+    };
+    // A malformed emit with no action would write a blank node; skip it.
+    if p.action.is_empty() {
+        debug!(event_id, category, "action_invoked not promoted (empty action)");
+        return Ok(());
+    }
+
+    let id_esc = escape_cypher(event_id);
+    let action_esc = escape_cypher(&p.action);
+    let app_esc = escape_cypher(&p.app_id);
+
+    graph
+        .write(format!(
+            "MERGE (u:UserAction {{id: '{id_esc}'}})
+             SET u.category = '{category}',
+                 u.action   = '{action_esc}',
+                 u.subject  = '{app_esc}',
+                 u.timestamp = {timestamp}"
+        ))
+        .await?;
+
+    debug!(
+        event_id,
+        category,
+        app_id = %p.app_id,
+        action = %p.action,
+        "promoted action_invoked"
+    );
+    Ok(())
+}
+
 #[cfg(test)]
 mod shell_event_tests {
     use super::*;
@@ -1046,6 +1106,69 @@ mod shell_event_tests {
             .await
             .unwrap();
         assert_eq!(none.rows[0][0].as_i64(), 0, "a success badge is not promoted");
+    }
+
+    #[tokio::test]
+    async fn promote_action_invoked_records_user_actions_per_surface() {
+        // A user interaction on any surface becomes a UserAction with the
+        // surface as category; the three surfaces share one arm + payload shape.
+        let (graph, _tmp) = setup().await;
+
+        let menu = ShortcutActionInvokedPayload {
+            app_id: "dev.arlen.terminal".into(),
+            action: "new-session".into(),
+            window_id: String::new(),
+        };
+        let mut buf = Vec::new();
+        menu.encode(&mut buf).unwrap();
+        promote_action_invoked(&graph, "menu1", "app.menu.action_invoked", &900, &buf)
+            .await
+            .expect("a menu action promotes");
+        let rs = graph
+            .query_rows(
+                "MATCH (u:UserAction {id: 'menu1'}) RETURN u.category AS c, u.action AS a, u.subject AS s"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        let row = rs.rows.first().expect("the menu action promoted to a UserAction");
+        assert_eq!(row[0].as_str(), "menu");
+        assert_eq!(row[1].as_str(), "new-session");
+        assert_eq!(row[2].as_str(), "dev.arlen.terminal");
+
+        // A toolbar action goes through the same arm with category=toolbar.
+        let toolbar = ShortcutActionInvokedPayload {
+            app_id: "dev.arlen.files".into(),
+            action: "compress".into(),
+            window_id: "main".into(),
+        };
+        let mut buf2 = Vec::new();
+        toolbar.encode(&mut buf2).unwrap();
+        promote_action_invoked(&graph, "tb1", "app.toolbar.action_invoked", &901, &buf2)
+            .await
+            .unwrap();
+        let rs2 = graph
+            .query_rows("MATCH (u:UserAction {id: 'tb1'}) RETURN u.category AS c".into())
+            .await
+            .unwrap();
+        assert_eq!(rs2.rows.first().expect("toolbar promoted")[0].as_str(), "toolbar");
+
+        // An empty action (malformed emit) writes no node.
+        let empty = ShortcutActionInvokedPayload {
+            app_id: "dev.arlen.x".into(),
+            action: String::new(),
+            window_id: String::new(),
+        };
+        let mut buf3 = Vec::new();
+        empty.encode(&mut buf3).unwrap();
+        promote_action_invoked(&graph, "empty1", "app.menu.action_invoked", &902, &buf3)
+            .await
+            .unwrap();
+        let none = graph
+            .query_rows("MATCH (u:UserAction {id: 'empty1'}) RETURN count(*) AS c".into())
+            .await
+            .unwrap();
+        assert_eq!(none.rows[0][0].as_i64(), 0, "an empty action is not promoted");
     }
 
     #[tokio::test]
