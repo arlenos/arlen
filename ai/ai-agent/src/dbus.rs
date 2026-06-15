@@ -30,6 +30,7 @@
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
+use tokio::sync::{mpsc, oneshot};
 use zbus::interface;
 
 use crate::config::AgentConfig;
@@ -134,6 +135,25 @@ pub struct AgentInterface {
     /// The execution receipts the dispatch loop retains, shared so a `compensate`
     /// call can look up the write to undo by its decision's correlation id.
     pub receipts: Arc<Mutex<ReceiptStore<RetainedReceipt>>>,
+    /// Carries a user-invoke (`run_skill`) request to the per-epoch dispatch
+    /// loop, which runs the named skill on the LIVE dispatcher. A bounded
+    /// channel: a backlog of invokes applies backpressure rather than growing
+    /// unbounded.
+    pub manual_tx: mpsc::Sender<ManualInvoke>,
+}
+
+/// A user-invoke request: run the named skill, reply with a status summary.
+///
+/// Carried from the D-Bus [`AgentInterface::run_skill`] method to the per-epoch
+/// dispatch loop (`main.rs`), which owns the live `Dispatcher` and runs the
+/// named behaviour through it (current provider/config), replying over
+/// `respond`. Lives here, not in the binary, so the lib-side interface and the
+/// binary's loop share one type.
+pub struct ManualInvoke {
+    /// The skill (behaviour) name to run.
+    pub name: String,
+    /// One-shot reply channel for the run's status summary.
+    pub respond: oneshot::Sender<String>,
 }
 
 #[interface(name = "org.arlen.AIAgent1")]
@@ -233,6 +253,30 @@ impl AgentInterface {
         let outcome = crate::loader::load_configured();
         let summaries = crate::skills::skill_summaries(&outcome.loaded);
         serde_json::to_string(&summaries).unwrap_or_else(|_| "[]".to_string())
+    }
+
+    /// Run a loaded skill by name (PR-5 part 3b user-invoke), returning a short
+    /// status summary. The named behaviour runs through the bounded loop on the
+    /// LIVE dispatcher (current provider, config and grants) via a manual invoke
+    /// — bypassing event-routing, enablement-gated, and (for an agent skill)
+    /// still provider/budget/tier-gated. The request is handed to the dispatch
+    /// loop over a channel and this awaits its reply; a dropped or full channel
+    /// (the loop is mid-rebuild) returns an error string rather than blocking.
+    /// The harness renders the result; running is the agent's, not the caller's.
+    async fn run_skill(&self, name: String) -> String {
+        let (respond, rx) = oneshot::channel();
+        if self
+            .manual_tx
+            .send(ManualInvoke { name, respond })
+            .await
+            .is_err()
+        {
+            return "error: the agent run loop is unavailable".to_string();
+        }
+        match rx.await {
+            Ok(summary) => summary,
+            Err(_) => "error: the agent run loop dropped the request".to_string(),
+        }
     }
 }
 
