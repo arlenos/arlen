@@ -192,6 +192,21 @@ const NODES: &[NodeSchema] = &[
             ("pinned_at", FieldType::Int),
         ],
     },
+    // The code-graph layer (code-graph-layer.md CG-R1/CG-R3): a project's
+    // functions/types/modules, extracted per-file by the code-indexer. Listing
+    // it here makes the code nodes DISCOVERABLE via `describe_schema` (CG-R5) so
+    // a caller knows to query them, not just queryable by luck.
+    NodeSchema {
+        label: "CodeSymbol",
+        fields: &[
+            ("id", FieldType::Text),
+            ("name", FieldType::Text),
+            ("source_file", FieldType::Text),
+            ("source_location", FieldType::Text),
+            ("language", FieldType::Text),
+            ("kind", FieldType::Text),
+        ],
+    },
 ];
 
 /// Relationship tables. Mirrors `knowledge/src/graph.rs`.
@@ -231,6 +246,30 @@ const EDGES: &[EdgeSchema] = &[
         from: "Summary",
         to: "App",
     },
+    // Code-graph edges (CG-R1/CG-R3). DEFINES fuses a CodeSymbol to the File
+    // that declares it; CALLS/IMPORTS/REFERENCES are the symbol-to-symbol
+    // references (resolved at query time, CG-R2). Listed so `describe_schema`
+    // tells a caller how to traverse the code graph.
+    EdgeSchema {
+        label: "DEFINES",
+        from: "File",
+        to: "CodeSymbol",
+    },
+    EdgeSchema {
+        label: "CALLS",
+        from: "CodeSymbol",
+        to: "CodeSymbol",
+    },
+    EdgeSchema {
+        label: "IMPORTS",
+        from: "CodeSymbol",
+        to: "CodeSymbol",
+    },
+    EdgeSchema {
+        label: "REFERENCES",
+        from: "CodeSymbol",
+        to: "CodeSymbol",
+    },
 ];
 
 #[cfg(test)]
@@ -250,6 +289,22 @@ mod tests {
         let s = GraphSchema::knowledge_graph();
         assert!(s.node("Secret").is_none());
         assert!(s.node("file").is_none(), "lookup is case-sensitive");
+    }
+
+    #[test]
+    fn code_graph_nodes_and_edges_are_discoverable() {
+        // CG-R5: the code graph must be in the schema so `describe_schema`
+        // surfaces it to a caller (not just queryable by luck).
+        let s = GraphSchema::knowledge_graph();
+        assert!(s.node("CodeSymbol").is_some());
+        assert_eq!(s.field_type("CodeSymbol", "language"), Some(FieldType::Text));
+        assert_eq!(s.field_type("CodeSymbol", "kind"), Some(FieldType::Text));
+        let defines = s.edge("DEFINES").expect("DEFINES edge");
+        assert_eq!(defines.from, "File");
+        assert_eq!(defines.to, "CodeSymbol");
+        let calls = s.edge("CALLS").expect("CALLS edge");
+        assert_eq!(calls.from, "CodeSymbol");
+        assert_eq!(calls.to, "CodeSymbol");
     }
 
     #[test]
@@ -288,7 +343,9 @@ mod tests {
     #[test]
     fn schema_has_expected_table_counts() {
         let s = GraphSchema::knowledge_graph();
-        assert_eq!(s.node_labels().count(), 10);
-        assert_eq!(s.edge_labels().count(), 7);
+        // 10 activity-graph nodes + CodeSymbol (code-graph, CG-R5).
+        assert_eq!(s.node_labels().count(), 11);
+        // 7 activity-graph edges + DEFINES/CALLS/IMPORTS/REFERENCES (code-graph).
+        assert_eq!(s.edge_labels().count(), 11);
     }
 }
