@@ -52,13 +52,21 @@ impl PamVerifier {
 
 /// Map a PAM failure return code to a [`VerifyError`].
 ///
-/// Wrong-password-class codes all collapse to [`VerifyError::BadCredential`]
-/// with NO distinction between "wrong password" and "no such user"
-/// ([`PamReturnCode::User_Unknown`]) - distinguishing them would be a
-/// username-enumeration oracle. Everything else (a service/system/conversation
-/// fault, an expired account, a required token change) is a backend condition,
-/// not a wrong-password event, so it fails closed as [`VerifyError::Backend`]
-/// rather than being mistaken for a bad password.
+/// `Client::authenticate` runs `pam_authenticate` AND `pam_acct_mgmt` and folds
+/// both into one return code, so this sees account-management codes too. The
+/// classification:
+///
+/// - wrong-password-class codes all collapse to [`VerifyError::BadCredential`]
+///   with NO distinction between "wrong password" and "no such user"
+///   ([`PamReturnCode::User_Unknown`]) - distinguishing them would be a
+///   username-enumeration oracle;
+/// - everything else (a service/system/conversation fault, an expired account,
+///   a required token change like `New_Authtok_Reqd`) is a backend condition,
+///   not a wrong-password event, so it fails closed as [`VerifyError::Backend`]
+///   rather than being mistaken for a bad password. This is safe by
+///   construction - every non-`Success` code is a denial that never reaches the
+///   tier core - but it means an expired-password user reads as a backend fault;
+///   routing that to a password-change flow is the integration layer's job.
 fn map_failure(code: PamReturnCode) -> VerifyError {
     match code {
         PamReturnCode::Auth_Err
@@ -110,6 +118,27 @@ mod tests {
             map_failure(PamReturnCode::Perm_Denied),
             VerifyError::BadCredential
         );
+        // Pin Cred_Insufficient on the credential side so a refactor of the match
+        // arms cannot silently move it out (the only place an oracle could return).
+        assert_eq!(
+            map_failure(PamReturnCode::Cred_Insufficient),
+            VerifyError::BadCredential
+        );
+    }
+
+    #[test]
+    fn account_management_codes_fail_closed_as_backend_not_bad_credential() {
+        // An expired password / required token change is an account-state
+        // condition, not a wrong password: it must fail closed as Backend so it
+        // is never mistaken for (or counted as) a credential guess.
+        assert!(matches!(
+            map_failure(PamReturnCode::New_Authtok_Reqd),
+            VerifyError::Backend(_)
+        ));
+        assert!(matches!(
+            map_failure(PamReturnCode::Authinfo_Unavail),
+            VerifyError::Backend(_)
+        ));
     }
 
     #[test]

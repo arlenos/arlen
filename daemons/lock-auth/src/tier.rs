@@ -192,11 +192,15 @@ impl SessionState {
     /// - a STRONG success ([`UnlockOutcome::KeyRelease`], or a [`Tier::Strong`]
     ///   [`UnlockOutcome::WarmUnlock`]) loads the key (key-release) or keeps it,
     ///   restarts the strong-auth window, and clears the failure streak;
-    /// - a CONVENIENCE [`UnlockOutcome::WarmUnlock`] clears the failure streak
-    ///   (it proves presence) but does NOT restart the strong-auth window and does
-    ///   NOT load the key - only a strong factor may cross either boundary. A
-    ///   convenience success only ever happens on an already-warm session, so it
-    ///   never affects the cold-session key-release escalation;
+    /// - a CONVENIENCE [`UnlockOutcome::WarmUnlock`] does NOT restart the
+    ///   strong-auth window, does NOT load the key, AND does NOT clear the failure
+    ///   streak - only a STRONG factor clears it. The failure counter exists to
+    ///   force a strong factor after K failed attempts (Apple's model resets the
+    ///   failed-passcode count only on a successful passcode, never on Touch ID);
+    ///   letting a convenience touch reset it would let an interleaved biometric
+    ///   keep the K-attempt brute-force throttle from ever tripping. A convenience
+    ///   success only ever happens on an already-warm session, so it never affects
+    ///   the cold-session key-release escalation either way;
     /// - a [`UnlockOutcome::Denied`] attempt advances the failure counter
     ///   (saturating) and changes nothing else, so K consecutive denials force a
     ///   strong factor.
@@ -215,10 +219,13 @@ impl SessionState {
                         failed_attempts: 0,
                     }
                 } else {
+                    // Convenience proof-of-presence keeps the key and window as
+                    // they were and leaves the failure streak intact: only a
+                    // strong factor clears it (the throttle-integrity rule above).
                     SessionState {
                         home_key_loaded: self.home_key_loaded,
                         since_strong_auth: self.since_strong_auth,
-                        failed_attempts: 0,
+                        failed_attempts: self.failed_attempts,
                     }
                 }
             }
@@ -496,19 +503,51 @@ mod tests {
     }
 
     #[test]
-    fn a_convenience_success_clears_failures_but_keeps_the_window_and_key_flag() {
+    fn a_convenience_success_keeps_the_window_key_flag_and_failure_streak() {
         let s = SessionState {
             home_key_loaded: true,
             since_strong_auth: HOUR,
             failed_attempts: 3,
         };
         let after = s.after_attempt(&Factor::Fingerprint, &UnlockOutcome::WarmUnlock);
-        assert_eq!(after.failed_attempts, 0, "a success clears the failure streak");
+        assert_eq!(
+            after.failed_attempts, 3,
+            "convenience does NOT clear the failure streak - only a strong factor does"
+        );
         assert_eq!(
             after.since_strong_auth, HOUR,
             "convenience never restarts the strong-auth window"
         );
         assert!(after.home_key_loaded, "convenience never loads the key");
+    }
+
+    #[test]
+    fn a_convenience_success_cannot_reset_the_brute_force_throttle() {
+        // The throttle-integrity rule: interleaving a fingerprint between password
+        // guesses must NOT keep the failure streak from reaching the lockout. Drive
+        // the streak up with denials, slip a convenience success in between, and
+        // confirm the count still climbs to force strong.
+        let p = TierPolicy::default();
+        let mut s = warm();
+        for _ in 0..(p.max_failed_attempts - 1) {
+            s = s.after_attempt(
+                &Factor::Password,
+                &UnlockOutcome::Denied(DenyReason::StrongAuthRequired),
+            );
+            // A convenience touch in between must not rescue the streak.
+            s = s.after_attempt(&Factor::Fingerprint, &UnlockOutcome::WarmUnlock);
+        }
+        // One more denial reaches the cap.
+        s = s.after_attempt(
+            &Factor::Password,
+            &UnlockOutcome::Denied(DenyReason::StrongAuthRequired),
+        );
+        assert!(s.failed_attempts >= p.max_failed_attempts);
+        assert_eq!(
+            evaluate(&Factor::Fingerprint, &s, &p),
+            UnlockOutcome::Denied(DenyReason::StrongAuthRequired),
+            "the throttle tripped despite interleaved convenience unlocks"
+        );
     }
 
     #[test]
