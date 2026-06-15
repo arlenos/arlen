@@ -10,7 +10,11 @@ name = "arlen_lock_auth"
 
 [dependencies]
 audit-proto = { path = "../../contracts/audit-proto" }
+pam = { version = "0.8", optional = true }
 
 [dev-dependencies]
 
 [workspace]
+
+[features]
+pam = ["dep:pam"]
