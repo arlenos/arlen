@@ -2,8 +2,8 @@ use crate::graph::GraphHandle;
 use crate::project::ProjectStore;
 use crate::proto::{
     AnnotationClearPayload, AnnotationSetPayload, BadgeSetPayload, BadgeStatus,
-    FileOpenedPayload, PresenceClearPayload, PresenceSetPayload, TimelineRecordPayload,
-    WindowFocusedPayload,
+    CodeFileIndexPayload, FileOpenedPayload, PresenceClearPayload, PresenceSetPayload,
+    TimelineRecordPayload, WindowFocusedPayload,
 };
 use crate::utils::escape_cypher;
 use anyhow::Result;
@@ -212,6 +212,9 @@ async fn run_pass(
             | "power.suspend" | "power.resume" | "power.lid_closed" => {
                 promote_power_transition(graph, id, event_type, timestamp, source).await
             }
+            // The code-graph layer (CG-R1): replace a file's CodeSymbols with the
+            // freshly-parsed set and fuse each to its File via DEFINES.
+            "code.indexed" => promote_code_indexed(graph, payload).await,
             _ => {
                 // Not yet promoted; will be handled in a later phase.
                 debug!(event_type, "skipping promotion for unhandled event type");
@@ -413,6 +416,57 @@ async fn promote_power_transition(
         ))
         .await?;
     debug!(event_id, event_type, "promoted power transition");
+    Ok(())
+}
+
+/// Promote a `code.indexed` event into the code-graph layer (code-graph-layer.md
+/// CG-R1): replace the file's prior `CodeSymbol`s with the freshly-parsed set and
+/// fuse each to its `File` via a `DEFINES` edge (confidence `extracted` - the
+/// definition is syntactically explicit). The whole file is replaced atomically
+/// in one transaction (per-file isolation: a re-parse wholly supersedes the
+/// file's previous symbols, so a crash mid-replace never leaves a partial set).
+/// Cross-file call/import edges are resolved at query time (CG-R2); this promotes
+/// only the definitions and their file fusion. All interpolated values are
+/// escaped, so file content cannot inject Cypher.
+async fn promote_code_indexed(graph: &GraphHandle, payload: &[u8]) -> Result<()> {
+    let p = CodeFileIndexPayload::decode(payload)?;
+    if p.source_file.is_empty() {
+        return Ok(());
+    }
+    let file_esc = escape_cypher(&p.source_file);
+    let lang_esc = escape_cypher(&p.language);
+
+    let mut stmts = Vec::new();
+    // Per-file replace: detach-delete the file's prior CodeSymbols (and their
+    // DEFINES/edges). A re-parse fully supersedes them.
+    stmts.push(format!(
+        "MATCH (s:CodeSymbol {{source_file: '{file_esc}'}}) DETACH DELETE s"
+    ));
+    // The fusion anchor: the File node the symbols hang off (the activity graph
+    // already carries its provenance/project/timeline).
+    stmts.push(format!("MERGE (f:File {{id: '{file_esc}'}})"));
+    for sym in &p.symbols {
+        if sym.id.is_empty() || sym.name.is_empty() {
+            continue;
+        }
+        let id_esc = escape_cypher(&sym.id);
+        let name_esc = escape_cypher(&sym.name);
+        let loc_esc = escape_cypher(&sym.source_location);
+        let kind_esc = escape_cypher(&sym.kind);
+        stmts.push(format!(
+            "CREATE (:CodeSymbol {{id: '{id_esc}', name: '{name_esc}', \
+             source_file: '{file_esc}', source_location: '{loc_esc}', \
+             language: '{lang_esc}', kind: '{kind_esc}'}})"
+        ));
+        stmts.push(format!(
+            "MATCH (f:File {{id: '{file_esc}'}}), (s:CodeSymbol {{id: '{id_esc}'}}) \
+             CREATE (f)-[:DEFINES {{confidence: 'extracted'}}]->(s)"
+        ));
+    }
+
+    let count = p.symbols.len();
+    graph.transaction(stmts).await?;
+    debug!(source_file = %p.source_file, symbols = count, "promoted code.indexed");
     Ok(())
 }
 
@@ -848,6 +902,66 @@ mod shell_event_tests {
             .await
             .unwrap();
         assert_eq!(edge.rows[0][0].as_i64(), 1, "the app is active in the session");
+    }
+
+    #[tokio::test]
+    async fn promote_code_indexed_defines_symbols_and_replaces_per_file() {
+        use crate::proto::CodeSymbolPayload;
+        let (graph, _tmp) = setup().await;
+
+        let sym = |id: &str, name: &str, line: &str, kind: &str| CodeSymbolPayload {
+            id: id.to_string(),
+            name: name.to_string(),
+            source_location: line.to_string(),
+            kind: kind.to_string(),
+        };
+        let first = CodeFileIndexPayload {
+            source_file: "/p/lib.rs".to_string(),
+            language: "rust".to_string(),
+            symbols: vec![
+                sym("/p/lib.rs#function:helper@1", "helper", "1", "function"),
+                sym("/p/lib.rs#function:main@2", "main", "2", "function"),
+            ],
+        };
+        let mut buf = Vec::new();
+        first.encode(&mut buf).unwrap();
+        promote_code_indexed(&graph, &buf)
+            .await
+            .expect("the first index promotes");
+
+        // Two CodeSymbols, each DEFINES'd by the File with confidence extracted.
+        let rs = graph
+            .query_rows(
+                "MATCH (:File {id:'/p/lib.rs'})-[d:DEFINES]->(s:CodeSymbol) \
+                 RETURN s.name AS n, d.confidence AS c"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rs.rows.len(), 2, "both symbols defined");
+        assert!(rs.rows.iter().all(|r| r[1].as_str() == "extracted"), "all DEFINES are extracted");
+
+        // Re-parse the same file with a DIFFERENT symbol set: the prior symbols
+        // are fully replaced (per-file isolation), not accumulated.
+        let second = CodeFileIndexPayload {
+            source_file: "/p/lib.rs".to_string(),
+            language: "rust".to_string(),
+            symbols: vec![sym("/p/lib.rs#struct:Widget@1", "Widget", "1", "struct")],
+        };
+        let mut buf2 = Vec::new();
+        second.encode(&mut buf2).unwrap();
+        promote_code_indexed(&graph, &buf2)
+            .await
+            .expect("the re-parse promotes");
+
+        let after = graph
+            .query_rows(
+                "MATCH (s:CodeSymbol {source_file:'/p/lib.rs'}) RETURN s.name AS n".into(),
+            )
+            .await
+            .unwrap();
+        let names: Vec<&str> = after.rows.iter().map(|r| r[0].as_str()).collect();
+        assert_eq!(names, vec!["Widget"], "the file's symbols are replaced, not accumulated");
     }
 
     #[tokio::test]
