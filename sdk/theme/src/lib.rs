@@ -45,6 +45,7 @@
 //! See `docs/architecture/theme-system.md` for the full architecture
 //! and per-token semantic guidance.
 
+pub mod apply;
 pub mod base16;
 pub mod catppuccin;
 pub mod color;
