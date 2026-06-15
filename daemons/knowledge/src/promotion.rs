@@ -205,6 +205,13 @@ async fn run_pass(
             }
             "app.annotation.cleared" => promote_annotation_cleared(graph, payload).await,
             "app.badge.set" => promote_badge_set(graph, id, timestamp, payload).await,
+            // Coarse power transitions become timeline Event nodes (§3f). The
+            // high-frequency `power.state` snapshot is deliberately NOT listed,
+            // so battery-% churn is never promoted.
+            "power.low" | "power.critical" | "power.recovered" | "power.profile_changed"
+            | "power.suspend" | "power.resume" | "power.lid_closed" => {
+                promote_power_transition(graph, id, event_type, timestamp, source).await
+            }
             _ => {
                 // Not yet promoted; will be handled in a later phase.
                 debug!(event_type, "skipping promotion for unhandled event type");
@@ -375,6 +382,37 @@ async fn promote_window_focused(
         .await?;
 
     debug!(event_id, app_id = %app_id, "promoted window.focused");
+    Ok(())
+}
+
+/// Promote a coarse power transition into a generic `Event` node on the timeline
+/// (system-services-plan.md §3f/§194: promote the COARSE power transitions
+/// `power.suspend`/`resume`/`lid_*`/`profile_changed`/`critical` as local
+/// provenance, so the AI layer can reason about session boundaries - "what was I
+/// doing before the machine slept here"). The Event node is the same generic
+/// timeline node `window.focused` uses; the transition `type` carries the coarse
+/// fact, correlated to sessions by timestamp (a power transition is system-wide,
+/// not session-scoped, so it carries no session edge). Only schema columns are
+/// set. The high-frequency `power.state` snapshot and battery-% churn are NEVER
+/// promoted - the caller's match list excludes `power.state`, and the power
+/// daemon already emits a transition only once per crossing.
+async fn promote_power_transition(
+    graph: &GraphHandle,
+    event_id: &str,
+    event_type: &str,
+    timestamp: &i64,
+    source: &str,
+) -> Result<()> {
+    let event_id_esc = escape_cypher(event_id);
+    let type_esc = escape_cypher(event_type);
+    let source_esc = escape_cypher(source);
+    graph
+        .write(format!(
+            "MERGE (e:Event {{id: '{event_id_esc}'}})
+             SET e.type = '{type_esc}', e.timestamp = {timestamp}, e.source = '{source_esc}'"
+        ))
+        .await?;
+    debug!(event_id, event_type, "promoted power transition");
     Ok(())
 }
 
@@ -752,6 +790,28 @@ mod shell_event_tests {
         // Re-indexing the same file does not duplicate it.
         index_file_fact_text(&pool, "/home/tim/proj/main.rs").await.unwrap();
         assert_eq!(crate::fts::search_fact_text(&pool, "main.rs", 10).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn promote_power_transition_creates_a_timeline_event() {
+        // A coarse power transition lands as a generic Event node carrying its
+        // type, timestamp and source - the timeline marker the AI correlates to
+        // session boundaries (§3f). No battery-% churn: only the transition.
+        let (graph, _tmp) = setup().await;
+        promote_power_transition(&graph, "pwr1", "power.critical", &4242, "app:arlen-powerd")
+            .await
+            .unwrap();
+        let rs = graph
+            .query_rows(
+                "MATCH (e:Event {id: 'pwr1'}) RETURN e.type AS t, e.timestamp AS ts, e.source AS s"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        let row = rs.rows.first().expect("the power transition Event exists");
+        assert_eq!(row[0].as_str(), "power.critical");
+        assert_eq!(row[1].as_i64(), 4242);
+        assert_eq!(row[2].as_str(), "app:arlen-powerd");
     }
 
     #[tokio::test]
