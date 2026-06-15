@@ -1,0 +1,15 @@
+[package]
+name = "arlen-i18n"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen internationalization: a MessageFormat 2.0 (Unicode CLDR 47, frozen spec) parser + formatter for the Rust daemons, sharing one catalog with the Svelte frontend (i18n-plan.md I18N-R1). The formatter is in-house over ICU4X's plural/number/locale primitives until ICU4X ships its own MF2 formatter; the MF2 catalogs are stable through that swap."
+authors = ["Arlen"]
+
+[lib]
+name = "arlen_i18n"
+
+[dependencies]
+
+[dev-dependencies]
+
+[workspace]
