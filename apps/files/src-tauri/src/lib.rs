@@ -689,6 +689,58 @@ fn files_saved_searches() -> Vec<SavedSearch> {
     Vec::new()
 }
 
+/// The Zuletzt sidebar section: the most-recently-accessed files, surfaced from
+/// the KG (not re-derived by re-scanning the filesystem). The File node id is
+/// the absolute path; `accessed` is its `last_accessed` time.
+#[derive(Serialize)]
+struct RecentFile {
+    /// Absolute file path (the File node id).
+    path: String,
+    /// The basename, for the row label.
+    name: String,
+    /// Last-accessed time, microseconds since the Unix epoch (0 if absent).
+    accessed: i64,
+}
+
+/// Map recent-file rows (`{ path, accessed }`) into sidebar entries, deriving
+/// the basename label and skipping any row missing the path. Pure, so the
+/// shaping is unit-tested without a daemon.
+fn recent_from_rows(rows: &[std::collections::HashMap<String, serde_json::Value>]) -> Vec<RecentFile> {
+    rows.iter()
+        .filter_map(|r| {
+            let path = r.get("path").and_then(|v| v.as_str())?;
+            let accessed = r.get("accessed").and_then(|v| v.as_i64()).unwrap_or(0);
+            let name = std::path::Path::new(path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(path)
+                .to_string();
+            Some(RecentFile {
+                path: path.to_string(),
+                name,
+                accessed,
+            })
+        })
+        .collect()
+}
+
+/// The recently-accessed files for the sidebar's Recent section, newest first.
+/// Best-effort: an absent daemon, an out-of-scope read, or a caller without
+/// `system.File` read scope yields no entries (the rest of the sidebar still
+/// renders). The query is static (no interpolation), so no escaping.
+#[tauri::command]
+async fn files_recent() -> Vec<RecentFile> {
+    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
+    let cypher = "MATCH (f:File) WHERE f.last_accessed IS NOT NULL \
+                  RETURN f.path AS path, f.last_accessed AS accessed \
+                  ORDER BY f.last_accessed DESC LIMIT 32";
+    match client.query_rows(cypher).await {
+        Ok(rows) => recent_from_rows(&rows),
+        Err(_) => Vec::new(),
+    }
+}
+
 /// Tauri application entry point invoked from `main.rs`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -718,6 +770,7 @@ pub fn run() {
             files_templates,
             files_projects,
             files_saved_searches,
+            files_recent,
             thumbnail::files_thumbnail,
             capability::ai_capability
         ])
@@ -727,7 +780,10 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{abs, escape_cypher_literal, projects_from_rows, provenance_to_woher, verwandt_from_rows};
+    use super::{
+        abs, escape_cypher_literal, projects_from_rows, provenance_to_woher, recent_from_rows,
+        verwandt_from_rows,
+    };
     use std::collections::HashMap;
 
     #[test]
@@ -749,6 +805,25 @@ mod tests {
         assert_eq!(projects[0].path, "/home/tim/arlen");
         assert_eq!(projects[1].name, "Loose");
         assert_eq!(projects[1].path, "");
+    }
+
+    #[test]
+    fn recent_derives_basename_and_skips_pathless_rows() {
+        let mut full = HashMap::new();
+        full.insert("path".to_string(), serde_json::json!("/home/tim/notes.md"));
+        full.insert("accessed".to_string(), serde_json::json!(1700000000000000_i64));
+        // A row missing the path is skipped; a missing accessed defaults to 0.
+        let no_path: HashMap<String, serde_json::Value> = HashMap::new();
+        let mut no_time = HashMap::new();
+        no_time.insert("path".to_string(), serde_json::json!("/etc/hosts"));
+
+        let recent = recent_from_rows(&[full, no_path, no_time]);
+        assert_eq!(recent.len(), 2);
+        assert_eq!(recent[0].name, "notes.md", "the basename labels the row");
+        assert_eq!(recent[0].path, "/home/tim/notes.md");
+        assert_eq!(recent[0].accessed, 1700000000000000);
+        assert_eq!(recent[1].name, "hosts");
+        assert_eq!(recent[1].accessed, 0);
     }
 
     #[test]
