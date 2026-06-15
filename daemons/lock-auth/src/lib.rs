@@ -16,12 +16,16 @@
 
 pub mod audit;
 pub mod auth;
+#[cfg(feature = "fprintd")]
+pub mod fprintd_verifier;
 #[cfg(feature = "greetd")]
 pub mod greetd_client;
 #[cfg(feature = "pam")]
 pub mod pam_verifier;
 pub mod tier;
 
+#[cfg(feature = "fprintd")]
+pub use fprintd_verifier::FprintdVerifier;
 #[cfg(feature = "greetd")]
 pub use greetd_client::{AuthStep, GreetdClient, GreetdError, GREETD_SOCK_ENV};
 #[cfg(feature = "pam")]
