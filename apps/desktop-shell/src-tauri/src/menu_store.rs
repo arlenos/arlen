@@ -95,6 +95,10 @@ pub fn dispatch_menu_action(app: AppHandle, app_id: String, action: String) {
             }
         });
     }
+    // Record the menu interaction on the Event Bus (GAP-10) so it reaches the
+    // Knowledge Graph like toolbar and shortcut actions, not only the local
+    // webview. Emitted before the move into the webview payload below.
+    crate::event_bus::emit_menu_action_invoked(&app_id, &action);
     // Always emit the event (frontend may want to track it).
     let _ = app.emit("arlen://menu-action", MenuActionPayload { app_id, action });
 }
