@@ -12,6 +12,7 @@
 //! the same MF2 messages, which are the durable asset.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use icu_locale_core::Locale;
 
@@ -125,6 +126,46 @@ impl Localizer {
     pub fn has(&self, key: &str) -> bool {
         self.chain.iter().any(|(_, c)| c.get(key).is_some())
     }
+
+    /// Load catalogs from a directory of `<locale>.json` files and assemble a
+    /// localizer for `requested`, falling back through to `source` (the
+    /// [`fallback_chain`]). Each chain locale whose `<locale>.json` exists and
+    /// parses contributes a catalog; a missing file is skipped (the chain
+    /// degrades to the next locale) and a malformed file is skipped with a
+    /// warning rather than failing the whole load - a daemon must still start,
+    /// localizing what it can and falling back to the key otherwise.
+    ///
+    /// Returns the localizer and a list of human-readable warnings (a file that
+    /// could not be read / parsed, or a per-message parse error), for the
+    /// operator's log. The localizer is always usable, even if every file was
+    /// missing (then `localize` returns the keys).
+    pub fn load_dir(dir: &Path, requested: &Locale, source: &Locale) -> (Localizer, Vec<String>) {
+        let mut chain = Vec::new();
+        let mut warnings = Vec::new();
+        for locale in fallback_chain(requested, source) {
+            let path = dir.join(format!("{locale}.json"));
+            let json = match std::fs::read_to_string(&path) {
+                Ok(s) => s,
+                // A missing file is normal (not every locale is translated); only
+                // a present-but-unreadable file is worth a warning.
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => {
+                    warnings.push(format!("{}: {e}", path.display()));
+                    continue;
+                }
+            };
+            match Catalog::from_json(&json) {
+                Ok((catalog, errors)) => {
+                    for (key, err) in errors {
+                        warnings.push(format!("{}: message `{key}`: {err}", path.display()));
+                    }
+                    chain.push((locale, catalog));
+                }
+                Err(e) => warnings.push(format!("{}: {e}", path.display())),
+            }
+        }
+        (Localizer::new(chain), warnings)
+    }
 }
 
 /// The locale fallback chain from `requested` down to `source`.
@@ -229,6 +270,34 @@ mod tests {
         assert_eq!(l.localize("bye", &args(&[])), "Goodbye!");
         // An unknown key falls back to the key itself (visible, debuggable).
         assert_eq!(l.localize("nope", &args(&[])), "nope");
+    }
+
+    #[test]
+    fn load_dir_assembles_a_localizer_from_locale_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("de.json"), r#"{"greeting": "Hallo!"}"#).unwrap();
+        std::fs::write(
+            dir.path().join("en.json"),
+            r#"{"greeting": "Hello!", "bye": "Goodbye!", "bad": "{$x"}"#,
+        )
+        .unwrap();
+        // No fr.json: that locale in the chain is simply skipped.
+        let (l, warnings) = Localizer::load_dir(dir.path(), &loc("de"), &loc("en"));
+        assert_eq!(l.localize("greeting", &args(&[])), "Hallo!", "de wins");
+        assert_eq!(l.localize("bye", &args(&[])), "Goodbye!", "falls back to en");
+        assert_eq!(l.localize("missing", &args(&[])), "missing", "unknown key -> key");
+        // The malformed message surfaced as a warning but did not fail the load.
+        assert!(warnings.iter().any(|w| w.contains("bad")), "malformed message warned: {warnings:?}");
+    }
+
+    #[test]
+    fn load_dir_with_no_files_still_yields_a_usable_localizer() {
+        let dir = tempfile::tempdir().unwrap();
+        let (l, warnings) = Localizer::load_dir(dir.path(), &loc("de"), &loc("en"));
+        // Every file missing is not a warning (missing != broken); localize
+        // degrades to the key.
+        assert!(warnings.is_empty());
+        assert_eq!(l.localize("anything", &args(&[])), "anything");
     }
 
     #[test]

@@ -16,5 +16,6 @@ icu_plurals = { version = "2", features = ["compiled_data"] }
 serde_json = "1"
 
 [dev-dependencies]
+tempfile = "3.27.0"
 
 [workspace]
