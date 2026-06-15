@@ -221,6 +221,19 @@ impl AgentInterface {
         let shape = crate::working_set::working_set_shape(status, &outcome);
         serde_json::to_string(&shape).unwrap_or_else(|_| "{}".to_string())
     }
+
+    /// The loaded skills as a JSON array, for the user-invoke discovery surface
+    /// (PR-5 part 3a / the deferred S-U3b "behaviours list"). Each entry carries
+    /// the skill's name, description, agent-match `whenToUse` hint, kind, and
+    /// enabled state — identity and routing hints only, never the body or any
+    /// user data. Read live from the configured sources on each call (mirroring
+    /// `working_set`), so a Settings change is reflected without a restart. The
+    /// harness renders this list; running a picked skill is `run_skill`.
+    async fn list_skills(&self) -> String {
+        let outcome = crate::loader::load_configured();
+        let summaries = crate::skills::skill_summaries(&outcome.loaded);
+        serde_json::to_string(&summaries).unwrap_or_else(|_| "[]".to_string())
+    }
 }
 
 /// Whether the executor is currently live, re-read from `ai.toml` so a runtime
