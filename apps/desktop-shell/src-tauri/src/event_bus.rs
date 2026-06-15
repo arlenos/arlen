@@ -532,6 +532,26 @@ pub fn emit_shortcut_action_invoked(app_id: &str, window_id: &str, action: &str)
     }
 }
 
+/// Push an `app.menu.action_invoked` event when the user invokes an app menu
+/// item, so the menu interaction reaches the Event Bus (and the Knowledge Graph)
+/// like the toolbar and shortcut paths already do (GAP-10). Menu actions were
+/// previously emitted only as an in-process webview event, so the most common
+/// interaction path never reached the bus. Menu items are app-wide, so the
+/// `window_id` is empty; the payload mirrors the shortcut/toolbar shape (the
+/// three action-invocation events are deliberately shape-identical).
+pub fn emit_menu_action_invoked(app_id: &str, action: &str) {
+    use prost::Message;
+    let payload = proto::ShortcutActionInvokedPayload {
+        app_id: app_id.to_string(),
+        action: action.to_string(),
+        window_id: String::new(),
+    };
+    let encoded = payload.encode_to_vec();
+    if let Err(e) = emit_event("app.menu.action_invoked", encoded) {
+        log::warn!("emit menu action_invoked failed: {e}");
+    }
+}
+
 /// Public API: push an `app.intent.dispatched` event for
 /// `shell.intents.dispatch` Knowledge-Graph promotion. **`subject`
 /// is the intent type (`url` / `file` / `text` / `email` /
