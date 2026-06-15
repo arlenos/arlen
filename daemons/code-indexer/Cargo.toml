@@ -1,0 +1,17 @@
+[package]
+name = "arlen-code-indexer"
+version = "0.1.0"
+edition = "2021"
+description = "Tier-2 code-graph ingestion: parses project source per-file (tree-sitter), extracts CodeSymbol definitions + call/import references with confidence labels, and emits code.* events for the knowledge daemon to promote (code-graph-layer.md CG-R1)"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Per-file syntactic parsing. Rust first (dogfood Arlen's own codebase); the
+# stack-graph cross-file name-resolution is CG-R2 (no Rust TSG ships, so the
+# per-file extraction here is plain tree-sitter, resolution is deferred).
+tree-sitter = "0.26"
+tree-sitter-rust = "0.24"
+
+[dev-dependencies]
