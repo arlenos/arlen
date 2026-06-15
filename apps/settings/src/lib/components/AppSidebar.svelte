@@ -262,6 +262,14 @@
   .settings-search-wrap {
     position: relative;
     width: 100%;
+    /* The field is inset near the window's top-left corner, so its corners
+       follow that corner concentrically: the window radius minus the inset.
+       The window radius arrives as --window-radius (theme); --radius-card is
+       the same default until that lands. The inset matches the sidebar's own
+       0.5rem padding, kept uniform on the top so the corner nests evenly. */
+    --container-radius: var(--window-radius, var(--radius-card));
+    --container-inset: 0.5rem;
+    margin-top: 0.5rem;
   }
 
   :global(.settings-search-wrap .search-icon) {
@@ -279,7 +287,7 @@
     padding: 4px 10px 4px 30px;
     background: color-mix(in srgb, var(--color-fg-app) 6%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-fg-app) 8%, transparent);
-    border-radius: var(--radius-input);
+    border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
     color: var(--color-fg-app);
     font-size: 0.875rem;
     outline: none;
@@ -299,6 +307,11 @@
      whatever space the flex parent assigns it. The `:global()` is
      needed because `[data-collapsible="icon"]` lives on the outer
      Sidebar wrapper, outside Svelte's class-hash scope. */
+  /* The top nudge that evens the corner inset is for the expanded field; in
+     icon mode the search joins the centered nav register, so drop it. */
+  :global([data-collapsible="icon"]) .settings-search-wrap {
+    margin-top: 0;
+  }
   :global([data-collapsible="icon"]) .search-input {
     /* In icon mode the search joins the nav register: a borderless square
        icon button, not a squeezed input box. */
