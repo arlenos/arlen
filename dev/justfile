@@ -171,6 +171,17 @@ integration-nightly:
     echo "== IT-1 nightly exit ${status} (report ${report}) ==" | tee -a "$report"
     exit "${status}"
 
+# Born-translatable gate (i18n-plan.md I18N-R2): fail on a hardcoded user-facing
+# string in the Svelte frontends that is not in the committed baseline. Advisory
+# today (run on demand / pre-commit); the blocking CI gate is flipped on once the
+# UI stabilises. Re-snapshot with `just i18n-baseline` after intentional changes.
+i18n-lint:
+    cd "{{ROOT}}" && cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-i18n-lint -- --root apps --baseline dev/i18n-baseline.tsv
+
+# Re-snapshot the born-translatable baseline (accept the current hardcoded set).
+i18n-baseline:
+    cd "{{ROOT}}" && cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-i18n-lint -- --root apps --baseline dev/i18n-baseline.tsv --update
+
 # Compositor nested in the current Wayland session (separate repo).
 # DISPLAY="" forces the Winit/Wayland backend so wlr-layer-shell is advertised.
 compositor:
