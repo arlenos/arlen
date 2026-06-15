@@ -9,6 +9,7 @@ authors = ["Arlen"]
 name = "arlen_lock_auth"
 
 [dependencies]
+audit-proto = { path = "../../contracts/audit-proto" }
 
 [dev-dependencies]
 
