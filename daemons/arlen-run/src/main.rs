@@ -28,11 +28,9 @@ mod egress;
 #[cfg(target_os = "linux")]
 mod landlock_apply;
 mod profile;
-// The app seccomp filter (GAP-6). The filter logic + allowlist land here; the
-// `bwrap --seccomp <fd>` delivery wiring in `spawn` consumes `compile_app_filter`
-// next, so it is built (and tested) ahead of its single caller.
+// The app seccomp filter (GAP-6): the deny-by-default allowlist, compiled to
+// cBPF and handed to bwrap via --seccomp in `spawn`.
 #[cfg(target_os = "linux")]
-#[allow(dead_code)]
 mod seccomp;
 mod spawn;
 
@@ -240,8 +238,20 @@ fn main() -> ExitCode {
     };
     let cgroup_procs = cgroup.as_ref().map(cgroup::Cgroup::procs_path);
 
+    // The third confinement layer (GAP-6): compile the per-app seccomp allowlist
+    // and hand it to bwrap via --seccomp. A filter that cannot be built means the
+    // confinement would be a layer short, so refuse the launch (fail-closed),
+    // never run the app without it.
+    let seccomp_bpf = match seccomp::app_filter_bytes() {
+        Ok(bpf) => bpf,
+        Err(e) => {
+            eprintln!("arlen-run: cannot build the seccomp filter ({e}); refusing to launch");
+            return ExitCode::from(exit::CONFINE_SETUP);
+        }
+    };
+
     let argv = spawn::bwrap_argv(&confinement, &args.program);
-    let result = spawn::spawn_and_wait(&argv, &inputs.app_dirs, cgroup_procs);
+    let result = spawn::spawn_and_wait(&argv, &inputs.app_dirs, cgroup_procs, Some(seccomp_bpf));
 
     // Reap the subtree (kills any process the app left behind), then the leaf is
     // removed when `cgroup` drops.

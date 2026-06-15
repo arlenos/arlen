@@ -14,9 +14,10 @@
 //!
 //! Beyond what `bwrap` itself sets (the namespaces, `no_new_privs`, the pruned
 //! mount view, `--clearenv`), the `pre_exec` chain joins the per-command cgroup
-//! and applies Landlock over the writable set, and the parent installs the
-//! egress seam. The app seccomp filter and the real egress enforcer are the
-//! remaining confinement layers.
+//! and applies Landlock over the writable set, the parent installs the egress
+//! seam, and the app seccomp allowlist is handed to `bwrap` via `--seccomp <fd>`
+//! (so `bwrap` installs it on the app after its own setup). The real egress
+//! enforcer (a netns + forwarding proxy) is the remaining confinement layer.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -108,15 +109,35 @@ pub fn spawn_and_wait(
     argv: &[String],
     writable: &[PathBuf],
     cgroup_procs: Option<PathBuf>,
+    seccomp_bpf: Option<Vec<u8>>,
 ) -> std::io::Result<u8> {
     use std::os::unix::process::{CommandExt, ExitStatusExt};
 
     let writable: Vec<PathBuf> = writable.to_vec();
+
+    // The app seccomp allowlist is delivered to bwrap as `--seccomp <fd>`: the
+    // compiled cBPF lives in a memfd the child inherits, and bwrap installs it on
+    // the app after its own namespace/mount setup, just before exec. The fd must
+    // survive the exec into bwrap, so the pre_exec close_range (which marks every
+    // fd CLOEXEC) clears CLOEXEC on this one fd again below. The memfd is created
+    // here, in the parent, so its number is stable across the fork.
+    let mut full_argv: Vec<String> = Vec::with_capacity(argv.len() + 2);
+    let seccomp_fd: Option<libc::c_int> = match &seccomp_bpf {
+        Some(bpf) => {
+            let fd = make_seccomp_memfd(bpf)?;
+            full_argv.push("--seccomp".into());
+            full_argv.push(fd.to_string());
+            Some(fd)
+        }
+        None => None,
+    };
+    full_argv.extend_from_slice(argv);
+
     let mut cmd = Command::new("bwrap");
-    cmd.args(argv);
+    cmd.args(&full_argv);
     // SAFETY: the closure runs in the child after fork, before exec. The
     // launcher is single-threaded so the post-fork child is too, making the
-    // ruleset allocations safe; the syscalls (close_range, setpgid, the
+    // ruleset allocations safe; the syscalls (close_range, fcntl, setpgid, the
     // Landlock setup) only narrow the child's own capabilities.
     unsafe {
         cmd.pre_exec(move || {
@@ -137,26 +158,84 @@ pub fn spawn_and_wait(
             if rc != 0 {
                 return Err(std::io::Error::last_os_error());
             }
+            // The seccomp memfd must reach bwrap (it reads `--seccomp <fd>`), so
+            // re-clear the CLOEXEC bit close_range just set on it. Done right
+            // after close_range so nothing re-marks it; the error pipe stays
+            // CLOEXEC, only this one fd is kept open across the exec.
+            if let Some(fd) = seccomp_fd {
+                let flags = libc::fcntl(fd, libc::F_GETFD);
+                if flags < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::fcntl(fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+            }
             // Put the child in its own process group so a stray signal to the
             // launcher's group does not race the cgroup-based reaping.
             if libc::setpgid(0, 0) != 0 {
                 return Err(std::io::Error::last_os_error());
             }
             // Join the per-launch cgroup BEFORE Landlock: a read-only `/`
-            // ruleset would deny the write to cgroup.procs, and a later seccomp
-            // filter would deny the open.
+            // ruleset would deny the write to cgroup.procs.
             if let Some(procs) = &cgroup_procs {
                 crate::cgroup::join_current(procs)?;
             }
-            // Filesystem confinement, inherited by bwrap and the app. Before
-            // exec, before any future seccomp filter removes path-open.
+            // Filesystem confinement, inherited by bwrap and the app. The app
+            // seccomp filter (which bwrap installs after this, on the app only)
+            // may drop path-open, so Landlock's path opens must happen first.
             crate::landlock_apply::apply_landlock(&writable)?;
             Ok(())
         });
     }
 
-    let status = cmd.spawn()?.wait()?;
+    let spawned = cmd.spawn();
+    // The child inherited the memfd at fork; the parent's copy is no longer
+    // needed and is closed regardless of how the spawn went.
+    if let Some(fd) = seccomp_fd {
+        unsafe { libc::close(fd) };
+    }
+    let status = spawned?.wait()?;
     Ok(exit_code(status.code(), status.signal()))
+}
+
+/// Create an anonymous in-memory file holding the compiled seccomp cBPF and
+/// return its fd, positioned at offset 0 so bwrap reads the whole program. The
+/// fd is created without `MFD_CLOEXEC` (the child's pre_exec re-opens it across
+/// the exec anyway); the parent closes its copy once the child has forked.
+#[cfg(target_os = "linux")]
+fn make_seccomp_memfd(bpf: &[u8]) -> std::io::Result<libc::c_int> {
+    use std::ffi::CString;
+    let name = CString::new("arlen-seccomp").expect("static name has no nul");
+    // SAFETY: a plain memfd_create with a valid C string and no flags.
+    let fd = unsafe { libc::memfd_create(name.as_ptr(), 0) };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let mut written = 0usize;
+    while written < bpf.len() {
+        // SAFETY: writing `bpf[written..]` bytes to a fd we own.
+        let n = unsafe {
+            libc::write(
+                fd,
+                bpf[written..].as_ptr() as *const libc::c_void,
+                bpf.len() - written,
+            )
+        };
+        if n < 0 {
+            let e = std::io::Error::last_os_error();
+            unsafe { libc::close(fd) };
+            return Err(e);
+        }
+        written += n as usize;
+    }
+    // SAFETY: rewind so bwrap reads from the start.
+    if unsafe { libc::lseek(fd, 0, libc::SEEK_SET) } < 0 {
+        let e = std::io::Error::last_os_error();
+        unsafe { libc::close(fd) };
+        return Err(e);
+    }
+    Ok(fd)
 }
 
 /// Map a process exit status to a `u8` launcher exit code: a normal exit code
@@ -269,7 +348,29 @@ mod tests {
         )
         .unwrap();
         let argv = bwrap_argv(&conf, &["/usr/bin/echo".into(), "hi".into()]);
-        let code = spawn_and_wait(&argv, &[], None).expect("bwrap spawns");
+        let code = spawn_and_wait(&argv, &[], None, None).expect("bwrap spawns");
         assert_eq!(code, 0);
+    }
+
+    /// A real confined launch WITH the seccomp filter installed: the key check
+    /// that the allowlist is not too tight to run an ordinary program. A denied
+    /// syscall returns EPERM (not a kill), so a too-narrow allowlist surfaces as
+    /// a non-zero exit here rather than a crash. Metal-only (bwrap + userns).
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "needs bwrap and unprivileged userns on the host kernel"]
+    fn echo_runs_confined_under_the_seccomp_filter() {
+        let conf = build_confinement(
+            Path::new("/usr"),
+            &[],
+            BTreeMap::from([("PATH".to_string(), "/usr/bin:/bin".to_string())]),
+            NetworkPolicy::None,
+            Vec::new(),
+        )
+        .unwrap();
+        let argv = bwrap_argv(&conf, &["/usr/bin/echo".into(), "hi".into()]);
+        let bpf = crate::seccomp::app_filter_bytes().expect("filter compiles");
+        let code = spawn_and_wait(&argv, &[], None, Some(bpf)).expect("bwrap spawns");
+        assert_eq!(code, 0, "the allowlist must permit a basic confined exec");
     }
 }

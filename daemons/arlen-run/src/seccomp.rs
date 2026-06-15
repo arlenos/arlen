@@ -292,6 +292,24 @@ pub fn compile_app_filter() -> Result<BpfProgram, SeccompError> {
         .map_err(|e| SeccompError::Compile(format!("{e}")))
 }
 
+/// The compiled app filter serialized to the raw cBPF byte blob `bwrap --seccomp
+/// <fd>` expects: the `struct sock_filter[]` array, one 8-byte instruction each
+/// (`code: u16`, `jt: u8`, `jf: u8`, `k: u32`) in native byte order, with no
+/// `sock_fprog` header (bwrap derives the length from the blob size). Serialized
+/// field by field rather than by reinterpreting the struct's memory, so it does
+/// not depend on the compiler not inserting padding.
+pub fn app_filter_bytes() -> Result<Vec<u8>, SeccompError> {
+    let program = compile_app_filter()?;
+    let mut bytes = Vec::with_capacity(program.len() * 8);
+    for insn in &program {
+        bytes.extend_from_slice(&insn.code.to_ne_bytes());
+        bytes.push(insn.jt);
+        bytes.push(insn.jf);
+        bytes.extend_from_slice(&insn.k.to_ne_bytes());
+    }
+    Ok(bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
