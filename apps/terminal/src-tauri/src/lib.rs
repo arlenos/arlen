@@ -181,10 +181,38 @@ fn terminal_history_search(query: String, filters: HistoryFilters) -> Vec<Block>
     stub::history_search(&query, &filters)
 }
 
-/// The projects to scope to.
+/// Map project rows (`{ id, name, path }`) into the contract [`Project`],
+/// skipping any row missing the id or name. Pure, so the shaping is unit-tested
+/// without a daemon. Mirrors the file manager's identical projects mapper.
+fn projects_from_rows(rows: &[std::collections::HashMap<String, serde_json::Value>]) -> Vec<Project> {
+    rows.iter()
+        .filter_map(|r| {
+            let id = r.get("id").and_then(|v| v.as_str())?;
+            let name = r.get("name").and_then(|v| v.as_str())?;
+            let path = r.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            Some(Project {
+                id: id.to_string(),
+                name: name.to_string(),
+                path: path.to_string(),
+            })
+        })
+        .collect()
+}
+
+/// The live KG projects to scope to (the same `FILE_PART_OF` projects the file
+/// manager surfaces). Best-effort: an absent daemon or an out-of-scope read
+/// yields no entries. Only live projects (`expired_at IS NULL`); the query is
+/// static (no interpolation), so no escaping.
 #[tauri::command]
-fn terminal_projects() -> Vec<Project> {
-    stub::projects()
+async fn terminal_projects() -> Vec<Project> {
+    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
+    let cypher = "MATCH (p:Project) WHERE p.expired_at IS NULL \
+                  RETURN p.id AS id, p.name AS name, p.root_path AS path LIMIT 64";
+    match client.query_rows(cypher).await {
+        Ok(rows) => projects_from_rows(&rows),
+        Err(_) => Vec::new(),
+    }
 }
 
 /// The terminal's persisted config (`~/.config/arlen/terminal.toml`). Today the
@@ -301,9 +329,31 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        clamp_font_size, default_font_size, load_config, save_config, shell_candidates,
-        TerminalConfig,
+        clamp_font_size, default_font_size, load_config, projects_from_rows, save_config,
+        shell_candidates, TerminalConfig,
     };
+    use std::collections::HashMap;
+
+    #[test]
+    fn projects_map_rows_and_skip_incomplete_ones() {
+        let mut full = HashMap::new();
+        full.insert("id".to_string(), serde_json::json!("proj-1"));
+        full.insert("name".to_string(), serde_json::json!("Arlen"));
+        full.insert("path".to_string(), serde_json::json!("/home/tim/arlen"));
+        // A row missing the name is skipped; a missing path defaults to empty.
+        let mut no_name = HashMap::new();
+        no_name.insert("id".to_string(), serde_json::json!("proj-2"));
+        let mut no_path = HashMap::new();
+        no_path.insert("id".to_string(), serde_json::json!("proj-3"));
+        no_path.insert("name".to_string(), serde_json::json!("Loose"));
+
+        let projects = projects_from_rows(&[full, no_name, no_path]);
+        assert_eq!(projects.len(), 2);
+        assert_eq!(projects[0].name, "Arlen");
+        assert_eq!(projects[0].path, "/home/tim/arlen");
+        assert_eq!(projects[1].name, "Loose");
+        assert_eq!(projects[1].path, "");
+    }
 
     #[test]
     fn shell_candidates_prefer_zsh_and_end_at_bin_sh() {
