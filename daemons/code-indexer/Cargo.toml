@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 description = "Tier-2 code-graph ingestion: parses project source per-file (tree-sitter), extracts CodeSymbol definitions + call/import references with confidence labels, and emits code.* events for the knowledge daemon to promote (code-graph-layer.md CG-R1)"
 
+[[bin]]
+name = "arlen-code-indexer"
+path = "src/main.rs"
+
 [lib]
 path = "src/lib.rs"
 
@@ -13,5 +17,14 @@ path = "src/lib.rs"
 # per-file extraction here is plain tree-sitter, resolution is deferred).
 tree-sitter = "0.26"
 tree-sitter-rust = "0.24"
+# The daemon host: consume file.opened from the event bus, query the graph for
+# project membership, emit code.indexed. Event envelope + the code payload come
+# from os-sdk's generated proto.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "io-util", "net"] }
+prost = "0.13"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+sd-notify = "0.4"
+os-sdk = { path = "../../sdk/os-sdk" }
 
 [dev-dependencies]
