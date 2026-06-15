@@ -212,6 +212,16 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-notifyd" => {
             return Ok("notifyd".to_string());
         }
+        // The install daemon, pinned canonically so its install/uninstall audit
+        // (GAP-2) submits under the stable id `installd`, the id the audit
+        // daemon's ADMITTED allowlist keys on. Same rationale as the accounts and
+        // notification daemons: rule (2) covers only /usr/bin/arlen-*, so without
+        // this entry the daemon resolves to UnknownBinary and its audit is
+        // silently refused; the root-owned system path is attested, not the
+        // same-uid-spoofable $HOME residual.
+        "/usr/lib/arlen/libexec/arlen-installd" => {
+            return Ok("installd".to_string());
+        }
         // The Settings app, pinned canonically so it resolves to the stable
         // app_id `settings` (not the spoofable basename). The Living Capability
         // Graph revoke socket op admits only this app id (living-capability-graph.md
@@ -567,6 +577,24 @@ mod tests {
             assert!(
                 path_to_app_id(&PathBuf::from(spoofed)).is_err(),
                 "spoofed notifyd path {spoofed} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn test_app_id_from_path_installd_canonical_libexec() {
+        // The install daemon's canonical binary must resolve to `installd`, the
+        // id the audit daemon's ADMITTED allowlist keys on for the GAP-2
+        // install/uninstall audit. Without this it resolves to UnknownBinary and
+        // the audit is silently refused.
+        let path = PathBuf::from("/usr/lib/arlen/libexec/arlen-installd");
+        assert_eq!(path_to_app_id(&path).unwrap(), "installd");
+
+        // A same-basename binary in a writable location must not impersonate it.
+        for spoofed in ["/tmp/arlen-installd", "/home/attacker/arlen-installd"] {
+            assert!(
+                path_to_app_id(&PathBuf::from(spoofed)).is_err(),
+                "spoofed installd path {spoofed} must be rejected"
             );
         }
     }

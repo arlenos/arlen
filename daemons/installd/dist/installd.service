@@ -5,7 +5,11 @@ Documentation=https://github.com/arlenos/installd
 [Service]
 Type=dbus
 BusName=org.arlen.InstallDaemon1
-ExecStart=%h/.local/lib/arlen/libexec/arlen-installd
+# Root-owned system path so the daemon's identity is attested (SO_PEERCRED →
+# `path_to_app_id` → `installd`) and admitted by the audit ledger (GAP-2). The
+# daemon still runs as the user on the session bus; only the binary location is
+# system-owned, so a same-uid peer cannot replace it to forge the identity.
+ExecStart=/usr/lib/arlen/libexec/arlen-installd
 
 # Security hardening.
 ProtectSystem=strict

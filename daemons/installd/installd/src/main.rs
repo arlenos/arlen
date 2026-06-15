@@ -7,6 +7,7 @@
 ///
 /// See `docs/architecture/install-daemon.md`.
 
+mod audit;
 mod dbus;
 mod flatpak;
 mod install;
