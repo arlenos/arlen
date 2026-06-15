@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use arlen_theme::ArlenTheme;
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
@@ -68,16 +69,49 @@ impl ThemeState {
         Ok(())
     }
 
-    /// Resolve the current theme into CSS variables.
-    fn resolve(&self) -> Result<CssVariables, ThemeError> {
+    /// Resolve the current theme into the resolved [`ArlenTheme`] plus its
+    /// CSS variables (the in-app form). The theme drives the foreign-toolkit
+    /// apply on a change; the variables drive the Svelte UI.
+    fn resolve_full(&self) -> Result<(ArlenTheme, CssVariables), ThemeError> {
         let config = self.config.lock().unwrap();
-        let tokens = resolve_theme(&self.loader, &config)?;
-        Ok(to_css_variables(&tokens, &config.overrides))
+        let theme = resolve_theme(&self.loader, &config)?;
+        let css = to_css_variables(&theme, &config.overrides);
+        Ok((theme, css))
     }
 
-    /// Resolve and emit the theme-changed event.
+    /// Resolve the current theme into CSS variables.
+    fn resolve(&self) -> Result<CssVariables, ThemeError> {
+        Ok(self.resolve_full()?.1)
+    }
+
+    /// The XDG config root (`~/.config`), the parent of Arlen's own config
+    /// dir (`~/.config/arlen`), under which the foreign-toolkit files
+    /// (`gtk-3.0/gtk.css`, `qt6ct/`, `kitty/`, …) live.
+    fn xdg_config_dir(&self) -> Option<PathBuf> {
+        self.config_path
+            .parent()
+            .and_then(|arlen_dir| arlen_dir.parent())
+            .map(Path::to_path_buf)
+    }
+
+    /// Resolve and emit the theme-changed event, then regenerate the
+    /// foreign-toolkit (GTK/Qt/terminal) config files so a theme switch
+    /// reskins non-Svelte apps too (best-effort: a write failure is logged,
+    /// never fatal to the in-app update).
     fn resolve_and_emit(&self, app: &AppHandle) -> Result<CssVariables, ThemeError> {
-        let css = self.resolve()?;
+        let (theme, css) = self.resolve_full()?;
+        if let Some(config_dir) = self.xdg_config_dir() {
+            let report = arlen_theme::apply::write_foreign_toolkit_configs(&theme, &config_dir);
+            for (path, err) in &report.errors {
+                log::warn!("theme apply: failed to write {}: {err}", path.display());
+            }
+            for path in &report.skipped_foreign {
+                log::info!(
+                    "theme apply: kept a non-Arlen file at {} (not overwritten)",
+                    path.display()
+                );
+            }
+        }
         let _ = app.emit("arlen://theme-v2-changed", &css);
         Ok(css)
     }
