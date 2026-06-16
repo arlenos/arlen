@@ -188,7 +188,7 @@ pub struct TrashInfo {
 /// One restorable entry in the trash: the paired `files/<trashed_name>` +
 /// `info/<trashed_name>.trashinfo`, with the recorded original location and
 /// deletion time, for the Trash place/UI ([`list_trash`]).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TrashedItem {
     /// The shared basename: `<Trash>/files/<trashed_name>` and
     /// `<Trash>/info/<trashed_name>.trashinfo`. The token the host passes back
@@ -1027,6 +1027,45 @@ pub fn list_trash(trash_dir: &Dir) -> OpResult<Vec<TrashedItem>> {
         });
     }
     Ok(items)
+}
+
+/// Empty the trash: for every `info/<name>.trashinfo`, remove the paired
+/// `files/<name>` payload (a file or symlink is unlinked without following it,
+/// a directory is removed recursively) and then the `.trashinfo`. Returns the
+/// number of entries cleared.
+///
+/// Enumeration is `info/`-driven (like [`list_trash`]); an orphan info with no
+/// payload is still cleared (it would otherwise linger as a ghost entry). A
+/// per-entry removal error is skipped, so one stuck entry never strands the
+/// rest; the count reflects entries actually cleared.
+pub fn empty_trash(trash_dir: &Dir) -> OpResult<usize> {
+    let mut cleared = 0usize;
+    for entry in trash_dir.read_dir("info")? {
+        let Ok(entry) = entry else { continue };
+        let Ok(file_name) = entry.file_name().into_string() else {
+            continue;
+        };
+        let Some(trashed_name) = file_name.strip_suffix(".trashinfo") else {
+            continue;
+        };
+        if trashed_name.is_empty() {
+            continue;
+        }
+        let files_rel = Path::new("files").join(trashed_name);
+        let info_rel = Path::new("info").join(&file_name);
+        // Remove the payload by its real kind (never follow a symlink: a
+        // dir-symlink is unlinked, not recursed into).
+        let payload_cleared = match trash_dir.symlink_metadata(&files_rel) {
+            Ok(md) if md.file_type().is_dir() => trash_dir.remove_dir_all(&files_rel).is_ok(),
+            Ok(_) => trash_dir.remove_file(&files_rel).is_ok(),
+            Err(_) => true, // already absent (an orphan info): still clear it
+        };
+        if payload_cleared {
+            let _ = trash_dir.remove_file(&info_rel);
+            cleared += 1;
+        }
+    }
+    Ok(cleared)
 }
 
 /// Restore a trashed entry: move `<Trash>/files/<trashed_name>` to
@@ -2020,6 +2059,42 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let trash_dir = make_trash(tmp.path());
         assert_eq!(list_trash(&trash_dir).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn empty_trash_clears_paired_entries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_root = tmp.path().join("home");
+        fs::create_dir(&src_root).unwrap();
+        let trash_dir = make_trash(tmp.path());
+        trash_one(tmp.path(), &src_root, &trash_dir, "a.txt", "/home/u/a.txt");
+        trash_one(tmp.path(), &src_root, &trash_dir, "b.txt", "/home/u/b.txt");
+
+        assert_eq!(empty_trash(&trash_dir).unwrap(), 2);
+        assert!(list_trash(&trash_dir).unwrap().is_empty());
+        // Both sides are gone, not just the listing.
+        assert!(fs::read_dir(tmp.path().join("Trash/files")).unwrap().next().is_none());
+        assert!(fs::read_dir(tmp.path().join("Trash/info")).unwrap().next().is_none());
+    }
+
+    #[test]
+    fn empty_trash_clears_an_orphan_info() {
+        let tmp = tempfile::tempdir().unwrap();
+        let trash_dir = make_trash(tmp.path());
+        fs::write(
+            tmp.path().join("Trash/info/ghost.txt.trashinfo"),
+            b"[Trash Info]\nPath=/home/u/ghost.txt\nDeletionDate=2026-01-02T03:04:05\n",
+        )
+        .unwrap();
+        assert_eq!(empty_trash(&trash_dir).unwrap(), 1);
+        assert!(fs::read_dir(tmp.path().join("Trash/info")).unwrap().next().is_none());
+    }
+
+    #[test]
+    fn empty_trash_on_empty_is_zero() {
+        let tmp = tempfile::tempdir().unwrap();
+        let trash_dir = make_trash(tmp.path());
+        assert_eq!(empty_trash(&trash_dir).unwrap(), 0);
     }
 
     #[test]
