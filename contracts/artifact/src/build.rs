@@ -324,4 +324,45 @@ tim 4242 1.5 2.3 cargo build\n";
             .windows(needle.len())
             .position(|w| w == needle)
     }
+
+    #[test]
+    fn media_type_parses_all_known_and_defaults_to_png() {
+        assert_eq!(parse_media_type(None).unwrap(), ImageMediaType::Png);
+        assert_eq!(parse_media_type(Some("png")).unwrap(), ImageMediaType::Png);
+        assert_eq!(parse_media_type(Some("jpeg")).unwrap(), ImageMediaType::Jpeg);
+        assert_eq!(parse_media_type(Some("svg")).unwrap(), ImageMediaType::Svg);
+        assert_eq!(parse_media_type(Some("webp")).unwrap(), ImageMediaType::Webp);
+        assert_eq!(parse_media_type(Some("gif")).unwrap(), ImageMediaType::Gif);
+        assert!(matches!(
+            parse_media_type(Some("bmp")),
+            Err(ArtifactError::Malformed(_))
+        ));
+    }
+
+    #[test]
+    fn image_build_base64_encodes_raw_bytes_and_honours_media_type() {
+        // Raw bytes (incl. non-UTF-8) are base64'd verbatim, not lossily stringified.
+        let raw: &[u8] = b"\x89PNG\r\n\x1a\n\xff\xfe body";
+        let mut o = opts();
+        o.media_type = Some("svg".to_string());
+        let art = build_from_stdin(ArtifactKind::Image, raw, &o).unwrap();
+        assert_eq!(art.meta.origin, ArtifactOrigin::ExternalContent);
+        match art.payload {
+            ArtifactPayload::Image {
+                media_type,
+                ref data_base64,
+            } => {
+                assert_eq!(media_type, ImageMediaType::Svg);
+                assert_eq!(STANDARD.decode(data_base64).unwrap(), raw);
+            }
+            other => panic!("expected an Image payload, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn image_build_rejects_an_unknown_media_type() {
+        let mut o = opts();
+        o.media_type = Some("bmp".to_string());
+        assert!(build_from_stdin(ArtifactKind::Image, b"x".as_slice(), &o).is_err());
+    }
 }
