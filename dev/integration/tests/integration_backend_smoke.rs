@@ -736,6 +736,10 @@ async fn a_signal_bearing_directory_is_detected_as_a_project() {
 #[tokio::test]
 #[ignore = "needs event-bus + audit-daemon binaries built and a per-user data dir"]
 async fn the_audit_daemon_comes_up_hermetically() {
+    if !arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd") {
+        eprintln!("SKIP the_audit_daemon_comes_up_hermetically: arlen-auditd not built (run `just integration-nightly`)");
+        return;
+    }
     let mut stack = EphemeralStack::new().expect("private runtime root");
     // The event bus first: the audit daemon opens a producer client for its
     // `audit.tampered` alert (lazily, so a late bus is fine, but spawn it for a
@@ -780,6 +784,10 @@ async fn an_audit_entry_lands_in_the_chain_and_reads_back() {
     use audit_proto::client::AuditClient;
     use audit_proto::{AuditKind, IngestRequest, ReadClient, StructuralRecord};
 
+    if !arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd") {
+        eprintln!("SKIP an_audit_entry_lands_in_the_chain_and_reads_back: arlen-auditd not built (run `just integration-nightly`)");
+        return;
+    }
     let mut stack = EphemeralStack::new().expect("private runtime root");
     stack
         .spawn("daemons/event-bus", "event-bus", &[])
@@ -853,6 +861,12 @@ async fn an_audit_entry_lands_in_the_chain_and_reads_back() {
 async fn the_agent_audits_a_workflow_proposal_in_suggest_mode() {
     use audit_proto::ReadClient;
 
+    if !(arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd")
+        && arlen_integration::binary_built("ai", "arlen-ai-agent"))
+    {
+        eprintln!("SKIP the_agent_audits_a_workflow_proposal_in_suggest_mode: audit-daemon/ai-agent not built (run `just integration-nightly`)");
+        return;
+    }
     let mut stack = EphemeralStack::new().expect("private runtime root");
 
     // The agent's own graph-read scope: RS-R1 gates the agent's Project read by
@@ -975,6 +989,12 @@ async fn the_agent_audits_a_workflow_proposal_in_suggest_mode() {
 #[tokio::test]
 #[ignore = "needs event-bus + knowledge + audit-daemon + ai-agent binaries built (debug, FUSE host)"]
 async fn the_live_executor_writes_a_file_part_of_edge() {
+    if !(arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd")
+        && arlen_integration::binary_built("ai", "arlen-ai-agent"))
+    {
+        eprintln!("SKIP the_live_executor_writes_a_file_part_of_edge: audit-daemon/ai-agent not built (run `just integration-nightly`)");
+        return;
+    }
     let mut stack = EphemeralStack::new().expect("private runtime root");
 
     // The agent's go-live grant: read File/Project + the single FILE_PART_OF
@@ -1173,6 +1193,12 @@ async fn a_window_focused_event_promotes_to_a_readable_app_node() {
 async fn a_canary_operand_trips_the_gate_and_audits_a_policy_violation() {
     use audit_proto::ReadClient;
 
+    if !(arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd")
+        && arlen_integration::binary_built("ai", "arlen-ai-agent"))
+    {
+        eprintln!("SKIP a_canary_operand_trips_the_gate_and_audits_a_policy_violation: audit-daemon/ai-agent not built (run `just integration-nightly`)");
+        return;
+    }
     let mut stack = EphemeralStack::new().expect("private runtime root");
     let agent_exe = arlen_integration::binary_path("ai", "arlen-ai-agent");
     let agent_app_id = arlen_permissions::identity::path_to_app_id(&agent_exe)
