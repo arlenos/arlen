@@ -470,6 +470,18 @@ fn files_op(
     Ok(())
 }
 
+/// Set the Unix permission bits of `path` to `mode` (the editable half of the
+/// info panel's metadata, `chmod`). `path` is an absolute path the panel holds
+/// for the inspected entry; it is reanchored relative to the root capability,
+/// so the write stays inside it. `mode` is masked to the permission bits in the
+/// core op. Not yet undoable - the panel shows the current mode, so a change is
+/// re-editable; recording an inverse for `Ctrl+Z` is a follow-up.
+#[tauri::command]
+fn files_set_permissions(path: String, mode: u32) -> Result<(), String> {
+    let dir = root()?;
+    ops::set_permissions(&dir, rel(&path), mode).map_err(|e| e.to_string())
+}
+
 /// Undo the most recent file operation (`Ctrl+Z`). Pops the last recorded batch
 /// and applies each inverse through the ops; `Ok(false)` when there is nothing to
 /// undo. A permanent delete was never recorded, so it is never offered as undo.
@@ -927,6 +939,7 @@ pub fn run() {
             files_info,
             files_search,
             files_op,
+            files_set_permissions,
             files_undo,
             files_bookmarks,
             files_bookmark_add,
