@@ -1,0 +1,9 @@
+# Starting permission profile for Spotify (music streaming). Streaming is its
+# function, so it gets network; nothing is saved to the user's media dirs by
+# default and there is no Knowledge Graph access. Observe-mode refines it.
+[info]
+app_id = "com.spotify.Client"
+tier = "third-party"
+
+[network]
+allow_all = true

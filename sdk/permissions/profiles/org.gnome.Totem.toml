@@ -1,0 +1,8 @@
+# Starting permission profile for GNOME Videos (Totem). Videos, no network, no
+# graph.
+[info]
+app_id = "org.gnome.Totem"
+tier = "third-party"
+
+[filesystem]
+videos = true

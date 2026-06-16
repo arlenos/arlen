@@ -1,0 +1,9 @@
+# Starting permission profile for Bitwarden (password manager). Unlike a
+# local-file vault, Bitwarden's function is cloud sync, so it gets network; it
+# needs no media dirs and no Knowledge Graph access.
+[info]
+app_id = "com.bitwarden.desktop"
+tier = "third-party"
+
+[network]
+allow_all = true

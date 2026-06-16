@@ -1,0 +1,11 @@
+# Starting permission profile for Transmission (BitTorrent client). Network is
+# its function; completed downloads save to Downloads. No graph.
+[info]
+app_id = "com.transmissionbt.Transmission"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
