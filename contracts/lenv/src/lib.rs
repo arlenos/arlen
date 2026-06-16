@@ -439,4 +439,53 @@ mod tests {
         assert_eq!(fp, key_fingerprint(&[0u8; 32]));
         assert_ne!(fp, key_fingerprint(&[1u8; 32]));
     }
+
+    #[test]
+    fn is_safe_name_accepts_components_and_rejects_traversal() {
+        assert!(is_safe_name("onboarding"));
+        assert!(is_safe_name("proj.v2_final-1"));
+        assert!(!is_safe_name(""));
+        assert!(!is_safe_name("."));
+        assert!(!is_safe_name(".."));
+        assert!(!is_safe_name("a/b"));
+        assert!(!is_safe_name("has space"));
+        assert!(!is_safe_name("tab\t"));
+    }
+
+    #[test]
+    fn expiry_boundary_is_inclusive() {
+        // expires_at = 2_000_000_000; the check is `now >= exp`.
+        let p = LenvPackage::parse(SAMPLE).unwrap();
+        assert!(!p.is_expired(1_999_999_999));
+        assert!(p.is_expired(2_000_000_000));
+    }
+
+    #[test]
+    fn invalid_toml_is_a_toml_error() {
+        assert!(matches!(
+            LenvPackage::parse("this = = not valid ["),
+            Err(LenvError::Toml(_))
+        ));
+    }
+
+    #[test]
+    fn all_known_transfer_policies_parse() {
+        for policy in ["deny", "prompt", "allow"] {
+            let toml = format!("[meta]\npublisher=\"O\"\nversion=1\n[transfer]\npolicy=\"{policy}\"");
+            let p = LenvPackage::parse(&toml).unwrap();
+            assert_eq!(p.transfer.policy.as_deref(), Some(policy));
+        }
+    }
+
+    #[test]
+    fn a_minimal_summary_omits_unset_lines_and_defaults_to_denied() {
+        let p = LenvPackage::parse("[meta]\npublisher=\"Org\"\nversion=1").unwrap();
+        let joined = p.policy_summary().join("\n");
+        assert!(joined.contains("Published by Org (version 1)"));
+        assert!(!joined.contains("expires"));
+        assert!(!joined.contains("VPN"));
+        assert!(!joined.contains("notified if you uninstall"));
+        assert!(joined.contains("knowledge graph: denied"));
+        assert!(joined.contains("export: denied"));
+    }
 }
