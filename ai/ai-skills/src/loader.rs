@@ -346,6 +346,52 @@ pub fn behaviour_sources() -> Vec<BehaviourSource> {
     sources
 }
 
+/// The `ai.toml` shape this crate reads: just the two fields that decide
+/// enablement. Deny-by-omission via `#[serde(default)]` so an unrelated key
+/// never breaks the parse.
+#[derive(Default, serde::Deserialize)]
+struct AiTomlEnablement {
+    #[serde(default)]
+    ai: AiMasterSwitch,
+    #[serde(default)]
+    agent: AgentEnabledList,
+}
+
+#[derive(Default, serde::Deserialize)]
+struct AiMasterSwitch {
+    #[serde(default)]
+    enabled: bool,
+}
+
+#[derive(Default, serde::Deserialize)]
+struct AgentEnabledList {
+    #[serde(default)]
+    enabled: Vec<String>,
+}
+
+/// Resolve the enabled-behaviour set from `ai.toml` text: the `[agent] enabled`
+/// names (each stamped [`Provenance::BuiltIn`], the only provenance that exists
+/// today), gated by the `[ai] enabled` master switch. This mirrors the agent's
+/// own config parse so the interactive daemon matches exactly the skills the
+/// agent would run; sharing it here keeps the two from drifting and avoids the
+/// daemon depending on the agent. Fail-closed: a missing, empty, or unparseable
+/// file — or the master switch off — yields an empty set (nothing enabled).
+pub fn enabled_from_ai_toml(toml_text: &str) -> BTreeMap<String, Provenance> {
+    let parsed: AiTomlEnablement = match toml::from_str(toml_text) {
+        Ok(p) => p,
+        Err(_) => return BTreeMap::new(),
+    };
+    if !parsed.ai.enabled {
+        return BTreeMap::new();
+    }
+    parsed
+        .agent
+        .enabled
+        .into_iter()
+        .map(|name| (name, Provenance::BuiltIn))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -372,6 +418,27 @@ mod tests {
             !resolve_status("auto-tag-by-project", Provenance::BuiltIn, &BTreeMap::new())
                 .is_enabled()
         );
+    }
+
+    #[test]
+    fn enabled_from_ai_toml_reads_the_agent_list_when_the_master_switch_is_on() {
+        let toml = "[ai]\nenabled = true\n[agent]\nenabled = [\"auto-tag-by-project\"]\n";
+        let enabled = enabled_from_ai_toml(toml);
+        assert_eq!(enabled.get("auto-tag-by-project"), Some(&Provenance::BuiltIn));
+        assert_eq!(enabled.len(), 1);
+    }
+
+    #[test]
+    fn enabled_from_ai_toml_is_empty_when_the_master_switch_is_off() {
+        // The per-behaviour list is ignored unless [ai] enabled is on.
+        let toml = "[ai]\nenabled = false\n[agent]\nenabled = [\"auto-tag-by-project\"]\n";
+        assert!(enabled_from_ai_toml(toml).is_empty());
+    }
+
+    #[test]
+    fn enabled_from_ai_toml_fails_closed_on_garbage_or_empty() {
+        assert!(enabled_from_ai_toml("").is_empty());
+        assert!(enabled_from_ai_toml("not = valid = toml").is_empty());
     }
 
     #[test]
