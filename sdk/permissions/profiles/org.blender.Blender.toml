@@ -1,0 +1,9 @@
+# Starting permission profile for Blender (3D creation). Saves projects under
+# Documents; renders to Pictures. No network (offline by function).
+[info]
+app_id = "org.blender.Blender"
+tier = "third-party"
+
+[filesystem]
+documents = true
+pictures = true

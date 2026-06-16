@@ -1,0 +1,10 @@
+# Starting permission profile for Visual Studio Code (code editor). Conservative
+# first cut; observe-mode refines. Edits files: Documents granted. Project trees
+# outside Documents, and the extension marketplace / git network, are refinements
+# an observe pass adds rather than a blanket home or network grant up front.
+[info]
+app_id = "com.visualstudio.code"
+tier = "third-party"
+
+[filesystem]
+documents = true

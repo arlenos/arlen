@@ -1,0 +1,8 @@
+# Starting permission profile for Evince (GNOME document viewer). Reads Documents;
+# no network, no graph.
+[info]
+app_id = "org.gnome.Evince"
+tier = "third-party"
+
+[filesystem]
+documents = true

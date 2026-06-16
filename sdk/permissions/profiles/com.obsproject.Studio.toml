@@ -1,0 +1,12 @@
+# Starting permission profile for OBS Studio (screen recording / streaming).
+# Writes recordings to Videos; streaming (RTMP) is its core function, so it gets
+# network. Screen/audio capture is a portal grant, not a filesystem one.
+[info]
+app_id = "com.obsproject.Studio"
+tier = "third-party"
+
+[filesystem]
+videos = true
+
+[network]
+allow_all = true

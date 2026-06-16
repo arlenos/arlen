@@ -1,0 +1,8 @@
+# Starting permission profile for Audacity (audio editor). Music, no network,
+# no graph.
+[info]
+app_id = "org.audacityteam.Audacity"
+tier = "third-party"
+
+[filesystem]
+music = true
