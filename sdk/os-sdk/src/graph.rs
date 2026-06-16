@@ -619,6 +619,46 @@ impl UnixGraphClient {
         }
     }
 
+    /// Upsert (create-or-update) an instance of the caller's OWN declared entity
+    /// type over the daemon write socket, keyed by `external_key` for idempotent
+    /// re-sync (foreign-app-bridges piece 1): the general app-tier instance write.
+    ///
+    /// The daemon enforces, fail-closed, that the type is in the caller's
+    /// namespace and registered, that `system.*`/`shared.*` are unwritable, and
+    /// that the fields validate against the registered schema; a re-sync of the
+    /// same `external_key` updates the existing node in place rather than
+    /// duplicating. A daemon `ERROR:` maps to [`QueryError`] (a permission error
+    /// to [`QueryError::PermissionDenied`]). Idempotent, so a retry is safe.
+    pub async fn upsert_entity(
+        &self,
+        qualified_type: &str,
+        external_key: &str,
+        fields: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<(), QueryError> {
+        let req = serde_json::json!({
+            "op": "upsert_entity",
+            "qualified_type": qualified_type,
+            "external_key": external_key,
+            "fields": fields,
+        });
+        let json = serde_json::to_vec(&req).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+
+        // A leading 0x02 byte selects the daemon's structured write mode.
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x02);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_WRITE_RESPONSE_BYTES).await?;
+        let response = String::from_utf8_lossy(&bytes);
+        Self::check_error(&response)?;
+        match response.trim() {
+            "OK: upserted" => Ok(()),
+            other => Err(QueryError::InvalidQuery(format!(
+                "unexpected daemon entity-write response: {other}"
+            ))),
+        }
+    }
+
     /// Retract (compensate) a relation this caller previously created, deleting
     /// only the edge that carries `op_id`, via the daemon's write socket.
     ///
@@ -1451,5 +1491,75 @@ mod tests {
 
         assert!(matches!(first, Ok(RelationRetractOutcome::Retracted)), "got {first:?}");
         assert!(matches!(second, Ok(RelationRetractOutcome::Absent)), "got {second:?}");
+    }
+
+    #[tokio::test]
+    async fn upsert_entity_sends_a_tagged_request_and_parses_ok() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-upsert-entity-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            assert_eq!(req[0], 0x02, "entity writes carry the 0x02 write prefix");
+            let body: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
+            assert_eq!(body["op"], "upsert_entity");
+            assert_eq!(body["qualified_type"], "md.obsidian.Note");
+            assert_eq!(body["external_key"], "note-1");
+            assert_eq!(body["fields"]["title"], "Hello");
+
+            let reply = b"OK: upserted";
+            conn.write_all(&(reply.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(reply).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let mut fields = serde_json::Map::new();
+        fields.insert("title".to_string(), serde_json::json!("Hello"));
+        let result = client.upsert_entity("md.obsidian.Note", "note-1", &fields).await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        assert!(result.is_ok(), "got {result:?}");
+    }
+
+    #[tokio::test]
+    async fn upsert_entity_maps_a_daemon_error() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-upsert-entity-err-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            let reply = b"ERROR: namespace violation: md.obsidian cannot write com.other.Note";
+            conn.write_all(&(reply.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(reply).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let fields = serde_json::Map::new();
+        let result = client.upsert_entity("com.other.Note", "k1", &fields).await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        assert!(result.is_err(), "a daemon ERROR must surface as Err");
     }
 }
