@@ -21,7 +21,7 @@ const CONSUMER_ID: &str = "desktop-shell";
 /// topbar-toolbar.md) lands in a Phase-6 hardening pass once
 /// pid→app_id mapping infrastructure exists.
 const SUBSCRIPTIONS: &str =
-    "window.,config.,project.,app.toolbar.,app.shortcut.,app.badge.,app.ambient.,power.";
+    "window.,config.,project.,app.toolbar.,app.shortcut.,app.badge.,app.ambient.,app.menu.,power.";
 
 /// Window event payload forwarded to the TypeScript frontend.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -171,6 +171,13 @@ fn forward_to_frontend(
         return;
     }
 
+    // App.menu events: an app's global menu, carried cross-process so
+    // the topbar GlobalMenuBar can render the focused app's menu.
+    if event_type.starts_with("app.menu.") {
+        forward_menu_event(app, event_type, &event.payload);
+        return;
+    }
+
     // Config events.
     if event_type.starts_with("config.") {
         let payload = ConfigChangedPayload {
@@ -189,6 +196,37 @@ fn forward_to_frontend(
         if let Err(e) = app.emit(tauri_event, &payload) {
             log::warn!("failed to emit config Tauri event: {e}");
         }
+    }
+}
+
+/// Forward `app.menu.*` events to the frontend. Unlike the toolbar
+/// surfaces (typed protobuf), an app's menu is a recursive tree, so the
+/// payload is a JSON document carried as the event-bus payload bytes
+/// (`{app_id, items}` for a registration, `{app_id}` for a removal) -
+/// no protobuf schema needed for the nested structure. Re-emitted as the
+/// `arlen://menu-registered` / `arlen://menu-unregistered` Tauri events
+/// the frontend menu store already consumes, keyed by `app_id`; the
+/// topbar renders only the focused app's menu.
+fn forward_menu_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
+    let value: serde_json::Value = match serde_json::from_slice(payload) {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!("app.menu event with non-JSON payload, dropped: {e}");
+            return;
+        }
+    };
+    // The app_id is authoritative for keying; a payload without it is unusable.
+    if value.get("app_id").and_then(|v| v.as_str()).is_none() {
+        log::warn!("app.menu event missing string app_id, dropped");
+        return;
+    }
+    let tauri_event = match event_type {
+        "app.menu.registered" => "arlen://menu-registered",
+        "app.menu.unregistered" => "arlen://menu-unregistered",
+        _ => return,
+    };
+    if let Err(e) = app.emit(tauri_event, &value) {
+        log::warn!("failed to emit menu Tauri event: {e}");
     }
 }
 
