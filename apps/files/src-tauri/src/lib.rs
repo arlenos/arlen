@@ -326,6 +326,16 @@ fn files_trash_empty() -> Result<usize, String> {
     ops::empty_trash(&trash).map_err(|e| e.to_string())
 }
 
+/// Create a symbolic link `name` under `parent` pointing at `target` (the
+/// link's verbatim contents; it may be absolute, relative, or dangling).
+#[tauri::command]
+fn files_symlink(parent: String, name: String, target: String) -> Result<(), String> {
+    let dir = root()?;
+    ops::create_symlink(&dir, rel(&parent), &name, &target)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 fn conflict_policy(policy: Option<&str>) -> ops::ConflictPolicy {
     match policy {
         Some("replace") => ops::ConflictPolicy::Replace,
@@ -874,6 +884,7 @@ pub fn run() {
             files_recent,
             files_trash_list,
             files_trash_empty,
+            files_symlink,
             thumbnail::files_thumbnail,
             capability::ai_capability
         ])
