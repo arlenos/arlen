@@ -63,6 +63,7 @@
   const ascending = $derived(controller.ascending);
   const viewMode = $derived(controller.viewMode);
   const thumbnails = $derived(controller.thumbnails);
+  const selectAllSignal = $derived(controller.selectAllSignal);
 
   const visible = $derived(filter ? $entries.filter(filter) : $entries);
 
@@ -97,6 +98,29 @@
     cursorIndex = selection.cursor();
     onselection?.([...set].map((i) => visible[i]).filter(Boolean));
   }
+
+  // Apply a host "select all" command (the topbar Edit menu) to the
+  // internal selection - the same path as Ctrl+A. The controller carries
+  // a monotonic signal; we adopt its current value on mount and on a
+  // controller swap (a tab switch is not a select-all), then select-all
+  // on each later increment.
+  let selectAllController: BrowserState | null = null;
+  let selectAllSeen = 0;
+  $effect(() => {
+    const n = $selectAllSignal;
+    if (controller !== selectAllController) {
+      selectAllController = controller;
+      selectAllSeen = n;
+      return;
+    }
+    if (n !== selectAllSeen) {
+      selectAllSeen = n;
+      if (visible.length > 0) {
+        selection.selectAll();
+        publish();
+      }
+    }
+  });
 
   function onrowevent(kind: "click" | "dblclick" | "contextmenu", i: number, e: MouseEvent) {
     if (kind === "click") {
