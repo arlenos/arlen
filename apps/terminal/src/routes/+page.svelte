@@ -8,7 +8,12 @@
   /// would not start).
   import { onMount } from "svelte";
   import { writable } from "svelte/store";
-  import { terminalBlocks, type Block } from "$lib/contract";
+  import {
+    terminalBlocks,
+    terminalGrid,
+    type Block,
+    type GridSnapshot,
+  } from "$lib/contract";
   import {
     sessions,
     activeSessionId,
@@ -17,10 +22,17 @@
     loadSessions,
     newSession,
   } from "$lib/stores/sessions";
+  import { GridRegion } from "@arlen/ui-kit/components/console";
   import BlockStream from "$lib/components/BlockStream.svelte";
   import Composer from "$lib/components/Composer.svelte";
 
   const blocks = writable<Block[]>([]);
+  // The live screen, polled from the engine's VT model (terminal.md
+  // Option B). IPC continuations land in a store, never `$state`.
+  const liveGrid = writable<GridSnapshot | null>(null);
+
+  const tauriAvailable =
+    typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
   async function loadBlocks(sessionId: string | null) {
     if (!sessionId) {
@@ -34,6 +46,20 @@
     }
   }
 
+  // The visible screen rows, trailing blank lines trimmed (but never
+  // below the cursor row) so the live region is the height of the real
+  // output, not the full 24-row grid.
+  const liveLines = $derived.by(() => {
+    const g = $liveGrid;
+    if (!g) return [];
+    let last = -1;
+    for (let i = 0; i < g.lines.length; i++) {
+      if (g.lines[i].trim() !== "") last = i;
+    }
+    last = Math.max(last, g.cursor_row);
+    return g.lines.slice(0, last + 1);
+  });
+
   onMount(() => {
     loadSessions();
   });
@@ -41,6 +67,32 @@
   $effect(() => {
     const id = $activeSessionId;
     loadBlocks(id);
+  });
+
+  // Poll the live screen while a session is active. The PTY streams
+  // output asynchronously, so the screen is read on a timer (not only
+  // on send); the interval is torn down on session change and unmount.
+  $effect(() => {
+    const id = $activeSessionId;
+    if (!id || !tauriAvailable) {
+      liveGrid.set(null);
+      return;
+    }
+    let alive = true;
+    const tick = async () => {
+      try {
+        const grid = await terminalGrid(id);
+        if (alive) liveGrid.set(grid);
+      } catch {
+        // Keep the last good screen on a transient read failure.
+      }
+    };
+    void tick();
+    const timer = setInterval(tick, 120);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
   });
 
   const activeSession = $derived(
@@ -80,6 +132,14 @@
       </div>
     {:else}
       <BlockStream blocks={$blocks}>
+        {#if liveLines.length > 0}
+          <!-- The live terminal screen (Option B): command output shows
+               here even without the OSC-mark shell integration, which is
+               what makes the empty-block-body case still display output. -->
+          <div class="live-screen">
+            <GridRegion lines={liveLines} />
+          </div>
+        {/if}
         <Composer
           session={activeSession}
           git={promptGit}
@@ -104,6 +164,11 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
+  }
+
+  /* The live screen sits in the stream flow, above the composer. */
+  .live-screen {
+    padding: 4px 12px;
   }
 
   .stream-empty {

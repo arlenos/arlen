@@ -43,6 +43,18 @@ export interface Block {
   body: unknown;
 }
 
+/// A point-in-time text view of the terminal screen (the Rust
+/// `GridSnapshot`): the visible grid as rows of text plus the geometry
+/// and cursor. The webview renders this so command output appears
+/// without the compositor grid-subsurface (terminal.md Option B).
+export interface GridSnapshot {
+  cols: number;
+  rows: number;
+  lines: string[];
+  cursor_row: number;
+  cursor_col: number;
+}
+
 /// A running (or finished) shell, surfaced as a tab in the sidebar.
 export interface Session {
   id: string;
@@ -90,6 +102,10 @@ export async function terminalSessions(): Promise<Session[]> {
 
 export async function terminalBlocks(sessionId: string): Promise<Block[]> {
   return invoke<Block[]>("terminal_blocks", { sessionId });
+}
+
+export async function terminalGrid(sessionId: string): Promise<GridSnapshot> {
+  return invoke<GridSnapshot>("terminal_grid", { sessionId });
 }
 
 export async function terminalInput(
