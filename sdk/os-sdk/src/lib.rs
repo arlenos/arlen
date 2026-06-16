@@ -9,6 +9,7 @@ pub mod graph;
 pub mod mock;
 pub mod intents;
 pub mod mcp;
+pub mod menu;
 pub mod presence;
 pub mod runtime;
 pub mod search;
@@ -63,6 +64,7 @@ pub use graph::{
     GraphClient, QueryError, RelationRetractOutcome, RelationWriteOutcome, UnixGraphClient,
 };
 pub use intents::{IntentError, IntentType, UnixIntentClient};
+pub use menu::{Menu, MenuGroup, MenuItem, MenuItemKind};
 pub use presence::{AutoClear, Presence, PresenceParams};
 pub use search::{SearchError, SearchMode, UnixSearchClient};
 pub use spatial::{GeometryHint, OutputHint, Spatial, SpatialHint};
