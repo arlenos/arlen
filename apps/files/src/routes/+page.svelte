@@ -4,8 +4,11 @@
   /// context menu, clipboard, rename, trash and the permanent-delete
   /// confirmation. The chrome (nav, breadcrumb, tabs, toggles) lives
   /// in the layout's headerbar.
-  import { onMount, tick } from "svelte";
+  import { onMount, onDestroy, tick } from "svelte";
   import { get } from "svelte/store";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { tauriAvailable } from "$lib/tauri";
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import {
@@ -111,6 +114,75 @@
     await runOp("trash", selectedPaths());
   }
 
+  // The topbar menu lives in the shell; a click there travels back over
+  // the Event Bus and the host forwards it as `arlen://menu-action`.
+  let unlistenMenu: UnlistenFn | null = null;
+
+  /// Run a topbar-menu action. Action ids mirror the menu published in
+  /// `publish_app_menu` (src-tauri/src/lib.rs); each maps to the same
+  /// operation its keyboard/context-menu equivalent runs.
+  async function runMenuAction(action: string) {
+    const c = get(focusedController);
+    switch (action) {
+      case "file.new_folder":
+        await newFolder();
+        break;
+      case "file.new_window":
+        // A separate top-level window is a follow-up; open a new tab at
+        // the current location so the item is not inert.
+        newTab(currentPath());
+        break;
+      case "file.properties":
+        infoOpen.set(true);
+        break;
+      case "file.close":
+        if (tauriAvailable) await getCurrentWindow().close();
+        break;
+      case "edit.cut":
+        copySelection("move");
+        break;
+      case "edit.copy":
+        copySelection("copy");
+        break;
+      case "edit.paste":
+        await paste(currentPath());
+        break;
+      case "edit.rename":
+        if (selected.length === 1) renamingName = selected[0].name;
+        break;
+      case "edit.trash":
+        await trashSelection();
+        break;
+      case "view.refresh":
+        await c?.refresh();
+        break;
+      case "view.toggle_hidden":
+        if (c) await c.setShowHidden(!get(c.showHidden));
+        break;
+      case "view.sort.name":
+        await c?.setSort("name");
+        break;
+      case "view.sort.size":
+        await c?.setSort("size");
+        break;
+      case "view.sort.type":
+        await c?.setSort("type");
+        break;
+      case "view.sort.modified":
+        await c?.setSort("modified");
+        break;
+      case "go.home":
+        await get(activeController)?.navigate(get(homePath));
+        break;
+      case "go.up":
+        await c?.up();
+        break;
+      default:
+        // edit.select_all, go.recent, help.about have no host affordance yet.
+        console.info(`files: topbar menu action not yet wired: ${action}`);
+    }
+  }
+
   function onOpsKeydown(e: KeyboardEvent) {
     const target = e.target as HTMLElement | null;
     if (target?.closest("input, textarea")) return;
@@ -148,7 +220,14 @@
   onMount(async () => {
     await loadPlaces();
     if (get(tabs).length === 0) newTab(get(homePath));
+    if (tauriAvailable) {
+      unlistenMenu = await listen<{ action: string }>(
+        "arlen://menu-action",
+        (e) => void runMenuAction(e.payload.action),
+      );
+    }
   });
+  onDestroy(() => unlistenMenu?.());
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
