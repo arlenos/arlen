@@ -1,0 +1,8 @@
+# Starting permission profile for NewsFlash (an RSS reader). Network is its
+# function (feed fetching); no media dirs, no graph.
+[info]
+app_id = "io.gitlab.news_flash.NewsFlash"
+tier = "third-party"
+
+[network]
+allow_all = true

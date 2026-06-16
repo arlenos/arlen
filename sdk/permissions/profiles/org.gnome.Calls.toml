@@ -1,0 +1,8 @@
+# Starting permission profile for GNOME Calls (SIP/VoIP telephony). Network is
+# its function; no media dirs, no graph.
+[info]
+app_id = "org.gnome.Calls"
+tier = "third-party"
+
+[network]
+allow_all = true
