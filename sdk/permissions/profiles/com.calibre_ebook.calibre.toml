@@ -1,0 +1,9 @@
+# Starting permission profile for calibre (e-book library). Manages a Documents
+# library; no network by default (the store/news fetch is an observe-mode
+# refinement, not a blanket grant).
+[info]
+app_id = "com.calibre_ebook.calibre"
+tier = "third-party"
+
+[filesystem]
+documents = true

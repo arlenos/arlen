@@ -1,0 +1,10 @@
+# Starting permission profile for KeePassXC (password manager). Minimal by
+# design: it reads its own .kdbx (kept under Documents by default) and gets NO
+# network - cloud sync / browser integration are deliberate opt-in refinements,
+# never granted up front to a secrets store.
+[info]
+app_id = "org.keepassxc.KeePassXC"
+tier = "third-party"
+
+[filesystem]
+documents = true

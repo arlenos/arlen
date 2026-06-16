@@ -1,0 +1,8 @@
+# Starting permission profile for GNOME Text Editor. Edits Documents; no network,
+# no graph.
+[info]
+app_id = "org.gnome.TextEditor"
+tier = "third-party"
+
+[filesystem]
+documents = true
