@@ -1129,4 +1129,44 @@ commit = "{COMMIT}"
         assert!(is_valid_id("org.arlen.app"));
         assert!(!is_valid_id("singlename"));
     }
+
+    #[test]
+    fn github_repo_url_accepts_only_real_github_repos() {
+        assert!(is_github_repo_url("https://github.com/owner/repo"));
+        assert!(is_github_repo_url("http://github.com/owner/repo"));
+        assert!(is_github_repo_url("github.com/owner/repo"));
+        assert!(is_github_repo_url("github.com./owner/repo")); // trailing-dot host
+        assert!(is_github_repo_url("https://github.com/owner/repo/")); // trailing slash
+        // Owner without a repo segment is not a repo url.
+        assert!(!is_github_repo_url("https://github.com/owner"));
+        // A different host and two look-alike hosts are refused (no substring bypass).
+        assert!(!is_github_repo_url("https://gitlab.com/owner/repo"));
+        assert!(!is_github_repo_url("https://github.com.evil.com/owner/repo"));
+        assert!(!is_github_repo_url("https://evil.com/github.com/owner/repo"));
+    }
+
+    #[test]
+    fn helper_boundary_cases() {
+        // is_hex_len: exact length, hex-only, case-insensitive.
+        assert!(is_hex_len("AbC0", 4));
+        assert!(!is_hex_len("abc", 4));
+        assert!(!is_hex_len("xyz0", 4));
+        // is_git_commit: only 40 or 64 hex; the off-by-one lengths fail.
+        assert!(!is_git_commit(&"a".repeat(39)));
+        assert!(!is_git_commit(&"a".repeat(41)));
+        assert!(!is_git_commit(&"a".repeat(63)));
+        // is_null_oid: the empty string is not the null id.
+        assert!(!is_null_oid(""));
+        assert!(is_null_oid(&"0".repeat(64)));
+        // is_reverse_domain: empty inner segments and bad chars are rejected.
+        assert!(!is_reverse_domain("com..app"));
+        assert!(!is_reverse_domain("com.ex ample"));
+        assert!(!is_reverse_domain("com.ex/ample"));
+        assert!(is_reverse_domain("org.arlen_os.app-v2"));
+        // is_semver_like: build metadata accepted, four parts and non-digits rejected.
+        assert!(is_semver_like("1.2.3+build7"));
+        assert!(is_semver_like("1.2"));
+        assert!(!is_semver_like("1.2.3.4"));
+        assert!(!is_semver_like("1.2.x"));
+    }
 }
