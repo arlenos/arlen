@@ -47,6 +47,12 @@ pub const SCHEMA_TOOL: &str = "describe_schema";
 /// principal), so a third-party app cannot use the agent as a proxy for it.
 pub const CODE_ANALYSIS_TOOL: &str = "code_analysis";
 
+/// Code-symbol-context tool (CG-R6): a symbol's defining file, the project that
+/// file belongs to (bitemporally, optionally as-of a timestamp), and the apps
+/// that accessed it. Daemon-gated to system-anchored callers, same as
+/// [`CODE_ANALYSIS_TOOL`]; the agent reaches it as a FirstParty principal.
+pub const CODE_SYMBOL_TOOL: &str = "code_symbol_context";
+
 /// System fallback path of the knowledge daemon's read-query socket, used
 /// when no env override and no per-user runtime dir is available.
 pub const DEFAULT_KNOWLEDGE_SOCKET: &str = "/run/arlen/knowledge.sock";
@@ -160,6 +166,32 @@ impl KnowledgeMcp {
             Arc::new(schema),
         )
     }
+
+    /// The MCP tool definition for the code-symbol-context fusion (CG-R6).
+    fn code_symbol_context_tool() -> Tool {
+        let schema: JsonObject = serde_json::from_value(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "symbol_id": {
+                    "type": "string",
+                    "description": "The CodeSymbol node id (e.g. \"/p/lib.rs#function:helper@1\")."
+                },
+                "as_of_micros": {
+                    "type": "integer",
+                    "description": "Optional bitemporal as-of (microseconds since epoch). Omit for the current (live) project membership."
+                }
+            },
+            "required": ["symbol_id"]
+        }))
+        .expect("the static code-symbol-tool schema is a valid JSON object");
+        Tool::new_with_raw(
+            CODE_SYMBOL_TOOL.to_owned(),
+            Some(Cow::Borrowed(
+                "Resolve a code symbol's activity context: its defining file, the project that file belongs to (optionally as of a past time), and the apps that have accessed it. Returns JSON {symbol_id, file_path, project, accessed_by}.",
+            )),
+            Arc::new(schema),
+        )
+    }
 }
 
 /// Render the canonical graph schema as JSON: node labels with their typed
@@ -204,13 +236,35 @@ fn extract_cypher(arguments: Option<&JsonObject>) -> Result<&str, McpError> {
         })
 }
 
+/// Pull the `symbol_id` (required) and `as_of_micros` (optional) out of a
+/// `code_symbol_context` call's arguments. Separate from the async handler so
+/// the argument contract is testable without an MCP transport.
+fn extract_code_symbol_args(
+    arguments: Option<&JsonObject>,
+) -> Result<(String, Option<i64>), McpError> {
+    let symbol_id = arguments
+        .and_then(|m| m.get("symbol_id"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            McpError::invalid_request(
+                "tool 'code_symbol_context' requires a string argument 'symbol_id'",
+                None,
+            )
+        })?
+        .to_owned();
+    let as_of = arguments
+        .and_then(|m| m.get("as_of_micros"))
+        .and_then(serde_json::Value::as_i64);
+    Ok((symbol_id, as_of))
+}
+
 impl ServerHandler for KnowledgeMcp {
     fn get_info(&self) -> ServerInfo {
         // `ServerInfo` (`InitializeResult`) is `#[non_exhaustive]`; build it
         // through the constructor rather than a struct literal.
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_instructions(
-                "Read-only access to the Arlen Knowledge Graph. 'describe_schema' lists the queryable node and edge types; 'query' runs a read Cypher query and returns the matching rows; 'code_analysis' returns the code graph's god-symbols and surprises.",
+                "Read-only access to the Arlen Knowledge Graph. 'describe_schema' lists the queryable node and edge types; 'query' runs a read Cypher query and returns the matching rows; 'code_analysis' returns the code graph's god-symbols and surprises; 'code_symbol_context' resolves a code symbol's file, project and access provenance.",
             )
     }
 
@@ -223,6 +277,7 @@ impl ServerHandler for KnowledgeMcp {
             Self::query_tool(),
             Self::schema_tool(),
             Self::code_analysis_tool(),
+            Self::code_symbol_context_tool(),
         ]))
     }
 
@@ -267,6 +322,21 @@ impl ServerHandler for KnowledgeMcp {
                     "code analysis failed: {err}"
                 ))])),
             },
+            CODE_SYMBOL_TOOL => {
+                let (symbol_id, as_of) = extract_code_symbol_args(request.arguments.as_ref())?;
+                match self.graph.code_symbol_context(&symbol_id, as_of).await {
+                    Ok(ctx) => {
+                        let json =
+                            serde_json::to_string(&ctx).unwrap_or_else(|_| "{}".to_string());
+                        Ok(CallToolResult::success(vec![Content::text(json)]))
+                    }
+                    // A denied (not system-anchored) or failed read is a clean
+                    // tool error, not a transport error.
+                    Err(err) => Ok(CallToolResult::error(vec![Content::text(format!(
+                        "code symbol context failed: {err}"
+                    ))])),
+                }
+            }
             other => Err(McpError::invalid_request(
                 format!("unknown tool: {other}"),
                 None,
@@ -282,6 +352,40 @@ mod tests {
     #[test]
     fn schema_tool_is_named() {
         assert_eq!(KnowledgeMcp::schema_tool().name, SCHEMA_TOOL);
+    }
+
+    #[test]
+    fn code_symbol_context_tool_requires_symbol_id() {
+        let tool = KnowledgeMcp::code_symbol_context_tool();
+        assert_eq!(tool.name, CODE_SYMBOL_TOOL);
+        let schema = serde_json::to_value(&*tool.input_schema).unwrap();
+        assert_eq!(schema["required"], serde_json::json!(["symbol_id"]));
+        assert!(schema["properties"]["as_of_micros"].is_object());
+    }
+
+    #[test]
+    fn extract_code_symbol_args_parses_id_and_optional_as_of() {
+        let with_as_of: JsonObject = serde_json::from_value(serde_json::json!({
+            "symbol_id": "/p/lib.rs#fn:helper@1",
+            "as_of_micros": 150
+        }))
+        .unwrap();
+        assert_eq!(
+            extract_code_symbol_args(Some(&with_as_of)).unwrap(),
+            ("/p/lib.rs#fn:helper@1".to_string(), Some(150))
+        );
+
+        let just_id: JsonObject =
+            serde_json::from_value(serde_json::json!({"symbol_id": "x"})).unwrap();
+        assert_eq!(
+            extract_code_symbol_args(Some(&just_id)).unwrap(),
+            ("x".to_string(), None)
+        );
+
+        // Missing symbol_id is a clean request error.
+        let empty: JsonObject = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert!(extract_code_symbol_args(Some(&empty)).is_err());
+        assert!(extract_code_symbol_args(None).is_err());
     }
 
     #[test]
