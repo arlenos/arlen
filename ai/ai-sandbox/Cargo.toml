@@ -18,6 +18,14 @@ name = "arlen-thumbnail-sandbox"
 path = "src/bin/arlen-thumbnail-sandbox.rs"
 required-features = ["thumbnail"]
 
+# The sandboxed full-resolution image-view worker (apps/viewers). Decodes an
+# untrusted image at viewer resolution; behind the `thumbnail` feature, sharing
+# the same image decoders as the thumbnailer.
+[[bin]]
+name = "arlen-image-view-sandbox"
+path = "src/bin/arlen-image-view-sandbox.rs"
+required-features = ["thumbnail"]
+
 # The sandboxed music cover-art thumbnailer. Extracts a file's embedded album
 # art and thumbnails it; behind the `music` feature so non-music consumers pull
 # neither the metadata reader nor the image decoders.
