@@ -199,8 +199,12 @@
       case "go.up":
         await c?.up();
         break;
+      case "edit.select_all":
+        c?.selectAll();
+        break;
       default:
-        // edit.select_all, go.recent, help.about have no host affordance yet.
+        // go.recent + help.about need a frontend surface (a recent-files
+        // panel, an about dialog) that does not exist yet; routed to arlen-ui.
         console.info(`files: topbar menu action not yet wired: ${action}`);
     }
   }
