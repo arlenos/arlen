@@ -1,0 +1,8 @@
+# Starting permission profile for GNOME Connections (remote desktop). Network is
+# its function (RDP/VNC); no media dirs, no graph.
+[info]
+app_id = "org.gnome.Connections"
+tier = "third-party"
+
+[network]
+allow_all = true
