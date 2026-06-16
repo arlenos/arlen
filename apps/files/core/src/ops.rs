@@ -362,6 +362,29 @@ pub fn new_folder(dir: &Dir, parent: impl AsRef<Path>, name: &str) -> OpResult<O
     }
 }
 
+/// Create a symbolic link `name` in `parent` (relative to `dir`) pointing at
+/// `link_target`. `link_target` is the link's contents; it may be relative or
+/// dangling, but cap-std refuses a target that escapes the capability (an
+/// absolute path, or one that climbs out via `..`) at creation — the confined
+/// FM cannot mint a symlink pointing outside its root. Refuses an invalid
+/// `name` or an existing entry (no silent replace), mirroring [`new_folder`].
+pub fn create_symlink(
+    dir: &Dir,
+    parent: impl AsRef<Path>,
+    name: &str,
+    link_target: &str,
+) -> OpResult<OpOutcome> {
+    validate_name(name)?;
+    let link = parent.as_ref().join(name);
+    match dir.symlink(link_target, &link) {
+        Ok(()) => Ok(OpOutcome::Created { target: link }),
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Err(OpError::AlreadyExists {
+            name: name.to_string(),
+        }),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// Rename the entry `from_name` to `to_name` within the same directory `parent`
 /// (relative to `dir`). The conventional inline-rename / F2. Refuses if
 /// `to_name` already exists (no silent replace) and refuses an invalid
@@ -2095,6 +2118,26 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let trash_dir = make_trash(tmp.path());
         assert_eq!(empty_trash(&trash_dir).unwrap(), 0);
+    }
+
+    #[test]
+    fn create_symlink_makes_a_link_and_refuses_collision() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = cap(tmp.path());
+        // A relative, in-capability target: cap-std can read it back verbatim.
+        let out = create_symlink(&dir, ".", "link", "target.txt").unwrap();
+        assert_eq!(out, OpOutcome::Created { target: PathBuf::from("./link") });
+        let md = dir.symlink_metadata("link").unwrap();
+        assert!(md.file_type().is_symlink());
+        assert_eq!(dir.read_link("link").unwrap(), PathBuf::from("target.txt"));
+        // A second create at the same name is refused (no silent replace).
+        assert!(matches!(
+            create_symlink(&dir, ".", "link", "other"),
+            Err(OpError::AlreadyExists { .. })
+        ));
+        // An absolute / escaping target is refused at creation: the confined
+        // FM cannot mint a symlink pointing outside its capability root.
+        assert!(create_symlink(&dir, ".", "abs", "/etc/hostname").is_err());
     }
 
     #[test]
