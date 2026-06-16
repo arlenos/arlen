@@ -1,0 +1,9 @@
+# Starting permission profile for GNOME Builder (an IDE). Documents (projects),
+# no network by default (dependency/flatpak fetches are a deliberate opt-in); no
+# graph.
+[info]
+app_id = "org.gnome.Builder"
+tier = "third-party"
+
+[filesystem]
+documents = true
