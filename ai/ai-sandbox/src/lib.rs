@@ -141,6 +141,22 @@ fn is_invisible_or_format(ch: char) -> bool {
 #[cfg(feature = "thumbnail")]
 pub const THUMBNAIL_MAX_DIM: u32 = 256;
 
+/// The longest-side dimension (px) of a decoded image for the single-file
+/// viewer (`apps/viewers`, quickview-plan.md). Far larger than a thumbnail so
+/// the viewer shows the picture, not a preview, while still bounding the
+/// re-encoded PNG: a source larger than this on either side is downscaled to
+/// fit, smaller images are returned at their full resolution. 4096 covers a 4K
+/// display 1:1 and keeps a typical photo's lossless PNG comfortably under
+/// [`MAX_BYTES`].
+///
+/// CAVEAT: a noisy image near this cap can re-encode to a PNG above
+/// [`MAX_BYTES`], which fails closed (the viewer falls back to its icon). A
+/// lossy/WebP re-encode for large photos, and a larger cap with zoom-time
+/// re-fetch for true detail, are the documented robustness follow-ups; PNG at
+/// this cap is the safe-by-construction first cut.
+#[cfg(feature = "thumbnail")]
+pub const VIEWER_MAX_DIM: u32 = 4096;
+
 /// Largest decoded image dimension (px per side) accepted before thumbnailing.
 /// Caps a decompression bomb's pixel buffer: 16384 covers any real photo while
 /// refusing an absurd canvas. A source larger than this is a decode error.
@@ -205,6 +221,24 @@ pub fn generate_thumbnail(image_bytes: &[u8], max_dim: u32) -> Result<Vec<u8>, S
         return Err(SandboxError::TooLarge);
     }
     Ok(out)
+}
+
+/// Decode an untrusted image to a sanitised, full-resolution PNG for the viewer.
+///
+/// This is the transformation that runs **inside** the sandbox for
+/// `apps/viewers` (quickview-plan.md). It shares [`generate_thumbnail`]'s
+/// memory-unsafe-decode containment and decompression-bomb caps; the only
+/// difference is the size bound: it downscales only when a side exceeds
+/// [`VIEWER_MAX_DIM`] (a viewer shows the picture, not a 256px preview), and a
+/// smaller image is returned at its native resolution. The PNG re-encode also
+/// strips the source metadata. A decode failure is fail-closed: no image is
+/// produced and the caller shows the file's icon.
+#[cfg(feature = "thumbnail")]
+pub fn decode_view_image(image_bytes: &[u8]) -> Result<Vec<u8>, SandboxError> {
+    // The decode, bomb-cap, downscale-if-over-the-bound and PNG re-encode are
+    // exactly the thumbnail path; only the bound differs, so reuse it rather
+    // than duplicate the security-relevant decode + cap logic.
+    generate_thumbnail(image_bytes, VIEWER_MAX_DIM)
 }
 
 /// Extract the first embedded cover-art picture from raw audio-file bytes.
@@ -374,6 +408,25 @@ pub fn thumbnail(sandbox_bin: &Path, image: &[u8]) -> Result<Vec<u8>, SandboxErr
     run_worker(sandbox_bin, image)
 }
 
+/// Decode a full-resolution viewer image by running the sandboxed image-view
+/// worker as a subprocess (`apps/viewers`, quickview-plan.md).
+///
+/// `sandbox_bin` is the path to the `arlen-image-view-sandbox` binary. The
+/// untrusted `image` bytes are written to the worker's stdin; the worker decodes
+/// them inside its Landlock + seccomp lockdown, downscales only past
+/// [`VIEWER_MAX_DIM`], and writes back the sanitised PNG, which is returned. The
+/// worker is killed past the time budget and both input and output are bounded
+/// by [`MAX_BYTES`]. Any failure is a [`SandboxError`]; the caller shows the
+/// file's icon on error.
+///
+/// TRUST CONTRACT: same as [`thumbnail`] - `sandbox_bin` MUST be the genuine,
+/// fixed worker path; the containment rests on the spawned process being the
+/// real locked-down worker.
+#[cfg(feature = "thumbnail")]
+pub fn view_image(sandbox_bin: &Path, image: &[u8]) -> Result<Vec<u8>, SandboxError> {
+    run_worker(sandbox_bin, image)
+}
+
 /// Generate a thumbnail of an audio file's embedded cover art by running the
 /// sandboxed music worker as a subprocess.
 ///
@@ -496,6 +549,35 @@ mod thumbnail_tests {
     fn refuses_oversize_input() {
         let big = vec![0u8; MAX_BYTES + 1];
         assert!(matches!(generate_thumbnail(&big, 256), Err(SandboxError::TooLarge)));
+    }
+
+    #[test]
+    fn view_keeps_a_normal_image_at_full_resolution() {
+        // Below VIEWER_MAX_DIM on both sides: returned at native resolution,
+        // unlike the 256px thumbnail path. This is the viewer's core contract.
+        let png = decode_view_image(&png_bytes(2000, 1000)).unwrap();
+        let (w, h) = image::load_from_memory(&png).unwrap().dimensions();
+        assert_eq!((w, h), (2000, 1000), "viewer must not downscale a sub-cap image");
+    }
+
+    #[test]
+    fn view_caps_an_oversize_image_to_the_viewer_dim() {
+        // Over VIEWER_MAX_DIM on the long side: downscaled to fit, aspect kept.
+        let png = decode_view_image(&png_bytes(6000, 3000)).unwrap();
+        let (w, h) = image::load_from_memory(&png).unwrap().dimensions();
+        assert_eq!((w, h), (VIEWER_MAX_DIM, VIEWER_MAX_DIM / 2));
+    }
+
+    #[test]
+    fn view_refuses_non_image_bytes_fail_closed() {
+        let err = decode_view_image(b"plainly not an image at all").unwrap_err();
+        assert!(matches!(err, SandboxError::Decode(_)));
+    }
+
+    #[test]
+    fn view_refuses_oversize_input() {
+        let big = vec![0u8; MAX_BYTES + 1];
+        assert!(matches!(decode_view_image(&big), Err(SandboxError::TooLarge)));
     }
 }
 
