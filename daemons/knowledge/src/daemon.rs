@@ -192,9 +192,18 @@ pub async fn listen(socket_path: &str, graph: GraphHandle, pool: sqlx::SqlitePoo
     // Schema registry for write-mode relation validation. Built with the
     // compiled-in system entity types only; that is sufficient for the agent's
     // built-in system relations (the only write op today), since
-    // `create_relation` refuses anything outside the built-in allowlist anyway.
-    // Loading app-defined schemas for app-relation writes is a follow-up.
-    let registry = Arc::new(SchemaRegistry::new(vec![]));
+    // Load app-declared entity schemas (foreign-app-bridges.md): without this
+    // the registry is empty, so an app can declare custom entity types but
+    // never write instances of them. `load_all` is fail-soft - a missing
+    // schema dir is a no-op and a bad file warns and is skipped - so a schema
+    // problem never blocks daemon startup.
+    let registry = {
+        let mut reg = SchemaRegistry::new(vec![]);
+        if let Err(e) = reg.load_all() {
+            warn!("failed to load entity schemas at startup: {e}");
+        }
+        Arc::new(reg)
+    };
 
     tokio::try_join!(
         listen_queries(socket_path, graph.clone(), pool, auth.clone(), rate, emitter, registry),
