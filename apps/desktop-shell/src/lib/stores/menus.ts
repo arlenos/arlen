@@ -65,7 +65,26 @@ export function initMenuListeners(): () => void {
     ];
 
     const disposer = makeDisposer(pending);
-    teardown = () => { disposer(); started = false; teardown = null; };
+
+    // Pull the focused app's menu from the backend store on every
+    // focus-in. The live `arlen://menu-registered` event is one-shot
+    // (an app registers its menu once at startup), so on a later
+    // focus-in the menu can be absent from `appMenus` - the event may
+    // have fired before this listener was installed, or while the app
+    // was unfocused. `get_menu` reads the authoritative shell-side
+    // store, which holds the menu for the app's whole lifetime, so
+    // re-fetching on focus makes the menu reappear whenever a
+    // registered app is focused, not only the first time.
+    const unsubActive = activeAppId.subscribe((id) => {
+        if (id) void fetchMenu(id);
+    });
+
+    teardown = () => {
+        unsubActive();
+        disposer();
+        started = false;
+        teardown = null;
+    };
     return teardown;
 }
 
