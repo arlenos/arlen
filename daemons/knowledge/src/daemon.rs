@@ -556,6 +556,45 @@ async fn handle_code_analysis(app_id: &str, graph: &GraphHandle) -> String {
     }
 }
 
+/// Uniform denial for the code-symbol-context op (CG-R6).
+const CODE_SYMBOL_DENIED: &str = "ERROR: code symbol context is not permitted for this caller";
+
+/// A code-symbol-context request: the symbol id, and an optional bitemporal
+/// as-of (µs since epoch; absent = live/now). `deny_unknown_fields` so a
+/// malformed request is refused, not silently widened.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CodeSymbolRequest {
+    symbol_id: String,
+    #[serde(default)]
+    as_of_micros: Option<i64>,
+}
+
+/// CG-R6: a code symbol's activity-layer context — its defining file, the
+/// project that file belongs to (bitemporal, optionally as-of a timestamp), and
+/// the apps that accessed it. Gated to **system-anchored** callers like the
+/// whole-codebase analysis (the file/project/provenance join over symbol ids
+/// that are file paths exceeds a ThirdParty's per-label read scope, so denying
+/// is the safe default); uniform denial on every failure.
+async fn handle_code_symbol_context(app_id: &str, graph: &GraphHandle, body: &[u8]) -> String {
+    let system_anchored = app_id != "unknown"
+        && QuotaConfig::arlen_default().tier_for_app(app_id) != AppTier::ThirdParty;
+    if !system_anchored {
+        return CODE_SYMBOL_DENIED.to_string();
+    }
+    let req: CodeSymbolRequest = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(_) => return CODE_SYMBOL_DENIED.to_string(),
+    };
+    if req.symbol_id.is_empty() {
+        return CODE_SYMBOL_DENIED.to_string();
+    }
+    match crate::code_analysis::code_symbol_context(graph, &req.symbol_id, req.as_of_micros).await {
+        Ok(ctx) => serde_json::to_string(&ctx).unwrap_or_else(|_| CODE_SYMBOL_DENIED.to_string()),
+        Err(_) => CODE_SYMBOL_DENIED.to_string(),
+    }
+}
+
 /// Co-tenant filter (provenance-halo.md §5): from an object's actor set, name
 /// only the caller's own access and collapse every foreign actor to a single
 /// "accessed by others" signal, so the provenance of a shared object never names
@@ -1746,6 +1785,38 @@ async fn handle_client(
             continue;
         }
 
+        // Code-symbol-context mode: a leading 0x0A byte selects the CG-R6 fusion
+        // read — a symbol's defining file, its project (bitemporal, optionally
+        // as-of), and its accessing apps. The body is a JSON CodeSymbolRequest.
+        // Same system-anchored gate + rate-limit + 500 ms bound as 0x09.
+        if buf.first() == Some(&0x0A) {
+            let violation = {
+                let mut rs = rate.lock().await;
+                rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
+            };
+            let response = if let Some(reason) = violation {
+                format!("ERROR: RateLimited: {reason}")
+            } else {
+                match tokio::time::timeout(
+                    Duration::from_millis(500),
+                    handle_code_symbol_context(&app_id, &graph, &buf[1..]),
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(_elapsed) => CODE_SYMBOL_DENIED.to_string(),
+                }
+            };
+            timing_noise().await;
+            let response_bytes = response.as_bytes();
+            let response_len = u32::try_from(response_bytes.len())
+                .expect("response too large")
+                .to_be_bytes();
+            stream.write_all(&response_len).await?;
+            stream.write_all(response_bytes).await?;
+            continue;
+        }
+
         // Access-grants mode: a leading 0x05 byte selects the caller-scoped grant
         // browse read (living-capability-graph.md §5). The caller's own grants
         // only (scoped by the attested app_id resolved at connect, never a request
@@ -2801,6 +2872,27 @@ mod tests {
             to_id: to_id.into(),
             relation_type: "FILE_PART_OF".into(),
         }
+    }
+
+    #[tokio::test]
+    async fn code_symbol_context_op_gates_and_serializes() {
+        let (graph, _tmp) = spawn_test_graph().await;
+        // A ThirdParty caller is denied (the fusion exceeds its read scope).
+        let denied =
+            handle_code_symbol_context("com.third.party", &graph, br#"{"symbol_id":"x"}"#).await;
+        assert!(denied.starts_with("ERROR:"), "ThirdParty denied: {denied}");
+        // A system-anchored caller with a malformed body is denied, not guessed.
+        let bad = handle_code_symbol_context("ai-agent", &graph, b"not json").await;
+        assert!(bad.starts_with("ERROR:"), "malformed body denied: {bad}");
+        // A system-anchored caller with a valid request for an absent symbol gets
+        // a context JSON (file_path null), proving the op runs + serialises.
+        let ok =
+            handle_code_symbol_context("ai-agent", &graph, br#"{"symbol_id":"/p/x#fn:none@1"}"#)
+                .await;
+        assert!(!ok.starts_with("ERROR:"), "valid request returns a context: {ok}");
+        let v: serde_json::Value = serde_json::from_str(&ok).unwrap();
+        assert_eq!(v["symbol_id"], "/p/x#fn:none@1");
+        assert!(v["file_path"].is_null(), "an absent symbol has no defining file");
     }
 
     #[tokio::test]
