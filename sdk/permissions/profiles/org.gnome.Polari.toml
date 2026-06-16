@@ -1,0 +1,11 @@
+# Starting permission profile for Polari (an IRC client). Network is its function;
+# DCC transfers save to Downloads. No graph.
+[info]
+app_id = "org.gnome.Polari"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

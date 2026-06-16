@@ -1,0 +1,11 @@
+# Starting permission profile for Tuba (a Mastodon/Fediverse client). Network is
+# its function; saved media goes to Downloads. No graph.
+[info]
+app_id = "dev.geopjr.Tuba"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

@@ -1,0 +1,9 @@
+# Starting permission profile for IntelliJ IDEA Community (an IDE). Documents
+# (projects), no network by default (plugin/dependency fetches are a deliberate
+# opt-in); no graph.
+[info]
+app_id = "com.jetbrains.IntelliJ-IDEA-Community"
+tier = "third-party"
+
+[filesystem]
+documents = true

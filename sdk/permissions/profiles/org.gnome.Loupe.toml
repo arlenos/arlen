@@ -1,0 +1,8 @@
+# Starting permission profile for Loupe (the GNOME image viewer). Pictures, no
+# network, no graph.
+[info]
+app_id = "org.gnome.Loupe"
+tier = "third-party"
+
+[filesystem]
+pictures = true

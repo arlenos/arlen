@@ -1,0 +1,8 @@
+# Starting permission profile for Clapper (a video player). Videos, no network,
+# no graph.
+[info]
+app_id = "com.github.rafostar.Clapper"
+tier = "third-party"
+
+[filesystem]
+videos = true
