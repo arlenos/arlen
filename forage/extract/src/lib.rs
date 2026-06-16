@@ -186,7 +186,7 @@ mod tests {
             header.set_size(data.len() as u64);
             header.set_entry_type(*etype);
             header.set_mode(0o644);
-            if *etype == tar::EntryType::Symlink {
+            if matches!(*etype, tar::EntryType::Symlink | tar::EntryType::Link) {
                 header.set_link_name("/etc/passwd").unwrap();
             }
             builder.append_data(&mut header, path, &data[..]).unwrap();
@@ -310,5 +310,92 @@ mod tests {
             extract_tar(&tar, dest.path(), &limits),
             Err(ExtractError::TooLarge(100))
         ));
+    }
+
+    #[test]
+    fn is_safe_relative_classifies_paths() {
+        assert!(is_safe_relative(Path::new("src/main.rs")));
+        assert!(is_safe_relative(Path::new("./a/b")));
+        assert!(is_safe_relative(Path::new("plain")));
+        assert!(!is_safe_relative(Path::new("/etc/passwd")));
+        assert!(!is_safe_relative(Path::new("../escape")));
+        assert!(!is_safe_relative(Path::new("a/../../b")));
+    }
+
+    #[test]
+    fn rejects_hardlink_entries() {
+        let tar = build_tar(&[("hard", tar::EntryType::Link, b"")]);
+        let dest = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            extract_tar(&tar, dest.path(), &ExtractLimits::default()),
+            Err(ExtractError::UnsupportedEntry(_))
+        ));
+        assert!(!dest.path().join("hard").exists());
+    }
+
+    #[test]
+    fn extracts_directory_entries() {
+        let tar = build_tar(&[
+            ("pkg/", tar::EntryType::Directory, b""),
+            ("pkg/lib.rs", tar::EntryType::Regular, b"x"),
+        ]);
+        let dest = tempfile::tempdir().unwrap();
+        let r = extract_tar(&tar, dest.path(), &ExtractLimits::default()).unwrap();
+        assert_eq!(r.files, 1);
+        assert!(dest.path().join("pkg").is_dir());
+        assert_eq!(std::fs::read(dest.path().join("pkg/lib.rs")).unwrap(), b"x");
+    }
+
+    #[test]
+    fn creates_missing_parent_directories() {
+        // A regular file under nested dirs with no explicit directory entries.
+        let tar = build_tar(&[("a/b/c/deep.txt", tar::EntryType::Regular, b"ok")]);
+        let dest = tempfile::tempdir().unwrap();
+        let r = extract_tar(&tar, dest.path(), &ExtractLimits::default()).unwrap();
+        assert_eq!(r.files, 1);
+        assert_eq!(
+            std::fs::read(dest.path().join("a/b/c/deep.txt")).unwrap(),
+            b"ok"
+        );
+    }
+
+    #[test]
+    fn accepts_content_exactly_at_size_cap() {
+        // Boundary: written == remaining is allowed; only > remaining fails.
+        let tar = build_tar(&[("exact", tar::EntryType::Regular, &[1u8; 100])]);
+        let dest = tempfile::tempdir().unwrap();
+        let limits = ExtractLimits {
+            max_entries: 100,
+            max_total_bytes: 100,
+        };
+        let r = extract_tar(&tar, dest.path(), &limits).unwrap();
+        assert_eq!(r.total_bytes, 100);
+        assert_eq!(r.files, 1);
+    }
+
+    #[test]
+    fn empty_archive_writes_nothing() {
+        let tar = build_tar(&[]);
+        let dest = tempfile::tempdir().unwrap();
+        let r = extract_tar(&tar, dest.path(), &ExtractLimits::default()).unwrap();
+        assert_eq!(r, ExtractReport::default());
+    }
+
+    #[test]
+    fn corrupt_gzip_body_is_an_error() {
+        // gzip magic, then bytes that are not a valid deflate stream: the
+        // decoder errors while reading, surfaced as an io error.
+        let mut bad = vec![0x1f, 0x8b];
+        bad.extend_from_slice(&[0xff; 64]);
+        let dest = tempfile::tempdir().unwrap();
+        assert!(extract_tar(&bad, dest.path(), &ExtractLimits::default()).is_err());
+    }
+
+    #[test]
+    fn corrupt_zstd_body_is_an_error() {
+        let mut bad = vec![0x28, 0xb5, 0x2f, 0xfd];
+        bad.extend_from_slice(&[0xff; 64]);
+        let dest = tempfile::tempdir().unwrap();
+        assert!(extract_tar(&bad, dest.path(), &ExtractLimits::default()).is_err());
     }
 }
