@@ -284,7 +284,7 @@ pub fn extract_album_art(audio_bytes: &[u8]) -> Result<Option<Vec<u8>>, SandboxE
 /// demand). All fields are best-effort: a container with no tags returns `None`
 /// tag fields; missing properties stay `None`.
 #[cfg(feature = "music")]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AudioMeta {
     /// Total playback duration in seconds (0.0 when the container does not
     /// state it).
@@ -485,6 +485,26 @@ pub fn thumbnail(sandbox_bin: &Path, image: &[u8]) -> Result<Vec<u8>, SandboxErr
 #[cfg(feature = "thumbnail")]
 pub fn view_image(sandbox_bin: &Path, image: &[u8]) -> Result<Vec<u8>, SandboxError> {
     run_worker(sandbox_bin, image)
+}
+
+/// Read an audio file's playback metadata by running the sandboxed metadata
+/// worker as a subprocess (`apps/viewers` player surface).
+///
+/// `sandbox_bin` is the path to the `arlen-audio-meta-sandbox` binary. The
+/// untrusted `audio` bytes are written to the worker's stdin; the worker parses
+/// the container inside its Landlock + seccomp lockdown and writes back the
+/// [`AudioMeta`] as JSON, which is parsed and returned. The worker is killed
+/// past the time budget and both input and output are bounded by [`MAX_BYTES`].
+/// Any failure is a [`SandboxError`]; the caller shows no metadata on error.
+///
+/// TRUST CONTRACT: same as [`thumbnail`] - `sandbox_bin` MUST be the genuine,
+/// fixed worker path; the containment rests on the spawned process being the
+/// real locked-down worker.
+#[cfg(feature = "music")]
+pub fn audio_metadata(sandbox_bin: &Path, audio: &[u8]) -> Result<AudioMeta, SandboxError> {
+    let out = run_worker(sandbox_bin, audio)?;
+    serde_json::from_slice(&out)
+        .map_err(|e| SandboxError::Process(format!("decode worker metadata: {e}")))
 }
 
 /// Generate a thumbnail of an audio file's embedded cover art by running the

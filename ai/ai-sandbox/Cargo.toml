@@ -34,13 +34,23 @@ name = "arlen-music-thumbnail-sandbox"
 path = "src/bin/arlen-music-thumbnail-sandbox.rs"
 required-features = ["music"]
 
+# The sandboxed audio-metadata worker (apps/viewers player surface). Reads an
+# untrusted audio file's playback properties + tags behind the lockdown and
+# writes them back as JSON; behind the `music` feature.
+[[bin]]
+name = "arlen-audio-meta-sandbox"
+path = "src/bin/arlen-audio-meta-sandbox.rs"
+required-features = ["music"]
+
 [features]
 # Image thumbnailing: pulls the `image` decoders and builds the thumbnail
 # worker. Off by default so a doc-parse-only consumer stays lean.
 thumbnail = ["dep:image"]
-# Music cover-art thumbnailing: pulls the `lofty` metadata reader to extract the
-# embedded picture, then reuses the image path to decode and downscale it.
-music = ["thumbnail", "dep:lofty"]
+# Music cover-art thumbnailing + audio metadata: pulls the `lofty` metadata
+# reader to extract the embedded picture and read playback properties/tags, then
+# reuses the image path to decode and downscale the art. `serde`/`serde_json`
+# carry the structured `AudioMeta` out of the metadata worker.
+music = ["thumbnail", "dep:lofty", "dep:serde", "dep:serde_json"]
 
 [dependencies]
 thiserror = "2"
@@ -55,6 +65,11 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # surface, so the extraction runs inside the worker's lockdown alongside the
 # decode; only the re-encoded thumbnail leaves.
 lofty = { version = "0.24", optional = true }
+# Carry the structured `AudioMeta` across the metadata worker's stdout (the
+# `music` feature). JSON keeps title/artist/album text safely encoded instead of
+# a hand-rolled delimited format.
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.4"
