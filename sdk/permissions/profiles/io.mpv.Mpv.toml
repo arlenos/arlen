@@ -1,0 +1,9 @@
+# Starting permission profile for mpv (media player). Local media from Videos
+# and Music; no network by default (streaming is a later refinement).
+[info]
+app_id = "io.mpv.Mpv"
+tier = "third-party"
+
+[filesystem]
+videos = true
+music = true

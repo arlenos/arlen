@@ -579,6 +579,44 @@ mod tests {
     use super::*;
     use std::io::Write;
 
+    #[test]
+    fn every_curated_starting_profile_is_valid_and_conservative() {
+        // The curated starting profiles (the apt-enroll hook's source set) must
+        // each parse against the live schema and stay fail-closed conservative:
+        // third-party tier, no Knowledge Graph grant, filename == declared id.
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("profiles");
+        let mut count = 0usize;
+        for entry in std::fs::read_dir(&dir).expect("the curated profiles dir exists") {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+                continue;
+            }
+            let content = std::fs::read_to_string(&path).unwrap();
+            let profile: PermissionProfile = toml::from_str(&content)
+                .unwrap_or_else(|e| panic!("{} does not parse: {e}", path.display()));
+            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap();
+            assert_eq!(
+                stem,
+                profile.info.app_id,
+                "{}: filename must equal info.app_id",
+                path.display()
+            );
+            assert_eq!(
+                profile.info.tier,
+                AppTier::ThirdParty,
+                "{}: a curated app profile must be third-party tier",
+                path.display()
+            );
+            assert!(
+                profile.graph.read.is_empty() && profile.graph.write.is_empty(),
+                "{}: a starting profile must not grant Knowledge Graph access",
+                path.display()
+            );
+            count += 1;
+        }
+        assert!(count >= 8, "expected the curated starting profiles, found {count}");
+    }
+
     const SAMPLE_PROFILE: &str = r#"
 [info]
 app_id = "com.example.notes"

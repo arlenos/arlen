@@ -1,0 +1,8 @@
+# Starting permission profile for the LibreOffice suite (office documents).
+# Edits documents; no network (offline by function) and no Knowledge Graph.
+[info]
+app_id = "org.libreoffice.LibreOffice"
+tier = "third-party"
+
+[filesystem]
+documents = true

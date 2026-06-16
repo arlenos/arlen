@@ -1,0 +1,11 @@
+# Starting permission profile for Chromium (a web browser). As Firefox: broad
+# network (its function), Downloads, no graph. Config dir is an enrollment grant.
+[info]
+app_id = "org.chromium.Chromium"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

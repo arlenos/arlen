@@ -1,0 +1,10 @@
+# Starting permission profile for VLC (media player). Plays local media from
+# Videos and Music; no network by default (streaming is a refinement an observe
+# pass can add, never a blanket grant up front).
+[info]
+app_id = "org.videolan.VLC"
+tier = "third-party"
+
+[filesystem]
+videos = true
+music = true
