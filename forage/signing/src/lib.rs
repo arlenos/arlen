@@ -397,4 +397,43 @@ mod tests {
             Err(e) => panic!("expected Malformed, got {e:?}"),
         }
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn other_and_world_accessible_modes_are_rejected_owner_exec_is_fine() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        // Other-readable and world read/write are both refused (the gate is the
+        // low six bits, not only the group bits the existing test covers).
+        for bad in [0o604u32, 0o666] {
+            let path = dir.path().join(format!("k{bad:o}.key"));
+            std::fs::write(&path, [0u8; SEED_LEN]).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(bad)).unwrap();
+            match BuilderKey::load_or_create(&path) {
+                Err(KeyError::InsecureMode { mode, .. }) => assert_eq!(mode, bad),
+                Ok(_) => panic!("{bad:o} must be InsecureMode, got a valid key"),
+                Err(e) => panic!("{bad:o} must be InsecureMode, got {e:?}"),
+            }
+        }
+        // Owner bits beyond rw (here the execute bit) do not matter: only the
+        // group/other bits gate, so 0o700 loads cleanly.
+        let ok = dir.path().join("owner700.key");
+        std::fs::write(&ok, [3u8; SEED_LEN]).unwrap();
+        std::fs::set_permissions(&ok, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(BuilderKey::load_or_create(&ok).is_ok(), "0o700 is owner-only");
+    }
+
+    #[test]
+    fn a_non_regular_key_path_is_refused() {
+        // A directory (or any non-file) where the key is expected must not be
+        // treated as a key.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("builder.key");
+        std::fs::create_dir(&path).unwrap();
+        match BuilderKey::load_or_create(&path) {
+            Err(KeyError::NotRegular { .. }) => {}
+            Ok(_) => panic!("expected NotRegular, got a valid key"),
+            Err(e) => panic!("expected NotRegular, got {e:?}"),
+        }
+    }
 }
