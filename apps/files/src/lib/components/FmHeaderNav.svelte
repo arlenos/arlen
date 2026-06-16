@@ -1,11 +1,11 @@
 <script lang="ts">
-  /// The headerbar's location half: back/forward/up on the focused
-  /// pane, then the breadcrumb as the flexible middle. Under the
-  /// shell the topbar carries the path, so the crumb stays hidden
-  /// and only Ctrl+L's editable field takes the middle while it is
-  /// open. Fragment-rooted: both pieces sit directly in the header
-  /// flex row.
-  import { ArrowLeft, ArrowRight, ArrowUp } from "lucide-svelte";
+  /// The headerbar's location half: back/forward on the focused pane,
+  /// then the breadcrumb as the flexible middle (the crumb's parent
+  /// entries cover going up a folder). Under the shell the topbar
+  /// carries the path, so the crumb stays hidden and only Ctrl+L's
+  /// editable field takes the middle while it is open. Fragment-rooted:
+  /// both pieces sit directly in the header flex row.
+  import { ArrowLeft, ArrowRight } from "lucide-svelte";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { Breadcrumb, type BrowserState } from "@arlen/ui-kit/components/browser";
 
@@ -26,7 +26,6 @@
   const path = $derived(controller.path);
   const canBack = $derived(controller.canBack);
   const canForward = $derived(controller.canForward);
-  const canUp = $derived(controller.canUp);
 </script>
 
 <div class="hn-buttons">
@@ -45,14 +44,6 @@
     onclick={() => controller.forward()}
   >
     <ArrowRight size={15} strokeWidth={1.75} />
-  </IconAction>
-  <IconAction
-    label="Up one folder"
-    size="control"
-    disabled={!$canUp}
-    onclick={() => controller.up()}
-  >
-    <ArrowUp size={15} strokeWidth={1.75} />
   </IconAction>
 </div>
 

@@ -1,11 +1,11 @@
 <script lang="ts">
   /// Root layout: the file manager shell (file-manager-ui-plan.md).
   /// One chrome row — the headerbar carries everything: sidebar
-  /// trigger, back/forward/up, the breadcrumb (outside the shell;
-  /// under it the topbar shows the path), tabs, the search and info
-  /// toggles, the view controls and the window buttons. Global
-  /// shortcuts: Ctrl+T tab, Ctrl+W close tab, Ctrl+L edit the path,
-  /// Ctrl+H hidden, Ctrl+F search, Ctrl+I info, F3 split.
+  /// trigger, back/forward, the breadcrumb (outside the shell; under
+  /// it the topbar shows the path), tabs, the search toggle, the View
+  /// dropdown (layout, split, hidden, info) and the window buttons.
+  /// Global shortcuts: Ctrl+T tab, Ctrl+W close tab, Ctrl+L edit the
+  /// path, Ctrl+H hidden, Ctrl+F search, Ctrl+I info, F3 split.
   import "../app.css";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import {
@@ -15,12 +15,12 @@
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
-  import { Info, Search } from "lucide-svelte";
+  import { Search } from "lucide-svelte";
   import { tauriAvailable } from "$lib/tauri";
   import FmSidebar from "$lib/components/FmSidebar.svelte";
   import FmHeaderNav from "$lib/components/FmHeaderNav.svelte";
   import TabStrip from "$lib/components/TabStrip.svelte";
-  import FmViewControls from "$lib/components/FmViewControls.svelte";
+  import FmViewMenu from "$lib/components/FmViewMenu.svelte";
   import { newTab, closeTab, activeTabId } from "$lib/stores/tabs";
   import { focusedController, toggleSplit } from "$lib/stores/panes";
   import { homePath } from "$lib/stores/places";
@@ -141,16 +141,8 @@
           >
             <Search size={15} strokeWidth={1.75} />
           </IconAction>
-          <IconAction
-            label={$infoOpen ? "Close info" : "Show info"}
-            size="control"
-            active={$infoOpen}
-            onclick={() => infoOpen.update((v) => !v)}
-          >
-            <Info size={15} strokeWidth={1.75} />
-          </IconAction>
+          <FmViewMenu />
         </div>
-        <FmViewControls />
       {:else}
         <div class="flex-1"></div>
       {/if}
