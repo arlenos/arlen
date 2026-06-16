@@ -452,6 +452,32 @@ Denies the spatial_hint command without any pre-configured scope.
 <tr>
 <td>
 
+`arlen-shell:allow-theme-get`
+
+</td>
+<td>
+
+Enables the theme_get command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`arlen-shell:deny-theme-get`
+
+</td>
+<td>
+
+Denies the theme_get command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `arlen-shell:allow-timeline-record`
 
 </td>
