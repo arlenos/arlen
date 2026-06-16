@@ -128,10 +128,19 @@ async fn main() -> Result<()> {
     let db_path = pick_data_path("ARLEN_DB_PATH", "events.db", DEFAULT_DB_PATH);
     let graph_path = pick_data_path("ARLEN_GRAPH_PATH", "graph", DEFAULT_GRAPH_PATH);
     let daemon_socket = pick_daemon_socket();
-    let timeline_mount = std::env::var("ARLEN_TIMELINE_MOUNT").unwrap_or_else(|_| {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-        format!("{home}/{DEFAULT_TIMELINE_MOUNT}")
-    });
+    // The timeline FUSE mount is optional: an empty or "off"
+    // `ARLEN_TIMELINE_MOUNT` disables it, so the daemon runs on a host without
+    // FUSE (CI runners, the EphemeralStack integration harness). The socket,
+    // graph and promotion paths are unaffected - only the `~/.timeline` view
+    // goes away. Unset falls back to the default mount path as before.
+    let timeline_mount = match std::env::var("ARLEN_TIMELINE_MOUNT") {
+        Ok(v) if v.is_empty() || v == "off" => None,
+        Ok(v) => Some(v),
+        Err(_) => {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+            Some(format!("{home}/{DEFAULT_TIMELINE_MOUNT}"))
+        }
+    };
     info!(%daemon_socket, "daemon socket path resolved");
 
     // Open SQLite write store
@@ -152,25 +161,28 @@ async fn main() -> Result<()> {
     // (os error 17)`. Skip the mount-attempt entirely in that case
     // and point the operator at the launcher script which handles
     // cleanup.
-    let fuse_graph = graph.clone();
-    let fuse_mount_path = timeline_mount.clone();
-    std::thread::Builder::new()
-        .name("fuse-timeline".into())
-        .spawn(move || {
-            if is_mountpoint(&fuse_mount_path) {
-                warn!(
-                    path = %fuse_mount_path,
-                    "FUSE: path already mounted — skipping remount. \
-                     Stale mount from a previous run? Fix with \
-                     `fusermount -u {fuse_mount_path}` or use \
-                     `just dev` which handles this automatically",
-                );
-                return;
-            }
-            if let Err(e) = fuse::mount(&fuse_mount_path, fuse_graph) {
-                tracing::error!("FUSE mount failed: {e}");
-            }
-        })?;
+    if let Some(fuse_mount_path) = timeline_mount.clone() {
+        let fuse_graph = graph.clone();
+        std::thread::Builder::new()
+            .name("fuse-timeline".into())
+            .spawn(move || {
+                if is_mountpoint(&fuse_mount_path) {
+                    warn!(
+                        path = %fuse_mount_path,
+                        "FUSE: path already mounted — skipping remount. \
+                         Stale mount from a previous run? Fix with \
+                         `fusermount -u {fuse_mount_path}` or use \
+                         `just dev` which handles this automatically",
+                    );
+                    return;
+                }
+                if let Err(e) = fuse::mount(&fuse_mount_path, fuse_graph) {
+                    tracing::error!("FUSE mount failed: {e}");
+                }
+            })?;
+    } else {
+        info!("timeline FUSE mount disabled (ARLEN_TIMELINE_MOUNT empty/off)");
+    }
 
     // Validate-on-startup pass: any project whose root_path vanished
     // since the last run gets pruned (inferred) or archived (explicit).
