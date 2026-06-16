@@ -747,9 +747,11 @@ async fn files_recent() -> Vec<RecentFile> {
 /// `shell.menu` surface. The menu travels over the Event Bus (cross
 /// process) to the desktop-shell's GlobalMenuBar, keyed by the app id, so
 /// it appears whenever a Files window is focused. The id must match the
-/// focused window's compositor `xdg_toplevel.app_id`; it is taken from
-/// `ARLEN_APP_ID` (the launcher sets it to the real toplevel id) and falls
-/// back to the bundle identifier.
+/// focused window's compositor `xdg_toplevel.app_id`. With
+/// `enableGTKAppId` set in `tauri.conf.json` the toolkit reports the
+/// bundle identifier as the toplevel app_id, so the fallback below is the
+/// real id by construction; `ARLEN_APP_ID` stays an override for a
+/// launcher that pins a different id.
 async fn publish_app_menu() {
     use os_sdk::menu::{Menu, MenuGroup, MenuItem};
 
