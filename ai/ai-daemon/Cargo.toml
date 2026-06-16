@@ -27,6 +27,9 @@ os-sdk = { path = "../../sdk/os-sdk" }
 # MCP discovery resolves the peer of each module socket to verify it
 # is served by modulesd; identity resolution lives here.
 arlen-permissions = { path = "../../sdk/permissions" }
+# The shared skill model: loads + matches a free-form task to a skill's
+# whenToUse, then hands the run to the agent over org.arlen.AIAgent1.
+arlen-ai-skills = { path = "../ai-skills" }
 async-trait = "0.1"
 hex = "0.4"
 # Decodes the FocusActivatedPayload off the Event Bus for the

@@ -197,6 +197,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // below (updates it on focus.activated/deactivated).
     let active_project = ActiveProject::new();
 
+    // Loaded skills, for routing a fitting query to the agent. Discovered from
+    // the shared behaviour dirs and enabled from the same `ai.toml` the agent
+    // reads (only an enabled skill matches), so the daemon routes exactly the
+    // skills the agent would run. Loaded once at startup.
+    let loaded_skills = arlen_ai_skills::loader::load(
+        &arlen_ai_skills::loader::behaviour_sources(),
+        &arlen_ai_skills::loader::enabled_from_ai_toml(&config_watch::load_ai_text()),
+    )
+    .loaded;
+
     let service = Arc::new(
         AiDaemonService::new(
             runner,
@@ -217,7 +227,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_screening(arlen_ai_core::screen::Screener::from_config(
             &config_watch::load_ai_text(),
         ))
-        .with_active_project(active_project.clone()),
+        .with_active_project(active_project.clone())
+        .with_skills(loaded_skills)
+        .with_skill_router(std::sync::Arc::new(
+            arlen_ai_daemon::skill_route::DbusSkillRouter::new(connection.clone()),
+        )),
     );
     config_watch::spawn_config_watch(service.clone());
 

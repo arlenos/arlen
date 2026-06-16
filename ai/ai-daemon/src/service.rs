@@ -31,8 +31,12 @@ use arlen_ai_explanation::{
 };
 use tokio_util::sync::CancellationToken;
 
+use arlen_ai_skills::loader::LoadedBehaviour;
+use arlen_ai_skills::skills::match_skill;
+
 use crate::active_project::ActiveProject;
 use crate::registry::{AuthError, CompletionOutcome, CreatedQuery, QueryRegistry, QueryStatus};
+use crate::skill_route::SkillRouter;
 use crate::tool_loop::{loop_outcome_to_answer, run_tool_loop, ToolStep};
 
 /// Per-caller in-flight cap. Matches the modulesd network host's
@@ -347,6 +351,15 @@ pub struct AiDaemonService {
     /// projects (GAP-21). Defaults to "no active project" (fail-closed)
     /// until the binary wires the bus listener via [`Self::with_active_project`].
     active_project: ActiveProject,
+    /// Loaded skills (their `whenToUse` hints) used to route a fitting query to
+    /// the agent before the daemon answers it itself. Empty until the binary
+    /// loads them via [`Self::with_skills`]; an empty set just means nothing
+    /// routes (the daemon answers everything itself).
+    loaded_skills: Vec<LoadedBehaviour>,
+    /// Routes a matched skill to the agent (`AIAgent1.run_skill`). `None` (the
+    /// default, and in tests) disables routing — a matched skill then falls
+    /// through to the daemon's own answer rather than being handed off.
+    skill_router: Option<Arc<dyn SkillRouter>>,
 }
 
 /// The wired interactive tool-use capability: the MCP client (shared with
@@ -416,6 +429,8 @@ impl AiDaemonService {
             tool_loop: None,
             screener: Screener::off(),
             active_project: ActiveProject::new(),
+            loaded_skills: Vec::new(),
+            skill_router: None,
         }
     }
 
@@ -531,6 +546,33 @@ impl AiDaemonService {
     pub fn with_active_project(mut self, active_project: ActiveProject) -> Self {
         self.active_project = active_project;
         self
+    }
+
+    /// Attach the loaded skills the query path matches against for routing.
+    pub fn with_skills(mut self, skills: Vec<LoadedBehaviour>) -> Self {
+        self.loaded_skills = skills;
+        self
+    }
+
+    /// Attach the router that hands a matched skill to the agent.
+    pub fn with_skill_router(mut self, router: Arc<dyn SkillRouter>) -> Self {
+        self.skill_router = Some(router);
+        self
+    }
+
+    /// If `prompt` clearly fits a loaded (enabled) skill's `whenToUse` and a
+    /// router is configured, hand the run to the agent and return its outcome;
+    /// otherwise `None`, the signal to answer the query the normal way. A
+    /// match with no router also returns `None` (fall back to a plain answer
+    /// rather than fail), so routing only ever adds a path, never removes one.
+    async fn try_route_skill(&self, prompt: &str) -> Option<Result<String, RunFailure>> {
+        let matched = match_skill(prompt, &self.loaded_skills)?;
+        let router = self.skill_router.as_ref()?;
+        let name = matched.behaviour.manifest.name.clone();
+        Some(router.run_skill(&name).await.map_err(|reason| RunFailure {
+            code: "skill-route-failed".to_string(),
+            reason,
+        }))
     }
 
     /// Replace the read-access scope and its tier, leaving the enabled flag
@@ -892,7 +934,12 @@ impl AiDaemonService {
         // it is never exposed for an in-flight or cancelled query. Empty for the
         // single-shot runner path.
         let mut tool_trace: Vec<ToolStep> = Vec::new();
-        let result = if let Some(tl) = &self.tool_loop {
+        let result = if let Some(routed) = self.try_route_skill(&prompt).await {
+            // A loaded skill fit the task: the agent ran it (execution + the
+            // enablement check live there). No tool trace — this is a handoff,
+            // not a tool-loop turn.
+            routed
+        } else if let Some(tl) = &self.tool_loop {
             // The loop locks the shared MCP client per operation (see
             // run_tool_loop); the lock is acquired inside the future the
             // select polls, so a cancellation fires even while the loop is
@@ -1317,6 +1364,84 @@ mod tests {
             .await
             .expect_err("no active project refuses");
         assert_eq!(err.code(), "no-graph-access");
+    }
+
+    struct MockSkillRouter {
+        calls: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl SkillRouter for MockSkillRouter {
+        async fn run_skill(&self, name: &str) -> Result<String, String> {
+            self.calls.lock().unwrap().push(name.to_string());
+            Ok(format!("ran {name}"))
+        }
+    }
+
+    fn enabled_skill(name: &str, when_to_use: &str) -> LoadedBehaviour {
+        let src = format!(
+            "---\nname: {name}\ndescription: d\nkind: workflow\nhandler: h\n\
+             whenToUse: {when_to_use}\ntrigger:\n  type: manual\n---\n"
+        );
+        LoadedBehaviour {
+            behaviour: arlen_ai_skills::behaviour::parse(&src).expect("valid skill"),
+            provenance: arlen_ai_skills::loader::Provenance::BuiltIn,
+            dir: std::path::PathBuf::from("/test").join(name),
+            status: arlen_ai_skills::loader::Status::Enabled,
+        }
+    }
+
+    fn svc_with_skill_routing(
+        calls: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) -> AiDaemonService {
+        AiDaemonService::new(
+            Arc::new(StubRunner {
+                reply: Ok("plain answer".to_string()),
+                gate: None,
+            }),
+            full_scope(),
+            audit_sink(),
+        )
+        .with_skills(vec![enabled_skill("tidy-downloads", "tidy my downloads folder")])
+        .with_skill_router(Arc::new(MockSkillRouter { calls }))
+    }
+
+    #[tokio::test]
+    async fn a_fitting_query_routes_to_the_agent_skill() {
+        let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let svc = svc_with_skill_routing(calls.clone());
+        let routed = svc
+            .try_route_skill("please tidy my downloads")
+            .await
+            .expect("a fitting query routes");
+        assert_eq!(routed.expect("router ran"), "ran tidy-downloads");
+        assert_eq!(&*calls.lock().unwrap(), &["tidy-downloads".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn an_unrelated_query_does_not_route() {
+        let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let svc = svc_with_skill_routing(calls.clone());
+        assert!(
+            svc.try_route_skill("what is the current time").await.is_none(),
+            "no skill fits, so the daemon answers it itself"
+        );
+        assert!(calls.lock().unwrap().is_empty(), "the router was not called");
+    }
+
+    #[tokio::test]
+    async fn no_router_means_no_routing_even_on_a_match() {
+        // A matched skill with no router falls through to a plain answer.
+        let svc = AiDaemonService::new(
+            Arc::new(StubRunner {
+                reply: Ok("plain".to_string()),
+                gate: None,
+            }),
+            full_scope(),
+            audit_sink(),
+        )
+        .with_skills(vec![enabled_skill("tidy-downloads", "tidy my downloads folder")]);
+        assert!(svc.try_route_skill("please tidy my downloads").await.is_none());
     }
 
     #[tokio::test]
