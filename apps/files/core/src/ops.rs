@@ -413,6 +413,21 @@ pub fn rename(
     Ok(OpOutcome::Renamed { target })
 }
 
+/// Set the Unix permission bits of the entry at `path` (relative to the
+/// capability `dir`) to `mode` - the conventional `chmod`, the editable half of
+/// the info panel's metadata. Only the low 12 bits (rwx + setuid/setgid/sticky)
+/// are honoured; higher bits (the file-type bits a caller might pass straight
+/// from a `st_mode`) are masked off so they cannot be mistaken for a type
+/// change. The entry must exist; a missing path surfaces the underlying
+/// `ENOENT` rather than creating anything. `dir` is a cap-std capability, so the
+/// relative `path` cannot escape it.
+pub fn set_permissions(dir: &Dir, path: impl AsRef<Path>, mode: u32) -> OpResult<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let perms = cap_std::fs::Permissions::from_std(std::fs::Permissions::from_mode(mode & 0o7777));
+    dir.set_permissions(path.as_ref(), perms)?;
+    Ok(())
+}
+
 /// Copy the entry at `src` (relative to `src_dir`) into the destination
 /// directory `dst` (relative to `dst_dir`), under the entry's own basename,
 /// applying `policy` to a name collision. Handles a regular file, a directory
@@ -1263,6 +1278,33 @@ mod tests {
         assert_eq!(out, OpOutcome::Renamed { target: PathBuf::from("./b.txt") });
         assert!(!tmp.path().join("a.txt").exists());
         assert_eq!(read(&tmp.path().join("b.txt")), b"data");
+    }
+
+    #[test]
+    fn set_permissions_changes_the_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let f = tmp.path().join("a.txt");
+        fs::write(&f, b"data").unwrap();
+        fs::set_permissions(&f, fs::Permissions::from_mode(0o644)).unwrap();
+        let dir = cap(tmp.path());
+        set_permissions(&dir, "a.txt", 0o600).unwrap();
+        let mode = fs::metadata(&f).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
+
+    #[test]
+    fn set_permissions_masks_the_type_bits() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let f = tmp.path().join("a.txt");
+        fs::write(&f, b"data").unwrap();
+        let dir = cap(tmp.path());
+        // A full `st_mode` (regular-file type bits 0o100000 + perms 0o640) must
+        // not leak past the permission bits.
+        set_permissions(&dir, "a.txt", 0o100_640).unwrap();
+        let mode = fs::metadata(&f).unwrap().permissions().mode() & 0o7777;
+        assert_eq!(mode, 0o640);
     }
 
     #[test]
