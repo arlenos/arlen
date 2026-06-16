@@ -311,6 +311,21 @@ fn files_search(
     Ok(search::search(&scope, &opts))
 }
 
+/// The home trash contents (paired `files/` + `info/` entries) for the Trash
+/// view, each with its recorded original path + deletion date.
+#[tauri::command]
+fn files_trash_list() -> Result<Vec<ops::TrashedItem>, String> {
+    let trash = trash_dir()?;
+    ops::list_trash(&trash).map_err(|e| e.to_string())
+}
+
+/// Empty the home trash; returns the number of entries cleared.
+#[tauri::command]
+fn files_trash_empty() -> Result<usize, String> {
+    let trash = trash_dir()?;
+    ops::empty_trash(&trash).map_err(|e| e.to_string())
+}
+
 fn conflict_policy(policy: Option<&str>) -> ops::ConflictPolicy {
     match policy {
         Some("replace") => ops::ConflictPolicy::Replace,
@@ -857,6 +872,8 @@ pub fn run() {
             files_projects,
             files_saved_searches,
             files_recent,
+            files_trash_list,
+            files_trash_empty,
             thumbnail::files_thumbnail,
             capability::ai_capability
         ])
