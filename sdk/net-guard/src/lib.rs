@@ -167,4 +167,45 @@ mod tests {
         let addr = resolve_and_pin("8.8.8.8", 443).await.expect("public literal pins");
         assert_eq!(addr, "8.8.8.8:443".parse::<SocketAddr>().unwrap());
     }
+
+    #[test]
+    fn cgnat_mask_is_precise_at_the_boundaries() {
+        // 100.64.0.0/10 = 100.64.0.0 .. 100.127.255.255. The hand-rolled mask must
+        // block exactly that and leave the neighbouring 100.x public space alone.
+        for blocked in ["100.64.0.0", "100.127.255.255", "100.96.1.1"] {
+            assert!(is_blocked_destination(v4(blocked)), "{blocked} is CGNAT");
+        }
+        for allowed in ["100.63.255.255", "100.128.0.0", "100.200.1.1", "99.64.0.1"] {
+            assert!(!is_blocked_destination(v4(allowed)), "{allowed} is public");
+        }
+    }
+
+    #[test]
+    fn blocks_ipv4_documentation_ranges() {
+        for ip in ["192.0.2.1", "198.51.100.1", "203.0.113.1"] {
+            assert!(is_blocked_destination(v4(ip)), "{ip} is a documentation range");
+        }
+    }
+
+    #[test]
+    fn ipv6_ula_and_link_local_masks_are_precise() {
+        // Unique-local fc00::/7 (fc00.. .fdff..) and link-local fe80::/10
+        // (fe80.. .febf..) are bit-masked by hand; pin both edges.
+        for blocked in ["fc00::1", "fdff::1", "fe80::1", "febf::1"] {
+            assert!(is_blocked_destination(v6(blocked)), "{blocked} must be blocked");
+        }
+        // Just outside both ranges, and the fec0::/10 (deprecated site-local) gap
+        // above link-local, are not caught by these masks.
+        for allowed in ["fbff::1", "fec0::1", "2001:4860:4860::8888"] {
+            assert!(!is_blocked_destination(v6(allowed)), "{allowed} must be allowed");
+        }
+    }
+
+    #[test]
+    fn ipv4_mapped_private_addresses_are_blocked() {
+        // The classic SSRF bypass: a private v4 smuggled as an IPv4-mapped v6.
+        for ip in ["::ffff:192.168.1.1", "::ffff:169.254.1.1", "::ffff:100.64.0.1"] {
+            assert!(is_blocked_destination(v6(ip)), "{ip} must defer to the v4 check");
+        }
+    }
 }
