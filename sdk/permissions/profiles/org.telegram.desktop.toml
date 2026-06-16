@@ -1,0 +1,11 @@
+# Starting permission profile for Telegram Desktop (messaging). Network is its
+# function; received media saves to Downloads. No graph.
+[info]
+app_id = "org.telegram.desktop"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

@@ -1,0 +1,6 @@
+# Starting permission profile for GNOME Calculator. Needs nothing: no filesystem,
+# no network, no graph. The maximally fail-closed baseline - a profile that
+# grants only identity.
+[info]
+app_id = "org.gnome.Calculator"
+tier = "third-party"

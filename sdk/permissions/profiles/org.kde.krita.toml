@@ -1,0 +1,8 @@
+# Starting permission profile for Krita (digital painting). Pictures, no network,
+# no graph.
+[info]
+app_id = "org.kde.krita"
+tier = "third-party"
+
+[filesystem]
+pictures = true
