@@ -8,6 +8,7 @@ mod proto {
     include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 
+mod audit;
 mod auth;
 mod backup;
 mod capsule;
