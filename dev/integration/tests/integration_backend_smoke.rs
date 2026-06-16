@@ -57,6 +57,74 @@ fn backend_stack_comes_up_hermetically() {
     // daemons and removes the runtime root (no /var/lib or $HOME write).
 }
 
+/// The topbar menu's click-delivery path (#2b), end to end over a real event-bus
+/// and compositor-independent. When a menu item is clicked the shell publishes
+/// `app.menu.action_invoked` {app_id, action}; the app that published the menu
+/// subscribes (filtered to its own app_id, [`os_sdk::subscribe_menu_actions`])
+/// and runs the op. This proves the cross-process delivery and the app_id filter
+/// that silently no-ops on a mismatch (the named failure mode): the action for
+/// this app arrives, a foreign app's action does not. The menu RENDERING (which
+/// needs the compositor for the focused-window app_id) stays a metal/Layer-1a
+/// check; the delivery does not, so it runs headless here + in CI.
+#[tokio::test]
+#[ignore = "needs the event-bus binary built"]
+async fn a_clicked_menu_action_reaches_the_publishing_app() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+
+    // The app side: subscribe for this app's own menu actions.
+    let consumer = os_sdk::UnixEventConsumer::new(
+        stack.consumer_socket().to_string_lossy().into_owned(),
+    );
+    let mut actions = os_sdk::subscribe_menu_actions(&consumer, "dev.arlen.files")
+        .await
+        .expect("subscribe to menu actions");
+
+    // The shell side: publish the clicked action (the same event
+    // `dispatch_menu_action` emits). The bus drops events with no consumer
+    // registered at emit time, so emit until it lands. A foreign app's action is
+    // published alongside and must never arrive (the app_id filter drops it).
+    let emitter =
+        UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let mine = os_sdk::proto::ShortcutActionInvokedPayload {
+        app_id: "dev.arlen.files".to_string(),
+        action: "file.new_folder".to_string(),
+        window_id: String::new(),
+    }
+    .encode_to_vec();
+    let foreign = os_sdk::proto::ShortcutActionInvokedPayload {
+        app_id: "dev.arlen.terminal".to_string(),
+        action: "edit.copy".to_string(),
+        window_id: String::new(),
+    }
+    .encode_to_vec();
+
+    let mut got = None;
+    for _ in 0..50 {
+        let _ = emitter.emit("app.menu.action_invoked", foreign.clone()).await;
+        let _ = emitter.emit("app.menu.action_invoked", mine.clone()).await;
+        if let Ok(Some(action)) =
+            tokio::time::timeout(Duration::from_millis(200), actions.recv()).await
+        {
+            got = Some(action);
+            break;
+        }
+    }
+    assert_eq!(
+        got.as_deref(),
+        Some("file.new_folder"),
+        "the clicked action reached the publishing app; the foreign app's action was filtered out"
+    );
+}
+
 /// IT-1 data-flow: a `file.opened` event emitted to the bus lands in the
 /// knowledge daemon's hermetic SQLite event store. The first real end-to-end
 /// assertion (bus -> knowledge writer -> SQLite), one layer above "comes up".
