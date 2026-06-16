@@ -1,0 +1,8 @@
+# Starting permission profile for Dialect (a translation app). Network is its
+# function (the translation API); no media dirs, no graph.
+[info]
+app_id = "app.drey.Dialect"
+tier = "third-party"
+
+[network]
+allow_all = true

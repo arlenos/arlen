@@ -1,0 +1,8 @@
+# Starting permission profile for VSCodium (a code editor). Documents, no network
+# by default (extension marketplace/sync are a deliberate opt-in); no graph.
+[info]
+app_id = "com.vscodium.codium"
+tier = "third-party"
+
+[filesystem]
+documents = true

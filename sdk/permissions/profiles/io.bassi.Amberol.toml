@@ -1,0 +1,8 @@
+# Starting permission profile for Amberol (a music player). Music, no network,
+# no graph.
+[info]
+app_id = "io.bassi.Amberol"
+tier = "third-party"
+
+[filesystem]
+music = true
