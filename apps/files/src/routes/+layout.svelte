@@ -29,6 +29,7 @@
   import { onMount } from "svelte";
   import { infoOpen, pathEditing } from "$lib/stores/ui";
   import { closeSearch, searchOpen } from "$lib/stores/search";
+  import { undoLast } from "$lib/stores/ops";
   import { get } from "svelte/store";
 
   let { children } = $props();
@@ -68,7 +69,10 @@
       infoOpen.update((v) => !v);
       return;
     }
-    if (key === "t") {
+    if (key === "z") {
+      e.preventDefault();
+      void undoLast();
+    } else if (key === "t") {
       e.preventDefault();
       newTab();
     } else if (key === "w") {

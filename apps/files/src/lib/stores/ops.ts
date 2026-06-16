@@ -95,3 +95,20 @@ export async function paste(dest: string): Promise<void> {
   const ok = await runOp(clip.kind, clip.paths, dest);
   if (ok && clip.kind === "move") clipboard.set(null);
 }
+
+/// Undo the last reversible file operation (the `files_undo` / `UndoStack`
+/// backend), refreshing the active tab so the reverted state shows. A `false`
+/// result means the undo stack was empty (a no-op, not an error); a thrown
+/// error is surfaced on the op-error line. Bound to Ctrl+Z.
+export async function undoLast(): Promise<void> {
+  opBusy.set("Undoing");
+  try {
+    await invoke<boolean>("files_undo");
+    opError.set(null);
+    await get(activeController)?.refresh();
+  } catch (e) {
+    opError.set(String(e));
+  } finally {
+    opBusy.set(null);
+  }
+}
