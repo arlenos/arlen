@@ -8,6 +8,12 @@ import type {
   FileEntry,
   SortSpec,
 } from "@arlen/ui-kit/components/browser";
+import {
+  archiveListing,
+  sortEntries,
+  splitArchivePath,
+  type ArchiveEntry,
+} from "./archive";
 
 /// What the sandboxed decoder can actually thumbnail; mirrors
 /// `is_thumbnailable` in src-tauri/src/thumbnail.rs — keep the two in
@@ -16,13 +22,23 @@ import type {
 const THUMBNAILABLE = /\.(png|jpe?g|gif|bmp|webp)$/i;
 
 export const fmAdapter: BrowserAdapter = {
-  list: (path: string, sort: SortSpec) =>
-    invoke<FileEntry[]>("files_list", {
+  list: async (path: string, sort: SortSpec) => {
+    // Browse an archive as a folder (FM-R12): a path at or inside an archive
+    // lists the archive's contents (read-only) instead of the real filesystem.
+    const archive = splitArchivePath(path);
+    if (archive) {
+      const entries = await invoke<ArchiveEntry[]>("files_archive_list", {
+        archive: archive.archive,
+      });
+      return sortEntries(archiveListing(entries, archive.inner), sort);
+    }
+    return invoke<FileEntry[]>("files_list", {
       path,
       sort: sort.key,
       foldersFirst: sort.foldersFirst,
       ascending: sort.ascending,
-    }),
+    });
+  },
   // Plain files only: a symlinked image would key the kit cache on
   // the link's entry while the bytes follow the target's mtime, so
   // links keep their icon.

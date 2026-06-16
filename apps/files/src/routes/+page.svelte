@@ -17,6 +17,7 @@
     type FileEntry,
   } from "@arlen/ui-kit/components/browser";
   import { openPath } from "$lib/adapter";
+  import { isArchiveName } from "$lib/archive";
   import { activeController, newTab, tabs } from "$lib/stores/tabs";
   import { focusedController, focusedPane, paneB, splitView } from "$lib/stores/panes";
   import { addBookmark, homePath, loadPlaces } from "$lib/stores/places";
@@ -252,7 +253,11 @@
               controller={$activeController}
               bind:renamingName
               onactivate={(entry, path) => {
-                if (entry.kind !== "directory") void openPath(path);
+                if (entry.kind === "directory") return;
+                // An archive opens as a folder (browse its contents); other
+                // files open with the system handler.
+                if (isArchiveName(entry.name)) void $activeController?.navigate(path);
+                else void openPath(path);
               }}
               onselection={(list) => (selectedA = list)}
               onrenamecommit={(entry, newName) =>
@@ -268,7 +273,9 @@
               <FileBrowser
                 controller={$paneB}
                 onactivate={(entry, path) => {
-                  if (entry.kind !== "directory") void openPath(path);
+                  if (entry.kind === "directory") return;
+                  if (isArchiveName(entry.name)) void $paneB?.navigate(path);
+                  else void openPath(path);
                 }}
                 onselection={(list) => (selectedB = list)}
                 onrenamecommit={(entry, newName) =>
@@ -293,7 +300,8 @@
               const e = selected[0];
               if (!e) return;
               const p = joinPath(currentPath(), e.name);
-              if (e.kind === "directory") void $activeController?.navigate(p);
+              if (e.kind === "directory" || isArchiveName(e.name))
+                void $activeController?.navigate(p);
               else void openPath(p);
             }}
           >
