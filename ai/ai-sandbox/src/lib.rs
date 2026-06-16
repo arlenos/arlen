@@ -279,6 +279,66 @@ pub fn extract_album_art(audio_bytes: &[u8]) -> Result<Option<Vec<u8>>, SandboxE
     Ok(picture)
 }
 
+/// An audio file's playback properties and basic tags, for the viewer's
+/// minimal player (`apps/viewers`, quickview-plan.md: elapsed/total + tags on
+/// demand). All fields are best-effort: a container with no tags returns `None`
+/// tag fields; missing properties stay `None`.
+#[cfg(feature = "music")]
+#[derive(Debug, Clone, PartialEq)]
+pub struct AudioMeta {
+    /// Total playback duration in seconds (0.0 when the container does not
+    /// state it).
+    pub duration_secs: f64,
+    /// Sample rate in Hz, when the container states it.
+    pub sample_rate: Option<u32>,
+    /// Channel count, when the container states it.
+    pub channels: Option<u8>,
+    /// Track title from the primary tag.
+    pub title: Option<String>,
+    /// Track artist from the primary tag.
+    pub artist: Option<String>,
+    /// Album name from the primary tag.
+    pub album: Option<String>,
+}
+
+/// Read an audio file's playback properties and basic tags from raw bytes.
+///
+/// Runs INSIDE the sandbox worker: parsing an untrusted media container (lofty)
+/// is the same memory-unsafe attack surface as [`extract_album_art`], so it is
+/// locked down the same way and works purely in memory (a cursor, no
+/// filesystem). Unlike the cover-art path it reads audio properties (duration,
+/// sample rate, channels) for the player's scrubber, plus the primary tag's
+/// title/artist/album. A container that cannot be parsed is a
+/// [`SandboxError::Decode`], fail-closed.
+#[cfg(feature = "music")]
+pub fn read_audio_metadata(audio_bytes: &[u8]) -> Result<AudioMeta, SandboxError> {
+    use lofty::config::ParseOptions;
+    use lofty::file::{AudioFile, TaggedFileExt};
+    use lofty::probe::Probe;
+    use lofty::tag::Accessor;
+    if audio_bytes.len() > MAX_BYTES {
+        return Err(SandboxError::TooLarge);
+    }
+    // read_properties stays on (the default) so the player gets duration etc.;
+    // the cover-art path disables it because it only needs the picture.
+    let tagged = Probe::new(std::io::Cursor::new(audio_bytes))
+        .guess_file_type()
+        .map_err(|e| SandboxError::Decode(format!("probe: {e}")))?
+        .options(ParseOptions::new())
+        .read()
+        .map_err(|e| SandboxError::Decode(format!("read: {e}")))?;
+    let props = tagged.properties();
+    let tag = tagged.primary_tag().or_else(|| tagged.first_tag());
+    Ok(AudioMeta {
+        duration_secs: props.duration().as_secs_f64(),
+        sample_rate: props.sample_rate(),
+        channels: props.channels(),
+        title: tag.and_then(|t| t.title().map(|c| c.to_string())),
+        artist: tag.and_then(|t| t.artist().map(|c| c.to_string())),
+        album: tag.and_then(|t| t.album().map(|c| c.to_string())),
+    })
+}
+
 /// Parse a document by running the sandbox worker as a subprocess.
 ///
 /// `sandbox_bin` is the path to the `arlen-doc-sandbox` binary. The
@@ -665,5 +725,31 @@ mod music_tests {
     fn refuses_oversize_input() {
         let big = vec![0u8; MAX_BYTES + 1];
         assert!(matches!(extract_album_art(&big), Err(SandboxError::TooLarge)));
+    }
+
+    #[test]
+    fn reads_playback_properties_from_the_streaminfo() {
+        // The minimal FLAC's STREAMINFO declares 44100 Hz / 2 channels
+        // (channels field = stored value 1, i.e. channels-1); duration is 0
+        // since no total-sample count / audio frames are present. The viewer's
+        // scrubber reads exactly these.
+        let meta = read_audio_metadata(&minimal_flac(None)).unwrap();
+        assert_eq!(meta.sample_rate, Some(44_100));
+        assert_eq!(meta.channels, Some(2));
+        assert!(meta.duration_secs >= 0.0);
+        // No tag block in the minimal container: tag fields are absent.
+        assert_eq!(meta.title, None);
+        assert_eq!(meta.artist, None);
+    }
+
+    #[test]
+    fn metadata_is_fail_closed_on_unparseable_input() {
+        assert!(read_audio_metadata(b"this is not an audio container at all").is_err());
+    }
+
+    #[test]
+    fn metadata_refuses_oversize_input() {
+        let big = vec![0u8; MAX_BYTES + 1];
+        assert!(matches!(read_audio_metadata(&big), Err(SandboxError::TooLarge)));
     }
 }
