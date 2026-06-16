@@ -166,8 +166,14 @@ impl EphemeralStack {
         // directly is NOT a producer, so name THIS test's own resolved dev id as
         // the daemon's one debug-only extra-admit (exact match, set only here).
         // Without it the audit-chain scenario's direct submit is refused.
+        //
+        // Same shape for the knowledge revoke op: it admits only `settings`
+        // (and exact `dev.arlen-settings` in debug), so the revoke scenario's
+        // direct call as the test's own dev id needs this debug-only exact
+        // extra-admit.
         if let Some(id) = own_app_id() {
-            env.insert("ARLEN_AUDIT_EXTRA_ADMIT".to_string(), id);
+            env.insert("ARLEN_AUDIT_EXTRA_ADMIT".to_string(), id.clone());
+            env.insert("ARLEN_REVOKE_EXTRA_ADMIT".to_string(), id);
         }
         env
     }
@@ -391,6 +397,15 @@ impl Drop for EphemeralStack {
 /// `integration_compositor` test's resolution.
 pub fn binary_path(repo: &str, name: &str) -> PathBuf {
     repo_path(&format!("{repo}/target/debug/{name}"))
+}
+
+/// Whether a daemon binary has been built (its `target/debug/<name>` exists).
+/// Scenarios that spawn a daemon the fast `just integration-smoke` does not
+/// build (the audit daemon, the ai-agent) use this to skip gracefully with a
+/// logged note, so the smoke run passes on every change while the full set runs
+/// under `just integration-nightly` (which builds those daemons).
+pub fn binary_built(repo: &str, name: &str) -> bool {
+    binary_path(repo, name).exists()
 }
 
 /// Resolve a path relative to the repo root (the integration crate's manifest
