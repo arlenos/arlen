@@ -7,10 +7,36 @@
     Sub, SubTrigger, SubContent,
   } from "@arlen/ui-kit/components/ui/dropdown-menu/index.js";
   import { getContext } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import type { Readable } from "svelte/store";
   function handleAction(action: string) {
     const appId = $activeAppId;
     if (appId) dispatchMenuAction(appId, action);
+  }
+
+  /// The label of the menu group whose dropdown is open, or null. One
+  /// open menu at a time gives standard menubar behaviour: hovering a
+  /// sibling trigger switches to it, and an outside click dismisses -
+  /// every `Root` is controlled by this single value.
+  let openMenu = $state<string | null>(null);
+
+  function onMenuOpenChange(label: string, open: boolean) {
+    if (open) openMenu = label;
+    else if (openMenu === label) openMenu = null;
+  }
+
+  /// Hover-to-switch: once one menu is open, hovering a sibling trigger
+  /// switches to it - the menubar convention the applets already use.
+  function onTriggerEnter(label: string) {
+    if (openMenu !== null) openMenu = label;
+  }
+
+  /// A menu whose siblings include a checkbox reserves the leading check
+  /// column for ALL its rows, so every label lines up under one edge
+  /// (the macOS / GNOME menu convention). Plain items and submenu
+  /// triggers then get the same indent as the checked rows.
+  function hasChecks(items: MenuItem[]): boolean {
+    return items.some((i) => i.type === "item" && i.checked !== undefined);
   }
 
   /// Each per-output bar mounts its own GlobalMenuBar instance.
@@ -34,6 +60,23 @@
     });
     return () => unsub();
   });
+
+  // The menu belongs to the focused app; drop any open dropdown when
+  // this bar's window is no longer the focused one.
+  $effect(() => {
+    if (!visibleWindowExists) openMenu = null;
+  });
+
+  // The topbar surface only receives pointer input in the 36px bar by
+  // default. Expand the layer-shell input region while a menu is open
+  // so the dropdown items (drawn below the bar) are clickable and an
+  // outside click reaches the webview to dismiss the menu. Mirrors the
+  // popovers' `set_popover_input_region` signalling.
+  $effect(() => {
+    invoke("set_popover_input_region", { expanded: openMenu !== null }).catch(
+      () => {},
+    );
+  });
 </script>
 
 {#snippet menuItems(items: MenuItem[])}
@@ -45,7 +88,7 @@
         <SubTrigger>
           {item.label}
         </SubTrigger>
-        <SubContent class="menubar-content shell-popover">
+        <SubContent class="menubar-content shell-popover {hasChecks(item.children) ? 'menu-checks' : ''}">
           {@render menuItems(item.children)}
         </SubContent>
       </Sub>
@@ -99,15 +142,22 @@
 
     {#if $activeMenu}
     {#each $activeMenu as group, gi (gi)}
-      <Root>
+      <Root
+        open={openMenu === group.label}
+        onOpenChange={(o) => onMenuOpenChange(group.label, o)}
+      >
         <Trigger>
           {#snippet child({ props })}
-            <button class="menubar-trigger" {...props}>
+            <button
+              class="menubar-trigger"
+              {...props}
+              onmouseenter={() => onTriggerEnter(group.label)}
+            >
               {group.label}
             </button>
           {/snippet}
         </Trigger>
-        <Content sideOffset={4} class="menubar-content shell-popover">
+        <Content sideOffset={4} class="menubar-content shell-popover {hasChecks(group.items) ? 'menu-checks' : ''}">
           {@render menuItems(group.items)}
         </Content>
       </Root>
@@ -192,12 +242,20 @@
     transition: background-color var(--duration-micro, 100ms) ease, color var(--duration-micro, 100ms) ease;
   }
 
-  .menubar-trigger:hover {
+  .menubar-trigger:hover,
+  .menubar-trigger[aria-expanded="true"] {
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
     color: var(--foreground);
   }
 
   :global(.menubar-content) {
     min-width: 160px;
+  }
+
+  /* In a menu that carries a checkbox, the plain items and submenu
+     triggers share the leading check column so every label lines up. */
+  :global(.menubar-content.menu-checks [data-slot="dropdown-menu-item"]),
+  :global(.menubar-content.menu-checks [data-slot="dropdown-menu-sub-trigger"]) {
+    padding-left: 2rem;
   }
 </style>
