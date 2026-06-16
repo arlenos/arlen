@@ -137,7 +137,11 @@ impl EphemeralStack {
             ),
             ("ARLEN_DB_PATH".to_string(), p("knowledge/events.db")),
             ("ARLEN_GRAPH_PATH".to_string(), p("knowledge/graph")),
-            ("ARLEN_TIMELINE_MOUNT".to_string(), p("timeline")),
+            // Disable the timeline FUSE mount: the backend scenarios exercise the
+            // event -> SQLite -> graph -> read path, not the `~/.timeline` view,
+            // so skipping FUSE lets them run on a host (or CI runner) without
+            // `/dev/fuse` while losing no coverage.
+            ("ARLEN_TIMELINE_MOUNT".to_string(), "off".to_string()),
             // The daemon loads permission profiles from here (profile_path
             // checks ARLEN_PERMISSIONS_DIR first), so a profile seeded by
             // `seed_read_profile` is the one it reads for the caller.
