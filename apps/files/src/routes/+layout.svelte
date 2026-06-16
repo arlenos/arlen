@@ -34,10 +34,26 @@
 
   let { children } = $props();
 
+  /// Suppress the webview's native "Back / Forward / Reload / Inspect"
+  /// menu. The file manager renders its own context menu over the listing;
+  /// the chrome, sidebar and empty areas should never show the browser
+  /// one. Opt-out via the `data-allow-browser-context` attribute. Same
+  /// pattern the shell and settings use.
+  function suppressBrowserContextMenu(e: MouseEvent): void {
+    if ((e.target as HTMLElement | null)?.closest?.("[data-allow-browser-context]")) {
+      return;
+    }
+    e.preventDefault();
+  }
+
   onMount(() => {
     void initTopbar();
     // Live-reskin on a desktop-wide theme switch (GAP-20).
     void initArlenTheme();
+    document.addEventListener("contextmenu", suppressBrowserContextMenu);
+    return () => {
+      document.removeEventListener("contextmenu", suppressBrowserContextMenu);
+    };
   });
 
   function toggleSearch() {
