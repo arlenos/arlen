@@ -169,15 +169,92 @@ const MAX_DECODE_DIM: u32 = 16_384;
 #[cfg(feature = "thumbnail")]
 const MAX_DECODE_ALLOC: u64 = 256 * 1024 * 1024;
 
+/// Whether `bytes` begin with a JPEG XL signature: the raw codestream marker
+/// (`FF 0A`) or the ISOBMFF container's JXL box (`00 00 00 0C 4A 58 4C 20 0D 0A
+/// 87 0A`). `image`-rs decodes neither, so the decoder routes a JXL file to
+/// jxl-oxide instead.
+#[cfg(feature = "thumbnail")]
+fn is_jxl(bytes: &[u8]) -> bool {
+    const CONTAINER: &[u8] = &[
+        0x00, 0x00, 0x00, 0x0C, 0x4A, 0x58, 0x4C, 0x20, 0x0D, 0x0A, 0x87, 0x0A,
+    ];
+    bytes.starts_with(&[0xFF, 0x0A]) || bytes.starts_with(CONTAINER)
+}
+
+/// Decode an untrusted image to an `image::DynamicImage`, bounding the decode
+/// against a decompression bomb (the worker has no memory cgroup, so cap the
+/// decoded dimensions + the decoder allocation). Routes JPEG XL to jxl-oxide
+/// (which `image`-rs does not handle) and everything else to `image`-rs. A bomb
+/// or an undecodable input is a [`SandboxError::Decode`], fail-closed.
+#[cfg(feature = "thumbnail")]
+fn decode_source(image_bytes: &[u8]) -> Result<image::DynamicImage, SandboxError> {
+    if is_jxl(image_bytes) {
+        return decode_jxl(image_bytes);
+    }
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(image_bytes))
+        .with_guessed_format()
+        .map_err(|e| SandboxError::Decode(format!("format: {e}")))?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_DECODE_DIM);
+    limits.max_image_height = Some(MAX_DECODE_DIM);
+    limits.max_alloc = Some(MAX_DECODE_ALLOC);
+    reader.limits(limits);
+    reader
+        .decode()
+        .map_err(|e| SandboxError::Decode(e.to_string()))
+}
+
+/// Decode a JPEG XL image to a `DynamicImage` via the pure-Rust jxl-oxide.
+///
+/// The dimensions are checked against [`MAX_DECODE_DIM`] and the pixel buffer
+/// against [`MAX_DECODE_ALLOC`] BEFORE rendering, so a JXL decompression bomb is
+/// refused without allocating its full buffer (the same fail-closed bound the
+/// `image`-rs path gets from `image::Limits`). The decoded float channels are
+/// quantised to 8-bit; HDR values above 1.0 are clamped (a viewer shows SDR,
+/// tone-mapping is a later refinement).
+#[cfg(feature = "thumbnail")]
+fn decode_jxl(bytes: &[u8]) -> Result<image::DynamicImage, SandboxError> {
+    use jxl_oxide::JxlImage;
+    let img = JxlImage::read_with_defaults(std::io::Cursor::new(bytes))
+        .map_err(|e| SandboxError::Decode(format!("jxl: {e}")))?;
+    let (w, h) = (img.width(), img.height());
+    if w == 0 || h == 0 || w > MAX_DECODE_DIM || h > MAX_DECODE_DIM {
+        return Err(SandboxError::Decode(format!("jxl dimensions {w}x{h}")));
+    }
+    // Bound the decoded buffer (RGBA8 worst case) like the image-rs alloc cap.
+    if (w as u64) * (h as u64) * 4 > MAX_DECODE_ALLOC {
+        return Err(SandboxError::Decode("jxl image too large".to_string()));
+    }
+    let render = img
+        .render_frame(0)
+        .map_err(|e| SandboxError::Decode(format!("jxl render: {e}")))?;
+    let fb = render.image_all_channels();
+    let channels = fb.channels();
+    let pixels: Vec<u8> = fb
+        .buf()
+        .iter()
+        .map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8)
+        .collect();
+    let dynamic = match channels {
+        1 => image::GrayImage::from_raw(w, h, pixels).map(image::DynamicImage::ImageLuma8),
+        2 => image::GrayAlphaImage::from_raw(w, h, pixels).map(image::DynamicImage::ImageLumaA8),
+        3 => image::RgbImage::from_raw(w, h, pixels).map(image::DynamicImage::ImageRgb8),
+        4 => image::RgbaImage::from_raw(w, h, pixels).map(image::DynamicImage::ImageRgba8),
+        n => return Err(SandboxError::Decode(format!("jxl unsupported channel count {n}"))),
+    };
+    dynamic.ok_or_else(|| SandboxError::Decode("jxl buffer size mismatch".to_string()))
+}
+
 /// Decode an untrusted image and produce a downscaled PNG thumbnail.
 ///
 /// This is the transformation that runs **inside** the sandbox. Image decoders
 /// are a memory-unsafe attack surface (the same class as the document parser),
 /// so the decode happens in the locked-down worker and only the re-encoded
-/// thumbnail bytes leave. The image is decoded, scaled to fit within `max_dim`
-/// on its longest side (aspect preserved, never upscaled), and re-encoded as
-/// PNG (which also strips the source file's metadata). A decode failure is
-/// fail-closed: no thumbnail is produced.
+/// thumbnail bytes leave. The image is decoded (via [`decode_source`], which
+/// routes JPEG XL to jxl-oxide), scaled to fit within `max_dim` on its longest
+/// side (aspect preserved, never upscaled), and re-encoded as PNG (which also
+/// strips the source file's metadata). A decode failure is fail-closed: no
+/// thumbnail is produced.
 ///
 /// MEMORY: [`MAX_DECODE_ALLOC`] bounds the DECODE allocation only. The
 /// subsequent downscale and PNG re-encode allocate further (bounded by the
@@ -190,21 +267,7 @@ pub fn generate_thumbnail(image_bytes: &[u8], max_dim: u32) -> Result<Vec<u8>, S
     if image_bytes.len() > MAX_BYTES {
         return Err(SandboxError::TooLarge);
     }
-    // Bound the DECODE, not just the input. A small highly-compressed file can
-    // decode to a gigantic pixel buffer (a decompression bomb); the worker has
-    // no memory cgroup, so cap the decoded dimensions and the decoder's
-    // allocation budget. A bomb is refused as a decode error, fail-closed.
-    let mut reader = image::ImageReader::new(std::io::Cursor::new(image_bytes))
-        .with_guessed_format()
-        .map_err(|e| SandboxError::Decode(format!("format: {e}")))?;
-    let mut limits = image::Limits::default();
-    limits.max_image_width = Some(MAX_DECODE_DIM);
-    limits.max_image_height = Some(MAX_DECODE_DIM);
-    limits.max_alloc = Some(MAX_DECODE_ALLOC);
-    reader.limits(limits);
-    let decoded = reader
-        .decode()
-        .map_err(|e| SandboxError::Decode(e.to_string()))?;
+    let decoded = decode_source(image_bytes)?;
     let dim = max_dim.max(1);
     // Only downscale. Re-encoding an already-small image still sanitises it (it
     // drops the source metadata and format quirks), but it is never enlarged.
@@ -652,6 +715,36 @@ mod thumbnail_tests {
     fn view_refuses_non_image_bytes_fail_closed() {
         let err = decode_view_image(b"plainly not an image at all").unwrap_err();
         assert!(matches!(err, SandboxError::Decode(_)));
+    }
+
+    /// A 16x8 JPEG XL (raw codestream), generated once with `cjxl` from a PPM
+    /// gradient (`image`-rs cannot encode JXL, so the fixture is committed).
+    const SAMPLE_JXL: &[u8] = include_bytes!("../test-fixtures/sample.jxl");
+
+    #[test]
+    fn detects_the_jxl_signature() {
+        assert!(is_jxl(SAMPLE_JXL), "the cjxl codestream starts with FF 0A");
+        assert!(!is_jxl(&png_bytes(8, 8)), "a PNG is not JXL");
+        assert!(!is_jxl(b"not an image"));
+    }
+
+    #[test]
+    fn decodes_a_jxl_image_through_the_pipeline() {
+        use image::GenericImageView;
+        // The viewer path decodes JXL (image-rs cannot) and re-encodes PNG at
+        // native resolution (16x8 is well under VIEWER_MAX_DIM).
+        let png = decode_view_image(SAMPLE_JXL).expect("jxl decodes via jxl-oxide");
+        let (w, h) = image::load_from_memory(&png).unwrap().dimensions();
+        assert_eq!((w, h), (16, 8));
+    }
+
+    #[test]
+    fn thumbnails_a_jxl_image() {
+        use image::GenericImageView;
+        let thumb = generate_thumbnail(SAMPLE_JXL, 256).unwrap();
+        let (w, h) = image::load_from_memory(&thumb).unwrap().dimensions();
+        // Under the 256 box, so kept at native 16x8.
+        assert_eq!((w, h), (16, 8));
     }
 
     #[test]
