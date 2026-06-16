@@ -292,15 +292,20 @@ async fn files_info(path: String) -> Result<Info, String> {
     })
 }
 
-/// Bounded name search under a path.
+/// Bounded search under a path. `match_content` opts into the heavier
+/// in-file-contents walk (the core supports it; the UI toggles it).
 #[tauri::command]
-fn files_search(path: String, query: String) -> Result<search::SearchOutcome, String> {
+fn files_search(
+    path: String,
+    query: String,
+    match_content: bool,
+) -> Result<search::SearchOutcome, String> {
     let dir = root()?;
     let scope = dir.open_dir(rel(&path)).map_err(|e| e.to_string())?;
     let opts = search::SearchOptions {
         query,
         match_names: true,
-        match_content: false,
+        match_content,
         ..Default::default()
     };
     Ok(search::search(&scope, &opts))
