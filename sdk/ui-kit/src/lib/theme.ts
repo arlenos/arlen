@@ -7,6 +7,80 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+
+// ---------------------------------------------------------------------------
+// Theme v2: shared live-theming for every Arlen app (GAP-20)
+// ---------------------------------------------------------------------------
+
+/**
+ * The resolved theme as a flat CSS-variable set, the wire shape the shell
+ * (the theme authority) resolves and every app's theme consumer emits
+ * identically. Mirrors the Rust `arlen_theme::css::CssVariables`.
+ */
+export interface CssVariables {
+  /** Variable name (without the `--` prefix) to value. */
+  variables: Record<string, string>;
+  /** Font scale multiplier (1.0 = default). */
+  font_scale: number;
+  /** `"dark"` or `"light"` (matches CSS `color-scheme`). */
+  variant: string;
+}
+
+const THEME_STYLE_ID = "arlen-theme-vars";
+
+/**
+ * Inject (or update) a single `<style>` element holding all theme CSS
+ * variables on `:root`, plus the document `color-scheme`. Idempotent: each
+ * call replaces the previous block.
+ */
+export function injectThemeVariables(css: CssVariables): void {
+  let style = document.getElementById(THEME_STYLE_ID) as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement("style");
+    style.id = THEME_STYLE_ID;
+    document.head.appendChild(style);
+  }
+
+  const lines: string[] = [":root {"];
+  for (const name of Object.keys(css.variables).sort()) {
+    lines.push(`  --${name}: ${css.variables[name]};`);
+  }
+  if (Math.abs(css.font_scale - 1.0) > 0.001) {
+    lines.push(`  font-size: ${Math.round(16 * css.font_scale)}px;`);
+  }
+  lines.push("}");
+  style.textContent = lines.join("\n");
+
+  document.documentElement.style.colorScheme = css.variant;
+}
+
+/**
+ * Initialise live theming for a non-shell Arlen app. Reads the current theme
+ * from the shell's broadcast (via the `arlen-shell` plugin's `theme_get`
+ * command), injects it, then listens for `arlen://theme-v2-changed` (emitted
+ * by the plugin's broadcast watcher) and re-injects, so a desktop-wide theme
+ * switch live-reskins this app without a restart (GAP-20).
+ *
+ * Call once at app startup (`onMount` in the root `+layout.svelte`). The
+ * returned function unsubscribes the listener. Requires the app to embed
+ * `tauri_plugin_arlen_shell::init()` and grant `arlen-shell:allow-theme-get`.
+ */
+export async function initArlenTheme(): Promise<() => void> {
+  try {
+    const css = await invoke<CssVariables>("plugin:arlen-shell|theme_get");
+    injectThemeVariables(css);
+  } catch (e) {
+    // No broadcast yet / plugin missing: keep the static stylesheet defaults.
+    console.warn("initArlenTheme: initial theme load failed:", e);
+  }
+
+  const unlisten: UnlistenFn = await listen<CssVariables>(
+    "arlen://theme-v2-changed",
+    ({ payload }) => injectThemeVariables(payload),
+  );
+  return unlisten;
+}
 
 export interface SurfaceTokens {
   bgShell: string;
