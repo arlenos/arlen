@@ -5,7 +5,7 @@
   /// confirmation. The chrome (nav, breadcrumb, tabs, toggles) lives
   /// in the layout's headerbar.
   import { onMount, onDestroy, tick } from "svelte";
-  import { get } from "svelte/store";
+  import { get, writable } from "svelte/store";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { tauriAvailable } from "$lib/tauri";
@@ -16,6 +16,7 @@
     joinPath,
     type FileEntry,
   } from "@arlen/ui-kit/components/browser";
+  import { invoke } from "@tauri-apps/api/core";
   import { openPath } from "$lib/adapter";
   import { isArchiveName } from "$lib/archive";
   import { activeController, newTab, tabs } from "$lib/stores/tabs";
@@ -102,6 +103,26 @@
     if (ok) {
       await tick();
       renamingName = "New folder";
+    }
+  }
+
+  /// The user's `~/Templates` entries (the backend `files_templates`), offered
+  /// in the context menu's "New from template" submenu.
+  interface Template {
+    label: string;
+    icon: string;
+    path: string;
+  }
+  const templates = writable<Template[]>([]);
+
+  /// Create a new file in the current folder from `t` by copying the template
+  /// (the existing copy op, so no separate command), then start an inline
+  /// rename on the new file - the same flow as New folder.
+  async function newFromTemplate(t: Template) {
+    const ok = await runOp("copy", [t.path], currentPath());
+    if (ok) {
+      await tick();
+      renamingName = t.label;
     }
   }
 
@@ -222,6 +243,9 @@
     await loadPlaces();
     if (get(tabs).length === 0) newTab(get(homePath));
     if (tauriAvailable) {
+      invoke<Template[]>("files_templates")
+        .then((t) => templates.set(t))
+        .catch(() => {});
       unlistenMenu = await listen<{ action: string }>(
         "arlen://menu-action",
         (e) => void runMenuAction(e.payload.action),
@@ -349,6 +373,18 @@
         {#if selected.length === 0}
           <ContextMenu.Separator />
           <ContextMenu.Item onclick={newFolder}>New folder</ContextMenu.Item>
+          {#if $templates.length > 0}
+            <ContextMenu.Sub>
+              <ContextMenu.SubTrigger>New from template</ContextMenu.SubTrigger>
+              <ContextMenu.SubContent class="w-52">
+                {#each $templates as t (t.path)}
+                  <ContextMenu.Item onclick={() => void newFromTemplate(t)}>
+                    {t.label}
+                  </ContextMenu.Item>
+                {/each}
+              </ContextMenu.SubContent>
+            </ContextMenu.Sub>
+          {/if}
         {/if}
         {#if selected.length > 0}
           <ContextMenu.Separator />
