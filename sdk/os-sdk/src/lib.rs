@@ -64,7 +64,7 @@ pub use graph::{
     GraphClient, QueryError, RelationRetractOutcome, RelationWriteOutcome, UnixGraphClient,
 };
 pub use intents::{IntentError, IntentType, UnixIntentClient};
-pub use menu::{Menu, MenuGroup, MenuItem, MenuItemKind};
+pub use menu::{subscribe_menu_actions, Menu, MenuGroup, MenuItem, MenuItemKind};
 pub use presence::{AutoClear, Presence, PresenceParams};
 pub use search::{SearchError, SearchMode, UnixSearchClient};
 pub use spatial::{GeometryHint, OutputHint, Spatial, SpatialHint};

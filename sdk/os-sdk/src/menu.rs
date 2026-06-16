@@ -18,6 +18,7 @@ use std::future::Future;
 use serde::{Deserialize, Serialize};
 
 use crate::event::{EmitError, EventEmitter};
+use crate::event_consumer::{EventConsumer, SubscribeError};
 
 /// The kind of a [`MenuItem`]: a normal action, a separator, or a submenu
 /// carrying `children`. Serializes to the lowercase tag the shell's menu
@@ -181,6 +182,45 @@ impl<E: EventEmitter> Menu<E> {
     }
 }
 
+/// The Event Bus type the shell publishes when a topbar menu item is
+/// clicked, carrying the action back to the app that published the menu.
+const MENU_ACTION_INVOKED: &str = "app.menu.action_invoked";
+
+/// Subscribe to the topbar menu-action return channel for `app_id`.
+///
+/// [`Menu::register`] is publish-only: it pushes the menu tree into the
+/// topbar. When the user clicks one of those items the shell publishes
+/// [`MENU_ACTION_INVOKED`] (`{app_id, action}`) back onto the Event Bus.
+/// This subscribes through `consumer`, keeps only the actions addressed
+/// to `app_id` (the channel is a shared back-channel for every app), and
+/// yields their action ids on the returned receiver. Drop the receiver
+/// to unsubscribe — the forwarder task ends when the channel closes.
+pub async fn subscribe_menu_actions<C: EventConsumer>(
+    consumer: &C,
+    app_id: impl Into<String>,
+) -> Result<tokio::sync::mpsc::Receiver<String>, SubscribeError> {
+    use prost::Message as _;
+
+    let app_id = app_id.into();
+    let mut events = consumer
+        .subscribe(vec![MENU_ACTION_INVOKED.to_string()])
+        .await?;
+    let (tx, rx) = tokio::sync::mpsc::channel::<String>(64);
+    tokio::spawn(async move {
+        while let Some(event) = events.recv().await {
+            let Ok(payload) =
+                crate::proto::ShortcutActionInvokedPayload::decode(event.payload.as_slice())
+            else {
+                continue;
+            };
+            if payload.app_id == app_id && tx.send(payload.action).await.is_err() {
+                break;
+            }
+        }
+    });
+    Ok(rx)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,5 +276,46 @@ mod tests {
             .collect();
         assert!(menu.register(groups).await.is_err());
         assert_eq!(emitter.emit_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn subscribe_menu_actions_yields_only_this_apps_actions() {
+        use crate::mock::MockEventConsumer;
+        use prost::Message as _;
+
+        let bus = MockEventConsumer::new();
+        let mut actions = subscribe_menu_actions(&bus, "dev.arlen.files")
+            .await
+            .unwrap();
+        // Let the forwarder task attach before pushing.
+        tokio::task::yield_now().await;
+
+        let foreign = crate::proto::ShortcutActionInvokedPayload {
+            app_id: "dev.arlen.terminal".to_string(),
+            action: "edit.copy".to_string(),
+            window_id: String::new(),
+        };
+        let mine = crate::proto::ShortcutActionInvokedPayload {
+            app_id: "dev.arlen.files".to_string(),
+            action: "file.new_folder".to_string(),
+            window_id: String::new(),
+        };
+        bus.push(crate::proto::Event {
+            r#type: MENU_ACTION_INVOKED.to_string(),
+            payload: foreign.encode_to_vec(),
+            ..Default::default()
+        });
+        bus.push(crate::proto::Event {
+            r#type: MENU_ACTION_INVOKED.to_string(),
+            payload: mine.encode_to_vec(),
+            ..Default::default()
+        });
+
+        // The foreign app's action is filtered out; only ours arrives.
+        let got = tokio::time::timeout(std::time::Duration::from_secs(1), actions.recv())
+            .await
+            .expect("menu action did not arrive")
+            .expect("channel closed");
+        assert_eq!(got, "file.new_folder");
     }
 }
