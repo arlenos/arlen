@@ -3729,7 +3729,9 @@ dependencies = [
 name = "tauri-plugin-arlen-shell"
 version = "0.1.0"
 dependencies = [
+ "arlen-theme",
  "log",
+ "notify 7.0.0",
  "os-sdk",
  "serde",
  "serde_json",
