@@ -26,6 +26,7 @@ use anyhow::Result;
 use serde::Serialize;
 
 use crate::graph::GraphHandle;
+use crate::utils::escape_cypher;
 
 /// Default god-symbol degree threshold for the live-graph analysis: a symbol
 /// coupled to at least this many distinct others (fan-in + fan-out) is a hub.
@@ -204,6 +205,121 @@ pub async fn analyze_code_graph(graph: &GraphHandle, god_min_degree: usize) -> R
     Ok(analyze(&symbols, &calls, god_min_degree))
 }
 
+/// The project a code symbol's file belongs to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CodeProject {
+    /// Project node id.
+    pub id: String,
+    /// Project display name.
+    pub name: String,
+}
+
+/// The activity-layer context of a code symbol (CG-R6 fusion): the file that
+/// defines it, and through that file the project it belongs to and the apps
+/// that have touched it. The `CodeSymbol`→`File` `DEFINES` edge is the join
+/// from the code layer to the activity layer.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct CodeSymbolContext {
+    /// The symbol queried.
+    pub symbol_id: String,
+    /// The defining file's path, if the symbol is in the graph.
+    pub file_path: Option<String>,
+    /// The project the file belongs to as of the read, via the bitemporal
+    /// `FILE_PART_OF` membership. `None` if the file is in no project then.
+    pub project: Option<CodeProject>,
+    /// The apps that have accessed the file (`ACCESSED_BY` provenance), sorted
+    /// and de-duplicated.
+    pub accessed_by: Vec<String>,
+}
+
+/// Resolve a code symbol's activity-layer context (CG-R6).
+///
+/// Joins `CodeSymbol`→`File` (via `DEFINES`, File→CodeSymbol) and from that
+/// file reads its project (`FILE_PART_OF`) and the apps that accessed it
+/// (`ACCESSED_BY`). The project membership is read **bitemporally**:
+/// `as_of_micros` `None` is "as of now" (the live, open-interval edge), and
+/// `Some(t)` the membership valid at time `t` (microseconds since epoch) on
+/// both the valid and transaction axes plus the project node's transaction
+/// liveness — the same predicate `temporal::valid_as_of` builds, inlined here
+/// because the graph layer interpolates rather than binds (`t` is an integer,
+/// so it is injection-safe). A symbol absent from the graph, or with no
+/// defining file, yields a context with `file_path = None`.
+///
+/// (The per-access *timeline* — the sequence of accesses over time — is a
+/// follow-up: the schema links a file to apps via `ACCESSED_BY` but carries no
+/// direct file→event edge to order, so provenance + project + the as-of read
+/// are the fusion delivered here.)
+pub async fn code_symbol_context(
+    graph: &GraphHandle,
+    symbol_id: &str,
+    as_of_micros: Option<i64>,
+) -> Result<CodeSymbolContext> {
+    let sid = escape_cypher(symbol_id);
+    let mut ctx = CodeSymbolContext {
+        symbol_id: symbol_id.to_string(),
+        ..Default::default()
+    };
+
+    // The defining file (DEFINES is File -> CodeSymbol).
+    let file_rs = graph
+        .query_rows(format!(
+            "MATCH (f:File)-[:DEFINES]->(:CodeSymbol {{id: '{sid}'}}) RETURN f.id, f.path LIMIT 1"
+        ))
+        .await?;
+    let Some((file_id, file_path)) = file_rs.rows.first().and_then(|row| {
+        let id = row.first()?.as_str().to_string();
+        let path = row.get(1)?.as_str().to_string();
+        (!id.is_empty()).then_some((id, path))
+    }) else {
+        // Symbol absent, or no defining file: nothing to join.
+        return Ok(ctx);
+    };
+    ctx.file_path = Some(file_path);
+    let fid = escape_cypher(&file_id);
+
+    // The project, via the bitemporal FILE_PART_OF membership.
+    let valid = match as_of_micros {
+        None => {
+            "r.invalid_at IS NULL AND r.expired_at IS NULL AND p.expired_at IS NULL".to_string()
+        }
+        Some(t) => format!(
+            "r.valid_at <= {t} AND (r.invalid_at IS NULL OR r.invalid_at > {t}) \
+             AND r.created_at <= {t} AND (r.expired_at IS NULL OR r.expired_at > {t}) \
+             AND (p.expired_at IS NULL OR p.expired_at > {t})"
+        ),
+    };
+    let proj_rs = graph
+        .query_rows(format!(
+            "MATCH (f:File {{id: '{fid}'}})-[r:FILE_PART_OF]->(p:Project) \
+             WHERE {valid} RETURN p.id, p.name LIMIT 1"
+        ))
+        .await?;
+    ctx.project = proj_rs.rows.first().and_then(|row| {
+        let id = row.first()?.as_str().to_string();
+        let name = row.get(1)?.as_str().to_string();
+        (!id.is_empty()).then_some(CodeProject { id, name })
+    });
+
+    // Provenance: the apps that accessed the file.
+    let apps_rs = graph
+        .query_rows(format!(
+            "MATCH (f:File {{id: '{fid}'}})-[:ACCESSED_BY]->(a:App) RETURN a.id"
+        ))
+        .await?;
+    let mut apps: Vec<String> = apps_rs
+        .rows
+        .iter()
+        .filter_map(|row| row.first())
+        .map(|c| c.as_str().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    apps.sort();
+    apps.dedup();
+    ctx.accessed_by = apps;
+
+    Ok(ctx)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -360,5 +476,85 @@ mod tests {
             analyze_code_graph(&empty, 1).await.unwrap(),
             CodeAnalysis::default()
         );
+    }
+
+    #[tokio::test]
+    async fn code_symbol_context_fuses_file_project_and_provenance() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+
+        graph
+            .write("CREATE (:File {id:'/p/lib.rs', path:'/p/lib.rs'})".to_string())
+            .await
+            .unwrap();
+        graph
+            .write("CREATE (:CodeSymbol {id:'/p/lib.rs#fn:helper@1', name:'helper'})".to_string())
+            .await
+            .unwrap();
+        graph
+            .write(
+                "MATCH (f:File {id:'/p/lib.rs'}),(s:CodeSymbol {id:'/p/lib.rs#fn:helper@1'}) \
+                 CREATE (f)-[:DEFINES {confidence:'extracted'}]->(s)"
+                    .to_string(),
+            )
+            .await
+            .unwrap();
+        graph
+            .write("CREATE (:Project {id:'proj-1', name:'MyProj'})".to_string())
+            .await
+            .unwrap();
+        graph
+            .write(
+                "MATCH (f:File {id:'/p/lib.rs'}),(p:Project {id:'proj-1'}) \
+                 CREATE (f)-[:FILE_PART_OF {valid_at:100, created_at:100}]->(p)"
+                    .to_string(),
+            )
+            .await
+            .unwrap();
+        graph
+            .write("CREATE (:App {id:'editor'})".to_string())
+            .await
+            .unwrap();
+        graph
+            .write(
+                "MATCH (f:File {id:'/p/lib.rs'}),(a:App {id:'editor'}) \
+                 CREATE (f)-[:ACCESSED_BY]->(a)"
+                    .to_string(),
+            )
+            .await
+            .unwrap();
+
+        // Live read: the symbol's file, its project, and the accessing app.
+        let ctx = code_symbol_context(&graph, "/p/lib.rs#fn:helper@1", None)
+            .await
+            .unwrap();
+        assert_eq!(ctx.file_path.as_deref(), Some("/p/lib.rs"));
+        assert_eq!(
+            ctx.project,
+            Some(CodeProject {
+                id: "proj-1".to_string(),
+                name: "MyProj".to_string(),
+            })
+        );
+        assert_eq!(ctx.accessed_by, vec!["editor".to_string()]);
+
+        // As-of before the membership held (t=50 < valid_at=100): no project.
+        let before = code_symbol_context(&graph, "/p/lib.rs#fn:helper@1", Some(50))
+            .await
+            .unwrap();
+        assert!(before.project.is_none(), "membership did not hold at t=50");
+        // As-of after it held: the project is present.
+        let after = code_symbol_context(&graph, "/p/lib.rs#fn:helper@1", Some(150))
+            .await
+            .unwrap();
+        assert!(after.project.is_some());
+
+        // An unknown symbol yields an empty context (no defining file).
+        let none = code_symbol_context(&graph, "/p/lib.rs#fn:missing@9", None)
+            .await
+            .unwrap();
+        assert!(none.file_path.is_none());
+        assert!(none.project.is_none());
+        assert!(none.accessed_by.is_empty());
     }
 }
