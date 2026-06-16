@@ -1,0 +1,8 @@
+# Starting permission profile for Rhythmbox (music player). Music, no network,
+# no graph.
+[info]
+app_id = "org.gnome.Rhythmbox"
+tier = "third-party"
+
+[filesystem]
+music = true

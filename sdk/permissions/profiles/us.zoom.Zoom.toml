@@ -1,0 +1,11 @@
+# Starting permission profile for Zoom (video conferencing). Network is its
+# function; local recordings save under Documents. No graph.
+[info]
+app_id = "us.zoom.Zoom"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true
