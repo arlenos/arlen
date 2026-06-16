@@ -45,7 +45,7 @@ required-features = ["music"]
 [features]
 # Image thumbnailing: pulls the `image` decoders and builds the thumbnail
 # worker. Off by default so a doc-parse-only consumer stays lean.
-thumbnail = ["dep:image"]
+thumbnail = ["dep:image", "dep:jxl-oxide"]
 # Music cover-art thumbnailing + audio metadata: pulls the `lofty` metadata
 # reader to extract the embedded picture and read playback properties/tags, then
 # reuses the image path to decode and downscale the art. `serde`/`serde_json`
@@ -60,6 +60,13 @@ tracing = "0.1"
 # inside the worker's Landlock + seccomp lockdown; only the re-encoded
 # thumbnail leaves. Default features off so only the explicit codecs link.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"], optional = true }
+# Pure-Rust JPEG XL decoder (the `thumbnail` feature). `image`-rs covers neither
+# JXL nor HEIC; jxl-oxide closes the JXL half of that gap. Decode-only, no C dep,
+# so it runs inside the same Landlock + seccomp worker as the other decoders.
+# default-features off drops rayon: the decode stays SINGLE-THREADED so it needs
+# no thread-creation (`clone`) syscall, which the worker's seccomp allowlist does
+# not permit (verified: the rayon default fails closed under the sandbox).
+jxl-oxide = { version = "0.12", default-features = false, optional = true }
 # Audio metadata reader for the music cover-art thumbnailer (the `music`
 # feature). Parsing an untrusted media container is a memory-unsafe attack
 # surface, so the extraction runs inside the worker's lockdown alongside the

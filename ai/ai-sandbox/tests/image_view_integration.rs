@@ -49,6 +49,21 @@ fn view_caps_an_oversize_image_under_the_sandbox() {
     assert_eq!((w, h), (arlen_ai_sandbox::VIEWER_MAX_DIM, arlen_ai_sandbox::VIEWER_MAX_DIM / 2));
 }
 
+/// A 16x8 JPEG XL, generated once with `cjxl` (image-rs cannot encode JXL).
+const SAMPLE_JXL: &[u8] = include_bytes!("../test-fixtures/sample.jxl");
+
+#[test]
+fn view_decodes_a_jxl_image_under_the_sandbox() {
+    use image::GenericImageView;
+    // jxl-oxide is pure-Rust but may want syscalls (threads, mmap) the seccomp
+    // allowlist must permit; this is the check that JXL decode works under the
+    // real lockdown, not just in-process.
+    let png = arlen_ai_sandbox::view_image(Path::new(BIN), SAMPLE_JXL)
+        .expect("the sandboxed worker should decode the JXL");
+    let (w, h) = image::load_from_memory(&png).unwrap().dimensions();
+    assert_eq!((w, h), (16, 8));
+}
+
 #[test]
 fn view_worker_fails_closed_on_non_image_input() {
     let err = arlen_ai_sandbox::view_image(Path::new(BIN), b"this is plainly not an image")
