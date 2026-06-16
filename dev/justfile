@@ -67,9 +67,20 @@ dev *ARGS:
       fi
       i=$((i + 1))
     done
+    # process-compose's TUI (tview/tcell) panics with "close of nil channel" when
+    # there is no interactive terminal to initialise a screen - so an agent / CI /
+    # piped run (no TTY on stdout) crashes before the stack comes up, while Tim's
+    # interactive run is fine. Detect the no-TTY case and drive it headless there
+    # (logs stream to stdout, greppable); an interactive run keeps the TUI. This is
+    # what makes `just dev` launch reliably regardless of environment. A caller who
+    # passes their own `-t`/`--tui` wins (we do not override it).
+    tui=()
+    if [ ! -t 1 ] && ! printf '%s\n' ${passthrough[@]+"${passthrough[@]}"} | grep -qE -- '^(-t|--tui)'; then
+      tui=(-t=false)
+    fi
     # -U: serve over a per-pid unix socket instead of TCP :8080, so the dev stack
     # never collides with whatever else holds 8080 on the machine.
-    cd "{{ROOT}}" && process-compose "${configs[@]}" -U up ${passthrough[@]+"${passthrough[@]}"}
+    cd "{{ROOT}}" && process-compose "${configs[@]}" -U ${tui[@]+"${tui[@]}"} up ${passthrough[@]+"${passthrough[@]}"}
 
 # Build the sandboxed thumbnail worker the files app spawns for its grid
 # thumbnails (ai-sandbox `thumbnail` feature).
