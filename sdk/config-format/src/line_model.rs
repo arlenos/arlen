@@ -829,4 +829,97 @@ mod tests {
         assert_eq!(m.get("a.x"), Some(&ConfigValue::Int(1)));
         assert_eq!(m.get("a.y"), Some(&ConfigValue::String("hi".to_string())));
     }
+
+    #[test]
+    fn parse_bool_is_case_sensitive_lowercase() {
+        assert_eq!(parse_bool("true"), Some(true));
+        assert_eq!(parse_bool("false"), Some(false));
+        assert_eq!(parse_bool("True"), None);
+        assert_eq!(parse_bool("1"), None);
+        assert_eq!(parse_bool("yes"), None);
+        assert_eq!(parse_bool(""), None);
+    }
+
+    #[test]
+    fn strip_surrounding_quotes_handles_matched_and_mismatched() {
+        assert_eq!(strip_surrounding_quotes("\"x\""), "x");
+        assert_eq!(strip_surrounding_quotes("'x'"), "x");
+        assert_eq!(strip_surrounding_quotes("\"\""), "");
+        assert_eq!(strip_surrounding_quotes("''"), "");
+        // Mismatched, unquoted, and too-short are left verbatim.
+        assert_eq!(strip_surrounding_quotes("\"x'"), "\"x'");
+        assert_eq!(strip_surrounding_quotes("bare"), "bare");
+        assert_eq!(strip_surrounding_quotes("\""), "\"");
+    }
+
+    #[test]
+    fn strip_js_string_only_double_quotes() {
+        assert_eq!(strip_js_string("\"hi\""), Some("hi"));
+        assert_eq!(strip_js_string("\"\""), Some(""));
+        assert_eq!(strip_js_string("'hi'"), None);
+        assert_eq!(strip_js_string("bare"), None);
+        assert_eq!(strip_js_string("\""), None);
+    }
+
+    #[test]
+    fn shell_quote_is_bare_when_clean_and_quoted_when_needed() {
+        assert_eq!(shell_quote("hello", '#'), "hello");
+        assert_eq!(shell_quote("a b", '#'), "\"a b\"");
+        assert_eq!(shell_quote("k=v", '#'), "\"k=v\"");
+        assert_eq!(shell_quote("c#x", '#'), "\"c#x\"");
+        assert_eq!(shell_quote("", '#'), "\"\"");
+        // Embedded quote and backslash are escaped inside the wrapper.
+        assert_eq!(shell_quote("a\"b\\c", '#'), "\"a\\\"b\\\\c\"");
+    }
+
+    #[test]
+    fn shell_quote_round_trips_through_strip_and_unescape() {
+        for orig in ["plain", "a b", "k=v", "a\"b\\c", "trailing\\"] {
+            let q = shell_quote(orig, '#');
+            let back = unescape_shell(strip_surrounding_quotes(&q));
+            assert_eq!(back, orig, "round-trip failed for {orig:?}");
+        }
+    }
+
+    #[test]
+    fn js_quote_escapes_controls_and_round_trips() {
+        assert_eq!(js_quote("plain"), "\"plain\"");
+        assert_eq!(js_quote("a\nb"), "\"a\\nb\"");
+        assert_eq!(js_quote("a\tb"), "\"a\\tb\"");
+        assert_eq!(js_quote("\u{1}"), "\"\\u0001\"");
+        // A double-quoted literal cannot break out of the single-line statement.
+        for orig in ["plain", "a\"b", "a\\b", "line\nbreak", "tab\there", "\u{1}\u{7}"] {
+            let q = js_quote(orig);
+            let back = unescape_js(strip_js_string(&q).unwrap());
+            assert_eq!(back, orig, "js round-trip failed for {orig:?}");
+        }
+    }
+
+    #[test]
+    fn unescape_js_passes_malformed_escapes_through_literally() {
+        // An unknown escape and a truncated \u keep their bytes (data, not code).
+        assert_eq!(unescape_js("a\\xb"), "a\\xb");
+        assert_eq!(unescape_js("\\uZZZZ"), "\\uZZZZ");
+        assert_eq!(unescape_js("ends\\"), "ends\\");
+    }
+
+    #[test]
+    fn parse_scalar_types_unquoted_and_keeps_quoted_as_string() {
+        let d = ini_dialect();
+        assert_eq!(parse_scalar("true", &d), ConfigValue::Bool(true));
+        assert_eq!(parse_scalar("42", &d), ConfigValue::Int(42));
+        assert_eq!(parse_scalar("1.5", &d), ConfigValue::Float(1.5));
+        assert_eq!(parse_scalar("hello", &d), ConfigValue::String("hello".to_string()));
+        // A quoted "true" is a string by intent, not a bool.
+        assert_eq!(parse_scalar("\"true\"", &d), ConfigValue::String("true".to_string()));
+    }
+
+    #[test]
+    fn parse_js_scalar_types_literals() {
+        assert_eq!(parse_js_scalar("\"hi\""), ConfigValue::String("hi".to_string()));
+        assert_eq!(parse_js_scalar("true"), ConfigValue::Bool(true));
+        assert_eq!(parse_js_scalar("5"), ConfigValue::Int(5));
+        assert_eq!(parse_js_scalar("1.5"), ConfigValue::Float(1.5));
+        assert_eq!(parse_js_scalar("bareword"), ConfigValue::String("bareword".to_string()));
+    }
 }
