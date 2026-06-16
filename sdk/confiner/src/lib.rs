@@ -478,4 +478,34 @@ mod tests {
         }
         out
     }
+
+    #[test]
+    fn path_overlaps_is_component_wise_not_substring() {
+        // Identical, parent, and child all overlap (both directions).
+        assert!(path_overlaps("/a/b", "/a/b"));
+        assert!(path_overlaps("/a/b/c", "/a/b"));
+        assert!(path_overlaps("/a/b", "/a/b/c"));
+        // Root contains everything.
+        assert!(path_overlaps("/", "/anything/deep"));
+        // Siblings do not overlap.
+        assert!(!path_overlaps("/a/b", "/a/c"));
+        // The security-critical case: a shared partial component is NOT an overlap
+        // (a lexical str::starts_with would wrongly flag these).
+        assert!(!path_overlaps("/base", "/basement"));
+        assert!(!path_overlaps("/srv/buildroot", "/srv/build"));
+    }
+
+    #[test]
+    fn is_reserved_build_env_matches_path_and_ld_prefix_exactly() {
+        assert!(is_reserved_build_env("PATH"));
+        assert!(is_reserved_build_env("LD_PRELOAD"));
+        assert!(is_reserved_build_env("LD_LIBRARY_PATH"));
+        assert!(is_reserved_build_env("LD_"));
+        // Not reserved: a longer name sharing the PATH prefix, the wrong case, or
+        // LD_ embedded rather than leading.
+        assert!(!is_reserved_build_env("PATHEXT"));
+        assert!(!is_reserved_build_env("path"));
+        assert!(!is_reserved_build_env("MY_LD_HACK"));
+        assert!(!is_reserved_build_env("HOME"));
+    }
 }
