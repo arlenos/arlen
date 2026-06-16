@@ -1,0 +1,8 @@
+# Starting permission profile for gedit (a text editor). Documents, no network,
+# no graph.
+[info]
+app_id = "org.gnome.gedit"
+tier = "third-party"
+
+[filesystem]
+documents = true

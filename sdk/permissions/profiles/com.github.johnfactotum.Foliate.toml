@@ -1,0 +1,8 @@
+# Starting permission profile for Foliate (an ebook reader). Documents, no
+# network, no graph.
+[info]
+app_id = "com.github.johnfactotum.Foliate"
+tier = "third-party"
+
+[filesystem]
+documents = true

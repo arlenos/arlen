@@ -1,0 +1,11 @@
+# Starting permission profile for Fractal (a Matrix chat client). Network is its
+# function; received media saves to Downloads. No graph.
+[info]
+app_id = "org.gnome.Fractal"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

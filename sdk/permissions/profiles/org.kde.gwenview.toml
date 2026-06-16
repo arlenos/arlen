@@ -1,0 +1,8 @@
+# Starting permission profile for Gwenview (image viewer). Pictures, no network,
+# no graph.
+[info]
+app_id = "org.kde.gwenview"
+tier = "third-party"
+
+[filesystem]
+pictures = true

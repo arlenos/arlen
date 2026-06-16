@@ -1,0 +1,8 @@
+# Starting permission profile for Celluloid (a video player). Videos, no
+# network, no graph.
+[info]
+app_id = "io.github.celluloid_player.Celluloid"
+tier = "third-party"
+
+[filesystem]
+videos = true
