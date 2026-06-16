@@ -17,7 +17,14 @@
 //! scope, so the read gate (RS-R1) fails closed on them until the custom-type
 //! read path is designed; persisting them now is therefore write-only and safe.
 
-use crate::schema::{EntityDefinition, FieldType};
+use std::collections::{BTreeMap, HashMap};
+
+use chrono::Utc;
+
+use crate::schema::{EntityDefinition, FieldType, SchemaRegistry};
+use crate::token::CapabilityToken;
+use crate::utils::escape_cypher;
+use crate::write::validation::FieldValidator;
 
 /// A reserved column every entity table carries. Mirrors the reserved fields
 /// `create_entity` injects, plus `_type` (the canonical qualified type, since
@@ -140,6 +147,135 @@ pub fn entity_table_ddl(
         "CREATE NODE TABLE IF NOT EXISTS {table}({}, PRIMARY KEY(id))",
         columns.join(", ")
     ))
+}
+
+/// The deterministic node id for a bridge upsert: `{qualified_type}:{external_key}`.
+///
+/// Stable (the same external key always maps to the same node, so a re-sync
+/// MERGEs in place rather than duplicating) and globally unique per (type, key)
+/// with no hashing, so there is no collision to reason about. Stored as the
+/// table's `id` primary key.
+pub fn entity_node_id(qualified_type: &str, external_key: &str) -> String {
+    format!("{qualified_type}:{external_key}")
+}
+
+/// Render a schema-validated field value as a Cypher literal. String-like values
+/// are single-quoted and [`escape_cypher`]-escaped so a value can never break out
+/// of the literal (the injection-safety guarantee); numbers and bools render
+/// natively; an array/object (stored in a `STRING` column, see [`column_type`])
+/// is JSON-serialised then escaped; null renders as `null`.
+fn field_literal(value: &serde_json::Value) -> String {
+    use serde_json::Value;
+    match value {
+        Value::String(s) => format!("'{}'", escape_cypher(s)),
+        Value::Bool(b) => b.to_string(),
+        Value::Number(n) => n.to_string(),
+        Value::Null => "null".to_string(),
+        other => {
+            let json = serde_json::to_string(other).unwrap_or_default();
+            format!("'{}'", escape_cypher(&json))
+        }
+    }
+}
+
+/// Build the idempotent upsert statement for a validated entity write.
+///
+/// MERGE on the deterministic id (so a re-sync of the same external key updates
+/// the existing node in place, never duplicates), setting the reserved
+/// provenance columns + `_version=1` on first insert and bumping `_version` +
+/// `_modified_at` on every later write. Every string value (`owner`,
+/// `external_key`, the canonical type, and each field) is escaped into its
+/// literal; the table name and field names are safe identifiers validated at
+/// table creation, so they are interpolated directly.
+fn build_upsert_cypher(
+    qualified_type: &str,
+    external_key: &str,
+    owner: &str,
+    fields: &BTreeMap<String, serde_json::Value>,
+    now: &str,
+) -> String {
+    let table = entity_table_name(qualified_type);
+    let id = escape_cypher(&entity_node_id(qualified_type, external_key));
+    let qt = escape_cypher(qualified_type);
+    let ek = escape_cypher(external_key);
+    let owner_lit = escape_cypher(owner);
+    let now_lit = escape_cypher(now);
+
+    // Field assignments, deterministic order, applied identically on create and
+    // on match (the upsert overwrites the field set each sync).
+    let field_sets: String = fields
+        .iter()
+        .map(|(name, v)| format!(", n.{name}={}", field_literal(v)))
+        .collect();
+
+    format!(
+        "MERGE (n:{table} {{id: '{id}'}}) \
+         ON CREATE SET n._type='{qt}', n._external_key='{ek}', n._owner='{owner_lit}', \
+         n._created_at='{now_lit}', n._modified_at='{now_lit}', n._version=1, n._deleted=false{field_sets} \
+         ON MATCH SET n._modified_at='{now_lit}', n._version=n._version+1{field_sets} \
+         RETURN n._version AS version"
+    )
+}
+
+/// Authorise, validate, and build the persistence plan for an app-tier entity
+/// upsert (foreign-app-bridges piece 1): the general "an app writes an instance
+/// of its own declared entity type, idempotently" path that the not-wired
+/// declare-but-cannot-write gap needs.
+///
+/// Returns `(table_ddl, upsert_cypher)`: the caller ensures the dynamic table
+/// exists with the DDL (idempotent `CREATE NODE TABLE IF NOT EXISTS`), then runs
+/// the upsert. Fail-closed at every step:
+/// - a non-empty `external_key` is required (the idempotency key);
+/// - `system.*` / `shared.*` are structurally unwritable by a third party;
+/// - the caller's token must grant write to the type, AND the type must be in
+///   the caller's own namespace (peer-attested `app_id`), so an app can only
+///   write its own data;
+/// - the type must be registered and the fields must validate against its
+///   schema (unknown field, wrong type, or missing-required all reject).
+///
+/// The scoping is the caller's peer-attested `app_id` + the namespace bound (the
+/// guarantee `foreign-app-bridges.md` requires: namespace-bounded, audited).
+/// A macaroon-format token (attenuate-only caveats) is the planned upgrade; the
+/// guarantee is what matters and is delivered here.
+pub fn plan_entity_upsert(
+    registry: &SchemaRegistry,
+    token: &CapabilityToken,
+    qualified_type: &str,
+    external_key: &str,
+    fields: HashMap<String, serde_json::Value>,
+) -> Result<(String, String), String> {
+    if external_key.trim().is_empty() {
+        return Err("upsert requires a non-empty external_key".into());
+    }
+    if qualified_type.starts_with("system.") || qualified_type.starts_with("shared.") {
+        return Err(format!(
+            "namespace not writable by a third party: {qualified_type}"
+        ));
+    }
+    if !token.can_write(qualified_type) {
+        return Err(format!("permission denied for {qualified_type}"));
+    }
+    // The caller may only write its own namespace (the type prefix must be the
+    // attested app_id). This is the cross-tenant boundary.
+    let prefix = format!("{}.", token.app_id);
+    if !qualified_type.starts_with(&prefix) {
+        return Err(format!(
+            "namespace violation: {} cannot write {qualified_type}",
+            token.app_id
+        ));
+    }
+    let def = registry
+        .get_entity(qualified_type)
+        .ok_or_else(|| format!("entity type not registered: {qualified_type}"))?;
+    FieldValidator::new(registry)
+        .validate_create(qualified_type, &fields)
+        .map_err(|e| format!("validation: {e}"))?;
+
+    let ddl = entity_table_ddl(qualified_type, def).map_err(|e| format!("schema: {e}"))?;
+    let now = Utc::now().to_rfc3339();
+    let ordered: BTreeMap<String, serde_json::Value> = fields.into_iter().collect();
+    let cypher = build_upsert_cypher(qualified_type, external_key, &token.app_id, &ordered, &now);
+    Ok((ddl, cypher))
 }
 
 #[cfg(test)]
@@ -269,5 +405,142 @@ mod tests {
         assert!(matches!(row[1], Value::Int64(3)));
         assert!(matches!(row[2], Value::Double(d) if (d - 0.5).abs() < f64::EPSILON));
         assert!(matches!(row[3], Value::Bool(true)));
+    }
+
+    #[test]
+    fn entity_node_id_is_type_scoped_and_stable() {
+        assert_eq!(entity_node_id("md.obsidian.Note", "k1"), "md.obsidian.Note:k1");
+        // Same key under a different type is a different node (no cross-type collision).
+        assert_ne!(
+            entity_node_id("md.obsidian.Note", "k1"),
+            entity_node_id("md.obsidian.Task", "k1"),
+        );
+    }
+
+    #[test]
+    fn upsert_cypher_escapes_string_field_values() {
+        let mut fields = BTreeMap::new();
+        fields.insert(
+            "title".to_string(),
+            serde_json::json!("O'Brien'}) DETACH DELETE n //"),
+        );
+        let cypher = build_upsert_cypher(
+            "md.obsidian.Note",
+            "note-1",
+            "md.obsidian",
+            &fields,
+            "2026-01-01T00:00:00Z",
+        );
+        // The single quote in the value is escaped, so it cannot close the literal.
+        assert!(cypher.contains("O\\'Brien"), "value not escaped: {cypher}");
+        assert!(!cypher.contains("O'Brien'"), "unescaped breakout present: {cypher}");
+        assert!(cypher.contains("MERGE (n:e_md_obsidian_Note_"));
+        assert!(cypher.contains("ON CREATE SET"));
+        assert!(cypher.contains("ON MATCH SET"));
+        assert!(cypher.contains("n.title="));
+    }
+
+    #[test]
+    fn upsert_round_trips_idempotently_on_a_real_graph() {
+        use lbug::{Connection, Database, SystemConfig, Value};
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db =
+            Database::new(tmp.path().join("g").to_str().unwrap(), SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+
+        let d = def(&[("title", FieldType::String), ("count", FieldType::Int)]);
+        conn.query(&entity_table_ddl("md.obsidian.Note", &d).unwrap())
+            .expect("table DDL is valid");
+
+        let mut f1 = BTreeMap::new();
+        f1.insert("title".to_string(), serde_json::json!("First"));
+        f1.insert("count".to_string(), serde_json::json!(1));
+        conn.query(&build_upsert_cypher(
+            "md.obsidian.Note",
+            "n-1",
+            "md.obsidian",
+            &f1,
+            "2026-01-01T00:00:00Z",
+        ))
+        .expect("first upsert");
+
+        // Re-sync the SAME external key with new values: must update in place.
+        let mut f2 = BTreeMap::new();
+        f2.insert("title".to_string(), serde_json::json!("Second"));
+        f2.insert("count".to_string(), serde_json::json!(2));
+        conn.query(&build_upsert_cypher(
+            "md.obsidian.Note",
+            "n-1",
+            "md.obsidian",
+            &f2,
+            "2026-01-02T00:00:00Z",
+        ))
+        .expect("re-sync upsert");
+
+        let table = entity_table_name("md.obsidian.Note");
+        // Exactly one node (no duplicate on re-sync).
+        let mut c = conn
+            .query(&format!("MATCH (n:{table}) RETURN count(*) AS c"))
+            .unwrap();
+        assert!(matches!(c.next().unwrap()[0], Value::Int64(1)), "one node");
+
+        // Updated fields, bumped version, owner stamped on first insert.
+        let mut qr = conn
+            .query(&format!(
+                "MATCH (n:{table} {{id:'md.obsidian.Note:n-1'}}) \
+                 RETURN n.title, n.count, n._version, n._owner"
+            ))
+            .unwrap();
+        let r = qr.next().unwrap();
+        assert!(matches!(&r[0], Value::String(s) if s == "Second"));
+        assert!(matches!(r[1], Value::Int64(2)));
+        assert!(matches!(r[2], Value::Int64(2)), "version bumped to 2");
+        assert!(matches!(&r[3], Value::String(s) if s == "md.obsidian"));
+    }
+
+    #[test]
+    fn plan_entity_upsert_enforces_namespace_and_schema() {
+        use crate::token::{CapabilityToken, EntityScope, InstanceScope};
+
+        let mut reg = SchemaRegistry::new(vec![]);
+        reg.load_from_str(
+            "[meta]\nnamespace = \"md.obsidian\"\n\n[entities.Note]\n\
+             [entities.Note.fields.title]\ntype = \"string\"\n",
+        )
+        .unwrap();
+        // A token whose write scopes WOULD match all three types, so the
+        // namespace/system guards (not merely the scope check) are what reject.
+        let scope = |t: &str| EntityScope {
+            entity_type: t.to_string(),
+            fields: None,
+            exclude_fields: vec![],
+        };
+        let token = CapabilityToken::new(
+            "md.obsidian".into(),
+            1234,
+            vec![],
+            vec![
+                scope("md.obsidian.Note"),
+                scope("com.other.Note"),
+                scope("system.File"),
+            ],
+            vec![],
+            InstanceScope::Own,
+        );
+        let mut fields = HashMap::new();
+        fields.insert("title".to_string(), serde_json::json!("hi"));
+
+        // Own namespace, registered type, valid fields → planned.
+        assert!(plan_entity_upsert(&reg, &token, "md.obsidian.Note", "k1", fields.clone()).is_ok());
+        // system.* is structurally unwritable even with a matching scope.
+        assert!(plan_entity_upsert(&reg, &token, "system.File", "k1", fields.clone()).is_err());
+        // A foreign namespace is rejected by the namespace bound.
+        assert!(plan_entity_upsert(&reg, &token, "com.other.Note", "k1", fields.clone()).is_err());
+        // An empty external_key is rejected (no idempotency key).
+        assert!(plan_entity_upsert(&reg, &token, "md.obsidian.Note", "", fields.clone()).is_err());
+        // An unknown field for the registered type fails validation.
+        let mut bad = HashMap::new();
+        bad.insert("nope".to_string(), serde_json::json!("x"));
+        assert!(plan_entity_upsert(&reg, &token, "md.obsidian.Note", "k1", bad).is_err());
     }
 }
