@@ -25,6 +25,7 @@
   import { focusedController, toggleSplit } from "$lib/stores/panes";
   import { homePath } from "$lib/stores/places";
   import { initTopbar, shellPresent } from "$lib/stores/topbar";
+  import { initArlenTheme } from "@arlen/ui-kit/theme";
   import { onMount } from "svelte";
   import { infoOpen, pathEditing } from "$lib/stores/ui";
   import { closeSearch, searchOpen } from "$lib/stores/search";
@@ -34,6 +35,8 @@
 
   onMount(() => {
     void initTopbar();
+    // Live-reskin on a desktop-wide theme switch (GAP-20).
+    void initArlenTheme();
   });
 
   function toggleSearch() {

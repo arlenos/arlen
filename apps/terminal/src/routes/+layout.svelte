@@ -22,11 +22,14 @@
   import { newSession } from "$lib/stores/sessions";
   import { historyPaletteOpen } from "$lib/stores/history";
   import { initTopbar } from "$lib/topbar";
+  import { initArlenTheme } from "@arlen/ui-kit/theme";
 
   let { children } = $props();
 
   onMount(() => {
     void initTopbar();
+    // Live-reskin on a desktop-wide theme switch (GAP-20).
+    void initArlenTheme();
   });
 
   // The two global shortcuts (terminal.md §4): Ctrl+T opens a new
