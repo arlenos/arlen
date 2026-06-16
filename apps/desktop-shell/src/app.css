@@ -219,11 +219,32 @@
   background-color: color-mix(in srgb, var(--foreground) 55%, transparent);
 }
 
-/* bits-ui uses focus (not hover) for menu highlight, but pointer-enter
-   focus can be unreliable in WebKitGTK. Add explicit hover fallback. */
-[data-context-menu-item]:not([data-disabled]):hover {
-  background: var(--accent);
-  color: var(--accent-foreground);
+/* bits-ui highlights menu rows via focus, which it moves on pointer-enter
+   a step WebKitGTK fires unreliably, so hover often shows nothing. And in
+   the shell popover scope --accent is only 15% foreground, too faint to
+   read as a selection even when focus does land. Give every shell-rendered
+   menu row a clearly visible highlight on hover AND on bits-ui's own
+   `data-highlighted` state (both focus-independent), in the foreground
+   register. Apps render their own dropdowns in separate webviews, so this
+   only touches the topbar menu and the shell's context menus. */
+[data-slot="dropdown-menu-item"]:not([data-disabled]):hover,
+[data-slot="dropdown-menu-item"][data-highlighted],
+[data-slot="dropdown-menu-checkbox-item"]:not([data-disabled]):hover,
+[data-slot="dropdown-menu-checkbox-item"][data-highlighted],
+[data-slot="dropdown-menu-radio-item"]:not([data-disabled]):hover,
+[data-slot="dropdown-menu-radio-item"][data-highlighted],
+[data-slot="dropdown-menu-sub-trigger"]:hover,
+[data-slot="dropdown-menu-sub-trigger"][data-state="open"],
+[data-slot="context-menu-item"]:not([data-disabled]):hover,
+[data-slot="context-menu-item"][data-highlighted],
+[data-slot="context-menu-checkbox-item"]:not([data-disabled]):hover,
+[data-slot="context-menu-checkbox-item"][data-highlighted],
+[data-slot="context-menu-radio-item"]:not([data-disabled]):hover,
+[data-slot="context-menu-radio-item"][data-highlighted],
+[data-slot="context-menu-sub-trigger"]:hover,
+[data-slot="context-menu-sub-trigger"][data-state="open"] {
+  background-color: color-mix(in srgb, var(--foreground) 18%, transparent);
+  color: var(--foreground);
 }
 
 
