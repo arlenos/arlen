@@ -264,10 +264,11 @@
     width: 100%;
     /* The field is inset near the window's top-left corner, so its corners
        follow that corner concentrically: the window radius minus the inset.
-       The window radius arrives as --window-radius (theme); --radius-card is
-       the same default until that lands. The inset matches the sidebar's own
-       0.5rem padding, kept uniform on the top so the corner nests evenly. */
-    --container-radius: var(--window-radius, var(--radius-card));
+       The window radius is the theme's --radius-window (the frame radius);
+       --radius-card is the same default if it is ever absent. The inset
+       matches the sidebar's own 0.5rem padding, kept uniform on the top so
+       the corner nests evenly. */
+    --container-radius: var(--radius-window, var(--radius-card));
     --container-inset: 0.5rem;
     margin-top: 0.5rem;
   }
