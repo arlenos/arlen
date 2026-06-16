@@ -13,6 +13,7 @@
     "core:window:allow-unmaximize",
     "core:window:allow-is-maximized",
     "core:window:allow-close",
-    "core:window:allow-show"
+    "core:window:allow-show",
+    "arlen-shell:allow-theme-get"
   ]
 }
