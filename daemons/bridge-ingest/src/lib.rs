@@ -4,15 +4,19 @@
 //! (foreign-app-bridges.md). A bridge ships no code here — only declarative
 //! data (`entities.toml` + `bridge.toml`); this crate is the privileged side.
 //!
-//! Built so far: the `bridge.toml` schema + validation ([`bridge`]) and the
-//! pure message -> upsert-plan interpreter ([`interpret`]). The native-
-//! messaging stdio host (mutual id-pin transport) and the write of a plan
-//! through the macaroon-scoped app-tier entity-write socket are the next
-//! slices (see the daemon's coder report for the macaroon namespace-
-//! delegation dependency the shared-daemon write half rests on).
+//! Built so far: the `bridge.toml` schema + validation ([`bridge`]), the pure
+//! message -> upsert-plan interpreter ([`interpret`]), and the native-messaging
+//! stdio host ([`host`]: length-prefixed framing + the mutual-id-pin handshake +
+//! untrusted-message validation, routing each ingest to a [`host::PlanSink`]).
+//! The remaining slice is the real sink: writing a plan through the bridge's
+//! macaroon-scoped, origin-tagged app-tier entity-write socket - gated on the
+//! macaroon namespace-delegation in the knowledge write path (see the daemon's
+//! coder report; a bridge writes a namespace that is not its own app id).
 
 pub mod bridge;
+pub mod host;
 pub mod interpret;
 
 pub use bridge::{BridgeConfig, BridgeError, BridgeMeta, LinkRule, MapRule};
+pub use host::{serve, HostError, InboundMessage, OutboundMessage, PlanSink, MAX_FRAME};
 pub use interpret::{interpret_message, InterpretError, LinkPlan, UpsertPlan};
