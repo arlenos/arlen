@@ -10,4 +10,7 @@ edition = "2021"
 arlen-ai-core = { path = "../ai-core" }
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
+# Parses the enabled-skill set from ai.toml so both the agent and the
+# interactive daemon resolve enablement from the same source.
+toml = "0.8"
 thiserror = "2"
