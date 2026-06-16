@@ -14,7 +14,9 @@ use std::time::Instant;
 
 use arlen_terminal_core::blocks::BlockAssembler;
 use arlen_terminal_core::vt::VtEngine;
-use arlen_terminal_core::{stub, Block, HistoryFilters, Project, Session, SessionStatus};
+use arlen_terminal_core::{
+    stub, Block, GridSnapshot, HistoryFilters, Project, Session, SessionStatus,
+};
 use arlen_terminal_engine::PtyEngine;
 use tauri::State;
 
@@ -101,6 +103,20 @@ fn terminal_blocks(session_id: String, registry: State<Mutex<SessionRegistry>>) 
     let events = live.engine.drain_events();
     live.assembler.consume(&events, Instant::now());
     live.assembler.blocks()
+}
+
+/// A session's visible screen as text (terminal.md Option B): the webview renders
+/// this so command output appears without the compositor grid-subsurface. The UI
+/// polls it alongside `terminal_blocks`; a missing session yields an empty grid.
+#[tauri::command]
+fn terminal_grid(session_id: String, registry: State<Mutex<SessionRegistry>>) -> GridSnapshot {
+    let Ok(reg) = registry.lock() else {
+        return GridSnapshot::default();
+    };
+    reg.sessions
+        .get(&session_id)
+        .map(|live| live.engine.screen_snapshot())
+        .unwrap_or_default()
 }
 
 /// Feed input (keystrokes) to a session's shell PTY.
@@ -315,6 +331,7 @@ pub fn run() {
             frontend_log,
             terminal_sessions,
             terminal_blocks,
+            terminal_grid,
             terminal_input,
             terminal_new_session,
             terminal_history_search,
