@@ -1,0 +1,8 @@
+# Starting permission profile for GNOME Maps. Network is its function (map tiles
+# and search); it needs no media dirs and no Knowledge Graph access.
+[info]
+app_id = "org.gnome.Maps"
+tier = "third-party"
+
+[network]
+allow_all = true

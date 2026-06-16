@@ -1,0 +1,9 @@
+# Starting permission profile for Obsidian (a note vault). It works offline
+# against a local Documents vault, so no network by default (paid sync is a
+# deliberate opt-in); no Knowledge Graph access.
+[info]
+app_id = "md.obsidian.Obsidian"
+tier = "third-party"
+
+[filesystem]
+documents = true

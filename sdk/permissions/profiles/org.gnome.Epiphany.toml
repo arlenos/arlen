@@ -1,0 +1,11 @@
+# Starting permission profile for GNOME Web (Epiphany, a web browser). Broad
+# network is its function; it saves to Downloads. No graph.
+[info]
+app_id = "org.gnome.Epiphany"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

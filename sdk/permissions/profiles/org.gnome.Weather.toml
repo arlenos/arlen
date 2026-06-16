@@ -1,0 +1,8 @@
+# Starting permission profile for GNOME Weather. Network is its function (weather
+# data); no media dirs, no graph.
+[info]
+app_id = "org.gnome.Weather"
+tier = "third-party"
+
+[network]
+allow_all = true

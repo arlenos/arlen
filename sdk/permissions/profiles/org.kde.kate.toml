@@ -1,0 +1,8 @@
+# Starting permission profile for Kate (a text editor). Documents, no network,
+# no graph.
+[info]
+app_id = "org.kde.kate"
+tier = "third-party"
+
+[filesystem]
+documents = true
