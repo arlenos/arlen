@@ -112,6 +112,12 @@ impl ThemeState {
                 );
             }
         }
+        // Broadcast the resolved variables to the per-user runtime file so
+        // every other Arlen app's theme consumer live-reskins too, not just
+        // the shell's own webviews (GAP-20). The shell is the theme authority;
+        // this is its one-way broadcast. Best-effort: a write failure never
+        // blocks the in-app update.
+        write_theme_broadcast(&css);
         let _ = app.emit("arlen://theme-v2-changed", &css);
         Ok(css)
     }
@@ -136,6 +142,52 @@ impl ThemeState {
     /// Path watched by `start_appearance_watcher`.
     pub fn config_path(&self) -> &Path {
         &self.config_path
+    }
+}
+
+/// The per-user runtime path the shell broadcasts the resolved theme to, so
+/// every other Arlen app's theme consumer can read the live theme without
+/// re-resolving `appearance.toml` (GAP-20). Precedence matches
+/// `os_sdk::runtime` (the consumer side): the `ARLEN_THEME_BROADCAST`
+/// override, else `$XDG_RUNTIME_DIR/arlen/theme.json`, else
+/// `/run/arlen/theme.json`.
+fn theme_broadcast_path() -> PathBuf {
+    if let Ok(p) = std::env::var("ARLEN_THEME_BROADCAST") {
+        if !p.is_empty() {
+            return PathBuf::from(p);
+        }
+    }
+    if let Ok(dir) = std::env::var("XDG_RUNTIME_DIR") {
+        if !dir.is_empty() {
+            return PathBuf::from(dir).join("arlen").join("theme.json");
+        }
+    }
+    PathBuf::from("/run/arlen/theme.json")
+}
+
+/// Write the resolved CSS variables to the runtime broadcast file (atomic
+/// tmp + rename). Best-effort: any failure is logged and ignored, never
+/// fatal to the in-app theme update.
+fn write_theme_broadcast(css: &CssVariables) {
+    let path = theme_broadcast_path();
+    let json = match serde_json::to_vec(css) {
+        Ok(j) => j,
+        Err(e) => {
+            log::warn!("theme broadcast: serialize failed: {e}");
+            return;
+        }
+    };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let tmp = path.with_extension("json.tmp");
+    if let Err(e) = std::fs::write(&tmp, &json) {
+        log::warn!("theme broadcast: write {} failed: {e}", tmp.display());
+        return;
+    }
+    if let Err(e) = std::fs::rename(&tmp, &path) {
+        log::warn!("theme broadcast: rename to {} failed: {e}", path.display());
+        let _ = std::fs::remove_file(&tmp);
     }
 }
 
