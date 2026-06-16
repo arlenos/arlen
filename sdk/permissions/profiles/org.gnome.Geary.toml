@@ -1,0 +1,11 @@
+# Starting permission profile for Geary (an email client). Network (IMAP/SMTP)
+# is its function; attachments save to Downloads. No graph.
+[info]
+app_id = "org.gnome.Geary"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
