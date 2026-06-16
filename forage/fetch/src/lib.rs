@@ -1128,6 +1128,33 @@ mod tests {
         );
     }
 
+    #[test]
+    fn crate_name_and_version_validators_gate_url_safe_input() {
+        // The crate name/version are interpolated into the static.crates.io URL,
+        // so anything that could warp the URL (slashes, traversal, whitespace,
+        // out-of-charset bytes) or overrun the length cap must be rejected.
+        assert!(is_crate_name("serde"));
+        assert!(is_crate_name("serde_json"));
+        assert!(is_crate_name("tokio-util"));
+        assert!(is_crate_name(&"a".repeat(64)));
+        assert!(!is_crate_name(""));
+        assert!(!is_crate_name(&"a".repeat(65)));
+        for bad in ["ser/de", "ser de", "ser.de", "../evil"] {
+            assert!(!is_crate_name(bad), "{bad:?} is not a valid crate name");
+        }
+
+        assert!(is_crate_version("1.2.3"));
+        assert!(is_crate_version("1.0.0-rc.1"));
+        assert!(is_crate_version("1.0.0+build5"));
+        assert!(is_crate_version(&"1".repeat(64)));
+        assert!(!is_crate_version(""));
+        assert!(!is_crate_version(".."));
+        assert!(!is_crate_version(&"1".repeat(65)));
+        for bad in ["1.2.3/", "1 2", "1/../2", "1.2.3 "] {
+            assert!(!is_crate_version(bad), "{bad:?} is not a valid crate version");
+        }
+    }
+
     #[tokio::test]
     async fn github_release_pinned_sha_is_verified_and_stored() {
         let (_d, s) = store();
