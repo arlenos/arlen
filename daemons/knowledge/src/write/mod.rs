@@ -8,10 +8,12 @@
 
 mod create;
 mod delete;
+mod entity;
 mod update;
 mod validation;
 
 pub use create::*;
 pub use delete::*;
+pub use entity::*;
 pub use update::*;
 pub use validation::*;
