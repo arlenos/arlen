@@ -58,6 +58,26 @@ pub enum BlockBodyKind {
     Widget,
 }
 
+/// A point-in-time text view of the terminal screen: the visible grid as rows of
+/// plain text plus the geometry and cursor. The webview renders this so command
+/// output appears without the compositor grid-subsurface (terminal.md Option B,
+/// the portable path); the subsurface stays the later performance optimization.
+/// Cell styling (colour, bold) is a follow-up - the first cut carries text, which
+/// is what makes output show.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GridSnapshot {
+    /// Visible columns.
+    pub cols: u16,
+    /// Visible rows.
+    pub rows: u16,
+    /// One string per visible row, top to bottom (trailing blanks trimmed).
+    pub lines: Vec<String>,
+    /// Cursor row (0-based, from the top of the visible screen).
+    pub cursor_row: u16,
+    /// Cursor column (0-based).
+    pub cursor_col: u16,
+}
+
 /// The git state of a block's working directory, when it is a repository.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GitInfo {

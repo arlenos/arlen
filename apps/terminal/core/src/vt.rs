@@ -419,6 +419,14 @@ pub trait VtEngine {
     /// Take the structured events surfaced since the last drain. The host polls
     /// this on the low-rate `VtEvent` channel (§2.3), never the byte firehose.
     fn drain_events(&mut self) -> Vec<VtEvent>;
+
+    /// A snapshot of the visible screen as text, for the webview to render
+    /// (terminal.md Option B). The default is an empty grid, so an engine that
+    /// has no screen model (a mock, or the OSC-only path) is unaffected; the
+    /// concrete PTY engine overrides it from its VT parser.
+    fn screen_snapshot(&self) -> crate::GridSnapshot {
+        crate::GridSnapshot::default()
+    }
 }
 
 #[cfg(test)]
