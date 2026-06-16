@@ -775,17 +775,21 @@ async fn files_recent() -> Vec<RecentFile> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Publish the file-manager's global menu into the topbar via the
 /// `shell.menu` surface. The menu travels over the Event Bus (cross
+/// The bundle identifier, used both as the GTK program name (so the Wayland
+/// toplevel app_id is this, see [`run`]) and as the menu's publish key, so the
+/// shell's focused-window app_id matches the published menu (#2).
+const APP_ID: &str = "dev.arlen.files";
+
 /// process) to the desktop-shell's GlobalMenuBar, keyed by the app id, so
 /// it appears whenever a Files window is focused. The id must match the
-/// focused window's compositor `xdg_toplevel.app_id`. With
-/// `enableGTKAppId` set in `tauri.conf.json` the toolkit reports the
-/// bundle identifier as the toplevel app_id, so the fallback below is the
-/// real id by construction; `ARLEN_APP_ID` stays an override for a
-/// launcher that pins a different id.
+/// focused window's compositor `xdg_toplevel.app_id`, which `run` pins to
+/// [`APP_ID`] via the GTK program name (GTK3 ignores `enableGTKAppId` for the
+/// Wayland app_id). `ARLEN_APP_ID` stays an override for a launcher that pins
+/// a different id.
 async fn publish_app_menu() {
     use os_sdk::menu::{Menu, MenuGroup, MenuItem};
 
-    let app_id = std::env::var("ARLEN_APP_ID").unwrap_or_else(|_| "dev.arlen.files".to_string());
+    let app_id = std::env::var("ARLEN_APP_ID").unwrap_or_else(|_| APP_ID.to_string());
     let socket = os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock");
     let emitter = os_sdk::event::UnixEventEmitter::new(socket.to_string_lossy().into_owned());
     let menu = Menu::new(emitter, app_id);
@@ -850,6 +854,17 @@ async fn publish_app_menu() {
 
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
+    // Pin the GTK program name to the bundle id BEFORE GTK initialises. On
+    // webkit2gtk-4.1 (GTK3 - what the Tauri apps link) the Wayland
+    // `xdg_toplevel.app_id` is taken from `g_get_prgname()` (the binary name,
+    // `arlen-files`), NOT the GApplication id that `enableGTKAppId` sets - so
+    // without this the focused window presents `arlen-files` while the shell
+    // looks up the menu under the bundle id `dev.arlen.files`, and the topbar
+    // menu never matches/renders (#2). Setting prgname here makes the toplevel
+    // app_id the bundle id, which `enableGTKAppId` intended but cannot achieve
+    // on GTK3. `gtk_init` keeps an already-set prgname, so this wins.
+    glib::set_prgname(Some(APP_ID));
 
     tauri::Builder::default()
         .setup(|_app| {

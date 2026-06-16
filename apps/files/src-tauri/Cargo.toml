@@ -19,6 +19,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 log = "0.4"
 env_logger = "0.11"
+# Set the GTK program name to the bundle id before GTK init, so the Wayland
+# xdg_toplevel.app_id matches the published menu key (#2). webkit2gtk-4.1 is
+# GTK3, which takes the app_id from g_get_prgname(), not the GApplication id.
+glib = "0.18"
 # The shared file-browser core: real listing, sorting, breadcrumb,
 # properties, operations, trash and search. The host wraps each as a
 # thin command over a capability-scoped root.
