@@ -37,6 +37,10 @@ export const searchOpen = writable(false);
 export const searchQuery = writable("");
 export const searchType = writable<TypeFacet>("any");
 export const searchTime = writable<TimeFacet>("any");
+/// Whether the walk also matches inside file contents (the backend's
+/// `match_content`), not just names. Off by default — content search is the
+/// heavier walk, so the user opts in.
+export const searchContent = writable(false);
 /// null = no search ran yet; [] = ran and found nothing.
 export const searchResults = writable<SearchHit[] | null>(null);
 export const searchTruncated = writable(false);
@@ -121,7 +125,11 @@ export async function runSearch(path: string): Promise<void> {
     return;
   }
   try {
-    const outcome = await invoke<SearchOutcome>("files_search", { path, query });
+    const outcome = await invoke<SearchOutcome>("files_search", {
+      path,
+      query,
+      matchContent: get(searchContent),
+    });
     const now = Date.now() / 1000;
     searchResults.set(outcome.hits.filter((h) => passesFacets(h, now)));
     searchTruncated.set(outcome.truncated);

@@ -12,6 +12,7 @@
     closeSearch,
     queueSearch,
     runSearch,
+    searchContent,
     searchOpen,
     searchQuery,
     searchTime,
@@ -93,6 +94,18 @@
       }}
     />
     <button
+      class="sb-toggle"
+      class:active={$searchContent}
+      aria-pressed={$searchContent}
+      title="Also search inside file contents"
+      onclick={() => {
+        searchContent.update((v) => !v);
+        void runSearch(path);
+      }}
+    >
+      Contents
+    </button>
+    <button
       class="sb-save"
       disabled={$searchQuery.trim().length === 0}
       onclick={() => onsave?.($searchQuery.trim())}
@@ -133,6 +146,27 @@
   }
   .sb-save:disabled {
     opacity: var(--control-disabled-opacity, 0.5);
+  }
+
+  .sb-toggle {
+    flex-shrink: 0;
+    height: var(--height-control, 28px);
+    padding: 0 12px;
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-input);
+    background: var(--control-bg);
+    color: var(--foreground);
+    font-size: 0.75rem;
+    font-weight: 500;
+    transition: background-color var(--duration-fast, 150ms) var(--ease-out, ease);
+  }
+  .sb-toggle:hover {
+    background: var(--control-bg-hover);
+  }
+  .sb-toggle.active {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-accent-foreground, #fff);
   }
 
   .sb-close {
