@@ -20,6 +20,7 @@ use arlen_file_browser_core::{
 use cap_std::ambient_authority;
 use cap_std::fs::Dir;
 use serde::Serialize;
+use tauri::Emitter;
 
 /// Whether the app runs under the Arlen shell (the event-bus socket
 /// exists): the UI then leaves its chrome to the global topbar and
@@ -852,6 +853,44 @@ async fn publish_app_menu() {
     }
 }
 
+/// Forwarded to the webview as `arlen://menu-action` when the user
+/// clicks a topbar menu item. The frontend maps `action` to the
+/// matching file-manager operation.
+#[derive(Clone, Serialize)]
+struct MenuActionEvent {
+    action: String,
+}
+
+/// Receive topbar-menu clicks and forward them into this app's webview.
+///
+/// The menu is published into the topbar over the Event Bus
+/// ([`publish_app_menu`]); the shell publishes the clicked action back
+/// onto the bus as `app.menu.action_invoked`. We subscribe to that
+/// back-channel (filtered to our own app_id by the SDK) and re-emit
+/// each action as a Tauri event the frontend handles (#2b). Best-effort:
+/// if the bus is unreachable the menu simply stays inert, like the
+/// publish side.
+async fn run_menu_action_listener(app: tauri::AppHandle) {
+    let app_id = std::env::var("ARLEN_APP_ID").unwrap_or_else(|_| APP_ID.to_string());
+    let socket =
+        os_sdk::runtime::socket_path("ARLEN_CONSUMER_SOCKET", "event-bus-consumer.sock");
+    let consumer = os_sdk::event_consumer::UnixEventConsumer::new(
+        socket.to_string_lossy().into_owned(),
+    );
+    let mut actions = match os_sdk::menu::subscribe_menu_actions(&consumer, app_id).await {
+        Ok(rx) => rx,
+        Err(e) => {
+            log::warn!("menu-action channel unavailable: {e}");
+            return;
+        }
+    };
+    while let Some(action) = actions.recv().await {
+        if let Err(e) = app.emit("arlen://menu-action", MenuActionEvent { action }) {
+            log::warn!("forwarding a menu action to the webview failed: {e}");
+        }
+    }
+}
+
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
@@ -867,10 +906,13 @@ pub fn run() {
     glib::set_prgname(Some(APP_ID));
 
     tauri::Builder::default()
-        .setup(|_app| {
+        .setup(|app| {
             // Publish the global menu once the app is up; it routes over the
             // Event Bus to the shell topbar (cross-process).
             tauri::async_runtime::spawn(publish_app_menu());
+            // Receive topbar-menu clicks back from the shell and forward them
+            // into the webview so the frontend runs the operation (#2b).
+            tauri::async_runtime::spawn(run_menu_action_listener(app.handle().clone()));
             Ok(())
         })
         .plugin(tauri_plugin_arlen_shell::init())
