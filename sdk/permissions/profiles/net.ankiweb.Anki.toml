@@ -1,0 +1,9 @@
+# Starting permission profile for Anki (flashcards). Decks and media live under
+# Documents; no network by default (AnkiWeb sync is a deliberate opt-in). No
+# graph.
+[info]
+app_id = "net.ankiweb.Anki"
+tier = "third-party"
+
+[filesystem]
+documents = true
