@@ -141,4 +141,33 @@ mod tests {
         let json = serde_json::to_string(&s).unwrap();
         assert_eq!(serde_json::from_str::<CapsuleScope>(&json).unwrap(), s);
     }
+
+    #[test]
+    fn multiple_roots_merge_their_reachable_sets() {
+        // Two roots with disjoint subtrees; the manifest is the union.
+        let g = graph(&[("p", &["f1"]), ("q", &["g1"])]);
+        assert_eq!(
+            expand_scope(&scope(&["p", "q"], 1), &g),
+            set(&["p", "q", "f1", "g1"])
+        );
+    }
+
+    #[test]
+    fn hops_beyond_the_graph_saturate_and_terminate() {
+        // A deep chain with a huge hop count must terminate (the frontier empties)
+        // at exactly the reachable set, never looping or over-including. This is the
+        // termination bound for a hostile expand_hops on a finite graph.
+        let g = graph(&[("a", &["b"]), ("b", &["c"]), ("c", &["d"])]);
+        assert_eq!(
+            expand_scope(&scope(&["a"], 1_000_000), &g),
+            set(&["a", "b", "c", "d"])
+        );
+    }
+
+    #[test]
+    fn an_isolated_root_expands_to_only_itself() {
+        // A root with no outgoing edges stays a singleton even at many hops.
+        let g = graph(&[("other", &["x"])]);
+        assert_eq!(expand_scope(&scope(&["lonely"], 5), &g), set(&["lonely"]));
+    }
 }
