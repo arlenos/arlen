@@ -1,0 +1,8 @@
+# Starting permission profile for Proton VPN. Network is its function; no media
+# dirs, no graph.
+[info]
+app_id = "com.protonvpn.www"
+tier = "third-party"
+
+[network]
+allow_all = true

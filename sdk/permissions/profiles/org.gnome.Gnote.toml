@@ -1,0 +1,8 @@
+# Starting permission profile for Gnote (note-taking). Documents, no network, no
+# graph.
+[info]
+app_id = "org.gnome.Gnote"
+tier = "third-party"
+
+[filesystem]
+documents = true

@@ -1,0 +1,8 @@
+# Starting permission profile for Metadata Cleaner (strips file metadata).
+# Operates on the user's files under Documents; no network, no graph.
+[info]
+app_id = "fr.romainvigier.MetadataCleaner"
+tier = "third-party"
+
+[filesystem]
+documents = true

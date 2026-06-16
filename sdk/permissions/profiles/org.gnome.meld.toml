@@ -1,0 +1,8 @@
+# Starting permission profile for Meld (a diff and merge tool). Documents, no
+# network, no graph.
+[info]
+app_id = "org.gnome.meld"
+tier = "third-party"
+
+[filesystem]
+documents = true

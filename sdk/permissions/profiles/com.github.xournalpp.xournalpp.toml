@@ -1,0 +1,8 @@
+# Starting permission profile for Xournal++ (handwritten notes and PDF
+# annotation). Documents, no network, no graph.
+[info]
+app_id = "com.github.xournalpp.xournalpp"
+tier = "third-party"
+
+[filesystem]
+documents = true
