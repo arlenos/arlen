@@ -323,6 +323,29 @@ fn resolve_status(
     }
 }
 
+/// The canonical behaviour-source search path in precedence order: the system
+/// behaviours directory, then the user directory. In debug builds an
+/// `ARLEN_AGENT_BEHAVIOURS` directory is appended as a stand-in for the
+/// not-yet-installed system directory; it is compiled out of release builds so
+/// an environment variable can never inject built-in-provenance behaviours into
+/// a deployed system.
+///
+/// Shared (not agent-private) so both the autonomous agent and the interactive
+/// daemon discover skills from the same locations.
+pub fn behaviour_sources() -> Vec<BehaviourSource> {
+    let mut sources = vec![BehaviourSource::builtin("/usr/share/arlen/agent/behaviours")];
+    if let Ok(home) = std::env::var("HOME") {
+        sources.push(BehaviourSource::user(format!(
+            "{home}/.local/share/arlen/agent/behaviours"
+        )));
+    }
+    #[cfg(debug_assertions)]
+    if let Ok(dir) = std::env::var("ARLEN_AGENT_BEHAVIOURS") {
+        sources.push(BehaviourSource::builtin(dir));
+    }
+    sources
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -348,6 +371,16 @@ mod tests {
         assert!(
             !resolve_status("auto-tag-by-project", Provenance::BuiltIn, &BTreeMap::new())
                 .is_enabled()
+        );
+    }
+
+    #[test]
+    fn behaviour_sources_always_includes_the_builtin_system_dir_first() {
+        let sources = behaviour_sources();
+        assert_eq!(sources[0].provenance, Provenance::BuiltIn);
+        assert_eq!(
+            sources[0].root,
+            std::path::PathBuf::from("/usr/share/arlen/agent/behaviours")
         );
     }
 

@@ -1,37 +1,17 @@
 //! Behaviour discovery wiring: the agent's concrete search paths, its
 //! config-file location, and the configured-load entry point.
 //!
-//! The discovery *mechanism* (stamping provenance, resolving enablement,
-//! fail-soft loading) lives in the shared [`arlen_ai_skills::loader`]; this
-//! module supplies the agent-specific inputs — where behaviours are
-//! installed, where `ai.toml` is, and how enablement is read from the
-//! agent's [`AgentConfig`] — which the shared crate must not depend on.
+//! The discovery *mechanism* (the behaviour search paths, stamping provenance,
+//! resolving enablement, fail-soft loading) lives in the shared
+//! [`arlen_ai_skills::loader`]; this module supplies the agent-specific inputs
+//! the shared crate must not depend on — where `ai.toml` is and how enablement
+//! is read from the agent's [`AgentConfig`].
 
 use std::path::PathBuf;
 
-use arlen_ai_skills::loader::{load, BehaviourSource, LoadOutcome};
+use arlen_ai_skills::loader::{behaviour_sources, load, LoadOutcome};
 
 use crate::config::AgentConfig;
-
-/// The canonical behaviour-source search path in precedence order: the system
-/// behaviours directory, then the user directory. In debug builds an
-/// `ARLEN_AGENT_BEHAVIOURS` directory is appended as a stand-in for the
-/// not-yet-installed system directory; it is compiled out of release builds so
-/// an environment variable can never inject built-in-provenance behaviours into
-/// a deployed system.
-pub fn behaviour_sources() -> Vec<BehaviourSource> {
-    let mut sources = vec![BehaviourSource::builtin("/usr/share/arlen/agent/behaviours")];
-    if let Ok(home) = std::env::var("HOME") {
-        sources.push(BehaviourSource::user(format!(
-            "{home}/.local/share/arlen/agent/behaviours"
-        )));
-    }
-    #[cfg(debug_assertions)]
-    if let Ok(dir) = std::env::var("ARLEN_AGENT_BEHAVIOURS") {
-        sources.push(BehaviourSource::builtin(dir));
-    }
-    sources
-}
 
 /// Path of the agent's TOML config: the `ARLEN_AI_CONFIG` override, else
 /// `~/.config/arlen/ai.toml`.
