@@ -734,4 +734,45 @@ mod tests {
         // The published object is intact (read verifies the address).
         assert_eq!(s.read(&hashes[0]).unwrap(), payload);
     }
+
+    #[test]
+    fn content_hash_normalizes_case_and_round_trips() {
+        let h = ContentHash::of(b"data");
+        // `of` yields 64 lowercase hex.
+        assert_eq!(h.as_str().len(), 64);
+        assert!(h.as_str().bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)));
+        // Parsing its own string round-trips.
+        assert_eq!(ContentHash::parse(h.as_str()).unwrap(), h);
+        // The uppercase spelling is the same address (parse lowercases).
+        assert_eq!(ContentHash::parse(&h.as_str().to_ascii_uppercase()).unwrap(), h);
+        // 64 non-hex chars and a 65-char hex string are both rejected.
+        assert!(ContentHash::parse(&"g".repeat(64)).is_err());
+        assert!(ContentHash::parse(&"a".repeat(65)).is_err());
+    }
+
+    #[test]
+    fn validate_owner_rejects_dot_and_nul_accepts_reverse_dns() {
+        let (_d, s) = store();
+        let h = s.put(b"obj").unwrap();
+        // The single-dot and embedded-NUL branches (not hit by the existing test).
+        for bad in [".", "x\0y"] {
+            assert!(
+                matches!(s.add_ref(&h, bad), Err(StoreError::InvalidOwner(_))),
+                "{bad:?} must be an invalid owner"
+            );
+        }
+        // A reverse-DNS owner with hyphen/underscore/dot is accepted.
+        assert!(s.add_ref(&h, "org.example.app-v2_beta").is_ok());
+        assert_eq!(s.refcount(&h).unwrap(), 1);
+    }
+
+    #[test]
+    fn release_of_an_unreferenced_owner_returns_zero() {
+        let (_d, s) = store();
+        let h = s.put(b"obj").unwrap();
+        s.add_ref(&h, "org.example.app").unwrap();
+        // Releasing an owner that holds no refs removes nothing.
+        assert_eq!(s.release("org.example.never").unwrap(), 0);
+        assert_eq!(s.refcount(&h).unwrap(), 1);
+    }
 }
