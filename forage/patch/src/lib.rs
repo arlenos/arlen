@@ -446,4 +446,147 @@ mod tests {
             other => panic!("expected TooLarge, got {other:?}"),
         }
     }
+
+    #[test]
+    fn strip_one_drops_the_leading_component() {
+        assert_eq!(strip_one("a/file"), Some(PathBuf::from("file")));
+        assert_eq!(strip_one("b/sub/file"), Some(PathBuf::from("sub/file")));
+        assert_eq!(strip_one("/dev/null"), None);
+        assert_eq!(strip_one("nosep"), None);
+        assert_eq!(strip_one("a/"), None);
+    }
+
+    #[test]
+    fn contained_join_rejects_escapes() {
+        let root = Path::new("/root");
+        assert_eq!(contained_join(root, Path::new("a/b")), Some(PathBuf::from("/root/a/b")));
+        assert_eq!(contained_join(root, Path::new("a/./b")), Some(PathBuf::from("/root/a/./b")));
+        assert_eq!(contained_join(root, Path::new("../x")), None);
+        assert_eq!(contained_join(root, Path::new("a/../b")), None);
+        assert_eq!(contained_join(root, Path::new("/abs")), None);
+    }
+
+    #[test]
+    fn header_path_trims_tab_timestamp_and_prefix() {
+        assert_eq!(
+            header_path("--- a/hello.txt\t2024-01-01 12:00", "--- "),
+            Some("a/hello.txt".to_string())
+        );
+        assert_eq!(header_path("+++ b/x.txt", "+++ "), Some("b/x.txt".to_string()));
+        // Wrong prefix yields nothing.
+        assert_eq!(header_path("--- a/x", "+++ "), None);
+        // Empty/whitespace-only path yields nothing.
+        assert_eq!(header_path("--- ", "--- "), None);
+        assert_eq!(header_path("---  \t", "--- "), None);
+    }
+
+    #[test]
+    fn is_hunk_line_classifies_body_vs_preamble() {
+        for hunk in ["@@ -1 +1 @@", " context", "+added", "-removed", "\\ No newline"] {
+            assert!(is_hunk_line(hunk), "`{hunk}` should be a hunk line");
+        }
+        for other in ["diff --git a/x b/x", "index 1..2 100644", ""] {
+            assert!(!is_hunk_line(other), "`{other}` should not be a hunk line");
+        }
+    }
+
+    #[test]
+    fn split_file_diffs_separates_files_and_drops_preamble() {
+        let text = "diff --git a/a.txt b/a.txt\nindex 1..2 100644\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+A\ndiff --git a/b.txt b/b.txt\n--- a/b.txt\n+++ b/b.txt\n@@ -1 +1 @@\n-b\n+B\n";
+        let chunks = split_file_diffs(text);
+        assert_eq!(chunks.len(), 2);
+        assert!(chunks[0].starts_with("--- a/a.txt\n+++ b/a.txt"));
+        assert!(chunks[1].starts_with("--- a/b.txt\n+++ b/b.txt"));
+        assert!(!chunks[0].contains("diff --git"));
+        assert!(split_file_diffs("").is_empty());
+    }
+
+    #[test]
+    fn rejects_a_non_utf8_patch_file() {
+        let src = tempfile::tempdir().unwrap();
+        let recipe = tempfile::tempdir().unwrap();
+        std::fs::write(recipe.path().join("bin.patch"), [0xff, 0xfe, 0x00, 0x01]).unwrap();
+        let patches = vec![PathBuf::from("bin.patch")];
+        match apply_patches(src.path(), recipe.path(), &patches, &PatchLimits::default()) {
+            Err(PatchError::NotUtf8(_)) => {}
+            other => panic!("expected NotUtf8, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_a_non_utf8_target_file() {
+        let src = tempfile::tempdir().unwrap();
+        let recipe = tempfile::tempdir().unwrap();
+        std::fs::write(src.path().join("blob.bin"), [0xff, 0xfe, 0x00]).unwrap();
+        let diff = "--- a/blob.bin\n+++ b/blob.bin\n@@ -1 +1 @@\n-x\n+y\n";
+        let patches = vec![write_patch(recipe.path(), "p.patch", diff)];
+        match apply_patches(src.path(), recipe.path(), &patches, &PatchLimits::default()) {
+            Err(PatchError::Malformed { .. }) => {}
+            other => panic!("expected Malformed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_a_malformed_hunk() {
+        let src = tempfile::tempdir().unwrap();
+        let recipe = tempfile::tempdir().unwrap();
+        write(src.path(), "f.txt", "a\n");
+        let diff = "--- a/f.txt\n+++ b/f.txt\n@@ this is not a hunk header @@\n+x\n";
+        let patches = vec![write_patch(recipe.path(), "bad.patch", diff)];
+        match apply_patches(src.path(), recipe.path(), &patches, &PatchLimits::default()) {
+            Err(PatchError::Malformed { .. }) => {}
+            other => panic!("expected Malformed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_patched_output_over_the_file_cap() {
+        // Created-file path: base is empty, so the post-apply size check (not
+        // read_capped) is what must reject the oversized result.
+        let src = tempfile::tempdir().unwrap();
+        let recipe = tempfile::tempdir().unwrap();
+        let diff = "--- /dev/null\n+++ b/big.txt\n@@ -0,0 +1,1 @@\n+0123456789\n";
+        let patches = vec![write_patch(recipe.path(), "add.patch", diff)];
+        let limits = PatchLimits {
+            max_patch_bytes: 1 << 20,
+            max_file_bytes: 4,
+        };
+        match apply_patches(src.path(), recipe.path(), &patches, &limits) {
+            Err(PatchError::TooLarge { .. }) => {}
+            other => panic!("expected TooLarge, got {other:?}"),
+        }
+        assert!(!src.path().join("big.txt").exists());
+    }
+
+    #[test]
+    fn applies_patches_in_declared_order() {
+        let src = tempfile::tempdir().unwrap();
+        let recipe = tempfile::tempdir().unwrap();
+        write(src.path(), "v.txt", "one\n");
+        let first = write_patch(
+            recipe.path(),
+            "1.patch",
+            "--- a/v.txt\n+++ b/v.txt\n@@ -1 +1 @@\n-one\n+two\n",
+        );
+        let second = write_patch(
+            recipe.path(),
+            "2.patch",
+            "--- a/v.txt\n+++ b/v.txt\n@@ -1 +1 @@\n-two\n+three\n",
+        );
+        apply_patches(src.path(), recipe.path(), &[first, second], &PatchLimits::default()).unwrap();
+        assert_eq!(std::fs::read_to_string(src.path().join("v.txt")).unwrap(), "three\n");
+    }
+
+    #[test]
+    fn creates_a_file_in_a_new_subdirectory() {
+        let src = tempfile::tempdir().unwrap();
+        let recipe = tempfile::tempdir().unwrap();
+        let diff = "--- /dev/null\n+++ b/sub/dir/n.txt\n@@ -0,0 +1,1 @@\n+nested\n";
+        let patches = vec![write_patch(recipe.path(), "nest.patch", diff)];
+        apply_patches(src.path(), recipe.path(), &patches, &PatchLimits::default()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(src.path().join("sub/dir/n.txt")).unwrap(),
+            "nested\n"
+        );
+    }
 }
