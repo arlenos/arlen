@@ -655,6 +655,34 @@ graph = ["delete:File"]
     }
 
     #[test]
+    fn empty_graph_scope_type_is_rejected_and_whitespace_is_trimmed() {
+        // An empty type after the colon is malformed (the `read:`/`read: ` branch
+        // the existing missing-colon and unknown-prefix cases do not exercise).
+        for bad in ["read:", "read: ", "write:"] {
+            let recipe = recipe_with_caps(&format!("[capabilities]\ngraph = [\"{bad}\"]\n"));
+            assert!(
+                matches!(
+                    synthesize_manifest(&recipe, &collection()),
+                    Err(ManifestError::MalformedGraphCapability(_))
+                ),
+                "{bad:?} must be malformed"
+            );
+        }
+        // Surrounding whitespace on the prefix and type is trimmed, so a padded
+        // but otherwise valid scope maps cleanly.
+        let padded = recipe_with_caps("[capabilities]\ngraph = [\" read : File \"]\n");
+        let toml = synthesize_manifest(&padded, &collection()).unwrap();
+        let parsed: toml::Value = toml::from_str(&toml).unwrap();
+        let read: Vec<&str> = parsed["permissions"]["graph_read"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(read, vec!["File"]);
+    }
+
+    #[test]
     fn github_release_recipe_gets_placeholder_version() {
         // No version on a release recipe; installd requires a non-empty one.
         let toml = r#"
