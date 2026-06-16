@@ -18,6 +18,7 @@
 pub mod active_project;
 pub mod authz;
 pub mod config_watch;
+pub mod skill_route;
 pub mod graph_adapter;
 pub mod mcp_discovery;
 pub mod peer;

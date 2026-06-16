@@ -98,6 +98,7 @@ dependencies = [
  "arlen-ai-core",
  "arlen-ai-explanation",
  "arlen-ai-providers",
+ "arlen-ai-skills",
  "arlen-permissions",
  "async-trait",
  "audit-proto",
@@ -187,6 +188,7 @@ dependencies = [
  "serde",
  "serde_yaml",
  "thiserror 2.0.18",
+ "toml",
 ]
 
 [[package]]
