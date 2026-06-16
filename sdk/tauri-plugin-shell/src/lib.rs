@@ -41,6 +41,7 @@
 /// variable before constructing the Tauri builder.
 
 mod commands;
+pub mod theme;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -191,6 +192,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::badges_clear,
             commands::ambient_set,
             commands::ambient_clear,
+            theme::theme_get,
         ])
         .setup(|app, _api| {
             // Default the bus identity to the app's bundle identifier (the
@@ -199,6 +201,11 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             let state = ShellState::new(&app.config().identifier);
             spawn_action_invoked_consumer(app, &state);
             app.manage(state);
+            // Watch the shell's theme broadcast so this app live-reskins on a
+            // theme switch (GAP-20). The frontend `initArlenTheme()` primitive
+            // injects the initial theme via `theme_get` + listens for
+            // `arlen://theme-v2-changed`, which this watcher emits.
+            theme::spawn_theme_watcher(app.app_handle().clone());
             Ok(())
         })
         .on_event(|app, event| {

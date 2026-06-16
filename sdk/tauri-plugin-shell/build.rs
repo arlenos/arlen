@@ -22,6 +22,7 @@ fn main() {
         "badges_clear",
         "ambient_set",
         "ambient_clear",
+        "theme_get",
     ])
     .build();
 }

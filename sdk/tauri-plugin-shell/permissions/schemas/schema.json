@@ -499,6 +499,18 @@
           "markdownDescription": "Denies the spatial_hint command without any pre-configured scope."
         },
         {
+          "description": "Enables the theme_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-theme-get",
+          "markdownDescription": "Enables the theme_get command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the theme_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-theme-get",
+          "markdownDescription": "Denies the theme_get command without any pre-configured scope."
+        },
+        {
           "description": "Enables the timeline_record command without any pre-configured scope.",
           "type": "string",
           "const": "allow-timeline-record",
