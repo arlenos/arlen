@@ -18,6 +18,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use arlen_terminal_core::vt::{OscScanner, VtEngine, VtEvent};
+use arlen_terminal_core::GridSnapshot;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 
 /// The environment variable the engine sets to the per-session nonce. The shell
@@ -50,6 +51,10 @@ pub struct PtyEngine {
     writer: Box<dyn Write + Send>,
     child: Box<dyn Child + Send + Sync>,
     events: Arc<Mutex<Vec<VtEvent>>>,
+    /// The visible-screen VT model, fed the same PTY byte stream the scanner
+    /// reads. The host snapshots it ([`PtyEngine::screen_snapshot`]) to render
+    /// output in the webview (terminal.md Option B).
+    screen: Arc<Mutex<vt100::Parser>>,
     reader: Option<JoinHandle<()>>,
 }
 
@@ -117,6 +122,12 @@ impl PtyEngine {
 
         let events = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&events);
+        // The screen model gets the SAME byte stream the scanner does: the
+        // scanner lifts the low-rate OSC marks, the parser builds the visible
+        // grid the webview renders. No scrollback for now (the visible screen
+        // is what shows); scrollback is a later addition.
+        let screen = Arc::new(Mutex::new(vt100::Parser::new(rows, cols, 0)));
+        let screen_sink = Arc::clone(&screen);
         let reader_handle = std::thread::Builder::new()
             .name("arlen-pty-reader".into())
             .spawn(move || {
@@ -128,6 +139,9 @@ impl PtyEngine {
                         // EIO when the slave goes away). Either ends the loop.
                         Ok(0) | Err(_) => break,
                         Ok(n) => {
+                            if let Ok(mut p) = screen_sink.lock() {
+                                p.process(&buf[..n]);
+                            }
                             let evs = scanner.feed(&buf[..n]);
                             if !evs.is_empty() {
                                 if let Ok(mut q) = sink.lock() {
@@ -144,6 +158,7 @@ impl PtyEngine {
             writer,
             child,
             events,
+            screen,
             reader: Some(reader_handle),
         })
     }
@@ -156,6 +171,11 @@ impl VtEngine for PtyEngine {
     }
 
     fn resize(&mut self, cols: u16, rows: u16) -> std::io::Result<()> {
+        // Keep the screen model's geometry in step with the PTY so wrapping and
+        // the cursor stay correct after a resize.
+        if let Ok(mut p) = self.screen.lock() {
+            p.set_size(rows, cols);
+        }
         self.master
             .resize(PtySize {
                 rows,
@@ -171,6 +191,29 @@ impl VtEngine for PtyEngine {
             .lock()
             .map(|mut q| std::mem::take(&mut *q))
             .unwrap_or_default()
+    }
+
+    fn screen_snapshot(&self) -> GridSnapshot {
+        self.screen
+            .lock()
+            .map(|p| snapshot_of(&p))
+            .unwrap_or_default()
+    }
+}
+
+/// Read a VT parser's visible screen into a [`GridSnapshot`]. Free so the
+/// snapshot shape is unit-testable without a PTY.
+fn snapshot_of(parser: &vt100::Parser) -> GridSnapshot {
+    let screen = parser.screen();
+    let (rows, cols) = screen.size();
+    let lines = screen.rows(0, cols).collect();
+    let (cursor_row, cursor_col) = screen.cursor_position();
+    GridSnapshot {
+        cols,
+        rows,
+        lines,
+        cursor_row,
+        cursor_col,
     }
 }
 
@@ -209,6 +252,24 @@ mod tests {
         assert_eq!(a.len(), 32);
         assert!(a.bytes().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(a, b, "each session gets a fresh nonce");
+    }
+
+    #[test]
+    fn snapshot_reads_processed_output_as_text_rows() {
+        // The snapshot is what the webview renders (Option B). Feed the parser
+        // ordinary output - the same bytes the PTY reader hands it - and read
+        // the visible grid back as text rows + cursor.
+        let mut parser = vt100::Parser::new(4, 20, 0);
+        parser.process(b"hello\r\nworld");
+        let snap = snapshot_of(&parser);
+        assert_eq!(snap.rows, 4);
+        assert_eq!(snap.cols, 20);
+        assert_eq!(snap.lines.len(), 4);
+        assert_eq!(snap.lines[0].trim_end(), "hello");
+        assert_eq!(snap.lines[1].trim_end(), "world");
+        // The cursor sits just after "world" on the second row.
+        assert_eq!(snap.cursor_row, 1);
+        assert_eq!(snap.cursor_col, 5);
     }
 
     /// On-host (needs a PTY + `/bin/sh`): a program that emits an OSC 133;A mark
