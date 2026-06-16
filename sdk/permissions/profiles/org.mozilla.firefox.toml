@@ -1,0 +1,14 @@
+# Starting permission profile for Mozilla Firefox (a web browser).
+# Conservative first cut; observe-mode refines it. A browser's function is the
+# open web, so it gets broad network; it saves to Downloads. No Knowledge Graph
+# access. Its own config dir (~/.mozilla) is a launcher/enrollment grant, not a
+# blanket home grant here.
+[info]
+app_id = "org.mozilla.firefox"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
