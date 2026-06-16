@@ -1,0 +1,11 @@
+# Starting permission profile for qBittorrent (BitTorrent client). Network is its
+# function (peers/trackers); completed transfers land in Downloads.
+[info]
+app_id = "org.qbittorrent.qBittorrent"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
