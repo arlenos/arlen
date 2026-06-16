@@ -157,7 +157,7 @@
             </button>
           {/snippet}
         </Trigger>
-        <Content sideOffset={4} class="menubar-content shell-popover {hasChecks(group.items) ? 'menu-checks' : ''}">
+        <Content sideOffset={4} portalProps={{ disabled: true }} class="menubar-content shell-popover {hasChecks(group.items) ? 'menu-checks' : ''}">
           {@render menuItems(group.items)}
         </Content>
       </Root>
