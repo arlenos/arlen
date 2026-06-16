@@ -35,11 +35,36 @@ isolates a render bug ("the component never paints") from a backend-wiring bug
 ("the data never arrives"). Tauri `invoke`/event APIs are absent in this mode,
 so guard frontend code with a `tauriAvailable` check (the apps already do).
 
+## Render a full Tauri app (Rust backend + webview together)
+
+```sh
+dev/screenshot/shoot-app.sh <app-binary> <out.png> [type-text]
+```
+
+Launches the REAL app through `tauri-driver` under `Xvfb` and screenshots it, so
+it verifies the whole thing - IPC + render - not just the frontend. `[type-text]`
+is typed into the app's first text input and submitted with Enter (e.g. a
+terminal command), so its output renders before the shot.
+
+The binary must serve its frontend. A debug `cargo build` targets the dev server
+(`devUrl`), so run the app's `npm run dev` first; a `cargo build --release`
+embeds `frontendDist` and runs standalone. Example - the terminal showing a
+command's output:
+
+```sh
+(cd apps/terminal && npm run dev &)        # debug binary loads localhost:1425
+dev/screenshot/shoot-app.sh \
+  apps/terminal/src-tauri/target/debug/arlen-terminal /tmp/term.png "echo hi"
+```
+
+Requires `tauri-driver` (`cargo install tauri-driver`) in addition to
+`WebKitWebDriver` + `Xvfb`.
+
 ## What this does NOT cover
 
 - The **desktop-shell** is a Wayland layer-shell surface coupled to the
   compositor; its window state (focused app, the topbar menu's `activeWindow`)
-  comes from the compositor over Wayland, so a webview-only shot cannot
-  reproduce that correlation - it needs the full stack (compositor + shell)
-  running, captured via Layer 1a (compositor render-readback) or on metal.
-- Full Tauri app (Rust backend + webview together): the `tauri-driver` variant.
+  comes from the compositor over Wayland, so neither a webview-only shot nor the
+  tauri-driver variant can reproduce that correlation - it needs the full stack
+  (compositor + shell) running, captured via Layer 1a (compositor
+  render-readback) or on metal.
