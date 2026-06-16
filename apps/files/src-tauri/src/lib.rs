@@ -743,10 +743,89 @@ async fn files_recent() -> Vec<RecentFile> {
 
 /// Tauri application entry point invoked from `main.rs`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Publish the file-manager's global menu into the topbar via the
+/// `shell.menu` surface. The menu travels over the Event Bus (cross
+/// process) to the desktop-shell's GlobalMenuBar, keyed by the app id, so
+/// it appears whenever a Files window is focused. The id must match the
+/// focused window's compositor `xdg_toplevel.app_id`; it is taken from
+/// `ARLEN_APP_ID` (the launcher sets it to the real toplevel id) and falls
+/// back to the bundle identifier.
+async fn publish_app_menu() {
+    use os_sdk::menu::{Menu, MenuGroup, MenuItem};
+
+    let app_id = std::env::var("ARLEN_APP_ID").unwrap_or_else(|_| "dev.arlen.files".to_string());
+    let socket = os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock");
+    let emitter = os_sdk::event::UnixEventEmitter::new(socket.to_string_lossy().into_owned());
+    let menu = Menu::new(emitter, app_id);
+
+    let groups = vec![
+        MenuGroup::new(
+            "File",
+            vec![
+                MenuItem::item("New Folder", "file.new_folder"),
+                MenuItem::item("New Window", "file.new_window"),
+                MenuItem::separator(),
+                MenuItem::item("Properties", "file.properties"),
+                MenuItem::separator(),
+                MenuItem::item("Close Window", "file.close"),
+            ],
+        ),
+        MenuGroup::new(
+            "Edit",
+            vec![
+                MenuItem::item("Cut", "edit.cut"),
+                MenuItem::item("Copy", "edit.copy"),
+                MenuItem::item("Paste", "edit.paste"),
+                MenuItem::separator(),
+                MenuItem::item("Rename", "edit.rename"),
+                MenuItem::item("Move to Trash", "edit.trash"),
+                MenuItem::item("Select All", "edit.select_all"),
+            ],
+        ),
+        MenuGroup::new(
+            "View",
+            vec![
+                MenuItem::item("Refresh", "view.refresh"),
+                MenuItem::item("Show Hidden Files", "view.toggle_hidden"),
+                MenuItem::separator(),
+                MenuItem::submenu(
+                    "Sort By",
+                    vec![
+                        MenuItem::item("Name", "view.sort.name"),
+                        MenuItem::item("Size", "view.sort.size"),
+                        MenuItem::item("Type", "view.sort.type"),
+                        MenuItem::item("Modified", "view.sort.modified"),
+                    ],
+                ),
+            ],
+        ),
+        MenuGroup::new(
+            "Go",
+            vec![
+                MenuItem::item("Home", "go.home"),
+                MenuItem::item("Recent", "go.recent"),
+                MenuItem::separator(),
+                MenuItem::item("Parent Folder", "go.up"),
+            ],
+        ),
+        MenuGroup::new("Help", vec![MenuItem::item("About Files", "help.about")]),
+    ];
+
+    if let Err(e) = menu.register(groups).await {
+        log::warn!("failed to publish the files app menu: {e}");
+    }
+}
+
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     tauri::Builder::default()
+        .setup(|_app| {
+            // Publish the global menu once the app is up; it routes over the
+            // Event Bus to the shell topbar (cross-process).
+            tauri::async_runtime::spawn(publish_app_menu());
+            Ok(())
+        })
         .plugin(tauri_plugin_arlen_shell::init())
         .manage(thumbnail::ThumbnailLimiter::new())
         .manage(Mutex::new(UndoStack::new()))
