@@ -413,6 +413,40 @@ impl UnixGraphClient {
             .map_err(|e| QueryError::InvalidQuery(format!("malformed code_analysis response: {e}")))
     }
 
+    /// Resolve a code symbol's activity-layer context (CG-R6): its defining
+    /// file, the project that file belongs to (bitemporally — `as_of_micros`
+    /// `None` is now, `Some(t)` the membership valid at `t` µs), and the apps
+    /// that accessed it.
+    ///
+    /// A leading `0x0A` byte selects the op; the body is a JSON
+    /// `{symbol_id, as_of_micros?}`. Gated to system-anchored callers like
+    /// [`code_analysis`](Self::code_analysis); a daemon `ERROR:` maps to
+    /// [`QueryError`]. Parsed as a `serde_json::Value` (shape `{symbol_id,
+    /// file_path, project, accessed_by}`) — the rich type lives in the daemon,
+    /// so the SDK exposes the validated JSON.
+    pub async fn code_symbol_context(
+        &self,
+        symbol_id: &str,
+        as_of_micros: Option<i64>,
+    ) -> Result<serde_json::Value, QueryError> {
+        let request = serde_json::json!({
+            "symbol_id": symbol_id,
+            "as_of_micros": as_of_micros,
+        });
+        let json = serde_json::to_vec(&request)
+            .map_err(|e| QueryError::InvalidQuery(format!("encode code_symbol_context: {e}")))?;
+        let mut body = Vec::with_capacity(1 + json.len());
+        body.push(0x0Au8);
+        body.extend_from_slice(&json);
+        let bytes = self.round_trip(&body, MAX_TYPED_RESPONSE_BYTES).await?;
+        if bytes.starts_with(b"ERROR:") {
+            Self::check_error(&String::from_utf8_lossy(&bytes))?;
+        }
+        serde_json::from_slice::<serde_json::Value>(&bytes).map_err(|e| {
+            QueryError::InvalidQuery(format!("malformed code_symbol_context response: {e}"))
+        })
+    }
+
     /// Revoke a capability from an app's permission profile, narrowing-only
     /// (living-capability-graph.md §6), via the read socket's revoke op.
     ///
@@ -1139,6 +1173,46 @@ mod tests {
         let analysis = analysis.unwrap();
         assert_eq!(analysis["god_symbols"][0]["id"], "a.rs#fn:hub@1");
         assert_eq!(analysis["surprises"][0]["to"], "b.rs#fn:y@5");
+    }
+
+    #[tokio::test]
+    async fn code_symbol_context_sends_the_prefix_body_and_parses_the_json() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-code-symbol-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+            // 0x0A prefix + a JSON body carrying the symbol id + as-of.
+            assert_eq!(req[0], 0x0A, "code_symbol_context is selected by 0x0A");
+            let parsed: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
+            assert_eq!(parsed["symbol_id"], "/p/lib.rs#fn:helper@1");
+            assert_eq!(parsed["as_of_micros"], 150);
+
+            let resp = br#"{"symbol_id":"/p/lib.rs#fn:helper@1","file_path":"/p/lib.rs","project":{"id":"proj-1","name":"MyProj"},"accessed_by":["editor"]}"#;
+            conn.write_all(&(resp.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(resp).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let ctx = client
+            .code_symbol_context("/p/lib.rs#fn:helper@1", Some(150))
+            .await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        let ctx = ctx.unwrap();
+        assert_eq!(ctx["file_path"], "/p/lib.rs");
+        assert_eq!(ctx["project"]["id"], "proj-1");
+        assert_eq!(ctx["accessed_by"][0], "editor");
     }
 
     #[tokio::test]
