@@ -49,6 +49,7 @@ pub mod apply;
 pub mod base16;
 pub mod catppuccin;
 pub mod color;
+pub mod css;
 mod file;
 pub mod gtk;
 pub mod qt;
