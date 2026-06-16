@@ -906,12 +906,25 @@ fn revoke_caller_admitted(app_id: &str) -> bool {
     }
     #[cfg(debug_assertions)]
     {
-        app_id == "dev.arlen-settings"
+        // The integration harness submits a revoke as its own hash-suffixed
+        // `dev.<test-bin>` id, which the exact `dev.arlen-settings` match below
+        // rejects. A debug-only env names ONE extra exact id to admit (the
+        // audit-daemon `ARLEN_AUDIT_EXTRA_ADMIT` convention), set by the harness
+        // to its own resolved id. Off by default, so the exact-match tightening
+        // holds for any real caller.
+        app_id == "dev.arlen-settings" || revoke_extra_admit(app_id)
     }
     #[cfg(not(debug_assertions))]
     {
         false
     }
+}
+
+/// Whether `app_id` matches the debug-only `ARLEN_REVOKE_EXTRA_ADMIT` exact
+/// extra-admit (the integration harness's own dev id). Exact match, debug only.
+#[cfg(debug_assertions)]
+fn revoke_extra_admit(app_id: &str) -> bool {
+    std::env::var("ARLEN_REVOKE_EXTRA_ADMIT").is_ok_and(|v| v == app_id)
 }
 
 /// Whether `app_id` is a safe single path component for use as a profile-file
