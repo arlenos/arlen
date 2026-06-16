@@ -1,0 +1,12 @@
+# Starting permission profile for MusicBrainz Picard (a music tagger). It reads
+# and writes the Music library and fetches metadata online, so it gets Music and
+# network. No graph.
+[info]
+app_id = "org.musicbrainz.Picard"
+tier = "third-party"
+
+[filesystem]
+music = true
+
+[network]
+allow_all = true

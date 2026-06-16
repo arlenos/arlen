@@ -1,0 +1,8 @@
+# Starting permission profile for Pinta (an image editor). Pictures, no network,
+# no graph.
+[info]
+app_id = "com.github.PintaProject.Pinta"
+tier = "third-party"
+
+[filesystem]
+pictures = true

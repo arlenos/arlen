@@ -1,0 +1,8 @@
+# Starting permission profile for HandBrake (a video transcoder). Videos, no
+# network, no graph.
+[info]
+app_id = "fr.handbrake.ghb"
+tier = "third-party"
+
+[filesystem]
+videos = true

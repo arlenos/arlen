@@ -1,0 +1,11 @@
+# Starting permission profile for Video Downloader. Fetching is its function, so
+# it gets network; results save to Downloads. No graph.
+[info]
+app_id = "com.github.unrud.VideoDownloader"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

@@ -1,0 +1,6 @@
+# Starting permission profile for Authenticator (a local TOTP/2FA generator).
+# Like a local secrets store it gets no network and no media dirs; codes are
+# computed offline. No graph.
+[info]
+app_id = "com.belmoussaoui.Authenticator"
+tier = "third-party"

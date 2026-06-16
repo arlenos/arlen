@@ -1,0 +1,8 @@
+# Starting permission profile for Zed (a code editor). Documents (projects), no
+# network by default (cloud/AI features are a deliberate opt-in); no graph.
+[info]
+app_id = "dev.zed.Zed"
+tier = "third-party"
+
+[filesystem]
+documents = true
