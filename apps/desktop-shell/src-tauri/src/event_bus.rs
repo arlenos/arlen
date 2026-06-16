@@ -216,10 +216,18 @@ fn forward_menu_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
         }
     };
     // The app_id is authoritative for keying; a payload without it is unusable.
-    if value.get("app_id").and_then(|v| v.as_str()).is_none() {
+    let Some(menu_app_id) = value.get("app_id").and_then(|v| v.as_str()) else {
         log::warn!("app.menu event missing string app_id, dropped");
         return;
-    }
+    };
+    // MENU-DIAG (#2): the app_id a menu is PUBLISHED under. The topbar only
+    // renders it when this equals the FOCUSED window's app_id (logged by
+    // wayland_client `new_toplevel ... app_id=...`). Grep both to see the
+    // mismatch that keeps the menu from appearing.
+    let group_count = value.get("items").and_then(|v| v.as_array()).map_or(0, Vec::len);
+    log::info!(
+        "MENU-DIAG: {event_type} published for app_id={menu_app_id:?} ({group_count} groups)"
+    );
     let tauri_event = match event_type {
         "app.menu.registered" => "arlen://menu-registered",
         "app.menu.unregistered" => "arlen://menu-unregistered",
