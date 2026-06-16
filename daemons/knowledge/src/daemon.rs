@@ -18,6 +18,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
+use audit_proto::{AuditSink, LedgerAuditSink};
 use prost::Message;
 use serde::Deserialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -205,8 +206,14 @@ pub async fn listen(socket_path: &str, graph: GraphHandle, pool: sqlx::SqlitePoo
         Arc::new(reg)
     };
 
+    // The audit sink for the app-tier entity-write path (foreign-app-bridges):
+    // every upsert is recorded fail-closed before it persists (S13). The actor
+    // is set by the audit daemon from this daemon's SO_PEERCRED (`knowledge`);
+    // the calling app goes in the record as a coarse identifier.
+    let audit: Arc<dyn AuditSink> = Arc::new(LedgerAuditSink::at_default_socket());
+
     tokio::try_join!(
-        listen_queries(socket_path, graph.clone(), pool, auth.clone(), rate, emitter, registry),
+        listen_queries(socket_path, graph.clone(), pool, auth.clone(), rate, emitter, registry, audit),
         listen_events(auth, graph),
     )?;
 
@@ -223,6 +230,7 @@ async fn listen_queries(
     rate: Arc<Mutex<RateState>>,
     emitter: Arc<RateLimitEmitter>,
     registry: Arc<SchemaRegistry>,
+    audit: Arc<dyn AuditSink>,
 ) -> Result<()> {
     if Path::new(socket_path).exists() {
         std::fs::remove_file(socket_path)?;
@@ -246,10 +254,12 @@ async fn listen_queries(
                 let rate = rate.clone();
                 let emitter = emitter.clone();
                 let registry = registry.clone();
+                let audit = audit.clone();
                 tokio::spawn(async move {
-                    if let Err(e) =
-                        handle_client(stream, graph, pool, auth, rate, emitter, registry, our_uid)
-                            .await
+                    if let Err(e) = handle_client(
+                        stream, graph, pool, auth, rate, emitter, registry, our_uid, audit,
+                    )
+                    .await
                     {
                         error!("graph daemon client error: {e}");
                     }
@@ -1003,6 +1013,7 @@ async fn handle_write_request(
     registry: &SchemaRegistry,
     graph: &GraphHandle,
     auth: &Arc<Mutex<Authenticator>>,
+    audit: Option<&Arc<dyn AuditSink>>,
 ) -> String {
     let req: WriteRequest = match serde_json::from_slice(body) {
         Ok(r) => r,
@@ -1121,6 +1132,25 @@ async fn handle_write_request(
                 Ok(p) => p,
                 Err(e) => return format!("ERROR: {e}"),
             };
+            // Audit-before-persist, fail-closed (S13): a third-party bridge's
+            // entity write is recorded before it touches the graph, so a down
+            // or unreachable ledger refuses the write rather than letting it
+            // land unaudited. The record is content-free (the app id + the
+            // qualified type, never the key or field bodies).
+            let Some(sink) = audit else {
+                return "ERROR: audit unavailable".to_string();
+            };
+            if let Err(e) = sink
+                .submit(crate::audit::entity_upsert_event(
+                    &token.app_id,
+                    &qualified_type,
+                    "ok",
+                ))
+                .await
+            {
+                warn!("entity upsert audit failed, refusing write: {e}");
+                return "ERROR: audit unavailable".to_string();
+            }
             // Ensure the app's dynamic entity table exists (idempotent), then
             // run the keyed MERGE so a re-sync never duplicates.
             if let Err(e) = graph.query(ddl).await {
@@ -1500,6 +1530,7 @@ async fn handle_client(
     emitter: Arc<RateLimitEmitter>,
     registry: Arc<SchemaRegistry>,
     our_uid: u32,
+    audit: Arc<dyn AuditSink>,
 ) -> Result<()> {
     // Resolve the peer identity once at connection for per-identity
     // rate limiting (foundation §8.4). The socket is per-user, so a
@@ -1618,7 +1649,7 @@ async fn handle_client(
                 (format!("ERROR: RateLimited: {reason}"), emit)
             } else {
                 (
-                    handle_write_request(body, peer, &registry, &graph, &auth).await,
+                    handle_write_request(body, peer, &registry, &graph, &auth, Some(&audit)).await,
                     false,
                 )
             };
@@ -3380,8 +3411,15 @@ mod tests {
             start_time: Some(0),
         };
         let resp =
-            handle_write_request(VALID_REL_BODY.as_bytes(), Some(peer), &registry, &graph, &auth)
-                .await;
+            handle_write_request(
+                VALID_REL_BODY.as_bytes(),
+                Some(peer),
+                &registry,
+                &graph,
+                &auth,
+                None,
+            )
+            .await;
         assert_eq!(resp, "ERROR: peer process changed since connection");
     }
 
@@ -3396,8 +3434,15 @@ mod tests {
             start_time: None,
         };
         let resp =
-            handle_write_request(VALID_REL_BODY.as_bytes(), Some(peer), &registry, &graph, &auth)
-                .await;
+            handle_write_request(
+                VALID_REL_BODY.as_bytes(),
+                Some(peer),
+                &registry,
+                &graph,
+                &auth,
+                None,
+            )
+            .await;
         assert_eq!(resp, "ERROR: write requires a verifiable peer process");
     }
 
@@ -3408,11 +3453,12 @@ mod tests {
         let registry = SchemaRegistry::new(vec![]);
 
         let no_peer =
-            handle_write_request(VALID_REL_BODY.as_bytes(), None, &registry, &graph, &auth).await;
+            handle_write_request(VALID_REL_BODY.as_bytes(), None, &registry, &graph, &auth, None)
+                .await;
         assert_eq!(no_peer, "ERROR: write requires a resolvable peer process");
 
         // A malformed body is rejected before the peer is even consulted.
-        let bad = handle_write_request(b"not json", None, &registry, &graph, &auth).await;
+        let bad = handle_write_request(b"not json", None, &registry, &graph, &auth, None).await;
         assert!(bad.starts_with("ERROR: malformed write request"), "got: {bad}");
     }
 

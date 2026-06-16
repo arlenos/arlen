@@ -49,7 +49,8 @@ use crate::ledger::Ledger;
 /// `LedgerAuditSink` reports `Unavailable`, and the gate refuses every
 /// action — the agent cannot act at all. Debug builds masked this
 /// because the agent then resolves to a `dev.*` id (admitted below).
-/// The graph daemon joins this set when graph-access auditing is wired.
+/// `knowledge` (the graph daemon) audits each app-tier entity upsert
+/// (the foreign-app-bridges write path), fail-closed before persisting.
 /// `online-accounts` audits each credential handout (`GetAccessToken`,
 /// GAP-2), `notifyd` audits each notification disposition, and `installd`
 /// audits each install/uninstall (GAP-2); all resolve to these ids via their
@@ -61,6 +62,7 @@ const ADMITTED: &[&str] = &[
     "online-accounts",
     "notifyd",
     "installd",
+    "knowledge",
 ];
 
 /// Resolve the ingest socket path:
@@ -239,6 +241,7 @@ const DEV_ADMITTED: &[&str] = &[
     "dev.arlen-ai-daemon",
     "dev.arlen-ai-proxy",
     "dev.arlen-ai-agent",
+    "dev.arlen-graph-daemon",
 ];
 
 /// Whether a resolved peer app_id may submit audit events.
@@ -284,7 +287,8 @@ mod tests {
         assert!(caller_is_admitted("ai-daemon"));
         assert!(caller_is_admitted("ai-proxy"));
         assert!(caller_is_admitted("ai-agent"));
-        assert!(!caller_is_admitted("knowledge"));
+        // The graph daemon audits app-tier entity upserts (bridges write path).
+        assert!(caller_is_admitted("knowledge"));
         assert!(!caller_is_admitted("com.example.app"));
         assert!(!caller_is_admitted(""));
         // Debug builds admit the listed cargo-run `dev.*` producer
@@ -295,6 +299,11 @@ mod tests {
         );
         assert_eq!(
             caller_is_admitted("dev.arlen-ai-agent"),
+            cfg!(debug_assertions)
+        );
+        // The graph daemon's cargo-run bin is `arlen-graph-daemon`.
+        assert_eq!(
+            caller_is_admitted("dev.arlen-graph-daemon"),
             cfg!(debug_assertions)
         );
         assert!(!caller_is_admitted("dev.arlen-knowledge"));
