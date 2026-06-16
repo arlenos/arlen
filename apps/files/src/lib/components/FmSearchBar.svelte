@@ -62,7 +62,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 0 8px 8px;
+    padding: 10px 8px;
   }
   .search-bar :global(input) {
     flex: 1;
