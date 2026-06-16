@@ -69,7 +69,11 @@
     if (!text.trim() || $busy || !session) return;
     busy.set(true);
     try {
-      await terminalInput(session.id, text);
+      // Send the line WITH a trailing newline: the newline is the Enter
+      // the shell needs to actually run the command. Without it the PTY
+      // only buffers the characters and nothing ever executes - which is
+      // why the terminal showed no command output.
+      await terminalInput(session.id, text + "\n");
       draft = "";
       onsent?.();
     } catch {
