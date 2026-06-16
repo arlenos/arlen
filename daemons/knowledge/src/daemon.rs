@@ -445,6 +445,21 @@ enum WriteRequest {
         /// The caller-supplied node id.
         id: String,
     },
+    /// Upsert (create-or-update) an instance of the CALLER'S OWN declared entity
+    /// type, keyed by a stable `external_key` so a re-sync strengthens the same
+    /// node rather than duplicating (foreign-app-bridges piece 1). The type must
+    /// be in the caller's namespace and registered; `system.*`/`shared.*` are
+    /// structurally unwritable. This is the general app-tier instance-write path
+    /// that the declare-but-cannot-write gap needs.
+    UpsertEntity {
+        /// The caller's namespaced entity type (e.g. `md.obsidian.Note`).
+        qualified_type: String,
+        /// The bridge's stable idempotency key for this instance.
+        external_key: String,
+        /// The instance's field values, validated against the registered schema.
+        #[serde(default)]
+        fields: std::collections::HashMap<String, serde_json::Value>,
+    },
 }
 
 /// The node types creatable via the `0x02` write socket: the consolidation node
@@ -1087,6 +1102,34 @@ async fn handle_write_request(
             }
             let label = node_type.strip_prefix("system.").unwrap_or(&node_type);
             persist_create_node(graph, label, &id).await
+        }
+        WriteRequest::UpsertEntity {
+            qualified_type,
+            external_key,
+            fields,
+        } => {
+            // Authorise + validate against the registered schema and build the
+            // (ensure-table, upsert) plan; all fail-closed in `plan_entity_upsert`
+            // (namespace bound, system.*/shared.* refused, fields type-checked).
+            let (ddl, cypher) = match crate::write::plan_entity_upsert(
+                registry,
+                &token,
+                &qualified_type,
+                &external_key,
+                fields,
+            ) {
+                Ok(p) => p,
+                Err(e) => return format!("ERROR: {e}"),
+            };
+            // Ensure the app's dynamic entity table exists (idempotent), then
+            // run the keyed MERGE so a re-sync never duplicates.
+            if let Err(e) = graph.query(ddl).await {
+                return format!("ERROR: ensure entity table: {e}");
+            }
+            match graph.query_rows(cypher).await {
+                Ok(_) => "OK: upserted".to_string(),
+                Err(e) => format!("ERROR: {e}"),
+            }
         }
     }
 }
