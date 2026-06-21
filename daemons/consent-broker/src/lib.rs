@@ -19,9 +19,11 @@ use serde::{Deserialize, Serialize};
 
 pub mod grant;
 pub mod queue;
+pub mod service;
 
 pub use grant::{mint_grant, ConsentGrant};
 pub use queue::{ConsentQueue, Enqueued, PendingRequest, RequestId};
+pub use service::{assemble, handle_intake, IntakeReply, RequestBody};
 
 /// The class of system request seeking consent. The broker is the ONE surface
 /// for all of these (system-dialog-plan.md): they share the trusted path, the
