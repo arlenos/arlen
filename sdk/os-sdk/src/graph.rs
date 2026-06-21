@@ -659,6 +659,53 @@ impl UnixGraphClient {
         }
     }
 
+    /// Link two instances of the caller's OWN declared entity types with an edge
+    /// over the daemon write socket, idempotently (foreign-app-bridges piece 2):
+    /// the app-tier entity-edge write.
+    ///
+    /// The daemon enforces, fail-closed, that BOTH endpoint types are in the
+    /// caller's namespace and registered, that `system.*`/`shared.*` are
+    /// unlinkable, and that the edge type is a safe identifier; the endpoints are
+    /// addressed by their stable external keys (the daemon owns the deterministic
+    /// id scheme), and the edge MERGE never duplicates on a re-sync. A daemon
+    /// `ERROR:` maps to [`QueryError`]; a forward reference to a not-yet-synced
+    /// endpoint surfaces as [`QueryError::InvalidQuery`] carrying `link endpoints
+    /// not found`, so a caller can re-sync rather than treat it as a hard
+    /// failure. Idempotent, so a retry is safe.
+    pub async fn link_entities(
+        &self,
+        edge_type: &str,
+        from_type: &str,
+        from_key: &str,
+        to_type: &str,
+        to_key: &str,
+    ) -> Result<(), QueryError> {
+        let req = serde_json::json!({
+            "op": "link_entities",
+            "edge_type": edge_type,
+            "from_type": from_type,
+            "from_key": from_key,
+            "to_type": to_type,
+            "to_key": to_key,
+        });
+        let json = serde_json::to_vec(&req).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+
+        // A leading 0x02 byte selects the daemon's structured write mode.
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x02);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_WRITE_RESPONSE_BYTES).await?;
+        let response = String::from_utf8_lossy(&bytes);
+        Self::check_error(&response)?;
+        match response.trim() {
+            "OK: linked" => Ok(()),
+            other => Err(QueryError::InvalidQuery(format!(
+                "unexpected daemon entity-link response: {other}"
+            ))),
+        }
+    }
+
     /// Retract (compensate) a relation this caller previously created, deleting
     /// only the edge that carries `op_id`, via the daemon's write socket.
     ///
@@ -1526,6 +1573,47 @@ mod tests {
         let mut fields = serde_json::Map::new();
         fields.insert("title".to_string(), serde_json::json!("Hello"));
         let result = client.upsert_entity("md.obsidian.Note", "note-1", &fields).await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        assert!(result.is_ok(), "got {result:?}");
+    }
+
+    #[tokio::test]
+    async fn link_entities_sends_a_tagged_request_and_parses_ok() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-link-entities-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            assert_eq!(req[0], 0x02, "entity writes carry the 0x02 write prefix");
+            let body: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
+            assert_eq!(body["op"], "link_entities");
+            assert_eq!(body["edge_type"], "LINKS_TO");
+            assert_eq!(body["from_type"], "md.obsidian.Note");
+            assert_eq!(body["from_key"], "note-1");
+            assert_eq!(body["to_type"], "md.obsidian.Note");
+            assert_eq!(body["to_key"], "note-2");
+
+            let reply = b"OK: linked";
+            conn.write_all(&(reply.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(reply).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let result = client
+            .link_entities("LINKS_TO", "md.obsidian.Note", "note-1", "md.obsidian.Note", "note-2")
+            .await;
         let _ = server.await;
         let _ = std::fs::remove_file(&path);
 
