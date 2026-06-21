@@ -35,7 +35,7 @@ use thiserror::Error;
 #[cfg(target_os = "linux")]
 mod sandbox;
 #[cfg(target_os = "linux")]
-pub use sandbox::apply_sandbox;
+pub use sandbox::{apply_sandbox, apply_sandbox_profile, apply_sandbox_threaded, SandboxProfile};
 
 /// The largest document the worker will accept, and the largest text it
 /// will return. Bounds memory against a hostile or pathological input.
