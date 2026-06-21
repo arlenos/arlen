@@ -1,0 +1,41 @@
+[Unit]
+Description=Arlen Consent Broker (user service)
+Documentation=https://github.com/arlenos/arlen
+# The broker audits each resolved decision to the audit daemon (best-effort,
+# per-resolve, fail-closed at the call site). `After=` orders startup without
+# `Requires=` blocking it: the broker binds its sockets and serves whether or
+# not the audit daemon is up yet (a resolve simply fails closed until it is).
+After=arlen-auditd.service
+
+[Service]
+# `Type=simple`: the broker has no readiness handshake. Requesters and the shell
+# connect lazily (a requester only connects when it raises a prompt), so nothing
+# needs to wait for a ready signal, unlike the audit daemon's notify socket.
+Type=simple
+# Production binary path (system-wide install). Dev runs invoke the debug binary
+# directly; this file is the canonical production unit.
+ExecStart=/usr/lib/arlen/libexec/arlen-consent-broker
+Restart=on-failure
+RestartSec=2
+
+# The broker holds no persistent state (the remembered-grant store is in-memory;
+# the durable grant record lives in the audit ledger + the KG). It binds only the
+# two Unix sockets under the runtime dir and never touches the network, so the
+# address-family restriction both hardens it and documents that property.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/run/user/%U/arlen
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target
