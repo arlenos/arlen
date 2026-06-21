@@ -286,7 +286,7 @@ async fn promote_file_opened(
     timestamp: &i64,
     source: &str,
     pid: &i64,
-    _session_id: &str,
+    session_id: &str,
     payload: &[u8],
 ) -> Result<()> {
     let file_payload = FileOpenedPayload::decode(payload)?;
@@ -337,6 +337,28 @@ async fn promote_file_opened(
              MERGE (f)-[:ACCESSED_BY]->(a)"
         ))
         .await?;
+
+    // Session<->activity edge (KG-richness Thrust 1): link the file to the
+    // focus/activity session it was accessed in, so the graph can answer "which
+    // files did I touch in this session". The Session node is MERGEd (a
+    // window.focused promotion enriches it; here it may be a bare id) so the edge
+    // never dangles. Skipped when the event carries no session (e.g. a raw eBPF
+    // kernel open). The session id is metadata symmetric with the existing
+    // File/ACCESSED_BY promotion - no new hard-exclude surface: a private/
+    // incognito session is excluded upstream before promotion, like every other
+    // event, and Session nodes are already materialised by window.focused.
+    if !session_id.is_empty() {
+        let session_esc = escape_cypher(session_id);
+        graph
+            .write(format!("MERGE (s:Session {{id: '{session_esc}'}})"))
+            .await?;
+        graph
+            .write(format!(
+                "MATCH (f:File {{id: '{path_esc}'}}), (s:Session {{id: '{session_esc}'}})
+                 MERGE (f)-[:ACCESSED_IN]->(s)"
+            ))
+            .await?;
+    }
 
     debug!(event_id, path = %file_payload.path, "promoted file.opened");
     Ok(())
@@ -947,6 +969,56 @@ mod shell_event_tests {
             .map(|v| v.as_i64())
             .unwrap();
         assert_eq!(cg, 987_654, "the cgroup id round-trips onto the File node");
+    }
+
+    #[tokio::test]
+    async fn promote_file_opened_links_the_file_to_its_session() {
+        // KG-richness Thrust 1: a file.opened with a session links the File to a
+        // MERGEd Session node (no dangling edge); a session-less event adds none.
+        let (graph, _tmp) = setup().await;
+        let payload = FileOpenedPayload {
+            path: "/proj/a.rs".into(),
+            app_id: "editor".into(),
+            flags: 0,
+            cgroup_id: 0,
+        };
+        let mut buf = Vec::new();
+        payload.encode(&mut buf).unwrap();
+        promote_file_opened(&graph, "ev1", &100, "ebpf", &42, "sess-9", &buf)
+            .await
+            .unwrap();
+        let rs = graph
+            .query_rows(
+                "MATCH (:File {id:'/proj/a.rs'})-[:ACCESSED_IN]->(:Session {id:'sess-9'}) \
+                 RETURN count(*) AS c"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        let c = rs.rows.first().and_then(|r| r.first()).map(|v| v.as_i64()).unwrap();
+        assert_eq!(c, 1, "the file is linked to its session");
+
+        // A session-less event (a raw eBPF open) adds no Session edge and errors not.
+        let mut buf2 = Vec::new();
+        FileOpenedPayload {
+            path: "/proj/b.rs".into(),
+            app_id: "editor".into(),
+            flags: 0,
+            cgroup_id: 0,
+        }
+        .encode(&mut buf2)
+        .unwrap();
+        promote_file_opened(&graph, "ev2", &100, "ebpf", &42, "", &buf2)
+            .await
+            .unwrap();
+        let rs2 = graph
+            .query_rows(
+                "MATCH (:File {id:'/proj/b.rs'})-[:ACCESSED_IN]->() RETURN count(*) AS c".into(),
+            )
+            .await
+            .unwrap();
+        let c2 = rs2.rows.first().and_then(|r| r.first()).map(|v| v.as_i64()).unwrap();
+        assert_eq!(c2, 0, "a session-less event creates no session edge");
     }
 
     #[tokio::test]
