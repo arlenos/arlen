@@ -125,6 +125,59 @@ pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Re
     graph.transaction(stmts).await
 }
 
+/// Persist (MERGE) a consent grant into the SHARED LCG Grant node (system-dialog-
+/// plan.md, decided Option A): the durable half of the consent grant lifecycle,
+/// surfaced by the LCG-R4 `access_grants` read in the same see+revoke place as
+/// capability-token grants.
+///
+/// Keyed by the consent grant's `revocation_handle` (deterministic over its
+/// recipient + class + scope), so re-consenting the same scope strengthens the
+/// existing node rather than duplicating. Born live, `source = "consent"`,
+/// carrying the class + concrete scope; the token-shaped fields (pid / expiry /
+/// declared_ceiling) are null/0, `issued_at` is the consent time. A `USED_BY`
+/// edge ties it to its App so the read joins it like any grant. Unlike a
+/// capability mint there is NO superseding (a user may hold several distinct
+/// consent grants for one app at different scopes), and a re-consent RE-ACTIVATES
+/// a previously revoked grant (the user explicitly re-allowed it). Atomic +
+/// idempotent.
+pub async fn persist_consent_grant(
+    graph: &GraphHandle,
+    recipient: &str,
+    consent_class: &str,
+    consent_scope: Option<&str>,
+    revocation_handle: &str,
+) -> Result<()> {
+    let app_esc = escape_cypher(recipient);
+    let id_esc = escape_cypher(revocation_handle);
+    let class_esc = escape_cypher(consent_class);
+    let scope_esc = escape_cypher(consent_scope.unwrap_or(""));
+    let now = time::now().0;
+
+    let stmts = vec![
+        // The App principal (do not clobber a name set by promotion).
+        format!("MERGE (a:App {{id: '{app_esc}'}})"),
+        // The consent Grant node, born live. ON CREATE seeds every field (token
+        // fields null/0); ON MATCH refreshes the consent data AND re-activates
+        // (a re-consent overrides a prior revoke, the user's explicit intent).
+        format!(
+            "MERGE (g:Grant {{id: '{id_esc}'}}) \
+             ON CREATE SET g.app_id = '{app_esc}', g.source = 'consent', \
+             g.consent_class = '{class_esc}', g.consent_scope = '{scope_esc}', \
+             g.pid = 0, g.issued_at = {now}, g.expires_at = 0, g.declared_ceiling = '', \
+             g.required = false, g.identity_verified = false, g.live = true, \
+             g.revoked = false, g.superseded = false, g.last_exercised_at = 0, g.use_count = 0 \
+             ON MATCH SET g.source = 'consent', g.consent_class = '{class_esc}', \
+             g.consent_scope = '{scope_esc}', g.live = true, g.revoked = false, g.superseded = false"
+        ),
+        // USED_BY: Grant -> App.
+        format!(
+            "MATCH (g:Grant {{id: '{id_esc}'}}), (a:App {{id: '{app_esc}'}}) \
+             MERGE (g)-[:USED_BY]->(a)"
+        ),
+    ];
+    graph.transaction(stmts).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -266,5 +319,50 @@ mod tests {
         let row = &parsed["rows"][0];
         assert_eq!(row[0], true, "revoked stays terminal across a re-emit: {state}");
         assert_eq!(row[1], false, "a revoked grant is not made live again: {state}");
+    }
+
+    #[tokio::test]
+    async fn persist_consent_grant_creates_a_live_consent_grant_then_re_consent_reactivates() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        persist_consent_grant(&graph, "org.arlen.files", "Destructive", Some("/home/x"), "rh-1")
+            .await
+            .unwrap();
+        // The consent grant exists, live, source=consent, with class+scope, joined
+        // to its App via USED_BY (so the access_grants read surfaces it).
+        let rs = graph
+            .query_rows(
+                "MATCH (g:Grant {id:'rh-1'})-[:USED_BY]->(:App {id:'org.arlen.files'}) \
+                 RETURN g.source, g.consent_class, g.consent_scope, g.live, g.revoked"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        let r = &rs.rows[0];
+        assert_eq!(r[0].as_str(), "consent", "source discriminator");
+        assert_eq!(r[1].as_str(), "Destructive", "consent class");
+        assert_eq!(r[2].as_str(), "/home/x", "consent scope");
+        assert!(r[3].as_bool(), "born live");
+        assert!(!r[4].as_bool(), "not revoked");
+
+        // Revoke it, then re-consent the same handle: a re-consent re-activates.
+        graph
+            .write("MATCH (g:Grant {id:'rh-1'}) SET g.revoked = true, g.live = false".into())
+            .await
+            .unwrap();
+        persist_consent_grant(&graph, "org.arlen.files", "Destructive", Some("/home/x"), "rh-1")
+            .await
+            .unwrap();
+        let rs2 = graph
+            .query_rows(
+                "MATCH (g:Grant {id:'rh-1'}) RETURN g.live, g.revoked, count(*) AS c".into(),
+            )
+            .await
+            .unwrap();
+        assert!(rs2.rows[0][0].as_bool(), "re-consent re-activates live");
+        assert!(!rs2.rows[0][1].as_bool(), "re-consent clears revoked");
+        assert_eq!(rs2.rows[0][2].as_i64(), 1, "one node, not duplicated");
     }
 }

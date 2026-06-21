@@ -34,6 +34,27 @@ pub fn entity_upsert_event(app_id: &str, qualified_type: &str, outcome: &str) ->
     }
 }
 
+/// Build the content-free audit record for persisting one consent grant into the
+/// KG (system-dialog-plan.md Option A). The acting broker, the grant recipient
+/// and the consent class are coarse identifiers; the concrete scope is omitted.
+pub fn consent_grant_event(broker: &str, recipient: &str, consent_class: &str) -> IngestRequest {
+    IngestRequest {
+        kind: AuditKind::Permission,
+        structural: StructuralRecord {
+            subject: "consent.grant.persist".to_string(),
+            node_types: vec![broker.to_string(), recipient.to_string()],
+            relations: vec![consent_class.to_string()],
+            result_count: None,
+            duration_ms: None,
+            outcome: "ok".to_string(),
+            depth: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
+}
+
 /// Build the content-free audit record for one app-tier entity link. The bridge
 /// app and the two endpoint types are coarse identifiers (`node_types`), the
 /// edge type a coarse label (`relations`); `outcome` is `ok` or an error label.

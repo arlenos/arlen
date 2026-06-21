@@ -487,6 +487,22 @@ enum WriteRequest {
         /// The target node's external key.
         to_key: String,
     },
+    /// Persist a consent grant into the shared LCG Grant node (system-dialog-
+    /// plan.md, Option A): the durable half of the consent lifecycle, surfaced by
+    /// the `access_grants` read in the same see+revoke place. Only the consent
+    /// broker may call it; the grant is keyed by its revocation handle so a
+    /// re-consent strengthens the same node.
+    PersistConsentGrant {
+        /// The app the grant authorises (the Grant node's `app_id`).
+        recipient: String,
+        /// The consent class.
+        consent_class: String,
+        /// The concrete scope, when there is one.
+        #[serde(default)]
+        consent_scope: Option<String>,
+        /// The stable revocation handle = the Grant node id.
+        revocation_handle: String,
+    },
 }
 
 /// The node types creatable via the `0x02` write socket: the consolidation node
@@ -1256,7 +1272,71 @@ async fn handle_write_request(
                 Err(e) => format!("ERROR: {e}"),
             }
         }
+        WriteRequest::PersistConsentGrant {
+            recipient,
+            consent_class,
+            consent_scope,
+            revocation_handle,
+        } => {
+            // Only the consent broker may write a consent Grant node (the Grant
+            // label is otherwise daemon-internal). Authorised by the caller's
+            // attested app_id, so a third party cannot forge an authority grant.
+            if !consent_grant_writer_admitted(&token.app_id) {
+                return format!(
+                    "ERROR: permission denied for consent-grant write by {}",
+                    token.app_id
+                );
+            }
+            if recipient.trim().is_empty()
+                || consent_class.trim().is_empty()
+                || revocation_handle.trim().is_empty()
+            {
+                return "ERROR: consent grant requires recipient, class and handle".to_string();
+            }
+            // Audit-before-persist, fail-closed (S13): content-free (the broker +
+            // the recipient + the class, never the scope).
+            let Some(sink) = audit else {
+                return "ERROR: audit unavailable".to_string();
+            };
+            if let Err(e) = sink
+                .submit(crate::audit::consent_grant_event(
+                    &token.app_id,
+                    &recipient,
+                    &consent_class,
+                ))
+                .await
+            {
+                warn!("consent grant audit failed, refusing write: {e}");
+                return "ERROR: audit unavailable".to_string();
+            }
+            match crate::lcg::persist_consent_grant(
+                graph,
+                &recipient,
+                &consent_class,
+                consent_scope.as_deref(),
+                &revocation_handle,
+            )
+            .await
+            {
+                Ok(()) => "OK: persisted".to_string(),
+                Err(e) => format!("ERROR: {e}"),
+            }
+        }
     }
+}
+
+/// App ids permitted to write a consent Grant node (the Grant label is otherwise
+/// daemon-internal). Only the consent broker; in debug a `dev.`-prefixed id is
+/// also admitted (the dev/test convention the audit producers use).
+fn consent_grant_writer_admitted(app_id: &str) -> bool {
+    if app_id == "consent-broker" {
+        return true;
+    }
+    #[cfg(debug_assertions)]
+    if app_id.starts_with("dev.") {
+        return true;
+    }
+    false
 }
 
 /// Persist an authorised relation with an **atomic conditional create** that

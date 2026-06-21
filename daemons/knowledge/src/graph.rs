@@ -814,6 +814,19 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create Grant table: {e}"))?;
 
+    // Consent grants share the LCG Grant node (system-dialog-plan.md, decided
+    // Option A): one see+revoke surface for capability-token and consent grants
+    // alike. `source` discriminates ("capability-token" vs "consent"); a consent
+    // grant carries its class + concrete scope and leaves the token-shaped fields
+    // (pid / issued_at / expires_at / declared_ceiling) null/0. Additive ALTERs
+    // (reserved-from-start, no migration) so an existing store converges.
+    conn.query("ALTER TABLE Grant ADD IF NOT EXISTS source STRING")
+        .map_err(|e| anyhow!("alter Grant add source: {e}"))?;
+    conn.query("ALTER TABLE Grant ADD IF NOT EXISTS consent_class STRING")
+        .map_err(|e| anyhow!("alter Grant add consent_class: {e}"))?;
+    conn.query("ALTER TABLE Grant ADD IF NOT EXISTS consent_scope STRING")
+        .map_err(|e| anyhow!("alter Grant add consent_scope: {e}"))?;
+
     conn.query(
         "CREATE NODE TABLE IF NOT EXISTS CapabilityUse(
             id             STRING,
