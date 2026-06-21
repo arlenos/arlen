@@ -34,6 +34,38 @@ pub fn entity_upsert_event(app_id: &str, qualified_type: &str, outcome: &str) ->
     }
 }
 
+/// Build the content-free audit record for one app-tier entity link. The bridge
+/// app and the two endpoint types are coarse identifiers (`node_types`), the
+/// edge type a coarse label (`relations`); `outcome` is `ok` or an error label.
+/// The per-instance external keys are deliberately omitted.
+pub fn entity_link_event(
+    app_id: &str,
+    edge_type: &str,
+    from_type: &str,
+    to_type: &str,
+    outcome: &str,
+) -> IngestRequest {
+    IngestRequest {
+        kind: AuditKind::AppAction,
+        structural: StructuralRecord {
+            subject: "entity.link".to_string(),
+            node_types: vec![
+                app_id.to_string(),
+                from_type.to_string(),
+                to_type.to_string(),
+            ],
+            relations: vec![edge_type.to_string()],
+            result_count: None,
+            duration_ms: None,
+            outcome: outcome.to_string(),
+            depth: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

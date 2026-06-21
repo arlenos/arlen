@@ -470,6 +470,23 @@ enum WriteRequest {
         #[serde(default)]
         fields: std::collections::HashMap<String, serde_json::Value>,
     },
+    /// Link two instances of the CALLER'S OWN declared entity types with an edge
+    /// (foreign-app-bridges piece 2). Both endpoints must be in the caller's
+    /// namespace, registered, and token-writable; the edge is idempotent (a
+    /// re-sync never duplicates it). Endpoints are addressed by their stable
+    /// external keys; the daemon owns the deterministic id scheme.
+    LinkEntities {
+        /// The edge (relation) label to create.
+        edge_type: String,
+        /// The source node's namespaced entity type.
+        from_type: String,
+        /// The source node's external key.
+        from_key: String,
+        /// The target node's namespaced entity type.
+        to_type: String,
+        /// The target node's external key.
+        to_key: String,
+    },
 }
 
 /// The node types creatable via the `0x02` write socket: the consolidation node
@@ -1171,6 +1188,71 @@ async fn handle_write_request(
             }
             match graph.query_rows(cypher).await {
                 Ok(_) => "OK: upserted".to_string(),
+                Err(e) => format!("ERROR: {e}"),
+            }
+        }
+        WriteRequest::LinkEntities {
+            edge_type,
+            from_type,
+            from_key,
+            to_type,
+            to_key,
+        } => {
+            // Authorise + validate both endpoints + build the (rel-table DDL,
+            // edge MERGE) plan; all fail-closed in `plan_entity_link` (both
+            // endpoints namespace-bound + registered, system.*/shared.* refused,
+            // edge type a safe identifier, ids escaped).
+            let (ddl, cypher) = match crate::write::plan_entity_link(
+                registry,
+                &token,
+                &edge_type,
+                &from_type,
+                &from_key,
+                &to_type,
+                &to_key,
+            ) {
+                Ok(p) => p,
+                Err(e) => return format!("ERROR: {e}"),
+            };
+            // Audit-before-persist, fail-closed (S13): content-free (the app id +
+            // the two endpoint types + the edge label, never the keys).
+            let Some(sink) = audit else {
+                return "ERROR: audit unavailable".to_string();
+            };
+            if let Err(e) = sink
+                .submit(crate::audit::entity_link_event(
+                    &token.app_id,
+                    &edge_type,
+                    &from_type,
+                    &to_type,
+                    "ok",
+                ))
+                .await
+            {
+                warn!("entity link audit failed, refusing write: {e}");
+                return "ERROR: audit unavailable".to_string();
+            }
+            // Ensure the dynamic REL TABLE exists (idempotent), then the keyed
+            // MERGE. A `linked` count of 0 means an endpoint was not present (a
+            // forward reference to a not-yet-synced node); the bridge's re-sync
+            // resolves it, so it is surfaced as an error rather than a false OK.
+            if let Err(e) = graph.query(ddl).await {
+                return format!("ERROR: ensure entity rel table: {e}");
+            }
+            match graph.query_rows(cypher).await {
+                Ok(rows) => {
+                    let linked = rows
+                        .rows
+                        .first()
+                        .and_then(|r| r.first())
+                        .map(|v| v.as_i64())
+                        .unwrap_or(0);
+                    if linked >= 1 {
+                        "OK: linked".to_string()
+                    } else {
+                        "ERROR: link endpoints not found".to_string()
+                    }
+                }
                 Err(e) => format!("ERROR: {e}"),
             }
         }

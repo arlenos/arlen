@@ -728,4 +728,68 @@ mod tests {
         // Deterministic across calls.
         assert_eq!(a, entity_rel_table_name("LINKS_TO", "md.obsidian.Note", "md.obsidian.Note"));
     }
+
+    #[test]
+    fn link_merges_an_idempotent_edge_on_a_real_graph() {
+        use lbug::{Connection, Database, SystemConfig, Value};
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db =
+            Database::new(tmp.path().join("g").to_str().unwrap(), SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+
+        let d = def(&[("title", FieldType::String)]);
+        conn.query(&entity_table_ddl("md.obsidian.Note", &d).unwrap())
+            .unwrap();
+        for key in ["n-1", "n-2"] {
+            let mut f = BTreeMap::new();
+            f.insert("title".to_string(), serde_json::json!(key));
+            conn.query(&build_upsert_cypher(
+                "md.obsidian.Note",
+                key,
+                "md.obsidian",
+                &f,
+                "2026-01-01T00:00:00Z",
+            ))
+            .unwrap();
+        }
+
+        let ty = "md.obsidian.Note";
+        let table = entity_table_name(ty);
+        let rel = entity_rel_table_name("LINKS_TO", ty, ty);
+        conn.query(&format!(
+            "CREATE REL TABLE IF NOT EXISTS {rel}(FROM {table} TO {table})"
+        ))
+        .unwrap();
+
+        let link = build_link_cypher(
+            &rel,
+            &table,
+            &table,
+            &entity_node_id(ty, "n-1"),
+            &entity_node_id(ty, "n-2"),
+        );
+        // First link creates the edge.
+        let mut qr = conn.query(&link).unwrap();
+        assert!(matches!(qr.next().unwrap()[0], Value::Int64(1)), "edge created");
+        // Re-link is idempotent (MERGE): still exactly one edge.
+        conn.query(&link).unwrap();
+        let mut ec = conn
+            .query(&format!(
+                "MATCH (:{table})-[r:{rel}]->(:{table}) RETURN count(*) AS c"
+            ))
+            .unwrap();
+        assert!(matches!(ec.next().unwrap()[0], Value::Int64(1)), "one edge after re-link");
+
+        // A forward reference to a not-yet-synced node links nothing (count 0),
+        // which a re-sync resolves once the target exists.
+        let fwd = build_link_cypher(
+            &rel,
+            &table,
+            &table,
+            &entity_node_id(ty, "n-1"),
+            &entity_node_id(ty, "n-3"),
+        );
+        let mut fc = conn.query(&fwd).unwrap();
+        assert!(matches!(fc.next().unwrap()[0], Value::Int64(0)), "absent endpoint not linked");
+    }
 }
