@@ -16,10 +16,58 @@ use crate::SandboxError;
 /// failure it returns [`SandboxError::Setup`] and the caller must exit
 /// rather than continue unsandboxed.
 pub fn apply_sandbox() -> Result<(), SandboxError> {
+    apply_sandbox_profile(SandboxProfile::Tight)
+}
+
+/// The seccomp profile a worker installs. Both are deny-by-default allowlists;
+/// they differ ONLY in whether thread creation is permitted. The wider profile
+/// is confined to the ONE worker that hosts a C-linked threaded decoder
+/// (AVIF/dav1d, HEIC/libheif) - per the one-sandboxed-process-per-decoder model,
+/// the pure-Rust decoders keep [`SandboxProfile::Tight`] and never get `clone`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SandboxProfile {
+    /// No thread creation: the default for every pure-Rust worker.
+    Tight,
+    /// The tight allowlist PLUS thread-creation syscalls (`clone`/`clone3` and
+    /// the glibc thread-init calls), for a worker hosting a threaded C decoder.
+    /// Still deny-by-default + no filesystem + no network; only `clone` & co.
+    /// are added, NOT a blanket widen.
+    Threaded,
+}
+
+impl SandboxProfile {
+    /// The extra syscalls this profile allows beyond the tight base.
+    fn extra_syscalls(self) -> &'static [i64] {
+        match self {
+            SandboxProfile::Tight => &[],
+            // dav1d / libheif spawn a decode thread pool: thread creation
+            // (`clone`/`clone3`) plus glibc's per-thread init (`set_robust_list`,
+            // `rseq`). futex/mmap/madvise/sched_* are already in the tight base.
+            SandboxProfile::Threaded => &[
+                libc::SYS_clone,
+                libc::SYS_clone3,
+                libc::SYS_set_robust_list,
+                libc::SYS_rseq,
+            ],
+        }
+    }
+}
+
+/// Lock the current process down with a chosen seccomp [`SandboxProfile`]. Same
+/// no_new_privs + Landlock (no filesystem, no network) as [`apply_sandbox`]; the
+/// profile only widens the syscall allowlist for thread creation.
+pub fn apply_sandbox_profile(profile: SandboxProfile) -> Result<(), SandboxError> {
     set_no_new_privs()?;
     restrict_filesystem()?;
-    restrict_syscalls()?;
+    restrict_syscalls(profile.extra_syscalls())?;
     Ok(())
+}
+
+/// Lock down with the [`SandboxProfile::Threaded`] profile, for the AVIF/HEIC
+/// codec worker only. Identical containment to [`apply_sandbox`] except thread
+/// creation is permitted (the C decoders' thread pool needs it).
+pub fn apply_sandbox_threaded() -> Result<(), SandboxError> {
+    apply_sandbox_profile(SandboxProfile::Threaded)
 }
 
 /// Set `PR_SET_NO_NEW_PRIVS`, required before installing an
@@ -85,7 +133,7 @@ fn restrict_filesystem() -> Result<(), SandboxError> {
 /// worker cannot reach the network, spawn a descendant, inspect the
 /// parent, or open a file. Denial is `EPERM` (not kill), so a parser
 /// that probes a forbidden operation just sees it fail.
-fn restrict_syscalls() -> Result<(), SandboxError> {
+fn restrict_syscalls(extra: &[i64]) -> Result<(), SandboxError> {
     // Syscalls the worker legitimately issues after the filter is in
     // place: stdio I/O, the allocator, futexes, signal return/handling,
     // randomness (HashMap/std), clocks, fd close, stat, and exit. The
@@ -132,8 +180,11 @@ fn restrict_syscalls() -> Result<(), SandboxError> {
         // processes (a host DoS), and the happy path never needs it.
         libc::SYS_fstat,
     ];
-    let rules: BTreeMap<i64, Vec<seccompiler::SeccompRule>> =
-        allowed.iter().map(|&nr| (nr, Vec::new())).collect();
+    let rules: BTreeMap<i64, Vec<seccompiler::SeccompRule>> = allowed
+        .iter()
+        .chain(extra.iter())
+        .map(|&nr| (nr, Vec::new()))
+        .collect();
 
     let arch = std::env::consts::ARCH
         .try_into()
