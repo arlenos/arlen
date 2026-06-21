@@ -5,9 +5,17 @@
 //! Every write rides [`crate::ops::safe_rewrite`], so a metadata edit can never
 //! corrupt the file: the new bytes are spliced in memory, written to a temp
 //! sibling, verified on readback, then atomically swapped over the original; any
-//! failure leaves the original byte-identical. JPEG only for now - the in-memory
-//! EXIF splice `little_exif` exposes (`write_to_vec`) is JPEG-only; a non-JPEG
-//! path is refused before any write rather than silently doing nothing.
+//! failure leaves the original byte-identical. JPEG only - a non-JPEG path is
+//! refused before any write rather than silently doing nothing.
+//!
+//! The JPEG limit is empirical, not for lack of trying: `little_exif`
+//! `write_to_vec` (0.6.23) dispatches to per-format writers, but only the JPEG
+//! one round-trips a real file. Verified on tiny fixtures, the others fail -
+//! PNG writes but does not embed the ASCII value readably, TIFF errors
+//! ("requires XResolution"), WEBP errors ("VP8 simple -> extended not
+//! implemented"). Broadening past JPEG needs a different library (rexiv2 /
+//! gexiv2, a C dependency); that is a deliberate dependency decision, not a
+//! quick map extension.
 
 use std::io;
 use std::path::Path;
