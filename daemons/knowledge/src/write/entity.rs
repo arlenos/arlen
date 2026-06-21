@@ -278,6 +278,109 @@ pub fn plan_entity_upsert(
     Ok((ddl, cypher))
 }
 
+/// The deterministic Kuzu REL TABLE name for a bridge edge. A REL TABLE binds one
+/// (FROM, TO) node-table pair, so the name is keyed by the edge type AND both
+/// endpoint types: the same edge label between two different type pairings gets
+/// its own table rather than colliding. The sanitised edge label is kept in the
+/// name for recognisability; the hash makes it unique + collision-free.
+pub fn entity_rel_table_name(edge_type: &str, from_type: &str, to_type: &str) -> String {
+    let sanitised: String = edge_type
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let key = format!("{edge_type}\u{0}{from_type}\u{0}{to_type}");
+    format!("r_{sanitised}_{:016x}", fnv1a64(&key))
+}
+
+/// Build the idempotent edge-MERGE for a bridge link. Both endpoint nodes must
+/// already exist (the `MATCH` binds them by their deterministic ids); if either
+/// is absent - a forward reference to a not-yet-synced node - the `MERGE` does
+/// not run and `linked` is 0, which a re-sync resolves once both exist. The
+/// `MERGE` is idempotent, so a re-sync never duplicates the edge. Ids are
+/// `escape_cypher`-escaped; the table + rel names are validated identifiers.
+fn build_link_cypher(
+    rel_table: &str,
+    from_table: &str,
+    to_table: &str,
+    from_id: &str,
+    to_id: &str,
+) -> String {
+    let from = escape_cypher(from_id);
+    let to = escape_cypher(to_id);
+    format!(
+        "MATCH (a:{from_table} {{id: '{from}'}}), (b:{to_table} {{id: '{to}'}}) \
+         MERGE (a)-[:{rel_table}]->(b) \
+         RETURN count(*) AS linked"
+    )
+}
+
+/// Authorise, validate, and build the persistence plan for an app-tier entity
+/// LINK (foreign-app-bridges piece 2): an app creates an edge between two
+/// instances of its OWN declared entity types, idempotently.
+///
+/// Returns `(rel_table_ddl, merge_cypher)`: the caller ensures the dynamic REL
+/// TABLE exists with the DDL (idempotent `CREATE REL TABLE IF NOT EXISTS`), then
+/// runs the MERGE. Fail-closed, mirroring [`plan_entity_upsert`] for BOTH
+/// endpoints so a bridge can never forge a cross-tenant or system edge:
+/// - both external keys are non-empty;
+/// - the edge type is a safe identifier (it becomes the rel-table label);
+/// - `system.*` / `shared.*` are unwritable as either endpoint by a third party;
+/// - both endpoint types must be in the caller's own namespace (the attested
+///   `app_id` prefix) AND token-writable, so an app can only link its own nodes
+///   to each other (no edge to another tenant's, a shared, or a system node);
+/// - both endpoint types must be registered.
+///
+/// A cross-namespace edge (e.g. to a `shared.Person`) is deliberately NOT
+/// permitted here: it is a separate, carefully-scoped feature; the anti-poisoning
+/// guarantee is that a bridge's edges stay inside its own namespace.
+#[allow(clippy::too_many_arguments)]
+pub fn plan_entity_link(
+    registry: &SchemaRegistry,
+    token: &CapabilityToken,
+    edge_type: &str,
+    from_type: &str,
+    from_key: &str,
+    to_type: &str,
+    to_key: &str,
+) -> Result<(String, String), String> {
+    if from_key.trim().is_empty() || to_key.trim().is_empty() {
+        return Err("link requires non-empty endpoint keys".into());
+    }
+    if !is_safe_identifier(edge_type) {
+        return Err(format!("invalid edge type: {edge_type:?}"));
+    }
+    // Both endpoints pass the same namespace + registration gate the upsert uses.
+    for ty in [from_type, to_type] {
+        if ty.starts_with("system.") || ty.starts_with("shared.") {
+            return Err(format!("namespace not linkable by a third party: {ty}"));
+        }
+        if !token.can_write(ty) {
+            return Err(format!("permission denied for {ty}"));
+        }
+        let prefix = format!("{}.", token.app_id);
+        if !ty.starts_with(&prefix) {
+            return Err(format!(
+                "namespace violation: {} cannot link {ty}",
+                token.app_id
+            ));
+        }
+        if registry.get_entity(ty).is_none() {
+            return Err(format!("entity type not registered: {ty}"));
+        }
+    }
+
+    let from_table = entity_table_name(from_type);
+    let to_table = entity_table_name(to_type);
+    let rel_table = entity_rel_table_name(edge_type, from_type, to_type);
+    let ddl = format!(
+        "CREATE REL TABLE IF NOT EXISTS {rel_table}(FROM {from_table} TO {to_table})"
+    );
+    let from_id = entity_node_id(from_type, from_key);
+    let to_id = entity_node_id(to_type, to_key);
+    let cypher = build_link_cypher(&rel_table, &from_table, &to_table, &from_id, &to_id);
+    Ok((ddl, cypher))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -542,5 +645,87 @@ mod tests {
         let mut bad = HashMap::new();
         bad.insert("nope".to_string(), serde_json::json!("x"));
         assert!(plan_entity_upsert(&reg, &token, "md.obsidian.Note", "k1", bad).is_err());
+    }
+
+    fn obsidian_token() -> crate::token::CapabilityToken {
+        use crate::token::{CapabilityToken, EntityScope, InstanceScope};
+        let scope = |t: &str| EntityScope {
+            entity_type: t.to_string(),
+            fields: None,
+            exclude_fields: vec![],
+        };
+        // Write scopes WOULD match every endpoint below, so the namespace/system
+        // guards (not the scope check) are what reject.
+        CapabilityToken::new(
+            "md.obsidian".into(),
+            1234,
+            vec![],
+            vec![
+                scope("md.obsidian.Note"),
+                scope("com.other.Note"),
+                scope("system.File"),
+            ],
+            vec![],
+            InstanceScope::Own,
+        )
+    }
+
+    fn obsidian_registry() -> SchemaRegistry {
+        let mut reg = SchemaRegistry::new(vec![]);
+        reg.load_from_str(
+            "[meta]\nnamespace = \"md.obsidian\"\n\n[entities.Note]\n\
+             [entities.Note.fields.title]\ntype = \"string\"\n",
+        )
+        .unwrap();
+        reg
+    }
+
+    #[test]
+    fn plan_entity_link_enforces_namespace_on_both_endpoints() {
+        let reg = obsidian_registry();
+        let token = obsidian_token();
+
+        // Own namespace, both registered, a safe edge -> planned.
+        let (ddl, cypher) =
+            plan_entity_link(&reg, &token, "LINKS_TO", "md.obsidian.Note", "a", "md.obsidian.Note", "b")
+                .unwrap();
+        assert!(ddl.contains("CREATE REL TABLE IF NOT EXISTS r_LINKS_TO_"));
+        assert!(cypher.contains("MERGE (a)-[:r_LINKS_TO_"));
+        assert!(cypher.contains("md.obsidian.Note:a"), "from id present: {cypher}");
+        assert!(cypher.contains("md.obsidian.Note:b"), "to id present: {cypher}");
+
+        // system.* as either endpoint is structurally unlinkable.
+        assert!(plan_entity_link(&reg, &token, "LINKS_TO", "md.obsidian.Note", "a", "system.File", "b").is_err());
+        assert!(plan_entity_link(&reg, &token, "LINKS_TO", "system.File", "a", "md.obsidian.Note", "b").is_err());
+        // A foreign-namespace endpoint is rejected even with a matching scope (no
+        // cross-tenant edge).
+        assert!(plan_entity_link(&reg, &token, "LINKS_TO", "md.obsidian.Note", "a", "com.other.Note", "b").is_err());
+        // An unregistered endpoint type is rejected.
+        assert!(plan_entity_link(&reg, &token, "LINKS_TO", "md.obsidian.Note", "a", "md.obsidian.Ghost", "b").is_err());
+        // An unsafe edge type (it becomes the rel-table label) is rejected.
+        assert!(plan_entity_link(&reg, &token, "bad edge!", "md.obsidian.Note", "a", "md.obsidian.Note", "b").is_err());
+        // An empty endpoint key is rejected.
+        assert!(plan_entity_link(&reg, &token, "LINKS_TO", "md.obsidian.Note", "", "md.obsidian.Note", "b").is_err());
+    }
+
+    #[test]
+    fn link_cypher_escapes_endpoint_ids_against_injection() {
+        // A single quote in an id cannot close the literal and inject Cypher.
+        let cypher = build_link_cypher("r_x", "ta", "tb", "md.obsidian.Note:k') DETACH DELETE", "tb:k2");
+        assert!(cypher.contains("k\\') DETACH DELETE"), "id not escaped: {cypher}");
+        assert!(!cypher.contains("k') DETACH DELETE\"}"), "unescaped breakout: {cypher}");
+        assert!(cypher.contains("MERGE (a)-[:r_x]->(b)"), "merge intact: {cypher}");
+    }
+
+    #[test]
+    fn rel_table_name_is_unique_per_edge_and_endpoint_pair() {
+        // The same edge label between different type pairings gets distinct tables
+        // (a REL TABLE binds one FROM/TO pair), and the name is a legal identifier.
+        let a = entity_rel_table_name("LINKS_TO", "md.obsidian.Note", "md.obsidian.Note");
+        let b = entity_rel_table_name("LINKS_TO", "md.obsidian.Note", "md.obsidian.Tag");
+        assert_ne!(a, b, "different endpoint pairs must not collide");
+        assert!(is_safe_identifier(&a), "rel table name is a legal identifier: {a}");
+        // Deterministic across calls.
+        assert_eq!(a, entity_rel_table_name("LINKS_TO", "md.obsidian.Note", "md.obsidian.Note"));
     }
 }
