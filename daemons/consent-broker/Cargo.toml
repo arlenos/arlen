@@ -19,6 +19,9 @@ path = "src/main.rs"
 arlen-ai-core = { path = "../../ai/ai-core" }
 # Kernel-attested peer identity (SO_PEERCRED -> path_to_app_id) for both sockets.
 arlen-permissions = { path = "../../sdk/permissions" }
+# The audit ledger sink: each resolved decision is recorded fail-closed before
+# the grant is released (S13 audit-before-act).
+audit-proto = { path = "../../contracts/audit-proto" }
 serde = { version = "1", features = ["derive"] }
 # The intake socket frames requests/replies as JSON.
 serde_json = "1"
@@ -26,3 +29,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-uti
 libc = "0.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+# The in-memory MockAuditSink (accepting / failing) for the resolve fail-closed
+# tests; test-util is gated out of any optimized build.
+audit-proto = { path = "../../contracts/audit-proto", features = ["test-util"] }

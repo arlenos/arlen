@@ -54,6 +54,7 @@ version = "0.1.0"
 dependencies = [
  "arlen-ai-core",
  "arlen-permissions",
+ "audit-proto",
  "libc",
  "serde",
  "serde_json",

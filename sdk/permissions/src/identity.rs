@@ -236,6 +236,17 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-anomalyd" => {
             return Ok("anomalyd".to_string());
         }
+        // The consent broker (the one trusted-path consent surface every system
+        // prompt routes through, system-dialog-plan.md). It installs under
+        // /usr/lib/arlen/libexec/ and audits each resolved decision (granted /
+        // denied) fail-closed before releasing the grant, so it submits to the
+        // audit ledger under the stable id `consent-broker` (the id the audit
+        // daemon ADMITTED list keys on); without this entry rule (2) misses the
+        // libexec path and it would resolve to UnknownBinary, failing the audit
+        // closed and denying every approval.
+        "/usr/lib/arlen/libexec/arlen-consent-broker" => {
+            return Ok("consent-broker".to_string());
+        }
         // The Settings app, pinned canonically so it resolves to the stable
         // app_id `settings` (not the spoofable basename). The Living Capability
         // Graph revoke socket op admits only this app id (living-capability-graph.md
@@ -591,6 +602,24 @@ mod tests {
             assert!(
                 path_to_app_id(&PathBuf::from(spoofed)).is_err(),
                 "spoofed notifyd path {spoofed} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn test_app_id_from_path_consent_broker_canonical_libexec() {
+        // The consent broker's canonical binary must resolve to `consent-broker`,
+        // the id the audit daemon's ADMITTED allowlist keys on for the resolved-
+        // decision audit. Without this it resolves to UnknownBinary and the
+        // audit-before-act fails closed, denying every approval.
+        let path = PathBuf::from("/usr/lib/arlen/libexec/arlen-consent-broker");
+        assert_eq!(path_to_app_id(&path).unwrap(), "consent-broker");
+
+        // A same-basename binary in a writable location must not impersonate it.
+        for spoofed in ["/tmp/arlen-consent-broker", "/home/attacker/arlen-consent-broker"] {
+            assert!(
+                path_to_app_id(&PathBuf::from(spoofed)).is_err(),
+                "spoofed consent-broker path {spoofed} must be rejected"
             );
         }
     }
