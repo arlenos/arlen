@@ -42,6 +42,14 @@ name = "arlen-audio-meta-sandbox"
 path = "src/bin/arlen-audio-meta-sandbox.rs"
 required-features = ["music"]
 
+# The sandboxed AVIF/HEIC codec worker. Decodes the C-linked threaded formats
+# under the THREADED seccomp profile (clone permitted); behind the `codec`
+# feature so only this binary links dav1d + gets the wider profile.
+[[bin]]
+name = "arlen-image-codec-sandbox"
+path = "src/bin/arlen-image-codec-sandbox.rs"
+required-features = ["codec"]
+
 [features]
 # Image thumbnailing: pulls the `image` decoders and builds the thumbnail
 # worker. Off by default so a doc-parse-only consumer stays lean.
@@ -51,6 +59,11 @@ thumbnail = ["dep:image", "dep:jxl-oxide"]
 # reuses the image path to decode and downscale the art. `serde`/`serde_json`
 # carry the structured `AudioMeta` out of the metadata worker.
 music = ["thumbnail", "dep:lofty", "dep:serde", "dep:serde_json"]
+# AVIF/HEIC codec worker: enables image-rs `avif-native` (the C-linked, threaded
+# dav1d decoder). Pulls libdav1d at build (system-deps). Behind its own feature
+# AND its own worker so only that worker gets the threaded seccomp profile - the
+# pure-Rust thumbnail/view workers never link or run it (per-decoder isolation).
+codec = ["thumbnail", "image/avif-native"]
 
 [dependencies]
 thiserror = "2"
