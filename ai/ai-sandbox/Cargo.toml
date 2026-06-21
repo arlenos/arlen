@@ -63,7 +63,7 @@ music = ["thumbnail", "dep:lofty", "dep:serde", "dep:serde_json"]
 # dav1d decoder). Pulls libdav1d at build (system-deps). Behind its own feature
 # AND its own worker so only that worker gets the threaded seccomp profile - the
 # pure-Rust thumbnail/view workers never link or run it (per-decoder isolation).
-codec = ["thumbnail", "image/avif-native"]
+codec = ["thumbnail", "image/avif-native", "dep:libheif-rs"]
 
 [dependencies]
 thiserror = "2"
@@ -80,6 +80,10 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # no thread-creation (`clone`) syscall, which the worker's seccomp allowlist does
 # not permit (verified: the rayon default fails closed under the sandbox).
 jxl-oxide = { version = "0.12", default-features = false, optional = true }
+# HEIC decoder (the `codec` feature). image-rs decodes neither HEIC nor its
+# HEVC payload; libheif-rs wraps the C libheif (present, 1.23.0). Links libheif +
+# libde265; runs only in the threaded codec worker.
+libheif-rs = { version = "2", optional = true }
 # Audio metadata reader for the music cover-art thumbnailer (the `music`
 # feature). Parsing an untrusted media container is a memory-unsafe attack
 # surface, so the extraction runs inside the worker's lockdown alongside the

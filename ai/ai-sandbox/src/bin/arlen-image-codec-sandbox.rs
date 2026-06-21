@@ -33,10 +33,10 @@ fn main() {
         std::process::exit(4);
     }
 
-    // `decode_view_image` routes through image-rs, which with the `codec`
-    // feature's `avif-native` decodes AVIF (and other ftyp formats), re-encoding
-    // a sanitised full-resolution PNG.
-    match arlen_ai_sandbox::decode_view_image(&input) {
+    // `decode_codec_image` routes HEIC/HEIF to libheif and everything else
+    // (AVIF via avif-native, plus the pure-Rust formats) to image-rs, then
+    // re-encodes a sanitised full-resolution PNG.
+    match arlen_ai_sandbox::decode_codec_image(&input) {
         Ok(png) => {
             if std::io::stdout().write_all(&png).is_err() {
                 std::process::exit(6);

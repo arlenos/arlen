@@ -30,6 +30,25 @@ fn avif_decodes_under_the_threaded_codec_worker() {
     assert_eq!((w, h), (16, 8));
 }
 
+/// A 16x8 HEIC, generated once with `heif-enc` (image-rs cannot decode HEIC).
+const SAMPLE_HEIC: &[u8] = include_bytes!("../test-fixtures/sample.heic");
+
+#[test]
+fn heic_is_detected_as_a_codec_format() {
+    assert!(arlen_ai_sandbox::is_codec_format(SAMPLE_HEIC), "ftyp 'heic' brand");
+}
+
+#[test]
+fn heic_decodes_under_the_threaded_codec_worker() {
+    use image::GenericImageView;
+    // libheif + libde265 spawn decode threads; only the threaded worker permits
+    // the clone, so this proves the per-decoder isolation covers HEIC too.
+    let png = arlen_ai_sandbox::view_image_codec(Path::new(BIN), SAMPLE_HEIC)
+        .expect("the codec worker should decode the HEIC via libheif under the threaded sandbox");
+    let (w, h) = image::load_from_memory(&png).unwrap().dimensions();
+    assert_eq!((w, h), (16, 8));
+}
+
 #[test]
 fn the_codec_worker_fails_closed_on_non_image_input() {
     let err = arlen_ai_sandbox::view_image_codec(Path::new(BIN), b"this is plainly not an image")
