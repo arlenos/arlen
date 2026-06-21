@@ -31,9 +31,18 @@ pub trait EntityWriter {
         fields: &Map<String, Value>,
     ) -> Result<(), String>;
 
-    /// Create an `edge` from the node keyed `from_key` to the node keyed
-    /// `to_key`. Idempotent: a re-sync does not duplicate the edge.
-    fn link(&mut self, edge: &str, from_key: &str, to_key: &str) -> Result<(), String>;
+    /// Create an `edge` from the node `(from_type, from_key)` to the node
+    /// `(to_type, to_key)`, both addressed by their stable external keys (the
+    /// daemon resolves the deterministic ids). Idempotent: a re-sync does not
+    /// duplicate the edge.
+    fn link(
+        &mut self,
+        edge: &str,
+        from_type: &str,
+        from_key: &str,
+        to_type: &str,
+        to_key: &str,
+    ) -> Result<(), String>;
 }
 
 /// A [`PlanSink`] that persists each plan through an [`EntityWriter`].
@@ -59,11 +68,19 @@ impl<W: EntityWriter> PlanSink for KgPlanSink<W> {
         // Upsert the node first; idempotent, so the edges below can reference it.
         self.writer
             .upsert(&plan.qualified_type, &plan.external_key, &plan.fields)?;
-        // Then each edge. A failure is surfaced (the host keeps the session but
-        // reports the message failed) rather than silently dropping an edge.
+        // Then each edge. Both endpoints take this plan's entity type: the
+        // bridge.toml link rule names no target type, so the lead case links
+        // within one type (note -> note); a future cross-type link adds a
+        // `to_type` to the rule. A failure is surfaced (the host keeps the
+        // session but reports the message failed) rather than dropping an edge.
         for link in &plan.links {
-            self.writer
-                .link(&link.edge, &link.from_key, &link.to_key)?;
+            self.writer.link(
+                &link.edge,
+                &plan.qualified_type,
+                &link.from_key,
+                &plan.qualified_type,
+                &link.to_key,
+            )?;
         }
         Ok(())
     }
@@ -99,7 +116,14 @@ mod tests {
             Ok(())
         }
 
-        fn link(&mut self, edge: &str, from_key: &str, to_key: &str) -> Result<(), String> {
+        fn link(
+            &mut self,
+            edge: &str,
+            _from_type: &str,
+            from_key: &str,
+            _to_type: &str,
+            to_key: &str,
+        ) -> Result<(), String> {
             if self.fail_link {
                 return Err("link refused".to_string());
             }

@@ -69,11 +69,20 @@ impl EntityWriter for GraphEntityWriter {
             .map_err(|e| e.to_string())
     }
 
-    fn link(&mut self, _edge: &str, _from_key: &str, _to_key: &str) -> Result<(), String> {
-        // Pending the app-tier `plan_entity_link` knowledge op: a bridge's custom
-        // edge type is not in BUILTIN_RELATIONS, so the generic relation write
-        // would reject it. Fail-loud so an edge is never silently dropped.
-        Err("entity-edge ingestion is pending the plan_entity_link daemon op".to_string())
+    fn link(
+        &mut self,
+        edge: &str,
+        from_type: &str,
+        from_key: &str,
+        to_type: &str,
+        to_key: &str,
+    ) -> Result<(), String> {
+        self.runtime
+            .block_on(
+                self.client
+                    .link_entities(edge, from_type, from_key, to_type, to_key),
+            )
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -129,12 +138,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_edge_write_fails_loud_pending_the_link_op() {
-        // GraphEntityWriter::link must surface a clear error (never silently drop
-        // an edge) until plan_entity_link lands. No socket needed.
-        let mut w = GraphEntityWriter::new("/nonexistent.sock".to_string()).unwrap();
-        let err = w.link("LINKS_TO", "note-1", "note-2").unwrap_err();
-        assert!(err.contains("plan_entity_link"), "edge write names the pending op: {err}");
+    fn an_edge_write_to_a_dead_socket_surfaces_a_transport_error() {
+        // link drives the async link_entities client through block_on; a dead
+        // socket surfaces the transport error as a string (a real link is covered
+        // by the os-sdk link_entities fake-daemon test).
+        let mut w = GraphEntityWriter::new("/nonexistent-bridge-link.sock".to_string()).unwrap();
+        let err = w
+            .link("LINKS_TO", "md.obsidian.Note", "note-1", "md.obsidian.Note", "note-2")
+            .expect_err("a dead socket cannot link");
+        assert!(!err.is_empty(), "the transport error is surfaced as a string");
     }
 
     #[test]
