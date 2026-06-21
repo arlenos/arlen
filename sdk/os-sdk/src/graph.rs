@@ -69,6 +69,16 @@ pub struct GrantView {
     pub issued_at: i64,
     /// The entity types this grant can reach (the queryable projection).
     pub reach: Vec<String>,
+    /// The grant kind: `capability-token` or `consent` (system-dialog-plan.md
+    /// Option A); an older daemon omits it (defaults to empty = capability-token).
+    #[serde(default)]
+    pub source: String,
+    /// The consent class, when `source == "consent"` (else empty).
+    #[serde(default)]
+    pub consent_class: String,
+    /// The concrete consent scope, when `source == "consent"` (else empty).
+    #[serde(default)]
+    pub consent_scope: String,
 }
 
 /// Largest response frame the client will allocate for the legacy text path.

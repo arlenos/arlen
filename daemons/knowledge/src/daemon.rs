@@ -826,6 +826,13 @@ struct GrantView {
     superseded: bool,
     issued_at: i64,
     reach: Vec<String>,
+    /// The grant kind: `capability-token` (an empty/null source reads the same)
+    /// or `consent` (a remembered consent grant, system-dialog-plan.md Option A).
+    source: String,
+    /// The consent class, when `source == "consent"` (else empty).
+    consent_class: String,
+    /// The concrete consent scope, when `source == "consent"` (else empty).
+    consent_scope: String,
 }
 
 /// The uniform `access_grants` failure shape.
@@ -871,7 +878,8 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
         "MATCH (g:Grant{scope}) WHERE NOT g.superseded \
          OPTIONAL MATCH (g)-[:GRANTS]->(t:EntityType) \
          RETURN g.id, g.app_id, g.declared_ceiling, g.required, g.identity_verified, \
-         g.live, g.revoked, g.superseded, g.pid, g.issued_at, t.label \
+         g.live, g.revoked, g.superseded, g.pid, g.issued_at, t.label, \
+         g.source, g.consent_class, g.consent_scope \
          LIMIT {ACCESS_GRANTS_ROW_CAP}"
     );
     let rows = match graph.query_rows(cypher).await {
@@ -882,7 +890,7 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
     let mut views: Vec<GrantView> = Vec::new();
     let mut index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for row in rows {
-        if row.len() < 11 {
+        if row.len() < 14 {
             continue;
         }
         let id = row[0].as_str().to_string();
@@ -891,15 +899,19 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
             let superseded = row[7].as_bool();
             let stored_live = row[5].as_bool();
             let pid = row[8].as_i64();
-            // Fresh liveness: a stored-live grant renders live only if its process
-            // is still alive (death caught at read time) AND it is neither revoked
-            // nor superseded (defensive: the active-reach flag is correct in the
-            // reader, not only by emitter discipline). `try_from` keeps an
-            // out-of-range or negative stored pid from wrapping.
+            let source = row[11].as_str();
+            // Fresh liveness. A capability-token grant renders live only if its
+            // minting process is still alive (death caught at read time); a
+            // CONSENT grant has no process (pid 0) and persists independent of
+            // any process, so its liveness is the stored flag minus revoke/
+            // supersede. Both require not-revoked and not-superseded (defensive:
+            // the active flag is correct in the reader, not only by emitter
+            // discipline). `try_from` keeps a bad stored pid from wrapping.
             let live = stored_live
                 && !revoked
                 && !superseded
-                && u32::try_from(pid).map(process_alive).unwrap_or(false);
+                && (source == "consent"
+                    || u32::try_from(pid).map(process_alive).unwrap_or(false));
             views.push(GrantView {
                 id: id.clone(),
                 app_id: row[1].as_str().to_string(),
@@ -911,6 +923,9 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
                 superseded,
                 issued_at: row[9].as_i64(),
                 reach: Vec::new(),
+                source: source.to_string(),
+                consent_class: row[12].as_str().to_string(),
+                consent_scope: row[13].as_str().to_string(),
             });
             views.len() - 1
         });
@@ -2963,6 +2978,65 @@ mod tests {
         // An app with no grants gets an empty array, never an error or a leak.
         let none = handle_access_grants("com.c", &graph).await;
         assert_eq!(none, "[]", "no grants -> empty, not a leak: {none}");
+    }
+
+    #[tokio::test]
+    async fn access_grants_surfaces_consent_grants_alongside_capability_tokens() {
+        use crate::token::{CapabilityToken, EntityScope, InstanceScope};
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+
+        // A capability-token grant for com.app (a real, scoped token).
+        let token = CapabilityToken::new(
+            "com.app".into(),
+            999_999, // not alive -> capability tokens render not-live
+            vec![EntityScope {
+                entity_type: "system.File".into(),
+                fields: None,
+                exclude_fields: vec![],
+            }],
+            vec![],
+            vec![],
+            InstanceScope::Own,
+        );
+        crate::lcg::emit_grant_node(&graph, &token).await.unwrap();
+
+        // A consent grant for the same principal (pid-free, user-confirmed).
+        crate::lcg::persist_consent_grant(
+            &graph,
+            "com.app",
+            "contacts.read",
+            Some("self"),
+            "rev-handle-1",
+        )
+        .await
+        .unwrap();
+
+        let json = handle_access_grants("com.app", &graph).await;
+        let views: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let arr = views.as_array().unwrap();
+        assert_eq!(arr.len(), 2, "both grants surface for the caller: {json}");
+
+        let token_view = arr
+            .iter()
+            .find(|v| v["source"] == "capability-token")
+            .expect("the capability-token grant appears with its source");
+        // pid 999999 is dead, so the token grant renders not-live.
+        assert_eq!(token_view["live"], false, "dead-pid token not-live: {json}");
+
+        let consent_view = arr
+            .iter()
+            .find(|v| v["source"] == "consent")
+            .expect("the consent grant appears with source=consent");
+        assert_eq!(consent_view["consent_class"], "contacts.read");
+        assert_eq!(consent_view["consent_scope"], "self");
+        // A consent grant has no pid; liveness rests on stored_live/revoke/supersede,
+        // so it renders live even though no process backs it.
+        assert_eq!(
+            consent_view["live"], true,
+            "pid-free consent grant renders live: {json}"
+        );
+        assert_eq!(consent_view["revoked"], false);
     }
 
     #[tokio::test]
