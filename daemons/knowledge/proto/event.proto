@@ -28,6 +28,14 @@ message FileOpenedPayload {
   uint64 cgroup_id = 4;  // cgroup v2 id of the opening task; join key to Command. 0 = no attribution
 }
 
+// Emitted when a process writes to a file (kernel-layer sys_enter_write).
+// Event type: "file.written". Mirrors the kernel-layer canonical definition.
+message FileWrittenPayload {
+  string path   = 1;  // absolute path
+  string app_id = 2;  // application identifier
+  uint64 bytes  = 3;  // number of bytes written
+}
+
 // Emitted when keyboard focus changes between Wayland surfaces.
 // Event type: "window.focused"
 message WindowFocusedPayload {

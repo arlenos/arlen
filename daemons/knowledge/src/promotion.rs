@@ -2,8 +2,8 @@ use crate::graph::GraphHandle;
 use crate::project::ProjectStore;
 use crate::proto::{
     AnnotationClearPayload, AnnotationSetPayload, BadgeSetPayload, BadgeStatus,
-    CodeFileIndexPayload, FileOpenedPayload, PresenceClearPayload, PresenceSetPayload,
-    ShortcutActionInvokedPayload, TimelineRecordPayload, WindowFocusedPayload,
+    CodeFileIndexPayload, FileOpenedPayload, FileWrittenPayload, PresenceClearPayload,
+    PresenceSetPayload, ShortcutActionInvokedPayload, TimelineRecordPayload, WindowFocusedPayload,
 };
 use crate::utils::escape_cypher;
 use anyhow::Result;
@@ -191,6 +191,9 @@ async fn run_pass(
             "window.focused" => {
                 promote_window_focused(graph, id, timestamp, session_id, payload).await
             }
+            "file.written" => {
+                promote_file_written(graph, id, timestamp, source, pid, payload).await
+            }
             "app.presence.set" => {
                 promote_presence_set(graph, id, timestamp, payload).await
             }
@@ -336,6 +339,61 @@ async fn promote_file_opened(
         .await?;
 
     debug!(event_id, path = %file_payload.path, "promoted file.opened");
+    Ok(())
+}
+
+/// Promote a `file.written` event into a write-provenance edge.
+///
+/// Mirrors [`promote_file_opened`]'s File + App merge but creates a
+/// `MODIFIED_BY` edge (the app WROTE the file) rather than the read/open
+/// `ACCESSED_BY`. The File node is path-keyed and shared with the read path, so
+/// a write before any read still creates the node; the read's `last_accessed`
+/// is not clobbered here (a write is not an access). The per-write history (the
+/// byte count, the timestamp) stays in the SQLite event log; this records only
+/// that the relationship exists.
+async fn promote_file_written(
+    graph: &GraphHandle,
+    event_id: &str,
+    _timestamp: &i64,
+    source: &str,
+    pid: &i64,
+    payload: &[u8],
+) -> Result<()> {
+    let file_payload = FileWrittenPayload::decode(payload)?;
+
+    let path = if file_payload.path.is_empty() {
+        format!("unknown:{event_id}")
+    } else {
+        file_payload.path.clone()
+    };
+    let app_id = if file_payload.app_id.is_empty() {
+        format!("{source}:{pid}")
+    } else {
+        file_payload.app_id.clone()
+    };
+
+    let path_esc = escape_cypher(&path);
+    let app_id_esc = escape_cypher(&app_id);
+    let source_esc = escape_cypher(source);
+
+    graph
+        .write(format!(
+            "MERGE (a:App {{id: '{app_id_esc}'}}) SET a.name = '{source_esc}'"
+        ))
+        .await?;
+    graph
+        .write(format!(
+            "MERGE (f:File {{id: '{path_esc}'}}) SET f.path = '{path_esc}'"
+        ))
+        .await?;
+    graph
+        .write(format!(
+            "MATCH (f:File {{id: '{path_esc}'}}), (a:App {{id: '{app_id_esc}'}})
+             MERGE (f)-[:MODIFIED_BY]->(a)"
+        ))
+        .await?;
+
+    debug!(event_id, path = %file_payload.path, "promoted file.written");
     Ok(())
 }
 
@@ -889,6 +947,48 @@ mod shell_event_tests {
             .map(|v| v.as_i64())
             .unwrap();
         assert_eq!(cg, 987_654, "the cgroup id round-trips onto the File node");
+    }
+
+    #[tokio::test]
+    async fn promote_file_written_records_a_modified_by_edge() {
+        // A file.written event creates a MODIFIED_BY edge (the app WROTE the
+        // file), distinct from the read-side ACCESSED_BY, and does not touch
+        // the read's last_accessed (a write is not an access).
+        let (graph, _tmp) = setup().await;
+        let payload = FileWrittenPayload {
+            path: "/proj/out.bin".into(),
+            app_id: "build:7".into(),
+            bytes: 4096,
+        };
+        let mut buf = Vec::new();
+        payload.encode(&mut buf).unwrap();
+        promote_file_written(&graph, "w1", &200, "build", &7, &buf)
+            .await
+            .unwrap();
+        let rs = graph
+            .query_rows(
+                "MATCH (f:File {id: '/proj/out.bin'})-[:MODIFIED_BY]->(a:App {id: 'build:7'}) \
+                 RETURN count(*) AS cnt"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        let cnt = rs.rows.first().and_then(|r| r.first()).map(|v| v.as_i64()).unwrap();
+        assert_eq!(cnt, 1, "the write creates exactly one MODIFIED_BY edge");
+        // Re-promoting the same write is idempotent (MERGE), not a second edge.
+        promote_file_written(&graph, "w1", &200, "build", &7, &buf)
+            .await
+            .unwrap();
+        let rs2 = graph
+            .query_rows(
+                "MATCH (:File {id: '/proj/out.bin'})-[:MODIFIED_BY]->(:App {id: 'build:7'}) \
+                 RETURN count(*) AS cnt"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        let cnt2 = rs2.rows.first().and_then(|r| r.first()).map(|v| v.as_i64()).unwrap();
+        assert_eq!(cnt2, 1, "a repeated write does not duplicate the edge");
     }
 
     #[tokio::test]
