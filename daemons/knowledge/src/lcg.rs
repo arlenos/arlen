@@ -86,7 +86,8 @@ pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Re
     // on a match.
     stmts.push(format!(
         "MERGE (g:Grant {{id: '{id_esc}'}}) \
-         ON CREATE SET g.app_id = '{app_esc}', g.pid = {pid}, g.issued_at = {issued}, \
+         ON CREATE SET g.app_id = '{app_esc}', g.source = 'capability-token', \
+         g.pid = {pid}, g.issued_at = {issued}, \
          g.expires_at = {expires}, g.declared_ceiling = '{ceiling_esc}', \
          g.required = false, g.identity_verified = false, g.live = true, \
          g.revoked = false, g.superseded = false, g.last_exercised_at = 0, g.use_count = 0 \
