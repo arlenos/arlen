@@ -12,6 +12,10 @@
 //! model, keyboard-selection helpers) shared across hosts.
 
 pub mod bulk_rename;
+/// The media-metadata-edit write-back (editable EXIF), behind the off-by-default
+/// `metadata-edit` feature.
+#[cfg(feature = "metadata-edit")]
+pub mod metadata;
 pub mod ops;
 pub mod search;
 pub mod undo;
