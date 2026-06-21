@@ -428,6 +428,98 @@ pub fn set_permissions(dir: &Dir, path: impl AsRef<Path>, mode: u32) -> OpResult
     Ok(())
 }
 
+/// The largest file [`safe_rewrite`] loads into memory to transform. Metadata
+/// edits target media + document files, not arbitrary huge blobs; a larger file
+/// is refused rather than buffered whole.
+pub const MAX_REWRITE_BYTES: u64 = 256 * 1024 * 1024;
+
+/// The hidden temp-sibling path [`safe_rewrite`] writes through, next to the
+/// target so the final rename stays within one directory (and thus one
+/// filesystem, so it is atomic). The pid keeps two processes from colliding; a
+/// stale leftover from a crashed process has a dead pid, so it never collides
+/// with a live edit, and `create_new` fail-closes on any collision regardless.
+fn rewrite_temp_name(path: &Path) -> OpResult<PathBuf> {
+    let name = path.file_name().ok_or_else(|| {
+        OpError::Io(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "path has no file name to rewrite",
+        ))
+    })?;
+    let mut tmp = OsString::from(".");
+    tmp.push(name);
+    tmp.push(format!(".arlen-meta-tmp.{}", std::process::id()));
+    Ok(match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent.join(tmp),
+        _ => PathBuf::from(tmp),
+    })
+}
+
+/// Atomically rewrite the file at `path` (under the capability `dir`) by handing
+/// its bytes to `transform` and replacing it with the result, fail-safe so a
+/// metadata edit can never corrupt the file. The new bytes are written to a
+/// hidden temp sibling, fsync'd, READ BACK and verified byte-for-byte (so a
+/// short or failed write never lands), then atomically renamed over the
+/// original. Any failure before the rename leaves the original byte-identical
+/// and removes the temp; a `transform` that returns an error aborts with nothing
+/// written.
+///
+/// This is the corruption-safe substrate for the metadata-edit write-back (the
+/// writable EXIF / filename / permission half of the info panel): never corrupt
+/// the file, always verify the readback. The capability `dir` confines every
+/// path, so `path` cannot escape it. A file larger than [`MAX_REWRITE_BYTES`] is
+/// refused rather than buffered whole.
+pub fn safe_rewrite<F>(dir: &Dir, path: impl AsRef<Path>, transform: F) -> OpResult<()>
+where
+    F: FnOnce(&[u8]) -> OpResult<Vec<u8>>,
+{
+    let path = path.as_ref();
+    let len = dir.metadata(path)?.len();
+    if len > MAX_REWRITE_BYTES {
+        return Err(OpError::Io(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "file is too large to rewrite metadata in memory",
+        )));
+    }
+    let original = dir.read(path)?;
+    let new_bytes = transform(&original)?;
+
+    let temp = rewrite_temp_name(path)?;
+    {
+        let mut file = dir.open_with(
+            &temp,
+            OpenOptions::new().write(true).create_new(true),
+        )?;
+        if let Err(e) = file.write_all(&new_bytes).and_then(|()| file.sync_all()) {
+            drop(file);
+            let _ = dir.remove_file(&temp);
+            return Err(OpError::Io(e));
+        }
+    }
+
+    // Verify readback: the temp must re-read byte-for-byte as written, or a
+    // partial / failed write would otherwise land on the rename.
+    match dir.read(&temp) {
+        Ok(readback) if readback == new_bytes => {}
+        Ok(_) => {
+            let _ = dir.remove_file(&temp);
+            return Err(OpError::Io(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "metadata rewrite failed readback verification",
+            )));
+        }
+        Err(e) => {
+            let _ = dir.remove_file(&temp);
+            return Err(OpError::Io(e));
+        }
+    }
+
+    if let Err(e) = dir.rename(&temp, dir, path) {
+        let _ = dir.remove_file(&temp);
+        return Err(OpError::Io(e));
+    }
+    Ok(())
+}
+
 /// Copy the entry at `src` (relative to `src_dir`) into the destination
 /// directory `dst` (relative to `dst_dir`), under the entry's own basename,
 /// applying `policy` to a name collision. Handles a regular file, a directory
@@ -1305,6 +1397,58 @@ mod tests {
         set_permissions(&dir, "a.txt", 0o100_640).unwrap();
         let mode = fs::metadata(&f).unwrap().permissions().mode() & 0o7777;
         assert_eq!(mode, 0o640);
+    }
+
+    #[test]
+    fn safe_rewrite_replaces_content_and_leaves_no_temp() {
+        let tmp = tempfile::tempdir().unwrap();
+        let f = tmp.path().join("doc.bin");
+        fs::write(&f, b"hello world").unwrap();
+        let dir = cap(tmp.path());
+        safe_rewrite(&dir, "doc.bin", |bytes| {
+            Ok(bytes.to_ascii_uppercase())
+        })
+        .unwrap();
+        assert_eq!(read(&f), b"HELLO WORLD");
+        // No temp sibling left behind.
+        let leftover: Vec<_> = fs::read_dir(tmp.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .filter(|n| n.to_string_lossy().contains("arlen-meta-tmp"))
+            .collect();
+        assert!(leftover.is_empty(), "no temp file remains: {leftover:?}");
+    }
+
+    #[test]
+    fn safe_rewrite_leaves_the_original_untouched_on_transform_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let f = tmp.path().join("doc.bin");
+        fs::write(&f, b"original bytes").unwrap();
+        let dir = cap(tmp.path());
+        let err = safe_rewrite(&dir, "doc.bin", |_bytes| {
+            Err(OpError::Io(io::Error::other("no")))
+        })
+        .unwrap_err();
+        assert!(matches!(err, OpError::Io(_)));
+        // The file is byte-identical and no temp remains.
+        assert_eq!(read(&f), b"original bytes");
+        let leftover = fs::read_dir(tmp.path())
+            .unwrap()
+            .any(|e| e.unwrap().file_name().to_string_lossy().contains("arlen-meta-tmp"));
+        assert!(!leftover, "a failed transform leaves no temp");
+    }
+
+    #[test]
+    fn safe_rewrite_round_trips_identity() {
+        // An identity transform leaves the bytes intact (the verify-readback path
+        // accepts a faithful write).
+        let tmp = tempfile::tempdir().unwrap();
+        let f = tmp.path().join("img.bin");
+        let content: Vec<u8> = (0u8..=255).cycle().take(4096).collect();
+        fs::write(&f, &content).unwrap();
+        let dir = cap(tmp.path());
+        safe_rewrite(&dir, "img.bin", |bytes| Ok(bytes.to_vec())).unwrap();
+        assert_eq!(read(&f), content);
     }
 
     #[test]
