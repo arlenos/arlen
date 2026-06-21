@@ -29,6 +29,10 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-uti
 libc = "0.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# The async GrantPersister seam (durable KG grant persistence, best-effort).
+async-trait = "0.1"
+# The real grant persister wraps the os-sdk graph client (consent grant write op).
+os-sdk = { path = "../../sdk/os-sdk" }
 
 [dev-dependencies]
 # The in-memory MockAuditSink (accepting / failing) for the resolve fail-closed

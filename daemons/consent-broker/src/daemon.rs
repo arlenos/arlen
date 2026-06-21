@@ -84,6 +84,28 @@ impl GrantStore {
 /// Shared broker state: the pending queue, the deferred-reply waiters, and the
 /// immutable system capability used to classify each request. Wrapped in an
 /// `Arc` by the daemon and shared between the two socket accept loops.
+/// Persists a remembered ("always allow") grant durably into the KG (so it
+/// survives a restart + backs the Settings see+revoke panel). Best-effort from
+/// the broker's view: the in-memory [`GrantStore`] is the live fast path and the
+/// audit ledger the durable decision record, so a persistence failure logs but
+/// never breaks a resolve. The real impl wraps the os-sdk graph client (in the
+/// daemon binary); tests use a recording mock.
+#[async_trait::async_trait]
+pub trait GrantPersister: Send + Sync {
+    /// Persist the remembered grant keyed by `revocation_handle`. Idempotent.
+    async fn persist(
+        &self,
+        recipient: &str,
+        consent_class: &str,
+        consent_scope: Option<&str>,
+        revocation_handle: &str,
+    ) -> Result<(), String>;
+}
+
+/// The broker's shared state: the pending queue + waiters, the remembered-grant
+/// store, the severity-classification capability, the audit sink, and the
+/// optional durable grant persister. Shared (`Arc`) across the intake + control
+/// accept loops.
 pub struct SharedState {
     /// The system capability (which apps are autonomous, the baseline mode) used
     /// to classify a request's severity. Immutable for the daemon's lifetime; a
@@ -92,6 +114,9 @@ pub struct SharedState {
     /// The audit ledger sink: every resolved decision is recorded before the
     /// requester may act on it (S13 audit-before-act, fail-closed).
     audit: Arc<dyn AuditSink>,
+    /// Durable grant persistence (the KG, Option A). `None` skips it (the
+    /// in-memory store + audit ledger still hold the grant). Best-effort.
+    persister: Option<Arc<dyn GrantPersister>>,
     inner: Mutex<Inner>,
 }
 
@@ -252,17 +277,27 @@ fn consent_revoke_entry(recipient: &str) -> IngestRequest {
 }
 
 impl SharedState {
-    /// A fresh broker over the given system capability + audit sink.
+    /// A fresh broker over the given system capability + audit sink, with no
+    /// durable grant persistence (the in-memory store + audit ledger hold grants).
     pub fn new(capability: Capability, audit: Arc<dyn AuditSink>) -> Self {
         Self {
             capability,
             audit,
+            persister: None,
             inner: Mutex::new(Inner {
                 queue: ConsentQueue::new(),
                 waiters: HashMap::new(),
                 grants: GrantStore::default(),
             }),
         }
+    }
+
+    /// Attach durable grant persistence (the KG, Option A): an audited always-allow
+    /// is also persisted best-effort, so it survives a restart and backs the
+    /// Settings see+revoke panel.
+    pub fn with_persister(mut self, persister: Arc<dyn GrantPersister>) -> Self {
+        self.persister = Some(persister);
+        self
     }
 
     /// Intake a request from a peer whose `attested_app_id` was resolved from
@@ -355,6 +390,25 @@ impl SharedState {
                 .expect("consent state mutex poisoned")
                 .grants
                 .record(g.clone());
+            // Durable KG persistence (Option A), best-effort: the in-memory store
+            // above + the audit ledger already hold the grant, so a failure logs
+            // but never breaks the resolve. No lock is held across this await.
+            if let Some(persister) = &self.persister {
+                if let Err(e) = persister
+                    .persist(
+                        &g.recipient,
+                        g.class.as_key(),
+                        g.scope.as_deref(),
+                        &g.revocation_handle,
+                    )
+                    .await
+                {
+                    tracing::warn!(
+                        recipient = %g.recipient,
+                        "consent grant KG persistence failed (best-effort): {e}"
+                    );
+                }
+            }
         }
         if let Some(tx) = tx {
             let _ = tx.send(reply);
@@ -711,5 +765,59 @@ mod tests {
         assert_eq!(state.front_view().unwrap().id, high.get());
         let _ = state.resolve(high, ConsentOutcome::Denied).await;
         assert_eq!(state.front_view().unwrap().id, standard.get());
+    }
+
+    #[derive(Default)]
+    struct RecordingPersister {
+        persisted: tokio::sync::Mutex<Vec<(String, Option<String>)>>,
+    }
+
+    #[async_trait::async_trait]
+    impl GrantPersister for RecordingPersister {
+        async fn persist(
+            &self,
+            recipient: &str,
+            _consent_class: &str,
+            consent_scope: Option<&str>,
+            _revocation_handle: &str,
+        ) -> Result<(), String> {
+            self.persisted
+                .lock()
+                .await
+                .push((recipient.to_string(), consent_scope.map(str::to_string)));
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn an_audited_always_allow_is_persisted_but_allow_once_is_not() {
+        let persister = Arc::new(RecordingPersister::default());
+        let state = SharedState::new(cap_default(), Arc::new(MockAuditSink::accepting()))
+            .with_persister(persister.clone());
+
+        // Always-allow -> persisted.
+        let id = match state.intake(standard_body(Some("/x")), "app.p") {
+            IntakeOutcome::Pending { id, .. } => id,
+            IntakeOutcome::SilentGranted => panic!("expected a prompt"),
+        };
+        let _ = state.resolve(id, ConsentOutcome::AllowedRemembered).await;
+        {
+            let p = persister.persisted.lock().await;
+            assert_eq!(p.len(), 1, "the always-allow is persisted");
+            assert_eq!(p[0].0, "app.p");
+            assert_eq!(p[0].1.as_deref(), Some("/x"));
+        }
+
+        // Allow-once -> mints no grant -> persists nothing.
+        let id2 = match state.intake(standard_body(Some("/y")), "app.p") {
+            IntakeOutcome::Pending { id, .. } => id,
+            IntakeOutcome::SilentGranted => panic!("expected a prompt"),
+        };
+        let _ = state.resolve(id2, ConsentOutcome::AllowedOnce).await;
+        assert_eq!(
+            persister.persisted.lock().await.len(),
+            1,
+            "allow-once persists nothing"
+        );
     }
 }

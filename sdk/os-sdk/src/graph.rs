@@ -706,6 +706,45 @@ impl UnixGraphClient {
         }
     }
 
+    /// Persist a consent grant into the shared LCG Grant node over the daemon
+    /// write socket (system-dialog-plan.md Option A): the durable half of the
+    /// consent grant lifecycle, surfaced by the `access_grants` read in the same
+    /// see+revoke place. Keyed by `revocation_handle` so a re-consent strengthens
+    /// the same node. Only the consent broker is admitted; a daemon `ERROR:` maps
+    /// to [`QueryError`] (a permission error to [`QueryError::PermissionDenied`]).
+    /// Idempotent, so a retry is safe.
+    pub async fn persist_consent_grant(
+        &self,
+        recipient: &str,
+        consent_class: &str,
+        consent_scope: Option<&str>,
+        revocation_handle: &str,
+    ) -> Result<(), QueryError> {
+        let req = serde_json::json!({
+            "op": "persist_consent_grant",
+            "recipient": recipient,
+            "consent_class": consent_class,
+            "consent_scope": consent_scope,
+            "revocation_handle": revocation_handle,
+        });
+        let json = serde_json::to_vec(&req).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+
+        // A leading 0x02 byte selects the daemon's structured write mode.
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x02);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_WRITE_RESPONSE_BYTES).await?;
+        let response = String::from_utf8_lossy(&bytes);
+        Self::check_error(&response)?;
+        match response.trim() {
+            "OK: persisted" => Ok(()),
+            other => Err(QueryError::InvalidQuery(format!(
+                "unexpected daemon consent-grant response: {other}"
+            ))),
+        }
+    }
+
     /// Retract (compensate) a relation this caller previously created, deleting
     /// only the edge that carries `op_id`, via the daemon's write socket.
     ///
@@ -1613,6 +1652,46 @@ mod tests {
         let client = UnixGraphClient::new(path.to_string_lossy().to_string());
         let result = client
             .link_entities("LINKS_TO", "md.obsidian.Note", "note-1", "md.obsidian.Note", "note-2")
+            .await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        assert!(result.is_ok(), "got {result:?}");
+    }
+
+    #[tokio::test]
+    async fn persist_consent_grant_sends_a_tagged_request_and_parses_ok() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-consent-grant-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            assert_eq!(req[0], 0x02, "consent-grant writes carry the 0x02 write prefix");
+            let body: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
+            assert_eq!(body["op"], "persist_consent_grant");
+            assert_eq!(body["recipient"], "org.arlen.files");
+            assert_eq!(body["consent_class"], "Destructive");
+            assert_eq!(body["consent_scope"], "/home/x");
+            assert_eq!(body["revocation_handle"], "rh-1");
+
+            let reply = b"OK: persisted";
+            conn.write_all(&(reply.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(reply).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let result = client
+            .persist_consent_grant("org.arlen.files", "Destructive", Some("/home/x"), "rh-1")
             .await;
         let _ = server.await;
         let _ = std::fs::remove_file(&path);
