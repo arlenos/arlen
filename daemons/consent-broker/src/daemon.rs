@@ -28,7 +28,43 @@ use crate::control::{front_view, resolve_decision, PendingView, ResolvedDecision
 use crate::grant::ConsentGrant;
 use crate::queue::{ConsentQueue, Enqueued, RequestId};
 use crate::service::RequestBody;
-use crate::{assemble, AttestedRequester, ConsentOutcome};
+use crate::{assemble, classify, AttestedRequester, ConsentOutcome, ConsentRequest, SeverityTier};
+
+/// The broker's in-memory store of remembered ("always allow") grants. A grant
+/// covers a future request with the same (recipient, class, scope), so a
+/// repeated Standard prompt can be silently granted. It is consulted ONLY to
+/// downgrade a Standard request to Silent: a HighStakes or externally-triggered
+/// request always re-prompts regardless of any grant (the non-configurable
+/// confirms are never bypassed). Process-lived for now; the durable KG grant
+/// node + the revoke surface are a later slice.
+#[derive(Debug, Default)]
+struct GrantStore {
+    grants: Vec<ConsentGrant>,
+}
+
+impl GrantStore {
+    /// Record a remembered grant, deduped on its (recipient, class, scope)
+    /// identity (the revocation_handle is deterministic over that key, so
+    /// re-consenting the same scope does not duplicate it).
+    fn record(&mut self, grant: ConsentGrant) {
+        if !self
+            .grants
+            .iter()
+            .any(|g| g.revocation_handle == grant.revocation_handle)
+        {
+            self.grants.push(grant);
+        }
+    }
+
+    /// Whether a live grant covers this request: same attested recipient, same
+    /// class, same concrete scope.
+    fn covers(&self, request: &ConsentRequest) -> bool {
+        let recipient = request.requester.grant_recipient();
+        self.grants.iter().any(|g| {
+            g.recipient == recipient && g.class == request.class && g.scope == request.scope
+        })
+    }
+}
 
 /// Shared broker state: the pending queue, the deferred-reply waiters, and the
 /// immutable system capability used to classify each request. Wrapped in an
@@ -49,6 +85,9 @@ struct Inner {
     /// A parked requester per pending id: resolving the request fires the sender
     /// with the user's decision, unblocking the requester's intake connection.
     waiters: HashMap<RequestId, oneshot::Sender<ConsentOutcome>>,
+    /// Remembered ("always allow") grants, consulted to downgrade a repeated
+    /// Standard request to Silent.
+    grants: GrantStore,
 }
 
 /// What an intake resolved to: either a silent grant the caller may proceed on
@@ -168,18 +207,39 @@ impl SharedState {
             inner: Mutex::new(Inner {
                 queue: ConsentQueue::new(),
                 waiters: HashMap::new(),
+                grants: GrantStore::default(),
             }),
         }
     }
 
     /// Intake a request from a peer whose `attested_app_id` was resolved from
-    /// SO_PEERCRED (never the wire body). Classifies + enqueues; a silent request
-    /// returns [`IntakeOutcome::SilentGranted`], a dialog one parks a one-shot and
-    /// returns its receiver. The lock is not held across any await (the receiver
-    /// is returned to the caller, which awaits it after this returns).
+    /// SO_PEERCRED (never the wire body). Classifies, consults remembered grants,
+    /// and enqueues; a silent request returns [`IntakeOutcome::SilentGranted`], a
+    /// dialog one parks a one-shot and returns its receiver. The lock is not held
+    /// across any await (the receiver is returned to the caller, which awaits it
+    /// after this returns).
+    ///
+    /// Grant consultation may ONLY downgrade a Standard request to Silent on an
+    /// exact (recipient, class, scope) match: a HighStakes or externally-triggered
+    /// request always re-prompts regardless of any remembered grant, so a grant
+    /// can never silently skip a confirmation the high-impact / injection-
+    /// containment rules require.
     pub fn intake(&self, body: RequestBody, attested_app_id: &str) -> IntakeOutcome {
         let request = assemble(body, AttestedRequester::new(attested_app_id));
         let mut inner = self.inner.lock().expect("consent state mutex poisoned");
+
+        // A remembered grant only covers a Standard, non-externally-triggered
+        // request. HighStakes classifies away from Standard (external trigger maps
+        // to HighStakes too), so those never reach this downgrade; the explicit
+        // external guard is belt-and-suspenders.
+        let tier = classify(&request, &self.capability);
+        if matches!(tier, SeverityTier::Standard)
+            && !request.triggered_by_external_content
+            && inner.grants.covers(&request)
+        {
+            return IntakeOutcome::SilentGranted;
+        }
+
         match inner.queue.enqueue(request, &self.capability) {
             Enqueued::SilentGrant => IntakeOutcome::SilentGranted,
             Enqueued::Queued(id) => {
@@ -231,13 +291,25 @@ impl SharedState {
         } else {
             ConsentOutcome::Denied
         };
+        // An audited always-allow is remembered so a future matching Standard
+        // request is silently granted (consultation). A failed audit records
+        // nothing (the request was failed closed). Re-lock briefly after the
+        // await; the grant-record holds no lock across an await.
+        let grant = if audited { decision.grant } else { None };
+        if let Some(g) = &grant {
+            self.inner
+                .lock()
+                .expect("consent state mutex poisoned")
+                .grants
+                .record(g.clone());
+        }
         if let Some(tx) = tx {
             let _ = tx.send(reply);
         }
         ResolveResult::Resolved {
             audited,
             reply,
-            grant: if audited { decision.grant } else { None },
+            grant,
         }
     }
 }
@@ -283,6 +355,106 @@ mod tests {
             summary: "permanently delete 3 files".to_string(),
             scope: Some("/x".to_string()),
         }
+    }
+
+    /// An Ordinary request (under the Suggest baseline this classifies Standard).
+    fn standard_body(scope: Option<&str>) -> RequestBody {
+        RequestBody {
+            class: ConsentClass::CapabilityGrant,
+            kind: ActionKind::Ordinary,
+            triggered_by_external_content: false,
+            summary: "use a capability".to_string(),
+            scope: scope.map(str::to_string),
+        }
+    }
+
+    /// Drive a request to an AllowedRemembered resolution, recording its grant.
+    async fn remember(state: &SharedState, b: RequestBody, app: &str) {
+        let id = match state.intake(b, app) {
+            IntakeOutcome::Pending { id, .. } => id,
+            IntakeOutcome::SilentGranted => panic!("the request should have prompted"),
+        };
+        let r = state.resolve(id, ConsentOutcome::AllowedRemembered).await;
+        assert!(
+            matches!(r, ResolveResult::Resolved { audited: true, .. }),
+            "the always-allow must be audited+recorded"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_remembered_standard_grant_makes_a_matching_request_silent() {
+        let state = state_default();
+        remember(&state, standard_body(Some("/x")), "app.s").await;
+        // A second identical Standard request is now covered -> no dialog.
+        assert!(
+            matches!(
+                state.intake(standard_body(Some("/x")), "app.s"),
+                IntakeOutcome::SilentGranted
+            ),
+            "a matching Standard request is covered by the remembered grant"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_high_stakes_request_always_prompts_even_with_a_matching_grant() {
+        // The security invariant: a remembered grant NEVER downgrades a HighStakes
+        // confirm. Record a grant for (app, Destructive, /x) via a delete, then a
+        // second identical delete must still prompt.
+        let state = state_default();
+        remember(&state, body(ActionKind::PermanentDelete), "app.h").await;
+        assert!(
+            matches!(
+                state.intake(body(ActionKind::PermanentDelete), "app.h"),
+                IntakeOutcome::Pending { .. }
+            ),
+            "a HighStakes request always re-prompts regardless of a remembered grant"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_external_request_always_prompts_even_with_a_matching_grant() {
+        // A remembered Standard grant must not cover the same request once it is
+        // externally triggered (injection containment): external maps to HighStakes.
+        let state = state_default();
+        remember(&state, standard_body(Some("/x")), "app.e").await;
+        let mut ext = standard_body(Some("/x"));
+        ext.triggered_by_external_content = true;
+        assert!(
+            matches!(state.intake(ext, "app.e"), IntakeOutcome::Pending { .. }),
+            "an externally-triggered request always re-prompts even with a matching grant"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_grant_is_scoped_a_different_scope_still_prompts() {
+        let state = state_default();
+        remember(&state, standard_body(Some("/x")), "app.d").await;
+        assert!(
+            matches!(
+                state.intake(standard_body(Some("/y")), "app.d"),
+                IntakeOutcome::Pending { .. }
+            ),
+            "a grant covers only its own scope; a different scope still prompts"
+        );
+    }
+
+    #[tokio::test]
+    async fn allow_once_remembers_nothing() {
+        // Only AllowedRemembered records a grant; AllowedOnce leaves the store
+        // empty, so the next identical request still prompts.
+        let state = state_default();
+        let id = match state.intake(standard_body(Some("/x")), "app.o") {
+            IntakeOutcome::Pending { id, .. } => id,
+            IntakeOutcome::SilentGranted => panic!("expected a prompt"),
+        };
+        let _ = state.resolve(id, ConsentOutcome::AllowedOnce).await;
+        assert!(
+            matches!(
+                state.intake(standard_body(Some("/x")), "app.o"),
+                IntakeOutcome::Pending { .. }
+            ),
+            "allow-once remembers nothing"
+        );
     }
 
     #[tokio::test]
