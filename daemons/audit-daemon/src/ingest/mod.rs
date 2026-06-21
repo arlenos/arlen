@@ -63,6 +63,7 @@ const ADMITTED: &[&str] = &[
     "notifyd",
     "installd",
     "knowledge",
+    "consent-broker",
 ];
 
 /// Resolve the ingest socket path:
@@ -242,6 +243,7 @@ const DEV_ADMITTED: &[&str] = &[
     "dev.arlen-ai-proxy",
     "dev.arlen-ai-agent",
     "dev.arlen-graph-daemon",
+    "dev.arlen-consent-broker",
 ];
 
 /// Whether a resolved peer app_id may submit audit events.

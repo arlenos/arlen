@@ -20,8 +20,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use arlen_ai_core::capability::{AccessTier, ActionPermissions, BaselineMode, Capability};
+use audit_proto::sink::LedgerAuditSink;
 use arlen_consent_broker::daemon::{
-    ControlReply, ControlRequest, IntakeOutcome, IntakeResult, SharedState,
+    ControlReply, ControlRequest, IntakeOutcome, IntakeResult, ResolveResult, SharedState,
 };
 use arlen_consent_broker::queue::RequestId;
 use arlen_consent_broker::service::RequestBody;
@@ -216,21 +217,27 @@ async fn handle_control_conn(state: Arc<SharedState>, mut stream: UnixStream, ui
             view: state.front_view(),
         },
         ControlRequest::Resolve { id, outcome } => {
-            match state.resolve(RequestId::from_raw(id), outcome) {
-                Some(decision) => {
-                    if let Some(grant) = decision.grant {
-                        // TODO(next slice): persist the grant into the KG +
-                        // audit ledger. Logged content-free for now (recipient
-                        // + revocation handle only, never the summary/scope).
+            match state.resolve(RequestId::from_raw(id), outcome).await {
+                ResolveResult::Resolved { audited, grant, .. } => {
+                    if !audited {
+                        // S13: the decision could not be recorded, so the grant
+                        // was failed closed to a denial. Surface the fault.
+                        tracing::error!(
+                            "control: decision audit failed; failed closed to a denial"
+                        );
+                    } else if let Some(grant) = grant {
+                        // TODO(next slice): persist the grant into the KG grant
+                        // node. The audit half is done; logged content-free for
+                        // now (recipient + revocation handle, never summary/scope).
                         tracing::info!(
                             recipient = %grant.recipient,
                             handle = %grant.revocation_handle,
-                            "control: always-allow grant minted (persistence pending)"
+                            "control: always-allow grant minted (KG persistence pending)"
                         );
                     }
                     ControlReply::Resolved { ok: true }
                 }
-                None => ControlReply::Resolved { ok: false },
+                ResolveResult::Unknown => ControlReply::Resolved { ok: false },
             }
         }
     };
@@ -267,10 +274,16 @@ async fn main() -> std::io::Result<()> {
     // request needs a dialog (never fewer prompts than warranted). A
     // config-driven capability that marks specific apps autonomous is a later
     // slice.
-    let state = Arc::new(SharedState::new(Capability::new(
-        AccessTier::Minimal,
-        ActionPermissions::new(BaselineMode::Suggest, Vec::<String>::new()),
-    )));
+    // Each resolved decision is recorded in the audit ledger before the grant is
+    // released (S13 audit-before-act); the consent broker is an admitted producer
+    // under the stable id `consent-broker`.
+    let state = Arc::new(SharedState::new(
+        Capability::new(
+            AccessTier::Minimal,
+            ActionPermissions::new(BaselineMode::Suggest, Vec::<String>::new()),
+        ),
+        Arc::new(LedgerAuditSink::at_default_socket()),
+    ));
 
     tracing::info!(
         intake = %intake_path.display(),

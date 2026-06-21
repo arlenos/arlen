@@ -17,13 +17,15 @@
 //! transport + the `ConnectionAuth` gate live in the binary (`main.rs`).
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use arlen_ai_core::capability::Capability;
+use audit_proto::{AuditKind, AuditSink, IngestRequest, StructuralRecord};
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
 use crate::control::{front_view, resolve_decision, PendingView, ResolvedDecision};
+use crate::grant::ConsentGrant;
 use crate::queue::{ConsentQueue, Enqueued, RequestId};
 use crate::service::RequestBody;
 use crate::{assemble, AttestedRequester, ConsentOutcome};
@@ -36,6 +38,9 @@ pub struct SharedState {
     /// to classify a request's severity. Immutable for the daemon's lifetime; a
     /// config-driven reload is a later slice.
     capability: Capability,
+    /// The audit ledger sink: every resolved decision is recorded before the
+    /// requester may act on it (S13 audit-before-act, fail-closed).
+    audit: Arc<dyn AuditSink>,
     inner: Mutex<Inner>,
 }
 
@@ -108,11 +113,58 @@ pub enum ControlReply {
     },
 }
 
+/// The disposition of a [`SharedState::resolve`] call.
+#[derive(Debug)]
+pub enum ResolveResult {
+    /// The id was not pending (unknown / already resolved); nothing changed.
+    Unknown,
+    /// The request resolved. `audited` is false when the audit write failed, in
+    /// which case the requester was failed closed to [`ConsentOutcome::Denied`]
+    /// regardless of the user's choice (S13: no audit, no action) and no grant is
+    /// returned.
+    Resolved {
+        /// Whether the decision was successfully recorded in the audit ledger.
+        audited: bool,
+        /// The outcome actually delivered to the requester.
+        reply: ConsentOutcome,
+        /// The grant to persist into the KG (the audit half is already done);
+        /// `Some` only for an audited always-allow.
+        grant: Option<ConsentGrant>,
+    },
+}
+
+/// Build the content-free audit entry for a resolved decision: the acting
+/// principal (the attested recipient) + the coarse disposition only, never the
+/// action's summary or scope (S13 keeps the always-recorded tier content-free).
+fn consent_decision_entry(decision: &ResolvedDecision) -> IngestRequest {
+    let outcome = match decision.reply {
+        ConsentOutcome::AllowedOnce => "granted-once",
+        ConsentOutcome::AllowedRemembered => "granted-remembered",
+        ConsentOutcome::Denied => "denied",
+    };
+    IngestRequest {
+        kind: AuditKind::Permission,
+        structural: StructuralRecord {
+            subject: decision.recipient.clone(),
+            node_types: Vec::new(),
+            relations: Vec::new(),
+            result_count: None,
+            duration_ms: None,
+            outcome: outcome.to_string(),
+            depth: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
+}
+
 impl SharedState {
-    /// A fresh broker over the given system capability.
-    pub fn new(capability: Capability) -> Self {
+    /// A fresh broker over the given system capability + audit sink.
+    pub fn new(capability: Capability, audit: Arc<dyn AuditSink>) -> Self {
         Self {
             capability,
+            audit,
             inner: Mutex::new(Inner {
                 queue: ConsentQueue::new(),
                 waiters: HashMap::new(),
@@ -145,17 +197,48 @@ impl SharedState {
     }
 
     /// Apply the shell-submitted decision for `id`: remove it from the queue,
-    /// fire the parked requester's one-shot with the outcome (a dropped requester
-    /// is tolerated, the decision is still recorded), and return what to persist
-    /// + reply. `None` for an unknown / already-resolved id.
-    pub fn resolve(&self, id: RequestId, outcome: ConsentOutcome) -> Option<ResolvedDecision> {
-        let mut inner = self.inner.lock().expect("consent state mutex poisoned");
-        let decision = resolve_decision(&mut inner.queue, id, outcome)?;
-        if let Some(tx) = inner.waiters.remove(&id) {
-            // The requester may have disconnected; the decision still stands.
-            let _ = tx.send(decision.reply);
+    /// audit the decision (S13 audit-before-act), then fire the parked
+    /// requester's one-shot with the outcome. The audit happens BEFORE the
+    /// requester is told the result, and a failed audit fails the request closed
+    /// to [`ConsentOutcome::Denied`] (no audit, no action) regardless of the
+    /// user's choice. A disconnected requester is tolerated (the decision is
+    /// still recorded). The queue lock is taken only for the synchronous removal
+    /// and is released before the audit await.
+    pub async fn resolve(&self, id: RequestId, outcome: ConsentOutcome) -> ResolveResult {
+        // Step 1: remove from the queue + take the parked sender under the lock,
+        // with no await held (the guard is dropped at the end of this block).
+        let taken = {
+            let mut inner = self.inner.lock().expect("consent state mutex poisoned");
+            match resolve_decision(&mut inner.queue, id, outcome) {
+                Some(decision) => Some((decision, inner.waiters.remove(&id))),
+                None => None,
+            }
+        };
+        let (decision, tx) = match taken {
+            Some(t) => t,
+            None => return ResolveResult::Unknown,
+        };
+
+        // Step 2: audit-before-act. Record the decision before the requester is
+        // told; a failed audit fails closed to a denial.
+        let audited = self
+            .audit
+            .submit(consent_decision_entry(&decision))
+            .await
+            .is_ok();
+        let reply = if audited {
+            decision.reply
+        } else {
+            ConsentOutcome::Denied
+        };
+        if let Some(tx) = tx {
+            let _ = tx.send(reply);
         }
-        Some(decision)
+        ResolveResult::Resolved {
+            audited,
+            reply,
+            grant: if audited { decision.grant } else { None },
+        }
     }
 }
 
@@ -166,22 +249,30 @@ mod tests {
     use arlen_ai_core::capability::{
         AccessTier, ActionKind, ActionPermissions, BaselineMode,
     };
+    use audit_proto::sink::MockAuditSink;
 
-    fn state_default() -> SharedState {
+    fn cap_default() -> Capability {
         // Suggest baseline, no autonomous apps: nothing resolves to Silent, so
         // every request needs a dialog (the conservative default; config-driven
         // autonomy is a later slice).
-        SharedState::new(Capability::new(
+        Capability::new(
             AccessTier::Minimal,
             ActionPermissions::new(BaselineMode::Suggest, Vec::<String>::new()),
-        ))
+        )
+    }
+
+    fn state_default() -> SharedState {
+        SharedState::new(cap_default(), Arc::new(MockAuditSink::accepting()))
     }
 
     fn state_autonomous(app: &str) -> SharedState {
-        SharedState::new(Capability::new(
-            AccessTier::Minimal,
-            ActionPermissions::new(BaselineMode::Suggest, [app.to_string()]),
-        ))
+        SharedState::new(
+            Capability::new(
+                AccessTier::Minimal,
+                ActionPermissions::new(BaselineMode::Suggest, [app.to_string()]),
+            ),
+            Arc::new(MockAuditSink::accepting()),
+        )
     }
 
     fn body(kind: ActionKind) -> RequestBody {
@@ -224,13 +315,16 @@ mod tests {
         let view = state.front_view().expect("the request is pending");
         assert_eq!(view.id, id.get());
         assert_eq!(view.requester, "org.arlen.files");
-        // The shell resolves it; the parked requester unblocks with the outcome.
-        let resolved = state
-            .resolve(id, ConsentOutcome::AllowedRemembered)
-            .expect("the pending request resolves");
-        assert_eq!(resolved.recipient, "org.arlen.files");
-        assert_eq!(resolved.reply, ConsentOutcome::AllowedRemembered);
-        assert!(resolved.grant.is_some(), "always-allow mints a grant");
+        // The shell resolves it; audited, and the parked requester unblocks.
+        let resolved = state.resolve(id, ConsentOutcome::AllowedRemembered).await;
+        match resolved {
+            ResolveResult::Resolved { audited, reply, grant } => {
+                assert!(audited, "the accepting sink records the decision");
+                assert_eq!(reply, ConsentOutcome::AllowedRemembered);
+                assert!(grant.is_some(), "an audited always-allow yields a grant");
+            }
+            ResolveResult::Unknown => panic!("the pending request resolves"),
+        }
         assert_eq!(
             decision.await.unwrap(),
             ConsentOutcome::AllowedRemembered,
@@ -240,12 +334,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_failed_audit_fails_the_decision_closed() {
+        // S13: a decision that cannot be audited must not release the grant. The
+        // user's always-allow is downgraded to a denial and no grant is returned.
+        let state = SharedState::new(cap_default(), Arc::new(MockAuditSink::failing()));
+        let (id, decision) = match state.intake(body(ActionKind::PermanentDelete), "app.x") {
+            IntakeOutcome::Pending { id, decision } => (id, decision),
+            IntakeOutcome::SilentGranted => panic!("expected a dialog request"),
+        };
+        match state.resolve(id, ConsentOutcome::AllowedRemembered).await {
+            ResolveResult::Resolved { audited, reply, grant } => {
+                assert!(!audited, "the failing sink reports the audit did not land");
+                assert_eq!(reply, ConsentOutcome::Denied, "fail-closed to a denial");
+                assert!(grant.is_none(), "no grant is minted when the audit fails");
+            }
+            ResolveResult::Unknown => panic!("the request was pending"),
+        }
+        assert_eq!(
+            decision.await.unwrap(),
+            ConsentOutcome::Denied,
+            "the requester is told the fail-closed denial, not its requested allow"
+        );
+    }
+
+    #[tokio::test]
     async fn resolving_an_unknown_id_changes_nothing() {
         let state = state_default();
         assert!(
-            state
-                .resolve(RequestId::from_raw(9999), ConsentOutcome::Denied)
-                .is_none(),
+            matches!(
+                state
+                    .resolve(RequestId::from_raw(9999), ConsentOutcome::Denied)
+                    .await,
+                ResolveResult::Unknown
+            ),
             "an id never queued resolves to nothing"
         );
     }
@@ -260,9 +381,11 @@ mod tests {
             }
             IntakeOutcome::SilentGranted => panic!("expected a dialog request"),
         };
-        let resolved = state.resolve(id, ConsentOutcome::Denied);
         assert!(
-            resolved.is_some(),
+            matches!(
+                state.resolve(id, ConsentOutcome::Denied).await,
+                ResolveResult::Resolved { .. }
+            ),
             "the decision is still recorded even though the requester is gone"
         );
     }
@@ -290,7 +413,7 @@ mod tests {
             IntakeOutcome::SilentGranted => panic!("delete must prompt"),
         };
         assert_eq!(state.front_view().unwrap().id, high.get());
-        state.resolve(high, ConsentOutcome::Denied).unwrap();
+        let _ = state.resolve(high, ConsentOutcome::Denied).await;
         assert_eq!(state.front_view().unwrap().id, standard.get());
     }
 }
