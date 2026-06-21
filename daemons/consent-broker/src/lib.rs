@@ -17,6 +17,10 @@
 use arlen_ai_core::capability::{ActionDecision, ActionKind, Capability};
 use serde::{Deserialize, Serialize};
 
+pub mod queue;
+
+pub use queue::{ConsentQueue, Enqueued, PendingRequest, RequestId};
+
 /// The class of system request seeking consent. The broker is the ONE surface
 /// for all of these (system-dialog-plan.md): they share the trusted path, the
 /// severity classification and the grant store, differing only in the rendered
