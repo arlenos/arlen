@@ -17,8 +17,10 @@
 use arlen_ai_core::capability::{ActionDecision, ActionKind, Capability};
 use serde::{Deserialize, Serialize};
 
+pub mod grant;
 pub mod queue;
 
+pub use grant::{mint_grant, ConsentGrant};
 pub use queue::{ConsentQueue, Enqueued, PendingRequest, RequestId};
 
 /// The class of system request seeking consent. The broker is the ONE surface
@@ -51,6 +53,27 @@ pub enum ConsentClass {
     NotificationAction,
     /// An AI-agent action awaiting confirmation.
     AgentAction,
+}
+
+impl ConsentClass {
+    /// A stable lowercase key for this class, used in logs, the wire form and
+    /// the deterministic revocation handle. Stable across releases (do not
+    /// rename) so a persisted grant's handle keeps matching.
+    pub fn as_key(self) -> &'static str {
+        match self {
+            ConsentClass::CapabilityGrant => "capability_grant",
+            ConsentClass::AppData => "app_data",
+            ConsentClass::Install => "install",
+            ConsentClass::Destructive => "destructive",
+            ConsentClass::ExternalSend => "external_send",
+            ConsentClass::NetworkAccess => "network_access",
+            ConsentClass::ExecConfined => "exec_confined",
+            ConsentClass::ElevatedPrivilege => "elevated_privilege",
+            ConsentClass::Portal => "portal",
+            ConsentClass::NotificationAction => "notification_action",
+            ConsentClass::AgentAction => "agent_action",
+        }
+    }
 }
 
 /// The attested identity of the requester: the SINGLE value that is BOTH shown
