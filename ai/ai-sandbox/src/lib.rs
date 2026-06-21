@@ -268,6 +268,18 @@ pub fn generate_thumbnail(image_bytes: &[u8], max_dim: u32) -> Result<Vec<u8>, S
         return Err(SandboxError::TooLarge);
     }
     let decoded = decode_source(image_bytes)?;
+    downscale_and_encode_png(decoded, max_dim)
+}
+
+/// Downscale `decoded` to fit `max_dim` on its longest side (aspect preserved,
+/// never upscaled) and re-encode as a sanitised PNG (dropping the source's
+/// metadata + format quirks), bounded by [`MAX_BYTES`]. Shared by every image
+/// worker's tail, after the per-format decode.
+#[cfg(feature = "thumbnail")]
+fn downscale_and_encode_png(
+    decoded: image::DynamicImage,
+    max_dim: u32,
+) -> Result<Vec<u8>, SandboxError> {
     let dim = max_dim.max(1);
     // Only downscale. Re-encoding an already-small image still sanitises it (it
     // drops the source metadata and format quirks), but it is never enlarged.
@@ -284,6 +296,88 @@ pub fn generate_thumbnail(image_bytes: &[u8], max_dim: u32) -> Result<Vec<u8>, S
         return Err(SandboxError::TooLarge);
     }
     Ok(out)
+}
+
+/// Whether `bytes` are HEIC/HEIF (an ISOBMFF `ftyp` whose major brand is an
+/// HEVC/HEIF brand). These are NOT decoded by image-rs `avif-native` (that is
+/// AV1 only), so the codec worker routes them to [`decode_heic`] (libheif).
+#[cfg(feature = "codec")]
+fn is_heic(bytes: &[u8]) -> bool {
+    bytes.len() >= 12
+        && &bytes[4..8] == b"ftyp"
+        && matches!(
+            &bytes[8..12],
+            b"heic" | b"heix" | b"heim" | b"heis" | b"mif1" | b"msf1"
+        )
+}
+
+/// Decode an untrusted HEIC/HEIF image to a `DynamicImage` via the C libheif.
+///
+/// Runs INSIDE the threaded codec worker (libheif + libde265 spawn decode
+/// threads, which only that worker's seccomp profile permits). Dimensions are
+/// checked against [`MAX_DECODE_DIM`] and the RGBA8 buffer against
+/// [`MAX_DECODE_ALLOC`] before the interleaved RGB plane is copied (stride-
+/// aware), so a HEIF bomb is refused fail-closed without allocating its buffer.
+#[cfg(feature = "codec")]
+fn decode_heic(bytes: &[u8]) -> Result<image::DynamicImage, SandboxError> {
+    use libheif_rs::{ColorSpace, HeifContext, LibHeif, RgbChroma};
+    let lib = LibHeif::new();
+    let ctx = HeifContext::read_from_bytes(bytes)
+        .map_err(|e| SandboxError::Decode(format!("heif: {e}")))?;
+    let handle = ctx
+        .primary_image_handle()
+        .map_err(|e| SandboxError::Decode(format!("heif handle: {e}")))?;
+    let (w, h) = (handle.width(), handle.height());
+    if w == 0 || h == 0 || w > MAX_DECODE_DIM || h > MAX_DECODE_DIM {
+        return Err(SandboxError::Decode(format!("heif dimensions {w}x{h}")));
+    }
+    if (w as u64) * (h as u64) * 4 > MAX_DECODE_ALLOC {
+        return Err(SandboxError::Decode("heif image too large".to_string()));
+    }
+    let decoded = lib
+        .decode(&handle, ColorSpace::Rgb(RgbChroma::Rgb), None)
+        .map_err(|e| SandboxError::Decode(format!("heif decode: {e}")))?;
+    let planes = decoded.planes();
+    let plane = planes
+        .interleaved
+        .ok_or_else(|| SandboxError::Decode("heif: no interleaved RGB plane".to_string()))?;
+    let (pw, ph, stride) = (plane.width as usize, plane.height as usize, plane.stride);
+    let row_bytes = pw
+        .checked_mul(3)
+        .ok_or_else(|| SandboxError::Decode("heif row overflow".to_string()))?;
+    // Copy each row's RGB triplets out of the (possibly padded) stride into a
+    // tight buffer.
+    let mut rgb = Vec::with_capacity(row_bytes.saturating_mul(ph));
+    for row in 0..ph {
+        let start = row * stride;
+        let end = start + row_bytes;
+        let src = plane
+            .data
+            .get(start..end)
+            .ok_or_else(|| SandboxError::Decode("heif plane truncated".to_string()))?;
+        rgb.extend_from_slice(src);
+    }
+    let buf = image::RgbImage::from_raw(pw as u32, ph as u32, rgb)
+        .ok_or_else(|| SandboxError::Decode("heif buffer size mismatch".to_string()))?;
+    Ok(image::DynamicImage::ImageRgb8(buf))
+}
+
+/// Decode an untrusted image for the AVIF/HEIC codec worker: HEIC/HEIF via
+/// [`decode_heic`] (libheif), everything else (AVIF via `avif-native`, plus the
+/// pure-Rust formats + JXL) via [`decode_source`], then the shared downscale +
+/// PNG re-encode. The full-resolution counterpart to [`decode_view_image`] for
+/// the threaded worker.
+#[cfg(feature = "codec")]
+pub fn decode_codec_image(image_bytes: &[u8]) -> Result<Vec<u8>, SandboxError> {
+    if image_bytes.len() > MAX_BYTES {
+        return Err(SandboxError::TooLarge);
+    }
+    let decoded = if is_heic(image_bytes) {
+        decode_heic(image_bytes)?
+    } else {
+        decode_source(image_bytes)?
+    };
+    downscale_and_encode_png(decoded, VIEWER_MAX_DIM)
 }
 
 /// Decode an untrusted image to a sanitised, full-resolution PNG for the viewer.
