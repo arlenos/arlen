@@ -546,6 +546,14 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create ACCESSED_BY rel: {e}"))?;
 
+    // Write provenance, distinct from the read/open ACCESSED_BY: an app WROTE
+    // (modified/produced) this file (kernel-layer file.written). The PROV-O
+    // `wasGeneratedBy` direction (kg-richness Thrust 1: real edge families).
+    conn.query(
+        "CREATE REL TABLE IF NOT EXISTS MODIFIED_BY(FROM File TO App)",
+    )
+    .map_err(|e| anyhow!("create MODIFIED_BY rel: {e}"))?;
+
     conn.query(
         "CREATE REL TABLE IF NOT EXISTS ACTIVE_IN(FROM App TO Session)",
     )
