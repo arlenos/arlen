@@ -17,11 +17,13 @@
 use arlen_ai_core::capability::{ActionDecision, ActionKind, Capability};
 use serde::{Deserialize, Serialize};
 
+pub mod control;
 pub mod grant;
 pub mod queue;
 pub mod service;
 pub mod socket;
 
+pub use control::{front_view, resolve_decision, PendingView, ResolvedDecision};
 pub use grant::{mint_grant, ConsentGrant};
 pub use queue::{ConsentQueue, Enqueued, PendingRequest, RequestId};
 pub use service::{assemble, handle_intake, IntakeReply, RequestBody};
