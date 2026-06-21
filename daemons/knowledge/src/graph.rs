@@ -568,6 +568,15 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create ACCESSED_IN rel: {e}"))?;
 
+    // A user interaction performed during a session (KG-richness Thrust 1):
+    // the session<->activity edge family for UserAction nodes. Parallel to
+    // ACCESSED_IN (File -> Session); together they answer "what did I do in
+    // this session" (toolbar/shortcut/menu actions, not only files).
+    conn.query(
+        "CREATE REL TABLE IF NOT EXISTS PERFORMED_IN(FROM UserAction TO Session)",
+    )
+    .map_err(|e| anyhow!("create PERFORMED_IN rel: {e}"))?;
+
     conn.query(
         "CREATE REL TABLE IF NOT EXISTS EMITTED_BY(FROM Event TO App)",
     )
