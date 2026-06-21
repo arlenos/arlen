@@ -8,11 +8,21 @@ authors = ["Arlen"]
 [lib]
 name = "arlen_consent_broker"
 
+[[bin]]
+name = "arlen-consent-broker"
+path = "src/main.rs"
+
 [dependencies]
 # Reuse the existing decision engine verbatim (do NOT reinvent severity tiers):
 # ActionKind / ActionDecision / Capability::decide. The cross-workspace path
 # dep mirrors daemons/modulesd.
 arlen-ai-core = { path = "../../ai/ai-core" }
+# Kernel-attested peer identity (SO_PEERCRED -> path_to_app_id) for both sockets.
+arlen-permissions = { path = "../../sdk/permissions" }
 serde = { version = "1", features = ["derive"] }
 # The intake socket frames requests/replies as JSON.
 serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "signal"] }
+libc = "0.2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

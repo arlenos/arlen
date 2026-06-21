@@ -21,6 +21,15 @@ impl RequestId {
     pub fn get(self) -> u64 {
         self.0
     }
+
+    /// Reconstruct an id from its raw wire value. The shell receives the raw id
+    /// in a [`crate::control::PendingView`] and submits the decision against it;
+    /// the daemon turns that u64 back into a `RequestId` to resolve. The id space
+    /// is the broker's own, so a forged or stale value simply resolves to nothing
+    /// (`resolve` returns `None`), never another request.
+    pub fn from_raw(raw: u64) -> Self {
+        RequestId(raw)
+    }
 }
 
 /// A request awaiting a decision: the original request, its classified tier, and
