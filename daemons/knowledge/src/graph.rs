@@ -540,6 +540,20 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create Branch table: {e}"))?;
 
+    // A network endpoint an app connected to (KG-richness Thrust 1, the OS-
+    // observed app<->network edge family). Keyed by the remote IP:port, so the
+    // graph answers "what did this app talk to". Only the remote address is
+    // observed - never payload content - so this carries no secret/credential
+    // surface; private/incognito sessions are excluded upstream like every event.
+    conn.query(
+        "CREATE NODE TABLE IF NOT EXISTS NetworkEndpoint(
+            id       STRING,
+            protocol STRING,
+            PRIMARY KEY(id)
+        )",
+    )
+    .map_err(|e| anyhow!("create NetworkEndpoint table: {e}"))?;
+
     // Relationship tables
     conn.query(
         "CREATE REL TABLE IF NOT EXISTS ACCESSED_BY(FROM File TO App)",
@@ -576,6 +590,14 @@ fn create_schema(conn: &Connection) -> Result<()> {
         "CREATE REL TABLE IF NOT EXISTS PERFORMED_IN(FROM UserAction TO Session)",
     )
     .map_err(|e| anyhow!("create PERFORMED_IN rel: {e}"))?;
+
+    // An app connected to a network endpoint (KG-richness Thrust 1): the OS-
+    // observed app<->network edge. direction is outbound/inbound; last_seen is
+    // the most recent observation so a long-lived endpoint stays fresh.
+    conn.query(
+        "CREATE REL TABLE IF NOT EXISTS CONNECTED_TO(FROM App TO NetworkEndpoint, direction STRING, last_seen INT64)",
+    )
+    .map_err(|e| anyhow!("create CONNECTED_TO rel: {e}"))?;
 
     conn.query(
         "CREATE REL TABLE IF NOT EXISTS EMITTED_BY(FROM Event TO App)",

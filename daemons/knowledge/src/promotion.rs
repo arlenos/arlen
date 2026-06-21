@@ -2,8 +2,9 @@ use crate::graph::GraphHandle;
 use crate::project::ProjectStore;
 use crate::proto::{
     AnnotationClearPayload, AnnotationSetPayload, BadgeSetPayload, BadgeStatus,
-    CodeFileIndexPayload, FileOpenedPayload, FileWrittenPayload, PresenceClearPayload,
-    PresenceSetPayload, ShortcutActionInvokedPayload, TimelineRecordPayload, WindowFocusedPayload,
+    CodeFileIndexPayload, FileOpenedPayload, FileWrittenPayload, NetworkConnectionPayload,
+    PresenceClearPayload, PresenceSetPayload, ShortcutActionInvokedPayload, TimelineRecordPayload,
+    WindowFocusedPayload,
 };
 use crate::utils::escape_cypher;
 use anyhow::Result;
@@ -193,6 +194,11 @@ async fn run_pass(
             }
             "file.written" => {
                 promote_file_written(graph, id, timestamp, source, pid, payload).await
+            }
+            // The OS-observed app<->network edge family (KG-richness Thrust 1):
+            // a connection becomes an App -> NetworkEndpoint CONNECTED_TO edge.
+            "network.connect" | "network.accept" => {
+                promote_network_connection(graph, id, timestamp, payload).await
             }
             "app.presence.set" => {
                 promote_presence_set(graph, id, timestamp, payload).await
@@ -419,6 +425,52 @@ async fn promote_file_written(
         .await?;
 
     debug!(event_id, path = %file_payload.path, "promoted file.written");
+    Ok(())
+}
+
+/// Promote a `network.connect` / `network.accept` event into the OS-observed
+/// app-to-network edge (KG-richness Thrust 1).
+///
+/// Creates or merges an `App` node and a `NetworkEndpoint` node (keyed by the
+/// remote IP:port), with a `CONNECTED_TO` edge carrying the direction and the
+/// most recent observation time. Only the remote address is recorded, never
+/// connection payload, so no secret/credential content enters the graph; a
+/// private/incognito session is excluded upstream before promotion. An event
+/// missing the app id or the remote address is skipped (no dangling node).
+async fn promote_network_connection(
+    graph: &GraphHandle,
+    event_id: &str,
+    timestamp: &i64,
+    payload: &[u8],
+) -> Result<()> {
+    let p = NetworkConnectionPayload::decode(payload)?;
+    if p.app_id.is_empty() || p.remote_addr.is_empty() {
+        debug!(event_id, "network connection not promoted (missing app or remote)");
+        return Ok(());
+    }
+
+    let app_esc = escape_cypher(&p.app_id);
+    let addr_esc = escape_cypher(&p.remote_addr);
+    let proto_esc = escape_cypher(&p.protocol);
+    let dir_esc = escape_cypher(&p.direction);
+
+    graph
+        .write(format!("MERGE (a:App {{id: '{app_esc}'}})"))
+        .await?;
+    graph
+        .write(format!(
+            "MERGE (e:NetworkEndpoint {{id: '{addr_esc}'}}) SET e.protocol = '{proto_esc}'"
+        ))
+        .await?;
+    graph
+        .write(format!(
+            "MATCH (a:App {{id: '{app_esc}'}}), (e:NetworkEndpoint {{id: '{addr_esc}'}})
+             MERGE (a)-[c:CONNECTED_TO]->(e)
+             SET c.direction = '{dir_esc}', c.last_seen = {timestamp}"
+        ))
+        .await?;
+
+    debug!(event_id, app_id = %p.app_id, remote = %p.remote_addr, "promoted network connection");
     Ok(())
 }
 
@@ -1084,6 +1136,78 @@ mod shell_event_tests {
             .unwrap();
         let cnt2 = rs2.rows.first().and_then(|r| r.first()).map(|v| v.as_i64()).unwrap();
         assert_eq!(cnt2, 1, "a repeated write does not duplicate the edge");
+    }
+
+    #[tokio::test]
+    async fn promote_network_connection_records_a_connected_to_edge() {
+        // KG-richness Thrust 1: a network.connect becomes an App -> NetworkEndpoint
+        // CONNECTED_TO edge keyed by the remote IP:port, with direction + last_seen.
+        let (graph, _tmp) = setup().await;
+        let payload = NetworkConnectionPayload {
+            app_id: "dev.arlen.browser".into(),
+            remote_addr: "93.184.216.34:443".into(),
+            protocol: "tcp".into(),
+            direction: "outbound".into(),
+        };
+        let mut buf = Vec::new();
+        payload.encode(&mut buf).unwrap();
+        promote_network_connection(&graph, "n1", &500, &buf)
+            .await
+            .unwrap();
+        let rs = graph
+            .query_rows(
+                "MATCH (:App {id: 'dev.arlen.browser'})-[c:CONNECTED_TO]->(e:NetworkEndpoint) \
+                 RETURN e.id AS addr, e.protocol AS proto, c.direction AS dir, c.last_seen AS seen"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        let row = rs.rows.first().expect("the CONNECTED_TO edge exists");
+        assert_eq!(row[0].as_str(), "93.184.216.34:443");
+        assert_eq!(row[1].as_str(), "tcp");
+        assert_eq!(row[2].as_str(), "outbound");
+        assert_eq!(row[3].as_i64(), 500);
+
+        // Re-observing the same connection is idempotent (one edge) and refreshes
+        // last_seen rather than appending a duplicate.
+        let payload2 = NetworkConnectionPayload {
+            direction: "outbound".into(),
+            ..payload.clone()
+        };
+        let mut buf2 = Vec::new();
+        payload2.encode(&mut buf2).unwrap();
+        promote_network_connection(&graph, "n2", &900, &buf2)
+            .await
+            .unwrap();
+        let rs2 = graph
+            .query_rows(
+                "MATCH (:App {id: 'dev.arlen.browser'})-[c:CONNECTED_TO]->() \
+                 RETURN count(*) AS cnt, max(c.last_seen) AS seen"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rs2.rows[0][0].as_i64(), 1, "a repeat connection does not duplicate the edge");
+        assert_eq!(rs2.rows[0][1].as_i64(), 900, "last_seen is refreshed");
+
+        // An event missing the app id or remote address is skipped, no node.
+        let mut buf3 = Vec::new();
+        NetworkConnectionPayload {
+            app_id: String::new(),
+            remote_addr: "1.2.3.4:80".into(),
+            protocol: "tcp".into(),
+            direction: "outbound".into(),
+        }
+        .encode(&mut buf3)
+        .unwrap();
+        promote_network_connection(&graph, "n3", &1000, &buf3)
+            .await
+            .unwrap();
+        let rs3 = graph
+            .query_rows("MATCH (e:NetworkEndpoint {id: '1.2.3.4:80'}) RETURN count(*) AS c".into())
+            .await
+            .unwrap();
+        assert_eq!(rs3.rows[0][0].as_i64(), 0, "a connection with no app id is not promoted");
     }
 
     #[tokio::test]
