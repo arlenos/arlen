@@ -215,7 +215,10 @@ async fn run_pass(
             "app.toolbar.action_invoked"
             | "app.shortcut.action_invoked"
             | "app.menu.action_invoked" => {
-                promote_action_invoked(graph, id, event_type, timestamp, payload).await
+                promote_action_invoked(
+                    graph, id, event_type, timestamp, session_id, payload,
+                )
+                .await
             }
             // Coarse power transitions become timeline Event nodes (§3f). The
             // high-frequency `power.state` snapshot is deliberately NOT listed,
@@ -857,6 +860,7 @@ async fn promote_action_invoked(
     event_id: &str,
     event_type: &str,
     timestamp: &i64,
+    session_id: &str,
     payload: &[u8],
 ) -> Result<()> {
     let p = ShortcutActionInvokedPayload::decode(payload)?;
@@ -885,6 +889,25 @@ async fn promote_action_invoked(
                  u.timestamp = {timestamp}"
         ))
         .await?;
+
+    // Session<->activity edge (KG-richness Thrust 1): link the interaction to
+    // the session it happened in, so the graph answers "what did I do in this
+    // session". The Session is MERGEd (window.focused enriches it) so the edge
+    // never dangles. Skipped when the event carries no session. A private/
+    // incognito session is excluded upstream before promotion, like every other
+    // event, so no new hard-exclude surface.
+    if !session_id.is_empty() {
+        let session_esc = escape_cypher(session_id);
+        graph
+            .write(format!("MERGE (s:Session {{id: '{session_esc}'}})"))
+            .await?;
+        graph
+            .write(format!(
+                "MATCH (u:UserAction {{id: '{id_esc}'}}), (s:Session {{id: '{session_esc}'}})
+                 MERGE (u)-[:PERFORMED_IN]->(s)"
+            ))
+            .await?;
+    }
 
     debug!(
         event_id,
@@ -1293,9 +1316,16 @@ mod shell_event_tests {
         };
         let mut buf = Vec::new();
         menu.encode(&mut buf).unwrap();
-        promote_action_invoked(&graph, "menu1", "app.menu.action_invoked", &900, &buf)
-            .await
-            .expect("a menu action promotes");
+        promote_action_invoked(
+            &graph,
+            "menu1",
+            "app.menu.action_invoked",
+            &900,
+            "sess-A",
+            &buf,
+        )
+        .await
+        .expect("a menu action promotes");
         let rs = graph
             .query_rows(
                 "MATCH (u:UserAction {id: 'menu1'}) RETURN u.category AS c, u.action AS a, u.subject AS s"
@@ -1308,6 +1338,20 @@ mod shell_event_tests {
         assert_eq!(row[1].as_str(), "new-session");
         assert_eq!(row[2].as_str(), "dev.arlen.terminal");
 
+        // KG-richness Thrust 1: the action links to its session (PERFORMED_IN).
+        let edge = graph
+            .query_rows(
+                "MATCH (:UserAction {id: 'menu1'})-[:PERFORMED_IN]->(s:Session) RETURN s.id AS sid"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            edge.rows.first().expect("the PERFORMED_IN edge exists")[0].as_str(),
+            "sess-A",
+            "the action is linked to the session it happened in"
+        );
+
         // A toolbar action goes through the same arm with category=toolbar.
         let toolbar = ShortcutActionInvokedPayload {
             app_id: "dev.arlen.files".into(),
@@ -1316,14 +1360,32 @@ mod shell_event_tests {
         };
         let mut buf2 = Vec::new();
         toolbar.encode(&mut buf2).unwrap();
-        promote_action_invoked(&graph, "tb1", "app.toolbar.action_invoked", &901, &buf2)
-            .await
-            .unwrap();
+        promote_action_invoked(
+            &graph,
+            "tb1",
+            "app.toolbar.action_invoked",
+            &901,
+            "", // no session: the edge is skipped, not dangling
+            &buf2,
+        )
+        .await
+        .unwrap();
         let rs2 = graph
             .query_rows("MATCH (u:UserAction {id: 'tb1'}) RETURN u.category AS c".into())
             .await
             .unwrap();
         assert_eq!(rs2.rows.first().expect("toolbar promoted")[0].as_str(), "toolbar");
+        let tb_edge = graph
+            .query_rows(
+                "MATCH (:UserAction {id: 'tb1'})-[:PERFORMED_IN]->() RETURN count(*) AS c".into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            tb_edge.rows[0][0].as_i64(),
+            0,
+            "a session-less action has no PERFORMED_IN edge"
+        );
 
         // An empty action (malformed emit) writes no node.
         let empty = ShortcutActionInvokedPayload {
@@ -1333,9 +1395,16 @@ mod shell_event_tests {
         };
         let mut buf3 = Vec::new();
         empty.encode(&mut buf3).unwrap();
-        promote_action_invoked(&graph, "empty1", "app.menu.action_invoked", &902, &buf3)
-            .await
-            .unwrap();
+        promote_action_invoked(
+            &graph,
+            "empty1",
+            "app.menu.action_invoked",
+            &902,
+            "sess-A",
+            &buf3,
+        )
+        .await
+        .unwrap();
         let none = graph
             .query_rows("MATCH (u:UserAction {id: 'empty1'}) RETURN count(*) AS c".into())
             .await
