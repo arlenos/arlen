@@ -1,0 +1,16 @@
+[package]
+name = "arlen-consent-broker"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen consent broker: the typed request model + severity classification for the one trusted-path consent surface every system prompt routes through"
+authors = ["Arlen"]
+
+[lib]
+name = "arlen_consent_broker"
+
+[dependencies]
+# Reuse the existing decision engine verbatim (do NOT reinvent severity tiers):
+# ActionKind / ActionDecision / Capability::decide. The cross-workspace path
+# dep mirrors daemons/modulesd.
+arlen-ai-core = { path = "../../ai/ai-core" }
+serde = { version = "1", features = ["derive"] }
