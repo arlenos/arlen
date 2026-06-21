@@ -18,6 +18,7 @@ use arlen_ai_core::capability::{ActionDecision, ActionKind, Capability};
 use serde::{Deserialize, Serialize};
 
 pub mod control;
+pub mod daemon;
 pub mod grant;
 pub mod queue;
 pub mod service;
