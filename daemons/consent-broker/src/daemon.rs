@@ -64,6 +64,21 @@ impl GrantStore {
             g.recipient == recipient && g.class == request.class && g.scope == request.scope
         })
     }
+
+    /// Every remembered grant, for the shell's "what you allowed" surface.
+    fn list(&self) -> Vec<ConsentGrant> {
+        self.grants.clone()
+    }
+
+    /// Forget the grant with this revocation handle, returning it (for the audit
+    /// record). `None` = unknown / already revoked.
+    fn revoke(&mut self, handle: &str) -> Option<ConsentGrant> {
+        let pos = self
+            .grants
+            .iter()
+            .position(|g| g.revocation_handle == handle)?;
+        Some(self.grants.remove(pos))
+    }
 }
 
 /// Shared broker state: the pending queue, the deferred-reply waiters, and the
@@ -133,6 +148,13 @@ pub enum ControlRequest {
         /// The user's decision.
         outcome: ConsentOutcome,
     },
+    /// List the remembered grants (the "what you allowed" surface).
+    ListGrants,
+    /// Revoke a remembered grant by its revocation handle.
+    RevokeGrant {
+        /// The grant's revocation handle (from a [`ConsentGrant`]).
+        handle: String,
+    },
 }
 
 /// The wire reply to a [`ControlRequest`].
@@ -148,6 +170,17 @@ pub enum ControlReply {
     /// id (the decision changed nothing).
     Resolved {
         /// Whether a pending request was found and resolved.
+        ok: bool,
+    },
+    /// The remembered grants, for the "what you allowed" surface.
+    Grants {
+        /// Every live remembered grant.
+        grants: Vec<ConsentGrant>,
+    },
+    /// The result of a revoke: `ok` is false for an unknown / already-revoked
+    /// handle.
+    Revoked {
+        /// Whether a grant was found and revoked.
         ok: bool,
     },
 }
@@ -190,6 +223,26 @@ fn consent_decision_entry(decision: &ResolvedDecision) -> IngestRequest {
             result_count: None,
             duration_ms: None,
             outcome: outcome.to_string(),
+            depth: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
+}
+
+/// The content-free audit entry for a revoked grant: the recipient whose
+/// standing permission was withdrawn + the fixed `revoked` disposition.
+fn consent_revoke_entry(recipient: &str) -> IngestRequest {
+    IngestRequest {
+        kind: AuditKind::Permission,
+        structural: StructuralRecord {
+            subject: recipient.to_string(),
+            node_types: Vec::new(),
+            relations: Vec::new(),
+            result_count: None,
+            duration_ms: None,
+            outcome: "revoked".to_string(),
             depth: None,
         },
         forensic: None,
@@ -310,6 +363,36 @@ impl SharedState {
             audited,
             reply,
             grant,
+        }
+    }
+
+    /// Every remembered grant, for the shell's "what you allowed" surface.
+    pub fn list_grants(&self) -> Vec<ConsentGrant> {
+        self.inner
+            .lock()
+            .expect("consent state mutex poisoned")
+            .grants
+            .list()
+    }
+
+    /// Revoke a remembered grant by its handle, returning whether one was
+    /// removed. The removal is unconditional (revoking is always the safe
+    /// direction); the audit record is best-effort (unlike a grant release, a
+    /// revoke that cannot be audited still proceeds, since failing to forget a
+    /// grant would be the unsafe outcome). Audits only an actual removal.
+    pub async fn revoke_grant(&self, handle: &str) -> bool {
+        let removed = self
+            .inner
+            .lock()
+            .expect("consent state mutex poisoned")
+            .grants
+            .revoke(handle);
+        match removed {
+            Some(grant) => {
+                let _ = self.audit.submit(consent_revoke_entry(&grant.recipient)).await;
+                true
+            }
+            None => false,
         }
     }
 }
@@ -454,6 +537,47 @@ mod tests {
                 IntakeOutcome::Pending { .. }
             ),
             "allow-once remembers nothing"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_grants_surfaces_each_remembered_grant() {
+        let state = state_default();
+        remember(&state, standard_body(Some("/x")), "app.a").await;
+        remember(&state, standard_body(Some("/y")), "app.a").await;
+        let grants = state.list_grants();
+        assert_eq!(grants.len(), 2, "both remembered grants are listed");
+        assert!(grants.iter().all(|g| g.recipient == "app.a"));
+    }
+
+    #[tokio::test]
+    async fn revoking_a_grant_makes_the_request_prompt_again() {
+        let state = state_default();
+        remember(&state, standard_body(Some("/x")), "app.r").await;
+        // Covered now.
+        assert!(matches!(
+            state.intake(standard_body(Some("/x")), "app.r"),
+            IntakeOutcome::SilentGranted
+        ));
+        let handle = state.list_grants()[0].revocation_handle.clone();
+        assert!(state.revoke_grant(&handle).await, "the grant is revoked");
+        assert!(state.list_grants().is_empty(), "the store no longer holds it");
+        // No longer covered -> prompts again.
+        assert!(
+            matches!(
+                state.intake(standard_body(Some("/x")), "app.r"),
+                IntakeOutcome::Pending { .. }
+            ),
+            "a revoked grant no longer silences the prompt"
+        );
+    }
+
+    #[tokio::test]
+    async fn revoking_an_unknown_handle_is_false() {
+        let state = state_default();
+        assert!(
+            !state.revoke_grant("no-such-handle").await,
+            "an unknown handle revokes nothing"
         );
     }
 

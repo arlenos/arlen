@@ -264,6 +264,12 @@ async fn handle_control_conn(state: Arc<SharedState>, mut stream: UnixStream, ui
                 ResolveResult::Unknown => ControlReply::Resolved { ok: false },
             }
         }
+        ControlRequest::ListGrants => ControlReply::Grants {
+            grants: state.list_grants(),
+        },
+        ControlRequest::RevokeGrant { handle } => ControlReply::Revoked {
+            ok: state.revoke_grant(&handle).await,
+        },
     };
     let bytes = match serde_json::to_vec(&reply) {
         Ok(b) => b,
