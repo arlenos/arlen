@@ -145,7 +145,8 @@ impl ActionPermissions {
 /// that Foundation §8.4 says "always require explicit confirmation
 /// regardless of session permissions, because their consequences are
 /// irreversible or high-impact". That list is not configurable.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ActionKind {
     /// Permanent (non-trash) file deletion.
     PermanentDelete,
