@@ -16,6 +16,14 @@ libc = "0.2"
 time = { version = "0.3", features = ["formatting", "local-offset"] }
 # Stable, collision-free thumbnail-cache keys (hex SHA-256 of path + mtime).
 sha2 = "0.10"
+# Pure-Rust EXIF read/write for the metadata-edit write-back, behind the
+# off-by-default `metadata-edit` feature so a lean embedder (the picker) drops it.
+little_exif = { version = "0.6", optional = true }
+
+[features]
+# The media-metadata-edit write-back (the info panel's editable EXIF tags). Off
+# by default: the embeddable browser core stays lean unless an embedder wants it.
+metadata-edit = ["dep:little_exif"]
 
 [dev-dependencies]
 tempfile = "3"
