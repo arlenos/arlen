@@ -23,13 +23,59 @@ use std::time::Duration;
 use arlen_ai_core::capability::{AccessTier, ActionPermissions, BaselineMode, Capability};
 use audit_proto::sink::LedgerAuditSink;
 use arlen_consent_broker::daemon::{
-    ControlReply, ControlRequest, IntakeOutcome, IntakeResult, ResolveResult, SharedState,
+    ControlReply, ControlRequest, GrantPersister, IntakeOutcome, IntakeResult, ResolveResult,
+    SharedState,
 };
 use arlen_consent_broker::queue::RequestId;
 use arlen_consent_broker::service::RequestBody;
 use arlen_permissions::connection_auth::ConnectionAuth;
+use os_sdk::UnixGraphClient;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
+
+/// The real [`GrantPersister`]: persists a remembered grant into the LCG Grant
+/// node through the knowledge daemon's consent-grant write socket.
+struct GraphGrantPersister {
+    client: UnixGraphClient,
+}
+
+impl GraphGrantPersister {
+    fn new(socket_path: String) -> Self {
+        Self {
+            client: UnixGraphClient::new(socket_path),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl GrantPersister for GraphGrantPersister {
+    async fn persist(
+        &self,
+        recipient: &str,
+        consent_class: &str,
+        consent_scope: Option<&str>,
+        revocation_handle: &str,
+    ) -> Result<(), String> {
+        self.client
+            .persist_consent_grant(recipient, consent_class, consent_scope, revocation_handle)
+            .await
+            .map_err(|e| e.to_string())
+    }
+}
+
+/// Resolve the knowledge daemon's write socket: `ARLEN_DAEMON_SOCKET`, else
+/// `$XDG_RUNTIME_DIR/arlen/knowledge.sock`, else `/run/arlen/knowledge.sock`.
+fn knowledge_socket() -> String {
+    if let Some(s) = std::env::var_os("ARLEN_DAEMON_SOCKET") {
+        return s.to_string_lossy().into_owned();
+    }
+    if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
+        let mut p = PathBuf::from(dir);
+        p.push("arlen/knowledge.sock");
+        return p.to_string_lossy().into_owned();
+    }
+    "/run/arlen/knowledge.sock".to_string()
+}
 
 /// Maximum wire frame, matching the intake-transport core's bound.
 const MAX_FRAME: usize = 64 * 1024;
@@ -307,13 +353,21 @@ async fn main() -> std::io::Result<()> {
     // Each resolved decision is recorded in the audit ledger before the grant is
     // released (S13 audit-before-act); the consent broker is an admitted producer
     // under the stable id `consent-broker`.
-    let state = Arc::new(SharedState::new(
-        Capability::new(
-            AccessTier::Minimal,
-            ActionPermissions::new(BaselineMode::Suggest, Vec::<String>::new()),
-        ),
-        Arc::new(LedgerAuditSink::at_default_socket()),
-    ));
+    // Durable grant persistence (Option A): an audited always-allow is also
+    // persisted into the LCG Grant node, best-effort, so it survives a restart
+    // and backs the Settings see+revoke panel. The in-memory store stays the live
+    // fast path, so a persistence failure never breaks a resolve.
+    let persister = Arc::new(GraphGrantPersister::new(knowledge_socket()));
+    let state = Arc::new(
+        SharedState::new(
+            Capability::new(
+                AccessTier::Minimal,
+                ActionPermissions::new(BaselineMode::Suggest, Vec::<String>::new()),
+            ),
+            Arc::new(LedgerAuditSink::at_default_socket()),
+        )
+        .with_persister(persister),
+    );
 
     tracing::info!(
         intake = %intake_path.display(),
