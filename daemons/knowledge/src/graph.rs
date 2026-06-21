@@ -582,6 +582,18 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create ACCESSED_IN rel: {e}"))?;
 
+    // Two files accessed in the same session (KG-richness Thrust 1, file<->file
+    // co-access). This is the strongest densifying signal for project inference:
+    // files used together tend to belong together. Semantically undirected, so it
+    // is stored canonically (the lexicographically smaller path id is FROM) to
+    // keep one edge per pair regardless of access order. last_seen is the most
+    // recent co-access. Fan-out is bounded per promotion (the K most recent peers)
+    // so a long session cannot blow up to a quadratic edge count.
+    conn.query(
+        "CREATE REL TABLE IF NOT EXISTS CO_ACCESSED(FROM File TO File, last_seen INT64)",
+    )
+    .map_err(|e| anyhow!("create CO_ACCESSED rel: {e}"))?;
+
     // A user interaction performed during a session (KG-richness Thrust 1):
     // the session<->activity edge family for UserAction nodes. Parallel to
     // ACCESSED_IN (File -> Session); together they answer "what did I do in

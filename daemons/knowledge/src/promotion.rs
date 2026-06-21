@@ -367,9 +367,70 @@ async fn promote_file_opened(
                  MERGE (f)-[:ACCESSED_IN]->(s)"
             ))
             .await?;
+
+        // File<->file co-access (KG-richness Thrust 1): link this file to the
+        // most-recently-accessed other files in the same session, the strongest
+        // project-inference signal. Bounded to CO_ACCESS_FANOUT peers per
+        // promotion so a long session stays linear, not quadratic.
+        link_co_accessed(graph, &path, &session_esc, timestamp).await?;
     }
 
     debug!(event_id, path = %file_payload.path, "promoted file.opened");
+    Ok(())
+}
+
+/// The maximum number of peer files a single file.opened links to via
+/// `CO_ACCESSED`. Bounds the fan-out so a session with many files stays linear
+/// in edge count rather than quadratic.
+const CO_ACCESS_FANOUT: usize = 8;
+
+/// Link a freshly-accessed file to the most recent other files in the same
+/// session via `CO_ACCESSED` (KG-richness Thrust 1, file<->file co-access).
+///
+/// The edge is semantically undirected, so it is stored canonically (the
+/// lexicographically smaller path is FROM) to keep exactly one edge per pair
+/// regardless of which file was accessed first. `last_seen` is refreshed on each
+/// co-access. The peer set is bounded to [`CO_ACCESS_FANOUT`] so the fan-out per
+/// promotion is constant.
+async fn link_co_accessed(
+    graph: &GraphHandle,
+    path: &str,
+    session_esc: &str,
+    timestamp: &i64,
+) -> Result<()> {
+    let path_esc = escape_cypher(path);
+    // The most-recently-accessed other files in this session (recency proxy for
+    // "used close together"). Self is excluded by id.
+    let peers = graph
+        .query_rows(format!(
+            "MATCH (other:File)-[:ACCESSED_IN]->(s:Session {{id: '{session_esc}'}})
+             WHERE other.id <> '{path_esc}'
+             RETURN other.id AS id
+             ORDER BY other.last_accessed DESC
+             LIMIT {CO_ACCESS_FANOUT}"
+        ))
+        .await?;
+
+    for row in &peers.rows {
+        let Some(peer) = row.first().map(|v| v.as_str()) else {
+            continue;
+        };
+        if peer.is_empty() {
+            continue;
+        }
+        // Canonical direction: the lexicographically smaller id is FROM, so the
+        // pair maps to one edge no matter the access order.
+        let (from, to) = if path < peer { (path, peer) } else { (peer, path) };
+        let from_esc = escape_cypher(from);
+        let to_esc = escape_cypher(to);
+        graph
+            .write(format!(
+                "MATCH (a:File {{id: '{from_esc}'}}), (b:File {{id: '{to_esc}'}})
+                 MERGE (a)-[c:CO_ACCESSED]->(b)
+                 SET c.last_seen = {timestamp}"
+            ))
+            .await?;
+    }
     Ok(())
 }
 
@@ -1094,6 +1155,80 @@ mod shell_event_tests {
             .unwrap();
         let c2 = rs2.rows.first().and_then(|r| r.first()).map(|v| v.as_i64()).unwrap();
         assert_eq!(c2, 0, "a session-less event creates no session edge");
+    }
+
+    #[tokio::test]
+    async fn co_access_links_files_in_the_same_session_canonically() {
+        // KG-richness Thrust 1: files opened in one session get a CO_ACCESSED edge,
+        // stored canonically (one edge per pair regardless of access order) and
+        // refreshed on re-access, never duplicated.
+        let (graph, _tmp) = setup().await;
+        let open = |path: &str, ts: i64, ev: &str| {
+            let mut buf = Vec::new();
+            FileOpenedPayload {
+                path: path.into(),
+                app_id: "editor".into(),
+                flags: 0,
+                cgroup_id: 0,
+            }
+            .encode(&mut buf)
+            .unwrap();
+            (buf, ts, ev.to_string())
+        };
+
+        // Open /z then /a in one session: /a (smaller id) is FROM, /z is TO.
+        let (b1, t1, e1) = open("/proj/z.rs", 100, "co1");
+        promote_file_opened(&graph, &e1, &t1, "ebpf", &1, "sess-co", &b1).await.unwrap();
+        let (b2, t2, e2) = open("/proj/a.rs", 200, "co2");
+        promote_file_opened(&graph, &e2, &t2, "ebpf", &1, "sess-co", &b2).await.unwrap();
+
+        // Exactly one CO_ACCESSED edge between the pair, in canonical direction.
+        let dir = graph
+            .query_rows(
+                "MATCH (:File {id:'/proj/a.rs'})-[c:CO_ACCESSED]->(:File {id:'/proj/z.rs'}) \
+                 RETURN c.last_seen AS seen"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(dir.rows.len(), 1, "one canonical edge a->z exists");
+        assert_eq!(dir.rows[0][0].as_i64(), 200, "last_seen is the co-access time");
+
+        // The reverse direction was never created (canonicalisation holds).
+        let rev = graph
+            .query_rows(
+                "MATCH (:File {id:'/proj/z.rs'})-[c:CO_ACCESSED]->(:File {id:'/proj/a.rs'}) \
+                 RETURN count(*) AS c"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rev.rows[0][0].as_i64(), 0, "no reverse-direction edge");
+
+        // Re-open /z later: same pair, refreshed last_seen, still one edge.
+        let (b3, t3, e3) = open("/proj/z.rs", 300, "co3");
+        promote_file_opened(&graph, &e3, &t3, "ebpf", &1, "sess-co", &b3).await.unwrap();
+        let again = graph
+            .query_rows(
+                "MATCH (:File {id:'/proj/a.rs'})-[c:CO_ACCESSED]->(:File {id:'/proj/z.rs'}) \
+                 RETURN count(*) AS n, max(c.last_seen) AS seen"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(again.rows[0][0].as_i64(), 1, "re-access does not duplicate the edge");
+        assert_eq!(again.rows[0][1].as_i64(), 300, "last_seen refreshed on re-access");
+
+        // A file in a different session shares no co-access edge.
+        let (b4, t4, e4) = open("/other/x.rs", 400, "co4");
+        promote_file_opened(&graph, &e4, &t4, "ebpf", &1, "sess-other", &b4).await.unwrap();
+        let cross = graph
+            .query_rows(
+                "MATCH (:File {id:'/other/x.rs'})-[:CO_ACCESSED]-(:File) RETURN count(*) AS c".into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cross.rows[0][0].as_i64(), 0, "no co-access across sessions");
     }
 
     #[tokio::test]
