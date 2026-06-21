@@ -559,6 +559,15 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create ACTIVE_IN rel: {e}"))?;
 
+    // A file accessed during a focus/activity session (KG-richness Thrust 1):
+    // the session<->activity edge family. Parallel to ACTIVE_IN (App -> Session);
+    // together they let the graph answer "which files did I touch in this
+    // session" without an activity-recall log.
+    conn.query(
+        "CREATE REL TABLE IF NOT EXISTS ACCESSED_IN(FROM File TO Session)",
+    )
+    .map_err(|e| anyhow!("create ACCESSED_IN rel: {e}"))?;
+
     conn.query(
         "CREATE REL TABLE IF NOT EXISTS EMITTED_BY(FROM Event TO App)",
     )
