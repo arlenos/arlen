@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 pub mod grant;
 pub mod queue;
 pub mod service;
+pub mod socket;
 
 pub use grant::{mint_grant, ConsentGrant};
 pub use queue::{ConsentQueue, Enqueued, PendingRequest, RequestId};
