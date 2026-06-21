@@ -550,6 +550,42 @@ pub fn view_image(sandbox_bin: &Path, image: &[u8]) -> Result<Vec<u8>, SandboxEr
     run_worker(sandbox_bin, image)
 }
 
+/// Whether `bytes` are an AVIF or HEIC image (an ISOBMFF `ftyp` box whose major
+/// brand is one of the AVIF/HEIF brands). These are the C-linked, threaded
+/// codecs, so a consumer routes them to the THREADED codec worker
+/// ([`view_image_codec`]); everything else goes to the tight [`view_image`].
+#[cfg(feature = "thumbnail")]
+pub fn is_codec_format(bytes: &[u8]) -> bool {
+    // [u32 box size][b"ftyp"][major brand]...
+    if bytes.len() < 12 || &bytes[4..8] != b"ftyp" {
+        return false;
+    }
+    matches!(
+        &bytes[8..12],
+        b"avif" | b"avis" // AVIF
+            | b"heic" | b"heix" | b"heim" | b"heis" // HEIC (HEVC)
+            | b"mif1" | b"msf1" // HEIF still / sequence
+    )
+}
+
+/// Decode a full-resolution viewer image by running the sandboxed AVIF/HEIC
+/// CODEC worker as a subprocess (`apps/viewers`, the C-linked threaded formats).
+///
+/// `codec_sandbox_bin` is the path to the `arlen-image-codec-sandbox` binary,
+/// which installs the THREADED seccomp profile. Identical wire behaviour to
+/// [`view_image`] (untrusted bytes in, sanitised PNG out, bounded by
+/// [`MAX_BYTES`], killed past the budget); the difference is the worker's wider
+/// profile. Route here ONLY for [`is_codec_format`] inputs - the tight
+/// [`view_image`] worker would fail closed on them (its decode pool cannot spawn
+/// threads).
+///
+/// TRUST CONTRACT: same as [`view_image`] - the bin MUST be the genuine fixed
+/// codec-worker path; only that one worker carries the wider profile.
+#[cfg(feature = "thumbnail")]
+pub fn view_image_codec(codec_sandbox_bin: &Path, image: &[u8]) -> Result<Vec<u8>, SandboxError> {
+    run_worker(codec_sandbox_bin, image)
+}
+
 /// Read an audio file's playback metadata by running the sandboxed metadata
 /// worker as a subprocess (`apps/viewers` player surface).
 ///
