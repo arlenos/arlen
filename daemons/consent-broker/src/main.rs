@@ -18,6 +18,7 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use arlen_ai_core::capability::{AccessTier, ActionPermissions, BaselineMode, Capability};
 use audit_proto::sink::LedgerAuditSink;
@@ -32,6 +33,14 @@ use tokio::net::{UnixListener, UnixStream};
 
 /// Maximum wire frame, matching the intake-transport core's bound.
 const MAX_FRAME: usize = 64 * 1024;
+
+/// How long a peer has to send its request frame after connecting + being
+/// authenticated, before the connection is dropped. This bounds a slow-loris: a
+/// same-uid peer that connects and authenticates but withholds its request would
+/// otherwise park a handler task indefinitely. It bounds ONLY the request read;
+/// the intake decision await is deliberately open-ended (the user decides at
+/// their own pace).
+const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// App ids permitted to drive the control socket (fetch pending + resolve).
 /// Only the trusted shell renders the consent surface; everything else is
@@ -104,6 +113,21 @@ async fn read_frame(stream: &mut UnixStream) -> std::io::Result<Option<Vec<u8>>>
     Ok(Some(body))
 }
 
+/// Read one request frame, bounded by `timeout` (a withholding peer is dropped,
+/// not parked forever). A timeout is surfaced as a `TimedOut` error.
+async fn read_request_frame(
+    stream: &mut UnixStream,
+    timeout: Duration,
+) -> std::io::Result<Option<Vec<u8>>> {
+    match tokio::time::timeout(timeout, read_frame(stream)).await {
+        Ok(result) => result,
+        Err(_elapsed) => Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "peer did not send its request within the read timeout",
+        )),
+    }
+}
+
 /// Write one length-prefixed frame.
 async fn write_frame(stream: &mut UnixStream, bytes: &[u8]) -> std::io::Result<()> {
     if bytes.len() > MAX_FRAME {
@@ -134,7 +158,7 @@ async fn handle_intake_conn(state: Arc<SharedState>, mut stream: UnixStream, uid
     }
     let app_id = auth.app_id().to_string();
 
-    let frame = match read_frame(&mut stream).await {
+    let frame = match read_request_frame(&mut stream, REQUEST_READ_TIMEOUT).await {
         Ok(Some(f)) => f,
         Ok(None) => return,
         Err(e) => {
@@ -196,7 +220,7 @@ async fn handle_control_conn(state: Arc<SharedState>, mut stream: UnixStream, ui
         return;
     }
 
-    let frame = match read_frame(&mut stream).await {
+    let frame = match read_request_frame(&mut stream, REQUEST_READ_TIMEOUT).await {
         Ok(Some(f)) => f,
         Ok(None) => return,
         Err(e) => {
@@ -327,4 +351,37 @@ async fn main() -> std::io::Result<()> {
     let _ = std::fs::remove_file(&intake_path);
     let _ = std::fs::remove_file(&control_path);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn a_withholding_peer_times_out_rather_than_parking() {
+        // One end of a connected pair never writes; the request read must return a
+        // TimedOut error (so the handler drops the connection) instead of parking
+        // forever. start_paused advances the clock instantly when idle.
+        let (mut a, _b) = UnixStream::pair().unwrap();
+        let err = read_request_frame(&mut a, REQUEST_READ_TIMEOUT)
+            .await
+            .expect_err("a silent peer must time out");
+        assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_prompt_peer_reads_its_frame_within_the_timeout() {
+        // A peer that sends a framed payload promptly is read normally, not timed
+        // out (the timeout bounds only a withholding peer).
+        let (mut a, mut b) = UnixStream::pair().unwrap();
+        let payload = b"{\"op\":\"fetch\"}";
+        b.write_all(&(payload.len() as u32).to_le_bytes()).await.unwrap();
+        b.write_all(payload).await.unwrap();
+        b.flush().await.unwrap();
+        let frame = read_request_frame(&mut a, REQUEST_READ_TIMEOUT)
+            .await
+            .expect("the read succeeds")
+            .expect("a frame is present");
+        assert_eq!(frame, payload);
+    }
 }
