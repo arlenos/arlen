@@ -1,0 +1,11 @@
+# Starting permission profile for the Dropbox desktop sync client. Syncing is its
+# function, so it gets network; the synced folder lives under Documents. No graph.
+[info]
+app_id = "com.dropbox.Client"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true

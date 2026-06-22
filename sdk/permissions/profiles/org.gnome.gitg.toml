@@ -1,0 +1,9 @@
+# Starting permission profile for gitg (a Git repository GUI). Browses repos and
+# their history under Documents; no network by default (remote fetch/push is a
+# deliberate opt-in), no graph.
+[info]
+app_id = "org.gnome.gitg"
+tier = "third-party"
+
+[filesystem]
+documents = true

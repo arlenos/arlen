@@ -1,0 +1,8 @@
+# Starting permission profile for GNU Octave (numerical computing). Opens and
+# saves scripts and data files from Documents; no network, no graph.
+[info]
+app_id = "org.octave.Octave"
+tier = "third-party"
+
+[filesystem]
+documents = true
