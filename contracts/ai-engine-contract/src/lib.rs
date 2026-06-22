@@ -210,6 +210,52 @@ pub enum ContractError {
     Internal,
 }
 
+/// One call the engine's plugin makes to the daemon over the contract socket.
+/// `SessionInit` is daemon-driven (the daemon mints the token), so it is not a
+/// `Call`; the engine echoes the minted token on every subsequent call.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "call", rename_all = "snake_case")]
+pub enum Call {
+    /// Authorize a proposed tool call.
+    Authorize(Authorize),
+    /// Run a privileged tool in trusted Rust.
+    Execute(Execute),
+    /// Report a tool result for audit/compensation/screening.
+    Report(Report),
+    /// Tear the session down (the engine is exiting / the run ended).
+    EndSession,
+}
+
+/// The engine-to-daemon contract message: the session token plus one [`Call`].
+/// The daemon resolves the calling pid from SO_PEERCRED (never the wire) and
+/// pairs it with this token to bound the action server-side.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContractCall {
+    /// The session token the daemon minted at SessionInit.
+    pub token: String,
+    /// The call being made.
+    pub call: Call,
+}
+
+/// The daemon's reply to a [`ContractCall`]. The variant matches the call:
+/// Authorize -> a decision, Execute -> an outcome, Report -> a screen ack,
+/// EndSession -> `Ack`. `Error` is a contract-level failure (e.g. a malformed
+/// call) distinct from an in-band Deny/Error the verb itself carries.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "reply", rename_all = "snake_case")]
+pub enum Reply {
+    /// The verdict for an `Authorize` call.
+    Authorize(AuthorizeDecision),
+    /// The outcome of an `Execute` call.
+    Execute(ExecuteOutcome),
+    /// The screen ack for a `Report` call.
+    Report(ReportAck),
+    /// Acknowledgement of an `EndSession` (or other no-result) call.
+    Ack,
+    /// A contract-level failure handling the call itself.
+    Error(ContractError),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -322,5 +368,49 @@ mod tests {
         }
         assert_eq!(serde_json::to_string(&ContractError::UnknownTool).unwrap(), "\"unknown_tool\"");
         assert_eq!(serde_json::to_string(&ContractError::Unavailable).unwrap(), "\"unavailable\"");
+    }
+
+    #[test]
+    fn contract_call_round_trips_and_carries_the_token() {
+        let c = ContractCall {
+            token: "abc123".into(),
+            call: Call::Authorize(Authorize {
+                tool_name: "bash".into(),
+                tool_input: json!({"command": "ls"}),
+                external_triggered: false,
+            }),
+        };
+        let back = round_trip(&c);
+        assert_eq!(back.token, "abc123");
+        assert!(matches!(back.call, Call::Authorize(_)));
+        assert_eq!(back, c);
+    }
+
+    /// The `call`/`reply` tags are the wire contract between the engine plugin
+    /// and the daemon; a renamed variant must fail a test, not break IPC.
+    #[test]
+    fn call_and_reply_tags_are_stable() {
+        let calls: Vec<(Call, &str)> = vec![
+            (Call::Authorize(Authorize { tool_name: "t".into(), tool_input: json!(null), external_triggered: false }), "authorize"),
+            (Call::Execute(Execute { tool_name: "t".into(), tool_input: json!(null) }), "execute"),
+            (Call::Report(Report { tool_name: "t".into(), tool_call_id: "c".into(), result: json!(null), is_error: false }), "report"),
+            (Call::EndSession, "end_session"),
+        ];
+        for (c, tag) in calls {
+            let s = serde_json::to_string(&c).unwrap();
+            assert!(s.contains(&format!("\"call\":\"{tag}\"")), "{tag}: call tag changed, got {s}");
+        }
+        let replies: Vec<(Reply, &str)> = vec![
+            (Reply::Authorize(AuthorizeDecision::Allow), "authorize"),
+            (Reply::Execute(ExecuteOutcome::Ok { result: json!(null) }), "execute"),
+            (Reply::Report(ReportAck { screen: ScreenVerdict::Clean }), "report"),
+            (Reply::Ack, "ack"),
+            (Reply::Error(ContractError::Internal), "error"),
+        ];
+        for (r, tag) in replies {
+            let s = serde_json::to_string(&r).unwrap();
+            assert!(s.contains(&format!("\"reply\":\"{tag}\"")), "{tag}: reply tag changed, got {s}");
+            assert_eq!(round_trip(&r), r);
+        }
     }
 }
