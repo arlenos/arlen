@@ -20,6 +20,7 @@ mod fts;
 mod fuse;
 mod graph;
 mod identity;
+mod derivation;
 mod lcg;
 mod lifecycle;
 mod links;

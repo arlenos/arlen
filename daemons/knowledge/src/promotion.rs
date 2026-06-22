@@ -494,7 +494,7 @@ async fn link_co_accessed(
 async fn promote_file_written(
     graph: &GraphHandle,
     event_id: &str,
-    _timestamp: &i64,
+    timestamp: &i64,
     source: &str,
     pid: &i64,
     payload: &[u8],
@@ -533,7 +533,76 @@ async fn promote_file_written(
         ))
         .await?;
 
+    // Strong-signal derivation (KG-richness Thrust 3d): if a file the same app
+    // read in the last minute is named as a source of this write (foo.md ->
+    // foo.pdf), record a DERIVED_FROM edge; a weak/unrelated read records nothing.
+    // Best-effort: a derivation hiccup never fails the write promotion.
+    if let Err(e) = link_derived_from(graph, &path, &app_id, *timestamp).await {
+        warn!(path = %path, error = %e, "derivation linking failed (non-fatal)");
+    }
+
     debug!(event_id, path = %file_payload.path, "promoted file.written");
+    Ok(())
+}
+
+/// The window (microseconds) within which a read preceding a write counts as a
+/// possible transformation input (KG-richness Thrust 3d). A transform reads its
+/// inputs immediately before writing the output; a read minutes ago is not a
+/// derivation source. Event timestamps are microseconds since the Unix epoch
+/// (the same `events.timestamp` that sets a File's `last_accessed`).
+const DERIVATION_WINDOW_MICROS: i64 = 60 * 1_000_000;
+
+/// Bound on candidate source reads examined per write. The name-relation filter
+/// restricts heavily already; this caps the scan so a busy app stays linear.
+const DERIVATION_FANOUT: usize = 32;
+
+/// Record strong-signal `DERIVED_FROM` edges for a freshly-written file
+/// (KG-richness Thrust 3d, the decided STRONG-signal-only posture). A file the
+/// SAME app accessed within [`DERIVATION_WINDOW_MICROS`] before this write, whose
+/// name is a strong derivation source of the written file (`derivation::
+/// is_name_derivation`, e.g. `foo.md` -> `foo.pdf`), is recorded as
+/// `(written)-[:DERIVED_FROM {confidence:'strong'}]->(read)`. A weak signal (an
+/// unrelated name) emits nothing - `CO_ACCESSED`/`MODIFIED_BY` already capture
+/// the weaker relation, and a false `DERIVED_FROM` is worse than none. The
+/// same-app match is the same-process proxy until the kernel-layer write probe
+/// carries a `cgroup_id` (`file.written` has none today, unlike `file.opened`).
+/// Idempotent MERGE.
+async fn link_derived_from(
+    graph: &GraphHandle,
+    written_path: &str,
+    written_app: &str,
+    written_ts: i64,
+) -> Result<()> {
+    if written_path.starts_with("unknown:") || written_app.is_empty() {
+        return Ok(());
+    }
+    let app_esc = escape_cypher(written_app);
+    let written_esc = escape_cypher(written_path);
+    let lo = written_ts - DERIVATION_WINDOW_MICROS;
+    // Candidate sources: files the same app accessed within the window, at or
+    // before this write, excluding the written file itself.
+    let rs = graph
+        .query_rows(format!(
+            "MATCH (src:File) \
+             WHERE src.app_id = '{app_esc}' AND src.last_accessed >= {lo} \
+             AND src.last_accessed <= {written_ts} AND src.id <> '{written_esc}' \
+             RETURN src.id LIMIT {DERIVATION_FANOUT}"
+        ))
+        .await?;
+    for row in rs.rows.iter() {
+        let Some(cell) = row.first() else { continue };
+        let src_id = cell.as_str();
+        if !crate::derivation::is_name_derivation(src_id, written_path) {
+            continue;
+        }
+        let src_esc = escape_cypher(src_id);
+        graph
+            .write(format!(
+                "MATCH (w:File {{id: '{written_esc}'}}), (s:File {{id: '{src_esc}'}}) \
+                 MERGE (w)-[:DERIVED_FROM {{confidence: 'strong'}}]->(s)"
+            ))
+            .await?;
+    }
     Ok(())
 }
 
@@ -1277,6 +1346,94 @@ mod shell_event_tests {
             .await
             .unwrap();
         assert_eq!(cross.rows[0][0].as_i64(), 0, "no co-access across sessions");
+    }
+
+    #[tokio::test]
+    async fn a_write_named_after_a_recent_same_app_read_derives_from_it_only() {
+        // Thrust 3d strong signal: the transform app (pandoc:9) read foo.md (a
+        // name source of the write) and an unrelated bar.txt, both recently. The
+        // write of foo.pdf derives from foo.md ONLY - the unrelated read is not
+        // a derivation (weak signal).
+        let (graph, _tmp) = setup().await;
+        let ts: i64 = 2_000_000_000;
+        for id in ["/p/foo.md", "/p/bar.txt"] {
+            graph
+                .write(format!(
+                    "CREATE (:File {{id: '{id}', path: '{id}', app_id: 'pandoc:9', last_accessed: {}}})",
+                    ts - 1_000_000
+                ))
+                .await
+                .unwrap();
+        }
+        let payload = FileWrittenPayload {
+            path: "/p/foo.pdf".into(),
+            app_id: "pandoc:9".into(),
+            bytes: 10,
+        };
+        let mut buf = Vec::new();
+        payload.encode(&mut buf).unwrap();
+        promote_file_written(&graph, "w", &ts, "pandoc", &9, &buf).await.unwrap();
+
+        let rs = graph
+            .query_rows(
+                "MATCH (:File {id:'/p/foo.pdf'})-[r:DERIVED_FROM]->(s:File) \
+                 WHERE r.confidence = 'strong' RETURN s.id AS sid"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        let targets: Vec<String> = rs
+            .rows
+            .iter()
+            .filter_map(|r| r.first().map(|c| c.as_str().to_string()))
+            .collect();
+        assert_eq!(
+            targets,
+            vec!["/p/foo.md".to_string()],
+            "derives only from the name-related read, never the unrelated one"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_write_records_no_derived_from_for_a_different_app_or_stale_read() {
+        // The same-app + within-window gates: a name source read by ANOTHER app,
+        // and a same-app name source read too long ago, both fail to derive.
+        let (graph, _tmp) = setup().await;
+        let ts: i64 = 2_000_000_000;
+        graph
+            .write(format!(
+                "CREATE (:File {{id:'/p/foo.md', path:'/p/foo.md', app_id:'other:1', last_accessed: {}}})",
+                ts - 1_000_000
+            ))
+            .await
+            .unwrap();
+        graph
+            .write(format!(
+                "CREATE (:File {{id:'/p/foo.org', path:'/p/foo.org', app_id:'pandoc:9', last_accessed: {}}})",
+                ts - 120_000_000 // 120s ago, outside the 60s window
+            ))
+            .await
+            .unwrap();
+        let payload = FileWrittenPayload {
+            path: "/p/foo.pdf".into(),
+            app_id: "pandoc:9".into(),
+            bytes: 10,
+        };
+        let mut buf = Vec::new();
+        payload.encode(&mut buf).unwrap();
+        promote_file_written(&graph, "w", &ts, "pandoc", &9, &buf).await.unwrap();
+
+        let rs = graph
+            .query_rows(
+                "MATCH (:File {id:'/p/foo.pdf'})-[:DERIVED_FROM]->() RETURN count(*) AS c".into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            rs.rows.first().and_then(|r| r.first()).map(|v| v.as_i64()).unwrap(),
+            0,
+            "a different-app or out-of-window name source does not derive"
+        );
     }
 
     #[tokio::test]
