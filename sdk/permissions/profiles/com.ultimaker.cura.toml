@@ -1,0 +1,9 @@
+# Starting permission profile for Ultimaker Cura (3D-print slicer). Reads models
+# and writes G-code from Documents; no network (the marketplace is opt-in and
+# granted on use), no graph.
+[info]
+app_id = "com.ultimaker.cura"
+tier = "third-party"
+
+[filesystem]
+documents = true

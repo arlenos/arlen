@@ -1,0 +1,8 @@
+# Starting permission profile for FreeCAD (parametric 3D CAD modeller). Saves
+# and opens model files; no network, no graph.
+[info]
+app_id = "org.freecad.FreeCAD"
+tier = "third-party"
+
+[filesystem]
+documents = true
