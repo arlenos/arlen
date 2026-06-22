@@ -1,0 +1,8 @@
+# Starting permission profile for GNOME Sound Recorder.
+# Records audio to Music; no network by function. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.SoundRecorder"
+tier = "third-party"
+
+[filesystem]
+music = true

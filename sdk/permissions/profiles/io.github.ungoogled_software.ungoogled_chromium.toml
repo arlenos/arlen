@@ -1,0 +1,12 @@
+# Starting permission profile for ungoogled-chromium (a web browser).
+# The open web is its function, so broad network; it saves to Downloads. Its own
+# config dir is a launcher grant, not a blanket home grant. No graph.
+[info]
+app_id = "io.github.ungoogled_software.ungoogled_chromium"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

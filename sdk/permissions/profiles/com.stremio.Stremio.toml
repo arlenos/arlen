@@ -1,0 +1,12 @@
+# Starting permission profile for Stremio (a media streaming app).
+# Streams and downloads media over the network by function; saves to Downloads.
+# No Knowledge Graph access.
+[info]
+app_id = "com.stremio.Stremio"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
