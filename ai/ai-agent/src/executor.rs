@@ -1223,9 +1223,30 @@ mod tests {
         };
         assert_eq!(w.forward().domain(), EffectDomain::Filesystem);
         assert_eq!(w.forward().op(), "move");
+        assert_eq!(w.forward().target(), "/home/tim/b/x");
         assert_eq!(w.op_id(), "op-1");
         assert_eq!(w.correlation_id(), "corr-1");
         assert_eq!(w.inverse(), &inverse);
+    }
+
+    #[test]
+    fn reconcile_backoff_grows_per_attempt() {
+        // 250ms * attempt: no wait before the first read, a growing wait after,
+        // with a small total bound. A constant or a +/- mutation would change
+        // the schedule the reconcile poll depends on.
+        assert_eq!(reconcile_backoff(1), Duration::from_millis(250));
+        assert_eq!(reconcile_backoff(2), Duration::from_millis(500));
+        assert_eq!(reconcile_backoff(3), Duration::from_millis(750));
+    }
+
+    #[test]
+    fn executed_write_exposes_its_compensation_key() {
+        // op_id is the durable edge stamp the compensation retract targets, and
+        // correlation_id links it to the deciding action. The accessors must
+        // return the stored ids - a constant would misdirect every undo.
+        let w = receipt(WriteOutcome::Created);
+        assert_eq!(w.op_id(), derive_op_id("run-x", w.write()));
+        assert_eq!(w.correlation_id(), "run-x");
     }
 
     fn graph_write_action(args: &[(&str, &str)]) -> ProposedAction {
