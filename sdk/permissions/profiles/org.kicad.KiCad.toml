@@ -1,0 +1,8 @@
+# Starting permission profile for KiCad (electronics design / PCB layout suite).
+# Opens and saves project files; no network, no graph.
+[info]
+app_id = "org.kicad.KiCad"
+tier = "third-party"
+
+[filesystem]
+documents = true

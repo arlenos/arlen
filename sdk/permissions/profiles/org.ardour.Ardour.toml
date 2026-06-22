@@ -1,0 +1,9 @@
+# Starting permission profile for Ardour (digital audio workstation). Records,
+# edits and exports audio; Music holds its sessions and renders. No network, no
+# graph.
+[info]
+app_id = "org.ardour.Ardour"
+tier = "third-party"
+
+[filesystem]
+music = true

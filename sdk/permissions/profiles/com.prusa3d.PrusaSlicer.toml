@@ -1,0 +1,9 @@
+# Starting permission profile for PrusaSlicer (3D-print slicer). Reads models and
+# writes G-code from Documents; no network (Prusa Connect upload is opt-in and
+# granted on use), no graph.
+[info]
+app_id = "com.prusa3d.PrusaSlicer"
+tier = "third-party"
+
+[filesystem]
+documents = true

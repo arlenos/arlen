@@ -1,0 +1,8 @@
+# Starting permission profile for OpenSCAD (script-based 3D CAD modeller). Opens
+# and saves model scripts and exports; no network, no graph.
+[info]
+app_id = "org.openscad.OpenSCAD"
+tier = "third-party"
+
+[filesystem]
+documents = true
