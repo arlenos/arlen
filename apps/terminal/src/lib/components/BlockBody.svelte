@@ -38,9 +38,16 @@
     return b.cells as GridCell[][];
   });
 
-  /// The stand-in height when no cells are attached yet (a running
-  /// command, or a host without the capture): the labelled placeholder
-  /// keeps proportions real.
+  /// A running command has not been captured yet: its output streams in the
+  /// live region below the blocks, so its block body shows nothing (no stale
+  /// placeholder under a running command). The capture is attached when it
+  /// finishes.
+  const running = $derived(
+    block.exit_code === null && block.duration_ms === null,
+  );
+
+  /// The stand-in height for a FINISHED grid block with no attached cells (a
+  /// host without the capture): the labelled placeholder keeps proportions real.
   const gridRows = $derived.by(() => {
     const b = block.body as { rows?: number } | null;
     return typeof b?.rows === "number" && b.rows > 0 ? b.rows : 1;
@@ -96,7 +103,7 @@
 {#if block.body_kind === "grid" || (block.body_kind === "table" && !tableLens)}
   {#if gridCells}
     <GridRegion cells={gridCells} />
-  {:else}
+  {:else if !running}
     <GridRegion
       rows={gridRows}
       placeholder={`terminal output, ${gridRows} ${gridRows === 1 ? "line" : "lines"}`}
