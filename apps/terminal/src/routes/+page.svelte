@@ -46,14 +46,15 @@
     }
   }
 
-  // The visible screen rows, trailing blank rows trimmed (but never below
-  // the cursor row) so the live region is the height of the real output,
-  // not the full 24-row grid. (A fullscreen/alt-screen app fills the grid;
-  // honouring that without trimming is the follow-on once the snapshot
-  // carries the alt-screen flag.)
+  // The visible screen rows. For ordinary command output, trailing blank rows
+  // are trimmed (but never below the cursor row) so the live region is the
+  // height of the real output, not the full 24-row grid. A fullscreen / TUI
+  // app on the alternate screen owns the whole grid, so it is painted in full
+  // (trimming would corrupt its layout).
   const liveCells = $derived.by(() => {
     const g = $liveGrid;
     if (!g) return [];
+    if (g.alt_screen) return g.cells;
     let last = -1;
     for (let i = 0; i < g.cells.length; i++) {
       if (g.cells[i].some((cell) => cell.text.trim() !== "")) last = i;

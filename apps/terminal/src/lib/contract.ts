@@ -72,6 +72,9 @@ export interface GridSnapshot {
   cols: number;
   rows: number;
   cells: GridCell[][];
+  /// Whether a fullscreen / TUI app holds the alternate screen; the renderer
+  /// paints the full grid (no trailing-row trimming) when this is set.
+  alt_screen: boolean;
   cursor_row: number;
   cursor_col: number;
 }

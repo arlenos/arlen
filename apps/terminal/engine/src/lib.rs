@@ -234,6 +234,7 @@ fn snapshot_of(parser: &vt100::Parser) -> GridSnapshot {
         cols,
         rows,
         cells,
+        alt_screen: screen.alternate_screen(),
         cursor_row,
         cursor_col,
     }
@@ -310,6 +311,19 @@ mod tests {
         // The cursor sits just after "world" on the second row.
         assert_eq!(snap.cursor_row, 1);
         assert_eq!(snap.cursor_col, 5);
+    }
+
+    #[test]
+    fn snapshot_flags_the_alternate_screen() {
+        // A fullscreen / TUI app (vim, less) switches to the alternate screen
+        // via DECSET 1049; the renderer needs that flag so it stops trimming
+        // trailing rows and paints the full grid the app owns.
+        let mut parser = vt100::Parser::new(4, 20, 0);
+        assert!(!snapshot_of(&parser).alt_screen, "primary screen is not alternate");
+        parser.process(b"\x1b[?1049h");
+        assert!(snapshot_of(&parser).alt_screen, "DECSET 1049 enters the alternate screen");
+        parser.process(b"\x1b[?1049l");
+        assert!(!snapshot_of(&parser).alt_screen, "DECRST 1049 restores the primary screen");
     }
 
     /// On-host (needs a PTY + `/bin/sh`): a program that emits an OSC 133;A mark

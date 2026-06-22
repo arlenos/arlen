@@ -111,6 +111,11 @@ pub struct GridSnapshot {
     /// The visible grid, top to bottom: one inner vector per row, each holding
     /// exactly `cols` cells left to right (so the monospace grid always aligns).
     pub cells: Vec<Vec<GridCell>>,
+    /// Whether the alternate screen is active (a fullscreen / TUI app like vim
+    /// or less has taken over the screen). The renderer paints the full grid
+    /// without trimming trailing blank rows when this is set, since the app
+    /// owns the whole screen rather than appending command output.
+    pub alt_screen: bool,
     /// Cursor row (0-based, from the top of the visible screen).
     pub cursor_row: u16,
     /// Cursor column (0-based).
