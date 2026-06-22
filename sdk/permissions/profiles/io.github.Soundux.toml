@@ -1,0 +1,8 @@
+# Starting permission profile for Soundux (a soundboard).
+# It plays sound files through the audio server by function, so it gets Music (where sound files live) and no network. No Knowledge Graph access.
+[info]
+app_id = "io.github.Soundux"
+tier = "third-party"
+
+[filesystem]
+music = true

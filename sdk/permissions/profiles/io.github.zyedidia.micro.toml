@@ -1,0 +1,8 @@
+# Starting permission profile for micro (a text editor).
+# It edits text documents the user opens by function, so it gets Documents and no network. No Knowledge Graph access.
+[info]
+app_id = "io.github.zyedidia.micro"
+tier = "third-party"
+
+[filesystem]
+documents = true

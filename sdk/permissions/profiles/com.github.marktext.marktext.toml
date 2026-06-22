@@ -1,0 +1,8 @@
+# Starting permission profile for MarkText (a markdown editor).
+# It edits markdown documents the user opens by function, so it gets Documents and no network. No Knowledge Graph access.
+[info]
+app_id = "com.github.marktext.marktext"
+tier = "third-party"
+
+[filesystem]
+documents = true

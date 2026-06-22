@@ -1,0 +1,8 @@
+# Starting permission profile for Paleta (a colour-palette extractor).
+# It reads images to extract palettes by function, so it gets Pictures and no network. No Knowledge Graph access.
+[info]
+app_id = "io.github.nate_xyz.Paleta"
+tier = "third-party"
+
+[filesystem]
+pictures = true

@@ -1,0 +1,8 @@
+# Starting permission profile for Typora (a markdown editor).
+# It edits markdown documents the user opens by function, so it gets Documents and no network. No Knowledge Graph access.
+[info]
+app_id = "io.typora.Typora"
+tier = "third-party"
+
+[filesystem]
+documents = true

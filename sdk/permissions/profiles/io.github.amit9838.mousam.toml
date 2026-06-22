@@ -1,0 +1,9 @@
+# Starting permission profile for Mousam (a weather app).
+# It fetches forecasts over the network by function and needs no user files.
+# No Knowledge Graph access.
+[info]
+app_id = "io.github.amit9838.mousam"
+tier = "third-party"
+
+[network]
+allow_all = true

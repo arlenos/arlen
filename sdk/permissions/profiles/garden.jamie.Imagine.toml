@@ -1,0 +1,8 @@
+# Starting permission profile for Imagine (an image compressor).
+# It compresses image files the user opens by function, so it gets Pictures and no network. No Knowledge Graph access.
+[info]
+app_id = "garden.jamie.Imagine"
+tier = "third-party"
+
+[filesystem]
+pictures = true
