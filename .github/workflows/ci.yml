@@ -226,7 +226,7 @@ jobs:
           cargo clippy --manifest-path ai/Cargo.toml --workspace || true
 
   frontend:
-    name: frontend svelte-check
+    name: frontend check + vitest
     needs: changes
     if: ${{ needs.changes.outputs.frontend != '[]' }}
     runs-on: ubuntu-latest
@@ -246,6 +246,11 @@ jobs:
           if [ -f package.json ]; then
             npm ci || npm install
             npm run check || true
+            # Vitest is gating where an app declares unit tests, so frontend-logic
+            # regressions fail the build (svelte-check stays advisory above).
+            if [ "$(npm pkg get scripts.test)" != "{}" ]; then
+              npm test -- --passWithNoTests
+            fi
           else
             echo "no package.json, skipping"
           fi
