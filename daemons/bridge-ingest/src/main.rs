@@ -9,9 +9,10 @@
 //! The privileged side runs no per-bridge code: a bridge is data. Every write
 //! is namespace-bound + origin-tagged daemon-side by this process's attested
 //! caller identity (a bridge can only write its own declared namespace, never a
-//! `system.*` fact). Edge ingestion is pending the `plan_entity_link` knowledge
-//! op; until then a mapping that produces edges reports the message failed
-//! (the session continues) rather than silently dropping the edge.
+//! `system.*` fact). Edges are ingested too: a mapping's `for_each_link` rule
+//! becomes an idempotent edge through the `plan_entity_link` knowledge op (the
+//! `link_entities` client call). A write that fails reports the message failed
+//! (the session continues) rather than silently dropping the node or edge.
 
 use std::io::{self, BufReader, BufWriter};
 use std::path::PathBuf;
@@ -39,7 +40,8 @@ fn knowledge_socket() -> String {
 /// An [`EntityWriter`] that persists through the knowledge daemon's app-tier
 /// entity-write socket. The host loop is synchronous, so this owns a
 /// current-thread runtime and blocks on the async client (no nested runtime,
-/// so `block_on` is safe). Edge writes are pending the `plan_entity_link` op.
+/// so `block_on` is safe). Both `upsert` (`upsert_entity`) and `link`
+/// (`link_entities`, the `plan_entity_link` op) drive the async client.
 struct GraphEntityWriter {
     client: UnixGraphClient,
     runtime: tokio::runtime::Runtime,
