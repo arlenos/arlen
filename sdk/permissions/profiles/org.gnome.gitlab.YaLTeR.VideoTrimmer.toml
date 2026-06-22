@@ -1,0 +1,8 @@
+# Starting permission profile for Video Trimmer.
+# It trims video files the user opens by function, so it gets Videos and no network. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.gitlab.YaLTeR.VideoTrimmer"
+tier = "third-party"
+
+[filesystem]
+videos = true

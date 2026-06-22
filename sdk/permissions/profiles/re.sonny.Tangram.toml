@@ -1,0 +1,11 @@
+# Starting permission profile for Tangram (a web-app browser).
+# It runs pinned web applications, so it gets network; downloads save to Downloads. It gets network and Downloads. No Knowledge Graph access.
+[info]
+app_id = "re.sonny.Tangram"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

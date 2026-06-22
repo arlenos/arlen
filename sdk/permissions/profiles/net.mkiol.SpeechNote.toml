@@ -1,0 +1,8 @@
+# Starting permission profile for Speech Note (offline text-to-speech and speech-to-text).
+# It reads text documents to speak by function, so it gets Documents and no network; model downloads are opt-in. No Knowledge Graph access.
+[info]
+app_id = "net.mkiol.SpeechNote"
+tier = "third-party"
+
+[filesystem]
+documents = true

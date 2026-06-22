@@ -1,0 +1,11 @@
+# Starting permission profile for Kontact (a KDE personal-information suite).
+# Mail and calendar sync are its function, so it gets network; attachments save to Downloads. It gets network and Downloads. No Knowledge Graph access.
+[info]
+app_id = "org.kde.kontact"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

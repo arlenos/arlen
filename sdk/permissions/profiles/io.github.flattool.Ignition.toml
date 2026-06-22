@@ -1,0 +1,5 @@
+# Starting permission profile for Ignition (a startup-apps manager).
+# It edits the user's autostart entries through its own enrollment grant. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "io.github.flattool.Ignition"
+tier = "third-party"

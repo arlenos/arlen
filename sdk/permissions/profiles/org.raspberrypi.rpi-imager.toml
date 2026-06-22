@@ -1,0 +1,11 @@
+# Starting permission profile for Raspberry Pi Imager.
+# It downloads OS images over the network and writes them to removable media by function. It gets network and Downloads. No Knowledge Graph access.
+[info]
+app_id = "org.raspberrypi.rpi-imager"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

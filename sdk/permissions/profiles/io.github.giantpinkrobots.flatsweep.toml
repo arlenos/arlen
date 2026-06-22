@@ -1,0 +1,5 @@
+# Starting permission profile for Flatsweep (removes leftover app data).
+# It scans and removes residual app data through its own grant. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "io.github.giantpinkrobots.flatsweep"
+tier = "third-party"
