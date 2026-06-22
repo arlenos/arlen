@@ -1,0 +1,8 @@
+# Starting permission profile for Upscaler (an image upscaler).
+# Reads and writes images; no network by function. No Knowledge Graph access.
+[info]
+app_id = "io.gitlab.theevilskeleton.Upscaler"
+tier = "third-party"
+
+[filesystem]
+pictures = true

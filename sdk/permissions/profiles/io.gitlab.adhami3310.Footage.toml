@@ -1,0 +1,8 @@
+# Starting permission profile for Footage (a video editor).
+# Reads and writes video; no network by function. No Knowledge Graph access.
+[info]
+app_id = "io.gitlab.adhami3310.Footage"
+tier = "third-party"
+
+[filesystem]
+videos = true

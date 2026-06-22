@@ -1,0 +1,10 @@
+# Starting permission profile for Haruna (an mpv-based video player).
+# Plays local media from Videos and Music; no network by default (streaming is a
+# refinement an observe pass can add). No Knowledge Graph access.
+[info]
+app_id = "org.kde.haruna"
+tier = "third-party"
+
+[filesystem]
+videos = true
+music = true

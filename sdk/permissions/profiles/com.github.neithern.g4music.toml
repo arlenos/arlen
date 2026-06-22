@@ -1,0 +1,8 @@
+# Starting permission profile for G4Music (a music player).
+# Plays the local music library; no network by function. No Knowledge Graph access.
+[info]
+app_id = "com.github.neithern.g4music"
+tier = "third-party"
+
+[filesystem]
+music = true

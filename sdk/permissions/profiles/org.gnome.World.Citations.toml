@@ -1,0 +1,8 @@
+# Starting permission profile for Citations (a bibliography manager).
+# Manages reference documents; no network by function. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.World.Citations"
+tier = "third-party"
+
+[filesystem]
+documents = true

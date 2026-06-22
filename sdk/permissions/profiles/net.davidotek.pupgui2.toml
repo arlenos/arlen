@@ -1,0 +1,12 @@
+# Starting permission profile for ProtonUp-Qt (a compatibility-tool installer).
+# Downloads compatibility tools over the network; they install under the game
+# launchers' own dirs (a launcher grant). No Knowledge Graph access.
+[info]
+app_id = "net.davidotek.pupgui2"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

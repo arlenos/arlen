@@ -1,0 +1,8 @@
+# Starting permission profile for Fotema (a photo gallery).
+# Browses the photo library; no network by function. No Knowledge Graph access.
+[info]
+app_id = "app.fotema.Fotema"
+tier = "third-party"
+
+[filesystem]
+pictures = true
