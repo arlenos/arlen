@@ -1,0 +1,10 @@
+# Starting permission profile for PDF Metadata Editor.
+# It edits the metadata of PDF files the user opens, so it gets Documents and
+# Downloads and no network. No Knowledge Graph access.
+[info]
+app_id = "io.github.diegoivan.pdf_metadata_editor"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true
