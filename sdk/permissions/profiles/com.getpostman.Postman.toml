@@ -1,0 +1,8 @@
+# Starting permission profile for Postman (an API client).
+# Issues HTTP requests over the network by function. No Knowledge Graph access.
+[info]
+app_id = "com.getpostman.Postman"
+tier = "third-party"
+
+[network]
+allow_all = true

@@ -1,0 +1,10 @@
+# Starting permission profile for Shotcut (a video editor).
+# Reads source media and writes renders; no network by function. No graph.
+[info]
+app_id = "org.shotcut.Shotcut"
+tier = "third-party"
+
+[filesystem]
+videos = true
+music = true
+pictures = true

@@ -1,0 +1,12 @@
+# Starting permission profile for Lutris (a game manager/launcher).
+# Fetches installers and runners over the network and saves them; games live in
+# its own data dir (a launcher grant). No Knowledge Graph access.
+[info]
+app_id = "net.lutris.Lutris"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

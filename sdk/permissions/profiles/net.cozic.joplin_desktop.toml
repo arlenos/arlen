@@ -1,0 +1,9 @@
+# Starting permission profile for Joplin (a note-taking app with sync).
+# Notes live in its own config dir (a launcher grant); sync to a remote backend
+# is core to its function, so network. No Knowledge Graph access.
+[info]
+app_id = "net.cozic.joplin_desktop"
+tier = "third-party"
+
+[network]
+allow_all = true

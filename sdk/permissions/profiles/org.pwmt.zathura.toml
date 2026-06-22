@@ -1,0 +1,9 @@
+# Starting permission profile for zathura (a document/PDF viewer).
+# Reads documents from Documents and Downloads; no network, no graph.
+[info]
+app_id = "org.pwmt.zathura"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true

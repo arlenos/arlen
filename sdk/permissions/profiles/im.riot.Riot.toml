@@ -1,0 +1,13 @@
+# Starting permission profile for Element (a Matrix chat client).
+# Conservative first cut; observe-mode refines it. Chat over the network is its
+# function, so broad network; it saves received attachments to Downloads. No
+# Knowledge Graph access.
+[info]
+app_id = "im.riot.Riot"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

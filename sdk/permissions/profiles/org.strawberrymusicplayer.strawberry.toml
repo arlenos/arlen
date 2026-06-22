@@ -1,0 +1,9 @@
+# Starting permission profile for Strawberry (a music player).
+# Plays local music; scrobbling/streaming is a refinement an observe pass can
+# add, never a blanket network grant up front. No Knowledge Graph access.
+[info]
+app_id = "org.strawberrymusicplayer.strawberry"
+tier = "third-party"
+
+[filesystem]
+music = true
