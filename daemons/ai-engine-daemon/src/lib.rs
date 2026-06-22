@@ -16,3 +16,5 @@ pub mod wire;
 pub mod placeholder;
 
 pub mod supervisor;
+
+pub mod capability_map;
