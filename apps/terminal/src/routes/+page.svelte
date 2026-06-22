@@ -23,6 +23,7 @@
     newSession,
   } from "$lib/stores/sessions";
   import { GridRegion } from "@arlen/ui-kit/components/console";
+  import { liveRegionCells, isAltScreenActive } from "$lib/live-region";
   import BlockStream from "$lib/components/BlockStream.svelte";
   import Composer from "$lib/components/Composer.svelte";
 
@@ -46,35 +47,17 @@
     }
   }
 
-  // The live region rendered below the blocks. A fullscreen / TUI app on the
-  // alternate screen owns the whole grid, so it is painted in full. Otherwise
-  // the live region is ONLY a running command's output, sliced from where its
-  // output begins (excluding the shell's prompt and the echoed command line, so
-  // the shell's prompt is never drawn on top of the composer — no double
-  // prompt). At an idle prompt there is no live region at all: the composer is
-  // the prompt, and finished commands' output lives in their blocks.
-  const liveCells = $derived.by(() => {
-    const g = $liveGrid;
-    if (!g) return [];
-    if (g.alt_screen) return g.cells;
-    if (!g.running) return [];
-    const start = g.output_start_row ?? 0;
-    // Trim trailing blank rows within the output region (but never below the
-    // cursor), so the live region is the height of the streaming output.
-    let last = start - 1;
-    for (let i = start; i < g.cells.length; i++) {
-      if (g.cells[i].some((cell) => cell.text.trim() !== "")) last = i;
-    }
-    last = Math.max(last, g.cursor_row);
-    if (last < start) return [];
-    return g.cells.slice(start, last + 1);
-  });
+  // The live region rendered below the blocks: nothing at an idle prompt (the
+  // composer is the prompt, finished output is in the blocks — no double
+  // prompt), only a running command's output (sliced past the prompt + echo),
+  // or the whole grid for a fullscreen alternate-screen app. The rule is the
+  // pure, unit-tested `liveRegionCells` (live-region.ts).
+  const liveCells = $derived(liveRegionCells($liveGrid));
 
-  // A fullscreen / TUI app (btop, vim, less) has taken the alternate screen, so
-  // the block UI is turned off entirely and the grid fills the whole content
-  // area (Tim's spec). Flips back to block-mode when the app exits the alt
-  // screen.
-  const isAltScreen = $derived(($liveGrid?.alt_screen ?? false) && liveCells.length > 0);
+  // A fullscreen / TUI app (btop, vim, less) holds the alternate screen, so the
+  // block UI is turned off entirely and the grid fills the whole content area
+  // (Tim's spec). Flips back to block-mode when the app exits the alt screen.
+  const isAltScreen = $derived(isAltScreenActive($liveGrid, liveCells));
 
   onMount(() => {
     loadSessions();
