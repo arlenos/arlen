@@ -8,7 +8,7 @@
   /// disappoints (never throws on payload, never renders markup
   /// from it).
   import { GridRegion } from "@arlen/ui-kit/components/console";
-  import type { Block } from "$lib/contract";
+  import type { Block, GridCell } from "$lib/contract";
   import OutputFrame from "./OutputFrame.svelte";
   import TableLens from "./TableLens.svelte";
   import ImageBlock from "./ImageBlock.svelte";
@@ -26,9 +26,21 @@
     tableLens?: boolean;
   } = $props();
 
-  /// Until the compositor subsurface lands, every host runs without
-  /// the grid paint — the labelled stand-in keeps proportions real.
-  /// The subsurface wiring removes the placeholder, nothing else.
+  /// The block's own captured output, as the per-cell grid the engine
+  /// recorded between the command's marks (its "grid inside the
+  /// block"). Painted directly so multi-line output is preserved in
+  /// full, not truncated to the small live screen. `null` until the
+  /// command finishes and the host attaches its cells, or if the
+  /// payload shape disappoints (then the placeholder shows).
+  const gridCells = $derived.by(() => {
+    const b = block.body as { cells?: unknown } | null;
+    if (!Array.isArray(b?.cells) || b.cells.length === 0) return null;
+    return b.cells as GridCell[][];
+  });
+
+  /// The stand-in height when no cells are attached yet (a running
+  /// command, or a host without the capture): the labelled placeholder
+  /// keeps proportions real.
   const gridRows = $derived.by(() => {
     const b = block.body as { rows?: number } | null;
     return typeof b?.rows === "number" && b.rows > 0 ? b.rows : 1;
@@ -82,10 +94,14 @@
 </script>
 
 {#if block.body_kind === "grid" || (block.body_kind === "table" && !tableLens)}
-  <GridRegion
-    rows={gridRows}
-    placeholder={`terminal output, ${gridRows} ${gridRows === 1 ? "line" : "lines"}`}
-  />
+  {#if gridCells}
+    <GridRegion cells={gridCells} />
+  {:else}
+    <GridRegion
+      rows={gridRows}
+      placeholder={`terminal output, ${gridRows} ${gridRows === 1 ? "line" : "lines"}`}
+    />
+  {/if}
 {:else if block.body_kind === "table" && tableBody}
   <OutputFrame>
     <TableLens columns={tableBody.columns} cells={tableBody.cells} />
