@@ -1,0 +1,8 @@
+# Starting permission profile for Peek (a screen recorder).
+# It records the screen and saves a clip by function, so it gets Videos and no network. No Knowledge Graph access.
+[info]
+app_id = "com.uploadedlobster.peek"
+tier = "third-party"
+
+[filesystem]
+videos = true

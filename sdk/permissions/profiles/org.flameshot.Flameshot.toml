@@ -1,0 +1,8 @@
+# Starting permission profile for Flameshot (a screenshot tool).
+# It captures the screen through the portal and saves images by function, so it gets Pictures and no network; upload to an image host is opt-in. No Knowledge Graph access.
+[info]
+app_id = "org.flameshot.Flameshot"
+tier = "third-party"
+
+[filesystem]
+pictures = true
