@@ -1,0 +1,12 @@
+# Starting permission profile for Heroic (an Epic/GOG game launcher).
+# Downloads games over the network; they install under its own data dir (a
+# launcher grant). No Knowledge Graph access.
+[info]
+app_id = "com.heroicgameslauncher.hgl"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

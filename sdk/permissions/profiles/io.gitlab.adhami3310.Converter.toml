@@ -1,0 +1,8 @@
+# Starting permission profile for Converter (an image converter).
+# Reads and writes images in Pictures; no network by function. No graph.
+[info]
+app_id = "io.gitlab.adhami3310.Converter"
+tier = "third-party"
+
+[filesystem]
+pictures = true

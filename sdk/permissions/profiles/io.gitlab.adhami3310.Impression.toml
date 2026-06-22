@@ -1,0 +1,9 @@
+# Starting permission profile for Impression (a USB image writer).
+# Reads disk images from Downloads and writes them to removable media; no
+# network by function. No Knowledge Graph access.
+[info]
+app_id = "io.gitlab.adhami3310.Impression"
+tier = "third-party"
+
+[filesystem]
+downloads = true

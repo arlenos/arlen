@@ -1,0 +1,5 @@
+# Starting permission profile for GNOME Mines (a local minesweeper game).
+# Plays locally; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "org.gnome.Mines"
+tier = "third-party"

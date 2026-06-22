@@ -1,0 +1,5 @@
+# Starting permission profile for Solanum (a Pomodoro timer).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "org.gnome.Solanum"
+tier = "third-party"
