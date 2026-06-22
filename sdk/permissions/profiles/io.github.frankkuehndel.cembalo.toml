@@ -1,0 +1,5 @@
+# Starting permission profile for Cembalo (a virtual harpsichord).
+# It plays sounds through the audio server locally. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "io.github.frankkuehndel.cembalo"
+tier = "third-party"

@@ -1,0 +1,8 @@
+# Starting permission profile for KMyMoney (personal finance).
+# It keeps account books in local files by function, so it gets Documents and no network; online banking is opt-in. No Knowledge Graph access.
+[info]
+app_id = "org.kmymoney.KMyMoney"
+tier = "third-party"
+
+[filesystem]
+documents = true

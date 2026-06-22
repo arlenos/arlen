@@ -1,0 +1,5 @@
+# Starting permission profile for Solanum (a Pomodoro timer).
+# It runs a focus timer locally. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.World.Solanum"
+tier = "third-party"

@@ -1,0 +1,8 @@
+# Starting permission profile for Sunshine (a game-streaming host).
+# It streams the desktop to clients over the network by function. It gets network and needs no user files. No Knowledge Graph access.
+[info]
+app_id = "dev.lizardbyte.app.Sunshine"
+tier = "third-party"
+
+[network]
+allow_all = true
