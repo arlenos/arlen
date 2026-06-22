@@ -32,7 +32,22 @@ mod tests {
         let loader = ThemeLoader::new().unwrap();
         let theme = loader.load("dark").unwrap();
         let css = to_css_variables(&theme, &UserOverrides::default());
-        for key in ["color-bg-shell", "color-accent", "radius-window", "font-sans"] {
+        // The whole radius family the concentric-frame mechanism (PR-1) needs
+        // must reach the frontend var map: `radius-window` (the outer frame, so
+        // arlen-ui's `.rounded-concentric` calc resolves `--radius-window`) plus
+        // the nested family it derives `parent_radius - inset` from. Pinned here
+        // so a customised `window_corners` always reaches the Svelte `:root`.
+        for key in [
+            "color-bg-shell",
+            "color-accent",
+            "font-sans",
+            "radius-window",
+            "radius-card",
+            "radius-chip",
+            "radius-button",
+            "radius-input",
+            "radius-modal",
+        ] {
             assert!(css.variables.contains_key(key), "missing key: {key}");
         }
         assert_eq!(css.variant, "dark");
