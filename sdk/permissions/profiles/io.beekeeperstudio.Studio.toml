@@ -1,0 +1,8 @@
+# Starting permission profile for Beekeeper Studio (a database client).
+# Connects to databases over the network by function. No Knowledge Graph access.
+[info]
+app_id = "io.beekeeperstudio.Studio"
+tier = "third-party"
+
+[network]
+allow_all = true
