@@ -2,9 +2,9 @@
 //! (system-dialog-plan.md: every always-allow == a revocable grant node in the
 //! KG + audit ledger). This is the pure record + builder: it turns a resolved
 //! [`PendingRequest`] + its [`ConsentOutcome`] into a [`ConsentGrant`] the
-//! transport then persists (the KG `Grant` table + the audit ledger) and the
-//! capability browser later shows + revokes. The persistence itself is a later
-//! piece; this builds the record and is unit-tested.
+//! daemon then persists into the shared LCG Grant node (Option A, in
+//! `SharedState::resolve` via the `GrantPersister`) and the capability browser
+//! later shows + revokes. This module builds the record and is unit-tested.
 
 use serde::{Deserialize, Serialize};
 
