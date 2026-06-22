@@ -241,6 +241,30 @@ mod tests {
         assert!(extract_markdown_links("[[unterminated and ](also", "/p").is_empty());
     }
 
+    #[test]
+    fn surplus_parent_refs_are_absorbed_not_escaped() {
+        // The resolved path becomes a File-node lookup key, so a traversal-heavy
+        // target must normalise to a real absolute path with no surviving `..`,
+        // never a relative escape sequence, however many `../` it stacks.
+        let links = extract_markdown_links("[x](../../../../etc/x.md)", "/home/u/p");
+        assert_eq!(links, vec!["/etc/x.md"]);
+        assert!(!links[0].contains(".."), "no `..` survives normalisation");
+    }
+
+    #[test]
+    fn query_suffix_is_stripped_to_the_file() {
+        // A `?query` suffix targets the same file as the bare path, like `#`.
+        let links = extract_markdown_links("[x](page.md?v=2)", "/p");
+        assert_eq!(links, vec!["/p/page.md"]);
+    }
+
+    #[test]
+    fn external_scheme_match_is_case_insensitive() {
+        // A scheme in any case is still an external URL, never a local file.
+        let c = "[a](HTTPS://example.com/x) [b](MailTo:x@y.z)";
+        assert!(extract_markdown_links(c, "/p").is_empty());
+    }
+
     /// LINKS_TO edges are created only to files that already exist, never to an
     /// unobserved target, are idempotent, and skip a self-link.
     #[tokio::test]
