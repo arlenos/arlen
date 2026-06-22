@@ -1,0 +1,12 @@
+# Starting permission profile for MPD (the Music Player Daemon).
+# It serves a music library to clients over the network by function, so it gets
+# Music and network. No Knowledge Graph access.
+[info]
+app_id = "org.musicpd.MPD"
+tier = "third-party"
+
+[filesystem]
+music = true
+
+[network]
+allow_all = true

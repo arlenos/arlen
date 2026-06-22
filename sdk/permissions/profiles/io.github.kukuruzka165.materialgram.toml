@@ -1,0 +1,11 @@
+# Starting permission profile for Materialgram (a Telegram client).
+# Messaging is its function, so it gets network; received media saves to Downloads. It gets network and Downloads. No Knowledge Graph access.
+[info]
+app_id = "io.github.kukuruzka165.materialgram"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

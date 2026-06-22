@@ -1,0 +1,5 @@
+# Starting permission profile for Solaar (a Logitech device manager).
+# It manages connected Logitech devices through its own device grant. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "io.github.pwr_solaar.solaar"
+tier = "third-party"
