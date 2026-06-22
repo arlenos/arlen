@@ -269,4 +269,47 @@ mod tests {
         let ids: Vec<_> = a.blocks().into_iter().map(|b| b.id).collect();
         assert_eq!(ids, vec!["b1", "b2", "b3"]);
     }
+
+    #[test]
+    fn a_running_command_appears_as_a_pending_block_with_no_exit() {
+        // A command that has started but not ended must surface in `blocks()` as
+        // a pending block - command set, exit and duration None. The renderer
+        // reads exactly this (exit_code == null && duration_ms == null) to treat
+        // the last block as running; an impl that withheld the pending block, or
+        // stamped it with an exit, would break the live/running affordance.
+        let mut a = BlockAssembler::new("/work");
+        let now = t0();
+        a.consume(
+            &[
+                VtEvent::CommandLine {
+                    command: "sleep 9".to_string(),
+                },
+                VtEvent::ExecStart,
+            ],
+            now,
+        );
+        let blocks = a.blocks();
+        assert_eq!(blocks.len(), 1, "the running command is shown live");
+        assert_eq!(blocks[0].command, "sleep 9");
+        assert_eq!(blocks[0].exit_code, None, "a running command has no exit yet");
+        assert_eq!(blocks[0].duration_ms, None, "a running command has no duration yet");
+    }
+
+    #[test]
+    fn unpaired_marks_before_any_command_are_ignored() {
+        // Output can carry stray exec/end marks (or a session can start mid-flight)
+        // with no opening CommandLine. These must not panic or fabricate a block;
+        // a block exists only once a command line opens it.
+        let mut a = BlockAssembler::new("/");
+        let now = t0();
+        a.consume(
+            &[
+                VtEvent::ExecStart,
+                VtEvent::CommandEnd { exit_code: Some(0) },
+                VtEvent::PromptStart,
+            ],
+            now,
+        );
+        assert!(a.blocks().is_empty(), "no block without an opening command line");
+    }
 }
