@@ -594,6 +594,15 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create CO_ACCESSED rel: {e}"))?;
 
+    // A document links to another file (KG-richness Thrust 3c, deterministic
+    // cross-content edges). A markdown/wiki reference parsed from a document's
+    // content - exact, no inference. Directed (the linking doc is FROM); a pair
+    // that links both ways gets one edge each direction.
+    conn.query(
+        "CREATE REL TABLE IF NOT EXISTS LINKS_TO(FROM File TO File)",
+    )
+    .map_err(|e| anyhow!("create LINKS_TO rel: {e}"))?;
+
     // A user interaction performed during a session (KG-richness Thrust 1):
     // the session<->activity edge family for UserAction nodes. Parallel to
     // ACCESSED_IN (File -> Session); together they answer "what did I do in
