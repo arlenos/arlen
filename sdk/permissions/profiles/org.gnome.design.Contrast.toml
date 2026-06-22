@@ -1,0 +1,6 @@
+# Starting permission profile for Contrast (a colour-contrast checker).
+# It checks contrast ratios of colours locally, needing no network and no user
+# files. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.design.Contrast"
+tier = "third-party"

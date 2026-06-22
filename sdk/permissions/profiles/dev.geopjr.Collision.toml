@@ -1,0 +1,10 @@
+# Starting permission profile for Collision (a file hash / checksum checker).
+# It reads a chosen file to compute its hash, so it gets Documents and Downloads
+# (where files to verify live) and no network. No Knowledge Graph access.
+[info]
+app_id = "dev.geopjr.Collision"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true

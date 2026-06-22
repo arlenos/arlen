@@ -1,0 +1,6 @@
+# Starting permission profile for Eyedropper (a colour picker).
+# It samples a colour from the screen through the portal and edits it locally,
+# needing no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "com.github.finefindus.eyedropper"
+tier = "third-party"
