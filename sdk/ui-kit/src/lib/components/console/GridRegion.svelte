@@ -39,6 +39,7 @@
   class:painted
   style:--grid-rows={Math.max(1, rows)}
   aria-hidden={painted ? undefined : "true"}
+  data-selectable={painted ? "" : undefined}
 >
   {#if painted}
     {#each cells ?? [] as row, r (r)}
@@ -83,6 +84,12 @@
     height: var(--console-cell-h);
     overflow: hidden;
     vertical-align: top;
+    /* Preserve the cell's whitespace so a blank or space cell contributes a
+       real space to a text selection. Without this, the browser drops the
+       whitespace of a space-only inline-block, and copying terminal output
+       loses every space (paths and alignment break). Visually unchanged: the
+       cell is still one character wide. */
+    white-space: pre;
   }
   .cell.wide {
     width: 2ch;
