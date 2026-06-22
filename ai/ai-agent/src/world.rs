@@ -1230,6 +1230,47 @@ mod tests {
     }
 
     #[test]
+    fn retract_node_removes_incoming_edges() {
+        // The retracted node is the edge TARGET here (File `b` points at Project
+        // `a`), so this pins the target side of the edge cleanup, not only the
+        // source side the test above covers.
+        let state = WorldState::new()
+            .with_node(Node::new("a", "Project"))
+            .with_node(Node::new("b", "File"))
+            .with_edge("b", "FILE_PART_OF", "a");
+        let after = apply_effects(
+            &[Effect::RetractNode { bind: "a".into() }],
+            &bindings(&[("a", "a")]),
+            &state,
+        )
+        .expect("effects apply");
+        assert!(after.node("a").is_none());
+        assert!(!after.has_edge("b", "FILE_PART_OF", "a"));
+    }
+
+    #[test]
+    fn field_cmp_eq_and_ne_track_the_field_value() {
+        // Eq is true only on a match, Ne true only on a mismatch. Pins the
+        // comparator so an always-true/always-false or a flipped Eq/Ne operator
+        // is caught rather than passing silently.
+        let s =
+            WorldState::new().with_node(Node::new("n1", "File").with_field("status", "open"));
+        let b = bindings(&[("n", "n1")]);
+        let cap = Capability::new(AccessTier::Full, ActionPermissions::suggest_only());
+        let c = ctx(&cap, "graph.write");
+        let fc = |op: CmpOp, value: &str| Predicate::FieldCmp {
+            bind: "n".to_string(),
+            field: "status".to_string(),
+            op,
+            value: value.to_string(),
+        };
+        assert_eq!(eval(&fc(CmpOp::Eq, "open"), &b, &s, &c), Some(true));
+        assert_eq!(eval(&fc(CmpOp::Eq, "closed"), &b, &s, &c), Some(false));
+        assert_eq!(eval(&fc(CmpOp::Ne, "closed"), &b, &s, &c), Some(true));
+        assert_eq!(eval(&fc(CmpOp::Ne, "open"), &b, &s, &c), Some(false));
+    }
+
+    #[test]
     fn an_unapplicable_effect_yields_an_effect_error_not_a_silent_no_op() {
         let cap = Capability::new(AccessTier::Full, ActionPermissions::suggest_only());
         // Preconditions trivially hold (none); the effect names a target `proj`
