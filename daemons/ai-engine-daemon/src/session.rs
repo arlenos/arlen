@@ -29,10 +29,11 @@ impl SessionToken {
         &self.0
     }
 
-    /// Construct a token from a raw string, for tests that need a value the
-    /// store never minted (so it resolves to `UnknownToken`).
-    #[cfg(test)]
-    pub fn from_raw_for_test(raw: String) -> Self {
+    /// Reconstruct a token from the wire string the engine echoed on a verb.
+    /// The token carries no authority by itself (the store also checks the pid),
+    /// so reconstructing one the store never minted simply resolves to
+    /// `UnknownToken`.
+    pub fn from_wire(raw: String) -> Self {
         SessionToken(raw)
     }
 }

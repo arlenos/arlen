@@ -13,8 +13,8 @@
 
 use crate::session::{SessionGrant, SessionStore, SessionToken};
 use ai_engine_contract::{
-    Authorize, AuthorizeDecision, ContractError, Execute, ExecuteOutcome, Report, ReportAck,
-    ScreenVerdict, SessionInit,
+    Authorize, AuthorizeDecision, Call, ContractCall, ContractError, Execute, ExecuteOutcome, Report,
+    ReportAck, Reply, ScreenVerdict, SessionInit,
 };
 use async_trait::async_trait;
 
@@ -39,33 +39,43 @@ pub trait Reporter: Send + Sync {
     async fn report(&self, req: &Report, grant: &SessionGrant) -> ReportAck;
 }
 
-/// Routes the contract verbs through the session bound and the seams.
+/// Routes the contract verbs through the session bound and the seams. All
+/// methods take `&self` (so it is shared as an `Arc` across per-connection
+/// tasks); the session store is behind a `Mutex` whose guard is always dropped
+/// BEFORE awaiting a seam (never held across an `.await`), and the bound grant
+/// is cloned out under the lock.
 pub struct Dispatcher<G, E, R> {
     gate: G,
     executor: E,
     reporter: R,
-    sessions: SessionStore,
+    sessions: std::sync::Mutex<SessionStore>,
 }
 
 impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
     /// Build a dispatcher over the three seams with an empty session store.
     pub fn new(gate: G, executor: E, reporter: R) -> Self {
-        Self { gate, executor, reporter, sessions: SessionStore::new() }
+        Self { gate, executor, reporter, sessions: std::sync::Mutex::new(SessionStore::new()) }
     }
 
     /// Mint a session for an authenticated engine process (pid is the
     /// SO_PEERCRED-attested value). Returns the token the engine echoes.
     pub fn init_session(
-        &mut self,
+        &self,
         init: &SessionInit,
         pid: u32,
     ) -> Result<SessionToken, crate::session::CsprngError> {
-        self.sessions.create(init, pid)
+        self.sessions.lock().unwrap().create(init, pid)
     }
 
     /// End a session (idempotent).
-    pub fn end_session(&mut self, token: &SessionToken) {
-        self.sessions.end(token);
+    pub fn end_session(&self, token: &SessionToken) {
+        self.sessions.lock().unwrap().end(token);
+    }
+
+    /// Resolve the bound grant for `(token, pid)`, cloning it out under the lock
+    /// so the guard is released before any seam await.
+    fn resolve(&self, token: &SessionToken, pid: u32) -> Option<SessionGrant> {
+        self.sessions.lock().unwrap().grant_for(token, pid).ok().cloned()
     }
 
     /// Authorize a tool call. A verb with no valid session for `(token, pid)`
@@ -76,9 +86,9 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
         pid: u32,
         req: &Authorize,
     ) -> AuthorizeDecision {
-        match self.sessions.grant_for(token, pid) {
-            Ok(grant) => self.gate.authorize(req, grant).await,
-            Err(_) => AuthorizeDecision::Deny {
+        match self.resolve(token, pid) {
+            Some(grant) => self.gate.authorize(req, &grant).await,
+            None => AuthorizeDecision::Deny {
                 reason: "no valid session for this caller".to_string(),
             },
         }
@@ -87,9 +97,9 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
     /// Execute a privileged tool. No valid session fails closed as a permission
     /// error; the executor is never reached.
     pub async fn execute(&self, token: &SessionToken, pid: u32, req: &Execute) -> ExecuteOutcome {
-        match self.sessions.grant_for(token, pid) {
-            Ok(grant) => self.executor.execute(req, grant).await,
-            Err(_) => ExecuteOutcome::Error {
+        match self.resolve(token, pid) {
+            Some(grant) => self.executor.execute(req, &grant).await,
+            None => ExecuteOutcome::Error {
                 code: ContractError::PermissionDenied,
                 message: "no valid session for this caller".to_string(),
             },
@@ -99,9 +109,24 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
     /// Report a tool result. No valid session fails closed by BLOCKING the
     /// content (it never re-enters the engine's context) and skipping audit.
     pub async fn report(&self, token: &SessionToken, pid: u32, req: &Report) -> ReportAck {
-        match self.sessions.grant_for(token, pid) {
-            Ok(grant) => self.reporter.report(req, grant).await,
-            Err(_) => ReportAck { screen: ScreenVerdict::Block },
+        match self.resolve(token, pid) {
+            Some(grant) => self.reporter.report(req, &grant).await,
+            None => ReportAck { screen: ScreenVerdict::Block },
+        }
+    }
+
+    /// Route one wire [`ContractCall`] from a connection whose SO_PEERCRED pid
+    /// is `pid` to the matching verb, returning the wire [`Reply`].
+    pub async fn handle_call(&self, call: ContractCall, pid: u32) -> Reply {
+        let token = SessionToken::from_wire(call.token);
+        match call.call {
+            Call::Authorize(req) => Reply::Authorize(self.authorize(&token, pid, &req).await),
+            Call::Execute(req) => Reply::Execute(self.execute(&token, pid, &req).await),
+            Call::Report(req) => Reply::Report(self.report(&token, pid, &req).await),
+            Call::EndSession => {
+                self.end_session(&token);
+                Reply::Ack
+            }
         }
     }
 }
@@ -180,7 +205,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_valid_session_reaches_each_seam() {
-        let (mut d, g, e, r) = dispatcher();
+        let (d, g, e, r) = dispatcher();
         let token = d.init_session(&init(), 100).unwrap();
 
         let dec = d.authorize(&token, 100, &Authorize {
@@ -211,7 +236,7 @@ mod tests {
     #[tokio::test]
     async fn the_bound_grant_is_threaded_to_the_gate() {
         let g = Arc::new(AtomicUsize::new(0));
-        let mut d = Dispatcher::new(
+        let d = Dispatcher::new(
             SpyGate { calls: g.clone(), decision: AuthorizeDecision::Deny { reason: String::new() } },
             SpyExecutor { calls: Arc::new(AtomicUsize::new(0)) },
             SpyReporter { calls: Arc::new(AtomicUsize::new(0)) },
@@ -228,7 +253,7 @@ mod tests {
 
     #[tokio::test]
     async fn no_valid_session_fails_closed_without_touching_seams() {
-        let (mut d, g, e, r) = dispatcher();
+        let (d, g, e, r) = dispatcher();
         let token = d.init_session(&init(), 100).unwrap();
         let bad = SessionToken_for_test();
 
@@ -255,7 +280,7 @@ mod tests {
 
     #[tokio::test]
     async fn ending_a_session_fails_subsequent_verbs_closed() {
-        let (mut d, _g, _e, _r) = dispatcher();
+        let (d, _g, _e, _r) = dispatcher();
         let token = d.init_session(&init(), 100).unwrap();
         d.end_session(&token);
         assert!(matches!(d.authorize(&token, 100, &authz()).await, AuthorizeDecision::Deny { .. }));
@@ -274,6 +299,6 @@ mod tests {
     #[allow(non_snake_case)]
     fn SessionToken_for_test() -> SessionToken {
         // A token value the store never minted.
-        crate::session::SessionToken::from_raw_for_test("0".repeat(64))
+        crate::session::SessionToken::from_wire("0".repeat(64))
     }
 }

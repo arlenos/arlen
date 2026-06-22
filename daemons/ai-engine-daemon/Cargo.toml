@@ -14,10 +14,13 @@ ai-engine-contract = { path = "../../contracts/ai-engine-contract" }
 # CSPRNG for the unguessable session token.
 getrandom = "0.2"
 async-trait = "0.1"
-tokio = { version = "1", features = ["macros", "rt"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt", "io-util", "net", "sync"] }
+
+
 
 
 [dev-dependencies]
-serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt", "io-util", "net", "sync"] }
 
 [workspace]
