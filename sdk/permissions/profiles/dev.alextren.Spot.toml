@@ -1,0 +1,8 @@
+# Starting permission profile for Spot (a Spotify client).
+# Streams music over the network by function. No Knowledge Graph access.
+[info]
+app_id = "dev.alextren.Spot"
+tier = "third-party"
+
+[network]
+allow_all = true

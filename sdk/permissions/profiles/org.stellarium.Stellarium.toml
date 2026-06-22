@@ -1,0 +1,5 @@
+# Starting permission profile for Stellarium (a planetarium).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "org.stellarium.Stellarium"
+tier = "third-party"

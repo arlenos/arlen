@@ -1,0 +1,5 @@
+# Starting permission profile for gbrainy (a brain-teaser game).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "org.gnome.gbrainy"
+tier = "third-party"

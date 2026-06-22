@@ -1,0 +1,8 @@
+# Starting permission profile for GeoGebra (interactive math).
+# Edits documents; no network by function. No Knowledge Graph access.
+[info]
+app_id = "org.geogebra.GeoGebra"
+tier = "third-party"
+
+[filesystem]
+documents = true

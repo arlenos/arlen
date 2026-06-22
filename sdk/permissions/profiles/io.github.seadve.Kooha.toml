@@ -1,0 +1,8 @@
+# Starting permission profile for Kooha (a screen recorder).
+# Saves recordings to Videos; no network by function. No Knowledge Graph access.
+[info]
+app_id = "io.github.seadve.Kooha"
+tier = "third-party"
+
+[filesystem]
+videos = true
