@@ -5,6 +5,7 @@ pub mod auth;
 pub mod backup;
 pub mod code_analysis;
 pub mod db;
+pub mod derivation;
 pub mod fts;
 pub mod fuse;
 pub mod graph;
