@@ -1,0 +1,11 @@
+[package]
+name = "ai-engine-contract"
+version = "0.1.0"
+edition = "2021"
+description = "Engine-neutral Arlen AI contract (the five verbs) between ai-engine-daemon and a swappable agent engine"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[workspace]
