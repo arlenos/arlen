@@ -379,4 +379,34 @@ mod tests {
         let m = parse_message("{$x :weird}").unwrap();
         assert_eq!(format(&m, &en(), &args(&[("x", ArgValue::Text("y".into()))])), "y");
     }
+
+    #[test]
+    fn a_message_selects_on_two_selectors_at_once() {
+        // MF2 matches on multiple selectors in one `.match`; the variant whose
+        // keys ALL match (here a string gender and a plural count) is chosen, and
+        // a combination matching neither specific row falls to the `* *` row. A
+        // single-selector impl, or one that mismatched the key arity, would pick
+        // the wrong variant.
+        let src = ".match {$gender} {$count :number}\n\
+            male one {{He has one}}\n\
+            female one {{She has one}}\n\
+            * * {{They have some}}";
+        let m = parse_message(src).unwrap();
+        let case = |gender: &str, count: i64| {
+            format(
+                &m,
+                &en(),
+                &args(&[
+                    ("gender", ArgValue::Text(gender.into())),
+                    ("count", ArgValue::Integer(count)),
+                ]),
+            )
+        };
+        assert_eq!(case("male", 1), "He has one");
+        assert_eq!(case("female", 1), "She has one");
+        // gender matches a row but count does not -> the all-catch-all row.
+        assert_eq!(case("male", 5), "They have some");
+        // neither selector matches a specific row -> the all-catch-all row.
+        assert_eq!(case("other", 5), "They have some");
+    }
 }
