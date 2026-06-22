@@ -1,0 +1,8 @@
+# Starting permission profile for LMMS (digital audio workstation). Creates and
+# exports tracks; Music holds its projects and renders. No network, no graph.
+[info]
+app_id = "org.lmms.LMMS"
+tier = "third-party"
+
+[filesystem]
+music = true

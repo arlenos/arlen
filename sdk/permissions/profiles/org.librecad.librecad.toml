@@ -1,0 +1,8 @@
+# Starting permission profile for LibreCAD (2D CAD / technical drawing). Opens
+# and saves drawing files; no network, no graph.
+[info]
+app_id = "org.librecad.librecad"
+tier = "third-party"
+
+[filesystem]
+documents = true
