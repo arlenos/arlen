@@ -1,0 +1,8 @@
+# Starting permission profile for ksnip (a screenshot annotation tool).
+# Annotates and saves screenshots in Pictures; no network by function. No Knowledge Graph access.
+[info]
+app_id = "org.kde.ksnip"
+tier = "third-party"
+
+[filesystem]
+pictures = true

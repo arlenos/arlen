@@ -1,0 +1,8 @@
+# Starting permission profile for KolourPaint (a simple paint program).
+# Reads and writes images; no network by function. No Knowledge Graph access.
+[info]
+app_id = "org.kde.kolourpaint"
+tier = "third-party"
+
+[filesystem]
+pictures = true

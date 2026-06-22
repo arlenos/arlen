@@ -1,0 +1,12 @@
+# Starting permission profile for ProtonPlus (a Wine/Proton compatibility-tool manager).
+# Downloads compatibility tools over the network; they install under the game
+# launchers' own dirs (a launcher grant). No Knowledge Graph access.
+[info]
+app_id = "com.vysp3r.ProtonPlus"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
