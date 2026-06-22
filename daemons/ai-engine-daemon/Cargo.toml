@@ -1,0 +1,17 @@
+[package]
+name = "arlen-ai-engine-daemon"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen AI engine daemon: supervises the swappable agent engine (pi) behind the engine-neutral contract, authenticates it via SO_PEERCRED + a daemon-minted session token, and bounds every action to the session grant server-side"
+authors = ["Arlen"]
+
+[lib]
+name = "arlen_ai_engine_daemon"
+
+[dependencies]
+# The engine-neutral five-verb contract this daemon speaks.
+ai-engine-contract = { path = "../../contracts/ai-engine-contract" }
+# CSPRNG for the unguessable session token.
+getrandom = "0.2"
+
+[workspace]
