@@ -11,4 +11,5 @@ pub mod error;
 pub mod events;
 pub mod manager;
 pub mod socket;
+pub mod sound;
 pub mod storage;

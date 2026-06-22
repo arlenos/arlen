@@ -1,0 +1,226 @@
+//! freedesktop XDG Sound Theme resolution (sound-system-plan.md SO-R1, decided
+//! 12 June: "adopt the freedesktop XDG Sound Theme + Sound Naming specs as-is").
+//!
+//! This is the name-to-file RESOLVER the daemon's playback path consults: given a
+//! sound name (a freedesktop Sound Naming-spec name, e.g. `message-new-instant`),
+//! it walks the active theme's `index.theme` `Directories`, follows the
+//! `Inherits` chain, and ends in the `freedesktop` fallback theme, searching the
+//! fixed extension order `.disabled / .oga / .ogg / .wav`. A `.disabled` marker
+//! silences the event (terminates lookup); an audio file is the cue to play;
+//! nothing found is silent. The decode + PipeWire playback + the DND/Focus/volume
+//! policy gate sit on top of this (and need a live audio device, so they verify
+//! on metal); the resolution itself is pure filesystem logic, tested here.
+
+use std::collections::{HashSet, VecDeque};
+use std::path::{Path, PathBuf};
+
+/// Where a sound-name lookup landed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SoundResolution {
+    /// The playable sound file the name resolved to.
+    File(PathBuf),
+    /// A `.disabled` marker silenced this event (a deliberate per-event mute).
+    Silenced,
+    /// No file and no `.disabled` in the theme chain or the freedesktop fallback.
+    NotFound,
+}
+
+/// The extension lookup order (freedesktop Sound Theme spec). `.disabled` is
+/// first: a silence marker wins over any audio file in the same directory.
+const EXTENSIONS: [&str; 4] = [".disabled", ".oga", ".ogg", ".wav"];
+
+/// The fallback theme every inheritance chain ends in (freedesktop Sound Theme
+/// spec), so a name absent from the active theme still resolves to the system
+/// default cue.
+const FALLBACK_THEME: &str = "freedesktop";
+
+/// Resolve a sound `name` in `theme` across the `roots` (each a `.../sounds`
+/// base directory, in lookup precedence), following the theme's `Inherits` chain
+/// and ending in the `freedesktop` fallback. Returns [`SoundResolution::Silenced`]
+/// on a `.disabled` marker, [`SoundResolution::File`] on an audio file, and
+/// [`SoundResolution::NotFound`] when neither exists anywhere in the chain.
+/// Cycle-safe (a theme is searched at most once).
+pub fn resolve_sound(roots: &[PathBuf], theme: &str, name: &str) -> SoundResolution {
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut queue: VecDeque<String> = VecDeque::new();
+    queue.push_back(theme.to_string());
+    let mut appended_fallback = false;
+
+    while let Some(t) = queue.pop_front() {
+        if !visited.insert(t.clone()) {
+            continue;
+        }
+        let mut inherits: Vec<String> = Vec::new();
+        for root in roots {
+            let themedir = root.join(&t);
+            let (dirs, inh) = read_theme_index(&themedir);
+            inherits.extend(inh);
+            for dir in &dirs {
+                let base = if dir.is_empty() { themedir.clone() } else { themedir.join(dir) };
+                for ext in EXTENSIONS {
+                    let cand = base.join(format!("{name}{ext}"));
+                    if cand.exists() {
+                        return if ext == ".disabled" {
+                            SoundResolution::Silenced
+                        } else {
+                            SoundResolution::File(cand)
+                        };
+                    }
+                }
+            }
+        }
+        for i in inherits {
+            queue.push_back(i);
+        }
+        // The freedesktop fallback is appended once, after the theme + every
+        // inherited theme has been searched.
+        if queue.is_empty() && !appended_fallback {
+            appended_fallback = true;
+            queue.push_back(FALLBACK_THEME.to_string());
+        }
+    }
+    SoundResolution::NotFound
+}
+
+/// Parse a theme's `index.theme`: the `Directories` to search and the `Inherits`
+/// parents. A missing or `Directories`-less index means search the theme dir
+/// itself (`[""]`), so a flat theme (sounds directly under the theme dir) works.
+fn read_theme_index(themedir: &Path) -> (Vec<String>, Vec<String>) {
+    let Ok(text) = std::fs::read_to_string(themedir.join("index.theme")) else {
+        return (vec![String::new()], Vec::new());
+    };
+    let mut dirs = Vec::new();
+    let mut inherits = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("Directories") {
+            if let Some(v) = rest.trim_start().strip_prefix('=') {
+                dirs = split_list(v);
+            }
+        } else if let Some(rest) = line.strip_prefix("Inherits") {
+            if let Some(v) = rest.trim_start().strip_prefix('=') {
+                inherits = split_list(v);
+            }
+        }
+    }
+    if dirs.is_empty() {
+        dirs.push(String::new());
+    }
+    (dirs, inherits)
+}
+
+/// Split a freedesktop key list (`a,b,c`) into trimmed, non-empty entries.
+fn split_list(v: &str) -> Vec<String> {
+    v.split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// The sound-theme base directories in freedesktop precedence:
+/// `$XDG_DATA_HOME/sounds` (or `~/.local/share/sounds`) first, then each
+/// `$XDG_DATA_DIRS/sounds`. The production roots for [`resolve_sound`].
+pub fn default_sound_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(home) = std::env::var_os("XDG_DATA_HOME") {
+        roots.push(PathBuf::from(home).join("sounds"));
+    } else if let Some(home) = dirs::home_dir() {
+        roots.push(home.join(".local/share/sounds"));
+    }
+    let data_dirs = std::env::var("XDG_DATA_DIRS")
+        .unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string());
+    for d in data_dirs.split(':').filter(|s| !s.is_empty()) {
+        roots.push(PathBuf::from(d).join("sounds"));
+    }
+    roots
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    /// Create `<root>/<theme>/<dir>/<file>` (dir empty = the theme dir), with an
+    /// optional `index.theme` body for the theme.
+    fn put(root: &Path, theme: &str, index: Option<&str>, dir: &str, file: Option<&str>) {
+        let themedir = root.join(theme);
+        if let Some(body) = index {
+            fs::create_dir_all(&themedir).unwrap();
+            fs::write(themedir.join("index.theme"), body).unwrap();
+        }
+        if let Some(f) = file {
+            let d = if dir.is_empty() { themedir.clone() } else { themedir.join(dir) };
+            fs::create_dir_all(&d).unwrap();
+            fs::write(d.join(f), b"x").unwrap();
+        }
+    }
+
+    #[test]
+    fn an_audio_file_in_a_theme_directory_resolves() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        put(&root, "arlen", Some("[Sound Theme]\nDirectories=stereo\n"), "stereo", Some("bell.oga"));
+        let r = resolve_sound(&[root.clone()], "arlen", "bell");
+        assert_eq!(r, SoundResolution::File(root.join("arlen/stereo/bell.oga")));
+    }
+
+    #[test]
+    fn a_disabled_marker_silences_and_wins_over_audio() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        put(&root, "arlen", Some("[Sound Theme]\nDirectories=stereo\n"), "stereo", Some("bell.oga"));
+        // Same name, .disabled marker in the same dir: silence wins.
+        put(&root, "arlen", None, "stereo", Some("bell.disabled"));
+        assert_eq!(resolve_sound(&[root], "arlen", "bell"), SoundResolution::Silenced);
+    }
+
+    #[test]
+    fn a_name_absent_from_the_theme_falls_through_to_an_inherited_theme() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        put(&root, "arlen", Some("[Sound Theme]\nDirectories=stereo\nInherits=base\n"), "stereo", None);
+        put(&root, "base", Some("[Sound Theme]\nDirectories=stereo\n"), "stereo", Some("error.oga"));
+        let r = resolve_sound(&[root.clone()], "arlen", "error");
+        assert_eq!(r, SoundResolution::File(root.join("base/stereo/error.oga")));
+    }
+
+    #[test]
+    fn a_name_in_no_theme_falls_through_to_freedesktop() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        put(&root, "arlen", Some("[Sound Theme]\nDirectories=stereo\n"), "stereo", None);
+        // No Inherits, but freedesktop is the implicit final fallback.
+        put(&root, "freedesktop", Some("[Sound Theme]\nDirectories=stereo\n"), "stereo", Some("complete.oga"));
+        let r = resolve_sound(&[root.clone()], "arlen", "complete");
+        assert_eq!(r, SoundResolution::File(root.join("freedesktop/stereo/complete.oga")));
+    }
+
+    #[test]
+    fn a_name_nowhere_is_not_found() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        put(&root, "arlen", Some("[Sound Theme]\nDirectories=stereo\n"), "stereo", None);
+        assert_eq!(resolve_sound(&[root], "arlen", "no-such-cue"), SoundResolution::NotFound);
+    }
+
+    #[test]
+    fn an_inheritance_cycle_terminates() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        put(&root, "a", Some("[Sound Theme]\nInherits=b\n"), "", None);
+        put(&root, "b", Some("[Sound Theme]\nInherits=a\n"), "", None);
+        // Must not loop forever; the cue is simply not found.
+        assert_eq!(resolve_sound(&[root], "a", "x"), SoundResolution::NotFound);
+    }
+
+    #[test]
+    fn a_flat_theme_without_an_index_searches_the_theme_dir() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        // No index.theme: the sound lives directly under the theme dir.
+        put(&root, "flat", None, "", Some("warning.ogg"));
+        let r = resolve_sound(&[root.clone()], "flat", "warning");
+        assert_eq!(r, SoundResolution::File(root.join("flat/warning.ogg")));
+    }
+}
