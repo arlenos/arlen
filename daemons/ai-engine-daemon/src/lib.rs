@@ -8,3 +8,5 @@
 //! contract socket, verb dispatch, and pi-sidecar supervision follow.
 
 pub mod session;
+
+pub mod dispatch;
