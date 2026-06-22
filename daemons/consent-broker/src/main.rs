@@ -12,8 +12,9 @@
 //!
 //! The deferred-reply correlation + classification live in [`daemon::SharedState`]
 //! (unit-tested there); this binary is the socket transport + the attested-auth
-//! gate. Grant persistence into the KG + audit ledger is the next slice (a
-//! resolved always-allow is logged here, content-free).
+//! gate. A resolved always-allow is audited fail-closed and then persisted into
+//! the LCG Grant node (Option A) inside `SharedState::resolve`, through the
+//! [`GraphGrantPersister`] this binary attaches via `with_persister`.
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
@@ -296,13 +297,15 @@ async fn handle_control_conn(state: Arc<SharedState>, mut stream: UnixStream, ui
                             "control: decision audit failed; failed closed to a denial"
                         );
                     } else if let Some(grant) = grant {
-                        // TODO(next slice): persist the grant into the KG grant
-                        // node. The audit half is done; logged content-free for
-                        // now (recipient + revocation handle, never summary/scope).
+                        // The grant was already recorded in the in-memory store
+                        // and persisted into the LCG Grant node inside `resolve`
+                        // (Option A, best-effort after the fail-closed decision
+                        // audit). Content-free trace only: recipient + revocation
+                        // handle, never the summary or scope.
                         tracing::info!(
                             recipient = %grant.recipient,
                             handle = %grant.revocation_handle,
-                            "control: always-allow grant minted (KG persistence pending)"
+                            "control: always-allow grant recorded"
                         );
                     }
                     ControlReply::Resolved { ok: true }
