@@ -65,7 +65,13 @@ change done off a green build alone.
   `modprobe vkms` (a root action on Tim's machine, the VM, or CI).
 - **cargo-mutants** mutation pass on the security-critical and pure-logic crates
   (capability `decide`, audit ledger, compensation, the gate, KG promotion/scoping).
-  Mutation score is the real quality signal, not line coverage. Tool not installed.
+  Mutation score is the real quality signal, not line coverage. Tool IS installed
+  (27.1.0). Run it `--in-place`: the ai and forage workspaces path-dep out to sibling
+  `contracts/` crates, so the default temp-dir copy fails its baseline build (the
+  copy omits the siblings); `--in-place` mutates the real tree and git makes any
+  interrupted state recoverable. ai-core/capability.rs is done (12 caught, 10
+  unviable, 1 equivalent survivor that is not a test gap). Next: ai-agent gate.rs +
+  world.rs, the audit ledger, KG promotion/scoping.
 - **sccache** + a binary cache for the ~90-120s knowledge cold-link and repeat
   integration runs. Tool not installed.
 
