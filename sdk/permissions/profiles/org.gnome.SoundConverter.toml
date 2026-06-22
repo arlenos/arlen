@@ -1,0 +1,8 @@
+# Starting permission profile for SoundConverter (an audio converter).
+# Reads and writes audio in Music; no network by function. No graph.
+[info]
+app_id = "org.gnome.SoundConverter"
+tier = "third-party"
+
+[filesystem]
+music = true

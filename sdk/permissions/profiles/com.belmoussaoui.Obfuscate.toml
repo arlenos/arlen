@@ -1,0 +1,8 @@
+# Starting permission profile for Obfuscate (an image-redaction tool).
+# Reads and writes images in Pictures; no network, no graph.
+[info]
+app_id = "com.belmoussaoui.Obfuscate"
+tier = "third-party"
+
+[filesystem]
+pictures = true

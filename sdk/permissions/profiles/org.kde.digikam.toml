@@ -1,0 +1,8 @@
+# Starting permission profile for digiKam (a photo manager).
+# Manages the photo library in Pictures; no network by function. No graph.
+[info]
+app_id = "org.kde.digikam"
+tier = "third-party"
+
+[filesystem]
+pictures = true

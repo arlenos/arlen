@@ -1,0 +1,8 @@
+# Starting permission profile for Rnote (a note-taking and sketching app).
+# Saves notes to Documents; no network by function. No Knowledge Graph access.
+[info]
+app_id = "com.github.flxzt.rnote"
+tier = "third-party"
+
+[filesystem]
+documents = true

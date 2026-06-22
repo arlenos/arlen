@@ -1,0 +1,12 @@
+# Starting permission profile for Bottles (a Wine prefix manager).
+# Downloads runtime components over the network; prefixes live in its own data
+# dir (a launcher grant). No Knowledge Graph access.
+[info]
+app_id = "com.usebottles.bottles"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
