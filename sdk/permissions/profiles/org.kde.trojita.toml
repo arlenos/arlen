@@ -1,0 +1,12 @@
+# Starting permission profile for Trojita (an IMAP email client).
+# Mail is its function, so it gets network and Downloads (saved attachments).
+# No Knowledge Graph access.
+[info]
+app_id = "org.kde.trojita"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
