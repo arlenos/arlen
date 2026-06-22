@@ -1,0 +1,5 @@
+# Starting permission profile for Errands (a to-do app).
+# Tasks are kept locally; CalDAV sync is opt-in. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "io.github.alainm23.errands"
+tier = "third-party"

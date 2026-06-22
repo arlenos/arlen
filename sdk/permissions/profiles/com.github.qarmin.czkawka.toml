@@ -1,0 +1,13 @@
+# Starting permission profile for Czkawka (a duplicate-file finder).
+# It scans the user's data for duplicate/redundant files by function, so it gets
+# the data directories and no network. No Knowledge Graph access.
+[info]
+app_id = "com.github.qarmin.czkawka"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true
+pictures = true
+music = true
+videos = true
