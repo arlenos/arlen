@@ -28,6 +28,13 @@ impl SessionToken {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Construct a token from a raw string, for tests that need a value the
+    /// store never minted (so it resolves to `UnknownToken`).
+    #[cfg(test)]
+    pub fn from_raw_for_test(raw: String) -> Self {
+        SessionToken(raw)
+    }
 }
 
 /// The server-side authority a session is bound to, derived from its
