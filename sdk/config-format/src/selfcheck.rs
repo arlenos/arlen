@@ -276,3 +276,158 @@ fn is_subsequence(needle: &[String], haystack: &[String]) -> bool {
     let mut it = haystack.iter();
     needle.iter().all(|n| it.any(|h| h == n))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::ParseError;
+    use crate::Format;
+
+    /// A handler with a known trivial parser - `k = v` lines are String entries,
+    /// `#`/blank lines are unmodelled - whose edit primitives return a CANDIDATE
+    /// the test injects verbatim, so the self-check runs against fully-controlled
+    /// candidate text (a faithful edit, or a deliberately lossy one).
+    struct MockHandler {
+        candidate: String,
+    }
+    impl MockHandler {
+        fn returning(candidate: &str) -> Self {
+            Self { candidate: candidate.to_string() }
+        }
+    }
+    impl FormatHandler for MockHandler {
+        fn format(&self) -> Format {
+            Format::Flat
+        }
+        fn read(&self, text: &str) -> Result<ConfigModel, ParseError> {
+            let mut entries = Vec::new();
+            for line in text.split('\n') {
+                let t = line.trim();
+                if t.is_empty() || t.starts_with('#') {
+                    continue;
+                }
+                if let Some((k, v)) = t.split_once('=') {
+                    entries.push((k.trim().to_string(), ConfigValue::String(v.trim().to_string())));
+                }
+            }
+            Ok(ConfigModel::from_entries(entries))
+        }
+        fn set(&self, _text: &str, _key: &str, _value: &ConfigValue) -> Result<String, EditError> {
+            Ok(self.candidate.clone())
+        }
+        fn remove(&self, _text: &str, _key: &str) -> Result<String, EditError> {
+            Ok(self.candidate.clone())
+        }
+    }
+
+    const ORIGINAL: &str = "# top comment\ngreeting = hello\nname = world";
+
+    fn s(v: &str) -> ConfigValue {
+        ConfigValue::String(v.to_string())
+    }
+
+    #[test]
+    fn a_faithful_set_passes_the_self_check() {
+        let h = MockHandler::returning("# top comment\ngreeting = hi\nname = world");
+        let out = checked_set(&h, ORIGINAL, "greeting", &s("hi")).unwrap();
+        assert!(out.contains("greeting = hi"));
+    }
+
+    #[test]
+    fn a_set_that_did_not_apply_is_rejected() {
+        // (a): the candidate still holds the old value.
+        let h = MockHandler::returning(ORIGINAL);
+        let err = checked_set(&h, ORIGINAL, "greeting", &s("hi")).unwrap_err();
+        assert!(matches!(
+            err,
+            EditError::SelfCheck(SelfCheckError::EditDidNotApply { .. })
+        ));
+    }
+
+    #[test]
+    fn a_set_that_clobbers_a_sibling_is_rejected() {
+        // (b): the candidate changed `name`.
+        let h = MockHandler::returning("# top comment\ngreeting = hi\nname = CLOBBERED");
+        let err = checked_set(&h, ORIGINAL, "greeting", &s("hi")).unwrap_err();
+        assert!(matches!(
+            err,
+            EditError::SelfCheck(SelfCheckError::CollateralChange { .. })
+        ));
+    }
+
+    #[test]
+    fn a_set_that_adds_a_sibling_is_rejected() {
+        // (b): the candidate introduced a new key.
+        let h = MockHandler::returning("# top comment\ngreeting = hi\nname = world\nextra = sneaked");
+        let err = checked_set(&h, ORIGINAL, "greeting", &s("hi")).unwrap_err();
+        assert!(matches!(
+            err,
+            EditError::SelfCheck(SelfCheckError::CollateralChange { .. })
+        ));
+    }
+
+    #[test]
+    fn a_set_that_drops_a_comment_is_rejected() {
+        // (c): the candidate dropped the unmodelled comment line.
+        let h = MockHandler::returning("greeting = hi\nname = world");
+        let err = checked_set(&h, ORIGINAL, "greeting", &s("hi")).unwrap_err();
+        assert!(matches!(
+            err,
+            EditError::SelfCheck(SelfCheckError::UnmodelledContentChanged)
+        ));
+    }
+
+    #[test]
+    fn a_faithful_remove_passes_and_an_incomplete_one_is_rejected() {
+        let good = MockHandler::returning("# top comment\nname = world");
+        let out = checked_remove(&good, ORIGINAL, "greeting").unwrap();
+        assert!(!out.contains("greeting"));
+
+        // The candidate still carries the key, so the remove did not take.
+        let bad = MockHandler::returning(ORIGINAL);
+        let err = checked_remove(&bad, ORIGINAL, "greeting").unwrap_err();
+        assert!(matches!(
+            err,
+            EditError::SelfCheck(SelfCheckError::EditDidNotApply { .. })
+        ));
+    }
+
+    /// A handler whose read reports the target as a non-scalar [`ConfigValue::Opaque`].
+    struct OpaqueHandler;
+    impl FormatHandler for OpaqueHandler {
+        fn format(&self) -> Format {
+            Format::Flat
+        }
+        fn read(&self, _text: &str) -> Result<ConfigModel, ParseError> {
+            Ok(ConfigModel::from_entries(vec![(
+                "greeting".to_string(),
+                ConfigValue::Opaque,
+            )]))
+        }
+        fn set(&self, _t: &str, _k: &str, _v: &ConfigValue) -> Result<String, EditError> {
+            Ok(String::new())
+        }
+        fn remove(&self, _t: &str, _k: &str) -> Result<String, EditError> {
+            Ok(String::new())
+        }
+    }
+
+    #[test]
+    fn an_opaque_target_is_refused_before_editing() {
+        // A structured/array existing value is unsettable: refused up front, so a
+        // structure can never be flattened into a scalar.
+        let err = checked_set(&OpaqueHandler, "greeting = x", "greeting", &s("hi")).unwrap_err();
+        assert!(matches!(err, EditError::OpaqueTarget { .. }));
+    }
+
+    #[test]
+    fn is_subsequence_respects_order_and_multiplicity() {
+        let v = |xs: &[&str]| xs.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert!(is_subsequence(&[], &v(&["a", "b"])), "empty needle is a subsequence");
+        assert!(is_subsequence(&v(&["a", "c"]), &v(&["a", "b", "c"])), "non-contiguous");
+        assert!(is_subsequence(&v(&["a", "b"]), &v(&["a", "b"])), "exact");
+        assert!(!is_subsequence(&v(&["b", "a"]), &v(&["a", "b"])), "order matters");
+        assert!(!is_subsequence(&v(&["a", "a"]), &v(&["a"])), "multiplicity matters");
+        assert!(!is_subsequence(&v(&["x"]), &v(&["a", "b"])), "missing element");
+    }
+}
