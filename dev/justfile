@@ -110,12 +110,23 @@ build crate="":
     if [ -n "{{crate}}" ]; then cargo build --manifest-path "{{ROOT}}/{{crate}}/Cargo.toml"; exit 0; fi
     for c in {{RUST_CRATES}}; do echo "== build $c =="; cargo build --manifest-path "{{ROOT}}/$c/Cargo.toml"; done
 
-# Test one crate or the whole matrix.
+# Test one crate or the whole matrix. nextest gives process-per-test isolation +
+# parallel scheduling + cleaner output; doctests run separately since nextest does
+# not execute them; the installd workspace and knowledge daemon keep serial
+# execution for their shared-state tests, matching the CI per-path rule.
 test crate="":
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ -n "{{crate}}" ]; then cargo test --manifest-path "{{ROOT}}/{{crate}}/Cargo.toml"; exit 0; fi
-    for c in {{RUST_CRATES}}; do echo "== test $c =="; cargo test --manifest-path "{{ROOT}}/$c/Cargo.toml"; done
+    run_one() {
+        local c="$1" extra=""
+        case "$c" in
+            daemons/installd|daemons/knowledge) extra="--test-threads=1" ;;
+        esac
+        cargo nextest run --manifest-path "{{ROOT}}/$c/Cargo.toml" $extra
+        cargo test --doc --manifest-path "{{ROOT}}/$c/Cargo.toml"
+    }
+    if [ -n "{{crate}}" ]; then run_one "{{crate}}"; exit 0; fi
+    for c in {{RUST_CRATES}}; do echo "== test $c =="; run_one "$c"; done
 
 # Cheap local mirror of CI: cargo check every rust crate + svelte-check every frontend.
 check:
