@@ -1,0 +1,5 @@
+# Starting permission profile for GNOME Contacts (a contacts manager).
+# Contacts are kept locally; online-account sync is mediated separately. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.Contacts"
+tier = "third-party"

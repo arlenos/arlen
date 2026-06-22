@@ -1,0 +1,5 @@
+# Starting permission profile for GNOME To Do / Endeavour (a task manager).
+# Tasks are kept locally; sync backends are opt-in. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.Todo"
+tier = "third-party"

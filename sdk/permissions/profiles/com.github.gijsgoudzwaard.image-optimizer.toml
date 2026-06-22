@@ -1,0 +1,9 @@
+# Starting permission profile for Image Optimizer.
+# It compresses image files the user opens by function, so it gets the Pictures
+# directory and no network. No Knowledge Graph access.
+[info]
+app_id = "com.github.gijsgoudzwaard.image-optimizer"
+tier = "third-party"
+
+[filesystem]
+pictures = true

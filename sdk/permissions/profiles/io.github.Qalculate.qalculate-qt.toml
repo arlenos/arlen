@@ -1,0 +1,5 @@
+# Starting permission profile for Qalculate! (a calculator).
+# It computes locally; currency-rate updates are opt-in rather than a blanket network grant. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "io.github.Qalculate.qalculate-qt"
+tier = "third-party"
