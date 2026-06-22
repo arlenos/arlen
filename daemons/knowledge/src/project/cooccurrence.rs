@@ -13,7 +13,9 @@
 //! until that pass wires it (mechanism before trigger).
 #![allow(dead_code)]
 
+use crate::fuse::longest_common_dir;
 use crate::graph::GraphHandle;
+use crate::project::store::{Project, ProjectStore};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 /// One observed file access, tagged with the session it happened in. The
@@ -204,6 +206,83 @@ pub async fn infer_clusters(
     Ok(cluster_cooccurrence(&accesses, params))
 }
 
+/// Inference confidence for a cooccurrence-derived project. Lower than a
+/// filesystem-signal project (a `.git`/`.project` root is ground truth); this is
+/// a behavioural guess from access patterns, surfaced as a low-confidence
+/// inferred project the user (or a later signal) can confirm.
+const COOCCURRENCE_CONFIDENCE: u8 = 50;
+
+/// The fewest path components a cluster's common root must have before it mints
+/// a project. Co-occurrence across two unrelated repositories shares only a
+/// shallow root (e.g. `/home/tim`), which is not a project; a real project's
+/// files share a deep root. Conservative on purpose: better to miss a project
+/// than to mint a junk one over the home directory.
+const MIN_ROOT_COMPONENTS: usize = 3;
+
+/// What [`materialize_clusters`] did, for the caller to log.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MaterializeStats {
+    /// Inferred Project nodes minted this run.
+    pub created: usize,
+    /// Clusters skipped (no usable root, or a project already exists there).
+    pub skipped: usize,
+    /// FILE_PART_OF edges created (idempotent, so a re-run adds none).
+    pub linked: usize,
+}
+
+/// The basename of a root path, the inferred project's display name.
+fn project_name_from_root(root: &str) -> String {
+    root.rsplit('/')
+        .find(|s| !s.is_empty())
+        .unwrap_or(root)
+        .to_string()
+}
+
+/// The number of non-empty path components (depth) of an absolute path.
+fn path_depth(path: &str) -> usize {
+    path.split('/').filter(|s| !s.is_empty()).count()
+}
+
+/// Materialise inferred clusters as inferred `Project` nodes (foundation §4.2).
+///
+/// For each cluster the root is the files' longest common directory. A cluster
+/// whose common root is empty, the filesystem root, or shallower than
+/// [`MIN_ROOT_COMPONENTS`] is skipped (co-occurrence across unrelated trees is
+/// not a project). If a project already exists at that root - a signal-detected
+/// one the watcher minted, or one a prior pass created - the cluster is skipped,
+/// so this never clobbers an existing project and a re-run is idempotent.
+/// Otherwise it mints a low-confidence inferred project and links each cluster
+/// file via FILE_PART_OF (an idempotent MERGE, so a file already in the project
+/// is not re-linked). A file may co-belong to other projects; the dedup is on
+/// the project root, never the file.
+pub async fn materialize_clusters(
+    store: &ProjectStore,
+    clusters: &[CandidateCluster],
+) -> anyhow::Result<MaterializeStats> {
+    let mut stats = MaterializeStats::default();
+    for cluster in clusters {
+        let refs: Vec<&str> = cluster.files.iter().map(|s| s.as_str()).collect();
+        let root = longest_common_dir(&refs);
+        if root.is_empty() || root == "/" || path_depth(&root) < MIN_ROOT_COMPONENTS {
+            stats.skipped += 1;
+            continue;
+        }
+        if store.get_by_root_path(&root).await?.is_some() {
+            stats.skipped += 1;
+            continue;
+        }
+        let project =
+            Project::new_inferred(project_name_from_root(&root), root.clone(), COOCCURRENCE_CONFIDENCE);
+        store.create(&project).await?;
+        stats.created += 1;
+        for file in &cluster.files {
+            store.link_file(file, project.id).await?;
+            stats.linked += 1;
+        }
+    }
+    Ok(stats)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -346,5 +425,66 @@ mod tests {
         let clusters = infer_clusters(&graph, ClusterParams::default()).await.unwrap();
         assert_eq!(clusters.len(), 1, "the repeated trio clusters, z does not");
         assert_eq!(clusters[0].files, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn path_depth_counts_components() {
+        assert_eq!(path_depth("/home/tim/proj"), 3);
+        assert_eq!(path_depth("/home"), 1);
+        assert_eq!(path_depth("/"), 0);
+        assert_eq!(path_depth(""), 0);
+        assert_eq!(project_name_from_root("/home/tim/proj"), "proj");
+        assert_eq!(project_name_from_root("/home/tim/proj/"), "proj");
+    }
+
+    /// Materialise mints an inferred Project at a deep common root with its files
+    /// linked, skips a cluster whose common root is too shallow to be a project,
+    /// and is idempotent on a re-run.
+    #[tokio::test]
+    async fn materialize_mints_a_deep_root_project_and_skips_shallow_ones() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
+        let store = ProjectStore::new(graph.clone());
+
+        // A deep-root trio (common root /home/tim/proj, depth 3) and a shallow
+        // trio (common root /home, depth 1), each repeated across two sessions.
+        let seed = [
+            ("/home/tim/proj/a.rs", "s1"), ("/home/tim/proj/b.rs", "s1"), ("/home/tim/proj/c.rs", "s1"),
+            ("/home/tim/proj/a.rs", "s2"), ("/home/tim/proj/b.rs", "s2"), ("/home/tim/proj/c.rs", "s2"),
+            ("/home/x.rs", "s3"), ("/home/y.rs", "s3"), ("/home/z.rs", "s3"),
+            ("/home/x.rs", "s4"), ("/home/y.rs", "s4"), ("/home/z.rs", "s4"),
+        ];
+        for (file, sess) in seed {
+            graph.write(format!("MERGE (f:File {{id: '{file}'}})")).await.unwrap();
+            graph.write(format!("MERGE (s:Session {{id: '{sess}'}})")).await.unwrap();
+            graph
+                .write(format!(
+                    "MATCH (f:File {{id: '{file}'}}), (s:Session {{id: '{sess}'}}) \
+                     MERGE (f)-[:ACCESSED_IN]->(s)"
+                ))
+                .await
+                .unwrap();
+        }
+
+        let clusters = infer_clusters(&graph, ClusterParams::default()).await.unwrap();
+        assert_eq!(clusters.len(), 2, "both trios cluster");
+
+        let stats = materialize_clusters(&store, &clusters).await.unwrap();
+        assert_eq!(stats.created, 1, "only the deep-root cluster mints a project");
+        assert_eq!(stats.skipped, 1, "the shallow-root cluster is skipped");
+        assert_eq!(stats.linked, 3, "the three deep-root files are linked");
+
+        let proj = store.get_by_root_path("/home/tim/proj").await.unwrap();
+        let proj = proj.expect("an inferred project exists at the deep root");
+        assert!(proj.inferred, "the cooccurrence project is inferred");
+        assert!(store.is_file_linked("/home/tim/proj/a.rs", proj.id).await.unwrap());
+
+        // No project was minted over /home (the shallow root).
+        assert!(store.get_by_root_path("/home").await.unwrap().is_none());
+
+        // Re-running is idempotent: the project already exists, so nothing new.
+        let again = materialize_clusters(&store, &clusters).await.unwrap();
+        assert_eq!(again.created, 0, "a re-run mints no duplicate project");
+        assert_eq!(again.skipped, 2, "both clusters skip on the second run");
     }
 }
