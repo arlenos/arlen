@@ -17,7 +17,8 @@
 use crate::session::SessionGrant;
 use ai_engine_contract::{AuthorizeDecision, ReadTier};
 use arlen_ai_core::capability::{ActionDecision, ActionPermissions, Capability};
-use arlen_ai_core::graph_query::AccessTier;
+use arlen_ai_core::graph_query::{AccessTier, QueryScope};
+use arlen_ai_core::graph_schema::GraphSchema;
 
 /// Map the contract's coarse [`ReadTier`] to the graph layer's [`AccessTier`].
 ///
@@ -48,6 +49,32 @@ pub fn grant_to_capability(grant: &SessionGrant) -> Capability {
         read_tier_to_access_tier(grant.read_tier),
         ActionPermissions::suggest_only(),
     )
+}
+
+/// Resolve a session's grant into the [`QueryScope`] a graph read is bounded
+/// by (`pi-agent-adoption.md` Phase 1, "graph_query read-scope incl. GAP-21 is
+/// re-pointed"). This is the read-side companion to [`grant_to_capability`]: the
+/// daemon runs a `graph.read` proxy tool through the scope this returns, never
+/// trusting the engine to self-restrict.
+///
+/// The grant's read tier maps through [`read_tier_to_access_tier`] to the tier's
+/// fixed label allowlist. The `ProjectScoped` tier is the GAP-21 case: a bare
+/// `ProjectScoped` scope permits its labels across EVERY project, so it is only
+/// safe with a mandatory active-project anchor. When the grant carries a
+/// `project_anchor` the scope is anchored to it (the compile-time `WHERE EXISTS`
+/// the model cannot remove); when it does not, the scope is EMPTY (no read),
+/// never the anchorless tier-wide one. Every other tier carries no anchor.
+pub fn grant_to_query_scope(grant: &SessionGrant, schema: &GraphSchema) -> QueryScope {
+    let tier = read_tier_to_access_tier(grant.read_tier);
+    match tier {
+        AccessTier::ProjectScoped => match grant.project_anchor.as_deref() {
+            Some(project_id) => QueryScope::for_project(project_id, schema),
+            // GAP-21: a project-scoped read with no active project resolves to
+            // no read at all, never the tier's labels across all projects.
+            None => QueryScope::new(Vec::<&str>::new()),
+        },
+        other => QueryScope::for_tier(other, schema),
+    }
 }
 
 /// Map the gate's [`ActionDecision`] onto the contract's [`AuthorizeDecision`]
@@ -186,6 +213,65 @@ mod tests {
                 AuthorizeDecision::Modify { .. },
             ));
         }
+    }
+
+    fn schema() -> GraphSchema {
+        GraphSchema::knowledge_graph()
+    }
+
+    fn grant_anchored(read_tier: ReadTier, anchor: Option<&str>) -> SessionGrant {
+        SessionGrant {
+            capability_context: CapabilityContext { generic_tools: vec![], proxy_tools: vec![] },
+            project_anchor: anchor.map(str::to_string),
+            read_tier,
+            pid: 1,
+        }
+    }
+
+    #[test]
+    fn a_session_scoped_grant_permits_session_labels_not_files() {
+        let scope = grant_to_query_scope(&grant_anchored(ReadTier::Minimal, None), &schema());
+        assert!(scope.permits("Session"));
+        assert!(scope.permits("Event"));
+        assert!(!scope.permits("File"), "session tier cannot name a File");
+        assert!(scope.project_anchor().is_none());
+    }
+
+    #[test]
+    fn a_project_scoped_grant_with_an_anchor_is_anchored() {
+        // ReadTier::Standard -> AccessTier::ProjectScoped.
+        let scope =
+            grant_to_query_scope(&grant_anchored(ReadTier::Standard, Some("proj-7")), &schema());
+        assert!(scope.permits("File"));
+        assert!(scope.permits("Project"));
+        assert!(!scope.permits("Session"), "project tier cannot name a Session");
+        assert_eq!(
+            scope.project_anchor().map(|a| a.project_id()),
+            Some("proj-7"),
+            "GAP-21: the read is anchored to the active project",
+        );
+    }
+
+    #[test]
+    fn a_project_scoped_grant_without_an_anchor_reads_nothing() {
+        // GAP-21: an anchorless project-scoped read must NOT see the tier's
+        // labels across every project; it resolves to an empty scope instead.
+        let scope = grant_to_query_scope(&grant_anchored(ReadTier::Standard, None), &schema());
+        assert!(scope.is_empty(), "no anchor -> no project-scoped read");
+        assert!(!scope.permits("File"));
+    }
+
+    #[test]
+    fn the_no_read_tier_yields_an_empty_scope() {
+        let scope = grant_to_query_scope(&grant_anchored(ReadTier::None, None), &schema());
+        assert!(scope.is_empty());
+    }
+
+    #[test]
+    fn the_full_tier_permits_files_and_sessions() {
+        let scope = grant_to_query_scope(&grant_anchored(ReadTier::Full, None), &schema());
+        assert!(scope.permits("File"));
+        assert!(scope.permits("Session"));
     }
 
     /// The full Suggest pipeline a Phase-1 RealGate composes: a session's grant
