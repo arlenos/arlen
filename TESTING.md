@@ -34,6 +34,14 @@ change done off a green build alone.
   render-readback harness with golden-PNG comparison (e.g. the window-header golden
   test). It covers element rasterisation and header geometry behaviorally without a
   GPU. `sdk/theme` has its own golden resolve test for generator output.
+- **Full-app headless screenshot (WORKS via sway + grim).** `dev/screenshot/shoot-sway.sh`
+  runs a headless `sway` (which maps + composites the real Tauri window, unlike plain
+  Xvfb with no WM) + `npm run dev` (the debug binary loads its devUrl) and captures with
+  `grim`. This is the working full-app pixel loop - the REAL binary + backend, rendered,
+  captured - and it un-gates Tauri-app pixel verification headless. The WebDriver path
+  (shoot_app.py via tauri-driver) hangs capturing the wry webview; this replaces it.
+  Driving INPUT (typing a command) needs a Wayland input tool (`wtype`/`ydotool`, not yet
+  installed) or a shell-rcfile auto-run; capture itself works.
 - **Frontend + full-app screenshots.** `dev/screenshot/shoot.py` loads a frontend URL
   in WebKitWebDriver (frontend isolated); `dev/screenshot/shoot_app.py` drives the
   real Tauri binary through `tauri-driver` under Xvfb (backend + webview together,
