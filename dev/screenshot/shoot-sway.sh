@@ -18,8 +18,14 @@ BIN="${1:?usage: shoot-sway.sh <app-binary> <out.png> [vite-dir] [type-text]}"
 OUT="${2:?usage: shoot-sway.sh <app-binary> <out.png> [vite-dir] [type-text]}"
 VITE_DIR="${3:-}"
 TYPE_TEXT="${4:-}"
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/arlen-shot-rt-$$}"
-mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
+# ALWAYS a fresh private runtime dir - never inherit the real session's
+# XDG_RUNTIME_DIR (e.g. /run/user/$UID). If inherited, the headless sway socket
+# sits beside the REAL compositor's socket and grim can grab the actual desktop
+# (a privacy leak). A fresh dir holds only the headless sway's socket.
+export XDG_RUNTIME_DIR="$(mktemp -d "${TMPDIR:-/tmp}/arlen-shot-rt.XXXXXX")"
+chmod 700 "$XDG_RUNTIME_DIR"
+cleanup() { rm -rf "$XDG_RUNTIME_DIR" 2>/dev/null; }
+trap cleanup EXIT
 
 vite=""
 if [ -n "$VITE_DIR" ]; then
@@ -33,7 +39,13 @@ printf 'output HEADLESS-1 resolution 1280x800\nexec env GDK_BACKEND=wayland %q >
 WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 sway -c "$cfg" >/tmp/arlen-shot-sway.log 2>&1 &
 sway_pid=$!
 sleep 26
-WD="$(ls "$XDG_RUNTIME_DIR" | grep -m1 wayland | grep -v lock)"
+WD="$(ls "$XDG_RUNTIME_DIR" 2>/dev/null | grep -E '^wayland-[0-9]+$' | head -1)"
+if [ -z "$WD" ]; then
+  echo "no headless sway socket in $XDG_RUNTIME_DIR - refusing to grab (would capture the real display)" >&2
+  kill "$sway_pid" 2>/dev/null
+  [ -n "$vite" ] && kill "$vite" 2>/dev/null
+  exit 1
+fi
 if [ -n "$TYPE_TEXT" ] && command -v wtype >/dev/null 2>&1; then
   WAYLAND_DISPLAY="$WD" wtype "$TYPE_TEXT" -k Return >/tmp/arlen-shot-type.log 2>&1
   sleep 3
