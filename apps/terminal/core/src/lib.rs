@@ -58,20 +58,59 @@ pub enum BlockBodyKind {
     Widget,
 }
 
-/// A point-in-time text view of the terminal screen: the visible grid as rows of
-/// plain text plus the geometry and cursor. The webview renders this so command
-/// output appears without the compositor grid-subsurface (terminal.md Option B,
-/// the portable path); the subsurface stays the later performance optimization.
-/// Cell styling (colour, bold) is a follow-up - the first cut carries text, which
-/// is what makes output show.
+/// A terminal cell's colour: the theme default, a 256-palette index, or a direct
+/// RGB triple. Serialized adjacently-tagged (`kind` + `value`) so the webview maps
+/// it to CSS: the ANSI/256 palette for `indexed`, `rgb(...)` for `rgb`, and the
+/// theme's own foreground/background for `default`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase", tag = "kind", content = "value")]
+pub enum CellColor {
+    /// Use the theme default (the SGR reset colour).
+    #[default]
+    Default,
+    /// A 256-colour palette index (0-15 ANSI, 16-255 the xterm cube + greys).
+    Indexed(u8),
+    /// A direct 24-bit RGB colour.
+    Rgb([u8; 3]),
+}
+
+/// One visible terminal cell: its glyph plus the SGR styling the webview paints.
+/// `text` is empty for a blank cell. `wide` marks the lead half of a
+/// double-width glyph (its following continuation cell carries empty `text`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GridCell {
+    /// The cell's glyph(s); empty for a blank cell.
+    pub text: String,
+    /// Foreground colour.
+    pub fg: CellColor,
+    /// Background colour.
+    pub bg: CellColor,
+    /// SGR bold.
+    pub bold: bool,
+    /// SGR italic.
+    pub italic: bool,
+    /// SGR underline.
+    pub underline: bool,
+    /// SGR inverse: the renderer swaps fg and bg.
+    pub inverse: bool,
+    /// Lead half of a double-width glyph (render two columns wide).
+    pub wide: bool,
+}
+
+/// A point-in-time view of the terminal screen: the visible grid as rows of
+/// styled cells plus the geometry and cursor. The webview paints these cells so
+/// command output appears (with colour and alignment) without the compositor
+/// grid-subsurface (terminal.md Option B, the portable path); the subsurface
+/// stays the later performance optimization.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GridSnapshot {
     /// Visible columns.
     pub cols: u16,
     /// Visible rows.
     pub rows: u16,
-    /// One string per visible row, top to bottom (trailing blanks trimmed).
-    pub lines: Vec<String>,
+    /// The visible grid, top to bottom: one inner vector per row, each holding
+    /// exactly `cols` cells left to right (so the monospace grid always aligns).
+    pub cells: Vec<Vec<GridCell>>,
     /// Cursor row (0-based, from the top of the visible screen).
     pub cursor_row: u16,
     /// Cursor column (0-based).

@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use arlen_terminal_core::vt::{OscScanner, VtEngine, VtEvent};
-use arlen_terminal_core::GridSnapshot;
+use arlen_terminal_core::{CellColor, GridCell, GridSnapshot};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 
 /// The environment variable the engine sets to the per-session nonce. The shell
@@ -201,19 +201,50 @@ impl VtEngine for PtyEngine {
     }
 }
 
-/// Read a VT parser's visible screen into a [`GridSnapshot`]. Free so the
-/// snapshot shape is unit-testable without a PTY.
+/// Read a VT parser's visible screen into a [`GridSnapshot`]: one styled
+/// [`GridCell`] per column so the webview paints colour and a fixed-width grid.
+/// vt100 already tracks the alternate-screen buffer, so a fullscreen app's
+/// screen reads back here too. Free so the snapshot shape is unit-testable
+/// without a PTY.
 fn snapshot_of(parser: &vt100::Parser) -> GridSnapshot {
     let screen = parser.screen();
     let (rows, cols) = screen.size();
-    let lines = screen.rows(0, cols).collect();
+    let mut cells = Vec::with_capacity(rows as usize);
+    for r in 0..rows {
+        let mut row = Vec::with_capacity(cols as usize);
+        for c in 0..cols {
+            row.push(match screen.cell(r, c) {
+                Some(cell) => GridCell {
+                    text: cell.contents(),
+                    fg: conv_color(cell.fgcolor()),
+                    bg: conv_color(cell.bgcolor()),
+                    bold: cell.bold(),
+                    italic: cell.italic(),
+                    underline: cell.underline(),
+                    inverse: cell.inverse(),
+                    wide: cell.is_wide(),
+                },
+                None => GridCell::default(),
+            });
+        }
+        cells.push(row);
+    }
     let (cursor_row, cursor_col) = screen.cursor_position();
     GridSnapshot {
         cols,
         rows,
-        lines,
+        cells,
         cursor_row,
         cursor_col,
+    }
+}
+
+/// Map a vt100 colour to the contract's [`CellColor`].
+fn conv_color(c: vt100::Color) -> CellColor {
+    match c {
+        vt100::Color::Default => CellColor::Default,
+        vt100::Color::Idx(i) => CellColor::Indexed(i),
+        vt100::Color::Rgb(r, g, b) => CellColor::Rgb([r, g, b]),
     }
 }
 
@@ -255,18 +286,27 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_reads_processed_output_as_text_rows() {
-        // The snapshot is what the webview renders (Option B). Feed the parser
-        // ordinary output - the same bytes the PTY reader hands it - and read
-        // the visible grid back as text rows + cursor.
+    fn snapshot_reads_processed_output_as_styled_cells() {
+        // The snapshot is what the webview renders (Option B): a fixed-width grid
+        // of styled cells. Feed ordinary output plus an SGR colour and read the
+        // visible grid back as cells + cursor.
         let mut parser = vt100::Parser::new(4, 20, 0);
-        parser.process(b"hello\r\nworld");
+        parser.process(b"hello\r\n\x1b[31mworld\x1b[0m");
         let snap = snapshot_of(&parser);
         assert_eq!(snap.rows, 4);
         assert_eq!(snap.cols, 20);
-        assert_eq!(snap.lines.len(), 4);
-        assert_eq!(snap.lines[0].trim_end(), "hello");
-        assert_eq!(snap.lines[1].trim_end(), "world");
+        assert_eq!(snap.cells.len(), 4);
+        // Every row carries exactly `cols` cells, so the monospace grid aligns.
+        assert!(snap.cells.iter().all(|r| r.len() == snap.cols as usize));
+        let row_text = |r: usize| -> String {
+            snap.cells[r].iter().map(|c| c.text.as_str()).collect::<String>()
+        };
+        assert_eq!(row_text(0).trim_end(), "hello");
+        assert_eq!(row_text(1).trim_end(), "world");
+        // Colour is captured, not flattened away: "world" was written under
+        // SGR 31 (ANSI red, index 1); the first row keeps the default colour.
+        assert_eq!(snap.cells[1][0].fg, CellColor::Indexed(1));
+        assert_eq!(snap.cells[0][0].fg, CellColor::Default);
         // The cursor sits just after "world" on the second row.
         assert_eq!(snap.cursor_row, 1);
         assert_eq!(snap.cursor_col, 5);
