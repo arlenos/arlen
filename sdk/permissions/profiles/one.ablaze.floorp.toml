@@ -1,0 +1,12 @@
+# Starting permission profile for Floorp (a web browser).
+# The open web is its function, so broad network; saves to Downloads. Its own
+# config dir is a launcher grant. No Knowledge Graph access.
+[info]
+app_id = "one.ablaze.floorp"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

@@ -1,0 +1,8 @@
+# Starting permission profile for Podman Desktop (a container manager).
+# Pulls images and talks to registries over the network by function. No graph.
+[info]
+app_id = "io.podman_desktop.PodmanDesktop"
+tier = "third-party"
+
+[network]
+allow_all = true

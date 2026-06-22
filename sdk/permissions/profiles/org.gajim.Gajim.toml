@@ -1,0 +1,11 @@
+# Starting permission profile for Gajim (an XMPP chat client).
+# Chat over the network by function; saves received files to Downloads. No graph.
+[info]
+app_id = "org.gajim.Gajim"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

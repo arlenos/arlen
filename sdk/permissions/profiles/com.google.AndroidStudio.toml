@@ -1,0 +1,12 @@
+# Starting permission profile for Android Studio (an IDE).
+# Downloads SDKs/dependencies over the network; projects live in Documents. No
+# Knowledge Graph access.
+[info]
+app_id = "com.google.AndroidStudio"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true
