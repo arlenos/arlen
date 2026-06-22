@@ -608,6 +608,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn head_for_checkpoint_and_entry_hash_track_the_last_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut ledger = open_temp(dir.path(), key()).await;
+        // Empty ledger has no head.
+        assert_eq!(ledger.head_for_checkpoint(), None);
+        ledger
+            .append(AuditKind::Query, "ai-daemon", &structural("ok"), None, None, None)
+            .await
+            .expect("append");
+        ledger
+            .append(AuditKind::ToolCall, "ai-daemon", &structural("ok"), None, None, None)
+            .await
+            .expect("append");
+        // The head is the LAST index (next_index - 1 == 1 after two appends),
+        // carrying that entry's hash. Pins the index arithmetic and that the
+        // checkpoint head is a real value, not always-None.
+        let (idx, head_hash) = ledger
+            .head_for_checkpoint()
+            .expect("a non-empty ledger has a head");
+        assert_eq!(idx, 1);
+        // entry_hash_hex_at returns the stored hash for a present row (matching
+        // the head), and None for an absent index.
+        let at_last = ledger.entry_hash_hex_at(1).await.expect("query");
+        assert_eq!(at_last.as_deref(), Some(head_hash.as_str()));
+        assert!(ledger.entry_hash_hex_at(0).await.expect("query").is_some());
+        assert_eq!(ledger.entry_hash_hex_at(99).await.expect("query"), None);
+    }
+
+    #[test]
+    fn now_micros_is_a_real_current_era_timestamp() {
+        // A genuine wall-clock read, not a constant: after 2020-01-01 in micros.
+        // Pins the helper against a stubbed 0 / 1 / -1.
+        assert!(now_micros() > 1_577_836_800_000_000);
+    }
+
+    #[tokio::test]
     async fn reopen_continues_the_chain() {
         let dir = tempfile::tempdir().unwrap();
         {
