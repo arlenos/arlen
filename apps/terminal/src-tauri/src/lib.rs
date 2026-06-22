@@ -15,7 +15,7 @@ use std::time::Instant;
 use arlen_terminal_core::blocks::BlockAssembler;
 use arlen_terminal_core::vt::VtEngine;
 use arlen_terminal_core::{
-    stub, Block, GridSnapshot, HistoryFilters, Project, Session, SessionStatus,
+    stub, Block, BlockBodyKind, GridSnapshot, HistoryFilters, Project, Session, SessionStatus,
 };
 use arlen_terminal_engine::PtyEngine;
 use tauri::State;
@@ -27,6 +27,13 @@ struct LiveSession {
     session: Session,
     engine: PtyEngine,
     assembler: BlockAssembler,
+    /// Each finished command's captured output grid, accumulated in finish order
+    /// (the engine hands them out once, so they are kept here). Attached to the
+    /// matching finished block so the block renders its own output. Index-aligned
+    /// with the assembler's finished blocks: the curated integration emits a
+    /// command line and an exec-start mark together, so every block has exactly
+    /// one captured output.
+    outputs: Vec<GridSnapshot>,
 }
 
 /// The open shells, host-owned and keyed by id. `order` preserves creation order
@@ -102,7 +109,22 @@ fn terminal_blocks(session_id: String, registry: State<Mutex<SessionRegistry>>) 
     };
     let events = live.engine.drain_events();
     live.assembler.consume(&events, Instant::now());
-    live.assembler.blocks()
+    // Accumulate the per-command output grids the engine captured (handed out
+    // once), then attach each to its finished block so the block renders its own
+    // output. Finished blocks and captured outputs are produced in the same order
+    // (one per command), so they align by index; the trailing pending block (a
+    // running command) has no captured output yet and is left as the live grid.
+    live.outputs.extend(live.engine.take_finished_outputs());
+    let mut blocks = live.assembler.blocks();
+    for (i, output) in live.outputs.iter().enumerate() {
+        let Some(block) = blocks.get_mut(i) else { break };
+        if block.body_kind == BlockBodyKind::Grid {
+            if let Ok(body) = serde_json::to_value(output) {
+                block.body = body;
+            }
+        }
+    }
+    blocks
 }
 
 /// A session's visible screen as text (terminal.md Option B): the webview renders
@@ -185,6 +207,7 @@ fn terminal_new_session(registry: State<Mutex<SessionRegistry>>) -> Result<Sessi
             session: session.clone(),
             engine,
             assembler: BlockAssembler::new(home),
+            outputs: Vec::new(),
         },
     );
     reg.order.push(id);

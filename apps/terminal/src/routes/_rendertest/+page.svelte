@@ -6,6 +6,8 @@
   /// a full ANSI palette row, aligned columns) so colour + fixed-width alignment
   /// are directly visible. Not shipped in any nav; a dev/test route only.
   import { GridRegion } from "@arlen/ui-kit/components/console";
+  import StreamBlock from "$lib/components/StreamBlock.svelte";
+  import type { Block } from "$lib/contract";
 
   type CellColor =
     | { kind: "default" }
@@ -77,8 +79,26 @@
     rows.push(bars);
     return rows;
   })();
+
+  // A finished block carrying the same fixture as its captured output, to verify
+  // the "grid inside the block" path: the block frame (command, exit chip, time)
+  // plus the per-cell output grid rendered inside it.
+  const block: Block = {
+    id: "b1",
+    command: "neofetch",
+    exit_code: 0,
+    duration_ms: 42,
+    cwd: "/home/tim",
+    git: null,
+    origin: "you",
+    body_kind: "grid",
+    body: { cells, rows: cells.length },
+  };
 </script>
 
 <div style="background:#0a0a0a;padding:8px;min-height:100vh;">
   <GridRegion {cells} />
+  <div style="margin-top:16px;max-width:760px;">
+    <StreamBlock {block} />
+  </div>
 </div>
