@@ -128,12 +128,17 @@ test crate="":
     if [ -n "{{crate}}" ]; then run_one "{{crate}}"; exit 0; fi
     for c in {{RUST_CRATES}}; do echo "== test $c =="; run_one "$c"; done
 
-# Cheap local mirror of CI: cargo check every rust crate + svelte-check every frontend.
+# Cheap local mirror of CI: cargo check every rust crate + svelte-check + vitest every frontend.
 check:
     #!/usr/bin/env bash
     set -euo pipefail
     for c in {{RUST_CRATES}}; do echo "== check $c =="; cargo check --manifest-path "{{ROOT}}/$c/Cargo.toml"; done
-    for f in {{FRONTENDS}}; do echo "== svelte-check $f =="; (cd "{{ROOT}}/$f" && npx svelte-check --threshold error); done
+    for f in {{FRONTENDS}}; do
+        echo "== svelte-check $f =="; (cd "{{ROOT}}/$f" && npx svelte-check --threshold error)
+        if [ "$(cd "{{ROOT}}/$f" && npm pkg get scripts.test)" != "{}" ]; then
+            echo "== vitest $f =="; (cd "{{ROOT}}/$f" && npm test -- --passWithNoTests)
+        fi
+    done
 
 # Clippy, warnings as errors, across all rust crates.
 lint:
