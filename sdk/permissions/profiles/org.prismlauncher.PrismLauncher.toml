@@ -1,0 +1,12 @@
+# Starting permission profile for Prism Launcher (a Minecraft launcher).
+# Downloads game files over the network by function and saves to Downloads. No Knowledge Graph
+# access.
+[info]
+app_id = "org.prismlauncher.PrismLauncher"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

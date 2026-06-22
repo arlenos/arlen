@@ -1,0 +1,8 @@
+# Starting permission profile for OpenTTD (a transport-simulation game).
+# Multiplayer servers over the network by function. No Knowledge Graph access.
+[info]
+app_id = "org.openttd.OpenTTD"
+tier = "third-party"
+
+[network]
+allow_all = true
