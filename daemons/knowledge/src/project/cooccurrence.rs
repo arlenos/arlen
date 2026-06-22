@@ -7,16 +7,14 @@
 //! single-session `auto_promote_threshold` heuristic, which only ever sees one
 //! session at a time.
 //!
-//! No I/O and no graph dependency: the background pass reads the accesses from
-//! the event store and writes the clusters as candidate nodes; the clustering
-//! itself is deterministic and unit-tested here. Lives behind `allow(dead_code)`
-//! until that pass wires it (mechanism before trigger).
-#![allow(dead_code)]
+//! The deterministic clustering is unit-tested here; [`run`] drives it as a
+//! periodic background pass over the live graph.
 
 use crate::fuse::longest_common_dir;
 use crate::graph::GraphHandle;
 use crate::project::store::{Project, ProjectStore};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use tracing::{info, warn};
 
 /// One observed file access, tagged with the session it happened in. The
 /// session is the co-occurrence unit (files touched in the same session are
@@ -281,6 +279,40 @@ pub async fn materialize_clusters(
         }
     }
     Ok(stats)
+}
+
+/// How often the inference pass runs. Co-occurrence is a slow-moving signal (a
+/// project emerges over hours of work, not seconds), and the pass is a whole-
+/// graph scan, so an hourly cadence keeps it cheap while still surfacing a new
+/// project within the same work session.
+const INFERENCE_INTERVAL_SECS: u64 = 3600;
+
+/// Run the project-inference pass periodically (foundation §4.2): scan the
+/// graph's co-access history, cluster it, and materialise stable clusters as
+/// inferred `Project` nodes. Best-effort densification - a scan or materialise
+/// failure is logged, never fatal (the graph is fully usable without inferred
+/// projects), so this task never brings the daemon down.
+pub async fn run(graph: GraphHandle) -> anyhow::Result<()> {
+    let store = ProjectStore::new(graph.clone());
+    let mut tick = tokio::time::interval(std::time::Duration::from_secs(INFERENCE_INTERVAL_SECS));
+    // The first tick fires immediately; consume it so the first real scan waits a
+    // full interval, giving promotion time to lay down ACCESSED_IN edges first.
+    tick.tick().await;
+    loop {
+        tick.tick().await;
+        match infer_clusters(&graph, ClusterParams::default()).await {
+            Ok(clusters) => match materialize_clusters(&store, &clusters).await {
+                Ok(stats) => info!(
+                    created = stats.created,
+                    linked = stats.linked,
+                    skipped = stats.skipped,
+                    "project inference pass complete"
+                ),
+                Err(e) => warn!(error = %e, "project inference materialise failed"),
+            },
+            Err(e) => warn!(error = %e, "project inference scan failed"),
+        }
+    }
 }
 
 #[cfg(test)]
