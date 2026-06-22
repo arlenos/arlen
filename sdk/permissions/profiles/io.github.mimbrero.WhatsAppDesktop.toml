@@ -1,0 +1,12 @@
+# Starting permission profile for a WhatsApp desktop client.
+# Messaging is its function, so it gets network and Downloads (where received
+# media is saved). No Knowledge Graph access.
+[info]
+app_id = "io.github.mimbrero.WhatsAppDesktop"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

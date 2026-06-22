@@ -1,0 +1,12 @@
+# Starting permission profile for a yt-dlp-based video downloader (ytdownloader).
+# It downloads media over the network by function, so it gets network and
+# Downloads. No Knowledge Graph access.
+[info]
+app_id = "io.github.aandrew_me.ytdn"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

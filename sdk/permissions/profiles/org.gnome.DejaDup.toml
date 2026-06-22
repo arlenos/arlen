@@ -1,0 +1,15 @@
+# Starting permission profile for a backup tool.
+# Its function is to back up the user's data, so it gets the data directories
+# (Documents/Downloads/Pictures/Music/Videos) and no network; a remote/cloud
+# destination is opt-in, refined by observe-mode rather than a blanket network or
+# whole-home grant. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.DejaDup"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true
+pictures = true
+music = true
+videos = true

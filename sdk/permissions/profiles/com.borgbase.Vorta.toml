@@ -1,0 +1,16 @@
+# Starting permission profile for Vorta (a Borg backup GUI).
+# It backs up the user's data to local or remote Borg repositories, so it gets
+# the data directories and network (remote repos). No Knowledge Graph access.
+[info]
+app_id = "com.borgbase.Vorta"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true
+pictures = true
+music = true
+videos = true
+
+[network]
+allow_all = true
