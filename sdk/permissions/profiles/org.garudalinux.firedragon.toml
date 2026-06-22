@@ -1,0 +1,13 @@
+# Starting permission profile for FireDragon (a web browser).
+# A browser's function is the open web, so it gets broad network; it saves to
+# Downloads. Its own config dir is a launcher/enrollment grant, not a blanket
+# home grant here. No Knowledge Graph access.
+[info]
+app_id = "org.garudalinux.firedragon"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

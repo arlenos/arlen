@@ -1,0 +1,9 @@
+# Starting permission profile for Anytype (a local-first notes / knowledge app).
+# It syncs its workspace over the network by function and keeps data in its own
+# storage. No Knowledge Graph access.
+[info]
+app_id = "com.anytype.anytype"
+tier = "third-party"
+
+[network]
+allow_all = true
