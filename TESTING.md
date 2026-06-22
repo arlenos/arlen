@@ -73,7 +73,12 @@ change done off a green build alone.
   unviable, 1 equivalent survivor that is not a test gap). Next: ai-agent gate.rs +
   world.rs, the audit ledger, KG promotion/scoping.
 - **sccache** + a binary cache for the ~90-120s knowledge cold-link and repeat
-  integration runs. Tool not installed.
+  integration runs. Tool not installed. NB the clean realization is opt-in
+  (`cargo install sccache` then `export RUSTC_WRAPPER=sccache` in the dev shell),
+  NOT a committed repo-wide `.cargo/config.toml [build] rustc-wrapper`: that would
+  fail every build on a machine without sccache (fresh checkouts, CI), so making
+  it the default also means provisioning sccache in CI. Treat as a dev-env
+  affordance + a CI-provisioning decision, not a one-file commit.
 
 ## How to write the tests (discipline)
 
