@@ -1,0 +1,5 @@
+# Starting permission profile for Multimoji (an emoji picker).
+# It picks emoji locally. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "com.github.eduardomota.Multimoji"
+tier = "third-party"

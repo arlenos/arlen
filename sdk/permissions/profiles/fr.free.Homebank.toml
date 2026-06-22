@@ -1,0 +1,8 @@
+# Starting permission profile for HomeBank (personal finance).
+# It keeps account books in local files by function, so it gets Documents and no network; online banking import is opt-in. No Knowledge Graph access.
+[info]
+app_id = "fr.free.Homebank"
+tier = "third-party"
+
+[filesystem]
+documents = true

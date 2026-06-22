@@ -1,0 +1,5 @@
+# Starting permission profile for Authenticator (a local TOTP/2FA generator).
+# Codes are computed offline. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "com.github.bilelmoussaoui.Authenticator"
+tier = "third-party"
