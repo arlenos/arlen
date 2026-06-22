@@ -1,0 +1,9 @@
+# Starting permission profile for Logseq (a notes/knowledge app).
+# Its graph lives as Markdown in Documents; sync is a refinement an observe pass
+# can add, never a blanket network grant up front. No Knowledge Graph access.
+[info]
+app_id = "com.logseq.Logseq"
+tier = "third-party"
+
+[filesystem]
+documents = true

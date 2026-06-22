@@ -1,0 +1,12 @@
+# Starting permission profile for Vesktop (a Discord client).
+# Chat and calls over the network by function; saves received files to
+# Downloads. No Knowledge Graph access.
+[info]
+app_id = "dev.vencord.Vesktop"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

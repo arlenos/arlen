@@ -1,0 +1,11 @@
+# Starting permission profile for GNOME Podcasts.
+# Fetches and downloads episodes over the network; plays from Music. No graph.
+[info]
+app_id = "org.gnome.Podcasts"
+tier = "third-party"
+
+[filesystem]
+music = true
+
+[network]
+allow_all = true

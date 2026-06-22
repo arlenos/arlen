@@ -1,0 +1,12 @@
+# Starting permission profile for the Arduino IDE.
+# Downloads boards/libraries over the network; sketches live in Documents. No
+# Knowledge Graph access.
+[info]
+app_id = "cc.arduino.IDE2"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true

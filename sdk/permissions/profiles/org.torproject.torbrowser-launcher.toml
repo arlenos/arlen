@@ -1,0 +1,12 @@
+# Starting permission profile for the Tor Browser launcher (a web browser).
+# The open web over Tor is its function, so broad network; saves to Downloads.
+# Its own config dir is a launcher grant. No Knowledge Graph access.
+[info]
+app_id = "org.torproject.torbrowser-launcher"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

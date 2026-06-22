@@ -1,0 +1,12 @@
+# Starting permission profile for LibreWolf (a web browser).
+# The open web is its function, so broad network; saves to Downloads. Its own
+# config dir is a launcher grant. No Knowledge Graph access.
+[info]
+app_id = "io.gitlab.librewolf-community.librewolf"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
