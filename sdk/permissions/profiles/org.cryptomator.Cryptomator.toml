@@ -1,0 +1,10 @@
+# Starting permission profile for Cryptomator (encrypted file vaults).
+# It encrypts files into a local vault directory by function, so it gets
+# Documents and no network; a vault on a cloud-synced folder is uploaded by the
+# sync app, not this one. No Knowledge Graph access.
+[info]
+app_id = "org.cryptomator.Cryptomator"
+tier = "third-party"
+
+[filesystem]
+documents = true

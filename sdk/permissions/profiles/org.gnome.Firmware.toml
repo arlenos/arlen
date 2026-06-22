@@ -1,0 +1,9 @@
+# Starting permission profile for GNOME Firmware (a firmware updater).
+# It fetches firmware updates over the network (LVFS) by function and applies
+# them through fwupd; it needs no user files. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.Firmware"
+tier = "third-party"
+
+[network]
+allow_all = true
