@@ -381,6 +381,25 @@ pub struct IconTokens {
     pub theme: String,
 }
 
+/// Resolved sound-theme event map (`sound-system-plan.md`): the event-to-sound
+/// mapping the Notification Daemon plays, named by the freedesktop XDG Sound
+/// Naming spec. Each name is routed through the TH-0 inert floor (`inert_or`) at
+/// resolve, so a hostile theme value can never become syntax in the sound-theme
+/// index a later XDG-sound-theme emitter writes. The default-on restraint set
+/// (sound-system-plan.md): notification/message arrival, error, warning, action
+/// completion.
+#[derive(Debug, Clone)]
+pub struct SoundTokens {
+    /// Notification / message arrival.
+    pub notification: String,
+    /// Error / failure.
+    pub error: String,
+    /// Warning.
+    pub warning: String,
+    /// Action completion.
+    pub action: String,
+}
+
 /// Fully resolved theme. Both compositor and desktop-shell consume
 /// this. Construct via `ArlenTheme::resolve(...)`; do not build
 /// by hand outside tests.
@@ -397,6 +416,7 @@ pub struct ArlenTheme {
     pub cursor:     CursorTokens,
     pub terminal:   TerminalTokens,
     pub icons:      IconTokens,
+    pub sounds:     SoundTokens,
 }
 
 // ---------------------------------------------------------------------------
@@ -681,6 +701,17 @@ fn from_file(f: ArlenThemeFile) -> Result<ArlenTheme, ResolveError> {
         theme: inert_or(i.theme, "default"),
     };
 
+    // The sound-theme event map (sound-system-plan.md). Defaults are freedesktop
+    // Sound Naming-spec standard names; each theme-supplied name is routed through
+    // the inert floor so it cannot carry syntax into the emitted sound-theme index.
+    let snd = f.sounds.unwrap_or_default();
+    let sounds = SoundTokens {
+        notification: inert_or(snd.notification, "message-new-instant"),
+        error: inert_or(snd.error, "dialog-error"),
+        warning: inert_or(snd.warning, "dialog-warning"),
+        action: inert_or(snd.action, "complete"),
+    };
+
     let variant = match meta.variant.as_str() {
         "dark" => ThemeVariant::Dark,
         "light" => ThemeVariant::Light,
@@ -719,6 +750,7 @@ fn from_file(f: ArlenThemeFile) -> Result<ArlenTheme, ResolveError> {
         cursor,
         terminal,
         icons,
+        sounds,
     })
 }
 
@@ -1036,6 +1068,38 @@ gaps_outer  = 4
 theme = "default"
 size  = 24
 "##;
+
+    #[test]
+    fn sounds_default_to_xdg_naming_spec_names() {
+        // No [sounds] section -> the freedesktop Sound Naming-spec default map.
+        let t = ArlenTheme::from_bundled(SAMPLE_BUNDLED).expect("resolve");
+        assert_eq!(t.sounds.notification, "message-new-instant");
+        assert_eq!(t.sounds.error, "dialog-error");
+        assert_eq!(t.sounds.warning, "dialog-warning");
+        assert_eq!(t.sounds.action, "complete");
+    }
+
+    #[test]
+    fn custom_sound_names_survive_and_unset_events_fall_back() {
+        let toml =
+            format!("{SAMPLE_BUNDLED}\n[sounds]\nnotification = \"bell\"\naction = \"trash-empty\"\n");
+        let t = ArlenTheme::from_bundled(&toml).expect("resolve");
+        assert_eq!(t.sounds.notification, "bell", "an authored name survives");
+        assert_eq!(t.sounds.action, "trash-empty");
+        // An unset event keeps the spec default.
+        assert_eq!(t.sounds.error, "dialog-error");
+        assert_eq!(t.sounds.warning, "dialog-warning");
+    }
+
+    #[test]
+    fn a_hostile_sound_name_drops_to_the_inert_default() {
+        // A name carrying config syntax (`;` `{` `}`) is rejected by the TH-0
+        // inert floor and falls back to the safe default, so it can never reach
+        // the emitted sound-theme index as syntax.
+        let toml = format!("{SAMPLE_BUNDLED}\n[sounds]\nerror = \"evil; rm -rf {{}}\"\n");
+        let t = ArlenTheme::from_bundled(&toml).expect("resolve");
+        assert_eq!(t.sounds.error, "dialog-error", "a non-inert name is dropped to the default");
+    }
 
     #[test]
     fn parses_bundled_dark() {
