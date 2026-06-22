@@ -1,0 +1,5 @@
+# Starting permission profile for Menu Editor (an application-launcher entry editor).
+# It edits the user's app-launcher entries through its own enrollment grant. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "page.codeberg.libre_menu_editor.LibreMenuEditor"
+tier = "third-party"

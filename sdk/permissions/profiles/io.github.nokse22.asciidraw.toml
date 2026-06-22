@@ -1,0 +1,5 @@
+# Starting permission profile for ASCII Draw (an ASCII-art editor).
+# It draws ASCII art locally. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "io.github.nokse22.asciidraw"
+tier = "third-party"

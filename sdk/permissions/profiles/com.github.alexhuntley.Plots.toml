@@ -1,0 +1,5 @@
+# Starting permission profile for Plots (a graph plotter).
+# It plots mathematical functions locally. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "com.github.alexhuntley.Plots"
+tier = "third-party"

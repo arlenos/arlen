@@ -1,0 +1,5 @@
+# Starting permission profile for Decoder (a QR/barcode scanner and generator).
+# It scans codes through the camera portal and generates them locally. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "com.belmoussaoui.Decoder"
+tier = "third-party"
