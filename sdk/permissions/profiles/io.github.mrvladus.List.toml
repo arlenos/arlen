@@ -1,0 +1,5 @@
+# Starting permission profile for List (a to-do app).
+# Tasks are kept locally; sync is opt-in. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "io.github.mrvladus.List"
+tier = "third-party"
