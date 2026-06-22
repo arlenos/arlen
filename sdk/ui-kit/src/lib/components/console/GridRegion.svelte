@@ -11,23 +11,7 @@
   ///   `placeholder` is set, paint a labelled stand-in at the reserved
   ///   size (plain-browser dev / the screenshot loop).
 
-  /// A terminal cell's colour (mirrors the core `CellColor`).
-  type CellColor =
-    | { kind: "default" }
-    | { kind: "indexed"; value: number }
-    | { kind: "rgb"; value: [number, number, number] };
-
-  /// One visible terminal cell (mirrors the core `GridCell`).
-  type GridCell = {
-    text: string;
-    fg: CellColor;
-    bg: CellColor;
-    bold: boolean;
-    italic: boolean;
-    underline: boolean;
-    inverse: boolean;
-    wide: boolean;
-  };
+  import { type GridCell, cellStyle } from "./cell-style";
 
   let {
     rows = 1,
@@ -47,55 +31,6 @@
   } = $props();
 
   const painted = $derived(Array.isArray(cells));
-
-  // The 16 base ANSI colours; 16-255 are computed from the xterm 6x6x6
-  // colour cube and the 24-step greyscale ramp. Emitted as the fallback of
-  // a `--term-ansi-N` custom property so a theme can override the palette.
-  const ANSI16 = [
-    "#000000", "#cd0000", "#00cd00", "#cdcd00", "#0000ee", "#cd00cd",
-    "#00cdcd", "#e5e5e5", "#7f7f7f", "#ff0000", "#00ff00", "#ffff00",
-    "#5c5cff", "#ff00ff", "#00ffff", "#ffffff",
-  ];
-
-  function paletteHex(n: number): string {
-    if (n < 16) return ANSI16[n] ?? "#ffffff";
-    if (n < 232) {
-      const i = n - 16;
-      const r = Math.floor(i / 36);
-      const g = Math.floor(i / 6) % 6;
-      const b = i % 6;
-      const ch = (v: number) => (v === 0 ? 0 : 55 + v * 40);
-      const hh = (v: number) => ch(v).toString(16).padStart(2, "0");
-      return `#${hh(r)}${hh(g)}${hh(b)}`;
-    }
-    const v = 8 + (n - 232) * 10;
-    const h = v.toString(16).padStart(2, "0");
-    return `#${h}${h}${h}`;
-  }
-
-  function colorOf(c: CellColor): string | null {
-    if (c.kind === "rgb") return `rgb(${c.value[0]} ${c.value[1]} ${c.value[2]})`;
-    if (c.kind === "indexed") return `var(--term-ansi-${c.value}, ${paletteHex(c.value)})`;
-    return null;
-  }
-
-  function cellStyle(cell: GridCell): string {
-    let fg = colorOf(cell.fg);
-    let bg = colorOf(cell.bg);
-    if (cell.inverse) {
-      const f = fg ?? "var(--foreground)";
-      const b = bg ?? "var(--background, transparent)";
-      fg = b;
-      bg = f;
-    }
-    const parts: string[] = [];
-    if (fg) parts.push(`color:${fg}`);
-    if (bg) parts.push(`background:${bg}`);
-    if (cell.bold) parts.push("font-weight:600");
-    if (cell.italic) parts.push("font-style:italic");
-    if (cell.underline) parts.push("text-decoration:underline");
-    return parts.join(";");
-  }
 </script>
 
 <div
