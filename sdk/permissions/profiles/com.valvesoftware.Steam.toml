@@ -1,0 +1,12 @@
+# Starting permission profile for Steam (a game store and launcher).
+# Downloads and runs games (network + the store); games install under its own
+# data dir (a launcher grant). Broad network by function. No Knowledge Graph.
+[info]
+app_id = "com.valvesoftware.Steam"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

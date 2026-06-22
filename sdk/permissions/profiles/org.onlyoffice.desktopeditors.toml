@@ -1,0 +1,9 @@
+# Starting permission profile for OnlyOffice (office documents).
+# Edits documents offline by function; real-time collaboration is a refinement
+# an observe pass can add, never a blanket network grant up front. No graph.
+[info]
+app_id = "org.onlyoffice.desktopeditors"
+tier = "third-party"
+
+[filesystem]
+documents = true
