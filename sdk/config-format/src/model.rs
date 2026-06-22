@@ -112,3 +112,74 @@ impl ConfigModel {
         self.entries.is_empty()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn same_value_floats_compare_bitwise_not_by_ieee() {
+        // The self-check asks "is this the same bits I wrote", which differs from
+        // `f64`'s IEEE `==` at exactly two corners (the documented reason
+        // `same_value` exists): two NaNs are the same value (PartialEq says they
+        // differ), and +0.0 / -0.0 are different values (PartialEq says equal).
+        let nan = ConfigValue::Float(f64::NAN);
+        assert!(nan.same_value(&ConfigValue::Float(f64::NAN)), "NaN is the same value as NaN");
+        assert_ne!(nan, ConfigValue::Float(f64::NAN), "PartialEq still follows IEEE (NaN != NaN)");
+
+        let pos0 = ConfigValue::Float(0.0);
+        let neg0 = ConfigValue::Float(-0.0);
+        assert!(!pos0.same_value(&neg0), "+0.0 and -0.0 are different bit patterns");
+        assert_eq!(pos0, neg0, "PartialEq still follows IEEE (+0.0 == -0.0)");
+
+        assert!(ConfigValue::Float(1.5).same_value(&ConfigValue::Float(1.5)));
+    }
+
+    #[test]
+    fn same_value_non_float_variants_compare_structurally() {
+        assert!(ConfigValue::String("x".into()).same_value(&ConfigValue::String("x".into())));
+        assert!(!ConfigValue::String("x".into()).same_value(&ConfigValue::String("y".into())));
+        assert!(ConfigValue::Bool(true).same_value(&ConfigValue::Bool(true)));
+        assert!(ConfigValue::Int(7).same_value(&ConfigValue::Int(7)));
+        // Across variants is never the same value.
+        assert!(!ConfigValue::Int(1).same_value(&ConfigValue::String("1".into())));
+        assert!(!ConfigValue::Bool(true).same_value(&ConfigValue::Int(1)));
+        // Opaque (an unsettable structured target) is the same only as Opaque.
+        assert!(ConfigValue::Opaque.same_value(&ConfigValue::Opaque));
+        assert!(!ConfigValue::Opaque.same_value(&ConfigValue::Int(0)));
+    }
+
+    fn model() -> ConfigModel {
+        ConfigModel::from_entries(vec![
+            ("a.one".into(), ConfigValue::Int(1)),
+            ("a.two".into(), ConfigValue::Bool(false)),
+            ("a.one".into(), ConfigValue::Int(2)), // a duplicate key-path
+        ])
+    }
+
+    #[test]
+    fn get_returns_the_first_occurrence_and_none_for_missing() {
+        let m = model();
+        assert_eq!(m.get("a.two"), Some(&ConfigValue::Bool(false)));
+        // First occurrence wins for a (malformed) duplicate key-path.
+        assert_eq!(m.get("a.one"), Some(&ConfigValue::Int(1)));
+        assert_eq!(m.get("absent"), None);
+    }
+
+    #[test]
+    fn entries_preserve_document_order_and_count() {
+        let m = model();
+        assert_eq!(m.len(), 3, "all entries kept, duplicates included");
+        assert!(!m.is_empty());
+        let keys: Vec<&str> = m.entries().iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(keys, ["a.one", "a.two", "a.one"], "order is preserved verbatim");
+    }
+
+    #[test]
+    fn an_empty_model_is_empty() {
+        let m = ConfigModel::from_entries(vec![]);
+        assert!(m.is_empty());
+        assert_eq!(m.len(), 0);
+        assert_eq!(m.get("anything"), None);
+    }
+}
