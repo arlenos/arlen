@@ -81,8 +81,16 @@ impl SessionStore {
     /// must echo on every subsequent verb.
     pub fn create(&mut self, init: &SessionInit, pid: u32) -> Result<SessionToken, CsprngError> {
         let token = mint_token()?;
+        self.bind(token.clone(), init, pid);
+        Ok(token)
+    }
+
+    /// Bind a pre-minted `token` to a session's grant + `pid`. The supervisor
+    /// mints the token before spawning the engine (so it can pass it in the
+    /// child's env) and binds it here once the spawned pid is known.
+    pub fn bind(&mut self, token: SessionToken, init: &SessionInit, pid: u32) {
         self.sessions.insert(
-            token.0.clone(),
+            token.0,
             SessionGrant {
                 capability_context: init.capability_context.clone(),
                 project_anchor: init.project_anchor.clone(),
@@ -90,7 +98,6 @@ impl SessionStore {
                 pid,
             },
         );
-        Ok(token)
     }
 
     /// Resolve the grant for a verb call, fail-closed: the token must exist AND
@@ -133,6 +140,15 @@ impl std::fmt::Display for CsprngError {
 }
 
 impl std::error::Error for CsprngError {}
+
+impl SessionToken {
+    /// Mint a fresh 256-bit CSPRNG token (the supervisor mints one before
+    /// spawning the engine, to pass in its env, then binds it via
+    /// [`SessionStore::bind`]).
+    pub fn mint() -> Result<SessionToken, CsprngError> {
+        mint_token()
+    }
+}
 
 /// Mint a 256-bit CSPRNG token, hex-encoded.
 fn mint_token() -> Result<SessionToken, CsprngError> {

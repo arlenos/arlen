@@ -67,9 +67,20 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
         self.sessions.lock().unwrap().create(init, pid)
     }
 
+    /// Bind a pre-minted token to a session (the supervisor minted it before
+    /// spawning the engine and learned the spawned pid afterward).
+    pub fn bind_session(&self, token: SessionToken, init: &SessionInit, pid: u32) {
+        self.sessions.lock().unwrap().bind(token, init, pid);
+    }
+
     /// End a session (idempotent).
     pub fn end_session(&self, token: &SessionToken) {
         self.sessions.lock().unwrap().end(token);
+    }
+
+    /// The number of live sessions (for supervision/diagnostics).
+    pub fn session_count(&self) -> usize {
+        self.sessions.lock().unwrap().len()
     }
 
     /// Resolve the bound grant for `(token, pid)`, cloning it out under the lock

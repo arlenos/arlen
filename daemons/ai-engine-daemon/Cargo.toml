@@ -23,16 +23,10 @@ arlen-permissions = { path = "../../sdk/permissions" }
 libc = "0.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util", "net", "sync", "signal"] }
-
-
-
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util", "net", "sync", "signal", "time"] }
 
 [dev-dependencies]
-arlen-permissions = { path = "../../sdk/permissions" }
-libc = "0.2"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util", "net", "sync", "signal"] }
+# test-util enables the paused clock the supervise-loop test drives.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util"] }
 
 [workspace]
