@@ -1,0 +1,14 @@
+# Starting permission profile for Zen Browser (a Firefox-based web browser).
+# A browser's function is the open web, so it gets broad network; it saves to
+# Downloads. Modelled on the Firefox profile (same engine and function). Its own
+# config dir (~/.zen) is a launcher/enrollment grant, not a blanket home grant
+# here. No Knowledge Graph access.
+[info]
+app_id = "io.github.zen_browser.zen"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
