@@ -1,0 +1,8 @@
+# Starting permission profile for Papers (GNOME document/PDF viewer, the Evince
+# successor). Opens documents from Documents; no network, no graph.
+[info]
+app_id = "org.gnome.Papers"
+tier = "third-party"
+
+[filesystem]
+documents = true

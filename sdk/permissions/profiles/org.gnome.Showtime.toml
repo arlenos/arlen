@@ -1,0 +1,8 @@
+# Starting permission profile for Showtime (GNOME video player). Plays local
+# video from Videos; no network, no graph.
+[info]
+app_id = "org.gnome.Showtime"
+tier = "third-party"
+
+[filesystem]
+videos = true
