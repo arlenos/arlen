@@ -625,8 +625,13 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create EMITTED_BY rel: {e}"))?;
 
+    // DERIVED_FROM (PROV-O wasDerivedFrom). Multi-pair: the reserved
+    // UserAction->Event agent-curated provenance, plus the File->File
+    // strong-signal derivation the promotion pipeline emits (KG-richness Thrust
+    // 3d: a transform read one file and wrote another named after it). One edge
+    // type so a read consumer answers "what derives from X" uniformly.
     conn.query(
-        "CREATE REL TABLE IF NOT EXISTS DERIVED_FROM(FROM UserAction TO Event)",
+        "CREATE REL TABLE IF NOT EXISTS DERIVED_FROM(FROM UserAction TO Event, FROM File TO File, confidence STRING)",
     )
     .map_err(|e| anyhow!("create DERIVED_FROM rel: {e}"))?;
 
@@ -1041,6 +1046,36 @@ mod tests {
             .expect("op-id-keyed read works after convergence");
         let rows = qr.by_ref().count();
         assert_eq!(rows, 1, "the op-id edge is queryable after convergence");
+    }
+
+    #[test]
+    fn derived_from_accepts_a_confidence_labelled_file_to_file_edge() {
+        // KG-richness Thrust 3d: DERIVED_FROM is multi-pair so the promotion
+        // pipeline records a File->File strong-signal derivation (`foo.md` ->
+        // `foo.pdf`) alongside the reserved UserAction->Event provenance, with a
+        // `confidence` label. Confirms lbug honours the multi-pair REL TABLE +
+        // the edge property + a File->File edge round-trips.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("graph");
+        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+        create_schema(&conn).expect("multi-pair DERIVED_FROM schema creates");
+
+        conn.query("CREATE (:File {id:'/p/foo.md'})").unwrap();
+        conn.query("CREATE (:File {id:'/p/foo.pdf'})").unwrap();
+        conn.query(
+            "MATCH (s:File {id:'/p/foo.pdf'}),(t:File {id:'/p/foo.md'}) \
+             CREATE (s)-[:DERIVED_FROM {confidence:'strong'}]->(t)",
+        )
+        .expect("a File->File DERIVED_FROM edge is accepted by the multi-pair table");
+
+        let mut qr = conn
+            .query(
+                "MATCH (:File {id:'/p/foo.pdf'})-[r:DERIVED_FROM]->(:File {id:'/p/foo.md'}) \
+                 WHERE r.confidence = 'strong' RETURN count(*)",
+            )
+            .expect("the confidence-labelled File->File DERIVED_FROM edge is queryable");
+        assert_eq!(qr.by_ref().count(), 1, "the derivation edge round-trips with its label");
     }
 
     #[test]
