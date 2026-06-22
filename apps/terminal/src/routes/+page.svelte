@@ -46,18 +46,20 @@
     }
   }
 
-  // The visible screen rows, trailing blank lines trimmed (but never
-  // below the cursor row) so the live region is the height of the real
-  // output, not the full 24-row grid.
-  const liveLines = $derived.by(() => {
+  // The visible screen rows, trailing blank rows trimmed (but never below
+  // the cursor row) so the live region is the height of the real output,
+  // not the full 24-row grid. (A fullscreen/alt-screen app fills the grid;
+  // honouring that without trimming is the follow-on once the snapshot
+  // carries the alt-screen flag.)
+  const liveCells = $derived.by(() => {
     const g = $liveGrid;
     if (!g) return [];
     let last = -1;
-    for (let i = 0; i < g.lines.length; i++) {
-      if (g.lines[i].trim() !== "") last = i;
+    for (let i = 0; i < g.cells.length; i++) {
+      if (g.cells[i].some((cell) => cell.text.trim() !== "")) last = i;
     }
     last = Math.max(last, g.cursor_row);
-    return g.lines.slice(0, last + 1);
+    return g.cells.slice(0, last + 1);
   });
 
   onMount(() => {
@@ -132,12 +134,12 @@
       </div>
     {:else}
       <BlockStream blocks={$blocks}>
-        {#if liveLines.length > 0}
+        {#if liveCells.length > 0}
           <!-- The live terminal screen (Option B): command output shows
                here even without the OSC-mark shell integration, which is
                what makes the empty-block-body case still display output. -->
           <div class="live-screen">
-            <GridRegion lines={liveLines} />
+            <GridRegion cells={liveCells} />
           </div>
         {/if}
         <Composer

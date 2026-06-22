@@ -43,14 +43,35 @@ export interface Block {
   body: unknown;
 }
 
-/// A point-in-time text view of the terminal screen (the Rust
-/// `GridSnapshot`): the visible grid as rows of text plus the geometry
-/// and cursor. The webview renders this so command output appears
-/// without the compositor grid-subsurface (terminal.md Option B).
+/// A terminal cell's colour (mirrors core `CellColor`): the theme default, a
+/// 256-palette index, or a direct RGB triple. The webview maps it to CSS.
+export type CellColor =
+  | { kind: "default" }
+  | { kind: "indexed"; value: number }
+  | { kind: "rgb"; value: [number, number, number] };
+
+/// One visible terminal cell (mirrors core `GridCell`): a glyph plus its SGR
+/// styling. `text` is empty for a blank cell; `wide` marks the lead half of a
+/// double-width glyph.
+export interface GridCell {
+  text: string;
+  fg: CellColor;
+  bg: CellColor;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  inverse: boolean;
+  wide: boolean;
+}
+
+/// A point-in-time view of the terminal screen (the Rust `GridSnapshot`): the
+/// visible grid as rows of styled cells plus the geometry and cursor. The
+/// webview paints these cells (with colour and alignment) so command output
+/// appears without the compositor grid-subsurface (terminal.md Option B).
 export interface GridSnapshot {
   cols: number;
   rows: number;
-  lines: string[];
+  cells: GridCell[][];
   cursor_row: number;
   cursor_col: number;
 }
