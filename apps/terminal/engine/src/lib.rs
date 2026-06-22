@@ -33,6 +33,13 @@ pub const NONCE_ENV: &str = "ARLEN_TERM_NONCE";
 /// shell uses its normal startup.
 pub const ZDOTDIR_ENV: &str = "ARLEN_TERM_ZDOTDIR";
 
+/// How many rows tall the per-command output capture parser is. A command's
+/// output is fed into its own VT parser (the "grid inside the block") so it is
+/// preserved in full, independent of the small visible screen; this caps a
+/// pathological flood (output beyond this scrolls off the captured grid, the
+/// same way a real terminal without unbounded scrollback drops the oldest rows).
+const BLOCK_OUTPUT_ROWS: u16 = 600;
+
 /// Env var the engine sets to the user's REAL config dir when it overrides
 /// `ZDOTDIR` with the curated one. The curated config restores this (or `$HOME`)
 /// and sources the user's own `.zshrc` before the integration, so the marks fire
@@ -66,6 +73,12 @@ pub struct PtyEngine {
     /// `None` at an idle prompt. Lets the renderer slice the live grid to the
     /// output region so the shell's prompt is not drawn under the composer.
     output_start_row: Arc<Mutex<Option<u16>>>,
+    /// Captured output grids of commands that have finished, in finish order. The
+    /// reader thread feeds each command's output bytes (between its `ExecStart`
+    /// and `CommandEnd` marks) into a dedicated VT parser and pushes the trimmed
+    /// snapshot here on close; the host drains it ([`PtyEngine::take_finished_outputs`])
+    /// and attaches each to its block so the block renders its own output.
+    finished_outputs: Arc<Mutex<Vec<GridSnapshot>>>,
     reader: Option<JoinHandle<()>>,
 }
 
@@ -143,11 +156,17 @@ impl PtyEngine {
         let running_sink = Arc::clone(&running);
         let output_start_row = Arc::new(Mutex::new(None));
         let output_start_sink = Arc::clone(&output_start_row);
+        let finished_outputs = Arc::new(Mutex::new(Vec::new()));
+        let finished_sink = Arc::clone(&finished_outputs);
         let reader_handle = std::thread::Builder::new()
             .name("arlen-pty-reader".into())
             .spawn(move || {
                 let mut scanner = OscScanner::new(nonce);
                 let mut buf = [0u8; 4096];
+                // The active command's output parser: created at `ExecStart`, fed
+                // the output bytes that follow, finalized at `CommandEnd` (or at
+                // the next prompt, for a command that emitted no end mark).
+                let mut block_parser: Option<vt100::Parser> = None;
                 loop {
                     match reader.read(&mut buf) {
                         // 0 = clean EOF; Err = the master closed (Linux returns
@@ -167,7 +186,15 @@ impl PtyEngine {
                             if let Ok(mut p) = screen_sink.lock() {
                                 let mut at = 0usize;
                                 for (off, ev) in &positioned {
-                                    p.process(&buf[at..*off]);
+                                    let seg = &buf[at..*off];
+                                    p.process(seg);
+                                    // Output bytes before this mark belong to the
+                                    // running command (the parser is `Some` only
+                                    // between its ExecStart and CommandEnd, so the
+                                    // prompt + echo segment is never captured).
+                                    if let Some(bp) = block_parser.as_mut() {
+                                        bp.process(seg);
+                                    }
                                     at = *off;
                                     match ev {
                                         VtEvent::ExecStart => {
@@ -175,20 +202,50 @@ impl PtyEngine {
                                             if let Ok(mut o) = output_start_sink.lock() {
                                                 *o = Some(p.screen().cursor_position().0);
                                             }
+                                            // A fresh, tall parser captures this
+                                            // command's output in full; cols match
+                                            // the screen so wrapping is identical.
+                                            let cols = p.screen().size().1;
+                                            block_parser = Some(vt100::Parser::new(
+                                                BLOCK_OUTPUT_ROWS,
+                                                cols,
+                                                0,
+                                            ));
                                         }
                                         VtEvent::CommandEnd { .. } => {
                                             running_sink.store(false, Ordering::Relaxed);
+                                            if let Some(bp) = block_parser.take() {
+                                                if let Ok(mut outs) = finished_sink.lock() {
+                                                    outs.push(trim_trailing_blank_rows(snapshot_of(
+                                                        &bp,
+                                                    )));
+                                                }
+                                            }
                                         }
                                         VtEvent::PromptStart => {
                                             running_sink.store(false, Ordering::Relaxed);
                                             if let Ok(mut o) = output_start_sink.lock() {
                                                 *o = None;
                                             }
+                                            // A command that reached the next prompt
+                                            // without an end mark still has its
+                                            // captured output preserved.
+                                            if let Some(bp) = block_parser.take() {
+                                                if let Ok(mut outs) = finished_sink.lock() {
+                                                    outs.push(trim_trailing_blank_rows(snapshot_of(
+                                                        &bp,
+                                                    )));
+                                                }
+                                            }
                                         }
                                         _ => {}
                                     }
                                 }
-                                p.process(&buf[at..n]);
+                                let tail = &buf[at..n];
+                                p.process(tail);
+                                if let Some(bp) = block_parser.as_mut() {
+                                    bp.process(tail);
+                                }
                             }
                             if !positioned.is_empty() {
                                 if let Ok(mut q) = sink.lock() {
@@ -208,8 +265,21 @@ impl PtyEngine {
             screen,
             running,
             output_start_row,
+            finished_outputs,
             reader: Some(reader_handle),
         })
+    }
+
+    /// Drain the captured output grids of commands that finished since the last
+    /// call, in finish order. The host attaches each to the matching block so the
+    /// block renders its own output (the grid-inside-the-block), decoupled from
+    /// the small live screen. Not part of the [`VtEngine`] seam: it is specific to
+    /// a parser-backed engine, and a mock has no output to capture.
+    pub fn take_finished_outputs(&self) -> Vec<GridSnapshot> {
+        self.finished_outputs
+            .lock()
+            .map(|mut v| std::mem::take(&mut *v))
+            .unwrap_or_default()
     }
 }
 
@@ -297,6 +367,23 @@ fn snapshot_of(parser: &vt100::Parser) -> GridSnapshot {
         running: false,
         output_start_row: None,
     }
+}
+
+/// Drop trailing all-blank rows from a captured snapshot so a block's stored
+/// output is the height of the real output, not the tall capture parser. Keeps
+/// at least one row (an empty-output command still has a body row), and updates
+/// `rows` to match. Used only for the per-command capture, never the live screen
+/// (whose trailing-row handling lives in the renderer).
+fn trim_trailing_blank_rows(mut snap: GridSnapshot) -> GridSnapshot {
+    let mut last = 0usize;
+    for (i, row) in snap.cells.iter().enumerate() {
+        if row.iter().any(|c| !c.text.trim().is_empty()) {
+            last = i;
+        }
+    }
+    snap.cells.truncate(last + 1);
+    snap.rows = snap.cells.len() as u16;
+    snap
 }
 
 /// Map a vt100 colour to the contract's [`CellColor`].
@@ -524,6 +611,61 @@ mod tests {
         }
         assert!(!snap.running, "CommandEnd (133;D) clears the running state");
         assert_eq!(snap.output_start_row, Some(1), "the output-start row persists past the end mark");
+    }
+
+    /// On-host (needs a PTY + `/bin/sh`): a command's output is captured into its
+    /// own block grid, in full, with the prompt and echoed command line excluded.
+    /// This is the "VT grid inside the block": the renderer paints a block's own
+    /// output rather than slicing the small shared live screen, so multi-line
+    /// output (neofetch, a build log) is preserved instead of truncated. The
+    /// scripted command emits three output lines between its marks; the capture
+    /// must hold exactly those lines and neither the prompt nor the echo.
+    /// `#[ignore]`d (needs a PTY); run with `--ignored`.
+    #[test]
+    #[ignore]
+    fn a_commands_output_is_captured_into_its_own_block_grid() {
+        let script = concat!(
+            "printf 'prompt$ ';",
+            "printf '\\033]133;A\\007';",   // prompt start
+            "printf 'mycmd\\r\\n';",        // echoed command (NOT output)
+            "printf '\\033]133;C\\007';",   // exec start
+            "printf 'line-one\\r\\n';",     // \
+            "printf 'line-two\\r\\n';",     //  > the command's output
+            "printf 'line-three\\r\\n';",   // /
+            "printf '\\033]133;D;0\\007';", // command end -> capture finalized
+            "sleep 5",
+        );
+        let eng = PtyEngine::spawn("/bin/sh", &["-c", script], None, 80, 24).unwrap();
+
+        let mut outputs = Vec::new();
+        for _ in 0..100 {
+            outputs.extend(eng.take_finished_outputs());
+            if !outputs.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(outputs.len(), 1, "one finished command was captured");
+        let grid = &outputs[0];
+        let lines: Vec<String> = grid
+            .cells
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .map(|c| c.text.as_str())
+                    .collect::<String>()
+                    .trim_end()
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(
+            lines,
+            vec!["line-one", "line-two", "line-three"],
+            "the block holds exactly the command output, trimmed, in order"
+        );
+        let joined = lines.join("\n");
+        assert!(!joined.contains("mycmd"), "the echoed command is excluded from the block output");
+        assert!(!joined.contains("prompt$"), "the prompt is excluded from the block output");
     }
 
     /// On-host (needs zsh + a PTY): the FULL mark loop. The engine mints the
