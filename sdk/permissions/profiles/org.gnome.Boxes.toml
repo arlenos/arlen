@@ -1,0 +1,12 @@
+# Starting permission profile for GNOME Boxes (a virtual-machine manager).
+# Downloads OS images over the network; VMs live in its own data dir (a launcher
+# grant). No Knowledge Graph access.
+[info]
+app_id = "org.gnome.Boxes"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

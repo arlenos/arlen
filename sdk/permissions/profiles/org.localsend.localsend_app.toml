@@ -1,0 +1,12 @@
+# Starting permission profile for LocalSend (local-network file transfer).
+# Transfers files over the local network by function and saves them to
+# Downloads. No Knowledge Graph access.
+[info]
+app_id = "org.localsend.localsend_app"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

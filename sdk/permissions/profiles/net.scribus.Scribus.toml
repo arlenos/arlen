@@ -1,0 +1,9 @@
+# Starting permission profile for Scribus (a desktop-publishing app).
+# Lays out documents with embedded images; no network by function. No graph.
+[info]
+app_id = "net.scribus.Scribus"
+tier = "third-party"
+
+[filesystem]
+documents = true
+pictures = true

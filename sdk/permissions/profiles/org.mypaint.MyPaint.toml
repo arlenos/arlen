@@ -1,0 +1,8 @@
+# Starting permission profile for MyPaint (a digital painting app).
+# Reads and writes images in Pictures; no network, no graph.
+[info]
+app_id = "org.mypaint.MyPaint"
+tier = "third-party"
+
+[filesystem]
+pictures = true
