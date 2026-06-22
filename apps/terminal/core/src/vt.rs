@@ -305,10 +305,23 @@ impl OscScanner {
     /// Feed a chunk of raw PTY bytes; return the marks found in it. Bytes that
     /// are not part of an OSC mark are ignored (the grid consumes them).
     pub fn feed(&mut self, bytes: &[u8]) -> Vec<VtEvent> {
+        self.feed_positioned(bytes)
+            .into_iter()
+            .map(|(_, ev)| ev)
+            .collect()
+    }
+
+    /// Like [`feed`](Self::feed), but each mark is paired with its end offset:
+    /// the index in `bytes` just PAST the mark's terminator. The engine processes
+    /// the screen up to that offset before sampling the cursor, so a mark that
+    /// shares a read buffer with the command output it precedes (133;C followed by
+    /// output in one chunk) still resolves the output-start row correctly instead
+    /// of sampling after the output has scrolled the cursor on.
+    pub fn feed_positioned(&mut self, bytes: &[u8]) -> Vec<(usize, VtEvent)> {
         const ESC: u8 = 0x1b;
         const BEL: u8 = 0x07;
         let mut events = Vec::new();
-        for &b in bytes {
+        for (i, &b) in bytes.iter().enumerate() {
             match self.state {
                 ScanState::Ground => {
                     if b == ESC {
@@ -318,7 +331,7 @@ impl OscScanner {
                 ScanState::Escape => self.dispatch_after_esc(b),
                 ScanState::Osc => match b {
                     BEL => {
-                        self.finish_osc(&mut events);
+                        self.finish_osc(i + 1, &mut events);
                     }
                     ESC => self.state = ScanState::OscEsc,
                     _ => self.push_osc(b),
@@ -326,7 +339,7 @@ impl OscScanner {
                 ScanState::OscEsc => {
                     if b == b'\\' {
                         // ST terminator (ESC \).
-                        self.finish_osc(&mut events);
+                        self.finish_osc(i + 1, &mut events);
                     } else {
                         // The OSC was aborted by a new escape; drop it and treat
                         // this byte as the one following a fresh ESC.
@@ -386,12 +399,13 @@ impl OscScanner {
     }
 
     /// Terminate the current OSC: parse it (unless it overflowed) and return to
-    /// Ground.
-    fn finish_osc(&mut self, events: &mut Vec<VtEvent>) {
+    /// Ground. `end` is the offset in the fed buffer just past the terminator, so
+    /// the caller can correlate the mark with a position in the byte stream.
+    fn finish_osc(&mut self, end: usize, events: &mut Vec<(usize, VtEvent)>) {
         if !self.overflowed {
             let payload = String::from_utf8_lossy(&self.buf);
             if let Some(ev) = parse_osc_mark(&payload, &self.nonce) {
-                events.push(ev);
+                events.push((end, ev));
             }
         }
         self.reset_buf();
@@ -546,6 +560,28 @@ mod tests {
         input.extend_from_slice(b"]133;A\x07");
         input.extend_from_slice(b"$ ");
         assert_eq!(sc.feed(&input), vec![VtEvent::PromptStart]);
+    }
+
+    #[test]
+    fn feed_positioned_reports_the_offset_just_past_a_mark() {
+        // The engine processes the screen up to a mark's offset before sampling
+        // the cursor, so the offset must land exactly after the terminator and
+        // before any output that shares the buffer. Build prefix + mark + output
+        // in one chunk and assert the offset splits them.
+        let mut sc = OscScanner::new(NONCE);
+        let prefix = b"mycmd\r\n";
+        let mark = b"\x1b]133;C\x07"; // exec start, BEL-terminated
+        let output = b"OUTPUT\r\n";
+        let mut input = prefix.to_vec();
+        input.extend_from_slice(mark);
+        input.extend_from_slice(output);
+
+        let got = sc.feed_positioned(&input);
+        assert_eq!(got.len(), 1, "exactly the one exec-start mark");
+        let (off, ev) = &got[0];
+        assert_eq!(*ev, VtEvent::ExecStart);
+        assert_eq!(*off, prefix.len() + mark.len(), "offset is just past the terminator");
+        assert_eq!(&input[*off..], output, "the bytes after the offset are the output, not the mark");
     }
 
     #[test]
