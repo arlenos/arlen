@@ -1,0 +1,11 @@
+# Serialize the knowledge crate's tests: several open a real lbug/Ladybug graph
+# instance and race when run concurrently (the documented project-store flake),
+# so they run one at a time across all test binaries. Lets `cargo mutants
+# --test-tool=nextest` get a stable baseline.
+
+[test-groups]
+serial = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = 'package(knowledge)'
+test-group = 'serial'
