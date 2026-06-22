@@ -1,0 +1,9 @@
+# Starting permission profile for Workbench (a GNOME code-snippet sandbox).
+# Saves and loads project snippets in Documents; no network by function. No
+# Knowledge Graph access.
+[info]
+app_id = "re.sonny.Workbench"
+tier = "third-party"
+
+[filesystem]
+documents = true

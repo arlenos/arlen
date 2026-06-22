@@ -1,0 +1,11 @@
+# Starting permission profile for Kasts (a podcast player).
+# Fetches and downloads episodes over the network; plays from Music. No graph.
+[info]
+app_id = "org.kde.kasts"
+tier = "third-party"
+
+[filesystem]
+music = true
+
+[network]
+allow_all = true

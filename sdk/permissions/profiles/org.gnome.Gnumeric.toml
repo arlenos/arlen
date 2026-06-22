@@ -1,0 +1,8 @@
+# Starting permission profile for Gnumeric (a spreadsheet).
+# Edits documents; no network by function. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.Gnumeric"
+tier = "third-party"
+
+[filesystem]
+documents = true

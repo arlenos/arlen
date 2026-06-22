@@ -1,0 +1,6 @@
+# Starting permission profile for EasyEffects (a PipeWire audio-effects app).
+# Processes the audio stream; needs no filesystem, network, or Knowledge Graph
+# access.
+[info]
+app_id = "com.github.wwmm.easyeffects"
+tier = "third-party"

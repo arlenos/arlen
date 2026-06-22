@@ -1,0 +1,6 @@
+# Starting permission profile for Warehouse (a Flatpak manager).
+# Manages Flatpak apps/data through the portal/its own data; needs no broad
+# filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "io.github.flattool.Warehouse"
+tier = "third-party"

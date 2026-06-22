@@ -1,0 +1,11 @@
+# Starting permission profile for Fragments (a BitTorrent client).
+# Transfers over the network by function and saves to Downloads. No graph.
+[info]
+app_id = "de.haeckerfelix.Fragments"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
