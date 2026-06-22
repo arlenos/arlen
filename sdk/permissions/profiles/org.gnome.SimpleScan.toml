@@ -1,0 +1,9 @@
+# Starting permission profile for Simple Scan (document scanner). Saves scanned
+# documents to Documents; no network, no graph. Scanner hardware access is a
+# launcher/portal grant, not a filesystem one.
+[info]
+app_id = "org.gnome.SimpleScan"
+tier = "third-party"
+
+[filesystem]
+documents = true
