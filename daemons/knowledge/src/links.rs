@@ -7,10 +7,12 @@
 //!
 //! Pure and content-in: it takes the already-read content as a string, performs
 //! no file I/O, and only ever returns resolved PATHS (never content), so it adds
-//! no hard-exclude surface of its own. The eventual promotion trigger that reads
-//! a document's content must honour the hard-exclude invariant (never read a
-//! secret/credential file); that wiring is the deferred step. Lives behind
-//! `allow(dead_code)` until then (mechanism before trigger).
+//! no hard-exclude surface of its own. The promotion trigger
+//! (`promotion::link_markdown_document`) reads a promoted markdown document's
+//! content, extracts links, and persists `LINKS_TO` edges to already-observed
+//! Files; a private/incognito session is excluded upstream before promotion.
+//! `allow(dead_code)` is kept because this module also compiles in the lib tree,
+//! which has no promotion consumer.
 #![allow(dead_code)]
 
 use crate::graph::GraphHandle;

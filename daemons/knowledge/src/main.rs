@@ -22,6 +22,7 @@ mod graph;
 mod identity;
 mod lcg;
 mod lifecycle;
+mod links;
 mod migration;
 mod permission;
 mod project;

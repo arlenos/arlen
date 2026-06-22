@@ -12,7 +12,7 @@ use prost::Message;
 use sqlx::SqlitePool;
 use std::time::Duration;
 use tokio::time;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// Fixed UUIDv5 namespace for deriving deterministic annotation ids
 /// from the `(target_type, target_id, namespace)` triple. The exact
@@ -375,7 +375,55 @@ async fn promote_file_opened(
         link_co_accessed(graph, &path, &session_esc, timestamp).await?;
     }
 
+    // Cross-content links (KG-richness Thrust 3c): if this is a markdown/wiki
+    // document, record LINKS_TO edges to the target Files its `[text](path)` /
+    // `[[wikilink]]` references resolve to. Stores only the link STRUCTURE, never
+    // the document content, and mints no speculative node (links only to Files
+    // already observed). Best-effort: a read or write hiccup never fails the file
+    // promotion. A private/incognito session is excluded upstream before
+    // promotion, like every other event.
+    if let Err(e) = link_markdown_document(graph, &path).await {
+        warn!(path = %path, error = %e, "markdown link extraction failed (non-fatal)");
+    }
+
     debug!(event_id, path = %file_payload.path, "promoted file.opened");
+    Ok(())
+}
+
+/// The file extensions treated as link-bearing markdown documents for Thrust-3c
+/// cross-content extraction. A non-matching file is never read.
+const MARKDOWN_EXTENSIONS: [&str; 4] = ["md", "markdown", "mdown", "mkd"];
+
+/// Record a promoted markdown document's outbound links as `LINKS_TO` edges
+/// (KG-richness Thrust 3c). Only markdown/wiki documents are read; the content
+/// is parsed for links and then dropped (never stored), and an edge is created
+/// only to a File the graph has already observed (no speculative node). A
+/// non-markdown path, a synthetic `unknown:` id, or an unreadable file links
+/// nothing.
+async fn link_markdown_document(graph: &GraphHandle, path: &str) -> Result<()> {
+    let is_markdown = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| MARKDOWN_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+        .unwrap_or(false);
+    if !is_markdown {
+        return Ok(());
+    }
+    // The File node id is the on-disk path; only a real file can be read (the
+    // synthetic `unknown:` fallback and any unreadable file simply link nothing).
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return Ok(()),
+    };
+    let base_dir = std::path::Path::new(path)
+        .parent()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let targets = crate::links::extract_markdown_links(&content, &base_dir);
+    if targets.is_empty() {
+        return Ok(());
+    }
+    crate::links::persist_document_links(graph, path, &targets).await?;
     Ok(())
 }
 
@@ -2062,6 +2110,58 @@ mod project_tests {
             .unwrap();
 
         store.link_file(path, project_id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_promoted_markdown_file_links_to_an_observed_target() {
+        let (graph, _store, tmp) = setup().await;
+        let dir = tmp.path().to_str().unwrap();
+        let source = format!("{dir}/a.md");
+        let target = format!("{dir}/b.md");
+        // The source doc on disk references b.md by a relative markdown link.
+        std::fs::write(&source, "intro\n\nsee [the notes](b.md) for more\n").unwrap();
+        // Both Files are observed (promote_file_opened created their nodes); the
+        // edge is created only because the target File already exists.
+        create_file_node(&graph, &source).await;
+        create_file_node(&graph, &target).await;
+
+        link_markdown_document(&graph, &source).await.unwrap();
+
+        let rs = graph
+            .query_rows(format!(
+                "MATCH (:File {{id: '{}'}})-[:LINKS_TO]->(:File {{id: '{}'}}) RETURN count(*) AS c",
+                escape_cypher(&source),
+                escape_cypher(&target),
+            ))
+            .await
+            .unwrap();
+        let c = rs.rows.first().and_then(|r| r.first()).map(|v| v.as_i64()).unwrap_or(0);
+        assert_eq!(c, 1, "the markdown link creates a LINKS_TO edge to the observed target");
+    }
+
+    #[tokio::test]
+    async fn a_non_markdown_file_is_not_read_for_links() {
+        let (graph, _store, tmp) = setup().await;
+        let dir = tmp.path().to_str().unwrap();
+        let source = format!("{dir}/a.rs");
+        let target = format!("{dir}/b.md");
+        // A non-markdown file is never read for links, even if its text happens
+        // to contain a markdown-link form.
+        std::fs::write(&source, "// see [x](b.md)\n").unwrap();
+        create_file_node(&graph, &source).await;
+        create_file_node(&graph, &target).await;
+
+        link_markdown_document(&graph, &source).await.unwrap();
+
+        let rs = graph
+            .query_rows(format!(
+                "MATCH (:File {{id: '{}'}})-[:LINKS_TO]->() RETURN count(*) AS c",
+                escape_cypher(&source),
+            ))
+            .await
+            .unwrap();
+        let c = rs.rows.first().and_then(|r| r.first()).map(|v| v.as_i64()).unwrap_or(0);
+        assert_eq!(c, 0, "a non-markdown file yields no LINKS_TO edge");
     }
 
     #[tokio::test]
