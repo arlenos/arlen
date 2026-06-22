@@ -5,6 +5,10 @@ edition = "2021"
 description = "Arlen AI engine daemon: supervises the swappable agent engine (pi) behind the engine-neutral contract, authenticates it via SO_PEERCRED + a daemon-minted session token, and bounds every action to the session grant server-side"
 authors = ["Arlen"]
 
+[[bin]]
+name = "arlen-ai-engine-daemon"
+path = "src/main.rs"
+
 [lib]
 name = "arlen_ai_engine_daemon"
 
@@ -15,12 +19,20 @@ ai-engine-contract = { path = "../../contracts/ai-engine-contract" }
 getrandom = "0.2"
 async-trait = "0.1"
 serde_json = "1"
-tokio = { version = "1", features = ["macros", "rt", "io-util", "net", "sync"] }
+arlen-permissions = { path = "../../sdk/permissions" }
+libc = "0.2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util", "net", "sync", "signal"] }
 
 
 
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt", "io-util", "net", "sync"] }
+arlen-permissions = { path = "../../sdk/permissions" }
+libc = "0.2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util", "net", "sync", "signal"] }
 
 [workspace]

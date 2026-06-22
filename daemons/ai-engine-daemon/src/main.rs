@@ -1,0 +1,99 @@
+//! The Arlen AI engine daemon binary (`pi-agent-adoption.md` Phase 0).
+//!
+//! Binds the contract Unix socket (0600), and for each connection authenticates
+//! the peer with SO_PEERCRED via `ConnectionAuth` (cross-uid rejected), then
+//! serves the five-verb contract through the session-bound dispatcher with the
+//! attested pid. Built BESIDE the existing ai-daemon/ai-agent; nothing here
+//! touches them. The gate/executor/reporter are Phase-0 fail-closed placeholders
+//! (Phase 1 re-points them to the real Rust); the pi-sidecar supervisor + the
+//! SessionInit/token handshake are the next slice.
+
+use arlen_ai_engine_daemon::dispatch::Dispatcher;
+use arlen_ai_engine_daemon::placeholder::{BlockReporter, DenyGate, UnavailableExecutor};
+use arlen_ai_engine_daemon::wire::serve_connection;
+use arlen_permissions::connection_auth::ConnectionAuth;
+use std::os::unix::fs::PermissionsExt;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::net::UnixListener;
+use tracing::{error, info, warn};
+
+/// The contract socket path: `$XDG_RUNTIME_DIR/arlen/ai-engine.sock`, falling
+/// back to `/run/user/<uid>/arlen/...` when the env var is unset.
+fn socket_path() -> PathBuf {
+    let base = std::env::var("XDG_RUNTIME_DIR")
+        .unwrap_or_else(|_| format!("/run/user/{}", current_uid()));
+    PathBuf::from(base).join("arlen").join("ai-engine.sock")
+}
+
+/// The uid the daemon runs as; cross-uid IPC is rejected by `ConnectionAuth`.
+fn current_uid() -> u32 {
+    // SAFETY: getuid is always safe; it reads the real uid and never fails.
+    unsafe { libc::getuid() }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+
+    let path = socket_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    // Replace a stale socket left by an unclean exit.
+    let _ = std::fs::remove_file(&path);
+    let listener = UnixListener::bind(&path)?;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    let uid = current_uid();
+    info!(socket = %path.display(), "ai-engine-daemon listening (Phase 0: placeholder seams)");
+
+    // The dispatcher is shared across connection tasks. Phase 1 swaps the
+    // placeholder seams for Capability::decide / the trusted runner / the
+    // audit+screening reporter without touching the routing.
+    let dispatcher = Arc::new(Dispatcher::new(DenyGate, UnavailableExecutor, BlockReporter));
+
+    let accept = async {
+        loop {
+            match listener.accept().await {
+                Ok((stream, _)) => {
+                    // Authenticate the peer from the kernel (SO_PEERCRED), never
+                    // a wire value; cross-uid is rejected, and the attested pid
+                    // is what binds every verb to its session.
+                    let auth = match ConnectionAuth::extract_from(&stream, uid) {
+                        Ok(a) => a,
+                        Err(e) => {
+                            warn!(error = %e, "rejecting unauthenticated engine connection");
+                            continue;
+                        }
+                    };
+                    let pid = auth.pid();
+                    let disp = Arc::clone(&dispatcher);
+                    tokio::spawn(async move {
+                        let mut stream = stream;
+                        if let Err(e) = serve_connection(&mut stream, &disp, pid).await {
+                            warn!(pid, error = %e, "engine connection ended with an error");
+                        }
+                    });
+                }
+                Err(e) => warn!(error = %e, "accept failed"),
+            }
+        }
+    };
+
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    tokio::select! {
+        _ = accept => {}
+        _ = tokio::signal::ctrl_c() => info!("SIGINT, shutting down"),
+        _ = sigterm.recv() => info!("SIGTERM, shutting down"),
+    }
+
+    if let Err(e) = std::fs::remove_file(&path) {
+        error!(error = %e, "failed to remove the contract socket on shutdown");
+    }
+    Ok(())
+}
