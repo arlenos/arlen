@@ -358,6 +358,55 @@ mod tests {
         );
     }
 
+    /// On-host (needs a PTY + `/bin/sh`): the LIVE alternate-screen path end to
+    /// end. A real program enters the alternate screen (DECSET 1049) and writes a
+    /// marker, then stays alive; the engine's reader thread must feed that byte
+    /// stream into the screen model so `screen_snapshot()` reports `alt_screen`
+    /// AND the alt-screen content. This is the seam the frontend's fullscreen
+    /// mode-switch depends on (a TUI like btop owns the whole grid): it proves the
+    /// flag + content reach the snapshot off a real PTY, not only a synthetic
+    /// parser. `#[ignore]`d (needs a usable PTY); run with `--ignored`.
+    #[test]
+    #[ignore]
+    fn the_live_pty_path_carries_alt_screen_and_its_content() {
+        // Enter the alternate screen, paint a marker, and hold the screen open so
+        // the snapshot is taken while the app still owns the alt screen (exiting
+        // would restore the primary screen and drop the marker).
+        let eng = PtyEngine::spawn(
+            "/bin/sh",
+            &["-c", "printf '\\033[?1049hALTHELLO'; sleep 5"],
+            None,
+            80,
+            24,
+        )
+        .unwrap();
+
+        let mut snap = eng.screen_snapshot();
+        for _ in 0..100 {
+            snap = eng.screen_snapshot();
+            if snap.alt_screen
+                && snap
+                    .cells
+                    .iter()
+                    .any(|row| row.iter().map(|c| c.text.as_str()).collect::<String>().contains("ALTHELLO"))
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(snap.alt_screen, "the live PTY path flags the alternate screen");
+        let text: String = snap
+            .cells
+            .iter()
+            .map(|row| row.iter().map(|c| c.text.as_str()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            text.contains("ALTHELLO"),
+            "alt-screen content reaches the snapshot off a real PTY, got:\n{text}"
+        );
+    }
+
     /// On-host (needs zsh + a PTY): the FULL mark loop. The engine mints the
     /// nonce and exports it; the TM-R3 integration script (sourced in the spawned
     /// zsh) reads it, escapes a command line containing a `;`, and emits the
