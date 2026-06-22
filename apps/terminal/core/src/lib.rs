@@ -120,6 +120,18 @@ pub struct GridSnapshot {
     pub cursor_row: u16,
     /// Cursor column (0-based).
     pub cursor_col: u16,
+    /// Whether a command is running: its `ExecStart` (OSC 133;C) mark has been
+    /// seen and its `CommandEnd` (133;D) has not. The renderer uses this to tell
+    /// an in-flight command's output region apart from an idle prompt, so the
+    /// shell's own prompt is never painted on top of the block-model composer
+    /// (the double-prompt). Derived from the OSC marks, not the screen contents.
+    pub running: bool,
+    /// The grid row (0-based) where the running command's output begins: the
+    /// cursor row captured when its `ExecStart` mark fired, just past the prompt
+    /// and the echoed command line. `None` at an idle prompt (no command). The
+    /// renderer slices the live grid from here down so the prompt and command
+    /// echo rows the shell drew are excluded (the composer is the prompt).
+    pub output_start_row: Option<u16>,
 }
 
 /// The git state of a block's working directory, when it is a repository.

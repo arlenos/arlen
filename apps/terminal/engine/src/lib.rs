@@ -14,6 +14,7 @@
 //! scanner, and drive input/resize. That is complete and testable on its own.
 
 use std::io::{Read, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
@@ -55,6 +56,16 @@ pub struct PtyEngine {
     /// reads. The host snapshots it ([`PtyEngine::screen_snapshot`]) to render
     /// output in the webview (terminal.md Option B).
     screen: Arc<Mutex<vt100::Parser>>,
+    /// Whether a command is running (its `ExecStart` mark seen, `CommandEnd` not
+    /// yet). Tracked from the same OSC-mark stream the scanner lifts, so the
+    /// snapshot can tell an in-flight command from an idle prompt without the
+    /// host's assembler. Set in the reader thread, read in `screen_snapshot`.
+    running: Arc<AtomicBool>,
+    /// The grid row where the running command's output begins: the cursor row at
+    /// the moment its `ExecStart` mark fired (past the prompt and command echo).
+    /// `None` at an idle prompt. Lets the renderer slice the live grid to the
+    /// output region so the shell's prompt is not drawn under the composer.
+    output_start_row: Arc<Mutex<Option<u16>>>,
     reader: Option<JoinHandle<()>>,
 }
 
@@ -128,6 +139,10 @@ impl PtyEngine {
         // is what shows); scrollback is a later addition.
         let screen = Arc::new(Mutex::new(vt100::Parser::new(rows, cols, 0)));
         let screen_sink = Arc::clone(&screen);
+        let running = Arc::new(AtomicBool::new(false));
+        let running_sink = Arc::clone(&running);
+        let output_start_row = Arc::new(Mutex::new(None));
+        let output_start_sink = Arc::clone(&output_start_row);
         let reader_handle = std::thread::Builder::new()
             .name("arlen-pty-reader".into())
             .spawn(move || {
@@ -139,13 +154,45 @@ impl PtyEngine {
                         // EIO when the slave goes away). Either ends the loop.
                         Ok(0) | Err(_) => break,
                         Ok(n) => {
+                            // Process the screen in segments split at each OSC
+                            // mark, so the command-output region is resolved
+                            // precisely even when a mark shares a read buffer with
+                            // the output it precedes. `ExecStart` captures the
+                            // cursor row at that point (output begins there, past
+                            // the prompt + echoed command); `PromptStart` clears it
+                            // (idle); `CommandEnd` ends the run. Sampling between
+                            // segments means the cursor reflects bytes up to the
+                            // mark, never the not-yet-processed output after it.
+                            let positioned = scanner.feed_positioned(&buf[..n]);
                             if let Ok(mut p) = screen_sink.lock() {
-                                p.process(&buf[..n]);
+                                let mut at = 0usize;
+                                for (off, ev) in &positioned {
+                                    p.process(&buf[at..*off]);
+                                    at = *off;
+                                    match ev {
+                                        VtEvent::ExecStart => {
+                                            running_sink.store(true, Ordering::Relaxed);
+                                            if let Ok(mut o) = output_start_sink.lock() {
+                                                *o = Some(p.screen().cursor_position().0);
+                                            }
+                                        }
+                                        VtEvent::CommandEnd { .. } => {
+                                            running_sink.store(false, Ordering::Relaxed);
+                                        }
+                                        VtEvent::PromptStart => {
+                                            running_sink.store(false, Ordering::Relaxed);
+                                            if let Ok(mut o) = output_start_sink.lock() {
+                                                *o = None;
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                p.process(&buf[at..n]);
                             }
-                            let evs = scanner.feed(&buf[..n]);
-                            if !evs.is_empty() {
+                            if !positioned.is_empty() {
                                 if let Ok(mut q) = sink.lock() {
-                                    q.extend(evs);
+                                    q.extend(positioned.into_iter().map(|(_, ev)| ev));
                                 }
                             }
                         }
@@ -159,6 +206,8 @@ impl PtyEngine {
             child,
             events,
             screen,
+            running,
+            output_start_row,
             reader: Some(reader_handle),
         })
     }
@@ -194,10 +243,16 @@ impl VtEngine for PtyEngine {
     }
 
     fn screen_snapshot(&self) -> GridSnapshot {
-        self.screen
+        let mut snap = self
+            .screen
             .lock()
             .map(|p| snapshot_of(&p))
-            .unwrap_or_default()
+            .unwrap_or_default();
+        // Overlay the mark-derived command-output region the free `snapshot_of`
+        // cannot know (it sees only the screen, not the OSC-mark stream).
+        snap.running = self.running.load(Ordering::Relaxed);
+        snap.output_start_row = self.output_start_row.lock().ok().and_then(|o| *o);
+        snap
     }
 }
 
@@ -237,6 +292,10 @@ fn snapshot_of(parser: &vt100::Parser) -> GridSnapshot {
         alt_screen: screen.alternate_screen(),
         cursor_row,
         cursor_col,
+        // The free fn sees only the screen; the engine overlays the mark-derived
+        // command-output region in `screen_snapshot`.
+        running: false,
+        output_start_row: None,
     }
 }
 
@@ -405,6 +464,66 @@ mod tests {
             text.contains("ALTHELLO"),
             "alt-screen content reaches the snapshot off a real PTY, got:\n{text}"
         );
+    }
+
+    /// On-host (needs a PTY + `/bin/sh`): the engine resolves the command-output
+    /// REGION from the OSC marks, which is what lets the renderer paint only a
+    /// command's output and never the shell's own prompt (the double-prompt). A
+    /// scripted sequence draws a prompt at row 0, marks the prompt (133;A), echoes
+    /// the command (cursor to row 1), marks exec-start (133;C), prints output, and
+    /// pauses on `read` so each phase is a stable steady state the test observes by
+    /// driving the PTY. Asserts: while running, `output_start_row` is row 1 (PAST
+    /// the row-0 prompt + echo, so the prompt is excluded) and `running` is true;
+    /// after the 133;D end mark, `running` is false. `#[ignore]`d (needs a PTY);
+    /// run with `--ignored`.
+    #[test]
+    #[ignore]
+    fn the_live_pty_path_tracks_the_command_output_region() {
+        // `read` pauses gate the phases (released by send_input), so the snapshot
+        // is read in a known steady state rather than racing the byte stream.
+        let script = concat!(
+            "printf 'prompt$ ';",
+            "printf '\\033]133;A\\007';", // prompt start -> output_start_row = None
+            "printf 'mycmd\\r\\n';",      // echoed command -> cursor to row 1
+            "printf '\\033]133;C\\007';", // exec start -> output_start_row = 1, running
+            "printf 'OUT\\r\\n';",        // command output
+            "read x;",                    // PHASE 1: running, output_start_row = 1
+            "printf '\\033]133;D;0\\007';", // command end -> running = false
+            "read y",                     // PHASE 2: not running, output_start_row = 1
+        );
+        let mut eng = PtyEngine::spawn("/bin/sh", &["-c", script], None, 80, 24).unwrap();
+
+        // PHASE 1: the command is "running"; output starts at row 1, past the
+        // row-0 prompt and the echoed command line.
+        let mut snap = eng.screen_snapshot();
+        for _ in 0..100 {
+            snap = eng.screen_snapshot();
+            if snap.running {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(snap.running, "ExecStart (133;C) marks the command as running");
+        assert_eq!(
+            snap.output_start_row,
+            Some(1),
+            "output begins at row 1, excluding the row-0 prompt + echoed command"
+        );
+
+        // Release the first `read`, advancing past the 133;D end mark.
+        eng.send_input(b"\n").unwrap();
+
+        // PHASE 2: the end mark cleared the running state; the output-start row
+        // stays put (only a new prompt clears it).
+        for _ in 0..100 {
+            snap = eng.screen_snapshot();
+            if !snap.running {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(!snap.running, "CommandEnd (133;D) clears the running state");
+        assert_eq!(snap.output_start_row, Some(1), "the output-start row persists past the end mark");
     }
 
     /// On-host (needs zsh + a PTY): the FULL mark loop. The engine mints the
