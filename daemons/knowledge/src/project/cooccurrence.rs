@@ -13,6 +13,7 @@
 //! until that pass wires it (mechanism before trigger).
 #![allow(dead_code)]
 
+use crate::graph::GraphHandle;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 /// One observed file access, tagged with the session it happened in. The
@@ -160,6 +161,49 @@ pub fn cluster_cooccurrence(accesses: &[FileAccess], params: ClusterParams) -> V
     clusters
 }
 
+/// Read every (file, session) access pair from the graph's `ACCESSED_IN` edges.
+///
+/// This is the co-occurrence input the pure [`cluster_cooccurrence`] consumes: a
+/// file linked to each session it was accessed in. Reads only ids (no content),
+/// so it carries no hard-exclude surface; private/incognito sessions never
+/// produced an `ACCESSED_IN` edge in the first place (excluded upstream at
+/// promotion). Rows missing either id are skipped.
+pub async fn collect_file_accesses(graph: &GraphHandle) -> anyhow::Result<Vec<FileAccess>> {
+    let rs = graph
+        .query_rows(
+            "MATCH (f:File)-[:ACCESSED_IN]->(s:Session) RETURN f.id AS file, s.id AS session"
+                .into(),
+        )
+        .await?;
+    let mut out = Vec::with_capacity(rs.rows.len());
+    for row in &rs.rows {
+        let file = row.first().map(|v| v.as_str()).unwrap_or_default();
+        let session = row.get(1).map(|v| v.as_str()).unwrap_or_default();
+        if !file.is_empty() && !session.is_empty() {
+            out.push(FileAccess {
+                file_id: file.to_string(),
+                session_id: session.to_string(),
+            });
+        }
+    }
+    Ok(out)
+}
+
+/// Infer candidate project clusters from the graph's access history (foundation
+/// §4.2). Reads the cross-session access pattern from `ACCESSED_IN` and runs the
+/// deterministic [`cluster_cooccurrence`]. The materialisation of these
+/// candidates into inferred `Project` nodes is the next step (it must derive a
+/// root from the cluster's common path prefix and dedup against files already in
+/// a project, so it does not collide with the signal-detected projects the
+/// watcher mints).
+pub async fn infer_clusters(
+    graph: &GraphHandle,
+    params: ClusterParams,
+) -> anyhow::Result<Vec<CandidateCluster>> {
+    let accesses = collect_file_accesses(graph).await?;
+    Ok(cluster_cooccurrence(&accesses, params))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,5 +314,37 @@ mod tests {
         ];
         let clusters = cluster_cooccurrence(&accesses, ClusterParams { min_cooccurrence: 2, min_cluster_size: 2 });
         assert!(clusters.is_empty());
+    }
+
+    /// The graph bridge: ACCESSED_IN edges drive the clustering end to end. Three
+    /// files linked to two shared sessions cluster; an unrelated file does not.
+    #[tokio::test]
+    async fn infer_clusters_reads_accessed_in_from_the_graph() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
+
+        // a, b, c each accessed in s1 and s2; z only in s3.
+        for (file, sess) in [
+            ("a", "s1"), ("b", "s1"), ("c", "s1"),
+            ("a", "s2"), ("b", "s2"), ("c", "s2"),
+            ("z", "s3"),
+        ] {
+            graph.write(format!("MERGE (f:File {{id: '{file}'}})")).await.unwrap();
+            graph.write(format!("MERGE (s:Session {{id: '{sess}'}})")).await.unwrap();
+            graph
+                .write(format!(
+                    "MATCH (f:File {{id: '{file}'}}), (s:Session {{id: '{sess}'}}) \
+                     MERGE (f)-[:ACCESSED_IN]->(s)"
+                ))
+                .await
+                .unwrap();
+        }
+
+        let accesses = collect_file_accesses(&graph).await.unwrap();
+        assert_eq!(accesses.len(), 7, "every ACCESSED_IN edge is read back");
+
+        let clusters = infer_clusters(&graph, ClusterParams::default()).await.unwrap();
+        assert_eq!(clusters.len(), 1, "the repeated trio clusters, z does not");
+        assert_eq!(clusters[0].files, vec!["a", "b", "c"]);
     }
 }
