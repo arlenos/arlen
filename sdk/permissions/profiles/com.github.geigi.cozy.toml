@@ -1,0 +1,9 @@
+# Starting permission profile for Cozy (an audiobook player).
+# Plays the local audiobook library from Music; no network by function. No
+# Knowledge Graph access.
+[info]
+app_id = "com.github.geigi.cozy"
+tier = "third-party"
+
+[filesystem]
+music = true

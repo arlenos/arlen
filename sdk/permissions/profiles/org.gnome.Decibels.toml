@@ -1,0 +1,8 @@
+# Starting permission profile for Decibels (an audio player).
+# Plays local audio from Music; no network by function. No graph.
+[info]
+app_id = "org.gnome.Decibels"
+tier = "third-party"
+
+[filesystem]
+music = true
