@@ -1,0 +1,5 @@
+# Starting permission profile for Break Timer (a break reminder).
+# It tracks idle time and shows reminders locally. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.BreakTimer"
+tier = "third-party"

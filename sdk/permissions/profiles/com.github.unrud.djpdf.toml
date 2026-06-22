@@ -1,0 +1,8 @@
+# Starting permission profile for djpdf (a scanned-PDF compressor).
+# It compresses PDF documents the user opens by function, so it gets Documents and no network. No Knowledge Graph access.
+[info]
+app_id = "com.github.unrud.djpdf"
+tier = "third-party"
+
+[filesystem]
+documents = true

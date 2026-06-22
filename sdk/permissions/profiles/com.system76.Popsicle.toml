@@ -1,0 +1,8 @@
+# Starting permission profile for Popsicle (a USB image flasher).
+# It reads a disk image to flash to USB by function, so it gets Downloads (where images are saved) and no network; the device write is mediated by a privileged helper. No Knowledge Graph access.
+[info]
+app_id = "com.system76.Popsicle"
+tier = "third-party"
+
+[filesystem]
+downloads = true

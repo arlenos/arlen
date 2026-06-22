@@ -1,0 +1,5 @@
+# Starting permission profile for Notejot (a notes app).
+# Notes are kept in the app's own storage. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "io.github.lainsce.Notejot"
+tier = "third-party"
