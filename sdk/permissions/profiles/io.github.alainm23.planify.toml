@@ -1,0 +1,7 @@
+# Starting permission profile for Planify (a to-do / task manager).
+# Tasks are kept locally by function, so it gets no network and no media dirs;
+# sync backends (Todoist/Nextcloud/CalDAV) are opt-in and refined by observe-mode
+# rather than a blanket network grant here. No Knowledge Graph access.
+[info]
+app_id = "io.github.alainm23.planify"
+tier = "third-party"

@@ -1,0 +1,13 @@
+# Starting permission profile for Nicotine+ (a Soulseek peer-to-peer client).
+# Its function is networked file sharing, so it gets network and Downloads
+# (where received files land). A specific shared directory is opt-in config,
+# refined by observe-mode rather than a blanket home grant. No graph.
+[info]
+app_id = "org.nicotine_plus.Nicotine"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
