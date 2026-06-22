@@ -13,6 +13,9 @@
 //! `allow(dead_code)` until then (mechanism before trigger).
 #![allow(dead_code)]
 
+use crate::graph::GraphHandle;
+use crate::utils::escape_cypher;
+use anyhow::Result;
 use std::collections::BTreeSet;
 
 /// URL schemes (and the anchor marker) whose targets are NOT local files, so
@@ -40,6 +43,49 @@ pub fn extract_markdown_links(content: &str, base_dir: &str) -> Vec<String> {
         }
     }
     out.into_iter().collect()
+}
+
+/// Persist a document's outbound links as `LINKS_TO` edges (KG-richness Thrust
+/// 3c). Takes the source document's File path and the already-resolved target
+/// paths (from [`extract_markdown_links`]); creates a `LINKS_TO` edge from the
+/// source File to each target File that ALREADY EXISTS in the graph (an edge is
+/// never created to an unobserved file, so no speculative/dangling File node is
+/// minted). A self-link is skipped. Idempotent (MERGE), so re-promoting the same
+/// document adds no duplicates. Returns the number of edges that now exist for
+/// the given targets. The source File is assumed already present (it is the
+/// document being promoted); a missing source simply links nothing.
+pub async fn persist_document_links(
+    graph: &GraphHandle,
+    source_path: &str,
+    targets: &[String],
+) -> Result<usize> {
+    let src = escape_cypher(source_path);
+    let mut linked = 0;
+    for target in targets {
+        if target == source_path {
+            continue;
+        }
+        let dst = escape_cypher(target);
+        // Both endpoints must already exist; MATCH yields no rows for an
+        // unobserved target, so MERGE runs only when the target File is real.
+        graph
+            .write(format!(
+                "MATCH (s:File {{id: '{src}'}}), (t:File {{id: '{dst}'}})
+                 MERGE (s)-[:LINKS_TO]->(t)"
+            ))
+            .await?;
+        // Confirm the edge exists (it does iff the target File existed).
+        let rs = graph
+            .query_rows(format!(
+                "MATCH (:File {{id: '{src}'}})-[:LINKS_TO]->(:File {{id: '{dst}'}}) \
+                 RETURN count(*) AS c"
+            ))
+            .await?;
+        if rs.rows.first().and_then(|r| r.first()).map(|v| v.as_i64()).unwrap_or(0) > 0 {
+            linked += 1;
+        }
+    }
+    Ok(linked)
 }
 
 /// The raw, unresolved target strings, in document order (deduped + resolved by
@@ -191,5 +237,47 @@ mod tests {
     #[test]
     fn unterminated_forms_do_not_panic_or_match() {
         assert!(extract_markdown_links("[[unterminated and ](also", "/p").is_empty());
+    }
+
+    /// LINKS_TO edges are created only to files that already exist, never to an
+    /// unobserved target, are idempotent, and skip a self-link.
+    #[tokio::test]
+    async fn persist_links_only_to_existing_files_idempotently() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
+        for id in ["/d/a.md", "/d/b.md", "/d/c.md"] {
+            graph.write(format!("MERGE (f:File {{id: '{id}'}})")).await.unwrap();
+        }
+        // a links to b (exists), c (exists), z (does NOT exist), and itself.
+        let targets = vec![
+            "/d/b.md".to_string(),
+            "/d/c.md".to_string(),
+            "/d/z.md".to_string(),
+            "/d/a.md".to_string(),
+        ];
+        let n = persist_document_links(&graph, "/d/a.md", &targets).await.unwrap();
+        assert_eq!(n, 2, "only the two existing non-self targets link");
+
+        let count = graph
+            .query_rows("MATCH (:File {id:'/d/a.md'})-[:LINKS_TO]->() RETURN count(*) AS c".into())
+            .await
+            .unwrap();
+        assert_eq!(count.rows[0][0].as_i64(), 2, "two edges, no self/dangling link");
+
+        // No File node was minted for the unobserved target.
+        let z = graph
+            .query_rows("MATCH (f:File {id:'/d/z.md'}) RETURN count(*) AS c".into())
+            .await
+            .unwrap();
+        assert_eq!(z.rows[0][0].as_i64(), 0, "an unobserved target is not created");
+
+        // Re-running is idempotent (MERGE): still two edges.
+        let n2 = persist_document_links(&graph, "/d/a.md", &targets).await.unwrap();
+        assert_eq!(n2, 2);
+        let again = graph
+            .query_rows("MATCH (:File {id:'/d/a.md'})-[:LINKS_TO]->() RETURN count(*) AS c".into())
+            .await
+            .unwrap();
+        assert_eq!(again.rows[0][0].as_i64(), 2, "re-persist does not duplicate edges");
     }
 }
