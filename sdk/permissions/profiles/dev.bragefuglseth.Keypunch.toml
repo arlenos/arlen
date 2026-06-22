@@ -1,0 +1,5 @@
+# Starting permission profile for Keypunch (a typing tutor).
+# It runs typing exercises locally. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "dev.bragefuglseth.Keypunch"
+tier = "third-party"

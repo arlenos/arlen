@@ -1,0 +1,5 @@
+# Starting permission profile for Cohesion (a to-do and notes app).
+# Notes and tasks are kept in the app's own storage. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "io.github.brunofin.Cohesion"
+tier = "third-party"

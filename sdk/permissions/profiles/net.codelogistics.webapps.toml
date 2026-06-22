@@ -1,0 +1,12 @@
+# Starting permission profile for Web Apps (a web-application manager).
+# It runs pinned web applications, so it gets network; downloads save to
+# Downloads. No Knowledge Graph access.
+[info]
+app_id = "net.codelogistics.webapps"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

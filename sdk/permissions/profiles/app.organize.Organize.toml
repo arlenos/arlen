@@ -1,0 +1,10 @@
+# Starting permission profile for Organize (a file organizer).
+# It sorts the user's files by function, so it gets Documents and Downloads (the
+# common clutter sources) and no network. No Knowledge Graph access.
+[info]
+app_id = "app.organize.Organize"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true

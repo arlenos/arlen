@@ -1,0 +1,5 @@
+# Starting permission profile for Monitorets (a system-resource monitor).
+# It reads system state locally. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "io.github.jorchube.monitorets"
+tier = "third-party"
