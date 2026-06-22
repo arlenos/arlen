@@ -1,0 +1,8 @@
+# Starting permission profile for PDF Arranger (a PDF page editor).
+# Reorders/merges PDF documents; no network by function. No graph.
+[info]
+app_id = "com.github.jeromerobert.pdfarranger"
+tier = "third-party"
+
+[filesystem]
+documents = true

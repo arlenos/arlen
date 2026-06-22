@@ -1,0 +1,9 @@
+# Starting permission profile for MuseScore (a music-notation editor).
+# Edits score documents; no network by function (online scores are a refinement
+# an observe pass can add). No Knowledge Graph access.
+[info]
+app_id = "org.musescore.MuseScore"
+tier = "third-party"
+
+[filesystem]
+documents = true

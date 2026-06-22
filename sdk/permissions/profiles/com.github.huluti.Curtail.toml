@@ -1,0 +1,8 @@
+# Starting permission profile for Curtail (an image compressor).
+# Reads and writes images in Pictures; no network by function. No graph.
+[info]
+app_id = "com.github.huluti.Curtail"
+tier = "third-party"
+
+[filesystem]
+pictures = true

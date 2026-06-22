@@ -1,0 +1,10 @@
+# Starting permission profile for Synfig Studio (a 2D animation tool).
+# Reads source images and writes rendered animations; no network by function.
+# No Knowledge Graph access.
+[info]
+app_id = "org.synfig.SynfigStudio"
+tier = "third-party"
+
+[filesystem]
+pictures = true
+videos = true

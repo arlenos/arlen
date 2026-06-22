@@ -1,0 +1,6 @@
+# Starting permission profile for GNOME Clocks.
+# Self-contained (local clocks/timers); needs no filesystem, network, or
+# Knowledge Graph access.
+[info]
+app_id = "org.gnome.clocks"
+tier = "third-party"

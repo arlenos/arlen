@@ -1,0 +1,8 @@
+# Starting permission profile for Tenacity (an audio editor).
+# Reads and writes audio in Music; no network by function. No graph.
+[info]
+app_id = "org.tenacityaudio.Tenacity"
+tier = "third-party"
+
+[filesystem]
+music = true

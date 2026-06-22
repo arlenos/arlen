@@ -1,0 +1,6 @@
+# Starting permission profile for Flatseal (a Flatpak permission manager).
+# Edits Flatpak overrides through the portal/its own data; needs no broad
+# filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "com.github.tchx84.Flatseal"
+tier = "third-party"

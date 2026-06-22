@@ -1,0 +1,5 @@
+# Starting permission profile for GNOME Characters (a character map).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "org.gnome.Characters"
+tier = "third-party"

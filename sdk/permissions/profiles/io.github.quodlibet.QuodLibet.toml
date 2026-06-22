@@ -1,0 +1,9 @@
+# Starting permission profile for Quod Libet (a music player/library).
+# Plays the local music library; no network by function (metadata/streaming is a
+# refinement an observe pass can add). No Knowledge Graph access.
+[info]
+app_id = "io.github.quodlibet.QuodLibet"
+tier = "third-party"
+
+[filesystem]
+music = true
