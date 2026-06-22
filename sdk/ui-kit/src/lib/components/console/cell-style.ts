@@ -57,6 +57,19 @@ export function colorOf(c: CellColor): string | null {
   return null;
 }
 
+/// Trim trailing spaces and tabs from every line, the clean-terminal-copy
+/// convention. The grid pads each row to the full column width with space cells
+/// so the monospace columns line up; that padding must not travel into the
+/// clipboard (it turns a one-word line into a line with dozens of trailing
+/// spaces and breaks paste into editors). Interior whitespace and the line
+/// structure are preserved (only the run at each line end is dropped).
+export function trimTrailingPerLine(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+$/, ""))
+    .join("\n");
+}
+
 /// The inline `style` string for a cell: foreground, background, and the SGR
 /// weight / slant / underline, with `inverse` swapping foreground and
 /// background (falling back to the theme colours when a side is default).

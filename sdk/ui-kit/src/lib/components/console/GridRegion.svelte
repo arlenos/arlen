@@ -11,7 +11,7 @@
   ///   `placeholder` is set, paint a labelled stand-in at the reserved
   ///   size (plain-browser dev / the screenshot loop).
 
-  import { type GridCell, cellStyle } from "./cell-style";
+  import { type GridCell, cellStyle, trimTrailingPerLine } from "./cell-style";
 
   let {
     rows = 1,
@@ -31,6 +31,18 @@
   } = $props();
 
   const painted = $derived(Array.isArray(cells));
+
+  /// On copy from the painted grid, strip the per-row trailing-space padding
+  /// the grid adds for alignment, so the clipboard carries clean terminal text
+  /// (a one-word line does not paste with dozens of trailing spaces). Only fires
+  /// when the selection is within this grid; a selection that also spans other
+  /// elements bubbles its copy event past this handler and keeps the default.
+  function onCopy(event: ClipboardEvent) {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !event.clipboardData) return;
+    event.clipboardData.setData("text/plain", trimTrailingPerLine(sel.toString()));
+    event.preventDefault();
+  }
 </script>
 
 <div
@@ -40,6 +52,7 @@
   style:--grid-rows={Math.max(1, rows)}
   aria-hidden={painted ? undefined : "true"}
   data-selectable={painted ? "" : undefined}
+  oncopy={painted ? onCopy : undefined}
 >
   {#if painted}
     {#each cells ?? [] as row, r (r)}
