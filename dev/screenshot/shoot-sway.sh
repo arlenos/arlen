@@ -47,7 +47,11 @@ if [ -z "$WD" ]; then
   exit 1
 fi
 if [ -n "$TYPE_TEXT" ] && command -v wtype >/dev/null 2>&1; then
-  WAYLAND_DISPLAY="$WD" wtype "$TYPE_TEXT" -k Return >/tmp/arlen-shot-type.log 2>&1
+  # The first keystroke is often dropped before the webview input grabs focus,
+  # so prepend a space (zsh ignores leading whitespace, so the command still
+  # runs whether or not the space is the one that gets eaten).
+  sleep 1
+  WAYLAND_DISPLAY="$WD" wtype " $TYPE_TEXT" -k Return >/tmp/arlen-shot-type.log 2>&1
   sleep 3
 fi
 WAYLAND_DISPLAY="$WD" grim "$OUT"; rc=$?
