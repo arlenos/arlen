@@ -1,0 +1,10 @@
+# Starting permission profile for Audacious (a music player).
+# Plays local audio by function, so it gets the Music directory and no network;
+# internet radio and scrobbling are opt-in, refined by observe-mode rather than a
+# blanket network grant. No Knowledge Graph access.
+[info]
+app_id = "org.atheme.audacious"
+tier = "third-party"
+
+[filesystem]
+music = true

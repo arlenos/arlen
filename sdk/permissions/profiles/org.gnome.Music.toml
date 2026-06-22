@@ -1,0 +1,9 @@
+# Starting permission profile for GNOME Music (a local music player).
+# Plays the user's music library by function, so it gets the Music directory and
+# no network. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.Music"
+tier = "third-party"
+
+[filesystem]
+music = true

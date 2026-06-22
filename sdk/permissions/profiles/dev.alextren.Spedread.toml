@@ -1,0 +1,9 @@
+# Starting permission profile for Spedread (a speed-reading app).
+# It opens text documents to read by function, so it gets Documents and no
+# network. No Knowledge Graph access.
+[info]
+app_id = "dev.alextren.Spedread"
+tier = "third-party"
+
+[filesystem]
+documents = true

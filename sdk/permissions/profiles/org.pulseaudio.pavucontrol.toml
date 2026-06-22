@@ -1,0 +1,6 @@
+# Starting permission profile for PulseAudio Volume Control (pavucontrol).
+# Adjusts audio devices and per-app streams through the audio server by function,
+# needing no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "org.pulseaudio.pavucontrol"
+tier = "third-party"

@@ -1,0 +1,6 @@
+# Starting permission profile for Binary (a number-base converter).
+# Converts numbers between bases locally, needing no network and no user files.
+# No Knowledge Graph access.
+[info]
+app_id = "io.github.fizzyizzy05.binary"
+tier = "third-party"
