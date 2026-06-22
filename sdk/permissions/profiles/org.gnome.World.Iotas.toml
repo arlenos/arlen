@@ -1,0 +1,9 @@
+# Starting permission profile for Iotas (a notes app).
+# Saves notes to Documents; sync is a refinement an observe pass can add, never
+# a blanket network grant up front. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.World.Iotas"
+tier = "third-party"
+
+[filesystem]
+documents = true

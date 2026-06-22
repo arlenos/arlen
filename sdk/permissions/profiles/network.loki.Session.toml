@@ -1,0 +1,12 @@
+# Starting permission profile for Session (a chat client).
+# Messaging over the network by function; saves received files to Downloads.
+# No Knowledge Graph access.
+[info]
+app_id = "network.loki.Session"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

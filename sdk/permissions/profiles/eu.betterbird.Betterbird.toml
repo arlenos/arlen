@@ -1,0 +1,12 @@
+# Starting permission profile for Betterbird (a chat client).
+# Messaging over the network by function; saves received files to Downloads.
+# No Knowledge Graph access.
+[info]
+app_id = "eu.betterbird.Betterbird"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

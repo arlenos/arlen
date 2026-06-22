@@ -1,0 +1,13 @@
+# Starting permission profile for Jellyfin Media Player.
+# Streams media from a Jellyfin server over the network; plays local media from
+# Videos and Music. No Knowledge Graph access.
+[info]
+app_id = "com.github.iwalton3.jellyfin-media-player"
+tier = "third-party"
+
+[filesystem]
+videos = true
+music = true
+
+[network]
+allow_all = true

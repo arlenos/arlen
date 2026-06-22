@@ -1,0 +1,12 @@
+# Starting permission profile for NeoChat (a chat client).
+# Messaging over the network by function; saves received files to Downloads.
+# No Knowledge Graph access.
+[info]
+app_id = "org.kde.neochat"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
