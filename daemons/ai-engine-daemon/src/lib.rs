@@ -14,3 +14,5 @@ pub mod dispatch;
 pub mod wire;
 
 pub mod placeholder;
+
+pub mod supervisor;
