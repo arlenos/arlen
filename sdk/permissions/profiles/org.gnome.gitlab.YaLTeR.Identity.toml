@@ -1,0 +1,9 @@
+# Starting permission profile for Identity (an image/video comparison tool).
+# Reads media from Pictures and Videos; no network by function. No graph.
+[info]
+app_id = "org.gnome.gitlab.YaLTeR.Identity"
+tier = "third-party"
+
+[filesystem]
+pictures = true
+videos = true

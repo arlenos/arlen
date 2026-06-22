@@ -1,0 +1,8 @@
+# Starting permission profile for Apostrophe (a Markdown editor).
+# Edits documents; no network by function. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.gitlab.somas.Apostrophe"
+tier = "third-party"
+
+[filesystem]
+documents = true

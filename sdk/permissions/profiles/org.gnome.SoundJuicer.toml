@@ -1,0 +1,9 @@
+# Starting permission profile for Sound Juicer (a CD ripper).
+# Rips audio CDs to Music; no network by function (metadata lookup is a
+# refinement an observe pass can add). No Knowledge Graph access.
+[info]
+app_id = "org.gnome.SoundJuicer"
+tier = "third-party"
+
+[filesystem]
+music = true

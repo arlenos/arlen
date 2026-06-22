@@ -1,0 +1,5 @@
+# Starting permission profile for Blanket (an ambient-sound player).
+# Plays bundled sounds; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "com.rafaelmardojai.Blanket"
+tier = "third-party"

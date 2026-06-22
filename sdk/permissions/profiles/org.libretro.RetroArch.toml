@@ -1,0 +1,12 @@
+# Starting permission profile for RetroArch (an emulator frontend).
+# Downloads cores and supports netplay over the network; content lives in its
+# own data dir (a launcher grant). No Knowledge Graph access.
+[info]
+app_id = "org.libretro.RetroArch"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

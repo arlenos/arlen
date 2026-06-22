@@ -1,0 +1,9 @@
+# Starting permission profile for Todoist (a task manager with sync).
+# Syncs tasks over the network by function; its data lives in its own config dir
+# (a launcher grant). No Knowledge Graph access.
+[info]
+app_id = "com.todoist.Todoist"
+tier = "third-party"
+
+[network]
+allow_all = true
