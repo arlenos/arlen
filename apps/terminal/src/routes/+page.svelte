@@ -46,21 +46,28 @@
     }
   }
 
-  // The visible screen rows. For ordinary command output, trailing blank rows
-  // are trimmed (but never below the cursor row) so the live region is the
-  // height of the real output, not the full 24-row grid. A fullscreen / TUI
-  // app on the alternate screen owns the whole grid, so it is painted in full
-  // (trimming would corrupt its layout).
+  // The live region rendered below the blocks. A fullscreen / TUI app on the
+  // alternate screen owns the whole grid, so it is painted in full. Otherwise
+  // the live region is ONLY a running command's output, sliced from where its
+  // output begins (excluding the shell's prompt and the echoed command line, so
+  // the shell's prompt is never drawn on top of the composer — no double
+  // prompt). At an idle prompt there is no live region at all: the composer is
+  // the prompt, and finished commands' output lives in their blocks.
   const liveCells = $derived.by(() => {
     const g = $liveGrid;
     if (!g) return [];
     if (g.alt_screen) return g.cells;
-    let last = -1;
-    for (let i = 0; i < g.cells.length; i++) {
+    if (!g.running) return [];
+    const start = g.output_start_row ?? 0;
+    // Trim trailing blank rows within the output region (but never below the
+    // cursor), so the live region is the height of the streaming output.
+    let last = start - 1;
+    for (let i = start; i < g.cells.length; i++) {
       if (g.cells[i].some((cell) => cell.text.trim() !== "")) last = i;
     }
     last = Math.max(last, g.cursor_row);
-    return g.cells.slice(0, last + 1);
+    if (last < start) return [];
+    return g.cells.slice(start, last + 1);
   });
 
   // A fullscreen / TUI app (btop, vim, less) has taken the alternate screen, so
