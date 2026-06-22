@@ -1,0 +1,10 @@
+# Starting permission profile for Tauon Music Box (a music player).
+# Plays the local music library by function, so it gets the Music directory and
+# no network; lyrics/scrobble fetch is opt-in rather than a blanket grant. No
+# Knowledge Graph access.
+[info]
+app_id = "com.github.taiko2k.tauonmb"
+tier = "third-party"
+
+[filesystem]
+music = true
