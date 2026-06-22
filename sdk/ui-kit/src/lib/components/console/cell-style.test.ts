@@ -1,5 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { type GridCell, cellStyle, colorOf, paletteHex } from "./cell-style";
+import {
+  type GridCell,
+  cellStyle,
+  colorOf,
+  paletteHex,
+  trimTrailingPerLine,
+} from "./cell-style";
+
+describe("trimTrailingPerLine (clean terminal copy)", () => {
+  it("drops the trailing space padding the grid adds to each row", () => {
+    // The grid pads "OS: Arlen OS" out to the full column width; the copy must
+    // not carry that. A no-op impl would keep the trailing spaces.
+    expect(trimTrailingPerLine("OS:   Arlen OS      ")).toBe("OS:   Arlen OS");
+  });
+  it("preserves interior whitespace and the line structure", () => {
+    expect(trimTrailingPerLine("OS:   Arlen OS  \nKernel:  7.0  ")).toBe(
+      "OS:   Arlen OS\nKernel:  7.0",
+    );
+  });
+  it("keeps a blank line blank, not collapsed away", () => {
+    expect(trimTrailingPerLine("a  \n   \nb")).toBe("a\n\nb");
+  });
+  it("trims tabs as well as spaces at the line end", () => {
+    expect(trimTrailingPerLine("path\t \t")).toBe("path");
+  });
+});
 
 const cell = (over: Partial<GridCell>): GridCell => ({
   text: "x",
