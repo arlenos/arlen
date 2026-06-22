@@ -35,7 +35,7 @@ enum VPath {
 }
 
 /// Find the longest common directory prefix of a list of absolute paths.
-fn longest_common_dir(paths: &[&str]) -> String {
+pub(crate) fn longest_common_dir(paths: &[&str]) -> String {
     if paths.is_empty() {
         return String::new();
     }
