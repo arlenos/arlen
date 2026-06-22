@@ -323,4 +323,94 @@ mod tests {
             let _: HostCall = serde_json::from_str(&json).unwrap();
         }
     }
+
+    /// The `Request` `type` tag is the wire contract between the shell and the
+    /// daemon; a renamed variant must fail a test, not silently break IPC.
+    #[test]
+    fn request_tags_are_stable() {
+        let cases: Vec<(Request, &str)> = vec![
+            (Request::Hello { id: "i".into(), client: "c".into(), version: "1".into() }, "hello"),
+            (Request::ListModules { id: "i".into() }, "list_modules"),
+            (
+                Request::WaypointerSearch { id: "i".into(), module_id: "m".into(), query: "q".into() },
+                "waypointer_search",
+            ),
+            (Request::WaypointerSearchAll { id: "i".into(), query: "q".into() }, "waypointer_search_all"),
+            (Request::IframeMint { id: "i".into(), module_id: "m".into(), slot: "s".into() }, "iframe_mint"),
+            (Request::Subscribe { id: "i".into(), kinds: vec![] }, "subscribe"),
+        ];
+        for (req, tag) in cases {
+            let json = serde_json::to_string(&req).unwrap();
+            assert!(
+                json.contains(&format!("\"type\":\"{tag}\"")),
+                "{tag}: wire tag changed, got {json}"
+            );
+            // And it round-trips back to the same variant tag.
+            let reparsed: Request = serde_json::from_str(&json).unwrap();
+            assert!(serde_json::to_string(&reparsed).unwrap().contains(&format!("\"type\":\"{tag}\"")));
+        }
+    }
+
+    /// The newer `HostCall` variants (added after the original test) must also
+    /// survive the JSON wire format with their byte-safe base64 bodies intact.
+    #[test]
+    fn host_call_post_and_write_round_trip() {
+        let write = HostCall::GraphWrite { cypher: "CREATE (n)".into() };
+        let json = serde_json::to_string(&write).unwrap();
+        assert!(json.contains("\"type\":\"graph_write\""));
+        assert!(matches!(serde_json::from_str::<HostCall>(&json).unwrap(), HostCall::GraphWrite { .. }));
+
+        let post = HostCall::NetworkPost {
+            url: "https://api.example.com".into(),
+            body_b64: "eyJrIjogInYifQ==".into(),
+            headers: vec![("Content-Type".into(), "application/json".into())],
+        };
+        let json = serde_json::to_string(&post).unwrap();
+        let back: HostCall = serde_json::from_str(&json).unwrap();
+        match back {
+            HostCall::NetworkPost { url, body_b64, headers } => {
+                assert_eq!(url, "https://api.example.com");
+                assert_eq!(body_b64, "eyJrIjogInYifQ==", "the base64 body must survive verbatim");
+                assert_eq!(headers, vec![("Content-Type".to_string(), "application/json".to_string())]);
+            }
+            other => panic!("NetworkPost did not round-trip: {other:?}"),
+        }
+    }
+
+    /// Every `HostReply` variant round-trips and keeps its wire tag, including
+    /// the `Error` reply that carries an `ErrorCode`.
+    #[test]
+    fn host_reply_variants_round_trip_with_tags() {
+        let cases: Vec<(HostReply, &str)> = vec![
+            (HostReply::GraphResult { rows: "[]".into() }, "graph_result"),
+            (HostReply::NetworkBody { status: 200, body_b64: "AA==".into() }, "network_body"),
+            (HostReply::Acked, "acked"),
+            (HostReply::Error { code: ErrorCode::Timeout, message: "slow".into() }, "error"),
+        ];
+        for (reply, tag) in cases {
+            let json = serde_json::to_string(&reply).unwrap();
+            assert!(json.contains(&format!("\"type\":\"{tag}\"")), "{tag}: tag changed, got {json}");
+            let _: HostReply = serde_json::from_str(&json).unwrap();
+        }
+    }
+
+    /// `ErrorCode` is part of the wire contract; its snake_case names must stay
+    /// stable so a daemon and an older client still agree on a denial reason.
+    #[test]
+    fn error_code_wire_names_are_stable() {
+        let cases = [
+            (ErrorCode::NotFound, "not_found"),
+            (ErrorCode::PermissionDenied, "permission_denied"),
+            (ErrorCode::ModuleFailed, "module_failed"),
+            (ErrorCode::Timeout, "timeout"),
+            (ErrorCode::InvalidRequest, "invalid_request"),
+            (ErrorCode::Internal, "internal"),
+        ];
+        for (code, name) in cases {
+            let json = serde_json::to_string(&code).unwrap();
+            assert_eq!(json, format!("\"{name}\""), "ErrorCode wire name changed");
+            let back: ErrorCode = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, code);
+        }
+    }
 }
