@@ -63,6 +63,12 @@
     return g.cells.slice(0, last + 1);
   });
 
+  // A fullscreen / TUI app (btop, vim, less) has taken the alternate screen, so
+  // the block UI is turned off entirely and the grid fills the whole content
+  // area (Tim's spec). Flips back to block-mode when the app exits the alt
+  // screen.
+  const isAltScreen = $derived(($liveGrid?.alt_screen ?? false) && liveCells.length > 0);
+
   onMount(() => {
     loadSessions();
   });
@@ -133,6 +139,14 @@
           New session
         </button>
       </div>
+    {:else if isAltScreen}
+      <!-- A fullscreen / TUI app holds the alternate screen: the block UI is
+           turned off entirely and the app gets the whole content area as one VT
+           grid (the sidebar lives outside .console, so it stays). Switches back
+           to block-mode when alt_screen flips false on exit. -->
+      <div class="alt-fullscreen">
+        <GridRegion cells={liveCells} />
+      </div>
     {:else}
       <BlockStream blocks={$blocks}>
         {#if liveCells.length > 0}
@@ -172,6 +186,15 @@
   /* The live screen sits in the stream flow, above the composer. */
   .live-screen {
     padding: 4px 12px;
+  }
+
+  /* Alt-screen / fullscreen TUI: the grid takes the whole content area, no
+     block chrome, no composer (the sidebar stays, outside .console). */
+  .alt-fullscreen {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    padding: 4px 8px;
   }
 
   .stream-empty {
