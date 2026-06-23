@@ -14,11 +14,21 @@
 //! action resolves to a proposal and a high-impact or externally-triggered one
 //! to a confirmation, never to silent autonomous execution.
 
+use crate::dispatch::Gate;
 use crate::session::SessionGrant;
-use ai_engine_contract::{AuthorizeDecision, ReadTier};
-use arlen_ai_core::capability::{ActionDecision, ActionPermissions, Capability};
+use ai_engine_contract::{Authorize, AuthorizeDecision, ReadTier};
+use arlen_ai_core::capability::{ActionDecision, ActionKind, ActionPermissions, Capability};
 use arlen_ai_core::graph_query::{AccessTier, QueryScope};
 use arlen_ai_core::graph_schema::GraphSchema;
+use arlen_ai_core::mcp::{AlwaysConfirm, AlwaysConfirmReason};
+use async_trait::async_trait;
+
+/// The app identity actions are attributed to under an engine session. The
+/// action side is the `suggest_only` baseline (a session is granted no
+/// per-application autonomy), so the per-app mode is Suggest regardless of this
+/// id; it marks the seam where a real per-application grant would flow once the
+/// human-gated executor-live lift exists.
+const ENGINE_APP_ID: &str = "ai-engine";
 
 /// Map the contract's coarse [`ReadTier`] to the graph layer's [`AccessTier`].
 ///
@@ -111,6 +121,52 @@ pub fn decision_to_authorize(decision: ActionDecision, tool_name: &str) -> Autho
                  suggest mode does not auto-execute mutating actions"
             ),
         },
+    }
+}
+
+/// Resolve a tool name to the [`ActionKind`] the gate decides on, reusing the
+/// existing tool-name classifier ([`AlwaysConfirm::classify`], the same one the
+/// MCP gate uses) so the impact classes do not drift. A classified tool maps to
+/// its corresponding high-impact kind; an unclassified one is [`ActionKind::
+/// Ordinary`]. `GenericExecution` (a `run`/`exec`/`shell`-shaped tool whose
+/// effect the name cannot reveal) maps to a high-impact kind so it always
+/// confirms; the specific variant is immaterial since every non-`Ordinary` kind
+/// already requires confirmation. The effect-derived kinds (`Irreversible`,
+/// `ReversibleWithCost`) are not name-derivable and land with the predict step.
+fn action_kind_for_tool(tool: &str) -> ActionKind {
+    match AlwaysConfirm::classify(tool) {
+        Some(AlwaysConfirmReason::FileDeletion) => ActionKind::PermanentDelete,
+        Some(AlwaysConfirmReason::ExternalMessage) => ActionKind::SendExternalMessage,
+        Some(AlwaysConfirmReason::PackageChange) => ActionKind::PackageChange,
+        Some(AlwaysConfirmReason::SystemConfigWrite) => ActionKind::SystemConfigChange,
+        Some(AlwaysConfirmReason::ElevatedCommand) => ActionKind::ElevatedPrivilege,
+        Some(AlwaysConfirmReason::GenericExecution) => ActionKind::ElevatedPrivilege,
+        None => ActionKind::Ordinary,
+    }
+}
+
+/// The Phase-1 gate seam: an [`Authorize`] is decided against the real Arlen
+/// [`Capability`] (`pi-agent-adoption.md` Phase 1, "Authorize calls existing
+/// `Capability::decide`"), replacing the Phase-0 deny-all placeholder.
+///
+/// It composes the built glue: [`grant_to_capability`] resolves the session's
+/// capability, [`action_kind_for_tool`] resolves the tool's impact class, and
+/// `Capability::decide` applies the two non-configurable overrides (a high-impact
+/// kind or an externally-triggered action always confirms) then the action mode,
+/// whose verdict [`decision_to_authorize`] maps to the contract decision. Under
+/// the `suggest_only` baseline the mode is always Suggest, so this can never
+/// return [`AuthorizeDecision::Allow`] (that needs Autonomous mode, which only
+/// the human-gated executor-live lift grants): every call is a proposal (`Deny`)
+/// or a confirmation (`Confirm`), never silent autonomous execution.
+pub struct CapabilityGate;
+
+#[async_trait]
+impl Gate for CapabilityGate {
+    async fn authorize(&self, req: &Authorize, grant: &SessionGrant) -> AuthorizeDecision {
+        let kind = action_kind_for_tool(&req.tool_name);
+        let capability = grant_to_capability(grant);
+        let decision = capability.decide(ENGINE_APP_ID, kind, req.external_triggered);
+        decision_to_authorize(decision, &req.tool_name)
     }
 }
 
@@ -286,5 +342,65 @@ mod tests {
             decision_to_authorize(decision, "graph.write"),
             AuthorizeDecision::Deny { .. },
         ));
+    }
+
+    fn authorize(tool: &str, external: bool) -> Authorize {
+        Authorize {
+            tool_name: tool.into(),
+            tool_input: serde_json::json!({}),
+            external_triggered: external,
+        }
+    }
+
+    #[test]
+    fn the_tool_kind_classifier_reuses_the_always_confirm_set() {
+        assert_eq!(action_kind_for_tool("delete_file"), ActionKind::PermanentDelete);
+        assert_eq!(action_kind_for_tool("send_email"), ActionKind::SendExternalMessage);
+        assert_eq!(action_kind_for_tool("install_pkg"), ActionKind::PackageChange);
+        // A generic execution tool the name cannot judge always confirms.
+        assert_eq!(action_kind_for_tool("run_shell"), ActionKind::ElevatedPrivilege);
+        // An unclassified tool is ordinary.
+        assert_eq!(action_kind_for_tool("note.append"), ActionKind::Ordinary);
+    }
+
+    #[tokio::test]
+    async fn the_gate_confirms_a_high_impact_tool() {
+        let d = CapabilityGate
+            .authorize(&authorize("delete_file", false), &grant(ReadTier::Standard))
+            .await;
+        assert!(matches!(d, AuthorizeDecision::Confirm { .. }));
+    }
+
+    #[tokio::test]
+    async fn the_gate_denies_an_ordinary_tool_as_a_proposal_under_suggest() {
+        // Suggest baseline: an ordinary action is a proposal, refused to the
+        // engine so it never auto-executes.
+        let d = CapabilityGate
+            .authorize(&authorize("note.append", false), &grant(ReadTier::Standard))
+            .await;
+        assert!(matches!(d, AuthorizeDecision::Deny { .. }));
+    }
+
+    #[tokio::test]
+    async fn the_gate_confirms_an_externally_triggered_ordinary_tool() {
+        // The external-content override: even an ordinary tool confirms when the
+        // run was triggered by external content.
+        let d = CapabilityGate
+            .authorize(&authorize("note.append", true), &grant(ReadTier::Standard))
+            .await;
+        assert!(matches!(d, AuthorizeDecision::Confirm { .. }));
+    }
+
+    #[tokio::test]
+    async fn the_gate_never_allows_under_the_suggest_baseline() {
+        // No tool, ordinary or high-impact, ever reaches Allow under the
+        // suggest_only baseline (Allow needs Autonomous mode, which only the
+        // human-gated executor-live lift grants).
+        for tool in ["note.append", "delete_file", "send_email", "run_shell"] {
+            let d = CapabilityGate
+                .authorize(&authorize(tool, false), &grant(ReadTier::Standard))
+                .await;
+            assert!(!matches!(d, AuthorizeDecision::Allow), "{tool} must not be Allowed");
+        }
     }
 }
