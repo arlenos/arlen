@@ -428,6 +428,50 @@ fn mint_nonce() -> std::io::Result<String> {
 mod tests {
     use super::*;
 
+    /// PR-2 #3 double-prompt repro (throwaway, `#[ignore]`d): replay a captured
+    /// real zsh+p10k+arlen-integration byte stream through the REAL reader by
+    /// spawning `cat <file>` on the PTY (its 133;C/133;D/633;A marks drive the
+    /// same output_start_row/running logic as a live shell; only the nonce-gated
+    /// 633;E text is dropped). Prints the resulting live snapshot + finished block
+    /// grids so the prompt-leak can be SEEN. Set ARLEN_REPLAY_FILE to the capture.
+    #[test]
+    #[ignore]
+    fn replay_capture_for_double_prompt() {
+        let file = std::env::var("ARLEN_REPLAY_FILE").expect("set ARLEN_REPLAY_FILE");
+        let cmd = format!("cat {file}; sleep 1");
+        let eng = PtyEngine::spawn("sh", &["-c", &cmd], None, 80, 24).expect("spawn");
+        std::thread::sleep(std::time::Duration::from_millis(1600));
+        let snap = eng.screen_snapshot();
+        let row_text = |row: &[GridCell]| -> String {
+            row.iter()
+                .map(|c| if c.text.is_empty() { " ".to_string() } else { c.text.clone() })
+                .collect::<String>()
+                .trim_end()
+                .to_string()
+        };
+        eprintln!(
+            "LIVE snapshot: running={} output_start_row={:?} alt_screen={} rows={}",
+            snap.running, snap.output_start_row, snap.alt_screen, snap.cells.len()
+        );
+        for (i, row) in snap.cells.iter().enumerate() {
+            let t = row_text(row);
+            if !t.is_empty() {
+                eprintln!("  live[{i}] {t}");
+            }
+        }
+        let finished = eng.take_finished_outputs();
+        eprintln!("FINISHED blocks: {}", finished.len());
+        for (bi, b) in finished.iter().enumerate() {
+            eprintln!("  block {bi} ({} rows):", b.cells.len());
+            for row in &b.cells {
+                let t = row_text(row);
+                if !t.is_empty() {
+                    eprintln!("    | {t}");
+                }
+            }
+        }
+    }
+
     #[test]
     fn mint_nonce_is_128_bit_hex_and_unique() {
         let a = mint_nonce().unwrap();
