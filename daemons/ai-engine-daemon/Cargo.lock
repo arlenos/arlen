@@ -75,8 +75,10 @@ dependencies = [
  "getrandom 0.2.17",
  "libc",
  "os-sdk",
+ "serde",
  "serde_json",
  "tokio",
+ "toml",
  "tracing",
  "tracing-subscriber",
 ]
