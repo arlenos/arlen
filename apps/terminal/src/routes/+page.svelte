@@ -11,6 +11,7 @@
   import {
     terminalBlocks,
     terminalGrid,
+    terminalInput,
     type Block,
     type GridSnapshot,
   } from "$lib/contract";
@@ -24,6 +25,7 @@
   } from "$lib/stores/sessions";
   import { GridRegion } from "@arlen/ui-kit/components/console";
   import { liveRegionCells, isAltScreenActive } from "$lib/live-region";
+  import { keyToBytes } from "$lib/keymap";
   import BlockStream from "$lib/components/BlockStream.svelte";
   import Composer from "$lib/components/Composer.svelte";
 
@@ -58,6 +60,29 @@
   // block UI is turned off entirely and the grid fills the whole content area
   // (Tim's spec). Flips back to block-mode when the app exits the alt screen.
   const isAltScreen = $derived(isAltScreenActive($liveGrid, liveCells));
+
+  // While a fullscreen TUI (vim, btop, less) holds the alternate screen, the
+  // block UI is off and there is no composer, so the grid itself must take
+  // keystrokes: send each one raw to the PTY so the app's own key handling runs
+  // (PR-2 raw-PTY input - the grid is the interactive surface here, the first
+  // case where the composer does not apply). `keyToBytes` returns null for
+  // copy/paste and WM combos, which fall through to the app.
+  let altScreenEl = $state<HTMLDivElement | null>(null);
+
+  function onGridKey(e: KeyboardEvent) {
+    const id = $activeSessionId;
+    if (!id) return;
+    const bytes = keyToBytes(e);
+    if (bytes === null) return;
+    e.preventDefault();
+    terminalInput(id, bytes).catch(() => {});
+  }
+
+  // Focus the fullscreen grid when a TUI takes over, so its keystrokes land
+  // without a manual click; the grid is the interactive surface in this mode.
+  $effect(() => {
+    if (isAltScreen) altScreenEl?.focus();
+  });
 
   onMount(() => {
     loadSessions();
@@ -134,7 +159,16 @@
            turned off entirely and the app gets the whole content area as one VT
            grid (the sidebar lives outside .console, so it stays). Switches back
            to block-mode when alt_screen flips false on exit. -->
-      <div class="alt-fullscreen">
+      <!-- The grid is the keystroke target for a fullscreen TUI; role=application
+           tells AT to pass keys through, the tabindex makes it focusable. -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
+      <div
+        class="alt-fullscreen"
+        bind:this={altScreenEl}
+        tabindex="0"
+        role="application"
+        onkeydown={onGridKey}
+      >
         <GridRegion cells={liveCells} />
       </div>
     {:else}
@@ -185,6 +219,9 @@
     min-height: 0;
     overflow: hidden;
     padding: 4px 8px;
+    /* The grid is the keystroke target here; a terminal surface shows no
+       browser focus ring. */
+    outline: none;
   }
 
   .stream-empty {
