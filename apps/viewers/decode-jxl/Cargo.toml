@@ -1,0 +1,19 @@
+[package]
+name = "arlen-decode-jxl"
+version = "0.1.0"
+edition = "2021"
+description = "The sandboxed JPEG XL decoder worker: reads a JXL on stdin, writes the validated RGBA raster frame on stdout (quickview-plan.md)"
+
+[[bin]]
+name = "arlen-decode-jxl"
+path = "src/main.rs"
+
+[lib]
+name = "arlen_decode_jxl"
+
+[dependencies]
+arlen-viewers-core = { path = "../core" }
+# Pure-Rust JPEG XL decode (no C dep / no wider seccomp, unlike libheif).
+jxl-oxide = "0.11"
+
+[workspace]
