@@ -51,6 +51,70 @@ pub struct SidecarPaths {
     pub proxy_socket: String,
 }
 
+/// The pi CLI entry under the install dir (verified: the `coding-agent` package
+/// bin, which the `profile:rpc` script runs `--mode rpc`).
+const PI_CLI_REL: &str = "packages/coding-agent/dist/cli.js";
+
+impl SidecarPaths {
+    /// Resolve the sidecar paths from the environment, fail-closed. `getenv`
+    /// abstracts `std::env::var` so resolution is unit-tested without mutating
+    /// the process environment (racy under parallel tests).
+    ///
+    /// `ARLEN_PI_NODE_RUNTIME` (the node >=22 runtime dir) and `ARLEN_PI_INSTALL`
+    /// (the pi install dir) are REQUIRED with no invented default - a missing one
+    /// is an error, never a guessed path (the forage `ForageBuildConfig`
+    /// precedent: the daemon refuses to spawn pi rather than dial a wrong path).
+    /// `node_bin`/`pi_cli` derive from those; `pi_state` is
+    /// `$XDG_STATE_HOME|$HOME/.local/state` + `arlen/pi`; the sockets are the
+    /// daemon's own contract socket and the ai-proxy socket under the runtime
+    /// dir. Every resolved path must be absolute.
+    pub fn resolve(
+        getenv: impl Fn(&str) -> Option<String>,
+        contract_socket: String,
+    ) -> Result<Self, String> {
+        let node_runtime = getenv("ARLEN_PI_NODE_RUNTIME")
+            .filter(|s| !s.is_empty())
+            .ok_or("ARLEN_PI_NODE_RUNTIME is not set (the node>=22 runtime dir for the pi sidecar)")?;
+        let pi_install = getenv("ARLEN_PI_INSTALL")
+            .filter(|s| !s.is_empty())
+            .ok_or("ARLEN_PI_INSTALL is not set (the pi install dir for the sidecar)")?;
+
+        let runtime_dir = getenv("XDG_RUNTIME_DIR")
+            .filter(|s| !s.is_empty())
+            .ok_or("XDG_RUNTIME_DIR is not set (needed for the ai-proxy socket path)")?;
+        let state_home = getenv("XDG_STATE_HOME")
+            .filter(|s| !s.is_empty())
+            .or_else(|| getenv("HOME").filter(|s| !s.is_empty()).map(|h| format!("{h}/.local/state")))
+            .ok_or("neither XDG_STATE_HOME nor HOME is set (needed for the pi state dir)")?;
+
+        let paths = SidecarPaths {
+            node_bin: format!("{}/bin/node", node_runtime.trim_end_matches('/')),
+            pi_cli: format!("{}/{PI_CLI_REL}", pi_install.trim_end_matches('/')),
+            pi_state: format!("{}/arlen/pi", state_home.trim_end_matches('/')),
+            proxy_socket: format!("{}/arlen/ai-proxy.sock", runtime_dir.trim_end_matches('/')),
+            node_runtime,
+            pi_install,
+            contract_socket,
+        };
+        // Every path the confinement binds or execs must be absolute; surface a
+        // bad one here rather than at spawn.
+        for (label, p) in [
+            ("node runtime", &paths.node_runtime),
+            ("node bin", &paths.node_bin),
+            ("pi install", &paths.pi_install),
+            ("pi cli", &paths.pi_cli),
+            ("pi state", &paths.pi_state),
+            ("contract socket", &paths.contract_socket),
+            ("ai-proxy socket", &paths.proxy_socket),
+        ] {
+            if !Path::new(p).is_absolute() {
+                return Err(format!("the resolved {label} path is not absolute: {p}"));
+            }
+        }
+        Ok(paths)
+    }
+}
+
 /// Reject a non-absolute path (bwrap requires absolute binds; a relative source
 /// is ambiguous). UTF-8 is already guaranteed by the `String` fields.
 fn require_abs(path: &str) -> Result<String, ConfinerError> {
@@ -208,5 +272,65 @@ mod tests {
         let mut p = paths();
         p.pi_install = "opt/pi".to_string(); // not absolute
         assert!(matches!(pi_sidecar_confinement(&p), Err(ConfinerError::RelativePath(_))));
+    }
+
+    /// A full environment for the resolver, as a closure (no process-env mutation).
+    fn full_env(key: &str) -> Option<String> {
+        match key {
+            "ARLEN_PI_NODE_RUNTIME" => Some("/opt/arlen-node22".to_string()),
+            "ARLEN_PI_INSTALL" => Some("/opt/pi".to_string()),
+            "XDG_RUNTIME_DIR" => Some("/run/user/1000".to_string()),
+            "XDG_STATE_HOME" => Some("/home/u/.local/state".to_string()),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn resolve_derives_node_pi_state_and_proxy_paths() {
+        let p = SidecarPaths::resolve(full_env, "/run/user/1000/arlen/ai-engine.sock".to_string())
+            .expect("resolve");
+        assert_eq!(p.node_bin, "/opt/arlen-node22/bin/node");
+        assert_eq!(p.pi_cli, "/opt/pi/packages/coding-agent/dist/cli.js");
+        assert_eq!(p.pi_state, "/home/u/.local/state/arlen/pi");
+        assert_eq!(p.proxy_socket, "/run/user/1000/arlen/ai-proxy.sock");
+        assert_eq!(p.contract_socket, "/run/user/1000/arlen/ai-engine.sock");
+        // The resolved paths build a valid confinement.
+        assert!(pi_sidecar_confinement(&p).is_ok());
+    }
+
+    #[test]
+    fn resolve_falls_back_to_home_for_the_state_dir() {
+        let env = |k: &str| match k {
+            "XDG_STATE_HOME" => None,
+            "HOME" => Some("/home/u".to_string()),
+            other => full_env(other),
+        };
+        let p = SidecarPaths::resolve(env, "/run/user/1000/arlen/ai-engine.sock".to_string())
+            .expect("resolve");
+        assert_eq!(p.pi_state, "/home/u/.local/state/arlen/pi");
+    }
+
+    #[test]
+    fn resolve_fails_closed_without_the_node_runtime() {
+        let env = |k: &str| if k == "ARLEN_PI_NODE_RUNTIME" { None } else { full_env(k) };
+        let err = SidecarPaths::resolve(env, "/run/x/ai-engine.sock".to_string()).unwrap_err();
+        assert!(err.contains("ARLEN_PI_NODE_RUNTIME"), "names the missing var: {err}");
+    }
+
+    #[test]
+    fn resolve_fails_closed_without_the_pi_install() {
+        let env = |k: &str| if k == "ARLEN_PI_INSTALL" { None } else { full_env(k) };
+        assert!(SidecarPaths::resolve(env, "/run/x/ai-engine.sock".to_string())
+            .unwrap_err()
+            .contains("ARLEN_PI_INSTALL"));
+    }
+
+    #[test]
+    fn resolve_rejects_a_non_absolute_required_path() {
+        let env = |k: &str| if k == "ARLEN_PI_INSTALL" { Some("opt/pi".to_string()) } else { full_env(k) };
+        // A relative install dir makes the derived pi-cli path non-absolute.
+        assert!(SidecarPaths::resolve(env, "/run/x/ai-engine.sock".to_string())
+            .unwrap_err()
+            .contains("not absolute"));
     }
 }
