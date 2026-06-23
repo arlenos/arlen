@@ -14,8 +14,9 @@ use crate::capability_map::grant_to_query_scope;
 use crate::dispatch::Executor;
 use crate::session::SessionGrant;
 use ai_engine_contract::{ContractError, Execute, ExecuteOutcome};
+use arlen_ai_core::graph_query::QueryScope;
 use arlen_ai_core::graph_schema::GraphSchema;
-use arlen_ai_core::pipeline::QueryRunner;
+use arlen_ai_core::pipeline::{QueryRunner, RunFailure};
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -68,6 +69,27 @@ impl Executor for GraphReadExecutor {
                 message: format!("{}: {}", failure.code, failure.reason),
             },
         }
+    }
+}
+
+/// A fail-closed [`QueryRunner`] for the side-by-side phase.
+///
+/// The live read runner is the proxied [`CypherPipeline`], which forwards LLM
+/// traffic only over a connection that owns an ai-proxy-authorized bus name
+/// (`org.arlen.AI1`/`AIAgent1`). The engine daemon cannot hold one of those
+/// while the old ai-daemon owns it, so a `graph.read` is refused with a clear
+/// reason until the Phase-2 cutover swaps the real pipeline in. Wiring the read
+/// executor over a runner now means that swap is a one-line change (the runner),
+/// not a re-plumb of the Execute seam.
+pub struct DeniedRunner;
+
+#[async_trait]
+impl QueryRunner for DeniedRunner {
+    async fn run_query(&self, _prompt: &str, _scope: &QueryScope) -> Result<String, RunFailure> {
+        Err(RunFailure {
+            code: "provider-unavailable".to_string(),
+            reason: "the engine daemon's read provider is wired at the Phase-2 cutover".to_string(),
+        })
     }
 }
 
@@ -136,6 +158,22 @@ mod tests {
             other => panic!("expected Ok, got {other:?}"),
         }
         assert!(runner.was_called());
+    }
+
+    #[tokio::test]
+    async fn the_denied_runner_refuses_a_scoped_read() {
+        // The side-by-side fallback: a fully-scoped read still reaches the runner
+        // but is refused (the live provider lands at the Phase-2 cutover), so the
+        // read executor maps it to ExecutionFailed rather than the blanket
+        // Phase-0 Unavailable placeholder.
+        let exec = GraphReadExecutor::new(Arc::new(DeniedRunner));
+        let outcome = exec
+            .execute(&read(serde_json::json!({ "query": "how many files" })), &grant(ReadTier::Full, None))
+            .await;
+        assert!(matches!(
+            outcome,
+            ExecuteOutcome::Error { code: ContractError::ExecutionFailed, .. },
+        ));
     }
 
     #[tokio::test]
