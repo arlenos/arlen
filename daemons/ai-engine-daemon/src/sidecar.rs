@@ -27,6 +27,13 @@ pub const SANDBOX_CONTRACT_SOCKET: &str = "/run/arlen/ai-engine.sock";
 /// The fixed in-sandbox path the ai-proxy socket is bound to (pi's only egress).
 pub const SANDBOX_PROXY_SOCKET: &str = "/run/arlen/ai-proxy.sock";
 
+/// The session-token file's name, in the pi state dir (bound read-write at its
+/// host path, so the in-sandbox path equals the host path). The `run_once` spawn
+/// writes the per-run token there `0600` and points `ARLEN_AI_ENGINE_TOKEN_FILE`
+/// at it, so the secret reaches pi WITHOUT ever entering the bwrap argv (where a
+/// same-uid `/proc/<pid>/cmdline` reader would see it).
+pub const SESSION_TOKEN_FILENAME: &str = ".arlen-session-token";
+
 /// The host paths the sidecar spawn needs, resolved by the caller from config/
 /// env (fail-closed, no invented defaults). All must be absolute.
 #[derive(Debug, Clone)]
@@ -131,14 +138,22 @@ fn require_abs(path: &str) -> Result<String, ConfinerError> {
 /// plugins at the in-sandbox socket paths and pins `HOME` at the state dir so
 /// node/pi write their caches there, never the host home.
 ///
-/// The session token is NOT set here: it is a secret the `run_once` spawn passes
-/// to the child, kept out of this pure (loggable) builder AND out of the bwrap
-/// argv (where it would be visible to a same-uid `/proc/<pid>/cmdline` reader).
-pub fn pi_sidecar_confinement(paths: &SidecarPaths) -> Result<Confinement, ConfinerError> {
+/// `token_file` is the in-sandbox PATH of the 0600 session-token file (not the
+/// token itself): when `Some`, `ARLEN_AI_ENGINE_TOKEN_FILE` points the plugins
+/// at it. The secret token stays out of this (loggable) builder AND out of the
+/// bwrap argv; only its file path - not secret - is set. `None` builds the
+/// token-free shape the unit tests assert on.
+pub fn pi_sidecar_confinement(
+    paths: &SidecarPaths,
+    token_file: Option<&str>,
+) -> Result<Confinement, ConfinerError> {
     let mut env = BTreeMap::new();
     env.insert("ARLEN_AI_ENGINE_SOCKET".to_string(), SANDBOX_CONTRACT_SOCKET.to_string());
     env.insert("ARLEN_AI_PROXY_SOCKET".to_string(), SANDBOX_PROXY_SOCKET.to_string());
     env.insert("HOME".to_string(), require_abs(&paths.pi_state)?);
+    if let Some(path) = token_file {
+        env.insert("ARLEN_AI_ENGINE_TOKEN_FILE".to_string(), require_abs(path)?);
+    }
 
     // /usr read-only gives node its shared libraries; the pi state dir is the
     // app's writable dir; no network (pi's only egress is the proxy socket).
@@ -192,7 +207,7 @@ mod tests {
     }
 
     fn args() -> Vec<String> {
-        let conf = pi_sidecar_confinement(&paths()).expect("confinement");
+        let conf = pi_sidecar_confinement(&paths(), None).expect("confinement");
         pi_sidecar_argv(&conf, &paths())
     }
 
@@ -271,7 +286,31 @@ mod tests {
     fn a_relative_path_is_rejected() {
         let mut p = paths();
         p.pi_install = "opt/pi".to_string(); // not absolute
-        assert!(matches!(pi_sidecar_confinement(&p), Err(ConfinerError::RelativePath(_))));
+        assert!(matches!(pi_sidecar_confinement(&p, None), Err(ConfinerError::RelativePath(_))));
+    }
+
+    #[test]
+    fn the_token_file_path_is_set_only_when_provided() {
+        // None: token-free shape, no token-file env at all.
+        let none = pi_sidecar_confinement(&paths(), None).expect("confinement");
+        let none_argv = pi_sidecar_argv(&none, &paths());
+        assert_eq!(dest_of(&none_argv, "--setenv", "ARLEN_AI_ENGINE_TOKEN_FILE"), None);
+        // Some: the file PATH (not the secret) is set so the plugins find the token.
+        let tf = "/home/u/.local/state/arlen/pi/.arlen-session-token";
+        let some = pi_sidecar_confinement(&paths(), Some(tf)).expect("confinement");
+        let some_argv = pi_sidecar_argv(&some, &paths());
+        assert_eq!(
+            dest_of(&some_argv, "--setenv", "ARLEN_AI_ENGINE_TOKEN_FILE"),
+            Some(tf.to_string()),
+        );
+    }
+
+    #[test]
+    fn a_relative_token_file_path_is_rejected() {
+        assert!(matches!(
+            pi_sidecar_confinement(&paths(), Some("relative/token")),
+            Err(ConfinerError::RelativePath(_)),
+        ));
     }
 
     /// A full environment for the resolver, as a closure (no process-env mutation).
@@ -295,7 +334,7 @@ mod tests {
         assert_eq!(p.proxy_socket, "/run/user/1000/arlen/ai-proxy.sock");
         assert_eq!(p.contract_socket, "/run/user/1000/arlen/ai-engine.sock");
         // The resolved paths build a valid confinement.
-        assert!(pi_sidecar_confinement(&p).is_ok());
+        assert!(pi_sidecar_confinement(&p, None).is_ok());
     }
 
     #[test]
