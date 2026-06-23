@@ -89,6 +89,10 @@ mod tests {
     fn first_use_is_new_then_trusted_after_pinning() {
         let mut pins = Pins::new();
         assert_eq!(pins.verdict("Acme", &KEY_A), TofuVerdict::NewPublisher);
+        assert!(
+            !pins.is_pinned("Acme"),
+            "an unpinned publisher must read as not pinned"
+        );
         pins.pin("Acme", &KEY_A);
         assert!(pins.is_pinned("Acme"));
         assert_eq!(pins.verdict("Acme", &KEY_A), TofuVerdict::Trusted);

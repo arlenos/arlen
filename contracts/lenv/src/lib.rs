@@ -485,6 +485,11 @@ mod tests {
         assert!(!joined.contains("expires"));
         assert!(!joined.contains("VPN"));
         assert!(!joined.contains("notified if you uninstall"));
+        // A policy with no network allowlist and no blocked-apps list must not
+        // invent those restriction lines: the summary must never claim a limit
+        // that is not in the policy (it is a trust-transparency surface).
+        assert!(!joined.contains("Network limited to"));
+        assert!(!joined.contains("Blocks apps"));
         assert!(joined.contains("knowledge graph: denied"));
         assert!(joined.contains("export: denied"));
     }
