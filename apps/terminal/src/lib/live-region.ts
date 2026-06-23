@@ -40,6 +40,30 @@ export function liveRegionCells(grid: GridSnapshot | null): GridCell[][] {
   return grid.cells.slice(start, last + 1);
 }
 
+/// The cursor position WITHIN the painted live slice (`liveRegionCells`), or
+/// null when no block cursor should be drawn. The slice starts at `start` (the
+/// alternate screen's top, a running command's output row, or the idle prompt
+/// row), so the cursor's row inside the slice is `cursor_row - start`. Returns
+/// null when the shell hid the cursor (`cursor_visible` false, e.g. btop), when
+/// nothing is painted, or when the cursor falls outside the painted cells.
+export function liveCursor(
+  grid: GridSnapshot | null,
+  cells: GridCell[][],
+): { row: number; col: number } | null {
+  if (!grid || !grid.cursor_visible || cells.length === 0) return null;
+  const start = grid.alt_screen
+    ? 0
+    : grid.running
+      ? grid.output_start_row
+      : grid.prompt_start_row;
+  if (start == null) return null;
+  const row = grid.cursor_row - start;
+  const col = grid.cursor_col;
+  if (row < 0 || row >= cells.length) return null;
+  if (col < 0 || col >= cells[row].length) return null;
+  return { row, col };
+}
+
 /// Whether the caller should switch to fullscreen (block UI off): a fullscreen
 /// TUI holds the alternate screen and has painted something. Mirrors the live
 /// cells so an empty alternate screen does not blank the UI.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { liveRegionCells, isAltScreenActive } from "./live-region";
+import { liveRegionCells, isAltScreenActive, liveCursor } from "./live-region";
 import type { GridSnapshot, GridCell } from "$lib/contract";
 
 const def = { kind: "default" as const };
@@ -17,6 +17,7 @@ function grid(over: Partial<GridSnapshot>): GridSnapshot {
     alt_screen: false,
     cursor_row: 0,
     cursor_col: 0,
+    cursor_visible: true,
     running: false,
     output_start_row: null,
     prompt_start_row: null,
@@ -66,6 +67,41 @@ describe("liveRegionCells (the interactive surface)", () => {
     const cells = [row("~ ❯ cmd"), row("only-line"), row(""), row("")];
     const g = grid({ running: true, output_start_row: 1, cursor_row: 1, cells });
     expect(liveRegionCells(g)).toHaveLength(1);
+  });
+});
+
+describe("liveCursor (the block cursor over the live slice)", () => {
+  it("maps the cursor relative to the prompt start row", () => {
+    // Prompt starts at row 1, cursor on row 1 col 10 (the real snapshot pads
+    // each row to `cols`, so the column is in bounds): within the one-row slice
+    // it lands at relative row 0.
+    const cells = [row("(finished)"), row("~/proj ❯ ec"), row("")];
+    const g = grid({ running: false, prompt_start_row: 1, cursor_row: 1, cursor_col: 10, cells });
+    expect(liveCursor(g, liveRegionCells(g))).toEqual({ row: 0, col: 10 });
+  });
+
+  it("is null when the shell hid the cursor (a TUI like btop)", () => {
+    const cells = [row("btop"), row("cpu 9%")];
+    const g = grid({ alt_screen: true, cursor_visible: false, cursor_row: 0, cursor_col: 0, cells });
+    expect(liveCursor(g, liveRegionCells(g))).toBeNull();
+  });
+
+  it("maps directly on the alternate screen (start row 0)", () => {
+    const cells = [row("vim"), row("~"), row("INSERT")];
+    const g = grid({ alt_screen: true, cursor_row: 2, cursor_col: 3, cells });
+    expect(liveCursor(g, liveRegionCells(g))).toEqual({ row: 2, col: 3 });
+  });
+
+  it("is null when the cursor falls outside the painted slice", () => {
+    const cells = [row("~ ❯ "), row("")];
+    const g = grid({ running: false, prompt_start_row: 0, cursor_row: 9, cursor_col: 0, cells });
+    expect(liveCursor(g, liveRegionCells(g))).toBeNull();
+  });
+
+  it("is null for a null snapshot or empty slice", () => {
+    expect(liveCursor(null, [])).toBeNull();
+    const g = grid({ running: false, prompt_start_row: null });
+    expect(liveCursor(g, liveRegionCells(g))).toBeNull();
   });
 });
 
