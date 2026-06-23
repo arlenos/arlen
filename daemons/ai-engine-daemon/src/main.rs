@@ -11,6 +11,8 @@
 use arlen_ai_core::screen::Screener;
 use arlen_ai_engine_daemon::capability_map::CapabilityGate;
 use arlen_ai_engine_daemon::dispatch::Dispatcher;
+use arlen_ai_engine_daemon::dispatch::Executor;
+use arlen_ai_engine_daemon::proxy_executor::ProxyExecutor;
 use arlen_ai_engine_daemon::read_executor::{DeniedRunner, GraphReadExecutor};
 use arlen_ai_engine_daemon::reporter::ScreeningReporter;
 use arlen_ai_engine_daemon::wire::serve_connection;
@@ -73,7 +75,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(LedgerAuditSink::at_default_socket()) as Arc<dyn AuditSink>,
         Screener::off(),
     );
-    let executor = GraphReadExecutor::new(Arc::new(DeniedRunner));
+    // The executor seam is a router so the daemon can host several proxy tools
+    // (graph.read now; graph.write + OS/MCP tools as they land), each enforcing
+    // its own scope. Only graph.read is registered, over the fail-closed
+    // DeniedRunner (the live read provider is the Phase-2 cutover); an
+    // unregistered tool is UnknownTool.
+    let read_executor: Arc<dyn Executor> =
+        Arc::new(GraphReadExecutor::new(Arc::new(DeniedRunner)));
+    let executor = ProxyExecutor::new().register("graph.read", read_executor);
     let dispatcher = Arc::new(Dispatcher::new(CapabilityGate, executor, reporter));
 
     let accept = async {

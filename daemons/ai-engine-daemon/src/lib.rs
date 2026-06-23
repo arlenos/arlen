@@ -26,3 +26,6 @@ pub mod reporter;
 
 /// The os-sdk -> ai-core `GraphQuerier` bridge for the read executor.
 pub mod graph_adapter;
+
+/// The Execute-seam router: dispatches a tool to its registered sub-executor.
+pub mod proxy_executor;
