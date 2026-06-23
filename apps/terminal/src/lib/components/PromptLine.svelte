@@ -32,12 +32,24 @@
     align-items: baseline;
     gap: 6px;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.8125rem;
+    font-size: var(--console-font-size, 0.8125rem);
     line-height: 1.5;
     min-width: 0;
     max-width: 100%;
     white-space: nowrap;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+
+  /* The path and branch carry a quiet wash of the terminal palette (blue,
+     green) instead of plain grey, so the prompt reads as a real prompt and
+     not a dim label - while the command below stays the only full-strength
+     line. The colours reference the ANSI palette vars, so they follow the
+     theme once it projects them, with the muted defaults until then. */
+  .pl-path {
+    color: var(--term-ansi-4, #7d9cc4);
+  }
+  .pl-branch {
+    color: var(--term-ansi-2, #8fae74);
   }
 
   /* Under pressure only the path gives way (ellipsis); branch and
