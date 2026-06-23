@@ -223,3 +223,6 @@ mod tests {
         }
     }
 }
+
+/// The decoder-worker image-transfer protocol (raster frame the viewer reads).
+pub mod decode;
