@@ -246,3 +246,6 @@ mod tests {
 
 /// The decoder-worker image-transfer protocol (raster frame the viewer reads).
 pub mod decode;
+
+/// The audio-probe transfer frame (codec/sample-rate/channels/duration).
+pub mod audio;
