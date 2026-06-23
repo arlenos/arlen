@@ -1,0 +1,14 @@
+[package]
+name = "arlen-viewers-host"
+version = "0.1.0"
+edition = "2021"
+description = "The viewer host-side decode dispatch: detect a file's format, spawn its decoder in a bwrap sandbox, and read back the validated raster (quickview-plan.md)"
+
+[lib]
+name = "arlen_viewers_host"
+
+[dependencies]
+arlen-viewers-core = { path = "../core" }
+arlen-confiner = { path = "../../../sdk/confiner" }
+
+[workspace]
