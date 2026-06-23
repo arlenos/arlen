@@ -73,6 +73,12 @@ pub struct PtyEngine {
     /// `None` at an idle prompt. Lets the renderer slice the live grid to the
     /// output region so the shell's prompt is not drawn under the composer.
     output_start_row: Arc<Mutex<Option<u16>>>,
+    /// The grid row where the current prompt begins: the cursor row at the moment
+    /// the `PromptStart` (OSC 133;A) mark fired, cleared at `ExecStart`. `None`
+    /// while a command runs or before the first marked prompt. Lets the raw-PTY
+    /// renderer show the live prompt + the line being typed as the interactive
+    /// surface, while finished output above it stays in its blocks.
+    prompt_start_row: Arc<Mutex<Option<u16>>>,
     /// Captured output grids of commands that have finished, in finish order. The
     /// reader thread feeds each command's output bytes (between its `ExecStart`
     /// and `CommandEnd` marks) into a dedicated VT parser and pushes the trimmed
@@ -156,6 +162,8 @@ impl PtyEngine {
         let running_sink = Arc::clone(&running);
         let output_start_row = Arc::new(Mutex::new(None));
         let output_start_sink = Arc::clone(&output_start_row);
+        let prompt_start_row = Arc::new(Mutex::new(None));
+        let prompt_start_sink = Arc::clone(&prompt_start_row);
         let finished_outputs = Arc::new(Mutex::new(Vec::new()));
         let finished_sink = Arc::clone(&finished_outputs);
         let reader_handle = std::thread::Builder::new()
@@ -202,6 +210,10 @@ impl PtyEngine {
                                             if let Ok(mut o) = output_start_sink.lock() {
                                                 *o = Some(p.screen().cursor_position().0);
                                             }
+                                            // The prompt is done; output begins.
+                                            if let Ok(mut ps) = prompt_start_sink.lock() {
+                                                *ps = None;
+                                            }
                                             // A fresh, tall parser captures this
                                             // command's output in full; cols match
                                             // the screen so wrapping is identical.
@@ -226,6 +238,12 @@ impl PtyEngine {
                                             running_sink.store(false, Ordering::Relaxed);
                                             if let Ok(mut o) = output_start_sink.lock() {
                                                 *o = None;
+                                            }
+                                            // The new prompt begins at the cursor's
+                                            // current row; the live region renders
+                                            // from here (prompt + typed line).
+                                            if let Ok(mut ps) = prompt_start_sink.lock() {
+                                                *ps = Some(p.screen().cursor_position().0);
                                             }
                                             // A command that reached the next prompt
                                             // without an end mark still has its
@@ -265,6 +283,7 @@ impl PtyEngine {
             screen,
             running,
             output_start_row,
+            prompt_start_row,
             finished_outputs,
             reader: Some(reader_handle),
         })
@@ -322,6 +341,7 @@ impl VtEngine for PtyEngine {
         // cannot know (it sees only the screen, not the OSC-mark stream).
         snap.running = self.running.load(Ordering::Relaxed);
         snap.output_start_row = self.output_start_row.lock().ok().and_then(|o| *o);
+        snap.prompt_start_row = self.prompt_start_row.lock().ok().and_then(|o| *o);
         snap
     }
 }
@@ -371,6 +391,7 @@ fn snapshot_of(parser: &vt100::Parser) -> GridSnapshot {
         // command-output region in `screen_snapshot`.
         running: false,
         output_start_row: None,
+        prompt_start_row: None,
     }
 }
 
@@ -727,6 +748,53 @@ mod tests {
         }
         assert!(!snap.running, "CommandEnd (133;D) clears the running state");
         assert_eq!(snap.output_start_row, Some(1), "the output-start row persists past the end mark");
+    }
+
+    /// On-host (needs a PTY + `/bin/sh`): `PromptStart` (OSC 133;A) records the
+    /// row where the current prompt begins, and `ExecStart` clears it. This is the
+    /// raw-PTY re-root's enabler: at an idle prompt the renderer shows the live
+    /// grid from `prompt_start_row` (the prompt + the line being typed, the
+    /// interactive surface) while finished output above stays in its blocks; a
+    /// running command's region is `output_start_row` instead. `#[ignore]`d (needs
+    /// a PTY); run with `--ignored`.
+    #[test]
+    #[ignore]
+    fn the_prompt_start_row_marks_the_prompt_and_clears_on_exec() {
+        let script = concat!(
+            "printf '\\033]133;A\\007';", // prompt start at row 0
+            "printf 'prompt$ ';",         // the prompt is drawn (cursor stays row 0)
+            "read a;",                    // PHASE 1: idle at the prompt
+            "printf '\\033]133;C\\007';", // exec start
+            "read b",                     // PHASE 2: running
+        );
+        let mut eng = PtyEngine::spawn("/bin/sh", &["-c", script], None, 80, 24).unwrap();
+
+        // PHASE 1: at the prompt, prompt_start_row is set to the prompt's row and
+        // no command is running.
+        let mut snap = eng.screen_snapshot();
+        for _ in 0..100 {
+            snap = eng.screen_snapshot();
+            if snap.prompt_start_row.is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(snap.prompt_start_row, Some(0), "PromptStart marks the prompt's row");
+        assert!(!snap.running, "no command runs at the prompt");
+
+        // Release the first `read`, advancing past the 133;C exec mark.
+        eng.send_input(b"\n").unwrap();
+
+        // PHASE 2: ExecStart cleared the prompt-start row and marked running.
+        for _ in 0..100 {
+            snap = eng.screen_snapshot();
+            if snap.running {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(snap.running, "ExecStart marks the command running");
+        assert_eq!(snap.prompt_start_row, None, "ExecStart clears the prompt-start row");
     }
 
     /// On-host (needs a PTY + `/bin/sh`): a command's output is captured into its
