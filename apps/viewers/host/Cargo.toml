@@ -12,5 +12,7 @@ arlen-viewers-core = { path = "../core" }
 arlen-confiner = { path = "../../../sdk/confiner" }
 # SIGKILL the confined worker on the decode timeout (a hung/compromised worker).
 libc = "0.2"
+# The per-decoder seccomp allowlist compiled to cBPF for `bwrap --seccomp <fd>`.
+seccompiler = "0.5"
 
 [workspace]
