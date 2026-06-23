@@ -1,8 +1,8 @@
-# Starting permission profile for Stremio (a media streaming client).
+# Starting permission profile for Spotify (snapshot) (a media streaming client).
 # Streaming is its function, so it gets network; downloads save to Downloads.
 # No Knowledge Graph access.
 [info]
-app_id = "com.stremio.Stremio"
+app_id = "com.spotify.Client.snapshot"
 tier = "third-party"
 
 [filesystem]

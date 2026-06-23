@@ -1,0 +1,14 @@
+# Starting permission profile for Jellyfin Server (a media server).
+# It serves the user's media library to clients over the network by function, so
+# it gets the media directories and network. No Knowledge Graph access.
+[info]
+app_id = "com.jellyfin.JellyfinServer"
+tier = "third-party"
+
+[filesystem]
+videos = true
+music = true
+pictures = true
+
+[network]
+allow_all = true
