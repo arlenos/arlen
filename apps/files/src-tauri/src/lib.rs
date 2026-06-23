@@ -482,6 +482,31 @@ fn files_set_permissions(path: String, mode: u32) -> Result<(), String> {
     ops::set_permissions(&dir, rel(&path), mode).map_err(|e| e.to_string())
 }
 
+/// Write the editable EXIF string tags (description/artist/copyright) of a JPEG
+/// `path`, the media half of the info panel's editable metadata (permissions
+/// and rename are the other two). The write is fail-safe: the core reads the
+/// original, splices the tags into an in-memory copy, verifies it on readback,
+/// then atomically swaps it over the original, so a failed write never corrupts
+/// the file. A non-JPEG path or an all-empty edit is refused before any write.
+/// `path` is reanchored relative to the root capability. A `None` field leaves
+/// that tag untouched.
+#[tauri::command]
+fn files_set_exif_tags(
+    path: String,
+    description: Option<String>,
+    artist: Option<String>,
+    copyright: Option<String>,
+) -> Result<(), String> {
+    let dir = root()?;
+    let edits = arlen_file_browser_core::metadata::ExifEdits {
+        description,
+        artist,
+        copyright,
+    };
+    arlen_file_browser_core::metadata::write_exif_tags(&dir, rel(&path), &edits)
+        .map_err(|e| e.to_string())
+}
+
 /// Undo the most recent file operation (`Ctrl+Z`). Pops the last recorded batch
 /// and applies each inverse through the ops; `Ok(false)` when there is nothing to
 /// undo. A permanent delete was never recorded, so it is never offered as undo.
@@ -940,6 +965,7 @@ pub fn run() {
             files_search,
             files_op,
             files_set_permissions,
+            files_set_exif_tags,
             files_undo,
             files_bookmarks,
             files_bookmark_add,

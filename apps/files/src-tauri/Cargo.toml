@@ -25,8 +25,9 @@ env_logger = "0.11"
 glib = "0.18"
 # The shared file-browser core: real listing, sorting, breadcrumb,
 # properties, operations, trash and search. The host wraps each as a
-# thin command over a capability-scoped root.
-arlen-file-browser-core = { path = "../core" }
+# thin command over a capability-scoped root. The full FM enables
+# metadata-edit (the EXIF write-back); only the embedded picker drops it.
+arlen-file-browser-core = { path = "../core", features = ["metadata-edit"] }
 cap-std = "3"
 # Read the AI capability context from ai.toml for the capability
 # indicator (same reader as the harness and the terminal).
