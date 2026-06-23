@@ -252,8 +252,12 @@ pub enum Reply {
     Report(ReportAck),
     /// Acknowledgement of an `EndSession` (or other no-result) call.
     Ack,
-    /// A contract-level failure handling the call itself.
-    Error(ContractError),
+    /// A contract-level failure handling the call itself. A struct variant (not
+    /// a newtype) so the wire form is the clean `{"reply":"error","code":...}`
+    /// the plugins can read, matching the modulesd-proto `HostReply::Error`
+    /// shape (a newtype around the string-enum serialized as `{"<code>":null}`,
+    /// a serde artifact the TypeScript consumer cannot ergonomically decode).
+    Error { code: ContractError },
 }
 
 #[cfg(test)]
@@ -341,6 +345,60 @@ mod tests {
         }
     }
 
+    /// The full `ContractCall` + `Reply` wire envelope, pinned exactly (not just
+    /// round-tripped): the thin pi plugins are a separate (TypeScript) consumer
+    /// that hand-builds this JSON, so a serde change that silently reshaped the
+    /// envelope would break them with no Rust failure. `to_value` compares the
+    /// complete object, so an added/renamed/removed field fails here.
+    #[test]
+    fn contract_call_and_reply_wire_envelope_is_pinned() {
+        let call = ContractCall {
+            token: "tok-1".into(),
+            call: Call::Authorize(Authorize {
+                tool_name: "graph.write".into(),
+                tool_input: json!({"cypher": "CREATE (n)"}),
+                external_triggered: false,
+            }),
+        };
+        assert_eq!(
+            serde_json::to_value(&call).unwrap(),
+            json!({
+                "token": "tok-1",
+                "call": {
+                    "call": "authorize",
+                    "tool_name": "graph.write",
+                    "tool_input": {"cypher": "CREATE (n)"},
+                    "external_triggered": false
+                }
+            }),
+        );
+
+        // EndSession is a unit variant: just the tag.
+        let end = ContractCall { token: "t".into(), call: Call::EndSession };
+        assert_eq!(
+            serde_json::to_value(&end).unwrap(),
+            json!({"token": "t", "call": {"call": "end_session"}}),
+        );
+
+        // The reply envelope nests the verb's tagged verdict under the `reply` tag.
+        assert_eq!(
+            serde_json::to_value(Reply::Authorize(AuthorizeDecision::Allow)).unwrap(),
+            json!({"reply": "authorize", "decision": "allow"}),
+        );
+        assert_eq!(
+            serde_json::to_value(Reply::Report(ReportAck { screen: ScreenVerdict::Block })).unwrap(),
+            json!({"reply": "report", "screen": "block"}),
+        );
+        assert_eq!(serde_json::to_value(Reply::Ack).unwrap(), json!({"reply": "ack"}));
+        assert_eq!(
+            serde_json::to_value(Reply::Error { code: ContractError::Unavailable }).unwrap(),
+            json!({"reply": "error", "code": "unavailable"}),
+        );
+
+        // The whole envelope round-trips too (the plugin's decode path).
+        assert_eq!(round_trip(&call), call);
+    }
+
     #[test]
     fn confirm_round_trips_with_stable_names() {
         let c = Confirm {
@@ -405,7 +463,7 @@ mod tests {
             (Reply::Execute(ExecuteOutcome::Ok { result: json!(null) }), "execute"),
             (Reply::Report(ReportAck { screen: ScreenVerdict::Clean }), "report"),
             (Reply::Ack, "ack"),
-            (Reply::Error(ContractError::Internal), "error"),
+            (Reply::Error { code: ContractError::Internal }, "error"),
         ];
         for (r, tag) in replies {
             let s = serde_json::to_string(&r).unwrap();

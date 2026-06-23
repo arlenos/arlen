@@ -77,7 +77,7 @@ where
             Ok(call) => dispatcher.handle_call(call, pid).await,
             // A call we cannot parse is a contract-level error, not a session
             // failure; reply and keep the connection for the next frame.
-            Err(_) => Reply::Error(ContractError::InvalidArguments),
+            Err(_) => Reply::Error { code: ContractError::InvalidArguments },
         };
         let body = serde_json::to_string(&reply)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
@@ -200,7 +200,7 @@ mod tests {
 
         write_frame(&mut client, "{not valid json").await.unwrap();
         let reply: Reply = serde_json::from_str(&read_frame(&mut client).await.unwrap().unwrap()).unwrap();
-        assert_eq!(reply, Reply::Error(ContractError::InvalidArguments));
+        assert_eq!(reply, Reply::Error { code: ContractError::InvalidArguments });
 
         // The connection survives: a following valid (but session-less) call still answers.
         let call = ContractCall {
