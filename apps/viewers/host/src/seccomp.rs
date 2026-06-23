@@ -7,7 +7,7 @@
 //! decode worker needs are allowed, everything else (incl. the x32 ABI aliases)
 //! returns `EPERM`. An allowlist, not a blocklist - a blocklist must name every
 //! dangerous call and is bypassed by the x32 aliases, whereas absence denies
-//! them. So `socket`/`connect` (no network ever), `execve`/`fork`,
+//! them. So `socket`/`connect` (no network ever), `fork`/`vfork`,
 //! `ptrace`/`process_vm_*`, `bpf`/`perf_event_open`, `mount`/`setns`/`unshare`,
 //! the module/`kexec`/`keyctl` calls, and every filesystem mutation are blocked
 //! by *not being in the set*.
@@ -119,6 +119,18 @@ fn decoder_base_allowlist() -> Vec<libc::c_long> {
         libc::SYS_exit_group,
         libc::SYS_tgkill,
         libc::SYS_tkill,
+        // bwrap's pid-namespace init reaper inherits this filter and reaps the
+        // worker via wait; benign for the worker itself (no children -> ECHILD).
+        libc::SYS_wait4,
+        libc::SYS_waitid,
+        // bwrap installs this filter then execs the worker, so execve must be
+        // permitted or the worker never starts. This does not weaken the model:
+        // seccomp is inherited across exec, so anything a compromised worker
+        // could exec stays bound to the same syscall set (no socket, no ptrace,
+        // no clone for the pure-Rust workers) inside the same no-network,
+        // read-only-fs namespace.
+        libc::SYS_execve,
+        libc::SYS_execveat,
         // Randomness + time (stack canary, hashmap seed, decode timing).
         libc::SYS_getrandom,
         libc::SYS_clock_gettime,
@@ -258,8 +270,6 @@ mod tests {
         let forbidden = [
             libc::SYS_socket,
             libc::SYS_connect,
-            libc::SYS_execve,
-            libc::SYS_execveat,
             libc::SYS_ptrace,
             libc::SYS_process_vm_readv,
             libc::SYS_bpf,

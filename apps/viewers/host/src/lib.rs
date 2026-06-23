@@ -20,6 +20,7 @@
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::path::Path;
+use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -60,14 +61,28 @@ pub fn worker_bin(decoder: Decoder) -> Option<&'static str> {
     }
 }
 
-/// The decoder sandbox: read-only `/usr` (the worker's dynamic libs) + read-only
-/// the worker's own directory (its binary), NO network, and NO file binds at all
-/// (the worker reads its input from stdin, never the filesystem, so it cannot
-/// open any other file). A tmpfs `/tmp` is provided by the app-runtime base.
+/// The decoder sandbox: read-only `/usr` (the worker's dynamic libs) + the
+/// merged-usr loader symlinks `/lib64`/`/lib` so the ELF interpreter resolves +
+/// read-only the worker's own directory (its binary). NO network, NO input file
+/// bind (the worker reads its input from stdin, never the filesystem, so it
+/// cannot open any other file). A tmpfs `/tmp` is provided by the app-runtime
+/// base. The per-decoder seccomp filter is layered on top in
+/// [`run_confined_worker`].
 pub fn decoder_confinement(worker_dir: &str) -> Result<Confinement, ConfinerError> {
     let dir = require_abs(worker_dir)?;
     let skeleton = app_runtime_profile(Path::new("/usr"), &[], BTreeMap::new(), NetworkPolicy::None)?;
-    Ok(skeleton.complete(vec![Bind::ReadOnly(dir.clone(), dir)], vec![]))
+    let mut binds = vec![Bind::ReadOnly(dir.clone(), dir)];
+    // The worker is dynamically linked, so its ELF interpreter lives at
+    // /lib64/ld-linux-*.so. On a merged-usr system /lib64 and /lib are symlinks
+    // to usr/lib; bwrap resolves the source symlink and binds usr/lib there, so
+    // the loader resolves inside the otherwise-/usr-only view. Bound only when
+    // present so a pure-/usr host does not fail the spawn.
+    for loader in ["/lib64", "/lib"] {
+        if Path::new(loader).exists() {
+            binds.push(Bind::ReadOnly(loader.into(), loader.into()));
+        }
+    }
+    Ok(skeleton.complete(binds, vec![]))
 }
 
 /// The full confined spawn argv: the bwrap flags then `-- <worker_path>`. Pure.
@@ -98,18 +113,52 @@ fn require_abs(path: &str) -> Result<String, ConfinerError> {
 ///   so the kill unblocks both the stdout read AND the stdin writer thread;
 /// - input is written on a separate thread while stdout is drained, so a large
 ///   input + output cannot deadlock on the pipe buffers; a non-zero exit errs.
-pub fn run_confined_worker(worker_dir: &str, worker_bin: &str, input: &[u8]) -> Result<Vec<u8>, String> {
+pub fn run_confined_worker(
+    worker_dir: &str,
+    worker_bin: &str,
+    decoder: Decoder,
+    input: &[u8],
+) -> Result<Vec<u8>, String> {
     let worker_path = format!("{}/{worker_bin}", worker_dir.trim_end_matches('/'));
     let confinement = decoder_confinement(worker_dir).map_err(|e| e.to_string())?;
-    let argv = decode_worker_argv(&confinement, &worker_path);
+    let mut argv = decode_worker_argv(&confinement, &worker_path);
 
-    let mut child = Command::new("bwrap")
+    // Install the per-decoder seccomp allowlist: compile it, hand the cBPF to
+    // bwrap over a memfd via `--seccomp <fd>` (inserted before the `--` program
+    // separator), and bwrap installs it on the worker just before exec. The
+    // wider profile reaches only the HEIC/AVIF decoder; the pure-Rust workers
+    // get the tight one.
+    let bpf = seccomp::decoder_filter_bytes(decoder).map_err(|e| e.to_string())?;
+    let seccomp_fd = make_seccomp_memfd(&bpf).map_err(|e| format!("seccomp memfd: {e}"))?;
+    let sep = argv.iter().position(|a| a == "--").unwrap_or(argv.len());
+    argv.splice(sep..sep, ["--seccomp".to_string(), seccomp_fd.to_string()]);
+
+    let mut command = Command::new("bwrap");
+    command
         .args(&argv)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(|e| format!("spawn bwrap: {e}"))?;
+        .stderr(Stdio::inherit());
+    // The seccomp memfd must survive exec into bwrap (it reads `--seccomp <fd>`).
+    // `close_range` marks every other inherited fd CLOEXEC so no host fd leaks
+    // into the worker, then the seccomp fd's CLOEXEC bit is re-cleared so it
+    // alone stays open. stdin/stdout are dup'd to 0/1 (below 3), so close_range
+    // spares them. async-signal-safe: only raw libc calls, no allocation.
+    unsafe {
+        command.pre_exec(move || {
+            libc::close_range(3, libc::c_uint::MAX, libc::CLOSE_RANGE_CLOEXEC as libc::c_int);
+            let flags = libc::fcntl(seccomp_fd, libc::F_GETFD);
+            if flags >= 0 {
+                libc::fcntl(seccomp_fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
+            }
+            Ok(())
+        });
+    }
+    let spawned = command.spawn();
+    // The child inherited the memfd at fork; the parent's copy is done with.
+    // SAFETY: closing the parent's own fd; the child keeps its inherited copy.
+    unsafe { libc::close(seccomp_fd) };
+    let mut child = spawned.map_err(|e| format!("spawn bwrap: {e}"))?;
     let pid = child.id() as libc::pid_t;
 
     let mut stdin = child.stdin.take().ok_or("no child stdin")?;
@@ -155,15 +204,26 @@ pub fn run_confined_worker(worker_dir: &str, worker_bin: &str, input: &[u8]) -> 
     Ok(out)
 }
 
-/// Spawn the image decoder confined and read back the validated [`DecodedImage`].
-pub fn spawn_decode(worker_dir: &str, worker_bin: &str, input: &[u8]) -> Result<DecodedImage, String> {
-    let frame = run_confined_worker(worker_dir, worker_bin, input)?;
+/// Spawn the image decoder confined (under its per-decoder seccomp profile) and
+/// read back the validated [`DecodedImage`].
+pub fn spawn_decode(
+    worker_dir: &str,
+    worker_bin: &str,
+    decoder: Decoder,
+    input: &[u8],
+) -> Result<DecodedImage, String> {
+    let frame = run_confined_worker(worker_dir, worker_bin, decoder, input)?;
     decode_frame(&frame).map_err(|e| format!("invalid decoder frame: {e:?}"))
 }
 
 /// Spawn the audio probe worker confined and read back the validated [`AudioInfo`].
-pub fn spawn_probe(worker_dir: &str, worker_bin: &str, input: &[u8]) -> Result<AudioInfo, String> {
-    let frame = run_confined_worker(worker_dir, worker_bin, input)?;
+pub fn spawn_probe(
+    worker_dir: &str,
+    worker_bin: &str,
+    decoder: Decoder,
+    input: &[u8],
+) -> Result<AudioInfo, String> {
+    let frame = run_confined_worker(worker_dir, worker_bin, decoder, input)?;
     decode_audio_frame(&frame).map_err(|e| format!("invalid probe frame: {e:?}"))
 }
 
@@ -178,7 +238,7 @@ pub fn decode_image_path(worker_dir: &str, path: &Path) -> Result<DecodedImage, 
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
     let detected = detect(name, &input).ok_or("unsupported file format")?;
     let bin = worker_bin(detected.decoder).ok_or("no image decoder for this format")?;
-    spawn_decode(worker_dir, bin, &input)
+    spawn_decode(worker_dir, bin, detected.decoder, &input)
 }
 
 /// The sandboxed worker binary for an audio [`Decoder`], or `None` for a
@@ -203,7 +263,41 @@ pub fn probe_audio_path(worker_dir: &str, path: &Path) -> Result<AudioInfo, Stri
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
     let detected = detect(name, &input).ok_or("unsupported file format")?;
     let bin = audio_worker_bin(detected.decoder).ok_or("no audio probe worker for this format")?;
-    spawn_probe(worker_dir, bin, &input)
+    spawn_probe(worker_dir, bin, detected.decoder, &input)
+}
+
+/// Create an anonymous in-memory file holding the compiled seccomp cBPF for
+/// `bwrap --seccomp <fd>`. The memfd is created without `MFD_CLOEXEC` and the
+/// child's `pre_exec` re-clears the CLOEXEC bit so the fd survives the exec into
+/// bwrap; the parent closes its own copy after spawn.
+fn make_seccomp_memfd(bpf: &[u8]) -> std::io::Result<libc::c_int> {
+    use std::ffi::CString;
+    let name = CString::new("arlen-decoder-seccomp").expect("static name has no nul");
+    // SAFETY: a plain memfd_create with a valid C string and no flags.
+    let fd = unsafe { libc::memfd_create(name.as_ptr(), 0) };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let mut written = 0usize;
+    while written < bpf.len() {
+        // SAFETY: writing `bpf[written..]` to the owned memfd.
+        let n = unsafe {
+            libc::write(fd, bpf[written..].as_ptr() as *const libc::c_void, bpf.len() - written)
+        };
+        if n < 0 {
+            let e = std::io::Error::last_os_error();
+            unsafe { libc::close(fd) };
+            return Err(e);
+        }
+        written += n as usize;
+    }
+    // Rewind so bwrap reads the filter from the start.
+    if unsafe { libc::lseek(fd, 0, libc::SEEK_SET) } < 0 {
+        let e = std::io::Error::last_os_error();
+        unsafe { libc::close(fd) };
+        return Err(e);
+    }
+    Ok(fd)
 }
 
 #[cfg(test)]
@@ -270,9 +364,14 @@ mod tests {
     #[ignore = "needs a userns-capable host + the built decoder worker"]
     fn a_confined_worker_decodes_a_real_png() {
         let dir = std::env::var("ARLEN_VIEWERS_WORKER_DIR").expect("set ARLEN_VIEWERS_WORKER_DIR");
-        // A real PNG read by the host (no image dep here) and piped to the worker.
-        let png = std::fs::read("/usr/share/pixmaps/endeavouros-logo.png").expect("a test PNG");
-        let decoded = spawn_decode(&dir, "arlen-decode-image", &png).expect("decode");
+        // A real PNG read by the host (no image dep here) and piped to the worker;
+        // the path is env-driven so any distro/CI can point it at a present PNG.
+        let png_path = std::env::var("ARLEN_VIEWERS_TEST_PNG")
+            .unwrap_or_else(|_| "/usr/share/pixmaps/archlinux-logo.png".to_string());
+        let png = std::fs::read(&png_path).expect("a test PNG at ARLEN_VIEWERS_TEST_PNG");
+        // Decodes UNDER the installed per-decoder seccomp filter, so a success
+        // also proves the tight base allowlist permits a real decode on metal.
+        let decoded = spawn_decode(&dir, "arlen-decode-image", Decoder::ImageRs, &png).expect("decode");
         assert!(decoded.width > 0 && decoded.height > 0);
         assert_eq!(decoded.rgba.len(), (decoded.width * decoded.height * 4) as usize);
     }
