@@ -27,6 +27,10 @@ arlen-permissions = { path = "../../sdk/permissions" }
 # The audit ledger sink (AuditSink + LedgerAuditSink) the reporter seam records
 # tool results to; the content-free event builders live in arlen-ai-core.
 audit-proto = { path = "../../contracts/audit-proto" }
+# The os-sdk graph client the read executor's GraphQuerier adapter bridges onto
+# the ai-core pipeline. Daemon-local glue: ai-core deliberately does not depend
+# on os-sdk, so each daemon owns this thin bridge (mirrors ai-daemon's).
+os-sdk = { path = "../../sdk/os-sdk" }
 libc = "0.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

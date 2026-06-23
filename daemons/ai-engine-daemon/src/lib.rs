@@ -23,3 +23,6 @@ pub mod read_executor;
 
 /// The Phase-1 reporter seam: audit + S17/S18 screening of tool results.
 pub mod reporter;
+
+/// The os-sdk -> ai-core `GraphQuerier` bridge for the read executor.
+pub mod graph_adapter;
