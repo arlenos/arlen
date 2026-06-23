@@ -10,12 +10,28 @@
 version: "0.5"
 
 processes:
+  # Build the compositor to completion BEFORE the run process starts, so the
+  # run's readiness probe (the wayland-2 socket, a ~120s window) times only a
+  # warm-binary startup, never a cold cosmic-comp+smithay build (minutes). Inside
+  # a single `cargo run` the cold build races that probe; on a slow first build
+  # the probe exhausts and process-compose restarts the process, killing the
+  # in-progress build into a loop that never comes up (the "fails to start, TUI
+  # dies on shutdown" symptom). A separate build step makes a compile failure a
+  # clear failed process rather than a spinning probe. `restart: no` - a one-shot.
+  compositor-build:
+    command: 'cd "${COMPOSITOR_PATH}" && cargo build --bin cosmic-comp'
+    availability:
+      restart: "no"
+
   # cosmic-comp connects to the host session (wayland-1, like `just compositor`)
   # and creates the nested wayland-2 the shell renders into. The stale wayland-2
   # from a prior run is cleared first so the readiness probe only passes once the
-  # fresh nested socket exists.
+  # fresh nested socket exists. The binary is already built (compositor-build), so
+  # `cargo run` starts it promptly and the readiness probe times only startup.
   compositor:
     command: 'cd "${COMPOSITOR_PATH}" && rm -f "${XDG_RUNTIME_DIR}/wayland-2" "${XDG_RUNTIME_DIR}/wayland-2.lock" && DISPLAY="" WAYLAND_DISPLAY=wayland-1 cargo run --bin cosmic-comp'
+    depends_on:
+      compositor-build: { condition: process_completed_successfully }
     # Capture the compositor's own stdout/stderr (Rust tracing output) to a
     # file. process-compose's main log only records orchestration events, not
     # per-process output, so without this the compositor's INFO/debug lines are
