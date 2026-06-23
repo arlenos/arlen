@@ -507,6 +507,19 @@ fn files_set_exif_tags(
         .map_err(|e| e.to_string())
 }
 
+/// Read the editable EXIF string tags (description/artist/copyright) of a JPEG
+/// `path`, so the info panel can show the current values before an edit. A
+/// non-JPEG path, or a JPEG with no EXIF, yields an empty editor (all fields
+/// `None`) rather than an error. `path` is reanchored relative to the root
+/// capability. The read counterpart of `files_set_exif_tags`.
+#[tauri::command]
+fn files_get_exif_tags(
+    path: String,
+) -> Result<arlen_file_browser_core::metadata::ExifEdits, String> {
+    let dir = root()?;
+    arlen_file_browser_core::metadata::read_exif_tags(&dir, rel(&path)).map_err(|e| e.to_string())
+}
+
 /// Undo the most recent file operation (`Ctrl+Z`). Pops the last recorded batch
 /// and applies each inverse through the ops; `Ok(false)` when there is nothing to
 /// undo. A permanent delete was never recorded, so it is never offered as undo.
@@ -966,6 +979,7 @@ pub fn run() {
             files_op,
             files_set_permissions,
             files_set_exif_tags,
+            files_get_exif_tags,
             files_undo,
             files_bookmarks,
             files_bookmark_add,
