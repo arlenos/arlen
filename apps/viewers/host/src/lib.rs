@@ -29,6 +29,8 @@ use arlen_viewers_core::audio::{decode_audio_frame, AudioInfo};
 use arlen_viewers_core::decode::{decode_frame, DecodedImage, MAX_PIXELS};
 use arlen_viewers_core::{detect, Decoder};
 
+pub mod seccomp;
+
 /// The largest file the host reads + pipes to a decoder (mirrors the worker's
 /// own input bound).
 pub const MAX_INPUT_BYTES: u64 = 256 * 1024 * 1024;
