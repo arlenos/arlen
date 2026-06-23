@@ -12,6 +12,7 @@
     terminalBlocks,
     terminalGrid,
     terminalInput,
+    terminalResize,
     type Block,
     type GridSnapshot,
   } from "$lib/contract";
@@ -85,6 +86,40 @@
     if ($activeSessionId && tauriAvailable) consoleEl?.focus();
   });
 
+  // Resize the PTY to match the rendered grid: a hidden probe (10 chars of the
+  // console mono font over one line) gives the true cell width/height, so cols/
+  // rows are computed from the real font rather than a hardcoded guess. A
+  // ResizeObserver on the console fires terminal_resize (debounced) on any size
+  // change, so the shell + any running TUI reflow via SIGWINCH (today resize did
+  // nothing - the PTY kept its initial 80x24).
+  let probeEl = $state<HTMLSpanElement | null>(null);
+  let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function sendResize() {
+    const id = $activeSessionId;
+    if (!id || !consoleEl || !probeEl) return;
+    const probe = probeEl.getBoundingClientRect();
+    const cellW = probe.width / 10;
+    const cellH = probe.height;
+    if (cellW <= 0 || cellH <= 0) return;
+    const cols = Math.max(1, Math.floor(consoleEl.clientWidth / cellW));
+    const rows = Math.max(1, Math.floor(consoleEl.clientHeight / cellH));
+    terminalResize(id, cols, rows).catch(() => {});
+  }
+
+  $effect(() => {
+    if (!consoleEl || !tauriAvailable) return;
+    const observer = new ResizeObserver(() => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(sendResize, 80);
+    });
+    observer.observe(consoleEl);
+    return () => {
+      observer.disconnect();
+      clearTimeout(resizeTimer);
+    };
+  });
+
   onMount(() => {
     loadSessions();
   });
@@ -132,7 +167,11 @@
   tabindex="0"
   role="application"
   onkeydown={onGridKey}
+  oncontextmenu={(e) => e.preventDefault()}
 >
+  <!-- Hidden cell-size probe in the exact console cell font, for the resize
+       computation; not shown to AT or the user. -->
+  <span bind:this={probeEl} class="cell-probe" aria-hidden="true">0000000000</span>
   <div class="stream">
     {#if $sessionsLoaded && $sessionsError}
       <div class="stream-empty">
@@ -183,6 +222,20 @@
     flex-direction: column;
     min-height: 0;
     flex: 1;
+  }
+
+  /* Off-screen probe in the exact console cell font (0.8125rem mono, 1.5 line),
+     measured to derive the cell width/height for the PTY resize computation. */
+  .cell-probe {
+    position: absolute;
+    top: -9999px;
+    left: -9999px;
+    visibility: hidden;
+    white-space: pre;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    pointer-events: none;
   }
 
   .stream {
