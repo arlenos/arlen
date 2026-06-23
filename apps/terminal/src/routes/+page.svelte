@@ -102,7 +102,15 @@
     const probe = probeEl.getBoundingClientRect();
     const cellW = probe.width / 10;
     const cellH = probe.height;
-    if (cellW <= 0 || cellH <= 0) return;
+    // The probe may not be laid out yet at the first observer fire; retry next
+    // frame rather than silently bail, so the INITIAL resize always lands. Until
+    // it does the PTY stays at its 80x24 spawn size, which constrains every
+    // command's output to 80 columns and makes a fullscreen TUI (btop) fill only
+    // part of a larger window.
+    if (cellW <= 0 || cellH <= 0) {
+      requestAnimationFrame(sendResize);
+      return;
+    }
     const cols = Math.max(1, Math.floor(consoleEl.clientWidth / cellW));
     const rows = Math.max(1, Math.floor(consoleEl.clientHeight / cellH));
     terminalResize(id, cols, rows).catch(() => {});
