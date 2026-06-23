@@ -38,11 +38,11 @@ const cell = (over: Partial<GridCell>): GridCell => ({
   ...over,
 });
 
-describe("paletteHex (the standard xterm 256 palette)", () => {
+describe("paletteHex (the Arlen 16 + xterm 256 cube/greyscale)", () => {
   it("maps the 16 base ANSI colours", () => {
-    expect(paletteHex(0)).toBe("#000000");
-    expect(paletteHex(1)).toBe("#cd0000");
-    expect(paletteHex(15)).toBe("#ffffff");
+    expect(paletteHex(0)).toBe("#15161b");
+    expect(paletteHex(1)).toBe("#c96a6a");
+    expect(paletteHex(15)).toBe("#f2f3f7");
   });
   it("maps the 6x6x6 colour cube (16-231)", () => {
     expect(paletteHex(16)).toBe("#000000"); // cube origin
@@ -62,7 +62,7 @@ describe("colorOf", () => {
   });
   it("emits an indexed colour as a themeable var with the palette fallback", () => {
     expect(colorOf({ kind: "indexed", value: 1 })).toBe(
-      "var(--term-ansi-1, #cd0000)",
+      "var(--term-ansi-1, #c96a6a)",
     );
   });
   it("emits a direct RGB triple as a CSS rgb()", () => {
@@ -73,7 +73,7 @@ describe("colorOf", () => {
 describe("cellStyle", () => {
   it("paints a foreground colour", () => {
     expect(cellStyle(cell({ fg: { kind: "indexed", value: 1 } }))).toBe(
-      "color:var(--term-ansi-1, #cd0000)",
+      "color:var(--term-ansi-1, #c96a6a)",
     );
   });
   it("emits nothing for a plain default cell", () => {
@@ -90,7 +90,7 @@ describe("cellStyle", () => {
     // fg=red, bg=default -> after inverse: text takes the (default) background,
     // background takes red. A non-swapping impl would keep color:red.
     const s = cellStyle(cell({ fg: { kind: "indexed", value: 1 }, inverse: true }));
-    expect(s).toContain("background:var(--term-ansi-1, #cd0000)");
+    expect(s).toContain("background:var(--term-ansi-1, #c96a6a)");
     expect(s).toContain("color:var(--background, transparent)");
   });
 });
