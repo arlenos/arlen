@@ -8,6 +8,7 @@
   /// would not start).
   import { onMount } from "svelte";
   import { writable } from "svelte/store";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import {
     terminalBlocks,
     terminalGrid,
@@ -129,9 +130,14 @@
     loadBlocks(id);
   });
 
-  // Poll the live screen while a session is active. The PTY streams
-  // output asynchronously, so the screen is read on a timer (not only
-  // on send); the interval is torn down on session change and unmount.
+  // Render on change, not on a fixed timer. The engine pushes a `terminal://frame`
+  // ping whenever this session's screen changes (an echoed keystroke, new output),
+  // so the live grid repaints within a frame instead of waiting up to a poll
+  // interval — the latency that made it feel like a textbox. Fetches are coalesced
+  // (one in flight, re-run if a frame landed during it) so a flood of pings can't
+  // pile up. A slow safety poll guarantees the screen can never stay stale if a
+  // ping is missed or the listener races session start; an idle prompt otherwise
+  // does no work. Torn down on session change and unmount.
   $effect(() => {
     const id = $activeSessionId;
     if (!id || !tauriAvailable) {
@@ -139,19 +145,44 @@
       return;
     }
     let alive = true;
-    const tick = async () => {
+    let fetching = false;
+    let dirtyWhileFetching = false;
+    const fetchGrid = async () => {
+      if (!alive) return;
+      if (fetching) {
+        dirtyWhileFetching = true;
+        return;
+      }
+      fetching = true;
       try {
         const grid = await terminalGrid(id);
         if (alive) liveGrid.set(grid);
       } catch {
         // Keep the last good screen on a transient read failure.
+      } finally {
+        fetching = false;
+        if (alive && dirtyWhileFetching) {
+          dirtyWhileFetching = false;
+          void fetchGrid();
+        }
       }
     };
-    void tick();
-    const timer = setInterval(tick, 120);
+    // Initial paint, then repaint on each frame ping for this session.
+    void fetchGrid();
+    let unlisten: UnlistenFn | null = null;
+    let disposed = false;
+    void listen<string>("terminal://frame", (e) => {
+      if (e.payload === id) void fetchGrid();
+    }).then((un) => {
+      if (disposed) un();
+      else unlisten = un;
+    });
+    const safety = setInterval(fetchGrid, 1000);
     return () => {
       alive = false;
-      clearInterval(timer);
+      disposed = true;
+      unlisten?.();
+      clearInterval(safety);
     };
   });
 
