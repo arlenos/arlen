@@ -62,8 +62,9 @@ impl BlockAssembler {
                 VtEvent::CommandLine { command } => {
                     // A new command opens a block. If a prior block was left open
                     // (a `CommandLine` without its `CommandEnd`), finalize it with
-                    // no exit/duration so it is not lost.
-                    self.finalize_dangling();
+                    // its elapsed run time but no exit code (the close mark was
+                    // missed), so it reads as finished rather than still running.
+                    self.finalize_dangling(now);
                     self.next_id += 1;
                     self.pending = Some(Pending {
                         id: format!("b{}", self.next_id),
@@ -94,9 +95,15 @@ impl BlockAssembler {
     }
 
     /// Close a still-open block (no `CommandEnd` seen) before a new one opens.
-    fn finalize_dangling(&mut self) {
+    /// The exit code stays unknown, but if the command had started we still know
+    /// how long it ran, so carry that duration: a finished-but-dangling block must
+    /// not keep reading as "running" (the UI infers running from a null duration).
+    fn finalize_dangling(&mut self, now: Instant) {
         if let Some(p) = self.pending.take() {
-            self.finished.push(finished_block(p, None, None));
+            let duration_ms = p
+                .exec_start
+                .map(|s| now.saturating_duration_since(s).as_millis() as u64);
+            self.finished.push(finished_block(p, None, duration_ms));
         }
     }
 
@@ -229,6 +236,43 @@ mod tests {
         assert_eq!(blocks[0].command, "first");
         assert_eq!(blocks[0].exit_code, None, "the dangling block has no exit");
         assert_eq!(blocks[1].command, "second");
+    }
+
+    #[test]
+    fn a_dangling_command_that_ran_carries_its_duration_so_it_reads_finished() {
+        // A command that started (ExecStart) but whose CommandEnd was dropped, then
+        // a new command opens. The dangling block has no exit, but it DID run, so it
+        // must carry its elapsed duration - otherwise the renderer (running ==
+        // exit null && duration null) would show it as forever "running" even
+        // though a later command is now active. An impl that discarded the dangling
+        // duration would leave duration None and fail this.
+        let mut a = BlockAssembler::new("/work");
+        let start = t0();
+        a.consume(
+            &[
+                VtEvent::CommandLine {
+                    command: "long-runner".to_string(),
+                },
+                VtEvent::ExecStart,
+            ],
+            start,
+        );
+        // The close mark is missed; the next command opens 500ms later.
+        a.consume(
+            &[VtEvent::CommandLine {
+                command: "next".to_string(),
+            }],
+            start + std::time::Duration::from_millis(500),
+        );
+        let blocks = a.blocks();
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].command, "long-runner");
+        assert_eq!(blocks[0].exit_code, None, "the close mark was missed");
+        assert_eq!(
+            blocks[0].duration_ms,
+            Some(500),
+            "a dangling command that ran carries its elapsed duration, not None"
+        );
     }
 
     #[test]
