@@ -1,0 +1,21 @@
+[package]
+name = "arlen-decode-image"
+version = "0.1.0"
+edition = "2021"
+description = "The sandboxed image decoder worker: reads an encoded image on stdin, writes the validated RGBA raster frame on stdout (quickview-plan.md)"
+
+[[bin]]
+name = "arlen-decode-image"
+path = "src/main.rs"
+
+[lib]
+name = "arlen_decode_image"
+
+[dependencies]
+arlen-viewers-core = { path = "../core" }
+# The pure-Rust codec set (png/jpeg/gif/webp/bmp/tiff). AVIF (C-linked dav1d,
+# needing the wider seccomp profile) and the long-tail are later slices, so
+# default features are off and only the safe codecs are enabled.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "tiff"] }
+
+[workspace]
