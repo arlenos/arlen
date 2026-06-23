@@ -11,6 +11,26 @@
 //! (no decode deps): it only decides which decoder + media kind + MIME a file
 //! is, so the dispatch is unit-tested without any heavy decoder linked.
 
+/// The image MIME types the viewer registers as the default handler for (the
+/// formats [`detect`] recognises). The default-handler registration + the
+/// `.desktop` `MimeType=` are generated from this, so the registered set and the
+/// detected set stay in step.
+pub const IMAGE_MIMES: &[&str] = &[
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "image/tiff",
+    "image/bmp",
+    "image/avif",
+    "image/heic",
+    "image/jxl",
+];
+
+/// The audio MIME types the viewer handles (the simple player). Registered
+/// alongside the images once the audio decode worker lands.
+pub const AUDIO_MIMES: &[&str] = &["audio/flac", "audio/mpeg", "audio/wav", "audio/ogg"];
+
 /// Whether the file is an image or audio (the two viewer surfaces).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MediaKind {
