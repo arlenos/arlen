@@ -1,0 +1,47 @@
+# Arlen default prompt (starship). Quiet and flat to match the desktop house
+# style: the working directory, the git branch with a compact status, then a
+# single caret. Colours map to the terminal's muted Arlen palette. A user who
+# ships their own starship config or prompt replaces this entirely.
+
+add_newline = false
+palette = "arlen"
+
+format = "$directory$git_branch$git_status$character"
+
+[palettes.arlen]
+fg = "#c8c9cf"
+dim = "#83858d"
+blue = "#7d9cc4"
+green = "#8fae74"
+yellow = "#d4b483"
+red = "#c96a6a"
+
+[directory]
+style = "blue"
+truncation_length = 3
+truncate_to_repo = true
+read_only = " ro"
+format = "[$path]($style)[$read_only](dim) "
+
+[git_branch]
+style = "green"
+symbol = ""
+format = "[$branch]($style)"
+
+[git_status]
+style = "yellow"
+format = "[ $all_status$ahead_behind]($style)"
+conflicted = "!"
+ahead = "^${count}"
+behind = "v${count}"
+diverged = "^v"
+untracked = "?"
+modified = "*"
+staged = "+"
+renamed = "r"
+deleted = "x"
+stashed = ""
+
+[character]
+success_symbol = "[ ❯](fg)"
+error_symbol = "[ ❯](red)"
