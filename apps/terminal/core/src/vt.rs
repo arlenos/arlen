@@ -634,6 +634,32 @@ mod tests {
     }
 
     #[test]
+    fn feed_positioned_reports_the_offset_past_an_st_terminated_mark() {
+        // The ST-terminated path (ESC \) must report the same just-past-the-
+        // terminator offset as the BEL path, so output that shares the buffer is
+        // split from the mark at the right point. The case above pins the BEL
+        // branch; this pins the ST branch (a different finish_osc call site).
+        let mut sc = OscScanner::new(NONCE);
+        let prefix = b"mycmd\r\n";
+        let mark = b"\x1b]133;C\x1b\\"; // exec start, ST-terminated (ESC \)
+        let output = b"OUTPUT\r\n";
+        let mut input = prefix.to_vec();
+        input.extend_from_slice(mark);
+        input.extend_from_slice(output);
+
+        let got = sc.feed_positioned(&input);
+        assert_eq!(got.len(), 1, "exactly the one exec-start mark");
+        let (off, ev) = &got[0];
+        assert_eq!(*ev, VtEvent::ExecStart);
+        assert_eq!(
+            *off,
+            prefix.len() + mark.len(),
+            "offset is just past the ST terminator"
+        );
+        assert_eq!(&input[*off..], output, "the bytes after the offset are the output");
+    }
+
+    #[test]
     fn scanner_extracts_an_st_terminated_command_with_the_nonce() {
         let mut sc = OscScanner::new(NONCE);
         let mut input = Vec::new();
@@ -678,6 +704,48 @@ mod tests {
         input.extend_from_slice(ESC);
         input.extend_from_slice(b"]133;A\x07");
         assert_eq!(sc.feed(&input), vec![VtEvent::PromptStart]);
+    }
+
+    #[test]
+    fn a_bare_backslash_does_not_terminate_a_string_sequence() {
+        // Only ESC \ ends a consumed string; a lone backslash in the body is just
+        // a payload byte. If a non-ESC byte wrongly advanced toward termination,
+        // the backslash here would end the string early and the OSC right after it
+        // would forge a mark. With the string still open, nothing escapes.
+        let mut sc = OscScanner::new(NONCE);
+        let mut input = Vec::new();
+        input.extend_from_slice(ESC);
+        input.extend_from_slice(b"Px"); // DCS open, one body byte
+        input.extend_from_slice(b"\\"); // a bare backslash inside the body
+        input.extend_from_slice(ESC);
+        input.extend_from_slice(b"]133;A\x07"); // an embedded OSC, no real ST yet
+        assert_eq!(
+            sc.feed(&input),
+            vec![],
+            "a bare backslash is consumed; the embedded mark never fires"
+        );
+    }
+
+    #[test]
+    fn a_string_sequence_terminates_after_a_doubled_escape() {
+        // A spurious ESC just before the ST must not lose the terminator: ESC ESC
+        // \ still ends the string (the first ESC starts awaiting ST, the second
+        // keeps awaiting it, the backslash completes it). If the second ESC reset
+        // the wait, the \ would be consumed as body and the following mark lost.
+        let mut sc = OscScanner::new(NONCE);
+        let mut input = Vec::new();
+        input.extend_from_slice(ESC);
+        input.extend_from_slice(b"Pbody");
+        input.extend_from_slice(ESC);
+        input.extend_from_slice(ESC);
+        input.extend_from_slice(b"\\"); // ESC ESC \ terminates the string
+        input.extend_from_slice(ESC);
+        input.extend_from_slice(b"]133;A\x07"); // the next real mark
+        assert_eq!(
+            sc.feed(&input),
+            vec![VtEvent::PromptStart],
+            "ESC ESC backslash ends the string so the following mark is seen"
+        );
     }
 
     #[test]
