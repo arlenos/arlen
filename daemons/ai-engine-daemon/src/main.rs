@@ -15,6 +15,7 @@ use arlen_ai_engine_daemon::dispatch::Executor;
 use arlen_ai_engine_daemon::proxy_executor::ProxyExecutor;
 use arlen_ai_engine_daemon::read_executor::{DeniedRunner, GraphReadExecutor};
 use arlen_ai_engine_daemon::reporter::ScreeningReporter;
+use arlen_ai_engine_daemon::write_executor::{DeniedWriter, GraphWriteExecutor};
 use arlen_ai_engine_daemon::wire::serve_connection;
 use arlen_permissions::connection_auth::ConnectionAuth;
 use audit_proto::sink::{AuditSink, LedgerAuditSink};
@@ -75,14 +76,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(LedgerAuditSink::at_default_socket()) as Arc<dyn AuditSink>,
         Screener::off(),
     );
-    // The executor seam is a router so the daemon can host several proxy tools
-    // (graph.read now; graph.write + OS/MCP tools as they land), each enforcing
-    // its own scope. Only graph.read is registered, over the fail-closed
-    // DeniedRunner (the live read provider is the Phase-2 cutover); an
+    // The executor seam is a router so the daemon hosts several proxy tools
+    // (graph.read + graph.write now; OS/MCP tools as they land), each enforcing
+    // its own scope. Both are wired over fail-closed backends: graph.read over
+    // DeniedRunner (the live read provider is the Phase-2 cutover) and
+    // graph.write over DeniedWriter (the live write + its Report-side
+    // compensation land at the human-gated executor-live cutover). An
     // unregistered tool is UnknownTool.
     let read_executor: Arc<dyn Executor> =
         Arc::new(GraphReadExecutor::new(Arc::new(DeniedRunner)));
-    let executor = ProxyExecutor::new().register("graph.read", read_executor);
+    let write_executor: Arc<dyn Executor> =
+        Arc::new(GraphWriteExecutor::new(Arc::new(DeniedWriter)));
+    let executor = ProxyExecutor::new()
+        .register("graph.read", read_executor)
+        .register("graph.write", write_executor);
     let dispatcher = Arc::new(Dispatcher::new(CapabilityGate, executor, reporter));
 
     let accept = async {

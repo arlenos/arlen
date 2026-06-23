@@ -29,3 +29,6 @@ pub mod graph_adapter;
 
 /// The Execute-seam router: dispatches a tool to its registered sub-executor.
 pub mod proxy_executor;
+
+/// The graph.write executor: an atomic, op-id-keyed relation create.
+pub mod write_executor;
