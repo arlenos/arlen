@@ -18,7 +18,7 @@ use arlen_terminal_core::{
     stub, Block, BlockBodyKind, GridSnapshot, HistoryFilters, Project, Session, SessionStatus,
 };
 use arlen_terminal_engine::PtyEngine;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 /// A live shell: the contract [`Session`] the UI sees, the [`PtyEngine`] driving
 /// its real PTY, and the [`BlockAssembler`] turning the engine's OSC-mark events
@@ -192,12 +192,41 @@ fn shell_candidates() -> Vec<String> {
     out
 }
 
+/// Push a `terminal://frame` repaint to the webview whenever the session's screen
+/// changes, so the UI renders on change instead of polling on a fixed timer (the
+/// latency fix: an echoed keystroke repaints within a frame, and an idle prompt
+/// pushes nothing). The engine's reader pulses the receiver per screen-touching
+/// read; this pump blocks on it, drains a burst into one ping, and coalesces a
+/// flood to roughly one repaint per frame. The receiver errs when the engine (and
+/// its sender) is dropped on session close, so the thread exits with the session;
+/// it also exits if the app shut down (emit fails). The payload is the session id
+/// so the page ignores frames for other sessions.
+fn spawn_frame_pump(app: &AppHandle, id: &str, engine: &PtyEngine) {
+    let rx = engine.install_frame_notifier();
+    let app = app.clone();
+    let id = id.to_string();
+    let _ = std::thread::Builder::new()
+        .name("arlen-term-frame-pump".into())
+        .spawn(move || {
+            while rx.recv().is_ok() {
+                while rx.try_recv().is_ok() {}
+                if app.emit("terminal://frame", &id).is_err() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(16));
+            }
+        });
+}
+
 /// Open a new shell: spawn a real shell on a PTY via the engine (preferring zsh,
 /// which sources the curated integration when `ARLEN_TERM_ZDOTDIR` points at it,
 /// so the block marks fire), assign the id, and remember the live session. Falls
 /// back through [`shell_candidates`] so a machine without zsh still gets a shell.
 #[tauri::command]
-fn terminal_new_session(registry: State<Mutex<SessionRegistry>>) -> Result<Session, String> {
+fn terminal_new_session(
+    app: AppHandle,
+    registry: State<Mutex<SessionRegistry>>,
+) -> Result<Session, String> {
     let home = dirs::home_dir()
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|| "/".to_string());
@@ -221,6 +250,7 @@ fn terminal_new_session(registry: State<Mutex<SessionRegistry>>) -> Result<Sessi
         status: SessionStatus::Running,
         last_exit: None,
     };
+    spawn_frame_pump(&app, &id, &engine);
     reg.sessions.insert(
         id.clone(),
         LiveSession {

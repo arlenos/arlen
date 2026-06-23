@@ -85,6 +85,12 @@ pub struct PtyEngine {
     /// snapshot here on close; the host drains it ([`PtyEngine::take_finished_outputs`])
     /// and attaches each to its block so the block renders its own output.
     finished_outputs: Arc<Mutex<Vec<GridSnapshot>>>,
+    /// Optional frame-change notifier: when the host installs a receiver
+    /// ([`PtyEngine::install_frame_notifier`]), the reader thread pulses it after
+    /// every PTY read that touched the screen, so the host can push a render
+    /// instead of polling on a timer (the latency fix - an echoed keystroke
+    /// repaints within a frame, and an idle prompt sends nothing).
+    frame_notifier: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
     reader: Option<JoinHandle<()>>,
 }
 
@@ -166,6 +172,9 @@ impl PtyEngine {
         let prompt_start_sink = Arc::clone(&prompt_start_row);
         let finished_outputs = Arc::new(Mutex::new(Vec::new()));
         let finished_sink = Arc::clone(&finished_outputs);
+        let frame_notifier: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>> =
+            Arc::new(Mutex::new(None));
+        let frame_sink = Arc::clone(&frame_notifier);
         let reader_handle = std::thread::Builder::new()
             .name("arlen-pty-reader".into())
             .spawn(move || {
@@ -270,6 +279,16 @@ impl PtyEngine {
                                     q.extend(positioned.into_iter().map(|(_, ev)| ev));
                                 }
                             }
+                            // The screen changed (a non-zero read always processes
+                            // bytes into the parser). Pulse the host so it repaints
+                            // now rather than on the next poll tick; a flood of reads
+                            // becomes a flood of pulses the host coalesces. No-op when
+                            // no notifier is installed (e.g. the engine's own tests).
+                            if let Ok(g) = frame_sink.lock() {
+                                if let Some(tx) = g.as_ref() {
+                                    let _ = tx.send(());
+                                }
+                            }
                         }
                     }
                 }
@@ -285,8 +304,25 @@ impl PtyEngine {
             output_start_row,
             prompt_start_row,
             finished_outputs,
+            frame_notifier,
             reader: Some(reader_handle),
         })
+    }
+
+    /// Install a frame-change notifier and return its receiver. The reader thread
+    /// pulses the sender after every PTY read that touched the screen, so the host
+    /// pushes a repaint on change instead of polling on a fixed timer (lower
+    /// latency, and nothing sent at an idle prompt). The host coalesces a burst of
+    /// pulses into one repaint. Dropping the engine drops the sender, so the
+    /// receiver's loop ends - the host pump thread exits with the session. Calling
+    /// it again replaces the notifier (the previous receiver then sees the channel
+    /// close).
+    pub fn install_frame_notifier(&self) -> std::sync::mpsc::Receiver<()> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        if let Ok(mut slot) = self.frame_notifier.lock() {
+            *slot = Some(tx);
+        }
+        rx
     }
 
     /// Drain the captured output grids of commands that finished since the last
@@ -815,6 +851,30 @@ mod tests {
         let after = eng.screen_snapshot();
         assert_eq!(after.cols, 100, "the screen width tracks the resize");
         assert_eq!(after.rows, 40, "the screen height tracks the resize");
+    }
+
+    /// On-host (needs a PTY): the frame notifier pulses when the shell produces
+    /// output, so the host repaints on change instead of polling. The notifier is
+    /// installed first, then input drives output (the tty echoes the line and the
+    /// shell prints), so the reader pulses the receiver with no install-vs-output
+    /// race. `#[ignore]`d (needs a PTY); run with `--ignored`.
+    #[test]
+    #[ignore]
+    fn the_frame_notifier_pulses_when_the_shell_produces_output() {
+        let mut eng = PtyEngine::spawn(
+            "/bin/sh",
+            &["-c", "read x; printf 'out\\r\\n'; sleep 5"],
+            None,
+            80,
+            24,
+        )
+        .unwrap();
+        let rx = eng.install_frame_notifier();
+        // Drive output after installing: the tty echoes the input and the shell
+        // prints, each a read the reader pulses on.
+        eng.send_input(b"hi\n").unwrap();
+        rx.recv_timeout(std::time::Duration::from_secs(3))
+            .expect("a frame pulse arrives after input produces output");
     }
 
     /// On-host (needs a PTY + `/bin/sh`): a command's output is captured into its
