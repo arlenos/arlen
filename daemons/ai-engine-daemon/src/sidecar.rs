@@ -64,6 +64,11 @@ pub struct SidecarPaths {
     pub contract_socket: String,
     /// The host path of the ai-proxy socket, bound to [`SANDBOX_PROXY_SOCKET`].
     pub proxy_socket: String,
+    /// The host path of the built Arlen pi extension entry (the gate + audit
+    /// shims, e.g. `<install>/pi-plugins/dist/index.js`). Its directory is bound
+    /// read-only and the path is passed to pi via `--extension`. The extension
+    /// imports only Node built-ins, so no node_modules need be in the sandbox.
+    pub arlen_extension: String,
 }
 
 /// The pi CLI entry under the install dir (verified: the `coding-agent` package
@@ -93,6 +98,9 @@ impl SidecarPaths {
         let pi_install = getenv("ARLEN_PI_INSTALL")
             .filter(|s| !s.is_empty())
             .ok_or("ARLEN_PI_INSTALL is not set (the pi install dir for the sidecar)")?;
+        let arlen_extension = getenv("ARLEN_PI_EXTENSION")
+            .filter(|s| !s.is_empty())
+            .ok_or("ARLEN_PI_EXTENSION is not set (the built Arlen pi extension entry)")?;
 
         let runtime_dir = getenv("XDG_RUNTIME_DIR")
             .filter(|s| !s.is_empty())
@@ -110,6 +118,7 @@ impl SidecarPaths {
             node_runtime,
             pi_install,
             contract_socket,
+            arlen_extension,
         };
         // Every path the confinement binds or execs must be absolute; surface a
         // bad one here rather than at spawn.
@@ -121,6 +130,7 @@ impl SidecarPaths {
             ("pi state", &paths.pi_state),
             ("contract socket", &paths.contract_socket),
             ("ai-proxy socket", &paths.proxy_socket),
+            ("arlen extension", &paths.arlen_extension),
         ] {
             if !Path::new(p).is_absolute() {
                 return Err(format!("the resolved {label} path is not absolute: {p}"));
@@ -172,12 +182,23 @@ pub fn pi_sidecar_confinement(
         NetworkPolicy::None,
     )?;
 
-    // Plumbing: the node runtime + pi install read-only (each at its host path so
-    // node resolves its own libs + the pi dist), the two sockets read-write at
-    // their fixed sandbox paths.
+    // The Arlen extension's directory (read-only): pi's `--extension` entry plus
+    // its sibling compiled modules, which `index.js` imports relatively.
+    let ext_dir = require_abs(&paths.arlen_extension)?;
+    let ext_dir = Path::new(&ext_dir)
+        .parent()
+        .and_then(|p| p.to_str())
+        .ok_or(ConfinerError::RelativePath(paths.arlen_extension.clone()))?
+        .to_string();
+
+    // Plumbing: the node runtime + pi install + the Arlen extension dir read-only
+    // (each at its host path so node resolves its own libs + the pi dist + the
+    // extension's sibling modules), the two sockets read-write at their fixed
+    // sandbox paths.
     let plumbing = vec![
         Bind::ReadOnly(require_abs(&paths.node_runtime)?, require_abs(&paths.node_runtime)?),
         Bind::ReadOnly(require_abs(&paths.pi_install)?, require_abs(&paths.pi_install)?),
+        Bind::ReadOnly(ext_dir.clone(), ext_dir),
         Bind::ReadWrite(require_abs(&paths.contract_socket)?, SANDBOX_CONTRACT_SOCKET.to_string()),
         Bind::ReadWrite(require_abs(&paths.proxy_socket)?, SANDBOX_PROXY_SOCKET.to_string()),
     ];
@@ -195,6 +216,9 @@ pub fn pi_sidecar_argv(confinement: &Confinement, paths: &SidecarPaths) -> Vec<S
     argv.push(paths.pi_cli.clone());
     argv.push("--mode".to_string());
     argv.push("rpc".to_string());
+    // Load the Arlen security extension (the gate + audit shims) into pi.
+    argv.push("--extension".to_string());
+    argv.push(paths.arlen_extension.clone());
     argv
 }
 
@@ -378,6 +402,7 @@ mod tests {
             pi_state: "/home/u/.local/state/arlen/pi".to_string(),
             contract_socket: "/run/user/1000/arlen/ai-engine.sock".to_string(),
             proxy_socket: "/run/user/1000/arlen/ai-proxy.sock".to_string(),
+            arlen_extension: "/opt/arlen/pi-plugins/dist/index.js".to_string(),
         }
     }
 
@@ -421,6 +446,11 @@ mod tests {
         assert_eq!(dest_of(&a, "--ro-bind", "/opt/pi"), Some("/opt/pi".to_string()));
         // /usr is the read-only base for node's shared libraries.
         assert_eq!(dest_of(&a, "--ro-bind", "/usr"), Some("/usr".to_string()));
+        // The Arlen extension's DIR (the parent of its entry) is read-only bound.
+        assert_eq!(
+            dest_of(&a, "--ro-bind", "/opt/arlen/pi-plugins/dist"),
+            Some("/opt/arlen/pi-plugins/dist".to_string()),
+        );
     }
 
     #[test]
@@ -441,6 +471,8 @@ mod tests {
                 "/opt/pi/packages/coding-agent/dist/cli.js".to_string(),
                 "--mode".to_string(),
                 "rpc".to_string(),
+                "--extension".to_string(),
+                "/opt/arlen/pi-plugins/dist/index.js".to_string(),
             ],
         );
     }
@@ -493,6 +525,7 @@ mod tests {
         match key {
             "ARLEN_PI_NODE_RUNTIME" => Some("/opt/arlen-node22".to_string()),
             "ARLEN_PI_INSTALL" => Some("/opt/pi".to_string()),
+            "ARLEN_PI_EXTENSION" => Some("/opt/arlen/pi-plugins/dist/index.js".to_string()),
             "XDG_RUNTIME_DIR" => Some("/run/user/1000".to_string()),
             "XDG_STATE_HOME" => Some("/home/u/.local/state".to_string()),
             _ => None,
@@ -508,6 +541,7 @@ mod tests {
         assert_eq!(p.pi_state, "/home/u/.local/state/arlen/pi");
         assert_eq!(p.proxy_socket, "/run/user/1000/arlen/ai-proxy.sock");
         assert_eq!(p.contract_socket, "/run/user/1000/arlen/ai-engine.sock");
+        assert_eq!(p.arlen_extension, "/opt/arlen/pi-plugins/dist/index.js");
         // The resolved paths build a valid confinement.
         assert!(pi_sidecar_confinement(&p, None).is_ok());
     }
