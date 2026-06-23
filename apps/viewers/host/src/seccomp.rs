@@ -29,14 +29,6 @@
 //! which is then added; a catastrophic call is never added.
 //!
 //! Known residuals (adversarial-reviewed, contained, ranked follow-ups):
-//! - `clone`/`clone3` flags are unfiltered in the HEIC arm, so that worker could
-//!   create a nested namespace (`CLONE_NEWUSER`/`CLONE_NEWNS`), the unprivileged-
-//!   userns kernel attack surface. The clean fix (mask `clone`'s NEW* bits AND
-//!   return `ENOSYS` for `clone3` so glibc falls back to the maskable `clone`) is
-//!   not expressible in seccompiler 0.5's single-global-action API; a half-fix
-//!   that masks `clone` but leaves `clone3` open would be misleading, so it waits
-//!   for a custom per-syscall-errno filter. Bounded today by the no-network,
-//!   read-only-fs namespace around the HEIC worker.
 //! - `execve` is permitted (bwrap needs it, below); a compromised worker could
 //!   re-exec another `/usr/bin` binary, but it inherits this same filter and
 //!   namespace (no setuid uplift: bwrap runs under `--unshare-user`), so the
@@ -46,8 +38,9 @@
 //!   Landlock is NOT layered on these workers today (only the mount namespace
 //!   bounds file access) - adding a Landlock ruleset is a defense-in-depth
 //!   follow-up.
-//! - The default action is `EPERM`, not `KILL`: a forbidden call cannot bypass
-//!   the filter, and EPERM lets a benign worker on any glibc degrade rather than
+//! - The mismatch action is `ENOSYS`, not `KILL`: a forbidden call cannot bypass
+//!   the filter, and `ENOSYS` lets a benign worker on any glibc degrade (and take
+//!   the intended `clone3 -> clone` and `openat2 -> openat` fallbacks) rather than
 //!   die on an un-enumerated call. The trade is that a compromised worker can
 //!   silently probe the allowlist; switching to `KILL_PROCESS` is a posture
 //!   option once the set is settled across the target distros.
@@ -55,7 +48,10 @@
 #![cfg(target_os = "linux")]
 
 use arlen_viewers_core::Decoder;
-use seccompiler::{BpfProgram, SeccompAction, SeccompFilter};
+use seccompiler::{
+    BpfProgram, SeccompAction, SeccompCmpArgLen, SeccompCmpOp, SeccompCondition, SeccompFilter,
+    SeccompRule,
+};
 use std::collections::BTreeMap;
 
 /// Errors building or compiling a decoder seccomp filter.
@@ -197,14 +193,31 @@ fn decoder_base_allowlist() -> Vec<libc::c_long> {
 /// The extra syscalls the C-linked HEIC/AVIF worker needs to create the decode
 /// threads (`dav1d`/`libde265`). Added ONLY for [`Decoder::LibHeif`]; the
 /// pure-Rust workers never receive these, so thread creation is denied to them.
+/// `clone` is listed here (it is allowed for HEIC) but is given a flag mask in
+/// [`decoder_filter_bytes`] so a namespace-creating `clone` is still refused;
+/// `clone3` is NOT listed (its flags live behind a pointer seccomp cannot read),
+/// so it falls to the `ENOSYS` mismatch action and glibc retries via `clone`.
 fn threading_syscalls() -> Vec<libc::c_long> {
     vec![
         libc::SYS_clone,
-        libc::SYS_clone3,
         libc::SYS_sched_setaffinity,
         libc::SYS_sched_getparam,
         libc::SYS_sched_getscheduler,
     ]
+}
+
+/// The `clone`/`clone3` flag bits that create a new namespace. A decode thread
+/// never sets any of these (pthread uses `CLONE_VM|CLONE_THREAD|...`), so masking
+/// them off the allowed `clone` denies a HEIC worker the unprivileged-userns
+/// (and mount/net/pid/...) kernel attack surface while still permitting threads.
+fn clone_namespace_mask() -> u64 {
+    (libc::CLONE_NEWNS
+        | libc::CLONE_NEWCGROUP
+        | libc::CLONE_NEWUTS
+        | libc::CLONE_NEWIPC
+        | libc::CLONE_NEWUSER
+        | libc::CLONE_NEWPID
+        | libc::CLONE_NEWNET) as u64
 }
 
 /// The allowlist for `decoder`: the base set, plus the threading set for the
@@ -220,11 +233,31 @@ pub fn decoder_allowlist(decoder: Decoder) -> Vec<libc::c_long> {
 }
 
 /// Compile `decoder`'s allowlist to cBPF bytes for `bwrap --seccomp <fd>`. The
-/// default action is `EPERM` (not kill), so a worker probing a forbidden call
-/// sees it fail and can exit cleanly rather than being SIGSYS-killed mid-frame.
+/// mismatch action is `ENOSYS` (not kill, not EPERM): a denied call cannot bypass
+/// the filter, and `ENOSYS` ("syscall not implemented") drives glibc's own
+/// fallbacks - notably `clone3 -> clone`, so the HEIC worker's threads route
+/// through the flag-masked `clone` below rather than the unfilterable `clone3`.
 pub fn decoder_filter_bytes(decoder: Decoder) -> Result<Vec<u8>, SeccompError> {
-    let rules: BTreeMap<libc::c_long, Vec<seccompiler::SeccompRule>> =
+    let mut rules: BTreeMap<libc::c_long, Vec<seccompiler::SeccompRule>> =
         decoder_allowlist(decoder).into_iter().map(|nr| (nr, Vec::new())).collect();
+
+    // The HEIC worker may create threads but not namespaces: replace the plain
+    // `clone` allow with one gated on the namespace flag bits being clear, so a
+    // `clone(CLONE_NEWUSER|...)` does not match and falls to the `ENOSYS` action.
+    if matches!(decoder, Decoder::LibHeif) {
+        let no_namespace_flags = SeccompCondition::new(
+            0,
+            SeccompCmpArgLen::Qword,
+            SeccompCmpOp::MaskedEq(clone_namespace_mask()),
+            0,
+        )
+        .map_err(|e| SeccompError::Compile(format!("{e}")))?;
+        rules.insert(
+            libc::SYS_clone,
+            vec![SeccompRule::new(vec![no_namespace_flags])
+                .map_err(|e| SeccompError::Compile(format!("{e}")))?],
+        );
+    }
 
     let arch = std::env::consts::ARCH
         .try_into()
@@ -232,7 +265,7 @@ pub fn decoder_filter_bytes(decoder: Decoder) -> Result<Vec<u8>, SeccompError> {
 
     let filter = SeccompFilter::new(
         rules,
-        SeccompAction::Errno(libc::EPERM as u32),
+        SeccompAction::Errno(libc::ENOSYS as u32),
         SeccompAction::Allow,
         arch,
     )
@@ -276,6 +309,19 @@ mod tests {
             assert!(heic.contains(&extra));
             assert!(!base.contains(&extra));
         }
+    }
+
+    #[test]
+    fn clone3_is_denied_so_glibc_falls_back_to_the_maskable_clone() {
+        // clone3's flags live behind a pointer seccomp cannot read, so it is left
+        // out of every allowlist; the ENOSYS mismatch action makes glibc retry
+        // via clone, which IS in the HEIC set (and flag-masked in the filter).
+        for decoder in [Decoder::ImageRs, Decoder::JxlOxide, Decoder::LibHeif, Decoder::Symphonia] {
+            assert!(!decoder_allowlist(decoder).contains(&libc::SYS_clone3));
+        }
+        assert!(decoder_allowlist(Decoder::LibHeif).contains(&libc::SYS_clone));
+        // The namespace mask covers the unprivileged-userns flag.
+        assert_ne!(clone_namespace_mask() & libc::CLONE_NEWUSER as u64, 0);
     }
 
     #[test]
