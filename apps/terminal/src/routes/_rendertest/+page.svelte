@@ -77,6 +77,20 @@
     const bars = emptyRow();
     put(bars, 0, "|....|....|....|....|....|....|....|....|", idx(3));
     rows.push(bars);
+    rows.push(emptyRow());
+    // Wide (double-width / CJK) glyphs: each is one `wide` cell that must render
+    // two columns wide, so the trailing ASCII lines up under the ruler above.
+    // This mirrors the engine snapshot, which emits one wide cell per glyph and
+    // skips the continuation column (the wide-glyph alignment fix).
+    const cjk: GridCell[] = [];
+    for (const ch of "日本語ＡＢ") {
+      cjk.push({ text: ch, fg: idx(2), bg: def, bold: false, italic: false, underline: false, inverse: false, wide: true });
+    }
+    for (const ch of " <- 5 wide glyphs end at col 10") {
+      cjk.push({ text: ch, fg: idx(7), bg: def, bold: false, italic: false, underline: false, inverse: false, wide: false });
+    }
+    while (cjk.length < COLS) cjk.push(blank());
+    rows.push(cjk);
     return rows;
   })();
 
