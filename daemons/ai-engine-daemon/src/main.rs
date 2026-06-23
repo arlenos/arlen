@@ -8,8 +8,9 @@
 //! (Phase 1 re-points them to the real Rust); the pi-sidecar supervisor + the
 //! SessionInit/token handshake are the next slice.
 
+use arlen_ai_engine_daemon::capability_map::CapabilityGate;
 use arlen_ai_engine_daemon::dispatch::Dispatcher;
-use arlen_ai_engine_daemon::placeholder::{BlockReporter, DenyGate, UnavailableExecutor};
+use arlen_ai_engine_daemon::placeholder::{BlockReporter, UnavailableExecutor};
 use arlen_ai_engine_daemon::wire::serve_connection;
 use arlen_permissions::connection_auth::ConnectionAuth;
 use std::os::unix::fs::PermissionsExt;
@@ -52,10 +53,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let uid = current_uid();
     info!(socket = %path.display(), "ai-engine-daemon listening (Phase 0: placeholder seams)");
 
-    // The dispatcher is shared across connection tasks. Phase 1 swaps the
-    // placeholder seams for Capability::decide / the trusted runner / the
-    // audit+screening reporter without touching the routing.
-    let dispatcher = Arc::new(Dispatcher::new(DenyGate, UnavailableExecutor, BlockReporter));
+    // The dispatcher is shared across connection tasks. Phase 1 has wired the
+    // gate seam to Capability::decide (CapabilityGate); the executor and reporter
+    // remain the fail-closed placeholders (the trusted runner and the
+    // audit+screening reporter are the next seams), so a decision can never
+    // execute yet. Under the suggest_only baseline the gate never returns Allow.
+    let dispatcher = Arc::new(Dispatcher::new(
+        CapabilityGate,
+        UnavailableExecutor,
+        BlockReporter,
+    ));
 
     let accept = async {
         loop {
