@@ -1,0 +1,20 @@
+[package]
+name = "arlen-decode-heic"
+version = "0.1.0"
+edition = "2021"
+description = "The sandboxed HEIC/AVIF decoder worker: reads a HEIF on stdin, writes the validated RGBA raster frame on stdout (quickview-plan.md). The one C-linked decoder; its host confinement gets the wider per-decoder seccomp profile."
+
+[[bin]]
+name = "arlen-decode-heic"
+path = "src/main.rs"
+
+[lib]
+name = "arlen_decode_heic"
+
+[dependencies]
+arlen-viewers-core = { path = "../core" }
+# Binds the system libheif (>= 1.17); AVIF -> dav1d, HEIC -> libde265, the C
+# threaded codecs that need the wider per-decoder seccomp profile.
+libheif-rs = "2"
+
+[workspace]
