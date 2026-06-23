@@ -1,0 +1,9 @@
+[package]
+name = "arlen-viewers-core"
+version = "0.1.0"
+edition = "2021"
+description = "The minimal viewer's format-detection + decoder-dispatch core: routes a file to the sandboxed decoder that handles it (quickview-plan.md)"
+
+[dependencies]
+
+[workspace]
