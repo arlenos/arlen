@@ -22,11 +22,35 @@
 //! `openat`/`mmap`/`mprotect` are in the base set because the dynamic loader runs
 //! them under this filter (bwrap installs it just before exec, so `ld.so` resolves
 //! the worker's shared libraries afterwards); *which* files can be opened is the
-//! mount-namespace + Landlock layer's job, not seccomp's. The exact set is tuned
-//! against a real worker on a real kernel by the on-kernel test in
-//! `run_confined_worker`'s module - a missing entry shows up as a worker that
-//! dies on a specific call, which is then added; a catastrophic call is never
-//! added.
+//! mount-namespace layer's job, not seccomp's (read-only `/usr`, no writable bind,
+//! input read from stdin not the filesystem). The exact set is tuned against a
+//! real worker on a real kernel by the on-kernel tests in `run_confined_worker`'s
+//! module - a missing entry shows up as a worker that dies on a specific call,
+//! which is then added; a catastrophic call is never added.
+//!
+//! Known residuals (adversarial-reviewed, contained, ranked follow-ups):
+//! - `clone`/`clone3` flags are unfiltered in the HEIC arm, so that worker could
+//!   create a nested namespace (`CLONE_NEWUSER`/`CLONE_NEWNS`), the unprivileged-
+//!   userns kernel attack surface. The clean fix (mask `clone`'s NEW* bits AND
+//!   return `ENOSYS` for `clone3` so glibc falls back to the maskable `clone`) is
+//!   not expressible in seccompiler 0.5's single-global-action API; a half-fix
+//!   that masks `clone` but leaves `clone3` open would be misleading, so it waits
+//!   for a custom per-syscall-errno filter. Bounded today by the no-network,
+//!   read-only-fs namespace around the HEIC worker.
+//! - `execve` is permitted (bwrap needs it, below); a compromised worker could
+//!   re-exec another `/usr/bin` binary, but it inherits this same filter and
+//!   namespace (no setuid uplift: bwrap runs under `--unshare-user`), so the
+//!   capability set does not grow.
+//! - `/proc` is mounted, so `openat("/proc/self/mem")` self-modification is
+//!   reachable; that is within the worker's own contained process, not an escape.
+//!   Landlock is NOT layered on these workers today (only the mount namespace
+//!   bounds file access) - adding a Landlock ruleset is a defense-in-depth
+//!   follow-up.
+//! - The default action is `EPERM`, not `KILL`: a forbidden call cannot bypass
+//!   the filter, and EPERM lets a benign worker on any glibc degrade rather than
+//!   die on an un-enumerated call. The trade is that a compromised worker can
+//!   silently probe the allowlist; switching to `KILL_PROCESS` is a posture
+//!   option once the set is settled across the target distros.
 
 #![cfg(target_os = "linux")]
 
@@ -78,7 +102,11 @@ fn decoder_base_allowlist() -> Vec<libc::c_long> {
         libc::SYS_fcntl,
         libc::SYS_dup,
         libc::SYS_dup3,
-        libc::SYS_ioctl,
+        // NB `ioctl` is deliberately NOT allowed: it is an unfiltered multiplexer
+        // (TIOCSTI terminal injection, driver attack surface) and a decode worker
+        // needs it only for glibc's stdio tty probe, which tolerates the EPERM as
+        // "not a tty" and falls back to block buffering. Omitting it shrinks the
+        // kernel attack surface the sandbox exists to reduce.
         // The dynamic loader opens + maps the worker's shared libraries under
         // this filter (which files: the mount-ns + Landlock layer bounds that).
         libc::SYS_openat,
@@ -278,6 +306,9 @@ mod tests {
             libc::SYS_setns,
             libc::SYS_unlinkat,
             libc::SYS_kill,
+            // An unfiltered multiplexer (TIOCSTI, driver attack surface); a
+            // decoder needs it only for glibc's tty probe, which tolerates EPERM.
+            libc::SYS_ioctl,
         ];
         for decoder in [Decoder::ImageRs, Decoder::JxlOxide, Decoder::LibHeif, Decoder::Symphonia] {
             let set = decoder_allowlist(decoder);
