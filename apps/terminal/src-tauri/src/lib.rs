@@ -18,7 +18,7 @@ use arlen_terminal_core::{
     stub, Block, BlockBodyKind, GridSnapshot, HistoryFilters, Project, Session, SessionStatus,
 };
 use arlen_terminal_engine::PtyEngine;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// A live shell: the contract [`Session`] the UI sees, the [`PtyEngine`] driving
 /// its real PTY, and the [`BlockAssembler`] turning the engine's OSC-mark events
@@ -251,6 +251,7 @@ fn terminal_new_session(
         last_exit: None,
     };
     spawn_frame_pump(&app, &id, &engine);
+    maybe_autorun(&app, &id);
     reg.sessions.insert(
         id.clone(),
         LiveSession {
@@ -262,6 +263,32 @@ fn terminal_new_session(
     );
     reg.order.push(id);
     Ok(session)
+}
+
+/// Dev-only: when `ARLEN_TERM_AUTORUN` names a command, type it into a freshly
+/// opened session once the shell has reached its first interactive prompt, so a
+/// headless screenshot (cosmic-comp + grim) can drive `btop`/`ls`/a resize over
+/// the real keystroke -> PTY -> shell -> engine path. The env var is unset in any
+/// normal launch, so this is inert in production; it re-fetches the registry via
+/// the cloned `AppHandle` from a detached thread rather than holding the lock.
+fn maybe_autorun(app: &AppHandle, id: &str) {
+    let cmd = match std::env::var("ARLEN_TERM_AUTORUN") {
+        Ok(c) if !c.is_empty() => c,
+        _ => return,
+    };
+    let app = app.clone();
+    let id = id.to_string();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        let line = format!("{cmd}\n");
+        if let Some(reg) = app.try_state::<Mutex<SessionRegistry>>() {
+            if let Ok(mut reg) = reg.lock() {
+                if let Some(live) = reg.sessions.get_mut(&id) {
+                    let _ = live.engine.send_input(line.as_bytes());
+                }
+            }
+        }
+    });
 }
 
 /// Search past blocks.
