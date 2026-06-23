@@ -76,8 +76,11 @@
 
 <style>
   .grid-region {
-    /* One cell row = the console line box: 0.8125rem mono at 1.5. */
-    --console-cell-h: calc(0.8125rem * 1.5);
+    /* One cell row = the console line box: the cell font at 1.5 line. The
+       size derives from --console-font-size (the host sets it from the base
+       font token), falling back to the original 0.8125rem for any console
+       consumer that does not set it. */
+    --console-cell-h: calc(var(--console-font-size, 0.8125rem) * 1.5);
     height: calc(var(--grid-rows) * var(--console-cell-h));
     background: transparent;
   }
@@ -93,7 +96,7 @@
   .grid-region.painted {
     height: auto;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.8125rem;
+    font-size: var(--console-font-size, 0.8125rem);
     line-height: 1.5;
     color: var(--foreground);
     overflow-x: hidden;

@@ -21,11 +21,14 @@ export type GridCell = {
   wide: boolean;
 };
 
-/// The 16 base ANSI colours (xterm defaults).
+/// The 16 base ANSI colours: the Arlen terminal palette. Desaturated and
+/// soft for the flat house style, good contrast on the near-black surface
+/// without the harsh pure xterm primaries. A theme overrides any slot via
+/// the `--term-ansi-N` custom properties; these are the shipped defaults.
 const ANSI16 = [
-  "#000000", "#cd0000", "#00cd00", "#cdcd00", "#0000ee", "#cd00cd",
-  "#00cdcd", "#e5e5e5", "#7f7f7f", "#ff0000", "#00ff00", "#ffff00",
-  "#5c5cff", "#ff00ff", "#00ffff", "#ffffff",
+  "#15161b", "#c96a6a", "#8fae74", "#d4b483", "#7d9cc4", "#b08bc4",
+  "#83b3b1", "#c8c9cf", "#54565e", "#d98585", "#a6c98a", "#e3c99a",
+  "#97b5da", "#c4a0d6", "#9bcac8", "#f2f3f7",
 ];
 
 /// The hex for a 256-palette index: 0-15 the base ANSI colours, 16-231 the
