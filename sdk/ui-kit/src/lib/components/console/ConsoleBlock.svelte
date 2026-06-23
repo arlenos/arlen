@@ -11,6 +11,7 @@
   /// lens toggle), hover actions, and the body. The body sits flush
   /// below the header; for plain text output it is a `GridRegion`.
   import type { Snippet } from "svelte";
+  import { formatDuration } from "./duration";
 
   let {
     command,
@@ -48,16 +49,6 @@
     /// The block body, flush below the header.
     children?: Snippet;
   } = $props();
-
-  /// 12ms / 1.2s / 41.3s / 2m 05s — terse, tabular-safe.
-  function formatDuration(ms: number): string {
-    if (ms < 1000) return `${ms}ms`;
-    const s = ms / 1000;
-    if (s < 60) return `${s < 10 ? s.toFixed(1) : Math.round(s)}s`;
-    const m = Math.floor(s / 60);
-    const rest = Math.round(s % 60);
-    return `${m}m ${String(rest).padStart(2, "0")}s`;
-  }
 </script>
 
 <div class="console-block" class:failed={exitCode !== null && exitCode !== 0}>
