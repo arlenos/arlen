@@ -132,6 +132,14 @@ pub struct GridSnapshot {
     /// renderer slices the live grid from here down so the prompt and command
     /// echo rows the shell drew are excluded (the composer is the prompt).
     pub output_start_row: Option<u16>,
+    /// The grid row (0-based) where the CURRENT prompt begins: the cursor row
+    /// captured when the `PromptStart` (OSC 133;A) mark fired, cleared at
+    /// `ExecStart`. `None` while a command runs or before the first marked
+    /// prompt. The raw-PTY re-root renders the live grid from here at an idle
+    /// prompt so the shell's own prompt + the line the user is typing (with zle
+    /// syntax-highlighting) are the interactive surface, while the finished
+    /// commands above this row stay in their blocks (no double render).
+    pub prompt_start_row: Option<u16>,
 }
 
 /// The git state of a block's working directory, when it is a repository.
