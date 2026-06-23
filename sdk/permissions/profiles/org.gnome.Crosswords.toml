@@ -1,0 +1,5 @@
+# Starting permission profile for GNOME Crosswords (a crossword game).
+# It plays bundled puzzles locally; puzzle download is opt-in. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.Crosswords"
+tier = "third-party"

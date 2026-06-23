@@ -1,0 +1,5 @@
+# Starting permission profile for Tetris Time (a falling-blocks game).
+# It runs the game locally. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "io.github.thecoder08.tetris-time"
+tier = "third-party"

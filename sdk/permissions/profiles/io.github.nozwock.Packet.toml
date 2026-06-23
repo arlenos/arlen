@@ -1,0 +1,11 @@
+# Starting permission profile for Packet (a file-sharing app).
+# It sends and receives files over the network by function. It gets network and Downloads. No Knowledge Graph access.
+[info]
+app_id = "io.github.nozwock.Packet"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
