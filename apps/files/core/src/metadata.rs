@@ -25,11 +25,15 @@ use little_exif::exif_tag::ExifTag;
 use little_exif::filetype::FileExtension;
 use little_exif::metadata::Metadata;
 
+use serde::{Deserialize, Serialize};
+
 use crate::ops::{safe_rewrite, OpError, OpResult};
 
-/// The editable string metadata fields the info-panel editor exposes. A `Some`
-/// field overwrites that EXIF tag; a `None` leaves the existing value untouched.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+/// The editable string metadata fields the info-panel editor exposes. On a
+/// write a `Some` field overwrites that EXIF tag and a `None` leaves it
+/// untouched; on a read each field carries the file's current value (or `None`
+/// when the tag is absent or empty). Serializes as the panel's metadata DTO.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExifEdits {
     /// `ImageDescription` (0x010e): the free-text caption.
     pub description: Option<String>,
@@ -98,6 +102,47 @@ pub fn write_exif_tags(dir: &Dir, path: impl AsRef<Path>, edits: &ExifEdits) -> 
     })
 }
 
+/// Read the editable EXIF string tags (description/artist/copyright) from the
+/// JPEG at `path` (under the capability `dir`), so the info panel can show the
+/// current values before an edit. A non-JPEG path, or a JPEG with no parseable
+/// EXIF, yields all-`None` (an empty editor) rather than an error; only an
+/// unreadable file errors. A present-but-empty tag reads as `None`. `dir` is a
+/// cap-std capability, so `path` cannot escape it.
+pub fn read_exif_tags(dir: &Dir, path: impl AsRef<Path>) -> OpResult<ExifEdits> {
+    let path = path.as_ref();
+    if !is_jpeg_path(path) {
+        return Ok(ExifEdits::default());
+    }
+    let bytes = dir.read(path).map_err(OpError::Io)?;
+    // A JPEG without an EXIF block has nothing to read; an unparseable block is
+    // shown as empty rather than failing the panel.
+    let Ok(metadata) = Metadata::new_from_vec(&bytes, FileExtension::JPEG) else {
+        return Ok(ExifEdits::default());
+    };
+    Ok(ExifEdits {
+        description: read_string_tag(&metadata, ExifTag::ImageDescription(String::new())),
+        artist: read_string_tag(&metadata, ExifTag::Artist(String::new())),
+        copyright: read_string_tag(&metadata, ExifTag::Copyright(String::new())),
+    })
+}
+
+/// Read one STRING EXIF tag's current value, or `None` when it is absent or
+/// empty. The raw bytes are decoded lossily and the trailing NUL the EXIF string
+/// format pads with is trimmed.
+fn read_string_tag(metadata: &Metadata, template: ExifTag) -> Option<String> {
+    let tag = metadata.get_tag(&template).next()?;
+    let raw = tag.value_as_u8_vec(&metadata.get_endian());
+    let value = String::from_utf8_lossy(&raw)
+        .trim_end_matches('\0')
+        .trim()
+        .to_string();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,5 +204,40 @@ mod tests {
         let dir = cap(tmp.path());
         let err = write_exif_tags(&dir, "photo.jpg", &ExifEdits::default()).unwrap_err();
         assert!(matches!(err, OpError::Io(_)), "an all-None edit writes nothing");
+    }
+
+    #[test]
+    fn written_exif_tags_read_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("photo.jpg"), SAMPLE_JPEG).unwrap();
+        let dir = cap(tmp.path());
+        let edits = ExifEdits {
+            description: Some("a holiday photo".to_string()),
+            artist: Some("Tim".to_string()),
+            copyright: Some("CC-BY".to_string()),
+        };
+        write_exif_tags(&dir, "photo.jpg", &edits).unwrap();
+        let read = read_exif_tags(&dir, "photo.jpg").unwrap();
+        assert_eq!(read.description.as_deref(), Some("a holiday photo"));
+        assert_eq!(read.artist.as_deref(), Some("Tim"));
+        assert_eq!(read.copyright.as_deref(), Some("CC-BY"));
+    }
+
+    #[test]
+    fn reading_a_jpeg_without_exif_yields_an_empty_editor() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("photo.jpg"), SAMPLE_JPEG).unwrap();
+        let dir = cap(tmp.path());
+        // The sample carries no EXIF until something is written, so a read of the
+        // untouched file is an all-None editor, not an error.
+        assert_eq!(read_exif_tags(&dir, "photo.jpg").unwrap(), ExifEdits::default());
+    }
+
+    #[test]
+    fn reading_a_non_jpeg_yields_an_empty_editor() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("note.png"), b"not a jpeg").unwrap();
+        let dir = cap(tmp.path());
+        assert_eq!(read_exif_tags(&dir, "note.png").unwrap(), ExifEdits::default());
     }
 }
