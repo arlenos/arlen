@@ -11,10 +11,7 @@ authors = ["Arlen"]
 arlen-terminal-core = { path = "../core" }
 portable-pty = "0.9"
 getrandom = "0.2"
-# A pure-Rust VT screen model: the PTY reader feeds it the byte stream and the
-# host reads back the visible grid as text, so command output renders in the
 # webview without the compositor grid-subsurface (terminal.md Option B).
-vt100 = "0.15"
 alacritty_terminal = { version = "0.26.0", default-features = false }
 
 [workspace]

@@ -75,6 +75,17 @@ impl Screen {
         self.term.mode().contains(TermMode::ALT_SCREEN)
     }
 
+    /// The current cursor row (0-based on the visible screen, clamped >= 0). The
+    /// engine reads this at the OSC-133 marks to bound a command's output region.
+    pub fn cursor_row(&self) -> u16 {
+        self.term.grid().cursor.point.line.0.max(0) as u16
+    }
+
+    /// The grid's column count (the engine sizes a per-command capture to match).
+    pub fn cols(&self) -> u16 {
+        self.term.grid().columns() as u16
+    }
+
     /// The visible screen as the contract [`GridSnapshot`]. Fills the grid +
     /// geometry + cursor + alt-screen; the OSC133 overlay fields (`running`,
     /// `output_start_row`, `prompt_start_row`) are the engine's to set when it
