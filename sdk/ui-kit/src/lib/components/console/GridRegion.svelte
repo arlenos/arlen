@@ -76,14 +76,19 @@
 
   /* Painting the screen directly (Option B): the height is the content's,
      not the reserved metric, and each row is a run of fixed-width monospace
-     cells so columns line up exactly. */
+     cells so columns line up exactly. No per-region scroll container: a
+     terminal wraps long lines at the grid width (the shell wraps at the PTY
+     column count, which the window resize keeps equal to the visible width),
+     and the whole view scrolls as scrollback (the stream's own overflow). So
+     the grid is exactly as wide as its columns; `overflow-x: hidden` only
+     clips a transient over-width before a resize settles, never a scrollbar. */
   .grid-region.painted {
     height: auto;
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 0.8125rem;
     line-height: 1.5;
     color: var(--foreground);
-    overflow-x: auto;
+    overflow-x: hidden;
   }
   .grid-line {
     white-space: nowrap;
