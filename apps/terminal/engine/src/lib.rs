@@ -620,6 +620,55 @@ mod tests {
         );
     }
 
+    /// On-host (needs the user's real zsh + zsh-syntax-highlighting): the PR-2
+    /// re-root premise. When keystrokes reach the PTY PER CHARACTER (not batched
+    /// on Enter, the way the old composer sent them), the user's real shell runs
+    /// its line editor (zsh `zle`) interactively, so the command line is echoed
+    /// and syntax-highlighted as it is typed. Tim reports highlighting "renders to
+    /// null" today precisely because the composer never sends per-keystroke; this
+    /// proves the ENGINE + real shell deliver it, so the remaining fix is the
+    /// frontend input path (the grid taking keystrokes, not a textbox). `#[ignore]`d
+    /// (needs an interactive zsh with the user's config); run with `--ignored`.
+    #[test]
+    #[ignore]
+    fn the_real_shell_echoes_and_colours_per_keystroke_input() {
+        let mut eng = PtyEngine::spawn("zsh", &["-i"], None, 80, 24).expect("spawn zsh");
+        // Let the shell + prompt + plugins finish loading before typing.
+        std::thread::sleep(std::time::Duration::from_millis(2000));
+        // Type a valid command ONE BYTE AT A TIME, pausing so zle processes each
+        // key (echo + re-highlight) - the way raw-PTY input will deliver them.
+        for ch in "echo hello".bytes() {
+            eng.send_input(&[ch]).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(40));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let snap = eng.screen_snapshot();
+        let text: String = snap
+            .cells
+            .iter()
+            .map(|row| row.iter().map(|c| c.text.as_str()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n");
+        // The per-keystroke input was echoed by the shell's line editor: the
+        // command line shows in the grid (it would be absent if zle never ran).
+        assert!(
+            text.contains("echo hello"),
+            "the per-keystroke command line is echoed into the grid by zle, got:\n{text}"
+        );
+        // The live shell rendered with colour (a coloured prompt and/or the
+        // syntax-highlighted command): the grid captures non-default foreground
+        // cells, so highlighting does NOT render to null when input is interactive.
+        let coloured = snap
+            .cells
+            .iter()
+            .flatten()
+            .any(|c| c.text.trim() != "" && !matches!(c.fg, CellColor::Default));
+        assert!(
+            coloured,
+            "the live shell's colour (prompt / syntax-highlighting) reaches the grid, got:\n{text}"
+        );
+    }
+
     /// On-host (needs a PTY + `/bin/sh`): the engine resolves the command-output
     /// REGION from the OSC marks, which is what lets the renderer paint only a
     /// command's output and never the shell's own prompt (the double-prompt). A
