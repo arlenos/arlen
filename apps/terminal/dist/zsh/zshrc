@@ -27,6 +27,10 @@ elif command -v antidote >/dev/null 2>&1 && [[ -r $ARLEN_ZSH_DIR/zsh_plugins.txt
 fi
 
 # Prompt: starship (Rust, cross-shell, TOML-configured), over powerlevel10k.
+# Point it at the curated Arlen config (flat, muted palette) when it ships, so
+# the out-of-box prompt is Arlen-styled rather than starship's generic default;
+# a user's own STARSHIP_CONFIG set above wins.
+[[ -r $ARLEN_ZSH_DIR/starship.toml ]] && : ${STARSHIP_CONFIG:=$ARLEN_ZSH_DIR/starship.toml} && export STARSHIP_CONFIG
 command -v starship >/dev/null 2>&1 && eval "$(starship init zsh)"
 
 # Directory jumping (zoxide) + fuzzy finding (fzf), wired together.
