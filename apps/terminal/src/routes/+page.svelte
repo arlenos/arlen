@@ -27,7 +27,6 @@
   import { liveRegionCells, isAltScreenActive } from "$lib/live-region";
   import { keyToBytes } from "$lib/keymap";
   import BlockStream from "$lib/components/BlockStream.svelte";
-  import Composer from "$lib/components/Composer.svelte";
 
   const blocks = writable<Block[]>([]);
   // The live screen, polled from the engine's VT model (terminal.md
@@ -61,13 +60,14 @@
   // (Tim's spec). Flips back to block-mode when the app exits the alt screen.
   const isAltScreen = $derived(isAltScreenActive($liveGrid, liveCells));
 
-  // While a fullscreen TUI (vim, btop, less) holds the alternate screen, the
-  // block UI is off and there is no composer, so the grid itself must take
-  // keystrokes: send each one raw to the PTY so the app's own key handling runs
-  // (PR-2 raw-PTY input - the grid is the interactive surface here, the first
-  // case where the composer does not apply). `keyToBytes` returns null for
-  // copy/paste and WM combos, which fall through to the app.
-  let altScreenEl = $state<HTMLDivElement | null>(null);
+  // The whole console is the interactive surface (PR-2 raw-PTY input, no composer
+  // textbox): every keystroke goes raw to the PTY, so the user's real shell runs
+  // its line editor (zsh `zle`) and renders the prompt + the line being typed
+  // itself (p10k, syntax-highlighting, autosuggestions), and a fullscreen TUI
+  // gets its keys too. The handler lives on the `.console` wrapper so it covers
+  // block-mode and alt-screen alike. `keyToBytes` returns null for copy/paste +
+  // WM combos, which fall through to the browser/app.
+  let consoleEl = $state<HTMLDivElement | null>(null);
 
   function onGridKey(e: KeyboardEvent) {
     const id = $activeSessionId;
@@ -78,10 +78,11 @@
     terminalInput(id, bytes).catch(() => {});
   }
 
-  // Focus the fullscreen grid when a TUI takes over, so its keystrokes land
-  // without a manual click; the grid is the interactive surface in this mode.
+  // Focus the console when a session is active so keystrokes land without a
+  // manual click. Not focused in the empty/error states (no active session), so
+  // their buttons stay usable.
   $effect(() => {
-    if (isAltScreen) altScreenEl?.focus();
+    if ($activeSessionId && tauriAvailable) consoleEl?.focus();
   });
 
   onMount(() => {
@@ -119,24 +120,19 @@
     };
   });
 
-  const activeSession = $derived(
-    $sessions.find((s) => s.id === $activeSessionId) ?? null,
-  );
-
-  // The live prompt inherits the last block's git for its cwd — the
-  // truth as of the last command; live git is the engine's job.
-  const promptGit = $derived.by(() => {
-    const cwd = activeSession?.cwd;
-    if (!cwd) return null;
-    for (let i = $blocks.length - 1; i >= 0; i--) {
-      const b = $blocks[i];
-      if (b.cwd === cwd && b.git) return b.git;
-    }
-    return null;
-  });
 </script>
 
-<div class="console">
+<!-- The console is the interactive terminal surface: it takes keystrokes raw to
+     the PTY (role=application passes keys through to the shell, the tabindex
+     makes it focusable). -->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
+<div
+  class="console"
+  bind:this={consoleEl}
+  tabindex="0"
+  role="application"
+  onkeydown={onGridKey}
+>
   <div class="stream">
     {#if $sessionsLoaded && $sessionsError}
       <div class="stream-empty">
@@ -157,35 +153,25 @@
     {:else if isAltScreen}
       <!-- A fullscreen / TUI app holds the alternate screen: the block UI is
            turned off entirely and the app gets the whole content area as one VT
-           grid (the sidebar lives outside .console, so it stays). Switches back
-           to block-mode when alt_screen flips false on exit. -->
-      <!-- The grid is the keystroke target for a fullscreen TUI; role=application
-           tells AT to pass keys through, the tabindex makes it focusable. -->
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
-      <div
-        class="alt-fullscreen"
-        bind:this={altScreenEl}
-        tabindex="0"
-        role="application"
-        onkeydown={onGridKey}
-      >
+           grid (the sidebar lives outside .console, so it stays). Keystrokes
+           reach it via the console-level handler. Switches back to block-mode
+           when alt_screen flips false on exit. -->
+      <div class="alt-fullscreen">
         <GridRegion cells={liveCells} />
       </div>
     {:else}
       <BlockStream blocks={$blocks}>
         {#if liveCells.length > 0}
-          <!-- The live terminal screen (Option B): command output shows
-               here even without the OSC-mark shell integration, which is
-               what makes the empty-block-body case still display output. -->
+          <!-- The live terminal screen IS the interactive surface: the real
+               shell's prompt + the line being typed (zle, syntax-highlighting)
+               at an idle prompt, and a running command's output. Keystrokes go
+               raw to the PTY via the console-level handler - there is no composer
+               textbox. Finished commands above stay in their blocks (the live
+               region starts at the current prompt, so no double render). -->
           <div class="live-screen">
             <GridRegion cells={liveCells} />
           </div>
         {/if}
-        <Composer
-          session={activeSession}
-          git={promptGit}
-          onsent={() => loadBlocks($activeSessionId)}
-        />
       </BlockStream>
     {/if}
   </div>

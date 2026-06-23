@@ -84,6 +84,11 @@ export interface GridSnapshot {
   /// The grid row where the running command's output begins (cursor row at the
   /// ExecStart mark, past the prompt + command echo); null at an idle prompt.
   output_start_row: number | null;
+  /// The grid row where the current prompt begins (cursor row at the PromptStart
+  /// 133;A mark), cleared at ExecStart; null while a command runs or before the
+  /// first marked prompt. The live region renders from here at an idle prompt so
+  /// the shell's prompt + the line being typed are the interactive surface.
+  prompt_start_row: number | null;
 }
 
 /// A running (or finished) shell, surfaced as a tab in the sidebar.
