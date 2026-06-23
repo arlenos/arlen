@@ -1,0 +1,8 @@
+# Starting permission profile for Teleprompter.
+# It scrolls text documents the user opens by function, so it gets Documents. It gets Documents and no network. No Knowledge Graph access.
+[info]
+app_id = "io.github.nokse22.teleprompter"
+tier = "third-party"
+
+[filesystem]
+documents = true
