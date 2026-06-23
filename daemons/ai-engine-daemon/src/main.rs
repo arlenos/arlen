@@ -10,6 +10,7 @@
 
 use arlen_ai_core::screen::Screener;
 use arlen_ai_engine_daemon::capability_map::CapabilityGate;
+use arlen_ai_engine_daemon::compensation::CompensationStore;
 use arlen_ai_engine_daemon::dispatch::Dispatcher;
 use arlen_ai_engine_daemon::dispatch::Executor;
 use arlen_ai_engine_daemon::proxy_executor::ProxyExecutor;
@@ -21,7 +22,7 @@ use arlen_permissions::connection_auth::ConnectionAuth;
 use audit_proto::sink::{AuditSink, LedgerAuditSink};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::net::UnixListener;
 use tracing::{error, info, warn};
 
@@ -72,10 +73,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // DeniedRunner until the Phase-2 cutover swaps the real pipeline in (a one-
     // line change). Under the suggest_only baseline the gate never returns Allow,
     // so nothing executes yet regardless.
+    // A bounded, daemon-lived store of op-id-keyed retract receipts: a reported
+    // graph.write records its undo here for the activity-view undo trigger (a
+    // later consumer) to reverse. In-memory + bounded (a persisted/signed undo
+    // log is a separate increment).
+    let compensation = Arc::new(Mutex::new(CompensationStore::new(256)));
     let reporter = ScreeningReporter::new(
         Arc::new(LedgerAuditSink::at_default_socket()) as Arc<dyn AuditSink>,
         Screener::off(),
-    );
+    )
+    .with_compensation(compensation);
     // The executor seam is a router so the daemon hosts several proxy tools
     // (graph.read + graph.write now; OS/MCP tools as they land), each enforcing
     // its own scope. Both are wired over fail-closed backends: graph.read over

@@ -32,3 +32,6 @@ pub mod proxy_executor;
 
 /// The graph.write executor: an atomic, op-id-keyed relation create.
 pub mod write_executor;
+
+/// Report-side compensation: op-id-keyed retract receipts for committed writes.
+pub mod compensation;
