@@ -31,6 +31,10 @@ audit-proto = { path = "../../contracts/audit-proto" }
 # the ai-core pipeline. Daemon-local glue: ai-core deliberately does not depend
 # on os-sdk, so each daemon owns this thin bridge (mirrors ai-daemon's).
 os-sdk = { path = "../../sdk/os-sdk" }
+# The shared bwrap confiner: the pi sidecar's confinement (read-only base +
+# node/pi, the bound contract/proxy sockets, no network) is built on its
+# app-runtime profile rather than hand-rolling bwrap flags here.
+arlen-confiner = { path = "../../sdk/confiner" }
 libc = "0.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

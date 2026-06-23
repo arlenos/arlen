@@ -35,3 +35,6 @@ pub mod write_executor;
 
 /// Report-side compensation: op-id-keyed retract receipts for committed writes.
 pub mod compensation;
+
+/// The pi engine sidecar: the confined `pi --mode rpc` spawn (argv builder).
+pub mod sidecar;
