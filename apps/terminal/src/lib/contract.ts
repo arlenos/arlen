@@ -77,6 +77,10 @@ export interface GridSnapshot {
   alt_screen: boolean;
   cursor_row: number;
   cursor_col: number;
+  /// Whether the cursor should be drawn (the VT SHOW_CURSOR mode). The live
+  /// region paints a block cursor at (cursor_row, cursor_col) only when set, so
+  /// a TUI that hides its cursor (btop) gets no spurious block over its frame.
+  cursor_visible: boolean;
   /// Whether a command is running (its OSC 133;C mark seen, 133;D not yet).
   /// Lets the renderer tell an in-flight command's output from an idle prompt,
   /// so the shell's prompt is never drawn under the block-model composer.

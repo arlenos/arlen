@@ -120,6 +120,11 @@ pub struct GridSnapshot {
     pub cursor_row: u16,
     /// Cursor column (0-based).
     pub cursor_col: u16,
+    /// Whether the terminal cursor should be drawn (the VT `SHOW_CURSOR` mode).
+    /// A TUI that hides the cursor (btop, a pager between redraws) clears it, so
+    /// the renderer must not paint a block cursor over the app. At an ordinary
+    /// shell prompt this is set, so the prompt shows a visible block cursor.
+    pub cursor_visible: bool,
     /// Whether a command is running: its `ExecStart` (OSC 133;C) mark has been
     /// seen and its `CommandEnd` (133;D) has not. The renderer uses this to tell
     /// an in-flight command's output region apart from an idle prompt, so the

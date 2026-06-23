@@ -17,6 +17,8 @@
     rows = 1,
     cells = null,
     placeholder,
+    cursorRow = null,
+    cursorCol = null,
   }: {
     /// Number of terminal text rows to reserve when not painting cells.
     /// The region's height is rows times the cell height derived from
@@ -28,6 +30,11 @@
     /// When set (and `cells` is not), paint a labelled stand-in instead
     /// of the transparent hole; the string names what the grid would show.
     placeholder?: string;
+    /// The cell (row, col) to draw the block cursor on, both relative to the
+    /// painted `cells`. Null when no cursor should show (a finished block, a
+    /// TUI that hid its cursor). Only the live region passes these.
+    cursorRow?: number | null;
+    cursorCol?: number | null;
   } = $props();
 
   const painted = $derived(Array.isArray(cells));
@@ -59,6 +66,7 @@
       <div class="grid-line">{#each row as cell, c (c)}<span
             class="cell"
             class:wide={cell.wide}
+            class:cursor={r === cursorRow && c === cursorCol}
             style={cellStyle(cell)}>{cell.text === "" ? " " : cell.text}</span>{/each}</div>
     {/each}
   {:else if placeholder}
@@ -111,6 +119,15 @@
   }
   .cell.wide {
     width: 2ch;
+  }
+  /* The block cursor: paint the cell inverse (the foreground as the cell
+     background, the character punched out in the surface colour) so the caret
+     is visible at the prompt the way a real terminal draws it. A steady block
+     reads clearly in a screenshot and on metal; the live region only sets it
+     when the shell wants the cursor shown. */
+  .cell.cursor {
+    background: var(--foreground);
+    color: var(--background, var(--color-bg-app, #0a0a0a));
   }
 
   /* The labelled stand-in for compositor-less hosts. Dashed inset so

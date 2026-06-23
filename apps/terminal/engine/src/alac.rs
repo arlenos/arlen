@@ -129,6 +129,7 @@ impl Screen {
             alt_screen: self.term.mode().contains(TermMode::ALT_SCREEN),
             cursor_row: cursor.line.0.max(0) as u16,
             cursor_col: cursor.column.0 as u16,
+            cursor_visible: self.term.mode().contains(TermMode::SHOW_CURSOR),
             running: false,
             output_start_row: None,
             prompt_start_row: None,

@@ -26,7 +26,7 @@
     newSession,
   } from "$lib/stores/sessions";
   import { GridRegion } from "@arlen/ui-kit/components/console";
-  import { liveRegionCells, isAltScreenActive } from "$lib/live-region";
+  import { liveRegionCells, isAltScreenActive, liveCursor } from "$lib/live-region";
   import { keyToBytes } from "$lib/keymap";
   import BlockStream from "$lib/components/BlockStream.svelte";
 
@@ -61,6 +61,8 @@
   // block UI is turned off entirely and the grid fills the whole content area
   // (Tim's spec). Flips back to block-mode when the app exits the alt screen.
   const isAltScreen = $derived(isAltScreenActive($liveGrid, liveCells));
+  // Where to paint the block cursor within the live slice (null when hidden).
+  const liveCur = $derived(liveCursor($liveGrid, liveCells));
 
   // The whole console is the interactive surface (PR-2 raw-PTY input, no composer
   // textbox): every keystroke goes raw to the PTY, so the user's real shell runs
@@ -247,7 +249,7 @@
            reach it via the console-level handler. Switches back to block-mode
            when alt_screen flips false on exit. -->
       <div class="alt-fullscreen">
-        <GridRegion cells={liveCells} />
+        <GridRegion cells={liveCells} cursorRow={liveCur?.row ?? null} cursorCol={liveCur?.col ?? null} />
       </div>
     {:else}
       <BlockStream blocks={$blocks}>
@@ -259,7 +261,7 @@
                textbox. Finished commands above stay in their blocks (the live
                region starts at the current prompt, so no double render). -->
           <div class="live-screen">
-            <GridRegion cells={liveCells} />
+            <GridRegion cells={liveCells} cursorRow={liveCur?.row ?? null} cursorCol={liveCur?.col ?? null} />
           </div>
         {/if}
       </BlockStream>
