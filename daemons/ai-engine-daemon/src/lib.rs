@@ -38,3 +38,6 @@ pub mod compensation;
 
 /// The pi engine sidecar: the confined `pi --mode rpc` spawn (argv builder).
 pub mod sidecar;
+
+/// The daemon's minimal `ai.toml` read: the `[ai] enabled` master switch.
+pub mod engine_config;

@@ -15,9 +15,13 @@ use arlen_ai_engine_daemon::dispatch::Dispatcher;
 use arlen_ai_engine_daemon::dispatch::Executor;
 use arlen_ai_engine_daemon::proxy_executor::ProxyExecutor;
 use arlen_ai_engine_daemon::read_executor::{DeniedRunner, GraphReadExecutor};
+use arlen_ai_engine_daemon::engine_config;
 use arlen_ai_engine_daemon::reporter::ScreeningReporter;
+use arlen_ai_engine_daemon::sidecar::{PiSidecar, SidecarPaths};
+use arlen_ai_engine_daemon::supervisor::supervise;
 use arlen_ai_engine_daemon::write_executor::{DeniedWriter, GraphWriteExecutor};
 use arlen_ai_engine_daemon::wire::serve_connection;
+use ai_engine_contract::{CapabilityContext, ReadTier, SessionInit};
 use arlen_permissions::connection_auth::ConnectionAuth;
 use audit_proto::sink::{AuditSink, LedgerAuditSink};
 use std::os::unix::fs::PermissionsExt;
@@ -38,6 +42,20 @@ fn socket_path() -> PathBuf {
 fn current_uid() -> u32 {
     // SAFETY: getuid is always safe; it reads the real uid and never fails.
     unsafe { libc::getuid() }
+}
+
+/// The session grant for the daemon-spawned engine: the safe default. No tools
+/// granted (so the gate denies every Authorize) and the narrowest read tier, so
+/// a freshly-supervised engine is inert until a real per-session grant policy
+/// lands. The supervise loop binds this to the sandboxed engine's pid.
+fn default_engine_session() -> SessionInit {
+    SessionInit {
+        system_prompt: String::new(),
+        behaviour: None,
+        capability_context: CapabilityContext { generic_tools: vec![], proxy_tools: vec![] },
+        project_anchor: None,
+        read_tier: ReadTier::Minimal,
+    }
 }
 
 #[tokio::main]
@@ -98,6 +116,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register("graph.read", read_executor)
         .register("graph.write", write_executor);
     let dispatcher = Arc::new(Dispatcher::new(CapabilityGate, executor, reporter));
+
+    // Spawn + supervise the pi sidecar only when AI is enabled (the §D master
+    // switch; default off). The supervisor shares this dispatcher's session
+    // store, so the session it binds to the sandboxed engine's pid (read from
+    // bwrap's --info-fd) is the one the engine's contract calls resolve against.
+    // A disabled config, or paths that do not resolve, leaves pi unspawned while
+    // the contract socket still serves (the gate denies, the runners fail-closed).
+    if engine_config::ai_enabled() {
+        match SidecarPaths::resolve(|k| std::env::var(k).ok(), path.to_string_lossy().into_owned()) {
+            Ok(paths) => {
+                let sidecar = PiSidecar::new(paths);
+                let disp = Arc::clone(&dispatcher);
+                tokio::spawn(async move {
+                    let init = default_engine_session();
+                    match supervise(&sidecar, &disp, &init).await {
+                        Ok(pid) => info!(pid, "pi sidecar supervision ended"),
+                        Err(e) => error!(error = %e, "pi sidecar supervision could not mint a session"),
+                    }
+                });
+                info!("AI enabled: supervising the pi sidecar");
+            }
+            Err(e) => warn!(error = %e, "AI enabled but the pi sidecar paths do not resolve; not spawning pi"),
+        }
+    } else {
+        info!("AI disabled ([ai] enabled=false); not spawning the pi sidecar");
+    }
 
     let accept = async {
         loop {
