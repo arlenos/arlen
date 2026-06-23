@@ -273,6 +273,12 @@
     flex-direction: column;
     min-height: 0;
     flex: 1;
+    /* The console is the focusable keystroke surface (tabindex + role), and it
+       is focused for the whole session, so the browser focus ring draws a
+       (reddish) line along its top edge - a web idiom on a terminal. Suppress
+       it: the shell's cursor + prompt are the focus indicator (same as the
+       alt-screen surface below). */
+    outline: none;
   }
 
   /* Off-screen probe in the exact console cell font (0.8125rem mono, 1.5 line),
