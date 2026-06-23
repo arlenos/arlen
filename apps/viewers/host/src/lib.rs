@@ -403,6 +403,21 @@ mod tests {
         let decoded = spawn_decode(&dir, "arlen-decode-heic", Decoder::LibHeif, &heic).expect("decode");
         assert!(decoded.width > 0 && decoded.height > 0);
     }
+
+    /// On-kernel: the audio probe worker (Symphonia, single-threaded) returns an
+    /// `AudioInfo` UNDER the tight base filter, confirming the `ENOSYS` mismatch
+    /// action does not break the pure-Rust audio path. Point
+    /// `ARLEN_VIEWERS_AUDIO_DIR` + `ARLEN_VIEWERS_TEST_AUDIO` (the decode-audio
+    /// crate ships a `.wav`).
+    #[test]
+    #[ignore = "needs a userns-capable host + the built audio worker"]
+    fn a_confined_audio_worker_probes_under_the_tight_filter() {
+        let dir = std::env::var("ARLEN_VIEWERS_AUDIO_DIR").expect("set ARLEN_VIEWERS_AUDIO_DIR");
+        let path = std::env::var("ARLEN_VIEWERS_TEST_AUDIO").expect("set ARLEN_VIEWERS_TEST_AUDIO");
+        let audio = std::fs::read(&path).expect("a test audio file at ARLEN_VIEWERS_TEST_AUDIO");
+        let info = spawn_probe(&dir, "arlen-decode-audio", Decoder::Symphonia, &audio).expect("probe");
+        assert!(info.sample_rate > 0 && info.channels > 0);
+    }
 }
 
 /// Default-handler registration (xdg mimeapps) for the viewer.
