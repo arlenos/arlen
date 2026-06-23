@@ -156,6 +156,26 @@ fn terminal_input(
     live.engine.send_input(input.as_bytes()).map_err(|e| e.to_string())
 }
 
+/// Resize a session's PTY (and its screen model) to `cols`x`rows`. The frontend
+/// computes the grid size from the rendered cell metrics and calls this on a
+/// window/pane resize; the engine resizes the master PTY (sending SIGWINCH so the
+/// shell and any running TUI reflow) and the VT parser to match. A missing
+/// session is an error, not a panic.
+#[tauri::command]
+fn terminal_resize(
+    session_id: String,
+    cols: u16,
+    rows: u16,
+    registry: State<Mutex<SessionRegistry>>,
+) -> Result<(), String> {
+    let mut reg = registry.lock().map_err(|e| e.to_string())?;
+    let live = reg
+        .sessions
+        .get_mut(&session_id)
+        .ok_or_else(|| format!("no such session: {session_id}"))?;
+    live.engine.resize(cols, rows).map_err(|e| e.to_string())
+}
+
 /// The shells to try, in preference order, when opening a session. zsh is first
 /// because the block-mark integration is zsh-only (the marks fire only there);
 /// `$SHELL` and `/bin/sh` are fallbacks so the terminal still opens a working
@@ -356,6 +376,7 @@ pub fn run() {
             terminal_blocks,
             terminal_grid,
             terminal_input,
+            terminal_resize,
             terminal_new_session,
             terminal_history_search,
             terminal_projects,

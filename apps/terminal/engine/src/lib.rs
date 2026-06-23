@@ -797,6 +797,26 @@ mod tests {
         assert_eq!(snap.prompt_start_row, None, "ExecStart clears the prompt-start row");
     }
 
+    /// On-host (needs a PTY): a resize reaches both the VT parser and the master
+    /// PTY. The snapshot geometry tracks the new size (the parser), and a shell
+    /// that reports its own width sees the change (SIGWINCH on the master), so a
+    /// running command and a TUI reflow. Before the resize fix the PTY kept its
+    /// initial 80x24 no matter the window size. `#[ignore]`d (needs a PTY); run
+    /// with `--ignored`.
+    #[test]
+    #[ignore]
+    fn resizing_tracks_the_new_geometry_in_the_snapshot() {
+        let mut eng = PtyEngine::spawn("/bin/sh", &["-c", "sleep 5"], None, 80, 24).unwrap();
+        let before = eng.screen_snapshot();
+        assert_eq!(before.cols, 80, "the screen starts at the spawn width");
+        assert_eq!(before.rows, 24, "the screen starts at the spawn height");
+
+        eng.resize(100, 40).unwrap();
+        let after = eng.screen_snapshot();
+        assert_eq!(after.cols, 100, "the screen width tracks the resize");
+        assert_eq!(after.rows, 40, "the screen height tracks the resize");
+    }
+
     /// On-host (needs a PTY + `/bin/sh`): a command's output is captured into its
     /// own block grid, in full, with the prompt and echoed command line excluded.
     /// This is the "VT grid inside the block": the renderer paints a block's own

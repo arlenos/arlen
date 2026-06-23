@@ -151,6 +151,17 @@ export async function terminalInput(
   await invoke("terminal_input", { sessionId, input });
 }
 
+/// Resize the session's PTY to `cols`x`rows` (the engine resizes the master PTY,
+/// sending SIGWINCH so the shell + TUIs reflow, and the VT parser to match). The
+/// page computes the grid size from the rendered cell metrics on a resize.
+export async function terminalResize(
+  sessionId: string,
+  cols: number,
+  rows: number,
+): Promise<void> {
+  await invoke("terminal_resize", { sessionId, cols, rows });
+}
+
 export async function terminalNewSession(): Promise<Session> {
   return invoke<Session>("terminal_new_session");
 }
