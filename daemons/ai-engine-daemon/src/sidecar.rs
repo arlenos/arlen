@@ -16,9 +16,17 @@
 //! dynamic loader) is confirmed and tightened by the `run_once` `#[ignore]d`
 //! spawn test against a real node, the way arlen-run validates its own argv.
 
+use crate::supervisor::{EngineExit, SpawnEngine};
 use arlen_confiner::{app_runtime_profile, Bind, Confinement, ConfinerError, NetworkPolicy};
+use async_trait::async_trait;
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::io::Read;
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::os::unix::io::FromRawFd;
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use tokio::process::Command;
+use tracing::{error, warn};
 
 /// The fixed in-sandbox path the daemon's contract socket is bound to. The host
 /// path varies with `XDG_RUNTIME_DIR`; the sandbox sees a stable path, and the
@@ -188,6 +196,173 @@ pub fn pi_sidecar_argv(confinement: &Confinement, paths: &SidecarPaths) -> Vec<S
     argv.push("--mode".to_string());
     argv.push("rpc".to_string());
     argv
+}
+
+/// Removes the per-run token file on drop, so the secret never outlives the
+/// engine run even on an error/panic path.
+struct TokenFileGuard {
+    path: PathBuf,
+}
+
+impl Drop for TokenFileGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// Write the per-run session token to a fresh `0600` file in the (0700) state
+/// dir and return a guard that removes it on drop. The directory + file modes
+/// keep the secret owner-only; `create_new` would race a stale file, so an
+/// existing one is truncated by `OpenOptions::write+truncate` after the mode is
+/// fixed.
+fn write_token_file(state_dir: &str, token: &str) -> std::io::Result<(PathBuf, TokenFileGuard)> {
+    std::fs::DirBuilder::new().recursive(true).mode(0o700).create(state_dir)?;
+    let path = Path::new(state_dir).join(SESSION_TOKEN_FILENAME);
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&path)?;
+    use std::io::Write;
+    f.write_all(token.as_bytes())?;
+    f.flush()?;
+    Ok((path.clone(), TokenFileGuard { path }))
+}
+
+/// Parse bwrap's `--info-fd` JSON for `child-pid` (the sandboxed process's pid in
+/// the daemon's namespace). bwrap may write more than one JSON object; the first
+/// carrying `child-pid` wins. Returns None if absent/unparseable (fail-closed:
+/// the caller treats a missing pid as a spawn fault).
+fn parse_child_pid(info: &str) -> Option<u32> {
+    for line in info.split('\n').filter(|l| !l.trim().is_empty()) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+            if let Some(pid) = v.get("child-pid").and_then(|p| p.as_u64()) {
+                return u32::try_from(pid).ok();
+            }
+        }
+    }
+    None
+}
+
+/// The real engine sidecar: spawns `pi --mode rpc` under the confinement built
+/// here. Implements [`SpawnEngine`] so the supervisor's restart loop drives it.
+pub struct PiSidecar {
+    paths: SidecarPaths,
+}
+
+impl PiSidecar {
+    /// Build the sidecar over resolved [`SidecarPaths`].
+    pub fn new(paths: SidecarPaths) -> Self {
+        Self { paths }
+    }
+
+    /// Spawn the confined engine and run it to exit. Separated from `run_once`
+    /// so the fallible setup maps uniformly to [`EngineExit::Crashed`].
+    async fn spawn_and_wait(
+        &self,
+        session_token: &str,
+        on_spawned: &(dyn Fn(u32) + Send + Sync),
+    ) -> std::io::Result<EngineExit> {
+        // The token reaches pi via a 0600 file in the rw state dir, not the argv.
+        let (token_path, _guard) = write_token_file(&self.paths.pi_state, session_token)?;
+        let token_path = token_path.to_string_lossy().into_owned();
+
+        let confinement = pi_sidecar_confinement(&self.paths, Some(&token_path))
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()))?;
+        let mut argv = pi_sidecar_argv(&confinement, &self.paths);
+
+        // A pipe whose write end bwrap inherits and writes its JSON info to (the
+        // child-pid we bind the session to); the read end stays in the parent.
+        // O_CLOEXEC on both, then cleared on the write end so it survives the
+        // child's exec.
+        let mut fds = [0i32; 2];
+        // SAFETY: pipe2 fills the two-element array; the return is checked.
+        if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let (read_fd, write_fd) = (fds[0], fds[1]);
+        // SAFETY: clear O_CLOEXEC on the write end so bwrap inherits it.
+        if unsafe { libc::fcntl(write_fd, libc::F_SETFD, 0) } != 0 {
+            let e = std::io::Error::last_os_error();
+            unsafe {
+                libc::close(read_fd);
+                libc::close(write_fd);
+            }
+            return Err(e);
+        }
+        // Splice `--info-fd <write_fd>` into the bwrap flags (before the `--`).
+        let sep = argv.iter().position(|s| s == "--").unwrap_or(argv.len());
+        argv.splice(sep..sep, ["--info-fd".to_string(), write_fd.to_string()]);
+
+        // stdin/stdout are pi's RPC-over-stdio channel (held by the child; the
+        // shell-facing proxy that drives them is a later wiring); stderr inherits
+        // so pi's diagnostics reach the daemon log.
+        let mut cmd = Command::new("bwrap");
+        cmd.args(&argv)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit());
+        let spawn_result = cmd.spawn();
+        // Close the parent's copy of the write end unconditionally, so the read
+        // end sees EOF once bwrap closes its copy (and so a spawn failure does
+        // not leak it).
+        // SAFETY: write_fd is owned here and not used after this.
+        unsafe {
+            libc::close(write_fd);
+        }
+        let mut child = match spawn_result {
+            Ok(c) => c,
+            Err(e) => {
+                // SAFETY: read_fd is still owned; close it before returning.
+                unsafe {
+                    libc::close(read_fd);
+                }
+                return Err(e);
+            }
+        };
+
+        // Read the info pipe to EOF (tiny, written promptly before exec) off the
+        // async runtime, then parse the child pid.
+        // SAFETY: read_fd is owned and not used elsewhere; the File takes it over.
+        let info = tokio::task::spawn_blocking(move || {
+            let mut f = unsafe { std::fs::File::from_raw_fd(read_fd) };
+            let mut s = String::new();
+            let _ = f.read_to_string(&mut s);
+            s
+        })
+        .await
+        .unwrap_or_default();
+
+        match parse_child_pid(&info) {
+            Some(pid) => on_spawned(pid),
+            None => {
+                warn!("bwrap did not report a child-pid on --info-fd; killing the sidecar");
+                let _ = child.kill().await;
+                return Ok(EngineExit::Crashed);
+            }
+        }
+
+        let status = child.wait().await?;
+        Ok(if status.success() { EngineExit::Clean } else { EngineExit::Crashed })
+    }
+}
+
+#[async_trait]
+impl SpawnEngine for PiSidecar {
+    async fn run_once(
+        &self,
+        session_token: &str,
+        on_spawned: &(dyn Fn(u32) + Send + Sync),
+    ) -> EngineExit {
+        match self.spawn_and_wait(session_token, on_spawned).await {
+            Ok(exit) => exit,
+            Err(e) => {
+                error!(error = %e, "failed to spawn the confined pi sidecar");
+                EngineExit::Crashed
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -371,5 +546,87 @@ mod tests {
         assert!(SidecarPaths::resolve(env, "/run/x/ai-engine.sock".to_string())
             .unwrap_err()
             .contains("not absolute"));
+    }
+
+    #[test]
+    fn parse_child_pid_reads_the_bwrap_info() {
+        assert_eq!(parse_child_pid(r#"{"child-pid": 4242, "cgroup": "x"}"#), Some(4242));
+        // bwrap may emit more than one object; the one carrying child-pid wins.
+        assert_eq!(parse_child_pid("{\"exit-code\":0}\n{\"child-pid\":7}"), Some(7));
+        assert_eq!(parse_child_pid("{}"), None);
+        assert_eq!(parse_child_pid("not json"), None);
+        assert_eq!(parse_child_pid(""), None);
+    }
+
+    #[test]
+    fn the_token_file_is_written_0600_and_removed_on_drop() {
+        use std::os::unix::fs::MetadataExt;
+        // A unique temp state dir (no tempfile dev-dep; uniqueness via pid).
+        let dir = std::env::temp_dir().join(format!("arlen-pi-tok-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let dir_s = dir.to_string_lossy().into_owned();
+
+        let token_path;
+        {
+            let (path, _guard) = write_token_file(&dir_s, "s3cr3t-token").expect("write token");
+            token_path = path.clone();
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "s3cr3t-token");
+            // Owner-only (0600).
+            assert_eq!(std::fs::metadata(&path).unwrap().mode() & 0o777, 0o600);
+        }
+        // The guard removed it on drop, so the secret does not outlive the run.
+        assert!(!token_path.exists(), "the token file is removed when the guard drops");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// On-host (needs a userns-capable host + a real node at ARLEN_PI_NODE_RUNTIME
+    /// and a pi install at ARLEN_PI_INSTALL): the confinement actually starts node
+    /// and bwrap reports a child-pid. Validates the base bind set (node's dynamic
+    /// loader) + the --info-fd pid parsing end-to-end against a real process,
+    /// running `node --version` as the trivial confined payload. `#[ignore]d` like
+    /// the other host-gated spawn tests.
+    #[tokio::test]
+    #[ignore = "needs a userns-capable host + a real node runtime + pi install"]
+    async fn the_confined_node_starts_and_reports_a_child_pid() {
+        let p = SidecarPaths::resolve(
+            |k| std::env::var(k).ok(),
+            "/run/user/1000/arlen/ai-engine.sock".to_string(),
+        )
+        .expect("resolve sidecar paths from the env");
+        let conf = pi_sidecar_confinement(&p, None).expect("confinement");
+        // The bwrap argv with the program tail swapped for `node --version` (a
+        // trivial confined payload that exits 0), the confinement kept intact.
+        let mut argv = conf.bwrap_args();
+        argv.push("--".to_string());
+        argv.push(p.node_bin.clone());
+        argv.push("--version".to_string());
+
+        let mut fds = [0i32; 2];
+        assert_eq!(unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) }, 0);
+        let (read_fd, write_fd) = (fds[0], fds[1]);
+        assert_eq!(unsafe { libc::fcntl(write_fd, libc::F_SETFD, 0) }, 0);
+        let sep = argv.iter().position(|s| s == "--").unwrap();
+        argv.splice(sep..sep, ["--info-fd".to_string(), write_fd.to_string()]);
+
+        let mut child = Command::new("bwrap")
+            .args(&argv)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .expect("spawn bwrap");
+        unsafe { libc::close(write_fd) };
+        let info = tokio::task::spawn_blocking(move || {
+            let mut f = unsafe { std::fs::File::from_raw_fd(read_fd) };
+            let mut s = String::new();
+            let _ = f.read_to_string(&mut s);
+            s
+        })
+        .await
+        .unwrap();
+
+        let pid = parse_child_pid(&info).expect("bwrap reported a child-pid");
+        assert!(pid > 1, "the child-pid is a real pid: {pid}");
+        let status = child.wait().await.expect("wait");
+        assert!(status.success(), "node --version runs cleanly under the confinement");
     }
 }
