@@ -1,17 +1,19 @@
-/// The rule for what the live region below the blocks shows, given the engine's
-/// current screen snapshot. Pure so it is unit-testable without a PTY or a
-/// render: this is the logic that fixes the double prompt (PR-2), so it carries
-/// real regression risk and deserves a deterministic test rather than a flaky
-/// live screenshot.
+/// The rule for what the live region shows, given the engine's current screen
+/// snapshot. Pure so it is unit-testable without a PTY or a render: this is the
+/// raw-PTY re-root's render logic, so it carries real regression risk and
+/// deserves a deterministic test rather than a flaky live screenshot.
 ///
-/// Three cases:
+/// The live region is the interactive surface (the shell runs in it, the user
+/// types into it; there is no composer textbox). Three cases:
 /// - A fullscreen / TUI app on the alternate screen owns the whole grid, so the
 ///   full grid is shown (the caller switches to fullscreen mode; no trimming).
-/// - A running command: only its output, sliced from where the output begins
-///   (excluding the shell's prompt and the echoed command line), so the shell's
-///   prompt is never painted on top of the block-model composer.
-/// - An idle prompt (no command running): nothing. The composer is the prompt,
-///   and finished commands' output lives in their blocks.
+/// - A running command: from where its output begins (`output_start_row`, past
+///   the prompt + echoed command line) to the cursor.
+/// - An idle prompt: from where the prompt begins (`prompt_start_row`) to the
+///   cursor, so the shell's prompt and the line being typed (with zle
+///   syntax-highlighting) are shown. Finished commands ABOVE this row stay in
+///   their blocks, so they are not painted twice.
+/// In both non-alt cases a missing start row (no OSC marks yet) shows nothing.
 
 import type { GridSnapshot, GridCell } from "$lib/contract";
 
@@ -22,11 +24,13 @@ export function liveRegionCells(grid: GridSnapshot | null): GridCell[][] {
   // A fullscreen TUI owns the whole grid; paint it all (no trimming would
   // corrupt its absolute layout).
   if (grid.alt_screen) return grid.cells;
-  // Idle prompt: the composer is the prompt, finished output is in the blocks.
-  if (!grid.running) return [];
-  const start = grid.output_start_row ?? 0;
-  // Trim trailing blank rows within the output region (but never below the
-  // cursor), so the live region is the height of the streaming output.
+  // The region begins at the current activity: a running command's output, or
+  // the prompt the shell drew when idle (so the prompt + typed line show). A
+  // null start means no marks have fired yet - nothing to paint live.
+  const start = grid.running ? grid.output_start_row : grid.prompt_start_row;
+  if (start == null) return [];
+  // Trim trailing blank rows (but never below the cursor), so the live region is
+  // the height of the real content.
   let last = start - 1;
   for (let i = start; i < grid.cells.length; i++) {
     if (grid.cells[i].some((cell) => cell.text.trim() !== "")) last = i;

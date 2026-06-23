@@ -19,26 +19,34 @@ function grid(over: Partial<GridSnapshot>): GridSnapshot {
     cursor_col: 0,
     running: false,
     output_start_row: null,
+    prompt_start_row: null,
     ...over,
   };
 }
 
-describe("liveRegionCells (the double-prompt gate)", () => {
-  it("shows nothing at an idle prompt", () => {
-    // The composer is the prompt and finished output is in the blocks, so the
-    // shell's own prompt screen is NOT painted live. A naive impl that returns
-    // the visible screen would here paint the shell prompt under the composer
-    // (the double prompt).
-    const g = grid({ running: false, cells: [row("~/proj ❯ "), row("")] });
+describe("liveRegionCells (the interactive surface)", () => {
+  it("shows the prompt and the typed line at an idle prompt", () => {
+    // The grid IS the prompt now (no composer): from prompt_start_row down, so
+    // the shell's prompt + the line being typed are the interactive surface. The
+    // finished output on row 0 is in its block, above this row, not repainted.
+    const cells = [row("(finished output)"), row("~/proj ❯ ec"), row("")];
+    const g = grid({ running: false, prompt_start_row: 1, cursor_row: 1, cells });
+    const text = liveRegionCells(g).map((r) => r.map((c) => c.text).join("").trimEnd());
+    expect(text).toEqual(["~/proj ❯ ec"]);
+  });
+
+  it("shows nothing at a prompt before any mark has fired", () => {
+    // No prompt_start_row yet (the shell integration has not emitted 133;A), so
+    // there is no known interactive region to paint.
+    const g = grid({ running: false, prompt_start_row: null, cells: [row("~ ❯ ")] });
     expect(liveRegionCells(g)).toEqual([]);
   });
 
-  it("shows only the running command's output, excluding the prompt and echo", () => {
-    // Rows 0-1 are the prompt + the echoed command; output begins at row 2.
+  it("shows only the running command's output, from output_start_row", () => {
+    // Rows 0-1 are the prompt + echoed command; output begins at row 2.
     const cells = [row("~/proj ❯ neofetch"), row(""), row("line-one"), row("line-two")];
     const g = grid({ running: true, output_start_row: 2, cursor_row: 3, cells });
-    const live = liveRegionCells(g);
-    const text = live.map((r) => r.map((c) => c.text).join("").trimEnd());
+    const text = liveRegionCells(g).map((r) => r.map((c) => c.text).join("").trimEnd());
     expect(text).toEqual(["line-one", "line-two"]);
   });
 
@@ -54,7 +62,7 @@ describe("liveRegionCells (the double-prompt gate)", () => {
     expect(liveRegionCells(null)).toEqual([]);
   });
 
-  it("trims trailing blank rows within a running command's output region", () => {
+  it("trims trailing blank rows below the active region", () => {
     const cells = [row("~ ❯ cmd"), row("only-line"), row(""), row("")];
     const g = grid({ running: true, output_start_row: 1, cursor_row: 1, cells });
     expect(liveRegionCells(g)).toHaveLength(1);
@@ -71,7 +79,7 @@ describe("isAltScreenActive (switch to fullscreen, block UI off)", () => {
     expect(isAltScreenActive(g, liveRegionCells(g))).toBe(false);
   });
   it("is false at an idle prompt", () => {
-    const g = grid({ running: false, cells: [row("~ ❯ ")] });
+    const g = grid({ running: false, prompt_start_row: 0, cells: [row("~ ❯ ")] });
     expect(isAltScreenActive(g, liveRegionCells(g))).toBe(false);
   });
 });
