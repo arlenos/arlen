@@ -170,6 +170,22 @@ integration-smoke:
     cargo test --manifest-path "{{justfile_directory()}}/integration/Cargo.toml" \
         --test integration_backend_smoke -- --ignored
 
+# Headless terminal round-trip smoke (#3 PR-2): build the prod-asset terminal
+# binary (`cargo tauri build` embeds the frontend; a plain `cargo build` loads
+# the dev URL and renders nothing), then drive a real command through the running
+# app under tauri-driver + Xvfb + openbox and assert its output renders in the
+# grid. Proves the whole input -> PTY -> shell -> grid/block path end-to-end
+# (a frontend-only test cannot). Needs tauri-driver, WebKitWebDriver, Xvfb,
+# openbox. The literal pixel screenshot is not checked (WebKitWebDriver renders
+# offscreen under Xvfb); this asserts the rendered DOM content.
+terminal-smoke:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ROOT}}/apps/terminal" && cargo tauri build --debug --no-bundle
+    SHOOT_EXEC='sleep 1; echo ARLEN_TERMINAL_SMOKE' SHOOT_EXPECT='ARLEN_TERMINAL_SMOKE' \
+        "{{ROOT}}/dev/screenshot/shoot-app.sh" \
+        "{{ROOT}}/apps/terminal/src-tauri/target/debug/arlen-terminal" "" "" 12
+
 # IT-1 nightly (integration-testing-plan.md §4 / coder-night-backlog-2 §4.3):
 # build EVERY daemon the suite spawns (event-bus, knowledge, audit-daemon and
 # the ai-agent in the ai/ workspace), run the WHOLE #[ignore]d backend suite
