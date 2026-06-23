@@ -1,0 +1,11 @@
+# Starting permission profile for Thunderbird (snapshot, an email client).
+# Mail is its function, so it gets network; attachments save to Downloads. It gets network and Downloads. No Knowledge Graph access.
+[info]
+app_id = "org.mozilla.Thunderbird.snapshot"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
