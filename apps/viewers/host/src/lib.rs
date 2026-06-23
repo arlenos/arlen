@@ -165,3 +165,6 @@ mod tests {
         assert_eq!(decoded.rgba.len(), (decoded.width * decoded.height * 4) as usize);
     }
 }
+
+/// Default-handler registration (xdg mimeapps) for the viewer.
+pub mod mimeapps;
