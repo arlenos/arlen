@@ -16,9 +16,11 @@
 #                 to the compositor's socket and DISPLAY cleared
 #
 # Env:
-#   COMPOSITOR_PATH  the compositor repo (default ~/Repositories/compositor)
-#   SHOOT_SETTLE     seconds to wait for the client to render (default 5)
-#   SHOOT_DISPLAY    the Xvfb display to use (default :99)
+#   COMPOSITOR_PATH   the compositor repo (default ~/Repositories/compositor)
+#   SHOOT_SETTLE      seconds to wait for the client to render (default 5)
+#   SHOOT_DISPLAY     the Xvfb display to use (default :99)
+#   SHOOT_CLIENT_LOG  capture the client's stdout/stderr here (default /dev/null);
+#                     set it to a file to debug why a client did not render
 #
 # Requirements: Xvfb, grim, and a built cosmic-comp at
 # $COMPOSITOR_PATH/target/debug/cosmic-comp.
@@ -68,7 +70,8 @@ if [ -z "$WL" ] || [ ! -S "$XDG_RUNTIME_DIR/$WL" ]; then
 fi
 echo "compositor up on $WL (display $DISP)"
 
-WAYLAND_DISPLAY="$WL" DISPLAY="" "$@" >/dev/null 2>&1 &
+CLIENT_LOG="${SHOOT_CLIENT_LOG:-/dev/null}"
+WAYLAND_DISPLAY="$WL" DISPLAY="" "$@" >"$CLIENT_LOG" 2>&1 &
 CLIENT_PID=$!
 sleep "$SETTLE"
 
