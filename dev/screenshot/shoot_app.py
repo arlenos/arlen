@@ -58,6 +58,11 @@ def main():
                     help="text to type into the input (Enter appended)")
     ap.add_argument("--selector", default=None,
                     help="CSS selector of the input to type into")
+    ap.add_argument("--grab-x", action="store_true",
+                    help="grab the X root window with `import` instead of the "
+                         "WebDriver screenshot endpoint - needed for an app that "
+                         "never reaches paint-idle (a live terminal repaints "
+                         "continuously), where /screenshot hangs")
     args = ap.parse_args()
 
     base = f"http://localhost:{args.port}"
@@ -66,26 +71,53 @@ def main():
     try:
         time.sleep(args.settle)
         if args.type:
-            # Type the command into the composer with the canonical WebDriver
-            # Element Send Keys endpoint: find the input, then send the text plus
-            # Enter. Send Keys produces real key events the framework's handlers
+            # Type the command via the canonical WebDriver Element Send Keys
+            # endpoint, which produces real key events the framework's handlers
             # see (unlike raw Actions, where Enter does not reliably map to
-            # `event.key === "Enter"`, or a synthetic dispatch that Svelte 5's
-            # event delegation may miss). Falls back to the first text field.
-            sel = args.selector or "#terminal-composer-input"
+            # `event.key === "Enter"`). The re-rooted terminal has no composer
+            # input: the `.console` div is the focusable keystroke surface
+            # (tabindex + onkeydown), so try it first, then a classic text input
+            # for other apps. Click to focus the surface, then send the text plus
+            # Enter.
+            candidates = [args.selector] if args.selector else [
+                ".console",
+                "#terminal-composer-input",
+                "textarea,input[type=text],input:not([type])",
+            ]
+            eid = None
+            sel = None
+            for cand in candidates:
+                try:
+                    eid = find_element(base, sid, cand)
+                    sel = cand
+                    break
+                except Exception:
+                    continue
+            if eid is None:
+                raise SystemExit("no typeable surface found")
             try:
-                eid = find_element(base, sid, sel)
+                rq(base, "POST", f"/session/{sid}/element/{eid}/click", {})
             except Exception:
-                eid = find_element(base, sid,
-                                   "textarea,input[type=text],input:not([type])")
+                pass
             rq(base, "POST", f"/session/{sid}/element/{eid}/value",
                {"text": args.type + ENTER})
             print("sent keys to", sel, file=sys.stderr)
             time.sleep(2.5)
-        shot = rq(base, "GET", f"/session/{sid}/screenshot")["value"]
-        with open(args.out, "wb") as f:
-            f.write(base64.b64decode(shot))
-        print("wrote", args.out)
+        if args.grab_x:
+            # Grab the whole virtual display where the app window is mapped. The
+            # WebDriver /screenshot endpoint waits for paint-idle, which a live
+            # terminal never reaches; `import` just reads the X framebuffer, so it
+            # returns regardless. Runs on the same DISPLAY (inherited from
+            # xvfb-run).
+            import subprocess
+            time.sleep(1.0)
+            subprocess.run(["import", "-window", "root", args.out], check=True)
+            print("grabbed X root to", args.out)
+        else:
+            shot = rq(base, "GET", f"/session/{sid}/screenshot")["value"]
+            with open(args.out, "wb") as f:
+                f.write(base64.b64decode(shot))
+            print("wrote", args.out)
     finally:
         try:
             rq(base, "DELETE", f"/session/{sid}")

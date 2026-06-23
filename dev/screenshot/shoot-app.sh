@@ -19,6 +19,10 @@ set -euo pipefail
 export SHOOT_APP="${1:?usage: shoot-app.sh <app-binary> <out.png> [type-text]}"
 export SHOOT_OUT="${2:?usage: shoot-app.sh <app-binary> <out.png> [type-text]}"
 export SHOOT_TYPE="${3:-}"
+# Seconds to wait for the app to come up and hydrate before querying the DOM or
+# screenshotting. A heavy SvelteKit app under WebKitGTK + Xvfb needs more than the
+# 3s default, or `.console` is not mounted yet and the shot races the paint.
+export SHOOT_SETTLE="${4:-}"
 export SHOOT_PORT=4444
 export SHOOT_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export NATIVE="$(command -v WebKitWebDriver || echo /usr/bin/WebKitWebDriver)"
@@ -38,5 +42,7 @@ xvfb-run -a bash -c '
   done
   args=(--app "$SHOOT_APP" --out "$SHOOT_OUT" --port "$SHOOT_PORT")
   [ -n "$SHOOT_TYPE" ] && args+=(--type "$SHOOT_TYPE")
+  [ -n "$SHOOT_SETTLE" ] && args+=(--settle "$SHOOT_SETTLE")
+  [ -n "${SHOOT_GRAB:-}" ] && args+=(--grab-x)
   python3 "$SHOOT_HERE/shoot_app.py" "${args[@]}"
 '
