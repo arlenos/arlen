@@ -1,0 +1,20 @@
+[package]
+name = "arlen-decode-audio"
+version = "0.1.0"
+edition = "2021"
+description = "The sandboxed audio probe worker: reads an encoded audio file on stdin, writes the validated AudioInfo probe frame on stdout (quickview-plan.md)"
+
+[[bin]]
+name = "arlen-decode-audio"
+path = "src/main.rs"
+
+[lib]
+name = "arlen_decode_audio"
+
+[dependencies]
+arlen-viewers-core = { path = "../core" }
+# Pure-Rust audio decode (the plan's set: FLAC/MP3/PCM/Vorbis). Default features
+# off so only these format readers + codecs are linked.
+symphonia = { version = "0.5", default-features = false, features = ["wav", "ogg", "flac", "mp3", "pcm", "vorbis"] }
+
+[workspace]
