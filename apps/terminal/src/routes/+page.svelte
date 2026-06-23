@@ -147,6 +147,14 @@
     let alive = true;
     let fetching = false;
     let dirtyWhileFetching = false;
+    // Track the running flag so a command finishing (running true -> false) pulls
+    // the freshly-closed block. The live region only ever shows the current prompt
+    // and a running command's output; once a command ends its output moves into an
+    // OSC133 block, which the block stream loads on session change only. Without
+    // this a fast command's output would flash in the live region and vanish (the
+    // block never re-fetched). Starts false so the first paint of an idle prompt
+    // does not spuriously reload.
+    let prevRunning = false;
     const fetchGrid = async () => {
       if (!alive) return;
       if (fetching) {
@@ -156,7 +164,11 @@
       fetching = true;
       try {
         const grid = await terminalGrid(id);
-        if (alive) liveGrid.set(grid);
+        if (alive) {
+          liveGrid.set(grid);
+          if (prevRunning && !grid.running) void loadBlocks(id);
+          prevRunning = grid.running;
+        }
       } catch {
         // Keep the last good screen on a transient read failure.
       } finally {
