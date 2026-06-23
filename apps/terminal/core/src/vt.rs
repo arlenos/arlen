@@ -496,6 +496,55 @@ mod tests {
     }
 
     #[test]
+    fn osc_decode_covers_uppercase_hex_truncation_and_same_length_nonce() {
+        // A wrong nonce of the SAME length as the secret must still be rejected:
+        // the forge-protection is the per-byte accumulation, not the length gate.
+        // (NONCE is 12 chars; this differs only in the final byte.)
+        assert_eq!(parse_osc_mark("633;E;rm -rf /;s3cr3t-noncZ", NONCE), None);
+
+        // Uppercase hex digits decode (the A-F branch of the digit table): \x4A
+        // is 'J'. Dropping that branch, or mis-doing the `- b'A' + 10`, leaves the
+        // escape verbatim or yields the wrong byte.
+        assert_eq!(
+            parse_osc_mark("633;E;say \\x4A;s3cr3t-nonce", NONCE),
+            Some(VtEvent::CommandLine {
+                command: "say J".into()
+            })
+        );
+        // An incomplete escape at the very end is left verbatim (the `i + 3 < len`
+        // bound). Reading one byte further would over-read or misdecode it.
+        assert_eq!(
+            parse_osc_mark("633;E;tail \\x4;s3cr3t-nonce", NONCE),
+            Some(VtEvent::CommandLine {
+                command: "tail \\x4".into()
+            })
+        );
+
+        // OSC 7 percent-decoding, same edges: %4A decodes to 'J' (uppercase)...
+        assert_eq!(
+            parse_osc_mark("7;file://host/p%4A", NONCE),
+            Some(VtEvent::CwdChanged { cwd: "/pJ".into() })
+        );
+        // ...a truncated escape at the end stays verbatim (the `i + 2 < len`
+        // bound)...
+        assert_eq!(
+            parse_osc_mark("7;file://host/p%4", NONCE),
+            Some(VtEvent::CwdChanged {
+                cwd: "/p%4".into()
+            })
+        );
+        // ...and a plain path of hex-looking characters with no `%` is left
+        // untouched: only a literal `%` introduces an escape, never an adjacent
+        // hex pair on its own.
+        assert_eq!(
+            parse_osc_mark("7;file://host/abc", NONCE),
+            Some(VtEvent::CwdChanged {
+                cwd: "/abc".into()
+            })
+        );
+    }
+
+    #[test]
     fn command_line_decodes_escapes_and_keeps_separators() {
         // VS Code escapes ';' as \x3b and newline as \x0a inside the command.
         assert_eq!(
