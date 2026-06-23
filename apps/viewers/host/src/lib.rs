@@ -19,6 +19,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use arlen_confiner::{app_runtime_profile, Bind, Confinement, ConfinerError, NetworkPolicy};
+use arlen_viewers_core::audio::{decode_audio_frame, AudioInfo};
 use arlen_viewers_core::decode::{decode_frame, DecodedImage};
 use arlen_viewers_core::{detect, Decoder};
 
@@ -64,12 +65,12 @@ fn require_abs(path: &str) -> Result<String, ConfinerError> {
     }
 }
 
-/// Spawn the decoder `worker_bin` (under `worker_dir`) in the sandbox, pipe
-/// `input` to its stdin, and read back the validated [`DecodedImage`]. The input
-/// is written on a separate thread while stdout is drained, so a large input +
-/// output cannot deadlock on the pipe buffers. A non-zero exit or a malformed
-/// frame is an error (the viewer shows an unsupported/corrupt file).
-pub fn spawn_decode(worker_dir: &str, worker_bin: &str, input: &[u8]) -> Result<DecodedImage, String> {
+/// Run the worker `worker_bin` (under `worker_dir`) in the sandbox, pipe `input`
+/// to its stdin, and return its raw stdout frame bytes. The input is written on
+/// a separate thread while stdout is drained, so a large input + output cannot
+/// deadlock on the pipe buffers; a non-zero exit is an error. The caller decodes
+/// the worker's frame (a raster for an image worker, an AudioInfo for audio).
+pub fn run_confined_worker(worker_dir: &str, worker_bin: &str, input: &[u8]) -> Result<Vec<u8>, String> {
     let worker_path = format!("{}/{worker_bin}", worker_dir.trim_end_matches('/'));
     let confinement = decoder_confinement(worker_dir).map_err(|e| e.to_string())?;
     let argv = decode_worker_argv(&confinement, &worker_path);
@@ -97,9 +98,21 @@ pub fn spawn_decode(worker_dir: &str, worker_bin: &str, input: &[u8]) -> Result<
     let status = child.wait().map_err(|e| format!("wait: {e}"))?;
     read_result?;
     if !status.success() {
-        return Err(format!("decoder exited with {status}"));
+        return Err(format!("worker exited with {status}"));
     }
-    decode_frame(&out).map_err(|e| format!("invalid decoder frame: {e:?}"))
+    Ok(out)
+}
+
+/// Spawn the image decoder confined and read back the validated [`DecodedImage`].
+pub fn spawn_decode(worker_dir: &str, worker_bin: &str, input: &[u8]) -> Result<DecodedImage, String> {
+    let frame = run_confined_worker(worker_dir, worker_bin, input)?;
+    decode_frame(&frame).map_err(|e| format!("invalid decoder frame: {e:?}"))
+}
+
+/// Spawn the audio probe worker confined and read back the validated [`AudioInfo`].
+pub fn spawn_probe(worker_dir: &str, worker_bin: &str, input: &[u8]) -> Result<AudioInfo, String> {
+    let frame = run_confined_worker(worker_dir, worker_bin, input)?;
+    decode_audio_frame(&frame).map_err(|e| format!("invalid probe frame: {e:?}"))
 }
 
 /// Decode an on-disk image file: read it (bounded), detect the format, and run
@@ -114,6 +127,31 @@ pub fn decode_image_path(worker_dir: &str, path: &Path) -> Result<DecodedImage, 
     let detected = detect(name, &input).ok_or("unsupported file format")?;
     let bin = worker_bin(detected.decoder).ok_or("no image decoder for this format")?;
     spawn_decode(worker_dir, bin, &input)
+}
+
+/// The sandboxed worker binary for an audio [`Decoder`], or `None` for a
+/// non-audio decoder. Separate from [`worker_bin`] because the audio worker
+/// returns an [`AudioInfo`] probe, not an image raster.
+pub fn audio_worker_bin(decoder: Decoder) -> Option<&'static str> {
+    match decoder {
+        Decoder::Symphonia => Some("arlen-decode-audio"),
+        // The Fallback also handles exotic audio, but its worker is a later slice.
+        _ => None,
+    }
+}
+
+/// Probe an on-disk audio file: read it (bounded), detect the format, and run
+/// the matching sandboxed probe worker, returning its [`AudioInfo`]. Errors for
+/// an image/unsupported file or a probe failure.
+pub fn probe_audio_path(worker_dir: &str, path: &Path) -> Result<AudioInfo, String> {
+    let mut input = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|f| f.take(MAX_INPUT_BYTES).read_to_end(&mut input).map(|_| ()))
+        .map_err(|e| format!("read {}: {e}", path.display()))?;
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let detected = detect(name, &input).ok_or("unsupported file format")?;
+    let bin = audio_worker_bin(detected.decoder).ok_or("no audio probe worker for this format")?;
+    spawn_probe(worker_dir, bin, &input)
 }
 
 #[cfg(test)]
@@ -148,6 +186,17 @@ mod tests {
     #[test]
     fn a_relative_worker_dir_is_rejected() {
         assert!(matches!(decoder_confinement("opt/viewers"), Err(ConfinerError::RelativePath(_))));
+    }
+
+    #[test]
+    fn audio_routes_to_the_probe_worker_and_images_do_not() {
+        assert_eq!(audio_worker_bin(Decoder::Symphonia), Some("arlen-decode-audio"));
+        assert_eq!(audio_worker_bin(Decoder::ImageRs), None);
+        assert_eq!(audio_worker_bin(Decoder::Fallback), None);
+        // The two dispatch tables are disjoint: an image decoder has an image
+        // worker but no audio worker, and vice versa.
+        assert!(worker_bin(Decoder::ImageRs).is_some() && audio_worker_bin(Decoder::ImageRs).is_none());
+        assert!(audio_worker_bin(Decoder::Symphonia).is_some() && worker_bin(Decoder::Symphonia).is_none());
     }
 
     /// On-kernel (needs a userns-capable host + the built `arlen-decode-image`
