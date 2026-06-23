@@ -11,6 +11,7 @@ shoot-app.sh starts tauri-driver under Xvfb. Stdlib only, no venv.
 import argparse
 import base64
 import json
+import re
 import sys
 import time
 import urllib.request
@@ -47,10 +48,72 @@ def find_element(base, sid, css):
     return list(res.values())[0]
 
 
+def press_enter(base, sid):
+    """Send Enter as its own action sequence with a pause between down and up.
+
+    Batched with the command's keys, the synthetic Enter races the preceding
+    key-ups and does not reliably map to `event.key === "Enter"`; a dedicated
+    sequence with a short hold makes it land every time (verified against the
+    terminal's raw-PTY input handler)."""
+    rq(base, "POST", f"/session/{sid}/actions", {"actions": [{"type": "key",
+        "id": "kbd", "actions": [
+            {"type": "keyDown", "value": ENTER},
+            {"type": "pause", "duration": 60},
+            {"type": "keyUp", "value": ENTER}]}]})
+
+
+def console_text(base, sid):
+    """The visible console as plain text: dump the page source, take the console
+    subtree, strip tags and whitespace. The terminal grid paints one char per
+    `<span class="cell">`, so a raw substring search over the HTML misses words
+    that span cells; stripping tags and whitespace concatenates the cells so the
+    rendered text is searchable."""
+    src = rq(base, "GET", f"/session/{sid}/source")["value"]
+    i = src.find('class="console')
+    seg = src[i:] if i >= 0 else src
+    return re.sub(r"\s+", "", re.sub(r"<[^>]+>", "", seg))
+
+
+def run_and_assert(base, sid, command, expect, selector):
+    """Drive the re-rooted terminal headlessly: focus the console, type a command
+    (retry until it shows in the grid, beating the focus race), press Enter, and
+    assert `expect` renders. Returns True on success. The whole input->PTY->shell
+    ->grid/block round-trip is exercised, so this catches a regression in the
+    terminal's render pipeline that a frontend-only test cannot."""
+    eid = find_element(base, sid, selector or ".console")
+    landed = False
+    for _ in range(4):
+        try:
+            rq(base, "POST", f"/session/{sid}/element/{eid}/click", {})
+        except Exception:
+            pass
+        time.sleep(0.4)
+        type_keys(base, sid, command)
+        time.sleep(1.0)
+        if expect in console_text(base, sid):
+            landed = True
+            break
+    if not landed:
+        print("EXEC FAIL: the command never reached the grid", file=sys.stderr)
+        return False
+    press_enter(base, sid)
+    time.sleep(5.0)
+    ok = expect in console_text(base, sid)
+    print(("EXEC PASS: " if ok else "EXEC FAIL: ") + repr(expect)
+          + (" rendered after execution" if ok else " not found after execution"))
+    return ok
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--app", required=True, help="path to the Tauri app binary")
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out", default=None,
+                    help="screenshot output path (omit in --exec assert mode)")
+    ap.add_argument("--exec", dest="exec_cmd", default=None,
+                    help="run a command in the terminal and assert --expect renders "
+                         "(headless DOM-level proof of the input->shell->grid path)")
+    ap.add_argument("--expect", default=None,
+                    help="substring that must appear in the console after --exec")
     ap.add_argument("--port", type=int, default=4444)
     ap.add_argument("--settle", type=float, default=3.0,
                     help="seconds to wait for the app to come up")
@@ -68,8 +131,15 @@ def main():
     base = f"http://localhost:{args.port}"
     caps = {"capabilities": {"alwaysMatch": {"tauri:options": {"application": args.app}}}}
     sid = rq(base, "POST", "/session", caps)["value"]["sessionId"]
+    exit_code = 0
     try:
         time.sleep(args.settle)
+        if args.exec_cmd:
+            expect = args.expect if args.expect is not None else args.exec_cmd
+            ok = run_and_assert(base, sid, args.exec_cmd, expect, args.selector)
+            exit_code = 0 if ok else 1
+            if not args.out:
+                return exit_code
         if args.type:
             # Type the command via the canonical WebDriver Element Send Keys
             # endpoint, which produces real key events the framework's handlers
@@ -103,7 +173,7 @@ def main():
                {"text": args.type + ENTER})
             print("sent keys to", sel, file=sys.stderr)
             time.sleep(2.5)
-        if args.grab_x:
+        if args.out and args.grab_x:
             # Grab the whole virtual display where the app window is mapped. The
             # WebDriver /screenshot endpoint waits for paint-idle, which a live
             # terminal never reaches; `import` just reads the X framebuffer, so it
@@ -113,11 +183,12 @@ def main():
             time.sleep(1.0)
             subprocess.run(["import", "-window", "root", args.out], check=True)
             print("grabbed X root to", args.out)
-        else:
+        elif args.out:
             shot = rq(base, "GET", f"/session/{sid}/screenshot")["value"]
             with open(args.out, "wb") as f:
                 f.write(base64.b64decode(shot))
             print("wrote", args.out)
+        return exit_code
     finally:
         try:
             rq(base, "DELETE", f"/session/{sid}")
@@ -126,4 +197,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)
