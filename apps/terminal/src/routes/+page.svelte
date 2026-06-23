@@ -283,8 +283,10 @@
     outline: none;
   }
 
-  /* Off-screen probe in the exact console cell font (0.8125rem mono, 1.5 line),
-     measured to derive the cell width/height for the PTY resize computation. */
+  /* Off-screen probe in the exact console cell font, measured to derive the
+     cell width/height for the PTY resize computation. Must track the grid's
+     font-size (--console-font-size) one-to-one or the measured cell size
+     diverges from the painted one and the columns stop aligning. */
   .cell-probe {
     position: absolute;
     top: -9999px;
@@ -292,7 +294,7 @@
     visibility: hidden;
     white-space: pre;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.8125rem;
+    font-size: var(--console-font-size, 0.8125rem);
     line-height: 1.5;
     pointer-events: none;
   }

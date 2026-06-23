@@ -1,6 +1,13 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
+/* Bundled terminal mono: a soft, evenly-weighted face so the grid renders
+   smoothly instead of relying on whatever monospace the host happens to have.
+   Latin subsets load lazily by unicode-range. */
+@import "@fontsource/cascadia-code/400.css";
+@import "@fontsource/cascadia-code/400-italic.css";
+@import "@fontsource/cascadia-code/600.css";
+@import "@fontsource/cascadia-code/700.css";
 /* Single-source: scan the ui-kit canon so Tailwind generates the utility
    classes used by ui-kit's shadcn-derived components, which are imported via
    the @arlen/ui-kit alias instead of being copied into this app. See
@@ -213,7 +220,7 @@
   --height-bar:                 var(--height-bar, 36px);
 
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrainsMono Nerd Font Mono", "JetBrains Mono", ui-monospace, monospace;
+  --font-mono: "Cascadia Code", "JetBrainsMono Nerd Font Mono", "JetBrains Mono", ui-monospace, monospace;
 
   /* Motion tokens registered as Tailwind utilities. Values come from
      sdk/ui-kit/src/lib/motion.css; this block only exposes them to
@@ -235,7 +242,20 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  /* The terminal cell font derives from the base size token (PR-3), not a
+     hardcoded tiny size: the grid and its measuring probe both read this. */
+  --console-font-size: var(--font-size-base, 14px);
+  /* Render the mono softly, not in a hard bitmap look. */
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* The terminal mono renders without ligatures: in command output a merged
+   glyph (>>, ==, ->) reads as a different token than the bytes on screen. */
+.grid-region,
+.cell-probe {
+  font-feature-settings: "liga" 0, "calt" 0;
   /* App-wide default: nothing is selectable, except real text-entry
      controls (and anything that opts back in via [data-selectable]).
      Selecting the label of a button or pill on mouse-drag feels like
