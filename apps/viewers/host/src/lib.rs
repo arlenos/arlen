@@ -375,6 +375,34 @@ mod tests {
         assert!(decoded.width > 0 && decoded.height > 0);
         assert_eq!(decoded.rgba.len(), (decoded.width * decoded.height * 4) as usize);
     }
+
+    /// On-kernel: the single-threaded JXL worker decodes UNDER the tight base
+    /// filter (no `clone`), proving jxl-oxide-without-rayon really fits the
+    /// pure-Rust profile. Point `ARLEN_VIEWERS_JXL_DIR` at the built worker and
+    /// `ARLEN_VIEWERS_TEST_JXL` at a `.jxl` (the decode-jxl crate ships one).
+    #[test]
+    #[ignore = "needs a userns-capable host + the built JXL worker"]
+    fn a_confined_jxl_worker_decodes_under_the_tight_filter() {
+        let dir = std::env::var("ARLEN_VIEWERS_JXL_DIR").expect("set ARLEN_VIEWERS_JXL_DIR");
+        let path = std::env::var("ARLEN_VIEWERS_TEST_JXL").expect("set ARLEN_VIEWERS_TEST_JXL");
+        let jxl = std::fs::read(&path).expect("a test JXL at ARLEN_VIEWERS_TEST_JXL");
+        let decoded = spawn_decode(&dir, "arlen-decode-jxl", Decoder::JxlOxide, &jxl).expect("decode");
+        assert!(decoded.width > 0 && decoded.height > 0);
+    }
+
+    /// On-kernel: the C-linked HEIC/AVIF worker decodes UNDER the wider filter
+    /// (the one profile that adds thread creation), proving the threaded
+    /// dav1d/libde265 codecs run with the extra `clone`/`sched_*` and nothing
+    /// more. Point `ARLEN_VIEWERS_HEIC_DIR` + `ARLEN_VIEWERS_TEST_HEIC`.
+    #[test]
+    #[ignore = "needs a userns-capable host + the built HEIC worker"]
+    fn a_confined_heic_worker_decodes_under_the_wider_filter() {
+        let dir = std::env::var("ARLEN_VIEWERS_HEIC_DIR").expect("set ARLEN_VIEWERS_HEIC_DIR");
+        let path = std::env::var("ARLEN_VIEWERS_TEST_HEIC").expect("set ARLEN_VIEWERS_TEST_HEIC");
+        let heic = std::fs::read(&path).expect("a test HEIC/AVIF at ARLEN_VIEWERS_TEST_HEIC");
+        let decoded = spawn_decode(&dir, "arlen-decode-heic", Decoder::LibHeif, &heic).expect("decode");
+        assert!(decoded.width > 0 && decoded.height > 0);
+    }
 }
 
 /// Default-handler registration (xdg mimeapps) for the viewer.
