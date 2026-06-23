@@ -10,5 +10,7 @@ name = "arlen_viewers_host"
 [dependencies]
 arlen-viewers-core = { path = "../core" }
 arlen-confiner = { path = "../../../sdk/confiner" }
+# SIGKILL the confined worker on the decode timeout (a hung/compromised worker).
+libc = "0.2"
 
 [workspace]

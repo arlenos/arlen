@@ -3,11 +3,15 @@
 //! The host (the viewer) holds the file read capability; the per-format decoder
 //! does NOT. So the host reads the file, [`detect`](arlen_viewers_core::detect)s
 //! its format, and pipes the bytes into the matching decoder running in a bwrap
-//! sandbox - **no filesystem, no network** - which writes back only the
-//! validated RGBA raster frame. A decoder that crashes or is compromised cannot
-//! read other files, reach the network, or take the viewer down (the Glycin
-//! one-sandboxed-process-per-decoder model). The confinement + argv are pure +
-//! unit-tested here; the real bwrap spawn is the on-kernel `#[ignore]d` test.
+//! sandbox - **no network, no writable filesystem, no read access to the user's
+//! files** - which writes back only the validated raster/probe frame. A decoder
+//! that crashes or is compromised cannot reach the network, write anything, read
+//! `$HOME`/`/etc`/other apps' data, OOM the host (the read is bounded), or hang
+//! it (the watchdog kills past the timeout). It CAN read the world-readable
+//! `/usr` it is given for its own dynamic libraries (a bounded info surface, not
+//! the user's data); narrowing that to a minimal lib set is a follow-up. The
+//! confinement + argv are pure + unit-tested here; the real bwrap spawn is the
+//! on-kernel `#[ignore]d` test.
 //!
 //! Seccomp is staged like arlen-run: v1 is the namespace + no-network + read-
 //! only confinement; the `--seccomp <fd>` BPF filter (and the wider profile for
@@ -17,15 +21,30 @@ use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
+use std::time::Duration;
 
 use arlen_confiner::{app_runtime_profile, Bind, Confinement, ConfinerError, NetworkPolicy};
 use arlen_viewers_core::audio::{decode_audio_frame, AudioInfo};
-use arlen_viewers_core::decode::{decode_frame, DecodedImage};
+use arlen_viewers_core::decode::{decode_frame, DecodedImage, MAX_PIXELS};
 use arlen_viewers_core::{detect, Decoder};
 
 /// The largest file the host reads + pipes to a decoder (mirrors the worker's
 /// own input bound).
 pub const MAX_INPUT_BYTES: u64 = 256 * 1024 * 1024;
+
+/// The largest frame the host will read back from a worker, BEFORE parsing. The
+/// frame DoS bound ([`MAX_PIXELS`]) is enforced when the frame is parsed, but a
+/// COMPROMISED worker (the stated threat) could write RGBA-looking bytes forever
+/// and OOM the host on the read itself; this caps the read. The image raster
+/// frame is the largest legitimate output (12-byte header + RGBA); the audio
+/// probe frame is tiny, so this one cap covers both.
+pub const MAX_OUTPUT_BYTES: u64 = 12 + MAX_PIXELS * 4;
+
+/// The wall-clock budget for a single decode. A hung or pathologically-slow
+/// worker (a malformed file hitting a codec loop, or a malicious worker that
+/// never exits) is SIGKILLed past this, so a decode cannot wedge the caller.
+pub const DECODE_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// The sandboxed worker binary name for an image [`Decoder`], or `None` for a
 /// decoder with no image worker (audio Symphonia + the long-tail Fallback take
@@ -66,10 +85,17 @@ fn require_abs(path: &str) -> Result<String, ConfinerError> {
 }
 
 /// Run the worker `worker_bin` (under `worker_dir`) in the sandbox, pipe `input`
-/// to its stdin, and return its raw stdout frame bytes. The input is written on
-/// a separate thread while stdout is drained, so a large input + output cannot
-/// deadlock on the pipe buffers; a non-zero exit is an error. The caller decodes
-/// the worker's frame (a raster for an image worker, an AudioInfo for audio).
+/// to its stdin, and return its raw stdout frame bytes. The caller decodes the
+/// frame (a raster for an image worker, an AudioInfo for audio). Hardened
+/// against a COMPROMISED worker (the design's threat model):
+/// - the stdout read is bounded at [`MAX_OUTPUT_BYTES`], so a worker that writes
+///   forever cannot OOM the host;
+/// - a watchdog SIGKILLs the worker past [`DECODE_TIMEOUT`], so a hung worker
+///   cannot wedge the caller. Because the confinement sets `--die-with-parent`,
+///   killing bwrap also tears down the inner decoder, which closes the pipes -
+///   so the kill unblocks both the stdout read AND the stdin writer thread;
+/// - input is written on a separate thread while stdout is drained, so a large
+///   input + output cannot deadlock on the pipe buffers; a non-zero exit errs.
 pub fn run_confined_worker(worker_dir: &str, worker_bin: &str, input: &[u8]) -> Result<Vec<u8>, String> {
     let worker_path = format!("{}/{worker_bin}", worker_dir.trim_end_matches('/'));
     let confinement = decoder_confinement(worker_dir).map_err(|e| e.to_string())?;
@@ -82,6 +108,7 @@ pub fn run_confined_worker(worker_dir: &str, worker_bin: &str, input: &[u8]) -> 
         .stderr(Stdio::inherit())
         .spawn()
         .map_err(|e| format!("spawn bwrap: {e}"))?;
+    let pid = child.id() as libc::pid_t;
 
     let mut stdin = child.stdin.take().ok_or("no child stdin")?;
     let owned = input.to_vec();
@@ -90,13 +117,36 @@ pub fn run_confined_worker(worker_dir: &str, worker_bin: &str, input: &[u8]) -> 
         // Dropping stdin closes it, signalling EOF to the worker.
     });
 
-    let mut out = Vec::new();
-    let read_result = child.stdout.take().ok_or("no child stdout").and_then(|mut so| {
-        so.read_to_end(&mut out).map_err(|_| "read stdout").map(|_| ())
+    // A watchdog kills the worker on the timeout. The main thread signals `done`
+    // once the read completes; a `recv_timeout` that expires first means the
+    // worker is hung/slow, so SIGKILL it (pid not yet reaped - `wait()` is below
+    // - so there is no pid-reuse window).
+    let (done_tx, done_rx) = mpsc::channel::<()>();
+    let watchdog = std::thread::spawn(move || {
+        if done_rx.recv_timeout(DECODE_TIMEOUT).is_err() {
+            // SAFETY: SIGKILL by pid; benign (ESRCH) if the worker already exited.
+            unsafe { libc::kill(pid, libc::SIGKILL) };
+        }
     });
+
+    // Read at most MAX_OUTPUT_BYTES + 1, so an over-cap worker is detected rather
+    // than silently truncated into a plausible-but-wrong frame.
+    let mut out = Vec::new();
+    let read_result = child
+        .stdout
+        .take()
+        .ok_or("no child stdout")
+        .and_then(|so| {
+            so.take(MAX_OUTPUT_BYTES + 1).read_to_end(&mut out).map_err(|_| "read stdout").map(|_| ())
+        });
+    let _ = done_tx.send(()); // cancel the watchdog if the read finished in time
     let _ = writer.join();
     let status = child.wait().map_err(|e| format!("wait: {e}"))?;
+    let _ = watchdog.join();
     read_result?;
+    if out.len() as u64 > MAX_OUTPUT_BYTES {
+        return Err("worker output exceeded the frame bound".to_string());
+    }
     if !status.success() {
         return Err(format!("worker exited with {status}"));
     }
@@ -186,6 +236,17 @@ mod tests {
     #[test]
     fn a_relative_worker_dir_is_rejected() {
         assert!(matches!(decoder_confinement("opt/viewers"), Err(ConfinerError::RelativePath(_))));
+    }
+
+    #[test]
+    fn the_output_cap_covers_the_largest_image_frame_and_the_audio_frame() {
+        use arlen_viewers_core::audio::AudioInfo;
+        use arlen_viewers_core::decode::MAX_PIXELS;
+        // The cap equals the largest legitimate image frame (header + max RGBA).
+        assert_eq!(MAX_OUTPUT_BYTES, 12 + MAX_PIXELS * 4);
+        // A real audio probe frame is far under the cap (so one cap covers both).
+        let audio = AudioInfo { codec: "vorbis".into(), sample_rate: 48_000, channels: 2, duration_ms: Some(1) };
+        assert!((audio.encode().len() as u64) < MAX_OUTPUT_BYTES);
     }
 
     #[test]
