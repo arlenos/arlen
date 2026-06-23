@@ -338,8 +338,13 @@ fn snapshot_of(parser: &vt100::Parser) -> GridSnapshot {
     for r in 0..rows {
         let mut row = Vec::with_capacity(cols as usize);
         for c in 0..cols {
-            row.push(match screen.cell(r, c) {
-                Some(cell) => GridCell {
+            match screen.cell(r, c) {
+                // The trailing column of a wide (double-width) character: the wide
+                // cell itself already spans both columns (it renders two cells
+                // wide), so emitting a cell here would push the row a column too
+                // wide and break the monospace alignment for every wide glyph.
+                Some(cell) if cell.is_wide_continuation() => {}
+                Some(cell) => row.push(GridCell {
                     text: cell.contents(),
                     fg: conv_color(cell.fgcolor()),
                     bg: conv_color(cell.bgcolor()),
@@ -348,9 +353,9 @@ fn snapshot_of(parser: &vt100::Parser) -> GridSnapshot {
                     underline: cell.underline(),
                     inverse: cell.inverse(),
                     wide: cell.is_wide(),
-                },
-                None => GridCell::default(),
-            });
+                }),
+                None => row.push(GridCell::default()),
+            }
         }
         cells.push(row);
     }
@@ -457,6 +462,24 @@ mod tests {
         // The cursor sits just after "world" on the second row.
         assert_eq!(snap.cursor_row, 1);
         assert_eq!(snap.cursor_col, 5);
+    }
+
+    #[test]
+    fn a_wide_character_does_not_emit_a_phantom_continuation_cell() {
+        // A double-width glyph (CJK) occupies two terminal columns: the wide cell
+        // renders two columns wide on its own, so the trailing continuation column
+        // must NOT become its own cell - otherwise the row runs a column too wide
+        // and every wide glyph shifts the rest of the line. Feed a wide char then
+        // an ASCII char and assert the ASCII follows the wide cell directly.
+        let mut parser = vt100::Parser::new(2, 20, 0);
+        parser.process("\u{5b57}x".as_bytes()); // 字 (width 2) then x
+        let snap = snapshot_of(&parser);
+        assert_eq!(snap.cells[0][0].text, "\u{5b57}");
+        assert!(snap.cells[0][0].wide, "the CJK glyph is marked wide");
+        assert_eq!(
+            snap.cells[0][1].text, "x",
+            "the next column's content follows the wide cell, not a phantom continuation"
+        );
     }
 
     #[test]
