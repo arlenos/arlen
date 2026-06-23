@@ -1,0 +1,11 @@
+# Starting permission profile for net.kuribo64.melonDS (a game-console emulator).
+# It loads game images from local files by function, so it gets Documents and
+# Downloads (where ROMs are kept) and no network; netplay is opt-in. No
+# Knowledge Graph access.
+[info]
+app_id = "net.kuribo64.melonDS"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true

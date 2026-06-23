@@ -1,0 +1,12 @@
+# Starting permission profile for Plex (a media streaming client).
+# Streaming is its function, so it gets network; downloads save to Downloads.
+# No Knowledge Graph access.
+[info]
+app_id = "tv.plex.PlexDesktop"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

@@ -1,5 +1,5 @@
-# Starting permission profile for Stremio (a media streaming app).
-# Streams and downloads media over the network by function; saves to Downloads.
+# Starting permission profile for Stremio (a media streaming client).
+# Streaming is its function, so it gets network; downloads save to Downloads.
 # No Knowledge Graph access.
 [info]
 app_id = "com.stremio.Stremio"
