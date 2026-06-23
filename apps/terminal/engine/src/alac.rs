@@ -234,6 +234,23 @@ mod tests {
     }
 
     #[test]
+    fn clear_erases_the_screen_and_homes_the_cursor() {
+        // `clear` / Ctrl+L emit cursor-home + erase-display (ESC[H ESC[2J). The
+        // core must wipe the grid and move the cursor to the top-left, the way a
+        // real terminal clears; the hand-rolled engine got this wrong.
+        let mut s = Screen::new(20, 4);
+        s.process(b"one\r\ntwo\r\nthree");
+        assert_eq!(row_text(&s.snapshot(), 1), "two");
+        s.process(b"\x1b[H\x1b[2J");
+        let snap = s.snapshot();
+        assert!(
+            snap.cells.iter().all(|r| r.iter().all(|c| c.text.trim().is_empty())),
+            "every cell is blank after clear"
+        );
+        assert_eq!((snap.cursor_row, snap.cursor_col), (0, 0), "the cursor homes");
+    }
+
+    #[test]
     fn a_wide_glyph_occupies_two_columns_once() {
         let mut s = Screen::new(10, 1);
         s.process("\u{5b57}x".as_bytes()); // 字 (width 2) then x
