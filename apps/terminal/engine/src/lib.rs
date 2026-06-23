@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use arlen_terminal_core::vt::{OscScanner, VtEngine, VtEvent};
-use arlen_terminal_core::{CellColor, GridCell, GridSnapshot};
+use arlen_terminal_core::GridSnapshot;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 
 /// The screen model on the proven `alacritty_terminal` VT core, built + tested in
@@ -66,7 +66,7 @@ pub struct PtyEngine {
     /// The visible-screen VT model, fed the same PTY byte stream the scanner
     /// reads. The host snapshots it ([`PtyEngine::screen_snapshot`]) to render
     /// output in the webview (terminal.md Option B).
-    screen: Arc<Mutex<vt100::Parser>>,
+    screen: Arc<Mutex<alac::Screen>>,
     /// Whether a command is running (its `ExecStart` mark seen, `CommandEnd` not
     /// yet). Tracked from the same OSC-mark stream the scanner lifts, so the
     /// snapshot can tell an in-flight command from an idle prompt without the
@@ -163,10 +163,10 @@ impl PtyEngine {
         let events = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&events);
         // The screen model gets the SAME byte stream the scanner does: the
-        // scanner lifts the low-rate OSC marks, the parser builds the visible
-        // grid the webview renders. No scrollback for now (the visible screen
-        // is what shows); scrollback is a later addition.
-        let screen = Arc::new(Mutex::new(vt100::Parser::new(rows, cols, 0)));
+        // scanner lifts the low-rate OSC marks, the proven `alacritty_terminal`
+        // core builds the visible grid (cursor, alt-screen, wrap and resize-reflow
+        // correct by construction) the webview renders.
+        let screen = Arc::new(Mutex::new(alac::Screen::new(cols, rows)));
         let screen_sink = Arc::clone(&screen);
         let running = Arc::new(AtomicBool::new(false));
         let running_sink = Arc::clone(&running);
@@ -187,7 +187,7 @@ impl PtyEngine {
                 // The active command's output parser: created at `ExecStart`, fed
                 // the output bytes that follow, finalized at `CommandEnd` (or at
                 // the next prompt, for a command that emitted no end mark).
-                let mut block_parser: Option<vt100::Parser> = None;
+                let mut block_parser: Option<alac::Screen> = None;
                 loop {
                     match reader.read(&mut buf) {
                         // 0 = clean EOF; Err = the master closed (Linux returns
@@ -221,29 +221,23 @@ impl PtyEngine {
                                         VtEvent::ExecStart => {
                                             running_sink.store(true, Ordering::Relaxed);
                                             if let Ok(mut o) = output_start_sink.lock() {
-                                                *o = Some(p.screen().cursor_position().0);
+                                                *o = Some(p.cursor_row());
                                             }
                                             // The prompt is done; output begins.
                                             if let Ok(mut ps) = prompt_start_sink.lock() {
                                                 *ps = None;
                                             }
-                                            // A fresh, tall parser captures this
+                                            // A fresh, tall capture screen holds this
                                             // command's output in full; cols match
-                                            // the screen so wrapping is identical.
-                                            let cols = p.screen().size().1;
-                                            block_parser = Some(vt100::Parser::new(
-                                                BLOCK_OUTPUT_ROWS,
-                                                cols,
-                                                0,
-                                            ));
+                                            // the live screen so wrapping is identical.
+                                            block_parser =
+                                                Some(alac::Screen::new(p.cols(), BLOCK_OUTPUT_ROWS));
                                         }
                                         VtEvent::CommandEnd { .. } => {
                                             running_sink.store(false, Ordering::Relaxed);
                                             if let Some(bp) = block_parser.take() {
                                                 if let Ok(mut outs) = finished_sink.lock() {
-                                                    outs.push(trim_trailing_blank_rows(snapshot_of(
-                                                        &bp,
-                                                    )));
+                                                    outs.push(trim_trailing_blank_rows(bp.snapshot()));
                                                 }
                                             }
                                         }
@@ -256,16 +250,14 @@ impl PtyEngine {
                                             // current row; the live region renders
                                             // from here (prompt + typed line).
                                             if let Ok(mut ps) = prompt_start_sink.lock() {
-                                                *ps = Some(p.screen().cursor_position().0);
+                                                *ps = Some(p.cursor_row());
                                             }
                                             // A command that reached the next prompt
                                             // without an end mark still has its
                                             // captured output preserved.
                                             if let Some(bp) = block_parser.take() {
                                                 if let Ok(mut outs) = finished_sink.lock() {
-                                                    outs.push(trim_trailing_blank_rows(snapshot_of(
-                                                        &bp,
-                                                    )));
+                                                    outs.push(trim_trailing_blank_rows(bp.snapshot()));
                                                 }
                                             }
                                         }
@@ -352,7 +344,7 @@ impl VtEngine for PtyEngine {
         // Keep the screen model's geometry in step with the PTY so wrapping and
         // the cursor stay correct after a resize.
         if let Ok(mut p) = self.screen.lock() {
-            p.set_size(rows, cols);
+            p.resize(cols, rows);
         }
         self.master
             .resize(PtySize {
@@ -375,63 +367,14 @@ impl VtEngine for PtyEngine {
         let mut snap = self
             .screen
             .lock()
-            .map(|p| snapshot_of(&p))
+            .map(|p| p.snapshot())
             .unwrap_or_default();
-        // Overlay the mark-derived command-output region the free `snapshot_of`
-        // cannot know (it sees only the screen, not the OSC-mark stream).
+        // Overlay the mark-derived command-output region the screen model cannot
+        // know (it sees only the grid, not the OSC-mark stream).
         snap.running = self.running.load(Ordering::Relaxed);
         snap.output_start_row = self.output_start_row.lock().ok().and_then(|o| *o);
         snap.prompt_start_row = self.prompt_start_row.lock().ok().and_then(|o| *o);
         snap
-    }
-}
-
-/// Read a VT parser's visible screen into a [`GridSnapshot`]: one styled
-/// [`GridCell`] per column so the webview paints colour and a fixed-width grid.
-/// vt100 already tracks the alternate-screen buffer, so a fullscreen app's
-/// screen reads back here too. Free so the snapshot shape is unit-testable
-/// without a PTY.
-fn snapshot_of(parser: &vt100::Parser) -> GridSnapshot {
-    let screen = parser.screen();
-    let (rows, cols) = screen.size();
-    let mut cells = Vec::with_capacity(rows as usize);
-    for r in 0..rows {
-        let mut row = Vec::with_capacity(cols as usize);
-        for c in 0..cols {
-            match screen.cell(r, c) {
-                // The trailing column of a wide (double-width) character: the wide
-                // cell itself already spans both columns (it renders two cells
-                // wide), so emitting a cell here would push the row a column too
-                // wide and break the monospace alignment for every wide glyph.
-                Some(cell) if cell.is_wide_continuation() => {}
-                Some(cell) => row.push(GridCell {
-                    text: cell.contents(),
-                    fg: conv_color(cell.fgcolor()),
-                    bg: conv_color(cell.bgcolor()),
-                    bold: cell.bold(),
-                    italic: cell.italic(),
-                    underline: cell.underline(),
-                    inverse: cell.inverse(),
-                    wide: cell.is_wide(),
-                }),
-                None => row.push(GridCell::default()),
-            }
-        }
-        cells.push(row);
-    }
-    let (cursor_row, cursor_col) = screen.cursor_position();
-    GridSnapshot {
-        cols,
-        rows,
-        cells,
-        alt_screen: screen.alternate_screen(),
-        cursor_row,
-        cursor_col,
-        // The free fn sees only the screen; the engine overlays the mark-derived
-        // command-output region in `screen_snapshot`.
-        running: false,
-        output_start_row: None,
-        prompt_start_row: None,
     }
 }
 
@@ -450,15 +393,6 @@ fn trim_trailing_blank_rows(mut snap: GridSnapshot) -> GridSnapshot {
     snap.cells.truncate(last + 1);
     snap.rows = snap.cells.len() as u16;
     snap
-}
-
-/// Map a vt100 colour to the contract's [`CellColor`].
-fn conv_color(c: vt100::Color) -> CellColor {
-    match c {
-        vt100::Color::Default => CellColor::Default,
-        vt100::Color::Idx(i) => CellColor::Indexed(i),
-        vt100::Color::Rgb(r, g, b) => CellColor::Rgb([r, g, b]),
-    }
 }
 
 impl Drop for PtyEngine {
@@ -488,6 +422,7 @@ fn mint_nonce() -> std::io::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arlen_terminal_core::{CellColor, GridCell};
 
     /// PR-2 #3 double-prompt repro (throwaway, `#[ignore]`d): replay a captured
     /// real zsh+p10k+arlen-integration byte stream through the REAL reader by
@@ -542,63 +477,9 @@ mod tests {
         assert_ne!(a, b, "each session gets a fresh nonce");
     }
 
-    #[test]
-    fn snapshot_reads_processed_output_as_styled_cells() {
-        // The snapshot is what the webview renders (Option B): a fixed-width grid
-        // of styled cells. Feed ordinary output plus an SGR colour and read the
-        // visible grid back as cells + cursor.
-        let mut parser = vt100::Parser::new(4, 20, 0);
-        parser.process(b"hello\r\n\x1b[31mworld\x1b[0m");
-        let snap = snapshot_of(&parser);
-        assert_eq!(snap.rows, 4);
-        assert_eq!(snap.cols, 20);
-        assert_eq!(snap.cells.len(), 4);
-        // Every row carries exactly `cols` cells, so the monospace grid aligns.
-        assert!(snap.cells.iter().all(|r| r.len() == snap.cols as usize));
-        let row_text = |r: usize| -> String {
-            snap.cells[r].iter().map(|c| c.text.as_str()).collect::<String>()
-        };
-        assert_eq!(row_text(0).trim_end(), "hello");
-        assert_eq!(row_text(1).trim_end(), "world");
-        // Colour is captured, not flattened away: "world" was written under
-        // SGR 31 (ANSI red, index 1); the first row keeps the default colour.
-        assert_eq!(snap.cells[1][0].fg, CellColor::Indexed(1));
-        assert_eq!(snap.cells[0][0].fg, CellColor::Default);
-        // The cursor sits just after "world" on the second row.
-        assert_eq!(snap.cursor_row, 1);
-        assert_eq!(snap.cursor_col, 5);
-    }
-
-    #[test]
-    fn a_wide_character_does_not_emit_a_phantom_continuation_cell() {
-        // A double-width glyph (CJK) occupies two terminal columns: the wide cell
-        // renders two columns wide on its own, so the trailing continuation column
-        // must NOT become its own cell - otherwise the row runs a column too wide
-        // and every wide glyph shifts the rest of the line. Feed a wide char then
-        // an ASCII char and assert the ASCII follows the wide cell directly.
-        let mut parser = vt100::Parser::new(2, 20, 0);
-        parser.process("\u{5b57}x".as_bytes()); // 字 (width 2) then x
-        let snap = snapshot_of(&parser);
-        assert_eq!(snap.cells[0][0].text, "\u{5b57}");
-        assert!(snap.cells[0][0].wide, "the CJK glyph is marked wide");
-        assert_eq!(
-            snap.cells[0][1].text, "x",
-            "the next column's content follows the wide cell, not a phantom continuation"
-        );
-    }
-
-    #[test]
-    fn snapshot_flags_the_alternate_screen() {
-        // A fullscreen / TUI app (vim, less) switches to the alternate screen
-        // via DECSET 1049; the renderer needs that flag so it stops trimming
-        // trailing rows and paints the full grid the app owns.
-        let mut parser = vt100::Parser::new(4, 20, 0);
-        assert!(!snapshot_of(&parser).alt_screen, "primary screen is not alternate");
-        parser.process(b"\x1b[?1049h");
-        assert!(snapshot_of(&parser).alt_screen, "DECSET 1049 enters the alternate screen");
-        parser.process(b"\x1b[?1049l");
-        assert!(!snapshot_of(&parser).alt_screen, "DECRST 1049 restores the primary screen");
-    }
+    // The screen-model unit tests (styled cells, wide glyph, alt-screen) moved to
+    // `alac.rs` with the proven-core swap; the PTY integration tests below drive
+    // the real `PtyEngine` (now on `alac::Screen`).
 
     /// On-host (needs a PTY + `/bin/sh`): a program that emits an OSC 133;A mark
     /// is read off the PTY, framed by the scanner, and surfaced as a VtEvent end
