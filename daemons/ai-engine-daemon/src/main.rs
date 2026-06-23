@@ -11,7 +11,7 @@
 use arlen_ai_core::screen::Screener;
 use arlen_ai_engine_daemon::capability_map::CapabilityGate;
 use arlen_ai_engine_daemon::dispatch::Dispatcher;
-use arlen_ai_engine_daemon::placeholder::UnavailableExecutor;
+use arlen_ai_engine_daemon::read_executor::{DeniedRunner, GraphReadExecutor};
 use arlen_ai_engine_daemon::reporter::ScreeningReporter;
 use arlen_ai_engine_daemon::wire::serve_connection;
 use arlen_permissions::connection_auth::ConnectionAuth;
@@ -57,20 +57,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!(socket = %path.display(), "ai-engine-daemon listening (Phase 0: placeholder seams)");
 
     // The dispatcher is shared across connection tasks. Phase 1 has wired the
-    // gate seam to Capability::decide (CapabilityGate) and the reporter seam to
-    // the audit ledger + S17/S18 screening (ScreeningReporter): a reported tool
-    // result is recorded content-free (fail-closed) and screened before it can
-    // re-enter the engine's context. The screener is Off until a classifier model
-    // is provisioned (the gate's confirm-on-external-trigger is the containment
-    // meanwhile). The executor remains the fail-closed placeholder (the trusted
-    // privileged-tool runner is the next seam; the read executor needs the
-    // production QueryRunner). Under the suggest_only baseline the gate never
-    // returns Allow, so nothing executes yet regardless.
+    // gate seam to Capability::decide (CapabilityGate), the reporter seam to the
+    // audit ledger + S17/S18 screening (ScreeningReporter: a reported tool result
+    // is recorded content-free fail-closed and screened before it can re-enter
+    // the engine context; the screener is Off until a classifier model is
+    // provisioned, the gate's confirm-on-external-trigger being the containment
+    // meanwhile), and the executor seam to the graph read executor over a fail-
+    // closed runner. The live read runner is the proxied CypherPipeline, which
+    // forwards only over an ai-proxy-authorized bus name the engine daemon cannot
+    // own while the old ai-daemon runs (side-by-side Phase 1), so the runner is
+    // DeniedRunner until the Phase-2 cutover swaps the real pipeline in (a one-
+    // line change). Under the suggest_only baseline the gate never returns Allow,
+    // so nothing executes yet regardless.
     let reporter = ScreeningReporter::new(
         Arc::new(LedgerAuditSink::at_default_socket()) as Arc<dyn AuditSink>,
         Screener::off(),
     );
-    let dispatcher = Arc::new(Dispatcher::new(CapabilityGate, UnavailableExecutor, reporter));
+    let executor = GraphReadExecutor::new(Arc::new(DeniedRunner));
+    let dispatcher = Arc::new(Dispatcher::new(CapabilityGate, executor, reporter));
 
     let accept = async {
         loop {
