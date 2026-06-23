@@ -1,0 +1,5 @@
+# Starting permission profile for Gnonograms (a nonogram puzzle game).
+# It runs the game locally. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "io.github.josephmawa.Gnonograms"
+tier = "third-party"

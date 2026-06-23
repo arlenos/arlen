@@ -1,0 +1,12 @@
+# Starting permission profile for Valent (phone integration over the local network).
+# It pairs with a phone across the local network by function, so it gets network
+# and Downloads (received files). No Knowledge Graph access.
+[info]
+app_id = "dev.tchx84.Valent"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

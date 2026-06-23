@@ -1,0 +1,5 @@
+# Starting permission profile for NetSleuth (a subnet calculator).
+# It computes locally. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "io.github.vmkspv.netsleuth"
+tier = "third-party"

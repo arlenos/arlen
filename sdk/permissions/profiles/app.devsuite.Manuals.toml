@@ -1,0 +1,5 @@
+# Starting permission profile for Manuals (a documentation viewer).
+# It reads installed documentation through its own grant. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "app.devsuite.Manuals"
+tier = "third-party"
