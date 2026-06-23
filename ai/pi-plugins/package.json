@@ -1,0 +1,18 @@
+{
+  "name": "@arlen/pi-plugins",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Arlen's thin pi extensions: the contract-socket client and the gate/audit plugins that bound the swappable engine via the ai-engine-daemon (pi-agent-adoption.md).",
+  "main": "./dist/index.js",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "tsc && node --test dist/"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}
