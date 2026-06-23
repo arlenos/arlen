@@ -1,0 +1,5 @@
+# Starting permission profile for Iotas (a notes app).
+# Notes are kept locally; Nextcloud sync is opt-in. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.gitlab.cheywood.Iotas"
+tier = "third-party"

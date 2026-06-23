@@ -1,0 +1,8 @@
+# Starting permission profile for Ear Tag (a music-metadata editor).
+# It edits the tags of audio files by function, so it gets Music. It gets Music and no network. No Knowledge Graph access.
+[info]
+app_id = "app.drey.EarTag"
+tier = "third-party"
+
+[filesystem]
+music = true

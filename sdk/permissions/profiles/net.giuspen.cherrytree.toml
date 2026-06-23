@@ -1,0 +1,8 @@
+# Starting permission profile for CherryTree (a hierarchical note-taker).
+# It keeps notebooks in local files by function, so it gets Documents. It gets Documents and no network. No Knowledge Graph access.
+[info]
+app_id = "net.giuspen.cherrytree"
+tier = "third-party"
+
+[filesystem]
+documents = true
