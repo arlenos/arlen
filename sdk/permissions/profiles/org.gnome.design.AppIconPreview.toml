@@ -1,0 +1,5 @@
+# Starting permission profile for App Icon Preview (an icon-design tool).
+# It previews icons the user opens through the portal. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.design.AppIconPreview"
+tier = "third-party"

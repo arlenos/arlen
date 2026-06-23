@@ -1,0 +1,8 @@
+# Starting permission profile for Converter (an image-format converter).
+# It converts image files the user opens by function. It gets Pictures and no network. No Knowledge Graph access.
+[info]
+app_id = "com.gitlab.adhami3310.Converter"
+tier = "third-party"
+
+[filesystem]
+pictures = true

@@ -1,0 +1,5 @@
+# Starting permission profile for Junction (an application chooser).
+# It chooses which app opens a link locally. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "re.sonny.Junction"
+tier = "third-party"

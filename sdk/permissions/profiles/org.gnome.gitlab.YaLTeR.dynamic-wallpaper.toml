@@ -1,0 +1,8 @@
+# Starting permission profile for Dynamic Wallpaper (a wallpaper creator).
+# It assembles wallpapers from images the user opens by function. It gets Pictures and no network. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.gitlab.YaLTeR.dynamic-wallpaper"
+tier = "third-party"
+
+[filesystem]
+pictures = true

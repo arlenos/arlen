@@ -1,0 +1,10 @@
+# Starting permission profile for High Score (a game-emulator front end).
+# It loads game images from local files by function, so it gets Documents and
+# Downloads (where ROMs are kept) and no network. No Knowledge Graph access.
+[info]
+app_id = "io.github.nokse22.HighScore"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true

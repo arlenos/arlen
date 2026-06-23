@@ -1,0 +1,5 @@
+# Starting permission profile for Wardrobe (a theme manager).
+# It manages desktop themes through its own configuration grant. It needs no network and no user files. No Knowledge Graph access.
+[info]
+app_id = "com.github.swordpuffin.wardrobe"
+tier = "third-party"
