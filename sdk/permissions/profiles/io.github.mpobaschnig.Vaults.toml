@@ -1,0 +1,8 @@
+# Starting permission profile for Vaults (encrypted folders).
+# It encrypts files into a local vault directory by function. It gets Documents and no network. No Knowledge Graph access.
+[info]
+app_id = "io.github.mpobaschnig.Vaults"
+tier = "third-party"
+
+[filesystem]
+documents = true

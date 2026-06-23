@@ -1,0 +1,11 @@
+# Starting permission profile for Warpinator (local-network file transfer).
+# It sends and receives files across the local network by function. It gets network and Downloads. No Knowledge Graph access.
+[info]
+app_id = "org.x.Warpinator"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
