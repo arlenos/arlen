@@ -22,6 +22,10 @@ use arlen_terminal_core::vt::{OscScanner, VtEngine, VtEvent};
 use arlen_terminal_core::{CellColor, GridCell, GridSnapshot};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 
+/// The screen model on the proven `alacritty_terminal` VT core, built + tested in
+/// isolation alongside the current vt100 path; the engine swaps onto it next.
+pub mod alac;
+
 /// The environment variable the engine sets to the per-session nonce. The shell
 /// integration script (TM-R3) reads it so its OSC `633;E` command marks carry the
 /// secret that proves they came from the trusted shell, not from forged output.

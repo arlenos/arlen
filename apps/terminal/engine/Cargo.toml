@@ -15,5 +15,6 @@ getrandom = "0.2"
 # host reads back the visible grid as text, so command output renders in the
 # webview without the compositor grid-subsurface (terminal.md Option B).
 vt100 = "0.15"
+alacritty_terminal = { version = "0.26.0", default-features = false }
 
 [workspace]
