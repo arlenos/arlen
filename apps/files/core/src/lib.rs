@@ -192,6 +192,141 @@ pub fn sort_entries(entries: &mut [FileEntry], key: SortKey, folders_first: bool
     });
 }
 
+/// How to partition a listing into labeled groups for the "group by" view. The
+/// default is [`GroupKey::None`] (a single unlabeled group, the ungrouped
+/// listing). Grouping is applied AFTER [`sort_entries`], so each group keeps the
+/// sort order within it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GroupKey {
+    /// One group: the listing as-is, ungrouped.
+    None,
+    /// By entry kind: Folders, Files, Links, Other.
+    Kind,
+    /// By lowercased extension (all `.rs` together), with folders in their own
+    /// group; mirrors [`SortKey::Type`].
+    Type,
+    /// By modification recency, bucketed by ELAPSED time from a reference `now`
+    /// (Today / Yesterday / Earlier this week / Earlier this month / Older /
+    /// Unknown), not calendar days, so it needs no timezone.
+    Modified,
+    /// By size bucket (Folders / Empty / Small / Medium / Large / Unknown).
+    Size,
+}
+
+/// One labeled section of a grouped listing. The entries keep the order they had
+/// in the input slice, so a caller that sorts first and groups second gets each
+/// group internally sorted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntryGroup {
+    /// The section heading (e.g. "Folders", "RS", "Today").
+    pub label: String,
+    /// The entries in this group, in input order.
+    pub entries: Vec<FileEntry>,
+}
+
+/// Partition a listing into labeled [`EntryGroup`]s by `key`, preserving the
+/// input order within each group and ordering the groups by first appearance
+/// (so a listing pre-sorted by the matching axis yields groups in a sensible
+/// order, e.g. Folders first under a folders-first sort). `now_unix` is the
+/// reference for [`GroupKey::Modified`] recency buckets and is ignored by the
+/// other keys. An empty input yields an empty Vec; [`GroupKey::None`] yields a
+/// single group with an empty label.
+pub fn group_entries(entries: &[FileEntry], key: GroupKey, now_unix: u64) -> Vec<EntryGroup> {
+    let mut groups: Vec<EntryGroup> = Vec::new();
+    // Map a label to its group index for O(1) appends; group ORDER comes from
+    // `groups` (first appearance), never the map, so the result is deterministic.
+    let mut index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for entry in entries {
+        let label = group_label(entry, key, now_unix);
+        let gi = match index.get(&label) {
+            Some(&i) => i,
+            None => {
+                index.insert(label.clone(), groups.len());
+                groups.push(EntryGroup { label, entries: Vec::new() });
+                groups.len() - 1
+            }
+        };
+        groups[gi].entries.push(entry.clone());
+    }
+    groups
+}
+
+/// The group label `entry` falls under for `key`.
+fn group_label(entry: &FileEntry, key: GroupKey, now_unix: u64) -> String {
+    match key {
+        GroupKey::None => String::new(),
+        GroupKey::Kind => match entry.kind {
+            EntryKind::Directory => "Folders",
+            EntryKind::File => "Files",
+            EntryKind::Symlink => "Links",
+            EntryKind::Other => "Other",
+        }
+        .to_string(),
+        GroupKey::Type => {
+            if entry.kind == EntryKind::Directory {
+                "Folders".to_string()
+            } else {
+                let ext = ext_key(&entry.name);
+                if ext.is_empty() {
+                    "No extension".to_string()
+                } else {
+                    ext.to_uppercase()
+                }
+            }
+        }
+        GroupKey::Modified => match entry.modified_unix {
+            None => "Unknown".to_string(),
+            Some(t) => modified_bucket(t, now_unix).to_string(),
+        },
+        GroupKey::Size => {
+            if entry.kind == EntryKind::Directory {
+                "Folders".to_string()
+            } else {
+                match entry.size {
+                    None => "Unknown".to_string(),
+                    Some(s) => size_bucket(s).to_string(),
+                }
+            }
+        }
+    }
+}
+
+/// Bucket a modification time into a recency label by ELAPSED seconds from
+/// `now` (not calendar days, so no timezone is needed). A timestamp ahead of
+/// `now` (clock skew) counts as "Today".
+fn modified_bucket(t: u64, now: u64) -> &'static str {
+    const DAY: u64 = 86_400;
+    let elapsed = now.saturating_sub(t);
+    if elapsed < DAY {
+        "Today"
+    } else if elapsed < 2 * DAY {
+        "Yesterday"
+    } else if elapsed < 7 * DAY {
+        "Earlier this week"
+    } else if elapsed < 30 * DAY {
+        "Earlier this month"
+    } else {
+        "Older"
+    }
+}
+
+/// Bucket a file size (bytes) into a coarse label: 0 is "Empty", under 1 MiB
+/// "Small", under 1 GiB "Medium", else "Large".
+fn size_bucket(bytes: u64) -> &'static str {
+    const MIB: u64 = 1 << 20;
+    const GIB: u64 = 1 << 30;
+    if bytes == 0 {
+        "Empty"
+    } else if bytes < MIB {
+        "Small"
+    } else if bytes < GIB {
+        "Medium"
+    } else {
+        "Large"
+    }
+}
+
 /// One clickable segment of the path bar: the display name and the absolute path
 /// that navigating to it produces.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -515,5 +650,89 @@ mod tests {
         let dir = Dir::open_ambient_dir(tmp.path(), ambient_authority()).unwrap();
         assert!(properties(&dir, "/etc/passwd").is_err());
         assert!(properties(&dir, "../../etc").is_err());
+    }
+
+    fn labels(groups: &[EntryGroup]) -> Vec<&str> {
+        groups.iter().map(|g| g.label.as_str()).collect()
+    }
+
+    #[test]
+    fn grouping_none_yields_a_single_unlabeled_group() {
+        let v = vec![
+            entry("a.txt", EntryKind::File, Some(1), Some(1)),
+            entry("dir", EntryKind::Directory, None, Some(1)),
+        ];
+        let groups = group_entries(&v, GroupKey::None, 0);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].label, "");
+        assert_eq!(groups[0].entries.len(), 2);
+    }
+
+    #[test]
+    fn empty_input_yields_no_groups() {
+        assert!(group_entries(&[], GroupKey::Kind, 0).is_empty());
+    }
+
+    #[test]
+    fn grouping_by_kind_partitions_folders_files_and_links() {
+        // Pre-sorted folders-first, so the groups appear Folders then Files.
+        let v = vec![
+            entry("dir", EntryKind::Directory, None, Some(1)),
+            entry("a.txt", EntryKind::File, Some(1), Some(1)),
+            entry("link", EntryKind::Symlink, None, Some(1)),
+            entry("b.txt", EntryKind::File, Some(1), Some(1)),
+        ];
+        let groups = group_entries(&v, GroupKey::Kind, 0);
+        assert_eq!(labels(&groups), vec!["Folders", "Files", "Links"]);
+        // Files keep their input order within the group.
+        assert_eq!(
+            groups[1].entries.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+            vec!["a.txt", "b.txt"],
+        );
+    }
+
+    #[test]
+    fn grouping_by_type_uses_the_extension_with_folders_apart() {
+        let v = vec![
+            entry("dir", EntryKind::Directory, None, Some(1)),
+            entry("main.rs", EntryKind::File, Some(1), Some(1)),
+            entry("lib.rs", EntryKind::File, Some(1), Some(1)),
+            entry("README", EntryKind::File, Some(1), Some(1)),
+        ];
+        let groups = group_entries(&v, GroupKey::Type, 0);
+        assert_eq!(labels(&groups), vec!["Folders", "RS", "No extension"]);
+        assert_eq!(groups[1].entries.len(), 2, "both .rs files share the RS group");
+    }
+
+    #[test]
+    fn grouping_by_modified_buckets_by_elapsed_time() {
+        const DAY: u64 = 86_400;
+        let now = 100 * DAY;
+        let v = vec![
+            entry("today", EntryKind::File, Some(1), Some(now)),
+            entry("yesterday", EntryKind::File, Some(1), Some(now - DAY - 1)),
+            entry("thisweek", EntryKind::File, Some(1), Some(now - 3 * DAY)),
+            entry("old", EntryKind::File, Some(1), Some(now - 60 * DAY)),
+            entry("nostamp", EntryKind::File, Some(1), None),
+        ];
+        let groups = group_entries(&v, GroupKey::Modified, now);
+        assert_eq!(
+            labels(&groups),
+            vec!["Today", "Yesterday", "Earlier this week", "Older", "Unknown"],
+        );
+    }
+
+    #[test]
+    fn grouping_by_size_buckets_files_and_keeps_folders_apart() {
+        const MIB: u64 = 1 << 20;
+        let v = vec![
+            entry("dir", EntryKind::Directory, None, Some(1)),
+            entry("empty", EntryKind::File, Some(0), Some(1)),
+            entry("small", EntryKind::File, Some(1024), Some(1)),
+            entry("medium", EntryKind::File, Some(50 * MIB), Some(1)),
+            entry("nostat", EntryKind::File, None, Some(1)),
+        ];
+        let groups = group_entries(&v, GroupKey::Size, 0);
+        assert_eq!(labels(&groups), vec!["Folders", "Empty", "Small", "Medium", "Unknown"]);
     }
 }
