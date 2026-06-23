@@ -8,11 +8,14 @@
 //! (Phase 1 re-points them to the real Rust); the pi-sidecar supervisor + the
 //! SessionInit/token handshake are the next slice.
 
+use arlen_ai_core::screen::Screener;
 use arlen_ai_engine_daemon::capability_map::CapabilityGate;
 use arlen_ai_engine_daemon::dispatch::Dispatcher;
-use arlen_ai_engine_daemon::placeholder::{BlockReporter, UnavailableExecutor};
+use arlen_ai_engine_daemon::placeholder::UnavailableExecutor;
+use arlen_ai_engine_daemon::reporter::ScreeningReporter;
 use arlen_ai_engine_daemon::wire::serve_connection;
 use arlen_permissions::connection_auth::ConnectionAuth;
+use audit_proto::sink::{AuditSink, LedgerAuditSink};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -54,15 +57,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!(socket = %path.display(), "ai-engine-daemon listening (Phase 0: placeholder seams)");
 
     // The dispatcher is shared across connection tasks. Phase 1 has wired the
-    // gate seam to Capability::decide (CapabilityGate); the executor and reporter
-    // remain the fail-closed placeholders (the trusted runner and the
-    // audit+screening reporter are the next seams), so a decision can never
-    // execute yet. Under the suggest_only baseline the gate never returns Allow.
-    let dispatcher = Arc::new(Dispatcher::new(
-        CapabilityGate,
-        UnavailableExecutor,
-        BlockReporter,
-    ));
+    // gate seam to Capability::decide (CapabilityGate) and the reporter seam to
+    // the audit ledger + S17/S18 screening (ScreeningReporter): a reported tool
+    // result is recorded content-free (fail-closed) and screened before it can
+    // re-enter the engine's context. The screener is Off until a classifier model
+    // is provisioned (the gate's confirm-on-external-trigger is the containment
+    // meanwhile). The executor remains the fail-closed placeholder (the trusted
+    // privileged-tool runner is the next seam; the read executor needs the
+    // production QueryRunner). Under the suggest_only baseline the gate never
+    // returns Allow, so nothing executes yet regardless.
+    let reporter = ScreeningReporter::new(
+        Arc::new(LedgerAuditSink::at_default_socket()) as Arc<dyn AuditSink>,
+        Screener::off(),
+    );
+    let dispatcher = Arc::new(Dispatcher::new(CapabilityGate, UnavailableExecutor, reporter));
 
     let accept = async {
         loop {
