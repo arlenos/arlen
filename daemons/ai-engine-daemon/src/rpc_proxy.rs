@@ -22,13 +22,31 @@
 //! stdin/stdout (A3) are the wiring that feeds it.
 
 use std::io;
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
+
+/// The largest single JSONL record the relay will buffer, in either direction.
+/// Generous enough for a `prompt` carrying an inline base64 image, but bounded so
+/// a peer that streams bytes without ever sending `\n` cannot grow the daemon's
+/// memory without limit (the same hazard `wire.rs` bounds with `MAX_FRAME`). A
+/// record over this cap ends the relay rather than allocating unboundedly.
+const MAX_RECORD: usize = 16 * 1024 * 1024;
 
 /// Forward one LF-delimited record at a time from `from` to `to` until `from`
 /// reaches EOF, flushing after each so a streamed token reaches the peer
 /// promptly rather than sitting in a buffer.
-async fn pump<R, W>(from: R, mut to: W) -> io::Result<()>
+async fn pump<R, W>(from: R, to: W) -> io::Result<()>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    pump_capped(from, to, MAX_RECORD).await
+}
+
+/// [`pump`] with an explicit per-record byte cap (so the bound is unit-testable
+/// without allocating megabytes). A record that reaches `max` bytes without a
+/// terminating `\n` is rejected as a protocol error rather than buffered further.
+async fn pump_capped<R, W>(from: R, mut to: W, max: usize) -> io::Result<()>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
@@ -37,10 +55,21 @@ where
     let mut record = Vec::new();
     loop {
         record.clear();
-        // LF-only framing: reads through the next `\n` (kept) or to EOF.
-        let n = from.read_until(b'\n', &mut record).await?;
+        // LF-only framing, bounded: read through the next `\n` (kept) or to EOF,
+        // but never more than `max + 1` bytes, so an unterminated record cannot
+        // grow `record` without limit.
+        let n = (&mut from)
+            .take((max as u64).saturating_add(1))
+            .read_until(b'\n', &mut record)
+            .await?;
         if n == 0 {
             return Ok(()); // EOF: this direction is done.
+        }
+        if record.len() > max {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "rpc record exceeds the maximum length",
+            ));
         }
         to.write_all(&record).await?;
         to.flush().await?;
@@ -99,7 +128,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::io::AsyncReadExt;
 
     /// Read one LF-terminated record (as a String) from `r`. Reads byte-by-byte
     /// rather than via a `BufReader`, which would over-read the next record into
@@ -186,6 +214,17 @@ mod tests {
         drop(shell_in); // immediate EOF on the command direction
         // The relay resolves rather than hanging.
         handle.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn pump_rejects_a_record_over_the_cap() {
+        // A record that reaches the cap without a terminating newline is a
+        // protocol error, not an unbounded allocation (H1).
+        let over = pump_capped(&b"123456789"[..], tokio::io::sink(), 8).await;
+        assert!(over.is_err(), "an over-cap LF-less record must be rejected");
+        // A within-cap, newline-terminated record relays fine, then EOF -> Ok.
+        let ok = pump_capped(&b"12345\n"[..], tokio::io::sink(), 8).await;
+        assert!(ok.is_ok());
     }
 
     fn drive_sock(name: &str) -> std::path::PathBuf {
