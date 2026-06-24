@@ -70,7 +70,9 @@
 
 <svelte:window onkeydown={onWindowKeydown} />
 
-<SidebarProvider>
+<!-- Sidebar collapsed by default (terminal.md / Tim): the stream + composer get
+     the room; the session rail opens on demand via the trigger. -->
+<SidebarProvider defaultOpen={false}>
   <TerminalSidebar />
   <!-- `h-svh` locks the shell to the viewport; only the block stream
        inside the page scrolls. -->
