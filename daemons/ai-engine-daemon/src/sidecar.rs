@@ -309,6 +309,7 @@ impl PiSidecar {
         session_token: &str,
         system_prompt: &str,
         on_spawned: &(dyn Fn(u32) + Send + Sync),
+        drive: Option<&tokio::net::UnixListener>,
     ) -> std::io::Result<EngineExit> {
         // The token reaches pi via a 0600 file in the rw state dir, not the argv.
         let (token_path, _guard) = write_token_file(&self.paths.pi_state, session_token)?;
@@ -389,7 +390,32 @@ impl PiSidecar {
             }
         }
 
-        let status = child.wait().await?;
+        // Phase-2-A drive channel: when a drive socket is provided, relay this
+        // pi instance's RPC stdio against one shell connection for the instance's
+        // lifetime. pi's stdin/stdout were piped at spawn; take them now. The
+        // drive future runs serve_drive ONCE (one shell session per pi instance)
+        // and then idles, so a shell disconnect does NOT end the engine - only
+        // pi's own exit (child.wait) does. With no drive socket the engine runs
+        // headless exactly as before.
+        // Take pi's piped stdio before the select so it does not borrow `child`
+        // (which `child.wait()` needs mutably).
+        let pi_stdin = child.stdin.take();
+        let pi_stdout = child.stdout.take();
+        let drive_fut = async {
+            if let (Some(listener), Some(stdin), Some(stdout)) = (drive, pi_stdin, pi_stdout) {
+                if let Err(e) = crate::rpc_proxy::serve_drive(listener, stdin, stdout).await {
+                    warn!(error = %e, "pi drive session ended with an error");
+                }
+            }
+            // The drive session is over (or never started); wait for pi to exit
+            // rather than ending the run.
+            std::future::pending::<()>().await
+        };
+
+        let status = tokio::select! {
+            status = child.wait() => status?,
+            _ = drive_fut => unreachable!("drive_fut never resolves"),
+        };
         Ok(if status.success() { EngineExit::Clean } else { EngineExit::Crashed })
     }
 }
@@ -401,8 +427,9 @@ impl SpawnEngine for PiSidecar {
         session_token: &str,
         system_prompt: &str,
         on_spawned: &(dyn Fn(u32) + Send + Sync),
+        drive: Option<&tokio::net::UnixListener>,
     ) -> EngineExit {
-        match self.spawn_and_wait(session_token, system_prompt, on_spawned).await {
+        match self.spawn_and_wait(session_token, system_prompt, on_spawned, drive).await {
             Ok(exit) => exit,
             Err(e) => {
                 error!(error = %e, "failed to spawn the confined pi sidecar");

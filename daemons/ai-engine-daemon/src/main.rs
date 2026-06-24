@@ -56,6 +56,30 @@ fn consent_intake_socket() -> PathBuf {
     }
 }
 
+/// The Phase-2-A drive socket: `$XDG_RUNTIME_DIR/arlen/ai-engine-drive.sock`
+/// (else `/run/user/<uid>/arlen/...`), where the harness shell connects to drive
+/// the pi RPC session. The supervisor relays one shell connection here against
+/// each pi instance's stdio.
+fn drive_socket_path() -> PathBuf {
+    let base =
+        std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| format!("/run/user/{}", current_uid()));
+    PathBuf::from(base).join("arlen").join("ai-engine-drive.sock")
+}
+
+/// Bind the drive socket at 0600 (replacing a stale file). The 0600 perms are
+/// the same-uid boundary: only the owning user can connect, so the drive channel
+/// carries prompts to the user's OWN pi.
+fn bind_drive_socket() -> std::io::Result<UnixListener> {
+    let path = drive_socket_path();
+    let _ = std::fs::remove_file(&path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let listener = UnixListener::bind(&path)?;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    Ok(listener)
+}
+
 /// The uid the daemon runs as; cross-uid IPC is rejected by `ConnectionAuth`.
 fn current_uid() -> u32 {
     // SAFETY: getuid is always safe; it reads the real uid and never fails.
@@ -152,9 +176,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(paths) => {
                 let sidecar = PiSidecar::new(paths);
                 let disp = Arc::clone(&dispatcher);
+                // The drive socket lets the harness shell drive this pi session;
+                // a bind failure degrades to headless (the gate/contract path is
+                // unaffected). Owned by the supervision task for its lifetime.
+                let drive_listener = match bind_drive_socket() {
+                    Ok(l) => Some(l),
+                    Err(e) => {
+                        warn!(error = %e, "could not bind the drive socket; pi runs without a shell drive");
+                        None
+                    }
+                };
                 tokio::spawn(async move {
                     let init = default_engine_session();
-                    match supervise(&sidecar, &disp, &init).await {
+                    match supervise(&sidecar, &disp, &init, drive_listener.as_ref()).await {
                         Ok(pid) => info!(pid, "pi sidecar supervision ended"),
                         Err(e) => error!(error = %e, "pi sidecar supervision could not mint a session"),
                     }
