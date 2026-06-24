@@ -12,6 +12,11 @@ use std::io::{Read, Write};
 const MAX_INPUT_BYTES: u64 = 256 * 1024 * 1024;
 
 fn main() {
+    // Self-confine before reading any untrusted bytes (read-only /usr, no write).
+    if let Err(e) = arlen_viewers_core::sandbox::apply_decoder_landlock() {
+        eprintln!("arlen-decode-audio: landlock: {e}");
+        std::process::exit(1);
+    }
     let mut input = Vec::new();
     if let Err(e) = std::io::stdin().lock().take(MAX_INPUT_BYTES).read_to_end(&mut input) {
         eprintln!("arlen-decode-audio: read stdin: {e}");

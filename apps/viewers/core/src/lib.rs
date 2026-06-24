@@ -244,6 +244,10 @@ mod tests {
     }
 }
 
+/// The decoder worker's self-applied Landlock confinement (read-only `/usr`).
+#[cfg(target_os = "linux")]
+pub mod sandbox;
+
 /// The decoder-worker image-transfer protocol (raster frame the viewer reads).
 pub mod decode;
 

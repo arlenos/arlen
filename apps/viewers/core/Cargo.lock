@@ -3,27 +3,10 @@
 version = 4
 
 [[package]]
-name = "arlen-confiner"
-version = "0.1.0"
-dependencies = [
- "thiserror",
-]
-
-[[package]]
 name = "arlen-viewers-core"
 version = "0.1.0"
 dependencies = [
  "landlock",
-]
-
-[[package]]
-name = "arlen-viewers-host"
-version = "0.1.0"
-dependencies = [
- "arlen-confiner",
- "arlen-viewers-core",
- "libc",
- "seccompiler",
 ]
 
 [[package]]
@@ -79,15 +62,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfbc457d0c7a0759a614551b11a6409e5951f6c7537be1f1b7682b9ae9230368"
 dependencies = [
  "proc-macro2",
-]
-
-[[package]]
-name = "seccompiler"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4ae55de56877481d112a559bbc12667635fdaf5e005712fd4e2b2fa50ffc884"
-dependencies = [
- "libc",
 ]
 
 [[package]]

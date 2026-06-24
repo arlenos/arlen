@@ -6,4 +6,9 @@ description = "The minimal viewer's format-detection + decoder-dispatch core: ro
 
 [dependencies]
 
+# The decoder workers self-apply a Landlock ruleset (read-only /usr + /lib, no
+# write anywhere) at startup, layered under the mount namespace + seccomp.
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = "0.4"
+
 [workspace]
