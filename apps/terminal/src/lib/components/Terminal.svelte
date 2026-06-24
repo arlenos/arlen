@@ -55,6 +55,32 @@
     }
   }
 
+  // Block boundaries over the continuous grid (terminal.md approach B, VS Code's
+  // way): the shell's OSC 133 marks delimit commands, so on each prompt-start
+  // (133;A) we drop an xterm.js marker + a left-accent decoration. The grid stays
+  // one canvas - the block frame is an overlay anchored to a row, not a DOM grid.
+  // This is the coder-owned anchor mechanism; the richer frame (header, run-again)
+  // is arlen-ui's lane layered on these marks.
+  function registerBlockMarks(t: Terminal): void {
+    t.parser.registerOscHandler(133, (data: string) => {
+      // 133;A = prompt start: a new command block begins at this row.
+      if (data === "A" || data.startsWith("A;")) {
+        const marker = t.registerMarker(0);
+        if (marker) {
+          const dec = t.registerDecoration({ marker, width: 1, x: 0 });
+          dec?.onRender((el: HTMLElement) => {
+            el.style.borderLeft = "2px solid var(--accent, #6366f1)";
+            el.style.height = "100%";
+            el.style.boxSizing = "border-box";
+          });
+        }
+      }
+      // Never consume the sequence: the engine's own OSC 133 block parsing must
+      // still see it. Returning false lets every other handler run.
+      return false;
+    });
+  }
+
   onMount(() => {
     const t = new Terminal({
       cursorBlink: true,
@@ -70,6 +96,7 @@
     t.loadAddon(fit);
     t.open(host);
     loadRenderer(t);
+    registerBlockMarks(t);
     fit.fit();
 
     // The grid IS the keystroke target now (not a textbox): xterm.js emits the
@@ -86,6 +113,11 @@
     resizeObserver = new ResizeObserver(() => fit?.fit());
     resizeObserver.observe(host);
 
+    // xterm.js owns input + focus now (its textarea is the keystroke target), so
+    // focus it on mount: the cursor draws solid (not the inactive outline) and
+    // keystrokes land without a click. xterm re-focuses on click too.
+    t.focus();
+
     // Drain whatever the engine already buffered before this view attached.
     void drain();
   });
@@ -98,10 +130,3 @@
 </script>
 
 <div class="terminal-host" bind:this={host}></div>
-
-<style>
-  .terminal-host {
-    width: 100%;
-    height: 100%;
-  }
-</style>
