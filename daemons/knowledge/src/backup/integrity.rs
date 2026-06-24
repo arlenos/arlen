@@ -67,18 +67,23 @@ pub enum IntegrityError {
 
 /// Runs integrity checks on the SQLite event store and graph database.
 pub struct IntegrityChecker {
-    _db_path: PathBuf,
+    db_path: PathBuf,
 }
 
 impl IntegrityChecker {
     pub fn new(db_path: PathBuf) -> Self {
-        Self { _db_path: db_path }
+        Self { db_path }
     }
 
-    /// Run a full integrity check (SQLite + graph + orphans + schema validation).
-    pub fn check(&self) -> IntegrityReport {
+    /// Run an integrity check. The SQLite event store is verified for real (via
+    /// [`quick_check`](Self::quick_check)); the graph-side checks (`graph_ok`,
+    /// orphan references, schema validation, corrupt entities) are NOT yet
+    /// implemented, so those fields keep their empty/`true` defaults - a reader
+    /// must treat `graph_ok` as "not checked", not "verified". Closing the
+    /// graph-side checks is a separate, larger task.
+    pub async fn check(&self) -> IntegrityReport {
         IntegrityReport {
-            sqlite_ok: true,
+            sqlite_ok: self.quick_check().await,
             graph_ok: true,
             orphan_references: vec![],
             missing_schemas: vec![],
@@ -86,9 +91,31 @@ impl IntegrityChecker {
         }
     }
 
-    /// Quick check: SQLite PRAGMA integrity_check only.
-    pub fn quick_check(&self) -> bool {
-        true // placeholder
+    /// Quick check: run SQLite's `PRAGMA integrity_check` on the event store.
+    /// Returns `true` only when the engine reports the database structurally
+    /// sound (the first result row is `ok`). Fail-closed: a missing, unreadable,
+    /// or non-SQLite file returns `false` - a backup that cannot even be opened
+    /// and verified is not sound.
+    pub async fn quick_check(&self) -> bool {
+        self.sqlite_integrity_ok().await.unwrap_or(false)
+    }
+
+    /// Open the event store read-only and run `PRAGMA integrity_check`. `Ok(true)`
+    /// iff the first result row is exactly `ok`; any open/query error propagates
+    /// so the caller fails closed.
+    async fn sqlite_integrity_ok(&self) -> Result<bool, IntegrityError> {
+        let url = format!("sqlite:{}?mode=ro", self.db_path.display());
+        let pool = sqlx::SqlitePool::connect(&url)
+            .await
+            .map_err(|e| IntegrityError::Database(e.to_string()))?;
+        // `PRAGMA integrity_check` yields one `ok` row when sound, else a list of
+        // problems. Reading the first row is enough to decide soundness.
+        let row: (String,) = sqlx::query_as("PRAGMA integrity_check")
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| IntegrityError::Database(e.to_string()))?;
+        pool.close().await;
+        Ok(row.0 == "ok")
     }
 }
 
@@ -171,16 +198,33 @@ mod tests {
         assert_eq!(r.issue_count(), 5);
     }
 
-    #[test]
-    fn test_checker_quick() {
-        let checker = IntegrityChecker::new(PathBuf::from("/tmp/nonexistent.db"));
-        assert!(checker.quick_check()); // placeholder always true
+    #[tokio::test]
+    async fn quick_check_fails_closed_on_a_missing_file() {
+        let checker = IntegrityChecker::new(PathBuf::from("/tmp/arlen-integrity-nonexistent.db"));
+        assert!(!checker.quick_check().await, "a backup that cannot be opened is not sound");
     }
 
-    #[test]
-    fn test_checker_full() {
-        let checker = IntegrityChecker::new(PathBuf::from("/tmp/nonexistent.db"));
-        let report = checker.check();
-        assert!(report.is_healthy()); // placeholder
+    #[tokio::test]
+    async fn quick_check_fails_closed_on_a_non_sqlite_file() {
+        let p = std::env::temp_dir().join(format!("arlen-integrity-garbage-{}", std::process::id()));
+        std::fs::write(&p, b"this is not a sqlite database").unwrap();
+        let checker = IntegrityChecker::new(p.clone());
+        assert!(!checker.quick_check().await, "a non-SQLite file fails the integrity check");
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[tokio::test]
+    async fn quick_check_passes_a_real_sqlite_db_and_check_reflects_it() {
+        let p = std::env::temp_dir().join(format!("arlen-integrity-ok-{}.db", std::process::id()));
+        let url = format!("sqlite:{}?mode=rwc", p.display());
+        let pool = sqlx::SqlitePool::connect(&url).await.unwrap();
+        sqlx::query("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)").execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO t (v) VALUES ('x')").execute(&pool).await.unwrap();
+        pool.close().await;
+
+        let checker = IntegrityChecker::new(p.clone());
+        assert!(checker.quick_check().await, "a sound SQLite db passes integrity_check");
+        assert!(checker.check().await.sqlite_ok, "check() wires the real SQLite result");
+        std::fs::remove_file(&p).ok();
     }
 }
