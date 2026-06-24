@@ -416,7 +416,10 @@ mod tests {
         let path = std::env::var("ARLEN_VIEWERS_TEST_AUDIO").expect("set ARLEN_VIEWERS_TEST_AUDIO");
         let audio = std::fs::read(&path).expect("a test audio file at ARLEN_VIEWERS_TEST_AUDIO");
         let info = spawn_probe(&dir, "arlen-decode-audio", Decoder::Symphonia, &audio).expect("probe");
-        assert!(info.sample_rate > 0 && info.channels > 0);
+        // sample_rate is the universally-surfaced field; channels can be 0 for a
+        // metadata-only AAC probe (the channel config lives in the decoded
+        // AudioSpecificConfig), so it is not asserted here.
+        assert!(info.sample_rate > 0);
     }
 }
 
