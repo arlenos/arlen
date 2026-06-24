@@ -11,12 +11,14 @@
 //! compensation + S17/S18 screening); here they are mockable so the
 //! security-routing is unit-tested without any of that machinery.
 
+use crate::consent::{ConsentDriver, DeniedConsent};
 use crate::session::{SessionGrant, SessionStore, SessionToken};
 use ai_engine_contract::{
-    Authorize, AuthorizeDecision, Call, ContractCall, ContractError, Execute, ExecuteOutcome, Report,
-    ReportAck, Reply, ScreenVerdict, SessionInit,
+    Authorize, AuthorizeDecision, Call, ConfirmAnswer, ContractCall, ContractError, Execute,
+    ExecuteOutcome, Report, ReportAck, Reply, ScreenVerdict, SessionInit,
 };
 use async_trait::async_trait;
+use std::sync::Arc;
 
 /// Decides whether a proposed tool call is allowed. Maps to `Capability::decide`.
 #[async_trait]
@@ -48,13 +50,30 @@ pub struct Dispatcher<G, E, R> {
     gate: G,
     executor: E,
     reporter: R,
+    consent: Arc<dyn ConsentDriver>,
     sessions: std::sync::Mutex<SessionStore>,
 }
 
 impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
-    /// Build a dispatcher over the three seams with an empty session store.
+    /// Build a dispatcher over the three seams with an empty session store. The
+    /// consent surface defaults to the fail-closed [`DeniedConsent`]; the daemon
+    /// binary swaps in the real consent-broker client via [`Self::with_consent`].
     pub fn new(gate: G, executor: E, reporter: R) -> Self {
-        Self { gate, executor, reporter, sessions: std::sync::Mutex::new(SessionStore::new()) }
+        Self {
+            gate,
+            executor,
+            reporter,
+            consent: Arc::new(DeniedConsent),
+            sessions: std::sync::Mutex::new(SessionStore::new()),
+        }
+    }
+
+    /// Wire the trusted-path consent surface used to resolve a gate `Confirm`
+    /// (the requester side of the #9 consent-broker). Without this, a `Confirm`
+    /// resolves through the fail-closed default (every confirmation denied).
+    pub fn with_consent(mut self, consent: Arc<dyn ConsentDriver>) -> Self {
+        self.consent = consent;
+        self
     }
 
     /// Mint a session for an authenticated engine process (pid is the
@@ -90,18 +109,38 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
     }
 
     /// Authorize a tool call. A verb with no valid session for `(token, pid)`
-    /// is denied without consulting the gate.
+    /// is denied without consulting the gate. A gate `Confirm` is resolved
+    /// DAEMON-SIDE by driving the trusted-path consent surface (it never reaches
+    /// the engine): the user's answer maps to `Allow` (approved) or `Deny`
+    /// (denied), so the engine only ever sees a settled decision.
     pub async fn authorize(
         &self,
         token: &SessionToken,
         pid: u32,
         req: &Authorize,
     ) -> AuthorizeDecision {
-        match self.resolve(token, pid) {
-            Some(grant) => self.gate.authorize(req, &grant).await,
-            None => AuthorizeDecision::Deny {
-                reason: "no valid session for this caller".to_string(),
-            },
+        let grant = match self.resolve(token, pid) {
+            Some(grant) => grant,
+            None => {
+                return AuthorizeDecision::Deny {
+                    reason: "no valid session for this caller".to_string(),
+                }
+            }
+        };
+        match self.gate.authorize(req, &grant).await {
+            AuthorizeDecision::Confirm { prompt } => {
+                match self
+                    .consent
+                    .confirm(&req.tool_name, &prompt, req.external_triggered)
+                    .await
+                {
+                    ConfirmAnswer::Approved => AuthorizeDecision::Allow,
+                    ConfirmAnswer::Denied => AuthorizeDecision::Deny {
+                        reason: format!("{} was not confirmed", req.tool_name),
+                    },
+                }
+            }
+            other => other,
         }
     }
 
@@ -148,6 +187,7 @@ mod tests {
     use ai_engine_contract::{CapabilityContext, ReadTier};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::Mutex as StdMutex;
 
     /// A gate that records calls + echoes the bound grant's project anchor into
     /// its decision reason, so a test can prove the right grant was threaded.
@@ -295,6 +335,87 @@ mod tests {
         let token = d.init_session(&init(), 100).unwrap();
         d.end_session(&token);
         assert!(matches!(d.authorize(&token, 100, &authz()).await, AuthorizeDecision::Deny { .. }));
+    }
+
+    /// A consent surface that records the confirmation it was asked and returns a
+    /// scripted answer, so a test can prove the gate `Confirm` was resolved
+    /// daemon-side with the right details (and never handed to the engine).
+    struct MockConsent {
+        approve: bool,
+        seen: Arc<StdMutex<Option<(String, String, bool)>>>,
+    }
+    #[async_trait]
+    impl ConsentDriver for MockConsent {
+        async fn confirm(&self, tool_name: &str, prompt: &str, external_triggered: bool) -> ConfirmAnswer {
+            *self.seen.lock().unwrap() = Some((tool_name.to_string(), prompt.to_string(), external_triggered));
+            if self.approve { ConfirmAnswer::Approved } else { ConfirmAnswer::Denied }
+        }
+    }
+
+    /// A dispatcher whose gate always returns `Confirm`, with `consent` wired in.
+    fn confirm_dispatcher(consent: Arc<dyn ConsentDriver>) -> Dispatcher<SpyGate, SpyExecutor, SpyReporter> {
+        Dispatcher::new(
+            SpyGate {
+                calls: Arc::new(AtomicUsize::new(0)),
+                decision: AuthorizeDecision::Confirm { prompt: "delete everything?".into() },
+            },
+            SpyExecutor { calls: Arc::new(AtomicUsize::new(0)) },
+            SpyReporter { calls: Arc::new(AtomicUsize::new(0)) },
+        )
+        .with_consent(consent)
+    }
+
+    #[tokio::test]
+    async fn a_gate_confirm_with_approved_consent_becomes_allow() {
+        let seen = Arc::new(StdMutex::new(None));
+        let d = confirm_dispatcher(Arc::new(MockConsent { approve: true, seen: seen.clone() }));
+        let token = d.init_session(&init(), 100).unwrap();
+        let dec = d
+            .authorize(&token, 100, &Authorize {
+                tool_name: "graph.write".into(),
+                tool_input: serde_json::json!({}),
+                external_triggered: true,
+            })
+            .await;
+        assert_eq!(dec, AuthorizeDecision::Allow, "approved consent resolves Confirm to Allow");
+        // The consent surface saw the confirmation details; the engine never did.
+        let s = seen.lock().unwrap().clone().unwrap();
+        assert_eq!(s, ("graph.write".to_string(), "delete everything?".to_string(), true));
+    }
+
+    #[tokio::test]
+    async fn a_gate_confirm_with_denied_consent_becomes_deny() {
+        let d = confirm_dispatcher(Arc::new(MockConsent {
+            approve: false,
+            seen: Arc::new(StdMutex::new(None)),
+        }));
+        let token = d.init_session(&init(), 100).unwrap();
+        match d.authorize(&token, 100, &authz()).await {
+            AuthorizeDecision::Deny { reason } => {
+                assert!(reason.contains("not confirmed"), "deny reason: {reason}")
+            }
+            other => panic!("expected Deny, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn the_default_consent_fails_a_confirm_closed() {
+        // No with_consent(): the fail-closed DeniedConsent default denies a
+        // Confirm, so a high-impact action with no consent surface reachable is
+        // never silently allowed.
+        let d = Dispatcher::new(
+            SpyGate {
+                calls: Arc::new(AtomicUsize::new(0)),
+                decision: AuthorizeDecision::Confirm { prompt: "ok?".into() },
+            },
+            SpyExecutor { calls: Arc::new(AtomicUsize::new(0)) },
+            SpyReporter { calls: Arc::new(AtomicUsize::new(0)) },
+        );
+        let token = d.init_session(&init(), 100).unwrap();
+        assert!(
+            matches!(d.authorize(&token, 100, &authz()).await, AuthorizeDecision::Deny { .. }),
+            "the default consent surface denies a confirm"
+        );
     }
 
     // Helpers building throwaway requests.
