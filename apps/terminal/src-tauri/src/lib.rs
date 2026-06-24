@@ -141,6 +141,23 @@ fn terminal_grid(session_id: String, registry: State<Mutex<SessionRegistry>>) ->
         .unwrap_or_default()
 }
 
+/// Drain a session's raw PTY output bytes for the xterm.js drive renderer. The
+/// frontend invokes this on each `terminal://frame` signal and writes the bytes
+/// to its xterm.js instance, which does the VT parsing + render (engine-down).
+/// Empty when the session is gone or nothing new was read. This is the same byte
+/// stream the grid path consumes, forwarded verbatim, so the two coexist during
+/// the cutover.
+#[tauri::command]
+fn terminal_drain_output(session_id: String, registry: State<Mutex<SessionRegistry>>) -> Vec<u8> {
+    let Ok(reg) = registry.lock() else {
+        return Vec::new();
+    };
+    reg.sessions
+        .get(&session_id)
+        .map(|live| live.engine.drain_raw_output())
+        .unwrap_or_default()
+}
+
 /// Feed input (keystrokes) to a session's shell PTY.
 #[tauri::command]
 fn terminal_input(
@@ -432,6 +449,7 @@ pub fn run() {
             terminal_sessions,
             terminal_blocks,
             terminal_grid,
+            terminal_drain_output,
             terminal_input,
             terminal_resize,
             terminal_new_session,
