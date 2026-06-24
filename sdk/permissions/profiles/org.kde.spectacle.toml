@@ -1,0 +1,9 @@
+# Starting permission profile for Spectacle (a screenshot tool). Saves captures
+# to Pictures; no network, no graph. (Screen capture itself is a compositor
+# portal grant, out of band of this app-data profile.)
+[info]
+app_id = "org.kde.spectacle"
+tier = "third-party"
+
+[filesystem]
+pictures = true

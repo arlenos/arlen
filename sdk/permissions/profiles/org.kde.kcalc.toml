@@ -1,0 +1,5 @@
+# Starting permission profile for KCalc (a calculator). A pure-compute app: no
+# filesystem, no network, no graph - the maximally conservative starting grant.
+[info]
+app_id = "org.kde.kcalc"
+tier = "third-party"

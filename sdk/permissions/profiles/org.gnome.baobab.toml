@@ -1,0 +1,8 @@
+# Starting permission profile for Disk Usage Analyzer (baobab) (a disk-usage analyzer). Scans the user's
+# directories (read), so it gets Home; no network, no graph.
+[info]
+app_id = "org.gnome.baobab"
+tier = "third-party"
+
+[filesystem]
+home = true
