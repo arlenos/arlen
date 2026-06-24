@@ -111,14 +111,20 @@
     t.open(host);
     loadRenderer(t);
     registerBlockMarks(t);
-    fit.fit();
 
     // The grid IS the keystroke target now (not a textbox): xterm.js emits the
     // UTF-8 input string, the engine writes it to the PTY master.
     t.onData((d) => void terminalInput(sessionId, d));
     // When xterm.js recomputes the geometry (on fit), resize the PTY to match so
-    // the shell + TUIs reflow.
+    // the shell + TUIs reflow. Registered BEFORE the first fit() below: the
+    // initial fit emits a resize, and if its handler is not yet attached that
+    // event is lost and the PTY stays at its 80x24 spawn size - an alt-screen
+    // TUI then draws only 24 rows into a taller grid (the under-fill bug).
     t.onResize(({ cols, rows }) => void terminalResize(sessionId, cols, rows));
+
+    // Size the grid to the host now that the handler is attached, so the PTY is
+    // synced on mount (not only on a later container resize).
+    fit.fit();
 
     void listen<string>("terminal://frame", (e) => {
       if (e.payload === sessionId) void drain();
