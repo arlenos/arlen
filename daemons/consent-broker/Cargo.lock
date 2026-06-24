@@ -67,6 +67,7 @@ name = "arlen-consent-broker"
 version = "0.1.0"
 dependencies = [
  "arlen-ai-core",
+ "arlen-consent-contract",
  "arlen-permissions",
  "async-trait",
  "audit-proto",
@@ -77,6 +78,14 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "arlen-consent-contract"
+version = "0.1.0"
+dependencies = [
+ "arlen-ai-core",
+ "serde",
 ]
 
 [[package]]

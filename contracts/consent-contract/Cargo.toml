@@ -1,0 +1,14 @@
+[package]
+name = "arlen-consent-contract"
+version = "0.1.0"
+edition = "2021"
+description = "The consent-broker wire contract (request body, request class, intake result, outcome) shared between the broker and its requesters so no daemon mirrors the types"
+
+[dependencies]
+# ActionKind is the impact axis a RequestBody carries; reused verbatim from the
+# decision engine, the same value the broker classifies and a requester (e.g. the
+# ai-engine-daemon's gate) already computes.
+arlen-ai-core = { path = "../../ai/ai-core" }
+serde = { version = "1", features = ["derive"] }
+
+[workspace]

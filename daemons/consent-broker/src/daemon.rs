@@ -146,19 +146,10 @@ pub enum IntakeOutcome {
     },
 }
 
-/// The wire reply the requester reads back over the intake socket: a single
-/// frame carrying the final disposition (silent grant, or the user's decision).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "result", rename_all = "snake_case")]
-pub enum IntakeResult {
-    /// Granted without a dialog.
-    SilentGranted,
-    /// The user resolved the dialog with this outcome.
-    Decided {
-        /// The user's decision.
-        outcome: ConsentOutcome,
-    },
-}
+// The wire `IntakeResult` lives in the shared `arlen-consent-contract` crate;
+// re-exported here so `daemon::IntakeResult` and every internal reference are
+// unchanged.
+pub use arlen_consent_contract::IntakeResult;
 
 /// The wire request the trusted shell sends over the control socket.
 #[derive(Debug, Clone, Serialize, Deserialize)]

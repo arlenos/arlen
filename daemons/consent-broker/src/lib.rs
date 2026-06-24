@@ -29,58 +29,12 @@ pub use grant::{mint_grant, ConsentGrant};
 pub use queue::{ConsentQueue, Enqueued, PendingRequest, RequestId};
 pub use service::{assemble, handle_intake, IntakeReply, RequestBody};
 
-/// The class of system request seeking consent. The broker is the ONE surface
-/// for all of these (system-dialog-plan.md): they share the trusted path, the
-/// severity classification and the grant store, differing only in the rendered
-/// dialog and the copy. The class never overrides the severity (that is
-/// [`classify`]'s job); it selects which polymorphic dialog renders.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ConsentClass {
-    /// A capability grant (graph / event-bus / filesystem / ... scope).
-    CapabilityGrant,
-    /// Access to the user's app data or files.
-    AppData,
-    /// Installing or removing a package / app.
-    Install,
-    /// A destructive action (permanent delete, irrecoverable overwrite).
-    Destructive,
-    /// Sending a message or data to an external recipient.
-    ExternalSend,
-    /// Network access to a host the app did not declare.
-    NetworkAccess,
-    /// Running a confined foreign program (Wine / `exec`).
-    ExecConfined,
-    /// An action requiring elevated privilege (polkit / sudo).
-    ElevatedPrivilege,
-    /// An xdg desktop-portal access request routed to this backend.
-    Portal,
-    /// A notification action surfaced as an explicit decision.
-    NotificationAction,
-    /// An AI-agent action awaiting confirmation.
-    AgentAction,
-}
-
-impl ConsentClass {
-    /// A stable lowercase key for this class, used in logs, the wire form and
-    /// the deterministic revocation handle. Stable across releases (do not
-    /// rename) so a persisted grant's handle keeps matching.
-    pub fn as_key(self) -> &'static str {
-        match self {
-            ConsentClass::CapabilityGrant => "capability_grant",
-            ConsentClass::AppData => "app_data",
-            ConsentClass::Install => "install",
-            ConsentClass::Destructive => "destructive",
-            ConsentClass::ExternalSend => "external_send",
-            ConsentClass::NetworkAccess => "network_access",
-            ConsentClass::ExecConfined => "exec_confined",
-            ConsentClass::ElevatedPrivilege => "elevated_privilege",
-            ConsentClass::Portal => "portal",
-            ConsentClass::NotificationAction => "notification_action",
-            ConsentClass::AgentAction => "agent_action",
-        }
-    }
-}
+// The wire-contract types (request class, request body, intake result, outcome)
+// live in the shared `arlen-consent-contract` crate so a requester deps the thin
+// contract, not the whole broker. Re-exported at the original crate-root paths
+// so every internal `crate::ConsentClass` / `crate::ConsentOutcome` reference and
+// every downstream `arlen_consent_broker::ConsentClass` import is unchanged.
+pub use arlen_consent_contract::{ConsentClass, ConsentOutcome};
 
 /// The attested identity of the requester: the SINGLE value that is BOTH shown
 /// in the dialog AND recorded as the grant recipient.
@@ -191,35 +145,6 @@ pub fn classify(request: &ConsentRequest, capability: &Capability) -> SeverityTi
         request.triggered_by_external_content,
     );
     SeverityTier::from_decision(decision)
-}
-
-/// The resolved outcome of a consent interaction, returned to the requester.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", tag = "outcome")]
-pub enum ConsentOutcome {
-    /// Allowed for this one occurrence; no grant is recorded.
-    AllowedOnce,
-    /// Allowed and remembered: a revocable grant is minted for the recipient
-    /// (the KG-grant mint is a later piece; this is the decision the UI
-    /// returns).
-    AllowedRemembered,
-    /// Denied.
-    Denied,
-}
-
-impl ConsentOutcome {
-    /// Whether a remembered, revocable grant should be minted for this outcome.
-    pub fn mints_grant(self) -> bool {
-        matches!(self, ConsentOutcome::AllowedRemembered)
-    }
-
-    /// Whether the action may proceed.
-    pub fn allowed(self) -> bool {
-        matches!(
-            self,
-            ConsentOutcome::AllowedOnce | ConsentOutcome::AllowedRemembered
-        )
-    }
 }
 
 #[cfg(test)]
