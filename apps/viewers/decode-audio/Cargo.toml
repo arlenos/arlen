@@ -13,8 +13,13 @@ name = "arlen_decode_audio"
 
 [dependencies]
 arlen-viewers-core = { path = "../core" }
-# Pure-Rust audio decode (the plan's set: FLAC/MP3/PCM/Vorbis). Default features
-# off so only these format readers + codecs are linked.
-symphonia = { version = "0.5", default-features = false, features = ["wav", "ogg", "flac", "mp3", "pcm", "vorbis"] }
+# Pure-Rust, single-threaded audio probe (fits the tight no-clone seccomp
+# profile). Beyond the FLAC/MP3/PCM/Vorbis core, `aiff` (verified to probe under
+# the confinement) is added so AIFF opens via this worker instead of the
+# unimplemented Fallback. NB the mp4/aac path (isomp4+aac) is deliberately NOT
+# enabled: it probes unconfined but FAILS under the tight seccomp profile (it
+# needs a syscall the allowlist omits), so it stays the long-tail Fallback until
+# that is run down. Default features off so only these readers + codecs link.
+symphonia = { version = "0.5", default-features = false, features = ["wav", "ogg", "flac", "mp3", "pcm", "vorbis", "aiff"] }
 
 [workspace]
