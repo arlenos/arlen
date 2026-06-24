@@ -36,7 +36,7 @@ pub const IMAGE_MIMES: &[&str] = &[
 /// The audio MIME types the viewer handles (the simple player). Registered
 /// alongside the images once the audio decode worker lands.
 pub const AUDIO_MIMES: &[&str] =
-    &["audio/flac", "audio/mpeg", "audio/wav", "audio/ogg", "audio/aiff"];
+    &["audio/flac", "audio/mpeg", "audio/wav", "audio/ogg", "audio/aiff", "audio/mp4", "audio/aac"];
 
 /// Whether the file is an image or audio (the two viewer surfaces).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,6 +161,10 @@ pub fn detect_by_magic(head: &[u8]) -> Option<Detected> {
     if starts(b"FORM") && head.len() >= 12 && (&head[8..12] == b"AIFF" || &head[8..12] == b"AIFC") {
         return Some(Detected::new(MediaKind::Audio, Decoder::Symphonia, "audio/aiff"));
     }
+    // An MP4/ISO-BMFF `ftyp` with an audio brand: probed via the isomp4 reader.
+    if ftyp_brand(b"M4A ") || ftyp_brand(b"M4B ") {
+        return Some(Detected::new(MediaKind::Audio, Decoder::Symphonia, "audio/mp4"));
+    }
     None
 }
 
@@ -198,13 +202,15 @@ pub fn detect_by_extension(name: &str) -> Option<Detected> {
         "cr2" | "cr3" | "nef" | "arw" | "dng" | "raf" | "orf" | "rw2" => {
             Detected::new(MediaKind::Image, Decoder::Fallback, "image/x-raw")
         }
-        // Symphonia probes AIFF via the aiff reader (verified under confinement).
+        // Symphonia probes these via the aiff/isomp4/aac readers (verified under
+        // confinement). NB an AAC metadata-only probe surfaces codec + sample
+        // rate but not always the channel count (it lives in the decoded
+        // AudioSpecificConfig), so a viewer shows channels as unknown there.
         "aiff" | "aif" | "aifc" => Detected::new(MediaKind::Audio, Decoder::Symphonia, "audio/aiff"),
-        // mp4/aac (isomp4 path fails under the tight seccomp profile), Opus
-        // (limited symphonia support) + WMA stay the long-tail fallback.
-        "opus" | "aac" | "m4a" | "m4b" | "wma" => {
-            Detected::new(MediaKind::Audio, Decoder::Fallback, "audio/x-unknown")
-        }
+        "m4a" | "m4b" => Detected::new(MediaKind::Audio, Decoder::Symphonia, "audio/mp4"),
+        "aac" => Detected::new(MediaKind::Audio, Decoder::Symphonia, "audio/aac"),
+        // Opus (limited symphonia support) + WMA stay the long-tail fallback.
+        "opus" | "wma" => Detected::new(MediaKind::Audio, Decoder::Fallback, "audio/x-unknown"),
         _ => return None,
     };
     Some(d)
@@ -292,8 +298,10 @@ mod tests {
         aiff.push(0);
         assert_eq!(detect_by_magic(&aiff).unwrap(), Detected::new(MediaKind::Audio, Decoder::Symphonia, "audio/aiff"));
         assert_eq!(detect_by_extension("track.aif").unwrap().decoder, Decoder::Symphonia);
-        // mp4/aac is not confined-verified, so it stays the Fallback.
-        assert_eq!(detect_by_extension("song.m4a").unwrap().decoder, Decoder::Fallback);
+        // m4a/aac probe via the isomp4 reader; opus/wma stay the Fallback.
+        assert_eq!(detect_by_extension("song.m4a").unwrap().decoder, Decoder::Symphonia);
+        assert_eq!(detect_by_extension("clip.aac").unwrap().mime, "audio/aac");
+        assert_eq!(detect_by_extension("voice.opus").unwrap().decoder, Decoder::Fallback);
     }
 
     #[test]

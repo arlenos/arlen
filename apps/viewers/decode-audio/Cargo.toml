@@ -14,14 +14,12 @@ name = "arlen_decode_audio"
 [dependencies]
 arlen-viewers-core = { path = "../core" }
 # Pure-Rust, single-threaded audio probe (fits the tight no-clone seccomp
-# profile). Beyond the FLAC/MP3/PCM/Vorbis core, `aiff` (verified to probe under
-# the confinement) is added so AIFF opens via this worker instead of the
-# unimplemented Fallback. NB the mp4/aac path (isomp4+aac) is deliberately NOT
-# enabled: it probes fine UNCONFINED but FAILS under the bwrap+seccomp+Landlock
-# confinement, and the cause is NOT a denied seccomp syscall (a RET_LOG filter
-# pass - which allows every call - did not fix it), so it is Landlock/mount-ns or
-# a probe-result quirk needing strace to pin down (unavailable here). It stays
-# the long-tail Fallback until then. Default features off so only these readers link.
-symphonia = { version = "0.5", default-features = false, features = ["wav", "ogg", "flac", "mp3", "pcm", "vorbis", "aiff"] }
+# profile). Beyond the FLAC/MP3/PCM/Vorbis core: aiff + the mp4/aac path
+# (isomp4/aac/alac), so AIFF and m4a/AAC open via this worker. All verified to
+# probe UNDER the bwrap+seccomp+Landlock confinement (an earlier "m4a fails
+# confined" reading was wrong - the m4a probe succeeds with codec + sample rate;
+# only the channel count is 0, since AAC carries it in the decoded
+# AudioSpecificConfig, not the probe-time metadata). Default features off.
+symphonia = { version = "0.5", default-features = false, features = ["wav", "ogg", "flac", "mp3", "pcm", "vorbis", "aiff", "isomp4", "aac", "alac"] }
 
 [workspace]
