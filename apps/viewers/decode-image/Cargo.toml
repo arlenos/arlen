@@ -13,9 +13,10 @@ name = "arlen_decode_image"
 
 [dependencies]
 arlen-viewers-core = { path = "../core" }
-# The pure-Rust codec set (png/jpeg/gif/webp/bmp/tiff). AVIF (C-linked dav1d,
-# needing the wider seccomp profile) and the long-tail are later slices, so
-# default features are off and only the safe codecs are enabled.
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "tiff"] }
+# The pure-Rust, single-threaded codec set only: these must fit the tight
+# no-clone seccomp profile, so AVIF (C-linked dav1d - routed to the libheif
+# worker instead) and exr (pulls rayon) are deliberately excluded. pnm/qoi/dds/
+# hdr/ff/tga/ico are pure Rust and let the existing worker open those formats.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "tiff", "pnm", "qoi", "dds", "hdr", "ff", "tga", "ico"] }
 
 [workspace]
