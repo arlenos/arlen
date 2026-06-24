@@ -94,9 +94,24 @@
     return rows;
   })();
 
+  // The shell's own captured prompt line (prompt + echoed command, with the
+  // real colours/highlighting the shell printed), as the engine would store it
+  // in `block.prompt_cells`. A starship-block-style prompt over a subtle bar.
+  const bar = { kind: "rgb", value: [28, 29, 33] } as CellColor;
+  const promptCells: GridCell[][] = (() => {
+    const r = emptyRow();
+    const seg = (at: number, ch: string, fg: CellColor, bold = false) => put(r, at, ch, fg, bold, bar);
+    seg(0, " ~/Repositories/arlen ", idx(7)); // path, in the bar
+    seg(22, "main", idx(2)); // branch
+    seg(27, " * ", idx(3)); // dirty marker
+    // the echoed command sits after the bar, full strength
+    put(r, 31, "neofetch", idx(15), false);
+    return [r];
+  })();
+
   // A finished block carrying the same fixture as its captured output, to verify
-  // the "grid inside the block" path: the block frame (command, exit chip, time)
-  // plus the per-cell output grid rendered inside it.
+  // the "grid inside the block" path: the block frame (the captured prompt line,
+  // exit chip, time) plus the per-cell output grid rendered inside it.
   const block: Block = {
     id: "b1",
     command: "neofetch",
@@ -107,6 +122,7 @@
     origin: "you",
     body_kind: "grid",
     body: { cells, rows: cells.length },
+    prompt_cells: promptCells,
   };
 </script>
 

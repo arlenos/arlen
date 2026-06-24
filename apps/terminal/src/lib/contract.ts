@@ -41,6 +41,14 @@ export interface Block {
   origin: Origin;
   body_kind: BlockBodyKind;
   body: unknown;
+  /// The shell's own rendered prompt line (the cells the shell actually
+  /// printed for the prompt plus the echoed command, with their colours and
+  /// syntax highlighting), captured between the prompt-start and exec-start
+  /// marks. The block header renders these verbatim, so the record is exactly
+  /// what was on screen - any prompt (p10k, starship, custom), not a themed
+  /// reconstruction. Null for an older block or before the engine captures it;
+  /// the header then falls back to the regenerated path+git line.
+  prompt_cells?: GridCell[][] | null;
 }
 
 /// A terminal cell's colour (mirrors core `CellColor`): the theme default, a
