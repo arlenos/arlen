@@ -112,13 +112,17 @@ pub trait SpawnEngine: Send + Sync {
     /// session's `system_prompt` delivered at spawn (the SessionInit behaviour-
     /// inject half; empty = pi keeps its default prompt). `on_spawned` is called
     /// with the child's pid as soon as it is known, so the supervisor can bind the
-    /// session to that attested pid before any contract call arrives. The future
+    /// session to that attested pid before any contract call arrives. When `drive`
+    /// is `Some`, the implementation relays the engine's RPC stdio against one
+    /// shell connection accepted on that drive socket for this instance's lifetime
+    /// (Phase-2-A); `None` runs the engine with no shell drive. The future
     /// resolves when the process exits.
     async fn run_once(
         &self,
         session_token: &str,
         system_prompt: &str,
         on_spawned: &(dyn Fn(u32) + Send + Sync),
+        drive: Option<&tokio::net::UnixListener>,
     ) -> EngineExit;
 }
 
@@ -131,6 +135,7 @@ pub async fn supervise<S, G, E, R>(
     engine: &S,
     dispatcher: &crate::dispatch::Dispatcher<G, E, R>,
     init: &ai_engine_contract::SessionInit,
+    drive: Option<&tokio::net::UnixListener>,
 ) -> Result<u32, crate::session::CsprngError>
 where
     S: SpawnEngine,
@@ -142,7 +147,7 @@ where
     loop {
         let token = crate::session::SessionToken::mint()?;
         let on_spawned = |pid: u32| dispatcher.bind_session(token.clone(), init, pid);
-        let exit = engine.run_once(token.as_str(), &init.system_prompt, &on_spawned).await;
+        let exit = engine.run_once(token.as_str(), &init.system_prompt, &on_spawned, drive).await;
         // The engine exited; its session is over (a restart mints a fresh one).
         dispatcher.end_session(&token);
         let now = Instant::now();
@@ -246,6 +251,7 @@ mod tests {
             _token: &str,
             _system_prompt: &str,
             on_spawned: &(dyn Fn(u32) + Send + Sync),
+            _drive: Option<&tokio::net::UnixListener>,
         ) -> EngineExit {
             self.runs.fetch_add(1, Ordering::SeqCst);
             on_spawned(4242); // the daemon binds the session to this attested pid
@@ -286,7 +292,7 @@ mod tests {
             spawns: AtomicUsize::new(0),
         };
         let disp = dispatcher();
-        let crashes = supervise(&engine, &disp, &init()).await.unwrap();
+        let crashes = supervise(&engine, &disp, &init(), None).await.unwrap();
         assert_eq!(crashes, 4, "gives up on the 4th crash in the window");
         assert_eq!(engine.runs.load(Ordering::SeqCst), 5, "1 clean restart + 4 crashes");
         assert_eq!(engine.spawns.load(Ordering::SeqCst), 5, "each run bound a session to its pid");
