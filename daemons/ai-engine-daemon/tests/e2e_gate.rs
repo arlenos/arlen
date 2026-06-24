@@ -50,6 +50,16 @@ impl Reporter for UnusedReporter {
         ReportAck { screen: ScreenVerdict::Block }
     }
 }
+// The audit Report proof needs a reporter that returns a non-Block verdict, so
+// passthrough (audit.ts lets the content through) is observable - distinct from
+// the no-session fallback, which fails closed to Block.
+struct CleanReporter;
+#[async_trait]
+impl Reporter for CleanReporter {
+    async fn report(&self, _: &Report, _: &SessionGrant) -> ReportAck {
+        ReportAck { screen: ScreenVerdict::Clean }
+    }
+}
 
 /// The kernel-attested pid of a connected Unix peer (SO_PEERCRED).
 fn peer_pid(stream: &tokio::net::UnixStream) -> u32 {
@@ -84,10 +94,15 @@ fn node_binary() -> String {
     "node".to_string()
 }
 
-#[tokio::test]
-#[ignore = "needs node22 + the built pi-plugins dist (npm --prefix ai/pi-plugins run build)"]
-async fn the_real_gate_plugin_is_denied_a_suggest_mode_tool_call_end_to_end() {
-    let dir = std::env::temp_dir().join(format!("arlen-pi-e2e-{}", std::process::id()));
+/// Spawn the Node e2e driver with `driver_args` against a real dispatcher over
+/// the REAL `CapabilityGate` and the given `reporter` (the executor is inert; the
+/// gate and audit proofs drive Authorize and Report respectively). Mints a
+/// session bound to the child's SO_PEERCRED pid (so the real verb path resolves,
+/// not the no-session fallback), serves the single verb, and returns the driver's
+/// parsed JSON line.
+async fn run_driver<R: Reporter>(reporter: R, driver_args: &[&str]) -> serde_json::Value {
+    let dir = std::env::temp_dir()
+        .join(format!("arlen-pi-e2e-{}-{}", std::process::id(), driver_args.join("-")));
     std::fs::create_dir_all(&dir).unwrap();
     let socket = dir.join("ai-engine.sock");
     let token_file = dir.join("token");
@@ -99,17 +114,19 @@ async fn the_real_gate_plugin_is_denied_a_suggest_mode_tool_call_end_to_end() {
         driver.display(),
     );
 
-    // The REAL Phase-1 gate; the executor/reporter are inert (Authorize-only proof).
-    let dispatcher = Dispatcher::new(CapabilityGate, UnusedExecutor, UnusedReporter);
+    let dispatcher = Dispatcher::new(CapabilityGate, UnusedExecutor, reporter);
 
     let listener = UnixListener::bind(&socket).unwrap();
     std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600)).unwrap();
 
     // Spawn the Node child; it waits for the token file before connecting (the
     // daemon writes the token only after learning this child's pid).
-    let child = std::process::Command::new(node_binary())
-        .arg(&driver)
-        .arg("note.append")
+    let mut cmd = std::process::Command::new(node_binary());
+    cmd.arg(&driver);
+    for a in driver_args {
+        cmd.arg(a);
+    }
+    let child = cmd
         .env("ARLEN_AI_ENGINE_SOCKET", &socket)
         .env("ARLEN_AI_ENGINE_TOKEN_FILE", &token_file)
         .stdout(Stdio::piped())
@@ -117,8 +134,7 @@ async fn the_real_gate_plugin_is_denied_a_suggest_mode_tool_call_end_to_end() {
         .spawn()
         .expect("spawn node e2e driver");
 
-    // Mint a session for the child's pid (empty grant -> the gate proposes ->
-    // denies), then hand the token to the waiting child.
+    // Mint a session for the child's pid, then hand the token to the waiting child.
     let init = SessionInit {
         system_prompt: String::new(),
         behaviour: None,
@@ -132,11 +148,11 @@ async fn the_real_gate_plugin_is_denied_a_suggest_mode_tool_call_end_to_end() {
     std::fs::set_permissions(&token_file, std::fs::Permissions::from_mode(0o600)).unwrap();
 
     // Accept the child's connection, resolve its pid from the kernel
-    // (SO_PEERCRED), and serve until the child closes after its single Authorize.
-    // The daemon binary additionally resolves the peer's Arlen IDENTITY via
-    // ConnectionAuth (the confined pi at a recognized path); that attestation is
-    // a separate deploy concern, so this wire+gate proof uses the kernel-attested
-    // pid directly (raw node is not a recognized Arlen app id).
+    // (SO_PEERCRED), and serve until the child closes after its single verb. The
+    // daemon binary additionally resolves the peer's Arlen IDENTITY via
+    // ConnectionAuth (the confined pi at a recognized path); that attestation is a
+    // separate deploy concern, so this wire+enforcement proof uses the kernel-
+    // attested pid directly (raw node is not a recognized Arlen app id).
     let serve = async {
         let stream = listener.accept().await.unwrap().0;
         let peer = peer_pid(&stream);
@@ -152,9 +168,18 @@ async fn the_real_gate_plugin_is_denied_a_suggest_mode_tool_call_end_to_end() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "the e2e driver failed: {stderr}");
+    let line = stdout.trim().lines().last().unwrap_or("").to_string();
+    let v: serde_json::Value =
+        serde_json::from_str(&line).unwrap_or_else(|e| panic!("driver json ({e}): {line:?}"));
+    std::fs::remove_dir_all(&dir).ok();
+    v
+}
 
-    let line = stdout.trim().lines().last().unwrap_or("");
-    let v: serde_json::Value = serde_json::from_str(line).unwrap_or_else(|e| panic!("driver json ({e}): {line:?}"));
+#[tokio::test]
+#[ignore = "needs node22 + the built pi-plugins dist (npm --prefix ai/pi-plugins run build)"]
+async fn the_real_gate_plugin_is_denied_a_suggest_mode_tool_call_end_to_end() {
+    // The gate proof does not reach the reporter (Authorize only), so it is inert.
+    let v = run_driver(UnusedReporter, &["gate", "note.append"]).await;
     assert_eq!(
         v["result"]["block"],
         serde_json::json!(true),
@@ -165,6 +190,24 @@ async fn the_real_gate_plugin_is_denied_a_suggest_mode_tool_call_end_to_end() {
         reason.contains("proposal"),
         "the REAL gate decided (suggest -> propose -> deny), not the no-session fallback: {reason:?}",
     );
+}
 
-    std::fs::remove_dir_all(&dir).ok();
+#[tokio::test]
+#[ignore = "needs node22 + the built pi-plugins dist (npm --prefix ai/pi-plugins run build)"]
+async fn the_real_audit_shim_reports_a_tool_result_and_clean_content_passes_end_to_end() {
+    // A Clean screen verdict from the real reporter lets the content through:
+    // audit.ts returns an empty patch. Passthrough is the strong proof that the
+    // REAL reporter was reached - a no-session Report fails closed to Block ->
+    // WITHHELD content, so an empty result only happens when the session bound and
+    // the reporter both resolved over the actual socket.
+    let v = run_driver(CleanReporter, &["audit", "graph.read"]).await;
+    let result = &v["result"];
+    assert!(
+        result.get("content").is_none(),
+        "clean content passes through unchanged (not withheld): {v}",
+    );
+    assert!(
+        result.get("isError").is_none(),
+        "a clean pass-through sets no error: {v}",
+    );
 }

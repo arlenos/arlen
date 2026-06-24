@@ -1,19 +1,29 @@
-// End-to-end harness driver (pi-agent-adoption.md §C): connect the REAL gate
-// plugin to a live daemon contract socket, fire one synthetic tool_call, and
+// End-to-end harness driver (pi-agent-adoption.md §C): connect a REAL Arlen
+// plugin to a live daemon contract socket, fire one synthetic pi event, and
 // print the enforced result as JSON. The ai-engine-daemon integration test
-// spawns this against a real CapabilityGate dispatcher, so the cross-language
-// wire (Node ContractClient <-> Rust daemon over an actual socket) and the gate
+// spawns this against a real dispatcher, so the cross-language wire (Node
+// ContractClient <-> Rust daemon over an actual socket) and the inline
 // enforcement are proven end to end, not just unit-tested with mocks.
+//
+// Modes (argv[2]):
+//   gate  <toolName> [external]  - the gate plugin authorizes one tool_call
+//   audit <toolName>             - the audit-shim reports one tool_result
 //
 // Reads ARLEN_AI_ENGINE_SOCKET + ARLEN_AI_ENGINE_TOKEN_FILE. The daemon writes
 // the 0600 token only after learning this process's pid (it mints the session
-// bound to that pid), so the driver waits for the token to appear before driving
-// the call; otherwise the gate would block on a daemon-unavailable error rather
-// than exercise the real Authorize path.
+// bound to that pid), so the driver waits for the token before driving the
+// event; otherwise a plugin would fail closed on a daemon-unavailable error
+// rather than exercise the real verb path.
 
 import { existsSync, readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { makeGate, type GateExtensionAPI, type ToolCallEvent, type ToolCallEventResult } from "./gate.js";
+import {
+  makeAudit,
+  type AuditExtensionAPI,
+  type ToolResultEvent,
+  type ToolResultEventResult,
+} from "./audit.js";
 
 /** Poll for the session token file the daemon writes once it knows our pid. */
 async function waitForToken(): Promise<void> {
@@ -26,13 +36,8 @@ async function waitForToken(): Promise<void> {
   throw new Error("session token file never appeared");
 }
 
-async function main(): Promise<void> {
-  const toolName = process.argv[2] ?? "note.append";
-  const externalTriggered = process.argv[3] === "external";
-  await waitForToken();
-
-  // Capture the handler the REAL gate registers (real makeGate -> real
-  // ContractClient connecting ARLEN_AI_ENGINE_SOCKET with the token file).
+/** Drive one tool_call through the real gate plugin, return its enforced result. */
+async function driveGate(toolName: string, externalTriggered: boolean): Promise<unknown> {
   let handler: ((e: ToolCallEvent) => Promise<ToolCallEventResult | void>) | undefined;
   const pi: GateExtensionAPI = {
     on(_event, h) {
@@ -41,17 +46,47 @@ async function main(): Promise<void> {
   };
   makeGate({ externalTriggered })(pi);
   if (!handler) throw new Error("the gate registered no tool_call handler");
+  const event: ToolCallEvent = { type: "tool_call", toolCallId: "e2e-1", toolName, input: { note: "hi" } };
+  const result = (await handler(event)) ?? {};
+  return { result, input: event.input };
+}
 
-  const event: ToolCallEvent = {
-    type: "tool_call",
+/** Drive one tool_result through the real audit-shim, return its enforced result. */
+async function driveAudit(toolName: string): Promise<unknown> {
+  let handler: ((e: ToolResultEvent) => Promise<ToolResultEventResult | void>) | undefined;
+  const pi: AuditExtensionAPI = {
+    on(_event, h) {
+      handler = h as (e: ToolResultEvent) => Promise<ToolResultEventResult | void>;
+    },
+  };
+  makeAudit()(pi);
+  if (!handler) throw new Error("the audit-shim registered no tool_result handler");
+  const event: ToolResultEvent = {
+    type: "tool_result",
     toolCallId: "e2e-1",
     toolName,
     input: { note: "hi" },
+    content: [{ type: "text", text: "tool output" }],
+    isError: false,
   };
   const result = (await handler(event)) ?? {};
-  // The integration test parses this line: the enforced result + the (possibly
-  // mutated) input, so a Modify decision is observable too.
-  process.stdout.write(JSON.stringify({ result, input: event.input }) + "\n");
+  return { result };
+}
+
+async function main(): Promise<void> {
+  const mode = process.argv[2] ?? "gate";
+  await waitForToken();
+
+  let out: unknown;
+  if (mode === "gate") {
+    out = await driveGate(process.argv[3] ?? "note.append", process.argv[4] === "external");
+  } else if (mode === "audit") {
+    out = await driveAudit(process.argv[3] ?? "graph.read");
+  } else {
+    throw new Error(`unknown e2e mode: ${mode}`);
+  }
+  // The integration test parses this line.
+  process.stdout.write(JSON.stringify(out) + "\n");
 }
 
 main()
