@@ -25,6 +25,12 @@ pub const IMAGE_MIMES: &[&str] = &[
     "image/avif",
     "image/heic",
     "image/jxl",
+    "image/qoi",
+    "image/x-icon",
+    "image/x-portable-anymap",
+    "image/x-dds",
+    "image/x-farbfeld",
+    "image/vnd.radiance",
 ];
 
 /// The audio MIME types the viewer handles (the simple player). Registered
@@ -104,8 +110,31 @@ pub fn detect_by_magic(head: &[u8]) -> Option<Detected> {
     if starts(b"BM") {
         return Some(Detected::new(MediaKind::Image, Decoder::ImageRs, "image/bmp"));
     }
+    // The further formats image-rs decodes by content-guessing - routed to the
+    // same ImageRs worker (no separate decoder), so a .qoi/.ico/.pnm/... opens
+    // in the viewer instead of falling through to the (ffmpeg) Fallback.
+    if starts(b"qoif") {
+        return Some(Detected::new(MediaKind::Image, Decoder::ImageRs, "image/qoi"));
+    }
+    if starts(&[0x00, 0x00, 0x01, 0x00]) {
+        return Some(Detected::new(MediaKind::Image, Decoder::ImageRs, "image/x-icon"));
+    }
+    if head.len() >= 2 && head[0] == b'P' && (b'1'..=b'6').contains(&head[1]) {
+        return Some(Detected::new(MediaKind::Image, Decoder::ImageRs, "image/x-portable-anymap"));
+    }
+    if starts(b"DDS ") {
+        return Some(Detected::new(MediaKind::Image, Decoder::ImageRs, "image/x-dds"));
+    }
+    if starts(b"farbfeld") {
+        return Some(Detected::new(MediaKind::Image, Decoder::ImageRs, "image/x-farbfeld"));
+    }
+    if starts(b"#?RADIANCE") || starts(b"#?RGBE") {
+        return Some(Detected::new(MediaKind::Image, Decoder::ImageRs, "image/vnd.radiance"));
+    }
     if ftyp_brand(b"avif") || ftyp_brand(b"avis") {
-        return Some(Detected::new(MediaKind::Image, Decoder::ImageRs, "image/avif"));
+        // AVIF is the C-linked dav1d path, so it goes to the libheif worker (which
+        // decodes AVIF too) - the pure-Rust ImageRs worker has no avif feature.
+        return Some(Detected::new(MediaKind::Image, Decoder::LibHeif, "image/avif"));
     }
     if ftyp_brand(b"heic") || ftyp_brand(b"heix") || ftyp_brand(b"mif1") || ftyp_brand(b"heif") {
         return Some(Detected::new(MediaKind::Image, Decoder::LibHeif, "image/heic"));
@@ -143,9 +172,20 @@ pub fn detect_by_extension(name: &str) -> Option<Detected> {
         "webp" => Detected::new(MediaKind::Image, Decoder::ImageRs, "image/webp"),
         "tif" | "tiff" => Detected::new(MediaKind::Image, Decoder::ImageRs, "image/tiff"),
         "bmp" => Detected::new(MediaKind::Image, Decoder::ImageRs, "image/bmp"),
-        "avif" => Detected::new(MediaKind::Image, Decoder::ImageRs, "image/avif"),
+        "avif" => Detected::new(MediaKind::Image, Decoder::LibHeif, "image/avif"),
         "heic" | "heif" => Detected::new(MediaKind::Image, Decoder::LibHeif, "image/heic"),
         "jxl" => Detected::new(MediaKind::Image, Decoder::JxlOxide, "image/jxl"),
+        // Further image-rs formats (decoded by the ImageRs worker). TGA has no
+        // reliable magic, so it is reachable by extension only.
+        "qoi" => Detected::new(MediaKind::Image, Decoder::ImageRs, "image/qoi"),
+        "ico" => Detected::new(MediaKind::Image, Decoder::ImageRs, "image/x-icon"),
+        "tga" | "tpic" => Detected::new(MediaKind::Image, Decoder::ImageRs, "image/x-tga"),
+        "pnm" | "pbm" | "pgm" | "ppm" | "pam" => {
+            Detected::new(MediaKind::Image, Decoder::ImageRs, "image/x-portable-anymap")
+        }
+        "dds" => Detected::new(MediaKind::Image, Decoder::ImageRs, "image/x-dds"),
+        "ff" => Detected::new(MediaKind::Image, Decoder::ImageRs, "image/x-farbfeld"),
+        "hdr" => Detected::new(MediaKind::Image, Decoder::ImageRs, "image/vnd.radiance"),
         "flac" => Detected::new(MediaKind::Audio, Decoder::Symphonia, "audio/flac"),
         "mp3" => Detected::new(MediaKind::Audio, Decoder::Symphonia, "audio/mpeg"),
         "wav" => Detected::new(MediaKind::Audio, Decoder::Symphonia, "audio/wav"),
@@ -184,17 +224,43 @@ mod tests {
     }
 
     #[test]
+    fn the_further_image_rs_formats_route_to_the_image_worker_not_the_fallback() {
+        // qoi/ico/pnm/dds/exr/farbfeld/hdr by magic, tga by extension - all the
+        // ImageRs worker (which content-guesses), so they open in the viewer.
+        let cases: &[(&[u8], &str)] = &[
+            (b"qoif\0\0\0\0", "image/qoi"),
+            (&[0x00, 0x00, 0x01, 0x00], "image/x-icon"),
+            (b"P6\n4 4\n", "image/x-portable-anymap"),
+            (b"DDS \0\0\0\0", "image/x-dds"),
+            (b"farbfeld\0\0", "image/x-farbfeld"),
+            (b"#?RADIANCE\n", "image/vnd.radiance"),
+        ];
+        for (head, mime) in cases {
+            let d = detect_by_magic(head).unwrap_or_else(|| panic!("magic for {mime}"));
+            assert_eq!(d.decoder, Decoder::ImageRs, "{mime} -> ImageRs");
+            assert_eq!(&d.mime, mime);
+        }
+        // TGA has no reliable magic; reached by extension.
+        let tga = detect_by_extension("texture.tga").unwrap();
+        assert_eq!(tga.decoder, Decoder::ImageRs);
+        // The newly-routed MIMEs are registered for the default handler.
+        assert!(IMAGE_MIMES.contains(&"image/qoi"));
+    }
+
+    #[test]
     fn heic_and_avif_share_the_ftyp_box_but_route_to_different_decoders() {
         let mut heic = vec![0u8; 16];
         heic[4..8].copy_from_slice(b"ftyp");
         heic[8..12].copy_from_slice(b"heic");
         assert_eq!(detect_by_magic(&heic).unwrap().decoder, Decoder::LibHeif);
 
+        // AVIF is the C-linked dav1d path, so it also routes to the libheif
+        // worker (the pure-Rust ImageRs worker has no avif feature).
         let mut avif = vec![0u8; 16];
         avif[4..8].copy_from_slice(b"ftyp");
         avif[8..12].copy_from_slice(b"avif");
         let a = detect_by_magic(&avif).unwrap();
-        assert_eq!(a.decoder, Decoder::ImageRs);
+        assert_eq!(a.decoder, Decoder::LibHeif);
         assert_eq!(a.mime, "image/avif");
     }
 
