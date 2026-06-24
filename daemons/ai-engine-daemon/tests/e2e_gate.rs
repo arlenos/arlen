@@ -24,11 +24,15 @@ use ai_engine_contract::{
 };
 use arlen_ai_engine_daemon::capability_map::CapabilityGate;
 use arlen_ai_engine_daemon::dispatch::{Dispatcher, Executor, Reporter};
+use arlen_ai_engine_daemon::proxy_executor::ProxyExecutor;
+use arlen_ai_engine_daemon::read_executor::{DeniedRunner, GraphReadExecutor};
 use arlen_ai_engine_daemon::session::SessionGrant;
 use arlen_ai_engine_daemon::wire::serve_connection;
+use arlen_ai_engine_daemon::write_executor::{DeniedWriter, GraphWriteExecutor};
 use async_trait::async_trait;
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;
+use std::sync::Arc;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
@@ -100,7 +104,11 @@ fn node_binary() -> String {
 /// session bound to the child's SO_PEERCRED pid (so the real verb path resolves,
 /// not the no-session fallback), serves the single verb, and returns the driver's
 /// parsed JSON line.
-async fn run_driver<R: Reporter>(reporter: R, driver_args: &[&str]) -> serde_json::Value {
+async fn run_driver<E: Executor, R: Reporter>(
+    executor: E,
+    reporter: R,
+    driver_args: &[&str],
+) -> serde_json::Value {
     let dir = std::env::temp_dir()
         .join(format!("arlen-pi-e2e-{}-{}", std::process::id(), driver_args.join("-")));
     std::fs::create_dir_all(&dir).unwrap();
@@ -114,7 +122,7 @@ async fn run_driver<R: Reporter>(reporter: R, driver_args: &[&str]) -> serde_jso
         driver.display(),
     );
 
-    let dispatcher = Dispatcher::new(CapabilityGate, UnusedExecutor, reporter);
+    let dispatcher = Dispatcher::new(CapabilityGate, executor, reporter);
 
     let listener = UnixListener::bind(&socket).unwrap();
     std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600)).unwrap();
@@ -178,8 +186,8 @@ async fn run_driver<R: Reporter>(reporter: R, driver_args: &[&str]) -> serde_jso
 #[tokio::test]
 #[ignore = "needs node22 + the built pi-plugins dist (npm --prefix ai/pi-plugins run build)"]
 async fn the_real_gate_plugin_is_denied_a_suggest_mode_tool_call_end_to_end() {
-    // The gate proof does not reach the reporter (Authorize only), so it is inert.
-    let v = run_driver(UnusedReporter, &["gate", "note.append"]).await;
+    // The gate proof reaches neither the executor nor the reporter (Authorize only).
+    let v = run_driver(UnusedExecutor, UnusedReporter, &["gate", "note.append"]).await;
     assert_eq!(
         v["result"]["block"],
         serde_json::json!(true),
@@ -200,7 +208,7 @@ async fn the_real_audit_shim_reports_a_tool_result_and_clean_content_passes_end_
     // REAL reporter was reached - a no-session Report fails closed to Block ->
     // WITHHELD content, so an empty result only happens when the session bound and
     // the reporter both resolved over the actual socket.
-    let v = run_driver(CleanReporter, &["audit", "graph.read"]).await;
+    let v = run_driver(UnusedExecutor, CleanReporter, &["audit", "graph.read"]).await;
     let result = &v["result"];
     assert!(
         result.get("content").is_none(),
@@ -209,5 +217,36 @@ async fn the_real_audit_shim_reports_a_tool_result_and_clean_content_passes_end_
     assert!(
         result.get("isError").is_none(),
         "a clean pass-through sets no error: {v}",
+    );
+}
+
+#[tokio::test]
+#[ignore = "needs node22 + the built pi-plugins dist (npm --prefix ai/pi-plugins run build)"]
+async fn the_real_proxy_tool_forwards_execute_and_fails_closed_end_to_end() {
+    // The KG read proxy tool's execute() forwards to the daemon's Execute verb. The
+    // daemon routes graph.read through the REAL ProxyExecutor -> GraphReadExecutor
+    // -> the fail-closed DeniedRunner (the live read provider lands at the Phase-2
+    // cutover), so the proxy tool surfaces a tool error. The "provider-unavailable"
+    // message is the load-bearing distinguisher: it comes only from the real runner
+    // reached PAST the session bound and the read-scope check - not from the
+    // no-session or no-scope fallbacks - so it proves the Execute verb round-trips
+    // through the real executor end to end.
+    let read_executor: Arc<dyn Executor> = Arc::new(GraphReadExecutor::new(Arc::new(DeniedRunner)));
+    let write_executor: Arc<dyn Executor> = Arc::new(GraphWriteExecutor::new(Arc::new(DeniedWriter)));
+    let executor = ProxyExecutor::new()
+        .register("graph.read", read_executor)
+        .register("graph.write", write_executor);
+
+    let v = run_driver(executor, UnusedReporter, &["execute", "graph.read"]).await;
+    let result = &v["result"];
+    assert_eq!(
+        result["isError"],
+        serde_json::json!(true),
+        "the fail-closed Execute surfaces a tool error: {v}",
+    );
+    let text = result["content"][0]["text"].as_str().unwrap_or("");
+    assert!(
+        text.contains("provider-unavailable") || text.contains("Phase-2"),
+        "the REAL ProxyExecutor -> GraphReadExecutor -> DeniedRunner was reached (not a session/scope fallback): {text:?}",
     );
 }
