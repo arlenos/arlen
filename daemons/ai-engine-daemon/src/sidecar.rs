@@ -280,14 +280,14 @@ fn write_token_file(state_dir: &str, token: &str) -> std::io::Result<(PathBuf, T
 /// carrying `child-pid` wins. Returns None if absent/unparseable (fail-closed:
 /// the caller treats a missing pid as a spawn fault).
 fn parse_child_pid(info: &str) -> Option<u32> {
-    for line in info.split('\n').filter(|l| !l.trim().is_empty()) {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-            if let Some(pid) = v.get("child-pid").and_then(|p| p.as_u64()) {
-                return u32::try_from(pid).ok();
-            }
-        }
-    }
-    None
+    // bwrap writes a single PRETTY-PRINTED (multi-line) JSON object to --info-fd
+    // (and may emit more than one), so parse the whole content as a stream of JSON
+    // values rather than line-by-line (a multi-line object is not valid JSON on any
+    // single line). The first value carrying `child-pid` wins.
+    serde_json::Deserializer::from_str(info)
+        .into_iter::<serde_json::Value>()
+        .flatten()
+        .find_map(|v| v.get("child-pid").and_then(|p| p.as_u64()).and_then(|p| u32::try_from(p).ok()))
 }
 
 /// The real engine sidecar: spawns `pi --mode rpc` under the confinement built
@@ -652,6 +652,20 @@ mod tests {
         // The guard removed it on drop, so the secret does not outlive the run.
         assert!(!token_path.exists(), "the token file is removed when the guard drops");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parse_child_pid_handles_bwraps_multi_line_info() {
+        // bwrap writes ONE pretty-printed multi-line JSON object (with many
+        // namespace keys from --unshare-*), so the child-pid must come from parsing
+        // the whole content as a JSON stream, not line-by-line (no single line is
+        // valid JSON). This is the real shape `--info-fd` produces under the pi
+        // confinement; a regression here means the daemon cannot learn pi's pid.
+        let info = "{\n    \"child-pid\": 4242,\n    \"cgroup-namespace\": 1,\n    \"ipc-namespace\": 2,\n    \"mnt-namespace\": 3,\n    \"net-namespace\": 4,\n    \"pid-namespace\": 5,\n    \"uts-namespace\": 6\n}\n";
+        assert_eq!(parse_child_pid(info), Some(4242));
+        // No child-pid, or empty input -> None (fail-closed: a missing pid is a fault).
+        assert_eq!(parse_child_pid("{\n    \"mnt-namespace\": 3\n}\n"), None);
+        assert_eq!(parse_child_pid(""), None);
     }
 
     /// On-host (needs a userns-capable host + a real node at ARLEN_PI_NODE_RUNTIME
