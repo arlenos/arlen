@@ -69,6 +69,7 @@ dependencies = [
  "ai-engine-contract",
  "arlen-ai-core",
  "arlen-confiner",
+ "arlen-consent-contract",
  "arlen-permissions",
  "async-trait",
  "audit-proto",
@@ -96,6 +97,14 @@ name = "arlen-confiner"
 version = "0.1.0"
 dependencies = [
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "arlen-consent-contract"
+version = "0.1.0"
+dependencies = [
+ "arlen-ai-core",
+ "serde",
 ]
 
 [[package]]
