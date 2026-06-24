@@ -31,27 +31,41 @@
     if (bytes.length > 0) term.write(new Uint8Array(bytes));
   }
 
-  // Try the GPU renderer; fall back to canvas. xterm.js WebGL text rendering has
-  // a documented history of breaking on WebKitGTK, so degrade rather than show
-  // blank glyphs. (The default DOM renderer is the last resort if both fail.)
+  // Renderer choice (terminal.md §9 WebKitGTK caveat). xterm.js's WebGL text
+  // rendering has a documented history of breaking on WebKitGTK - missing glyphs,
+  // or only cell backgrounds - and that failure is SILENT: the addon loads
+  // without throwing and never fires `contextlost`, so a try/catch + onContextLoss
+  // guard cannot catch it (it only covers no-context and context-loss, not a
+  // present-but-mis-rendering context). A silently broken grid is the worst
+  // outcome for the top-priority terminal, and WebGL on real WebKitGTK hardware
+  // cannot be pixel-verified headlessly (the Xvfb GL stack is not a real GPU). So
+  // the Linux default is the canvas renderer - still the 5-45x win over the DOM
+  // renderer, and reliable. Flip PREFER_WEBGL to true once a real-hardware shot
+  // confirms WebGL glyphs render; the onContextLoss path then degrades to canvas.
+  const PREFER_WEBGL = false;
+
   function loadRenderer(t: Terminal): void {
-    try {
-      const webgl = new WebglAddon();
-      webgl.onContextLoss(() => {
-        webgl.dispose();
-        try {
-          t.loadAddon(new CanvasAddon());
-        } catch {
-          /* DOM renderer remains */
-        }
-      });
-      t.loadAddon(webgl);
-    } catch {
+    if (PREFER_WEBGL) {
       try {
-        t.loadAddon(new CanvasAddon());
+        const webgl = new WebglAddon();
+        webgl.onContextLoss(() => {
+          webgl.dispose();
+          try {
+            t.loadAddon(new CanvasAddon());
+          } catch {
+            /* DOM renderer remains */
+          }
+        });
+        t.loadAddon(webgl);
+        return;
       } catch {
-        /* DOM renderer remains */
+        /* WebGL2 context unavailable - fall through to canvas */
       }
+    }
+    try {
+      t.loadAddon(new CanvasAddon());
+    } catch {
+      /* DOM renderer remains as the last resort */
     }
   }
 
