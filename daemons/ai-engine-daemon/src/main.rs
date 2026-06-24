@@ -16,6 +16,7 @@
 use arlen_ai_core::screen::Screener;
 use arlen_ai_engine_daemon::capability_map::CapabilityGate;
 use arlen_ai_engine_daemon::compensation::CompensationStore;
+use arlen_ai_engine_daemon::consent_client::ConsentBrokerClient;
 use arlen_ai_engine_daemon::dispatch::Dispatcher;
 use arlen_ai_engine_daemon::dispatch::Executor;
 use arlen_ai_engine_daemon::proxy_executor::ProxyExecutor;
@@ -41,6 +42,18 @@ fn socket_path() -> PathBuf {
     let base = std::env::var("XDG_RUNTIME_DIR")
         .unwrap_or_else(|_| format!("/run/user/{}", current_uid()));
     PathBuf::from(base).join("arlen").join("ai-engine.sock")
+}
+
+/// The consent-broker INTAKE socket: `$XDG_RUNTIME_DIR/arlen/consent-intake.sock`,
+/// else `/run/arlen/consent-intake.sock` (mirrors the broker's own resolution).
+/// The [`ConsentBrokerClient`] connects here to drive a gate `Confirm`; an
+/// unreachable broker fails closed to a denial, so this is safe even when the
+/// broker is not running.
+fn consent_intake_socket() -> PathBuf {
+    match std::env::var_os("XDG_RUNTIME_DIR") {
+        Some(dir) => PathBuf::from(dir).join("arlen").join("consent-intake.sock"),
+        None => PathBuf::from("/run/arlen/consent-intake.sock"),
+    }
 }
 
 /// The uid the daemon runs as; cross-uid IPC is rejected by `ConnectionAuth`.
@@ -120,7 +133,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let executor = ProxyExecutor::new()
         .register("graph.read", read_executor)
         .register("graph.write", write_executor);
-    let dispatcher = Arc::new(Dispatcher::new(CapabilityGate, executor, reporter));
+    // A gate Confirm is resolved daemon-side by driving the consent-broker over
+    // its intake socket (the trusted-path dialog). An unreachable broker fails
+    // closed to a denial, so wiring the real client is safe even headless.
+    let dispatcher = Arc::new(
+        Dispatcher::new(CapabilityGate, executor, reporter)
+            .with_consent(Arc::new(ConsentBrokerClient::new(consent_intake_socket()))),
+    );
 
     // Spawn + supervise the pi sidecar only when AI is enabled (the §D master
     // switch; default off). The supervisor shares this dispatcher's session
