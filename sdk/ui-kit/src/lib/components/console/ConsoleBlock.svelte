@@ -18,6 +18,7 @@
     exitCode = null,
     durationMs = null,
     running = false,
+    promptFull = false,
     context,
     marker,
     lens,
@@ -27,6 +28,10 @@
     /// The command line that ran. Arbitrary bytes by contract — it is
     /// rendered as text only.
     command: string;
+    /// The context already carries the whole prompt + command line (the
+    /// shell's captured cells), so the context spans the header and the
+    /// separate command text is suppressed - the command is in the cells.
+    promptFull?: boolean;
     /// Exit code once finished; null while running. Zero renders no
     /// chip (the absence of an error is the status), non-zero renders
     /// an error-tinted chip.
@@ -51,15 +56,17 @@
   } = $props();
 </script>
 
-<div class="console-block" class:failed={exitCode !== null && exitCode !== 0}>
+<div class="console-block" class:failed={exitCode !== null && exitCode !== 0} class:prompt-full={promptFull}>
   <div class="cb-header">
-    {#if context}
-      <span class="cb-context">{@render context()}</span>
-    {/if}
     {#if marker}
       <span class="cb-marker">{@render marker()}</span>
     {/if}
-    <span class="cb-command">{command}</span>
+    {#if context}
+      <span class="cb-context">{@render context()}</span>
+    {/if}
+    {#if command && !promptFull}
+      <span class="cb-command">{command}</span>
+    {/if}
     <span class="cb-spacer"></span>
     {#if lens}
       <span class="cb-lens">{@render lens()}</span>
@@ -119,6 +126,23 @@
      instead of leaving a gap before the command. */
   .cb-marker:empty {
     display: none;
+  }
+
+  /* When the context IS the shell's captured prompt+command line, it spans the
+     header and brings its own look (the shell's own colours / background), so
+     Arlen drops its fill and 45% cap here; the result sits at the top-right
+     beside the first prompt row (prompts can be more than one line). */
+  .console-block.prompt-full .cb-header {
+    align-items: flex-start;
+  }
+  .console-block.prompt-full .cb-context {
+    flex: 1 1 auto;
+    max-width: none;
+    padding: 0;
+    background: none;
+    box-shadow: none;
+    border-radius: 0;
+    overflow: visible;
   }
 
   .cb-header {
