@@ -71,9 +71,28 @@ fn drive_socket_path() -> PathBuf {
 /// carries prompts to the user's OWN pi.
 fn bind_drive_socket() -> std::io::Result<UnixListener> {
     let path = drive_socket_path();
-    let _ = std::fs::remove_file(&path);
+    // Tighten the runtime dir to 0700 BEFORE binding so the drive socket's
+    // same-uid boundary does not rest on the parent dir's default creation mode
+    // (the socket's own bind-then-chmod window is then behind a 0700 dir a
+    // non-owner cannot even traverse).
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
+        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))?;
+    }
+    // Only clear a STALE socket; refuse to hijack one a live daemon still serves
+    // (a successful connect means another instance owns the drive endpoint).
+    if path.exists() {
+        match std::os::unix::net::UnixStream::connect(&path) {
+            Ok(_) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AddrInUse,
+                    "drive socket already served by a live daemon",
+                ))
+            }
+            Err(_) => {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
     }
     let listener = UnixListener::bind(&path)?;
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
