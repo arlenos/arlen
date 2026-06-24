@@ -26,6 +26,7 @@
     newSession,
   } from "$lib/stores/sessions";
   import { GridRegion } from "@arlen/ui-kit/components/console";
+  import Terminal from "$lib/components/Terminal.svelte";
   import { liveRegionCells, isAltScreenActive, liveCursor } from "$lib/live-region";
   import { keyToBytes } from "$lib/keymap";
   import BlockStream from "$lib/components/BlockStream.svelte";
@@ -249,7 +250,15 @@
            reach it via the console-level handler. Switches back to block-mode
            when alt_screen flips false on exit. -->
       <div class="alt-fullscreen">
-        <GridRegion cells={liveCells} cursorRow={liveCur?.row ?? null} cursorCol={liveCur?.col ?? null} />
+        {#if $activeSessionId}
+          <!-- xterm.js owns the alt-screen render: a fullscreen TUI is a single
+               VT grid with no blocks, so it is the clean first cut of the
+               engine-down/renderer-out re-architecture. Fed the raw PTY byte
+               stream, xterm.js parses + paints the alternate screen (replacing
+               the DOM-cell GridRegion). Keystrokes still reach the PTY via the
+               console-level handler that holds focus. -->
+          <Terminal sessionId={$activeSessionId} />
+        {/if}
       </div>
     {:else}
       <BlockStream blocks={$blocks}>
