@@ -125,12 +125,32 @@
   }
   /* The block cursor: paint the cell inverse (the foreground as the cell
      background, the character punched out in the surface colour) so the caret
-     is visible at the prompt the way a real terminal draws it. A steady block
-     reads clearly in a screenshot and on metal; the live region only sets it
-     when the shell wants the cursor shown. */
+     is visible at the prompt the way a real terminal draws it. It blinks on a
+     ~1s cycle - the live region only sets the class when the shell wants the
+     cursor shown. (Respecting an app's DECSCUSR steady/shape request is a later
+     engine refinement; this is the default blink.) */
   .cell.cursor {
     background: var(--foreground);
     color: var(--background, var(--color-bg-app, #0a0a0a));
+    animation: console-cursor-blink 1.06s step-end infinite;
+  }
+  @keyframes console-cursor-blink {
+    0%,
+    50% {
+      background: var(--foreground);
+      color: var(--background, var(--color-bg-app, #0a0a0a));
+    }
+    50.01%,
+    100% {
+      background: transparent;
+      color: var(--foreground);
+    }
+  }
+  /* A steady block for anyone who asked the system to cut motion. */
+  @media (prefers-reduced-motion: reduce) {
+    .cell.cursor {
+      animation: none;
+    }
   }
 
   /* The labelled stand-in for compositor-less hosts. Dashed inset so
