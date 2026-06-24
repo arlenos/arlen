@@ -44,6 +44,13 @@ pub const ZDOTDIR_ENV: &str = "ARLEN_TERM_ZDOTDIR";
 /// same way a real terminal without unbounded scrollback drops the oldest rows).
 const BLOCK_OUTPUT_ROWS: u16 = 600;
 
+/// Cap on the undrained raw-output buffer ([`PtyEngine::drain_raw_output`]). A
+/// regularly-draining xterm.js view keeps it near-empty; this only bounds the
+/// case where no renderer is attached, keeping the most recent bytes (a
+/// screenful and then some) so a later-attaching view still reconstructs roughly
+/// the current screen, without the buffer growing without limit.
+const RAW_OUT_CAP: usize = 256 * 1024;
+
 /// Env var the engine sets to the user's REAL config dir when it overrides
 /// `ZDOTDIR` with the curated one. The curated config restores this (or `$HOME`)
 /// and sources the user's own `.zshrc` before the integration, so the marks fire
@@ -207,6 +214,16 @@ impl PtyEngine {
                             // the SAME bytes and are unaffected.
                             if let Ok(mut r) = raw_out_sink.lock() {
                                 r.extend_from_slice(&buf[..n]);
+                                // Bound the buffer when nothing is draining (the
+                                // xterm.js view not yet attached): keep the most
+                                // recent bytes so a renderer that attaches later
+                                // still reconstructs roughly the current screen,
+                                // without unbounded growth. A regularly-draining
+                                // consumer never reaches this.
+                                if r.len() > RAW_OUT_CAP {
+                                    let drop = r.len() - RAW_OUT_CAP;
+                                    r.drain(..drop);
+                                }
                             }
                             // Process the screen in segments split at each OSC
                             // mark, so the command-output region is resolved
