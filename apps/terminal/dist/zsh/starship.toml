@@ -13,14 +13,14 @@ right_format = "$cmd_duration$time"
 
 [palettes.arlen]
 block = "#1c1d21"
-blue = "#7d9cc4"
+path = "#c8c9cf"
 green = "#8fae74"
 yellow = "#d4b483"
 red = "#c96a6a"
 dim = "#83858d"
 
 [directory]
-style = "fg:blue bg:block"
+style = "fg:path bg:block"
 truncate_to_repo = false
 truncation_length = 2
 fish_style_pwd_dir_length = 1
