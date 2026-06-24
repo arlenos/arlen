@@ -1,0 +1,8 @@
+# Starting permission profile for Dolphin (a file manager). Browses the user's files,
+# so it gets Home; no network, no graph.
+[info]
+app_id = "org.kde.dolphin"
+tier = "third-party"
+
+[filesystem]
+home = true

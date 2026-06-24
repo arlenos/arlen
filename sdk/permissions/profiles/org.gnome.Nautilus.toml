@@ -1,0 +1,8 @@
+# Starting permission profile for Nautilus (GNOME Files) (a file manager). Browses the user's files,
+# so it gets Home; no network, no graph.
+[info]
+app_id = "org.gnome.Nautilus"
+tier = "third-party"
+
+[filesystem]
+home = true

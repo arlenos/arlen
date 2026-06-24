@@ -1,0 +1,8 @@
+# Starting permission profile for GNOME Fonts (font viewer). Opens a font file
+# the user picks from Documents; system fonts are world-readable. No network.
+[info]
+app_id = "org.gnome.font-viewer"
+tier = "third-party"
+
+[filesystem]
+documents = true

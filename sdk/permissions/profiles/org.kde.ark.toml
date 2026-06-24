@@ -1,0 +1,9 @@
+# Starting permission profile for Ark (an archive manager). Archives live in
+# Documents and Downloads; no network, no graph.
+[info]
+app_id = "org.kde.ark"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true
