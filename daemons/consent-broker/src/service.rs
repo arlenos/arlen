@@ -8,30 +8,16 @@
 //! (via `arlen_permissions` `ConnectionAuth` -> `path_to_app_id`) and frames
 //! these is the daemon shell on top; this dispatch is pure and unit-tested.
 
-use arlen_ai_core::capability::{ActionKind, Capability};
+use arlen_ai_core::capability::Capability;
 use serde::{Deserialize, Serialize};
 
 use crate::queue::{ConsentQueue, Enqueued, RequestId};
-use crate::{AttestedRequester, ConsentClass, ConsentRequest};
+use crate::{AttestedRequester, ConsentRequest};
 
-/// The wire request a client sends to the broker. It carries the action's
-/// class, impact and scope - but NOT the requester: the broker fills that from
-/// the attested peer, so identity cannot be spoofed over the wire.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RequestBody {
-    /// The request class (selects the rendered dialog).
-    pub class: ConsentClass,
-    /// The impact kind (drives the severity classification).
-    pub kind: ActionKind,
-    /// Whether this was triggered by external / untrusted content.
-    #[serde(default)]
-    pub triggered_by_external_content: bool,
-    /// The plain-language risk/outcome summary.
-    pub summary: String,
-    /// The concrete scope / target, when there is one.
-    #[serde(default)]
-    pub scope: Option<String>,
-}
+// The wire `RequestBody` lives in the shared `arlen-consent-contract` crate;
+// re-exported here so `service::RequestBody` (and the lib's `pub use
+// service::RequestBody`) and every internal reference are unchanged.
+pub use arlen_consent_contract::RequestBody;
 
 /// The broker's reply to an intake.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -81,7 +67,8 @@ pub fn handle_intake(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arlen_ai_core::capability::{AccessTier, ActionPermissions, BaselineMode};
+    use arlen_ai_core::capability::{AccessTier, ActionKind, ActionPermissions, BaselineMode};
+    use crate::ConsentClass;
 
     fn cap_suggest() -> Capability {
         Capability::new(

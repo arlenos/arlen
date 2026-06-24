@@ -17,6 +17,9 @@ path = "src/main.rs"
 # ActionKind / ActionDecision / Capability::decide. The cross-workspace path
 # dep mirrors daemons/modulesd.
 arlen-ai-core = { path = "../../ai/ai-core" }
+# The shared wire contract (request body / class / intake result / outcome),
+# re-exported below so a requester deps this thin crate, not the whole broker.
+arlen-consent-contract = { path = "../../contracts/consent-contract" }
 # Kernel-attested peer identity (SO_PEERCRED -> path_to_app_id) for both sockets.
 arlen-permissions = { path = "../../sdk/permissions" }
 # The audit ledger sink: each resolved decision is recorded fail-closed before
