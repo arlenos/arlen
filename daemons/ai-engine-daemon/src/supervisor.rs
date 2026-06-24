@@ -108,13 +108,16 @@ pub enum EngineExit {
 /// when the process exits.
 #[async_trait]
 pub trait SpawnEngine: Send + Sync {
-    /// Run one engine instance to exit, with `session_token` in its environment.
-    /// `on_spawned` is called with the child's pid as soon as it is known, so
-    /// the supervisor can bind the session to that attested pid before any
-    /// contract call arrives. The future resolves when the process exits.
+    /// Run one engine instance to exit, with `session_token` reaching it and the
+    /// session's `system_prompt` delivered at spawn (the SessionInit behaviour-
+    /// inject half; empty = pi keeps its default prompt). `on_spawned` is called
+    /// with the child's pid as soon as it is known, so the supervisor can bind the
+    /// session to that attested pid before any contract call arrives. The future
+    /// resolves when the process exits.
     async fn run_once(
         &self,
         session_token: &str,
+        system_prompt: &str,
         on_spawned: &(dyn Fn(u32) + Send + Sync),
     ) -> EngineExit;
 }
@@ -139,7 +142,7 @@ where
     loop {
         let token = crate::session::SessionToken::mint()?;
         let on_spawned = |pid: u32| dispatcher.bind_session(token.clone(), init, pid);
-        let exit = engine.run_once(token.as_str(), &on_spawned).await;
+        let exit = engine.run_once(token.as_str(), &init.system_prompt, &on_spawned).await;
         // The engine exited; its session is over (a restart mints a fresh one).
         dispatcher.end_session(&token);
         let now = Instant::now();
@@ -241,6 +244,7 @@ mod tests {
         async fn run_once(
             &self,
             _token: &str,
+            _system_prompt: &str,
             on_spawned: &(dyn Fn(u32) + Send + Sync),
         ) -> EngineExit {
             self.runs.fetch_add(1, Ordering::SeqCst);

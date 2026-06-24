@@ -18,6 +18,25 @@ export function shortPath(path: string): string {
   return parts[parts.length - 2] + "/" + parts[parts.length - 1];
 }
 
+/// Prompt form: the home-shortened path with deep ancestors abbreviated to
+/// their first character, the current folder (the anchor) and its immediate
+/// parent kept whole. `~/Repositories/arlen/apps/terminal` becomes
+/// `~/R/a/apps/terminal`; a short path (`~/Repositories/arlen`) is left as is.
+/// Returns the dim prefix and the bright anchor separately so the prompt can
+/// weight them the way p10k does (faint trail, solid current folder).
+export function collapsePath(path: string): { prefix: string; anchor: string } {
+  const t = tildify(path);
+  const parts = t.split("/");
+  const anchor = parts.pop() ?? "";
+  const last = parts.length - 1;
+  const shown = parts.map((p, i) => {
+    if (p === "" || p === "~") return p;
+    return i >= last ? p : p.slice(0, 1);
+  });
+  const prefix = shown.join("/");
+  return { prefix: prefix ? prefix + "/" : "", anchor: anchor || "/" };
+}
+
 /// Row display form: the full home-shortened path when it fits,
 /// otherwise whole leading segments give way to a `…/` prefix — the
 /// leaf always survives, and every row speaks the same shape

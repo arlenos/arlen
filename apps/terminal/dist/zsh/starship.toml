@@ -1,61 +1,62 @@
-# Arlen default prompt (starship). Quiet and flat to match the desktop house
-# style: the working directory and git on the left, the time and last command's
-# duration on the right, a single caret to type at. Colours map to the
-# terminal's muted Arlen palette. A user who ships their own starship config or
-# prompt (p10k, a custom PS1) replaces this entirely.
+# Arlen default prompt (starship). Mirrors the look of Arlen's own per-block
+# prompt header: the path + git in a quiet filled block on the left, the last
+# command's duration and the time in a block on the right, no prompt caret (the
+# block is the prompt). The path collapses fish-style (parents to one letter,
+# current folder whole). Colours map to the muted Arlen palette. A user's own
+# prompt (p10k, a custom config) replaces this entirely.
 
 add_newline = false
 palette = "arlen"
 
-format = "$directory$git_branch$git_status$character"
+format = "$directory$git_branch$git_status"
 right_format = "$cmd_duration$time"
 
 [palettes.arlen]
-fg = "#c8c9cf"
-dim = "#83858d"
+block = "#1c1d21"
 blue = "#7d9cc4"
 green = "#8fae74"
 yellow = "#d4b483"
 red = "#c96a6a"
+dim = "#83858d"
 
 [directory]
-style = "blue"
-truncation_length = 3
+style = "fg:blue bg:block"
 truncate_to_repo = false
-truncation_symbol = "…/"
+truncation_length = 2
+fish_style_pwd_dir_length = 1
 read_only = " ro"
-format = "[$path]($style)[$read_only](dim) "
+format = "[ $path ]($style)"
 
 [git_branch]
-style = "green"
+style = "fg:green bg:block"
 symbol = ""
 format = "[$branch]($style)"
 
 [git_status]
-style = "yellow"
-format = "[ $all_status$ahead_behind]($style)"
+style = "fg:yellow bg:block"
+format = "[$all_status$ahead_behind ]($style)"
 conflicted = "!"
-ahead = "^${count}"
-behind = "v${count}"
-diverged = "^v"
-untracked = "?"
-modified = "*"
-staged = "+"
-renamed = "r"
-deleted = "x"
+ahead = ""
+behind = ""
+diverged = ""
+untracked = ""
+modified = " *"
+staged = " +"
+renamed = " r"
+deleted = " x"
 stashed = ""
 
 [cmd_duration]
 min_time = 2000
-style = "dim"
-format = "[$duration]($style) "
+style = "fg:dim bg:block"
+format = "[ $duration ]($style)"
 
 [time]
 disabled = false
-style = "dim"
-format = "[$time]($style)"
+style = "fg:dim bg:block"
+format = "[ $time ]($style)"
 time_format = "%H:%M"
 
 [character]
-success_symbol = "[ ❯](fg)"
-error_symbol = "[ ❯](red)"
+success_symbol = ""
+error_symbol = ""

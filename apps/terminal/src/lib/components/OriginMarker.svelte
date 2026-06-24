@@ -13,19 +13,14 @@
 
 {#if origin === "agent"}
   <span class="om om-agent" role="img" aria-label="Drafted by the assistant">✦</span>
-{:else}
-  <span class="om" aria-hidden="true">❯</span>
 {/if}
 
 <style>
-  /* The chevron comes from plain JetBrains Mono — the Nerd Font Mono
-     variant squeezes U+276F into a half cell and it reads like a
-     closing paren. */
-  .om {
-    font-family: "JetBrains Mono", var(--font-mono, ui-monospace, monospace);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
+  /* Provenance is quiet-chrome: a command the user ran carries no marker at
+     all (the block already says everything), so only an agent-drafted command
+     shows the ✦ — origin where the eye already is. */
   .om-agent {
+    font-family: var(--font-mono, ui-monospace, monospace);
     color: var(--color-accent, var(--primary));
   }
 </style>
