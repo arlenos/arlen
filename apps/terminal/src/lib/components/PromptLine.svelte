@@ -47,11 +47,16 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* The path is monochrome - the trail to the current folder is faint, the
+     current folder the solid anchor - so colour in the chrome only ever means
+     something (git state, a failure). The git colours stay in the muted
+     terminal register (the bright semantic tokens would shout against the flat
+     look): branch green, a dirty marker in amber. */
   .pl-prefix {
-    color: color-mix(in srgb, var(--term-ansi-4, #7d9cc4) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
   .pl-anchor {
-    color: var(--term-ansi-4, #7d9cc4);
+    color: color-mix(in srgb, var(--foreground) 85%, transparent);
     font-weight: 600;
   }
   .pl-branch {
