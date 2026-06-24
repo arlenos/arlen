@@ -19,6 +19,9 @@ pub mod supervisor;
 
 pub mod capability_map;
 
+/// The consent seam: resolve a gate `Confirm` via the trusted-path consent surface.
+pub mod consent;
+
 pub mod read_executor;
 
 /// The Phase-1 reporter seam: audit + S17/S18 screening of tool results.
