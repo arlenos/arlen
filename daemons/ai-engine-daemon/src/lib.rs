@@ -25,6 +25,9 @@ pub mod consent;
 /// The real consent-broker client implementing the consent seam.
 pub mod consent_client;
 
+/// The Phase-2-A drive-channel relay: a faithful JSONL bridge shell <-> pi RPC.
+pub mod rpc_proxy;
+
 pub mod read_executor;
 
 /// The Phase-1 reporter seam: audit + S17/S18 screening of tool results.

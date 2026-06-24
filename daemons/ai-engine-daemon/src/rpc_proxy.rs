@@ -1,0 +1,165 @@
+//! The Phase-2-A drive-channel relay (`pi-agent-adoption.md` §A: "pi RPC over
+//! stdio = the shell-facing drive channel; the daemon proxies shell <-> pi").
+//!
+//! A bidirectional JSONL relay between the harness shell and the confined pi
+//! sidecar's RPC stdio: commands (`{"type":"prompt",...}`, steer, interrupt)
+//! flow shell -> pi's stdin, and pi's agent events flow pi's stdout -> shell.
+//! It is a FAITHFUL pass-through - records are forwarded byte-for-byte, never
+//! reshaped (reshaping the stream would be a prompt-injection surface; the
+//! security boundary is the separate contract socket where pi calls Authorize /
+//! Report, not this drive channel).
+//!
+//! Framing is pi's strict JSONL: LF (`\n`) is the only record delimiter
+//! (`rpc.md`). Each record is read up to and including its newline and written
+//! out verbatim, so an embedded `\r`, `U+2028` or `U+2029` inside a JSON string
+//! is never mistaken for a record boundary (the bug pi's docs warn generic line
+//! readers hit). The relay ends when EITHER side closes: a shell disconnect
+//! drops pi's stdin sink (pi sees EOF and winds down its session), and pi
+//! exiting closes its stdout (the shell sees the stream end).
+//!
+//! This is the MECHANISM, exercised here over in-memory streams. The
+//! shell-facing drive socket (A2) and the sidecar handing over pi's piped
+//! stdin/stdout (A3) are the wiring that feeds it.
+
+use std::io;
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+
+/// Forward one LF-delimited record at a time from `from` to `to` until `from`
+/// reaches EOF, flushing after each so a streamed token reaches the peer
+/// promptly rather than sitting in a buffer.
+async fn pump<R, W>(from: R, mut to: W) -> io::Result<()>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    let mut from = BufReader::new(from);
+    let mut record = Vec::new();
+    loop {
+        record.clear();
+        // LF-only framing: reads through the next `\n` (kept) or to EOF.
+        let n = from.read_until(b'\n', &mut record).await?;
+        if n == 0 {
+            return Ok(()); // EOF: this direction is done.
+        }
+        to.write_all(&record).await?;
+        to.flush().await?;
+    }
+}
+
+/// Bridge the harness shell to the pi RPC sidecar. Commands read from
+/// `shell_read` are written to `pi_stdin`; events read from `pi_stdout` are
+/// written to `shell_write`. Returns when either direction ends (the session is
+/// over). The first direction to finish drops the other's sink, signalling EOF
+/// to that peer.
+pub async fn relay<SR, SW, PR, PW>(
+    shell_read: SR,
+    shell_write: SW,
+    pi_stdin: PW,
+    pi_stdout: PR,
+) -> io::Result<()>
+where
+    SR: AsyncRead + Unpin,
+    SW: AsyncWrite + Unpin,
+    PR: AsyncRead + Unpin,
+    PW: AsyncWrite + Unpin,
+{
+    let commands = pump(shell_read, pi_stdin); // shell -> pi
+    let events = pump(pi_stdout, shell_write); // pi -> shell
+    tokio::select! {
+        r = commands => r,
+        r = events => r,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::AsyncReadExt;
+
+    /// Read one LF-terminated record (as a String) from `r`. Reads byte-by-byte
+    /// rather than via a `BufReader`, which would over-read the next record into
+    /// its buffer and then discard it when dropped - leaving a second
+    /// `read_record` on the same stream blocked forever (the bug a buffered
+    /// reader hides in a multi-record test).
+    async fn read_record<R: AsyncRead + Unpin>(r: &mut R) -> String {
+        let mut buf = Vec::new();
+        let mut byte = [0u8; 1];
+        loop {
+            if r.read(&mut byte).await.unwrap() == 0 {
+                break; // EOF
+            }
+            buf.push(byte[0]);
+            if byte[0] == b'\n' {
+                break;
+            }
+        }
+        String::from_utf8(buf).unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_shell_command_reaches_pi_stdin_verbatim() {
+        let (mut shell_in, shell_read) = tokio::io::duplex(4096);
+        let (pi_stdin, mut pi_in) = tokio::io::duplex(4096);
+        let (_pi_out, pi_stdout) = tokio::io::duplex(4096);
+        let (shell_write, _shell_out) = tokio::io::duplex(4096);
+
+        let relay = tokio::spawn(relay(shell_read, shell_write, pi_stdin, pi_stdout));
+
+        // A command with an embedded escaped newline inside the JSON string must
+        // NOT be split: only the trailing LF terminates the record.
+        let cmd = "{\"type\":\"prompt\",\"message\":\"a\\nb\"}\n";
+        shell_in.write_all(cmd.as_bytes()).await.unwrap();
+        assert_eq!(read_record(&mut pi_in).await, cmd);
+
+        drop(shell_in); // shell disconnects -> relay winds down
+        relay.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_pi_event_reaches_the_shell_verbatim() {
+        let (_shell_in, shell_read) = tokio::io::duplex(4096);
+        let (pi_stdin, _pi_in) = tokio::io::duplex(4096);
+        let (mut pi_out, pi_stdout) = tokio::io::duplex(4096);
+        let (shell_write, mut shell_out) = tokio::io::duplex(4096);
+
+        let relay = tokio::spawn(relay(shell_read, shell_write, pi_stdin, pi_stdout));
+
+        let event = "{\"type\":\"assistantMessageEvent\",\"delta\":\"hi\"}\n";
+        pi_out.write_all(event.as_bytes()).await.unwrap();
+        assert_eq!(read_record(&mut shell_out).await, event);
+
+        drop(pi_out); // pi exits -> relay ends
+        relay.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn multiple_records_relay_in_order() {
+        let (mut shell_in, shell_read) = tokio::io::duplex(4096);
+        let (pi_stdin, mut pi_in) = tokio::io::duplex(4096);
+        let (_pi_out, pi_stdout) = tokio::io::duplex(4096);
+        let (shell_write, _shell_out) = tokio::io::duplex(4096);
+
+        let relay = tokio::spawn(relay(shell_read, shell_write, pi_stdin, pi_stdout));
+
+        shell_in.write_all(b"{\"id\":\"1\"}\n").await.unwrap();
+        shell_in.write_all(b"{\"id\":\"2\"}\n").await.unwrap();
+        assert_eq!(read_record(&mut pi_in).await, "{\"id\":\"1\"}\n");
+        assert_eq!(read_record(&mut pi_in).await, "{\"id\":\"2\"}\n");
+
+        drop(shell_in);
+        relay.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_shell_disconnect_ends_the_relay() {
+        let (shell_in, shell_read) = tokio::io::duplex(4096);
+        let (pi_stdin, _pi_in) = tokio::io::duplex(4096);
+        let (_pi_out, pi_stdout) = tokio::io::duplex(4096);
+        let (shell_write, _shell_out) = tokio::io::duplex(4096);
+
+        let handle = tokio::spawn(relay(shell_read, shell_write, pi_stdin, pi_stdout));
+        drop(shell_in); // immediate EOF on the command direction
+        // The relay resolves rather than hanging.
+        handle.await.unwrap().unwrap();
+    }
+}
