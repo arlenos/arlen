@@ -209,7 +209,7 @@ pub fn pi_sidecar_confinement(
 /// rpc`. Pure (no spawn). `--mode rpc` runs pi as the RPC-over-stdio sidecar
 /// (the `profile:rpc` entry); the `run_once` spawn adds only the stdio wiring and
 /// the secret session-token env on top of this.
-pub fn pi_sidecar_argv(confinement: &Confinement, paths: &SidecarPaths) -> Vec<String> {
+pub fn pi_sidecar_argv(confinement: &Confinement, paths: &SidecarPaths, system_prompt: &str) -> Vec<String> {
     let mut argv = confinement.bwrap_args();
     argv.push("--".to_string());
     argv.push(paths.node_bin.clone());
@@ -219,6 +219,16 @@ pub fn pi_sidecar_argv(confinement: &Confinement, paths: &SidecarPaths) -> Vec<S
     // Load the Arlen security extension (the gate + audit shims) into pi.
     argv.push("--extension".to_string());
     argv.push(paths.arlen_extension.clone());
+    // The session system prompt the daemon composed (SessionInit's behaviour-inject
+    // half) is delivered at spawn: SessionInit is daemon-driven, not an engine-
+    // fetchable contract call, so the prompt reaches pi here, not over the socket.
+    // `--system-prompt` replaces pi's default (context files + skills still append);
+    // an empty prompt leaves the default, so a session with no composed prompt is a
+    // clean no-op (the orchestrator that composes a non-empty one lands later).
+    if !system_prompt.is_empty() {
+        argv.push("--system-prompt".to_string());
+        argv.push(system_prompt.to_string());
+    }
     argv
 }
 
@@ -286,6 +296,7 @@ impl PiSidecar {
     async fn spawn_and_wait(
         &self,
         session_token: &str,
+        system_prompt: &str,
         on_spawned: &(dyn Fn(u32) + Send + Sync),
     ) -> std::io::Result<EngineExit> {
         // The token reaches pi via a 0600 file in the rw state dir, not the argv.
@@ -294,7 +305,7 @@ impl PiSidecar {
 
         let confinement = pi_sidecar_confinement(&self.paths, Some(&token_path))
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()))?;
-        let mut argv = pi_sidecar_argv(&confinement, &self.paths);
+        let mut argv = pi_sidecar_argv(&confinement, &self.paths, system_prompt);
 
         // A pipe whose write end bwrap inherits and writes its JSON info to (the
         // child-pid we bind the session to); the read end stays in the parent.
@@ -377,9 +388,10 @@ impl SpawnEngine for PiSidecar {
     async fn run_once(
         &self,
         session_token: &str,
+        system_prompt: &str,
         on_spawned: &(dyn Fn(u32) + Send + Sync),
     ) -> EngineExit {
-        match self.spawn_and_wait(session_token, on_spawned).await {
+        match self.spawn_and_wait(session_token, system_prompt, on_spawned).await {
             Ok(exit) => exit,
             Err(e) => {
                 error!(error = %e, "failed to spawn the confined pi sidecar");
@@ -408,7 +420,25 @@ mod tests {
 
     fn args() -> Vec<String> {
         let conf = pi_sidecar_confinement(&paths(), None).expect("confinement");
-        pi_sidecar_argv(&conf, &paths())
+        pi_sidecar_argv(&conf, &paths(), "")
+    }
+
+    #[test]
+    fn the_system_prompt_is_appended_only_when_non_empty() {
+        let conf = pi_sidecar_confinement(&paths(), None).expect("confinement");
+
+        // Empty (the default session, no composed prompt): pi keeps its default,
+        // so no --system-prompt flag is added.
+        let bare = pi_sidecar_argv(&conf, &paths(), "");
+        assert!(!bare.iter().any(|a| a == "--system-prompt"), "empty prompt adds no flag");
+
+        // A composed session prompt is delivered at spawn as --system-prompt <text>,
+        // after the program separator (so it is a pi arg, not a bwrap flag).
+        let with = pi_sidecar_argv(&conf, &paths(), "You are Arlen's tidy-downloads behaviour.");
+        let flag = with.iter().position(|a| a == "--system-prompt").expect("flag present");
+        let sep = with.iter().position(|a| a == "--").expect("separator present");
+        assert!(flag > sep, "--system-prompt is a pi arg (after `--`), not a bwrap flag");
+        assert_eq!(with.get(flag + 1).map(String::as_str), Some("You are Arlen's tidy-downloads behaviour."));
     }
 
     /// The value bound (`--ro-bind`/`--bind`/`--setenv`) for a flag at a given
@@ -500,12 +530,12 @@ mod tests {
     fn the_token_file_path_is_set_only_when_provided() {
         // None: token-free shape, no token-file env at all.
         let none = pi_sidecar_confinement(&paths(), None).expect("confinement");
-        let none_argv = pi_sidecar_argv(&none, &paths());
+        let none_argv = pi_sidecar_argv(&none, &paths(), "");
         assert_eq!(dest_of(&none_argv, "--setenv", "ARLEN_AI_ENGINE_TOKEN_FILE"), None);
         // Some: the file PATH (not the secret) is set so the plugins find the token.
         let tf = "/home/u/.local/state/arlen/pi/.arlen-session-token";
         let some = pi_sidecar_confinement(&paths(), Some(tf)).expect("confinement");
-        let some_argv = pi_sidecar_argv(&some, &paths());
+        let some_argv = pi_sidecar_argv(&some, &paths(), "");
         assert_eq!(
             dest_of(&some_argv, "--setenv", "ARLEN_AI_ENGINE_TOKEN_FILE"),
             Some(tf.to_string()),

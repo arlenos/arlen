@@ -72,13 +72,15 @@
         <span class="cb-running-dot"></span>
         running
       </span>
-    {:else}
-      {#if exitCode !== null && exitCode !== 0}
-        <span class="cb-exit">exit {exitCode}</span>
-      {/if}
-      {#if durationMs !== null}
-        <span class="cb-duration">{formatDuration(durationMs)}</span>
-      {/if}
+    {:else if (exitCode !== null && exitCode !== 0) || durationMs !== null}
+      <span class="cb-result">
+        {#if exitCode !== null && exitCode !== 0}
+          <span class="cb-exit">exit {exitCode}</span>
+        {/if}
+        {#if durationMs !== null}
+          <span class="cb-duration">{formatDuration(durationMs)}</span>
+        {/if}
+      </span>
     {/if}
   </div>
 
@@ -96,14 +98,26 @@
       color-mix(in srgb, var(--foreground) 7%, transparent);
   }
 
-  /* The prompt context sits inline before the command, one line like
-     a real shell prompt; it yields (truncates) before the command
-     ever has to. */
+  /* The prompt context sits inline before the command in a quiet filled
+     block - the p10k "block" read, in the Arlen flat register (a subtle
+     foreground wash, not a hard grey slab). It yields (truncates) before the
+     command ever has to. The result block on the right shares the recipe. */
   .cb-context {
     flex-shrink: 1;
     min-width: 0;
     max-width: 45%;
     overflow: hidden;
+    display: inline-flex;
+    align-items: baseline;
+    padding: 1px 9px;
+    border-radius: var(--radius-input, 8px);
+    background: color-mix(in srgb, var(--foreground) 7%, transparent);
+  }
+
+  /* A command the user ran carries no marker, so the marker slot collapses
+     instead of leaving a gap before the command. */
+  .cb-marker:empty {
+    display: none;
   }
 
   .cb-header {
@@ -178,8 +192,19 @@
     50% { opacity: 0.65; }
   }
 
-  /* Failure is marked by the word in error color, nothing more — the
-     same rendering the sidebar history rows use. */
+  /* The result block on the right: exit (only on failure) + duration, in the
+     same filled block as the context, so the header reads as a left block and
+     a right block with the command between - the p10k left/right-prompt shape. */
+  .cb-result {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 1px 9px;
+    border-radius: var(--radius-input, 8px);
+    background: color-mix(in srgb, var(--foreground) 7%, transparent);
+  }
+
   .cb-exit {
     flex-shrink: 0;
     color: var(--color-error);
