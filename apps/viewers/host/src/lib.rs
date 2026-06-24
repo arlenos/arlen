@@ -143,10 +143,17 @@ pub fn run_confined_worker(
     // `close_range` marks every other inherited fd CLOEXEC so no host fd leaks
     // into the worker, then the seccomp fd's CLOEXEC bit is re-cleared so it
     // alone stays open. stdin/stdout are dup'd to 0/1 (below 3), so close_range
-    // spares them. async-signal-safe: only raw libc calls, no allocation.
+    // spares them. async-signal-safe: raw libc calls and an allocation-free
+    // errno read.
     unsafe {
         command.pre_exec(move || {
-            libc::close_range(3, libc::c_uint::MAX, libc::CLOSE_RANGE_CLOEXEC as libc::c_int);
+            // Fail closed: if the inherited fds cannot be marked CLOEXEC, refuse to
+            // exec into the worker rather than risk leaking a host fd into it. On a
+            // supported kernel this errors only when close_range is unavailable,
+            // exactly the case where the isolation cannot be guaranteed.
+            if libc::close_range(3, libc::c_uint::MAX, libc::CLOSE_RANGE_CLOEXEC as libc::c_int) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
             let flags = libc::fcntl(seccomp_fd, libc::F_GETFD);
             if flags >= 0 {
                 libc::fcntl(seccomp_fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
