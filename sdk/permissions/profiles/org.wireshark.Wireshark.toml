@@ -1,0 +1,14 @@
+# Starting permission profile for Wireshark (a network protocol analyzer).
+# Network is its function (live capture); capture files (.pcap/.pcapng) are
+# opened and saved from Documents. No graph, no other user dirs. NB live capture
+# also needs a raw-socket/dumpcap privilege the install grants out of band; this
+# profile covers only the app-data surface.
+[info]
+app_id = "org.wireshark.Wireshark"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true
