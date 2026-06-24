@@ -195,13 +195,24 @@ pub fn pi_sidecar_confinement(
     // (each at its host path so node resolves its own libs + the pi dist + the
     // extension's sibling modules), the two sockets read-write at their fixed
     // sandbox paths.
-    let plumbing = vec![
+    let mut plumbing = vec![
         Bind::ReadOnly(require_abs(&paths.node_runtime)?, require_abs(&paths.node_runtime)?),
         Bind::ReadOnly(require_abs(&paths.pi_install)?, require_abs(&paths.pi_install)?),
         Bind::ReadOnly(ext_dir.clone(), ext_dir),
         Bind::ReadWrite(require_abs(&paths.contract_socket)?, SANDBOX_CONTRACT_SOCKET.to_string()),
         Bind::ReadWrite(require_abs(&paths.proxy_socket)?, SANDBOX_PROXY_SOCKET.to_string()),
     ];
+    // node's ELF interpreter is /lib64/ld-linux-x86-64.so.2 (a symlink resolving
+    // into /usr on the host). /usr is bound, but the kernel resolves the
+    // interpreter via the /lib64 (or /lib) path, which the sandbox root otherwise
+    // lacks - so exec of node fails ENOENT without this. Bind the loader symlink
+    // dirs when present (bwrap resolves the source symlink), the same loader-bind
+    // the decoder workers' confinement needs.
+    for loader in ["/lib64", "/lib"] {
+        if Path::new(loader).exists() {
+            plumbing.push(Bind::ReadOnly(loader.to_string(), loader.to_string()));
+        }
+    }
     Ok(skeleton.complete(plumbing, vec![]))
 }
 
@@ -650,11 +661,31 @@ mod tests {
     /// running `node --version` as the trivial confined payload. `#[ignore]d` like
     /// the other host-gated spawn tests.
     #[tokio::test]
-    #[ignore = "needs a userns-capable host + a real node runtime + pi install"]
+    #[ignore = "needs a userns-capable host + a real node runtime (ARLEN_PI_NODE_RUNTIME) + pi install (ARLEN_PI_INSTALL/EXTENSION)"]
     async fn the_confined_node_starts_and_reports_a_child_pid() {
+        // Self-contained: the confinement binds the pi-state dir + the contract and
+        // ai-proxy sockets, and bwrap needs each bind SOURCE to exist. Point the
+        // state/runtime dirs at a temp tree and dummy-bind both sockets, so the test
+        // needs only a real node + pi install (the ARLEN_PI_* env), not a live daemon
+        // or ai-proxy.
+        use std::os::unix::net::UnixListener;
+        let tmp = std::env::temp_dir().join(format!("arlen-pi-spawn-{}", std::process::id()));
+        let arlen = tmp.join("arlen");
+        std::fs::create_dir_all(arlen.join("pi")).expect("temp state dir");
+        let contract = arlen.join("ai-engine.sock");
+        let proxy = arlen.join("ai-proxy.sock");
+        let _contract_l = UnixListener::bind(&contract).expect("dummy contract socket");
+        let _proxy_l = UnixListener::bind(&proxy).expect("dummy ai-proxy socket");
+
+        let tmp_s = tmp.to_string_lossy().into_owned();
         let p = SidecarPaths::resolve(
-            |k| std::env::var(k).ok(),
-            "/run/user/1000/arlen/ai-engine.sock".to_string(),
+            // pi_state = {XDG_STATE_HOME}/arlen/pi; proxy = {XDG_RUNTIME_DIR}/arlen/
+            // ai-proxy.sock - point both at the temp tree; node/pi/extension stay real.
+            move |k| match k {
+                "XDG_STATE_HOME" | "XDG_RUNTIME_DIR" => Some(tmp_s.clone()),
+                _ => std::env::var(k).ok(),
+            },
+            contract.to_string_lossy().into_owned(),
         )
         .expect("resolve sidecar paths from the env");
         let conf = pi_sidecar_confinement(&p, None).expect("confinement");
@@ -692,5 +723,6 @@ mod tests {
         assert!(pid > 1, "the child-pid is a real pid: {pid}");
         let status = child.wait().await.expect("wait");
         assert!(status.success(), "node --version runs cleanly under the confinement");
+        std::fs::remove_dir_all(&tmp).ok();
     }
 }
