@@ -111,7 +111,8 @@
     align-items: baseline;
     padding: 1px 9px;
     border-radius: var(--radius-input, 8px);
-    background: color-mix(in srgb, var(--foreground) 7%, transparent);
+    background: color-mix(in srgb, var(--foreground) 13%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 9%, transparent);
   }
 
   /* A command the user ran carries no marker, so the marker slot collapses
@@ -202,7 +203,8 @@
     gap: 8px;
     padding: 1px 9px;
     border-radius: var(--radius-input, 8px);
-    background: color-mix(in srgb, var(--foreground) 7%, transparent);
+    background: color-mix(in srgb, var(--foreground) 13%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 9%, transparent);
   }
 
   .cb-exit {
