@@ -1,12 +1,17 @@
-//! The Arlen AI engine daemon binary (`pi-agent-adoption.md` Phase 0).
+//! The Arlen AI engine daemon binary (`pi-agent-adoption.md` Phase 1).
 //!
 //! Binds the contract Unix socket (0600), and for each connection authenticates
 //! the peer with SO_PEERCRED via `ConnectionAuth` (cross-uid rejected), then
 //! serves the five-verb contract through the session-bound dispatcher with the
 //! attested pid. Built BESIDE the existing ai-daemon/ai-agent; nothing here
-//! touches them. The gate/executor/reporter are Phase-0 fail-closed placeholders
-//! (Phase 1 re-points them to the real Rust); the pi-sidecar supervisor + the
-//! SessionInit/token handshake are the next slice.
+//! touches them. The gate/executor/reporter seams are wired to the real Rust:
+//! the gate is `CapabilityGate` (`Capability::decide`), the reporter is
+//! `ScreeningReporter` (content-free audit + S17/S18 screening), and the
+//! executor is a `ProxyExecutor` routing graph.read/graph.write. The live tool
+//! runners stay fail-closed (`DeniedRunner`/`DeniedWriter`) pending the gated
+//! cutovers (the Phase-2 read pipeline; the human-gated executor-live write),
+//! and the screener is `Off` until a classifier model is provisioned - the
+//! gate's confirm-on-external-trigger is the containment meanwhile.
 
 use arlen_ai_core::screen::Screener;
 use arlen_ai_engine_daemon::capability_map::CapabilityGate;
@@ -76,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = UnixListener::bind(&path)?;
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
     let uid = current_uid();
-    info!(socket = %path.display(), "ai-engine-daemon listening (Phase 0: placeholder seams)");
+    info!(socket = %path.display(), "ai-engine-daemon listening (Phase 1: real seams; live tool runners pending cutover)");
 
     // The dispatcher is shared across connection tasks. Phase 1 has wired the
     // gate seam to Capability::decide (CapabilityGate), the reporter seam to the
