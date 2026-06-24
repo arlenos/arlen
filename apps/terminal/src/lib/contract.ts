@@ -156,6 +156,14 @@ export async function terminalGrid(sessionId: string): Promise<GridSnapshot> {
   return invoke<GridSnapshot>("terminal_grid", { sessionId });
 }
 
+/// Drain the session's raw PTY output bytes for the xterm.js renderer: the bytes
+/// read since the last call (a JSON number array over the wire). The caller
+/// writes them to its xterm.js instance, which owns the VT parsing + render. The
+/// frontend pulls this on each `terminal://frame` signal.
+export async function terminalDrainOutput(sessionId: string): Promise<number[]> {
+  return invoke<number[]>("terminal_drain_output", { sessionId });
+}
+
 export async function terminalInput(
   sessionId: string,
   input: string,

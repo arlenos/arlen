@@ -19,10 +19,10 @@
 //! is intentionally unbounded (a consent dialog blocks until the user decides);
 //! only reaching the broker is what can fail fast.
 
-use crate::capability_map::action_kind_for_tool;
+use crate::capability_map::{action_kind_for_tool, consent_class_for_tool};
 use crate::consent::ConsentDriver;
 use ai_engine_contract::ConfirmAnswer;
-use arlen_consent_contract::{ConsentClass, ConsentOutcome, IntakeResult, RequestBody};
+use arlen_consent_contract::{ConsentOutcome, IntakeResult, RequestBody};
 use async_trait::async_trait;
 use std::io;
 use std::path::PathBuf;
@@ -78,7 +78,9 @@ impl ConsentDriver for ConsentBrokerClient {
         external_triggered: bool,
     ) -> ConfirmAnswer {
         let body = RequestBody {
-            class: ConsentClass::AgentAction,
+            // Presentation: the dialog class matched to the tool (Destructive /
+            // ExternalSend / ...) for the right copy, falling back to AgentAction.
+            class: consent_class_for_tool(tool_name),
             // The same classifier the gate decided on, so the consent dialog's
             // severity matches the gate's verdict (no drift). The gate only
             // reaches Confirm for a high-impact or externally-triggered action,
@@ -160,10 +162,11 @@ mod tests {
         assert_eq!(answer, ConfirmAnswer::Approved);
         broker.await.unwrap();
 
-        // The broker received an AgentAction request carrying the prompt as the
-        // summary, the tool as the scope, and the external flag.
+        // The broker received a request whose class is matched to the tool
+        // (send_email -> ExternalSend), carrying the prompt as the summary, the
+        // tool as the scope, and the external flag.
         let (class, summary, scope, external) = seen.lock().unwrap().clone().unwrap();
-        assert_eq!(class, ConsentClass::AgentAction);
+        assert_eq!(class, ConsentClass::ExternalSend);
         assert_eq!(summary, "Confirm send_email?");
         assert_eq!(scope.as_deref(), Some("send_email"));
         assert!(external);

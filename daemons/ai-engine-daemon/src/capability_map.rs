@@ -21,6 +21,7 @@ use arlen_ai_core::capability::{ActionDecision, ActionKind, ActionPermissions, C
 use arlen_ai_core::graph_query::{AccessTier, QueryScope};
 use arlen_ai_core::graph_schema::GraphSchema;
 use arlen_ai_core::mcp::{AlwaysConfirm, AlwaysConfirmReason};
+use arlen_consent_contract::ConsentClass;
 use async_trait::async_trait;
 
 /// The app identity actions are attributed to under an engine session. The
@@ -142,6 +143,25 @@ pub(crate) fn action_kind_for_tool(tool: &str) -> ActionKind {
         Some(AlwaysConfirmReason::ElevatedCommand) => ActionKind::ElevatedPrivilege,
         Some(AlwaysConfirmReason::GenericExecution) => ActionKind::ElevatedPrivilege,
         None => ActionKind::Ordinary,
+    }
+}
+
+/// Map a tool name to the consent dialog CLASS, reusing the same
+/// [`AlwaysConfirm::classify`] the gate decides severity on, so the consent
+/// surface renders the right polymorphic dialog (Destructive / ExternalSend /
+/// Install / ...) instead of the generic agent-action copy. This is PRESENTATION
+/// only - severity comes from [`action_kind_for_tool`] via the broker's
+/// `classify`, never from the class - so a reason with no clear class counterpart
+/// (a system-config write, or an unrecognised tool) falls back to `AgentAction`
+/// rather than risk a misleading specific dialog.
+pub(crate) fn consent_class_for_tool(tool: &str) -> ConsentClass {
+    match AlwaysConfirm::classify(tool) {
+        Some(AlwaysConfirmReason::FileDeletion) => ConsentClass::Destructive,
+        Some(AlwaysConfirmReason::ExternalMessage) => ConsentClass::ExternalSend,
+        Some(AlwaysConfirmReason::PackageChange) => ConsentClass::Install,
+        Some(AlwaysConfirmReason::ElevatedCommand) => ConsentClass::ElevatedPrivilege,
+        Some(AlwaysConfirmReason::GenericExecution) => ConsentClass::ExecConfined,
+        Some(AlwaysConfirmReason::SystemConfigWrite) | None => ConsentClass::AgentAction,
     }
 }
 
@@ -361,6 +381,16 @@ mod tests {
         assert_eq!(action_kind_for_tool("run_shell"), ActionKind::ElevatedPrivilege);
         // An unclassified tool is ordinary.
         assert_eq!(action_kind_for_tool("note.append"), ActionKind::Ordinary);
+    }
+
+    #[test]
+    fn the_consent_class_matches_the_tool_family() {
+        assert_eq!(consent_class_for_tool("delete_file"), ConsentClass::Destructive);
+        assert_eq!(consent_class_for_tool("send_email"), ConsentClass::ExternalSend);
+        assert_eq!(consent_class_for_tool("install_pkg"), ConsentClass::Install);
+        assert_eq!(consent_class_for_tool("run_shell"), ConsentClass::ExecConfined);
+        // An unrecognised tool falls back to the generic agent-action dialog.
+        assert_eq!(consent_class_for_tool("note.append"), ConsentClass::AgentAction);
     }
 
     #[tokio::test]
