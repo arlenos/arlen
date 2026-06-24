@@ -1,12 +1,14 @@
 # Arlen default prompt (starship). Quiet and flat to match the desktop house
-# style: the working directory, the git branch with a compact status, then a
-# single caret. Colours map to the terminal's muted Arlen palette. A user who
-# ships their own starship config or prompt replaces this entirely.
+# style: the working directory and git on the left, the time and last command's
+# duration on the right, a single caret to type at. Colours map to the
+# terminal's muted Arlen palette. A user who ships their own starship config or
+# prompt (p10k, a custom PS1) replaces this entirely.
 
 add_newline = false
 palette = "arlen"
 
 format = "$directory$git_branch$git_status$character"
+right_format = "$cmd_duration$time"
 
 [palettes.arlen]
 fg = "#c8c9cf"
@@ -19,7 +21,8 @@ red = "#c96a6a"
 [directory]
 style = "blue"
 truncation_length = 3
-truncate_to_repo = true
+truncate_to_repo = false
+truncation_symbol = "…/"
 read_only = " ro"
 format = "[$path]($style)[$read_only](dim) "
 
@@ -41,6 +44,17 @@ staged = "+"
 renamed = "r"
 deleted = "x"
 stashed = ""
+
+[cmd_duration]
+min_time = 2000
+style = "dim"
+format = "[$duration]($style) "
+
+[time]
+disabled = false
+style = "dim"
+format = "[$time]($style)"
+time_format = "%H:%M"
 
 [character]
 success_symbol = "[ ❯](fg)"
