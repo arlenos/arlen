@@ -35,7 +35,8 @@ pub const IMAGE_MIMES: &[&str] = &[
 
 /// The audio MIME types the viewer handles (the simple player). Registered
 /// alongside the images once the audio decode worker lands.
-pub const AUDIO_MIMES: &[&str] = &["audio/flac", "audio/mpeg", "audio/wav", "audio/ogg"];
+pub const AUDIO_MIMES: &[&str] =
+    &["audio/flac", "audio/mpeg", "audio/wav", "audio/ogg", "audio/aiff"];
 
 /// Whether the file is an image or audio (the two viewer surfaces).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -157,6 +158,9 @@ pub fn detect_by_magic(head: &[u8]) -> Option<Detected> {
     if starts(b"RIFF") && head.len() >= 12 && &head[8..12] == b"WAVE" {
         return Some(Detected::new(MediaKind::Audio, Decoder::Symphonia, "audio/wav"));
     }
+    if starts(b"FORM") && head.len() >= 12 && (&head[8..12] == b"AIFF" || &head[8..12] == b"AIFC") {
+        return Some(Detected::new(MediaKind::Audio, Decoder::Symphonia, "audio/aiff"));
+    }
     None
 }
 
@@ -194,7 +198,11 @@ pub fn detect_by_extension(name: &str) -> Option<Detected> {
         "cr2" | "cr3" | "nef" | "arw" | "dng" | "raf" | "orf" | "rw2" => {
             Detected::new(MediaKind::Image, Decoder::Fallback, "image/x-raw")
         }
-        "opus" | "aac" | "m4a" | "wma" | "aiff" => {
+        // Symphonia probes AIFF via the aiff reader (verified under confinement).
+        "aiff" | "aif" | "aifc" => Detected::new(MediaKind::Audio, Decoder::Symphonia, "audio/aiff"),
+        // mp4/aac (isomp4 path fails under the tight seccomp profile), Opus
+        // (limited symphonia support) + WMA stay the long-tail fallback.
+        "opus" | "aac" | "m4a" | "m4b" | "wma" => {
             Detected::new(MediaKind::Audio, Decoder::Fallback, "audio/x-unknown")
         }
         _ => return None,
@@ -279,6 +287,13 @@ mod tests {
         let mut wav = b"RIFF\0\0\0\0WAVE".to_vec();
         wav.push(0);
         assert_eq!(detect_by_magic(&wav).unwrap().kind, MediaKind::Audio);
+        // AIFF by magic + extension, routed to the Symphonia probe worker.
+        let mut aiff = b"FORM\0\0\0\0AIFF".to_vec();
+        aiff.push(0);
+        assert_eq!(detect_by_magic(&aiff).unwrap(), Detected::new(MediaKind::Audio, Decoder::Symphonia, "audio/aiff"));
+        assert_eq!(detect_by_extension("track.aif").unwrap().decoder, Decoder::Symphonia);
+        // mp4/aac is not confined-verified, so it stays the Fallback.
+        assert_eq!(detect_by_extension("song.m4a").unwrap().decoder, Decoder::Fallback);
     }
 
     #[test]
