@@ -95,6 +95,11 @@ pub struct PtyEngine {
     /// instead of polling on a timer (the latency fix - an echoed keystroke
     /// repaints within a frame, and an idle prompt sends nothing).
     frame_notifier: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
+    /// Raw PTY output bytes accumulated since the host last drained them, for the
+    /// xterm.js drive renderer (engine-down: xterm.js does its own VT parsing).
+    /// The reader thread appends every chunk verbatim; the grid model + block
+    /// capture are fed the SAME bytes and are unaffected.
+    raw_out: Arc<Mutex<Vec<u8>>>,
     reader: Option<JoinHandle<()>>,
 }
 
@@ -179,6 +184,8 @@ impl PtyEngine {
         let frame_notifier: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>> =
             Arc::new(Mutex::new(None));
         let frame_sink = Arc::clone(&frame_notifier);
+        let raw_out = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let raw_out_sink = Arc::clone(&raw_out);
         let reader_handle = std::thread::Builder::new()
             .name("arlen-pty-reader".into())
             .spawn(move || {
@@ -194,6 +201,13 @@ impl PtyEngine {
                         // EIO when the slave goes away). Either ends the loop.
                         Ok(0) | Err(_) => break,
                         Ok(n) => {
+                            // Forward the raw bytes verbatim for the xterm.js
+                            // drive renderer (engine-down: xterm.js owns VT
+                            // parsing). The grid parse + block capture below get
+                            // the SAME bytes and are unaffected.
+                            if let Ok(mut r) = raw_out_sink.lock() {
+                                r.extend_from_slice(&buf[..n]);
+                            }
                             // Process the screen in segments split at each OSC
                             // mark, so the command-output region is resolved
                             // precisely even when a mark shares a read buffer with
@@ -301,8 +315,20 @@ impl PtyEngine {
             prompt_start_row,
             finished_outputs,
             frame_notifier,
+            raw_out,
             reader: Some(reader_handle),
         })
+    }
+
+    /// Drain and return the raw PTY output bytes read since the last call, for
+    /// the xterm.js drive renderer (which does its own VT parsing). Empty when
+    /// nothing new was read. This is the same byte stream the grid model + block
+    /// capture consume, forwarded verbatim - draining it does not affect them.
+    pub fn drain_raw_output(&self) -> Vec<u8> {
+        self.raw_out
+            .lock()
+            .map(|mut v| std::mem::take(&mut *v))
+            .unwrap_or_default()
     }
 
     /// Install a frame-change notifier and return its receiver. The reader thread
@@ -559,6 +585,36 @@ mod tests {
         assert!(
             text.contains("ALTHELLO"),
             "alt-screen content reaches the snapshot off a real PTY, got:\n{text}"
+        );
+    }
+
+    /// The raw PTY bytes are forwarded verbatim through `drain_raw_output` for
+    /// the xterm.js drive renderer, alongside the grid parse. `#[ignore]`d (needs
+    /// a real PTY); run with `--ignored`.
+    #[test]
+    #[ignore]
+    fn the_raw_pty_output_is_forwarded_verbatim() {
+        let eng = PtyEngine::spawn(
+            "/bin/sh",
+            &["-c", "printf 'RAW-OUTPUT-OK'; sleep 5"],
+            None,
+            80,
+            24,
+        )
+        .unwrap();
+        // drain empties, so accumulate across polls (chunks may split a read).
+        let mut acc = Vec::new();
+        for _ in 0..100 {
+            acc.extend_from_slice(&eng.drain_raw_output());
+            if String::from_utf8_lossy(&acc).contains("RAW-OUTPUT-OK") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(
+            String::from_utf8_lossy(&acc).contains("RAW-OUTPUT-OK"),
+            "raw PTY bytes reach drain_raw_output verbatim, got: {:?}",
+            String::from_utf8_lossy(&acc),
         );
     }
 
