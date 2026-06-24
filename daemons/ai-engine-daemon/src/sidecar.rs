@@ -391,12 +391,13 @@ impl PiSidecar {
         }
 
         // Phase-2-A drive channel: when a drive socket is provided, relay this
-        // pi instance's RPC stdio against one shell connection for the instance's
-        // lifetime. pi's stdin/stdout were piped at spawn; take them now. The
-        // drive future runs serve_drive ONCE (one shell session per pi instance)
-        // and then idles, so a shell disconnect does NOT end the engine - only
-        // pi's own exit (child.wait) does. With no drive socket the engine runs
-        // headless exactly as before.
+        // pi instance's RPC stdio against shell connections for the instance's
+        // lifetime. pi's stdin/stdout were piped at spawn; take them now.
+        // `serve_drive` loops, serving reconnecting shells (pi's stdin stays open
+        // across a shell disconnect); it returns only if the listener breaks, in
+        // which case the future idles. Either way a shell disconnect does NOT end
+        // the engine - only pi's own exit (child.wait) does. With no drive socket
+        // the engine runs headless exactly as before.
         // Take pi's piped stdio before the select so it does not borrow `child`
         // (which `child.wait()` needs mutably).
         let pi_stdin = child.stdin.take();

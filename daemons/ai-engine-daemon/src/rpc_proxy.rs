@@ -84,8 +84,26 @@ where
 pub async fn relay<SR, SW, PR, PW>(
     shell_read: SR,
     shell_write: SW,
-    pi_stdin: PW,
-    pi_stdout: PR,
+    mut pi_stdin: PW,
+    mut pi_stdout: PR,
+) -> io::Result<()>
+where
+    SR: AsyncRead + Unpin,
+    SW: AsyncWrite + Unpin,
+    PR: AsyncRead + Unpin,
+    PW: AsyncWrite + Unpin,
+{
+    relay_borrowed(shell_read, shell_write, &mut pi_stdin, &mut pi_stdout).await
+}
+
+/// [`relay`] over BORROWED pi stdio, so the drive server can run one relay per
+/// shell connection while RETAINING pi's stdin/stdout across reconnects within a
+/// single pi instance (a shell disconnect must not close pi's stdin).
+async fn relay_borrowed<SR, SW, PR, PW>(
+    shell_read: SR,
+    shell_write: SW,
+    pi_stdin: &mut PW,
+    pi_stdout: &mut PR,
 ) -> io::Result<()>
 where
     SR: AsyncRead + Unpin,
@@ -101,28 +119,41 @@ where
     }
 }
 
-/// Accept ONE shell drive connection on `listener` and relay it against this pi
-/// instance's RPC stdio until either side closes.
+/// Serve shell drive connections on `listener` for one pi instance's lifetime,
+/// relaying each accepted connection against the instance's RPC stdio.
 ///
 /// The drive socket's 0600 permissions (set at bind) are the same-uid boundary -
 /// only the owning user can `connect()` a 0600 socket - so no per-connection
 /// auth is done here: the channel carries prompts to the user's OWN pi, and the
 /// security gate for what those prompts can DO is the separate contract socket
-/// (Authorize/Report). One drive session per pi instance: a shell disconnect
-/// ends this session and the supervisor calls `serve_drive` again for the next
-/// pi after a restart; reconnect within a single pi instance is a follow-up.
+/// (Authorize/Report).
+///
+/// Reconnect-capable: pi's stdin/stdout are retained across connections, so a
+/// shell disconnect does NOT close pi's stdin (the session survives) and the
+/// next shell can reconnect to the same pi. A per-connection relay error is
+/// logged and the next connection awaited. This loops until `accept` fails (a
+/// broken listener) or the caller cancels it (the supervisor cancels it when pi
+/// exits).
 pub async fn serve_drive<PW, PR>(
     listener: &UnixListener,
-    pi_stdin: PW,
-    pi_stdout: PR,
+    mut pi_stdin: PW,
+    mut pi_stdout: PR,
 ) -> io::Result<()>
 where
     PW: AsyncWrite + Unpin,
     PR: AsyncRead + Unpin,
 {
-    let (stream, _addr) = listener.accept().await?;
-    let (read_half, write_half) = stream.into_split();
-    relay(read_half, write_half, pi_stdin, pi_stdout).await
+    loop {
+        let (stream, _addr) = listener.accept().await?;
+        let (read_half, write_half) = stream.into_split();
+        if let Err(e) =
+            relay_borrowed(read_half, write_half, &mut pi_stdin, &mut pi_stdout).await
+        {
+            tracing::warn!(error = %e, "drive relay session ended with an error; awaiting the next shell");
+        }
+        // The shell disconnected (or its session errored); pi's stdio is retained,
+        // so re-accept the next shell connection for this pi instance.
+    }
 }
 
 #[cfg(test)]
@@ -253,8 +284,36 @@ mod tests {
         pi_out.write_all(b"{\"type\":\"event\"}\n").await.unwrap();
         assert_eq!(read_record(&mut client).await, "{\"type\":\"event\"}\n");
 
-        drop(client); // the shell disconnects -> serve_drive returns
-        server.await.unwrap().unwrap();
+        drop(client); // the shell disconnects; serve_drive loops to re-accept
+        server.abort();
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn serve_drive_accepts_a_second_shell_after_the_first_disconnects() {
+        use tokio::net::UnixStream;
+
+        let path = drive_sock("reconnect");
+        let listener = UnixListener::bind(&path).unwrap();
+        // pi's stdin is retained across connections; both shells write to it.
+        let (pi_stdin, mut pi_in) = tokio::io::duplex(4096);
+        let (_pi_out, pi_stdout) = tokio::io::duplex(4096);
+        let server = tokio::spawn(async move {
+            let _ = serve_drive(&listener, pi_stdin, pi_stdout).await;
+        });
+
+        // First shell session.
+        let mut c1 = UnixStream::connect(&path).await.unwrap();
+        c1.write_all(b"{\"id\":\"1\"}\n").await.unwrap();
+        assert_eq!(read_record(&mut pi_in).await, "{\"id\":\"1\"}\n");
+        drop(c1); // disconnect -> serve_drive re-accepts, pi stdin NOT closed
+
+        // A second shell reconnects to the SAME pi instance and drives it.
+        let mut c2 = UnixStream::connect(&path).await.unwrap();
+        c2.write_all(b"{\"id\":\"2\"}\n").await.unwrap();
+        assert_eq!(read_record(&mut pi_in).await, "{\"id\":\"2\"}\n");
+
+        server.abort();
         let _ = std::fs::remove_file(&path);
     }
 }
