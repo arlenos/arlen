@@ -24,6 +24,7 @@ import {
   type ToolResultEvent,
   type ToolResultEventResult,
 } from "./audit.js";
+import { makeProxyTools, type ProxyExtensionAPI, type ToolDefinition } from "./proxy.js";
 
 /** Poll for the session token file the daemon writes once it knows our pid. */
 async function waitForToken(): Promise<void> {
@@ -73,6 +74,22 @@ async function driveAudit(toolName: string): Promise<unknown> {
   return { result };
 }
 
+/** Drive one privileged proxy tool's execute() through the real proxy plugin,
+ *  return its enforced result (the Execute verb forwards to the daemon). */
+async function driveExecute(toolName: string): Promise<unknown> {
+  let tool: ToolDefinition | undefined;
+  const pi: ProxyExtensionAPI = {
+    registerTool(def) {
+      if (def.name === toolName) tool = def;
+    },
+  };
+  makeProxyTools()(pi);
+  if (!tool) throw new Error(`the proxy plugin registered no tool '${toolName}'`);
+  // graph.read expects a "query" field; the daemon runs it scoped server-side.
+  const result = await tool.execute("e2e-1", { query: "MATCH (n) RETURN n LIMIT 1" });
+  return { result };
+}
+
 async function main(): Promise<void> {
   const mode = process.argv[2] ?? "gate";
   await waitForToken();
@@ -82,6 +99,8 @@ async function main(): Promise<void> {
     out = await driveGate(process.argv[3] ?? "note.append", process.argv[4] === "external");
   } else if (mode === "audit") {
     out = await driveAudit(process.argv[3] ?? "graph.read");
+  } else if (mode === "execute") {
+    out = await driveExecute(process.argv[3] ?? "graph.read");
   } else {
     throw new Error(`unknown e2e mode: ${mode}`);
   }

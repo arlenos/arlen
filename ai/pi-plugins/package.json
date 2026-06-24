@@ -9,7 +9,7 @@
     "check": "tsc --noEmit",
     "build": "tsc",
     "clean": "rm -rf dist",
-    "test": "tsc && node --test dist/"
+    "test": "tsc && node --test dist/*.test.js"
   },
   "devDependencies": {
     "@types/node": "^20",
