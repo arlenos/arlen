@@ -11,10 +11,13 @@
 //   audited and screened before it re-enters the model's context.
 //
 // The Arlen-specific proxy tools (graph.read/graph.write as model-callable tools
-// that forward to the daemon's Execute verb) are a SEPARATE, later increment:
-// they need pi's `registerTool`/TypeBox surface (a real pi-package dependency)
-// AND the daemon's Execute runners are fail-closed until the cutover, so the
-// model gains nothing from them yet. The gate + audit shims are the value now.
+// that forward to the daemon's Execute verb) exist as a MECHANISM in `proxy.ts`
+// (`makeProxyTools`, with the Execute round-trip e2e-proven), but are NOT wired in
+// here yet: live registration needs a real-pi check that `registerTool` accepts
+// the permissive parameter schema (vs requiring pi's TypeBox surface), AND the
+// daemon's Execute runners are fail-closed until the cutover, so the model gains
+// nothing from them until the live runners land. The gate + audit shims are the
+// value now; the proxy live-wiring pairs with that cutover.
 
 import { makeAudit, type AuditExtensionAPI } from "./audit.js";
 import { makeGate, type GateExtensionAPI } from "./gate.js";
