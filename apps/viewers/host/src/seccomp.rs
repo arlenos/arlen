@@ -187,6 +187,12 @@ fn decoder_base_allowlist() -> Vec<libc::c_long> {
         libc::SYS_epoll_ctl,
         libc::SYS_epoll_pwait,
         libc::SYS_eventfd2,
+        // The worker self-applies a Landlock ruleset at startup (read-only /usr,
+        // no write), so the filter must permit the three landlock calls. They
+        // only ever reduce the worker's own access.
+        libc::SYS_landlock_create_ruleset,
+        libc::SYS_landlock_add_rule,
+        libc::SYS_landlock_restrict_self,
     ]
 }
 
