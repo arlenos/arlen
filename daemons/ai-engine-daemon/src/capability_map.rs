@@ -133,7 +133,7 @@ pub fn decision_to_authorize(decision: ActionDecision, tool_name: &str) -> Autho
 /// confirms; the specific variant is immaterial since every non-`Ordinary` kind
 /// already requires confirmation. The effect-derived kinds (`Irreversible`,
 /// `ReversibleWithCost`) are not name-derivable and land with the predict step.
-fn action_kind_for_tool(tool: &str) -> ActionKind {
+pub(crate) fn action_kind_for_tool(tool: &str) -> ActionKind {
     match AlwaysConfirm::classify(tool) {
         Some(AlwaysConfirmReason::FileDeletion) => ActionKind::PermanentDelete,
         Some(AlwaysConfirmReason::ExternalMessage) => ActionKind::SendExternalMessage,
