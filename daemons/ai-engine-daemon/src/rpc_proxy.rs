@@ -23,6 +23,7 @@
 
 use std::io;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::net::UnixListener;
 
 /// Forward one LF-delimited record at a time from `from` to `to` until `from`
 /// reaches EOF, flushing after each so a streamed token reaches the peer
@@ -69,6 +70,30 @@ where
         r = commands => r,
         r = events => r,
     }
+}
+
+/// Accept ONE shell drive connection on `listener` and relay it against this pi
+/// instance's RPC stdio until either side closes.
+///
+/// The drive socket's 0600 permissions (set at bind) are the same-uid boundary -
+/// only the owning user can `connect()` a 0600 socket - so no per-connection
+/// auth is done here: the channel carries prompts to the user's OWN pi, and the
+/// security gate for what those prompts can DO is the separate contract socket
+/// (Authorize/Report). One drive session per pi instance: a shell disconnect
+/// ends this session and the supervisor calls `serve_drive` again for the next
+/// pi after a restart; reconnect within a single pi instance is a follow-up.
+pub async fn serve_drive<PW, PR>(
+    listener: &UnixListener,
+    pi_stdin: PW,
+    pi_stdout: PR,
+) -> io::Result<()>
+where
+    PW: AsyncWrite + Unpin,
+    PR: AsyncRead + Unpin,
+{
+    let (stream, _addr) = listener.accept().await?;
+    let (read_half, write_half) = stream.into_split();
+    relay(read_half, write_half, pi_stdin, pi_stdout).await
 }
 
 #[cfg(test)]
@@ -161,5 +186,36 @@ mod tests {
         drop(shell_in); // immediate EOF on the command direction
         // The relay resolves rather than hanging.
         handle.await.unwrap().unwrap();
+    }
+
+    fn drive_sock(name: &str) -> std::path::PathBuf {
+        let mut p = std::env::temp_dir();
+        p.push(format!("arlen-drive-test-{}-{}.sock", std::process::id(), name));
+        let _ = std::fs::remove_file(&p);
+        p
+    }
+
+    #[tokio::test]
+    async fn serve_drive_bridges_a_connected_shell_to_pi() {
+        use tokio::net::UnixStream;
+
+        let path = drive_sock("bridge");
+        let listener = UnixListener::bind(&path).unwrap();
+        let (pi_stdin, mut pi_in) = tokio::io::duplex(4096);
+        let (mut pi_out, pi_stdout) = tokio::io::duplex(4096);
+
+        let server = tokio::spawn(async move { serve_drive(&listener, pi_stdin, pi_stdout).await });
+
+        let mut client = UnixStream::connect(&path).await.unwrap();
+        // A command from the shell reaches pi's stdin verbatim.
+        client.write_all(b"{\"type\":\"prompt\",\"message\":\"hi\"}\n").await.unwrap();
+        assert_eq!(read_record(&mut pi_in).await, "{\"type\":\"prompt\",\"message\":\"hi\"}\n");
+        // A pi event reaches the shell verbatim.
+        pi_out.write_all(b"{\"type\":\"event\"}\n").await.unwrap();
+        assert_eq!(read_record(&mut client).await, "{\"type\":\"event\"}\n");
+
+        drop(client); // the shell disconnects -> serve_drive returns
+        server.await.unwrap().unwrap();
+        let _ = std::fs::remove_file(&path);
     }
 }
