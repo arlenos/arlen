@@ -4,7 +4,7 @@
   /// the table lens (off by default; a quiet word toggle in the
   /// header offers the rendered view only when the backend
   /// recognized a table).
-  import { ConsoleBlock } from "@arlen/ui-kit/components/console";
+  import { ConsoleBlock, GridRegion } from "@arlen/ui-kit/components/console";
   import type { Block } from "$lib/contract";
   import PromptLine from "./PromptLine.svelte";
   import OriginMarker from "./OriginMarker.svelte";
@@ -13,16 +13,29 @@
   let { block }: { block: Block } = $props();
 
   let tableLens = $state(false);
+
+  // The block header shows the shell's own captured prompt line (prompt +
+  // echoed command, with its real colours) when the engine captured it - the
+  // record is then exactly what was on screen, for any prompt. Older blocks /
+  // the mock fall back to the regenerated path+git line.
+  const hasPromptCells = $derived(
+    Array.isArray(block.prompt_cells) && block.prompt_cells.length > 0,
+  );
 </script>
 
 <ConsoleBlock
-  command={block.command}
+  command={hasPromptCells ? "" : block.command}
+  promptFull={hasPromptCells}
   exitCode={block.exit_code}
   durationMs={block.duration_ms}
   running={block.exit_code === null && block.duration_ms === null}
 >
   {#snippet context()}
-    <PromptLine cwd={block.cwd} git={block.git} />
+    {#if hasPromptCells}
+      <GridRegion cells={block.prompt_cells ?? []} />
+    {:else}
+      <PromptLine cwd={block.cwd} git={block.git} />
+    {/if}
   {/snippet}
   {#snippet marker()}
     <OriginMarker origin={block.origin} />
