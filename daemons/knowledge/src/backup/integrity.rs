@@ -68,27 +68,47 @@ pub enum IntegrityError {
 /// Runs integrity checks on the SQLite event store and graph database.
 pub struct IntegrityChecker {
     db_path: PathBuf,
+    graph_path: PathBuf,
 }
 
 impl IntegrityChecker {
-    pub fn new(db_path: PathBuf) -> Self {
-        Self { db_path }
+    pub fn new(db_path: PathBuf, graph_path: PathBuf) -> Self {
+        Self { db_path, graph_path }
     }
 
-    /// Run an integrity check. The SQLite event store is verified for real (via
-    /// [`quick_check`](Self::quick_check)); the graph-side checks (`graph_ok`,
-    /// orphan references, schema validation, corrupt entities) are NOT yet
-    /// implemented, so those fields keep their empty/`true` defaults - a reader
-    /// must treat `graph_ok` as "not checked", not "verified". Closing the
-    /// graph-side checks is a separate, larger task.
+    /// Run an integrity check. Both stores are verified for real: the SQLite
+    /// event store via [`quick_check`](Self::quick_check) and the graph database
+    /// via [`graph_check`](Self::graph_check). The deeper graph checks (orphan
+    /// references, schema validation, corrupt entities) are NOT yet implemented,
+    /// so those fields keep their empty defaults - `graph_ok` here means only
+    /// "the graph opens and answers a query", not "every edge is consistent".
     pub async fn check(&self) -> IntegrityReport {
         IntegrityReport {
             sqlite_ok: self.quick_check().await,
-            graph_ok: true,
+            graph_ok: self.graph_check().await,
             orphan_references: vec![],
             missing_schemas: vec![],
             corrupt_entities: vec![],
         }
+    }
+
+    /// Graph check: open the graph database and run a trivial query. Returns
+    /// `true` only when the store exists and the engine opens it and executes a
+    /// query. Fail-closed: a missing graph directory, or one the engine cannot
+    /// open (corrupt/locked), returns `false`. The `exists` guard is load-bearing
+    /// - the engine would otherwise CREATE an empty graph for a missing path and
+    /// wrongly report it sound, so a backup whose graph is absent is not sound.
+    pub async fn graph_check(&self) -> bool {
+        if !self.graph_path.exists() {
+            return false;
+        }
+        let path = self.graph_path.to_string_lossy().into_owned();
+        tokio::task::spawn_blocking(move || match crate::graph::spawn(&path) {
+            Ok(handle) => handle.query_rows_sync("RETURN 1".to_string()).is_ok(),
+            Err(_) => false,
+        })
+        .await
+        .unwrap_or(false)
     }
 
     /// Quick check: run SQLite's `PRAGMA integrity_check` on the event store.
@@ -200,7 +220,10 @@ mod tests {
 
     #[tokio::test]
     async fn quick_check_fails_closed_on_a_missing_file() {
-        let checker = IntegrityChecker::new(PathBuf::from("/tmp/arlen-integrity-nonexistent.db"));
+        let checker = IntegrityChecker::new(
+            PathBuf::from("/tmp/arlen-integrity-nonexistent.db"),
+            PathBuf::from("/tmp/arlen-integrity-nonexistent-graph"),
+        );
         assert!(!checker.quick_check().await, "a backup that cannot be opened is not sound");
     }
 
@@ -208,7 +231,7 @@ mod tests {
     async fn quick_check_fails_closed_on_a_non_sqlite_file() {
         let p = std::env::temp_dir().join(format!("arlen-integrity-garbage-{}", std::process::id()));
         std::fs::write(&p, b"this is not a sqlite database").unwrap();
-        let checker = IntegrityChecker::new(p.clone());
+        let checker = IntegrityChecker::new(p.clone(), PathBuf::from("/tmp/unused-graph"));
         assert!(!checker.quick_check().await, "a non-SQLite file fails the integrity check");
         std::fs::remove_file(&p).ok();
     }
@@ -222,9 +245,41 @@ mod tests {
         sqlx::query("INSERT INTO t (v) VALUES ('x')").execute(&pool).await.unwrap();
         pool.close().await;
 
-        let checker = IntegrityChecker::new(p.clone());
+        let checker = IntegrityChecker::new(p.clone(), PathBuf::from("/tmp/unused-graph"));
         assert!(checker.quick_check().await, "a sound SQLite db passes integrity_check");
-        assert!(checker.check().await.sqlite_ok, "check() wires the real SQLite result");
         std::fs::remove_file(&p).ok();
+    }
+
+    #[tokio::test]
+    async fn graph_check_passes_a_real_graph_and_fails_a_missing_one() {
+        let dir = std::env::temp_dir().join(format!("arlen-integrity-g-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let gpath = dir.join("graph");
+        // Create a real graph via the low-level synchronous engine handle, which
+        // drops (and releases the store lock) at the end of this block - so the
+        // reopen by graph_check below does not race a detached worker thread.
+        {
+            let db = lbug::Database::new(gpath.to_str().unwrap(), lbug::SystemConfig::default())
+                .expect("create graph");
+            let _conn = lbug::Connection::new(&db).expect("connect");
+        }
+        let checker = IntegrityChecker::new(PathBuf::from("/tmp/unused.db"), gpath.clone());
+        // Poll: dropping the handle releases the engine lock asynchronously.
+        let mut ok = false;
+        for _ in 0..40 {
+            if checker.graph_check().await {
+                ok = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert!(ok, "a real, openable graph passes graph_check");
+
+        // A missing graph directory fails closed (and is NOT created).
+        let missing = IntegrityChecker::new(PathBuf::from("/tmp/unused.db"), dir.join("no-such-graph"));
+        assert!(!missing.graph_check().await, "a missing graph is not sound");
+        assert!(!dir.join("no-such-graph").exists(), "graph_check must not create the graph");
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
