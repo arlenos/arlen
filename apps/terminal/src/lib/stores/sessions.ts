@@ -8,6 +8,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   terminalSessions,
   terminalNewSession,
+  terminalCloseSession,
   type Session,
 } from "$lib/contract";
 
@@ -103,6 +104,9 @@ export async function initSessionExitListener(): Promise<void> {
       void getCurrentWindow().close();
       return;
     }
+    // Reap the dead shell from the backend registry, then drop its tab and select
+    // the next so the surface stays live.
+    void terminalCloseSession(id);
     sessions.set(remaining);
     if (get(activeSessionId) === id) {
       activeSessionId.set(remaining[0].id);
