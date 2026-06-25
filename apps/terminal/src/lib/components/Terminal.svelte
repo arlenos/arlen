@@ -13,7 +13,7 @@
   import "@xterm/xterm/css/xterm.css";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import {
-    terminalBlocks,
+    terminalLastCommand,
     terminalDrainOutput,
     terminalInput,
     terminalResize,
@@ -175,11 +175,12 @@
         // Capture the just-finished command from the engine's validated block
         // record for run-again. The engine parses 133;D from its own raw stream
         // and records the block BEFORE it signals the frame this handler drained,
-        // so the latest engine block is this one. Best-effort: a fetch failure
-        // just leaves run-again inert for this block.
-        void terminalBlocks(sessionId)
-          .then((bs) => {
-            entry.command = bs.at(-1)?.command;
+        // so the latest engine block is this one. The light `terminalLastCommand`
+        // reads just that one command (no O(history) block re-serialise).
+        // Best-effort: a fetch failure leaves run-again inert for this block.
+        void terminalLastCommand(sessionId)
+          .then((cmd) => {
+            entry.command = cmd ?? undefined;
           })
           .catch(() => {});
       }

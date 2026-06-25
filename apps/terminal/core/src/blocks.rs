@@ -126,6 +126,15 @@ impl BlockAssembler {
         }
         out
     }
+
+    /// The command of the most recently finished block, for the terminal's
+    /// run-again affordance. An O(1) read of the last finished block - it avoids
+    /// cloning every block the way [`blocks`](Self::blocks) does (and, at the
+    /// host, re-serialising each block's output grid), since run-again needs only
+    /// the one command string. `None` before any command has finished.
+    pub fn last_command(&self) -> Option<String> {
+        self.finished.last().map(|b| b.command.clone())
+    }
 }
 
 /// Build a finished block frame. The body is empty: grid output is painted by the
