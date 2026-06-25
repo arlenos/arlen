@@ -314,6 +314,17 @@
       // Ctrl+Shift+Z is reserved for a future redo, so guard on !shiftKey.
       e.preventDefault();
       void undo();
+    } else if (e.key === "F2" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // F2 starts an inline rename on a single selected item (the menu's edit.rename).
+      if (selected.length === 1) {
+        e.preventDefault();
+        renamingName = selected[0].name;
+      }
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
+      // Ctrl+A selects everything in the focused pane (the menu's edit.select_all);
+      // preventDefault so it does not select the page text instead.
+      e.preventDefault();
+      get(focusedController)?.selectAll();
     }
   }
 
