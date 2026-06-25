@@ -8,6 +8,7 @@
 
 mod archive;
 mod capability;
+mod devices;
 mod thumbnail;
 
 use std::path::{Path, PathBuf};
@@ -769,6 +770,61 @@ fn files_open_with(path: String, exec: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// The mounted, non-system volumes for the Devices sidebar (removable drives +
+/// extra data mounts), from `lsblk --json`. An absent/failing lsblk yields an
+/// empty list rather than an error - the sidebar just shows no devices.
+#[tauri::command]
+fn files_devices() -> Vec<devices::MountedDevice> {
+    match std::process::Command::new("lsblk")
+        .args(["--json", "-o", "NAME,LABEL,MOUNTPOINT,RM,TYPE,FSTYPE"])
+        .output()
+    {
+        Ok(o) if o.status.success() => {
+            devices::mounted_volumes(&String::from_utf8_lossy(&o.stdout))
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Run a `udisksctl` verb on a block device for the Devices sidebar. Spawned
+/// without a shell (the device path is one inert argv element), and the device
+/// must be a `/dev/` node, so the caller cannot smuggle a command. udisks2's
+/// own polkit decides authorisation. Returns the trimmed stderr on failure.
+fn udisksctl(verb: &str, device: &str) -> Result<(), String> {
+    if !device.starts_with("/dev/") {
+        return Err("not a block device".to_string());
+    }
+    let out = std::process::Command::new("udisksctl")
+        .args([verb, "-b", device])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// Mount a block device (`udisksctl mount`). For a device the Devices sidebar
+/// lists as unmounted.
+#[tauri::command]
+fn files_mount(device: String) -> Result<(), String> {
+    udisksctl("mount", &device)
+}
+
+/// Unmount a block device (`udisksctl unmount`).
+#[tauri::command]
+fn files_unmount(device: String) -> Result<(), String> {
+    udisksctl("unmount", &device)
+}
+
+/// Safely remove the drive of a block device (`udisksctl power-off`; udisks
+/// resolves the partition to its drive and unmounts first). The "eject" action.
+#[tauri::command]
+fn files_eject(device: String) -> Result<(), String> {
+    udisksctl("power-off", &device)
+}
+
 /// Persistent FM state in `~/.config/arlen/files.toml` (the TOML
 /// rule). Today that is the bookmark list; defaults stay in Settings.
 #[derive(serde::Deserialize, Serialize, Default)]
@@ -1112,6 +1168,10 @@ pub fn run() {
             files_open,
             files_apps_for,
             files_open_with,
+            files_devices,
+            files_mount,
+            files_unmount,
+            files_eject,
             files_extract,
             files_compress,
             files_archive_list,
