@@ -64,6 +64,13 @@ pub struct FileEntry {
     pub readonly: bool,
     /// For a symlink, the raw link target (not resolved); `None` otherwise.
     pub symlink_target: Option<String>,
+    /// The entry's own absolute path, set ONLY for a virtual-location listing
+    /// (Recent / Trash) where each entry lives in a different directory, not under
+    /// one browsed folder - the FM Recent/Trash navigation-location re-plan (item 12).
+    /// `None` for a normal folder listing (the controller knows the containing dir),
+    /// so this is additive + backward-compat. For Trash this is the ORIGINAL path.
+    #[serde(default)]
+    pub full_path: Option<String>,
 }
 
 /// List the directory at `rel` (relative to the capability `dir`), one
@@ -108,6 +115,7 @@ pub fn list_dir(dir: &Dir, rel: impl AsRef<Path>) -> io::Result<Vec<FileEntry>> 
             modified_unix,
             readonly,
             symlink_target,
+            full_path: None,
         });
     }
     Ok(out)
@@ -469,6 +477,7 @@ mod tests {
             is_hidden: name.starts_with('.'),
             readonly: false,
             symlink_target: None,
+            full_path: None,
         }
     }
 

@@ -16,7 +16,8 @@ use std::sync::Mutex;
 
 use arlen_file_browser_core::undo::{UndoStack, UndoableOp};
 use arlen_file_browser_core::{
-    breadcrumb, list_dir, ops, properties, search, sort_entries, Crumb, FileEntry, SortKey,
+    breadcrumb, list_dir, ops, properties, search, sort_entries, Crumb, EntryKind, FileEntry,
+    SortKey,
 };
 use cap_std::ambient_authority;
 use cap_std::fs::Dir;
@@ -1015,6 +1016,42 @@ async fn files_recent() -> Vec<RecentFile> {
     }
 }
 
+/// Map a recent-file row into a [`FileEntry`] for the Recent navigation LOCATION
+/// (item 12: Recent/Trash become navigable locations the same browser view renders,
+/// not bespoke overlays). `full_path` carries each file's own absolute path (Recent
+/// files are scattered, not under one dir), and `modified_unix` carries the
+/// last-accessed time (micros → secs) so the location's "Last accessed" column reads
+/// it. Pure, so the shaping is unit-tested without a daemon.
+fn recent_to_entry(rf: &RecentFile) -> FileEntry {
+    FileEntry {
+        is_hidden: rf.name.starts_with('.'),
+        name: rf.name.clone(),
+        kind: EntryKind::File,
+        size: None,
+        // micros → secs; a negative/absent (0) accessed time becomes None.
+        modified_unix: (rf.accessed > 0).then(|| (rf.accessed / 1_000_000) as u64),
+        readonly: false,
+        symlink_target: None,
+        full_path: Some(rf.path.clone()),
+    }
+}
+
+/// Resolve a virtual navigation location to a file listing (item 12). `"recent"`
+/// returns the recently-accessed files as [`FileEntry`]s (each carrying its own
+/// `full_path`), so the browser controller can navigate to `recent` like a folder.
+/// `"trash"` is the next slice (it additionally needs a per-entry restore token +
+/// the freedesktop deletion-date parse); an unknown location is refused. The
+/// column/action presentation on these entries is arlen-ui's (the `full_path` field
+/// is the seam it reads).
+#[tauri::command]
+async fn files_list_location(location: String) -> Result<Vec<FileEntry>, String> {
+    match location.as_str() {
+        "recent" => Ok(files_recent().await.iter().map(recent_to_entry).collect()),
+        "trash" => Err("trash location listing is the next slice".to_string()),
+        other => Err(format!("unknown virtual location: {other}")),
+    }
+}
+
 /// Tauri application entry point invoked from `main.rs`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Publish the file-manager's global menu into the topbar via the
@@ -1168,6 +1205,7 @@ pub fn run() {
             shell_present,
             frontend_log,
             files_list,
+            files_list_location,
             files_breadcrumb,
             files_places,
             files_info,
@@ -1209,9 +1247,30 @@ pub fn run() {
 mod tests {
     use super::{
         abs, escape_cypher_literal, projects_from_rows, provenance_to_woher, recent_from_rows,
-        verwandt_from_rows,
+        recent_to_entry, verwandt_from_rows, EntryKind, RecentFile,
     };
     use std::collections::HashMap;
+
+    #[test]
+    fn recent_to_entry_carries_the_full_path_and_accessed_time() {
+        // Item 12: a recent file maps to a FileEntry for the Recent navigation
+        // location - its own absolute path in `full_path`, last-accessed (micros ->
+        // secs) in `modified_unix`, classified as a File.
+        let rf = RecentFile {
+            path: "/home/u/proj/notes.md".to_string(),
+            name: "notes.md".to_string(),
+            accessed: 5_000_000, // 5s in micros
+        };
+        let e = recent_to_entry(&rf);
+        assert_eq!(e.full_path.as_deref(), Some("/home/u/proj/notes.md"));
+        assert_eq!(e.name, "notes.md");
+        assert_eq!(e.kind, EntryKind::File);
+        assert_eq!(e.modified_unix, Some(5));
+        assert!(!e.is_hidden);
+        // An absent (0) accessed time is None, not epoch-zero.
+        let rf0 = RecentFile { accessed: 0, ..rf };
+        assert_eq!(recent_to_entry(&rf0).modified_unix, None);
+    }
 
     #[test]
     fn projects_map_rows_and_skip_incomplete_ones() {
