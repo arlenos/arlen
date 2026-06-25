@@ -1,0 +1,5 @@
+# Starting permission profile for Telegraph (a Morse-code translator). A self-
+# contained local tool; no network, no user files, no Knowledge Graph access.
+[info]
+app_id = "io.github.fkinoshita.Telegraph"
+tier = "third-party"

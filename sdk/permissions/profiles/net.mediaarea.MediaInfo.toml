@@ -1,0 +1,6 @@
+# Starting permission profile for MediaInfo (shows technical metadata of a media
+# file). It opens the file the user picks through the file portal, so it needs no
+# standing filesystem grant; no network, no Knowledge Graph access.
+[info]
+app_id = "net.mediaarea.MediaInfo"
+tier = "third-party"

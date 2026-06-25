@@ -1,0 +1,6 @@
+# Starting permission profile for Elastic (a spring-animation designer). It
+# generates animation parameters locally; no network, no user files, no Knowledge
+# Graph access.
+[info]
+app_id = "app.drey.Elastic"
+tier = "third-party"
