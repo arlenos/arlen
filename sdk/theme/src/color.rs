@@ -116,6 +116,75 @@ pub fn contrast_ratio(a: Rgba, b: Rgba) -> f32 {
     (hi + 0.05) / (lo + 0.05)
 }
 
+/// APCA (Accessible Perceptual Contrast Algorithm, W3 0.1.9) lightness contrast
+/// `Lc` of `text` over `bg` (alpha ignored) - the perceptual contrast measure the
+/// WCAG 2.2 / EN 301 549 era surfaces alongside the legacy [`contrast_ratio`]. `Lc`
+/// is SIGNED: positive for dark text on a light background, negative for light text
+/// on a dark one; its magnitude runs roughly `0..=108`. Rough use thresholds (APCA
+/// "bronze"): `|Lc| >= 75` for body text, `>= 60` for larger or secondary text,
+/// `>= 45` for large or non-text; below the low-contrast clip the pair is treated as
+/// having no usable contrast and returns `0`.
+///
+/// This is NOT the WCAG 2.x ratio and the two scales are not interconvertible: APCA
+/// uses a straight 2.4-power sRGB-to-luminance (no piecewise segment), a near-black
+/// soft-clamp, and asymmetric power curves per polarity. Surfacing both is the goal -
+/// WCAG 2.x stays the legal floor, APCA the perceptual read.
+pub fn apca_lc(text: Rgba, bg: Rgba) -> f32 {
+    // APCA-W3 0.1.9 constants (the "0.0.98G-4g" set).
+    const TRC: f32 = 2.4;
+    const RCO: f32 = 0.2126729;
+    const GCO: f32 = 0.7151522;
+    const BCO: f32 = 0.0721750;
+    const BLK_THRS: f32 = 0.022;
+    const BLK_CLMP: f32 = 1.414;
+    const DELTA_Y_MIN: f32 = 0.0005;
+    const SCALE: f32 = 1.14;
+    const LO_CLIP: f32 = 0.1;
+    const LO_OFFSET: f32 = 0.027;
+    const NORM_BG: f32 = 0.56;
+    const NORM_TXT: f32 = 0.57;
+    const REV_TXT: f32 = 0.62;
+    const REV_BG: f32 = 0.65;
+
+    let luminance = |c: Rgba| {
+        RCO * c[0].max(0.0).powf(TRC) + GCO * c[1].max(0.0).powf(TRC) + BCO * c[2].max(0.0).powf(TRC)
+    };
+    // Soft-clamp near-black luminance so very dark pairs do not over-report.
+    let soft_clamp = |y: f32| {
+        if y < BLK_THRS {
+            y + (BLK_THRS - y).powf(BLK_CLMP)
+        } else {
+            y
+        }
+    };
+
+    let txt_y = soft_clamp(luminance(text));
+    let bg_y = soft_clamp(luminance(bg));
+
+    // Indistinguishable luminances carry no contrast.
+    if (bg_y - txt_y).abs() < DELTA_Y_MIN {
+        return 0.0;
+    }
+
+    let sapc = if bg_y > txt_y {
+        // Dark text on a light background (normal polarity, positive Lc).
+        (bg_y.powf(NORM_BG) - txt_y.powf(NORM_TXT)) * SCALE
+    } else {
+        // Light text on a dark background (reverse polarity, negative Lc).
+        (bg_y.powf(REV_BG) - txt_y.powf(REV_TXT)) * SCALE
+    };
+
+    // Clip a near-zero result to no-contrast, else trim the low-contrast offset.
+    let out = if sapc.abs() < LO_CLIP {
+        0.0
+    } else if sapc > 0.0 {
+        sapc - LO_OFFSET
+    } else {
+        sapc + LO_OFFSET
+    };
+    out * 100.0
+}
+
 /// Rule B's WCAG floor for body text (and for `fg.inverse` on `accent`).
 pub const BODY_CONTRAST_FLOOR: f32 = 4.5;
 /// Rule B's WCAG floor for status colours / large text.
@@ -242,6 +311,30 @@ mod tests {
         let red = srgb_to_oklch([1.0, 0.0, 0.0, 1.0]);
         assert!(close(red.l, 0.6279, 5e-3), "red L = {}", red.l);
         assert!(close(red.c, 0.2576, 5e-3), "red C = {}", red.c);
+    }
+
+    #[test]
+    fn apca_matches_the_published_sanity_values() {
+        // The canonical APCA-W3 0.1.9 sanity pairs (text over bg):
+        //   #888 on #fff -> Lc  63.06 (dark text on light, positive)
+        //   #000 on #aaa -> Lc  58.15
+        //   #fff on #888 -> Lc -68.54 (light text on dark, negative)
+        //   #aaa on #000 -> Lc -56.24
+        let lc = |t: &str, b: &str| apca_lc(parse_hex(t).unwrap(), parse_hex(b).unwrap());
+        assert!(close(lc("#888888", "#ffffff"), 63.06, 0.6), "{}", lc("#888888", "#ffffff"));
+        assert!(close(lc("#000000", "#aaaaaa"), 58.15, 0.6), "{}", lc("#000000", "#aaaaaa"));
+        assert!(close(lc("#ffffff", "#888888"), -68.54, 0.6), "{}", lc("#ffffff", "#888888"));
+        assert!(close(lc("#aaaaaa", "#000000"), -56.24, 0.6), "{}", lc("#aaaaaa", "#000000"));
+    }
+
+    #[test]
+    fn apca_polarity_and_no_contrast() {
+        // Sign encodes polarity; an identical pair has no usable contrast.
+        let white = [1.0, 1.0, 1.0, 1.0];
+        let black = [0.0, 0.0, 0.0, 1.0];
+        assert!(apca_lc(black, white) > 0.0, "dark-on-light is positive");
+        assert!(apca_lc(white, black) < 0.0, "light-on-dark is negative");
+        assert_eq!(apca_lc(white, white), 0.0, "same colour -> no contrast");
     }
 
     #[test]
