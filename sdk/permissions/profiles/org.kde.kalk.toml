@@ -1,0 +1,5 @@
+# Starting permission profile for Kalk (a calculator). A pure-compute app: no
+# filesystem, network, or graph.
+[info]
+app_id = "org.kde.kalk"
+tier = "third-party"
