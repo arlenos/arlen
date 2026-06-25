@@ -670,6 +670,105 @@ fn files_open(path: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// One app the Open-With picker offers (a serializable view of the core
+/// `DesktopApp`; `exec` is the verbatim `.desktop` Exec passed back to
+/// `files_open_with`).
+#[derive(Serialize)]
+struct AppInfo {
+    name: String,
+    exec: String,
+    terminal: bool,
+}
+
+/// The freedesktop application directories, user first: `$XDG_DATA_HOME/
+/// applications` (or `~/.local/share/applications`) then each `$XDG_DATA_DIRS/
+/// applications` (default `/usr/local/share` + `/usr/share`). User-first so a
+/// user `.desktop` overrides a system one of the same id.
+fn application_dirs() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Some(home) = dirs::data_local_dir() {
+        out.push(home.join("applications"));
+    }
+    let data_dirs = std::env::var("XDG_DATA_DIRS")
+        .unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string());
+    for d in data_dirs.split(':').filter(|s| !s.is_empty()) {
+        out.push(Path::new(d).join("applications"));
+    }
+    out
+}
+
+/// The applications that declare they handle `path`'s MIME type, for the
+/// Open-With picker. The file's type comes from `xdg-mime`; `.desktop` entries
+/// are read from the standard application dirs (a user entry overriding a system
+/// one of the same id) and matched + sorted by the core. An unresolved MIME or
+/// an unreadable dir yields fewer entries, never an error.
+#[tauri::command]
+fn files_apps_for(path: String) -> Vec<AppInfo> {
+    let abs = abs(&path);
+    let mime = match std::process::Command::new("xdg-mime")
+        .args(["query", "filetype", &abs])
+        .output()
+    {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        _ => return Vec::new(),
+    };
+    if mime.is_empty() {
+        return Vec::new();
+    }
+    let mut apps = Vec::new();
+    let mut seen_ids = std::collections::HashSet::new();
+    for dir in application_dirs() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|e| e.to_str()) != Some("desktop") {
+                continue;
+            }
+            // The desktop-file id (basename) decides override order: the first
+            // occurrence (user dir, scanned first) wins; skip later same-id files.
+            let Some(id) = p.file_name().and_then(|f| f.to_str()) else {
+                continue;
+            };
+            if !seen_ids.insert(id.to_string()) {
+                continue;
+            }
+            if let Ok(text) = std::fs::read_to_string(&p) {
+                if let Some(app) = arlen_file_browser_core::openwith::parse_desktop_app(&text) {
+                    apps.push(app);
+                }
+            }
+        }
+    }
+    arlen_file_browser_core::openwith::apps_for_mime(&apps, &mime)
+        .into_iter()
+        .map(|a| AppInfo {
+            name: a.name,
+            exec: a.exec,
+            terminal: a.terminal,
+        })
+        .collect()
+}
+
+/// Open `path` with the app whose `.desktop` `Exec=` is `exec` (from
+/// `files_apps_for`). The core expands the Exec to an argv (field codes -> the
+/// file path) and we spawn it WITHOUT a shell, so a path with spaces or shell
+/// metacharacters is one inert argument. A `Terminal=true` app launches as-is
+/// for now (no terminal wrapper); most Open-With targets are GUI apps.
+#[tauri::command]
+fn files_open_with(path: String, exec: String) -> Result<(), String> {
+    let argv = arlen_file_browser_core::openwith::expand_exec(&exec, &abs(&path));
+    let Some((program, args)) = argv.split_first() else {
+        return Err("empty exec".to_string());
+    };
+    std::process::Command::new(program)
+        .args(args)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 /// Persistent FM state in `~/.config/arlen/files.toml` (the TOML
 /// rule). Today that is the bookmark list; defaults stay in Settings.
 #[derive(serde::Deserialize, Serialize, Default)]
@@ -1011,6 +1110,8 @@ pub fn run() {
             files_bookmark_add,
             files_bookmark_remove,
             files_open,
+            files_apps_for,
+            files_open_with,
             files_extract,
             files_compress,
             files_archive_list,
