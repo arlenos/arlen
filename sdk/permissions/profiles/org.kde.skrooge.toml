@@ -1,0 +1,7 @@
+# Starting permission profile for Skrooge (a personal finance manager). The finance file lives in Documents; online quote fetch is an opt-in network grant.
+[info]
+app_id = "org.kde.skrooge"
+tier = "third-party"
+
+[filesystem]
+documents = true

@@ -1,0 +1,7 @@
+# Starting permission profile for KOrganizer (a calendar). Local calendars live in Documents; CalDAV sync is the user's opt-in network grant.
+[info]
+app_id = "org.kde.korganizer"
+tier = "third-party"
+
+[filesystem]
+documents = true

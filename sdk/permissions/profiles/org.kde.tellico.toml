@@ -1,0 +1,7 @@
+# Starting permission profile for Tellico (a collection manager). Collection files live in Documents; online metadata fetch is an opt-in network grant.
+[info]
+app_id = "org.kde.tellico"
+tier = "third-party"
+
+[filesystem]
+documents = true

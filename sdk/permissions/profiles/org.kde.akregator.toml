@@ -1,0 +1,7 @@
+# Starting permission profile for Akregator (an RSS/Atom feed reader). Fetching feeds over the network is its core function.
+[info]
+app_id = "org.kde.akregator"
+tier = "third-party"
+
+[network]
+allow_all = true
