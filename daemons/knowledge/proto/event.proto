@@ -473,3 +473,11 @@ message CodeFileIndexPayload {
   string language    = 2;  // "rust"
   repeated CodeSymbolPayload symbols = 3;
 }
+
+// A coarse system-service transition (journald Tier-2). Mirrors the canonical
+// contracts/event def; content-free by construction (no SSID/secret).
+message ServiceEventPayload {
+  string service = 1;  // normalized origin: "network" | "bluetooth" | "session"
+  string kind    = 2;  // "device-up"|"device-down"|"connected"|"disconnected"|"session-opened"|"session-closed"
+  string detail  = 3;  // a coarse non-sensitive id (interface name, session id); never an SSID or secret
+}

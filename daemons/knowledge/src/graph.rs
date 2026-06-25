@@ -670,6 +670,16 @@ fn create_schema(conn: &Connection) -> Result<()> {
     conn.query("ALTER TABLE Event ADD IF NOT EXISTS title STRING")
         .map_err(|e| anyhow!("ensure Event.title column: {e}"))?;
 
+    // Coarse system-service transitions (journald Tier-2, `system.service`) promote
+    // to Event nodes carrying the normalized service ("network"|"bluetooth"|
+    // "session") + the transition kind ("device-up"|"connected"|"session-opened"|
+    // ...). Convergent ADD IF NOT EXISTS for already-initialized DBs. KG-richness:
+    // an emitted event type that previously sat raw in SQLite, now on the timeline.
+    conn.query("ALTER TABLE Event ADD IF NOT EXISTS service STRING")
+        .map_err(|e| anyhow!("ensure Event.service column: {e}"))?;
+    conn.query("ALTER TABLE Event ADD IF NOT EXISTS kind STRING")
+        .map_err(|e| anyhow!("ensure Event.kind column: {e}"))?;
+
     // The cgroup v2 id of the most recent open (Strand 4 attribution). A File node
     // is path-keyed, so this is the LATEST cgroup, not a history; NULL/0 means no
     // eBPF attribution. Convergent ADD IF NOT EXISTS for already-initialized DBs.
