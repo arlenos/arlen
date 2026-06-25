@@ -87,3 +87,27 @@ gaps_outer  = 4
 [cursor]
 theme = "default"
 size  = 24
+
+# The 16 ANSI slots authored slot-by-slot so the terminal generators (kitty,
+# GTK, Qt, foot, Xresources) emit the same muted Arlen palette the xterm.js
+# terminal renders in-app (apps/terminal terminal-theme.ts). Without this the
+# resolver synthesises a generic palette from the semantic colours, which would
+# not match the in-app grid. fg/bg/cursor are synthesised from the app theme
+# (bg.app / fg.primary / accent), so only the ANSI 16 are authored here.
+[terminal.ansi]
+black          = "#15161b"
+red            = "#c96a6a"
+green          = "#8fae74"
+yellow         = "#d4b483"
+blue           = "#7d9cc4"
+magenta        = "#b08bc4"
+cyan           = "#83b3b1"
+white          = "#c8c9cf"
+bright_black   = "#54565e"
+bright_red     = "#d98585"
+bright_green   = "#a6c98a"
+bright_yellow  = "#e3c99a"
+bright_blue    = "#97b5da"
+bright_magenta = "#c4a0d6"
+bright_cyan    = "#9bcac8"
+bright_white   = "#f2f3f7"
