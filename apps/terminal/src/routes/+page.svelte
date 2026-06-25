@@ -15,11 +15,14 @@
     sessionsError,
     loadSessions,
     newSession,
+    initSessionExitListener,
   } from "$lib/stores/sessions";
   import Terminal from "$lib/components/Terminal.svelte";
 
   onMount(() => {
     loadSessions();
+    // Shell exit closes its session (and the window when it was the last).
+    void initSessionExitListener();
   });
 </script>
 

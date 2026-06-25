@@ -3,6 +3,8 @@
 /// from Tauri callbacks does not re-render reliably).
 
 import { writable, get } from "svelte/store";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   terminalSessions,
   terminalNewSession,
@@ -85,4 +87,25 @@ export async function newSession(): Promise<void> {
 
 export function selectSession(id: string): void {
   activeSessionId.set(id);
+}
+
+/// Listen for shell exit: the backend emits `terminal://exited` with a session's
+/// id when its PTY ends (the shell ran `exit` / hit EOF). Drop that session;
+/// when it was the last one, close the window - the standard terminal behaviour
+/// `exit` should give, instead of hanging on the dead PTY. With other sessions
+/// open, select the next so the surface stays live. Call once at startup; the
+/// listener lives for the app run.
+export async function initSessionExitListener(): Promise<void> {
+  await listen<string>("terminal://exited", (event) => {
+    const id = event.payload;
+    const remaining = get(sessions).filter((s) => s.id !== id);
+    if (remaining.length === 0) {
+      void getCurrentWindow().close();
+      return;
+    }
+    sessions.set(remaining);
+    if (get(activeSessionId) === id) {
+      activeSessionId.set(remaining[0].id);
+    }
+  });
 }
