@@ -247,12 +247,52 @@
       return t.buffer.active.viewportY + viewportRow;
     }
 
-    function clearHover(): void {
+    // The hover tint's own transient marker (distinct from the block's permanent
+    // prompt marker): re-created each paint so the anchor can track the viewport,
+    // disposed with the decoration so neither leaks.
+    let hoverMarker: IMarker | undefined;
+
+    function disposeHoverDeco(): void {
       hoverDeco?.dispose();
       hoverDeco = undefined;
+      hoverMarker?.dispose();
+      hoverMarker = undefined;
+    }
+
+    function clearHover(): void {
+      disposeHoverDeco();
       hovered?.resultEl?.classList.remove("is-hover");
       hovered = undefined;
       menuBlock = undefined;
+    }
+
+    // Paint (or repaint) the hovered block's tint, clamped to its topmost VISIBLE
+    // row. xterm does not render a decoration whose marker row is above the
+    // viewport, so anchoring at the prompt marker loses the tint once the command
+    // row scrolls off while the output is still on screen (Tim metal). Clamp the
+    // anchor to the viewport top and shrink the height to the visible span; if the
+    // block is fully scrolled out, paint nothing.
+    function paintHover(block: BlockEntry): void {
+      disposeHoverDeco();
+      if (block.promptMarker.isDisposed) return;
+      const viewTop = t.buffer.active.viewportY;
+      const viewBottom = viewTop + t.rows - 1;
+      // NO +1 on endLine: the end cursor sits past the trailing newline, so
+      // [promptMarker.line, endLine] is exactly the block's own rows.
+      const top = Math.max(block.promptMarker.line, viewTop);
+      const bottom = Math.min(block.endLine, viewBottom);
+      if (bottom < top) return; // block fully out of view
+      const cursorLine = t.buffer.active.baseY + t.buffer.active.cursorY;
+      hoverMarker = t.registerMarker(top - cursorLine) ?? undefined;
+      if (!hoverMarker) return;
+      hoverDeco =
+        t.registerDecoration({
+          marker: hoverMarker,
+          x: 0,
+          width: t.cols,
+          height: Math.max(1, bottom - top + 1),
+        }) ?? undefined;
+      hoverDeco?.onRender((el) => applyBlockHover(el, { isError: block.isError }));
     }
 
     function setHover(block: BlockEntry): void {
@@ -260,13 +300,7 @@
       // The hovered block is the right-click menu's target (spec: the hover tint
       // marks it).
       menuBlock = block;
-      // NO +1: the end cursor sits past the trailing newline, so this is exactly
-      // the block's own rows - +1 would tint the next block's prompt row.
-      const rows = Math.max(1, block.endLine - block.promptMarker.line);
-      hoverDeco =
-        t.registerDecoration({ marker: block.promptMarker, x: 0, width: t.cols, height: rows }) ??
-        undefined;
-      hoverDeco?.onRender((el) => applyBlockHover(el, { isError: block.isError }));
+      paintHover(block);
       block.resultEl?.classList.add("is-hover");
     }
 
@@ -286,6 +320,13 @@
       if (block) setHover(block);
     });
     host.addEventListener("pointerleave", () => clearHover());
+
+    // Re-anchor the tint as the view scrolls: the prompt marker may scroll above
+    // the viewport while the block's output stays visible, so repaint the hovered
+    // block clamped to the new visible span (item 7).
+    t.onScroll(() => {
+      if (hovered) paintHover(hovered);
+    });
   }
 
   // ── Block right-click menu actions (item 6) ──────────────────────────────
