@@ -736,13 +736,16 @@ fn files_apps_for(path: String) -> Vec<AppInfo> {
                 continue;
             }
             if let Ok(text) = std::fs::read_to_string(&p) {
-                if let Some(app) = arlen_file_browser_core::openwith::parse_desktop_app(&text) {
+                if let Some(app) = arlen_file_browser_core::openwith::parse_desktop_app(id, &text) {
                     apps.push(app);
                 }
             }
         }
     }
-    arlen_file_browser_core::openwith::apps_for_mime(&apps, &mime)
+    // The user's default handler for this type leads the picker (freedesktop
+    // expectation), read from `mimeapps.list`; the rest stay alphabetical.
+    let default_id = default_handler_for(&mime);
+    arlen_file_browser_core::openwith::apps_for_mime(&apps, &mime, default_id.as_deref())
         .into_iter()
         .map(|a| AppInfo {
             name: a.name,
@@ -750,6 +753,18 @@ fn files_apps_for(path: String) -> Vec<AppInfo> {
             terminal: a.terminal,
         })
         .collect()
+}
+
+/// The user's default application (a desktop-file id) for `mime`, from
+/// `mimeapps.list` in the user config dir ($XDG_CONFIG_HOME, else ~/.config).
+/// An unreadable or absent file means no default; the picker stays alphabetical.
+fn default_handler_for(mime: &str) -> Option<String> {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
+    let text = std::fs::read_to_string(base.join("mimeapps.list")).ok()?;
+    arlen_file_browser_core::openwith::default_app_for(&text, mime)
 }
 
 /// Open `path` with the app whose `.desktop` `Exec=` is `exec` (from
