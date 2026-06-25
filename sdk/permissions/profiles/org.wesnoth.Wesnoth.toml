@@ -1,0 +1,11 @@
+# Starting permission profile for Battle for Wesnoth (a strategy game with online play + add-ons). Network (online play / downloads) is its
+# function and content lands in Downloads; no Knowledge Graph access.
+[info]
+app_id = "org.wesnoth.Wesnoth"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

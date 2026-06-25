@@ -1,0 +1,6 @@
+# Starting permission profile for Sonic 3 A.I.R. (a Sonic 3 remaster). The game opens any data files the user
+# provides through the file portal, so it needs no standing grant; no network, no
+# Knowledge Graph access.
+[info]
+app_id = "org.sonic3air.Sonic3AIR"
+tier = "third-party"

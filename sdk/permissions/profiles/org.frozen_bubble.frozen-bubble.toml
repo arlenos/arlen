@@ -1,0 +1,5 @@
+# Starting permission profile for Frozen Bubble (a bubble-shooter game). A self-
+# contained local game; no network, no user files, no Knowledge Graph access.
+[info]
+app_id = "org.frozen_bubble.frozen-bubble"
+tier = "third-party"

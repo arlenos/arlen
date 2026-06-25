@@ -1,0 +1,11 @@
+# Starting permission profile for Airshipper (the launcher for the online game Veloren). Network (online play / downloads) is its
+# function and content lands in Downloads; no Knowledge Graph access.
+[info]
+app_id = "net.veloren.airshipper"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
