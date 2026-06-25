@@ -17,6 +17,7 @@
     terminalDrainOutput,
     terminalInput,
     terminalResize,
+    terminalSaveOutput,
   } from "$lib/contract";
   // arlen-ui owns the look; we only wire it. The ITheme + font tokens make the
   // grid the Arlen palette (not bare black), and the block-chrome builders are
@@ -380,6 +381,11 @@
       if (term && menuBlock && !menuBlock.promptMarker.isDisposed) {
         term.selectLines(menuBlock.promptMarker.line, menuBlock.endLine);
       }
+    },
+    saveOutput: () => {
+      // First cut: write to a timestamped file (~/Downloads, else $HOME). A
+      // save-as dialog is the later enhancement (reuses the same write).
+      if (menuBlock) void terminalSaveOutput(blockOutput(menuBlock)).catch(() => {});
     },
   };
 
