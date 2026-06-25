@@ -1,0 +1,6 @@
+# Starting permission profile for Wildcard (a regular-expression tester). A
+# self-contained local tool: it matches patterns against text the user types in.
+# No network, no user files, no Knowledge Graph access.
+[info]
+app_id = "com.felipekinoshita.Wildcard"
+tier = "third-party"

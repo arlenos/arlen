@@ -1,0 +1,6 @@
+# Starting permission profile for Mission Center (a system resource monitor).
+# It reads system state (CPU/GPU/memory/disk/network/processes) by function and
+# needs no network, no user files and no Knowledge Graph access.
+[info]
+app_id = "io.missioncenter.MissionCenter"
+tier = "third-party"
