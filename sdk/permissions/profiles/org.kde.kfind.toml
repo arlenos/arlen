@@ -1,0 +1,7 @@
+# Starting permission profile for KFind (a file search tool). Searches the user's files under Home; no network.
+[info]
+app_id = "org.kde.kfind"
+tier = "third-party"
+
+[filesystem]
+home = true

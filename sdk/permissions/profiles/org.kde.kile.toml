@@ -1,0 +1,7 @@
+# Starting permission profile for Kile (a LaTeX editor). .tex sources live in Documents; local compile, no network.
+[info]
+app_id = "org.kde.kile"
+tier = "third-party"
+
+[filesystem]
+documents = true

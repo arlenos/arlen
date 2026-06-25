@@ -1,0 +1,5 @@
+# Starting permission profile for KCharSelect (a character picker). A pure-utility tool: no filesystem, network, or graph.
+[info]
+app_id = "org.kde.kcharselect"
+tier = "third-party"
+

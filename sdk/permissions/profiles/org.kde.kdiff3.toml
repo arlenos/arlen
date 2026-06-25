@@ -1,0 +1,7 @@
+# Starting permission profile for KDiff3 (a file/directory diff + merge tool). Compares arbitrary paths under Home; no network.
+[info]
+app_id = "org.kde.kdiff3"
+tier = "third-party"
+
+[filesystem]
+home = true

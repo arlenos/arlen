@@ -1,0 +1,7 @@
+# Starting permission profile for Kompare (a diff viewer). Compares files under Home; no network.
+[info]
+app_id = "org.kde.kompare"
+tier = "third-party"
+
+[filesystem]
+home = true

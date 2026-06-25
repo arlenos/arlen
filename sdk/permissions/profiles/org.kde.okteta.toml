@@ -1,0 +1,7 @@
+# Starting permission profile for Okteta (a hex editor). Edits files the user opens from Documents; no network.
+[info]
+app_id = "org.kde.okteta"
+tier = "third-party"
+
+[filesystem]
+documents = true

@@ -1,0 +1,10 @@
+# Starting permission profile for KGet (a download manager). Fetches over the network (its function); completed files land in Downloads.
+[info]
+app_id = "org.kde.kget"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
