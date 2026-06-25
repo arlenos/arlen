@@ -18,7 +18,7 @@
   import { PlacesSidebar, placeIcon } from "@arlen/ui-kit/components/browser";
   import { Trash2, Clock } from "lucide-svelte";
   import { activeController } from "$lib/stores/tabs";
-  import { placeGroups, removeBookmark, savedSearches } from "$lib/stores/places";
+  import { placeGroups, removePlace, savedSearches } from "$lib/stores/places";
   import { runSearch, searchOpen, searchQuery } from "$lib/stores/search";
   import { openTrash } from "$lib/stores/trash";
   import { openRecent } from "$lib/stores/recent";
@@ -57,7 +57,7 @@
       groups={$placeGroups}
       {activePath}
       onnavigate={(place) => $activeController?.navigate(place.path)}
-      onremove={(place) => removeBookmark(place.path)}
+      onremove={(place) => removePlace(place)}
     />
     {#if $savedSearches.length > 0}
       <SidebarGroup class="group-data-[collapsible=icon]:hidden">
