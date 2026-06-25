@@ -25,6 +25,7 @@
 // Re-export only the custom Arlen components that have unique names
 // and NO app-specific store imports. Components that depend on
 // `$lib/stores/theme` etc. stay in their respective apps.
+export { AboutDialog } from "./about-dialog";
 export { AddRemoveList } from "./add-remove-list";
 export { ChipList } from "./chip-list";
 // Collapsible re-exports all three named parts so consumers can import from
