@@ -1,0 +1,5 @@
+# Starting permission profile for Nibbles (a snake game). A self-contained local game; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "org.gnome.Nibbles"
+tier = "third-party"

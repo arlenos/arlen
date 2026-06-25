@@ -1,0 +1,5 @@
+# Starting permission profile for Hitori (a logic puzzle). A self-contained local game; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "org.gnome.Hitori"
+tier = "third-party"

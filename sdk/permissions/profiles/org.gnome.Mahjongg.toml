@@ -1,0 +1,5 @@
+# Starting permission profile for Mahjongg (the tile-matching solitaire). A self-contained local game; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "org.gnome.Mahjongg"
+tier = "third-party"
