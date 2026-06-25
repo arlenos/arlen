@@ -1,0 +1,8 @@
+# Starting permission profile for SimpleX Chat (a private messenger). Network is its function; no user files, no
+# Knowledge Graph access.
+[info]
+app_id = "chat.simplex.simplex"
+tier = "third-party"
+
+[network]
+allow_all = true

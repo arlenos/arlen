@@ -1,0 +1,8 @@
+# Starting permission profile for FluffyChat (a Matrix chat client). Network is its function; no user files, no
+# Knowledge Graph access.
+[info]
+app_id = "im.fluffychat.Fluffychat"
+tier = "third-party"
+
+[network]
+allow_all = true
