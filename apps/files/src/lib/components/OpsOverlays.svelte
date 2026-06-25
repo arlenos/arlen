@@ -2,7 +2,10 @@
   /// The operation surfaces: the conflict dialog (skip / keep both /
   /// replace), the progress veil for operations that take a moment,
   /// and the quiet error line. All driven by the ops store; no
-  /// component talks to the backend directly.
+  /// component talks to the backend directly. The conflict dialog rides
+  /// the shared modal shell so it reads as one surface with the rest.
+  import { Dialog } from "@arlen/ui-kit/components/ui/dialog";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
   import { conflict, opBusy, opError } from "$lib/stores/ops";
 </script>
 
@@ -16,29 +19,23 @@
 {/if}
 
 {#if $conflict}
-  <div class="op-veil" role="presentation">
-    <div
-      class="op-card op-conflict"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Name conflict"
-      tabindex="-1"
-    >
+  <Dialog open onClose={() => conflict.set(null)} ariaLabel="Name conflict" size="md">
+    <div class="op-conflict-body">
       <span class="op-title">{$conflict.name} already exists here</span>
       <span class="op-hint">What should happen with it?</span>
       <div class="op-actions">
-        <button class="op-btn" onclick={() => conflict.set(null)}>Cancel</button>
+        <Button variant="ghost" onclick={() => conflict.set(null)}>Cancel</Button>
         <span class="op-actions-spacer"></span>
-        <button class="op-btn" onclick={() => $conflict?.retry("skip")}>Skip</button>
-        <button class="op-btn" onclick={() => $conflict?.retry("rename")}>
+        <Button variant="outline" onclick={() => $conflict?.retry("skip")}>Skip</Button>
+        <Button variant="outline" onclick={() => $conflict?.retry("rename")}>
           Keep both
-        </button>
-        <button class="op-btn destructive" onclick={() => $conflict?.retry("replace")}>
+        </Button>
+        <Button variant="destructive" onclick={() => $conflict?.retry("replace")}>
           Replace
-        </button>
+        </Button>
       </div>
     </div>
-  </div>
+  </Dialog>
 {/if}
 
 {#if $opError}
@@ -49,6 +46,8 @@
 {/if}
 
 <style>
+  /* The progress veil is a status overlay (a spinner + label), not a dialog, so
+     it keeps its own light frame rather than the modal shell. */
   .op-veil {
     position: fixed;
     inset: 0;
@@ -58,7 +57,6 @@
     justify-content: center;
     background: var(--color-bg-overlay);
   }
-
   .op-card {
     display: flex;
     align-items: center;
@@ -69,13 +67,6 @@
     background: var(--color-bg-card);
     box-shadow: var(--shadow-lg);
   }
-  .op-conflict {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    width: min(380px, calc(100vw - 48px));
-  }
-
   .op-spinner {
     width: 14px;
     height: 14px;
@@ -85,13 +76,23 @@
     animation: op-spin 0.8s linear infinite;
   }
   @keyframes op-spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
   .op-label {
     font-size: 0.75rem;
     color: var(--foreground);
   }
 
+  /* The conflict dialog's body, inside the shared modal shell. */
+  .op-conflict-body {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 16px 20px;
+  }
   .op-title {
     font-size: 0.8125rem;
     font-weight: 500;
@@ -104,33 +105,13 @@
   }
   .op-actions {
     display: flex;
+    align-items: center;
     gap: 8px;
     width: 100%;
     margin-top: 12px;
   }
   .op-actions-spacer {
     flex: 1;
-  }
-  .op-btn {
-    height: var(--height-control, 28px);
-    padding: 0 12px;
-    border: 1px solid var(--control-border);
-    border-radius: var(--radius-input);
-    background: var(--control-bg);
-    color: var(--foreground);
-    font-size: 0.75rem;
-    font-weight: 500;
-    transition: background-color var(--duration-fast, 150ms) var(--ease-out, ease);
-  }
-  .op-btn:hover {
-    background: var(--control-bg-hover);
-  }
-  .op-btn.destructive {
-    border-color: color-mix(in srgb, var(--color-error) 40%, transparent);
-    color: var(--color-error);
-  }
-  .op-btn.destructive:hover {
-    background: color-mix(in srgb, var(--color-error) 12%, transparent);
   }
 
   .op-errorline {
