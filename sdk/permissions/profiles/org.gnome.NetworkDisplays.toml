@@ -1,0 +1,8 @@
+# Starting permission profile for Network Displays (casts the screen to a network display). Network is its function; no user files, no
+# Knowledge Graph access.
+[info]
+app_id = "org.gnome.NetworkDisplays"
+tier = "third-party"
+
+[network]
+allow_all = true

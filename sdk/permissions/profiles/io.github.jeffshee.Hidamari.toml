@@ -1,0 +1,8 @@
+# Starting permission profile for Hidamari (a video / animated wallpaper). It plays
+# a video as the desktop background; videos, no network, no Knowledge Graph access.
+[info]
+app_id = "io.github.jeffshee.Hidamari"
+tier = "third-party"
+
+[filesystem]
+videos = true
