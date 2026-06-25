@@ -28,6 +28,7 @@ use std::path::PathBuf;
 use audit_proto::{AuditSink, LedgerAuditSink};
 use zbus::interface;
 
+use crate::attenuate::{attenuate, AttenuationError};
 use crate::audit::credential_handout_event;
 use crate::config::{self, AccountConfig, Service};
 use crate::gate::{Access, AccessGate};
@@ -101,11 +102,16 @@ impl AccountsDaemon {
     /// Hand out an access token for the account to the calling app at the
     /// service's least-privilege scope, gated on its per-app grant - the Arlen
     /// differentiator over GOA/KDE, where any app reads the shared keyring.
-    /// Returns `(token, scope)`; refuses with `AccessDenied` when the caller is
-    /// unresolved, holds no grant for this account+service, the account does not
-    /// offer the service, or the service name is unknown, and a single generic
-    /// `Failed("token unavailable")` for any post-grant vault outcome (no token
-    /// yet / read error) so the error channel does not leak provisioning state.
+    /// `requested_scope` lets the caller ask for a NARROWER subset of its grant
+    /// (CONN-R2 subtract-only attenuation): empty takes the full grant, a request
+    /// naming any scope outside the grant is refused with `AccessDenied`
+    /// (amplification, the GAP-15 invariant). Returns `(token, scope)` where `scope`
+    /// is the attenuated grant actually handed out; refuses with `AccessDenied` when
+    /// the caller is unresolved, holds no grant for this account+service, the account
+    /// does not offer the service, the service name is unknown, or the request
+    /// amplifies, and a single generic `Failed("token unavailable")` for any
+    /// post-grant vault outcome (no token yet / read error) so the error channel
+    /// does not leak provisioning state.
     ///
     /// Token isolation note: the stored credential is **per account** (one
     /// refresh/access token), so `service` selects the OAuth `scope` handed out,
@@ -122,6 +128,7 @@ impl AccountsDaemon {
         &self,
         account_id: String,
         service: String,
+        requested_scope: String,
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<(String, String)> {
@@ -133,12 +140,30 @@ impl AccountsDaemon {
         };
         let service_key = service.as_key();
         let accounts = self.current_accounts();
-        let scope = match AccessGate::new(&accounts).access(&caller, &account_id, service) {
+        let granted_scope = match AccessGate::new(&accounts).access(&caller, &account_id, service) {
             Access::Granted { scope } => scope.unwrap_or_default(),
             Access::Refused => {
                 return Err(zbus::fdo::Error::AccessDenied(
                     "no grant for this app on this account and service".into(),
                 ))
+            }
+        };
+        // CONN-R2: downscope to the caller's requested subset, subtract-only. An
+        // empty request takes the full grant; a request naming any scope outside
+        // the grant is an amplification and is refused (the GAP-15 invariant).
+        let scope = match attenuate(&granted_scope, &requested_scope) {
+            Ok(scope) => scope,
+            Err(AttenuationError::Amplification(_)) => {
+                // Record the denied over-reach, content-free. Best-effort: a refusal
+                // releases nothing, so a ledger hiccup must not turn the denial into
+                // a grant (the fail-closed rule guards releases, not denials).
+                let _ = self
+                    .audit
+                    .submit(credential_handout_event(&caller, service_key, "amplification-refused"))
+                    .await;
+                return Err(zbus::fdo::Error::AccessDenied(
+                    "requested scope exceeds the grant".into(),
+                ));
             }
         };
         // The grant is held; read the token from the vault. Every post-grant
