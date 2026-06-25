@@ -1,0 +1,8 @@
+# Starting permission profile for WatchMate (a PineTime smartwatch companion, for firmware/updates). Network is its function; no user files, no
+# Knowledge Graph access.
+[info]
+app_id = "io.gitlab.azymohliad.WatchMate"
+tier = "third-party"
+
+[network]
+allow_all = true

@@ -1,0 +1,5 @@
+# Starting permission profile for Tasks (a local to-do manager). A self-contained local tool; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "dev.edfloreshz.Tasks"
+tier = "third-party"

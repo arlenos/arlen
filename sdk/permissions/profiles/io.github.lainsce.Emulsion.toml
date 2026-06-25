@@ -1,0 +1,5 @@
+# Starting permission profile for Emulsion (a colour-palette manager). A self-contained local tool; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "io.github.lainsce.Emulsion"
+tier = "third-party"
