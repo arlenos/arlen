@@ -2,9 +2,9 @@
   /// The Trash view: the home trash contents as a flat list, each entry
   /// restorable to its recorded original location, plus a guarded Empty Trash.
   /// A virtual view (not a browsed folder); the backend trash trio (list /
-  /// restore / empty) does the work. The polished surface is an arlen-ui pass;
-  /// this is the coder's functional wiring over the built+tested backend.
-  import { Trash2, RotateCcw, X } from "lucide-svelte";
+  /// restore / empty) does the work. The shared chrome lives in `FmVirtualView`;
+  /// this supplies the Empty-Trash action and the rows.
+  import { Trash2, RotateCcw } from "lucide-svelte";
   import {
     trashItems,
     closeTrash,
@@ -12,6 +12,7 @@
     emptyTrash,
     type TrashedItem,
   } from "$lib/stores/trash";
+  import FmVirtualView from "./FmVirtualView.svelte";
 
   let confirming = $state(false);
   let busy = $state(false);
@@ -42,79 +43,47 @@
   }
 </script>
 
-<div class="trash-view">
-  <div class="tv-head">
-    <span class="tv-title">Trash</span>
-    <div class="tv-actions">
-      <button
-        class="tv-empty"
-        class:confirming
-        disabled={busy || ($trashItems?.length ?? 0) === 0}
-        onclick={() => void doEmpty()}
-      >
-        <Trash2 size={14} strokeWidth={2} />
-        {confirming ? "Click to confirm" : "Empty Trash"}
-      </button>
-      <button class="tv-close" aria-label="Close trash" onclick={() => closeTrash()}>
-        <X size={14} strokeWidth={2} />
-      </button>
-    </div>
-  </div>
+<FmVirtualView
+  title="Trash"
+  onClose={() => closeTrash()}
+  loading={$trashItems === null}
+  empty={$trashItems !== null && $trashItems.length === 0}
+  emptyLabel="Trash is empty"
+>
+  {#snippet actions()}
+    <button
+      class="tv-empty"
+      class:confirming
+      disabled={busy || ($trashItems?.length ?? 0) === 0}
+      onclick={() => void doEmpty()}
+    >
+      <Trash2 size={14} strokeWidth={2} />
+      {confirming ? "Click to confirm" : "Empty Trash"}
+    </button>
+  {/snippet}
 
-  {#if $trashItems === null}
-    <div class="tv-empty-state">Loading…</div>
-  {:else if $trashItems.length === 0}
-    <div class="tv-empty-state">Trash is empty</div>
-  {:else}
-    <ul class="tv-list">
-      {#each $trashItems as item (item.trashed_name)}
-        <li class="tv-row">
-          <div class="tv-info">
-            <span class="tv-name">{baseName(item.original_path)}</span>
-            <span class="tv-meta">{item.original_path}</span>
-            <span class="tv-meta">Deleted {item.deletion_date}</span>
-          </div>
-          <button
-            class="tv-restore"
-            disabled={busy}
-            onclick={() => void restore(item)}
-          >
-            <RotateCcw size={13} strokeWidth={2} />
-            Restore
-          </button>
-        </li>
-      {/each}
-    </ul>
-  {/if}
-</div>
+  <ul class="tv-list">
+    {#each $trashItems ?? [] as item (item.trashed_name)}
+      <li class="tv-row">
+        <div class="tv-info">
+          <span class="tv-name">{baseName(item.original_path)}</span>
+          <span class="tv-meta">{item.original_path}</span>
+          <span class="tv-meta">Deleted {item.deletion_date}</span>
+        </div>
+        <button
+          class="tv-restore"
+          disabled={busy}
+          onclick={() => void restore(item)}
+        >
+          <RotateCcw size={13} strokeWidth={2} />
+          Restore
+        </button>
+      </li>
+    {/each}
+  </ul>
+</FmVirtualView>
 
 <style>
-  .trash-view {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
-  }
-
-  .tv-head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
-    border-bottom: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
-  }
-  .tv-title {
-    flex: 1;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--foreground);
-  }
-  .tv-actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
   .tv-empty {
     display: inline-flex;
     align-items: center;
@@ -137,27 +106,6 @@
   .tv-empty.confirming {
     border-color: var(--color-error, #e5484d);
     color: var(--color-error, #e5484d);
-  }
-  .tv-close {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--height-control-compact, 24px);
-    height: var(--height-control-compact, 24px);
-    border: none;
-    border-radius: var(--radius-chip);
-    background: transparent;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  .tv-close:hover {
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
-    color: var(--foreground);
-  }
-
-  .tv-empty-state {
-    margin: auto;
-    font-size: 0.8125rem;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
   .tv-list {
