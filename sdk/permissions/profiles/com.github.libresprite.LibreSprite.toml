@@ -1,0 +1,8 @@
+# Starting permission profile for LibreSprite (a pixel-art / sprite editor). It
+# reads and writes images; pictures, no network, no Knowledge Graph access.
+[info]
+app_id = "com.github.libresprite.LibreSprite"
+tier = "third-party"
+
+[filesystem]
+pictures = true

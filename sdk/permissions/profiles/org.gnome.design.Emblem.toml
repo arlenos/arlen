@@ -1,0 +1,8 @@
+# Starting permission profile for Emblem (generates icon/emblem images). It writes
+# the exported image; pictures, no network, no Knowledge Graph access.
+[info]
+app_id = "org.gnome.design.Emblem"
+tier = "third-party"
+
+[filesystem]
+pictures = true

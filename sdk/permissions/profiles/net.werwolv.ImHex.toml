@@ -1,0 +1,6 @@
+# Starting permission profile for ImHex (a hex editor for reverse engineering). It
+# opens the file the user picks through the file portal, so it needs no standing
+# filesystem grant; no network, no Knowledge Graph access.
+[info]
+app_id = "net.werwolv.ImHex"
+tier = "third-party"
