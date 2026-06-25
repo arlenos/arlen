@@ -193,6 +193,12 @@ export async function terminalNewSession(): Promise<Session> {
   return invoke<Session>("terminal_new_session");
 }
 
+/// Save a block's output to a timestamped file (under ~/Downloads, else $HOME);
+/// returns the saved path. A save-as dialog is the later enhancement.
+export async function terminalSaveOutput(content: string): Promise<string> {
+  return invoke<string>("terminal_save_output", { content });
+}
+
 /// Close a session in the backend (reaps the dead shell from the registry).
 export async function terminalCloseSession(sessionId: string): Promise<void> {
   await invoke("terminal_close_session", { sessionId });

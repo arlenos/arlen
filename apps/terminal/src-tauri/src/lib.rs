@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use arlen_terminal_core::blocks::BlockAssembler;
 use arlen_terminal_core::vt::VtEngine;
@@ -472,6 +472,29 @@ fn terminal_config_set(font_size: f32) -> Result<(), String> {
     save_config(&path, &config)
 }
 
+/// Write a finished block's output to a timestamped file under `~/Downloads`
+/// (falling back to `$HOME`) and return the saved path. The first cut for the
+/// block menu's "Save output to file"; a save-as dialog (the
+/// `@tauri-apps/plugin-dialog` path) is the later enhancement that picks the path
+/// and reuses this write.
+#[tauri::command]
+fn terminal_save_output(content: String) -> Result<String, String> {
+    let home = std::env::var("HOME").map_err(|_| "no home directory".to_string())?;
+    let downloads = Path::new(&home).join("Downloads");
+    let dir = if downloads.is_dir() {
+        downloads
+    } else {
+        PathBuf::from(&home)
+    };
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_millis();
+    let path = dir.join(format!("arlen-terminal-output-{ts}.txt"));
+    std::fs::write(&path, content).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
 /// Tauri application entry point invoked from `main.rs`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -500,7 +523,8 @@ pub fn run() {
             terminal_history_search,
             terminal_projects,
             terminal_config_get,
-            terminal_config_set
+            terminal_config_set,
+            terminal_save_output
         ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-terminal");
