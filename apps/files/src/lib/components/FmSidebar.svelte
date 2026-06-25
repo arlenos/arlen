@@ -18,7 +18,7 @@
   import { PlacesSidebar, placeIcon } from "@arlen/ui-kit/components/browser";
   import { Trash2, Clock } from "lucide-svelte";
   import { activeController } from "$lib/stores/tabs";
-  import { placeGroups, removePlace, savedSearches } from "$lib/stores/places";
+  import { placeGroups, removePlace, navigatePlace, savedSearches } from "$lib/stores/places";
   import { runSearch, searchOpen, searchQuery } from "$lib/stores/search";
   import { openTrash } from "$lib/stores/trash";
   import { openRecent } from "$lib/stores/recent";
@@ -56,7 +56,10 @@
     <PlacesSidebar
       groups={$placeGroups}
       {activePath}
-      onnavigate={(place) => $activeController?.navigate(place.path)}
+      onnavigate={(place) => {
+        const c = $activeController;
+        if (c) void navigatePlace(place, (p) => c.navigate(p));
+      }}
       onremove={(place) => removePlace(place)}
     />
     {#if $savedSearches.length > 0}
