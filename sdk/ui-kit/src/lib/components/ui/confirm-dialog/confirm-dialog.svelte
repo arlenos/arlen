@@ -12,6 +12,7 @@
   /// for slow operations. Escape and backdrop click both cancel.
 
   import { Button } from "../button";
+  import Dialog from "../dialog/dialog.svelte";
 
   type Variant = "default" | "destructive";
 
@@ -50,66 +51,37 @@
     }
   }
 
-  function handleBackdropClick(e: MouseEvent): void {
-    // Only cancel if the click was on the backdrop, not bubbled from
-    // inside the dialog body.
-    if (e.target === e.currentTarget && !busy) {
-      onCancel();
-    }
-  }
-
-  function handleKeydown(e: KeyboardEvent): void {
-    if (e.key === "Escape" && !busy) {
-      e.preventDefault();
-      onCancel();
-    }
-  }
-
+  // Reset the confirm button's working state each time the dialog opens; the
+  // shell (`Dialog`) owns the backdrop, Escape and backdrop-click dismissal.
   $effect(() => {
-    if (open) {
-      busy = false;
-      window.addEventListener("keydown", handleKeydown, { capture: true });
-      return () => {
-        window.removeEventListener("keydown", handleKeydown, {
-          capture: true,
-        });
-      };
-    }
+    if (open) busy = false;
   });
 </script>
 
-{#if open}
-  <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="confirm-dialog-title"
-    tabindex="-1"
-    onclick={handleBackdropClick}
-    onkeydown={handleKeydown}
-  >
-    <div
-      class="w-full max-w-md rounded-[var(--radius-input)] border border-border bg-card p-6 shadow-lg"
+<Dialog
+  {open}
+  onClose={onCancel}
+  dismissable={!busy}
+  labelledby="confirm-dialog-title"
+  size="md"
+>
+  <div class="p-6">
+    <h2
+      id="confirm-dialog-title"
+      class="mb-2 text-base font-semibold text-foreground"
     >
-      <h2
-        id="confirm-dialog-title"
-        class="mb-2 text-base font-semibold text-foreground"
+      {title}
+    </h2>
+    <p class="mb-6 text-sm text-muted-foreground">{message}</p>
+    <div class="flex justify-end gap-2">
+      <Button variant="ghost" onclick={onCancel} disabled={busy}>Cancel</Button>
+      <Button
+        variant={variant === "destructive" ? "destructive" : "default"}
+        onclick={handleConfirm}
+        disabled={busy}
       >
-        {title}
-      </h2>
-      <p class="mb-6 text-sm text-muted-foreground">{message}</p>
-      <div class="flex justify-end gap-2">
-        <Button variant="ghost" onclick={onCancel} disabled={busy}>
-          Cancel
-        </Button>
-        <Button
-          variant={variant === "destructive" ? "destructive" : "default"}
-          onclick={handleConfirm}
-          disabled={busy}
-        >
-          {busy ? "Working…" : confirmLabel}
-        </Button>
-      </div>
+        {busy ? "Working…" : confirmLabel}
+      </Button>
     </div>
   </div>
-{/if}
+</Dialog>
