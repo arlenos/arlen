@@ -6,13 +6,24 @@
   // render. The block frame, inline images and artifacts stay web-UI around
   // this; only the live grid is xterm.js.
   import { onMount, onDestroy } from "svelte";
-  import { Terminal } from "@xterm/xterm";
+  import { Terminal, type IMarker, type IDecoration } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
   import { WebglAddon } from "@xterm/addon-webgl";
   import { CanvasAddon } from "@xterm/addon-canvas";
   import "@xterm/xterm/css/xterm.css";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { terminalDrainOutput, terminalInput, terminalResize } from "$lib/contract";
+  // arlen-ui owns the look; we only wire it. The ITheme + font tokens make the
+  // grid the Arlen palette (not bare black), and the block-chrome builders are
+  // anchored to the OSC 133 marks below so the visible block frame is restored.
+  import {
+    arlenTerminalTheme,
+    TERMINAL_FONT_FAMILY,
+    TERMINAL_FONT_SIZE,
+    TERMINAL_LINE_HEIGHT,
+  } from "$lib/terminal-theme";
+  import { applyBlockAccent, renderBlockResult } from "$lib/block-chrome";
+  import "$lib/block-chrome.css";
 
   let { sessionId }: { sessionId: string } = $props();
 
@@ -70,24 +81,74 @@
   }
 
   // Block boundaries over the continuous grid (terminal.md approach B, VS Code's
-  // way): the shell's OSC 133 marks delimit commands, so on each prompt-start
-  // (133;A) we drop an xterm.js marker + a left-accent decoration. The grid stays
-  // one canvas - the block frame is an overlay anchored to a row, not a DOM grid.
-  // This is the coder-owned anchor mechanism; the richer frame (header, run-again)
-  // is arlen-ui's lane layered on these marks.
-  function registerBlockMarks(t: Terminal): void {
+  // way): the shell's OSC 133 marks delimit commands, and arlen-ui's block chrome
+  // (block-chrome.ts) is anchored to those marks - a left accent bar spanning
+  // each block (full height once it ends, error-tinted on a non-zero exit) and a
+  // right-anchored result strip carrying the exit code + duration. The grid stays
+  // one canvas; the chrome is an overlay hung off the marker rows, NOT a DOM grid.
+  // arlen-ui owns the look (and may still refine the richer frame - captured
+  // prompt line, inline images, artifacts - with Tim); this is the anchoring only.
+  function registerBlockChrome(t: Terminal): void {
+    // Per-block state, reset at each prompt-start (133;A).
+    let promptMarker: IMarker | undefined;
+    let liveAccent: IDecoration | undefined;
+    let execStartMs: number | undefined;
+
+    // A left accent bar anchored at the prompt-start marker, `rows` tall; the
+    // 2px width + colour come from block-chrome.css, the height from the rows.
+    function accent(
+      marker: IMarker,
+      rows: number,
+      isActive: boolean,
+      isError: boolean,
+    ): IDecoration | undefined {
+      const dec = t.registerDecoration({ marker, x: 0, width: 1, height: rows });
+      dec?.onRender((el) => applyBlockAccent(el, { isActive, isError }));
+      return dec ?? undefined;
+    }
+
+    // OSC 133;D[;<exit>] -> the integer exit code, or null when absent/malformed.
+    function exitOf(data: string): number | null {
+      const semi = data.indexOf(";");
+      if (semi < 0) return null;
+      const code = Number.parseInt(data.slice(semi + 1), 10);
+      return Number.isInteger(code) ? code : null;
+    }
+
     t.parser.registerOscHandler(133, (data: string) => {
-      // 133;A = prompt start: a new command block begins at this row.
       if (data === "A" || data.startsWith("A;")) {
-        const marker = t.registerMarker(0);
-        if (marker) {
-          const dec = t.registerDecoration({ marker, width: 1, x: 0 });
-          dec?.onRender((el: HTMLElement) => {
-            el.style.borderLeft = "2px solid var(--accent, #6366f1)";
-            el.style.height = "100%";
-            el.style.boxSizing = "border-box";
+        // Prompt start: a new block begins here. Drop a live one-row accent tick
+        // now; the full-height bar replaces it when the block ends (133;D).
+        liveAccent?.dispose();
+        const marker = t.registerMarker(0) ?? undefined;
+        promptMarker = marker;
+        execStartMs = undefined;
+        liveAccent = marker ? accent(marker, 1, true, false) : undefined;
+      } else if (data === "C" || data.startsWith("C;")) {
+        // Command exec start: begin the wall-clock for the result chip.
+        execStartMs = Date.now();
+      } else if (data === "D" || data.startsWith("D;")) {
+        // Command end: swap the live tick for the full-height bar (error-tinted
+        // on a non-zero exit) and anchor the result strip right of the prompt row.
+        const exitCode = exitOf(data);
+        const durationMs =
+          execStartMs !== undefined ? Date.now() - execStartMs : null;
+        liveAccent?.dispose();
+        liveAccent = undefined;
+        if (promptMarker && !promptMarker.isDisposed) {
+          const endLine = t.buffer.active.baseY + t.buffer.active.cursorY;
+          const rows = Math.max(1, endLine - promptMarker.line + 1);
+          accent(promptMarker, rows, false, exitCode !== null && exitCode !== 0);
+          const result = t.registerDecoration({
+            marker: promptMarker,
+            anchor: "right",
+            x: 0,
+            width: 24,
           });
+          result?.onRender((el) => renderBlockResult(el, { exitCode, durationMs }));
         }
+        promptMarker = undefined;
+        execStartMs = undefined;
       }
       // Never consume the sequence: the engine's own OSC 133 block parsing must
       // still see it. Returning false lets every other handler run.
@@ -103,14 +164,20 @@
       cursorInactiveStyle: "outline",
       rightClickSelectsWord: true,
       allowProposedApi: true,
-      fontFamily: "monospace",
+      // arlen-ui's palette + mono (the in-app grid is the Arlen theme, not bare
+      // black). xterm paints the grid on a canvas, so the colours must reach it
+      // as the options object, never via CSS.
+      theme: arlenTerminalTheme,
+      fontFamily: TERMINAL_FONT_FAMILY,
+      fontSize: TERMINAL_FONT_SIZE,
+      lineHeight: TERMINAL_LINE_HEIGHT,
     });
     term = t;
     fit = new FitAddon();
     t.loadAddon(fit);
     t.open(host);
     loadRenderer(t);
-    registerBlockMarks(t);
+    registerBlockChrome(t);
 
     // The grid IS the keystroke target now (not a textbox): xterm.js emits the
     // UTF-8 input string, the engine writes it to the PTY master.
@@ -122,24 +189,28 @@
     // TUI then draws only 24 rows into a taller grid (the under-fill bug).
     t.onResize(({ cols, rows }) => void terminalResize(sessionId, cols, rows));
 
-    // Size the grid to the host now that the handler is attached, so the PTY is
-    // synced on mount (not only on a later container resize).
-    fit.fit();
-
     void listen<string>("terminal://frame", (e) => {
       if (e.payload === sessionId) void drain();
     }).then((un) => (unlistenFrame = un));
-
-    resizeObserver = new ResizeObserver(() => fit?.fit());
-    resizeObserver.observe(host);
 
     // xterm.js owns input + focus now (its textarea is the keystroke target), so
     // focus it on mount: the cursor draws solid (not the inactive outline) and
     // keystrokes land without a click. xterm re-focuses on click too.
     t.focus();
 
-    // Drain whatever the engine already buffered before this view attached.
-    void drain();
+    // Wait for the bundled mono (@fontsource/cascadia-code, imported in app.css)
+    // to load before the first fit: xterm MEASURES the font to compute the cell
+    // size, so a fit on the fallback face sizes the grid wrong (and the PTY with
+    // it). Once the face is ready, size the grid to the host - the onResize above
+    // syncs the PTY - start observing container resizes, and drain whatever the
+    // engine already buffered before this view attached.
+    void document.fonts.ready.then(() => {
+      if (!term || !fit) return;
+      fit.fit();
+      resizeObserver = new ResizeObserver(() => fit?.fit());
+      resizeObserver.observe(host);
+      void drain();
+    });
   });
 
   onDestroy(() => {
