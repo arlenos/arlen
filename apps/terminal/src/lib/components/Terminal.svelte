@@ -89,7 +89,7 @@
   // arlen-ui owns the look (and may still refine the richer frame - captured
   // prompt line, inline images, artifacts - with Tim); this is the anchoring only.
   function registerBlockChrome(t: Terminal): void {
-    // Per-block state, reset at each prompt-start (133;A).
+    // Per-block state, reset at each prompt-start.
     let promptMarker: IMarker | undefined;
     let liveAccent: IDecoration | undefined;
     let execStartMs: number | undefined;
@@ -107,7 +107,7 @@
       return dec ?? undefined;
     }
 
-    // OSC 133;D[;<exit>] -> the integer exit code, or null when absent/malformed.
+    // `D[;<exit>]` -> the integer exit code, or null when absent/malformed.
     function exitOf(data: string): number | null {
       const semi = data.indexOf(";");
       if (semi < 0) return null;
@@ -115,45 +115,57 @@
       return Number.isInteger(code) ? code : null;
     }
 
-    t.parser.registerOscHandler(133, (data: string) => {
-      if (data === "A" || data.startsWith("A;")) {
-        // Prompt start: a new block begins here. Drop a live one-row accent tick
-        // now; the full-height bar replaces it when the block ends (133;D).
-        liveAccent?.dispose();
-        const marker = t.registerMarker(0) ?? undefined;
-        promptMarker = marker;
-        execStartMs = undefined;
-        liveAccent = marker ? accent(marker, 1, true, false) : undefined;
-      } else if (data === "C" || data.startsWith("C;")) {
-        // Command exec start: begin the wall-clock for the result chip.
-        execStartMs = Date.now();
-      } else if (data === "D" || data.startsWith("D;")) {
-        // Command end: swap the live tick for the full-height bar (error-tinted
-        // on a non-zero exit) and anchor the result strip right of the prompt row.
-        const exitCode = exitOf(data);
-        const durationMs =
-          execStartMs !== undefined ? Date.now() - execStartMs : null;
-        liveAccent?.dispose();
-        liveAccent = undefined;
-        if (promptMarker && !promptMarker.isDisposed) {
-          const endLine = t.buffer.active.baseY + t.buffer.active.cursorY;
-          const rows = Math.max(1, endLine - promptMarker.line + 1);
-          accent(promptMarker, rows, false, exitCode !== null && exitCode !== 0);
-          const result = t.registerDecoration({
-            marker: promptMarker,
-            anchor: "right",
-            x: 0,
-            width: 24,
-          });
-          result?.onRender((el) => renderBlockResult(el, { exitCode, durationMs }));
-        }
-        promptMarker = undefined;
-        execStartMs = undefined;
+    function onPromptStart(): void {
+      // A new block begins here. Drop a live one-row accent tick now; the
+      // full-height bar replaces it when the block ends (the `D` mark).
+      liveAccent?.dispose();
+      const marker = t.registerMarker(0) ?? undefined;
+      promptMarker = marker;
+      execStartMs = undefined;
+      liveAccent = marker ? accent(marker, 1, true, false) : undefined;
+    }
+
+    function onCommandEnd(data: string): void {
+      // Swap the live tick for the full-height bar (error-tinted on a non-zero
+      // exit) and anchor the result strip right of the prompt row.
+      const exitCode = exitOf(data);
+      const durationMs =
+        execStartMs !== undefined ? Date.now() - execStartMs : null;
+      liveAccent?.dispose();
+      liveAccent = undefined;
+      if (promptMarker && !promptMarker.isDisposed) {
+        const endLine = t.buffer.active.baseY + t.buffer.active.cursorY;
+        const rows = Math.max(1, endLine - promptMarker.line + 1);
+        accent(promptMarker, rows, false, exitCode !== null && exitCode !== 0);
+        const result = t.registerDecoration({
+          marker: promptMarker,
+          anchor: "right",
+          x: 0,
+          width: 24,
+        });
+        result?.onRender((el) => renderBlockResult(el, { exitCode, durationMs }));
       }
-      // Never consume the sequence: the engine's own OSC 133 block parsing must
-      // still see it. Returning false lets every other handler run.
+      promptMarker = undefined;
+      execStartMs = undefined;
+    }
+
+    // Both OSC 133 (FinalTerm) and OSC 633 (VS Code) carry the same A/C/D block
+    // marks. The Arlen shell integration (arlen-shell-integration.zsh) emits
+    // 633;A for prompt-start and 133;C / 133;D for exec/end (and 633;E for the
+    // command line, which we ignore - the engine decodes + nonce-validates that
+    // for the trusted block record), so route either family by the leading
+    // letter. Run-again is omitted here on purpose: replaying a command must use
+    // the engine's validated record, never a 633;E we decode in the webview.
+    const dispatch = (data: string): boolean => {
+      if (data === "A" || data.startsWith("A;")) onPromptStart();
+      else if (data === "C" || data.startsWith("C;")) execStartMs = Date.now();
+      else if (data === "D" || data.startsWith("D;")) onCommandEnd(data);
+      // Return false so xterm's other handlers still run; the engine parses its
+      // own raw copy of the PTY stream, so this never starves its block parser.
       return false;
-    });
+    };
+    t.parser.registerOscHandler(133, dispatch);
+    t.parser.registerOscHandler(633, dispatch);
   }
 
   onMount(() => {
