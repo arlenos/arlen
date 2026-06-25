@@ -1,0 +1,6 @@
+# Starting permission profile for Webfont Kit Generator (builds a web-font kit from
+# font files). It opens the fonts and saves the kit through the file portal, so it
+# needs no standing filesystem grant; no network, no Knowledge Graph access.
+[info]
+app_id = "com.rafaelmardojai.WebfontKitGenerator"
+tier = "third-party"

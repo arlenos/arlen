@@ -1,0 +1,11 @@
+# Starting permission profile for Motrix (a download manager). Network is its
+# function and completed downloads land in Downloads; no Knowledge Graph access.
+[info]
+app_id = "net.agalwood.Motrix"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

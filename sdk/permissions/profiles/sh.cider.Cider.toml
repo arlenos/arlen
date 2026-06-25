@@ -1,0 +1,8 @@
+# Starting permission profile for Cider (an Apple Music client). It streams music
+# over the network by function; no user files, no Knowledge Graph access.
+[info]
+app_id = "sh.cider.Cider"
+tier = "third-party"
+
+[network]
+allow_all = true

@@ -1,0 +1,8 @@
+# Starting permission profile for NormCap (OCR screen capture). It copies the
+# recognized text to the clipboard; no network, no user files, no Knowledge Graph.
+[info]
+app_id = "com.github.dynobo.normcap"
+tier = "third-party"
+
+[clipboard]
+write = true
