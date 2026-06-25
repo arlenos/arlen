@@ -3,8 +3,8 @@ use crate::project::ProjectStore;
 use crate::proto::{
     AnnotationClearPayload, AnnotationSetPayload, BadgeSetPayload, BadgeStatus,
     CodeFileIndexPayload, FileOpenedPayload, FileWrittenPayload, NetworkConnectionPayload,
-    PresenceClearPayload, PresenceSetPayload, ShortcutActionInvokedPayload, TimelineRecordPayload,
-    WindowFocusedPayload,
+    PresenceClearPayload, PresenceSetPayload, ServiceEventPayload, ShortcutActionInvokedPayload,
+    TimelineRecordPayload, WindowFocusedPayload,
 };
 use crate::utils::escape_cypher;
 use anyhow::Result;
@@ -232,6 +232,11 @@ async fn run_pass(
             "power.low" | "power.critical" | "power.recovered" | "power.profile_changed"
             | "power.suspend" | "power.resume" | "power.lid_closed" => {
                 promote_power_transition(graph, id, event_type, timestamp, source).await
+            }
+            // Coarse system-service transitions (journald Tier-2) become timeline
+            // Event nodes carrying the normalized service + the transition kind.
+            "system.service" => {
+                promote_service_transition(graph, id, timestamp, source, payload).await
             }
             // The code-graph layer (CG-R1): replace a file's CodeSymbols with the
             // freshly-parsed set and fuse each to its File via DEFINES.
@@ -738,6 +743,36 @@ async fn promote_power_transition(
         ))
         .await?;
     debug!(event_id, event_type, "promoted power transition");
+    Ok(())
+}
+
+/// Promote a `system.service` event (journald Tier-2: a coarse NetworkManager /
+/// bluetooth / logind transition) into a timeline `Event` node carrying the
+/// normalized `service` + transition `kind`. Mirrors [`promote_power_transition`]:
+/// an OS-observed transition the AI can correlate against the timeline, here with
+/// the two queryable dimensions the journald parser already classifies. The
+/// payload is content-free by construction (no SSID/secret; the parser guarantees
+/// it), so the fields are stored as-is, escaped.
+async fn promote_service_transition(
+    graph: &GraphHandle,
+    event_id: &str,
+    timestamp: &i64,
+    source: &str,
+    payload: &[u8],
+) -> Result<()> {
+    let p = ServiceEventPayload::decode(payload)?;
+    let event_id_esc = escape_cypher(event_id);
+    let source_esc = escape_cypher(source);
+    let service_esc = escape_cypher(&p.service);
+    let kind_esc = escape_cypher(&p.kind);
+    graph
+        .write(format!(
+            "MERGE (e:Event {{id: '{event_id_esc}'}})
+             SET e.type = 'system.service', e.timestamp = {timestamp}, e.source = '{source_esc}', \
+                 e.service = '{service_esc}', e.kind = '{kind_esc}'"
+        ))
+        .await?;
+    debug!(event_id, service = %p.service, kind = %p.kind, "promoted service transition");
     Ok(())
 }
 
@@ -1590,6 +1625,34 @@ mod shell_event_tests {
         assert_eq!(row[0].as_str(), "power.critical");
         assert_eq!(row[1].as_i64(), 4242);
         assert_eq!(row[2].as_str(), "app:arlen-powerd");
+    }
+
+    #[tokio::test]
+    async fn promote_service_transition_records_service_and_kind() {
+        // A coarse journald service transition lands as an Event node carrying the
+        // normalized service + transition kind (KG-richness: previously raw-only).
+        let (graph, _tmp) = setup().await;
+        let payload = ServiceEventPayload {
+            service: "network".into(),
+            kind: "connected".into(),
+            detail: "eth0".into(),
+        }
+        .encode_to_vec();
+        promote_service_transition(&graph, "svc1", &7777, "app:arlen-journald-parser", &payload)
+            .await
+            .unwrap();
+        let rs = graph
+            .query_rows(
+                "MATCH (e:Event {id: 'svc1'}) RETURN e.type AS t, e.service AS sv, e.kind AS k, e.timestamp AS ts"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        let row = rs.rows.first().expect("the service transition Event exists");
+        assert_eq!(row[0].as_str(), "system.service");
+        assert_eq!(row[1].as_str(), "network");
+        assert_eq!(row[2].as_str(), "connected");
+        assert_eq!(row[3].as_i64(), 7777);
     }
 
     #[tokio::test]
