@@ -1,0 +1,5 @@
+# Starting permission profile for Block Attack (a falling-blocks puzzle game). A
+# self-contained local game; no network, no user files, no Knowledge Graph.
+[info]
+app_id = "net.blockattack.game"
+tier = "third-party"
