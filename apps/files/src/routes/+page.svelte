@@ -29,10 +29,13 @@
   import FmSearchBar from "$lib/components/FmSearchBar.svelte";
   import FmSearchResults from "$lib/components/FmSearchResults.svelte";
   import FmTrashView from "$lib/components/FmTrashView.svelte";
+  import FmRecentView from "$lib/components/FmRecentView.svelte";
   import FmInfoPanel from "$lib/components/FmInfoPanel.svelte";
   import { savedSearches } from "$lib/stores/places";
   import { searchOpen, searchResults } from "$lib/stores/search";
-  import { trashOpen, openTrash } from "$lib/stores/trash";
+  import { openTrash } from "$lib/stores/trash";
+  import { openRecent } from "$lib/stores/recent";
+  import { overlay } from "$lib/stores/overlay";
 
   let renamingName = $state<string | null>(null);
   let confirmDelete = $state(false);
@@ -221,12 +224,15 @@
       case "go.trash":
         await openTrash();
         break;
+      case "go.recent":
+        await openRecent();
+        break;
       case "edit.select_all":
         c?.selectAll();
         break;
       default:
-        // go.recent + help.about need a frontend surface (a recent-files
-        // panel, an about dialog) that does not exist yet; routed to arlen-ui.
+        // help.about needs a frontend surface (an about dialog) that does not
+        // exist yet; routed to arlen-ui.
         console.info(`files: topbar menu action not yet wired: ${action}`);
     }
   }
@@ -287,8 +293,10 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="fm" onkeydown={onOpsKeydown}>
-  {#if $trashOpen}
+  {#if $overlay === "trash"}
     <FmTrashView />
+  {:else if $overlay === "recent"}
+    <FmRecentView />
   {:else if $activeController && $focusedController}
     <FmSearchBar path={currentPath()} onsave={saveSearch} />
     <ContextMenu.Root>

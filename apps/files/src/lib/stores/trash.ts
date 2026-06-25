@@ -7,6 +7,7 @@
 
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { overlay, closeOverlay } from "./overlay";
 
 /// One trashed entry (mirrors the Rust `ops::TrashedItem`): the opaque token
 /// the backend addresses it by, its recorded original path, and the deletion
@@ -17,8 +18,6 @@ export interface TrashedItem {
   deletion_date: string;
 }
 
-/// Whether the Trash view replaces the listing.
-export const trashOpen = writable(false);
 /// The current trash contents; null = not loaded yet, [] = loaded and empty.
 export const trashItems = writable<TrashedItem[] | null>(null);
 
@@ -32,15 +31,15 @@ export async function loadTrash(): Promise<void> {
   }
 }
 
-/// Open the Trash view and load its contents.
+/// Open the Trash view (exclusive of other overlays) and load its contents.
 export async function openTrash(): Promise<void> {
-  trashOpen.set(true);
+  overlay.set("trash");
   await loadTrash();
 }
 
 /// Close the Trash view, back to the listing.
 export function closeTrash(): void {
-  trashOpen.set(false);
+  closeOverlay();
 }
 
 /// Restore one entry to its recorded original location (the backend reanchors
