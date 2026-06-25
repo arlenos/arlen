@@ -18,6 +18,19 @@ interface SavedSearch {
   query: string;
 }
 
+/// A mounted volume for the Devices section (mirrors the Rust `MountedDevice`).
+interface MountedDevice {
+  label: string;
+  mountpoint: string;
+  device: string;
+  removable: boolean;
+  fstype: string;
+}
+
+/// Mountpoint -> `/dev` node, so the Devices hover affordance can route to eject
+/// (the sidebar only hands `removePlace` a `Place`, keyed by its path).
+const deviceNodes = new Map<string, string>();
+
 export const placeGroups = writable<PlaceGroup[]>([]);
 
 /// Pin a folder to the sidebar and refresh the groups.
@@ -39,6 +52,24 @@ export async function removeBookmark(path: string): Promise<void> {
   }
   await loadPlaces();
 }
+/// The Devices/Bookmarks hover-remove affordance: a removable DEVICE ejects
+/// (unmount + power-off the drive via udisks); any other removable place (a user
+/// bookmark) unpins. One handler so the sidebar's single affordance does the
+/// right thing per entry type.
+export async function removePlace(place: Place): Promise<void> {
+  const device = deviceNodes.get(place.path);
+  if (device) {
+    try {
+      await invoke("files_eject", { device });
+    } catch {
+      // Busy / polkit-refused: leave the device listed.
+    }
+    await loadPlaces();
+  } else {
+    await removeBookmark(place.path);
+  }
+}
+
 export const savedSearches = writable<SavedSearch[]>([]);
 
 /// The home place's path; the breadcrumb collapses it to "Home".
@@ -51,7 +82,26 @@ export async function loadPlaces(): Promise<void> {
     const home = places.orte.find((p) => p.icon === "home");
     if (home) homePath.set(home.path);
     groups.push({ label: "Places", places: places.orte });
-    groups.push({ label: "Devices", places: places.geraete });
+    // Devices: the host's base entry (System) plus the real mounted volumes
+    // from lsblk (removable drives + extra data mounts). Removable ones carry
+    // the hover affordance, routed to eject by `removePlace` via deviceNodes.
+    deviceNodes.clear();
+    const devicePlaces: Place[] = [];
+    try {
+      const devs = await invoke<MountedDevice[]>("files_devices");
+      for (const d of devs) {
+        deviceNodes.set(d.mountpoint, d.device);
+        devicePlaces.push({
+          label: d.label,
+          icon: "drive",
+          path: d.mountpoint,
+          removable: d.removable,
+        });
+      }
+    } catch {
+      // lsblk unavailable: just the host base entries.
+    }
+    groups.push({ label: "Devices", places: [...places.geraete, ...devicePlaces] });
   } catch {
     // Unreachable backend: the sidebar stays empty rather than fake.
   }
