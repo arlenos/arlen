@@ -131,6 +131,22 @@ where
     out
 }
 
+/// Find the project's references that bind to `name` - the "who calls / imports
+/// this?" reverse of [`resolve_file`]'s jump-to-definition, the other half of code
+/// navigation. Returns each [`ResolvedReference`] (with its `from_file`, the call/
+/// import kind + line, and the resolved targets) whose name is `name`. Built over
+/// the same project index, so the `Ambiguous`/`Inferred` confidence on each binding
+/// is identical to the forward direction.
+pub fn callers_of<'a, I>(name: &str, files: I) -> Vec<ResolvedReference>
+where
+    I: IntoIterator<Item = (&'a str, &'a FileIndex)> + Clone,
+{
+    resolve_project(files)
+        .into_iter()
+        .filter(|r| r.reference.name == name)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,6 +200,29 @@ mod tests {
         let resolved = resolve_file("main.rs", &caller, &table);
         assert_eq!(resolved.len(), 1, "only `local` resolves; `println` is external");
         assert_eq!(resolved[0].reference.name, "local");
+    }
+
+    #[test]
+    fn callers_of_finds_every_reference_to_a_symbol() {
+        // `foo` is defined in lib and called from two other files; `callers_of`
+        // returns both call sites (the find-callers reverse of jump-to-def).
+        let lib = file(vec![sym("foo", 1)], vec![]);
+        let a = file(vec![], vec![call("foo", 4)]);
+        let b = file(vec![], vec![call("foo", 7), call("other", 8)]);
+        let callers = callers_of("foo", [("lib.rs", &lib), ("a.rs", &a), ("b.rs", &b)]);
+        assert_eq!(callers.len(), 2);
+        let from: Vec<&str> = callers.iter().map(|c| c.from_file.as_str()).collect();
+        assert_eq!(from, ["a.rs", "b.rs"]);
+        assert!(callers.iter().all(|c| c.reference.name == "foo"));
+        assert!(callers.iter().all(|c| c.targets.iter().any(|d| d.file == "lib.rs")));
+    }
+
+    #[test]
+    fn callers_of_an_undefined_symbol_is_empty() {
+        // Nothing defines `ghost`, so even a reference to it resolves to no edge
+        // and the reverse query is empty (not a fabricated caller).
+        let a = file(vec![], vec![call("ghost", 1)]);
+        assert!(callers_of("ghost", [("a.rs", &a)]).is_empty());
     }
 
     #[test]
