@@ -18,18 +18,25 @@ interface SavedSearch {
   query: string;
 }
 
-/// A mounted volume for the Devices section (mirrors the Rust `MountedDevice`).
+/// A volume for the Devices section (mirrors the Rust `MountedDevice`): a mounted
+/// one to navigate into, or an unmounted removable drive to mount on click.
 interface MountedDevice {
   label: string;
   mountpoint: string;
   device: string;
   removable: boolean;
+  mounted: boolean;
   fstype: string;
 }
 
 /// Mountpoint -> `/dev` node, so the Devices hover affordance can route to eject
 /// (the sidebar only hands `removePlace` a `Place`, keyed by its path).
 const deviceNodes = new Map<string, string>();
+
+/// `/dev` nodes of listed-but-unmounted removable drives, keyed by the place path
+/// (their `/dev` node, since they have no mountpoint yet). Clicking such a place
+/// mounts it first, then navigates into the new mountpoint.
+const unmountedDevices = new Set<string>();
 
 export const placeGroups = writable<PlaceGroup[]>([]);
 
@@ -70,6 +77,32 @@ export async function removePlace(place: Place): Promise<void> {
   }
 }
 
+/// Navigate to a place. An unmounted removable drive is mounted first (udisks),
+/// then the now-mounted volume is opened; everything else navigates directly.
+/// A mount that fails (busy / polkit-refused) stays put rather than opening the
+/// bare `/dev` node.
+export async function navigatePlace(
+  place: Place,
+  navigate: (path: string) => void,
+): Promise<void> {
+  if (unmountedDevices.has(place.path)) {
+    try {
+      await invoke("files_mount", { device: place.path });
+    } catch {
+      return;
+    }
+    await loadPlaces();
+    for (const [mountpoint, device] of deviceNodes) {
+      if (device === place.path) {
+        navigate(mountpoint);
+        return;
+      }
+    }
+    return;
+  }
+  navigate(place.path);
+}
+
 export const savedSearches = writable<SavedSearch[]>([]);
 
 /// The home place's path; the breadcrumb collapses it to "Home".
@@ -86,17 +119,32 @@ export async function loadPlaces(): Promise<void> {
     // from lsblk (removable drives + extra data mounts). Removable ones carry
     // the hover affordance, routed to eject by `removePlace` via deviceNodes.
     deviceNodes.clear();
+    unmountedDevices.clear();
     const devicePlaces: Place[] = [];
     try {
       const devs = await invoke<MountedDevice[]>("files_devices");
       for (const d of devs) {
-        deviceNodes.set(d.mountpoint, d.device);
-        devicePlaces.push({
-          label: d.label,
-          icon: "drive",
-          path: d.mountpoint,
-          removable: d.removable,
-        });
+        if (d.mounted) {
+          // A mounted volume: navigate to its mountpoint; removable ones carry
+          // the eject affordance (routed through deviceNodes by removePlace).
+          deviceNodes.set(d.mountpoint, d.device);
+          devicePlaces.push({
+            label: d.label,
+            icon: "drive",
+            path: d.mountpoint,
+            removable: d.removable,
+          });
+        } else {
+          // An unmounted removable drive: the place path is its /dev node and a
+          // click mounts-then-navigates. No eject affordance (nothing to eject).
+          unmountedDevices.add(d.device);
+          devicePlaces.push({
+            label: d.label,
+            icon: "drive",
+            path: d.device,
+            removable: false,
+          });
+        }
       }
     } catch {
       // lsblk unavailable: just the host base entries.

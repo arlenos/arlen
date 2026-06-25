@@ -31,17 +31,22 @@ struct LsblkDevice {
     children: Vec<LsblkDevice>,
 }
 
-/// A mounted volume for the Devices sidebar.
+/// A volume for the Devices sidebar: a mounted one to navigate to, or an
+/// unmounted removable drive to mount on click.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MountedDevice {
     /// Display label: the filesystem label, else the device name.
     pub label: String,
-    /// Where it is mounted (the path the sidebar navigates to).
+    /// Where it is mounted (the path the sidebar navigates to); empty when
+    /// the device is unmounted (`mounted == false`).
     pub mountpoint: String,
     /// The block device node (`/dev/sdb1`), for mount/unmount/eject.
     pub device: String,
     /// Whether the drive is removable (the UI offers eject only here).
     pub removable: bool,
+    /// Whether the volume is currently mounted. An unmounted entry is a
+    /// removable drive the sidebar offers to mount (then navigate into).
+    pub mounted: bool,
     /// The filesystem type (for the icon / detail).
     pub fstype: String,
 }
@@ -53,24 +58,43 @@ fn is_system_mount(mountpoint: &str) -> bool {
 }
 
 fn collect(dev: &LsblkDevice, out: &mut Vec<MountedDevice>) {
-    if let Some(mp) = dev.mountpoint.as_deref() {
-        let real_fs = dev
-            .fstype
-            .as_deref()
-            .is_some_and(|f| !f.is_empty() && f != "swap");
-        if real_fs && !is_system_mount(mp) {
+    let real_fs = dev
+        .fstype
+        .as_deref()
+        .is_some_and(|f| !f.is_empty() && f != "swap");
+    let label = || {
+        dev.label
+            .clone()
+            .filter(|l| !l.is_empty())
+            .unwrap_or_else(|| dev.name.clone())
+    };
+    match dev.mountpoint.as_deref() {
+        // A mounted volume the sidebar navigates into (root/boot/swap excluded).
+        Some(mp) if real_fs && !is_system_mount(mp) => {
             out.push(MountedDevice {
-                label: dev
-                    .label
-                    .clone()
-                    .filter(|l| !l.is_empty())
-                    .unwrap_or_else(|| dev.name.clone()),
+                label: label(),
                 mountpoint: mp.to_string(),
                 device: format!("/dev/{}", dev.name),
                 removable: dev.rm,
+                mounted: true,
                 fstype: dev.fstype.clone().unwrap_or_default(),
             });
         }
+        // An unmounted REMOVABLE drive with a real filesystem: offer to mount it
+        // (the common "plugged in a stick that did not auto-mount" case). Unmounted
+        // INTERNAL volumes are not listed - they are an admin concern, not a device
+        // a user casually mounts from the file manager.
+        None if real_fs && dev.rm => {
+            out.push(MountedDevice {
+                label: label(),
+                mountpoint: String::new(),
+                device: format!("/dev/{}", dev.name),
+                removable: dev.rm,
+                mounted: false,
+                fstype: dev.fstype.clone().unwrap_or_default(),
+            });
+        }
+        _ => {}
     }
     for child in &dev.children {
         collect(child, out);
@@ -136,6 +160,44 @@ mod tests {
         assert!(!data.removable);
         assert_eq!(data.label, "data");
         assert_eq!(data.device, "/dev/nvme0n1p3");
+    }
+
+    #[test]
+    fn mounted_volumes_carry_the_mounted_flag() {
+        for d in mounted_volumes(SAMPLE) {
+            assert!(d.mounted, "{} should be flagged mounted", d.mountpoint);
+            assert!(!d.mountpoint.is_empty());
+        }
+    }
+
+    // A removable stick whose partition is present but NOT mounted, plus an
+    // unmounted INTERNAL partition that must stay hidden.
+    const UNMOUNTED: &str = r#"{
+      "blockdevices": [
+        { "name": "sdb", "label": null, "mountpoint": null, "rm": true, "fstype": null,
+          "children": [
+            { "name": "sdb1", "label": "BACKUP", "mountpoint": null, "rm": true, "fstype": "ext4" }
+          ]
+        },
+        { "name": "sdc", "label": "SPARE", "mountpoint": null, "rm": false, "fstype": "ext4" }
+      ]
+    }"#;
+
+    #[test]
+    fn unmounted_removable_is_offered_for_mounting_internal_is_not() {
+        let v = mounted_volumes(UNMOUNTED);
+        // The removable partition is listed, unmounted, with no mountpoint and
+        // its /dev node for the mount call.
+        let backup = v.iter().find(|d| d.label == "BACKUP").unwrap();
+        assert!(!backup.mounted);
+        assert!(backup.removable);
+        assert!(backup.mountpoint.is_empty());
+        assert_eq!(backup.device, "/dev/sdb1");
+        // The unmounted internal volume is hidden (admin concern, not a casual mount).
+        assert!(!v.iter().any(|d| d.label == "SPARE"));
+        // The bare removable disk (no filesystem) is not itself listed.
+        assert!(!v.iter().any(|d| d.device == "/dev/sdb"));
+        assert_eq!(v.len(), 1);
     }
 
     #[test]
