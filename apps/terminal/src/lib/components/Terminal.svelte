@@ -23,6 +23,7 @@
     TERMINAL_LINE_HEIGHT,
   } from "$lib/terminal-theme";
   import { applyBlockAccent, renderBlockResult } from "$lib/block-chrome";
+  import { classifyMark, parseExitCode } from "$lib/block-marks";
   import "$lib/block-chrome.css";
 
   let { sessionId }: { sessionId: string } = $props();
@@ -107,14 +108,6 @@
       return dec ?? undefined;
     }
 
-    // `D[;<exit>]` -> the integer exit code, or null when absent/malformed.
-    function exitOf(data: string): number | null {
-      const semi = data.indexOf(";");
-      if (semi < 0) return null;
-      const code = Number.parseInt(data.slice(semi + 1), 10);
-      return Number.isInteger(code) ? code : null;
-    }
-
     function onPromptStart(): void {
       // A new block begins here. Drop a live one-row accent tick now; the
       // full-height bar replaces it when the block ends (the `D` mark).
@@ -128,7 +121,7 @@
     function onCommandEnd(data: string): void {
       // Swap the live tick for the full-height bar (error-tinted on a non-zero
       // exit) and anchor the result strip right of the prompt row.
-      const exitCode = exitOf(data);
+      const exitCode = parseExitCode(data);
       const durationMs =
         execStartMs !== undefined ? Date.now() - execStartMs : null;
       liveAccent?.dispose();
@@ -157,9 +150,10 @@
     // letter. Run-again is omitted here on purpose: replaying a command must use
     // the engine's validated record, never a 633;E we decode in the webview.
     const dispatch = (data: string): boolean => {
-      if (data === "A" || data.startsWith("A;")) onPromptStart();
-      else if (data === "C" || data.startsWith("C;")) execStartMs = Date.now();
-      else if (data === "D" || data.startsWith("D;")) onCommandEnd(data);
+      const mark = classifyMark(data);
+      if (mark === "prompt-start") onPromptStart();
+      else if (mark === "exec-start") execStartMs = Date.now();
+      else if (mark === "command-end") onCommandEnd(data);
       // Return false so xterm's other handlers still run; the engine parses its
       // own raw copy of the PTY stream, so this never starves its block parser.
       return false;
