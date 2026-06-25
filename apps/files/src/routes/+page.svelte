@@ -136,6 +136,20 @@
     await runOp("trash", selectedPaths());
   }
 
+  /// Reverse the last file operation (Ctrl+Z). `files_undo` pops the op log and
+  /// inverts the most recent op (the backend `UndoStack`), returning whether
+  /// anything was undone; refresh the focused pane so the reversal shows.
+  /// Best-effort: an undo error leaves the listing unchanged.
+  async function undo() {
+    if (!tauriAvailable) return;
+    try {
+      const undone = await invoke<boolean>("files_undo");
+      if (undone) await get(focusedController)?.refresh();
+    } catch (err) {
+      console.warn("files: undo failed", err);
+    }
+  }
+
   // The topbar menu lives in the shell; a click there travels back over
   // the Event Bus and the host forwards it as `arlen://menu-action`.
   let unlistenMenu: UnlistenFn | null = null;
@@ -159,6 +173,9 @@
         break;
       case "file.close":
         if (tauriAvailable) await getCurrentWindow().close();
+        break;
+      case "edit.undo":
+        await undo();
         break;
       case "edit.cut":
         copySelection("move");
@@ -234,6 +251,10 @@
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") {
       e.preventDefault();
       void paste(currentPath());
+    } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+      // Ctrl+Shift+Z is reserved for a future redo, so guard on !shiftKey.
+      e.preventDefault();
+      void undo();
     }
   }
 

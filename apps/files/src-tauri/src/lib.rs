@@ -860,6 +860,8 @@ async fn publish_app_menu() {
         MenuGroup::new(
             "Edit",
             vec![
+                MenuItem::item("Undo", "edit.undo"),
+                MenuItem::separator(),
                 MenuItem::item("Cut", "edit.cut"),
                 MenuItem::item("Copy", "edit.copy"),
                 MenuItem::item("Paste", "edit.paste"),
