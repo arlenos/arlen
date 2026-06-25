@@ -130,11 +130,14 @@
         const endLine = t.buffer.active.baseY + t.buffer.active.cursorY;
         const rows = Math.max(1, endLine - promptMarker.line + 1);
         accent(promptMarker, rows, false, exitCode !== null && exitCode !== 0);
+        // Full-width over the prompt row (NOT anchor:"right" - that positions
+        // relative to the marker column over the prompt, not the viewport edge,
+        // so the strip landed on top of the prompt). block-chrome.css right-aligns
+        // the strip's content within this full-width box (arlen-ui's anchor spec).
         const result = t.registerDecoration({
           marker: promptMarker,
-          anchor: "right",
           x: 0,
-          width: 24,
+          width: t.cols,
         });
         result?.onRender((el) => renderBlockResult(el, { exitCode, durationMs }));
       }
