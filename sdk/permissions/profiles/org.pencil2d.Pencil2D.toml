@@ -1,0 +1,9 @@
+# Starting permission profile for Pencil2D (a 2D animation tool). Projects in
+# Documents, image/video exports to Pictures; no network, no graph.
+[info]
+app_id = "org.pencil2d.Pencil2D"
+tier = "third-party"
+
+[filesystem]
+documents = true
+pictures = true
