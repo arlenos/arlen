@@ -193,6 +193,11 @@ export async function terminalNewSession(): Promise<Session> {
   return invoke<Session>("terminal_new_session");
 }
 
+/// Close a session in the backend (reaps the dead shell from the registry).
+export async function terminalCloseSession(sessionId: string): Promise<void> {
+  await invoke("terminal_close_session", { sessionId });
+}
+
 export async function terminalHistorySearch(
   query: string,
   filters: HistoryFilters,

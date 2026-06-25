@@ -211,6 +211,22 @@ fn terminal_resize(
     live.engine.resize(cols, rows).map_err(|e| e.to_string())
 }
 
+/// Close a session: drop it from the registry. Dropping the [`LiveSession`] drops
+/// its engine, whose `Drop` kills the shell child, so a session whose shell already
+/// exited is reaped here rather than lingering. Idempotent: closing an unknown id
+/// is a no-op (the session may already be gone). The frontend calls this on a
+/// shell-exit event and from a close-tab affordance.
+#[tauri::command]
+fn terminal_close_session(
+    session_id: String,
+    registry: State<Mutex<SessionRegistry>>,
+) -> Result<(), String> {
+    let mut reg = registry.lock().map_err(|e| e.to_string())?;
+    reg.sessions.remove(&session_id);
+    reg.order.retain(|id| id != &session_id);
+    Ok(())
+}
+
 /// The shells to try, in preference order, when opening a session. zsh is first
 /// because the block-mark integration is zsh-only (the marks fire only there);
 /// `$SHELL` and `/bin/sh` are fallbacks so the terminal still opens a working
@@ -480,6 +496,7 @@ pub fn run() {
             terminal_input,
             terminal_resize,
             terminal_new_session,
+            terminal_close_session,
             terminal_history_search,
             terminal_projects,
             terminal_config_get,
