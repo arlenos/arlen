@@ -327,6 +327,29 @@ fn files_trash_empty() -> Result<usize, String> {
     ops::empty_trash(&trash).map_err(|e| e.to_string())
 }
 
+/// Restore a trashed entry to a host-resolved destination: its recorded original
+/// path reanchored to the FM root capability, NEVER the untrusted `.trashinfo`
+/// path used to drive the write (cap-std confines the move to the root and
+/// refuses an escaping path). A name conflict gets a fresh name, so a restore
+/// never overwrites an existing file. The caller passes `trashed_name` +
+/// `original_path` straight from a `files_trash_list` entry. Completes the
+/// list/empty/restore trash trio.
+#[tauri::command]
+fn files_trash_restore(trashed_name: String, original_path: String) -> Result<(), String> {
+    let trash = trash_dir()?;
+    let dir = root()?;
+    let dest_rel = rel(&original_path);
+    ops::restore_entry(
+        &trash,
+        &trashed_name,
+        &dir,
+        std::path::Path::new(&dest_rel),
+        ops::ConflictPolicy::Rename,
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
+}
+
 /// Create a symbolic link `name` under `parent` pointing at `target` (the
 /// link's verbatim contents; it may be absolute, relative, or dangling).
 #[tauri::command]
@@ -996,6 +1019,7 @@ pub fn run() {
             files_recent,
             files_trash_list,
             files_trash_empty,
+            files_trash_restore,
             files_symlink,
             thumbnail::files_thumbnail,
             capability::ai_capability
