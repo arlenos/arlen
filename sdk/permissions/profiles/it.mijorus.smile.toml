@@ -1,0 +1,8 @@
+# Starting permission profile for Smile (an emoji and symbol picker). It copies
+# the chosen character to the clipboard; no network, no user files, no graph.
+[info]
+app_id = "it.mijorus.smile"
+tier = "third-party"
+
+[clipboard]
+write = true
