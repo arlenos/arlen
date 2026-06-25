@@ -1,0 +1,5 @@
+# Starting permission profile for KTouch (a touch-typing tutor). A self-contained tutor: no filesystem, network, or graph.
+[info]
+app_id = "org.kde.ktouch"
+tier = "third-party"
+

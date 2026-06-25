@@ -1,0 +1,7 @@
+# Starting permission profile for Step (an interactive physics simulator). Saves simulations to Documents.
+[info]
+app_id = "org.kde.step"
+tier = "third-party"
+
+[filesystem]
+documents = true

@@ -1,0 +1,5 @@
+# Starting permission profile for Kalzium (a periodic table of the elements). A reference tool: no filesystem, network, or graph.
+[info]
+app_id = "org.kde.kalzium"
+tier = "third-party"
+

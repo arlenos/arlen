@@ -1,0 +1,7 @@
+# Starting permission profile for Cantor (a mathematics worksheet frontend). Worksheets live in Documents; computation backends are local processes out of band.
+[info]
+app_id = "org.kde.cantor"
+tier = "third-party"
+
+[filesystem]
+documents = true

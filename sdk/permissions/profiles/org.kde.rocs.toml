@@ -1,0 +1,7 @@
+# Starting permission profile for Rocs (a graph-theory tool). Saves graph documents to Documents.
+[info]
+app_id = "org.kde.rocs"
+tier = "third-party"
+
+[filesystem]
+documents = true

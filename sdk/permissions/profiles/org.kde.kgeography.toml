@@ -1,0 +1,5 @@
+# Starting permission profile for KGeography (a geography learning tool). A reference/quiz tool: no filesystem, network, or graph.
+[info]
+app_id = "org.kde.kgeography"
+tier = "third-party"
+

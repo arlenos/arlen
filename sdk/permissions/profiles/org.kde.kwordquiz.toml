@@ -1,0 +1,7 @@
+# Starting permission profile for KWordQuiz (a vocabulary flashcard tool). Loads vocabulary files from Documents.
+[info]
+app_id = "org.kde.kwordquiz"
+tier = "third-party"
+
+[filesystem]
+documents = true

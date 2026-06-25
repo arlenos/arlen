@@ -1,0 +1,5 @@
+# Starting permission profile for GNUSolfege (an ear-training tool). Generates tones locally: no filesystem, network, or graph.
+[info]
+app_id = "org.gnome.Solfege"
+tier = "third-party"
+

@@ -1,0 +1,7 @@
+# Starting permission profile for KStars (a planetarium). Downloads star catalogs and imagery over the network (its function).
+[info]
+app_id = "org.kde.kstars"
+tier = "third-party"
+
+[network]
+allow_all = true

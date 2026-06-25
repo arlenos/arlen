@@ -1,0 +1,7 @@
+# Starting permission profile for Marble (a virtual globe). Fetches map tiles over the network (its function).
+[info]
+app_id = "org.kde.marble"
+tier = "third-party"
+
+[network]
+allow_all = true
