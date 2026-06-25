@@ -12,7 +12,12 @@
   import { CanvasAddon } from "@xterm/addon-canvas";
   import "@xterm/xterm/css/xterm.css";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { terminalDrainOutput, terminalInput, terminalResize } from "$lib/contract";
+  import {
+    terminalBlocks,
+    terminalDrainOutput,
+    terminalInput,
+    terminalResize,
+  } from "$lib/contract";
   // arlen-ui owns the look; we only wire it. The ITheme + font tokens make the
   // grid the Arlen palette (not bare black), and the block-chrome builders are
   // anchored to the OSC 133 marks below so the visible block frame is restored.
@@ -112,6 +117,9 @@
       endLine: number;
       isError: boolean;
       resultEl?: HTMLElement;
+      /// The command this block ran, from the engine's validated block record
+      /// (fetched at command-end); run-again replays it as a PTY write.
+      command?: string;
     }
     const blocks: BlockEntry[] = [];
     const MAX_TRACKED = 500;
@@ -148,10 +156,32 @@
         result?.onRender((el) => {
           // Keep the live element so hover can toggle `is-hover` (run-again).
           entry.resultEl = el;
-          renderBlockResult(el, { exitCode, durationMs });
+          renderBlockResult(el, {
+            exitCode,
+            durationMs,
+            // Run-again replays the engine's validated command as a PTY write
+            // (never a webview-decoded 633;E). Inert until the command is
+            // fetched, and for a command-less prompt block.
+            onRerun: () => {
+              const cmd = entry.command;
+              if (cmd && cmd.trim().length > 0) {
+                void terminalInput(sessionId, `${cmd}\n`);
+              }
+            },
+          });
         });
         blocks.push(entry);
         while (blocks.length > MAX_TRACKED) blocks.shift();
+        // Capture the just-finished command from the engine's validated block
+        // record for run-again. The engine parses 133;D from its own raw stream
+        // and records the block BEFORE it signals the frame this handler drained,
+        // so the latest engine block is this one. Best-effort: a fetch failure
+        // just leaves run-again inert for this block.
+        void terminalBlocks(sessionId)
+          .then((bs) => {
+            entry.command = bs.at(-1)?.command;
+          })
+          .catch(() => {});
       }
       promptMarker = undefined;
       execStartMs = undefined;
