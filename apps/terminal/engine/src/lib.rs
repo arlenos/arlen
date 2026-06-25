@@ -107,6 +107,11 @@ pub struct PtyEngine {
     /// The reader thread appends every chunk verbatim; the grid model + block
     /// capture are fed the SAME bytes and are unaffected.
     raw_out: Arc<Mutex<Vec<u8>>>,
+    /// Set true when the reader thread sees the PTY end (clean EOF or the master
+    /// closing) - i.e. the shell process exited. The host polls
+    /// [`PtyEngine::has_exited`] (woken by a final frame pulse) to close the
+    /// terminal window instead of hanging on the dead PTY.
+    exited: Arc<AtomicBool>,
     reader: Option<JoinHandle<()>>,
 }
 
@@ -193,6 +198,8 @@ impl PtyEngine {
         let frame_sink = Arc::clone(&frame_notifier);
         let raw_out = Arc::new(Mutex::new(Vec::<u8>::new()));
         let raw_out_sink = Arc::clone(&raw_out);
+        let exited = Arc::new(AtomicBool::new(false));
+        let exited_sink = Arc::clone(&exited);
         let reader_handle = std::thread::Builder::new()
             .name("arlen-pty-reader".into())
             .spawn(move || {
@@ -205,8 +212,19 @@ impl PtyEngine {
                 loop {
                     match reader.read(&mut buf) {
                         // 0 = clean EOF; Err = the master closed (Linux returns
-                        // EIO when the slave goes away). Either ends the loop.
-                        Ok(0) | Err(_) => break,
+                        // EIO when the slave goes away). Either means the shell
+                        // exited: record it and pulse the host one last time so it
+                        // wakes, sees `has_exited`, and closes the window instead of
+                        // blocking on the dead PTY.
+                        Ok(0) | Err(_) => {
+                            exited_sink.store(true, Ordering::Relaxed);
+                            if let Ok(g) = frame_sink.lock() {
+                                if let Some(tx) = g.as_ref() {
+                                    let _ = tx.send(());
+                                }
+                            }
+                            break;
+                        }
                         Ok(n) => {
                             // Forward the raw bytes verbatim for the xterm.js
                             // drive renderer (engine-down: xterm.js owns VT
@@ -333,8 +351,22 @@ impl PtyEngine {
             finished_outputs,
             frame_notifier,
             raw_out,
+            exited,
             reader: Some(reader_handle),
         })
+    }
+
+    /// Whether the shell has exited (the PTY reached EOF / the master closed).
+    /// The host polls this - woken by the reader's final frame pulse - to close
+    /// the terminal window on shell exit rather than hang on the dead PTY.
+    pub fn has_exited(&self) -> bool {
+        self.exited.load(Ordering::Relaxed)
+    }
+
+    /// A shared handle to the shell-exited flag, for a host thread (the frame
+    /// pump) to observe the exit when the reader's final pulse wakes it.
+    pub fn exited_handle(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.exited)
     }
 
     /// Drain and return the raw PTY output bytes read since the last call, for
@@ -554,6 +586,24 @@ mod tests {
             found.contains(&VtEvent::PromptStart),
             "the emitted OSC 133;A surfaced as PromptStart, got {found:?}"
         );
+    }
+
+    /// On-host (needs a PTY + `/bin/sh`): a shell that exits flips `has_exited`.
+    /// This is the signal the host polls to close the terminal window on shell
+    /// exit (the reader sees the PTY EOF / EIO and records it), so the window does
+    /// not hang on the dead PTY.
+    #[test]
+    fn has_exited_flips_true_when_the_shell_exits() {
+        let eng = PtyEngine::spawn("/bin/sh", &["-c", "exit 0"], None, 80, 24).unwrap();
+        let mut exited = false;
+        for _ in 0..100 {
+            if eng.has_exited() {
+                exited = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(exited, "has_exited must flip true once the shell process exits");
     }
 
     /// On-host (needs a PTY + `/bin/sh`): the LIVE alternate-screen path end to

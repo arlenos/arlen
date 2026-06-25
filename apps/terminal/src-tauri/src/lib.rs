@@ -238,6 +238,7 @@ fn shell_candidates() -> Vec<String> {
 /// so the page ignores frames for other sessions.
 fn spawn_frame_pump(app: &AppHandle, id: &str, engine: &PtyEngine) {
     let rx = engine.install_frame_notifier();
+    let exited = engine.exited_handle();
     let app = app.clone();
     let id = id.to_string();
     let _ = std::thread::Builder::new()
@@ -246,6 +247,13 @@ fn spawn_frame_pump(app: &AppHandle, id: &str, engine: &PtyEngine) {
             while rx.recv().is_ok() {
                 while rx.try_recv().is_ok() {}
                 if app.emit("terminal://frame", &id).is_err() {
+                    break;
+                }
+                // The reader pulses once more when the shell exits; emit the final
+                // frame above (the shell's last output), then signal the exit so
+                // the page closes the window instead of hanging on the dead PTY.
+                if exited.load(std::sync::atomic::Ordering::Relaxed) {
+                    let _ = app.emit("terminal://exited", &id);
                     break;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(16));
