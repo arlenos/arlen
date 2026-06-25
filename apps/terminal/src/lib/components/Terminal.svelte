@@ -333,10 +333,13 @@
   // ── Block right-click menu actions (item 6) ──────────────────────────────
   // The kit ContextMenu look is arlen-ui's (BlockContextMenu.svelte); these wire
   // its handlers from the hovered block's validated record + the xterm buffer. No
-  // new backend: copy/select/replay are all local. saveOutput (a file dialog) and
-  // the two AI entries (Explain -> ai-explanation, Ask -> the harness @-mention)
-  // need cross-app plumbing and are the next slice, so they stay unwired (the menu
-  // renders them inert).
+  // new backend: copy/select/replay/saveOutput are all local and wired below. The
+  // one AI entry, `ask` ("Ask the agent about this block"), stays UNwired (so its
+  // menu item renders disabled, desktop convention): it needs the harness to expose
+  // an "inject scoped context" receiver (a launch/attach entry that takes the block
+  // as a capability-scoped @-mention, pull-only, no silent KG write), which is a
+  // cross-app contract on the harness surface and does not exist yet. Wire `ask`
+  // here once that receiver lands. (Explain was dropped, terminal.md §4.11.)
   function copyText(text: string): void {
     void navigator.clipboard?.writeText(text).catch(() => {});
   }
