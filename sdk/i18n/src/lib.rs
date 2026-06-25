@@ -13,6 +13,7 @@ pub mod model;
 pub mod parse;
 
 pub mod catalog;
+pub mod rtl;
 
 pub use catalog::{Catalog, CatalogError, Localizer, fallback_chain};
 pub use format::{format, ArgValue, Args};
