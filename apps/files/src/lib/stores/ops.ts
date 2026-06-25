@@ -7,6 +7,7 @@
 import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { activeController } from "$lib/stores/tabs";
+import { type RenameRule } from "$lib/bulk-rename";
 
 export type OpKind =
   | "copy"
@@ -81,6 +82,29 @@ export async function runOp(
     } else {
       opError.set(message);
     }
+    return false;
+  } finally {
+    opBusy.set(null);
+  }
+}
+
+/// Apply a bulk rename to `names` in `dir` under `rule`. The backend recomputes
+/// the plan over the same core the preview mirrors and renames safely (ordering
+/// + intermediate collisions are its concern), then this refreshes the active
+/// view. The `files_bulk_rename` command is the backend half.
+export async function bulkRename(
+  dir: string,
+  names: string[],
+  rule: RenameRule,
+): Promise<boolean> {
+  opBusy.set(`Renaming ${names.length} items`);
+  try {
+    await invoke("files_bulk_rename", { dir, names, rule });
+    opError.set(null);
+    await get(activeController)?.refresh();
+    return true;
+  } catch (e) {
+    opError.set(String(e));
     return false;
   } finally {
     opBusy.set(null);

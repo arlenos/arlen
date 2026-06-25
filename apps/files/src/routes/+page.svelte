@@ -23,9 +23,10 @@
   import { focusedController, focusedPane, paneB, splitView } from "$lib/stores/panes";
   import { addBookmark, homePath, loadPlaces } from "$lib/stores/places";
   import { infoOpen } from "$lib/stores/ui";
-  import { clipboard, paste, runOp } from "$lib/stores/ops";
+  import { clipboard, paste, runOp, bulkRename } from "$lib/stores/ops";
   import FmStatusBar from "$lib/components/FmStatusBar.svelte";
   import OpsOverlays from "$lib/components/OpsOverlays.svelte";
+  import FmBatchRename from "$lib/components/FmBatchRename.svelte";
   import FmSearchBar from "$lib/components/FmSearchBar.svelte";
   import FmSearchResults from "$lib/components/FmSearchResults.svelte";
   import FmTrashView from "$lib/components/FmTrashView.svelte";
@@ -38,6 +39,7 @@
   import { overlay } from "$lib/stores/overlay";
 
   let renamingName = $state<string | null>(null);
+  let batchRenaming = $state(false);
   let confirmDelete = $state(false);
 
   // What the info panel inspects: the single selected entry, or the
@@ -493,6 +495,11 @@
               </ContextMenu.Sub>
             {/if}
           {/if}
+          {#if selected.length > 1}
+            <ContextMenu.Item onclick={() => (batchRenaming = true)}>
+              Rename&hellip;
+            </ContextMenu.Item>
+          {/if}
         {/if}
         {#if selected.length === 0}
           <ContextMenu.Separator />
@@ -546,6 +553,16 @@
     confirmDelete = false;
   }}
   onCancel={() => (confirmDelete = false)}
+/>
+
+<FmBatchRename
+  open={batchRenaming}
+  names={selected.map((e) => e.name)}
+  onClose={() => (batchRenaming = false)}
+  onApply={(rule) => {
+    batchRenaming = false;
+    void bulkRename(currentPath(), selected.map((e) => e.name), rule);
+  }}
 />
 
 <style>
