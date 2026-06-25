@@ -43,18 +43,23 @@
     if (bytes.length > 0) term.write(new Uint8Array(bytes));
   }
 
-  // Renderer choice (terminal.md §9 WebKitGTK caveat). xterm.js's WebGL text
-  // rendering has a documented history of breaking on WebKitGTK - missing glyphs,
-  // or only cell backgrounds - and that failure is SILENT: the addon loads
-  // without throwing and never fires `contextlost`, so a try/catch + onContextLoss
-  // guard cannot catch it (it only covers no-context and context-loss, not a
-  // present-but-mis-rendering context). A silently broken grid is the worst
-  // outcome for the top-priority terminal, and WebGL on real WebKitGTK hardware
-  // cannot be pixel-verified headlessly (the Xvfb GL stack is not a real GPU). So
-  // the Linux default is the canvas renderer - still the 5-45x win over the DOM
-  // renderer, and reliable. Flip PREFER_WEBGL to true once a real-hardware shot
-  // confirms WebGL glyphs render; the onContextLoss path then degrades to canvas.
+  // Renderer choice - decided by the block-chrome alignment blocker (#967), not
+  // just perf. The three xterm renderers trade speed vs correctness HERE:
+  //  - DOM (the DEFAULT, no addon): the block-chrome decorations land pixel-exact
+  //    on every row - arlen-ui measured the decoration `offsetTop` == its
+  //    `marker.line` text row on every line. The block frame MUST sit on its rows
+  //    and the block model is the terminal's whole point, so this is the default.
+  //  - Canvas / WebGL: faster, but they MIS-SCALE the grid at a fractional
+  //    devicePixelRatio (xterm #967, Tim's display is 1.5x HiDPI): the canvas
+  //    backs at 1.5x yet draws 1.0x cells, so the text rows compress (~11px pitch)
+  //    and drift UP from the CSS-positioned decorations (17px pitch), the gap
+  //    growing down the screen - exactly Tim's "passt gar nicht". WebGL also
+  //    risks silent WebKitGTK text breakage (loads without throwing, renders
+  //    wrong). Both are kept behind flags so the perf-vs-alignment trade can be
+  //    re-evaluated on real hardware once the canvas DPR path (#967) is fixed +
+  //    metal-pixel-verified; until then correctness wins and DOM is the default.
   const PREFER_WEBGL = false;
+  const PREFER_CANVAS = false;
 
   function loadRenderer(t: Terminal): void {
     if (PREFER_WEBGL) {
@@ -71,14 +76,17 @@
         t.loadAddon(webgl);
         return;
       } catch {
-        /* WebGL2 context unavailable - fall through to canvas */
+        /* WebGL2 context unavailable - fall through */
       }
     }
-    try {
-      t.loadAddon(new CanvasAddon());
-    } catch {
-      /* DOM renderer remains as the last resort */
+    if (PREFER_CANVAS) {
+      try {
+        t.loadAddon(new CanvasAddon());
+      } catch {
+        /* DOM renderer remains */
+      }
     }
+    // else: xterm's built-in DOM renderer, where decorations align pixel-exact.
   }
 
   // Block boundaries over the continuous grid (terminal.md approach B, VS Code's
