@@ -2,43 +2,39 @@
  * continuous xterm.js grid (Terminal.svelte registers the decorations; this is
  * the LOOK that goes in their `onRender` elements). xterm renders the real shell
  * prompt itself, so the chrome never re-draws cwd/git - it adds only what the
- * shell does not: the block boundary, the result, the run-again affordance.
+ * shell does not: a quiet block boundary, the result, the run-again affordance.
  *
  * Flat Arlen house style: monochrome by default, colour only where it means
- * something (a failed exit, an error block). */
+ * something (a failed exit). At rest the terminal is pure - no rails, no rules.
+ * The block structure surfaces on interaction: hovering a block tints exactly
+ * its rows and reveals run-again. A persistent separator was tried and dropped -
+ * a line on a leaded cell grid floats between rows and reads as misaligned; the
+ * hover tint covers real cells instead, so it always lines up with the text. */
 
-/* The block boundary: a quiet accent bar down the left of a block, anchored at
- * the prompt-start row and as tall as the block. Monochrome; the active block
- * (the live prompt) reads a touch brighter; a failed block turns the bar the
- * error colour - the one place colour carries meaning. */
-.arlen-block-accent {
-  width: 2px;
-  border-radius: 1px;
-  background: color-mix(in srgb, var(--foreground, #e4e5ea) 32%, transparent);
+/* The hover tint: the block under the pointer gets a barely-there wash across
+ * its rows (the prompt row through the last output row). The engine registers a
+ * decoration spanning the block and hangs this class on it; it sits above the
+ * canvas at a low alpha so the text reads straight through. A failed block warms
+ * the wash a touch toward the error colour - the one place colour carries
+ * meaning. Never eats pointer events, so a selection over the grid still works. */
+.arlen-block-hover {
+  background: color-mix(in srgb, var(--foreground, #e4e5ea) 5%, transparent);
   pointer-events: none;
 }
-.arlen-block-accent.is-active {
-  background: color-mix(in srgb, var(--foreground, #e4e5ea) 60%, transparent);
-}
-.arlen-block-accent.is-error {
-  background: color-mix(in srgb, var(--color-error, #c96a6a) 65%, transparent);
+.arlen-block-hover.is-error {
+  background: color-mix(in srgb, var(--color-error, #c96a6a) 7%, transparent);
 }
 
-/* The result, anchored to the right of the prompt row: the duration always once
- * the command finished, an exit chip ONLY when it failed (the absence of an
- * error is the status - the command stays the star). Run-again shows on block
- * hover. The whole strip ignores pointer events except the button, so it never
- * eats a text selection over the grid. */
-/* The decoration spans the prompt row full-width (the engine registers it with
- * `width` = the column count); the strip right-aligns its content within, so
- * the result sits at the right edge of the row, clear of the prompt on the left.
- * `anchor: "right"` does NOT position at the terminal's right edge - it lands at
- * the marker column - so full-width + flex-end is the reliable placement. */
+/* The result, right-aligned on the prompt row: the duration always once the
+ * command finished, an exit chip ONLY when it failed (the absence of an error is
+ * the status - the command stays the star). The decoration spans the prompt row
+ * full-width (the engine registers it with `width` = the column count); the strip
+ * right-aligns its content within, so the result sits at the right edge, clear of
+ * the prompt on the left. `text-align: right` survives whatever `display` xterm
+ * puts on the decoration element (flex `justify-content` does not). The strip
+ * ignores pointer events except the button, so it never eats a text selection. */
 .arlen-block-result {
   width: 100%;
-  /* `text-align: right` survives whatever `display` xterm puts on the decoration
-   * element (flex `justify-content` does not), so the strip lands at the right
-   * edge of the full-width row, clear of the prompt on the left. */
   text-align: right;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 0.8125rem;
@@ -78,10 +74,10 @@
     background-color var(--duration-fast, 150ms) var(--ease-out, ease),
     color var(--duration-fast, 150ms) var(--ease-out, ease);
 }
-/* The run-again surfaces on block hover, the quiet-chrome rule. The engine adds
- * `is-hover` to the block's decoration group on pointer-enter of the rows. */
-.arlen-block.is-hover .arlen-block-rerun,
-.arlen-block-result:hover .arlen-block-rerun {
+/* Run-again surfaces ONLY while its block is hovered (Tim, 25 June). The engine
+ * toggles `is-hover` on the result element when the pointer enters the block's
+ * rows, in step with the hover tint above. */
+.arlen-block-result.is-hover .arlen-block-rerun {
   opacity: 1;
 }
 .arlen-block-rerun:hover {

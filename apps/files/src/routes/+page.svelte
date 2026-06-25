@@ -28,9 +28,11 @@
   import OpsOverlays from "$lib/components/OpsOverlays.svelte";
   import FmSearchBar from "$lib/components/FmSearchBar.svelte";
   import FmSearchResults from "$lib/components/FmSearchResults.svelte";
+  import FmTrashView from "$lib/components/FmTrashView.svelte";
   import FmInfoPanel from "$lib/components/FmInfoPanel.svelte";
   import { savedSearches } from "$lib/stores/places";
   import { searchOpen, searchResults } from "$lib/stores/search";
+  import { trashOpen, openTrash } from "$lib/stores/trash";
 
   let renamingName = $state<string | null>(null);
   let confirmDelete = $state(false);
@@ -216,6 +218,9 @@
       case "go.up":
         await c?.up();
         break;
+      case "go.trash":
+        await openTrash();
+        break;
       case "edit.select_all":
         c?.selectAll();
         break;
@@ -282,7 +287,9 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="fm" onkeydown={onOpsKeydown}>
-  {#if $activeController && $focusedController}
+  {#if $trashOpen}
+    <FmTrashView />
+  {:else if $activeController && $focusedController}
     <FmSearchBar path={currentPath()} onsave={saveSearch} />
     <ContextMenu.Root>
       <ContextMenu.Trigger class="fm-browse">

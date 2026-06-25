@@ -6,7 +6,7 @@
   // render. The block frame, inline images and artifacts stay web-UI around
   // this; only the live grid is xterm.js.
   import { onMount, onDestroy } from "svelte";
-  import { Terminal, type IMarker, type IDecoration } from "@xterm/xterm";
+  import { Terminal, type IMarker } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
   import { WebglAddon } from "@xterm/addon-webgl";
   import { CanvasAddon } from "@xterm/addon-canvas";
@@ -22,7 +22,7 @@
     TERMINAL_FONT_SIZE,
     TERMINAL_LINE_HEIGHT,
   } from "$lib/terminal-theme";
-  import { applyBlockAccent, renderBlockResult } from "$lib/block-chrome";
+  import { renderBlockResult } from "$lib/block-chrome";
   import { classifyMark, parseExitCode } from "$lib/block-marks";
   import "$lib/block-chrome.css";
 
@@ -82,54 +82,32 @@
   }
 
   // Block boundaries over the continuous grid (terminal.md approach B, VS Code's
-  // way): the shell's OSC 133 marks delimit commands, and arlen-ui's block chrome
-  // (block-chrome.ts) is anchored to those marks - a left accent bar spanning
-  // each block (full height once it ends, error-tinted on a non-zero exit) and a
-  // right-anchored result strip carrying the exit code + duration. The grid stays
-  // one canvas; the chrome is an overlay hung off the marker rows, NOT a DOM grid.
-  // arlen-ui owns the look (and may still refine the richer frame - captured
-  // prompt line, inline images, artifacts - with Tim); this is the anchoring only.
+  // way): the shell's OSC 133 marks delimit commands. At rest the terminal is
+  // pure (no rails, no rules) - the only persistent chrome is the result strip
+  // (exit + duration) anchored to the right of each prompt row. The block
+  // structure surfaces on interaction: arlen-ui's hover tint spans a block's rows
+  // when the pointer is over it and reveals run-again (see the hover-wiring spec
+  // in arlen-ui-reports.md - the pointer->block mapping is the open coder piece).
+  // The grid stays one canvas; the chrome is an overlay hung off the marker rows.
   function registerBlockChrome(t: Terminal): void {
     // Per-block state, reset at each prompt-start.
     let promptMarker: IMarker | undefined;
-    let liveAccent: IDecoration | undefined;
     let execStartMs: number | undefined;
 
-    // A left accent bar anchored at the prompt-start marker, `rows` tall; the
-    // 2px width + colour come from block-chrome.css, the height from the rows.
-    function accent(
-      marker: IMarker,
-      rows: number,
-      isActive: boolean,
-      isError: boolean,
-    ): IDecoration | undefined {
-      const dec = t.registerDecoration({ marker, x: 0, width: 1, height: rows });
-      dec?.onRender((el) => applyBlockAccent(el, { isActive, isError }));
-      return dec ?? undefined;
-    }
-
     function onPromptStart(): void {
-      // A new block begins here. Drop a live one-row accent tick now; the
-      // full-height bar replaces it when the block ends (the `D` mark).
-      liveAccent?.dispose();
+      // A new block begins here; remember its prompt row so the result strip can
+      // anchor to it when the command ends.
       const marker = t.registerMarker(0) ?? undefined;
       promptMarker = marker;
       execStartMs = undefined;
-      liveAccent = marker ? accent(marker, 1, true, false) : undefined;
     }
 
     function onCommandEnd(data: string): void {
-      // Swap the live tick for the full-height bar (error-tinted on a non-zero
-      // exit) and anchor the result strip right of the prompt row.
+      // Anchor the result strip to the right of the prompt row.
       const exitCode = parseExitCode(data);
       const durationMs =
         execStartMs !== undefined ? Date.now() - execStartMs : null;
-      liveAccent?.dispose();
-      liveAccent = undefined;
       if (promptMarker && !promptMarker.isDisposed) {
-        const endLine = t.buffer.active.baseY + t.buffer.active.cursorY;
-        const rows = Math.max(1, endLine - promptMarker.line + 1);
-        accent(promptMarker, rows, false, exitCode !== null && exitCode !== 0);
         // Full-width over the prompt row (NOT anchor:"right" - that positions
         // relative to the marker column over the prompt, not the viewport edge,
         // so the strip landed on top of the prompt). block-chrome.css right-aligns

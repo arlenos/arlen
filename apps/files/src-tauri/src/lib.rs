@@ -916,6 +916,7 @@ async fn publish_app_menu() {
             vec![
                 MenuItem::item("Home", "go.home"),
                 MenuItem::item("Recent", "go.recent"),
+                MenuItem::item("Trash", "go.trash"),
                 MenuItem::separator(),
                 MenuItem::item("Parent Folder", "go.up"),
             ],
