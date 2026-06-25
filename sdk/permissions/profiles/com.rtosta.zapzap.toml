@@ -1,0 +1,8 @@
+# Starting permission profile for ZapZap (a WhatsApp desktop client). Network is its function; no user files, no
+# Knowledge Graph access.
+[info]
+app_id = "com.rtosta.zapzap"
+tier = "third-party"
+
+[network]
+allow_all = true

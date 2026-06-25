@@ -1,0 +1,8 @@
+# Starting permission profile for Railway (public-transit departure times). Network is its function; no user files, no
+# Knowledge Graph access.
+[info]
+app_id = "de.schmidhuberj.DieBahn"
+tier = "third-party"
+
+[network]
+allow_all = true
