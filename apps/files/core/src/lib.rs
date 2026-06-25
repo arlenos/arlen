@@ -16,6 +16,7 @@ pub mod bulk_rename;
 /// `metadata-edit` feature.
 #[cfg(feature = "metadata-edit")]
 pub mod metadata;
+pub mod openwith;
 pub mod ops;
 pub mod search;
 pub mod undo;
