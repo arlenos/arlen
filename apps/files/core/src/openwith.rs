@@ -10,6 +10,10 @@
 /// group.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopApp {
+    /// The desktop-file id (its basename, e.g. `org.gnome.gedit.desktop`). It
+    /// identifies the entry in `mimeapps.list`, so the default handler can be
+    /// matched and surfaced first in the picker.
+    pub id: String,
     /// `Name=` - the display label.
     pub name: String,
     /// `Exec=` verbatim, with its field codes (`%f`, `%u`, ...) intact; the host
@@ -27,7 +31,7 @@ pub struct DesktopApp {
 /// or `Hidden` set, or a missing/empty `Name` or `Exec`. Only the first group is
 /// read; later `[Desktop Action ...]` groups are ignored. Locale-suffixed keys
 /// (`Name[de]`) are skipped, so the unlocalised value wins.
-pub fn parse_desktop_app(contents: &str) -> Option<DesktopApp> {
+pub fn parse_desktop_app(id: &str, contents: &str) -> Option<DesktopApp> {
     let mut in_entry = false;
     let mut seen_entry = false;
     let mut name: Option<String> = None;
@@ -92,11 +96,44 @@ pub fn parse_desktop_app(contents: &str) -> Option<DesktopApp> {
     let name = name.filter(|s| !s.is_empty())?;
     let exec = exec.filter(|s| !s.is_empty())?;
     Some(DesktopApp {
+        id: id.to_string(),
         name,
         exec,
         mime_types: mime,
         terminal,
     })
+}
+
+/// The user's default handler for `mime`, as a desktop-file id, from a
+/// `mimeapps.list` text. Reads the `[Default Applications]` group, where each
+/// line is `mime/type=app.desktop` (a `;`-separated list, first entry wins).
+/// `None` when the type has no default set. Pure: the host reads the file.
+pub fn default_app_for(mimeapps_text: &str, mime: &str) -> Option<String> {
+    let mime = mime.to_lowercase();
+    let mut in_defaults = false;
+    for raw in mimeapps_text.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            in_defaults = line == "[Default Applications]";
+            continue;
+        }
+        if !in_defaults {
+            continue;
+        }
+        if let Some((key, value)) = line.split_once('=') {
+            if key.trim().to_lowercase() == mime {
+                return value
+                    .split(';')
+                    .map(str::trim)
+                    .find(|s| !s.is_empty())
+                    .map(str::to_string);
+            }
+        }
+    }
+    None
 }
 
 /// Whether `app` declares (exactly) that it handles `mime`. Subclass/alias
@@ -108,16 +145,26 @@ pub fn app_handles_mime(app: &DesktopApp, mime: &str) -> bool {
 }
 
 /// The apps from `apps` that handle `mime`, de-duplicated by `Exec` (the same
-/// app installed twice) and sorted by `Name` (case-insensitive) for a stable
-/// picker order.
-pub fn apps_for_mime(apps: &[DesktopApp], mime: &str) -> Vec<DesktopApp> {
+/// app installed twice). Sorted by `Name` (case-insensitive), except the user's
+/// default handler (`default_id`, a desktop-file id) is pulled to the front so
+/// the picker leads with it - the freedesktop expectation. `default_id` of
+/// `None`, or one that does not handle the type, leaves the plain alphabetical
+/// order.
+pub fn apps_for_mime(apps: &[DesktopApp], mime: &str, default_id: Option<&str>) -> Vec<DesktopApp> {
     let mut out: Vec<DesktopApp> = Vec::new();
     for app in apps.iter().filter(|a| app_handles_mime(a, mime)) {
         if !out.iter().any(|k| k.exec == app.exec) {
             out.push(app.clone());
         }
     }
-    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    out.sort_by(|a, b| {
+        let a_default = Some(a.id.as_str()) == default_id;
+        let b_default = Some(b.id.as_str()) == default_id;
+        // The default leads; otherwise case-insensitive by name.
+        b_default
+            .cmp(&a_default)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
     out
 }
 
@@ -221,7 +268,7 @@ mod tests {
 
     #[test]
     fn parses_the_entry_group_only() {
-        let app = parse_desktop_app(FIREFOX).unwrap();
+        let app = parse_desktop_app("firefox.desktop", FIREFOX).unwrap();
         assert_eq!(app.name, "Firefox"); // not the localised Name[de], not the action's Name
         assert_eq!(app.exec, "firefox %u");
         assert!(!app.terminal);
@@ -231,22 +278,22 @@ mod tests {
 
     #[test]
     fn skips_non_application_and_hidden_entries() {
-        assert!(parse_desktop_app("[Desktop Entry]\nType=Link\nName=L\nExec=x\n").is_none());
+        assert!(parse_desktop_app("l.desktop", "[Desktop Entry]\nType=Link\nName=L\nExec=x\n").is_none());
         assert!(
-            parse_desktop_app("[Desktop Entry]\nName=N\nExec=x\nNoDisplay=true\n").is_none()
+            parse_desktop_app("n.desktop", "[Desktop Entry]\nName=N\nExec=x\nNoDisplay=true\n").is_none()
         );
-        assert!(parse_desktop_app("[Desktop Entry]\nName=N\nExec=x\nHidden=true\n").is_none());
+        assert!(parse_desktop_app("n.desktop", "[Desktop Entry]\nName=N\nExec=x\nHidden=true\n").is_none());
     }
 
     #[test]
     fn requires_name_and_exec() {
-        assert!(parse_desktop_app("[Desktop Entry]\nType=Application\nExec=x\n").is_none());
-        assert!(parse_desktop_app("[Desktop Entry]\nType=Application\nName=N\n").is_none());
+        assert!(parse_desktop_app("x.desktop", "[Desktop Entry]\nType=Application\nExec=x\n").is_none());
+        assert!(parse_desktop_app("n.desktop", "[Desktop Entry]\nType=Application\nName=N\n").is_none());
     }
 
     #[test]
     fn terminal_flag_and_no_mimetype() {
-        let app = parse_desktop_app("[Desktop Entry]\nName=Vim\nExec=vim %F\nTerminal=true\n")
+        let app = parse_desktop_app("vim.desktop", "[Desktop Entry]\nName=Vim\nExec=vim %F\nTerminal=true\n")
             .unwrap();
         assert!(app.terminal);
         assert!(app.mime_types.is_empty());
@@ -292,7 +339,7 @@ mod tests {
 
     #[test]
     fn matches_mime_case_insensitively() {
-        let app = parse_desktop_app(FIREFOX).unwrap();
+        let app = parse_desktop_app("firefox.desktop", FIREFOX).unwrap();
         assert!(app_handles_mime(&app, "TEXT/HTML"));
         assert!(!app_handles_mime(&app, "image/png"));
     }
@@ -300,22 +347,68 @@ mod tests {
     #[test]
     fn filters_dedups_and_sorts() {
         let html = parse_desktop_app(
+            "zed.desktop",
             "[Desktop Entry]\nName=Zed Browser\nExec=zed %u\nMimeType=text/html;\n",
         )
         .unwrap();
         let html2 = parse_desktop_app(
+            "zed.desktop",
             "[Desktop Entry]\nName=Zed Browser\nExec=zed %u\nMimeType=text/html;\n",
         )
         .unwrap();
-        let ff = parse_desktop_app(FIREFOX).unwrap();
+        let ff = parse_desktop_app("firefox.desktop", FIREFOX).unwrap();
         let img = parse_desktop_app(
+            "eog.desktop",
             "[Desktop Entry]\nName=Eye\nExec=eog %f\nMimeType=image/png;\n",
         )
         .unwrap();
-        let got = apps_for_mime(&[html, ff.clone(), html2, img], "text/html");
+        let got = apps_for_mime(&[html, ff.clone(), html2, img], "text/html", None);
         // image app excluded; the duplicate Exec collapsed; sorted by name.
         assert_eq!(got.len(), 2);
         assert_eq!(got[0].name, "Firefox");
         assert_eq!(got[1].name, "Zed Browser");
+    }
+
+    #[test]
+    fn the_default_handler_leads_the_picker() {
+        let zed = parse_desktop_app(
+            "zed.desktop",
+            "[Desktop Entry]\nName=Zed Browser\nExec=zed %u\nMimeType=text/html;\n",
+        )
+        .unwrap();
+        let ff = parse_desktop_app("firefox.desktop", FIREFOX).unwrap();
+        // Firefox sorts after Zed alphabetically, but the user's default wins the lead.
+        let got = apps_for_mime(&[zed, ff], "text/html", Some("firefox.desktop"));
+        assert_eq!(got[0].id, "firefox.desktop");
+        assert_eq!(got[1].name, "Zed Browser");
+        // A default that does not handle the type leaves the plain order.
+        let zed2 = parse_desktop_app(
+            "zed.desktop",
+            "[Desktop Entry]\nName=Zed Browser\nExec=zed %u\nMimeType=text/html;\n",
+        )
+        .unwrap();
+        let ff2 = parse_desktop_app("firefox.desktop", FIREFOX).unwrap();
+        let plain = apps_for_mime(&[zed2, ff2], "text/html", Some("nano.desktop"));
+        assert_eq!(plain[0].name, "Firefox");
+    }
+
+    #[test]
+    fn default_app_for_reads_the_default_applications_group() {
+        let mimeapps = "[Default Applications]\n\
+            text/html=firefox.desktop;chromium.desktop\n\
+            image/png=org.gnome.eog.desktop\n\
+            [Added Associations]\n\
+            text/html=otherbrowser.desktop\n";
+        // First entry of a `;`-list wins; case-insensitive on the mime key.
+        assert_eq!(
+            default_app_for(mimeapps, "TEXT/HTML").as_deref(),
+            Some("firefox.desktop")
+        );
+        assert_eq!(
+            default_app_for(mimeapps, "image/png").as_deref(),
+            Some("org.gnome.eog.desktop")
+        );
+        // A type with no default, and the Added Associations group, are ignored.
+        assert!(default_app_for(mimeapps, "application/pdf").is_none());
     }
 }
