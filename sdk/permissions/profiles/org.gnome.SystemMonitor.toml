@@ -1,0 +1,6 @@
+# Starting permission profile for GNOME System Monitor. Reads system process and
+# resource state from world-readable /proc; needs no user data, network, or
+# graph - the maximally conservative starting grant.
+[info]
+app_id = "org.gnome.SystemMonitor"
+tier = "third-party"

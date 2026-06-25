@@ -1,0 +1,8 @@
+# Starting permission profile for Elisa (a music player). Plays the user's local
+# music; no network, no graph.
+[info]
+app_id = "org.kde.elisa"
+tier = "third-party"
+
+[filesystem]
+music = true
