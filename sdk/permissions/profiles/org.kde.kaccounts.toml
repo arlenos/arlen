@@ -1,0 +1,7 @@
+# Starting permission profile for KAccounts (the KDE online-accounts integration UI). Runs provider auth flows over the network; credentials are held by the accounts framework out of band.
+[info]
+app_id = "org.kde.kaccounts"
+tier = "third-party"
+
+[network]
+allow_all = true

@@ -1,0 +1,7 @@
+# Starting permission profile for Alligator (an RSS feed reader). Fetching feeds over the network is its function.
+[info]
+app_id = "org.kde.alligator"
+tier = "third-party"
+
+[network]
+allow_all = true

@@ -1,0 +1,7 @@
+# Starting permission profile for Tuta (an encrypted email client). Talks to the mail server over the network (its function).
+[info]
+app_id = "com.tutanota.Tutanota"
+tier = "third-party"
+
+[network]
+allow_all = true

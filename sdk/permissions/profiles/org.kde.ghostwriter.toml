@@ -1,0 +1,7 @@
+# Starting permission profile for Ghostwriter (a Markdown editor). Markdown documents live in Documents; no network.
+[info]
+app_id = "org.kde.ghostwriter"
+tier = "third-party"
+
+[filesystem]
+documents = true
