@@ -1,0 +1,7 @@
+# Starting permission profile for Skanlite (a scanner app). Saves scans to Pictures; scanner hardware access is a portal grant out of band.
+[info]
+app_id = "org.kde.skanlite"
+tier = "third-party"
+
+[filesystem]
+pictures = true

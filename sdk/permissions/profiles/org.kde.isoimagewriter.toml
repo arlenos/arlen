@@ -1,0 +1,7 @@
+# Starting permission profile for ISO Image Writer. Reads an ISO from Downloads; the raw USB-device write is a privileged op out of band.
+[info]
+app_id = "org.kde.isoimagewriter"
+tier = "third-party"
+
+[filesystem]
+downloads = true

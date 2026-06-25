@@ -1,0 +1,5 @@
+# Starting permission profile for KMagnifier (a screen magnifier). A pure-utility accessibility tool: no filesystem, network, or graph.
+[info]
+app_id = "org.kde.kmag"
+tier = "third-party"
+

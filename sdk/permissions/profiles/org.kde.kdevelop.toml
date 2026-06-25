@@ -1,0 +1,10 @@
+# Starting permission profile for KDevelop (a C/C++/Python IDE). Projects in Documents; fetches plugins/deps over the network.
+[info]
+app_id = "org.kde.kdevelop"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true

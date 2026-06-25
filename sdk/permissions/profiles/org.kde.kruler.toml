@@ -1,0 +1,5 @@
+# Starting permission profile for KRuler (an on-screen ruler). A pure-utility tool: no filesystem, network, or graph.
+[info]
+app_id = "org.kde.kruler"
+tier = "third-party"
+
