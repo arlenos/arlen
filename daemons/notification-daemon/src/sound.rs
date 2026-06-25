@@ -135,6 +135,45 @@ pub fn default_sound_roots() -> Vec<PathBuf> {
     roots
 }
 
+/// An Arlen sound event in the restrained default-on set (sound-system-plan.md:
+/// ~5-8 cues that sound out of the box; everything else is silent-by-default via
+/// the `.disabled` mechanism). Each maps to a freedesktop Sound Naming-spec name
+/// so the cue resolves in any freedesktop sound theme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SoundEvent {
+    /// A notification arrived.
+    NotificationArrived,
+    /// An error / failure was surfaced.
+    Error,
+    /// A warning was surfaced.
+    Warning,
+    /// A user-requested action finished successfully.
+    ActionCompleted,
+    /// A removable device was attached (mount).
+    DeviceAdded,
+    /// A removable device was detached (unmount).
+    DeviceRemoved,
+}
+
+impl SoundEvent {
+    /// The freedesktop Sound Naming-spec name this event maps to - the `name`
+    /// [`resolve_sound`] looks up in the active theme. Arlen adopts the standard
+    /// vocabulary (notification -> `message-new-instant`, error -> `dialog-error`,
+    /// warning -> `dialog-warning`, action-completion -> `complete`, device add/
+    /// remove -> `device-added`/`device-removed`) so the cues resolve in any
+    /// freedesktop theme; an Arlen-specific cue would carry an `x-arlen-` prefix.
+    pub fn sound_name(self) -> &'static str {
+        match self {
+            SoundEvent::NotificationArrived => "message-new-instant",
+            SoundEvent::Error => "dialog-error",
+            SoundEvent::Warning => "dialog-warning",
+            SoundEvent::ActionCompleted => "complete",
+            SoundEvent::DeviceAdded => "device-added",
+            SoundEvent::DeviceRemoved => "device-removed",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -222,5 +261,31 @@ mod tests {
         put(&root, "flat", None, "", Some("warning.ogg"));
         let r = resolve_sound(&[root.clone()], "flat", "warning");
         assert_eq!(r, SoundResolution::File(root.join("flat/warning.ogg")));
+    }
+
+    #[test]
+    fn each_event_maps_to_its_standard_freedesktop_name() {
+        // The adopted vocabulary (sound-system-plan.md); these are the canonical
+        // freedesktop Sound Naming-spec names, so they resolve in any theme.
+        assert_eq!(SoundEvent::NotificationArrived.sound_name(), "message-new-instant");
+        assert_eq!(SoundEvent::Error.sound_name(), "dialog-error");
+        assert_eq!(SoundEvent::Warning.sound_name(), "dialog-warning");
+        assert_eq!(SoundEvent::ActionCompleted.sound_name(), "complete");
+        assert_eq!(SoundEvent::DeviceAdded.sound_name(), "device-added");
+        assert_eq!(SoundEvent::DeviceRemoved.sound_name(), "device-removed");
+    }
+
+    #[test]
+    fn an_events_name_resolves_through_the_theme() {
+        // The event -> name map threads into the resolver: a theme cue for the
+        // event's standard name is found via SoundEvent::sound_name.
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        put(&root, "arlen", Some("[Sound Theme]\nDirectories=stereo\n"), "stereo", Some("dialog-error.oga"));
+        let name = SoundEvent::Error.sound_name();
+        assert_eq!(
+            resolve_sound(&[root.clone()], "arlen", name),
+            SoundResolution::File(root.join("arlen/stereo/dialog-error.oga")),
+        );
     }
 }
