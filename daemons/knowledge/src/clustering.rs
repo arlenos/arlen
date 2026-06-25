@@ -77,6 +77,63 @@ pub fn cluster_co_access(edges: &[(String, String)], min_size: usize) -> Vec<Vec
     out
 }
 
+/// A project candidate derived from a co-access cluster: a name + root directory
+/// (the cluster's common path) and a confidence scaled by the cluster size. Fed to
+/// `Project::new_inferred` by the materialisation step.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CandidateProject {
+    /// The candidate project name (the basename of the common root).
+    pub name: String,
+    /// The common directory the clustered files live under.
+    pub root_path: String,
+    /// Inference confidence (`0..=90`); never 100, which is reserved for a
+    /// user-confirmed project.
+    pub confidence: u8,
+}
+
+/// The minimum path depth (components below `/`) a co-access cluster's common
+/// directory must reach to be a project candidate. A shallower common root (`/`,
+/// `/home`, `/home/user`) is the home/system tree shared by unrelated files, not a
+/// project, so such a cluster is treated as co-access noise.
+const MIN_ROOT_DEPTH: usize = 3;
+
+/// Derive a project candidate from a co-access cluster: the longest common path
+/// prefix of the files is the root directory (its basename the name), and the
+/// confidence scales with the cluster size (more co-accessed files = a stronger
+/// signal), capped at 90. Returns `None` when the files share no sufficiently deep
+/// common directory (spread across unrelated trees, or rooted only at the home
+/// dir): that cluster is co-access noise, not a project. Pure - the materialisation
+/// step turns a `Some` into an inferred `Project`.
+pub fn candidate_project_from_cluster(files: &[String]) -> Option<CandidateProject> {
+    if files.len() < 2 {
+        return None;
+    }
+    let split = |p: &str| {
+        p.trim_start_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<String>>()
+    };
+    let mut common = split(&files[0]);
+    for f in &files[1..] {
+        let parts = split(f);
+        let shared = common.iter().zip(parts.iter()).take_while(|(a, b)| a == b).count();
+        common.truncate(shared);
+        if common.len() < MIN_ROOT_DEPTH {
+            return None;
+        }
+    }
+    if common.len() < MIN_ROOT_DEPTH {
+        return None;
+    }
+    Some(CandidateProject {
+        name: common.last()?.clone(),
+        root_path: format!("/{}", common.join("/")),
+        confidence: (40 + files.len() * 10).min(90) as u8,
+    })
+}
+
 /// Read the recent `CO_ACCESSED` file graph and cluster it into candidate-project
 /// file groups. Edges whose `last_seen >= cutoff_micros` are read once on the
 /// serial graph thread (the `analyze_code_graph` read pattern), then the pure
@@ -149,6 +206,37 @@ mod tests {
         let edges = [e("a", "b")];
         assert_eq!(cluster_co_access(&edges, 0), vec![vec!["a", "b"]]);
         assert_eq!(cluster_co_access(&edges, 1), vec![vec!["a", "b"]]);
+    }
+
+    #[test]
+    fn candidate_project_uses_the_common_directory() {
+        let files = [
+            "/home/u/proj/src/a.rs".to_string(),
+            "/home/u/proj/src/b.rs".to_string(),
+            "/home/u/proj/README.md".to_string(),
+        ];
+        let c = candidate_project_from_cluster(&files).expect("a project candidate");
+        assert_eq!(c.root_path, "/home/u/proj");
+        assert_eq!(c.name, "proj");
+        assert_eq!(c.confidence, 70); // 40 + 3*10
+    }
+
+    #[test]
+    fn confidence_caps_at_ninety() {
+        let files: Vec<String> = (0..8).map(|i| format!("/home/u/proj/f{i}.rs")).collect();
+        assert_eq!(candidate_project_from_cluster(&files).unwrap().confidence, 90);
+    }
+
+    #[test]
+    fn rejects_shallow_or_unrelated_clusters() {
+        // Common root is only /home/u (the home dir, depth 2) -> not a project.
+        let shallow = ["/home/u/a/x.rs".to_string(), "/home/u/b/y.rs".to_string()];
+        assert!(candidate_project_from_cluster(&shallow).is_none());
+        // No common directory at all.
+        let unrelated = ["/tmp/x".to_string(), "/var/y".to_string()];
+        assert!(candidate_project_from_cluster(&unrelated).is_none());
+        // A lone file is never a project.
+        assert!(candidate_project_from_cluster(&["/home/u/proj/a.rs".to_string()]).is_none());
     }
 
     #[test]
