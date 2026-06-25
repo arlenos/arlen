@@ -126,6 +126,39 @@
     }
   }
 
+  /// The "Open With" submenu's apps for the selected file (the apps that declare
+  /// its MIME type, from `files_apps_for`). null = not loaded yet; loaded lazily
+  /// when the submenu opens so a right-click does not pay an xdg-mime + dir scan.
+  interface OpenWithApp {
+    name: string;
+    exec: string;
+    terminal: boolean;
+  }
+  let openWithApps = $state<OpenWithApp[] | null>(null);
+
+  async function loadOpenWith() {
+    if (selected.length !== 1) return;
+    openWithApps = null;
+    const p = joinPath(currentPath(), selected[0].name);
+    try {
+      openWithApps = await invoke<OpenWithApp[]>("files_apps_for", { path: p });
+    } catch {
+      openWithApps = [];
+    }
+  }
+
+  /// Open the selected file with the chosen app's `.desktop` Exec (the backend
+  /// expands the field codes + spawns without a shell).
+  async function openWith(exec: string) {
+    if (selected.length !== 1) return;
+    const p = joinPath(currentPath(), selected[0].name);
+    try {
+      await invoke("files_open_with", { path: p, exec });
+    } catch (err) {
+      console.warn("files: open-with failed", err);
+    }
+  }
+
   /// The user's `~/Templates` entries (the backend `files_templates`), offered
   /// in the context menu's "New from template" submenu.
   interface Template {
@@ -426,6 +459,28 @@
             <ContextMenu.Item onclick={() => void createLink()}>
               Create Link
             </ContextMenu.Item>
+            {#if selected[0].kind !== "directory"}
+              <ContextMenu.Sub
+                onOpenChange={(open) => {
+                  if (open) void loadOpenWith();
+                }}
+              >
+                <ContextMenu.SubTrigger>Open With</ContextMenu.SubTrigger>
+                <ContextMenu.SubContent class="w-52">
+                  {#if openWithApps === null}
+                    <ContextMenu.Item disabled>Loading…</ContextMenu.Item>
+                  {:else if openWithApps.length === 0}
+                    <ContextMenu.Item disabled>No apps found</ContextMenu.Item>
+                  {:else}
+                    {#each openWithApps as app (app.exec)}
+                      <ContextMenu.Item onclick={() => void openWith(app.exec)}>
+                        {app.name}
+                      </ContextMenu.Item>
+                    {/each}
+                  {/if}
+                </ContextMenu.SubContent>
+              </ContextMenu.Sub>
+            {/if}
           {/if}
         {/if}
         {#if selected.length === 0}
