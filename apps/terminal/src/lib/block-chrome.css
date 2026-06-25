@@ -1,0 +1,78 @@
+/* Block chrome: the Arlen overlay the engine anchors to the OSC133 marks on the
+ * continuous xterm.js grid (Terminal.svelte registers the decorations; this is
+ * the LOOK that goes in their `onRender` elements). xterm renders the real shell
+ * prompt itself, so the chrome never re-draws cwd/git - it adds only what the
+ * shell does not: the block boundary, the result, the run-again affordance.
+ *
+ * Flat Arlen house style: monochrome by default, colour only where it means
+ * something (a failed exit, an error block). */
+
+/* The block boundary: a quiet accent bar down the left of a block, anchored at
+ * the prompt-start row and as tall as the block. Monochrome; the active block
+ * (the live prompt) reads a touch brighter; a failed block turns the bar the
+ * error colour - the one place colour carries meaning. */
+.arlen-block-accent {
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--foreground, #e4e5ea) 32%, transparent);
+  pointer-events: none;
+}
+.arlen-block-accent.is-active {
+  background: color-mix(in srgb, var(--foreground, #e4e5ea) 60%, transparent);
+}
+.arlen-block-accent.is-error {
+  background: color-mix(in srgb, var(--color-error, #c96a6a) 65%, transparent);
+}
+
+/* The result, anchored to the right of the prompt row: the duration always once
+ * the command finished, an exit chip ONLY when it failed (the absence of an
+ * error is the status - the command stays the star). Run-again shows on block
+ * hover. The whole strip ignores pointer events except the button, so it never
+ * eats a text selection over the grid. */
+.arlen-block-result {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  pointer-events: none;
+  padding-right: 6px;
+}
+.arlen-block-exit {
+  color: var(--color-error, #c96a6a);
+  font-variant-numeric: tabular-nums;
+}
+.arlen-block-duration {
+  color: color-mix(in srgb, var(--foreground, #e4e5ea) 45%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+.arlen-block-rerun {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-button, 6px);
+  color: color-mix(in srgb, var(--foreground, #e4e5ea) 50%, transparent);
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast, 150ms) var(--ease-out, ease),
+    background-color var(--duration-fast, 150ms) var(--ease-out, ease),
+    color var(--duration-fast, 150ms) var(--ease-out, ease);
+}
+/* The run-again surfaces on block hover, the quiet-chrome rule. The engine adds
+ * `is-hover` to the block's decoration group on pointer-enter of the rows. */
+.arlen-block.is-hover .arlen-block-rerun,
+.arlen-block-result:hover .arlen-block-rerun {
+  opacity: 1;
+}
+.arlen-block-rerun:hover {
+  background: color-mix(in srgb, var(--foreground, #e4e5ea) 10%, transparent);
+  color: var(--foreground, #e4e5ea);
+}
