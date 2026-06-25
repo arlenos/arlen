@@ -9,6 +9,10 @@
 
 use std::collections::BTreeMap;
 
+use anyhow::Result;
+
+use crate::graph::GraphHandle;
+
 /// Find the representative of `x`'s set, with path compression. `parent` maps each
 /// seen node to its parent (a node not yet inserted is its own root once added).
 fn find(parent: &mut BTreeMap<String, String>, x: &str) -> String {
@@ -71,6 +75,39 @@ pub fn cluster_co_access(edges: &[(String, String)], min_size: usize) -> Vec<Vec
         .collect();
     out.sort();
     out
+}
+
+/// Read the recent `CO_ACCESSED` file graph and cluster it into candidate-project
+/// file groups. Edges whose `last_seen >= cutoff_micros` are read once on the
+/// serial graph thread (the `analyze_code_graph` read pattern), then the pure
+/// [`cluster_co_access`] produces the groups - so the graph layer supplies only
+/// the edges, never the clustering. A quiet graph yields no candidates.
+///
+/// Read-only: this SURFACES candidates (for the inference task / a read op to act
+/// on); it does NOT create `Project` nodes - that materialisation, with its
+/// candidate-vs-confirmed noise policy, is the next slice. `cutoff_micros` is an
+/// integer, so it is injection-safe interpolated.
+pub async fn candidate_clusters(
+    graph: &GraphHandle,
+    cutoff_micros: i64,
+    min_size: usize,
+) -> Result<Vec<Vec<String>>> {
+    let rows = graph
+        .query_rows(format!(
+            "MATCH (a:File)-[c:CO_ACCESSED]->(b:File) WHERE c.last_seen >= {cutoff_micros} \
+             RETURN a.id, b.id"
+        ))
+        .await?;
+    let edges: Vec<(String, String)> = rows
+        .rows
+        .iter()
+        .filter_map(|row| {
+            let a = row.first()?.as_str().to_string();
+            let b = row.get(1)?.as_str().to_string();
+            (!a.is_empty() && !b.is_empty()).then_some((a, b))
+        })
+        .collect();
+    Ok(cluster_co_access(&edges, min_size))
 }
 
 #[cfg(test)]
