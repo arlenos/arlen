@@ -1,0 +1,5 @@
+# Starting permission profile for KClock (clock, timers and alarms). A self-contained local tool; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "org.kde.kclock"
+tier = "third-party"

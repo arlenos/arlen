@@ -1,0 +1,5 @@
+# Starting permission profile for Francis (a Pomodoro timer). A self-contained local tool; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "org.kde.francis"
+tier = "third-party"

@@ -1,0 +1,8 @@
+# Starting permission profile for KWave (an audio editor). It reads and writes audio
+# files; music, no network, no Knowledge Graph access.
+[info]
+app_id = "org.kde.kwave"
+tier = "third-party"
+
+[filesystem]
+music = true

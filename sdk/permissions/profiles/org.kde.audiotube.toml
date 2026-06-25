@@ -1,0 +1,8 @@
+# Starting permission profile for AudioTube (a YouTube Music client). Network is its function; no user files, no
+# Knowledge Graph access.
+[info]
+app_id = "org.kde.audiotube"
+tier = "third-party"
+
+[network]
+allow_all = true

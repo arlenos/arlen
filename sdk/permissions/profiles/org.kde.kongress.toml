@@ -1,0 +1,8 @@
+# Starting permission profile for Kongress (a conference companion). Network is its function; no user files, no
+# Knowledge Graph access.
+[info]
+app_id = "org.kde.kongress"
+tier = "third-party"
+
+[network]
+allow_all = true

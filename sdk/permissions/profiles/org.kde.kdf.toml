@@ -1,0 +1,5 @@
+# Starting permission profile for KDiskFree (shows free disk space). A self-contained local tool; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "org.kde.kdf"
+tier = "third-party"

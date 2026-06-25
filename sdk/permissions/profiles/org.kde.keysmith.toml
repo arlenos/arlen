@@ -1,0 +1,5 @@
+# Starting permission profile for Keysmith (a two-factor / OTP code generator). A self-contained local tool; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "org.kde.keysmith"
+tier = "third-party"

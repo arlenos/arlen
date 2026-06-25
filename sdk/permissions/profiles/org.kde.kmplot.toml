@@ -1,0 +1,5 @@
+# Starting permission profile for KmPlot (a mathematical function plotter). A self-contained local tool; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "org.kde.kmplot"
+tier = "third-party"
