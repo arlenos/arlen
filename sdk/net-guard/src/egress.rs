@@ -33,9 +33,9 @@ use std::collections::HashSet;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use thiserror::Error;
 use tokio::io::{copy_bidirectional, AsyncReadExt, AsyncWriteExt};
@@ -43,7 +43,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
-use crate::{resolve_and_pin, GuardError};
+use crate::{resolve_and_pin, GuardError, RateLimiter};
 
 /// The maximum bytes the proxy reads while looking for the end of the `CONNECT`
 /// request head. A confined process must not be able to make the proxy buffer
@@ -161,6 +161,9 @@ pub enum EgressVerdict {
     NotAllowlisted,
     /// On the allowlist but resolves into a blocked range (the SSRF floor).
     Blocked(GuardError),
+    /// Refused because the per-connection egress rate cap is exhausted (CONN-R3);
+    /// the destination may be fine, the process is just talking too fast.
+    RateLimited,
 }
 
 /// Decide a single requested destination: the host-allowlist check FIRST, then the
@@ -187,6 +190,27 @@ pub async fn decide_egress(allowlist: &EgressAllowlist, host: &str, port: u16) -
 type EgressResolver =
     Arc<dyn Fn(String, u16) -> Pin<Box<dyn Future<Output = EgressVerdict> + Send>> + Send + Sync>;
 
+/// Wrap a resolver with a shared egress rate cap: each `CONNECT` first spends a token
+/// from `limiter`, and an exhausted bucket short-circuits to [`EgressVerdict::RateLimited`]
+/// without consulting `inner` (so a throttled request does no DNS). The lock is taken
+/// and released before the inner await, never held across it.
+fn with_rate_cap(inner: EgressResolver, limiter: Arc<Mutex<RateLimiter>>) -> EgressResolver {
+    Arc::new(move |host, port| {
+        let inner = inner.clone();
+        let limiter = limiter.clone();
+        Box::pin(async move {
+            let permitted = limiter
+                .lock()
+                .map(|mut rl| rl.try_acquire(Instant::now()))
+                .unwrap_or(false);
+            if !permitted {
+                return EgressVerdict::RateLimited;
+            }
+            inner(host, port).await
+        })
+    })
+}
+
 /// A forced forwarding proxy: the confined process's only egress. Speaks HTTP
 /// `CONNECT host:port` (tunnelling TLS unbroken) and enforces the allowlist + the
 /// SSRF floor on every tunnel. Runs in the host netns; the confined process reaches
@@ -206,6 +230,28 @@ impl EgressProxy {
             Box::pin(async move { decide_egress(&allowlist, &host, port).await })
         });
         Self::bind_with_resolver(bind_addr, resolver).await
+    }
+
+    /// Bind with a per-connection egress rate cap of `requests_per_minute` (CONN-R3,
+    /// ~60/min Envoy-style) on top of the allowlist + SSRF floor. The cap is the whole
+    /// proxy's budget (one confined process), token-bucket with a `requests_per_minute`
+    /// burst; a `CONNECT` over the cap is refused [`EgressVerdict::RateLimited`] BEFORE
+    /// any DNS, so a flooding process throttles itself rather than the host. The
+    /// uncapped [`Self::bind`] stays for callers that do not set a policy.
+    pub async fn bind_capped(
+        bind_addr: SocketAddr,
+        allowlist: EgressAllowlist,
+        requests_per_minute: u32,
+    ) -> std::io::Result<Self> {
+        let base: EgressResolver = Arc::new(move |host, port| {
+            let allowlist = allowlist.clone();
+            Box::pin(async move { decide_egress(&allowlist, &host, port).await })
+        });
+        let limiter = Arc::new(Mutex::new(RateLimiter::per_minute(
+            requests_per_minute,
+            Instant::now(),
+        )));
+        Self::bind_with_resolver(bind_addr, with_rate_cap(base, limiter)).await
     }
 
     /// Bind with an injected decision function. Private (not a public constructor)
@@ -296,6 +342,11 @@ async fn handle_tunnel(mut client: TcpStream, resolver: EgressResolver) -> std::
         }
         EgressVerdict::Blocked(_) => {
             let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n").await;
+        }
+        EgressVerdict::RateLimited => {
+            let _ = client
+                .write_all(b"HTTP/1.1 429 Too Many Requests\r\n\r\n")
+                .await;
         }
     }
     Ok(())
@@ -574,6 +625,18 @@ mod tests {
         client.read_exact(&mut echoed).await.unwrap();
         assert_eq!(&echoed, b"hello", "coalesced early data reaches the upstream");
         cancel.cancel();
+    }
+
+    #[tokio::test]
+    async fn the_rate_cap_refuses_after_the_burst() {
+        // A 2-token bucket that never refills, wrapping a resolver that would otherwise
+        // pass: the first two CONNECTs reach the inner verdict, the third is refused by
+        // the cap (CONN-R3) without consulting the inner resolver.
+        let limiter = Arc::new(Mutex::new(RateLimiter::new(2, 0.0, Instant::now())));
+        let capped = with_rate_cap(deny_resolver(), limiter);
+        assert!(matches!(capped("h".into(), 80).await, EgressVerdict::NotAllowlisted));
+        assert!(matches!(capped("h".into(), 80).await, EgressVerdict::NotAllowlisted));
+        assert!(matches!(capped("h".into(), 80).await, EgressVerdict::RateLimited));
     }
 
     #[tokio::test]
