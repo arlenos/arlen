@@ -121,6 +121,89 @@ pub fn apps_for_mime(apps: &[DesktopApp], mime: &str) -> Vec<DesktopApp> {
     out
 }
 
+/// Expand a `.desktop` `Exec=` string into an argv for launching `file`, per the
+/// freedesktop field-code rules. The single-file/url codes (`%f` `%u` `%F` `%U`)
+/// become the file path as one argument; `%%` is a literal `%`; the icon/name/
+/// deprecated codes (`%i` `%c` `%k` `%d` `%D` `%n` `%N` `%v` `%m`) are dropped.
+/// The result is an argv the host spawns directly (no shell), so a path with
+/// spaces or shell metacharacters is one inert argument - never re-parsed by a
+/// shell. Apps in the picker come from MimeType-declaring entries, which carry a
+/// file code; an Exec with no code simply launches without the file (the spec's
+/// behaviour - we do not append it).
+pub fn expand_exec(exec: &str, file: &str) -> Vec<String> {
+    tokenize_exec(exec)
+        .into_iter()
+        .filter_map(|tok| match tok.as_str() {
+            "%f" | "%u" | "%F" | "%U" => Some(file.to_string()),
+            "%i" | "%c" | "%k" | "%d" | "%D" | "%n" | "%N" | "%v" | "%m" => None,
+            _ => Some(expand_codes_inline(&tok, file)),
+        })
+        .collect()
+}
+
+/// Replace field codes embedded inside a token (e.g. `--file=%f`): the single-
+/// file codes become `file`, `%%` a literal `%`, any other `%x` is dropped.
+fn expand_codes_inline(tok: &str, file: &str) -> String {
+    let mut out = String::new();
+    let mut chars = tok.chars();
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            match chars.next() {
+                Some('%') => out.push('%'),
+                Some('f') | Some('u') | Some('F') | Some('U') => out.push_str(file),
+                _ => {} // drop other / truncated codes
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Split an `Exec=` string into tokens, honouring double-quoted segments (a
+/// quoted run is one argument; inside it `\"` `\\` `\$` `` \` `` unescape per the
+/// spec). Whitespace separates unquoted tokens.
+fn tokenize_exec(exec: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut cur = String::new();
+    let mut active = false;
+    let mut in_quote = false;
+    let mut chars = exec.chars().peekable();
+    while let Some(c) = chars.next() {
+        if in_quote {
+            match c {
+                '\\' => {
+                    if let Some(&n) = chars.peek() {
+                        if matches!(n, '"' | '\\' | '$' | '`') {
+                            cur.push(n);
+                            chars.next();
+                            continue;
+                        }
+                    }
+                    cur.push('\\');
+                }
+                '"' => in_quote = false,
+                _ => cur.push(c),
+            }
+        } else if c == '"' {
+            in_quote = true;
+            active = true;
+        } else if c.is_whitespace() {
+            if active {
+                tokens.push(std::mem::take(&mut cur));
+                active = false;
+            }
+        } else {
+            cur.push(c);
+            active = true;
+        }
+    }
+    if active {
+        tokens.push(cur);
+    }
+    tokens
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,6 +250,44 @@ mod tests {
             .unwrap();
         assert!(app.terminal);
         assert!(app.mime_types.is_empty());
+    }
+
+    #[test]
+    fn expand_exec_substitutes_the_single_file_codes() {
+        assert_eq!(expand_exec("firefox %u", "/a/b.html"), ["firefox", "/a/b.html"]);
+        assert_eq!(expand_exec("vim %F", "/x.txt"), ["vim", "/x.txt"]);
+        assert_eq!(
+            expand_exec("app --flag %f", "/p"),
+            ["app", "--flag", "/p"]
+        );
+    }
+
+    #[test]
+    fn expand_exec_drops_icon_and_deprecated_codes_and_keeps_literal_percent() {
+        // %i/%c/%k dropped (not empty args); %% -> literal %.
+        assert_eq!(expand_exec("app %i %c %f", "/p"), ["app", "/p"]);
+        assert_eq!(expand_exec("app 100%% %f", "/p"), ["app", "100%", "/p"]);
+    }
+
+    #[test]
+    fn expand_exec_keeps_a_path_with_spaces_as_one_inert_arg() {
+        // The argv is spawned without a shell, so a space/metachar in the path is
+        // one argument, never re-split or interpreted.
+        let argv = expand_exec("viewer %f", "/home/me/My Photos/a b;rm -rf.png");
+        assert_eq!(argv, ["viewer", "/home/me/My Photos/a b;rm -rf.png"]);
+    }
+
+    #[test]
+    fn expand_exec_handles_a_quoted_program_with_spaces() {
+        assert_eq!(
+            expand_exec("\"/opt/My App/run\" %f", "/p"),
+            ["/opt/My App/run", "/p"]
+        );
+    }
+
+    #[test]
+    fn expand_exec_substitutes_an_inline_code() {
+        assert_eq!(expand_exec("app --file=%f", "/p"), ["app", "--file=/p"]);
     }
 
     #[test]
