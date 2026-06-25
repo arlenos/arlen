@@ -211,6 +211,44 @@ fn with_rate_cap(inner: EgressResolver, limiter: Arc<Mutex<RateLimiter>>) -> Egr
     })
 }
 
+/// A content-free record of one egress decision for the observer: the requested
+/// host + port and the verdict KIND, never the resolved IP or any payload byte.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EgressDecision {
+    /// Allowlisted, in-range and within the rate cap: the tunnel opened.
+    Allowed,
+    /// Refused: the `host:port` is not on the allowlist.
+    NotAllowlisted,
+    /// Refused: allowlisted but resolved into a blocked IP range (the SSRF floor).
+    Blocked,
+    /// Refused: the per-connection rate cap was exhausted.
+    RateLimited,
+}
+
+impl EgressDecision {
+    fn of(verdict: &EgressVerdict) -> Self {
+        match verdict {
+            EgressVerdict::Allow(_) => EgressDecision::Allowed,
+            EgressVerdict::NotAllowlisted => EgressDecision::NotAllowlisted,
+            EgressVerdict::Blocked(_) => EgressDecision::Blocked,
+            EgressVerdict::RateLimited => EgressDecision::RateLimited,
+        }
+    }
+}
+
+/// Invoked once per `CONNECT` with the requested destination and the decision, so a
+/// caller can audit EVERY egress (CONN-R3 "every egress audited"). Content-free and
+/// synchronous: net-guard does not depend on the audit ledger, so the consumer (the
+/// Connections daemon, arlen-run) wires the ledger into this seam. The default is a
+/// no-op; attach one with [`EgressProxy::with_observer`].
+pub type EgressObserver = Arc<dyn Fn(&str, u16, EgressDecision) + Send + Sync>;
+
+/// The default observer: does nothing. A confined launch with no audit consumer
+/// still works; the Connections daemon attaches a ledger-backed observer.
+fn noop_observer() -> EgressObserver {
+    Arc::new(|_host, _port, _decision| {})
+}
+
 /// A forced forwarding proxy: the confined process's only egress. Speaks HTTP
 /// `CONNECT host:port` (tunnelling TLS unbroken) and enforces the allowlist + the
 /// SSRF floor on every tunnel. Runs in the host netns; the confined process reaches
@@ -218,6 +256,7 @@ fn with_rate_cap(inner: EgressResolver, limiter: Arc<Mutex<RateLimiter>>) -> Egr
 pub struct EgressProxy {
     listener: TcpListener,
     resolver: EgressResolver,
+    observer: EgressObserver,
 }
 
 impl EgressProxy {
@@ -264,7 +303,15 @@ impl EgressProxy {
         resolver: EgressResolver,
     ) -> std::io::Result<Self> {
         let listener = TcpListener::bind(bind_addr).await?;
-        Ok(Self { listener, resolver })
+        Ok(Self { listener, resolver, observer: noop_observer() })
+    }
+
+    /// Attach an egress observer: it is invoked once per `CONNECT` with the
+    /// requested `(host, port)` and the [`EgressDecision`], so the caller can audit
+    /// every egress without net-guard depending on the audit ledger.
+    pub fn with_observer(mut self, observer: EgressObserver) -> Self {
+        self.observer = observer;
+        self
     }
 
     /// The address the launcher writes into the confined `http(s)_proxy` env.
@@ -289,8 +336,9 @@ impl EgressProxy {
                     // degrades; the host task/FD table is protected).
                     let Ok(permit) = limit.clone().try_acquire_owned() else { continue };
                     let resolver = self.resolver.clone();
+                    let observer = self.observer.clone();
                     tokio::spawn(async move {
-                        let _ = handle_tunnel(stream, resolver).await;
+                        let _ = handle_tunnel(stream, resolver, observer).await;
                         drop(permit);
                     });
                 }
@@ -301,7 +349,11 @@ impl EgressProxy {
 
 /// Handle one `CONNECT` tunnel: read the bounded request head, parse the target,
 /// decide, and either splice to the pinned upstream or reply with the refusal.
-async fn handle_tunnel(mut client: TcpStream, resolver: EgressResolver) -> std::io::Result<()> {
+async fn handle_tunnel(
+    mut client: TcpStream,
+    resolver: EgressResolver,
+    observer: EgressObserver,
+) -> std::io::Result<()> {
     // Bound the head read on the time axis (the byte cap bounds only memory): a
     // peer that never completes the head is reaped.
     let parsed = match tokio::time::timeout(HEAD_READ_TIMEOUT, read_connect_target(&mut client)).await
@@ -315,7 +367,10 @@ async fn handle_tunnel(mut client: TcpStream, resolver: EgressResolver) -> std::
     };
     let (host, port, early_data) = parsed;
 
-    match resolver(host, port).await {
+    // Decide, then notify the observer (audit every egress) before acting on it.
+    let verdict = resolver(host.clone(), port).await;
+    observer(&host, port, EgressDecision::of(&verdict));
+    match verdict {
         EgressVerdict::Allow(addr) => {
             let mut upstream = match TcpStream::connect(addr).await {
                 Ok(u) => u,
@@ -545,6 +600,42 @@ mod tests {
             }
         }
         String::from_utf8_lossy(&buf).trim().to_string()
+    }
+
+    #[tokio::test]
+    async fn the_observer_records_each_egress_decision() {
+        // A refused CONNECT still notifies the observer with the requested
+        // destination + the decision kind, so the caller can audit every egress.
+        let seen = Arc::new(Mutex::new(Vec::<(String, u16, EgressDecision)>::new()));
+        let sink = seen.clone();
+        let observer: EgressObserver = Arc::new(move |host, port, decision| {
+            sink.lock().unwrap().push((host.to_string(), port, decision));
+        });
+
+        let proxy = EgressProxy::bind_with_resolver("127.0.0.1:0".parse().unwrap(), deny_resolver())
+            .await
+            .unwrap()
+            .with_observer(observer);
+        let proxy_addr = proxy.listen_addr().unwrap();
+        let cancel = CancellationToken::new();
+        let c2 = cancel.clone();
+        tokio::spawn(async move { proxy.serve(c2).await });
+
+        let mut client = TcpStream::connect(proxy_addr).await.unwrap();
+        client
+            .write_all(b"CONNECT api.example.org:443 HTTP/1.1\r\n\r\n")
+            .await
+            .unwrap();
+        let status = read_status_line(&mut client).await;
+        assert!(status.contains("403"), "expected 403, got {status:?}");
+
+        // The observer fires before the refusal is written, so it has recorded
+        // exactly the requested destination + the NotAllowlisted kind by now.
+        let records = seen.lock().unwrap().clone();
+        assert_eq!(
+            records,
+            vec![("api.example.org".to_string(), 443, EgressDecision::NotAllowlisted)]
+        );
     }
 
     #[tokio::test]
