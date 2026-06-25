@@ -1,0 +1,5 @@
+# Starting permission profile for Minuet (a music-education tool). Generates exercises locally: no filesystem, network, or graph.
+[info]
+app_id = "org.kde.minuet"
+tier = "third-party"
+

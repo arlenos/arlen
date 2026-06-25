@@ -1,0 +1,7 @@
+# Starting permission profile for Parley (a vocabulary trainer). Vocabulary collections live in Documents.
+[info]
+app_id = "org.kde.parley"
+tier = "third-party"
+
+[filesystem]
+documents = true

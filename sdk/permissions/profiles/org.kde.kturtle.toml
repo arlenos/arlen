@@ -1,0 +1,7 @@
+# Starting permission profile for KTurtle (an educational programming environment). Saves Logo scripts to Documents.
+[info]
+app_id = "org.kde.kturtle"
+tier = "third-party"
+
+[filesystem]
+documents = true

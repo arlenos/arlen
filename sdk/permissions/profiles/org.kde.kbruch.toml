@@ -1,0 +1,5 @@
+# Starting permission profile for KBruch (a fractions practice tool). A self-contained tutor: no filesystem, network, or graph.
+[info]
+app_id = "org.kde.kbruch"
+tier = "third-party"
+
