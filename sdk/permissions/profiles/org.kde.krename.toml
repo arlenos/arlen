@@ -1,0 +1,8 @@
+# Starting permission profile for KRename (a batch file renamer). Renames files
+# across the user's tree (Home); no network, no graph.
+[info]
+app_id = "org.kde.krename"
+tier = "third-party"
+
+[filesystem]
+home = true

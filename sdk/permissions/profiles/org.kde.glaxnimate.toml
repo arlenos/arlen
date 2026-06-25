@@ -1,0 +1,8 @@
+# Starting permission profile for Glaxnimate (a vector animation editor). Project
+# files live in Documents; no network, no graph.
+[info]
+app_id = "org.kde.glaxnimate"
+tier = "third-party"
+
+[filesystem]
+documents = true

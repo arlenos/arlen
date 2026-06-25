@@ -1,0 +1,8 @@
+# Starting permission profile for Kid3 (an audio tag editor). Edits tags on the
+# user's music files; no network, no graph.
+[info]
+app_id = "org.kde.kid3"
+tier = "third-party"
+
+[filesystem]
+music = true
