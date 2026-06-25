@@ -16,9 +16,11 @@
     SidebarRail,
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { PlacesSidebar, placeIcon } from "@arlen/ui-kit/components/browser";
+  import { Trash2 } from "lucide-svelte";
   import { activeController } from "$lib/stores/tabs";
   import { placeGroups, removeBookmark, savedSearches } from "$lib/stores/places";
   import { runSearch, searchOpen, searchQuery } from "$lib/stores/search";
+  import { openTrash } from "$lib/stores/trash";
 
   const SearchIcon = placeIcon("search");
 
@@ -74,6 +76,19 @@
         </SidebarMenu>
       </SidebarGroup>
     {/if}
+
+    <!-- Trash sits at the foot of the sidebar (the conventional spot); it opens
+         the Trash view rather than navigating to a folder. -->
+    <SidebarGroup class="group-data-[collapsible=icon]:hidden">
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton tooltip="Trash" onclick={() => void openTrash()}>
+            <Trash2 />
+            <span class="fs-label">Trash</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </SidebarGroup>
   </SidebarContent>
 
   <SidebarRail />
