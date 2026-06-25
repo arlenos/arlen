@@ -3,6 +3,7 @@
 
 pub mod auth;
 pub mod backup;
+pub mod clustering;
 pub mod code_analysis;
 pub mod db;
 pub mod derivation;
