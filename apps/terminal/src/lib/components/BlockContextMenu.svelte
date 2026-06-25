@@ -20,7 +20,8 @@
     editRerun?: () => void;
     selectBlock?: () => void;
     saveOutput?: () => void;
-    explain?: () => void;
+    /// Open the agent with this block attached as scoped context (the user then
+    /// asks their own question). The block-as-context entry, the KG value.
     ask?: () => void;
   };
 
@@ -71,18 +72,8 @@
     </ContextMenu.Item>
 
     <ContextMenu.Separator />
-    <ContextMenu.Group>
-      <ContextMenu.GroupHeading
-        class="text-muted-foreground px-2 pt-1 pb-0.5 text-[0.625rem] font-semibold tracking-wide uppercase"
-      >
-        Arlen
-      </ContextMenu.GroupHeading>
-      <ContextMenu.Item onclick={actions.explain} disabled={!actions.explain}>
-        Explain this
-      </ContextMenu.Item>
-      <ContextMenu.Item onclick={actions.ask} disabled={!actions.ask}>
-        Ask Arlen about this block
-      </ContextMenu.Item>
-    </ContextMenu.Group>
+    <ContextMenu.Item onclick={actions.ask} disabled={!actions.ask}>
+      Ask the agent about this block&hellip;
+    </ContextMenu.Item>
   </ContextMenu.Content>
 </ContextMenu.Root>
