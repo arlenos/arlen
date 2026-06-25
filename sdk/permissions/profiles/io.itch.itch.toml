@@ -1,0 +1,11 @@
+# Starting permission profile for the itch.io app (a game store / launcher). Network (online play / downloads) is its
+# function and content lands in Downloads; no Knowledge Graph access.
+[info]
+app_id = "io.itch.itch"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

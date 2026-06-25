@@ -1,0 +1,11 @@
+# Starting permission profile for OpenRA (an open-source RTS with online multiplayer + mods). Network (online play / downloads) is its
+# function and content lands in Downloads; no Knowledge Graph access.
+[info]
+app_id = "org.openra.OpenRA"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

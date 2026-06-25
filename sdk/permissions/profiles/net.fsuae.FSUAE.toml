@@ -1,0 +1,6 @@
+# Starting permission profile for FS-UAE (an Amiga emulator). The game opens any data files the user
+# provides through the file portal, so it needs no standing grant; no network, no
+# Knowledge Graph access.
+[info]
+app_id = "net.fsuae.FSUAE"
+tier = "third-party"
