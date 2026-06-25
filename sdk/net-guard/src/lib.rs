@@ -19,6 +19,9 @@ pub use egress::{
     decide_egress, AllowedHost, AllowlistError, EgressAllowlist, EgressProxy, EgressVerdict,
 };
 
+mod rate;
+pub use rate::RateLimiter;
+
 /// Why a destination was refused before any socket was opened.
 #[derive(Debug, Error)]
 pub enum GuardError {
