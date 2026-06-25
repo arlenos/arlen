@@ -73,6 +73,13 @@ export const TERMINAL_FONT_FAMILY =
 /// comfortable default, never a tiny hardcode. A px number, as xterm wants.
 export const TERMINAL_FONT_SIZE = 14;
 
-/// Line height as a multiple - a touch of air over the tight 1.0 default for a
-/// softer, more readable grid, without the airy 1.5 of the chrome labels.
-export const TERMINAL_LINE_HEIGHT = 1.2;
+/// Line height as a multiple. Pinned to 1.0: a value != 1 mis-positions xterm
+/// decorations against the canvas-rendered rows at a fractional devicePixelRatio
+/// (Tim's HiDPI is 1.5x), the row offset growing down the screen - the documented
+/// xterm canvas/lineHeight bugs (#967 "line height does not work properly when
+/// devicePixelRatio !== 1", #4855 "decorations don't handle height correctly").
+/// The block chrome hangs off decorations, so they MUST sit on their text rows;
+/// 1.0 keeps the cell height a single, consistent measure for both the glyph
+/// draw and the decoration layer. The "touch of air" returns only via a
+/// DPR-safe path (e.g. cell padding) if wanted, never the lineHeight multiplier.
+export const TERMINAL_LINE_HEIGHT = 1.0;
