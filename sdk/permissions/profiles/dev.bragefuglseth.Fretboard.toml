@@ -1,0 +1,5 @@
+# Starting permission profile for Fretboard (a guitar-chord reference). A self-
+# contained local tool; no network, no user files, no Knowledge Graph access.
+[info]
+app_id = "dev.bragefuglseth.Fretboard"
+tier = "third-party"

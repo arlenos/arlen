@@ -1,0 +1,9 @@
+# Starting permission profile for Hieroglyphic (find a LaTeX symbol by drawing it).
+# It copies the matched command to the clipboard; no network, no user files, no
+# Knowledge Graph access.
+[info]
+app_id = "io.github.fkinoshita.Hieroglyphic"
+tier = "third-party"
+
+[clipboard]
+write = true

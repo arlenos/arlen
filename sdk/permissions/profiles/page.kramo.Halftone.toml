@@ -1,0 +1,9 @@
+# Starting permission profile for Halftone (applies a halftone effect to an image).
+# It reads a picture and writes the result; pictures, no network, no Knowledge
+# Graph access.
+[info]
+app_id = "page.kramo.Halftone"
+tier = "third-party"
+
+[filesystem]
+pictures = true
