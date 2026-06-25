@@ -24,6 +24,7 @@
 //! `ListAccounts` already applies); building the naive surface would regress the
 //! per-caller-visibility property. Until then, `ListAccounts` is the surface.
 
+pub mod attenuate;
 pub mod audit;
 pub mod config;
 pub mod dbus;
