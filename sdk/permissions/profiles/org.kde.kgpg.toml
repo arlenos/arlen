@@ -1,0 +1,5 @@
+# Starting permission profile for KGpg (a GnuPG key manager). A self-contained local tool; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "org.kde.kgpg"
+tier = "third-party"
