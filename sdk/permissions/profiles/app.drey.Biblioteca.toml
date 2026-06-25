@@ -1,0 +1,6 @@
+# Starting permission profile for Biblioteca (an offline GNOME developer-docs
+# viewer). It reads the documentation bundled with it; no network, no user files,
+# no Knowledge Graph access.
+[info]
+app_id = "app.drey.Biblioteca"
+tier = "third-party"

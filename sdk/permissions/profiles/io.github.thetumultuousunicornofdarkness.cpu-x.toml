@@ -1,0 +1,5 @@
+# Starting permission profile for CPU-X (a CPU/hardware information tool). It reads
+# system/hardware state by function; no network, no user files, no Knowledge Graph.
+[info]
+app_id = "io.github.thetumultuousunicornofdarkness.cpu-x"
+tier = "third-party"

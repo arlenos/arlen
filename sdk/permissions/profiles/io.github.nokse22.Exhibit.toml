@@ -1,0 +1,6 @@
+# Starting permission profile for Exhibit (a 3D model viewer). It opens model
+# files the user picks through the file portal, so it needs no standing filesystem
+# grant; no network, no Knowledge Graph access.
+[info]
+app_id = "io.github.nokse22.Exhibit"
+tier = "third-party"

@@ -1,0 +1,9 @@
+# Starting permission profile for Fancy Lyrics (shows lyrics for the playing
+# track). It fetches lyrics over the network; no user files, no Knowledge Graph
+# access.
+[info]
+app_id = "io.github.David_Else.fancy_lyrics"
+tier = "third-party"
+
+[network]
+allow_all = true

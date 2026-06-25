@@ -1,0 +1,5 @@
+# Starting permission profile for Tally (a simple tally counter). A self-contained
+# local tool; no network, no user files, no Knowledge Graph access.
+[info]
+app_id = "org.gnome.gitlab.cheywood.Tally"
+tier = "third-party"
