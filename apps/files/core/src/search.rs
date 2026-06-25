@@ -353,6 +353,7 @@ fn match_entry(
             modified_unix,
             readonly,
             symlink_target,
+            full_path: None,
         },
         matched,
     });
