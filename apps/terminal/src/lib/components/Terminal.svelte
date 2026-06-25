@@ -6,7 +6,7 @@
   // render. The block frame, inline images and artifacts stay web-UI around
   // this; only the live grid is xterm.js.
   import { onMount, onDestroy } from "svelte";
-  import { Terminal, type IMarker } from "@xterm/xterm";
+  import { Terminal, type IMarker, type IDecoration } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
   import { WebglAddon } from "@xterm/addon-webgl";
   import { CanvasAddon } from "@xterm/addon-canvas";
@@ -22,7 +22,7 @@
     TERMINAL_FONT_SIZE,
     TERMINAL_LINE_HEIGHT,
   } from "$lib/terminal-theme";
-  import { renderBlockResult } from "$lib/block-chrome";
+  import { applyBlockHover, renderBlockResult } from "$lib/block-chrome";
   import { classifyMark, parseExitCode } from "$lib/block-marks";
   import "$lib/block-chrome.css";
 
@@ -102,6 +102,22 @@
     let promptMarker: IMarker | undefined;
     let execStartMs: number | undefined;
 
+    // Finished blocks, tracked for the hover tint. Each keeps its prompt marker,
+    // the buffer line where the command ended, whether it failed, and its result
+    // strip element (to reveal run-again on hover). A marker auto-disposes when
+    // its line is trimmed from scrollback; disposed entries are skipped + the
+    // list is capped so it cannot grow without bound over a long session.
+    interface BlockEntry {
+      promptMarker: IMarker;
+      endLine: number;
+      isError: boolean;
+      resultEl?: HTMLElement;
+    }
+    const blocks: BlockEntry[] = [];
+    const MAX_TRACKED = 500;
+    let hoverDeco: IDecoration | undefined;
+    let hovered: BlockEntry | undefined;
+
     function onPromptStart(): void {
       // A new block begins here; remember its prompt row so the result strip can
       // anchor to it when the command ends.
@@ -111,7 +127,6 @@
     }
 
     function onCommandEnd(data: string): void {
-      // Anchor the result strip to the right of the prompt row.
       const exitCode = parseExitCode(data);
       const durationMs =
         execStartMs !== undefined ? Date.now() - execStartMs : null;
@@ -125,7 +140,18 @@
           x: 0,
           width: t.cols,
         });
-        result?.onRender((el) => renderBlockResult(el, { exitCode, durationMs }));
+        const entry: BlockEntry = {
+          promptMarker,
+          endLine: t.buffer.active.baseY + t.buffer.active.cursorY,
+          isError: exitCode !== null && exitCode !== 0,
+        };
+        result?.onRender((el) => {
+          // Keep the live element so hover can toggle `is-hover` (run-again).
+          entry.resultEl = el;
+          renderBlockResult(el, { exitCode, durationMs });
+        });
+        blocks.push(entry);
+        while (blocks.length > MAX_TRACKED) blocks.shift();
       }
       promptMarker = undefined;
       execStartMs = undefined;
@@ -149,6 +175,58 @@
     };
     t.parser.registerOscHandler(133, dispatch);
     t.parser.registerOscHandler(633, dispatch);
+
+    // Hover tint (arlen-ui's settled look): the block frame is invisible at rest
+    // and washes a block's rows when the pointer is over them, revealing the
+    // run-again affordance on the result strip. The coder piece is the
+    // pointer -> block-row mapping: from the pointer Y, the row under it in the
+    // xterm screen, offset by the scroll position to an absolute buffer line,
+    // then the tracked block whose [promptMarker.line, endLine] spans it.
+    function rowUnderPointer(clientY: number): number | null {
+      const screen = t.element?.querySelector(".xterm-screen") as HTMLElement | null;
+      if (!screen) return null;
+      const rect = screen.getBoundingClientRect();
+      const cellH = rect.height / t.rows;
+      if (cellH <= 0 || clientY < rect.top || clientY > rect.bottom) return null;
+      const viewportRow = Math.floor((clientY - rect.top) / cellH);
+      return t.buffer.active.viewportY + viewportRow;
+    }
+
+    function clearHover(): void {
+      hoverDeco?.dispose();
+      hoverDeco = undefined;
+      hovered?.resultEl?.classList.remove("is-hover");
+      hovered = undefined;
+    }
+
+    function setHover(block: BlockEntry): void {
+      hovered = block;
+      // NO +1: the end cursor sits past the trailing newline, so this is exactly
+      // the block's own rows - +1 would tint the next block's prompt row.
+      const rows = Math.max(1, block.endLine - block.promptMarker.line);
+      hoverDeco =
+        t.registerDecoration({ marker: block.promptMarker, x: 0, width: t.cols, height: rows }) ??
+        undefined;
+      hoverDeco?.onRender((el) => applyBlockHover(el, { isError: block.isError }));
+      block.resultEl?.classList.add("is-hover");
+    }
+
+    host.addEventListener("pointermove", (e) => {
+      const line = rowUnderPointer(e.clientY);
+      const block =
+        line === null
+          ? undefined
+          : blocks.find(
+              (b) =>
+                !b.promptMarker.isDisposed &&
+                line >= b.promptMarker.line &&
+                line <= b.endLine,
+            );
+      if (block === hovered) return; // same block (or still none): nothing to do
+      clearHover();
+      if (block) setHover(block);
+    });
+    host.addEventListener("pointerleave", () => clearHover());
   }
 
   onMount(() => {
