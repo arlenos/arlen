@@ -12,7 +12,7 @@ use arlen_viewers_core::audio::AudioInfo;
 use symphonia::core::codecs::CODEC_TYPE_NULL;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
-use symphonia::core::meta::{MetadataOptions, MetadataRevision, StandardVisualKey};
+use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
 /// Probe encoded audio bytes for its [`AudioInfo`]. Returns a human-readable
@@ -44,39 +44,6 @@ pub fn probe_audio(bytes: &[u8]) -> Result<AudioInfo, String> {
     };
 
     Ok(AudioInfo { codec, sample_rate, channels, duration_ms })
-}
-
-/// Extract the embedded cover art from `bytes` as the raw encoded image (the
-/// PNG/JPEG exactly as stored in the tag), for an audio thumbnail. Returns the
-/// front-cover picture, else the first embedded image, else `None` when the file
-/// carries no art. The bytes are themselves an encoded image, so the thumbnailer
-/// hands them to the image decoder like any other picture. Runs in the same
-/// sandboxed worker as [`probe_audio`] (untrusted media bytes are never decoded
-/// in-process).
-pub fn extract_cover_art(bytes: &[u8]) -> Option<Vec<u8>> {
-    let mss =
-        MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes.to_vec())), Default::default());
-    let mut probed = symphonia::default::get_probe()
-        .format(&Hint::new(), mss, &FormatOptions::default(), &MetadataOptions::default())
-        .ok()?;
-    // The picture may surface in the probe's own metadata (e.g. an ID3 tag ahead
-    // of the stream) or in the format reader's metadata (e.g. a FLAC PICTURE block).
-    if let Some(art) = probed.metadata.get().and_then(|m| m.current().and_then(cover_from)) {
-        return Some(art);
-    }
-    probed.format.metadata().current().and_then(cover_from)
-}
-
-/// The front-cover picture (else the first visual) of a metadata revision, as
-/// owned bytes; `None` when the revision carries no non-empty visual.
-fn cover_from(rev: &MetadataRevision) -> Option<Vec<u8>> {
-    let visuals = rev.visuals();
-    visuals
-        .iter()
-        .find(|v| v.usage == Some(StandardVisualKey::FrontCover))
-        .or_else(|| visuals.first())
-        .filter(|v| !v.data.is_empty())
-        .map(|v| v.data.to_vec())
 }
 
 #[cfg(test)]
@@ -128,21 +95,6 @@ mod tests {
     #[test]
     fn rejects_garbage() {
         assert!(probe_audio(b"not audio at all, just text").is_err());
-    }
-
-    #[test]
-    fn extracts_embedded_cover_art_from_a_flac() {
-        // A tiny silent FLAC carrying a 16x16 front-cover PNG (committed fixture).
-        let flac = include_bytes!("fixtures/cover_test.flac");
-        let art = extract_cover_art(flac).expect("the fixture carries a front-cover picture");
-        // The art is returned as the stored encoded image - here the PNG verbatim.
-        assert_eq!(&art[..8], b"\x89PNG\r\n\x1a\n", "the cover is the embedded PNG");
-    }
-
-    #[test]
-    fn no_cover_art_in_a_bare_wav() {
-        // The synth WAV carries no picture block, so there is nothing to extract.
-        assert!(extract_cover_art(&wav(8000, 1, 800)).is_none());
     }
 
     #[test]
