@@ -30,8 +30,32 @@
   import { applyBlockHover, renderBlockResult } from "$lib/block-chrome";
   import { classifyMark, parseExitCode } from "$lib/block-marks";
   import "$lib/block-chrome.css";
+  import BlockContextMenu from "./BlockContextMenu.svelte";
 
   let { sessionId }: { sessionId: string } = $props();
+
+  // One finished block, tracked for the hover tint AND the right-click menu. Each
+  // keeps its prompt marker, the output-start + end buffer lines, whether it
+  // failed, its result-strip element, and the validated command. A marker
+  // auto-disposes when its line is trimmed from scrollback.
+  interface BlockEntry {
+    promptMarker: IMarker;
+    /// First output buffer line (the 133;C exec-start row); `undefined` for a
+    /// command-less prompt block.
+    outputStartLine?: number;
+    endLine: number;
+    isError: boolean;
+    resultEl?: HTMLElement;
+    /// The command this block ran (engine's validated record); replayed as a PTY
+    /// write by run-again / edit-and-rerun.
+    command?: string;
+  }
+
+  // The right-click menu's target: the block currently under the pointer (the one
+  // the hover tint marks). A plain let, not $state - the menu's action closures
+  // read it synchronously at click time, so no template reactivity is needed (and
+  // the pointermove callback that sets it would not reliably drive $state anyway).
+  let menuBlock: BlockEntry | undefined;
 
   let host: HTMLDivElement;
   let term: Terminal | undefined;
@@ -106,21 +130,15 @@
     // Per-block state, reset at each prompt-start.
     let promptMarker: IMarker | undefined;
     let execStartMs: number | undefined;
+    // The buffer line where output begins (the 133;C exec-start row), captured so
+    // Copy output / as-Markdown can read the block's output rows from the buffer.
+    let execStartLine: number | undefined;
 
-    // Finished blocks, tracked for the hover tint. Each keeps its prompt marker,
-    // the buffer line where the command ended, whether it failed, and its result
-    // strip element (to reveal run-again on hover). A marker auto-disposes when
-    // its line is trimmed from scrollback; disposed entries are skipped + the
-    // list is capped so it cannot grow without bound over a long session.
-    interface BlockEntry {
-      promptMarker: IMarker;
-      endLine: number;
-      isError: boolean;
-      resultEl?: HTMLElement;
-      /// The command this block ran, from the engine's validated block record
-      /// (fetched at command-end); run-again replays it as a PTY write.
-      command?: string;
-    }
+    // Finished blocks, tracked for the hover tint + the right-click menu. A marker
+    // auto-disposes when its line is trimmed from scrollback; disposed entries are
+    // skipped + the list is capped so it cannot grow without bound over a long
+    // session. [`BlockEntry`] is lifted to component scope so the menu can target
+    // the hovered block.
     const blocks: BlockEntry[] = [];
     const MAX_TRACKED = 500;
     let hoverDeco: IDecoration | undefined;
@@ -132,6 +150,7 @@
       const marker = t.registerMarker(0) ?? undefined;
       promptMarker = marker;
       execStartMs = undefined;
+      execStartLine = undefined;
     }
 
     function onCommandEnd(data: string): void {
@@ -150,6 +169,7 @@
         });
         const entry: BlockEntry = {
           promptMarker,
+          outputStartLine: execStartLine,
           endLine: t.buffer.active.baseY + t.buffer.active.cursorY,
           isError: exitCode !== null && exitCode !== 0,
         };
@@ -186,6 +206,7 @@
       }
       promptMarker = undefined;
       execStartMs = undefined;
+      execStartLine = undefined;
     }
 
     // Both OSC 133 (FinalTerm) and OSC 633 (VS Code) carry the same A/C/D block
@@ -198,8 +219,11 @@
     const dispatch = (data: string): boolean => {
       const mark = classifyMark(data);
       if (mark === "prompt-start") onPromptStart();
-      else if (mark === "exec-start") execStartMs = Date.now();
-      else if (mark === "command-end") onCommandEnd(data);
+      else if (mark === "exec-start") {
+        execStartMs = Date.now();
+        // Output begins on the row past the command echo (the current cursor row).
+        execStartLine = t.buffer.active.baseY + t.buffer.active.cursorY;
+      } else if (mark === "command-end") onCommandEnd(data);
       // Return false so xterm's other handlers still run; the engine parses its
       // own raw copy of the PTY stream, so this never starves its block parser.
       return false;
@@ -228,10 +252,14 @@
       hoverDeco = undefined;
       hovered?.resultEl?.classList.remove("is-hover");
       hovered = undefined;
+      menuBlock = undefined;
     }
 
     function setHover(block: BlockEntry): void {
       hovered = block;
+      // The hovered block is the right-click menu's target (spec: the hover tint
+      // marks it).
+      menuBlock = block;
       // NO +1: the end cursor sits past the trailing newline, so this is exactly
       // the block's own rows - +1 would tint the next block's prompt row.
       const rows = Math.max(1, block.endLine - block.promptMarker.line);
@@ -260,13 +288,70 @@
     host.addEventListener("pointerleave", () => clearHover());
   }
 
+  // ── Block right-click menu actions (item 6) ──────────────────────────────
+  // The kit ContextMenu look is arlen-ui's (BlockContextMenu.svelte); these wire
+  // its handlers from the hovered block's validated record + the xterm buffer. No
+  // new backend: copy/select/replay are all local. saveOutput (a file dialog) and
+  // the two AI entries (Explain -> ai-explanation, Ask -> the harness @-mention)
+  // need cross-app plumbing and are the next slice, so they stay unwired (the menu
+  // renders them inert).
+  function copyText(text: string): void {
+    void navigator.clipboard?.writeText(text).catch(() => {});
+  }
+
+  // The block's output rows, read from the xterm buffer between exec-start and the
+  // command-end line (trailing blank lines trimmed). Empty for a command-less block.
+  function blockOutput(b: BlockEntry): string {
+    if (!term || b.outputStartLine === undefined) return "";
+    const buf = term.buffer.active;
+    const lines: string[] = [];
+    for (let i = b.outputStartLine; i <= b.endLine; i++) {
+      lines.push(buf.getLine(i)?.translateToString(true) ?? "");
+    }
+    return lines.join("\n").replace(/\s+$/, "");
+  }
+
+  const blockActions = {
+    runAgain: () => {
+      const c = menuBlock?.command;
+      if (c && c.trim().length > 0) void terminalInput(sessionId, `${c}\n`);
+    },
+    copyCommand: () => {
+      if (menuBlock?.command) copyText(menuBlock.command);
+    },
+    copyOutput: () => {
+      if (menuBlock) copyText(blockOutput(menuBlock));
+    },
+    copyBoth: () => {
+      if (menuBlock) copyText(`${menuBlock.command ?? ""}\n${blockOutput(menuBlock)}`.trim());
+    },
+    copyMarkdown: () => {
+      if (menuBlock) {
+        copyText(`\`\`\`sh\n${menuBlock.command ?? ""}\n${blockOutput(menuBlock)}\n\`\`\``);
+      }
+    },
+    editRerun: () => {
+      // The command back onto the live prompt line, NOT executed (no newline).
+      const c = menuBlock?.command;
+      if (c) void terminalInput(sessionId, c);
+    },
+    selectBlock: () => {
+      if (term && menuBlock && !menuBlock.promptMarker.isDisposed) {
+        term.selectLines(menuBlock.promptMarker.line, menuBlock.endLine);
+      }
+    },
+  };
+
   onMount(() => {
     const t = new Terminal({
       cursorBlink: true,
       cursorStyle: "block",
       // Focus-aware: a hollow cursor when the grid is not focused.
       cursorInactiveStyle: "outline",
-      rightClickSelectsWord: true,
+      // Off so a right-click opens the block menu instead of selecting a word
+      // (word-select stays on double-click); the block menu's target is the
+      // hovered block.
+      rightClickSelectsWord: false,
       allowProposedApi: true,
       // arlen-ui's palette + mono (the in-app grid is the Arlen theme, not bare
       // black). xterm paints the grid on a canvas, so the colours must reach it
@@ -324,4 +409,6 @@
   });
 </script>
 
-<div class="terminal-host" bind:this={host}></div>
+<BlockContextMenu actions={blockActions}>
+  <div class="terminal-host" bind:this={host}></div>
+</BlockContextMenu>
