@@ -127,6 +127,24 @@ fn terminal_blocks(session_id: String, registry: State<Mutex<SessionRegistry>>) 
     blocks
 }
 
+/// The command of the latest assembled block, for the terminal's run-again
+/// affordance. A light read: it drains+consumes the engine events to stay
+/// current, then returns just the one command string - it does NOT clone every
+/// block or re-serialise the per-command output grids the way `terminal_blocks`
+/// does, so run-again costs O(1) instead of O(history) per command. `None` for a
+/// missing session or before any command has finished.
+#[tauri::command]
+fn terminal_last_command(
+    session_id: String,
+    registry: State<Mutex<SessionRegistry>>,
+) -> Option<String> {
+    let mut reg = registry.lock().ok()?;
+    let live = reg.sessions.get_mut(&session_id)?;
+    let events = live.engine.drain_events();
+    live.assembler.consume(&events, Instant::now());
+    live.assembler.last_command()
+}
+
 /// A session's visible screen as text (terminal.md Option B): the webview renders
 /// this so command output appears without the compositor grid-subsurface. The UI
 /// polls it alongside `terminal_blocks`; a missing session yields an empty grid.
@@ -448,6 +466,7 @@ pub fn run() {
             frontend_log,
             terminal_sessions,
             terminal_blocks,
+            terminal_last_command,
             terminal_grid,
             terminal_drain_output,
             terminal_input,

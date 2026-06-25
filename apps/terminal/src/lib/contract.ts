@@ -152,6 +152,13 @@ export async function terminalBlocks(sessionId: string): Promise<Block[]> {
   return invoke<Block[]>("terminal_blocks", { sessionId });
 }
 
+/// The latest assembled block's command, for run-again - a light read that
+/// avoids re-serialising every block the way `terminalBlocks` does. null when
+/// there is no session or no finished command yet.
+export async function terminalLastCommand(sessionId: string): Promise<string | null> {
+  return invoke<string | null>("terminal_last_command", { sessionId });
+}
+
 export async function terminalGrid(sessionId: string): Promise<GridSnapshot> {
   return invoke<GridSnapshot>("terminal_grid", { sessionId });
 }
