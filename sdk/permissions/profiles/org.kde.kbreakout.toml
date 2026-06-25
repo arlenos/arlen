@@ -1,0 +1,5 @@
+# Starting permission profile for KBreakout (a brick-breaker game). A self-contained local game; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "org.kde.kbreakout"
+tier = "third-party"

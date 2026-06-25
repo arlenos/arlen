@@ -1,0 +1,5 @@
+# Starting permission profile for Bovo (a gomoku / five-in-a-row game). A self-contained local game; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "org.kde.bovo"
+tier = "third-party"

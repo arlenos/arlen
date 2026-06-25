@@ -1,0 +1,5 @@
+# Starting permission profile for KPatience (solitaire card games). A self-contained local game; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "org.kde.kpat"
+tier = "third-party"

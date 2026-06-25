@@ -1,0 +1,5 @@
+# Starting permission profile for KShisen (a Shisen-Sho tile game). A self-contained local game; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "org.kde.kshisen"
+tier = "third-party"
