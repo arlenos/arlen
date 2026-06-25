@@ -1,0 +1,8 @@
+# Starting permission profile for KRDC (a remote desktop client). Connecting to
+# remote desktops over the network is its core function; no user files, no graph.
+[info]
+app_id = "org.kde.krdc"
+tier = "third-party"
+
+[network]
+allow_all = true
