@@ -111,6 +111,21 @@
     }
   }
 
+  /// Create a symbolic link in the current folder pointing at the single
+  /// selected entry (the backend `files_symlink`; the FM root capability
+  /// confines it). The link is named "Link to <name>"; refresh so it shows.
+  async function createLink() {
+    if (selected.length !== 1) return;
+    const name = `Link to ${selected[0].name}`;
+    const target = joinPath(currentPath(), selected[0].name);
+    try {
+      await invoke("files_symlink", { parent: currentPath(), name, target });
+      await get(focusedController)?.refresh();
+    } catch (err) {
+      console.warn("files: create link failed", err);
+    }
+  }
+
   /// The user's `~/Templates` entries (the backend `files_templates`), offered
   /// in the context menu's "New from template" submenu.
   interface Template {
@@ -407,6 +422,9 @@
             <ContextMenu.Item onclick={() => (renamingName = selected[0]?.name ?? null)}>
               Rename
               <ContextMenu.Shortcut>F2</ContextMenu.Shortcut>
+            </ContextMenu.Item>
+            <ContextMenu.Item onclick={() => void createLink()}>
+              Create Link
             </ContextMenu.Item>
           {/if}
         {/if}
