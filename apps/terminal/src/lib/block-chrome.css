@@ -29,24 +29,34 @@
  * error is the status - the command stays the star). Run-again shows on block
  * hover. The whole strip ignores pointer events except the button, so it never
  * eats a text selection over the grid. */
+/* The decoration spans the prompt row full-width (the engine registers it with
+ * `width` = the column count); the strip right-aligns its content within, so
+ * the result sits at the right edge of the row, clear of the prompt on the left.
+ * `anchor: "right"` does NOT position at the terminal's right edge - it lands at
+ * the marker column - so full-width + flex-end is the reliable placement. */
 .arlen-block-result {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 10px;
+  width: 100%;
+  /* `text-align: right` survives whatever `display` xterm puts on the decoration
+   * element (flex `justify-content` does not), so the strip lands at the right
+   * edge of the full-width row, clear of the prompt on the left. */
+  text-align: right;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 0.8125rem;
   line-height: 1.5;
   white-space: nowrap;
   pointer-events: none;
-  padding-right: 6px;
+  padding-right: 8px;
+  box-sizing: border-box;
 }
 .arlen-block-exit {
   color: var(--color-error, #c96a6a);
   font-variant-numeric: tabular-nums;
+  margin-left: 10px;
 }
 .arlen-block-duration {
   color: color-mix(in srgb, var(--foreground, #e4e5ea) 45%, transparent);
   font-variant-numeric: tabular-nums;
+  margin-left: 10px;
 }
 .arlen-block-rerun {
   display: inline-flex;
@@ -60,6 +70,8 @@
   color: color-mix(in srgb, var(--foreground, #e4e5ea) 50%, transparent);
   cursor: pointer;
   pointer-events: auto;
+  margin-left: 8px;
+  vertical-align: middle;
   opacity: 0;
   transition:
     opacity var(--duration-fast, 150ms) var(--ease-out, ease),
