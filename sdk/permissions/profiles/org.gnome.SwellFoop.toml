@@ -1,0 +1,5 @@
+# Starting permission profile for Swell Foop (a same-colour clearing game). A self-contained local game; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "org.gnome.SwellFoop"
+tier = "third-party"

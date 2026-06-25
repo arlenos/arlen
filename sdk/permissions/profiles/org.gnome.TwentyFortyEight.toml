@@ -1,0 +1,5 @@
+# Starting permission profile for 2048 (the tile-merging puzzle). A self-contained local game; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "org.gnome.TwentyFortyEight"
+tier = "third-party"
