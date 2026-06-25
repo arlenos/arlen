@@ -1,0 +1,9 @@
+# Starting permission profile for Knights (a chess board). Local play needs
+# nothing; online play connects to a chess server, so it gets network. No user
+# files, no Knowledge Graph access.
+[info]
+app_id = "org.kde.knights"
+tier = "third-party"
+
+[network]
+allow_all = true

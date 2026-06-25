@@ -1,0 +1,5 @@
+# Starting permission profile for Granatier (a Bomberman-style game). A self-contained local game; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "org.kde.granatier"
+tier = "third-party"

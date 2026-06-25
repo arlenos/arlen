@@ -1,0 +1,5 @@
+# Starting permission profile for Kapman (a Pac-Man-style game). A self-contained local game; no network,
+# no user files, no Knowledge Graph access.
+[info]
+app_id = "org.kde.kapman"
+tier = "third-party"
