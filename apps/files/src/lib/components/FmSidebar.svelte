@@ -16,11 +16,12 @@
     SidebarRail,
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { PlacesSidebar, placeIcon } from "@arlen/ui-kit/components/browser";
-  import { Trash2 } from "lucide-svelte";
+  import { Trash2, Clock } from "lucide-svelte";
   import { activeController } from "$lib/stores/tabs";
   import { placeGroups, removeBookmark, savedSearches } from "$lib/stores/places";
   import { runSearch, searchOpen, searchQuery } from "$lib/stores/search";
   import { openTrash } from "$lib/stores/trash";
+  import { openRecent } from "$lib/stores/recent";
 
   const SearchIcon = placeIcon("search");
 
@@ -77,10 +78,16 @@
       </SidebarGroup>
     {/if}
 
-    <!-- Trash sits at the foot of the sidebar (the conventional spot); it opens
-         the Trash view rather than navigating to a folder. -->
+    <!-- Recent + Trash sit at the foot of the sidebar; both open a virtual view
+         (the KG recent files / the trash) rather than navigating to a folder. -->
     <SidebarGroup class="group-data-[collapsible=icon]:hidden">
       <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton tooltip="Recent" onclick={() => void openRecent()}>
+            <Clock />
+            <span class="fs-label">Recent</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton tooltip="Trash" onclick={() => void openTrash()}>
             <Trash2 />
