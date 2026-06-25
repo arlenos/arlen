@@ -11,6 +11,7 @@
   import { tauriAvailable } from "$lib/tauri";
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
+  import { AboutDialog } from "@arlen/ui-kit/components/ui/about-dialog";
   import {
     FileBrowser,
     joinPath,
@@ -40,6 +41,7 @@
 
   let renamingName = $state<string | null>(null);
   let batchRenaming = $state(false);
+  let aboutOpen = $state(false);
   let confirmDelete = $state(false);
 
   // What the info panel inspects: the single selected entry, or the
@@ -280,9 +282,10 @@
       case "edit.select_all":
         c?.selectAll();
         break;
+      case "help.about":
+        aboutOpen = true;
+        break;
       default:
-        // help.about needs a frontend surface (an about dialog) that does not
-        // exist yet; routed to arlen-ui.
         console.info(`files: topbar menu action not yet wired: ${action}`);
     }
   }
@@ -563,6 +566,14 @@
     batchRenaming = false;
     void bulkRename(currentPath(), selected.map((e) => e.name), rule);
   }}
+/>
+
+<AboutDialog
+  open={aboutOpen}
+  onClose={() => (aboutOpen = false)}
+  appName="Files"
+  version="0.1.0"
+  description="Browse, organise and search your files."
 />
 
 <style>
