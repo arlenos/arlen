@@ -1,0 +1,78 @@
+apps/desktop-shell/src/lib/components/AudioPopover.svelte	text-align: left
+apps/desktop-shell/src/lib/components/AudioPopover.svelte	text-align: right
+apps/desktop-shell/src/lib/components/BluetoothPopover.svelte	margin-left
+apps/desktop-shell/src/lib/components/BluetoothPopover.svelte	text-align: left
+apps/desktop-shell/src/lib/components/ClockIndicator.svelte	margin-right
+apps/desktop-shell/src/lib/components/ContextMenu.svelte	margin-left
+apps/desktop-shell/src/lib/components/ContextMenu.svelte	text-align: left
+apps/desktop-shell/src/lib/components/GlobalMenuBar.svelte	margin-left
+apps/desktop-shell/src/lib/components/GlobalMenuBar.svelte	padding-left
+apps/desktop-shell/src/lib/components/LayoutPopover.svelte	text-align: right
+apps/desktop-shell/src/lib/components/NetworkPopover.svelte	margin-left
+apps/desktop-shell/src/lib/components/NetworkPopover.svelte	text-align: left
+apps/desktop-shell/src/lib/components/NotificationItem.svelte	padding-right
+apps/desktop-shell/src/lib/components/NotificationPanel.svelte	margin-left
+apps/desktop-shell/src/lib/components/NotificationPanel.svelte	padding-right
+apps/desktop-shell/src/lib/components/NotificationPanel.svelte	text-align: left
+apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	margin-right
+apps/desktop-shell/src/lib/components/TrayPopover.svelte	text-align: left
+apps/desktop-shell/src/lib/components/WaypointerContent.svelte	margin-left
+apps/desktop-shell/src/lib/components/WindowHeader.svelte	padding-left
+apps/desktop-shell/src/lib/components/WindowHeader.svelte	padding-right
+apps/desktop-shell/src/lib/components/ZoomToolbar.svelte	text-align: left
+apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	border-left
+apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte	text-align: left
+apps/desktop-shell/src/lib/components/waypointer/WaypointerInlinePreview.svelte	margin-left
+apps/desktop-shell/src/lib/quicksettings/tiles/UserRowTile.svelte	text-align: left
+apps/files/src/app.css	padding-left
+apps/files/src/lib/components/FmBatchRename.svelte	margin-left
+apps/files/src/lib/components/FmFilterMenu.svelte	margin-left
+apps/files/src/lib/components/FmFilterMenu.svelte	padding-left
+apps/files/src/lib/components/FmHeaderNav.svelte	margin-left
+apps/files/src/lib/components/FmInfoPanel.svelte	border-left
+apps/files/src/lib/components/FmRecentView.svelte	text-align: left
+apps/files/src/lib/components/FmSearchResults.svelte	padding-left
+apps/files/src/lib/components/FmSearchResults.svelte	text-align: left
+apps/files/src/lib/components/TabStrip.svelte	margin-right
+apps/files/src/routes/+page.svelte	border-left
+apps/greeter/src/lib/components/PowerMenu.svelte	text-align: left
+apps/harness/src/app.css	padding-left
+apps/harness/src/lib/components/chat/CapabilityBar.svelte	margin-right
+apps/harness/src/lib/components/chat/Composer.svelte	text-align: left
+apps/settings/src/app.css	border-left
+apps/settings/src/lib/components/AppSidebar.svelte	text-align: left
+apps/settings/src/lib/components/appearance/AppPicker.svelte	text-align: left
+apps/settings/src/lib/components/appearance/AppRuleCard.svelte	text-align: left
+apps/settings/src/lib/components/appearance/ModuleCard.svelte	padding-left
+apps/settings/src/lib/components/appearance/ModuleCard.svelte	text-align: left
+apps/settings/src/lib/components/quicksettings/HiddenDrawer.svelte	margin-left
+apps/settings/src/lib/components/quicksettings/HiddenDrawer.svelte	text-align: left
+apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	margin-left
+apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	padding-right
+apps/settings/src/routes/appearance/quicksettings/+page.svelte	padding-left
+apps/settings/src/routes/mouse/+page.svelte	text-align: right
+apps/settings/src/routes/notifications/+page.svelte	margin-left
+apps/settings/src/routes/notifications/+page.svelte	text-align: left
+apps/settings/src/routes/touchpad/+page.svelte	text-align: right
+apps/terminal/src/app.css	padding-left
+apps/terminal/src/lib/block-chrome.css	margin-left
+apps/terminal/src/lib/block-chrome.css	padding-right
+apps/terminal/src/lib/block-chrome.css	text-align: right
+apps/terminal/src/lib/components/LinkRender.svelte	text-align: left
+apps/terminal/src/lib/components/OutputFrame.svelte	text-align: right
+apps/terminal/src/lib/components/PromptLine.svelte	margin-left
+apps/terminal/src/lib/components/TableLens.svelte	text-align: left
+apps/terminal/src/lib/components/TableLens.svelte	text-align: right
+sdk/ui-kit/src/lib/components/browser/FileList.svelte	padding-left
+sdk/ui-kit/src/lib/components/browser/FileList.svelte	text-align: left
+sdk/ui-kit/src/lib/components/browser/FileRow.svelte	text-align: right
+sdk/ui-kit/src/lib/components/browser/MillerColumns.svelte	border-right
+sdk/ui-kit/src/lib/components/browser/MillerColumns.svelte	text-align: left
+sdk/ui-kit/src/lib/components/quicksettings/BaseTile.svelte	text-align: left
+sdk/ui-kit/src/lib/components/topbar/StatusBadge.svelte	padding-right
+sdk/ui-kit/src/lib/components/ui/group/group.svelte	padding-left
+sdk/ui-kit/src/lib/components/ui/number-input/number-input.svelte	border-left
+sdk/ui-kit/src/lib/components/ui/popover-select/popover-select.svelte	text-align: left
+sdk/ui-kit/src/lib/components/ui/value-slider/value-slider.svelte	text-align: right
+sdk/ui-kit/src/lib/components/ui/window-controls/WindowControls.svelte	margin-left
+sdk/ui-kit/src/lib/components/ui/window-controls/WindowControls.svelte	padding-right

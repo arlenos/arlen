@@ -225,6 +225,16 @@ i18n-lint:
 i18n-baseline:
     cd "{{ROOT}}" && cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-i18n-lint -- --root apps --baseline dev/i18n-baseline.tsv --update
 
+# Born-RTL gate (I18N-R3): fail on NEW physical directional CSS, accept the existing
+# via the baseline. Like i18n-lint, run on demand today; the blocking CI gate flips
+# on once the UI stabilises. Re-snapshot with `just rtl-baseline` after intentional changes.
+rtl-lint:
+    cd "{{ROOT}}" && cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-rtl-lint -- --root apps --root sdk/ui-kit --baseline dev/rtl-baseline.tsv
+
+# Re-snapshot the born-RTL baseline (accept the current physical directional CSS).
+rtl-baseline:
+    cd "{{ROOT}}" && cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-rtl-lint -- --root apps --root sdk/ui-kit --baseline dev/rtl-baseline.tsv --update
+
 # Compositor nested in the current Wayland session (separate repo).
 # DISPLAY="" forces the Winit/Wayland backend so wlr-layer-shell is advertised.
 compositor:
