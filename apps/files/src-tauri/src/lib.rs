@@ -1033,21 +1033,62 @@ fn recent_to_entry(rf: &RecentFile) -> FileEntry {
         readonly: false,
         symlink_target: None,
         full_path: Some(rf.path.clone()),
+        restore_token: None,
+    }
+}
+
+/// Parse a freedesktop trash `DeletionDate` (`YYYY-MM-DDThh:mm:ss`, the spec's
+/// local-time form) to a Unix timestamp in seconds, treated as UTC (the spec omits
+/// an offset; a coarse "Deleted" display tolerates the offset). `None` if it does
+/// not parse, so a malformed `.trashinfo` date hides the time, not the entry.
+fn deletion_unix(deletion_date: &str) -> Option<u64> {
+    let fmt = time::macros::format_description!(
+        "[year]-[month]-[day]T[hour]:[minute]:[second]"
+    );
+    time::PrimitiveDateTime::parse(deletion_date, fmt)
+        .ok()
+        .map(|dt| dt.assume_utc().unix_timestamp())
+        .filter(|t| *t > 0)
+        .map(|t| t as u64)
+}
+
+/// Map a trashed item into a [`FileEntry`] for the Trash navigation LOCATION
+/// (item 12). `full_path` is the ORIGINAL absolute path (the "Original location"
+/// column + where Restore returns it), `modified_unix` the deletion time, and
+/// `restore_token` the `trashed_name` that Restore / Delete-forever pass back.
+/// Pure, unit-tested.
+fn trash_to_entry(ti: &ops::TrashedItem) -> FileEntry {
+    let original = ti.original_path.to_string_lossy().into_owned();
+    let name = ti
+        .original_path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| ti.trashed_name.clone());
+    FileEntry {
+        is_hidden: name.starts_with('.'),
+        name,
+        kind: EntryKind::File,
+        size: None,
+        modified_unix: deletion_unix(&ti.deletion_date),
+        readonly: false,
+        symlink_target: None,
+        full_path: Some(original),
+        restore_token: Some(ti.trashed_name.clone()),
     }
 }
 
 /// Resolve a virtual navigation location to a file listing (item 12). `"recent"`
-/// returns the recently-accessed files as [`FileEntry`]s (each carrying its own
-/// `full_path`), so the browser controller can navigate to `recent` like a folder.
-/// `"trash"` is the next slice (it additionally needs a per-entry restore token +
-/// the freedesktop deletion-date parse); an unknown location is refused. The
-/// column/action presentation on these entries is arlen-ui's (the `full_path` field
-/// is the seam it reads).
+/// returns the recently-accessed files (each carrying its own `full_path`), `"trash"`
+/// the trashed items (each carrying its ORIGINAL path as `full_path`, its deletion
+/// time as `modified_unix`, and a `restore_token`), so the browser controller can
+/// navigate to either like a folder. An unknown location is refused. The
+/// column/action presentation on these entries is arlen-ui's (`full_path` +
+/// `restore_token` are the seams it reads).
 #[tauri::command]
 async fn files_list_location(location: String) -> Result<Vec<FileEntry>, String> {
     match location.as_str() {
         "recent" => Ok(files_recent().await.iter().map(recent_to_entry).collect()),
-        "trash" => Err("trash location listing is the next slice".to_string()),
+        "trash" => files_trash_list().map(|items| items.iter().map(trash_to_entry).collect()),
         other => Err(format!("unknown virtual location: {other}")),
     }
 }
@@ -1246,8 +1287,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        abs, escape_cypher_literal, projects_from_rows, provenance_to_woher, recent_from_rows,
-        recent_to_entry, verwandt_from_rows, EntryKind, RecentFile,
+        abs, escape_cypher_literal, ops, projects_from_rows, provenance_to_woher, recent_from_rows,
+        recent_to_entry, trash_to_entry, verwandt_from_rows, EntryKind, RecentFile,
     };
     use std::collections::HashMap;
 
@@ -1270,6 +1311,35 @@ mod tests {
         // An absent (0) accessed time is None, not epoch-zero.
         let rf0 = RecentFile { accessed: 0, ..rf };
         assert_eq!(recent_to_entry(&rf0).modified_unix, None);
+    }
+
+    #[test]
+    fn trash_to_entry_carries_original_path_deletion_time_and_restore_token() {
+        // Item 12: a trashed item maps to a FileEntry for the Trash navigation
+        // location - its ORIGINAL absolute path in `full_path` (the "Original
+        // location" + where Restore returns it), the deletion time parsed from the
+        // freedesktop DeletionDate in `modified_unix`, and the trashed_name in
+        // `restore_token`. The displayed name is the original basename.
+        let ti = ops::TrashedItem {
+            trashed_name: "notes.md.2".to_string(),
+            original_path: std::path::PathBuf::from("/home/u/proj/notes.md"),
+            deletion_date: "2026-06-25T14:30:00".to_string(),
+        };
+        let e = trash_to_entry(&ti);
+        assert_eq!(e.name, "notes.md");
+        assert_eq!(e.full_path.as_deref(), Some("/home/u/proj/notes.md"));
+        assert_eq!(e.restore_token.as_deref(), Some("notes.md.2"));
+        assert_eq!(e.kind, EntryKind::File);
+        // 2026-06-25T14:30:00 UTC = 1782397800.
+        assert_eq!(e.modified_unix, Some(1_782_397_800));
+        // A malformed date hides the time, not the entry.
+        let bad = ops::TrashedItem {
+            deletion_date: "not-a-date".to_string(),
+            ..ti
+        };
+        let e2 = trash_to_entry(&bad);
+        assert_eq!(e2.modified_unix, None);
+        assert_eq!(e2.restore_token.as_deref(), Some("notes.md.2"));
     }
 
     #[test]

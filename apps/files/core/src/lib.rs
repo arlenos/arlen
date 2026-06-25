@@ -71,6 +71,11 @@ pub struct FileEntry {
     /// so this is additive + backward-compat. For Trash this is the ORIGINAL path.
     #[serde(default)]
     pub full_path: Option<String>,
+    /// An opaque per-entry token a location-specific action needs that the path
+    /// alone cannot supply - currently the Trash `trashed_name`, which Restore /
+    /// Delete-forever pass back. `None` for any normal entry. Additive.
+    #[serde(default)]
+    pub restore_token: Option<String>,
 }
 
 /// List the directory at `rel` (relative to the capability `dir`), one
@@ -116,6 +121,7 @@ pub fn list_dir(dir: &Dir, rel: impl AsRef<Path>) -> io::Result<Vec<FileEntry>> 
             readonly,
             symlink_target,
             full_path: None,
+            restore_token: None,
         });
     }
     Ok(out)
@@ -478,6 +484,7 @@ mod tests {
             readonly: false,
             symlink_target: None,
             full_path: None,
+            restore_token: None,
         }
     }
 
