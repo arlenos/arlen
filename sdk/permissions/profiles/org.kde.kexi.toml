@@ -1,0 +1,7 @@
+# Starting permission profile for Kexi (a visual database app). Database files live in Documents; no network by default.
+[info]
+app_id = "org.kde.kexi"
+tier = "third-party"
+
+[filesystem]
+documents = true

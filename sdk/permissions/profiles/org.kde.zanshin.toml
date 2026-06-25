@@ -1,0 +1,7 @@
+# Starting permission profile for Zanshin (a GTD to-do tool). Local task data lives in Documents; no network by default.
+[info]
+app_id = "org.kde.zanshin"
+tier = "third-party"
+
+[filesystem]
+documents = true
