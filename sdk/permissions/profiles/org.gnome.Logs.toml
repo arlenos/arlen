@@ -1,0 +1,6 @@
+# Starting permission profile for GNOME Logs (a system journal viewer). Reads the
+# systemd journal (a system resource, via journal-group membership granted out of
+# band); needs no user files, network, or graph.
+[info]
+app_id = "org.gnome.Logs"
+tier = "third-party"

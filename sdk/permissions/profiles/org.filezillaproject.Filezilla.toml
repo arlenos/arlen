@@ -1,0 +1,12 @@
+# Starting permission profile for FileZilla (an FTP/SFTP client). Transfers files
+# over the network (its function); it uploads/downloads arbitrary local files, so
+# it gets Home. No graph.
+[info]
+app_id = "org.filezillaproject.Filezilla"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+[network]
+allow_all = true
