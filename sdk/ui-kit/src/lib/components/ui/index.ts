@@ -36,6 +36,7 @@ export {
 } from "./collapsible";
 export { ConfirmDialog } from "./confirm-dialog";
 export { DaysPicker } from "./days-picker";
+export { Dialog } from "./dialog";
 export { DirectoryPicker } from "./directory-picker";
 export { FillSlider } from "./fill-slider";
 export { Group } from "./group";
