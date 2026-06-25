@@ -1,0 +1,9 @@
+# Starting permission profile for Remote Touchpad (control the pointer/keyboard
+# from a phone over the LAN). Network is its function (it serves a local web page
+# the phone connects to); no user files, no Knowledge Graph access.
+[info]
+app_id = "com.github.unrud.RemoteTouchpad"
+tier = "third-party"
+
+[network]
+allow_all = true

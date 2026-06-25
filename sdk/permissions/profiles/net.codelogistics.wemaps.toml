@@ -1,0 +1,8 @@
+# Starting permission profile for Web Maps (a maps application). It loads map data
+# over the network by function; no user files, no Knowledge Graph access.
+[info]
+app_id = "net.codelogistics.wemaps"
+tier = "third-party"
+
+[network]
+allow_all = true

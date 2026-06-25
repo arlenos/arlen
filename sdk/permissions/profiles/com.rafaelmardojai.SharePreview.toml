@@ -1,0 +1,9 @@
+# Starting permission profile for Share Preview (previews a page's Open Graph /
+# social-share metadata). It fetches the given URL, so network is its function; no
+# user files, no Knowledge Graph access.
+[info]
+app_id = "com.rafaelmardojai.SharePreview"
+tier = "third-party"
+
+[network]
+allow_all = true
