@@ -92,6 +92,68 @@
     }
     saving = false;
   }
+
+  // The writable EXIF tags (the media half of editable metadata), offered only
+  // for JPEGs - the only format the backend write-back supports. The draft
+  // prefills from `files_get_exif_tags` and saves through `files_set_exif_tags`,
+  // which verifies the readback, then we re-read so the panel shows what landed.
+  // A blank field saves as `null` (leave the tag unchanged), so this basic edit
+  // never writes an empty tag; clearing a tag is a later refinement. The polished
+  // unified panel is an arlen-ui pass; this is the coder's basic inline-edit.
+  interface ExifEdits {
+    description: string | null;
+    artist: string | null;
+    copyright: string | null;
+  }
+
+  const isJpeg = $derived(/\.jpe?g$/i.test(name));
+  let exifDraft = $state({ description: "", artist: "", copyright: "" });
+  let exifLoaded = $state(false);
+  let exifError = $state(false);
+  let exifSaving = $state(false);
+
+  function fillExif(e: ExifEdits): void {
+    exifDraft = {
+      description: e.description ?? "",
+      artist: e.artist ?? "",
+      copyright: e.copyright ?? "",
+    };
+  }
+
+  $effect(() => {
+    const p = path;
+    if (!isJpeg) {
+      exifLoaded = false;
+      return;
+    }
+    invoke<ExifEdits>("files_get_exif_tags", { path: p })
+      .then((e) => {
+        fillExif(e);
+        exifError = false;
+        exifLoaded = true;
+      })
+      .catch(() => {
+        exifLoaded = false;
+      });
+  });
+
+  async function saveExif() {
+    const orNull = (s: string) => (s.trim().length > 0 ? s : null);
+    exifSaving = true;
+    exifError = false;
+    try {
+      await invoke("files_set_exif_tags", {
+        path,
+        description: orNull(exifDraft.description),
+        artist: orNull(exifDraft.artist),
+        copyright: orNull(exifDraft.copyright),
+      });
+      fillExif(await invoke<ExifEdits>("files_get_exif_tags", { path }));
+    } catch {
+      exifError = true;
+    }
+    exifSaving = false;
+  }
 </script>
 
 <aside class="info-panel" aria-label="Info">
@@ -143,6 +205,46 @@
             Save
           </button>
         </div>
+      </div>
+    {/if}
+
+    {#if isJpeg && $info.conventional.kind === "file" && exifLoaded}
+      <div class="ip-section">
+        <span class="ip-label">Photo info</span>
+        <label class="ip-field">
+          <span class="ip-key">Description</span>
+          <input
+            class="ip-text-input"
+            class:ip-mode-error={exifError}
+            bind:value={exifDraft.description}
+            spellcheck="false"
+          />
+        </label>
+        <label class="ip-field">
+          <span class="ip-key">Artist</span>
+          <input
+            class="ip-text-input"
+            class:ip-mode-error={exifError}
+            bind:value={exifDraft.artist}
+            spellcheck="false"
+          />
+        </label>
+        <label class="ip-field">
+          <span class="ip-key">Copyright</span>
+          <input
+            class="ip-text-input"
+            class:ip-mode-error={exifError}
+            bind:value={exifDraft.copyright}
+            spellcheck="false"
+          />
+        </label>
+        <button
+          class="ip-manage ip-save"
+          disabled={exifSaving}
+          onclick={() => void saveExif()}
+        >
+          Save
+        </button>
       </div>
     {/if}
 
@@ -320,5 +422,23 @@
   }
   .ip-save {
     margin-top: 0;
+  }
+
+  /* The EXIF edit rows: a stacked label + full-width text input, the column
+     register the panel's sections already use. */
+  .ip-field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .ip-text-input {
+    width: 100%;
+    height: var(--height-control, 28px);
+    padding: 0 8px;
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-input);
+    background: var(--control-bg);
+    color: var(--foreground);
+    font-size: 0.75rem;
   }
 </style>
