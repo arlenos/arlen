@@ -29,6 +29,8 @@ glib = "0.18"
 # metadata-edit (the EXIF write-back); only the embedded picker drops it.
 arlen-file-browser-core = { path = "../core", features = ["metadata-edit"] }
 cap-std = "3"
+# Parse the freedesktop trash DeletionDate for the Trash navigation location.
+time = { version = "0.3", features = ["parsing", "macros"] }
 # Read the AI capability context from ai.toml for the capability
 # indicator (same reader as the harness and the terminal).
 toml = "0.8"

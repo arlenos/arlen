@@ -354,6 +354,7 @@ fn match_entry(
             readonly,
             symlink_target,
             full_path: None,
+            restore_token: None,
         },
         matched,
     });
