@@ -1,0 +1,7 @@
+# Starting permission profile for Koko (an image gallery). Views the user's photos in Pictures; no network.
+[info]
+app_id = "org.kde.koko"
+tier = "third-party"
+
+[filesystem]
+pictures = true

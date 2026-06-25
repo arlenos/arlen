@@ -1,0 +1,7 @@
+# Starting permission profile for Skanpage (multi-page document scanning). Saves scanned documents to Documents; scanner hardware access is a portal grant out of band.
+[info]
+app_id = "org.kde.skanpage"
+tier = "third-party"
+
+[filesystem]
+documents = true

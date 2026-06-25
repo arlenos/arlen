@@ -1,0 +1,7 @@
+# Starting permission profile for Tokodon (a Mastodon client). Talks to Mastodon servers over the network (its function).
+[info]
+app_id = "org.kde.tokodon"
+tier = "third-party"
+
+[network]
+allow_all = true

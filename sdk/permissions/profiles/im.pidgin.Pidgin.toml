@@ -1,0 +1,7 @@
+# Starting permission profile for Pidgin (a multi-protocol instant messenger). Network is its function.
+[info]
+app_id = "im.pidgin.Pidgin"
+tier = "third-party"
+
+[network]
+allow_all = true

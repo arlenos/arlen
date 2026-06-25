@@ -1,0 +1,5 @@
+# Starting permission profile for kjournald (a systemd journal viewer). Reads the system journal (via journal-group membership granted out of band); no user files or network.
+[info]
+app_id = "org.kde.kjournald"
+tier = "third-party"
+

@@ -1,0 +1,7 @@
+# Starting permission profile for Konversation (an IRC client). Connects to IRC servers over the network (its function).
+[info]
+app_id = "org.kde.konversation"
+tier = "third-party"
+
+[network]
+allow_all = true
