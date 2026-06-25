@@ -25,6 +25,7 @@ apps/desktop-shell/src/lib/components/WindowHeader.svelte	padding-right
 apps/desktop-shell/src/lib/components/ZoomToolbar.svelte	text-align: left
 apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	border-left
 apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte	text-align: left
+apps/desktop-shell/src/lib/components/ui/dialog/dialog-content.svelte	left-
 apps/desktop-shell/src/lib/components/waypointer/WaypointerInlinePreview.svelte	margin-left
 apps/desktop-shell/src/lib/quicksettings/tiles/UserRowTile.svelte	text-align: left
 apps/files/src/app.css	padding-left
@@ -42,6 +43,7 @@ apps/files/src/routes/+layout.svelte	pr-
 apps/files/src/routes/+page.svelte	border-left
 apps/greeter/src/lib/components/PowerMenu.svelte	text-align: left
 apps/harness/src/app.css	padding-left
+apps/harness/src/lib/components/HarnessSidebar.svelte	left-
 apps/harness/src/lib/components/HarnessSidebar.svelte	ml-
 apps/harness/src/lib/components/HarnessSidebar.svelte	pl-
 apps/harness/src/lib/components/HarnessSidebar.svelte	pr-
@@ -67,6 +69,7 @@ apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	padding-right
 apps/settings/src/lib/components/settings/KeyCapture.svelte	pl-
 apps/settings/src/routes/appearance/quicksettings/+page.svelte	padding-left
 apps/settings/src/routes/keyboard/+page.svelte	mr-
+apps/settings/src/routes/keyboard/shortcuts/+page.svelte	left-
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	mr-
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	pl-
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	text-left
@@ -101,19 +104,23 @@ sdk/ui-kit/src/lib/components/ui/button/button.svelte	pr-
 sdk/ui-kit/src/lib/components/ui/command/command-shortcut.svelte	ml-
 sdk/ui-kit/src/lib/components/ui/context-menu/context-menu-checkbox-item.svelte	pl-
 sdk/ui-kit/src/lib/components/ui/context-menu/context-menu-checkbox-item.svelte	pr-
+sdk/ui-kit/src/lib/components/ui/context-menu/context-menu-checkbox-item.svelte	right-
 sdk/ui-kit/src/lib/components/ui/context-menu/context-menu-item.svelte	pl-
 sdk/ui-kit/src/lib/components/ui/context-menu/context-menu-label.svelte	pl-
 sdk/ui-kit/src/lib/components/ui/context-menu/context-menu-radio-item.svelte	pl-
 sdk/ui-kit/src/lib/components/ui/context-menu/context-menu-radio-item.svelte	pr-
+sdk/ui-kit/src/lib/components/ui/context-menu/context-menu-radio-item.svelte	right-
 sdk/ui-kit/src/lib/components/ui/context-menu/context-menu-shortcut.svelte	ml-
 sdk/ui-kit/src/lib/components/ui/context-menu/context-menu-sub-trigger.svelte	ml-
 sdk/ui-kit/src/lib/components/ui/context-menu/context-menu-sub-trigger.svelte	pl-
+sdk/ui-kit/src/lib/components/ui/dropdown-menu/dropdown-menu-checkbox-item.svelte	left-
 sdk/ui-kit/src/lib/components/ui/dropdown-menu/dropdown-menu-checkbox-item.svelte	pl-
 sdk/ui-kit/src/lib/components/ui/dropdown-menu/dropdown-menu-checkbox-item.svelte	pr-
 sdk/ui-kit/src/lib/components/ui/dropdown-menu/dropdown-menu-item.svelte	pl-
 sdk/ui-kit/src/lib/components/ui/dropdown-menu/dropdown-menu-label.svelte	pl-
 sdk/ui-kit/src/lib/components/ui/dropdown-menu/dropdown-menu-radio-item.svelte	pl-
 sdk/ui-kit/src/lib/components/ui/dropdown-menu/dropdown-menu-radio-item.svelte	pr-
+sdk/ui-kit/src/lib/components/ui/dropdown-menu/dropdown-menu-radio-item.svelte	right-
 sdk/ui-kit/src/lib/components/ui/dropdown-menu/dropdown-menu-shortcut.svelte	ml-
 sdk/ui-kit/src/lib/components/ui/dropdown-menu/dropdown-menu-sub-trigger.svelte	ml-
 sdk/ui-kit/src/lib/components/ui/dropdown-menu/dropdown-menu-sub-trigger.svelte	pl-
@@ -121,8 +128,12 @@ sdk/ui-kit/src/lib/components/ui/group/group.svelte	padding-left
 sdk/ui-kit/src/lib/components/ui/number-input/number-input.svelte	border-left
 sdk/ui-kit/src/lib/components/ui/popover-select/popover-select.svelte	text-align: left
 sdk/ui-kit/src/lib/components/ui/sidebar/Sidebar.svelte	border-r
+sdk/ui-kit/src/lib/components/ui/sidebar/Sidebar.svelte	left-
 sdk/ui-kit/src/lib/components/ui/sidebar/SidebarMenuAction.svelte	pr-
+sdk/ui-kit/src/lib/components/ui/sidebar/SidebarMenuAction.svelte	right-
 sdk/ui-kit/src/lib/components/ui/sidebar/SidebarMenuButton.svelte	text-left
+sdk/ui-kit/src/lib/components/ui/sidebar/SidebarRail.svelte	left-
+sdk/ui-kit/src/lib/components/ui/sidebar/SidebarRail.svelte	right-
 sdk/ui-kit/src/lib/components/ui/value-slider/value-slider.svelte	text-align: right
 sdk/ui-kit/src/lib/components/ui/window-controls/WindowControls.svelte	margin-left
 sdk/ui-kit/src/lib/components/ui/window-controls/WindowControls.svelte	padding-right

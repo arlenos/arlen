@@ -73,9 +73,19 @@ fn value_is(line: &str, prop: &str, val: &str) -> bool {
     false
 }
 
-/// Physical Tailwind v4 spacing utilities (a value follows the prefix) and their
-/// logical replacements. Tailwind ships `ms-`/`me-`/`ps-`/`pe-` for these.
-const TW_SPACING: &[(&str, &str)] = &[("ml-", "ms-"), ("mr-", "me-"), ("pl-", "ps-"), ("pr-", "pe-")];
+/// Physical Tailwind v4 utilities where a value follows the prefix (`ml-4`,
+/// `left-0`, `left-auto`) and their logical replacements: spacing → `ms-`/`me-`/
+/// `ps-`/`pe-`, inset positioning → `start-`/`end-`. The value-after guard
+/// (`tailwind_value_after`) keeps these low-false-positive: `left-panel` /
+/// `bright-blue` are not flagged because no Tailwind value follows.
+const TW_SPACING: &[(&str, &str)] = &[
+    ("ml-", "ms-"),
+    ("mr-", "me-"),
+    ("pl-", "ps-"),
+    ("pr-", "pe-"),
+    ("left-", "start-"),
+    ("right-", "end-"),
+];
 
 /// Physical Tailwind border / radius side utilities (bare, or a value follows after
 /// a `-`). Tailwind ships `border-s`/`border-e` and `rounded-s`/`rounded-e`.
@@ -264,6 +274,19 @@ mod tests {
         let found: Vec<&str> = f.iter().map(|x| x.found.as_str()).collect();
         assert!(found.contains(&"border-l"), "{found:?}");
         assert!(found.contains(&"rounded-r"), "{found:?}");
+    }
+
+    #[test]
+    fn flags_tailwind_inset_positioning_with_value_guard() {
+        // `left-0`/`right-auto` are positioning utilities (-> start-/end-); a kebab
+        // name (`left-panel`) or a word merely ending in the prefix (`bright-blue`)
+        // is not, because no Tailwind value follows / no class boundary precedes.
+        let f = scan_rtl(r#"class="left-0 right-auto""#);
+        let found: Vec<&str> = f.iter().map(|x| x.found.as_str()).collect();
+        assert!(found.contains(&"left-"), "{found:?}");
+        assert!(found.contains(&"right-"), "{found:?}");
+        assert_eq!(f.iter().find(|x| x.found == "left-").unwrap().suggestion, "start-");
+        assert!(scan_rtl(r#"class="left-panel bright-blue""#).is_empty());
     }
 
     #[test]
