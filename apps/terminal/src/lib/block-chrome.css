@@ -49,38 +49,3 @@
   font-variant-numeric: tabular-nums;
   margin-left: 10px;
 }
-.arlen-block-duration {
-  color: color-mix(in srgb, var(--foreground, #e4e5ea) 45%, transparent);
-  font-variant-numeric: tabular-nums;
-  margin-left: 10px;
-}
-.arlen-block-rerun {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border: none;
-  background: transparent;
-  border-radius: var(--radius-button, 6px);
-  color: color-mix(in srgb, var(--foreground, #e4e5ea) 50%, transparent);
-  cursor: pointer;
-  pointer-events: auto;
-  margin-left: 8px;
-  vertical-align: middle;
-  opacity: 0;
-  transition:
-    opacity var(--duration-fast, 150ms) var(--ease-out, ease),
-    background-color var(--duration-fast, 150ms) var(--ease-out, ease),
-    color var(--duration-fast, 150ms) var(--ease-out, ease);
-}
-/* Run-again surfaces ONLY while its block is hovered (Tim, 25 June). The engine
- * toggles `is-hover` on the result element when the pointer enters the block's
- * rows, in step with the hover tint above. */
-.arlen-block-result.is-hover .arlen-block-rerun {
-  opacity: 1;
-}
-.arlen-block-rerun:hover {
-  background: color-mix(in srgb, var(--foreground, #e4e5ea) 10%, transparent);
-  color: var(--foreground, #e4e5ea);
-}
