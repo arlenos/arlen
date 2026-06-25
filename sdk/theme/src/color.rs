@@ -17,7 +17,7 @@
 //! exactly. Out-of-gamut results of a lightness nudge are component-clamped
 //! back into sRGB.
 
-use crate::Rgba;
+use crate::{ColorTokens, Rgba};
 
 /// A colour in OKLCH: perceptual lightness `l` (`0..=1`), chroma `c`
 /// (`0..~0.4`), hue `h` in degrees (`0..360`, meaningless when `c` is 0).
@@ -185,6 +185,89 @@ pub fn apca_lc(text: Rgba, bg: Rgba) -> f32 {
     out * 100.0
 }
 
+/// Which contrast floor a colour pair is held to: body text (strict) or large
+/// text / icons / non-text UI (relaxed).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContrastUse {
+    /// Body text: WCAG 2.x AA 4.5, APCA bronze `|Lc|` 60.
+    Body,
+    /// Large text, icons or non-text UI (WCAG 2.2 1.4.11): AA 3.0, APCA `|Lc|` 45.
+    Large,
+}
+
+impl ContrastUse {
+    /// The WCAG 2.x AA ratio floor for this use.
+    pub fn wcag_floor(self) -> f32 {
+        match self {
+            ContrastUse::Body => 4.5,
+            ContrastUse::Large => 3.0,
+        }
+    }
+    /// The APCA `|Lc|` floor for this use (bronze tier).
+    pub fn apca_floor(self) -> f32 {
+        match self {
+            ContrastUse::Body => 60.0,
+            ContrastUse::Large => 45.0,
+        }
+    }
+}
+
+/// One foreground-over-background pair audited for contrast: a human label, both
+/// measures (WCAG 2.x ratio + signed APCA `Lc`), the floor it is held to, and
+/// whether it clears each. `apca_pass` tests `|apca|` (the sign is only polarity).
+#[derive(Debug, Clone)]
+pub struct ContrastFinding {
+    /// Human label, e.g. `"fg.primary on bg.app"`.
+    pub pair: &'static str,
+    /// The WCAG 2.x contrast ratio (`1.0..=21.0`).
+    pub wcag: f32,
+    /// The signed APCA `Lc`.
+    pub apca: f32,
+    /// The floor this pair is held to.
+    pub usage: ContrastUse,
+    /// Whether the WCAG ratio clears its floor.
+    pub wcag_pass: bool,
+    /// Whether `|apca|` clears its floor.
+    pub apca_pass: bool,
+}
+
+/// Audit a resolved theme's key foreground-over-background pairs, reporting both
+/// the WCAG 2.x ratio and the APCA `Lc` against the AA / bronze floor for each
+/// pair's use. This is the compute half of the A11Y contrast surfacing: the UI
+/// renders the findings, nothing here renders. Body-text pairs (primary/secondary
+/// text on each surface, the inverse label on accent) take the strict floor; the
+/// status hues on the app surface and the strong border, used as icons / non-text
+/// UI, take the relaxed floor. `fg.disabled` is omitted - WCAG exempts disabled text.
+pub fn contrast_report(c: &ColorTokens) -> Vec<ContrastFinding> {
+    let pairs: &[(&'static str, Rgba, Rgba, ContrastUse)] = &[
+        ("fg.primary on bg.app", c.fg_primary, c.bg_app, ContrastUse::Body),
+        ("fg.secondary on bg.app", c.fg_secondary, c.bg_app, ContrastUse::Body),
+        ("fg.primary on bg.card", c.fg_primary, c.bg_card, ContrastUse::Body),
+        ("fg.primary on bg.input", c.fg_primary, c.bg_input, ContrastUse::Body),
+        ("fg.inverse on accent", c.fg_inverse, c.accent, ContrastUse::Body),
+        ("success on bg.app", c.success, c.bg_app, ContrastUse::Large),
+        ("warning on bg.app", c.warning, c.bg_app, ContrastUse::Large),
+        ("error on bg.app", c.error, c.bg_app, ContrastUse::Large),
+        ("info on bg.app", c.info, c.bg_app, ContrastUse::Large),
+        ("border.strong on bg.app", c.border_strong, c.bg_app, ContrastUse::Large),
+    ];
+    pairs
+        .iter()
+        .map(|&(pair, fg, bg, usage)| {
+            let wcag = contrast_ratio(fg, bg);
+            let apca = apca_lc(fg, bg);
+            ContrastFinding {
+                pair,
+                wcag,
+                apca,
+                usage,
+                wcag_pass: wcag >= usage.wcag_floor(),
+                apca_pass: apca.abs() >= usage.apca_floor(),
+            }
+        })
+        .collect()
+}
+
 /// Rule B's WCAG floor for body text (and for `fg.inverse` on `accent`).
 pub const BODY_CONTRAST_FLOOR: f32 = 4.5;
 /// Rule B's WCAG floor for status colours / large text.
@@ -325,6 +408,32 @@ mod tests {
         assert!(close(lc("#000000", "#aaaaaa"), 58.15, 0.6), "{}", lc("#000000", "#aaaaaa"));
         assert!(close(lc("#ffffff", "#888888"), -68.54, 0.6), "{}", lc("#ffffff", "#888888"));
         assert!(close(lc("#aaaaaa", "#000000"), -56.24, 0.6), "{}", lc("#aaaaaa", "#000000"));
+    }
+
+    #[test]
+    fn contrast_report_audits_the_bundled_dark_theme() {
+        let t = crate::ArlenTheme::from_bundled(include_str!("../themes/dark.toml"))
+            .expect("bundled dark resolves");
+        let report = contrast_report(&t.color);
+        assert_eq!(report.len(), 10);
+        // The body text pair is near-white on near-black: it must clear AA on both
+        // scales (other tests assert the >= 4.5 WCAG floor for this pair).
+        let body = report.iter().find(|f| f.pair == "fg.primary on bg.app").unwrap();
+        assert!(body.wcag_pass && body.wcag >= 4.5, "body WCAG {}", body.wcag);
+        assert!(body.apca_pass && body.apca.abs() >= 60.0, "body APCA {}", body.apca);
+        // Every pair is present and its pass flags agree with the floor.
+        for f in &report {
+            assert_eq!(f.wcag_pass, f.wcag >= f.usage.wcag_floor(), "{}", f.pair);
+            assert_eq!(f.apca_pass, f.apca.abs() >= f.usage.apca_floor(), "{}", f.pair);
+        }
+    }
+
+    #[test]
+    fn contrast_use_floors() {
+        assert_eq!(ContrastUse::Body.wcag_floor(), 4.5);
+        assert_eq!(ContrastUse::Body.apca_floor(), 60.0);
+        assert_eq!(ContrastUse::Large.wcag_floor(), 3.0);
+        assert_eq!(ContrastUse::Large.apca_floor(), 45.0);
     }
 
     #[test]
