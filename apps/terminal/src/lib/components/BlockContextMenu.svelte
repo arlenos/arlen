@@ -8,8 +8,9 @@
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu";
   import type { Snippet } from "svelte";
 
-  /// The block actions. All optional so the menu renders before the coder wires
-  /// them; each is bound to the block under the pointer.
+  /// The block actions, each bound to the block under the pointer. All optional:
+  /// an action without a handler renders its item disabled (greyed), the desktop
+  /// convention for an unavailable action, never a silent no-op.
   type BlockActions = {
     runAgain?: () => void;
     copyCommand?: () => void;
@@ -30,31 +31,42 @@
   };
 
   let { actions = {}, children }: Props = $props();
-  const noop = () => {};
 </script>
 
 <ContextMenu.Root>
   <ContextMenu.Trigger>{@render children()}</ContextMenu.Trigger>
   <ContextMenu.Content class="w-60">
-    <ContextMenu.Item onclick={actions.runAgain ?? noop}>Run again</ContextMenu.Item>
+    <ContextMenu.Item onclick={actions.runAgain} disabled={!actions.runAgain}>
+      Run again
+    </ContextMenu.Item>
 
     <ContextMenu.Separator />
     <ContextMenu.Sub>
       <ContextMenu.SubTrigger>Copy</ContextMenu.SubTrigger>
       <ContextMenu.SubContent class="w-48">
-        <ContextMenu.Item onclick={actions.copyCommand ?? noop}>Command</ContextMenu.Item>
-        <ContextMenu.Item onclick={actions.copyOutput ?? noop}>Output</ContextMenu.Item>
-        <ContextMenu.Item onclick={actions.copyBoth ?? noop}>
+        <ContextMenu.Item onclick={actions.copyCommand} disabled={!actions.copyCommand}>
+          Command
+        </ContextMenu.Item>
+        <ContextMenu.Item onclick={actions.copyOutput} disabled={!actions.copyOutput}>
+          Output
+        </ContextMenu.Item>
+        <ContextMenu.Item onclick={actions.copyBoth} disabled={!actions.copyBoth}>
           Command + output
         </ContextMenu.Item>
-        <ContextMenu.Item onclick={actions.copyMarkdown ?? noop}>As Markdown</ContextMenu.Item>
+        <ContextMenu.Item onclick={actions.copyMarkdown} disabled={!actions.copyMarkdown}>
+          As Markdown
+        </ContextMenu.Item>
       </ContextMenu.SubContent>
     </ContextMenu.Sub>
 
     <ContextMenu.Separator />
-    <ContextMenu.Item onclick={actions.editRerun ?? noop}>Edit &amp; re-run</ContextMenu.Item>
-    <ContextMenu.Item onclick={actions.selectBlock ?? noop}>Select block</ContextMenu.Item>
-    <ContextMenu.Item onclick={actions.saveOutput ?? noop}>
+    <ContextMenu.Item onclick={actions.editRerun} disabled={!actions.editRerun}>
+      Edit &amp; re-run
+    </ContextMenu.Item>
+    <ContextMenu.Item onclick={actions.selectBlock} disabled={!actions.selectBlock}>
+      Select block
+    </ContextMenu.Item>
+    <ContextMenu.Item onclick={actions.saveOutput} disabled={!actions.saveOutput}>
       Save output to file&hellip;
     </ContextMenu.Item>
 
@@ -65,8 +77,10 @@
       >
         Arlen
       </ContextMenu.GroupHeading>
-      <ContextMenu.Item onclick={actions.explain ?? noop}>Explain this</ContextMenu.Item>
-      <ContextMenu.Item onclick={actions.ask ?? noop}>
+      <ContextMenu.Item onclick={actions.explain} disabled={!actions.explain}>
+        Explain this
+      </ContextMenu.Item>
+      <ContextMenu.Item onclick={actions.ask} disabled={!actions.ask}>
         Ask Arlen about this block
       </ContextMenu.Item>
     </ContextMenu.Group>
