@@ -6,7 +6,8 @@
   /// WebDriver ignores window/rect and the viewport varies under Xvfb).
   import { page } from "$app/state";
   import AudioPlayer from "$lib/components/AudioPlayer.svelte";
-  import { audioMock } from "$lib/mock";
+  import ImageViewer from "$lib/components/ImageViewer.svelte";
+  import { audioMock, imageMock } from "$lib/mock";
 
   let demo = $derived(page.url.searchParams.get("demo") ?? "audio");
   let w = $derived(Number(page.url.searchParams.get("w")));
@@ -14,15 +15,21 @@
   let framed = $derived(!!page.url.searchParams.get("w") && !!page.url.searchParams.get("h"));
 </script>
 
+{#snippet face(d: string)}
+  {#if d === "audio"}
+    <AudioPlayer file={audioMock} />
+  {:else if d === "image"}
+    <ImageViewer file={imageMock} />
+  {/if}
+{/snippet}
+
 {#if framed}
   <div class="frame" style="width:{w}px;height:{h}px">
-    {#if demo === "audio"}
-      <AudioPlayer file={audioMock} />
-    {/if}
+    {@render face(demo)}
   </div>
-{:else if demo === "audio"}
+{:else}
   <div class="fill">
-    <AudioPlayer file={audioMock} />
+    {@render face(demo)}
   </div>
 {/if}
 
