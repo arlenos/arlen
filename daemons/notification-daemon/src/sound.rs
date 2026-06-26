@@ -219,6 +219,33 @@ pub fn resolve_cue(
     resolve_sound(roots, &config.theme, name.as_ref())
 }
 
+/// The sound cue (if any) a notification maps to, from its freedesktop urgency
+/// (0 low / 1 normal / 2 critical) and category. Restraint by default
+/// (sound-system-plan.md): a low-urgency notification stays SILENT, so only normal
+/// and critical arrivals sound. The category picks a specific cue when it names one
+/// (`device.added`/`device.removed`, an `error` or `warning` class); otherwise a
+/// sounding notification is a plain arrival. `None` means no cue for this one.
+pub fn sound_event_for_notification(urgency: u8, category: &str) -> Option<SoundEvent> {
+    let cat = category.to_ascii_lowercase();
+    if cat.starts_with("device.added") {
+        return Some(SoundEvent::DeviceAdded);
+    }
+    if cat.starts_with("device.removed") {
+        return Some(SoundEvent::DeviceRemoved);
+    }
+    if cat.contains("error") {
+        return Some(SoundEvent::Error);
+    }
+    if cat.contains("warning") {
+        return Some(SoundEvent::Warning);
+    }
+    // Low urgency is silent by default; normal and critical arrivals sound.
+    if urgency == 0 {
+        return None;
+    }
+    Some(SoundEvent::NotificationArrived)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -375,5 +402,23 @@ mod tests {
             resolve_cue(SoundEvent::NotificationArrived, &config, &[root.clone()]),
             SoundResolution::File(root.join("mytheme/custom-bell.oga")),
         );
+    }
+
+    #[test]
+    fn cue_selection_respects_urgency_and_category() {
+        use SoundEvent::*;
+        // Category-specific cues win.
+        assert_eq!(sound_event_for_notification(1, "device.added"), Some(DeviceAdded));
+        assert_eq!(sound_event_for_notification(1, "device.removed"), Some(DeviceRemoved));
+        assert_eq!(sound_event_for_notification(1, "email.error"), Some(Error));
+        assert_eq!(sound_event_for_notification(1, "transfer.warning"), Some(Warning));
+        // Low urgency with no special category stays silent (restraint).
+        assert_eq!(sound_event_for_notification(0, ""), None);
+        assert_eq!(sound_event_for_notification(0, "im.received"), None);
+        // Normal and critical arrivals sound as a plain notification.
+        assert_eq!(sound_event_for_notification(1, "im.received"), Some(NotificationArrived));
+        assert_eq!(sound_event_for_notification(2, ""), Some(NotificationArrived));
+        // A device cue sounds even at low urgency (the category is explicit).
+        assert_eq!(sound_event_for_notification(0, "device.added"), Some(DeviceAdded));
     }
 }
