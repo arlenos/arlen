@@ -10,6 +10,7 @@ pub mod mock;
 pub mod intents;
 pub mod mcp;
 pub mod menu;
+pub mod power;
 pub mod presence;
 pub mod runtime;
 pub mod search;
@@ -65,6 +66,7 @@ pub use graph::{
 };
 pub use intents::{IntentError, IntentType, UnixIntentClient};
 pub use menu::{subscribe_menu_actions, Menu, MenuGroup, MenuItem, MenuItemKind};
+pub use power::{read_power_state, PowerError, PowerSnapshot};
 pub use presence::{AutoClear, Presence, PresenceParams};
 pub use search::{SearchError, SearchMode, UnixSearchClient};
 pub use spatial::{GeometryHint, OutputHint, Spatial, SpatialHint};
