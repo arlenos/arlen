@@ -1,0 +1,6 @@
+# Starting permission profile for Dev Toolbox (offline developer utilities:
+# formatters, converters, hashes). It needs no network, no user files and no
+# Knowledge Graph access.
+[info]
+app_id = "me.iepure.devtoolbox"
+tier = "third-party"

@@ -1,0 +1,9 @@
+# Starting permission profile for Alpaca (an Ollama AI chat client). It talks to
+# a local or remote model server; no user files by default and no Knowledge
+# Graph access.
+[info]
+app_id = "io.github.jeffser.Alpaca"
+tier = "third-party"
+
+[network]
+allow_all = true
