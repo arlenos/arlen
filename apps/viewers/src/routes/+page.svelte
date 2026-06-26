@@ -22,7 +22,7 @@
   {:else if d === "image"}
     <ImageViewer file={imageMock} />
   {:else if d === "video"}
-    <VideoViewer file={videoMock} startPaused={!!page.url.searchParams.get("paused")} />
+    <VideoViewer file={videoMock} />
   {/if}
 {/snippet}
 

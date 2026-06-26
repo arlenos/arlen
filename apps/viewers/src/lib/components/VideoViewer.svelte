@@ -1,13 +1,15 @@
 <script lang="ts">
   /// The video face (quickview-plan.md): the frame fills the window edge-to-edge
-  /// like the image, plus one auto-hide bottom dock - the thin progress scrubber
-  /// (played bright / unplayed dim + playhead, click/drag = seek), then a control
-  /// row: play/pause, elapsed/total, name + position, fullscreen. A large centre
-  /// play shows only while paused. Audio-track + subtitles live in the menu, not
-  /// the dock. prev/next edge arrows; the top strip drags the frameless window.
+  /// like the image, plus one auto-hide bottom dock holding the progress slider
+  /// (the kit `FillSlider`, click/drag/keys = seek) over a `Toolbar` control row:
+  /// play/pause, elapsed/total, name + position, fullscreen. A large centre play
+  /// shows only while paused. Audio-track + subtitles live in the menu, not the
+  /// dock. prev/next edge arrows; the top strip drags the frameless window.
   /// `Space` toggles playback, `F` fullscreen. Decoded frames are the coder's.
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { FillSlider } from "@arlen/ui-kit/components/ui/fill-slider";
+  import { Toolbar } from "@arlen/ui-kit/components/ui/toolbar";
   import {
     Play,
     Pause,
@@ -16,7 +18,6 @@
     Maximize,
   } from "@lucide/svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { untrack } from "svelte";
   import { tauriAvailable } from "$lib/tauri";
   import type { VideoMock } from "$lib/mock";
 
@@ -24,20 +25,16 @@
     file,
     onnext,
     onprev,
-    startPaused = false,
   }: {
     file: VideoMock;
     onnext?: () => void;
     onprev?: () => void;
-    /// Demo only: start in the paused state to show the centre play overlay.
-    startPaused?: boolean;
   } = $props();
 
-  let playing = $state(untrack(() => !startPaused));
+  let playing = $state(true);
   let progress = $state(0.3);
   let chromeVisible = $state(true);
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
-  let scrub: HTMLDivElement;
 
   const fmt = (sec: number) => {
     const s = Math.max(0, Math.round(sec));
@@ -50,11 +47,6 @@
     chromeVisible = true;
     clearTimeout(idleTimer);
     idleTimer = setTimeout(() => (chromeVisible = false), 2000);
-  }
-
-  function seek(e: MouseEvent) {
-    const r = scrub.getBoundingClientRect();
-    progress = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
   }
 
   async function startDrag(e: PointerEvent) {
@@ -97,7 +89,7 @@
 
   {#if !playing}
     <button class="centerplay" aria-label="Play" onclick={() => (playing = true)}>
-      <Play class="size-7" strokeWidth={0} fill="currentColor" />
+      <Play class="size-7" strokeWidth={1.5} fill="currentColor" />
     </button>
   {/if}
 
@@ -109,46 +101,36 @@
   </button>
 
   <div class="dock">
-    <div
-      class="scrubber"
-      bind:this={scrub}
-      role="slider"
-      tabindex="0"
-      aria-label="Seek"
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={Math.round(progress * 100)}
-      onclick={seek}
-      onkeydown={(e) => {
-        if (e.key === "ArrowRight") progress = Math.min(1, progress + 0.02);
-        else if (e.key === "ArrowLeft") progress = Math.max(0, progress - 0.02);
-      }}
-    >
-      <div class="track"></div>
-      <div class="fill" style="width:{progress * 100}%"></div>
-      <div class="head" style="left:{progress * 100}%"></div>
-    </div>
+    <FillSlider
+      value={progress * 100}
+      size="sm"
+      ariaLabel="Seek"
+      oninput={(v) => (progress = v / 100)}
+    />
 
-    <div class="controls">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={playing ? "Pause" : "Play"}
-        onclick={() => (playing = !playing)}
-      >
-        {#if playing}
-          <Pause class="size-[17px]" strokeWidth={0} fill="currentColor" />
-        {:else}
-          <Play class="size-[17px]" strokeWidth={0} fill="currentColor" />
-        {/if}
-      </Button>
-      <span class="time">{elapsed} / {total}</span>
-      <span class="spacer"></span>
-      <span class="meta">{file.name}<span class="dot">·</span>{file.index} / {file.total}</span>
-      <Button variant="ghost" size="icon-sm" aria-label="Fullscreen">
-        <Maximize class="size-[16px]" strokeWidth={2} />
-      </Button>
-    </div>
+    <Toolbar>
+      {#snippet start()}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={playing ? "Pause" : "Play"}
+          onclick={() => (playing = !playing)}
+        >
+          {#if playing}
+            <Pause class="size-[17px]" strokeWidth={1.5} fill="currentColor" />
+          {:else}
+            <Play class="size-[17px]" strokeWidth={1.5} fill="currentColor" />
+          {/if}
+        </Button>
+        <span class="time">{elapsed} / {total}</span>
+      {/snippet}
+      {#snippet end()}
+        <span class="meta">{file.name}<span class="dot">·</span>{file.index} / {file.total}</span>
+        <Button variant="ghost" size="icon-sm" aria-label="Fullscreen">
+          <Maximize class="size-[16px]" strokeWidth={2} />
+        </Button>
+      {/snippet}
+    </Toolbar>
   </div>
 </div>
 
@@ -260,72 +242,36 @@
     right: 8px;
   }
 
-  /* One bottom dock: the scrubber over the control row. */
+  /* One contained bottom dock (same pill as the image face): the scrubber over
+     the control row, on its own surface, not loose on the scrim. */
   .dock {
     position: absolute;
     left: 14px;
     right: 14px;
-    bottom: 12px;
+    bottom: 14px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
+    padding: 9px 12px 7px;
+    border-radius: var(--radius-card, 12px);
+    background: color-mix(in srgb, #141414 80%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-fg-primary, #fafafa) 12%, transparent);
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(12px);
   }
 
-  .scrubber {
-    position: relative;
-    height: 14px;
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-  }
-  .scrubber .track {
-    position: absolute;
-    left: 0;
-    right: 0;
-    height: 3px;
-    border-radius: var(--radius-full, 9999px);
-    background: color-mix(in srgb, var(--color-fg-primary, #fafafa) 22%, transparent);
-  }
-  .scrubber .fill {
-    position: absolute;
-    left: 0;
-    height: 3px;
-    border-radius: var(--radius-full, 9999px);
-    background: var(--color-fg-primary, #fafafa);
-  }
-  .scrubber .head {
-    position: absolute;
-    width: 11px;
-    height: 11px;
-    border-radius: var(--radius-full, 9999px);
-    background: var(--color-fg-primary, #fafafa);
-    transform: translateX(-50%);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-  }
-
-  .controls {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .controls .time {
+  .time {
     font-size: 12px;
     color: var(--color-fg-primary, #fafafa);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
-  .controls .spacer {
-    flex: 1;
-  }
-  .controls .meta {
+  .meta {
     font-size: 12px;
     color: var(--color-fg-secondary, #a1a1aa);
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
   }
-  .controls .dot {
+  .dot {
     color: var(--color-fg-secondary, #a1a1aa);
     margin: 0 0.4em;
   }
