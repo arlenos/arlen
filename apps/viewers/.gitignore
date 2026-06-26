@@ -1,3 +1,14 @@
 /target
 *.bak
 .DS_Store
+
+# Build artifacts
+.svelte-kit/
+build/
+node_modules/
+.vite/
+*.log
+
+# Rust
+src-tauri/target/
+src-tauri/gen/

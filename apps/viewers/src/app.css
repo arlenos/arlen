@@ -1,0 +1,347 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/inter";
+/* Single-source: scan the ui-kit canon so Tailwind generates the utility
+   classes used by ui-kit's shadcn-derived components, which are imported via
+   the @arlen/ui-kit alias instead of being copied into this app. See
+   docs/architecture/design-system.md §2.1. */
+@source "../../../sdk/ui-kit/src/lib/components/**/*.{svelte,ts}";
+/* Canonical motion tokens + shared interaction classes.
+   Single source of truth for both desktop-shell and app-settings. */
+@import "../../../sdk/ui-kit/src/lib/motion.css";
+/* Concentric-nesting radius utility (rounding-fix.md). */
+@import "../../../sdk/ui-kit/src/lib/radius.css";
+
+/* ============================================================
+   Arlen Settings App - Dark Theme Defaults
+   Overridden at runtime by theme store from appearance.toml.
+   Mirrors desktop-shell dark.toml.
+   ============================================================ */
+:root {
+  /* Background */
+  --color-bg-shell:   #0a0a0a;
+  --color-bg-app:     #0f0f0f;
+  --color-bg-card:    #171717;
+  --color-bg-overlay: #00000080;
+  --color-bg-input:   #1a1a1a;
+
+  /* Foreground */
+  --color-fg-primary:   #fafafa;
+  --color-fg-secondary: #a1a1aa;
+  --color-fg-disabled:  #52525b;
+  --color-fg-inverse:   #0a0a0a;
+  --color-fg-shell:     var(--color-fg-primary);
+  --color-fg-app:       var(--color-fg-primary);
+
+  /* Semantic. The default accent is monochrome: it follows the foreground,
+     so it flips with the theme mode and there is no hardcoded colour. */
+  --color-accent:            var(--color-fg-primary);
+  --color-accent-hover:      var(--color-fg-secondary);
+  --color-accent-foreground: var(--color-fg-inverse);
+  --color-border:         #262626;
+  --color-border-strong:  #3f3f46;
+  --color-error:          #ef4444;
+  --color-warning:        #f59e0b;
+  --color-success:        #10b981;
+
+  /* Semantic radius tokens — defaults mirror sdk/theme/themes/dark.toml
+     for first-paint correctness before the runtime theme injection
+     runs. Runtime intensity overrides come via appearance.toml
+     [overrides].radius_intensity. See docs/architecture/theme-system.md. */
+  --radius-chip:   4px;
+  --radius-button: 6px;
+  --radius-input:  8px;
+  --radius-card:   12px;
+  --radius-modal:  16px;
+  --radius-full:   9999px;
+
+  /* Sizing scale — see docs/architecture/sizing-system.md.
+     Semantic naming over t-shirt sizing. Components pick a token
+     by VISUAL ROLE. Variant props on components (sm/default/lg)
+     are ergonomic aliases; each maps internally to one of these
+     tokens. Values mirrored in `desktop-shell/src/app.css` and
+     `sdk/ui-kit/src/app.css`. */
+  --height-tag:                 20px;  /* Badges, status pills, indicators */
+  --height-control-compact:     24px;  /* Compact controls in dense rows */
+  --height-control:             28px;  /* Standard controls (most common) */
+  --height-control-prominent:   36px;  /* Prominent controls, default button */
+  --height-control-emphasized:  40px;  /* Emphasized buttons, hero inputs */
+  --height-row:                 40px;  /* Settings rows, dense list items */
+  --height-bar:                 36px;  /* Top bar, compositor SSD header */
+
+  /* Spacing scale — mirrors sdk/ui-kit/src/app.css (design-system.md §3).
+     SectionGrid, Page and Group consume these; without them the kit
+     primitives fall back to their hardcoded defaults. */
+  --space-row:     0.75rem;  /* Internal row padding (within a section card) */
+  --space-card:    1rem;     /* Prose-container inset (message blocks, banners) */
+  --space-section: 1.5rem;   /* Gap between sections / SectionGrid column gap */
+  --space-page:    1.5rem;   /* Page horizontal + top padding */
+
+  /* The chat measure: thread, empty state and composer share one centered
+     column (harness-redo-plan.md, chat archetype). */
+  --width-thread:  48rem;
+
+  /* Motion tokens live in sdk/ui-kit/src/lib/motion.css (imported above). */
+
+  /* Shadcn variable mapping */
+  --background:       var(--color-bg-app);
+  --foreground:       var(--color-fg-app);
+  --card:             var(--color-bg-card);
+  --card-foreground:  var(--color-fg-app);
+  --popover:          var(--color-bg-card);
+  --popover-foreground: var(--color-fg-app);
+  --primary:          var(--color-accent);
+  --primary-foreground: var(--color-accent-foreground);
+  --secondary:        var(--color-bg-card);
+  --secondary-foreground: var(--color-fg-app);
+  --muted:            var(--color-bg-card);
+  --muted-foreground: var(--color-fg-secondary);
+  --accent:           var(--color-accent);
+  --accent-foreground: var(--color-accent-foreground);
+  --destructive:      var(--color-error);
+  --border:           var(--color-border);
+  --input:            var(--color-bg-input);
+  --ring:             var(--color-accent);
+
+  --sidebar:                    var(--color-bg-shell);
+  --sidebar-foreground:         var(--color-fg-shell);
+  --sidebar-primary:            var(--color-accent);
+  --sidebar-primary-foreground: var(--color-accent-foreground);
+  --sidebar-accent:             color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
+  --sidebar-accent-foreground:  var(--color-fg-shell);
+  --sidebar-border:             color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
+  --sidebar-ring:               var(--color-accent);
+
+  color-scheme: dark;
+}
+
+/* ============================================================
+   Light mode override. Applied by applyAppearance() by setting
+   `document.documentElement.dataset.theme = "light"`. Values
+   mirror desktop-shell/src-tauri/themes/light.toml.
+   ============================================================ */
+[data-theme="light"] {
+  /* Background */
+  --color-bg-shell:   #f5f5f5;
+  --color-bg-app:     #ffffff;
+  --color-bg-card:    #fafafa;
+  --color-bg-overlay: #00000040;
+  --color-bg-input:   #f0f0f0;
+
+  /* Foreground */
+  --color-fg-primary:   #171717;
+  --color-fg-secondary: #525252;
+  --color-fg-disabled:  #a3a3a3;
+  --color-fg-inverse:   #fafafa;
+
+  /* Accent follows the foreground (see :root), so the monochrome default
+     flips to the light foreground here with no separate literal. */
+
+  /* Border */
+  --color-border-default: #e5e5e5;
+  --color-border-strong:  #d4d4d4;
+  --color-border:         var(--color-border-default);
+
+  color-scheme: light;
+}
+
+/* ============================================================
+   @theme inline block.
+
+   `@theme inline` makes Tailwind utilities emit `var(--token)`
+   references instead of resolving to literals at build time.
+   This is what we want: Tailwind classes like `bg-primary`
+   compile to `background-color: var(--primary)` and the actual
+   color comes from `:root` at runtime. Changing a CSS variable
+   via JavaScript then immediately re-colors all matching utilities.
+
+   The token names on the LEFT (`--color-primary`) are what
+   Tailwind maps to utility classes (`bg-primary`, `text-primary`).
+   The `var(--...)` on the RIGHT is the shadcn variable.
+   ============================================================ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Semantic radius tokens — see sdk/theme + theme-system.md.
+     `--radius-X` defaults are pre-loaded in :root; these
+     @theme-inline lines just expose them as Tailwind utilities
+     (rounded-chip / rounded-button / rounded-input / rounded-card
+     / rounded-modal / rounded-full). Runtime overrides come via
+     the user's appearance.toml [overrides].radius_intensity
+     multiplier applied at theme-emit time. */
+  --radius-chip:   var(--radius-chip);
+  --radius-button: var(--radius-button);
+  --radius-input:  var(--radius-input);
+  --radius-card:   var(--radius-card);
+  --radius-modal:  var(--radius-modal);
+  --radius-full:   var(--radius-full);
+
+  /* Sizing-scale utilities — see docs/architecture/sizing-system.md.
+     Generates h-tag, h-control-compact, h-control,
+     h-control-prominent, h-control-emphasized, h-row, h-bar. */
+  --height-tag:                 var(--height-tag, 20px);
+  --height-control-compact:     var(--height-control-compact, 24px);
+  --height-control:             var(--height-control, 28px);
+  --height-control-prominent:   var(--height-control-prominent, 36px);
+  --height-control-emphasized:  var(--height-control-emphasized, 40px);
+  --height-row:                 var(--height-row, 40px);
+  --height-bar:                 var(--height-bar, 36px);
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrainsMono Nerd Font Mono", "JetBrains Mono", ui-monospace, monospace;
+
+  /* Motion tokens registered as Tailwind utilities. Values come from
+     sdk/ui-kit/src/lib/motion.css; this block only exposes them to
+     utility classes like `duration-fast`, `ease-out`. */
+  --transition-duration-micro:   var(--duration-micro);
+  --transition-duration-fast:    var(--duration-fast);
+  --transition-duration-medium:  var(--duration-medium);
+  --transition-duration-slow:    var(--duration-slow);
+  --transition-duration-instant: var(--duration-micro);
+  --ease-out:    var(--ease-out);
+  --ease-in-out: var(--ease-in-out);
+  --ease-bounce: var(--ease-bounce);
+  --ease-default: var(--ease-in-out);
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  /* App-wide default: nothing is selectable, except real text-entry
+     controls (and anything that opts back in via [data-selectable]).
+     Selecting the label of a button or pill on mouse-drag feels like
+     a bug in a settings UI. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"],
+[data-selectable] {
+  -webkit-user-select: auto;
+  user-select: auto;
+}
+
+/* Scrollbar styling — thumb follows the runtime corner radius so it
+   visually matches every other rounded surface in the app. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--foreground) 18%, transparent);
+  border-radius: var(--radius-input);
+  border: 2px solid var(--background);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--foreground) 30%, transparent);
+  background-clip: padding-box;
+}
+
+/* Rendered-markdown elements (sanitized {@html} from renderMarkdown), shared by
+   the conversation answers and the agent system-explanation. Global so both
+   surfaces pick them up without each component duplicating the rules. Tight
+   margins keep a one-line answer compact. */
+.markdown {
+  /* Rendered HTML manages its own spacing; an inherited `pre-wrap` would
+     turn the newlines between tags into phantom blank lines. */
+  white-space: normal;
+}
+.markdown p {
+  margin: 0 0 0.5rem;
+}
+.markdown :first-child {
+  margin-top: 0;
+}
+.markdown p:last-child {
+  margin-bottom: 0;
+}
+/* Tailwind's preflight strips list styling globally; restore it for
+   rendered prose so bullets and numbering actually show. */
+.markdown ul,
+.markdown ol {
+  margin: 0 0 0.5rem;
+  padding-left: 1.25rem;
+}
+.markdown ul {
+  list-style: disc;
+}
+.markdown ol {
+  list-style: decimal;
+}
+.markdown li {
+  margin: 0.1rem 0;
+}
+.markdown code {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85em;
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  padding: 0.1em 0.3em;
+  border-radius: var(--radius-chip);
+}
+.markdown pre {
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.6rem;
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  border-radius: var(--radius-chip);
+  overflow-x: auto;
+}
+.markdown pre code {
+  background: none;
+  padding: 0;
+}
+.markdown a {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3 {
+  margin: 0.4rem 0 0.3rem;
+  font-size: 1em;
+  font-weight: 600;
+}
+
+/* Spinner for in-flight refresh/explain icons (lucide svg gets the class). */
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
