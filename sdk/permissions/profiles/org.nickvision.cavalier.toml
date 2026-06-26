@@ -1,0 +1,5 @@
+# Starting permission profile for Cavalier (an audio visualizer).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "org.nickvision.cavalier"
+tier = "third-party"

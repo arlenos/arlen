@@ -1,0 +1,8 @@
+# Starting permission profile for Simple MPV Launcher (a video player launcher).
+# Plays videos from Videos; no network by function. No Knowledge Graph access.
+[info]
+app_id = "io.github.dyegoaurelio.simple-mpv-launcher"
+tier = "third-party"
+
+[filesystem]
+videos = true
