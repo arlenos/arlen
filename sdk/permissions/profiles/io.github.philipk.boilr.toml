@@ -1,0 +1,9 @@
+# Starting permission profile for BoilR (adds non-Steam games to Steam and fetches
+# their artwork). It downloads artwork from SteamGridDB over the network by function;
+# no Knowledge Graph and no broad filesystem grant by default.
+[info]
+app_id = "io.github.philipk.boilr"
+tier = "third-party"
+
+[network]
+allow_all = true

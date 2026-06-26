@@ -1,0 +1,6 @@
+# Starting permission profile for Soundux (a soundboard). It plays local sound files
+# through its own logic; no network, no Knowledge Graph and no broad filesystem grant
+# by default (it requests access to sound files via the portal on use).
+[info]
+app_id = "io.github.Soundux.soundux"
+tier = "third-party"

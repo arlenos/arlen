@@ -1,0 +1,6 @@
+# Starting permission profile for GDM Settings (a login-screen configuration tool). It
+# applies system GDM settings through a privileged helper (polkit) on demand; no
+# network, no Knowledge Graph and no broad filesystem grant by default.
+[info]
+app_id = "io.github.realmazharhussain.GdmSettings"
+tier = "third-party"
