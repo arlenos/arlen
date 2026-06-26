@@ -1,0 +1,8 @@
+# Starting permission profile for the Crosswords Editor (a crossword puzzle editor).
+# Saves puzzles in Documents; no network by function. No Knowledge Graph access.
+[info]
+app_id = "org.gnome.Crosswords.Editor"
+tier = "third-party"
+
+[filesystem]
+documents = true
