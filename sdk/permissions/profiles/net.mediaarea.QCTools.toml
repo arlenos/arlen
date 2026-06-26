@@ -1,0 +1,8 @@
+# Starting permission profile for QCTools (a video quality-analysis tool).
+# Analyses videos in Videos; no network by function. No Knowledge Graph access.
+[info]
+app_id = "net.mediaarea.QCTools"
+tier = "third-party"
+
+[filesystem]
+videos = true
