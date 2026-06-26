@@ -1,0 +1,6 @@
+# Starting permission profile for This Week in My Life (a weekly planner). Plans
+# are kept in the app's own storage; it needs no network, no user files and no
+# Knowledge Graph access.
+[info]
+app_id = "io.github.zhrexl.thisweekinmylife"
+tier = "third-party"
