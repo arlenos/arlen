@@ -18,7 +18,9 @@
     terminalInput,
     terminalResize,
     terminalSaveOutput,
+    terminalConfigGet,
   } from "$lib/contract";
+  import { matchZoom, zoomStep, type ZoomAction } from "$lib/zoom";
   // arlen-ui owns the look; we only wire it. The ITheme + font tokens make the
   // grid the Arlen palette (not bare black), and the block-chrome builders are
   // anchored to the OSC 133 marks below so the visible block frame is restored.
@@ -63,6 +65,21 @@
   let fit: FitAddon | undefined;
   let unlistenFrame: UnlistenFn | undefined;
   let resizeObserver: ResizeObserver | undefined;
+  // The persisted base font size (terminal config, §5b); zoom is a transient
+  // delta over it and Ctrl+0 resets back to it. Loaded on mount, the const is
+  // the pre-config fallback.
+  let baseFontSize = TERMINAL_FONT_SIZE;
+
+  // Apply a zoom shortcut to the live grid: a transient font-size change (not
+  // persisted - the base is the config's), re-fit so the grid + PTY reflow.
+  function applyZoom(action: ZoomAction): void {
+    if (!term || !fit) return;
+    const current = term.options.fontSize ?? baseFontSize;
+    const next = action === "reset" ? baseFontSize : zoomStep(current, action);
+    if (next === current) return;
+    term.options.fontSize = next;
+    fit.fit();
+  }
 
   // Pull the bytes the engine buffered since the last drain and feed them to
   // xterm.js. Called on every `terminal://frame` pulse (the engine signals it
@@ -418,6 +435,19 @@
     loadRenderer(t);
     registerBlockChrome(t);
 
+    // Zoom shortcuts (§5b): Ctrl +/-/0 adjust the font size and must NOT reach the
+    // PTY (Ctrl+- is a control byte to the shell otherwise). A non-zoom key is
+    // passed through (return true) so xterm handles it normally.
+    t.attachCustomKeyEventHandler((e) => {
+      if (e.type !== "keydown") return true;
+      const action = matchZoom(e);
+      if (!action) return true;
+      // Swallow it from the PTY AND the webview's own Ctrl+/-/0 zoom.
+      e.preventDefault();
+      applyZoom(action);
+      return false;
+    });
+
     // The grid IS the keystroke target now (not a textbox): xterm.js emits the
     // UTF-8 input string, the engine writes it to the PTY master.
     t.onData((d) => void terminalInput(sessionId, d));
@@ -443,7 +473,19 @@
     // it). Once the face is ready, size the grid to the host - the onResize above
     // syncs the PTY - start observing container resizes, and drain whatever the
     // engine already buffered before this view attached.
-    void document.fonts.ready.then(() => {
+    void document.fonts.ready.then(async () => {
+      if (!term || !fit) return;
+      // Apply the persisted base font size (§5b) before sizing the grid - the
+      // const was only the pre-config fallback. A failed/absent read keeps it.
+      try {
+        const cfg = await terminalConfigGet();
+        if (Number.isFinite(cfg.font_size) && cfg.font_size > 0) {
+          baseFontSize = cfg.font_size;
+          if (term) term.options.fontSize = cfg.font_size;
+        }
+      } catch {
+        /* keep the fallback size */
+      }
       if (!term || !fit) return;
       fit.fit();
       // Pin the cell to an INTEGER css-pixel advance so every column lands on an

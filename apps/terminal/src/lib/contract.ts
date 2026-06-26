@@ -215,6 +215,25 @@ export async function terminalProjects(): Promise<Project[]> {
   return invoke<Project[]>("terminal_projects");
 }
 
+/// The persisted terminal config (terminal-ui-plan.md §5b). `font_size` is the
+/// base monospace size in px the grid renders at; the daemon clamps it.
+export interface TerminalConfig {
+  font_size: number;
+}
+
+/// Read the persisted base font size (the daemon falls back to its default when
+/// the config is absent or invalid).
+export async function terminalConfigGet(): Promise<TerminalConfig> {
+  return invoke<TerminalConfig>("terminal_config_get");
+}
+
+/// Persist the base font size (the Settings UI; the daemon clamps it to a
+/// readable range). Zoom shortcuts apply a transient delta over this base and do
+/// not call this.
+export async function terminalConfigSet(fontSize: number): Promise<void> {
+  await invoke("terminal_config_set", { fontSize });
+}
+
 /// Reads the AI capability context; null when the backend is
 /// unreachable (the composer strip renders that state distinctly).
 export async function readCapability(): Promise<Capability | null> {
