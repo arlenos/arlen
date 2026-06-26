@@ -1,0 +1,8 @@
+# Starting permission profile for wxMaxima (a computer algebra worksheet editor).
+# Edits worksheets in Documents; no network by function. No graph.
+[info]
+app_id = "net.sourceforge.maxima.wxMaxima"
+tier = "third-party"
+
+[filesystem]
+documents = true
