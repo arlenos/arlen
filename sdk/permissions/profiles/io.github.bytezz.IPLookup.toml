@@ -1,0 +1,8 @@
+# Starting permission profile for IP Lookup.
+# Queries IP/domain information over the network by function. No graph.
+[info]
+app_id = "io.github.bytezz.IPLookup"
+tier = "third-party"
+
+[network]
+allow_all = true

@@ -1,0 +1,8 @@
+# Starting permission profile for KGraphViewer (a Graphviz DOT viewer).
+# Views graph documents in Documents; no network by function. No graph.
+[info]
+app_id = "org.kde.kgraphviewer"
+tier = "third-party"
+
+[filesystem]
+documents = true

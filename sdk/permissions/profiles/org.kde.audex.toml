@@ -1,0 +1,8 @@
+# Starting permission profile for Audex (an audio CD ripper).
+# Saves ripped tracks to Music; no network by function. No Knowledge Graph access.
+[info]
+app_id = "org.kde.audex"
+tier = "third-party"
+
+[filesystem]
+music = true

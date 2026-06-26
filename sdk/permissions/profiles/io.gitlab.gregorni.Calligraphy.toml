@@ -1,0 +1,5 @@
+# Starting permission profile for Calligraphy (an ASCII-art banner generator).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "io.gitlab.gregorni.Calligraphy"
+tier = "third-party"

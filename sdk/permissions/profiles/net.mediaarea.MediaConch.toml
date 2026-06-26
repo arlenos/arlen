@@ -1,0 +1,8 @@
+# Starting permission profile for MediaConch (a media conformance checker).
+# Analyses media files in Videos; no network by function. No graph.
+[info]
+app_id = "net.mediaarea.MediaConch"
+tier = "third-party"
+
+[filesystem]
+videos = true
