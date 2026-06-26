@@ -1,0 +1,30 @@
+[package]
+name = "arlen-viewers"
+version = "0.1.0"
+description = "Arlen OS Quick Look viewer app"
+authors = ["Arlen"]
+edition = "2021"
+
+[lib]
+name = "arlen_viewers_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-arlen-shell = { path = "../../../sdk/tauri-plugin-shell" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+env_logger = "0.11"
+# The sandboxed decode dispatch: detect a file's format, spawn its decoder in a
+# bwrap jail, read back the validated raster (quickview-plan.md). The host pulls in
+# the core types + the decode-worker invocation.
+arlen-viewers-host = { path = "../host" }
+arlen-viewers-core = { path = "../core" }
+
+# This app is its own standalone crate (its decode workers + host carry their own
+# `[workspace]`), so it is not a member of any parent workspace.
+[workspace]
