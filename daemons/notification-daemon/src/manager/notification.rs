@@ -3,6 +3,7 @@
 /// Coordinates between D-Bus input, DND evaluation, rate limiting,
 /// storage, and client broadcasting.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use audit_proto::AuditSink;
@@ -17,6 +18,7 @@ use crate::dnd::{DndState, SuppressResult};
 use crate::manager::grouping::derive_group_key;
 use crate::manager::rate_limiter::RateLimiter;
 use crate::manager::validation::sanitize_input;
+use crate::sound::{self, NullSoundPlayer, SoundPlayer};
 use crate::storage::Database;
 
 /// Central coordinator for the notification daemon.
@@ -34,6 +36,14 @@ pub struct NotificationManager {
     /// down ledger logs and is skipped rather than dropping the notification.
     /// `None` in tests and when no sink is attached.
     audit: Option<Arc<dyn AuditSink>>,
+    /// Notification-cue playback seam. The headless default
+    /// ([`NullSoundPlayer`]) runs the resolve + should-play pipeline without an
+    /// audio device; the metal PipeWire backend is injected via
+    /// [`with_sound_player`](Self::with_sound_player).
+    player: Arc<dyn SoundPlayer>,
+    /// The `.../sounds` theme base directories searched for a cue's file, in
+    /// lookup precedence ([`sound::default_sound_roots`]).
+    sound_roots: Vec<PathBuf>,
 }
 
 impl NotificationManager {
@@ -52,6 +62,8 @@ impl NotificationManager {
             events,
             fullscreen_queue: Mutex::new(Vec::new()),
             audit: None,
+            player: Arc::new(NullSoundPlayer),
+            sound_roots: sound::default_sound_roots(),
         }
     }
 
@@ -59,6 +71,14 @@ impl NotificationManager {
     /// production `LedgerAuditSink`; left `None` it audits nothing.
     pub fn with_audit(mut self, audit: Arc<dyn AuditSink>) -> Self {
         self.audit = Some(audit);
+        self
+    }
+
+    /// Replace the headless [`NullSoundPlayer`] with a real backend (the metal
+    /// PipeWire player). Left unset, the daemon runs the full cue pipeline but
+    /// plays nothing, so cue logic is exercised without an audio device.
+    pub fn with_sound_player(mut self, player: Arc<dyn SoundPlayer>) -> Self {
+        self.player = player;
         self
     }
 
@@ -141,7 +161,7 @@ impl NotificationManager {
 
         // 6. Evaluate DND/app rules BEFORE storage so `enabled = false`
         // and `DndMode::Total` can cleanly drop the notification.
-        let (suppress_result, history_enabled) = {
+        let (suppress_result, history_enabled, sound_config) = {
             let config = self.config.lock().await;
             let app_override = config.apps.get(&input.app_name).cloned();
 
@@ -154,7 +174,7 @@ impl NotificationManager {
             let dnd_state = self.dnd_state.lock().await;
             let result =
                 dnd_state.should_suppress(&notification, &config.dnd, app_override.as_ref());
-            (result, config.history.enabled)
+            (result, config.history.enabled, config.sound.clone())
         };
 
         // 7. Persist unless Drop, OR history is disabled entirely.
@@ -212,6 +232,20 @@ impl NotificationManager {
             }
             SuppressResult::Drop => {
                 tracing::debug!(id, %group_key, "notification dropped (blocked)");
+            }
+        }
+
+        // 9. Sound cue. The `cue_should_play` gate encodes the whole policy (only
+        // a shown notification sounds, never when muted or at zero volume), so
+        // the call is unconditional here and the gate decides - keeping the
+        // play-or-not decision in the one tested function rather than splitting it
+        // across the dispatch arms. A low-urgency notification maps to no cue at
+        // all (`sound_event_for_notification` returns `None`). Resolution is cheap
+        // filesystem logic; the player's `play` is non-blocking by contract.
+        if let Some(event) = sound::sound_event_for_notification(urgency, category) {
+            if sound::cue_should_play(suppress_result, sound_config.muted, sound_config.volume) {
+                let resolution = sound::resolve_cue(event, &sound_config, &self.sound_roots);
+                self.player.play(&resolution);
             }
         }
 
@@ -349,6 +383,43 @@ mod tests {
 
         // Should NOT have broadcast.
         assert!(rx.try_recv().is_err());
+    }
+
+    /// A `SoundPlayer` that counts `play` calls, so a test can assert the cue
+    /// pipeline fired (or did not) without an audio device.
+    struct CountingPlayer(Arc<std::sync::atomic::AtomicUsize>);
+    impl SoundPlayer for CountingPlayer {
+        fn play(&self, _resolution: &crate::sound::SoundResolution) {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_shown_normal_notification_plays_a_cue_but_low_urgency_and_muted_do_not() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        // Normal urgency, default config (unmuted, full volume): the cue plays.
+        let plays = Arc::new(AtomicUsize::new(0));
+        let (mgr, _rx) = make_manager().await;
+        let mgr = mgr.with_sound_player(Arc::new(CountingPlayer(plays.clone())));
+        mgr.handle_notify(1, "App", "", "Hi", "", &[], 1, "", -1, true).await;
+        assert_eq!(plays.load(Ordering::SeqCst), 1, "a shown normal notification sounds");
+
+        // Low urgency maps to no cue at all.
+        mgr.handle_notify(2, "App", "", "Hi", "", &[], 0, "", -1, true).await;
+        assert_eq!(plays.load(Ordering::SeqCst), 1, "low urgency stays silent");
+
+        // Muted globally: the gate refuses even a normal arrival.
+        let plays = Arc::new(AtomicUsize::new(0));
+        let db = Arc::new(Database::open_memory().await.unwrap());
+        let mut config = Config::default();
+        config.sound.muted = true;
+        let config = Arc::new(Mutex::new(config));
+        let (tx, _rx) = broadcast::channel(64);
+        let mgr = NotificationManager::new(db, config, tx)
+            .with_sound_player(Arc::new(CountingPlayer(plays.clone())));
+        mgr.handle_notify(1, "App", "", "Hi", "", &[], 1, "", -1, true).await;
+        assert_eq!(plays.load(Ordering::SeqCst), 0, "muted plays nothing");
     }
 
     #[tokio::test]
