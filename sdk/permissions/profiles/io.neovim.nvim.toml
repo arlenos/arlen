@@ -1,0 +1,12 @@
+# Starting permission profile for Neovim (a terminal code editor). A developer's
+# editor edits files across the home tree, shells out, and its plugin/LSP managers
+# fetch over the network, so both are granted by function. No Knowledge Graph access.
+[info]
+app_id = "io.neovim.nvim"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+[network]
+allow_all = true
