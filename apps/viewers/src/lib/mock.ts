@@ -37,6 +37,24 @@ export function mockPeaks(count = 180, seed = 7): number[] {
   return out;
 }
 
+/// One image file's view state (the decoded raster is the coder's backend; the
+/// mock stands in a gradient). Name + folder position drive the topbar + toast.
+export interface ImageMock {
+  /// File name, shown in the shell topbar and the transient nav toast.
+  name: string;
+  /// Position in the folder.
+  index: number;
+  /// Folder size.
+  total: number;
+}
+
+/// The image fixture the demo route renders.
+export const imageMock: ImageMock = {
+  name: "photo_2026_06.jpg",
+  index: 3,
+  total: 18,
+};
+
 /// The audio fixture the demo route renders.
 export const audioMock: AudioMock = {
   title: "Nightswim",
