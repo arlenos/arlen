@@ -1,0 +1,8 @@
+# Starting permission profile for Letterpress (an image-to-ASCII-art converter).
+# Reads images from Pictures; no network by function. No Knowledge Graph access.
+[info]
+app_id = "page.codeberg.gregorni.Letterpress"
+tier = "third-party"
+
+[filesystem]
+pictures = true

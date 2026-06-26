@@ -1,0 +1,5 @@
+# Starting permission profile for gtimelog (a time tracker).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "io.github.nokse22.gtimelog"
+tier = "third-party"
