@@ -1,0 +1,6 @@
+# Starting permission profile for Garden. Conservative start: no network, no Knowledge
+# Graph and no broad filesystem grant; any access is requested through the portal on
+# use, and the user widens this profile if the app needs more.
+[info]
+app_id = "garden.desktop.Garden"
+tier = "third-party"
