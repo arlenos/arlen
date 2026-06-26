@@ -48,12 +48,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // SQLite storage all run in one place.
     let (dbus_server, event_rx) = NotificationServer::new();
     let event_tx = dbus_server.event_sender();
-    let manager = Arc::new(
-        NotificationManager::new(db.clone(), config.clone(), event_tx.clone())
-            // GAP-2: each handled notification submits a content-free record
-            // (posting app + disposition, never the message) to arlen-auditd.
-            .with_audit(Arc::new(audit_proto::LedgerAuditSink::at_default_socket())),
-    );
+    let mut manager_builder = NotificationManager::new(db.clone(), config.clone(), event_tx.clone())
+        // GAP-2: each handled notification submits a content-free record
+        // (posting app + disposition, never the message) to arlen-auditd.
+        .with_audit(Arc::new(audit_proto::LedgerAuditSink::at_default_socket()));
+    // Play cues through the system audio CLI when one is installed; otherwise
+    // keep the headless logging player (the cue pipeline still runs).
+    match arlen_notification_daemon::sound::SystemSoundPlayer::discover() {
+        Some(player) => {
+            tracing::info!("sound cues will play via the system audio CLI");
+            manager_builder = manager_builder.with_sound_player(Arc::new(player));
+        }
+        None => tracing::info!("no system audio CLI found; sound cues resolve but stay silent"),
+    }
+    let manager = Arc::new(manager_builder);
     dbus_server.set_manager(manager.clone());
 
     // 4. Start D-Bus server.

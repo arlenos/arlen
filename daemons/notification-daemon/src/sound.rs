@@ -254,21 +254,23 @@ pub fn sound_event_for_notification(urgency: u8, category: &str) -> Option<Sound
 /// is a later increment implementing this same `play`.
 ///
 /// `play` must not block the caller (it is called on the notification dispatch
-/// path): a real backend decodes + submits to the audio server on its own task.
+/// path): a real backend submits to the audio server and returns immediately.
+/// `volume` is the `0.0..=1.0` master volume (already gated `> 0` by
+/// [`cue_should_play`]); a backend that cannot scale volume ignores it.
 pub trait SoundPlayer: Send + Sync {
-    /// Play `resolution`. A [`SoundResolution::Silenced`] or
+    /// Play `resolution` at `volume`. A [`SoundResolution::Silenced`] or
     /// [`SoundResolution::NotFound`] is a no-op (the cue resolved to silence).
-    fn play(&self, resolution: &SoundResolution);
+    fn play(&self, resolution: &SoundResolution, volume: f32);
 }
 
 /// The headless default player: it logs the resolved cue and plays nothing, so
 /// the daemon runs the full resolve + should-play + cue-name pipeline in CI and
-/// on a machine with no audio server. The metal PipeWire backend replaces it via
-/// [`NotificationManager::with_sound_player`](crate::manager::NotificationManager::with_sound_player).
+/// on a machine with no audio tool. [`SystemSoundPlayer`] replaces it when a play
+/// command is present.
 pub struct NullSoundPlayer;
 
 impl SoundPlayer for NullSoundPlayer {
-    fn play(&self, resolution: &SoundResolution) {
+    fn play(&self, resolution: &SoundResolution, _volume: f32) {
         match resolution {
             SoundResolution::File(path) => {
                 tracing::debug!(path = %path.display(), "sound cue resolved (no audio backend wired)");
@@ -279,9 +281,171 @@ impl SoundPlayer for NullSoundPlayer {
     }
 }
 
+/// How to invoke a discovered play command (the volume argument differs per
+/// tool; `Canberra`/`Aplay` cannot scale, so they ignore it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlayerKind {
+    /// `pw-play --volume <0.0..1.0> <file>` - the PipeWire CLI (ships with
+    /// PipeWire, the project's audio server).
+    PwPlay,
+    /// `paplay --volume <0..65536> <file>` - the PulseAudio/pipewire-pulse CLI.
+    PaPlay,
+    /// `canberra-gtk-play -f <file>` - the freedesktop sound CLI (no volume).
+    Canberra,
+    /// `aplay -q <file>` - ALSA, WAV only, last resort (no volume).
+    Aplay,
+}
+
+impl PlayerKind {
+    /// The candidate commands in preference order (PipeWire-native first).
+    const CANDIDATES: [(&'static str, PlayerKind); 4] = [
+        ("pw-play", PlayerKind::PwPlay),
+        ("paplay", PlayerKind::PaPlay),
+        ("canberra-gtk-play", PlayerKind::Canberra),
+        ("aplay", PlayerKind::Aplay),
+    ];
+
+    /// The argument vector to play `file` at `volume` (`0.0..=1.0`).
+    fn args(self, file: &Path, volume: f32) -> Vec<std::ffi::OsString> {
+        let v = volume.clamp(0.0, 1.0);
+        match self {
+            PlayerKind::PwPlay => vec![
+                "--volume".into(),
+                format!("{v:.3}").into(),
+                file.into(),
+            ],
+            PlayerKind::PaPlay => vec![
+                "--volume".into(),
+                ((v * 65536.0).round() as u32).to_string().into(),
+                file.into(),
+            ],
+            PlayerKind::Canberra => vec!["-f".into(), file.into()],
+            PlayerKind::Aplay => vec!["-q".into(), file.into()],
+        }
+    }
+}
+
+/// Plays a cue by spawning the system audio CLI (`pw-play` first, then
+/// `paplay` / `canberra-gtk-play` / `aplay`) with the resolved file - the
+/// freedesktop-standard approach, so the daemon needs no in-process decoder or
+/// audio-server binding. The spawned child is reaped on a blocking task, so the
+/// dispatch path is never blocked and no zombie is left. The actual audio only
+/// verifies on a machine with a sound server (metal); the discovery + argument
+/// build are unit-tested.
+pub struct SystemSoundPlayer {
+    command: PathBuf,
+    kind: PlayerKind,
+}
+
+impl SystemSoundPlayer {
+    /// Discover a play command on `$PATH`, or `None` if none is installed (the
+    /// daemon then keeps [`NullSoundPlayer`]).
+    pub fn discover() -> Option<Self> {
+        let path = std::env::var_os("PATH")?;
+        Self::select(&PlayerKind::CANDIDATES, |name| find_in_path(name, &path))
+    }
+
+    /// Pick the first candidate that `lookup` resolves to a binary. Pure, so the
+    /// preference order is unit-tested with a fake lookup.
+    fn select(
+        candidates: &[(&str, PlayerKind)],
+        lookup: impl Fn(&str) -> Option<PathBuf>,
+    ) -> Option<Self> {
+        candidates.iter().find_map(|(name, kind)| {
+            lookup(name).map(|command| Self { command, kind: *kind })
+        })
+    }
+}
+
+impl SoundPlayer for SystemSoundPlayer {
+    fn play(&self, resolution: &SoundResolution, volume: f32) {
+        let SoundResolution::File(file) = resolution else {
+            return;
+        };
+        let mut cmd = std::process::Command::new(&self.command);
+        cmd.args(self.kind.args(file, volume))
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        match cmd.spawn() {
+            Ok(mut child) => {
+                // Reap on a blocking task so the dispatch path is not blocked by
+                // playback and the daemon leaves no zombie. `play` is always
+                // called from the tokio dispatch path, so a runtime is present.
+                tokio::task::spawn_blocking(move || {
+                    let _ = child.wait();
+                });
+            }
+            Err(e) => tracing::debug!("sound play spawn failed: {e}"),
+        }
+    }
+}
+
+/// Find an executable `name` on the `$PATH`-shaped `path` value, returning the
+/// first `dir/name` that exists. (A plain existence check, not a full
+/// executable-bit test; a non-executable shadow would surface as a spawn error.)
+fn find_in_path(name: &str, path: &std::ffi::OsStr) -> Option<PathBuf> {
+    std::env::split_paths(path)
+        .map(|dir| dir.join(name))
+        .find(|candidate| candidate.is_file())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
+
+    #[test]
+    fn the_system_player_prefers_pw_play_then_falls_down_the_chain() {
+        // Only paplay + aplay present: paplay (higher in the order) wins.
+        let present = ["paplay", "aplay"];
+        let player = SystemSoundPlayer::select(&PlayerKind::CANDIDATES, |name| {
+            present.contains(&name).then(|| PathBuf::from(format!("/usr/bin/{name}")))
+        })
+        .expect("a player is selected");
+        assert_eq!(player.kind, PlayerKind::PaPlay);
+        assert_eq!(player.command, PathBuf::from("/usr/bin/paplay"));
+
+        // pw-play present: it wins outright.
+        let player = SystemSoundPlayer::select(&PlayerKind::CANDIDATES, |name| {
+            (name == "pw-play").then(|| PathBuf::from("/usr/bin/pw-play"))
+        })
+        .unwrap();
+        assert_eq!(player.kind, PlayerKind::PwPlay);
+
+        // Nothing installed: no player.
+        assert!(SystemSoundPlayer::select(&PlayerKind::CANDIDATES, |_| None).is_none());
+    }
+
+    #[test]
+    fn the_play_args_carry_the_file_and_per_tool_volume() {
+        let file = Path::new("/usr/share/sounds/freedesktop/stereo/bell.oga");
+        // pw-play takes a 0..1 float; full volume.
+        let a = PlayerKind::PwPlay.args(file, 1.0);
+        assert_eq!(a[0], "--volume");
+        assert_eq!(a[1], "1.000");
+        assert_eq!(a[2], file);
+        // paplay takes 0..65536; half volume rounds to 32768.
+        let a = PlayerKind::PaPlay.args(file, 0.5);
+        assert_eq!(a[0], "--volume");
+        assert_eq!(a[1], "32768");
+        // canberra/aplay carry no volume, just the file.
+        assert_eq!(PlayerKind::Canberra.args(file, 0.5), vec![OsString::from("-f"), file.into()]);
+        assert_eq!(PlayerKind::Aplay.args(file, 0.5), vec![OsString::from("-q"), file.into()]);
+    }
+
+    #[test]
+    fn find_in_path_locates_a_binary_in_a_path_dir() {
+        let dir = std::env::temp_dir().join(format!("arlen-sound-path-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("pw-play");
+        std::fs::write(&bin, b"#!/bin/true\n").unwrap();
+        let path = std::env::join_paths([PathBuf::from("/nonexistent-xyz"), dir.clone()]).unwrap();
+        assert_eq!(find_in_path("pw-play", &path), Some(bin));
+        assert_eq!(find_in_path("nope-not-here", &path), None);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     use crate::dnd::state::SuppressResult;
     use std::fs;
     use tempfile::TempDir;
