@@ -1,0 +1,5 @@
+# Starting permission profile for Khronos (a time tracker).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "io.github.lainsce.Khronos"
+tier = "third-party"
