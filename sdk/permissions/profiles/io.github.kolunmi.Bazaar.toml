@@ -1,0 +1,9 @@
+# Starting permission profile for Bazaar (a Flatpak application browser/store). It
+# browses and installs Flatpaks over the network by function; the installs go
+# through the system service, not the user's files, so no filesystem or graph access.
+[info]
+app_id = "io.github.kolunmi.Bazaar"
+tier = "third-party"
+
+[network]
+allow_all = true
