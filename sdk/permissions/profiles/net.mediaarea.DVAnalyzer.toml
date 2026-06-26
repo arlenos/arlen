@@ -1,0 +1,8 @@
+# Starting permission profile for DV Analyzer (a DV video analysis tool).
+# Analyses video files in Videos; no network by function. No graph.
+[info]
+app_id = "net.mediaarea.DVAnalyzer"
+tier = "third-party"
+
+[filesystem]
+videos = true
