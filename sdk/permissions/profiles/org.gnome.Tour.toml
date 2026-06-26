@@ -1,0 +1,5 @@
+# Starting permission profile for GNOME Tour (the welcome tour).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "org.gnome.Tour"
+tier = "third-party"

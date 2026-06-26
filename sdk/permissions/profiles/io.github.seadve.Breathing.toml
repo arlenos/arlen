@@ -1,0 +1,5 @@
+# Starting permission profile for Breathing (a breathing-exercise app).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "io.github.seadve.Breathing"
+tier = "third-party"

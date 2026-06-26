@@ -1,0 +1,5 @@
+# Starting permission profile for Dippi (a display-DPI calculator).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "io.github.cassidyjames.dippi"
+tier = "third-party"
