@@ -1,0 +1,9 @@
+# Starting permission profile for WiVRn (an OpenXR streaming server for standalone
+# VR headsets). It streams to a headset over the local network; network is its
+# function. No user files by default and no Knowledge Graph access.
+[info]
+app_id = "io.github.wivrn.wivrn"
+tier = "third-party"
+
+[network]
+allow_all = true
