@@ -1,0 +1,6 @@
+# Starting permission profile for MangoJuice (a MangoHud configuration GUI). It edits
+# the local MangoHud overlay config through its own logic; no network, no Knowledge
+# Graph, and no broad filesystem grant by default.
+[info]
+app_id = "io.github.radiolamp.mangojuice"
+tier = "third-party"
