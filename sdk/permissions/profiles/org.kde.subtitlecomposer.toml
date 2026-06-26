@@ -1,0 +1,8 @@
+# Starting permission profile for Subtitle Composer (a subtitle editor).
+# Edits subtitles for videos in Videos; no network by function. No graph.
+[info]
+app_id = "org.kde.subtitlecomposer"
+tier = "third-party"
+
+[filesystem]
+videos = true

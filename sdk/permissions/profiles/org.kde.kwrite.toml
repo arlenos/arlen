@@ -1,0 +1,8 @@
+# Starting permission profile for KWrite (a text editor).
+# Edits documents; no network by function. No Knowledge Graph access.
+[info]
+app_id = "org.kde.kwrite"
+tier = "third-party"
+
+[filesystem]
+documents = true

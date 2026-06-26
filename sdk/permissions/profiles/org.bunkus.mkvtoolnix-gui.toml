@@ -1,0 +1,8 @@
+# Starting permission profile for MKVToolNix GUI (a Matroska muxer/editor).
+# Reads and writes video files in Videos; no network by function. No graph.
+[info]
+app_id = "org.bunkus.mkvtoolnix-gui"
+tier = "third-party"
+
+[filesystem]
+videos = true

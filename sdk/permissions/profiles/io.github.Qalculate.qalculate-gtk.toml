@@ -1,0 +1,5 @@
+# Starting permission profile for Qalculate! (a calculator).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "io.github.Qalculate.qalculate-gtk"
+tier = "third-party"

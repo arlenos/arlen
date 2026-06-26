@@ -1,0 +1,8 @@
+# Starting permission profile for Atril (a document viewer).
+# Views documents in Documents; no network by function. No Knowledge Graph access.
+[info]
+app_id = "net.sourceforge.atril"
+tier = "third-party"
+
+[filesystem]
+documents = true
