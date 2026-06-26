@@ -1,0 +1,8 @@
+# Starting permission profile for Recordbox (a music player).
+# Plays the local music library; no network by function. No graph.
+[info]
+app_id = "ca.edestcroix.Recordbox"
+tier = "third-party"
+
+[filesystem]
+music = true

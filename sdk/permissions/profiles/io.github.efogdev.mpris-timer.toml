@@ -1,0 +1,5 @@
+# Starting permission profile for mpris-timer (a visual timer).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "io.github.efogdev.mpris-timer"
+tier = "third-party"
