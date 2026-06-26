@@ -1,0 +1,12 @@
+# Starting permission profile for BlackBox (a terminal emulator). Like any terminal it
+# runs an interactive shell in the user's environment, so it needs the home tree and
+# the network its commands use, granted by function. No Knowledge Graph access.
+[info]
+app_id = "com.raggesilver.BlackBox"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+[network]
+allow_all = true
