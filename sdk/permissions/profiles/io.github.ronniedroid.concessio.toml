@@ -1,0 +1,5 @@
+# Starting permission profile for Concessio (a file-permissions calculator).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "io.github.ronniedroid.concessio"
+tier = "third-party"

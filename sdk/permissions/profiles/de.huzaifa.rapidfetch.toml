@@ -1,0 +1,5 @@
+# Starting permission profile for RapidFetch (a system-info viewer).
+# Reads system info only; no user files, network, or Knowledge Graph access.
+[info]
+app_id = "de.huzaifa.rapidfetch"
+tier = "third-party"

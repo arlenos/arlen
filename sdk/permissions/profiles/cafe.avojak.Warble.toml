@@ -1,0 +1,5 @@
+# Starting permission profile for Warble (a word game).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "cafe.avojak.Warble"
+tier = "third-party"

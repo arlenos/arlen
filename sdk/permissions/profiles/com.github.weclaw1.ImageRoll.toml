@@ -1,0 +1,8 @@
+# Starting permission profile for ImageRoll (an image viewer). Pictures, no
+# network, no graph.
+[info]
+app_id = "com.github.weclaw1.ImageRoll"
+tier = "third-party"
+
+[filesystem]
+pictures = true

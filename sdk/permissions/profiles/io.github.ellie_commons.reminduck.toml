@@ -1,0 +1,5 @@
+# Starting permission profile for Reminduck (a reminder app).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "io.github.ellie_commons.reminduck"
+tier = "third-party"

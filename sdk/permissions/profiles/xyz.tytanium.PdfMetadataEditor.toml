@@ -1,0 +1,8 @@
+# Starting permission profile for PDF Metadata Editor. Edits PDFs in Documents;
+# no network by function. No Knowledge Graph access.
+[info]
+app_id = "xyz.tytanium.PdfMetadataEditor"
+tier = "third-party"
+
+[filesystem]
+documents = true
