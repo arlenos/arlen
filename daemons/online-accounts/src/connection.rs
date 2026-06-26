@@ -73,6 +73,12 @@ pub struct SavedConnection {
 /// `pass` at render time. `ProxyJump` is intentionally not mapped: rclone's sftp
 /// backend has no jump-host parameter, so a bastion is carried at the SSH transport
 /// layer (ControlMaster), not in the rclone descriptor.
+///
+/// NB the SSH `Host` alias is copied verbatim into the connection `id` and is NOT
+/// validated as a safe path component (an alias like `../x` is a legal ssh alias,
+/// not a wildcard). A consumer that turns this id into a filesystem path MUST route
+/// it through [`mount_point_for`](crate::mount::mount_point_for), which rejects a
+/// traversal component; the config path already pins its id to the file stem.
 pub fn from_ssh_host(host: &SshHost) -> SavedConnection {
     SavedConnection {
         id: host.alias.clone(),

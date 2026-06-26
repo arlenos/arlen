@@ -330,18 +330,28 @@ fn is_safe_method(path: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'/' | b'.' | b'-'))
 }
 
-/// Quote one rclone connection-string parameter value. rclone's parser unquotes a
-/// double-quoted value and treats a doubled `""` as a literal quote, so a value that
-/// could otherwise be read as structure (a `,` starting a new parameter, a `:` ending
-/// the parameter section, a `"`, surrounding whitespace, or an empty value) is wrapped
-/// in `"..."` with inner quotes doubled. A value of only safe characters is emitted
+/// Quote one rclone connection-string parameter value. rclone's parser opens a
+/// quoted value when it STARTS with `'` or `"` (both quote chars, with `''`/`""`
+/// doubling for a literal), treats a `,` as starting a new parameter and a `:` as
+/// ending the parameter section, and trims surrounding ASCII whitespace from an
+/// unquoted value. So a value that could be read as structure - empty, leading `'`
+/// or `"`, edge whitespace, an embedded `,`/`"`/`:`, or an ASCII control char - is
+/// wrapped in `"..."` with inner `"` doubled (a leading `'` or control char inside
+/// the `"..."` wrapper is then literal). A value of only safe characters is emitted
 /// raw (rclone accepts it unquoted). This is what stops a hostile or odd credential /
-/// host value from breaking out of its slot into another parameter.
+/// host value from breaking out of its slot.
 fn quote_conn_value(value: &str) -> String {
     let needs_quote = value.is_empty()
-        || value.starts_with(' ')
-        || value.ends_with(' ')
-        || value.contains([',', '"', ':']);
+        // rclone opens a quoted value on a leading quote char (single OR double),
+        // so a value starting with `'` would otherwise swallow following parameters.
+        || value.starts_with(['\'', '"'])
+        // edge whitespace would be trimmed from an unquoted value (any ASCII ws, not
+        // only space), so quote to carry the value verbatim.
+        || value.starts_with(|c: char| c.is_ascii_whitespace())
+        || value.ends_with(|c: char| c.is_ascii_whitespace())
+        // structural in the parameter section, or a stray control char.
+        || value.contains([',', '"', ':'])
+        || value.contains(|c: char| c.is_ascii_control());
     if !needs_quote {
         return value.to_string();
     }
@@ -357,7 +367,19 @@ fn quote_conn_value(value: &str) -> String {
 /// (deterministic output) and every value is quoted per [`quote_conn_value`] so a
 /// credential or host value cannot inject an extra parameter. `path` is the remote
 /// path within the backend (often empty for a mount root).
+///
+/// `backend` MUST be a trusted backend identifier (a fixed `[a-z0-9]+` literal like
+/// `sftp`): it is concatenated raw, so a `,`/`:` in it would itself inject structure.
+/// Every caller passes a [`ConnectionBackend::rclone_name`](crate::connection::ConnectionBackend)
+/// literal; the debug assertion guards against a future untrusted caller.
 pub fn rclone_connection_string(backend: &str, params: &[(&str, &str)], path: &str) -> String {
+    debug_assert!(
+        !backend.is_empty()
+            && backend
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()),
+        "rclone backend must be a trusted [a-z0-9]+ literal, got {backend:?}"
+    );
     let mut out = String::from(":");
     out.push_str(backend);
     for (key, value) in params {
@@ -410,6 +432,30 @@ mod conn_tests {
     fn an_inner_quote_is_doubled() {
         let s = rclone_connection_string("sftp", &[("pass", "a\"b")], "");
         assert_eq!(s, ":sftp,pass=\"a\"\"b\":");
+    }
+
+    #[test]
+    fn a_value_starting_with_a_quote_char_is_quoted() {
+        // rclone opens a quoted value on a leading `'` (or `"`); an un-quoted leading
+        // `'` would swallow the following parameters and the path `:`. Quoting keeps
+        // it in its slot (the `'` is literal inside the `"..."` wrapper).
+        assert_eq!(
+            rclone_connection_string("sftp", &[("user", "'odd"), ("port", "22")], ""),
+            ":sftp,user=\"'odd\",port=22:"
+        );
+        assert_eq!(
+            rclone_connection_string("sftp", &[("user", "\"q")], ""),
+            ":sftp,user=\"\"\"q\":"
+        );
+    }
+
+    #[test]
+    fn control_chars_and_edge_whitespace_are_quoted() {
+        // A leading tab would be trimmed from an unquoted value; a control char is
+        // quoted defensively. Neither is a breakout, but the rendered value stays
+        // faithful.
+        assert_eq!(rclone_connection_string("b", &[("k", "\tv")], ""), ":b,k=\"\tv\":");
+        assert_eq!(rclone_connection_string("b", &[("k", "a\nb")], ""), ":b,k=\"a\nb\":");
     }
 
     #[test]
