@@ -83,6 +83,7 @@ mod tests {
             presentation: None,
             services: vec![Service::Files, Service::Calendar],
             grants,
+            files: None,
         }
     }
 
