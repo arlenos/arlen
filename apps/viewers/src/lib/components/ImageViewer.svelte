@@ -131,7 +131,9 @@
     <Button variant="ghost" size="icon-sm" aria-label="Zoom out" onclick={() => setZoom(zoom / 1.25)}>
       <ZoomOut class="size-[16px]" strokeWidth={2} />
     </Button>
-    <button class="level" aria-label="Reset to fit" onclick={resetFit}>{pct}%</button>
+    <Button variant="ghost" size="sm" class="level" aria-label="Reset to fit" onclick={resetFit}>
+      {pct}%
+    </Button>
     <Button variant="ghost" size="icon-sm" aria-label="Zoom in" onclick={() => setZoom(zoom * 1.25)}>
       <ZoomIn class="size-[16px]" strokeWidth={2} />
     </Button>
@@ -267,17 +269,8 @@
     background: color-mix(in srgb, var(--color-fg-primary, #fafafa) 12%, transparent);
     margin: 0 4px;
   }
-  .dock .level {
-    border: none;
-    background: transparent;
-    color: var(--color-fg-primary, #fafafa);
-    cursor: pointer;
-    font-size: 12px;
+  .dock :global(.level) {
     font-variant-numeric: tabular-nums;
-    padding: 0 4px;
-    min-width: 40px;
-  }
-  .dock .level:hover {
-    color: var(--color-fg-secondary, #a1a1aa);
+    min-width: 44px;
   }
 </style>
