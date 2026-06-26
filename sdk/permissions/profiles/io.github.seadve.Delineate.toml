@@ -1,0 +1,8 @@
+# Starting permission profile for Delineate (a Graphviz/DOT viewer). It opens DOT
+# documents the user picks; no network and no Knowledge Graph access.
+[info]
+app_id = "io.github.seadve.Delineate"
+tier = "third-party"
+
+[filesystem]
+documents = true
