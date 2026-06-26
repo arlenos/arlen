@@ -19,7 +19,8 @@ use crate::ssh_config::SshHost;
 /// §8.2 coverage grows here as each backend's parameter mapping is added; today the
 /// SSH-is-also-SFTP path (`sftp`) plus `ftp` and `webdav` are mapped (their rclone
 /// parameter names verified against `rclone help backend`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ConnectionBackend {
     /// SSH/SFTP (`sftp`): `host`/`user`/`port`/`key_file`/`pass`.
     Sftp,

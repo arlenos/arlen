@@ -11,6 +11,8 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+use crate::connection::{ConnectionBackend, SavedConnection};
+
 /// A typed account service. A consumer requests only the interface it needs (the
 /// file manager -> `Files`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -75,6 +77,38 @@ pub struct Grant {
     pub scope: Option<String>,
 }
 
+/// The `[files]` mount backend for an account's `Files` service: the non-secret
+/// endpoint intent for the rclone-mounted drive (§8.1). `deny_unknown_fields` keeps
+/// the no-secrets rule structural here too - a `pass`/`secret`/`password` key is
+/// rejected, so the credential is never read from the config; it is injected at
+/// mount time from the vault. Field use is per [`backend`](FilesBackend::backend):
+/// `sftp`/`ftp` use `host`/`port`/`user` (sftp also `key_file`), `webdav` uses
+/// `url`/`user`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FilesBackend {
+    /// Which mount backend (`sftp` / `ftp` / `webdav`).
+    pub backend: ConnectionBackend,
+    /// The host to dial (`sftp`/`ftp`).
+    #[serde(default)]
+    pub host: Option<String>,
+    /// The TCP port (`sftp`/`ftp`); rclone defaults it when absent.
+    #[serde(default)]
+    pub port: Option<u16>,
+    /// The login user.
+    #[serde(default)]
+    pub user: Option<String>,
+    /// The SFTP private-key path.
+    #[serde(default)]
+    pub key_file: Option<String>,
+    /// The WebDAV endpoint URL.
+    #[serde(default)]
+    pub url: Option<String>,
+    /// The remote path within the backend (empty for the mount root).
+    #[serde(default)]
+    pub path: Option<String>,
+}
+
 /// One account's intent. No secrets (see the module doc).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -94,6 +128,29 @@ pub struct AccountConfig {
     /// The per-app capability grants (`[[grant]]` blocks).
     #[serde(default, rename = "grant")]
     pub grants: Vec<Grant>,
+    /// The `[files]` mount backend, when this account offers a mountable drive.
+    #[serde(default)]
+    pub files: Option<FilesBackend>,
+}
+
+impl AccountConfig {
+    /// The mountable [`SavedConnection`] this account's `[files]` backend describes,
+    /// or `None` when it declares no `[files]` section. The descriptor carries no
+    /// secret (§8.1); the credential is injected at mount time. The account `id` is
+    /// the connection id, so the mount is reached by the same stable id everywhere.
+    pub fn files_connection(&self) -> Option<SavedConnection> {
+        let f = self.files.as_ref()?;
+        Some(SavedConnection {
+            id: self.id.clone(),
+            backend: f.backend,
+            host: f.host.clone(),
+            port: f.port,
+            user: f.user.clone(),
+            key_file: f.key_file.clone(),
+            url: f.url.clone(),
+            path: f.path.clone().unwrap_or_default(),
+        })
+    }
 }
 
 /// An error loading one account config.
@@ -221,6 +278,62 @@ mod tests {
             provider = "google"
             identity = "me@gmail.com"
             access_token = "ya29.SECRET"
+        "#;
+        let err = parse_account(Path::new("/x/x.toml"), toml).unwrap_err();
+        assert!(matches!(err, ConfigError::Parse(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn a_files_backend_parses_into_a_saved_connection() {
+        let toml = r#"
+            id = "home-nas"
+            provider = "nextcloud"
+            identity = "me@nas.local"
+            services = ["files"]
+
+            [files]
+            backend = "sftp"
+            host = "nas.local"
+            port = 2222
+            user = "me"
+            key_file = "~/.ssh/nas"
+            path = "share"
+        "#;
+        let a = parse_account(Path::new("/x/home-nas.toml"), toml).unwrap();
+        let c = a.files_connection().expect("a files connection");
+        assert_eq!(c.id, "home-nas");
+        assert_eq!(c.backend, ConnectionBackend::Sftp);
+        assert_eq!(c.host.as_deref(), Some("nas.local"));
+        assert_eq!(c.port, Some(2222));
+        assert_eq!(c.key_file.as_deref(), Some("~/.ssh/nas"));
+        // The descriptor renders to the inline fs the mount uses; key-file auth, no pass.
+        assert_eq!(
+            c.to_connection_string(None),
+            ":sftp,host=nas.local,user=me,port=2222,key_file=~/.ssh/nas:share"
+        );
+    }
+
+    #[test]
+    fn an_account_without_a_files_section_has_no_connection() {
+        let toml = "id = \"x\"\nprovider = \"google\"\nidentity = \"a@b.c\"\n";
+        let a = parse_account(Path::new("/x/x.toml"), toml).unwrap();
+        assert!(a.files_connection().is_none());
+    }
+
+    #[test]
+    fn a_secret_in_the_files_section_is_rejected_structurally() {
+        // The no-secrets rule holds at the backend level too: a password key in
+        // [files] cannot be parsed in (deny_unknown_fields), so the credential is
+        // never read from config - it is injected at mount time from the vault.
+        let toml = r#"
+            id = "x"
+            provider = "nextcloud"
+            identity = "a@b.c"
+
+            [files]
+            backend = "sftp"
+            host = "h"
+            pass = "hunter2"
         "#;
         let err = parse_account(Path::new("/x/x.toml"), toml).unwrap_err();
         assert!(matches!(err, ConfigError::Parse(_)), "got {err:?}");
