@@ -1,0 +1,6 @@
+# Starting permission profile for DistroShelf (a Distrobox container manager). It
+# orchestrates host containers through the host-spawn portal, so it needs no broad
+# filesystem grant, no network and no Knowledge Graph access of its own by default.
+[info]
+app_id = "com.ranfdev.DistroShelf"
+tier = "third-party"
