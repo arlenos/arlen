@@ -73,6 +73,74 @@ fn probe_audio(path: String) -> Result<AudioInfoDto, String> {
     })
 }
 
+/// Resolve an XDG base dir from `env_var`, else `$HOME/<fallback>`.
+fn xdg_base(env_var: &str, fallback: &str) -> PathBuf {
+    if let Some(v) = std::env::var_os(env_var) {
+        if !v.is_empty() {
+            return PathBuf::from(v);
+        }
+    }
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    home.join(fallback)
+}
+
+/// Handle the `--register-default-handler` / `--unregister-default-handler`
+/// subcommands: register THIS viewer binary as the default xdg handler for the media
+/// MIME types (so image/audio open in the viewer, not the browser), or revert it.
+/// Returns `true` if a subcommand ran (so `main` exits instead of opening a window).
+///
+/// The xdg mimeapps list is USER-GLOBAL (`~/.config/mimeapps.list`) - it affects
+/// EVERY desktop session until reverted, not just a dev session - so the register
+/// backs the list up first and the unregister restores that backup. For dogfooding,
+/// reversible by design.
+pub fn handle_default_handler_args() -> bool {
+    let register = std::env::args().any(|a| a == "--register-default-handler");
+    let unregister = std::env::args().any(|a| a == "--unregister-default-handler");
+    if !register && !unregister {
+        return false;
+    }
+
+    let apps_dir = xdg_base("XDG_DATA_HOME", ".local/share").join("applications");
+    let mimeapps = xdg_base("XDG_CONFIG_HOME", ".config").join("mimeapps.list");
+    let backup = PathBuf::from(format!("{}.arlen-viewer-bak", mimeapps.display()));
+    let desktop = apps_dir.join(arlen_viewers_host::mimeapps::DESKTOP_FILE);
+
+    if register {
+        if mimeapps.exists() && !backup.exists() {
+            if let Err(e) = std::fs::copy(&mimeapps, &backup) {
+                eprintln!("could not back up {}: {e}", mimeapps.display());
+                return true;
+            }
+        }
+        let exec = std::env::current_exe()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| "arlen-viewers".to_string());
+        match arlen_viewers_host::mimeapps::register_default_handler(&apps_dir, &mimeapps, &exec) {
+            Ok(()) => println!(
+                "registered the Arlen Viewer as the default handler for image + audio types.\n\
+                 NB ~/.config/mimeapps.list is user-global (every session) until reverted; backed up to {}.\n\
+                 revert with: arlen-viewers --unregister-default-handler",
+                backup.display()
+            ),
+            Err(e) => eprintln!("failed to register the default handler: {e}"),
+        }
+    } else {
+        if backup.exists() {
+            match std::fs::copy(&backup, &mimeapps).and_then(|_| std::fs::remove_file(&backup)) {
+                Ok(_) => println!("restored {} from the backup", mimeapps.display()),
+                Err(e) => eprintln!("failed to restore {}: {e}", mimeapps.display()),
+            }
+        } else {
+            eprintln!("no Arlen Viewer backup found; left {} unchanged", mimeapps.display());
+        }
+        let _ = std::fs::remove_file(&desktop);
+        println!("removed the Arlen Viewer .desktop entry");
+    }
+    true
+}
+
 /// Tauri entry point (invoked from `main.rs`).
 pub fn run() {
     env_logger::init();
