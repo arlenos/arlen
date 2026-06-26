@@ -1,0 +1,6 @@
+# Starting permission profile for Text Pieces (offline text transforms). It works
+# on text in its own buffer; no network, no user files and no Knowledge Graph
+# access.
+[info]
+app_id = "com.github.liferooter.textpieces"
+tier = "third-party"

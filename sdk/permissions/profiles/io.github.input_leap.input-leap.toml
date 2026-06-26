@@ -1,0 +1,9 @@
+# Starting permission profile for Input Leap (shares one keyboard and mouse across
+# machines over the network). Network is its function; no user files by default
+# and no Knowledge Graph access.
+[info]
+app_id = "io.github.input_leap.input-leap"
+tier = "third-party"
+
+[network]
+allow_all = true
