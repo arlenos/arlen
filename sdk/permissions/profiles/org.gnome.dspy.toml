@@ -1,0 +1,5 @@
+# Starting permission profile for D-Spy (a D-Bus inspector).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "org.gnome.dspy"
+tier = "third-party"

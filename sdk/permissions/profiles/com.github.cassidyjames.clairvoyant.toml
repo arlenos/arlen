@@ -1,0 +1,5 @@
+# Starting permission profile for Clairvoyant (a fortune-teller novelty app).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "com.github.cassidyjames.clairvoyant"
+tier = "third-party"
