@@ -1,0 +1,9 @@
+# Starting permission profile for SGDBoop (a SteamGridDB artwork helper). It fetches
+# artwork from SteamGridDB over the network by function; no Knowledge Graph and no
+# broad filesystem grant by default.
+[info]
+app_id = "com.steamgriddb.SGDBoop"
+tier = "third-party"
+
+[network]
+allow_all = true
