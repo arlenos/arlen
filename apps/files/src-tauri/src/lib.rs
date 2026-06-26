@@ -1029,7 +1029,7 @@ fn recent_to_entry(rf: &RecentFile) -> FileEntry {
         kind: EntryKind::File,
         size: None,
         // micros → secs; a negative/absent (0) accessed time becomes None.
-        modified_unix: (rf.accessed > 0).then(|| (rf.accessed / 1_000_000) as u64),
+        modified_unix: (rf.accessed > 0).then_some((rf.accessed / 1_000_000) as u64),
         readonly: false,
         symlink_target: None,
         full_path: Some(rf.path.clone()),
