@@ -1,0 +1,9 @@
+# Starting permission profile for KTailctl (a Tailscale tray/GUI client). It talks
+# to the local Tailscale daemon and the tailnet over the network by function; it
+# manages the VPN connection, not the user's files, so no filesystem or graph access.
+[info]
+app_id = "org.fkoehler.KTailctl"
+tier = "third-party"
+
+[network]
+allow_all = true

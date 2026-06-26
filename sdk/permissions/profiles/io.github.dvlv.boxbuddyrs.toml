@@ -1,0 +1,9 @@
+# Starting permission profile for BoxBuddy (a Distrobox manager). It creates and
+# manages Distrobox containers and pulls their images over the network by function;
+# it operates on containers, not the user's files, so no filesystem or graph access.
+[info]
+app_id = "io.github.dvlv.boxbuddyrs"
+tier = "third-party"
+
+[network]
+allow_all = true
