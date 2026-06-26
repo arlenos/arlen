@@ -191,11 +191,11 @@ pub async fn collect_file_accesses(graph: &GraphHandle) -> anyhow::Result<Vec<Fi
 
 /// Infer candidate project clusters from the graph's access history (foundation
 /// §4.2). Reads the cross-session access pattern from `ACCESSED_IN` and runs the
-/// deterministic [`cluster_cooccurrence`]. The materialisation of these
-/// candidates into inferred `Project` nodes is the next step (it must derive a
-/// root from the cluster's common path prefix and dedup against files already in
-/// a project, so it does not collide with the signal-detected projects the
-/// watcher mints).
+/// deterministic [`cluster_cooccurrence`]. [`materialize_clusters`] turns these
+/// candidates into inferred `Project` nodes (deriving a root from the cluster's
+/// common path prefix and deduping against files already in a project, so it does
+/// not collide with the signal-detected projects the watcher mints); [`run`]
+/// drives both as the periodic background pass.
 pub async fn infer_clusters(
     graph: &GraphHandle,
     params: ClusterParams,
