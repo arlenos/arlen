@@ -13,3 +13,4 @@ pub mod manager;
 pub mod socket;
 pub mod sound;
 pub mod storage;
+pub mod synth;
