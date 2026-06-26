@@ -1,0 +1,6 @@
+# Starting permission profile for Planner (a task/to-do manager). It stores tasks
+# locally and can sync to a provider when the user enables it; the narrowest start
+# grants nothing - network for sync and any file access come via the portal on use.
+[info]
+app_id = "io.github.alainm23.planner"
+tier = "third-party"

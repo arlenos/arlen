@@ -1,0 +1,6 @@
+# Starting permission profile for Aurea. Conservative start: no network, no Knowledge
+# Graph and no broad filesystem grant; access is portal-mediated on use, and the user
+# widens this profile if the app needs more.
+[info]
+app_id = "io.github.cleomenezesjr.Aurea"
+tier = "third-party"

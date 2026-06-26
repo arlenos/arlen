@@ -1,0 +1,6 @@
+# Starting permission profile for Refine (an advanced GNOME settings/tweaks tool). It
+# edits desktop settings through the settings portal/dconf; no network, no Knowledge
+# Graph, and no broad filesystem grant by default.
+[info]
+app_id = "page.tesk.Refine"
+tier = "third-party"
