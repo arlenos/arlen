@@ -8,9 +8,9 @@
 //! closes GAP-15; the daemon APPLIES it at the `GetAccessToken` handout (the method
 //! carries a `requested_scope` argument, an amplification is refused with
 //! `AccessDenied` and audited content-free, and the caller is PID-reuse-guarded). The
-//! remaining CONN-R2 work - short-lived derived tokens and on-process-exit revocation
-//! - needs the proxy-token model (the broker holding a derivable token rather than
-//! passing the vault token through), a separate slice.
+//! remaining CONN-R2 work (short-lived derived tokens and on-process-exit revocation)
+//! needs the proxy-token model - the broker holding a derivable token rather than
+//! passing the vault token through - which is a separate slice.
 
 use std::collections::BTreeSet;
 
