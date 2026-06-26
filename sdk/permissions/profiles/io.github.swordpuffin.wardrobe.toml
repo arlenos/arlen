@@ -1,0 +1,9 @@
+# Starting permission profile for Wardrobe (a GTK theme installer). It downloads
+# themes, so it gets network; writing them into the theme directory is a
+# portal-mediated refinement. No Knowledge Graph access.
+[info]
+app_id = "io.github.swordpuffin.wardrobe"
+tier = "third-party"
+
+[network]
+allow_all = true
