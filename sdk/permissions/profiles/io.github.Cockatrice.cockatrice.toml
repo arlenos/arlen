@@ -1,0 +1,8 @@
+# Starting permission profile for Cockatrice (an online card-game client).
+# Plays over the network by function. No Knowledge Graph access.
+[info]
+app_id = "io.github.Cockatrice.cockatrice"
+tier = "third-party"
+
+[network]
+allow_all = true
