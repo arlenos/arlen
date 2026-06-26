@@ -1,0 +1,9 @@
+# Starting permission profile for Ludusavi (a game-save backup tool). It scans and
+# backs up game saves located across the home tree, so it gets the home filesystem
+# by function; no network and no Knowledge Graph access.
+[info]
+app_id = "com.github.mtkennerly.ludusavi"
+tier = "third-party"
+
+[filesystem]
+home = true
