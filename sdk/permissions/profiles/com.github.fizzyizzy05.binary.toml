@@ -1,0 +1,5 @@
+# Starting permission profile for Binary (a number-base converter).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "com.github.fizzyizzy05.binary"
+tier = "third-party"
