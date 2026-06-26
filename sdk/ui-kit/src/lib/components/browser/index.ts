@@ -13,7 +13,7 @@ export { default as FileRow } from "./FileRow.svelte";
 export { default as Breadcrumb } from "./Breadcrumb.svelte";
 export { default as PlacesSidebar } from "./PlacesSidebar.svelte";
 export { createBrowserState, type BrowserState, type ViewMode } from "./controller";
-export { breadcrumb } from "./breadcrumb";
+export { breadcrumb, isVirtualLocation, locationCrumbs } from "./breadcrumb";
 export { Selection } from "./selection";
 export { entryIcon, placeIcon } from "./icons";
 export { formatModified, formatSize } from "./format";

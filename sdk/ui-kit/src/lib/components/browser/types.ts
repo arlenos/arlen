@@ -17,6 +17,17 @@ export interface FileEntry {
   is_hidden: boolean;
   readonly: boolean;
   symlink_target: string | null;
+  /// The entry's own absolute path, set ONLY for a virtual-location listing
+  /// (Recent / Trash / project / search) where each entry lives in a different
+  /// directory, not under one browsed folder - the bridge back to the item's
+  /// real home (the "Reveal in containing folder" action every virtual location
+  /// offers). null/absent for a normal folder listing. For Trash this is the
+  /// ORIGINAL path. Additive + backward-compat.
+  full_path?: string | null;
+  /// An opaque per-entry token a location-specific action needs that the path
+  /// alone cannot supply - currently the Trash trashed name, which Restore /
+  /// Delete-forever pass back. null/absent for any normal entry. Additive.
+  restore_token?: string | null;
 }
 
 /// One breadcrumb segment (core::Crumb).
