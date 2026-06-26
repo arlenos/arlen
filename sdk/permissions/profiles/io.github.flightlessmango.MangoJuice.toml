@@ -1,0 +1,6 @@
+# Starting permission profile for MangoJuice (a MangoHud overlay config GUI). It
+# edits the overlay config in its own config directory; no broad filesystem grant,
+# no network and no Knowledge Graph access.
+[info]
+app_id = "io.github.flightlessmango.MangoJuice"
+tier = "third-party"
