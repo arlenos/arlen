@@ -1,0 +1,9 @@
+# Starting permission profile for TextSnatcher (a screen OCR tool). It captures a
+# region through the screenshot portal and copies recognised text to the
+# clipboard; no network, no user files and no Knowledge Graph access.
+[info]
+app_id = "com.rajsolai.textsnatcher"
+tier = "third-party"
+
+[clipboard]
+write = true

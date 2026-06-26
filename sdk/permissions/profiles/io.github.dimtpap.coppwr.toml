@@ -1,0 +1,6 @@
+# Starting permission profile for coppwr (a low-level PipeWire control GUI). It
+# talks to PipeWire over the audio socket; no network, no user files and no
+# Knowledge Graph access.
+[info]
+app_id = "io.github.dimtpap.coppwr"
+tier = "third-party"

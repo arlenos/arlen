@@ -1,0 +1,6 @@
+# Starting permission profile for Cartridges (a game launcher). It lists and
+# launches already-installed games through its own grant; no network, no user
+# files and no Knowledge Graph access.
+[info]
+app_id = "hu.kramo.Cartridges"
+tier = "third-party"

@@ -1,0 +1,6 @@
+# Starting permission profile for Trayscale (a Tailscale tray GUI). It controls
+# the local tailscaled over its own API socket, so it needs no profile network
+# grant, no user files and no Knowledge Graph access.
+[info]
+app_id = "dev.deedles.Trayscale"
+tier = "third-party"

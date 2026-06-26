@@ -1,0 +1,8 @@
+# Starting permission profile for Bitstream (an internet speed test). Network is
+# its function; no user files and no Knowledge Graph access.
+[info]
+app_id = "io.github.giantpinkrobots.bitstream"
+tier = "third-party"
+
+[network]
+allow_all = true

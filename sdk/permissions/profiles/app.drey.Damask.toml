@@ -1,0 +1,11 @@
+# Starting permission profile for Damask (a wallpaper-of-the-day app). It fetches
+# wallpapers online and saves them to Pictures; no Knowledge Graph access.
+[info]
+app_id = "app.drey.Damask"
+tier = "third-party"
+
+[filesystem]
+pictures = true
+
+[network]
+allow_all = true
