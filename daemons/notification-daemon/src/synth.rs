@@ -14,6 +14,9 @@
 
 use serde::Deserialize;
 use std::f32::consts::{PI, TAU};
+use std::fs;
+use std::io;
+use std::path::Path;
 
 /// The oscillator waveform.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
@@ -345,9 +348,62 @@ pub fn to_wav16(pcm: &[f32], sample_rate: u32) -> Vec<u8> {
     v
 }
 
+/// A safe filename component for a cue. The freedesktop event names are
+/// `[a-z0-9-]`, but guard regardless so a cue name can never traverse or escape the
+/// theme directory (defense in depth over the theme's own inert floor). Returns the
+/// name unchanged if safe, else `None` (the caller skips it).
+fn safe_cue_name(name: &str) -> Option<&str> {
+    if name.is_empty()
+        || name.len() > 128
+        || name == "."
+        || name == ".."
+        || name.contains("..")
+    {
+        return None;
+    }
+    name.chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        .then_some(name)
+}
+
+/// Render named synth cues to a freedesktop sound-theme directory: one
+/// `<name>.wav` per cue plus an `index.theme`, so a synthesised theme is a REAL XDG
+/// sound theme the resolver + playback path consume like any sample theme (this
+/// connects SO-R4's engine to SO-R1's `resolve_sound`). Cue names are validated as
+/// safe filename components (no `/`, no `..`), so a hostile theme cannot write
+/// outside `dir`; an unsafe name is skipped, not an error. `theme_name` is stripped
+/// of newlines so it cannot inject extra `index.theme` keys. Returns the number of
+/// cues actually written.
+pub fn render_synth_theme(
+    dir: &Path,
+    theme_name: &str,
+    cues: &[(String, SynthParams)],
+    sample_rate: u32,
+) -> io::Result<usize> {
+    fs::create_dir_all(dir)?;
+    let mut written = 0usize;
+    for (name, params) in cues {
+        let Some(safe) = safe_cue_name(name) else {
+            continue;
+        };
+        let pcm = synthesize(params, sample_rate);
+        let wav = to_wav16(&pcm, sample_rate);
+        fs::write(dir.join(format!("{safe}.wav")), wav)?;
+        written += 1;
+    }
+    let name = theme_name.replace(['\n', '\r'], " ");
+    let index = format!(
+        "[Sound Theme]\nName={name}\nComment=Arlen synthesised sound theme\nDirectories=.\n"
+    );
+    fs::write(dir.join("index.theme"), index)?;
+    Ok(written)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sound::{resolve_sound, SoundResolution};
+    use tempfile::TempDir;
 
     const SR: u32 = 48_000;
 
@@ -466,5 +522,60 @@ mod tests {
         assert_eq!(p.waveform, Waveform::Triangle);
         assert_eq!(p.freq_hz, 880.0);
         assert_eq!(p.duration_ms, default_duration_ms());
+    }
+
+    #[test]
+    fn render_synth_theme_writes_cues_and_index() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("arlen-synth");
+        let cues = vec![
+            ("bell".to_string(), SynthParams::default()),
+            ("error".to_string(), SynthParams { freq_hz: 220.0, ..SynthParams::default() }),
+        ];
+        let n = render_synth_theme(&dir, "Arlen Synth", &cues, SR).unwrap();
+        assert_eq!(n, 2);
+        assert!(dir.join("bell.wav").is_file());
+        assert!(dir.join("error.wav").is_file());
+        let index = std::fs::read_to_string(dir.join("index.theme")).unwrap();
+        assert!(index.contains("[Sound Theme]"));
+        assert!(index.contains("Name=Arlen Synth"));
+    }
+
+    #[test]
+    fn rendered_synth_theme_resolves_through_the_xdg_resolver() {
+        // The materializer (SO-R4) must produce a theme SO-R1's resolve_sound finds.
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        let cues = vec![("message-new-instant".to_string(), SynthParams::default())];
+        render_synth_theme(&root.join("arlen-synth"), "Arlen Synth", &cues, SR).unwrap();
+        match resolve_sound(&[root], "arlen-synth", "message-new-instant") {
+            SoundResolution::File(p) => assert_eq!(p.extension().and_then(|e| e.to_str()), Some("wav")),
+            other => panic!("expected a resolved file, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_traversing_cue_name_is_skipped_not_written_outside() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("theme");
+        let cues = vec![
+            ("../escape".to_string(), SynthParams::default()),
+            ("ok".to_string(), SynthParams::default()),
+        ];
+        let n = render_synth_theme(&dir, "t", &cues, SR).unwrap();
+        assert_eq!(n, 1, "the traversing name is skipped");
+        assert!(dir.join("ok.wav").is_file());
+        // Nothing escaped to the parent.
+        assert!(!tmp.path().join("escape.wav").exists());
+    }
+
+    #[test]
+    fn safe_cue_name_rejects_traversal_and_separators() {
+        assert!(safe_cue_name("dialog-error").is_some());
+        assert!(safe_cue_name("message_new.instant").is_some());
+        assert!(safe_cue_name("../x").is_none());
+        assert!(safe_cue_name("a/b").is_none());
+        assert!(safe_cue_name("..").is_none());
+        assert!(safe_cue_name("").is_none());
     }
 }
