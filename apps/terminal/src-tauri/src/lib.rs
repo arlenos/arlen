@@ -260,19 +260,39 @@ fn spawn_frame_pump(app: &AppHandle, id: &str, engine: &PtyEngine) {
     let _ = std::thread::Builder::new()
         .name("arlen-term-frame-pump".into())
         .spawn(move || {
-            while rx.recv().is_ok() {
-                while rx.try_recv().is_ok() {}
-                if app.emit("terminal://frame", &id).is_err() {
+            use std::sync::mpsc::RecvTimeoutError;
+            loop {
+                // Poll the notifier with a timeout rather than blocking on `recv`
+                // forever: the exit must be detected even if the final pulse never
+                // reaches us - the shell can exit in the window before the notifier
+                // is installed, or a pulse can be missed - and a plain blocking
+                // `recv` would then hang here, so the window would never close (the
+                // `exit`-freezes-the-terminal bug). Polling `exited` every 100ms
+                // bounds the close even with no pulse.
+                let pulsed = match rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                    Ok(()) => {
+                        while rx.try_recv().is_ok() {}
+                        true
+                    }
+                    Err(RecvTimeoutError::Timeout) => false,
+                    Err(RecvTimeoutError::Disconnected) => break,
+                };
+                // On a pulse, emit the frame (the shell's latest output, including
+                // its last line before exit) before checking for the exit.
+                if pulsed && app.emit("terminal://frame", &id).is_err() {
                     break;
                 }
-                // The reader pulses once more when the shell exits; emit the final
-                // frame above (the shell's last output), then signal the exit so
-                // the page closes the window instead of hanging on the dead PTY.
+                // The reader sets `exited` and pulses once when the shell ends; signal
+                // the exit so the page closes the window instead of hanging on the
+                // dead PTY. Checked every iteration (pulse or timeout) so a missed
+                // pulse still closes the window within the poll interval.
                 if exited.load(std::sync::atomic::Ordering::Relaxed) {
                     let _ = app.emit("terminal://exited", &id);
                     break;
                 }
-                std::thread::sleep(std::time::Duration::from_millis(16));
+                if pulsed {
+                    std::thread::sleep(std::time::Duration::from_millis(16));
+                }
             }
         });
 }
