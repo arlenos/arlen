@@ -35,7 +35,7 @@
 </script>
 
 <ContextMenu.Root>
-  <ContextMenu.Trigger>{@render children()}</ContextMenu.Trigger>
+  <ContextMenu.Trigger class="term-grid-trigger">{@render children()}</ContextMenu.Trigger>
   <ContextMenu.Content class="w-60">
     <ContextMenu.Item onclick={actions.runAgain} disabled={!actions.runAgain}>
       Run again

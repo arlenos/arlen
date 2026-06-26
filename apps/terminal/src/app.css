@@ -366,10 +366,24 @@ textarea,
   }
 }
 
+/* The block context menu wraps the grid in a kit ContextMenu.Trigger (a div). That
+   trigger sits between the .stream flex item and the host, so it must carry the full
+   height down or the host's fill resolves against the trigger's content height and
+   the grid stops at ~half the window (#10). A filling flex column does it - the same
+   fill the file manager gives its .fm-browse trigger. */
+.term-grid-trigger {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 /* The xterm.js render host fills its console box (the grid sizes to it via the
    FitAddon). Lives here, not in a scoped Terminal.svelte <style>, so the
-   component has no per-component style module. */
+   component has no per-component style module. A flex child of the trigger above
+   so it fills the full height (not a percentage against an auto-height ancestor). */
 .terminal-host {
   width: 100%;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
