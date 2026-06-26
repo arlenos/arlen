@@ -214,6 +214,20 @@ mod tests {
     }
 
     #[test]
+    fn the_256_palette_and_bright_named_colours_map_to_indexed_cells() {
+        // 256-colour SGR (38;5;N) -> palette index N, so the theme's 256-colour
+        // table renders it rather than a named/default fallback.
+        let mut s = Screen::new(10, 1);
+        s.process(b"\x1b[38;5;208mO");
+        assert_eq!(snapshot_fg(&s), CellColor::Indexed(208));
+        // A bright named colour (SGR 91 = bright red) maps to the upper ANSI half
+        // (index 9), exercising the Named first-16 arm above the basic 0-7.
+        let mut s = Screen::new(10, 1);
+        s.process(b"\x1b[91mR");
+        assert_eq!(snapshot_fg(&s), CellColor::Indexed(9), "SGR 91 is bright red (index 9)");
+    }
+
+    #[test]
     fn the_alternate_screen_is_detected_and_restored() {
         let mut s = Screen::new(20, 4);
         assert!(!s.alt_screen(), "primary screen is not alternate");
