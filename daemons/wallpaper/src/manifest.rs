@@ -284,4 +284,28 @@ mod tests {
         .unwrap();
         assert_eq!(m.transition(), MAX_TRANSITION);
     }
+
+    #[test]
+    fn a_per_monitor_override_with_a_bad_asset_is_rejected() {
+        // validate() walks the per-monitor sources too, not only the default, so a
+        // control-bearing override asset must fail closed.
+        assert_eq!(
+            WallpaperManifest::parse(
+                "kind=\"image\"\n[default]\nasset=\"ok.png\"\nscale=\"fill\"\n[per_monitor.\"DP-1\"]\nasset=\"x\\u0007y\"\nscale=\"fill\""
+            ),
+            Err(ManifestError::ControlInAsset)
+        );
+    }
+
+    #[test]
+    fn a_dynamic_variant_with_a_bad_asset_is_rejected() {
+        // validate() walks each variant source, so an empty variant asset must
+        // fail closed even when the default is fine.
+        assert_eq!(
+            WallpaperManifest::parse(
+                "kind=\"dynamic\"\n[default]\nasset=\"day.png\"\nscale=\"fill\"\n[[variants]]\nphase=\"night\"\n[variants.source]\nasset=\"\"\nscale=\"fill\""
+            ),
+            Err(ManifestError::EmptyAsset)
+        );
+    }
 }
