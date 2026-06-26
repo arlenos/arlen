@@ -1,0 +1,6 @@
+# Starting permission profile for KDiskMark (a disk benchmark). It writes its test
+# data to a target the user picks through the portal, so it needs no broad
+# filesystem grant, no network and no Knowledge Graph access.
+[info]
+app_id = "org.kde.kdiskmark"
+tier = "third-party"

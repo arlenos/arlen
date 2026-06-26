@@ -1,0 +1,9 @@
+# Starting permission profile for SSH Pilot (an SSH connection manager). Reaching
+# remote hosts is its function, so it gets network; key/file access beyond the
+# connection is a portal-mediated refinement. No Knowledge Graph access.
+[info]
+app_id = "io.github.mfat.sshpilot"
+tier = "third-party"
+
+[network]
+allow_all = true
