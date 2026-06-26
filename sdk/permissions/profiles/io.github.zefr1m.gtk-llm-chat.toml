@@ -1,0 +1,9 @@
+# Starting permission profile for GTK LLM Chat (a chat client for LLM providers). It
+# reaches the configured model API over the network by function; no Knowledge Graph
+# and no broad filesystem grant by default.
+[info]
+app_id = "io.github.zefr1m.gtk-llm-chat"
+tier = "third-party"
+
+[network]
+allow_all = true

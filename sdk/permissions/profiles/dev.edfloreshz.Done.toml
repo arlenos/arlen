@@ -1,0 +1,6 @@
+# Starting permission profile for Done (a task manager). It stores tasks locally and
+# can sync to a provider when the user enables it; the narrowest start grants nothing
+# - network for sync and any file access come through the portal on use.
+[info]
+app_id = "dev.edfloreshz.Done"
+tier = "third-party"

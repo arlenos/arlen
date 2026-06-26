@@ -1,0 +1,6 @@
+# Starting permission profile for BottleSnap. Conservative start: no network, no
+# Knowledge Graph and no broad filesystem grant; access is portal-mediated on use and
+# the user widens this profile if the app needs more.
+[info]
+app_id = "io.github.fizzyizzy05.bottlesnap"
+tier = "third-party"
