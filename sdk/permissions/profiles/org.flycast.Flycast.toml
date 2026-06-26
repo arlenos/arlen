@@ -1,0 +1,9 @@
+# Starting permission profile for Flycast (a console/computer
+# emulator). It runs local game images; no network or Knowledge Graph access by
+# default. Game files live under Documents.
+[info]
+app_id = "org.flycast.Flycast"
+tier = "third-party"
+
+[filesystem]
+documents = true

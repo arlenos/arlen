@@ -1,0 +1,9 @@
+# Starting permission profile for GoNorth (a story/quest design tool for game
+# developers). It edits local design documents; no network or Knowledge Graph
+# access by default. Documents live in Documents.
+[info]
+app_id = "io.github.hmlendea.GoNorth"
+tier = "third-party"
+
+[filesystem]
+documents = true

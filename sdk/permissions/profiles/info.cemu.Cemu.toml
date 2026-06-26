@@ -1,0 +1,9 @@
+# Starting permission profile for Cemu (a console/computer
+# emulator). It runs local game images; no network or Knowledge Graph access by
+# default. Game files live under Documents.
+[info]
+app_id = "info.cemu.Cemu"
+tier = "third-party"
+
+[filesystem]
+documents = true
