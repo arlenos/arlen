@@ -495,6 +495,83 @@ fn terminal_save_output(content: String) -> Result<String, String> {
     Ok(path.to_string_lossy().into_owned())
 }
 
+/// Maximum bytes of a scoped inject payload, matching the harness mention reader's
+/// cap (`read_mention_file`, 64 KiB): a block is context, not a bulk upload, and a
+/// larger payload would be truncated on read anyway.
+const INJECT_MAX_BYTES: usize = 64 * 1024;
+
+/// Build the scoped markdown payload for a terminal block: the command and its
+/// output in a shell-fenced block, so the harness renders it verbatim as an
+/// `@`-mention. The output is capped to keep the whole payload within
+/// [`INJECT_MAX_BYTES`] on a UTF-8 boundary while the fence always closes. Pure.
+fn inject_payload(command: &str, output: &str) -> String {
+    let command = command.trim_end();
+    let output = output.trim_end();
+    // Reserve the fence + command, then cap the output to the remainder so even a
+    // huge block stays bounded and the markdown fence still closes.
+    let overhead = "```sh\n\n\n```\n".len() + command.len();
+    let room = INJECT_MAX_BYTES.saturating_sub(overhead);
+    let out = if output.len() <= room {
+        output
+    } else {
+        let mut cut = room;
+        while cut > 0 && !output.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        &output[..cut]
+    };
+    format!("```sh\n{command}\n{out}\n```\n")
+}
+
+/// The scoped one-shot directory for cross-app context-inject payloads, under the
+/// per-user runtime dir (tmpfs, mode 0700, cleaned on reboot) or the cache dir as
+/// a fallback when `XDG_RUNTIME_DIR` is unset.
+fn inject_dir() -> Option<PathBuf> {
+    if let Some(rt) = std::env::var_os("XDG_RUNTIME_DIR") {
+        return Some(PathBuf::from(rt).join("arlen").join("inject"));
+    }
+    let home = std::env::var_os("HOME")?;
+    Some(PathBuf::from(home).join(".cache").join("arlen").join("inject"))
+}
+
+/// Hand a finished block to the harness as a capability-scoped `@`-mention: write
+/// the command + output to a one-shot scoped payload (created 0600, under the
+/// per-user runtime dir) and launch/focus `arlen-harness --inject <path>`. The
+/// payload IS the grant (the user chose to share this block); pull-only, the
+/// harness reads it advisorily through its capped mention reader, no KG write.
+/// This is the cross-app scoped-context-inject convention (terminal.md §4.11): the
+/// terminal writes + launches, the harness receiver reads the `--inject` arg on
+/// launch/focus (single-instance). Best-effort - a spawn failure is surfaced so
+/// the menu entry can report it.
+#[tauri::command]
+fn terminal_inject_block(command: String, output: String) -> Result<(), String> {
+    use std::io::Write;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let dir = inject_dir().ok_or("no runtime directory")?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_nanos();
+    let path = dir.join(format!("terminal-block-{ts}.md"));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&path)
+        .map_err(|e| e.to_string())?;
+    file.write_all(inject_payload(&command, &output).as_bytes())
+        .map_err(|e| e.to_string())?;
+    std::process::Command::new("arlen-harness")
+        .arg("--inject")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| format!("launch harness: {e}"))?;
+    Ok(())
+}
+
 /// Tauri application entry point invoked from `main.rs`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -524,7 +601,8 @@ pub fn run() {
             terminal_projects,
             terminal_config_get,
             terminal_config_set,
-            terminal_save_output
+            terminal_save_output,
+            terminal_inject_block
         ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-terminal");
@@ -533,10 +611,27 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        clamp_font_size, default_font_size, load_config, projects_from_rows, save_config,
-        shell_candidates, TerminalConfig,
+        clamp_font_size, default_font_size, inject_payload, load_config, projects_from_rows,
+        save_config, shell_candidates, TerminalConfig, INJECT_MAX_BYTES,
     };
     use std::collections::HashMap;
+
+    #[test]
+    fn inject_payload_fences_command_and_output() {
+        let p = inject_payload("ls -la", "alpha\nbeta\n");
+        assert!(p.starts_with("```sh\nls -la\n"), "got {p}");
+        assert!(p.contains("alpha\nbeta"));
+        assert!(p.ends_with("```\n"));
+    }
+
+    #[test]
+    fn inject_payload_caps_a_huge_output_and_keeps_the_fence_closed() {
+        let big = "x".repeat(INJECT_MAX_BYTES * 3);
+        let p = inject_payload("cmd", &big);
+        assert!(p.len() <= INJECT_MAX_BYTES, "payload {} over cap", p.len());
+        assert!(p.starts_with("```sh\ncmd\n"));
+        assert!(p.ends_with("```\n"), "fence must still close after truncation");
+    }
 
     #[test]
     fn projects_map_rows_and_skip_incomplete_ones() {
