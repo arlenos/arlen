@@ -245,7 +245,7 @@ impl NotificationManager {
         if let Some(event) = sound::sound_event_for_notification(urgency, category) {
             if sound::cue_should_play(suppress_result, sound_config.muted, sound_config.volume) {
                 let resolution = sound::resolve_cue(event, &sound_config, &self.sound_roots);
-                self.player.play(&resolution);
+                self.player.play(&resolution, sound_config.volume);
             }
         }
 
@@ -389,7 +389,7 @@ mod tests {
     /// pipeline fired (or did not) without an audio device.
     struct CountingPlayer(Arc<std::sync::atomic::AtomicUsize>);
     impl SoundPlayer for CountingPlayer {
-        fn play(&self, _resolution: &crate::sound::SoundResolution) {
+        fn play(&self, _resolution: &crate::sound::SoundResolution, _volume: f32) {
             self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
     }
