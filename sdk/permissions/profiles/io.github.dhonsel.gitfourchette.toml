@@ -1,0 +1,9 @@
+# Starting permission profile for GitFourchette (a Git repository GUI). It browses
+# repos and their history under Documents; no network by default (remote
+# fetch/push is a deliberate opt-in) and no Knowledge Graph access.
+[info]
+app_id = "io.github.dhonsel.gitfourchette"
+tier = "third-party"
+
+[filesystem]
+documents = true

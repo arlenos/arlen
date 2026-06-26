@@ -1,0 +1,6 @@
+# Starting permission profile for Raider (a secure file-shredder). It overwrites
+# the files the user picks, granted per-file through the portal on use, so it
+# needs no broad filesystem grant, no network and no Knowledge Graph access.
+[info]
+app_id = "com.github.ADBeveridge.Raider"
+tier = "third-party"
