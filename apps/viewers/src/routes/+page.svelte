@@ -7,7 +7,8 @@
   import { page } from "$app/state";
   import AudioPlayer from "$lib/components/AudioPlayer.svelte";
   import ImageViewer from "$lib/components/ImageViewer.svelte";
-  import { audioMock, imageMock } from "$lib/mock";
+  import VideoViewer from "$lib/components/VideoViewer.svelte";
+  import { audioMock, imageMock, videoMock } from "$lib/mock";
 
   let demo = $derived(page.url.searchParams.get("demo") ?? "audio");
   let w = $derived(Number(page.url.searchParams.get("w")));
@@ -20,6 +21,8 @@
     <AudioPlayer file={audioMock} />
   {:else if d === "image"}
     <ImageViewer file={imageMock} />
+  {:else if d === "video"}
+    <VideoViewer file={videoMock} startPaused={!!page.url.searchParams.get("paused")} />
   {/if}
 {/snippet}
 

@@ -55,6 +55,28 @@ export const imageMock: ImageMock = {
   total: 18,
 };
 
+/// One video file's view state (the decoded frames + clock are the coder's
+/// backend; the mock stands in a gradient still). Name + position drive the
+/// dock; duration sizes the scrubber.
+export interface VideoMock {
+  /// File name, shown in the dock.
+  name: string;
+  /// Position in the folder.
+  index: number;
+  /// Folder size.
+  total: number;
+  /// Total duration in seconds.
+  durationSec: number;
+}
+
+/// The video fixture the demo route renders.
+export const videoMock: VideoMock = {
+  name: "film_2026.mkv",
+  index: 3,
+  total: 8,
+  durationSec: 248,
+};
+
 /// The audio fixture the demo route renders.
 export const audioMock: AudioMock = {
   title: "Nightswim",
