@@ -31,6 +31,7 @@ pub mod connection;
 pub mod dbus;
 pub mod gate;
 pub mod master;
+pub mod mount;
 pub mod rc;
 pub mod ssh_config;
 pub mod vault;
