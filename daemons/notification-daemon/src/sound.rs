@@ -174,9 +174,27 @@ impl SoundEvent {
     }
 }
 
+/// The central-playback gate (`sound-system-plan.md`): whether a cue tied to a
+/// notification should actually sound. A sound FOLLOWS the notification's own
+/// visibility decision - if DND, Focus Mode or a per-app rule suppressed, queued or
+/// dropped the notification, its sound is silenced too, so an app can never force
+/// attention through sound past the gate the notification itself was held by. On top
+/// of that, a global sound mute or a zero master volume silences every cue
+/// regardless of source. Only an `Allow`ed notification, unmuted, at a positive
+/// volume, sounds. Pure, so the policy is tested without an audio device.
+pub fn cue_should_play(
+    suppress: crate::dnd::state::SuppressResult,
+    sound_muted: bool,
+    master_volume: f32,
+) -> bool {
+    use crate::dnd::state::SuppressResult;
+    matches!(suppress, SuppressResult::Allow) && !sound_muted && master_volume > 0.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dnd::state::SuppressResult;
     use std::fs;
     use tempfile::TempDir;
 
@@ -287,5 +305,18 @@ mod tests {
             resolve_sound(&[root.clone()], "arlen", name),
             SoundResolution::File(root.join("arlen/stereo/dialog-error.oga")),
         );
+    }
+
+    #[test]
+    fn the_cue_gate_follows_the_notification_and_the_global_state() {
+        // An allowed, unmuted, audible notification sounds.
+        assert!(cue_should_play(SuppressResult::Allow, false, 1.0));
+        // A suppressed / queued / dropped notification never sounds (no force-past-DND).
+        assert!(!cue_should_play(SuppressResult::Suppress, false, 1.0));
+        assert!(!cue_should_play(SuppressResult::Queue, false, 1.0));
+        assert!(!cue_should_play(SuppressResult::Drop, false, 1.0));
+        // The global mute and a zero master volume silence even an allowed cue.
+        assert!(!cue_should_play(SuppressResult::Allow, true, 1.0));
+        assert!(!cue_should_play(SuppressResult::Allow, false, 0.0));
     }
 }
