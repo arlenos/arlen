@@ -1,0 +1,12 @@
+# Starting permission profile for Proton Mail (a desktop email client). It sends and
+# receives mail over the network by function and saves attachments to Downloads. No
+# Knowledge Graph access.
+[info]
+app_id = "me.proton.Mail"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

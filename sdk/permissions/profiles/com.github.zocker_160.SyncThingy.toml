@@ -1,0 +1,9 @@
+# Starting permission profile for SyncThingy (a tray controller for the Syncthing
+# daemon). It talks to the Syncthing API over the network by function; the daemon
+# does the actual file sync, so the controller needs no filesystem or graph access.
+[info]
+app_id = "com.github.zocker_160.SyncThingy"
+tier = "third-party"
+
+[network]
+allow_all = true

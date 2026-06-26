@@ -1,0 +1,12 @@
+# Starting permission profile for discord-screenaudio (a Discord client with screen
+# audio sharing). It chats and calls over the network by function and saves received
+# files to Downloads. No Knowledge Graph access.
+[info]
+app_id = "de.shorsh.discord-screenaudio"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
