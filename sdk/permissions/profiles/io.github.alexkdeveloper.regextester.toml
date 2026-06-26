@@ -1,0 +1,5 @@
+# Starting permission profile for Regex Tester (an offline regex tool). It needs
+# no network, no user files and no Knowledge Graph access.
+[info]
+app_id = "io.github.alexkdeveloper.regextester"
+tier = "third-party"

@@ -1,0 +1,6 @@
+# Starting permission profile for PulseEffects (an audio-effects processor). It
+# routes audio through the sound server; that runs over the audio socket, not a
+# profile grant, so no network, no user files and no Knowledge Graph access.
+[info]
+app_id = "com.github.wwmm.pulseeffects"
+tier = "third-party"

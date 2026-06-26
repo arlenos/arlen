@@ -1,0 +1,8 @@
+# Starting permission profile for Spider (a site-specific browser). The web is
+# its function; no user files by default and no Knowledge Graph access.
+[info]
+app_id = "io.github.zaedus.spider"
+tier = "third-party"
+
+[network]
+allow_all = true

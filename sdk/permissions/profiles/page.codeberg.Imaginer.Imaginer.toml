@@ -1,0 +1,11 @@
+# Starting permission profile for Imaginer (an AI image generator). It calls a
+# generation service and saves results to Pictures. No Knowledge Graph access.
+[info]
+app_id = "page.codeberg.Imaginer.Imaginer"
+tier = "third-party"
+
+[filesystem]
+pictures = true
+
+[network]
+allow_all = true
