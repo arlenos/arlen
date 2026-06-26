@@ -191,6 +191,34 @@ pub fn cue_should_play(
     matches!(suppress, SuppressResult::Allow) && !sound_muted && master_volume > 0.0
 }
 
+/// The freedesktop sound name to play for `event`, honouring a per-event override
+/// from the sound config (keyed by the event's own default name), else the standard
+/// name. [`resolve_sound`] then looks this name up in the active theme.
+pub fn cue_name_for_event(
+    event: SoundEvent,
+    overrides: &std::collections::HashMap<String, String>,
+) -> std::borrow::Cow<'_, str> {
+    let default = event.sound_name();
+    match overrides.get(default) {
+        Some(name) => std::borrow::Cow::Borrowed(name.as_str()),
+        None => std::borrow::Cow::Borrowed(default),
+    }
+}
+
+/// Resolve the playable cue for `event` against the daemon's sound config: apply any
+/// per-event name override, then look the name up in the configured theme across
+/// `roots` (the resolver follows the theme's `Inherits` chain to the `freedesktop`
+/// fallback). The complete event-to-file step; whether it actually sounds is the
+/// separate [`cue_should_play`] gate.
+pub fn resolve_cue(
+    event: SoundEvent,
+    config: &crate::config::types::SoundConfig,
+    roots: &[std::path::PathBuf],
+) -> SoundResolution {
+    let name = cue_name_for_event(event, &config.overrides);
+    resolve_sound(roots, &config.theme, name.as_ref())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -318,5 +346,34 @@ mod tests {
         // The global mute and a zero master volume silence even an allowed cue.
         assert!(!cue_should_play(SuppressResult::Allow, true, 1.0));
         assert!(!cue_should_play(SuppressResult::Allow, false, 0.0));
+    }
+
+    #[test]
+    fn cue_name_honours_the_per_event_override() {
+        let mut overrides = std::collections::HashMap::new();
+        // No override -> the event's standard freedesktop name.
+        assert_eq!(cue_name_for_event(SoundEvent::Error, &overrides), "dialog-error");
+        // An override keyed on the default name redirects the cue.
+        overrides.insert("dialog-error".to_string(), "x-arlen-custom-error".to_string());
+        assert_eq!(cue_name_for_event(SoundEvent::Error, &overrides), "x-arlen-custom-error");
+    }
+
+    #[test]
+    fn resolve_cue_uses_the_config_theme_and_override() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        // A flat theme "mytheme" with a cue file for the overridden name.
+        put(&root, "mytheme", None, "", Some("custom-bell.oga"));
+        let mut config = crate::config::types::SoundConfig {
+            theme: "mytheme".to_string(),
+            ..Default::default()
+        };
+        config
+            .overrides
+            .insert("message-new-instant".to_string(), "custom-bell".to_string());
+        assert_eq!(
+            resolve_cue(SoundEvent::NotificationArrived, &config, &[root.clone()]),
+            SoundResolution::File(root.join("mytheme/custom-bell.oga")),
+        );
     }
 }
