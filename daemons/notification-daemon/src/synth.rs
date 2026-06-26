@@ -476,6 +476,19 @@ pub fn render_default_synth_theme(sounds_root: &Path, sample_rate: u32) -> io::R
     )
 }
 
+/// Ensure the built-in default synth theme exists under `sounds_root`, rendering it
+/// ONLY if it is not already there, so a user's customised cues or a prior render are
+/// never clobbered. The daemon calls this at startup so the zero-asset synth fallback
+/// is always available to the resolver. Returns `true` if it rendered this call,
+/// `false` if the theme was already present.
+pub fn ensure_default_synth_theme(sounds_root: &Path, sample_rate: u32) -> io::Result<bool> {
+    if sounds_root.join(SYNTH_THEME_NAME).join("index.theme").exists() {
+        return Ok(false);
+    }
+    render_default_synth_theme(sounds_root, sample_rate)?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -681,5 +694,16 @@ mod tests {
                 other => panic!("{name} did not resolve: {other:?}"),
             }
         }
+    }
+
+    #[test]
+    fn ensure_default_synth_theme_is_idempotent() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        // First call renders it.
+        assert!(ensure_default_synth_theme(&root, SR).unwrap());
+        assert!(root.join(SYNTH_THEME_NAME).join("message-new-instant.wav").is_file());
+        // Second call is a no-op (the theme is already present, nothing clobbered).
+        assert!(!ensure_default_synth_theme(&root, SR).unwrap());
     }
 }

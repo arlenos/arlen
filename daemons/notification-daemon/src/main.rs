@@ -106,6 +106,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Run initial cleanup on startup.
     manager.cleanup().await;
 
+    // 9. Ensure the zero-asset default synth sound theme exists under the user's
+    // sounds dir (idempotent: it never clobbers a prior render or customization), so
+    // the sound resolver always has a usable fallback cue set even with no sample
+    // theme installed. Best-effort - a failure here never blocks the daemon.
+    let sounds_root = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+        .join("sounds");
+    match arlen_notification_daemon::synth::ensure_default_synth_theme(&sounds_root, 48_000) {
+        Ok(true) => {
+            tracing::info!("rendered the default synth sound theme at {}", sounds_root.display())
+        }
+        Ok(false) => {}
+        Err(e) => tracing::warn!("could not render the default synth sound theme: {e}"),
+    }
+
     tracing::info!("notification daemon ready");
 
     // Wait for shutdown signal.
