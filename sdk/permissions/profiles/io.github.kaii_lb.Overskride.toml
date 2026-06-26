@@ -1,0 +1,6 @@
+# Starting permission profile for Overskride (a Bluetooth manager). It talks to BlueZ
+# over the local system bus; Bluetooth is not network egress, and it touches no user
+# files, so no filesystem, network or Knowledge Graph grant by default.
+[info]
+app_id = "io.github.kaii_lb.Overskride"
+tier = "third-party"
