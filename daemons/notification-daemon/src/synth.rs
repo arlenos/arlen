@@ -399,6 +399,83 @@ pub fn render_synth_theme(
     Ok(written)
 }
 
+/// The name of the built-in synth sound theme.
+pub const SYNTH_THEME_NAME: &str = "arlen-synth";
+
+/// The curated default synth cues (SO-R4): the zero-asset default-on set, one tuned
+/// `SynthParams` per default sound event, keyed by its freedesktop sound name (the
+/// same names the theme `SoundTokens` default to) so the rendered theme resolves for
+/// the standard events. Short, restrained cues per the plan's default-on list - the
+/// honestly-scoped lightweight alternative, not a premium pack.
+pub fn default_synth_cues() -> Vec<(String, SynthParams)> {
+    vec![
+        // Notification / message arrival: a gentle rising sine blip.
+        (
+            "message-new-instant".to_string(),
+            SynthParams {
+                waveform: Waveform::Sine,
+                freq_hz: 660.0,
+                freq_end_hz: Some(880.0),
+                duration_ms: 120.0,
+                adsr: Adsr { attack_ms: 4.0, decay_ms: 30.0, sustain: 0.4, release_ms: 80.0 },
+                rms: 0.18,
+                ..SynthParams::default()
+            },
+        ),
+        // Error: a low descending tone with a touch of reverb.
+        (
+            "dialog-error".to_string(),
+            SynthParams {
+                waveform: Waveform::Triangle,
+                freq_hz: 440.0,
+                freq_end_hz: Some(220.0),
+                duration_ms: 200.0,
+                adsr: Adsr { attack_ms: 3.0, decay_ms: 40.0, sustain: 0.5, release_ms: 120.0 },
+                rms: 0.2,
+                reverb_mix: 0.18,
+                ..SynthParams::default()
+            },
+        ),
+        // Warning: a steady mid tone.
+        (
+            "dialog-warning".to_string(),
+            SynthParams {
+                waveform: Waveform::Triangle,
+                freq_hz: 520.0,
+                duration_ms: 150.0,
+                adsr: Adsr { attack_ms: 4.0, decay_ms: 30.0, sustain: 0.5, release_ms: 90.0 },
+                rms: 0.18,
+                ..SynthParams::default()
+            },
+        ),
+        // Action completion: a short crisp upward chime.
+        (
+            "complete".to_string(),
+            SynthParams {
+                waveform: Waveform::Sine,
+                freq_hz: 880.0,
+                freq_end_hz: Some(1180.0),
+                duration_ms: 90.0,
+                adsr: Adsr { attack_ms: 2.0, decay_ms: 20.0, sustain: 0.3, release_ms: 55.0 },
+                rms: 0.16,
+                ..SynthParams::default()
+            },
+        ),
+    ]
+}
+
+/// Materialise the built-in default synth theme into `<dir>/arlen-synth/` (the
+/// caller passes a `.../sounds` root). The zero-asset default the resolver can fall
+/// back to when no sample theme is installed. Returns the number of cues written.
+pub fn render_default_synth_theme(sounds_root: &Path, sample_rate: u32) -> io::Result<usize> {
+    render_synth_theme(
+        &sounds_root.join(SYNTH_THEME_NAME),
+        SYNTH_THEME_NAME,
+        &default_synth_cues(),
+        sample_rate,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -577,5 +654,32 @@ mod tests {
         assert!(safe_cue_name("a/b").is_none());
         assert!(safe_cue_name("..").is_none());
         assert!(safe_cue_name("").is_none());
+    }
+
+    #[test]
+    fn default_synth_cues_render_and_resolve() {
+        let cues = default_synth_cues();
+        assert_eq!(cues.len(), 4, "the four default-on events");
+        // Every default cue synthesises to a bounded, finite, non-empty buffer.
+        for (name, params) in &cues {
+            let pcm = synthesize(params, SR);
+            assert!(!pcm.is_empty(), "{name} rendered empty");
+            for &s in &pcm {
+                assert!(s.is_finite() && s.abs() <= 1.0, "{name} bad sample {s}");
+            }
+        }
+        // Materialise the default theme and resolve each event through the XDG resolver.
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        let n = render_default_synth_theme(&root, SR).unwrap();
+        assert_eq!(n, 4);
+        for (name, _) in &cues {
+            match resolve_sound(&[root.clone()], SYNTH_THEME_NAME, name) {
+                SoundResolution::File(p) => {
+                    assert_eq!(p.extension().and_then(|e| e.to_str()), Some("wav"))
+                }
+                other => panic!("{name} did not resolve: {other:?}"),
+            }
+        }
     }
 }
