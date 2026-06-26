@@ -1,0 +1,7 @@
+# Starting permission profile for WineCharm (a GUI Wine bottle manager). It runs
+# user-selected Windows apps; the files it opens are portal-mediated on use, so it
+# needs no broad filesystem grant, no network and no Knowledge Graph access by
+# default.
+[info]
+app_id = "io.github.fastrizwaan.WineCharm"
+tier = "third-party"
