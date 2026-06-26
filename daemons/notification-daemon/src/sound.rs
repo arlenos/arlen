@@ -246,6 +246,39 @@ pub fn sound_event_for_notification(urgency: u8, category: &str) -> Option<Sound
     Some(SoundEvent::NotificationArrived)
 }
 
+/// Plays a resolved notification cue. This is the playback SEAM: the name->file
+/// resolution and the should-play decision are pure (tested above), and the only
+/// part that needs a live audio device is the actual output, isolated behind this
+/// trait. The headless default ([`NullSoundPlayer`]) runs the whole cue pipeline
+/// without touching a sound server; the metal backend (PipeWire decode + output)
+/// is a later increment implementing this same `play`.
+///
+/// `play` must not block the caller (it is called on the notification dispatch
+/// path): a real backend decodes + submits to the audio server on its own task.
+pub trait SoundPlayer: Send + Sync {
+    /// Play `resolution`. A [`SoundResolution::Silenced`] or
+    /// [`SoundResolution::NotFound`] is a no-op (the cue resolved to silence).
+    fn play(&self, resolution: &SoundResolution);
+}
+
+/// The headless default player: it logs the resolved cue and plays nothing, so
+/// the daemon runs the full resolve + should-play + cue-name pipeline in CI and
+/// on a machine with no audio server. The metal PipeWire backend replaces it via
+/// [`NotificationManager::with_sound_player`](crate::manager::NotificationManager::with_sound_player).
+pub struct NullSoundPlayer;
+
+impl SoundPlayer for NullSoundPlayer {
+    fn play(&self, resolution: &SoundResolution) {
+        match resolution {
+            SoundResolution::File(path) => {
+                tracing::debug!(path = %path.display(), "sound cue resolved (no audio backend wired)");
+            }
+            SoundResolution::Silenced => tracing::trace!("sound cue silenced by a .disabled marker"),
+            SoundResolution::NotFound => tracing::trace!("sound cue not found in the theme chain"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
