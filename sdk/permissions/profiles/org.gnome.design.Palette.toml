@@ -1,0 +1,5 @@
+# Starting permission profile for Palette (a colour-palette tool).
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "org.gnome.design.Palette"
+tier = "third-party"

@@ -1,0 +1,12 @@
+# Starting permission profile for gPodder (a podcast client).
+# Fetches feeds and downloads episodes over the network by function; saves them
+# to Downloads. No Knowledge Graph access.
+[info]
+app_id = "io.gpodder.gpodder"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

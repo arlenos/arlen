@@ -1,0 +1,8 @@
+# Starting permission profile for KGeoTag (a photo geotagging tool).
+# Tags photos in Pictures from local tracks; no network by function. No graph.
+[info]
+app_id = "org.kde.kgeotag"
+tier = "third-party"
+
+[filesystem]
+pictures = true
