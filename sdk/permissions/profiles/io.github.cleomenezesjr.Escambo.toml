@@ -1,0 +1,8 @@
+# Starting permission profile for Escambo (an HTTP/REST API client). Network is
+# its function; no user files by default and no Knowledge Graph access.
+[info]
+app_id = "io.github.cleomenezesjr.Escambo"
+tier = "third-party"
+
+[network]
+allow_all = true
