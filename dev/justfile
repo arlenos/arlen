@@ -99,6 +99,19 @@ dev-ui app:
     fi
     cd "{{ROOT}}/apps/{{app}}" && cargo tauri dev
 
+# Register the Arlen Viewer as the default xdg handler for image + audio MIMEs
+# (so they open in the viewer, not the browser). NB ~/.config/mimeapps.list is
+# USER-GLOBAL: this affects every desktop session until reverted, so the register
+# backs the list up first. Revert with `just viewer-unset-default`.
+viewer-set-default:
+    cargo build --manifest-path "{{ROOT}}/apps/viewers/src-tauri/Cargo.toml"
+    "{{ROOT}}/apps/viewers/src-tauri/target/debug/arlen-viewers" --register-default-handler
+
+# Revert `viewer-set-default`: restore the backed-up mimeapps.list and drop the
+# viewer's .desktop entry.
+viewer-unset-default:
+    "{{ROOT}}/apps/viewers/src-tauri/target/debug/arlen-viewers" --unregister-default-handler
+
 # eBPF kernel-layer in QEMU (off-host, by design).
 vm:
     bash "{{justfile_directory()}}/vm/dev.sh" run
