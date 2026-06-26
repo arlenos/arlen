@@ -441,6 +441,19 @@ mod tests {
     }
 
     #[test]
+    fn fingerprint_matches_only_the_pinned_key() {
+        // The TOFU update check: a key whose fingerprint equals the pin is the
+        // same publisher; a different key (or a corrupted pin string) is not, so
+        // a publisher swap is never silently accepted.
+        let key = [7u8; 32];
+        let pin = key_fingerprint(&key);
+        assert!(fingerprint_matches(&key, &pin), "the pinned key matches its own pin");
+        assert!(!fingerprint_matches(&[8u8; 32], &pin), "a different key does not match");
+        assert!(!fingerprint_matches(&key, &pin.to_uppercase()), "the lowercase-hex form is exact");
+        assert!(!fingerprint_matches(&key, ""), "an empty pin never matches");
+    }
+
+    #[test]
     fn is_safe_name_accepts_components_and_rejects_traversal() {
         assert!(is_safe_name("onboarding"));
         assert!(is_safe_name("proj.v2_final-1"));
