@@ -1,0 +1,8 @@
+# Starting permission profile for jdAppStreamEdit (an AppStream metainfo editor).
+# Edits metadata files in Documents; no network by function. No graph.
+[info]
+app_id = "page.codeberg.JakobDev.jdAppStreamEdit"
+tier = "third-party"
+
+[filesystem]
+documents = true
