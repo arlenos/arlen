@@ -4,7 +4,7 @@
 //! system. This is the same public information `ps`/`top`/`uptime` show any
 //! user, so there is no per-path scope to enforce (unlike the File Manager).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
@@ -238,6 +238,70 @@ pub fn disk_usage(path: &str) -> Option<DiskUsage> {
         total_bytes,
         available_bytes,
     })
+}
+
+/// A coarse battery/AC snapshot read from `/sys/class/power_supply` (the same
+/// kernel surface `upower`/`acpi` use). A laptop exposes a Battery supply
+/// (`capacity` + `status`) and a Mains supply (`online` = AC connected); a
+/// desktop has neither battery, reported `battery_present: false`. Mirrors the
+/// `org.arlen.Power1` shape so the AI's answer matches the power-daemon's, but is
+/// read directly here so the MCP surface stays self-contained (no daemon dep).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PowerSupply {
+    /// Whether a battery supply was found.
+    pub battery_present: bool,
+    /// Battery charge 0-100 (the first battery's `capacity`), if present.
+    pub percentage: Option<u8>,
+    /// Battery status string (`Charging`/`Discharging`/`Full`/`Not charging`/
+    /// `Unknown`), if present.
+    pub status: Option<String>,
+    /// Whether mains/AC power is online (any Mains supply reporting `online` = 1).
+    pub on_ac: bool,
+}
+
+/// Read the power-supply snapshot from `root` (the real path is
+/// `/sys/class/power_supply`; configurable for fixture tests). Missing or
+/// unreadable files are skipped, never an error: a machine with no
+/// power-supply tree reports `battery_present: false, on_ac: false`. The first
+/// battery supply found wins (the coarse surface answers "on battery? charge?",
+/// not per-cell detail); read-dir order is unspecified, so a multi-battery
+/// machine reports one of them.
+pub fn read_power_supply(root: &Path) -> PowerSupply {
+    let mut out = PowerSupply {
+        battery_present: false,
+        percentage: None,
+        status: None,
+        on_ac: false,
+    };
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return out;
+    };
+    let read_trim = |dir: &Path, field: &str| -> Option<String> {
+        std::fs::read_to_string(dir.join(field))
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    };
+    for entry in entries.flatten() {
+        let dir = entry.path();
+        let typ = read_trim(&dir, "type").unwrap_or_default();
+        if typ.eq_ignore_ascii_case("Battery") {
+            if !out.battery_present {
+                out.battery_present = true;
+                out.percentage = read_trim(&dir, "capacity")
+                    .and_then(|s| s.parse::<u8>().ok())
+                    .map(|p| p.min(100));
+                out.status = read_trim(&dir, "status");
+            }
+        } else if typ.eq_ignore_ascii_case("Mains") || typ.eq_ignore_ascii_case("USB") {
+            // An AC adapter (Mains) or a USB-PD source counts as wall power when
+            // it reports itself online.
+            if read_trim(&dir, "online").as_deref() == Some("1") {
+                out.on_ac = true;
+            }
+        }
+    }
+    out
 }
 
 /// Reads `/proc` (root configurable for tests). All reads are local and fast,
@@ -529,5 +593,56 @@ mod tests {
         assert_eq!(res.load1, 1.0);
         assert_eq!(res.mem_total_kb, 8000);
         assert_eq!(res.mem_available_kb, 4000);
+    }
+
+    /// Write one `/sys/class/power_supply/<name>` supply directory.
+    fn supply(root: &Path, name: &str, fields: &[(&str, &str)]) {
+        let dir = root.join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        for (k, v) in fields {
+            std::fs::write(dir.join(k), format!("{v}\n")).unwrap();
+        }
+    }
+
+    #[test]
+    fn power_supply_reads_a_discharging_laptop() {
+        let tmp = tempfile::tempdir().unwrap();
+        supply(tmp.path(), "BAT0", &[("type", "Battery"), ("capacity", "73"), ("status", "Discharging")]);
+        supply(tmp.path(), "AC", &[("type", "Mains"), ("online", "0")]);
+        let p = read_power_supply(tmp.path());
+        assert!(p.battery_present);
+        assert_eq!(p.percentage, Some(73));
+        assert_eq!(p.status.as_deref(), Some("Discharging"));
+        assert!(!p.on_ac);
+    }
+
+    #[test]
+    fn power_supply_reports_ac_when_mains_is_online() {
+        let tmp = tempfile::tempdir().unwrap();
+        supply(tmp.path(), "BAT0", &[("type", "Battery"), ("capacity", "80"), ("status", "Charging")]);
+        supply(tmp.path(), "AC", &[("type", "Mains"), ("online", "1")]);
+        let p = read_power_supply(tmp.path());
+        assert_eq!(p.percentage, Some(80));
+        assert_eq!(p.status.as_deref(), Some("Charging"));
+        assert!(p.on_ac);
+    }
+
+    #[test]
+    fn power_supply_on_a_desktop_has_no_battery() {
+        let tmp = tempfile::tempdir().unwrap();
+        supply(tmp.path(), "AC", &[("type", "Mains"), ("online", "1")]);
+        let p = read_power_supply(tmp.path());
+        assert!(!p.battery_present);
+        assert_eq!(p.percentage, None);
+        assert!(p.on_ac);
+    }
+
+    #[test]
+    fn power_supply_missing_tree_is_all_absent_not_an_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = read_power_supply(&tmp.path().join("nope"));
+        assert!(!p.battery_present);
+        assert!(!p.on_ac);
+        assert_eq!(p.percentage, None);
     }
 }
