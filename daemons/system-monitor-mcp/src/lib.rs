@@ -50,6 +50,12 @@ pub const OS_TOOL: &str = "os_info";
 /// The network-interfaces tool name (names + cumulative rx/tx bytes).
 pub const NET_TOOL: &str = "network_interfaces";
 
+/// The battery/AC tool name (charge, status, on-AC).
+pub const BATTERY_TOOL: &str = "battery";
+
+/// The real power-supply sysfs root the [`BATTERY_TOOL`] reads.
+const POWER_SUPPLY_ROOT: &str = "/sys/class/power_supply";
+
 /// Per-call wall budget. `/proc` reads are local and fast, so this is just a
 /// backstop against a pathological stall; on timeout the call returns a tool
 /// error rather than hanging the caller.
@@ -119,6 +125,10 @@ impl ServerHandler for SystemMonitorMcp {
                 NET_TOOL,
                 "List network interfaces with cumulative received/transmitted bytes. Read-only, no arguments.",
             ),
+            Self::no_arg_tool(
+                BATTERY_TOOL,
+                "Return power supply state: whether a battery is present, its charge (0-100) and status (charging/discharging/full), and whether AC is connected. Read-only, no arguments.",
+            ),
         ]))
     }
 
@@ -134,6 +144,7 @@ impl ServerHandler for SystemMonitorMcp {
             && tool != UPTIME_TOOL
             && tool != OS_TOOL
             && tool != NET_TOOL
+            && tool != BATTERY_TOOL
         {
             return Err(McpError::invalid_request(format!("unknown tool: {tool}"), None));
         }
@@ -148,6 +159,9 @@ impl ServerHandler for SystemMonitorMcp {
                 UPTIME_TOOL => serde_json::to_value(reader.uptime()),
                 OS_TOOL => serde_json::to_value(reader.os_info()),
                 NET_TOOL => serde_json::to_value(reader.network_interfaces()),
+                BATTERY_TOOL => serde_json::to_value(sysinfo::read_power_supply(
+                    std::path::Path::new(POWER_SUPPLY_ROOT),
+                )),
                 _ => serde_json::to_value(sysinfo::disk_usage("/")),
             }
         });
