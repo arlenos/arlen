@@ -1077,19 +1077,109 @@ fn trash_to_entry(ti: &ops::TrashedItem) -> FileEntry {
     }
 }
 
-/// Resolve a virtual navigation location to a file listing (item 12). `"recent"`
-/// returns the recently-accessed files (each carrying its own `full_path`), `"trash"`
-/// the trashed items (each carrying its ORIGINAL path as `full_path`, its deletion
-/// time as `modified_unix`, and a `restore_token`), so the browser controller can
-/// navigate to either like a folder. An unknown location is refused. The
-/// column/action presentation on these entries is arlen-ui's (`full_path` +
-/// `restore_token` are the seams it reads).
+/// Map KG File rows (`{ path, accessed }`) into [`FileEntry`]s for a navigation
+/// LOCATION whose members are scattered Files (a project's `FILE_PART_OF` set, or a
+/// search result). Each File lives at its own absolute path - a project or a search
+/// spans directories - carried in `full_path` as the bridge back to its real home
+/// (the "Reveal in containing folder" action every virtual location offers); the
+/// name is the basename and `modified_unix` the last-accessed time (micros -> secs).
+/// Pure, so the shaping is unit-tested without a daemon. Shared by the project and
+/// search locations (same shape, different query).
+fn members_from_rows(rows: &[std::collections::HashMap<String, serde_json::Value>]) -> Vec<FileEntry> {
+    rows.iter()
+        .filter_map(|r| {
+            let path = r.get("path").and_then(|v| v.as_str())?;
+            let accessed = r.get("accessed").and_then(|v| v.as_i64()).unwrap_or(0);
+            let name = std::path::Path::new(path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(path)
+                .to_string();
+            Some(FileEntry {
+                is_hidden: name.starts_with('.'),
+                name,
+                kind: EntryKind::File,
+                size: None,
+                modified_unix: (accessed > 0).then_some((accessed / 1_000_000) as u64),
+                readonly: false,
+                symlink_target: None,
+                full_path: Some(path.to_string()),
+                restore_token: None,
+            })
+        })
+        .collect()
+}
+
+/// The File members of a project (its `FILE_PART_OF` set) for the project navigation
+/// LOCATION (item 12: the project facet + the provenance "Related" navigation both
+/// resolve to this same listing). Best-effort: an absent daemon, an out-of-scope
+/// read, or a caller without `system.File` read scope yields no entries. The project
+/// id is escaped before interpolation (a project id is caller-supplied); the read
+/// path denies writes + authority labels, so the bounded reach is the caller's own
+/// read scope.
+async fn project_members(id: &str) -> Vec<FileEntry> {
+    if id.is_empty() {
+        return Vec::new();
+    }
+    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
+    let cypher = format!(
+        "MATCH (f:File)-[:FILE_PART_OF]->(p:Project {{id: '{}'}}) \
+         RETURN f.path AS path, f.last_accessed AS accessed ORDER BY f.path LIMIT 512",
+        escape_cypher_literal(id)
+    );
+    match client.query_rows(&cypher).await {
+        Ok(rows) => members_from_rows(&rows),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// The Files whose path contains `query` for a search navigation LOCATION - the
+/// generalised "a location whose listing is a KG query" (a saved search supplies the
+/// query string; today an ad-hoc `search:<query>` rides the same seam). Best-effort
+/// + escaped, same scope bound as the other reads; an empty query lists nothing.
+async fn search_location(query: &str) -> Vec<FileEntry> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
+    let cypher = format!(
+        "MATCH (f:File) WHERE f.path CONTAINS '{}' \
+         RETURN f.path AS path, f.last_accessed AS accessed \
+         ORDER BY f.last_accessed DESC LIMIT 256",
+        escape_cypher_literal(query)
+    );
+    match client.query_rows(&cypher).await {
+        Ok(rows) => members_from_rows(&rows),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Resolve a virtual navigation location to a file listing (item 12, the keystone:
+/// ONE seam, not three one-offs). `"recent"` returns the recently-accessed files
+/// (each carrying its own `full_path`); `"trash"` the trashed items (ORIGINAL path
+/// as `full_path`, deletion time as `modified_unix`, a `restore_token`);
+/// `"project:<id>"` the project's `FILE_PART_OF` members; `"search:<query>"` the
+/// Files whose path contains the query. Each entry carries `full_path` (the bridge
+/// back to the item's real home, since a virtual location's items live elsewhere) so
+/// the browser controller can navigate to any of them like a folder. An unknown
+/// location is refused. The per-location column/toolbar/action presentation on these
+/// entries is arlen-ui's (`full_path` + `restore_token` are the seams it reads).
 #[tauri::command]
 async fn files_list_location(location: String) -> Result<Vec<FileEntry>, String> {
     match location.as_str() {
         "recent" => Ok(files_recent().await.iter().map(recent_to_entry).collect()),
         "trash" => files_trash_list().map(|items| items.iter().map(trash_to_entry).collect()),
-        other => Err(format!("unknown virtual location: {other}")),
+        other => {
+            if let Some(id) = other.strip_prefix("project:") {
+                Ok(project_members(id).await)
+            } else if let Some(query) = other.strip_prefix("search:") {
+                Ok(search_location(query).await)
+            } else {
+                Err(format!("unknown virtual location: {other}"))
+            }
+        }
     }
 }
 
@@ -1287,8 +1377,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        abs, escape_cypher_literal, ops, projects_from_rows, provenance_to_woher, recent_from_rows,
-        recent_to_entry, trash_to_entry, verwandt_from_rows, EntryKind, RecentFile,
+        abs, escape_cypher_literal, members_from_rows, ops, projects_from_rows, provenance_to_woher,
+        recent_from_rows, recent_to_entry, trash_to_entry, verwandt_from_rows, EntryKind, RecentFile,
     };
     use std::collections::HashMap;
 
@@ -1340,6 +1430,32 @@ mod tests {
         let e2 = trash_to_entry(&bad);
         assert_eq!(e2.modified_unix, None);
         assert_eq!(e2.restore_token.as_deref(), Some("notes.md.2"));
+    }
+
+    #[test]
+    fn members_map_kg_rows_to_location_entries_with_the_home_bridge() {
+        // Item 12: a project's FILE_PART_OF members (and search results) map to
+        // FileEntry's for a navigation location - each File's own absolute path in
+        // `full_path` (the bridge back to its real home, since the members are
+        // scattered), the basename as the name, last-accessed (micros -> secs) in
+        // `modified_unix`, no restore_token (only Trash has one). A pathless row is
+        // skipped; a missing accessed defaults to None, not epoch-zero.
+        let mut full = HashMap::new();
+        full.insert("path".to_string(), serde_json::json!("/home/u/proj/src/main.rs"));
+        full.insert("accessed".to_string(), serde_json::json!(7_000_000_i64)); // 7s in micros
+        let no_path: HashMap<String, serde_json::Value> = HashMap::new();
+        let mut no_time = HashMap::new();
+        no_time.insert("path".to_string(), serde_json::json!("/home/u/proj/.hidden"));
+
+        let members = members_from_rows(&[full, no_path, no_time]);
+        assert_eq!(members.len(), 2, "the pathless row is skipped");
+        assert_eq!(members[0].name, "main.rs", "the basename labels the row");
+        assert_eq!(members[0].full_path.as_deref(), Some("/home/u/proj/src/main.rs"));
+        assert_eq!(members[0].modified_unix, Some(7));
+        assert_eq!(members[0].kind, EntryKind::File);
+        assert!(members[0].restore_token.is_none());
+        assert!(members[1].is_hidden, "a dotfile member reads as hidden");
+        assert_eq!(members[1].modified_unix, None, "absent accessed is None");
     }
 
     #[test]
