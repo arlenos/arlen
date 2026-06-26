@@ -204,6 +204,18 @@ export async function terminalCloseSession(sessionId: string): Promise<void> {
   await invoke("terminal_close_session", { sessionId });
 }
 
+/// Hand a finished block to the harness as a capability-scoped @-mention: writes
+/// the command + output to a one-shot scoped payload and launches/focuses the
+/// harness pointing at it (the cross-app scoped-context-inject convention, the
+/// block menu's "Ask the agent about this block"). Pull-only; the payload is the
+/// grant. Wire this into the block menu's `ask` once the harness receiver lands.
+export async function terminalInjectBlock(
+  command: string,
+  output: string,
+): Promise<void> {
+  await invoke("terminal_inject_block", { command, output });
+}
+
 export async function terminalHistorySearch(
   query: string,
   filters: HistoryFilters,
