@@ -1,0 +1,5 @@
+# Starting permission profile for Color Picker.
+# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "io.github.diegoivan.color_picker"
+tier = "third-party"
