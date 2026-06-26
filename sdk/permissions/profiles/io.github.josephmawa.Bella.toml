@@ -1,0 +1,6 @@
+# Starting permission profile for Bella (a file-metadata viewer). It inspects files
+# the user opens via the portal; no network, no Knowledge Graph, and no broad
+# filesystem grant by default.
+[info]
+app_id = "io.github.josephmawa.Bella"
+tier = "third-party"

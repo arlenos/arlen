@@ -1,0 +1,6 @@
+# Starting permission profile for PinApp (a .desktop application-entry editor). It
+# edits local launcher entries through its own logic; no network, no Knowledge Graph,
+# and no broad filesystem grant by default (it requests access via the portal on use).
+[info]
+app_id = "io.github.fabrialberio.pinapp"
+tier = "third-party"
