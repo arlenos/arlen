@@ -17,6 +17,9 @@ pub struct Config {
     #[serde(alias = "retention")]
     pub history: HistoryConfig,
     pub grouping: GroupingConfig,
+    /// System-sound settings (mute, volume, theme, per-event overrides).
+    #[serde(default)]
+    pub sound: SoundConfig,
     /// Per-app overrides keyed by app_name or app_id.
     #[serde(default)]
     pub apps: HashMap<String, AppOverride>,
@@ -29,7 +32,39 @@ impl Default for Config {
             dnd: DndConfig::default(),
             history: HistoryConfig::default(),
             grouping: GroupingConfig::default(),
+            sound: SoundConfig::default(),
             apps: HashMap::new(),
+        }
+    }
+}
+
+/// System-sound configuration (`sound-system-plan.md`). The daemon plays every cue
+/// centrally, so the global mute, the master volume and the active sound theme live
+/// here, plus optional per-event name overrides (a theme or user can point one event
+/// at a different freedesktop sound name).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SoundConfig {
+    /// Whether system sounds are globally muted.
+    pub muted: bool,
+    /// Master volume, `0.0..=1.0`.
+    pub volume: f32,
+    /// The active freedesktop sound-theme name; the resolver follows its `Inherits`
+    /// chain and ends in the `freedesktop` fallback theme.
+    pub theme: String,
+    /// Per-event freedesktop sound-name overrides, keyed by the event's default name
+    /// (e.g. map `message-new-instant` to a custom cue name).
+    #[serde(default)]
+    pub overrides: HashMap<String, String>,
+}
+
+impl Default for SoundConfig {
+    fn default() -> Self {
+        Self {
+            muted: false,
+            volume: 1.0,
+            theme: "freedesktop".to_string(),
+            overrides: HashMap::new(),
         }
     }
 }
