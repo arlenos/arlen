@@ -79,6 +79,10 @@
     if (next === current) return;
     term.options.fontSize = next;
     fit.fit();
+    // Re-pin: the new size has a fractional cell again, so land it back on a whole
+    // pixel column (the first fit measured the new face; pin reads it, re-fit applies).
+    pinCellWidthToInteger(term);
+    fit.fit();
   }
 
   // Pull the bytes the engine buffered since the last drain and feed them to
@@ -488,40 +492,54 @@
       }
       if (!term || !fit) return;
       fit.fit();
-      // Pin the cell to an INTEGER css-pixel advance so every column lands on an
-      // integer pixel: a fractional mono advance (~8.4px at 14px) accumulates in
-      // the DOM renderer's inline layout and slips a wide TUI ~1 cell by the right
-      // edge (btop's box border doubles, item 8). Rounding to nearest perturbs the
-      // cell <=0.5px (so a full-width grid keeps ample columns) while landing each
-      // cell boundary on an integer pixel, which kills the accumulation. Staying on
-      // the DOM renderer keeps the block-chrome decorations pixel-exact (the canvas
-      // path's #967 anchor problem is avoided) - one renderer, both correct. Read
-      // AFTER this first fit so the loaded font is measured, then re-fit.
-      pinCellWidthToInteger(term);
-      fit.fit();
+      // Pin the cell to a whole css pixel so every column lands on an integer pixel
+      // (see pinCellWidthToInteger). The first fit measured the loaded face; pin,
+      // re-fit, and repeat once with a frame between so xterm re-measures the scaled
+      // face. The second pass is a no-op unless the engine left a sub-pixel residual,
+      // in which case it converges. Bounded so it can never spin.
+      for (let pass = 0; pass < 2; pass++) {
+        const changed = pinCellWidthToInteger(term);
+        fit.fit();
+        if (!changed) break;
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        if (!term || !fit) return;
+      }
       resizeObserver = new ResizeObserver(() => fit?.fit());
       resizeObserver.observe(host);
       void drain();
     });
   });
 
-  // Round the DOM renderer's measured cell width to the NEAREST integer css pixel
-  // via letterSpacing so column boundaries are integral (item 8: a fractional
-  // advance drifts wide TUIs). Reads xterm's own measured width through the same
-  // private `_renderService.dimensions` path the FitAddon uses; a no-op when that
-  // path is absent or the advance is already integral, so it can never break
-  // rendering. Nearest (not ceil) keeps the perturbation <=0.5px so a full-width
-  // grid does not lose meaningful columns.
-  function pinCellWidthToInteger(t: Terminal): void {
-    const cell = (
-      t as unknown as {
-        _core?: { _renderService?: { dimensions?: { css?: { cell?: { width?: number } } } } };
-      }
-    )._core?._renderService?.dimensions?.css?.cell;
-    const w = cell?.width;
-    if (typeof w !== "number" || !(w > 0)) return;
-    const pad = Math.round(w) - w;
-    if (Math.abs(pad) > 0.01 && Math.abs(pad) < 1) t.options.letterSpacing = pad;
+  // Pin xterm's cell to a WHOLE css pixel by nudging the font size, so every column
+  // lands on an integer pixel column. xterm sizes each cell to its measured glyph
+  // advance (Cascadia is ~8.4px at 14px, a fraction); at a fractional device-pixel
+  // ratio (the display here is 1.5x) the browser snaps each cell to a whole device
+  // pixel, so consecutive cells land 8 or 9px apart - a wide TUI's box rule breaks
+  // and its right border doubles (item 8, btop in full width). letterSpacing cannot
+  // fix this: xterm rounds it to whole pixels and ADDS it to the fractional advance,
+  // so it can never produce an integer cell (verified headless). The font size can:
+  // xterm's css cell width is round(advance * cols) / cols, so an integer advance
+  // makes the css cell that same integer for every column count and every dpr.
+  // Scaling the size by round(advance)/advance lands the advance on the nearest
+  // whole pixel while the glyphs scale with the cell, so the box rule stays
+  // continuous (the near-zero letter-spacing xterm applies stays near zero, no
+  // gaps). Verified headless at dpr 1.0 and 1.5: the css cell goes 8.39873 -> 8.0
+  // and the full-width box rule stays unbroken. Targets xterm's OWN measured advance
+  // (`_charSizeService.width`, the value that drives the css cell, not a separate DOM
+  // probe which a font-subset fallback can disagree with); a no-op when that path is
+  // absent or the advance is already whole, so it can never break rendering. Returns
+  // whether it changed the size so the caller can re-fit and converge any residual.
+  function pinCellWidthToInteger(t: Terminal): boolean {
+    const advance = (t as unknown as { _core?: { _charSizeService?: { width?: number } } })._core
+      ?._charSizeService?.width;
+    if (typeof advance !== "number" || !(advance > 0)) return false;
+    const target = Math.round(advance);
+    if (target < 1 || Math.abs(advance - target) < 0.01) return false;
+    const size = t.options.fontSize ?? baseFontSize;
+    const next = (size * target) / advance;
+    if (!Number.isFinite(next) || next <= 0) return false;
+    t.options.fontSize = next;
+    return true;
   }
 
   onDestroy(() => {
