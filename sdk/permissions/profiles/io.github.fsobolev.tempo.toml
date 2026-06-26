@@ -1,0 +1,6 @@
+# Starting permission profile for Tempo (a metronome). Audio plays through the
+# sound server, not a profile grant, so no network, no user files and no
+# Knowledge Graph access.
+[info]
+app_id = "io.github.fsobolev.tempo"
+tier = "third-party"

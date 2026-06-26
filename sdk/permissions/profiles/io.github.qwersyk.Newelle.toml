@@ -1,0 +1,9 @@
+# Starting permission profile for Newelle (an AI assistant). It calls a model
+# service; network is its function. No user files by default and no Knowledge
+# Graph access.
+[info]
+app_id = "io.github.qwersyk.Newelle"
+tier = "third-party"
+
+[network]
+allow_all = true

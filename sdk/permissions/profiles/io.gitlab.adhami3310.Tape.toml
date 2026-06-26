@@ -1,0 +1,9 @@
+# Starting permission profile for Tape (a screen recorder). It captures through
+# the screencast portal and saves recordings to Videos; no network and no
+# Knowledge Graph access.
+[info]
+app_id = "io.gitlab.adhami3310.Tape"
+tier = "third-party"
+
+[filesystem]
+videos = true
