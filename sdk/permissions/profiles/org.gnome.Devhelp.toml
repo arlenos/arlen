@@ -1,0 +1,5 @@
+# Starting permission profile for Devhelp (a developer documentation viewer).
+# Reads installed documentation only; no user files, network, or graph access.
+[info]
+app_id = "org.gnome.Devhelp"
+tier = "third-party"
