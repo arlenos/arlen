@@ -330,11 +330,105 @@ fn is_safe_method(path: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'/' | b'.' | b'-'))
 }
 
+/// Quote one rclone connection-string parameter value. rclone's parser unquotes a
+/// double-quoted value and treats a doubled `""` as a literal quote, so a value that
+/// could otherwise be read as structure (a `,` starting a new parameter, a `:` ending
+/// the parameter section, a `"`, surrounding whitespace, or an empty value) is wrapped
+/// in `"..."` with inner quotes doubled. A value of only safe characters is emitted
+/// raw (rclone accepts it unquoted). This is what stops a hostile or odd credential /
+/// host value from breaking out of its slot into another parameter.
+fn quote_conn_value(value: &str) -> String {
+    let needs_quote = value.is_empty()
+        || value.starts_with(' ')
+        || value.ends_with(' ')
+        || value.contains([',', '"', ':']);
+    if !needs_quote {
+        return value.to_string();
+    }
+    let escaped = value.replace('"', "\"\"");
+    format!("\"{escaped}\"")
+}
+
+/// Build an rclone INLINE connection string `:backend,key=value,...:path` (CONN-R9,
+/// §8.1). The broker injects the credential into this string at mount time and hands
+/// it to [`RcClient::mount`] as the `fs`, so the secret lives ONLY in the broker and
+/// is NEVER written to rclone's reversible on-disk config (the §8.1 invariant: take
+/// rclone's breadth, reject its credential store). `params` preserve their given order
+/// (deterministic output) and every value is quoted per [`quote_conn_value`] so a
+/// credential or host value cannot inject an extra parameter. `path` is the remote
+/// path within the backend (often empty for a mount root).
+pub fn rclone_connection_string(backend: &str, params: &[(&str, &str)], path: &str) -> String {
+    let mut out = String::from(":");
+    out.push_str(backend);
+    for (key, value) in params {
+        out.push(',');
+        out.push_str(key);
+        out.push('=');
+        out.push_str(&quote_conn_value(value));
+    }
+    out.push(':');
+    out.push_str(path);
+    out
+}
+
 /// The index of the first occurrence of `needle` in `haystack`, or `None`.
 fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack
         .windows(needle.len())
         .position(|window| window == needle)
+}
+
+#[cfg(test)]
+mod conn_tests {
+    use super::rclone_connection_string;
+
+    #[test]
+    fn a_plain_sftp_connection_string_is_unquoted() {
+        let s = rclone_connection_string(
+            "sftp",
+            &[("host", "example.com"), ("user", "bob"), ("pass", "OBSCURED")],
+            "/data",
+        );
+        assert_eq!(s, ":sftp,host=example.com,user=bob,pass=OBSCURED:/data");
+    }
+
+    #[test]
+    fn an_empty_path_keeps_the_trailing_colon() {
+        let s = rclone_connection_string("s3", &[("provider", "AWS")], "");
+        assert_eq!(s, ":s3,provider=AWS:");
+    }
+
+    #[test]
+    fn a_value_with_a_comma_or_colon_is_quoted() {
+        // A comma would otherwise start a new parameter; a colon would end the
+        // parameter section. Both are quoted so they stay inside the value.
+        let s = rclone_connection_string("webdav", &[("url", "http://h:8080/dav,x")], "");
+        assert_eq!(s, ":webdav,url=\"http://h:8080/dav,x\":");
+    }
+
+    #[test]
+    fn an_inner_quote_is_doubled() {
+        let s = rclone_connection_string("sftp", &[("pass", "a\"b")], "");
+        assert_eq!(s, ":sftp,pass=\"a\"\"b\":");
+    }
+
+    #[test]
+    fn a_credential_cannot_inject_an_extra_parameter() {
+        // A hostile pass value carrying its own `,key=value` is quoted whole, so it
+        // stays one parameter value rather than smuggling a second parameter.
+        let s = rclone_connection_string(
+            "sftp",
+            &[("host", "h"), ("pass", "x,user=attacker")],
+            "",
+        );
+        assert_eq!(s, ":sftp,host=h,pass=\"x,user=attacker\":");
+    }
+
+    #[test]
+    fn surrounding_whitespace_and_empty_values_are_quoted() {
+        assert_eq!(rclone_connection_string("b", &[("k", " v")], ""), ":b,k=\" v\":");
+        assert_eq!(rclone_connection_string("b", &[("k", "")], ""), ":b,k=\"\":");
+    }
 }
 
 #[cfg(test)]
