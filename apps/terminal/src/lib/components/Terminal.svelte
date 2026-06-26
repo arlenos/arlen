@@ -446,11 +446,41 @@
     void document.fonts.ready.then(() => {
       if (!term || !fit) return;
       fit.fit();
+      // Pin the cell to an INTEGER css-pixel advance so every column lands on an
+      // integer pixel: a fractional mono advance (~8.4px at 14px) accumulates in
+      // the DOM renderer's inline layout and slips a wide TUI ~1 cell by the right
+      // edge (btop's box border doubles, item 8). Rounding to nearest perturbs the
+      // cell <=0.5px (so a full-width grid keeps ample columns) while landing each
+      // cell boundary on an integer pixel, which kills the accumulation. Staying on
+      // the DOM renderer keeps the block-chrome decorations pixel-exact (the canvas
+      // path's #967 anchor problem is avoided) - one renderer, both correct. Read
+      // AFTER this first fit so the loaded font is measured, then re-fit.
+      pinCellWidthToInteger(term);
+      fit.fit();
       resizeObserver = new ResizeObserver(() => fit?.fit());
       resizeObserver.observe(host);
       void drain();
     });
   });
+
+  // Round the DOM renderer's measured cell width to the NEAREST integer css pixel
+  // via letterSpacing so column boundaries are integral (item 8: a fractional
+  // advance drifts wide TUIs). Reads xterm's own measured width through the same
+  // private `_renderService.dimensions` path the FitAddon uses; a no-op when that
+  // path is absent or the advance is already integral, so it can never break
+  // rendering. Nearest (not ceil) keeps the perturbation <=0.5px so a full-width
+  // grid does not lose meaningful columns.
+  function pinCellWidthToInteger(t: Terminal): void {
+    const cell = (
+      t as unknown as {
+        _core?: { _renderService?: { dimensions?: { css?: { cell?: { width?: number } } } } };
+      }
+    )._core?._renderService?.dimensions?.css?.cell;
+    const w = cell?.width;
+    if (typeof w !== "number" || !(w > 0)) return;
+    const pad = Math.round(w) - w;
+    if (Math.abs(pad) > 0.01 && Math.abs(pad) < 1) t.options.letterSpacing = pad;
+  }
 
   onDestroy(() => {
     unlistenFrame?.();
