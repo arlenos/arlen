@@ -67,6 +67,19 @@ async fn main() {
         }
     };
 
+    // SST-R3: the socket-pull surface. os-sdk is socket-based and does not speak
+    // D-Bus, so the org.arlen.Power1 read properties leave SDK consumers without a
+    // query path; this serves the same snapshot over a Unix socket. Best-effort:
+    // a failure to bind leaves the D-Bus + event-push surfaces working.
+    let query_path = os_sdk::power::socket_path();
+    match arlen_powerd::query_socket::bind(&query_path) {
+        Ok(listener) => {
+            info!(socket = %query_path.display(), "power query socket listening");
+            tokio::spawn(arlen_powerd::query_socket::serve(listener, shared.clone()));
+        }
+        Err(e) => warn!("power query socket unavailable: {e}"),
+    }
+
     let _ = sd_notify::notify(false, &[sd_notify::NotifyState::Ready]);
 
     // The critical-battery auto-action config (off by default; PWR-R6).

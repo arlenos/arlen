@@ -12,7 +12,8 @@ path = "src/main.rs"
 path = "src/lib.rs"
 
 [dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "sync", "net", "io-util"] }
+serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 thiserror = "2"
