@@ -18,3 +18,4 @@ pub mod logind;
 pub mod notify;
 pub mod power;
 pub mod profiles;
+pub mod query_socket;
