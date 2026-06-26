@@ -1,0 +1,12 @@
+# Starting permission profile for Equibop (a Discord desktop client). It chats and
+# calls over the network by function and saves received files to Downloads. No
+# Knowledge Graph access.
+[info]
+app_id = "io.github.equicord.equibop"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

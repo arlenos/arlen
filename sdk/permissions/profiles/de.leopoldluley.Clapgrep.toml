@@ -1,0 +1,6 @@
+# Starting permission profile for Clapgrep (a graphical file-content search tool). It
+# searches inside a folder the user selects through the portal; no network, no
+# Knowledge Graph, and no broad filesystem grant by default.
+[info]
+app_id = "de.leopoldluley.Clapgrep"
+tier = "third-party"
