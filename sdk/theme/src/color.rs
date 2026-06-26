@@ -429,6 +429,31 @@ mod tests {
     }
 
     #[test]
+    fn contrast_report_audits_the_bundled_light_theme() {
+        // The shipped LIGHT built-in is held to the same WCAG 2.2 AA / EN 301 549
+        // conformance target as dark (Decision 1: binding for every surface). Light
+        // themes are where contrast regressions hide (dark text on a light surface
+        // can fall under the floor as easily as the reverse), so this gate locks the
+        // light default against a born-accessible regression.
+        let t = crate::ArlenTheme::from_bundled(include_str!("../themes/light.toml"))
+            .expect("bundled light resolves");
+        let report = contrast_report(&t.color);
+        assert_eq!(report.len(), 10);
+        let body = report.iter().find(|f| f.pair == "fg.primary on bg.app").unwrap();
+        assert!(body.wcag_pass && body.wcag >= 4.5, "body WCAG {}", body.wcag);
+        assert!(body.apca_pass && body.apca.abs() >= 60.0, "body APCA {}", body.apca);
+        // Every BODY-text pair clears the binding AA ratio (the legal MUST); the
+        // Large/non-text pairs only need their flags consistent with the floor.
+        for f in &report {
+            assert_eq!(f.wcag_pass, f.wcag >= f.usage.wcag_floor(), "{}", f.pair);
+            assert_eq!(f.apca_pass, f.apca.abs() >= f.usage.apca_floor(), "{}", f.pair);
+            if f.usage == ContrastUse::Body {
+                assert!(f.wcag_pass, "body pair {} below AA: WCAG {}", f.pair, f.wcag);
+            }
+        }
+    }
+
+    #[test]
     fn contrast_use_floors() {
         assert_eq!(ContrastUse::Body.wcag_floor(), 4.5);
         assert_eq!(ContrastUse::Body.apca_floor(), 60.0);
