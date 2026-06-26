@@ -1,0 +1,9 @@
+# Starting permission profile for Turn On (wakes devices via Wake-on-LAN). It
+# sends magic packets on the local network; network is its function. No user files
+# and no Knowledge Graph access.
+[info]
+app_id = "de.swsnr.turnon"
+tier = "third-party"
+
+[network]
+allow_all = true
