@@ -1,0 +1,10 @@
+# Starting permission profile for Kamoso (a KDE webcam app). Saves captured
+# photos and videos to Pictures and Videos; the camera device itself is granted
+# out-of-band, not through this schema. No network, no Knowledge Graph access.
+[info]
+app_id = "org.kde.kamoso"
+tier = "third-party"
+
+[filesystem]
+pictures = true
+videos = true
