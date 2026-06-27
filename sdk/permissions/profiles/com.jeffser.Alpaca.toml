@@ -1,0 +1,9 @@
+# Starting permission profile for Alpaca (an Ollama chat client). It talks to an
+# Ollama server over HTTP (local or remote), so network is its function; no user
+# files and no Knowledge Graph access.
+[info]
+app_id = "com.jeffser.Alpaca"
+tier = "third-party"
+
+[network]
+allow_all = true
