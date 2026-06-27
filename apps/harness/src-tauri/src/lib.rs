@@ -46,6 +46,7 @@ pub fn run() {
             ai_manage::ai_usage,
             ai_manage::ai_providers_list,
             ai_manage::ai_provider_set_enabled,
+            ai_manage::ai_defaults_get,
             ai_manage::action_state,
             capability::ai_capability,
             behaviours::ai_behaviours,

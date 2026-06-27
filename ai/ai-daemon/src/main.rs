@@ -547,6 +547,25 @@ impl AiInterface {
         }
     }
 
+    /// The configured default provider/model for the manager's Default-Models
+    /// page (`ai_defaults_get`), as JSON `{ provider, model, ranking }`. Distinct
+    /// from `ai_active` (the live in-session selection, which a `ai_set_active`
+    /// may have overridden): this is the persisted default read from `ai.toml`
+    /// (`ai.provider` + `[provider] model`), the value the daemon starts on.
+    /// `ranking` is the priority-ordered fallback list - empty until the
+    /// Settings-written ranking schema lands (Settings owns the `ai.toml` write;
+    /// the daemon reads it). Read live so a Settings edit shows without a restart.
+    #[zbus(name = "ai_defaults_get")]
+    async fn ai_defaults_get(&self) -> String {
+        let settings = config_watch::load_ai_settings();
+        serde_json::json!({
+            "provider": settings.provider.name,
+            "model": settings.provider.model,
+            "ranking": Vec::<String>::new(),
+        })
+        .to_string()
+    }
+
     /// Run System Explanation Mode (Foundation §5.8): return a
     /// plain-language summary of what the computer is doing right now.
     /// The summary is returned directly to the caller (not broadcast),
