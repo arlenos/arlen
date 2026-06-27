@@ -7,7 +7,7 @@
 
 import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
-import type { FileEntry } from "@arlen/ui-kit/components/browser";
+import { isVirtualLocation, type FileEntry } from "@arlen/ui-kit/components/browser";
 
 export interface SearchHit {
   rel_path: string;
@@ -120,6 +120,15 @@ let debounce: ReturnType<typeof setTimeout> | null = null;
 export async function runSearch(path: string): Promise<void> {
   const query = get(searchQuery).trim();
   if (query.length === 0) {
+    searchResults.set(null);
+    searchTruncated.set(false);
+    return;
+  }
+  // A virtual location (recent / trash / project:<id> / search:<query>) is a KG
+  // query, not a real directory, so the recursive backend name walk
+  // (`files_search`) is meaningless there - disable it rather than recurse a
+  // non-path. The normal virtual-location listing stays shown.
+  if (isVirtualLocation(path)) {
     searchResults.set(null);
     searchTruncated.set(false);
     return;
