@@ -64,6 +64,16 @@ pub enum AuditOutcome {
         /// Free-form error string from the transport layer.
         detail: String,
     },
+    /// The pre-test entry: a connection-test GET to the provider's
+    /// model-list endpoint is about to be made. The fail-closed gate
+    /// entry for `test_provider`, committed before the probe leaves the
+    /// host (the test is still outbound egress, §8.4.6).
+    TestConnection,
+    /// A connection test reached the upstream and got a status back.
+    TestConnectionResult {
+        /// HTTP status code returned by the upstream.
+        upstream_status: u16,
+    },
 }
 
 impl AuditRecord {
@@ -85,6 +95,10 @@ impl AuditRecord {
             }
             AuditOutcome::RejectedByPolicy { code } => code.clone(),
             AuditOutcome::UpstreamError { .. } => "upstream-error".to_string(),
+            AuditOutcome::TestConnection => "test-connection".to_string(),
+            AuditOutcome::TestConnectionResult { upstream_status } => {
+                format!("test-connection-{upstream_status}")
+            }
         };
         // The subject must be a TRUSTED identifier. `host` is derived
         // from the proxy-owned provider catalog after lookup, so it is

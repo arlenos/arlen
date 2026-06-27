@@ -112,6 +112,39 @@ impl ProxyInterface {
         serde_json::to_string(&self.service.provider_views())
             .unwrap_or_else(|_| "[]".to_string())
     }
+
+    /// Test a catalogued provider's connectivity (the manager's "test"
+    /// button + the capability-grant `validate_provider`). GETs the
+    /// provider's catalogued model-list endpoint and returns the verdict
+    /// as JSON `{ ok, httpStatus?, network? }`. The endpoint comes from
+    /// the trusted catalog, never the caller, so there is no caller-URL
+    /// egress-consent concern. The same caller allowlist + audit-before-
+    /// egress gate as `forward_completion` apply; a policy refusal is a
+    /// D-Bus error.
+    async fn test_provider(
+        &self,
+        provider_name: &str,
+        audit_token: &str,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &Connection,
+    ) -> zbus::fdo::Result<String> {
+        let sender = header
+            .sender()
+            .ok_or_else(|| zbus::fdo::Error::AccessDenied("no sender".to_string()))?
+            .to_string();
+        let caller = peer_auth::resolve(&sender, connection, &self.peer_map)
+            .await
+            .map_err(map_peer_auth_error)?;
+        match self
+            .service
+            .test_provider(&caller, provider_name, audit_token)
+            .await
+        {
+            Ok(outcome) => serde_json::to_string(&outcome)
+                .map_err(|e| zbus::fdo::Error::Failed(format!("serialize test outcome: {e}"))),
+            Err(err) => Err(map_error(err)),
+        }
+    }
 }
 
 fn map_peer_auth_error(err: PeerAuthError) -> zbus::fdo::Error {
