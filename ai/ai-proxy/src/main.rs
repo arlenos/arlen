@@ -66,6 +66,7 @@ impl ProxyInterface {
     /// Forward a completion request through the named provider's
     /// catalogued endpoint. The proxy uses its own provider catalog
     /// for endpoint lookup; the caller never supplies a URL.
+    #[zbus(name = "forward_completion")]
     async fn forward_completion(
         &self,
         provider_name: &str,
@@ -99,6 +100,7 @@ impl ProxyInterface {
     /// Return the catalogued provider names. Lists what callers may
     /// pass to `forward_completion`; it does *not* expose the
     /// underlying endpoint URLs.
+    #[zbus(name = "list_allowed_providers")]
     async fn list_allowed_providers(&self) -> Vec<String> {
         self.service.allowed_providers()
     }
@@ -108,6 +110,7 @@ impl ProxyInterface {
     /// only, never the endpoint URL or any credential. Backs the daemon's
     /// `ai_providers_list` for the Settings AI-providers manager. Empty array on
     /// a serialization failure (the manager then shows no providers, fail-safe).
+    #[zbus(name = "list_providers")]
     async fn list_providers(&self) -> String {
         serde_json::to_string(&self.service.provider_views())
             .unwrap_or_else(|_| "[]".to_string())
@@ -121,6 +124,7 @@ impl ProxyInterface {
     /// egress-consent concern. The same caller allowlist + audit-before-
     /// egress gate as `forward_completion` apply; a policy refusal is a
     /// D-Bus error.
+    #[zbus(name = "test_provider")]
     async fn test_provider(
         &self,
         provider_name: &str,
