@@ -1,0 +1,10 @@
+# Starting permission profile for Eyedropper (a colour picker). It samples a
+# screen colour through the portal and copies the colour code to the clipboard,
+# so clipboard write is its function; no network, no user files and no Knowledge
+# Graph access.
+[info]
+app_id = "io.github.finefindus.eyedropper"
+tier = "third-party"
+
+[clipboard]
+write = true
