@@ -217,6 +217,22 @@ integration-smoke:
     cargo test --manifest-path "{{justfile_directory()}}/integration/Cargo.toml" \
         --test integration_backend_smoke -- --ignored
 
+# Executor go-live PREP step P5 (executor-live-golive-plan.md): install the
+# agent's permission profile to ~/.config/permissions/ai-agent.toml (honours
+# XDG_CONFIG_HOME). It grants EXACTLY the one File -[FILE_PART_OF]-> Project link
+# the deterministic auto-tag workflow writes, nothing else. This does NOT enable
+# production: flipping `executor_live = true` in ai.toml is Tim's conscious step
+# AFTER a green rehearsal (`just go-live-rehearsal`); this recipe only puts the
+# grant in place so that flip is bounded.
+provision-agent-profile:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dest="${XDG_CONFIG_HOME:-$HOME/.config}/permissions"
+    mkdir -p "$dest"
+    install -m644 "{{ROOT}}/ai/ai-agent/dist/permissions/ai-agent.toml" "$dest/ai-agent.toml"
+    echo "installed agent permission profile -> $dest/ai-agent.toml"
+    echo "NB executor_live stays OFF; flipping it in ai.toml is a separate manual step."
+
 # Headless terminal round-trip smoke (#3 PR-2): build the prod-asset terminal
 # binary (`cargo tauri build` embeds the frontend; a plain `cargo build` loads
 # the dev URL and renders nothing), then drive a real command through the running
