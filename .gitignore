@@ -10,5 +10,9 @@ docs/
 # Local build logs
 logs/
 
+# Generated third-party license notices (a build/release artifact from
+# `just notices`; CI uploads it rather than committing it).
+THIRD-PARTY-NOTICES/
+
 # Local-only working context for Claude Code (never committed).
 CLAUDE.md
