@@ -795,6 +795,34 @@ mod tests {
         assert_eq!(err.code(), "caller-not-allowed");
     }
 
+    #[tokio::test]
+    async fn test_provider_refuses_a_provider_with_no_models_endpoint() {
+        // A catalogued provider that declares no model-list endpoint must be
+        // refused before any egress, not silently dialed at a wrong URL. The
+        // forwarder carries no queued response: reaching it would be the bug.
+        let forwarder = Arc::new(StubForwarder::new(vec![]));
+        let sink = Arc::new(CollectingAuditSink::new());
+        let svc = ProxyService::new(
+            Allowlist::default_arlen(),
+            catalog_with(
+                "custom-cloud",
+                "https://api.anthropic.com/v1/messages",
+                WireFormat::Anthropic,
+            ),
+            CallerAllowlist::default_arlen(),
+            forwarder.clone() as Arc<dyn Forwarder>,
+            sink as Arc<dyn AuditSink>,
+        );
+
+        let err = svc
+            .test_provider(&ai_daemon_caller(), "custom-cloud", "tok-t")
+            .await
+            .expect_err("a provider with no model-list endpoint is refused");
+        assert_eq!(err.code(), "no-models-endpoint");
+        // No egress: the refusal landed before the probe was dialed.
+        assert!(forwarder.calls.lock().await.is_empty());
+    }
+
     #[test]
     fn test_outcome_serializes_to_the_manager_camelcase_shape() {
         // The manager UI branches on these exact keys: `ok`, then `httpStatus`
