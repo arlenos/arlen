@@ -183,13 +183,13 @@ lint-licenses:
     echo "== reuse lint (advisory until SPDX headers land) =="
     reuse lint || echo "reuse lint advisory: per-file SPDX headers + REUSE.toml pending the copyright-holder decision"
 
-# Generate the THIRD-PARTY-NOTICES artifact (licensing-strategy.md): bundle every
-# dependency's license per workspace into THIRD-PARTY-NOTICES/ (gitignored - a
-# build/release artifact, not committed). Needs `cargo-bundle-licenses` installed.
+# Generate the THIRD-PARTY-NOTICES dependency-license artifact (gitignored).
 notices:
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ROOT}}"
+    # Bundle every dependency's license per workspace into THIRD-PARTY-NOTICES/ (a
+    # build/release artifact, not committed). Needs `cargo-bundle-licenses` installed.
     outdir="THIRD-PARTY-NOTICES"
     rm -rf "$outdir"; mkdir -p "$outdir"
     roots=$(grep -rl '^\[workspace\]' --include=Cargo.toml . | grep -v '/target/' | xargs -n1 dirname | sort -u)
