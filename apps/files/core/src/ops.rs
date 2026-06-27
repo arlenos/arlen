@@ -1198,6 +1198,35 @@ pub fn empty_trash(trash_dir: &Dir) -> OpResult<usize> {
     Ok(cleared)
 }
 
+/// Permanently delete ONE trashed entry: remove `<Trash>/files/<trashed_name>`
+/// (by its real kind - a directory recursively, anything else via `remove_file`,
+/// never following a symlink) and its matching `info/<trashed_name>.trashinfo`.
+/// The per-item analogue of [`empty_trash`], and irreversible (unlike
+/// [`restore_entry`]). `trashed_name` is the [`TrashedItem::trashed_name`] from
+/// [`list_trash`].
+///
+/// `trashed_name` is untrusted: it is validated as a single path component
+/// ([`validate_name`]) so it cannot address anything outside `files/` + `info/`
+/// (cap-std also refuses traversal at the syscall; this is the explicit
+/// fail-closed guard + a clear error). An already-absent payload is not an error
+/// - the matching `info/` record is still cleared so an orphan info cannot
+/// linger, and a repeated delete is a harmless no-op.
+pub fn delete_trashed_item(trash_dir: &Dir, trashed_name: &str) -> OpResult<()> {
+    validate_name(trashed_name)?;
+    let files_rel = Path::new("files").join(trashed_name);
+    let info_rel = Path::new("info").join(format!("{trashed_name}.trashinfo"));
+    // Remove the payload by its real kind (never follow a symlink: a dir-symlink
+    // is unlinked, not recursed into). An absent payload is tolerated.
+    match trash_dir.symlink_metadata(&files_rel) {
+        Ok(md) if md.file_type().is_dir() => trash_dir.remove_dir_all(&files_rel)?,
+        Ok(_) => trash_dir.remove_file(&files_rel)?,
+        Err(_) => {}
+    }
+    // Clear the info record (best-effort: an absent info is fine).
+    let _ = trash_dir.remove_file(&info_rel);
+    Ok(())
+}
+
 /// Restore a trashed entry: move `<Trash>/files/<trashed_name>` to
 /// `dest_dir`/`dest_rel` (the host-resolved destination), then remove BOTH the
 /// `files/` entry and the matching `info/<trashed_name>.trashinfo` on success.
@@ -2304,6 +2333,55 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let trash_dir = make_trash(tmp.path());
         assert_eq!(empty_trash(&trash_dir).unwrap(), 0);
+    }
+
+    #[test]
+    fn delete_trashed_item_removes_only_the_named_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_root = tmp.path().join("home");
+        fs::create_dir(&src_root).unwrap();
+        let trash_dir = make_trash(tmp.path());
+        trash_one(tmp.path(), &src_root, &trash_dir, "a.txt", "/home/u/a.txt");
+        trash_one(tmp.path(), &src_root, &trash_dir, "b.txt", "/home/u/b.txt");
+
+        delete_trashed_item(&trash_dir, "a.txt").unwrap();
+
+        // Only b.txt remains, with both its payload and its info intact.
+        let items = list_trash(&trash_dir).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].trashed_name, "b.txt");
+        assert!(trash_dir.symlink_metadata("files/a.txt").is_err(), "payload gone");
+        assert!(trash_dir.symlink_metadata("info/a.txt.trashinfo").is_err(), "info gone");
+    }
+
+    #[test]
+    fn delete_trashed_item_is_idempotent_and_clears_an_orphan_info() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_root = tmp.path().join("home");
+        fs::create_dir(&src_root).unwrap();
+        let trash_dir = make_trash(tmp.path());
+        trash_one(tmp.path(), &src_root, &trash_dir, "a.txt", "/home/u/a.txt");
+
+        delete_trashed_item(&trash_dir, "a.txt").unwrap();
+        // A repeated delete of the now-absent entry is a harmless no-op.
+        delete_trashed_item(&trash_dir, "a.txt").unwrap();
+        assert!(list_trash(&trash_dir).unwrap().is_empty());
+    }
+
+    #[test]
+    fn delete_trashed_item_rejects_a_traversing_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let trash_dir = make_trash(tmp.path());
+        // An untrusted name that is not a single component is refused before any
+        // syscall, so it cannot escape files/ + info/.
+        assert!(matches!(
+            delete_trashed_item(&trash_dir, "../files/x"),
+            Err(OpError::InvalidName { .. })
+        ));
+        assert!(matches!(
+            delete_trashed_item(&trash_dir, ".."),
+            Err(OpError::InvalidName { .. })
+        ));
     }
 
     #[test]
