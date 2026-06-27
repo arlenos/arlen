@@ -1,0 +1,8 @@
+# Starting permission profile for Umbrello (a KDE UML modeller). Opens its data/model files from
+# Documents; no network, no Knowledge Graph access.
+[info]
+app_id = "org.kde.umbrello"
+tier = "third-party"
+
+[filesystem]
+documents = true
