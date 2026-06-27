@@ -1,0 +1,9 @@
+# Starting permission profile for Dragon Player (a KDE video player).
+# Plays local media from Videos and Music; no network, no Knowledge Graph access.
+[info]
+app_id = "org.kde.dragon"
+tier = "third-party"
+
+[filesystem]
+videos = true
+music = true
