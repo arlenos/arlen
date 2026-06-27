@@ -149,13 +149,14 @@
       </div>
     {:else if message.text}
       {#if message.role === "assistant"}
-        <!-- Assistant answers are markdown; renderMarkdown parses and
-             sanitizes them (DOMPurify) before this {@html}. -->
-        <div class="block tinted markdown" use:externalLinks>
+        <!-- Assistant answers are plain full-width prose (the agent's voice),
+             markdown parsed + sanitized (DOMPurify) before this {@html}. -->
+        <div class="block prose markdown" use:externalLinks>
           {@html renderMarkdown(message.text)}
         </div>
       {:else}
-        <div class="block plain">{message.text}</div>
+        <!-- Your turn is the subtly differentiated block, not a bubble. -->
+        <div class="block you-block">{message.text}</div>
       {/if}
     {/if}
 
@@ -227,12 +228,19 @@
     color: var(--foreground);
     word-break: break-word;
   }
-  /* Containers sit on the column edge; their text is inset to the shared
-     1rem text edge. Bare prose carries the inset itself. */
-  .plain {
+  /* Assistant prose flows full-width on the column edge, text inset to the
+     shared 1rem text edge - no box, the agent's voice. */
+  .prose {
     padding-inline: var(--space-card, 1rem);
+  }
+  /* Your turn: the subtly tinted block (the differentiation, not a bubble). */
+  .you-block {
+    padding: 0.625rem var(--space-card, 1rem);
+    border-radius: var(--radius-card);
+    background: color-mix(in srgb, var(--foreground) 5%, transparent);
     white-space: pre-wrap;
   }
+  /* The pending placeholder keeps a faint tint while the agent works. */
   .tinted {
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
     border-radius: var(--radius-card);
