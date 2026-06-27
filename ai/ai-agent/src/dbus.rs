@@ -262,6 +262,30 @@ impl AgentInterface {
         serde_json::to_string(&proposals).unwrap_or_else(|_| "[]".to_string())
     }
 
+    /// Dismiss a pending gate proposal: the user declined the confirmation, so
+    /// the proposal is dropped from the pending set and the action is not taken
+    /// (harness-redesign emit seam 2). `id` is the proposal's audit-ledger index
+    /// (its `pending_proposals` handle). Returns `denied` when an entry was
+    /// dropped, `no-such-proposal` when nothing matched (already acted on, aged
+    /// out of the bounded store, or never pending), `error: ...` on a poisoned
+    /// store lock.
+    ///
+    /// Deny is purely local and always available: it forgoes an action, which is
+    /// safe in any mode, so it is **not** gated on `executor_live` (unlike
+    /// `approve`, which would perform the write). The decline is not separately
+    /// audited here; the gate already recorded the `RequireConfirmation` decision
+    /// (the `id` is that audit index), and not acting leaves no further effect to
+    /// attribute.
+    async fn deny(&self, id: u64) -> String {
+        match self.pending.lock() {
+            Ok(mut store) => match store.remove(&id.to_string()) {
+                Some(_) => "denied".to_string(),
+                None => "no-such-proposal".to_string(),
+            },
+            Err(_) => "error: pending store unavailable".to_string(),
+        }
+    }
+
     /// The loaded skills as a JSON array, for the user-invoke discovery surface
     /// (PR-5 part 3a / the deferred S-U3b "behaviours list"). Each entry carries
     /// the skill's name, description, agent-match `whenToUse` hint, kind, and
