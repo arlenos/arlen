@@ -86,6 +86,59 @@ pub async fn ai_explain() -> Result<String, String> {
     }
 }
 
+/// Call a String-returning member on the AI daemon, returning `fallback` on any
+/// connection or call failure (the manager reads are advisory - a down daemon
+/// shows an empty surface rather than erroring the page).
+async fn ai_call_string(member: &str, fallback: &str) -> String {
+    let Ok(connection) = zbus::Connection::session().await else {
+        return fallback.to_string();
+    };
+    let Ok(proxy) =
+        zbus::Proxy::new(&connection, AI_DAEMON_NAME, AI_OBJECT_PATH, AI_DAEMON_NAME).await
+    else {
+        return fallback.to_string();
+    };
+    proxy
+        .call::<_, _, String>(member, &())
+        .await
+        .unwrap_or_else(|_| fallback.to_string())
+}
+
+/// The catalogued providers for the Settings AI-providers manager
+/// (`ai_providers_list`): a JSON array of `{ id, name, kind, enabled,
+/// configured, status }`. Empty array if the daemon is unreachable.
+#[tauri::command]
+pub async fn ai_providers_list() -> String {
+    ai_call_string("ai_providers_list", "[]").await
+}
+
+/// The configured default provider/model + ranked fallback (`ai_defaults_get`),
+/// as `{ provider, model, ranking }`, for the manager's Default-Models page.
+/// Empty object if the daemon is unreachable.
+#[tauri::command]
+pub async fn ai_defaults_get() -> String {
+    ai_call_string("ai_defaults_get", "{}").await
+}
+
+/// Enable or disable a catalogued provider (`ai_provider_set_enabled`). Returns
+/// the daemon's `ok` / `error: ...` status; a transport failure maps to an
+/// `error:` string so the manager surfaces it.
+#[tauri::command]
+pub async fn ai_provider_set_enabled(id: String, enabled: bool) -> String {
+    let Ok(connection) = zbus::Connection::session().await else {
+        return "error: session bus unavailable".to_string();
+    };
+    let Ok(proxy) =
+        zbus::Proxy::new(&connection, AI_DAEMON_NAME, AI_OBJECT_PATH, AI_DAEMON_NAME).await
+    else {
+        return "error: AI daemon unavailable".to_string();
+    };
+    proxy
+        .call::<_, _, String>("ai_provider_set_enabled", &(id.as_str(), enabled))
+        .await
+        .unwrap_or_else(|e| format!("error: {e}"))
+}
+
 async fn name_has_owner(dbus: &zbus::fdo::DBusProxy<'_>, name: &str) -> bool {
     let Ok(bus_name) = zbus::names::BusName::try_from(name) else {
         return false;
