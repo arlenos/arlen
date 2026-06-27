@@ -67,6 +67,14 @@ pub async fn ai_providers_list() -> String {
     call_string(AI_BUS, AI_PATH, "ai_providers_list", "[]").await
 }
 
+/// The configured default provider/model for the manager's Default-Models page
+/// (`ai_defaults_get`): `{ provider, model, ranking }`. Empty object if the
+/// daemon is unreachable.
+#[tauri::command]
+pub async fn ai_defaults_get() -> String {
+    call_string(AI_BUS, AI_PATH, "ai_defaults_get", "{}").await
+}
+
 /// The autonomy-dial state (`action_state` on the agent): `{ action_mode,
 /// autonomous_apps, executor_live }`. The safe inert shape if the agent is
 /// unreachable (suggest / none / off).
