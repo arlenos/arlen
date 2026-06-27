@@ -81,6 +81,22 @@ impl<V: Clone> ReceiptStore<V> {
         self.map.get(key).cloned()
     }
 
+    /// Every retained value, cloned, oldest first. Used to list the store (e.g.
+    /// the harness reads all pending proposals); the order is the eviction order.
+    pub fn values(&self) -> Vec<V> {
+        self.order.iter().filter_map(|k| self.map.get(k).cloned()).collect()
+    }
+
+    /// Remove the entry for `key`, returning it if present. Used when an entry is
+    /// acted on (a pending proposal approved/denied) so it no longer lists.
+    pub fn remove(&mut self, key: &str) -> Option<V> {
+        let value = self.map.remove(key);
+        if value.is_some() {
+            self.order.retain(|k| k != key);
+        }
+        value
+    }
+
     /// The number of retained receipts.
     pub fn len(&self) -> usize {
         self.map.len()
@@ -128,6 +144,20 @@ mod tests {
         assert_eq!(s.get("a"), Some("1b".to_string()), "refreshed value survives");
         assert_eq!(s.get("b"), None, "stale entry evicted");
         assert_eq!(s.get("c"), Some("3".to_string()));
+        assert_eq!(s.len(), 2);
+    }
+
+    #[test]
+    fn values_lists_oldest_first_and_remove_drops_an_entry() {
+        let mut s: ReceiptStore<String> = ReceiptStore::new(4);
+        s.record("a".into(), "1".into());
+        s.record("b".into(), "2".into());
+        s.record("c".into(), "3".into());
+        assert_eq!(s.values(), vec!["1".to_string(), "2".to_string(), "3".to_string()]);
+        assert_eq!(s.remove("b"), Some("2".to_string()));
+        assert_eq!(s.remove("b"), None, "already removed");
+        assert_eq!(s.get("b"), None);
+        assert_eq!(s.values(), vec!["1".to_string(), "3".to_string()], "order preserved, b gone");
         assert_eq!(s.len(), 2);
     }
 
