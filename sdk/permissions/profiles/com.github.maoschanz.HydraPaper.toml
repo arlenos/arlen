@@ -1,0 +1,6 @@
+# Starting permission profile for HydraPaper (a multi-monitor wallpaper setter). It
+# picks images through the file portal and sets the desktop wallpaper; no network,
+# no standing user-files grant and no Knowledge Graph access.
+[info]
+app_id = "com.github.maoschanz.HydraPaper"
+tier = "third-party"
