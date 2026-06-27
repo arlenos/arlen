@@ -8,8 +8,7 @@
   /// or a particular window chrome.
   import type { Snippet } from "svelte";
   import type { BrowserState } from "./controller";
-  import type { FileEntry } from "./types";
-  import { joinPath } from "./types";
+  import { type FileEntry, type ColumnSpec, DEFAULT_COLUMNS, joinPath } from "./types";
   import { Selection } from "./selection";
   import FileList from "./FileList.svelte";
   import FileGrid, {
@@ -29,6 +28,7 @@
     renamingName = $bindable(null),
     filter,
     now,
+    columns = DEFAULT_COLUMNS,
     icon,
   }: {
     /// The headless browser state; swapping it switches tabs.
@@ -49,6 +49,9 @@
     filter?: (entry: FileEntry) => boolean;
     /// Injectable clock for stable screenshots.
     now?: number;
+    /// Which columns the list view shows (a virtual location swaps Size for
+    /// Location and relabels the time column).
+    columns?: ColumnSpec;
     /// Icon seam for themed and KG-state icons.
     icon?: Snippet<[FileEntry]>;
   } = $props();
@@ -455,6 +458,7 @@
       {selectedIndices}
       {cursorIndex}
       {now}
+      {columns}
       {icon}
       {renamingName}
       onsort={(key) => controller.setSort(key)}
