@@ -696,7 +696,7 @@ fn decision_label(decision: ActionDecision) -> &'static str {
 /// so a high-impact action's external-content provenance is never lost. The
 /// high-impact label preserves the specific action class (still content-free: a
 /// class, never the operands).
-fn reason_label(reason: DecisionReason) -> String {
+pub(crate) fn reason_label(reason: DecisionReason) -> String {
     let mut parts: Vec<&str> = Vec::new();
     if reason.external_trigger {
         parts.push("external-trigger");

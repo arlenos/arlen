@@ -295,6 +295,70 @@ pub enum DispatchOutcome {
     },
 }
 
+/// A pending action the gate decided needs explicit user confirmation
+/// (harness-redesign emit seam 2): the data behind the harness's inline gate
+/// card. A serializable projection of a `RequireConfirmation`
+/// [`DispatchOutcome::Decided`] — the proposal, the faithful reason it needs the
+/// user (from the gate's own logic, never a model narrative), and what it would
+/// do. `id` is the audit-ledger index of the recorded decision: stable, unique,
+/// and the handle a later Approve/Deny keys off. The `summary` + `effects` are
+/// for display only; the audit subject stays content-free.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingProposal {
+    /// The audit-ledger index of the gate decision (the Approve/Deny handle).
+    pub id: u64,
+    /// The behaviour that proposed the action.
+    pub behaviour: String,
+    /// The tool / operation proposed.
+    pub tool: String,
+    /// Human-facing description of the action (the proposal/preview text).
+    pub summary: String,
+    /// The faithful cause set for needing confirmation (e.g.
+    /// `external-trigger+high-impact-permanent-delete`), from the gate's logic.
+    pub reason: String,
+    /// What the action would do, the registered effects (debug-rendered,
+    /// content-free bind-name effects); empty for an unregistered tool.
+    pub effects: Vec<String>,
+}
+
+/// Project a dispatch outcome into a pending-confirmation proposal for the
+/// harness gate card, if the gate's decision needs the user. Returns `Some` only
+/// for a `RequireConfirmation` decision (a high-impact / irreversible /
+/// externally-triggered action, or an unproven cap) - the always-confirm case
+/// the inline gate card renders. The executing decisions
+/// (`PreviewThenExecute`/`Proceed`) and the manual-suggest `Propose` are not gate
+/// cards, so they yield `None`. Pure.
+pub fn proposal_view(outcome: &DispatchOutcome) -> Option<PendingProposal> {
+    let DispatchOutcome::Decided {
+        behaviour,
+        action,
+        decision,
+        reason,
+        audit_index,
+        plan,
+        ..
+    } = outcome
+    else {
+        return None;
+    };
+    if *decision != ActionDecision::RequireConfirmation {
+        return None;
+    }
+    let effects = plan
+        .as_ref()
+        .map(|p| p.effects.iter().map(|e| format!("{e:?}")).collect())
+        .unwrap_or_default();
+    Some(PendingProposal {
+        id: *audit_index,
+        behaviour: behaviour.clone(),
+        tool: action.tool.clone(),
+        summary: action.summary.clone(),
+        reason: crate::gate::reason_label(*reason),
+        effects,
+    })
+}
+
 /// Per-behaviour burst coalescing (gap G1). Suppresses a repeat dispatch of a
 /// behaviour for an identical event within a short window, so a burst (e.g.
 /// `file.opened` x100 for one path in a second) fires the behaviour once, not
@@ -2190,6 +2254,49 @@ tools:
         let recorded = audit.recorded().await;
         assert_eq!(recorded[0].structural.subject, "agent.auto-tag-by-project");
         assert_eq!(recorded[0].call_chain_id.as_deref(), Some("e1:auto-tag-by-project"));
+    }
+
+    #[test]
+    fn proposal_view_projects_only_confirmation_decisions() {
+        let decided = |decision, reason| DispatchOutcome::Decided {
+            behaviour: "auto-tag-by-project".to_string(),
+            action: ProposedAction {
+                tool: "graph.write".to_string(),
+                summary: "tag the opened file".to_string(),
+                arguments: Default::default(),
+            },
+            decision,
+            reason,
+            audit_index: 7,
+            plan: plan_for("graph.write"),
+            dry_run: None,
+            executed: None,
+        };
+
+        // A RequireConfirmation decision is a gate card: projected, keyed by the
+        // audit index, carrying the proposal + the faithful reason + the effects.
+        let confirm = decided(
+            ActionDecision::RequireConfirmation,
+            DecisionReason::high_impact(arlen_ai_core::capability::ActionKind::Irreversible),
+        );
+        let view = proposal_view(&confirm).expect("a confirmation decision is a pending proposal");
+        assert_eq!(view.id, 7);
+        assert_eq!(view.behaviour, "auto-tag-by-project");
+        assert_eq!(view.tool, "graph.write");
+        assert_eq!(view.summary, "tag the opened file");
+        assert!(view.reason.contains("irreversible"), "reason carries the cause: {}", view.reason);
+        assert!(!view.effects.is_empty(), "a registered action carries its effects");
+
+        // Non-confirmation decisions are not gate cards.
+        assert!(proposal_view(&decided(ActionDecision::PreviewThenExecute, DecisionReason::proven_reversible())).is_none());
+        assert!(proposal_view(&decided(ActionDecision::Propose, DecisionReason::mode())).is_none());
+        assert!(proposal_view(&decided(ActionDecision::Proceed, DecisionReason::mode())).is_none());
+        // A non-Decided outcome is never a proposal.
+        assert!(proposal_view(&DispatchOutcome::Terminal {
+            behaviour: "x".to_string(),
+            outcome: "done".to_string(),
+        })
+        .is_none());
     }
 
     #[tokio::test]
