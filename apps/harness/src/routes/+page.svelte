@@ -10,6 +10,7 @@
   import Composer from "$lib/components/chat/Composer.svelte";
   import CapabilityBar from "$lib/components/chat/CapabilityBar.svelte";
   import { readCapability, type Capability } from "$lib/capability";
+  import { messages } from "$lib/stores/conversation";
 
   let capability = $state<Capability | null>(null);
   let capLoaded = $state(false);
@@ -50,8 +51,10 @@
   <div class="foot">
     <Composer bind:this={composer} disabled={composerDisabled} {placeholder} {capability} />
     <!-- The steady-state posture lives in the composer foot now; this line is
-         warning-only, shown when the AI is off or unreachable. -->
-    {#if !aiReady}
+         warning-only (AI off or unreachable). It shows only once there are
+         messages: on an empty chat the centred empty state already carries
+         the same off / unreachable notice, so this would double it. -->
+    {#if !aiReady && $messages.length > 0}
       <CapabilityBar {capability} loaded={capLoaded} onretry={loadCapability} />
     {/if}
   </div>
