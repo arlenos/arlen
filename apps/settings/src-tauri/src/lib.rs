@@ -66,6 +66,7 @@ pub fn run() {
             commands::activity::ai_activity_recent,
             commands::config::config_get,
             commands::config::config_set,
+            commands::config::ai_defaults_set,
             commands::config::config_reset,
             commands::config::config_get_default,
             commands::theme::theme_get,

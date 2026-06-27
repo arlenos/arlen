@@ -224,6 +224,28 @@ pub fn config_set(
     Ok(())
 }
 
+/// Set the default AI provider + model for the manager's Default-Models page
+/// (`ai_defaults_set`). Writes `ai.provider` + `[provider] model` to `ai.toml`
+/// in ONE format-preserving atomic write (Settings owns the `ai.toml` write; the
+/// daemon reads it via `ai_defaults_get` and at startup). A typed wrapper over
+/// the generic `config_set` so the manager makes one call, not two, and the two
+/// fields never land half-written. The ranked-fallback + per-purpose
+/// (query/agent/title) model schema is a deferred extension; this sets the
+/// single default the daemon resolves today. Both must be non-empty.
+#[tauri::command]
+pub fn ai_defaults_set(provider: String, model: String) -> Result<(), String> {
+    if provider.trim().is_empty() || model.trim().is_empty() {
+        return Err("provider and model must be non-empty".to_string());
+    }
+    let path = ConfigFile::Ai.path();
+    crate::toml_writer::update(&path, |doc| {
+        set_dotted_in_doc(doc, "ai.provider", toml_edit::value(provider.clone()))?;
+        set_dotted_in_doc(doc, "provider.model", toml_edit::value(model.clone()))?;
+        Ok(())
+    })?;
+    Ok(())
+}
+
 /// Reset a single key (delete it) or the whole file.
 #[tauri::command]
 pub fn config_reset(file: ConfigFile, key: Option<String>) -> Result<(), String> {
