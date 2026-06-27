@@ -1,0 +1,8 @@
+# Starting permission profile for Pithos (a Pandora radio client). Streaming is
+# its function, so it gets network; no user files and no Knowledge Graph access.
+[info]
+app_id = "io.github.Pithos.pithos"
+tier = "third-party"
+
+[network]
+allow_all = true
