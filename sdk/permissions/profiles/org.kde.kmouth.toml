@@ -1,0 +1,9 @@
+# Starting permission profile for KMouth (a KDE speech aid that reads typed text
+# aloud). Saves its phrase books under Documents; the speech-synthesis backend is
+# a system service, not granted here. No network, no Knowledge Graph access.
+[info]
+app_id = "org.kde.kmouth"
+tier = "third-party"
+
+[filesystem]
+documents = true
