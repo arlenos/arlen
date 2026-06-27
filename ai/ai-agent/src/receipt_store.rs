@@ -35,6 +35,53 @@ pub struct RetainedReceipt {
     pub behaviour: String,
 }
 
+/// A completed agent action as the harness silent-done line renders it
+/// (harness-redesign emit seam 3): what was done and the handle to undo it. A
+/// serializable projection of a retained execution receipt. `id` is the
+/// decision's correlation id — the exact handle the built `compensate(id)` D-Bus
+/// method undoes by — so the harness's `[Undo]` button keys off it. `what` is a
+/// content-bounded description of the write (the user's own action, shown in
+/// their own transcript); the audit subject stays content-free separately.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletedAction {
+    /// The decision's correlation id: the `compensate` undo handle.
+    pub id: String,
+    /// The behaviour that performed the action.
+    pub behaviour: String,
+    /// A content-bounded description of what was done (for the done-line).
+    pub what: String,
+}
+
+/// Project a retained receipt into the silent-done line the harness shows with
+/// an `[Undo]`. Pure. The `id` is the receipt's own correlation id (the
+/// `compensate` undo handle) — intrinsic to the receipt, the same value the store
+/// keys it by. The graph variant (the only one a producer emits today) describes
+/// the edge written; the non-graph variant (EM-R5, no producer yet) is described
+/// generically until its forward op is surfaced.
+pub fn completed_view(retained: &RetainedReceipt) -> CompletedAction {
+    let (id, what) = match &retained.receipt {
+        ActionReceipt::Graph(executed) => {
+            let w = executed.write();
+            (
+                executed.correlation_id().to_string(),
+                format!(
+                    "{} {}:{} → {}:{}",
+                    w.relation_type, w.from_type, w.from_id, w.to_type, w.to_id
+                ),
+            )
+        }
+        ActionReceipt::NonGraph(action) => {
+            (action.correlation_id().to_string(), "non-graph action".to_string())
+        }
+    };
+    CompletedAction {
+        id,
+        behaviour: retained.behaviour.clone(),
+        what,
+    }
+}
+
 /// A bounded, correlation-id-keyed store with first-in-first-out eviction.
 /// Re-recording an existing key refreshes its recency rather than evicting
 /// another entry.
@@ -159,6 +206,36 @@ mod tests {
         assert_eq!(s.get("b"), None);
         assert_eq!(s.values(), vec!["1".to_string(), "3".to_string()], "order preserved, b gone");
         assert_eq!(s.len(), 2);
+    }
+
+    #[test]
+    fn completed_view_describes_a_graph_write_and_carries_its_undo_handle() {
+        use crate::executor::{ActionReceipt, ExecutedWrite, RelationWrite, WriteOutcome};
+        let write = RelationWrite {
+            from_type: "system.File".to_string(),
+            from_id: "/p/a.rs".to_string(),
+            to_type: "system.Project".to_string(),
+            to_id: "Arlen".to_string(),
+            relation_type: "FILE_PART_OF".to_string(),
+        };
+        let executed = ExecutedWrite::for_test(
+            write,
+            WriteOutcome::Created,
+            "op-1".to_string(),
+            "corr-7".to_string(),
+        );
+        let retained = RetainedReceipt {
+            receipt: ActionReceipt::Graph(executed),
+            behaviour: "auto-tag-by-project".to_string(),
+        };
+        let view = completed_view(&retained);
+        // The id is the correlation id, the exact `compensate` undo handle.
+        assert_eq!(view.id, "corr-7");
+        assert_eq!(view.behaviour, "auto-tag-by-project");
+        assert_eq!(
+            view.what,
+            "FILE_PART_OF system.File:/p/a.rs → system.Project:Arlen"
+        );
     }
 
     #[test]
