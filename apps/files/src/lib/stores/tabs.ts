@@ -33,7 +33,7 @@ export function newTab(path?: string): void {
   const initial = path ?? (current ? get(current.path) : "/home");
   const tab: Tab = {
     id: nextId++,
-    controller: createBrowserState(fmAdapter, { initial }),
+    controller: createBrowserState(fmAdapter, { initial, allowVirtual: true }),
   };
   tabs.update((list) => [...list, tab]);
   activeTabId.set(tab.id);
