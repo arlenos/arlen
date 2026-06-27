@@ -1168,7 +1168,12 @@ async fn search_location(query: &str) -> Vec<FileEntry> {
 /// entries is arlen-ui's (`full_path` + `restore_token` are the seams it reads).
 #[tauri::command]
 async fn files_list_location(location: String) -> Result<Vec<FileEntry>, String> {
-    match location.as_str() {
+    // Diagnostic for the virtual-location navigation bug (FM Trash/Recent showed
+    // home on metal): logging the received location bisects the chain - if this
+    // fires on a Trash click the invoke arrives and the break is downstream
+    // (result/view); if it never fires the break is the frontend navigate/adapter.
+    log::info!("files_list_location: location={location:?}");
+    let out = match location.as_str() {
         "recent" => Ok(files_recent().await.iter().map(recent_to_entry).collect()),
         "trash" => files_trash_list().map(|items| items.iter().map(trash_to_entry).collect()),
         other => {
@@ -1180,7 +1185,12 @@ async fn files_list_location(location: String) -> Result<Vec<FileEntry>, String>
                 Err(format!("unknown virtual location: {other}"))
             }
         }
+    };
+    match &out {
+        Ok(v) => log::info!("files_list_location: {location:?} -> {} entries", v.len()),
+        Err(e) => log::warn!("files_list_location: {location:?} -> error: {e}"),
     }
+    out
 }
 
 /// Tauri application entry point invoked from `main.rs`.
