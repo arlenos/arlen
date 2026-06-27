@@ -1,0 +1,9 @@
+# Starting permission profile for Constrict (a video compressor). It reads the
+# source video and writes the compressed result, so it gets Videos by function;
+# no network and no Knowledge Graph access.
+[info]
+app_id = "io.github.wartybix.Constrict"
+tier = "third-party"
+
+[filesystem]
+videos = true
