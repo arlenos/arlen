@@ -204,6 +204,7 @@ impl AgentInterface {
     /// harness app id exists to name in the allowlist (the same precedent as the
     /// `settings` app id added for revoke); enforcing an allowlist against a
     /// not-yet-canonical caller would be a dead gate.
+    #[zbus(name = "compensate")]
     async fn compensate(&self, correlation_id: String) -> String {
         if !current_executor_live() {
             return "not-enabled: the executor is in suggest mode".to_string();
@@ -240,6 +241,7 @@ impl AgentInterface {
     /// reflected without a daemon restart. A live held-slice node-count is a
     /// follow-up needing an engine ingestion hook (see `working_set`'s module
     /// doc); today's slices are ephemeral per gate decision.
+    #[zbus(name = "working_set")]
     async fn working_set(&self) -> String {
         let status = load_status(&self.status).as_str();
         let outcome = crate::discovery::load_configured();
@@ -253,6 +255,7 @@ impl AgentInterface {
     /// content-bounded (each carries the display summary + the faithful reason +
     /// the registered effects; the audit subject stays content-free). Empty when
     /// nothing is pending. A later `approve`/`deny` keys off each entry's `id`.
+    #[zbus(name = "pending_proposals")]
     async fn pending_proposals(&self) -> String {
         let proposals = self
             .pending
@@ -276,6 +279,7 @@ impl AgentInterface {
     /// audited here; the gate already recorded the `RequireConfirmation` decision
     /// (the `id` is that audit index), and not acting leaves no further effect to
     /// attribute.
+    #[zbus(name = "deny")]
     async fn deny(&self, id: u64) -> String {
         match self.pending.lock() {
             Ok(mut store) => match store.remove(&id.to_string()) {
@@ -296,6 +300,7 @@ impl AgentInterface {
     /// content-free). Empty when nothing has executed (suggest-mode retains no
     /// receipt). The store is bounded, so an action that aged out can no longer be
     /// listed or undone — the same horizon as `compensate`.
+    #[zbus(name = "completed_actions")]
     async fn completed_actions(&self) -> String {
         let actions: Vec<_> = self
             .receipts
@@ -317,6 +322,7 @@ impl AgentInterface {
     /// is off (a supervised baseline still does nothing while the executor is not
     /// live). Read-only and content-free. Fail-closed to the safe shape (`suggest`
     /// / `[]` / `false`) on any read/parse failure.
+    #[zbus(name = "action_state")]
     async fn action_state(&self) -> String {
         let cfg = std::fs::read_to_string(ai_config_path())
             .ok()
@@ -338,6 +344,7 @@ impl AgentInterface {
     /// user data. Read live from the configured sources on each call (mirroring
     /// `working_set`), so a Settings change is reflected without a restart. The
     /// harness renders this list; running a picked skill is `run_skill`.
+    #[zbus(name = "list_skills")]
     async fn list_skills(&self) -> String {
         let outcome = crate::discovery::load_configured();
         let summaries = crate::skills::skill_summaries(&outcome.loaded);
@@ -352,6 +359,7 @@ impl AgentInterface {
     /// loop over a channel and this awaits its reply; a dropped or full channel
     /// (the loop is mid-rebuild) returns an error string rather than blocking.
     /// The harness renders the result; running is the agent's, not the caller's.
+    #[zbus(name = "run_skill")]
     async fn run_skill(&self, name: String) -> String {
         let (respond, rx) = oneshot::channel();
         if self
