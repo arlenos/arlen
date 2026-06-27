@@ -1,0 +1,6 @@
+# Starting permission profile for Dosage (a medication tracker). It keeps the
+# schedule in its own storage; no network, no user files and no Knowledge Graph
+# access.
+[info]
+app_id = "io.github.diegoivan.dosage"
+tier = "third-party"
