@@ -1,0 +1,11 @@
+# Starting permission profile for Flare (a Signal messaging client). Network is
+# its function; received attachments save to Downloads. No Knowledge Graph access.
+[info]
+app_id = "de.schmidhuberj.Flare"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
