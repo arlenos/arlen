@@ -1,0 +1,7 @@
+# Starting permission profile for Blurble (a word-guessing game). It plays
+# offline against a bundled word list, so no network and no user files by
+# default; no Knowledge Graph access. Observe-mode refines it if a real need
+# appears.
+[info]
+app_id = "app.drey.Blurble"
+tier = "third-party"
