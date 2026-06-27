@@ -25,6 +25,7 @@
   /// the turns that follow. Built on the kit Command + Popover canon.
   import { Check, ChevronDown, Cloud, House } from "@lucide/svelte";
   import * as Popover from "@arlen/ui-kit/components/ui/popover";
+  import { ProviderLogo } from "@arlen/ui-kit/components/ui/provider-logo";
   import {
     Command,
     CommandInput,
@@ -87,11 +88,10 @@
   }
 </script>
 
-<!-- The provider logo slot. Mocked here as the provider's initial in a
-     rounded tile; the real brand icon-set drops in behind this one snippet
-     when it lands, no other markup changes. -->
+<!-- The provider logo slot: the real brand mark from the kit, with the
+     initial-tile fallback built into ProviderLogo. -->
 {#snippet logo(provider: string)}
-  <span class="mp-logo" aria-hidden="true">{provider.charAt(0).toUpperCase()}</span>
+  <ProviderLogo id={provider} name={provider} size={16} />
 {/snippet}
 
 <Popover.Root bind:open>
@@ -210,22 +210,6 @@
   }
   .mp-group :global(svg) {
     flex-shrink: 0;
-  }
-  /* The provider logo slot: a fixed square so names align whatever the logo.
-     The mocked initial sits on a faint tile; a real brand icon replaces it. */
-  .mp-logo {
-    flex-shrink: 0;
-    width: 1rem;
-    height: 1rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-chip);
-    background: color-mix(in srgb, var(--foreground) 12%, transparent);
-    font-size: 0.625rem;
-    font-weight: 600;
-    line-height: 1;
-    color: color-mix(in srgb, var(--foreground) 70%, transparent);
   }
   .mp-name {
     flex: 1;
