@@ -79,6 +79,50 @@
     if (p.kind === "local") return "Local, no egress";
     return p.region ? `Cloud, ${p.region}` : "Cloud, egress audited";
   }
+
+  // The connection test runs the real `ai_provider_test` (the proxy GETs the
+  // provider's catalogued models endpoint). Per-provider so two rows can test
+  // independently; the verdict shape is { ok, httpStatus?, network? }.
+  type TestVerdict =
+    | { state: "testing" }
+    | { state: "ok" }
+    | { state: "http"; status: number }
+    | { state: "network" };
+  const tests = writable<Record<string, TestVerdict>>({});
+
+  async function testProvider(id: string) {
+    tests.update((m) => ({ ...m, [id]: { state: "testing" } }));
+    let verdict: TestVerdict = { state: "network" };
+    try {
+      const r = parse<{ ok?: boolean; httpStatus?: number; network?: string }>(
+        await invoke<string>("ai_provider_test", { id }),
+        {},
+      );
+      if (r.ok) verdict = { state: "ok" };
+      else if (typeof r.httpStatus === "number") verdict = { state: "http", status: r.httpStatus };
+      else verdict = { state: "network" };
+    } catch {
+      verdict = { state: "network" };
+    }
+    tests.update((m) => ({ ...m, [id]: verdict }));
+  }
+
+  /// The plain-language result line for a finished test.
+  function testLabel(v: TestVerdict): string {
+    switch (v.state) {
+      case "testing":
+        return "Testing…";
+      case "ok":
+        return "Connection works";
+      case "network":
+        return "Could not reach it";
+      case "http":
+        if (v.status === 401) return "Needs a key";
+        if (v.status === 403) return "Not allowed (403)";
+        if (v.status === 429) return "Rate limited (429)";
+        return `Failed (${v.status})`;
+    }
+  }
 </script>
 
 <Page
@@ -98,25 +142,28 @@
 </Page>
 
 {#snippet row(p: Provider)}
+  {@const verdict = $tests[p.id]}
   <div class="prow">
     <span class="plogo" aria-hidden="true">{p.name.charAt(0).toUpperCase()}</span>
     <div class="pmeta">
       <div class="pname">{p.name}</div>
       <div class="pdesc">
         {meta(p)}
-        {#if p.configured && p.status === "ok"}
-          <span class="dot ok" aria-label="Connected"></span>Connected
-        {:else if p.status === "error"}
-          <span class="dot err" aria-label="Connection failed"></span>Connection failed
+        {#if verdict && verdict.state !== "testing"}
+          <span class="dot {verdict.state === 'ok' ? 'ok' : 'err'}" aria-hidden="true"></span>{testLabel(verdict)}
         {/if}
       </div>
     </div>
     <div class="pctl">
-      {#if p.configured}
-        <Button variant="outline" size="sm" class="pbtn">Test</Button>
-      {:else}
-        <Button variant="secondary" size="sm" class="pbtn">Connect</Button>
-      {/if}
+      <Button
+        variant={p.configured ? "outline" : "secondary"}
+        size="sm"
+        class="pbtn"
+        disabled={verdict?.state === "testing"}
+        onclick={() => testProvider(p.id)}
+      >
+        {verdict?.state === "testing" ? "Testing…" : "Test"}
+      </Button>
       <Switch value={p.enabled} ariaLabel={`Enable ${p.name}`} onchange={(v) => setEnabled(p.id, v)} />
     </div>
   </div>
