@@ -456,6 +456,33 @@ mod tests {
     }
 
     #[test]
+    fn the_shipped_floor_bridge_maps_a_note_to_a_keyed_upsert_with_no_edges() {
+        // The reference floor mapping must parse and interpret an assembled note
+        // message into the expected `md.obsidian.Note` upsert, end-to-end, so the
+        // committed bridge.toml cannot drift from the floor reader's message shape.
+        use crate::bridge::BridgeConfig;
+        use crate::interpret::interpret_message;
+
+        let config = BridgeConfig::parse(include_str!("../examples/obsidian/bridge.toml"))
+            .expect("the shipped floor bridge.toml parses and validates");
+
+        let msg = note_message(
+            "notes/Ideas.md",
+            "---\ntitle: Bright Ideas\ntags: [project]\n---\nSee [[Other Note]] and #work.\n",
+        );
+        let plan = interpret_message(&config, "note", &msg).expect("the note interprets");
+
+        assert_eq!(plan.qualified_type, "md.obsidian.Note");
+        // Keyed by the vault-relative path (the idempotency anchor).
+        assert_eq!(plan.external_key, "notes/Ideas.md");
+        assert_eq!(plan.fields["title"], Value::String("Bright Ideas".into()));
+        assert_eq!(plan.fields["tags"], serde_json::json!(["project", "work"]));
+        assert_eq!(plan.fields["links"], serde_json::json!(["Other Note"]));
+        // The floor emits NO resolved edges (that is the plugin tier's job).
+        assert!(plan.links.is_empty(), "the floor mapping declares no for_each_link");
+    }
+
+    #[test]
     fn scan_vault_walks_md_files_skips_hidden_and_keys_by_relative_path() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
