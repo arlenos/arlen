@@ -382,6 +382,76 @@ impl AiInterface {
         serde_json::to_string(&[entry]).unwrap_or_else(|_| "[]".to_string())
     }
 
+    /// Live-swap the active provider+model (the picker's `ai_set_active`), no
+    /// restart. Returns the new selection as `{ "provider", "model" }`. The
+    /// `provider` is validated against the proxy's authoritative allowlist
+    /// (`list_allowed_providers`); the `model` is accepted and validated by the
+    /// backend at forward time (per-provider model enumeration is the
+    /// cross-component follow-up, so the daemon cannot pre-check it). A fresh
+    /// `ProxiedProvider` for the pair is built on the daemon's own connection
+    /// (the proxy still authorises the egress by that connection owning
+    /// `org.arlen.AI1`, unchanged) and swapped into the shared `LiveProvider`, so
+    /// the pipeline, explain path, and tool loop all route to it at once.
+    ///
+    /// Fail-closed: if the proxy cannot be reached to validate, or the provider
+    /// is not allowlisted, or building the provider fails, the swap is refused
+    /// and the previous selection stays live. The new model's context window is
+    /// the configured default (`ai.toml`); a real per-model window needs the
+    /// catalog metadata the enumeration follow-up brings.
+    async fn ai_set_active(
+        &self,
+        provider: &str,
+        model: &str,
+        #[zbus(connection)] connection: &Connection,
+    ) -> zbus::fdo::Result<String> {
+        if provider.is_empty() || model.is_empty() {
+            return Err(zbus::fdo::Error::InvalidArgs(
+                "provider and model must be non-empty".to_string(),
+            ));
+        }
+        // The proxy's allowlist is the authoritative provider catalog. Fail
+        // closed if it cannot be reached.
+        let proxy = zbus::Proxy::new(
+            connection,
+            "org.arlen.AIProxy1",
+            "/org/arlen/AIProxy1",
+            "org.arlen.AIProxy1",
+        )
+        .await
+        .map_err(|e| zbus::fdo::Error::Failed(format!("proxy unreachable: {e}")))?;
+        let allowed: Vec<String> = proxy
+            .call("ListAllowedProviders", &())
+            .await
+            .map_err(|e| zbus::fdo::Error::Failed(format!("could not list providers: {e}")))?;
+        if !allowed.iter().any(|p| p == provider) {
+            return Err(zbus::fdo::Error::InvalidArgs(format!(
+                "provider '{provider}' is not in the proxy allowlist"
+            )));
+        }
+        // The audit token + default context window come from ai.toml (read live;
+        // Settings owns the file). The proxy records the token; the window is a
+        // safe default until per-model catalog metadata lands.
+        let settings = config_watch::load_ai_settings();
+        let new_provider = ProxiedProvider::with_connection(
+            ProxiedConfig {
+                name: provider.to_string(),
+                model: model.to_string(),
+                audit_token: settings.provider.audit_token.clone(),
+                context_window: settings.provider.context_window,
+            },
+            connection,
+        )
+        .await
+        .map_err(|e| zbus::fdo::Error::Failed(format!("could not build provider: {e}")))?;
+        self.live.swap(
+            Arc::new(new_provider),
+            ActiveSelection::new(provider, model),
+        );
+        tracing::info!(provider, model, "live-switched the active provider/model");
+        serde_json::to_string(&self.live.active())
+            .map_err(|e| zbus::fdo::Error::Failed(format!("serialize active: {e}")))
+    }
+
     /// Run System Explanation Mode (Foundation §5.8): return a
     /// plain-language summary of what the computer is doing right now.
     /// The summary is returned directly to the caller (not broadcast),
