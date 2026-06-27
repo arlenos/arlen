@@ -22,7 +22,6 @@
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import * as DropdownMenu from "@arlen/ui-kit/components/ui/dropdown-menu";
-  import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import {
     Activity,
     Copy,
@@ -45,6 +44,7 @@
     togglePinSession,
   } from "$lib/stores/conversation";
   import { sessionMatches } from "$lib/search";
+  import { groupSessions } from "$lib/session-groups";
   import { conversationToMarkdown } from "$lib/export";
 
   const path = $derived($page.url.pathname);
@@ -98,21 +98,26 @@
   // Sessions in rail order (pinned first), narrowed by the search. The query
   // matches titles and message content, case-insensitive; empty matches all.
   const filtered = $derived($orderedSessions.filter((s) => sessionMatches(s, query)));
+  // The rail in Hollama's shape: a Pinned section, then Today / Yesterday /
+  // Previous 7 days / Earlier by creation time. Re-buckets whenever the list
+  // or the query changes; an open app crossing midnight without interaction
+  // keeps its last buckets, which is fine for a sidebar.
+  const groups = $derived(groupSessions(filtered, Date.now()));
 </script>
 
 <Sidebar>
   <SidebarContent>
     <SidebarGroup>
-      <SidebarGroupLabel>
-        <span>History</span>
-        <span class="ml-auto">
-          <IconAction id="harness-new-chat" label="New chat (Ctrl+N)" onclick={startNew}>
-            <Plus size={14} strokeWidth={2} />
-          </IconAction>
-        </span>
-      </SidebarGroupLabel>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton id="harness-new-chat" title="New chat (Ctrl+N)" onclick={startNew}>
+            <Plus strokeWidth={2} />
+            <span>New chat</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
       {#if $orderedSessions.length > 0}
-        <div class="relative mb-1">
+        <div class="relative mb-1 mt-1">
           <Search
             size={13}
             strokeWidth={2}
@@ -133,76 +138,19 @@
         </p>
       {:else if filtered.length === 0}
         <p class="px-2 py-2 text-xs text-sidebar-foreground/55">No chats match.</p>
-      {:else}
-        <SidebarMenu>
-          {#each filtered as s (s.id)}
-            <SidebarMenuItem>
-              {#if editingId === s.id}
-                <Input
-                  bind:value={draft}
-                  aria-label="Chat name"
-                  onblur={commitRename}
-                  onkeydown={(e: KeyboardEvent) => {
-                    if (e.key === "Enter") commitRename();
-                    else if (e.key === "Escape") cancelRename();
-                  }}
-                  {@attach (node: HTMLInputElement) => {
-                    node.focus();
-                    node.select();
-                  }}
-                />
-              {:else}
-                <SidebarMenuButton
-                  class="pr-7"
-                  isActive={onChat && s.id === $activeSessionId}
-                  title={s.title}
-                  onclick={() => openSession(s.id)}
-                  ondblclick={() => beginRename(s.id, s.title)}
-                >
-                  <span class="truncate">{s.title}</span>
-                  {#if s.pinned}
-                    <Pin strokeWidth={1.75} class="ml-auto opacity-50" aria-label="Pinned" />
-                  {/if}
-                </SidebarMenuButton>
-                <DropdownMenu.Root>
-                  <DropdownMenu.Trigger>
-                    {#snippet child({ props })}
-                      <SidebarMenuAction showOnHover aria-label="Chat actions" {...props}>
-                        <MoreHorizontal strokeWidth={2} />
-                      </SidebarMenuAction>
-                    {/snippet}
-                  </DropdownMenu.Trigger>
-                  <DropdownMenu.Content side="right" align="start">
-                    <DropdownMenu.Item onclick={() => togglePinSession(s.id)}>
-                      {#if s.pinned}
-                        <PinOff />
-                        Unpin
-                      {:else}
-                        <Pin />
-                        Pin
-                      {/if}
-                    </DropdownMenu.Item>
-                    <DropdownMenu.Item onclick={() => beginRename(s.id, s.title)}>
-                      <Pencil />
-                      Rename
-                    </DropdownMenu.Item>
-                    <DropdownMenu.Item onclick={() => copySession(s.id)}>
-                      <Copy />
-                      Copy chat
-                    </DropdownMenu.Item>
-                    <DropdownMenu.Separator />
-                    <DropdownMenu.Item variant="destructive" onclick={() => (confirmDeleteId = s.id)}>
-                      <Trash2 />
-                      Delete
-                    </DropdownMenu.Item>
-                  </DropdownMenu.Content>
-                </DropdownMenu.Root>
-              {/if}
-            </SidebarMenuItem>
-          {/each}
-        </SidebarMenu>
       {/if}
     </SidebarGroup>
+
+    {#each groups as group (group.label)}
+      <SidebarGroup class="pt-0">
+        <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+        <SidebarMenu>
+          {#each group.sessions as s (s.id)}
+            {@render row(s)}
+          {/each}
+        </SidebarMenu>
+      </SidebarGroup>
+    {/each}
   </SidebarContent>
 
   <SidebarFooter>
@@ -232,6 +180,74 @@
 
   <SidebarRail />
 </Sidebar>
+
+<!-- One conversation row: inline rename when editing, otherwise the title
+     button with its hover action menu. Shared across every time group. -->
+{#snippet row(s: { id: string; title: string; pinned?: boolean })}
+  <SidebarMenuItem>
+    {#if editingId === s.id}
+      <Input
+        bind:value={draft}
+        aria-label="Chat name"
+        onblur={commitRename}
+        onkeydown={(e: KeyboardEvent) => {
+          if (e.key === "Enter") commitRename();
+          else if (e.key === "Escape") cancelRename();
+        }}
+        {@attach (node: HTMLInputElement) => {
+          node.focus();
+          node.select();
+        }}
+      />
+    {:else}
+      <SidebarMenuButton
+        class="pr-7"
+        isActive={onChat && s.id === $activeSessionId}
+        title={s.title}
+        onclick={() => openSession(s.id)}
+        ondblclick={() => beginRename(s.id, s.title)}
+      >
+        <span class="truncate">{s.title}</span>
+        {#if s.pinned}
+          <Pin strokeWidth={1.75} class="ml-auto opacity-50" aria-label="Pinned" />
+        {/if}
+      </SidebarMenuButton>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger>
+          {#snippet child({ props })}
+            <SidebarMenuAction showOnHover aria-label="Chat actions" {...props}>
+              <MoreHorizontal strokeWidth={2} />
+            </SidebarMenuAction>
+          {/snippet}
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Content side="right" align="start">
+          <DropdownMenu.Item onclick={() => togglePinSession(s.id)}>
+            {#if s.pinned}
+              <PinOff />
+              Unpin
+            {:else}
+              <Pin />
+              Pin
+            {/if}
+          </DropdownMenu.Item>
+          <DropdownMenu.Item onclick={() => beginRename(s.id, s.title)}>
+            <Pencil />
+            Rename
+          </DropdownMenu.Item>
+          <DropdownMenu.Item onclick={() => copySession(s.id)}>
+            <Copy />
+            Copy chat
+          </DropdownMenu.Item>
+          <DropdownMenu.Separator />
+          <DropdownMenu.Item variant="destructive" onclick={() => (confirmDeleteId = s.id)}>
+            <Trash2 />
+            Delete
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Root>
+    {/if}
+  </SidebarMenuItem>
+{/snippet}
 
 <ConfirmDialog
   open={confirmDeleteId !== null}
