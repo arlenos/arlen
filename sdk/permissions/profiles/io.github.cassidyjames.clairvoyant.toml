@@ -1,0 +1,6 @@
+# Starting permission profile for Clairvoyant (a local novelty "ask a question"
+# app). It answers self-contained; no network, no user files and no Knowledge
+# Graph access.
+[info]
+app_id = "io.github.cassidyjames.clairvoyant"
+tier = "third-party"
