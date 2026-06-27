@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Tim Kicker
+// SPDX-License-Identifier: Apache-2.0
+
 //! The `arlen-artifact` helper's stdin-to-artifact logic (terminal.md §3).
 //!
 //! The helper turns a program's raw stdout (piped into it) into a typed artifact,

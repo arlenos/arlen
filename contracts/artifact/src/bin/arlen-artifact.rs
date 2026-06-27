@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Tim Kicker
+// SPDX-License-Identifier: Apache-2.0
+
 //! `arlen-artifact` - wrap a program's stdout in a typed artifact envelope.
 //!
 //! Usage: `<program> | arlen-artifact <KIND> [--title T] [--text T] [--lang L]
