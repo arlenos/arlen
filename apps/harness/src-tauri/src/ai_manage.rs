@@ -123,3 +123,23 @@ pub async fn ai_provider_set_enabled(id: String, enabled: bool) -> String {
         .await
         .unwrap_or_else(|e| format!("error: {e}"))
 }
+
+/// Test a catalogued provider's connectivity (`ai_provider_test`). Returns the
+/// daemon's verdict JSON `{ ok, httpStatus?, network? }`; the daemon GETs the
+/// provider's catalogued model-list endpoint through the proxy (no caller URL).
+/// A transport failure maps to a `network` verdict so the manager gets the
+/// uniform shape rather than an error.
+#[tauri::command]
+pub async fn ai_provider_test(id: String) -> String {
+    let network = |reason: &str| format!(r#"{{"ok":false,"network":"{reason}"}}"#);
+    let Ok(connection) = Connection::session().await else {
+        return network("session bus unavailable");
+    };
+    let Ok(proxy) = Proxy::new(&connection, AI_BUS, AI_PATH, AI_BUS).await else {
+        return network("AI daemon unavailable");
+    };
+    proxy
+        .call("ai_provider_test", &(id.as_str(),))
+        .await
+        .unwrap_or_else(|_| network("test failed"))
+}
