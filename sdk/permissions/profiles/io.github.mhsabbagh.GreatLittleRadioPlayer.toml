@@ -1,0 +1,8 @@
+# Starting permission profile for Great Little Radio Player (an internet radio
+# streamer). Network is its function; no user files and no Knowledge Graph access.
+[info]
+app_id = "io.github.mhsabbagh.GreatLittleRadioPlayer"
+tier = "third-party"
+
+[network]
+allow_all = true
