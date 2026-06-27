@@ -119,6 +119,23 @@ fn to_entry(view: &StructuralView) -> ActivityEntry {
     }
 }
 
+/// Whether an activity entry is a *read* of the user's data — the anti-Recall
+/// "what the AI read" view. `graph-access` is the AI's capability-scoped read of
+/// the knowledge graph, the read whose transparency the drawer surfaces. A model
+/// `query`, a `tool-call` (an action), and a `network-call` (egress) are not data
+/// reads, so they are excluded.
+fn is_read_kind(kind: &str) -> bool {
+    kind == kind_label(&AuditKind::GraphAccess)
+}
+
+/// Keep only the read-kind entries, preserving order (newest first), truncated to
+/// `limit`. Pure, so the read filter is tested without a daemon.
+fn take_reads(mut entries: Vec<ActivityEntry>, limit: usize) -> Vec<ActivityEntry> {
+    entries.retain(|e| is_read_kind(&e.kind));
+    entries.truncate(limit);
+    entries
+}
+
 impl ReadClient {
     /// Read the most recent `limit` audit entries, newest first.
     ///
@@ -155,6 +172,34 @@ impl ReadClient {
         ActivityPage {
             entries,
             available: true,
+            tampered,
+            total,
+        }
+    }
+
+    /// The most recent `limit` *read* entries — the transparency drawer's
+    /// anti-Recall "what the AI read" view: the `graph-access` entries, newest
+    /// first. Advisory like [`recent`](Self::recent): an unreachable daemon
+    /// yields an empty, unavailable page, never an error. Bounded: it scans the
+    /// most recent [`MAX_ACTIVITY_LIMIT`] audit entries and returns up to `limit`
+    /// reads from them, so a long run of non-read activity does not starve the
+    /// view of recent reads beyond that window. `total` stays the ledger size
+    /// (advisory metadata); the caller counts `entries` for the reads shown.
+    pub async fn recent_reads(&self, limit: u64) -> ActivityPage {
+        let limit = limit.clamp(1, MAX_ACTIVITY_LIMIT);
+        let page = self.recent(MAX_ACTIVITY_LIMIT).await;
+        if !page.available {
+            return page;
+        }
+        let ActivityPage {
+            entries,
+            available,
+            tampered,
+            total,
+        } = page;
+        ActivityPage {
+            entries: take_reads(entries, limit as usize),
+            available,
             tampered,
             total,
         }
@@ -203,6 +248,33 @@ mod tests {
         assert!(!p.available);
         assert!(p.entries.is_empty());
         assert_eq!(p.total, 0);
+    }
+
+    #[test]
+    fn take_reads_keeps_graph_access_newest_first_and_truncates() {
+        // A mixed window, newest first (as `recent` returns it).
+        let entries = vec![
+            to_entry(&view(5, AuditKind::GraphAccess, "File")),
+            to_entry(&view(4, AuditKind::ToolCall, "srv")),
+            to_entry(&view(3, AuditKind::GraphAccess, "App")),
+            to_entry(&view(2, AuditKind::Query, "ai.query")),
+            to_entry(&view(1, AuditKind::GraphAccess, "Project")),
+        ];
+        let reads = take_reads(entries, 2);
+        // Only graph-access kept, order preserved, truncated to the limit.
+        assert_eq!(reads.len(), 2);
+        assert!(reads.iter().all(|e| e.kind == "graph-access"));
+        assert_eq!(reads[0].index, 5);
+        assert_eq!(reads[1].index, 3);
+    }
+
+    #[tokio::test]
+    async fn recent_reads_against_a_missing_socket_is_an_unavailable_page() {
+        // No daemon: advisory, never an error, like `recent`.
+        let client = ReadClient::new("/nonexistent/audit-read.sock");
+        let page = client.recent_reads(20).await;
+        assert!(!page.available);
+        assert!(page.entries.is_empty());
     }
 
     #[tokio::test]
