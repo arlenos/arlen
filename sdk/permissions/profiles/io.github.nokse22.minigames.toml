@@ -1,0 +1,5 @@
+# Starting permission profile for Minigames (a collection of small local games).
+# It plays self-contained; no network, no user files and no Knowledge Graph access.
+[info]
+app_id = "io.github.nokse22.minigames"
+tier = "third-party"

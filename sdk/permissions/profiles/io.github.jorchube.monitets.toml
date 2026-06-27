@@ -1,0 +1,5 @@
+# Starting permission profile for Monitets (a small CPU/memory monitor). It reads
+# system stats only; no network, no user files and no Knowledge Graph access.
+[info]
+app_id = "io.github.jorchube.monitets"
+tier = "third-party"
