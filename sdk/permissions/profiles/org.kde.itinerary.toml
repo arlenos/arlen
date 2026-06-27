@@ -1,0 +1,13 @@
+# Starting permission profile for KDE Itinerary (a travel assistant). Fetches
+# live transport data over the network by function and imports booking documents
+# (tickets, boarding passes) the user opens. No Knowledge Graph access.
+[info]
+app_id = "org.kde.itinerary"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true
+
+[network]
+allow_all = true
