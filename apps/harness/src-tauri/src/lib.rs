@@ -38,6 +38,7 @@ pub fn run() {
             ai_client::ai_query,
             ai_client::ai_explain,
             activity::ai_activity_recent,
+            activity::ai_reads_recent,
             capability::ai_capability,
             behaviours::ai_behaviours,
             notices::ai_notices,

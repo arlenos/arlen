@@ -14,3 +14,12 @@ use audit_proto::{read_socket_path, ActivityPage, ReadClient};
 pub async fn ai_activity_recent(limit: u64) -> ActivityPage {
     ReadClient::new(read_socket_path()).recent(limit).await
 }
+
+/// Read the most recent `limit` *reads* (the `graph-access` audit entries),
+/// newest first, for the transparency drawer's anti-Recall "what the AI read"
+/// feed (harness-redesign emit seam 5). Same shared reader, filtered to data
+/// reads. Read-only and advisory, like `ai_activity_recent`.
+#[tauri::command]
+pub async fn ai_reads_recent(limit: u64) -> ActivityPage {
+    ReadClient::new(read_socket_path()).recent_reads(limit).await
+}
