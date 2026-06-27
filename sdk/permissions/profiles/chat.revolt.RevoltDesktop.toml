@@ -1,0 +1,8 @@
+# Starting permission profile for Revolt Desktop (a Revolt chat client). Network
+# is its function; no user files and no Knowledge Graph access.
+[info]
+app_id = "chat.revolt.RevoltDesktop"
+tier = "third-party"
+
+[network]
+allow_all = true
