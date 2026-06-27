@@ -34,6 +34,7 @@ use tokio::sync::{mpsc, oneshot};
 use zbus::interface;
 
 use crate::config::AgentConfig;
+use crate::engine::PendingProposal;
 use crate::executor::{CompensationOutcome, Compensator};
 use crate::discovery::ai_config_path;
 use crate::receipt_store::{ReceiptStore, RetainedReceipt};
@@ -135,6 +136,10 @@ pub struct AgentInterface {
     /// The execution receipts the dispatch loop retains, shared so a `compensate`
     /// call can look up the write to undo by its decision's correlation id.
     pub receipts: Arc<Mutex<ReceiptStore<RetainedReceipt>>>,
+    /// Confirmation-needing gate decisions the dispatch loop retains, shared so the
+    /// harness can read the pending proposals it renders as inline gate cards
+    /// (harness-redesign emit seam 2), keyed by audit-ledger index.
+    pub pending: Arc<Mutex<ReceiptStore<PendingProposal>>>,
     /// Carries a user-invoke (`run_skill`) request to the per-epoch dispatch
     /// loop, which runs the named skill on the LIVE dispatcher. A bounded
     /// channel: a backlog of invokes applies backpressure rather than growing
@@ -240,6 +245,21 @@ impl AgentInterface {
         let outcome = crate::discovery::load_configured();
         let shape = crate::working_set::working_set_shape(status, &outcome);
         serde_json::to_string(&shape).unwrap_or_else(|_| "{}".to_string())
+    }
+
+    /// The agent's currently-pending action proposals: the confirmation-needing
+    /// gate decisions awaiting the user, oldest first, as a JSON array the harness
+    /// renders as inline gate cards (harness-redesign emit seam 2). Read-only and
+    /// content-bounded (each carries the display summary + the faithful reason +
+    /// the registered effects; the audit subject stays content-free). Empty when
+    /// nothing is pending. A later `approve`/`deny` keys off each entry's `id`.
+    async fn pending_proposals(&self) -> String {
+        let proposals = self
+            .pending
+            .lock()
+            .map(|store| store.values())
+            .unwrap_or_default();
+        serde_json::to_string(&proposals).unwrap_or_else(|_| "[]".to_string())
     }
 
     /// The loaded skills as a JSON array, for the user-invoke discovery surface
