@@ -1,0 +1,8 @@
+# Starting permission profile for KPhotoAlbum (a KDE photo manager). Catalogs the
+# user's local photos from Pictures; no network, no Knowledge Graph access.
+[info]
+app_id = "org.kde.kphotoalbum"
+tier = "third-party"
+
+[filesystem]
+pictures = true
