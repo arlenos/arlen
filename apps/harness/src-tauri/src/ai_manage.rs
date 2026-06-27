@@ -111,6 +111,15 @@ pub async fn deny(id: u64) -> String {
         .unwrap_or_else(|e| format!("error: {e}"))
 }
 
+/// The agent's working-set shape (`working_set` on the agent): the shape-only
+/// introspection of what the agent currently has in scope (AIT-R1), for the
+/// transparency drawer's working-set section. Identity/shape only, never user
+/// data. Empty object if the agent is unreachable.
+#[tauri::command]
+pub async fn ai_working_set() -> String {
+    call_string(AGENT_BUS, AGENT_PATH, "working_set", "{}").await
+}
+
 /// The autonomy-dial state (`action_state` on the agent): `{ action_mode,
 /// autonomous_apps, executor_live }`. The safe inert shape if the agent is
 /// unreachable (suggest / none / off).
