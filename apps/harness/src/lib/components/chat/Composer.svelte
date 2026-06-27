@@ -19,6 +19,7 @@
   import { tierBadge } from "$lib/display";
   import { openTransparency } from "$lib/stores/transparency";
   import ContextChips from "./ContextChips.svelte";
+  import ModelPickerBar from "./ModelPickerBar.svelte";
   import {
     activeSessionId,
     busy,
@@ -292,6 +293,7 @@
   {/if}
 
   <div class="composer" class:disabled>
+    <ModelPickerBar />
     <ContextChips attached={$attached} onremove={removeAttached} />
     <Textarea
       bind:ref={textareaRef}
