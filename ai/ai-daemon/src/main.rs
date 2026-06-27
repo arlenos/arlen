@@ -566,6 +566,53 @@ impl AiInterface {
         .to_string()
     }
 
+    /// Test a catalogued provider's connectivity for the AI-providers manager.
+    /// Relays the proxy's `TestProvider`, which GETs the provider's catalogued
+    /// model-list endpoint (the URL is proxy-owned, never the caller's, so no
+    /// egress-consent step), and returns the verdict as JSON
+    /// `{ ok, httpStatus?, network? }`. A policy refusal or an unreachable proxy
+    /// maps to `{ ok: false, network: <reason> }` so the manager always gets the
+    /// uniform shape. The proxy mints the actual egress + audits it; the daemon
+    /// only forwards the call with its configured audit token.
+    #[zbus(name = "ai_provider_test")]
+    async fn ai_provider_test(
+        &self,
+        id: &str,
+        #[zbus(connection)] connection: &Connection,
+    ) -> String {
+        let network = |reason: String| {
+            serde_json::json!({ "ok": false, "network": reason }).to_string()
+        };
+        if id.is_empty() {
+            return network("provider id must be non-empty".to_string());
+        }
+        let proxy = match zbus::Proxy::new(
+            connection,
+            "org.arlen.AIProxy1",
+            "/org/arlen/AIProxy1",
+            "org.arlen.AIProxy1",
+        )
+        .await
+        {
+            Ok(p) => p,
+            Err(e) => return network(format!("proxy unreachable: {e}")),
+        };
+        // The proxy records the audit token; the actual attribution is the
+        // daemon's kernel-attested peer credentials. Read the token live from
+        // ai.toml (Settings owns the file).
+        let token = config_watch::load_ai_settings().provider.audit_token;
+        match proxy
+            .call::<_, _, String>("TestProvider", &(id, token.as_str()))
+            .await
+        {
+            Ok(json) => json,
+            Err(zbus::Error::MethodError(_, detail, _)) => {
+                network(detail.unwrap_or_else(|| "test failed".to_string()))
+            }
+            Err(e) => network(format!("test failed: {e}")),
+        }
+    }
+
     /// Run System Explanation Mode (Foundation §5.8): return a
     /// plain-language summary of what the computer is doing right now.
     /// The summary is returned directly to the caller (not broadcast),
