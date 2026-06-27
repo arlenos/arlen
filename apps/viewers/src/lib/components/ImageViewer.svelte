@@ -13,13 +13,31 @@
 
   let {
     file,
+    raster = null,
     onnext,
     onprev,
   }: {
     file: ImageMock;
+    /// The decoded raster from the `decode_image` backend (8-bit RGBA, row-major).
+    /// When present it is painted onto the canvas; when `null` (the mock/harness
+    /// path) the gradient placeholder stands in. The chrome/zoom/pan are identical.
+    raster?: { width: number; height: number; rgba: number[] } | null;
     onnext?: () => void;
     onprev?: () => void;
   } = $props();
+
+  // Paint the decoded RGBA onto the canvas whenever it arrives. ImageData wants a
+  // Uint8ClampedArray; the raster crosses the IPC boundary as a number[].
+  let canvasEl: HTMLCanvasElement | undefined = $state();
+  $effect(() => {
+    if (!raster || !canvasEl) return;
+    canvasEl.width = raster.width;
+    canvasEl.height = raster.height;
+    const ctx = canvasEl.getContext("2d");
+    if (!ctx) return;
+    const data = new Uint8ClampedArray(raster.rgba);
+    ctx.putImageData(new ImageData(data, raster.width, raster.height), 0, 0);
+  });
 
   let chromeVisible = $state(true);
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -107,8 +125,17 @@
   ondblclick={onDblClick}
   onwheel={onWheel}
 >
-  <!-- The image fills the window. A gradient stands in for the decoded raster. -->
-  <div class="photo" style="transform: translate({tx}px, {ty}px) scale({zoom})"></div>
+  <!-- The image fills the window: the decoded raster on a canvas, or a gradient
+       placeholder on the mock/harness path. Same transform either way. -->
+  {#if raster}
+    <canvas
+      bind:this={canvasEl}
+      class="photo raster"
+      style="transform: translate({tx}px, {ty}px) scale({zoom})"
+    ></canvas>
+  {:else}
+    <div class="photo" style="transform: translate({tx}px, {ty}px) scale({zoom})"></div>
+  {/if}
 
   <div class="scrim top"></div>
   <div class="scrim bottom"></div>
@@ -167,6 +194,15 @@
       #2a2118 74%,
       #15101a 100%
     );
+  }
+  /* The decoded raster: the canvas carries the image at its intrinsic pixel size;
+     object-fit: contain fits it to the window (the "window IS the image" model),
+     letterboxed on the viewer's dark background. */
+  .photo.raster {
+    background: none;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
   }
 
   /* Chrome (everything below) fades on idle, reveals on activity. */
