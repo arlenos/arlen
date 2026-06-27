@@ -1,0 +1,5 @@
+# Starting permission profile for KJumpingCube (a KDE strategy game). Plays locally; needs no filesystem,
+# network, or Knowledge Graph access. Identity only - the maximally fail-closed baseline.
+[info]
+app_id = "org.kde.kjumpingcube"
+tier = "third-party"
