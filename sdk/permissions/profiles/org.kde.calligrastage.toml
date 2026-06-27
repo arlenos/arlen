@@ -1,0 +1,8 @@
+# Starting permission profile for Calligra Stage (a KDE presentation editor). Opens and saves documents from Documents;
+# no network, no Knowledge Graph access.
+[info]
+app_id = "org.kde.calligrastage"
+tier = "third-party"
+
+[filesystem]
+documents = true

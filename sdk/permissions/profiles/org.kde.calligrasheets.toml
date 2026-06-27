@@ -1,0 +1,8 @@
+# Starting permission profile for Calligra Sheets (a KDE spreadsheet). Opens and saves documents from Documents;
+# no network, no Knowledge Graph access.
+[info]
+app_id = "org.kde.calligrasheets"
+tier = "third-party"
+
+[filesystem]
+documents = true
