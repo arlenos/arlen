@@ -1,0 +1,9 @@
+# Starting permission profile for Forge Sparks (git-forge notifications from
+# GitHub/GitLab/Forgejo). It polls forge APIs, so network is its function; no user
+# files and no Knowledge Graph access.
+[info]
+app_id = "com.mardojai.ForgeSparks"
+tier = "third-party"
+
+[network]
+allow_all = true
