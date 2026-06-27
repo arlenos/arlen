@@ -475,6 +475,51 @@ impl AiInterface {
             .map_err(|e| zbus::fdo::Error::Failed(format!("serialize active: {e}")))
     }
 
+    /// The Settings AI-providers MANAGER list - the management surface, distinct
+    /// from the in-chat `ai_models_list` picker. A JSON array of
+    /// `{ id, name, kind, enabled, configured, status }` (camelCase): `id/name/
+    /// kind/configured` come from the proxy's authoritative catalog view
+    /// (`ListProviders` - display metadata only, no endpoint or credential);
+    /// `enabled` is the per-provider on/off (every provider is enabled until
+    /// `ai_provider_set_enabled` turns one off - the disabled set lands with that
+    /// setter) and `status` is the last connection-test verdict (`untested` until
+    /// `ai_provider_test` runs). Fail-closed to `[]` if the proxy is unreachable,
+    /// so the manager shows nothing rather than stale data.
+    #[zbus(name = "ai_providers_list")]
+    async fn ai_providers_list(&self, #[zbus(connection)] connection: &Connection) -> String {
+        let empty = || "[]".to_string();
+        let Ok(proxy) = zbus::Proxy::new(
+            connection,
+            "org.arlen.AIProxy1",
+            "/org/arlen/AIProxy1",
+            "org.arlen.AIProxy1",
+        )
+        .await
+        else {
+            return empty();
+        };
+        let json: String = match proxy.call("ListProviders", &()).await {
+            Ok(j) => j,
+            Err(_) => return empty(),
+        };
+        let Ok(mut views) = serde_json::from_str::<Vec<serde_json::Value>>(&json) else {
+            return empty();
+        };
+        // Augment each catalog view with the manage-state the proxy does not own:
+        // `enabled` (default on; the disabled set is wired with the setter) and
+        // `status` (untested until a connection test runs).
+        for view in &mut views {
+            if let Some(obj) = view.as_object_mut() {
+                obj.insert("enabled".to_string(), serde_json::Value::Bool(true));
+                obj.insert(
+                    "status".to_string(),
+                    serde_json::Value::String("untested".to_string()),
+                );
+            }
+        }
+        serde_json::to_string(&views).unwrap_or_else(|_| empty())
+    }
+
     /// Run System Explanation Mode (Foundation §5.8): return a
     /// plain-language summary of what the computer is doing right now.
     /// The summary is returned directly to the caller (not broadcast),
