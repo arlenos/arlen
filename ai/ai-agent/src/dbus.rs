@@ -37,7 +37,7 @@ use crate::config::AgentConfig;
 use crate::engine::PendingProposal;
 use crate::executor::{CompensationOutcome, Compensator};
 use crate::discovery::ai_config_path;
-use crate::receipt_store::{ReceiptStore, RetainedReceipt};
+use crate::receipt_store::{completed_view, ReceiptStore, RetainedReceipt};
 use crate::seams::GraphHandle;
 
 /// The D-Bus object path the interface is registered under.
@@ -284,6 +284,25 @@ impl AgentInterface {
             },
             Err(_) => "error: pending store unavailable".to_string(),
         }
+    }
+
+    /// The agent's recently-completed actions: the executed (silent-done) writes
+    /// retained for the live-session undo path, oldest first, as a JSON array the
+    /// harness renders as quiet done-lines each with an `[Undo]`
+    /// (harness-redesign emit seam 3). Each entry carries the decision's
+    /// correlation id — the exact handle the built `compensate(id)` method undoes
+    /// by — so the Undo button needs no extra lookup. Read-only and
+    /// content-bounded (a description of the edge written; the audit subject stays
+    /// content-free). Empty when nothing has executed (suggest-mode retains no
+    /// receipt). The store is bounded, so an action that aged out can no longer be
+    /// listed or undone — the same horizon as `compensate`.
+    async fn completed_actions(&self) -> String {
+        let actions: Vec<_> = self
+            .receipts
+            .lock()
+            .map(|store| store.values().iter().map(completed_view).collect())
+            .unwrap_or_default();
+        serde_json::to_string(&actions).unwrap_or_else(|_| "[]".to_string())
     }
 
     /// The loaded skills as a JSON array, for the user-invoke discovery surface

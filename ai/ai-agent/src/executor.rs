@@ -306,6 +306,20 @@ impl ExecutedWrite {
         }
     }
 
+    /// Test-only constructor so a sibling module (the receipt-store projection
+    /// tests) can build a receipt without the executor. `#[cfg(test)]`, so the
+    /// production opacity invariant (only the executor produces a `(write,
+    /// op_id)` pairing) is unchanged.
+    #[cfg(test)]
+    pub(crate) fn for_test(
+        write: RelationWrite,
+        outcome: WriteOutcome,
+        op_id: String,
+        correlation_id: String,
+    ) -> Self {
+        Self::new(write, outcome, op_id, correlation_id)
+    }
+
     /// The relation that was written.
     pub fn write(&self) -> &RelationWrite {
         &self.write
