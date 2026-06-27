@@ -77,6 +77,13 @@ pub enum ProxyError {
         /// Provider name from the request.
         provider: String,
     },
+    /// The catalogued provider has no model-list endpoint, so a
+    /// connection test (`test_provider`) cannot run against it.
+    #[error("provider {provider} has no model-list endpoint to test")]
+    NoModelsEndpoint {
+        /// Provider name from the request.
+        provider: String,
+    },
 }
 
 impl ProxyError {
@@ -95,6 +102,7 @@ impl ProxyError {
             ProxyError::Upstream(_) => "upstream-error",
             ProxyError::WireFormatUnsupported { .. } => "wire-format-unsupported",
             ProxyError::TranscodeFailed { .. } => "transcode-failed",
+            ProxyError::NoModelsEndpoint { .. } => "no-models-endpoint",
         }
     }
 }
@@ -196,6 +204,25 @@ pub struct ForwardOutcome {
     pub upstream_status: u16,
     /// Upstream response body.
     pub body: String,
+}
+
+/// Outcome of a provider connection test (`test_provider`). Serialised to
+/// camelCase JSON for the Settings AI-providers manager: `{ ok, httpStatus?,
+/// network? }`. `ok` is true only on a 2xx from the model-list endpoint; a
+/// non-2xx carries the `httpStatus` (401/403/429 are the meaningful
+/// auth/rate-limit signals); a dial that never completed carries `network`.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestOutcome {
+    /// The provider's model-list endpoint answered with a 2xx.
+    pub ok: bool,
+    /// The upstream HTTP status, when the probe reached the provider.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub http_status: Option<u16>,
+    /// A transport-level failure detail, when the dial never reached the
+    /// provider (DNS, connection refused, TLS, timeout).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub network: Option<String>,
 }
 
 /// Proxy service. Holds the policy plus the wired-in dependencies
@@ -444,6 +471,138 @@ impl ProxyService {
         }
     }
 
+    /// Run a connection test against a catalogued provider's model-list
+    /// endpoint. A body-less `GET` probe that doubles as the
+    /// capability-grant verification (`validate_provider`): it answers
+    /// "can the proxy reach this provider, and does the provider accept
+    /// our credentials". The endpoint URL is taken from the trusted
+    /// catalog, never from the caller, so this is allowlist-safe with no
+    /// egress-consent moment (unlike a user-supplied URL fetch).
+    ///
+    /// Policy failures (caller not allowed, unknown provider, no
+    /// model-list endpoint, allowlist reject, audit gate down, capacity)
+    /// return `Err`. Once the probe is dialed, the result IS the answer:
+    /// a transport failure is `Ok(TestOutcome { network })`, a non-2xx is
+    /// `Ok(TestOutcome { http_status })`, a 2xx is `Ok(ok: true)`.
+    pub async fn test_provider(
+        &self,
+        caller: &CallerIdentity,
+        provider_name: &str,
+        audit_token: &str,
+    ) -> Result<TestOutcome, ProxyError> {
+        let audit = |host: Option<&str>, outcome: AuditOutcome| {
+            let record = AuditRecord {
+                audit_token: audit_token.to_string(),
+                provider_name: provider_name.to_string(),
+                host: host.map(str::to_string),
+                outcome,
+            };
+            async move {
+                if let Err(err) = self.audit_sink.submit(record.to_ingest_request()).await {
+                    tracing::warn!("ai-proxy test audit submit failed: {err}");
+                }
+            }
+        };
+
+        // 1. Caller allowlist (same gate as forward).
+        if !self.caller_allowlist.permits(caller) {
+            let err = ProxyError::CallerNotAllowed {
+                caller: caller.label().to_string(),
+            };
+            audit(None, AuditOutcome::RejectedByPolicy { code: err.code().to_string() }).await;
+            return Err(err);
+        }
+
+        // 2. Catalog lookup + model-list endpoint resolution.
+        let entry = match self.catalog.get(provider_name) {
+            Some(entry) => entry,
+            None => {
+                let err = ProxyError::UnknownProvider {
+                    provider: provider_name.to_string(),
+                };
+                audit(None, AuditOutcome::RejectedByPolicy { code: err.code().to_string() }).await;
+                return Err(err);
+            }
+        };
+        let endpoint_url = match entry.models_endpoint.clone() {
+            Some(url) => url,
+            None => {
+                let err = ProxyError::NoModelsEndpoint {
+                    provider: provider_name.to_string(),
+                };
+                audit(None, AuditOutcome::RejectedByPolicy { code: err.code().to_string() }).await;
+                return Err(err);
+            }
+        };
+
+        // 3. Allowlist on the catalogued URL (defence in depth, same as forward).
+        let host = match self.allowlist.check(&endpoint_url) {
+            AllowlistDecision::Allowed { host } => host,
+            AllowlistDecision::Rejected(reason) => {
+                let err = ProxyError::Allowlist(reason);
+                audit(None, AuditOutcome::RejectedByPolicy { code: err.code().to_string() }).await;
+                return Err(err);
+            }
+        };
+
+        // 4. Reserve a concurrency slot so a flood of tests cannot multiply egress.
+        let prev = self
+            .inflight
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let _slot = InflightGuard(self.inflight.clone());
+        if prev >= self.max_inflight {
+            let err = ProxyError::AtCapacity;
+            audit(Some(&host), AuditOutcome::RejectedByPolicy { code: err.code().to_string() }).await;
+            return Err(err);
+        }
+
+        // 5. Audit-before-egress gate, fail-closed: a test is still outbound
+        //    traffic (§8.4.6), so record it before the probe leaves the host
+        //    and refuse if the ledger cannot.
+        {
+            let record = AuditRecord {
+                audit_token: audit_token.to_string(),
+                provider_name: provider_name.to_string(),
+                host: Some(host.clone()),
+                outcome: AuditOutcome::TestConnection,
+            };
+            self.audit_sink
+                .submit(record.to_ingest_request())
+                .await
+                .map_err(|err| {
+                    tracing::warn!("ai-proxy test refused: audit log unavailable: {err}");
+                    ProxyError::AuditUnavailable
+                })?;
+        }
+
+        // 6. Probe. The transport outcome IS the test result, not an error:
+        //    a refused dial is the truthful "network" verdict, a non-2xx the
+        //    "httpStatus" verdict. Body is discarded (only the status matters).
+        match self.forwarder.get(&endpoint_url).await {
+            Ok(result) => {
+                audit(
+                    Some(&host),
+                    AuditOutcome::TestConnectionResult { upstream_status: result.status },
+                )
+                .await;
+                Ok(TestOutcome {
+                    ok: (200..300).contains(&result.status),
+                    http_status: Some(result.status),
+                    network: None,
+                })
+            }
+            Err(err) => {
+                let detail = err.to_string();
+                audit(Some(&host), AuditOutcome::UpstreamError { detail: detail.clone() }).await;
+                Ok(TestOutcome {
+                    ok: false,
+                    http_status: None,
+                    network: Some(detail),
+                })
+            }
+        }
+    }
+
     /// Commit the fail-closed pre-forward entry. Returns
     /// `Err(ProxyError::AuditUnavailable)` if the ledger cannot record
     /// it, so the caller refuses the forward rather than letting an
@@ -555,6 +714,85 @@ mod tests {
         assert_eq!(records[0].structural.outcome, "forwarding");
         assert_eq!(records[0].structural.subject, "localhost");
         assert_eq!(records[1].structural.outcome, "forwarded-200");
+    }
+
+    #[tokio::test]
+    async fn test_provider_probes_the_catalogued_models_endpoint() {
+        // A 2xx from the model-list endpoint is the `ok` verdict, and the
+        // GET must hit the *catalogued* models URL, never a caller value.
+        let forwarder = Arc::new(StubForwarder::new(vec![Ok(ForwardResult {
+            status: 200,
+            body: r#"{"data":[]}"#.to_string(),
+        })]));
+        let sink = Arc::new(CollectingAuditSink::new());
+        let svc = service_with(forwarder.clone(), sink.clone());
+
+        let out = svc
+            .test_provider(&ai_daemon_caller(), "ollama-default", "tok-t")
+            .await
+            .expect("ok");
+        assert!(out.ok);
+        assert_eq!(out.http_status, Some(200));
+        assert!(out.network.is_none());
+
+        let calls = forwarder.calls.lock().await;
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "http://localhost:11434/v1/models");
+        assert_eq!(calls[0].1, ""); // a GET carries no body
+
+        let records = sink.snapshot().await;
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].structural.outcome, "test-connection");
+        assert_eq!(records[0].structural.subject, "localhost");
+        assert_eq!(records[1].structural.outcome, "test-connection-200");
+    }
+
+    #[tokio::test]
+    async fn test_provider_reports_a_non_2xx_status() {
+        // A 401 is the meaningful "configured but unauthorized" signal: not an
+        // error, a truthful verdict the manager surfaces.
+        let forwarder = Arc::new(StubForwarder::new(vec![Ok(ForwardResult {
+            status: 401,
+            body: String::new(),
+        })]));
+        let sink = Arc::new(CollectingAuditSink::new());
+        let svc = service_with(forwarder, sink);
+
+        let out = svc
+            .test_provider(&ai_daemon_caller(), "ollama-default", "tok-t")
+            .await
+            .expect("reached upstream");
+        assert!(!out.ok);
+        assert_eq!(out.http_status, Some(401));
+    }
+
+    #[tokio::test]
+    async fn test_provider_rejects_an_unknown_provider() {
+        let forwarder = Arc::new(StubForwarder::new(vec![]));
+        let sink = Arc::new(CollectingAuditSink::new());
+        let svc = service_with(forwarder, sink);
+
+        let err = svc
+            .test_provider(&ai_daemon_caller(), "ghost-provider", "tok-t")
+            .await
+            .expect_err("unknown provider");
+        assert_eq!(err.code(), "unknown-provider");
+    }
+
+    #[tokio::test]
+    async fn test_provider_refuses_a_non_allowlisted_caller() {
+        let forwarder = Arc::new(StubForwarder::new(vec![]));
+        let sink = Arc::new(CollectingAuditSink::new());
+        let svc = service_with(forwarder, sink);
+        let stranger = CallerIdentity {
+            well_known_bus_name: Some("com.example.Stranger".to_string()),
+            unique_bus_name: ":1.99".to_string(),
+        };
+        let err = svc
+            .test_provider(&stranger, "ollama-default", "tok-t")
+            .await
+            .expect_err("caller not allowed");
+        assert_eq!(err.code(), "caller-not-allowed");
     }
 
     /// Build a catalog with a single cloud provider under the given wire format.
@@ -805,6 +1043,14 @@ mod tests {
             _endpoint_url: &str,
             _body_json: &str,
         ) -> Result<ForwardResult, ForwardError> {
+            self.gate.notified().await;
+            Ok(ForwardResult {
+                status: 200,
+                body: "{}".to_string(),
+            })
+        }
+
+        async fn get(&self, _endpoint_url: &str) -> Result<ForwardResult, ForwardError> {
             self.gate.notified().await;
             Ok(ForwardResult {
                 status: 200,

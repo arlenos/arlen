@@ -51,6 +51,12 @@ pub trait Forwarder: Send + Sync {
         endpoint_url: &str,
         body_json: &str,
     ) -> Result<ForwardResult, ForwardError>;
+
+    /// GET `endpoint_url` and return the upstream response. Used by the
+    /// connection test (`test_provider`): a body-less probe of a
+    /// catalogued provider's model-list endpoint. The same response cap
+    /// and redirect-disable posture as `post` apply.
+    async fn get(&self, endpoint_url: &str) -> Result<ForwardResult, ForwardError>;
 }
 
 /// reqwest-backed forwarder. Built once at daemon startup so
@@ -103,21 +109,14 @@ impl ReqwestForwarder {
     }
 }
 
-#[async_trait]
-impl Forwarder for ReqwestForwarder {
-    async fn post(
+impl ReqwestForwarder {
+    /// Read an upstream response under the configured cap. Streams the
+    /// body so a missing or lying `Content-Length` cannot push
+    /// unbounded data into memory. Shared by `post` and `get`.
+    async fn read_capped(
         &self,
-        endpoint_url: &str,
-        body_json: &str,
+        mut resp: reqwest::Response,
     ) -> Result<ForwardResult, ForwardError> {
-        let mut resp = self
-            .http
-            .post(endpoint_url)
-            .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .body(body_json.to_string())
-            .send()
-            .await
-            .map_err(|err| ForwardError::Transport(err.to_string()))?;
         let status = resp.status().as_u16();
 
         // Reject early on a declared length over the cap, so an
@@ -130,8 +129,6 @@ impl Forwarder for ReqwestForwarder {
             }
         }
 
-        // Stream the body so a missing or lying `Content-Length`
-        // cannot push unbounded data into memory.
         let mut buf: Vec<u8> = Vec::new();
         while let Some(chunk) = resp
             .chunk()
@@ -148,6 +145,35 @@ impl Forwarder for ReqwestForwarder {
         let body = String::from_utf8(buf)
             .map_err(|err| ForwardError::Body(format!("non-utf8 response: {err}")))?;
         Ok(ForwardResult { status, body })
+    }
+}
+
+#[async_trait]
+impl Forwarder for ReqwestForwarder {
+    async fn post(
+        &self,
+        endpoint_url: &str,
+        body_json: &str,
+    ) -> Result<ForwardResult, ForwardError> {
+        let resp = self
+            .http
+            .post(endpoint_url)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(body_json.to_string())
+            .send()
+            .await
+            .map_err(|err| ForwardError::Transport(err.to_string()))?;
+        self.read_capped(resp).await
+    }
+
+    async fn get(&self, endpoint_url: &str) -> Result<ForwardResult, ForwardError> {
+        let resp = self
+            .http
+            .get(endpoint_url)
+            .send()
+            .await
+            .map_err(|err| ForwardError::Transport(err.to_string()))?;
+        self.read_capped(resp).await
     }
 }
 
@@ -185,6 +211,20 @@ pub(crate) mod test_support {
                 .lock()
                 .await
                 .push((endpoint_url.to_string(), body_json.to_string()));
+            let mut script = self.script.lock().await;
+            if script.is_empty() {
+                return Err(ForwardError::Transport("stub exhausted".to_string()));
+            }
+            script.remove(0)
+        }
+
+        async fn get(&self, endpoint_url: &str) -> Result<ForwardResult, ForwardError> {
+            // A GET has no body; record an empty body so the call list
+            // is a uniform `(url, body)` pair across post/get.
+            self.calls
+                .lock()
+                .await
+                .push((endpoint_url.to_string(), String::new()));
             let mut script = self.script.lock().await;
             if script.is_empty() {
                 return Err(ForwardError::Transport("stub exhausted".to_string()));
@@ -232,5 +272,21 @@ mod tests {
             .expect("within cap");
         assert_eq!(result.status, 200);
         assert_eq!(result.body, "ok");
+    }
+
+    #[tokio::test]
+    async fn get_reads_the_models_endpoint() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"data":[]}"#))
+            .mount(&server)
+            .await;
+        let fwd = ReqwestForwarder::with_max_response(1024).unwrap();
+        let result = fwd
+            .get(&format!("{}/v1/models", server.uri()))
+            .await
+            .expect("get models");
+        assert_eq!(result.status, 200);
+        assert_eq!(result.body, r#"{"data":[]}"#);
     }
 }
