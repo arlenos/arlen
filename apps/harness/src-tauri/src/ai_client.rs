@@ -40,6 +40,21 @@ const TRACE_TIMEOUT: Duration = Duration::from_secs(5);
 /// User-facing message when the turn exceeds [`QUERY_TIMEOUT`].
 const TIMEOUT_MSG: &str = "the assistant took too long to respond";
 
+/// Whether a recorded tool call succeeded (harness-redesign emit seam 1). The
+/// daemon's trace carries `done` / `failed`; `running` is the in-flight state the
+/// frontend shows for a call before its trace entry lands. Drives the tool-call
+/// card's `◷ / ✓ / ✕`.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolStatus {
+    /// In flight (set by the frontend; never emitted in a completed trace).
+    Running,
+    /// The tool returned a result.
+    Done,
+    /// The tool call failed.
+    Failed,
+}
+
 /// One tool call the daemon made while answering, as the trace records it
 /// (A3, ai-app.md §2.1). Fields are the daemon's `take_trace` shape; the
 /// frontend renders each as a collapsible card so no action is hidden.
@@ -54,6 +69,8 @@ pub struct ToolCall {
     pub arguments: String,
     /// The tool result the model saw (already capped daemon-side).
     pub result: String,
+    /// Whether the call succeeded, from the daemon's trace.
+    pub status: ToolStatus,
 }
 
 /// The outcome of a conversation turn, returned to the frontend.
@@ -330,15 +347,17 @@ mod tests {
     #[test]
     fn parse_trace_reads_the_tool_calls_in_order() {
         let json = json!([
-            {"server": "system.graph", "tool": "query", "arguments": "MATCH ...", "result": "rows"},
-            {"server": "system.knowledge", "tool": "describe_schema", "arguments": "", "result": "schema"}
+            {"server": "system.graph", "tool": "query", "arguments": "MATCH ...", "result": "rows", "status": "done"},
+            {"server": "system.knowledge", "tool": "describe_schema", "arguments": "", "result": "err", "status": "failed"}
         ])
         .to_string();
         let calls = parse_trace(&json).expect("valid array parses");
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[0].server, "system.graph");
         assert_eq!(calls[0].tool, "query");
+        assert_eq!(calls[0].status, ToolStatus::Done);
         assert_eq!(calls[1].tool, "describe_schema");
+        assert_eq!(calls[1].status, ToolStatus::Failed);
     }
 
     #[test]
