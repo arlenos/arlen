@@ -1,66 +1,25 @@
-/// The Trash view state + the trash command wrappers. Trash is a virtual view
-/// (like search results), not a folder the browser navigates into: opening it
-/// lists the home trash via `files_trash_list`, and the per-item Restore +
-/// Empty actions call the matching backend commands and reload. The trash trio
-/// (list / empty / restore) is built + tested in the FM core; this is its UI
-/// data layer.
+/// The trash command wrappers. Trash is now a navigation LOCATION (the browser
+/// lists it through `files_list_location`), so this is just the two actions its
+/// entries expose: Restore one entry to its recorded original location, and
+/// Empty the whole trash. Both are thin wrappers over the FM-core trash trio;
+/// the caller refreshes the listing afterwards (the controller re-lists).
 
-import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
-import { overlay, closeOverlay } from "./overlay";
+import type { FileEntry } from "@arlen/ui-kit/components/browser";
 
-/// One trashed entry (mirrors the Rust `ops::TrashedItem`): the opaque token
-/// the backend addresses it by, its recorded original path, and the deletion
-/// date string.
-export interface TrashedItem {
-  trashed_name: string;
-  original_path: string;
-  deletion_date: string;
+/// Restore one trashed entry to its recorded original location (the backend
+/// reanchors it to the FM root, rename-on-conflict). A Trash `FileEntry` carries
+/// the address as `restore_token` (the trashed name) and the original path as
+/// `full_path`; a non-trash entry (no token) is a no-op.
+export async function restoreFromTrash(entry: FileEntry): Promise<void> {
+  if (!entry.restore_token || !entry.full_path) return;
+  await invoke("files_trash_restore", {
+    trashedName: entry.restore_token,
+    originalPath: entry.full_path,
+  });
 }
 
-/// The current trash contents; null = not loaded yet, [] = loaded and empty.
-export const trashItems = writable<TrashedItem[] | null>(null);
-
-/// Load (or reload) the home trash contents into the store. A backend error
-/// leaves an empty list rather than a stale view.
-export async function loadTrash(): Promise<void> {
-  try {
-    trashItems.set(await invoke<TrashedItem[]>("files_trash_list"));
-  } catch {
-    trashItems.set([]);
-  }
-}
-
-/// Open the Trash view (exclusive of other overlays) and load its contents.
-export async function openTrash(): Promise<void> {
-  overlay.set("trash");
-  await loadTrash();
-}
-
-/// Close the Trash view, back to the listing.
-export function closeTrash(): void {
-  closeOverlay();
-}
-
-/// Restore one entry to its recorded original location (the backend reanchors
-/// it to the FM root capability, rename-on-conflict), then reload the view.
-export async function restoreTrashItem(item: TrashedItem): Promise<void> {
-  try {
-    await invoke("files_trash_restore", {
-      trashedName: item.trashed_name,
-      originalPath: item.original_path,
-    });
-  } finally {
-    await loadTrash();
-  }
-}
-
-/// Permanently empty the trash; returns the number of entries cleared, then
-/// reloads (to the now-empty view).
+/// Permanently empty the trash; returns the number of entries cleared.
 export async function emptyTrash(): Promise<number> {
-  try {
-    return await invoke<number>("files_trash_empty");
-  } finally {
-    await loadTrash();
-  }
+  return invoke<number>("files_trash_empty");
 }

@@ -30,14 +30,9 @@
   import FmBatchRename from "$lib/components/FmBatchRename.svelte";
   import FmSearchBar from "$lib/components/FmSearchBar.svelte";
   import FmSearchResults from "$lib/components/FmSearchResults.svelte";
-  import FmTrashView from "$lib/components/FmTrashView.svelte";
-  import FmRecentView from "$lib/components/FmRecentView.svelte";
   import FmInfoPanel from "$lib/components/FmInfoPanel.svelte";
   import { savedSearches } from "$lib/stores/places";
   import { searchOpen, searchResults } from "$lib/stores/search";
-  import { openTrash } from "$lib/stores/trash";
-  import { openRecent } from "$lib/stores/recent";
-  import { overlay } from "$lib/stores/overlay";
 
   let renamingName = $state<string | null>(null);
   let batchRenaming = $state(false);
@@ -274,10 +269,10 @@
         await c?.up();
         break;
       case "go.trash":
-        await openTrash();
+        await get(activeController)?.navigate("trash");
         break;
       case "go.recent":
-        await openRecent();
+        await get(activeController)?.navigate("recent");
         break;
       case "edit.select_all":
         c?.selectAll();
@@ -357,11 +352,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="fm" onkeydown={onOpsKeydown}>
-  {#if $overlay === "trash"}
-    <FmTrashView />
-  {:else if $overlay === "recent"}
-    <FmRecentView />
-  {:else if $activeController && $focusedController}
+  {#if $activeController && $focusedController}
     <FmSearchBar path={currentPath()} onsave={saveSearch} />
     <ContextMenu.Root>
       <ContextMenu.Trigger class="fm-browse">
