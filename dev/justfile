@@ -337,3 +337,25 @@ compositor:
 # Build the bootable image. TODO (Phase 10, real distro/ with mkosi).
 build-iso:
     @echo "TODO: mkosi image build (Phase 10)"
+
+# Reclaim disk by removing the regenerable backend build caches. The per-crate
+# `target/` dirs (each standalone workspace builds its own) balloon to tens of GB
+# and have repeatedly filled the disk mid-build. This cleans the backend daemons +
+# sdk + forage + the integration harness - NOT `apps/*` (arlen-ui's frontend build
+# loop) and NOT `ai/` (the active AI lane) - so it frees the bulk without forcing a
+# rebuild of what is in active use. Everything removed rebuilds on next `cargo
+# build`/`just dev`. Run before a heavy stack build or VM/verify run that needs
+# headroom. Reports freed space.
+reclaim-disk:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    before=$(df -P "{{ROOT}}" | awk 'NR==2{print $4}')
+    for t in "{{ROOT}}"/daemons/*/target "{{ROOT}}"/sdk/target "{{ROOT}}"/forage/target "{{ROOT}}"/dev/integration/target; do
+        [ -d "$t" ] || continue
+        echo "rm $t ($(du -sh "$t" 2>/dev/null | cut -f1))"
+        rm -rf "$t"
+    done
+    after=$(df -P "{{ROOT}}" | awk 'NR==2{print $4}')
+    freed=$(( (after - before) / 1024 / 1024 ))
+    echo "reclaimed ~${freed} GiB; df now:"; df -h "{{ROOT}}" | tail -1
+    echo "NB the cleaned crates rebuild on next cargo build / just dev."
