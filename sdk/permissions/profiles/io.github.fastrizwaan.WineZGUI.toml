@@ -1,0 +1,14 @@
+# Starting permission profile for WineZGUI (a Wine prefix + game launcher).
+# Fetches Wine runtime components over the network and runs installers/exes from
+# Downloads; prefixes live in its own data dir (a launcher grant). The user
+# picks individual game files through the portal, which grants them per file. No
+# Knowledge Graph access.
+[info]
+app_id = "io.github.fastrizwaan.WineZGUI"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
