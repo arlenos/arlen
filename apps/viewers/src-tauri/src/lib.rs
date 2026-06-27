@@ -37,6 +37,9 @@ pub struct AudioInfoDto {
     pub title: Option<String>,
     /// The artist tag, when present.
     pub artist: Option<String>,
+    /// The waveform envelope: up to 180 peak-normalised bars (0-255). Empty when
+    /// the track length is unknown or silent (the player falls back).
+    pub peaks: Vec<u8>,
 }
 
 /// Where the sandboxed decode-worker binaries live: `ARLEN_VIEWERS_WORKER_DIR` if set
@@ -76,6 +79,7 @@ fn probe_audio(path: String) -> Result<AudioInfoDto, String> {
         duration_ms: info.duration_ms,
         title: info.title,
         artist: info.artist,
+        peaks: info.peaks,
     })
 }
 
