@@ -352,6 +352,17 @@ fn files_trash_restore(trashed_name: String, original_path: String) -> Result<()
     .map_err(|e| e.to_string())
 }
 
+/// Permanently delete a single trashed entry (the Trash context menu's "Delete
+/// forever", guarded by a confirm dialog in the UI). `trashed_name` comes
+/// straight from a `files_trash_list` entry (its `restore_token`). Irreversible:
+/// it removes the `files/` payload + its `.trashinfo`; unlike `files_trash_empty`
+/// it clears only the one item. Completes the trash list/empty/restore/delete set.
+#[tauri::command]
+fn files_trash_delete(trashed_name: String) -> Result<(), String> {
+    let trash = trash_dir()?;
+    ops::delete_trashed_item(&trash, &trashed_name).map_err(|e| e.to_string())
+}
+
 /// Create a symbolic link `name` under `parent` pointing at `target` (the
 /// link's verbatim contents; it may be absolute, relative, or dangling).
 #[tauri::command]
@@ -1376,6 +1387,7 @@ pub fn run() {
             files_trash_list,
             files_trash_empty,
             files_trash_restore,
+            files_trash_delete,
             files_symlink,
             thumbnail::files_thumbnail,
             capability::ai_capability
