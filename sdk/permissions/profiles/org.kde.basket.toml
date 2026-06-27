@@ -1,0 +1,8 @@
+# Starting permission profile for BasKet Note Pads (a KDE note organizer). Saves
+# its note baskets under Documents; no network, no Knowledge Graph access.
+[info]
+app_id = "org.kde.basket"
+tier = "third-party"
+
+[filesystem]
+documents = true
