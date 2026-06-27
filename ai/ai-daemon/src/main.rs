@@ -308,6 +308,7 @@ impl AiInterface {
     /// pair as a JSON object. The caller must store both and present
     /// them on every follow-up method; the daemon also verifies the
     /// follow-up's D-Bus sender matches the submitter.
+    #[zbus(name = "query")]
     async fn query(
         &self,
         prompt: &str,
@@ -443,7 +444,7 @@ impl AiInterface {
         .await
         .map_err(|e| zbus::fdo::Error::Failed(format!("proxy unreachable: {e}")))?;
         let allowed: Vec<String> = proxy
-            .call("ListAllowedProviders", &())
+            .call("list_allowed_providers", &())
             .await
             .map_err(|e| zbus::fdo::Error::Failed(format!("could not list providers: {e}")))?;
         if !allowed.iter().any(|p| p == provider) {
@@ -479,7 +480,7 @@ impl AiInterface {
     /// from the in-chat `ai_models_list` picker. A JSON array of
     /// `{ id, name, kind, enabled, configured, status }` (camelCase): `id/name/
     /// kind/configured` come from the proxy's authoritative catalog view
-    /// (`ListProviders` - display metadata only, no endpoint or credential);
+    /// (`list_providers` - display metadata only, no endpoint or credential);
     /// `enabled` is the per-provider on/off (every provider is enabled until
     /// `ai_provider_set_enabled` turns one off - the disabled set lands with that
     /// setter) and `status` is the last connection-test verdict (`untested` until
@@ -498,7 +499,7 @@ impl AiInterface {
         else {
             return empty();
         };
-        let json: String = match proxy.call("ListProviders", &()).await {
+        let json: String = match proxy.call("list_providers", &()).await {
             Ok(j) => j,
             Err(_) => return empty(),
         };
@@ -567,7 +568,7 @@ impl AiInterface {
     }
 
     /// Test a catalogued provider's connectivity for the AI-providers manager.
-    /// Relays the proxy's `TestProvider`, which GETs the provider's catalogued
+    /// Relays the proxy's `test_provider`, which GETs the provider's catalogued
     /// model-list endpoint (the URL is proxy-owned, never the caller's, so no
     /// egress-consent step), and returns the verdict as JSON
     /// `{ ok, httpStatus?, network? }`. A policy refusal or an unreachable proxy
@@ -602,7 +603,7 @@ impl AiInterface {
         // ai.toml (Settings owns the file).
         let token = config_watch::load_ai_settings().provider.audit_token;
         match proxy
-            .call::<_, _, String>("TestProvider", &(id, token.as_str()))
+            .call::<_, _, String>("test_provider", &(id, token.as_str()))
             .await
         {
             Ok(json) => json,
@@ -619,6 +620,7 @@ impl AiInterface {
     /// so unlike `query` there is no id/token or poll cycle. Gated like a
     /// query (enabled + graph access), audited, and bounded by the same
     /// in-flight caps keyed on the caller's executable identity.
+    #[zbus(name = "explain_system")]
     async fn explain_system(
         &self,
         #[zbus(header)] header: zbus::message::Header<'_>,
@@ -644,6 +646,7 @@ impl AiInterface {
     /// form `{ "status": "...", ... }`. Result text is only included
     /// for the single-shot `completed` status; subsequent polls
     /// return `drained`.
+    #[zbus(name = "take_result")]
     async fn take_result(
         &self,
         query_id: &str,
@@ -670,6 +673,7 @@ impl AiInterface {
     /// submitted the query, presenting the same retrieval token, may call this.
     /// Unlike `take_result` the trace is not consumed: the caller may fetch it
     /// more than once while the query record exists.
+    #[zbus(name = "take_trace")]
     async fn take_trace(
         &self,
         query_id: &str,
@@ -699,6 +703,7 @@ impl AiInterface {
 
     /// Cancel an in-flight query. Returns true if the query existed,
     /// was not already terminated, and the caller passed authz.
+    #[zbus(name = "cancel")]
     async fn cancel(
         &self,
         query_id: &str,
