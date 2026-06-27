@@ -1,0 +1,9 @@
+# Starting permission profile for Video Downloader (it fetches videos from web
+# sites). Network is its function; the download location is chosen through the
+# file portal, so no standing filesystem grant, and no Knowledge Graph access.
+[info]
+app_id = "io.github.unrud.VideoDownloader"
+tier = "third-party"
+
+[network]
+allow_all = true

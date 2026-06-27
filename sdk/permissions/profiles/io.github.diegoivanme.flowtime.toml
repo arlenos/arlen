@@ -1,0 +1,6 @@
+# Starting permission profile for Flowtime (a focus/pomodoro timer). It runs a
+# local timer and keeps its own settings, so no network, no user files and no
+# Knowledge Graph access.
+[info]
+app_id = "io.github.diegoivanme.flowtime"
+tier = "third-party"
