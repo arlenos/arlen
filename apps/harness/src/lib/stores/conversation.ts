@@ -29,11 +29,20 @@ export type Role = "user" | "assistant" | "error";
 /// One tool call the daemon made while answering (A3). Mirrors the
 /// backend `ToolCall`; rendered as a collapsible card so nothing the
 /// assistant did is hidden.
+/// Whether a recorded tool call succeeded (harness-redesign emit seam 1,
+/// mirrors the daemon's `ToolStatus`). `running` is the in-flight state shown
+/// before the trace entry lands; the trace itself only carries `done` /
+/// `failed`. Drives the tool-call card's status glyph.
+export type ToolStatus = "running" | "done" | "failed";
+
 export interface ToolCall {
   server: string;
   tool: string;
   arguments: string;
   result: string;
+  /// Outcome from the daemon trace. Absent only on conversations persisted
+  /// before this field existed, which the card renders without a glyph.
+  status?: ToolStatus;
 }
 
 /// A file the user attached to a turn via the composer's `@`-mention picker
