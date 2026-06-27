@@ -109,7 +109,17 @@ fn run() -> Result<(), String> {
         "bridge ingest host ready"
     );
 
-    // The native-messaging transport: messages over stdin, replies over stdout.
+    // Two drivers reach the same interpret -> sink path. If a vault is configured
+    // (`ARLEN_OBSIDIAN_VAULT`), run the daemon-side FLOOR: an initial sync plus a
+    // live `.md` file-watch (foreign-app-bridges.md). Otherwise run the generic
+    // plugin transport: native-messaging frames over stdin, replies over stdout.
+    if let Some(vault) = std::env::var_os("ARLEN_OBSIDIAN_VAULT") {
+        let vault = PathBuf::from(vault);
+        tracing::info!(vault = %vault.display(), "obsidian floor: watching vault");
+        return arlen_bridge_ingest::watch_vault(&vault, &config, &mut sink)
+            .map_err(|e| format!("vault watch: {e}"));
+    }
+
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut reader = BufReader::new(stdin.lock());
