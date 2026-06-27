@@ -33,6 +33,10 @@ pub struct AudioInfoDto {
     pub channels: u16,
     /// Duration in milliseconds, when the container declares it.
     pub duration_ms: Option<u64>,
+    /// The track title tag, when present (the player falls back to the file name).
+    pub title: Option<String>,
+    /// The artist tag, when present.
+    pub artist: Option<String>,
 }
 
 /// Where the sandboxed decode-worker binaries live: `ARLEN_VIEWERS_WORKER_DIR` if set
@@ -70,6 +74,8 @@ fn probe_audio(path: String) -> Result<AudioInfoDto, String> {
         sample_rate: info.sample_rate,
         channels: info.channels,
         duration_ms: info.duration_ms,
+        title: info.title,
+        artist: info.artist,
     })
 }
 
