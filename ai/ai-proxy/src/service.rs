@@ -795,6 +795,36 @@ mod tests {
         assert_eq!(err.code(), "caller-not-allowed");
     }
 
+    #[test]
+    fn test_outcome_serializes_to_the_manager_camelcase_shape() {
+        // The manager UI branches on these exact keys: `ok`, then `httpStatus`
+        // for a reached-but-non-2xx provider, or `network` for a dial that never
+        // landed. Skip-if-none keeps the absent field off the wire. A rename here
+        // compiles and passes the verdict tests above yet breaks the manager.
+        let ok = serde_json::to_value(TestOutcome { ok: true, http_status: None, network: None })
+            .expect("serializes");
+        assert_eq!(ok, serde_json::json!({ "ok": true }));
+
+        let unauthorized = serde_json::to_value(TestOutcome {
+            ok: false,
+            http_status: Some(401),
+            network: None,
+        })
+        .expect("serializes");
+        assert_eq!(unauthorized, serde_json::json!({ "ok": false, "httpStatus": 401 }));
+
+        let unreachable = serde_json::to_value(TestOutcome {
+            ok: false,
+            http_status: None,
+            network: Some("connection refused".to_string()),
+        })
+        .expect("serializes");
+        assert_eq!(
+            unreachable,
+            serde_json::json!({ "ok": false, "network": "connection refused" })
+        );
+    }
+
     /// Build a catalog with a single cloud provider under the given wire format.
     fn catalog_with(name: &str, url: &str, wire_format: WireFormat) -> ProviderCatalog {
         use std::collections::HashMap;
