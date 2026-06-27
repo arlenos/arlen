@@ -29,7 +29,7 @@ export function toggleSplit(): void {
   } else {
     const active = get(activeController);
     const initial = active ? get(active.path) : "/home";
-    paneB.set(createBrowserState(fmAdapter, { initial }));
+    paneB.set(createBrowserState(fmAdapter, { initial, allowVirtual: true }));
     splitView.set(true);
   }
 }
