@@ -7,7 +7,8 @@
 //! config and the behaviour directories.
 
 use arlen_ai_agent::behaviour::BehaviourKind;
-use arlen_ai_agent::loader::{load_configured, DisableReason, Provenance, Status};
+use arlen_ai_agent::discovery::load_configured;
+use arlen_ai_agent::loader::{DisableReason, Provenance, Status};
 use serde::Serialize;
 
 /// One behaviour's status as the observability view renders it.
