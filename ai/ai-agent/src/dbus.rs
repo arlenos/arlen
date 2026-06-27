@@ -359,6 +359,26 @@ impl AgentInterface {
         }
     }
 
+    /// Grant (`enabled = true`) or revoke (`false`) an app's autonomy for the
+    /// harness autonomy dial's per-app "More" control (`ai_set_autonomous_app`):
+    /// add/remove `app_id` from `[ai] autonomous_apps`, so a listed app may act
+    /// autonomously under the baseline model. Writes ai.toml format-preservingly
+    /// and atomically; the gate re-reads it per call, so it is LIVE with no
+    /// restart, and `executor_live` stays the orthogonal Tim-gated master.
+    /// Idempotent. Returns `ok`, or `error: <reason>` on an invalid id or write
+    /// failure. The list is the authority the gate reads; surfacing each as an LCG
+    /// Grant node in the capability browser is a separate projection.
+    #[zbus(name = "ai_set_autonomous_app")]
+    async fn ai_set_autonomous_app(&self, app_id: &str, enabled: bool) -> String {
+        match crate::config::set_autonomous_app_in(&ai_config_path(), app_id, enabled) {
+            Ok(()) => {
+                tracing::info!(app_id, enabled, "autonomy dial: autonomous_apps updated");
+                "ok".to_string()
+            }
+            Err(e) => format!("error: {e}"),
+        }
+    }
+
     /// The loaded skills as a JSON array, for the user-invoke discovery surface
     /// (PR-5 part 3a / the deferred S-U3b "behaviours list"). Each entry carries
     /// the skill's name, description, agent-match `whenToUse` hint, kind, and
