@@ -1,0 +1,6 @@
+# Starting permission profile for Calculator (a local calculator). It evaluates
+# expressions on its own; no network, no user files and no Knowledge Graph
+# access.
+[info]
+app_id = "dev.edfloreshz.Calculator"
+tier = "third-party"
