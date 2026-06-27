@@ -1,0 +1,23 @@
+# Obsidian vault bridge - the floor mapping (no plugin tier).
+#
+# A watched vault's .md notes (assembled by the daemon's `obsidian` reader into
+# a flat `note` message) become `md.obsidian.Note` nodes keyed by their
+# vault-relative path - the stable idempotency key, so a re-sync strengthens a
+# note rather than duplicating it. The note's title, its merged tag list and the
+# raw list of [[wikilink]] target names it references are projected as fields.
+#
+# The floor deliberately does NOT emit resolved LINKS_TO edges. A wikilink names
+# a note, and resolving that name to a target node needs Obsidian's own
+# whole-vault index - which is exactly the richer plugin tier's value-add
+# (foreign-app-bridges.md). So the floor ingests each note plus the names it
+# references as data; the plugin tier, when installed, adds the resolved edges.
+[bridge]
+# The single permitted foreign plugin id (mutual id-pin) for the plugin tier.
+# The floor reader runs inside this daemon, but the id is pinned here so the
+# plugin tier, when installed, shares this bridge's namespace and config.
+allowed_plugin_id = "md.obsidian.arlen-bridge"
+
+[map.note]
+upsert = "md.obsidian.Note"
+key = "path"
+set = { title = "$.title", tags = "$.tags", links = "$.links" }
