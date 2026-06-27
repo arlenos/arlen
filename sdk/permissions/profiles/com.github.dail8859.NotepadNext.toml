@@ -1,0 +1,8 @@
+# Starting permission profile for Notepad Next (a plain-text/code editor). It
+# opens and saves documents; no network and no Knowledge Graph access.
+[info]
+app_id = "com.github.dail8859.NotepadNext"
+tier = "third-party"
+
+[filesystem]
+documents = true

@@ -1,0 +1,7 @@
+# Starting permission profile for Notes (a note-taking app). Notes live in the
+# app's own storage; opening or exporting external files is portal-mediated on
+# use, so it needs no broad filesystem grant, no network and no Knowledge Graph
+# access by default.
+[info]
+app_id = "io.github.nuttyartist.notes"
+tier = "third-party"
