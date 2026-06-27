@@ -3,11 +3,15 @@
   "version": "0.1.0",
   "description": "Tauri plugin exposing the Arlen OS shell.* APIs (presence, timeline, spatial)",
   "license": "GPL-3.0-only",
-  "main": "index.ts",
-  "types": "index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "files": [
-    "index.ts"
+    "dist"
   ],
+  "scripts": {
+    "build": "tsc",
+    "prepare": "tsc"
+  },
   "peerDependencies": {
     "@tauri-apps/api": "^2"
   },
