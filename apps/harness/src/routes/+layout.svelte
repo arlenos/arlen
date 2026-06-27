@@ -18,6 +18,7 @@
   import { Separator } from "@arlen/ui-kit/components/ui/separator";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import HarnessSidebar from "$lib/components/HarnessSidebar.svelte";
+  import TransparencyDrawer from "$lib/components/chat/TransparencyDrawer.svelte";
   import { activeTitle, initSessions, newSession } from "$lib/stores/conversation";
 
   let { children } = $props();
@@ -33,11 +34,7 @@
   // is collapsed; the agent route and an empty conversation fall back to the
   // surface name.
   const viewTitle = $derived(
-    $page.url.pathname.startsWith("/agent")
-      ? "Activity"
-      : $page.url.pathname.startsWith("/transparency")
-        ? "Transparency"
-        : $activeTitle || "Chat",
+    $page.url.pathname.startsWith("/agent") ? "Activity" : $activeTitle || "Chat",
   );
 
   // Window drag via explicit pointerdown + startDragging(), because the
@@ -100,3 +97,7 @@
     </div>
   </SidebarInset>
 </SidebarProvider>
+
+<!-- The transparency drawer overlays the whole shell, summoned from the
+     composer foot; mounted once here so it works from any surface. -->
+<TransparencyDrawer />

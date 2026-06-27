@@ -10,13 +10,14 @@
   import { tick } from "svelte";
   import { writable } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import { goto } from "$app/navigation";
-  import { ArrowUp, File as FileIcon, Folder, Paperclip } from "@lucide/svelte";
+  import { ArrowUp, ChevronDown, File as FileIcon, Folder, Paperclip, ShieldCheck } from "@lucide/svelte";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
+  import * as DropdownMenu from "@arlen/ui-kit/components/ui/dropdown-menu";
   import type { Capability } from "$lib/capability";
   import { tierBadge } from "$lib/display";
+  import { openTransparency } from "$lib/stores/transparency";
   import ContextChips from "./ContextChips.svelte";
   import {
     activeSessionId,
@@ -49,8 +50,27 @@
   } = $props();
 
   // The posture chip shows only when the AI is on; off / unreachable states
-  // are carried by the warning line below, not by a foot chip.
-  const badge = $derived(capability?.enabled ? tierBadge(capability) : null);
+  // are carried by the warning line below, not by a foot chip. The dropdown
+  // flips how much the agent may act on its own; the choice updates here
+  // optimistically and the daemon `ai_set_posture` swap confirms it (until
+  // that command lands the choice reverts, so nothing is faked).
+  let postureOverride = $state<boolean | null>(null);
+  const liveExecutor = $derived(postureOverride ?? capability?.executorLive ?? false);
+  const badge = $derived(
+    capability?.enabled ? tierBadge({ ...capability, executorLive: liveExecutor }) : null,
+  );
+  const dialValue = $derived(liveExecutor ? "auto" : "suggest");
+
+  async function applyPosture(value: string) {
+    const live = value === "auto";
+    if (live === liveExecutor) return;
+    postureOverride = live;
+    try {
+      await invoke("ai_set_posture", { executorLive: live });
+    } catch {
+      postureOverride = null;
+    }
+  }
 
   let draft = $state("");
   let textareaRef = $state<HTMLTextAreaElement | null>(null);
@@ -290,31 +310,54 @@
         <IconAction label="Attach a file" size="control" disabled={disabled || $busy} onclick={openPicker}>
           <Paperclip size={14} strokeWidth={2} />
         </IconAction>
-        {#if badge}
-          <button
-            type="button"
-            class="posture"
-            title="How much the assistant may do, and the model it uses. Manage in Transparency."
-            onclick={() => goto("/transparency")}
-          >
-            <span class="posture-glyph" aria-hidden="true">{badge.glyph}</span>
-            <span class="posture-label">{badge.label}</span>
-            {#if capability?.model}
-              <span class="posture-sep" aria-hidden="true">·</span>
-              <span class="posture-model">{capability.model}</span>
-            {/if}
-          </button>
-        {/if}
+        <IconAction label="Transparency: what the assistant can reach, read, and did" size="control" onclick={() => openTransparency()}>
+          <ShieldCheck size={14} strokeWidth={2} />
+        </IconAction>
       </div>
-      <Button
-        size="icon-sm"
-        variant="default"
-        aria-label="Send"
-        disabled={disabled || $busy || (draft.trim() === "" && $attached.length === 0)}
-        onclick={submit}
-      >
-        <ArrowUp size={16} strokeWidth={2} />
-      </Button>
+      <div class="foot-right">
+        {#if badge}
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger>
+              {#snippet child({ props })}
+                <button
+                  type="button"
+                  class="posture"
+                  aria-label="How the assistant acts"
+                  {...props}
+                >
+                  <span class="posture-glyph" aria-hidden="true">{badge.glyph}</span>
+                  <span class="posture-label">{badge.label}</span>
+                  <ChevronDown size={12} strokeWidth={2} class="posture-chev" />
+                </button>
+              {/snippet}
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content side="top" align="end" class="posture-menu">
+              <DropdownMenu.Label>How the assistant acts</DropdownMenu.Label>
+              <DropdownMenu.RadioGroup value={dialValue} onValueChange={applyPosture}>
+                <DropdownMenu.RadioItem value="suggest">
+                  Suggests only, I approve each action
+                </DropdownMenu.RadioItem>
+                <DropdownMenu.RadioItem value="auto">
+                  Acts on small things, I can undo them
+                </DropdownMenu.RadioItem>
+              </DropdownMenu.RadioGroup>
+              <DropdownMenu.Separator />
+              <DropdownMenu.Item onclick={() => openTransparency()}>
+                Manage in Transparency
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
+        {/if}
+        <Button
+          size="icon-sm"
+          variant="default"
+          aria-label="Send"
+          disabled={disabled || $busy || (draft.trim() === "" && $attached.length === 0)}
+          onclick={submit}
+        >
+          <ArrowUp size={16} strokeWidth={2} />
+        </Button>
+      </div>
     </div>
   </div>
 </div>
@@ -364,9 +407,13 @@
     gap: 0.25rem;
     min-width: 0;
   }
-  /* The posture chip: a quiet, glanceable read of how much the agent may do
-     and which model answers. Click opens the transparency surface, where the
-     dial and model actually change. */
+  .foot-right {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  /* The posture chip: a quiet, glanceable read of how much the agent may act
+     on its own, left of Send. Click opens the dropdown to change it. */
   .posture {
     display: inline-flex;
     align-items: center;
@@ -390,15 +437,9 @@
   .posture-label {
     flex-shrink: 0;
   }
-  .posture-sep {
-    opacity: 0.5;
-  }
-  .posture-model {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-family: var(--font-mono, monospace);
-    font-size: 0.6875rem;
+  :global(.posture-chev) {
+    flex-shrink: 0;
+    color: color-mix(in srgb, var(--foreground) 40%, transparent);
   }
   .mention-popover {
     position: absolute;
