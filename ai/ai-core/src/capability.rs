@@ -81,6 +81,15 @@ impl BaselineMode {
             _ => BaselineMode::Suggest,
         }
     }
+
+    /// The config string form, the inverse of [`parse`](Self::parse). Used by
+    /// the autonomy-dial state readout so the dial shows the honest baseline.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            BaselineMode::Suggest => "suggest",
+            BaselineMode::Supervised => "supervised",
+        }
+    }
 }
 
 /// The action side of a [`Capability`].
@@ -136,6 +145,12 @@ impl ActionPermissions {
     /// Whether `app_id` is individually enabled for autonomous action.
     pub fn is_autonomous(&self, app_id: &str) -> bool {
         self.autonomous_apps.contains(app_id)
+    }
+
+    /// The individually-enabled autonomous application ids, in sorted
+    /// (`BTreeSet`) order, for the honest autonomy-dial state readout.
+    pub fn autonomous_apps(&self) -> impl Iterator<Item = &str> {
+        self.autonomous_apps.iter().map(String::as_str)
     }
 }
 
@@ -339,6 +354,28 @@ mod tests {
         assert_eq!(perms.mode_for("org.arlen.mail"), ActionMode::Supervised);
         assert!(perms.is_autonomous("org.arlen.files"));
         assert!(!perms.is_autonomous("org.arlen.mail"));
+    }
+
+    #[test]
+    fn baseline_as_str_is_the_inverse_of_parse() {
+        // The autonomy-dial readout serialises the baseline back to the config
+        // string; it must round-trip both variants so the dial shows the honest
+        // mode, and an unrecognised string still parses to the safe Suggest.
+        for mode in [BaselineMode::Suggest, BaselineMode::Supervised] {
+            assert_eq!(BaselineMode::parse(mode.as_str()), mode);
+        }
+        assert_eq!(BaselineMode::Suggest.as_str(), "suggest");
+        assert_eq!(BaselineMode::Supervised.as_str(), "supervised");
+    }
+
+    #[test]
+    fn autonomous_apps_lists_the_granted_set_sorted() {
+        // The dial shows the per-app grant list; the accessor must surface every
+        // granted id (BTreeSet order), and nothing for the empty default.
+        let perms = ActionPermissions::new(BaselineMode::Suggest, ["org.b", "org.a"]);
+        let apps: Vec<&str> = perms.autonomous_apps().collect();
+        assert_eq!(apps, vec!["org.a", "org.b"]);
+        assert_eq!(ActionPermissions::suggest_only().autonomous_apps().count(), 0);
     }
 
     #[test]

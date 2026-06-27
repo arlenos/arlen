@@ -305,6 +305,32 @@ impl AgentInterface {
         serde_json::to_string(&actions).unwrap_or_else(|_| "[]".to_string())
     }
 
+    /// The current autonomy-dial state, as a JSON object the harness renders as
+    /// the dial (harness-redesign §3): `{ action_mode, autonomous_apps,
+    /// executor_live }`. Read fresh from `ai.toml` on each call (mirroring
+    /// `compensate`'s live `executor_live` read) so a runtime change is reflected
+    /// without a daemon restart; the harness must NOT read `ai.toml` directly
+    /// (Settings owns the file). `action_mode` is `suggest`|`supervised` - never
+    /// `autonomous`, since the baseline can never be autonomous (autonomy is the
+    /// per-app `autonomous_apps` grant list). `executor_live` is the orthogonal
+    /// Tim-gated master, surfaced so the dial shows the honest inert state when it
+    /// is off (a supervised baseline still does nothing while the executor is not
+    /// live). Read-only and content-free. Fail-closed to the safe shape (`suggest`
+    /// / `[]` / `false`) on any read/parse failure.
+    async fn action_state(&self) -> String {
+        let cfg = std::fs::read_to_string(ai_config_path())
+            .ok()
+            .map(|t| AgentConfig::parse(&t))
+            .unwrap_or_else(AgentConfig::fail_closed);
+        let autonomous_apps: Vec<&str> = cfg.actions.autonomous_apps().collect();
+        serde_json::json!({
+            "action_mode": cfg.actions.default_mode().as_str(),
+            "autonomous_apps": autonomous_apps,
+            "executor_live": cfg.executor_live,
+        })
+        .to_string()
+    }
+
     /// The loaded skills as a JSON array, for the user-invoke discovery surface
     /// (PR-5 part 3a / the deferred S-U3b "behaviours list"). Each entry carries
     /// the skill's name, description, agent-match `whenToUse` hint, kind, and

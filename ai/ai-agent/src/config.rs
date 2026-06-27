@@ -317,6 +317,27 @@ enabled = ["auto-tag-by-project"]
     }
 
     #[test]
+    fn config_projects_the_honest_autonomy_dial_state() {
+        // The `action_state` D-Bus getter projects exactly these three values
+        // from the live config; assert the projection so the dial shows the
+        // honest baseline + per-app grants + the orthogonal executor master.
+        let cfg = AgentConfig::parse(
+            "[ai]\nenabled = true\naction_mode = \"supervised\"\nautonomous_apps = [\"org.arlen.files\"]\n[agent]\nexecutor_live = true\n",
+        );
+        assert_eq!(cfg.actions.default_mode().as_str(), "supervised");
+        let apps: Vec<&str> = cfg.actions.autonomous_apps().collect();
+        assert_eq!(apps, vec!["org.arlen.files"]);
+        assert!(cfg.executor_live);
+
+        // Fail-closed config (a missing/unreadable file) projects the safe shape
+        // the getter falls back to: suggest, no autonomous apps, executor off.
+        let safe = AgentConfig::fail_closed();
+        assert_eq!(safe.actions.default_mode().as_str(), "suggest");
+        assert_eq!(safe.actions.autonomous_apps().count(), 0);
+        assert!(!safe.executor_live);
+    }
+
+    #[test]
     fn the_standard_settings_config_wires_a_provider() {
         // The shape the Settings UI writes: [ai] enabled + provider. The agent
         // must wire a provider from it, with safe default model/window/token.
