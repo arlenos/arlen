@@ -1187,6 +1187,193 @@ async fn the_live_executor_writes_a_file_part_of_edge() {
     }
 }
 
+/// Executor go-live REHEARSAL, the undo assert (executor-live-golive-plan.md P6,
+/// the third assert after write + idempotency): with `executor_live = true` in
+/// the EPHEMERAL ai.toml, after the live executor writes the `FILE_PART_OF` edge,
+/// the agent's `compensate` retracts it - proving the act -> audit -> compensate
+/// undo end to end against a disposable graph (NEVER production). Unlike the
+/// write/idempotency sibling, this spawns the agent on a PRIVATE session bus
+/// (`start_session_bus`) so it registers `org.arlen.AIAgent1`; the test then reads
+/// the write's correlation id from `completed_actions()` (the silent-done feed)
+/// and calls `compensate(correlation_id)`, then asserts the edge is gone. The undo
+/// MECHANISM is unit-tested + reviewed in ai-agent; this proves it retracts a REAL
+/// live-executor edge through the real knowledge socket. `#[ignore]d` + FUSE-host-
+/// gated like its sibling; also needs `dbus-daemon` on PATH (skips otherwise).
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge + audit-daemon + ai-agent binaries built (debug, FUSE host) + dbus-daemon"]
+async fn the_live_executor_undo_retracts_the_edge() {
+    if !(arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd")
+        && arlen_integration::binary_built("ai", "arlen-ai-agent"))
+    {
+        eprintln!("SKIP the_live_executor_undo_retracts_the_edge: audit-daemon/ai-agent not built (run `just integration-nightly`)");
+        return;
+    }
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+
+    let agent_exe = arlen_integration::binary_path("ai", "arlen-ai-agent");
+    let agent_app_id = arlen_permissions::identity::path_to_app_id(&agent_exe)
+        .expect("resolve the agent's app id");
+    stack
+        .seed_executor_profile_for(&agent_app_id, "first-party")
+        .expect("seed the agent's executor profile");
+    stack
+        .seed_read_profile(&[
+            "system.File.id",
+            "system.File.path",
+            "system.Project.id",
+            "system.Project.root_path",
+        ])
+        .expect("seed the test caller's read profile");
+
+    let project_dir = stack.runtime_dir().join("proj");
+    std::fs::create_dir_all(project_dir.join(".git")).expect("create .git fixture");
+    stack
+        .seed_project_watch_dir(&project_dir)
+        .expect("point the watcher at the fixture");
+    stack
+        .seed_ai_config(
+            "[ai]\nenabled = true\naccess_level = 2\naction_mode = \"supervised\"\n\n\
+             [agent]\nenabled = [\"auto-tag-by-project\"]\nexecutor_live = true\n",
+        )
+        .expect("seed ai.toml");
+
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+    stack
+        .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+        .expect("spawn audit-daemon");
+    stack
+        .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+        .expect("audit ingest socket");
+
+    // A private session bus so the agent registers org.arlen.AIAgent1 (its other
+    // scenarios run with no bus). dbus-daemon must be on PATH.
+    let bus = match stack.start_session_bus() {
+        Ok(addr) => addr,
+        Err(e) => {
+            eprintln!("SKIP the_live_executor_undo_retracts_the_edge: dbus-daemon unavailable ({e})");
+            return;
+        }
+    };
+    stack
+        .wait_socket("dbus-session.sock", Duration::from_secs(10))
+        .expect("session bus socket");
+
+    let behaviours = arlen_integration::repo_path("ai/ai-agent/behaviours");
+    let behaviours = behaviours.to_string_lossy().into_owned();
+    stack
+        .spawn(
+            "ai",
+            "arlen-ai-agent",
+            &[
+                ("ARLEN_AGENT_BEHAVIOURS", behaviours.as_str()),
+                ("DBUS_SESSION_BUS_ADDRESS", bus.as_str()),
+            ],
+        )
+        .expect("spawn ai-agent");
+
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let file_path = format!("{}/main.rs", project_dir.to_string_lossy());
+    let edge_query = format!("MATCH (f:File {{id: '{file_path}'}})-->(p:Project) RETURN p.id");
+
+    // Drive the live write (same as the sibling: emit until the executor writes).
+    let write_deadline = Instant::now() + Duration::from_secs(50);
+    loop {
+        let payload = proto::FileOpenedPayload {
+            path: file_path.clone(),
+            app_id: "integration-test".to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        emitter.emit("file.opened", payload).await.expect("emit file.opened");
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        if let Ok(rows) = client.query_rows(&edge_query).await {
+            if !rows.is_empty() {
+                break;
+            }
+        }
+        assert!(
+            Instant::now() < write_deadline,
+            "the live executor never wrote the FILE_PART_OF edge within 50s"
+        );
+    }
+
+    // Connect to the agent over the private bus and read the write's correlation
+    // id from completed_actions (the silent-done feed; id == the compensate handle).
+    let conn = zbus::connection::Builder::address(bus.as_str())
+        .expect("bus address")
+        .build()
+        .await
+        .expect("connect to the private session bus");
+    let agent = zbus::Proxy::new(
+        &conn,
+        "org.arlen.AIAgent1",
+        "/org/arlen/AIAgent1",
+        "org.arlen.AIAgent1",
+    )
+    .await
+    .expect("agent proxy");
+
+    let corr_deadline = Instant::now() + Duration::from_secs(15);
+    let correlation_id = loop {
+        if let Ok(json) = agent.call::<_, _, String>("completed_actions", &()).await {
+            if let Ok(serde_json::Value::Array(items)) =
+                serde_json::from_str::<serde_json::Value>(&json)
+            {
+                if let Some(id) = items
+                    .iter()
+                    .find_map(|v| v.get("id").and_then(|i| i.as_str()))
+                {
+                    break id.to_string();
+                }
+            }
+        }
+        assert!(
+            Instant::now() < corr_deadline,
+            "no completed action surfaced over AIAgent1 for the undo within 15s"
+        );
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    };
+
+    // Undo: compensate retracts the edge the live executor wrote.
+    let outcome: String = agent
+        .call("compensate", &(correlation_id.as_str(),))
+        .await
+        .expect("compensate call");
+    assert!(
+        outcome.contains("retracted"),
+        "compensate did not retract the write: {outcome}"
+    );
+
+    // The FILE_PART_OF edge is gone (retracted), confirmed against the graph.
+    let undo_deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let rows = client.query_rows(&edge_query).await.expect("re-read the edge");
+        if rows.is_empty() {
+            return; // the compensation retracted the live-executor edge
+        }
+        assert!(
+            Instant::now() < undo_deadline,
+            "the FILE_PART_OF edge was not retracted within 10s of compensate"
+        );
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
 /// IT-1 window.focused promotion: a `window.focused` event promotes through to an
 /// `App` graph node, exercising the App/Session/Event/ACTIVE_IN subgraph that the
 /// file.opened scenarios (File/Project) never touch — a distinct promotion path.
