@@ -141,12 +141,60 @@ pub fn handle_default_handler_args() -> bool {
     true
 }
 
+/// The file path the viewer was launched with (`viewer <path>`, or the `.desktop`
+/// `Exec=<bin> %f` when opened from the FM / a double-click). Managed so the
+/// frontend can fetch it on mount via [`initial_file`]. `None` when launched with
+/// no file (the harness/mock path).
+struct InitialFile(Option<String>);
+
+/// The path the viewer was opened on, for the frontend to load on mount. The
+/// decode commands take their path from the frontend, so this is how an
+/// argv/`%f`-supplied file reaches them.
+#[tauri::command]
+fn initial_file(state: tauri::State<'_, InitialFile>) -> Option<String> {
+    state.0.clone()
+}
+
+/// Which viewer surface a file needs: `"image"` or `"audio"` (so the frontend
+/// calls `decode_image` vs `probe_audio`). Detects by magic bytes then extension
+/// through the shared core, the same detection the decode path uses. An
+/// unsupported file is an error the frontend surfaces, never a guess.
+#[tauri::command]
+fn detect_media_kind(path: String) -> Result<String, String> {
+    use std::io::Read;
+    let p = Path::new(&path);
+    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    // A bounded head is enough for magic detection (every signature is well
+    // under 64 bytes); extension-only formats resolve from `name`.
+    let mut head = [0u8; 64];
+    let read = std::fs::File::open(p)
+        .and_then(|mut f| f.read(&mut head))
+        .map_err(|e| e.to_string())?;
+    match arlen_viewers_core::detect(name, &head[..read]) {
+        Some(d) => Ok(match d.kind {
+            arlen_viewers_core::MediaKind::Image => "image".to_string(),
+            arlen_viewers_core::MediaKind::Audio => "audio".to_string(),
+        }),
+        None => Err("unsupported file format".to_string()),
+    }
+}
+
 /// Tauri entry point (invoked from `main.rs`).
 pub fn run() {
     env_logger::init();
+    // The first non-flag argument is the file to open (`viewer <path>`, the
+    // `.desktop` `%f`, or a double-clicked file). Flags (the default-handler
+    // subcommands) are consumed earlier in `main`.
+    let initial = std::env::args().skip(1).find(|a| !a.starts_with('-'));
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
-        .invoke_handler(tauri::generate_handler![decode_image, probe_audio])
+        .manage(InitialFile(initial))
+        .invoke_handler(tauri::generate_handler![
+            decode_image,
+            probe_audio,
+            detect_media_kind,
+            initial_file
+        ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-viewers");
 }
