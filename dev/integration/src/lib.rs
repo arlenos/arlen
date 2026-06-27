@@ -329,6 +329,48 @@ impl EphemeralStack {
         Ok(())
     }
 
+    /// Start a private session D-Bus daemon under the runtime root and return its
+    /// `unix:path=...` address. The go-live undo rehearsal needs it: the agent
+    /// must register `org.arlen.AIAgent1` so the test can drive
+    /// `completed_actions` -> `compensate` (the agent's other scenarios run with
+    /// no bus, the workflow-only path). A minimal permissive config (own/send/
+    /// receive allowed) lets the agent claim the name and the test call it. The
+    /// daemon is tracked + killed on drop like any spawned child; after this,
+    /// `wait_socket("dbus-session.sock", ...)` until it binds. `dbus-daemon` must
+    /// be on PATH - the undo scenario is `#[ignore]d`/metal-gated, so a host
+    /// without it simply skips.
+    pub fn start_session_bus(&mut self) -> std::io::Result<String> {
+        let sock = self.runtime.path().join("dbus-session.sock");
+        let addr = format!("unix:path={}", sock.to_string_lossy());
+        let cfg = self.runtime.path().join("dbus-session.conf");
+        std::fs::write(
+            &cfg,
+            format!(
+                "<!DOCTYPE busconfig PUBLIC \"-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN\" \
+                 \"http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd\">\n\
+                 <busconfig>\n\
+                 \x20 <type>session</type>\n\
+                 \x20 <listen>{addr}</listen>\n\
+                 \x20 <policy context=\"default\">\n\
+                 \x20   <allow own=\"*\"/>\n\
+                 \x20   <allow send_destination=\"*\"/>\n\
+                 \x20   <allow receive_sender=\"*\"/>\n\
+                 \x20 </policy>\n\
+                 </busconfig>\n"
+            ),
+        )?;
+        let child = Command::new("dbus-daemon")
+            .arg(format!("--config-file={}", cfg.to_string_lossy()))
+            .arg("--nofork")
+            .arg("--nopidfile")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()?;
+        self.children.push(child);
+        Ok(addr)
+    }
+
     /// Like [`spawn`](Self::spawn) but redirects the child's stdout+stderr to
     /// `log_path` (an absolute path, typically outside the temp root so it
     /// survives teardown) instead of nulling them. For diagnosing a spawned
