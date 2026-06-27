@@ -8,6 +8,7 @@ import type {
   FileEntry,
   SortSpec,
 } from "@arlen/ui-kit/components/browser";
+import { isVirtualLocation } from "@arlen/ui-kit/components/browser";
 import {
   archiveListing,
   sortEntries,
@@ -31,6 +32,15 @@ export const fmAdapter: BrowserAdapter = {
         archive: archive.archive,
       });
       return sortEntries(archiveListing(entries, archive.inner), sort);
+    }
+    // A virtual KG location (recent / trash / project:<id> / search:<query>):
+    // the backend returns its members scattered across folders (each with its
+    // own full_path), unsorted, so we sort client-side like the archive path.
+    if (isVirtualLocation(path)) {
+      const entries = await invoke<FileEntry[]>("files_list_location", {
+        location: path,
+      });
+      return sortEntries(entries, sort);
     }
     return invoke<FileEntry[]>("files_list", {
       path,
