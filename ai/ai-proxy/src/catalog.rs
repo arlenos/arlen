@@ -150,6 +150,74 @@ impl ProviderCatalog {
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.entries.keys().map(String::as_str)
     }
+
+    /// The manager-surface view of every catalogued provider, sorted by id for a
+    /// stable order. Carries only display metadata (no endpoint URL, no
+    /// credential), so it is safe to hand to the Settings AI-providers manager
+    /// (via the daemon's `ai_providers_list`).
+    pub fn views(&self) -> Vec<ProviderView> {
+        let mut views: Vec<ProviderView> = self
+            .entries
+            .iter()
+            .map(|(id, entry)| ProviderView {
+                id: id.clone(),
+                name: entry.display_name.clone().unwrap_or_else(|| id.clone()),
+                kind: entry.kind(),
+                configured: entry.is_configured(),
+                builtin: entry.builtin,
+            })
+            .collect();
+        views.sort_by(|a, b| a.id.cmp(&b.id));
+        views
+    }
+}
+
+impl CatalogEntry {
+    /// Whether this is a local provider (no key needed, e.g. Ollama/llama.cpp) or
+    /// a cloud one. Keyed on the auth scheme: `none` is local, any key-bearing
+    /// scheme is cloud.
+    pub fn kind(&self) -> ProviderKind {
+        match self.auth_scheme {
+            AuthScheme::None => ProviderKind::Local,
+            _ => ProviderKind::Cloud,
+        }
+    }
+
+    /// Whether the provider is ready to use: a local provider needs no key, a
+    /// cloud one is configured once its credential is held in the broker
+    /// (`credential_ref` set). A cloud entry with no `credential_ref` is
+    /// catalogued-but-not-yet-configured.
+    pub fn is_configured(&self) -> bool {
+        self.auth_scheme == AuthScheme::None || self.credential_ref.is_some()
+    }
+}
+
+/// Whether a catalogued provider runs locally (no key) or is a cloud service.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProviderKind {
+    /// A local provider (Ollama, llama.cpp) - no credential needed.
+    Local,
+    /// A cloud provider reached over the network with a broker-held credential.
+    Cloud,
+}
+
+/// The Settings AI-providers manager view of one catalogued provider: display
+/// metadata only (no endpoint URL, no credential). `camelCase` on the wire to
+/// match the manager-seam serialization (`ai_providers_list`).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderView {
+    /// The catalog key (the id the manager addresses + the picker uses).
+    pub id: String,
+    /// The human-facing name (the entry's `display_name`, else the id).
+    pub name: String,
+    /// Local vs cloud.
+    pub kind: ProviderKind,
+    /// Whether the provider is ready to use (local, or cloud with a held key).
+    pub configured: bool,
+    /// A built-in Arlen preset vs a user-added custom provider.
+    pub builtin: bool,
 }
 
 #[cfg(test)]
@@ -206,5 +274,53 @@ mod tests {
     fn unknown_provider_returns_none() {
         let cat = ProviderCatalog::default_arlen();
         assert!(cat.get("missing-provider").is_none());
+    }
+
+    #[test]
+    fn views_project_kind_and_configured_safely() {
+        use std::collections::HashMap;
+        let mut entries = HashMap::new();
+        // A local provider: no key needed -> local + configured.
+        entries.insert("ollama-default".to_string(), ProviderCatalog::default_arlen().get("ollama-default").unwrap().clone());
+        // A cloud provider WITHOUT a credential -> cloud + not configured.
+        entries.insert(
+            "anthropic".to_string(),
+            CatalogEntry {
+                endpoint_url: "https://api.anthropic.com/v1/messages".to_string(),
+                backend: "anthropic".to_string(),
+                wire_format: WireFormat::Anthropic,
+                auth_scheme: AuthScheme::XApiKey,
+                url_template: None,
+                credential_ref: None,
+                models_endpoint: None,
+                display_name: Some("Anthropic".to_string()),
+                logo_id: None,
+                builtin: true,
+            },
+        );
+        let views = ProviderCatalog::new(entries).views();
+        // Sorted by id: anthropic, then ollama-default.
+        assert_eq!(views[0].id, "anthropic");
+        assert_eq!(views[0].kind, ProviderKind::Cloud);
+        assert!(!views[0].configured, "cloud with no credential is unconfigured");
+        assert_eq!(views[0].name, "Anthropic");
+        assert_eq!(views[1].id, "ollama-default");
+        assert_eq!(views[1].kind, ProviderKind::Local);
+        assert!(views[1].configured, "a local provider needs no key");
+        // A cloud provider WITH a held credential is configured.
+        let configured = CatalogEntry {
+            endpoint_url: "https://api.anthropic.com/v1/messages".to_string(),
+            backend: "anthropic".to_string(),
+            wire_format: WireFormat::Anthropic,
+            auth_scheme: AuthScheme::XApiKey,
+            url_template: None,
+            credential_ref: Some("conn:anthropic".to_string()),
+            models_endpoint: None,
+            display_name: None,
+            logo_id: None,
+            builtin: true,
+        };
+        assert!(configured.is_configured());
+        assert_eq!(configured.kind(), ProviderKind::Cloud);
     }
 }
