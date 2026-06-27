@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Tim Kicker
+// SPDX-License-Identifier: Apache-2.0
+
 //! The APC sidecar wire format (terminal.md §3, lines 319-320).
 //!
 //! An artifact travels to the terminal as TWO legs (the degradation guarantee):

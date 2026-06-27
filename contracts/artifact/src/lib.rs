@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Tim Kicker
+// SPDX-License-Identifier: Apache-2.0
+
 //! The shared typed artifact envelope (terminal.md §5).
 //!
 //! An artifact is a rich object a program, the agent or the backend hands to the
