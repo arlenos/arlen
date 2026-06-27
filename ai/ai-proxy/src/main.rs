@@ -102,6 +102,16 @@ impl ProxyInterface {
     async fn list_allowed_providers(&self) -> Vec<String> {
         self.service.allowed_providers()
     }
+
+    /// Return the manager-surface provider catalog as a JSON array of
+    /// `{ id, name, kind, configured, builtin }` (camelCase) - display metadata
+    /// only, never the endpoint URL or any credential. Backs the daemon's
+    /// `ai_providers_list` for the Settings AI-providers manager. Empty array on
+    /// a serialization failure (the manager then shows no providers, fail-safe).
+    async fn list_providers(&self) -> String {
+        serde_json::to_string(&self.service.provider_views())
+            .unwrap_or_else(|_| "[]".to_string())
+    }
 }
 
 fn map_peer_auth_error(err: PeerAuthError) -> zbus::fdo::Error {

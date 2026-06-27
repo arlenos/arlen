@@ -256,6 +256,13 @@ impl ProxyService {
         self.catalog.names().map(str::to_string).collect()
     }
 
+    /// The manager-surface view of every catalogued provider (id, name, kind,
+    /// configured, builtin) - display metadata only, no endpoint or credential.
+    /// Backs the daemon's `ai_providers_list`.
+    pub fn provider_views(&self) -> Vec<crate::catalog::ProviderView> {
+        self.catalog.views()
+    }
+
     /// Run a single forward call. The audit sink is invoked
     /// regardless of outcome.
     pub async fn forward(
