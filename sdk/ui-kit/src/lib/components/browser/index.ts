@@ -20,7 +20,9 @@ export { formatModified, formatSize } from "./format";
 export {
   joinPath,
   parentPath,
+  DEFAULT_COLUMNS,
   type BrowserAdapter,
+  type ColumnSpec,
   type Crumb,
   type EntryKind,
   type FileEntry,

@@ -33,11 +33,28 @@
   import FmInfoPanel from "$lib/components/FmInfoPanel.svelte";
   import { savedSearches } from "$lib/stores/places";
   import { searchOpen, searchResults } from "$lib/stores/search";
+  import { columnsFor } from "$lib/locations";
+  import { DEFAULT_COLUMNS } from "@arlen/ui-kit/components/browser";
 
   let renamingName = $state<string | null>(null);
   let batchRenaming = $state(false);
   let aboutOpen = $state(false);
   let confirmDelete = $state(false);
+
+  // Each pane's column set follows its own location (a virtual location swaps
+  // Size for the item's home folder), live as the pane navigates.
+  let aColumns = $state(DEFAULT_COLUMNS);
+  $effect(() => {
+    const c = $activeController;
+    if (!c) return;
+    return c.path.subscribe((p) => (aColumns = columnsFor(p)));
+  });
+  let bColumns = $state(DEFAULT_COLUMNS);
+  $effect(() => {
+    const c = $paneB;
+    if (!c) return;
+    return c.path.subscribe((p) => (bColumns = columnsFor(p)));
+  });
 
   // What the info panel inspects: the single selected entry, or the
   // folder itself when nothing is selected.
@@ -370,6 +387,7 @@
           >
             <FileBrowser
               controller={$activeController}
+              columns={aColumns}
               bind:renamingName
               onactivate={(entry, path) => {
                 if (entry.kind === "directory") return;
@@ -391,6 +409,7 @@
             >
               <FileBrowser
                 controller={$paneB}
+                columns={bColumns}
                 onactivate={(entry, path) => {
                   if (entry.kind === "directory") return;
                   if (isArchiveName(entry.name)) void $paneB?.navigate(path);

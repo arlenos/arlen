@@ -7,7 +7,7 @@
   import { onMount } from "svelte";
   import type { Snippet } from "svelte";
   import { ChevronDown, ChevronUp } from "@lucide/svelte";
-  import type { FileEntry, SortKey } from "./types";
+  import { type FileEntry, type SortKey, type ColumnSpec, DEFAULT_COLUMNS } from "./types";
   import FileRow from "./FileRow.svelte";
 
   let {
@@ -17,6 +17,7 @@
     selectedIndices,
     cursorIndex = null,
     now,
+    columns = DEFAULT_COLUMNS,
     icon,
     renamingName = null,
     onsort,
@@ -29,6 +30,8 @@
     selectedIndices: ReadonlySet<number>;
     cursorIndex?: number | null;
     now?: number;
+    /// Which columns to render (a virtual location swaps Size for Location).
+    columns?: ColumnSpec;
     icon?: Snippet<[FileEntry]>;
     /// The entry name in inline rename, or null.
     renamingName?: string | null;
@@ -41,11 +44,18 @@
     ) => void;
   } = $props();
 
-  const COLUMNS: { key: SortKey; label: string; align: "left" | "right" }[] = [
-    { key: "name", label: "Name", align: "left" },
-    { key: "size", label: "Size", align: "right" },
-    { key: "modified", label: "Modified", align: "left" },
-  ];
+  // The middle column is a sortable Size, or a non-sortable Location whose value
+  // (each item's home folder) has no client sort key; the time column relabels
+  // per location but keeps sorting by "modified".
+  const cols = $derived<
+    { key: SortKey | null; label: string; align: "left" | "right"; sortable: boolean }[]
+  >([
+    { key: "name", label: "Name", align: "left", sortable: true },
+    columns.middle === "location"
+      ? { key: null, label: columns.middleLabel, align: "left", sortable: false }
+      : { key: "size", label: columns.middleLabel, align: "right", sortable: true },
+    { key: "modified", label: columns.timeLabel, align: "left", sortable: true },
+  ]);
 
   // Windowing: the row height is the 2rem row box; the visible slice
   // follows the scrolling ancestor with a generous overscan.
@@ -81,24 +91,30 @@
 </script>
 
 <div class="file-list" role="grid" aria-label="Files" aria-rowcount={entries.length}>
-  <div class="fl-header" role="row">
-    {#each COLUMNS as col (col.key)}
-      <button
-        class="fl-col"
-        class:right={col.align === "right"}
-        role="columnheader"
-        onclick={() => onsort?.(col.key)}
-        aria-sort={sortKey === col.key ? (ascending ? "ascending" : "descending") : undefined}
-      >
-        {col.label}
-        {#if sortKey === col.key}
-          {#if ascending}
-            <ChevronUp size={12} strokeWidth={2} />
-          {:else}
-            <ChevronDown size={12} strokeWidth={2} />
+  <div class="fl-header" class:cols-location={columns.middle === "location"} role="row">
+    {#each cols as col (col.label)}
+      {#if col.sortable && col.key}
+        <button
+          class="fl-col"
+          class:right={col.align === "right"}
+          role="columnheader"
+          onclick={() => col.key && onsort?.(col.key)}
+          aria-sort={sortKey === col.key ? (ascending ? "ascending" : "descending") : undefined}
+        >
+          {col.label}
+          {#if sortKey === col.key}
+            {#if ascending}
+              <ChevronUp size={12} strokeWidth={2} />
+            {:else}
+              <ChevronDown size={12} strokeWidth={2} />
+            {/if}
           {/if}
-        {/if}
-      </button>
+        </button>
+      {:else}
+        <span class="fl-col static" class:right={col.align === "right"} role="columnheader">
+          {col.label}
+        </span>
+      {/if}
     {/each}
   </div>
 
@@ -110,6 +126,7 @@
         {entry}
         {now}
         {icon}
+        {columns}
         selected={selectedIndices.has(i)}
         focused={cursorIndex === i}
         renaming={renamingName === entry.name}
@@ -134,8 +151,12 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) 6rem 9rem;
   }
+  .fl-header.cols-location {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 9rem;
+  }
   @container browser (max-width: 34rem) {
-    .fl-header {
+    .fl-header,
+    .fl-header.cols-location {
       grid-template-columns: minmax(0, 1fr);
     }
     .fl-col:not(:first-child) {
@@ -166,6 +187,13 @@
   }
   .fl-col:hover {
     color: var(--foreground);
+  }
+  /* A non-sortable header (the Location label) does not invite a click. */
+  .fl-col.static {
+    cursor: default;
+  }
+  .fl-col.static:hover {
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .fl-col.right {
     justify-content: flex-end;

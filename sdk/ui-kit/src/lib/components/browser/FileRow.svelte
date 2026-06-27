@@ -5,7 +5,7 @@
   /// its target as quiet trailing text. The `icon` snippet is the
   /// seam for themed and KG-state icons later.
   import type { Snippet } from "svelte";
-  import type { FileEntry } from "./types";
+  import { type FileEntry, type ColumnSpec, DEFAULT_COLUMNS, parentPath } from "./types";
   import { entryIcon } from "./icons";
   import { formatModified, formatSize } from "./format";
 
@@ -17,6 +17,7 @@
     focused = false,
     renaming = false,
     now,
+    columns = DEFAULT_COLUMNS,
     icon,
     onrowclick,
     onrowdblclick,
@@ -31,6 +32,8 @@
     renaming?: boolean;
     /// Injectable clock for stable screenshots.
     now?: number;
+    /// Which columns to render (a virtual location swaps Size for Location).
+    columns?: ColumnSpec;
     icon?: Snippet<[FileEntry]>;
     onrowclick?: (e: MouseEvent) => void;
     onrowdblclick?: (e: MouseEvent) => void;
@@ -41,6 +44,10 @@
   } = $props();
 
   const Icon = $derived(entryIcon(entry));
+  // The item's home folder (the Location column), from its absolute full_path.
+  const location = $derived(
+    entry.full_path ? (parentPath(entry.full_path) ?? entry.full_path) : "",
+  );
 
   let draft = $state("");
   let inputRef = $state<HTMLInputElement | null>(null);
@@ -84,6 +91,7 @@
 
 <div
   class="file-row"
+  class:cols-location={columns.middle === "location"}
   class:selected
   class:focused
   class:hidden-entry={entry.is_hidden}
@@ -121,7 +129,11 @@
       {/if}
     {/if}
   </span>
-  <span class="fr-size" role="gridcell">{formatSize(entry.size)}</span>
+  {#if columns.middle === "location"}
+    <span class="fr-location" role="gridcell" title={location}>{location}</span>
+  {:else}
+    <span class="fr-size" role="gridcell">{formatSize(entry.size)}</span>
+  {/if}
   <span class="fr-modified" role="gridcell">
     {formatModified(entry.modified_unix, now)}
   </span>
@@ -132,12 +144,18 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) 6rem 9rem;
   }
+  /* A virtual location swaps the fixed Size column for a flexible Location. */
+  .file-row.cols-location {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 9rem;
+  }
   /* A narrow pane keeps the name and lets the metadata go. */
   @container browser (max-width: 34rem) {
-    .file-row {
+    .file-row,
+    .file-row.cols-location {
       grid-template-columns: minmax(0, 1fr);
     }
     .fr-size,
+    .fr-location,
     .fr-modified {
       display: none;
     }
@@ -210,6 +228,13 @@
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     text-align: right;
+  }
+  .fr-location {
+    font-size: 0.75rem;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .fr-modified {
     font-size: 0.75rem;

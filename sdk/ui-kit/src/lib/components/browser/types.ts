@@ -39,6 +39,27 @@ export interface Crumb {
 /// The sort key (core::SortKey).
 export type SortKey = "name" | "size" | "modified" | "type";
 
+/// Which columns a listing shows. A normal folder is Name | Size | Modified; a
+/// virtual location (Recent / Trash / project / search) whose members are
+/// scattered across folders swaps Size for each item's home folder ("Location")
+/// and relabels the time column (Last accessed / Deleted). The kit renders the
+/// structure; the host picks the spec per location.
+export interface ColumnSpec {
+  /// The middle column: the file size, or the item's containing folder.
+  middle: "size" | "location";
+  /// The middle column's header label (Size / Location / Original location).
+  middleLabel: string;
+  /// The time column's header label (Modified / Last accessed / Deleted).
+  timeLabel: string;
+}
+
+/// The default folder columns (Name | Size | Modified).
+export const DEFAULT_COLUMNS: ColumnSpec = {
+  middle: "size",
+  middleLabel: "Size",
+  timeLabel: "Modified",
+};
+
 /// A full sort specification, the second adapter argument.
 export interface SortSpec {
   key: SortKey;
