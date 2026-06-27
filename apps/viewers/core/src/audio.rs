@@ -25,6 +25,10 @@ pub struct AudioInfo {
     pub title: Option<String>,
     /// The artist tag, when present.
     pub artist: Option<String>,
+    /// The waveform envelope: normalised 0-255 amplitude peaks, one per display
+    /// bar, in time order. Empty when the worker did not compute a waveform (an
+    /// unknown-length stream, or a pre-peaks frame).
+    pub peaks: Vec<u8>,
 }
 
 /// The largest codec name accepted in a frame (a bound on the variable field).
@@ -32,6 +36,9 @@ const MAX_CODEC_LEN: usize = 64;
 /// The largest tag string accepted in a frame (a bound on title/artist); a longer
 /// tag is truncated on encode and rejected on decode (fail-closed).
 const MAX_TAG_LEN: usize = 512;
+/// The largest waveform-peak count accepted in a frame (a bound on the variable
+/// peaks field).
+const MAX_PEAKS: usize = 4096;
 const MAGIC: &[u8; 4] = b"ARA1";
 
 /// A malformed audio probe frame (fail-closed).
@@ -49,6 +56,8 @@ pub enum AudioFrameError {
     TagTooLong,
     /// A tag had a bad presence flag or was not valid UTF-8.
     BadTag,
+    /// The waveform peak count exceeded [`MAX_PEAKS`].
+    TooManyPeaks,
 }
 
 impl AudioInfo {
@@ -76,8 +85,29 @@ impl AudioInfo {
         // is forward-extensible (peaks land the same way later).
         push_opt_str(&mut out, &self.title);
         push_opt_str(&mut out, &self.artist);
+        push_peaks(&mut out, &self.peaks);
         out
     }
+}
+
+/// Append the waveform peaks: a u16-LE count (capped at [`MAX_PEAKS`]) + that
+/// many amplitude bytes. An empty waveform encodes as a zero count.
+fn push_peaks(out: &mut Vec<u8>, peaks: &[u8]) {
+    let n = peaks.len().min(MAX_PEAKS);
+    out.extend_from_slice(&(n as u16).to_le_bytes());
+    out.extend_from_slice(&peaks[..n]);
+}
+
+/// Read the waveform peaks from the front of `bytes` (a u16-LE count + bytes).
+/// Fail-closed on an over-long count or a truncated body.
+fn read_peaks(bytes: &[u8]) -> Result<Vec<u8>, AudioFrameError> {
+    let len_bytes = bytes.get(..2).ok_or(AudioFrameError::Truncated)?;
+    let n = u16::from_le_bytes([len_bytes[0], len_bytes[1]]) as usize;
+    if n > MAX_PEAKS {
+        return Err(AudioFrameError::TooManyPeaks);
+    }
+    let body = bytes.get(2..2 + n).ok_or(AudioFrameError::Truncated)?;
+    Ok(body.to_vec())
 }
 
 /// Append an optional tag string to a frame: a flag byte (1 = present, 0 =
@@ -143,14 +173,17 @@ pub fn decode_audio_frame(bytes: &[u8]) -> Result<AudioInfo, AudioFrameError> {
     // The tag tail (title then artist). A frame that ends right after the codec
     // predates the tail and decodes to no tags (backward/forward-compatible).
     let tail = &bytes[20 + codec_len..];
-    let (title, artist) = if tail.is_empty() {
-        (None, None)
+    let (title, artist, peaks) = if tail.is_empty() {
+        (None, None, Vec::new())
     } else {
         let (title, rest) = read_opt_str(tail)?;
-        let (artist, _) = read_opt_str(rest)?;
-        (title, artist)
+        let (artist, rest) = read_opt_str(rest)?;
+        // Peaks follow the tags; a frame that ends after the artist (a pre-peaks
+        // tags frame) leaves them empty.
+        let peaks = if rest.is_empty() { Vec::new() } else { read_peaks(rest)? };
+        (title, artist, peaks)
     };
-    Ok(AudioInfo { codec, sample_rate, channels, duration_ms, title, artist })
+    Ok(AudioInfo { codec, sample_rate, channels, duration_ms, title, artist, peaks })
 }
 
 #[cfg(test)]
@@ -159,13 +192,13 @@ mod tests {
 
     #[test]
     fn a_frame_with_a_known_duration_round_trips() {
-        let info = AudioInfo { codec: "flac".into(), sample_rate: 44_100, channels: 2, duration_ms: Some(180_000), title: None, artist: None };
+        let info = AudioInfo { codec: "flac".into(), sample_rate: 44_100, channels: 2, duration_ms: Some(180_000), title: None, artist: None, peaks: Vec::new() };
         assert_eq!(decode_audio_frame(&info.encode()).unwrap(), info);
     }
 
     #[test]
     fn a_frame_with_an_unknown_duration_round_trips() {
-        let info = AudioInfo { codec: "vorbis".into(), sample_rate: 48_000, channels: 1, duration_ms: None, title: None, artist: None };
+        let info = AudioInfo { codec: "vorbis".into(), sample_rate: 48_000, channels: 1, duration_ms: None, title: None, artist: None, peaks: Vec::new() };
         let decoded = decode_audio_frame(&info.encode()).unwrap();
         assert_eq!(decoded.duration_ms, None);
         assert_eq!(decoded, info);
@@ -173,7 +206,7 @@ mod tests {
 
     #[test]
     fn bad_magic_and_truncation_are_rejected() {
-        let mut f = AudioInfo { codec: "pcm".into(), sample_rate: 8000, channels: 1, duration_ms: Some(1), title: None, artist: None }.encode();
+        let mut f = AudioInfo { codec: "pcm".into(), sample_rate: 8000, channels: 1, duration_ms: Some(1), title: None, artist: None, peaks: Vec::new() }.encode();
         assert_eq!(decode_audio_frame(&f[..10]), Err(AudioFrameError::Truncated));
         f[0] = b'X';
         assert_eq!(decode_audio_frame(&f), Err(AudioFrameError::BadMagic));
@@ -181,7 +214,7 @@ mod tests {
 
     #[test]
     fn an_overlong_codec_length_is_rejected() {
-        let mut f = AudioInfo { codec: "mp3".into(), sample_rate: 44_100, channels: 2, duration_ms: None, title: None, artist: None }.encode();
+        let mut f = AudioInfo { codec: "mp3".into(), sample_rate: 44_100, channels: 2, duration_ms: None, title: None, artist: None, peaks: Vec::new() }.encode();
         f[19] = (MAX_CODEC_LEN + 1) as u8; // claim a codec name longer than allowed
         assert_eq!(decode_audio_frame(&f), Err(AudioFrameError::CodecTooLong));
     }
@@ -195,6 +228,7 @@ mod tests {
             duration_ms: Some(220_000),
             title: Some("Nightswim".into()),
             artist: Some("Unknown Artist".into()),
+            peaks: vec![10, 200, 5, 0, 255],
         };
         assert_eq!(decode_audio_frame(&info.encode()).unwrap(), info);
         // A title with no artist round-trips the mixed-presence case.
@@ -205,6 +239,7 @@ mod tests {
             duration_ms: None,
             title: Some("Solo".into()),
             artist: None,
+            peaks: Vec::new(),
         };
         assert_eq!(decode_audio_frame(&one.encode()).unwrap(), one);
     }
@@ -213,7 +248,7 @@ mod tests {
     fn a_pre_tags_frame_decodes_to_no_tags() {
         // A frame produced before the tag tail existed ends right after the codec;
         // it must decode cleanly with no tags (backward/forward compatibility).
-        let info = AudioInfo { codec: "pcm".into(), sample_rate: 8000, channels: 1, duration_ms: Some(1000), title: None, artist: None };
+        let info = AudioInfo { codec: "pcm".into(), sample_rate: 8000, channels: 1, duration_ms: Some(1000), title: None, artist: None, peaks: Vec::new() };
         let full = info.encode();
         let codec_len = full[19] as usize;
         let legacy = &full[..20 + codec_len];
@@ -224,7 +259,7 @@ mod tests {
     #[test]
     fn an_overlong_tag_length_is_rejected() {
         // Craft a frame whose title length claims more than MAX_TAG_LEN.
-        let mut f = AudioInfo { codec: "x".into(), sample_rate: 8000, channels: 1, duration_ms: None, title: None, artist: None }.encode();
+        let mut f = AudioInfo { codec: "x".into(), sample_rate: 8000, channels: 1, duration_ms: None, title: None, artist: None, peaks: Vec::new() }.encode();
         let tag_flag = 20 + 1; // 20-byte header + the 1-byte codec "x"
         f.truncate(tag_flag);
         f.push(1); // title present

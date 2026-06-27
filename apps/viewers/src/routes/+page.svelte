@@ -26,6 +26,7 @@
     duration_ms: number | null;
     title: string | null;
     artist: string | null;
+    peaks: number[];
   };
   type Loaded =
     | { kind: "image"; file: ImageMock; raster: Raster }
@@ -66,11 +67,9 @@
             artist: info.artist,
             codec: info.codec,
             durationSec: (info.duration_ms ?? 0) / 1000,
-            // The probe returns metadata + tags; a real waveform needs a separate
-            // decode pass (the next backend increment, append-extensible on the
-            // same frame). The peaks stand in until then; codec/duration/tags are
-            // real.
-            peaks: mockPeaks(),
+            // The real waveform from the probe's decode pass; the mock stands in
+            // only when the track length is unknown or silent (empty peaks).
+            peaks: info.peaks.length ? info.peaks : mockPeaks(),
             index: 1,
             total: 1,
           },
