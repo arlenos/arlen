@@ -1,0 +1,11 @@
+# Starting permission profile for Daikhan (an mpv-based media player). It plays
+# local media from Videos and Music; no network by default (streaming is a
+# refinement an observe pass adds, never a blanket grant). No Knowledge Graph
+# access.
+[info]
+app_id = "io.github.nokse22.daikhan"
+tier = "third-party"
+
+[filesystem]
+videos = true
+music = true

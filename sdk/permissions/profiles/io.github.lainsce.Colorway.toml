@@ -1,0 +1,5 @@
+# Starting permission profile for Colorway (an offline colour-palette generator).
+# It needs no network, no user files and no Knowledge Graph access.
+[info]
+app_id = "io.github.lainsce.Colorway"
+tier = "third-party"
