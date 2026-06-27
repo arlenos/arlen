@@ -1,0 +1,9 @@
+# Starting permission profile for Warpinator (local-network file transfer between
+# computers). Network is its function; no user files and no Knowledge Graph access
+# (transfers land via the file portal).
+[info]
+app_id = "org.x.warpinator"
+tier = "third-party"
+
+[network]
+allow_all = true
