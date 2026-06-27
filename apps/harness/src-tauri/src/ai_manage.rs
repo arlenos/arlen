@@ -75,6 +75,42 @@ pub async fn ai_defaults_get() -> String {
     call_string(AI_BUS, AI_PATH, "ai_defaults_get", "{}").await
 }
 
+/// The agent's pending gate proposals (`pending_proposals`): a JSON array the
+/// harness renders as inline gate cards (each `{ id, summary, reason, effects }`),
+/// oldest first. Empty array if the agent is unreachable or nothing is pending.
+#[tauri::command]
+pub async fn pending_proposals() -> String {
+    call_string(AGENT_BUS, AGENT_PATH, "pending_proposals", "[]").await
+}
+
+/// The agent's recently-completed (silent-done) actions (`completed_actions`): a
+/// JSON array the harness renders as quiet done-lines each with an `[Undo]`,
+/// oldest first. Each entry carries the correlation id the `compensate` undo
+/// keys off. Empty array if unreachable or nothing has executed.
+#[tauri::command]
+pub async fn completed_actions() -> String {
+    call_string(AGENT_BUS, AGENT_PATH, "completed_actions", "[]").await
+}
+
+/// Dismiss a pending gate proposal (`deny`): the user declined the confirmation.
+/// Returns the agent's `denied` / `no-such-proposal` / `error: ...` status; a
+/// transport failure maps to an `error:` string so the gate card surfaces it.
+/// Deny is purely local and safe in any mode (it forgoes an action), so it is
+/// always available.
+#[tauri::command]
+pub async fn deny(id: u64) -> String {
+    let Ok(connection) = Connection::session().await else {
+        return "error: session bus unavailable".to_string();
+    };
+    let Ok(proxy) = Proxy::new(&connection, AGENT_BUS, AGENT_PATH, AGENT_BUS).await else {
+        return "error: AI agent unavailable".to_string();
+    };
+    proxy
+        .call("deny", &(id,))
+        .await
+        .unwrap_or_else(|e| format!("error: {e}"))
+}
+
 /// The autonomy-dial state (`action_state` on the agent): `{ action_mode,
 /// autonomous_apps, executor_live }`. The safe inert shape if the agent is
 /// unreachable (suggest / none / off).
