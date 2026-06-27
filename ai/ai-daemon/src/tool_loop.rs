@@ -71,8 +71,31 @@ const MAX_TOOL_RESULT_BYTES: usize = 32 * 1024;
 /// retained transcript without bound.
 const MAX_TOOL_ARGS_BYTES: usize = 4 * 1024;
 
-/// One completed step of the loop: a tool call and the result it returned.
-/// The result is treated as data (an origin-tagged block), never instructions.
+/// The terminal outcome of a recorded tool step (harness-redesign emit seam 1,
+/// `harness-redesign-plan.md`). The trace records only completed steps, so a
+/// recorded step is `Done` or `Failed`; the harness renders the in-flight `◷`
+/// (`running`) state itself before the trace returns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolStatus {
+    /// The tool returned a result.
+    Done,
+    /// The tool call failed (the failure text is the step's result).
+    Failed,
+}
+
+impl ToolStatus {
+    /// The wire string the harness deserializes (`done` / `failed`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ToolStatus::Done => "done",
+            ToolStatus::Failed => "failed",
+        }
+    }
+}
+
+/// One completed step of the loop: a tool call, the result it returned, and
+/// whether it succeeded. The result is treated as data (an origin-tagged
+/// block), never instructions.
 #[derive(Debug, Clone)]
 pub struct ToolStep {
     /// The server the tool was called on.
@@ -83,6 +106,8 @@ pub struct ToolStep {
     pub arguments: String,
     /// The tool's result text.
     pub result: String,
+    /// Whether the call succeeded; surfaced in the harness tool-call card.
+    pub status: ToolStatus,
 }
 
 /// Render the tool catalogue as a readable list for the prompt.
@@ -723,6 +748,7 @@ pub async fn run_tool_loop(
                             tool,
                             arguments,
                             result,
+                            status: ToolStatus::Done,
                         });
                     }
                     blocked @ (DispatchOutcome::NeedsConfirmation(_)
@@ -743,6 +769,7 @@ pub async fn run_tool_loop(
                             tool,
                             arguments,
                             result,
+                            status: ToolStatus::Failed,
                         });
                     }
                 }
@@ -814,6 +841,7 @@ mod tests {
             tool: "query".to_string(),
             arguments: "{\"cypher\":\"MATCH ...\"}".to_string(),
             result: "[{\"path\":\"/x\"}]".to_string(),
+            status: ToolStatus::Done,
         }];
         let p = build_tool_prompt("q", &cat, &steps);
         assert!(p.contains("step 1: called system.knowledge/query"), "transcript present");
@@ -928,6 +956,7 @@ mod tests {
             tool: "query".into(),
             arguments: "{}".into(),
             result: result.into(),
+            status: ToolStatus::Done,
         }
     }
 
