@@ -18,8 +18,10 @@ pub mod host;
 pub mod interpret;
 pub mod obsidian;
 pub mod sink;
+pub mod watch;
 
 pub use bridge::{BridgeConfig, BridgeError, BridgeMeta, LinkRule, MapRule};
 pub use host::{serve, HostError, InboundMessage, OutboundMessage, PlanSink, MAX_FRAME};
 pub use interpret::{interpret_message, InterpretError, LinkPlan, UpsertPlan};
 pub use sink::{EntityWriter, KgPlanSink};
+pub use watch::{ingest_note, sync_vault, watch_vault};

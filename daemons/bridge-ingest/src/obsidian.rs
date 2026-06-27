@@ -122,6 +122,34 @@ pub fn scan_vault(root: &Path) -> std::io::Result<Vec<Map<String, Value>>> {
         .collect())
 }
 
+/// The vault-relative, `/`-separated path of `path` if it is a note the floor
+/// ingests: under `root`, a `.md` file (case-insensitive leaf), with no hidden
+/// path component (a name starting with `.`, e.g. anything under `.obsidian`).
+/// `None` otherwise. Mirrors [`scan_vault`]'s filter so the live file-watch and
+/// the one-shot sync agree on what counts as a note.
+pub fn vault_relative_md(root: &Path, path: &Path) -> Option<String> {
+    let rel = path.strip_prefix(root).ok()?;
+    let mut parts: Vec<String> = Vec::new();
+    for component in rel.components() {
+        match component {
+            std::path::Component::Normal(name) => {
+                let name = name.to_string_lossy();
+                if name.starts_with('.') {
+                    return None;
+                }
+                parts.push(name.into_owned());
+            }
+            // `..`, a root or prefix component is never a plain vault note path.
+            _ => return None,
+        }
+    }
+    let leaf = parts.last()?;
+    if !leaf.to_ascii_lowercase().ends_with(".md") {
+        return None;
+    }
+    Some(parts.join("/"))
+}
+
 /// Recursively collect `(vault-relative path, content)` for every `.md` file
 /// under `dir`. A hidden entry (a name starting with `.`, e.g. Obsidian's
 /// `.obsidian` config dir) is skipped; a file that cannot be read is skipped.
