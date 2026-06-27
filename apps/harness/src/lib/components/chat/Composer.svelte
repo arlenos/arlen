@@ -10,10 +10,13 @@
   import { tick } from "svelte";
   import { writable } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
+  import { goto } from "$app/navigation";
   import { ArrowUp, File as FileIcon, Folder, Paperclip } from "@lucide/svelte";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
+  import type { Capability } from "$lib/capability";
+  import { tierBadge } from "$lib/display";
   import ContextChips from "./ContextChips.svelte";
   import {
     activeSessionId,
@@ -34,12 +37,20 @@
   let {
     disabled,
     placeholder,
+    capability,
   }: {
     /// Disable input entirely (AI off or unreachable); the page renders the
     /// matching status line below.
     disabled: boolean;
     placeholder: string;
+    /// The capability read, so the foot can carry the quiet posture + model
+    /// chip. `null` while loading or after a failed read; the chip then hides.
+    capability: Capability | null;
   } = $props();
+
+  // The posture chip shows only when the AI is on; off / unreachable states
+  // are carried by the warning line below, not by a foot chip.
+  const badge = $derived(capability?.enabled ? tierBadge(capability) : null);
 
   let draft = $state("");
   let textareaRef = $state<HTMLTextAreaElement | null>(null);
@@ -275,9 +286,26 @@
       onkeydown={onKeydown}
     />
     <div class="composer-foot">
-      <IconAction label="Attach a file" size="control" disabled={disabled || $busy} onclick={openPicker}>
-        <Paperclip size={14} strokeWidth={2} />
-      </IconAction>
+      <div class="foot-left">
+        <IconAction label="Attach a file" size="control" disabled={disabled || $busy} onclick={openPicker}>
+          <Paperclip size={14} strokeWidth={2} />
+        </IconAction>
+        {#if badge}
+          <button
+            type="button"
+            class="posture"
+            title="How much the assistant may do, and the model it uses. Manage in Transparency."
+            onclick={() => goto("/transparency")}
+          >
+            <span class="posture-glyph" aria-hidden="true">{badge.glyph}</span>
+            <span class="posture-label">{badge.label}</span>
+            {#if capability?.model}
+              <span class="posture-sep" aria-hidden="true">·</span>
+              <span class="posture-model">{capability.model}</span>
+            {/if}
+          </button>
+        {/if}
+      </div>
       <Button
         size="icon-sm"
         variant="default"
@@ -329,6 +357,48 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 0.5rem 0.5rem;
+  }
+  .foot-left {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+  }
+  /* The posture chip: a quiet, glanceable read of how much the agent may do
+     and which model answers. Click opens the transparency surface, where the
+     dial and model actually change. */
+  .posture {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 0;
+    height: var(--height-control, 28px);
+    padding: 0 0.5rem;
+    border: none;
+    border-radius: var(--radius-button);
+    background: transparent;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+    font-size: 0.75rem;
+    transition: color var(--duration-fast) var(--ease-out);
+  }
+  .posture:hover {
+    color: color-mix(in srgb, var(--foreground) 80%, transparent);
+  }
+  .posture-glyph {
+    color: var(--color-success);
+  }
+  .posture-label {
+    flex-shrink: 0;
+  }
+  .posture-sep {
+    opacity: 0.5;
+  }
+  .posture-model {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.6875rem;
   }
   .mention-popover {
     position: absolute;
