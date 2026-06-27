@@ -26,9 +26,11 @@ use arlen_ai_daemon::active_project::ActiveProject;
 use arlen_ai_daemon::authz::AuthorizationStore;
 use arlen_ai_daemon::config_watch;
 use arlen_ai_daemon::graph_adapter::OsSdkGraphQuerier;
+use arlen_ai_daemon::live_provider::LiveProvider;
 use arlen_ai_daemon::mcp_discovery::McpDiscovery;
 use arlen_ai_daemon::peer::{self, PeerError};
 use arlen_ai_daemon::registry::{AuthError, CompletionOutcome};
+use arlen_ai_daemon::selection::ActiveSelection;
 use arlen_ai_daemon::service::{AiDaemonService, ExplainError, QueryError};
 use arlen_ai_providers::proxied::{ProxiedConfig, ProxiedProvider};
 use os_sdk::UnixEventConsumer;
@@ -119,7 +121,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // model/window/token via the optional `[provider]` section), so a
     // deployment points the daemon at any catalogued backend without a
     // rebuild. Read once at startup: changing the provider needs a restart.
-    let provider: Arc<dyn AIProvider> = Arc::new(
+    let provider_inner: Arc<dyn AIProvider> = Arc::new(
         ProxiedProvider::with_connection(
             ProxiedConfig {
                 name: settings.provider.name.clone(),
@@ -131,6 +133,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .await?,
     );
+    // Wrap the startup provider in the live-swappable indirection: the pipeline,
+    // the explain path, and the tool loop all route through this one handle, so
+    // `ai_set_active` can swap the backend at runtime without a restart (the
+    // consumers below were each handed an independent provider arc before). The
+    // D-Bus interface keeps `live` to read (`ai_active`) and swap it.
+    let live = Arc::new(LiveProvider::new(
+        provider_inner,
+        ActiveSelection::new(
+            settings.provider.name.clone(),
+            settings.provider.model.clone(),
+        ),
+    ));
+    let provider: Arc<dyn AIProvider> = live.clone();
 
     // Graph queries run against the Knowledge Daemon. The pipeline
     // turns NL into a validated structured query, compiles Cypher,
@@ -248,6 +263,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dbus = AiInterface {
         service: service.clone(),
         authz: authz.clone(),
+        live: live.clone(),
     };
 
     // Register the interface, then claim the well-known name on the
@@ -281,6 +297,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 struct AiInterface {
     service: Arc<AiDaemonService>,
     authz: Arc<AuthorizationStore>,
+    /// The live-swappable provider handle, for the model picker (`ai_active`,
+    /// and later `ai_set_active`). Shared with the pipeline/explain/tool-loop.
+    live: Arc<LiveProvider>,
 }
 
 #[zbus::interface(name = "org.arlen.AI1")]
@@ -327,6 +346,16 @@ impl AiInterface {
                 "audit log unavailable; query refused".to_string(),
             )),
         }
+    }
+
+    /// The current live provider+model selection as a JSON object
+    /// `{ "provider", "model" }` (the model picker's `ai_active`). Read from the
+    /// daemon's live `LiveProvider`, never from `ai.toml` (Settings owns the
+    /// file; an in-chat `ai_set_active` overrides it for the session). Read-only,
+    /// no auth: it discloses only which catalogued backend the daemon routes to,
+    /// not any user data.
+    async fn ai_active(&self) -> String {
+        serde_json::to_string(&self.live.active()).unwrap_or_else(|_| "{}".to_string())
     }
 
     /// Run System Explanation Mode (Foundation §5.8): return a
