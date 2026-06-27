@@ -1,0 +1,33 @@
+name: license
+
+# License hygiene (licensing-strategy.md): gate the dependency tree's licenses
+# with cargo-deny and run the REUSE/SPDX lint, via `just lint-licenses`. Separate
+# from ci.yml so the license gate is independent of the build matrix. cargo-deny
+# only resolves the dependency graph (no compilation), so this is cheap. The first
+# run reconciles deny.toml's allowlist against the real resolved tree; `reuse lint`
+# is advisory in the recipe until the per-file SPDX headers land.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: license-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  licenses:
+    name: license hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny,just
+      - name: install reuse
+        run: pipx install reuse
+      - name: lint-licenses
+        run: just --justfile dev/justfile lint-licenses

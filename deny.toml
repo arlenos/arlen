@@ -59,5 +59,9 @@ wildcards = "allow"
 version = 2
 
 [sources]
+# Source-gating is advisory for now: the workspace pulls several first-party git
+# dependencies (cosmic-protocols, the compositor fork, tough) and gating them
+# needs an explicit `allow-git` host list - a follow-up. The license allowlist
+# above is the enforced gate; `lint-licenses` runs `check licenses` only.
 unknown-registry = "deny"
-unknown-git = "deny"
+unknown-git = "allow"
