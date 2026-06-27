@@ -1,0 +1,8 @@
+# Starting permission profile for JuK (a KDE music player). Plays the user's
+# local music; no network, no Knowledge Graph access.
+[info]
+app_id = "org.kde.juk"
+tier = "third-party"
+
+[filesystem]
+music = true
