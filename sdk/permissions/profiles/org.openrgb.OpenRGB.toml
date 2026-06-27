@@ -1,0 +1,6 @@
+# Starting permission profile for OpenRGB (RGB lighting control). It drives lighting
+# hardware through the system device stack, not a profile grant, so it needs no
+# filesystem grant, no network and no Knowledge Graph access.
+[info]
+app_id = "org.openrgb.OpenRGB"
+tier = "third-party"

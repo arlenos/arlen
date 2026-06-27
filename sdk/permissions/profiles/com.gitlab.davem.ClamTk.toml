@@ -1,0 +1,9 @@
+# Starting permission profile for ClamTk (a ClamAV antivirus GUI). It updates virus
+# definitions over the network; the paths it scans are portal-selected on use, so it
+# needs no broad filesystem grant and no Knowledge Graph access.
+[info]
+app_id = "com.gitlab.davem.ClamTk"
+tier = "third-party"
+
+[network]
+allow_all = true

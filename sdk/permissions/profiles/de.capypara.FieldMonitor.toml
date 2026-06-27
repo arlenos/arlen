@@ -1,0 +1,9 @@
+# Starting permission profile for Field Monitor (a VM and remote-desktop viewer).
+# Reaching the remote machines (VNC/RDP/SPICE) is its function, so it gets network;
+# no user files and no Knowledge Graph access.
+[info]
+app_id = "de.capypara.FieldMonitor"
+tier = "third-party"
+
+[network]
+allow_all = true
