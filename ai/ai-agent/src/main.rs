@@ -28,7 +28,8 @@ use arlen_ai_agent::dbus::{
     AGENT_OBJECT_PATH,
 };
 use arlen_ai_agent::engine::{
-    reads_satisfied, DispatchOutcome, Dispatcher, ExecutionResult, ScreeningMode,
+    proposal_view, reads_satisfied, DispatchOutcome, Dispatcher, ExecutionResult, PendingProposal,
+    ScreeningMode,
 };
 use arlen_ai_agent::gate::Gate;
 use arlen_ai_agent::slice::{FsPathResolver, ProcMountsPolicy};
@@ -373,6 +374,7 @@ async fn establish_agent_connection(
     compensator: Compensator,
     graph: Arc<dyn GraphHandle>,
     receipts: Arc<Mutex<ReceiptStore<RetainedReceipt>>>,
+    pending: Arc<Mutex<ReceiptStore<PendingProposal>>>,
     manual_tx: tokio::sync::mpsc::Sender<ManualInvoke>,
 ) -> AgentConnection {
     use zbus::fdo::{RequestNameFlags, RequestNameReply};
@@ -390,6 +392,7 @@ async fn establish_agent_connection(
         compensator,
         graph,
         receipts,
+        pending,
         manual_tx,
     };
     if let Err(e) = connection.object_server().at(AGENT_OBJECT_PATH, iface).await {
@@ -493,6 +496,7 @@ async fn recover_connection(
     compensator: Compensator,
     graph: Arc<dyn GraphHandle>,
     receipts: Arc<Mutex<ReceiptStore<RetainedReceipt>>>,
+    pending: Arc<Mutex<ReceiptStore<PendingProposal>>>,
     manual_tx: tokio::sync::mpsc::Sender<ManualInvoke>,
 ) -> bool {
     let mut backoff = SUBSCRIBE_BACKOFF_INITIAL;
@@ -506,6 +510,7 @@ async fn recover_connection(
             compensator.clone(),
             Arc::clone(&graph),
             Arc::clone(&receipts),
+            Arc::clone(&pending),
             manual_tx.clone(),
         )
         .await
@@ -611,6 +616,12 @@ async fn run(
     // surfaced; read both by the dispatch loop (retain) and the D-Bus
     // `compensate` method, hence shared through an `Arc`.
     let receipts: Arc<Mutex<ReceiptStore<RetainedReceipt>>> =
+        Arc::new(Mutex::new(ReceiptStore::new(RECEIPT_CAPACITY)));
+    // Pending gate proposals awaiting the user's confirm/deny, surfaced over the
+    // D-Bus interface to the harness. A confirmation-tier decision is recorded
+    // here keyed by its audit index; acting on it removes the entry. Shared with
+    // the interface through an `Arc`, like `receipts`.
+    let pending: Arc<Mutex<ReceiptStore<PendingProposal>>> =
         Arc::new(Mutex::new(ReceiptStore::new(RECEIPT_CAPACITY)));
     // The owned compensator + graph handle the D-Bus undo path uses. Built once
     // for the process (writer/audit/graph are startup-stable), independent of the
@@ -759,6 +770,7 @@ async fn run(
                 compensator.clone(),
                 Arc::clone(&iface_graph),
                 Arc::clone(&receipts),
+                Arc::clone(&pending),
                 manual_tx.clone(),
             )
             .await
@@ -916,6 +928,7 @@ async fn run(
                     &mut shutdown_rx,
                     status,
                     &receipts,
+                    &pending,
                     &mut manual_rx,
                     recover_connection(
                         connection,
@@ -923,6 +936,7 @@ async fn run(
                         compensator.clone(),
                         Arc::clone(&iface_graph),
                         Arc::clone(&receipts),
+                        Arc::clone(&pending),
                         manual_tx.clone(),
                     ),
                 )
@@ -935,6 +949,7 @@ async fn run(
                     &mut shutdown_rx,
                     status,
                     &receipts,
+                    &pending,
                     &mut manual_rx,
                     std::future::pending::<bool>(),
                 )
@@ -1048,6 +1063,7 @@ async fn dispatch_until_change(
     shutdown_rx: &mut watch::Receiver<bool>,
     status: &StatusHandle,
     receipts: &std::sync::Mutex<ReceiptStore<RetainedReceipt>>,
+    pending: &std::sync::Mutex<ReceiptStore<PendingProposal>>,
     manual_rx: &mut tokio::sync::mpsc::Receiver<ManualInvoke>,
     recovery: impl std::future::Future<Output = bool>,
 ) -> EpochEnd {
@@ -1092,7 +1108,7 @@ async fn dispatch_until_change(
                     Some(outcomes) => {
                         for outcome in &outcomes {
                             log_dispatch_outcome(outcome);
-                            retain_receipt(receipts, outcome);
+                            retain_receipt(receipts, pending, outcome);
                         }
                         summarize_manual_run(&invoke.name, &outcomes)
                     }
@@ -1123,6 +1139,7 @@ async fn dispatch_until_change(
             dispatcher.dispatch(&event),
             wait_config_change(watcher, shutdown_rx),
             receipts,
+            pending,
         )
         .await
         {
@@ -1153,6 +1170,7 @@ async fn dispatch_or_reload(
     dispatch: impl std::future::Future<Output = Vec<DispatchOutcome>>,
     abort: impl std::future::Future<Output = EpochEnd>,
     receipts: &std::sync::Mutex<ReceiptStore<RetainedReceipt>>,
+    pending: &std::sync::Mutex<ReceiptStore<PendingProposal>>,
 ) -> Option<EpochEnd> {
     tokio::select! {
         biased;
@@ -1160,7 +1178,7 @@ async fn dispatch_or_reload(
         outcomes = dispatch => {
             for outcome in &outcomes {
                 log_dispatch_outcome(outcome);
-                retain_receipt(receipts, outcome);
+                retain_receipt(receipts, pending, outcome);
             }
             None
         }
@@ -1175,6 +1193,7 @@ async fn dispatch_or_reload(
 /// corrupts state.
 fn retain_receipt(
     receipts: &std::sync::Mutex<ReceiptStore<RetainedReceipt>>,
+    pending: &std::sync::Mutex<ReceiptStore<PendingProposal>>,
     outcome: &DispatchOutcome,
 ) {
     if let DispatchOutcome::Decided {
@@ -1193,6 +1212,16 @@ fn retain_receipt(
                     behaviour: behaviour.clone(),
                 },
             );
+        }
+    }
+    // Retain a confirmation-needing gate decision as a pending proposal, keyed by
+    // its audit-ledger index, so the harness can read it as an inline gate card
+    // (emit seam 2). `proposal_view` returns `Some` only for `RequireConfirmation`;
+    // executing/suggest decisions are not gate cards. A poisoned lock is ignored:
+    // a dropped proposal only forgoes the card, never corrupts state.
+    if let Some(proposal) = proposal_view(outcome) {
+        if let Ok(mut store) = pending.lock() {
+            store.record(proposal.id.to_string(), proposal);
         }
     }
 }
@@ -1522,10 +1551,12 @@ mod tests {
         // A never-completing dispatch (stands in for a long agent loop) is
         // abandoned the moment a config change is observed.
         let receipts = std::sync::Mutex::new(ReceiptStore::<RetainedReceipt>::new(8));
+        let pending = std::sync::Mutex::new(ReceiptStore::<PendingProposal>::new(8));
         let result = dispatch_or_reload(
             std::future::pending::<Vec<DispatchOutcome>>(),
             std::future::ready(EpochEnd::Reload),
             &receipts,
+            &pending,
         )
         .await;
         assert!(matches!(result, Some(EpochEnd::Reload)));
@@ -1536,10 +1567,12 @@ mod tests {
         // With no config change pending, the dispatch completes and the epoch
         // continues (no abort).
         let receipts = std::sync::Mutex::new(ReceiptStore::<RetainedReceipt>::new(8));
+        let pending = std::sync::Mutex::new(ReceiptStore::<PendingProposal>::new(8));
         let result = dispatch_or_reload(
             std::future::ready(Vec::<DispatchOutcome>::new()),
             std::future::pending::<EpochEnd>(),
             &receipts,
+            &pending,
         )
         .await;
         assert!(result.is_none());
