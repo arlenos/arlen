@@ -15,15 +15,34 @@
 #   <client-cmd>  the Wayland client to launch; it is run with WAYLAND_DISPLAY set
 #                 to the compositor's socket and DISPLAY cleared
 #
-# Env:
-#   COMPOSITOR_PATH   the compositor repo (default ~/Repositories/compositor)
-#   SHOOT_SETTLE      seconds to wait for the client to render (default 5)
-#   SHOOT_DISPLAY     the Xvfb display to use (default :99)
-#   SHOOT_CLIENT_LOG  capture the client's stdout/stderr here (default /dev/null);
-#                     set it to a file to debug why a client did not render
+# This is the closed nested verify loop (autonomous-verify-pipeline-plan.md): boot
+# the compositor nested -> optionally INJECT input -> grim-capture -> optionally
+# COMPARE to a baseline. With no inject/baseline it is just a capture (its original
+# use). With them it is a self-checking regression tripwire.
 #
-# Requirements: Xvfb, grim, and a built cosmic-comp at
-# $COMPOSITOR_PATH/target/debug/cosmic-comp.
+# Env:
+#   COMPOSITOR_PATH    the compositor repo (default ~/Repositories/compositor)
+#   SHOOT_SETTLE       seconds to wait for the client to render (default 5)
+#   SHOOT_DISPLAY      the Xvfb display to use (default :99)
+#   SHOOT_CLIENT_LOG   capture the client's stdout/stderr here (default /dev/null);
+#                      set it to a file to debug why a client did not render
+#   SHOOT_INJECT       a command run after settle, before capture, to inject input
+#                      into the focused nested surface (clicks: ydotool/uinput, as
+#                      the fork advertises no virtual-pointer protocol and the
+#                      caller must have ydotoold running; typing: wtype where the
+#                      virtual-keyboard protocol is present). Run with the
+#                      compositor's WAYLAND_DISPLAY; DISPLAY cleared.
+#   SHOOT_INJECT_SETTLE seconds to wait after inject before capture (default 1)
+#   SHOOT_BASELINE     a reference PNG; if set, compare the capture to it after
+#                      grim and FAIL (exit 3) when the differing-pixel count
+#                      exceeds SHOOT_TOLERANCE. A missing baseline writes the shot
+#                      and passes (first-time inspection). Net-new surfaces with no
+#                      baseline are left for visual inspection of <out.png>.
+#   SHOOT_TOLERANCE    max differing-pixel count for a baseline PASS (default 100)
+#
+# Requirements: Xvfb, grim, a built cosmic-comp at
+# $COMPOSITOR_PATH/target/debug/cosmic-comp; plus ydotool/wtype if SHOOT_INJECT is
+# used and imagemagick (`magick compare`) if SHOOT_BASELINE is used.
 set -euo pipefail
 
 OUT="${1:?usage: shoot-compositor.sh <out.png> <client-cmd> [args...]}"
@@ -75,5 +94,46 @@ WAYLAND_DISPLAY="$WL" DISPLAY="" "$@" >"$CLIENT_LOG" 2>&1 &
 CLIENT_PID=$!
 sleep "$SETTLE"
 
+# Optional input injection into the focused nested surface, then a brief re-settle
+# so the result paints before capture. The command is run verbatim under the
+# compositor's WAYLAND_DISPLAY (with DISPLAY cleared); a failing inject is logged
+# but does not abort the capture (so the shot still records the pre-inject state
+# for debugging).
+if [ -n "${SHOOT_INJECT:-}" ]; then
+  echo "inject: $SHOOT_INJECT"
+  WAYLAND_DISPLAY="$WL" DISPLAY="" bash -c "$SHOOT_INJECT" \
+    || echo "inject step failed (continuing to capture)" >&2
+  sleep "${SHOOT_INJECT_SETTLE:-1}"
+fi
+
 WAYLAND_DISPLAY="$WL" grim "$OUT"
 echo "wrote $OUT"
+
+# Optional baseline tripwire: fail if the capture differs from a reference PNG by
+# more than SHOOT_TOLERANCE pixels. `magick compare -metric AE` is the installed
+# odiff equivalent; it prints the differing-pixel count to stderr and exits 0/1
+# (identical/differs) or >=2 on a real error (e.g. a size mismatch), which is a
+# FAIL rather than a silent pass.
+if [ -n "${SHOOT_BASELINE:-}" ]; then
+  if [ ! -f "$SHOOT_BASELINE" ]; then
+    echo "baseline $SHOOT_BASELINE not found; wrote $OUT for first-time inspection" >&2
+    exit 0
+  fi
+  set +e
+  diff_out="$(magick compare -metric AE "$SHOOT_BASELINE" "$OUT" null: 2>&1)"
+  cmp_rc=$?
+  set -e
+  if [ "$cmp_rc" -ge 2 ]; then
+    echo "FAIL: compare error (size/format mismatch?): $diff_out" >&2
+    exit 3
+  fi
+  diff_px="${diff_out%%[!0-9]*}"
+  diff_px="${diff_px:-0}"
+  tol="${SHOOT_TOLERANCE:-100}"
+  echo "baseline diff: ${diff_px}px (tolerance ${tol})"
+  if [ "$diff_px" -gt "$tol" ]; then
+    echo "FAIL: capture differs from baseline by ${diff_px}px (> ${tol})" >&2
+    exit 3
+  fi
+  echo "PASS: within tolerance of baseline"
+fi
