@@ -48,8 +48,12 @@
     onretry={loadCapability}
   />
   <div class="foot">
-    <Composer bind:this={composer} disabled={composerDisabled} {placeholder} />
-    <CapabilityBar {capability} loaded={capLoaded} onretry={loadCapability} />
+    <Composer bind:this={composer} disabled={composerDisabled} {placeholder} {capability} />
+    <!-- The steady-state posture lives in the composer foot now; this line is
+         warning-only, shown when the AI is off or unreachable. -->
+    {#if !aiReady}
+      <CapabilityBar {capability} loaded={capLoaded} onretry={loadCapability} />
+    {/if}
   </div>
 </div>
 

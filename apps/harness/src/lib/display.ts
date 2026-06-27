@@ -145,6 +145,16 @@ export function statusSentence(c: Capability): string {
   return parts.join(" ");
 }
 
+/// The autonomy dial as a short glyph + label for the composer chip: a hollow
+/// dial when the agent only suggests, a half dial once it may make reversible
+/// changes itself (the `executor_live` gate). Two honest states, not an
+/// invented third.
+export function tierBadge(c: Capability): { glyph: string; label: string } {
+  return c.executorLive
+    ? { glyph: "◐", label: "Auto-reversible" }
+    : { glyph: "○", label: "Suggest only" };
+}
+
 /// Tooltip behind the status line: the technical facts, honestly, in one place.
 export function statusTooltip(c: Capability): string {
   const model = [c.provider, c.model].filter(Boolean).join(" ");
