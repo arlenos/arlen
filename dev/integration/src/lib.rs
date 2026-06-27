@@ -502,7 +502,11 @@ mod tests {
         assert!(env["ARLEN_DB_PATH"].starts_with(&root));
         assert!(env["ARLEN_DB_PATH"].ends_with("knowledge/events.db"));
         assert!(env["ARLEN_GRAPH_PATH"].starts_with(&root));
-        assert!(env["ARLEN_TIMELINE_MOUNT"].starts_with(&root));
+        // The FUSE timeline mount is disabled in the harness ("off"), so a
+        // non-FUSE scenario stays hermetic without needing a FUSE host; the few
+        // FUSE scenarios opt in. (Was asserting a path under the root, stale since
+        // base_env switched to the "off" sentinel.)
+        assert_eq!(env["ARLEN_TIMELINE_MOUNT"], "off");
         // The private config + data homes keep config/state reads hermetic.
         assert!(env["XDG_CONFIG_HOME"].starts_with(&root));
         assert!(env["XDG_DATA_HOME"].starts_with(&root));
