@@ -108,6 +108,15 @@ pub fn write_foreign_toolkit_configs(theme: &ArlenTheme, config_dir: &Path) -> A
         &mut report,
     );
 
+    // The theme's per-event sound-name map, for the Notification Daemon to merge
+    // into its sound config (it owns playback; the user's notifications.toml
+    // overrides still win). Arlen-owned, overwritten freely.
+    write_owned(
+        &config.join("arlen/sounds.toml"),
+        &crate::sounds::generate_sound_overrides(theme),
+        &mut report,
+    );
+
     report
 }
 
