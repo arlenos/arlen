@@ -1,0 +1,8 @@
+# Starting permission profile for Wike (a Wikipedia reader). It fetches articles
+# online, so network is its function; no user files and no Knowledge Graph access.
+[info]
+app_id = "org.gnome.World.Wike"
+tier = "third-party"
+
+[network]
+allow_all = true

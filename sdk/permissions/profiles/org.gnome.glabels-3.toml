@@ -1,0 +1,6 @@
+# Starting permission profile for gLabels (a label and business-card designer). It
+# opens and saves documents through the file portal, so it needs no standing
+# grant: no network, no user files and no Knowledge Graph access.
+[info]
+app_id = "org.gnome.glabels-3"
+tier = "third-party"
