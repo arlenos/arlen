@@ -1,0 +1,75 @@
+version = 1
+
+# REUSE licensing for the Arlen monorepo (licensing-strategy.md). The per-file
+# SPDX headers are the long-term goal; this file licenses the tree in bulk by the
+# per-component map so the repo is REUSE-compliant without a header on every one
+# of ~2800 files. precedence = "closest" means a file that carries its OWN SPDX
+# header always wins over the glob below - so lifted code keeps its upstream
+# license (copy-policy.md) and per-file carve-outs (the gtk-layer-shell-derived
+# layer_shell.rs, the Wayland protocol XMLs) keep theirs. Later blocks override
+# earlier ones for an overlapping path, so the broad first-party rule comes first
+# and the GPL-linked carve-outs come last.
+#
+# The copyright holder is Tim Kicker (the project author). Do NOT add the
+# top-level LICENSE file here - that is a separate human-gated step.
+
+# First-party Arlen code: the OS itself, copyleft + anti-SaaS.
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Tim Kicker"
+SPDX-License-Identifier = "AGPL-3.0-only"
+
+# Wire/contract crates: permissive so the future closed store-backend can link
+# them (patent grant). Wire types only.
+[[annotations]]
+path = "contracts/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Tim Kicker"
+SPDX-License-Identifier = "Apache-2.0"
+
+# The eBPF kernel-layer: GPL-2.0-only (in-kernel eBPF must be GPL-compatible to
+# use GPL-only kernel helpers; the workspace Cargo.toml already declares this).
+[[annotations]]
+path = "daemons/kernel-layer/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Tim Kicker"
+SPDX-License-Identifier = "GPL-2.0-only"
+
+# The xdg-desktop-portal backend: GPL-3.0-only (links the GPL portal surface).
+[[annotations]]
+path = "daemons/xdg-portal/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Tim Kicker"
+SPDX-License-Identifier = "GPL-3.0-only"
+
+# Tauri plugins + the input client: GPL-3.0-only (link GTK/WebKit GPL surfaces).
+[[annotations]]
+path = "sdk/tauri-plugin-clipboard/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Tim Kicker"
+SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = "sdk/tauri-plugin-menu/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Tim Kicker"
+SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = "sdk/tauri-plugin-portal/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Tim Kicker"
+SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = "sdk/tauri-plugin-shell/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Tim Kicker"
+SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = "sdk/arlen-input-client/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Tim Kicker"
+SPDX-License-Identifier = "GPL-3.0-only"

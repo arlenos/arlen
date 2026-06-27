@@ -5,7 +5,7 @@ name: license
 # from ci.yml so the license gate is independent of the build matrix. cargo-deny
 # only resolves the dependency graph (no compilation), so this is cheap. The first
 # run reconciles deny.toml's allowlist against the real resolved tree; `reuse lint`
-# is advisory in the recipe until the per-file SPDX headers land.
+# gates against REUSE.toml, which licenses the tree by the per-component map.
 
 on:
   push:
