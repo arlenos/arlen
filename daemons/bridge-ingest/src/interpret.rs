@@ -213,4 +213,53 @@ for_each_link = { edge = "LINKS_TO", to_key = "path" }
         assert_eq!(plan.qualified_type, "md.obsidian.Note");
         assert_eq!(plan.links[0].edge, "LINKS_TO");
     }
+
+    #[test]
+    fn malformed_link_elements_are_dropped_not_linked() {
+        // The edge-side fail-closed boundary: an untrusted plugin's malformed
+        // `links` must not mint keyless or garbage edges. Only a bare string or
+        // an object whose `to_key` resolves to a non-empty string becomes an
+        // edge; a blank or missing `to_key`, a non-string `to_key`, and any
+        // non-string/non-object element are all dropped.
+        let msg = obj(json!({
+            "path": "notes/a.md",
+            "links": [
+                "notes/valid.md",           // valid bare string
+                { "path": "notes/obj.md" }, // valid object
+                { "path": "" },             // blank to_key -> dropped
+                { "path": 42 },             // non-string to_key -> dropped
+                { "other": "x" },           // missing to_key -> dropped
+                42,                         // non-string/object element -> dropped
+                null,                       // dropped
+                true,                       // dropped
+                ["nested"]                  // dropped
+            ]
+        }));
+        let plan = interpret_message(&config(), "note.upsert", &msg).unwrap();
+        assert_eq!(
+            plan.links,
+            vec![
+                LinkPlan {
+                    edge: "LINKS_TO".into(),
+                    from_key: "notes/a.md".into(),
+                    to_key: "notes/valid.md".into(),
+                },
+                LinkPlan {
+                    edge: "LINKS_TO".into(),
+                    from_key: "notes/a.md".into(),
+                    to_key: "notes/obj.md".into(),
+                },
+            ],
+            "only well-formed link targets survive; no keyless or garbage edge"
+        );
+    }
+
+    #[test]
+    fn a_non_array_links_field_yields_no_edges() {
+        // A `links` field of the wrong shape (a bare string, not an array) is
+        // ignored: no error, and no single garbage edge from the stray value.
+        let msg = obj(json!({ "path": "notes/a.md", "links": "notes/b.md" }));
+        let plan = interpret_message(&config(), "note.upsert", &msg).unwrap();
+        assert!(plan.links.is_empty());
+    }
 }
