@@ -1,0 +1,5 @@
+# Starting permission profile for Kubrick (a KDE Rubik's-cube game). Plays locally; needs no filesystem,
+# network, or Knowledge Graph access. Identity only - the maximally fail-closed baseline.
+[info]
+app_id = "org.kde.kubrick"
+tier = "third-party"
