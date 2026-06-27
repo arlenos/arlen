@@ -1,0 +1,6 @@
+# Starting permission profile for Wordbook (an offline English dictionary backed
+# by a bundled WordNet). It looks words up locally; no network, no user files and
+# no Knowledge Graph access.
+[info]
+app_id = "io.gitlab.theevilskeleton.Wordbook"
+tier = "third-party"

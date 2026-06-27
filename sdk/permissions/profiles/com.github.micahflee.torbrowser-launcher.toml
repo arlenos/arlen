@@ -1,0 +1,9 @@
+# Starting permission profile for Tor Browser Launcher (it downloads, verifies
+# and launches the Tor Browser). Network is its function; it installs into its own
+# data directory, so no standing user-files grant and no Knowledge Graph access.
+[info]
+app_id = "com.github.micahflee.torbrowser-launcher"
+tier = "third-party"
+
+[network]
+allow_all = true
