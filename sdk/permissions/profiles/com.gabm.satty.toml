@@ -1,0 +1,10 @@
+# Starting permission profile for Satty (a screenshot annotation tool). It
+# annotates an image and copies the result to the clipboard, so clipboard write
+# is its function; no network, no user files and no Knowledge Graph access (the
+# input image is passed in and a save goes through the file portal).
+[info]
+app_id = "com.gabm.satty"
+tier = "third-party"
+
+[clipboard]
+write = true
