@@ -53,6 +53,61 @@ pub fn set_action_mode_in(path: &Path, mode: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Add (`enabled = true`) or remove (`false`) `app_id` from `[ai]
+/// autonomous_apps` in the ai.toml at `path`, format-preserving and atomic
+/// (sibling temp + rename), creating the file/`[ai]` table/array if absent and
+/// preserving every other key. This is the per-app half of the harness autonomy
+/// dial (the "More" grant): a listed app may act autonomously under the baseline
+/// model, still bounded by `executor_live`. The gate re-reads ai.toml per call,
+/// so the change is LIVE with no restart. Idempotent (adding a present app or
+/// removing an absent one is a no-op write). The daemon-side setter the harness
+/// calls (the harness must not write ai.toml; Settings owns the file). Rejects an
+/// empty or control-bearing app id before touching the file.
+///
+/// The list is the authority the gate reads; surfacing each grant as an LCG
+/// Grant node in the capability browser is a separate projection (a follow-up),
+/// not a precondition for the dial to take effect.
+pub fn set_autonomous_app_in(path: &Path, app_id: &str, enabled: bool) -> Result<(), String> {
+    let app = app_id.trim();
+    if app.is_empty() || app.chars().any(char::is_control) {
+        return Err("app id must be non-empty and free of control characters".to_string());
+    }
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .map_err(|e| format!("parse ai.toml: {e}"))?;
+    if doc.get("ai").and_then(|item| item.as_table()).is_none() {
+        doc["ai"] = toml_edit::Item::Table(toml_edit::Table::new());
+    }
+    // Read the current membership, compute the new set, write it back. Rebuilding
+    // the array is fine for a flat string list (no per-element decor to keep).
+    let mut apps: Vec<String> = doc["ai"]
+        .get("autonomous_apps")
+        .and_then(|item| item.as_array())
+        .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+    let present = apps.iter().any(|a| a == app);
+    if enabled && !present {
+        apps.push(app.to_string());
+    } else if !enabled {
+        apps.retain(|a| a != app);
+    }
+    let mut arr = toml_edit::Array::new();
+    for a in &apps {
+        arr.push(a.as_str());
+    }
+    doc["ai"]["autonomous_apps"] = toml_edit::value(arr);
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| "ai.toml path has no parent directory".to_string())?;
+    std::fs::create_dir_all(parent).map_err(|e| format!("create config dir: {e}"))?;
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, doc.to_string()).map_err(|e| format!("write temp config: {e}"))?;
+    std::fs::rename(&tmp, path).map_err(|e| format!("rename config into place: {e}"))?;
+    Ok(())
+}
+
 /// The LLM provider the agent loop drives, resolved from `ai.toml`. A
 /// `kind: agent` behaviour cannot run without one, so `None` keeps agent
 /// behaviours skipped (the same fail-closed posture as a disabled daemon).
@@ -327,6 +382,42 @@ mod tests {
         assert!(set_action_mode_in(&path, "autonomous").is_err());
         assert!(set_action_mode_in(&path, "nonsense").is_err());
         // A rejected mode never created the file (validated before any write).
+        assert!(!path.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn set_autonomous_app_adds_then_removes_preserving_other_keys() {
+        let dir = std::env::temp_dir().join(format!("arlen-auto-app-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ai.toml");
+        std::fs::write(&path, "[ai]\nenabled = true\naction_mode = \"supervised\"\n").unwrap();
+
+        set_autonomous_app_in(&path, "org.arlen.files", true).expect("add app");
+        let cfg = AgentConfig::parse(&std::fs::read_to_string(&path).unwrap());
+        assert!(cfg.actions.autonomous_apps().any(|a| a == "org.arlen.files"));
+        // Idempotent add: still exactly one entry.
+        set_autonomous_app_in(&path, "org.arlen.files", true).expect("add again");
+        let cfg = AgentConfig::parse(&std::fs::read_to_string(&path).unwrap());
+        assert_eq!(cfg.actions.autonomous_apps().filter(|a| *a == "org.arlen.files").count(), 1);
+        // Other keys survive.
+        assert_eq!(cfg.actions.default_mode().as_str(), "supervised");
+
+        set_autonomous_app_in(&path, "org.arlen.files", false).expect("remove app");
+        let cfg = AgentConfig::parse(&std::fs::read_to_string(&path).unwrap());
+        assert!(!cfg.actions.autonomous_apps().any(|a| a == "org.arlen.files"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn set_autonomous_app_rejects_empty_or_control_chars() {
+        let dir = std::env::temp_dir().join(format!("arlen-auto-app-bad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ai.toml");
+        assert!(set_autonomous_app_in(&path, "  ", true).is_err());
+        assert!(set_autonomous_app_in(&path, "bad\nid", true).is_err());
         assert!(!path.exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
