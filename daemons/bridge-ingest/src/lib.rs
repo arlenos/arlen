@@ -16,6 +16,7 @@
 pub mod bridge;
 pub mod host;
 pub mod interpret;
+pub mod obsidian;
 pub mod sink;
 
 pub use bridge::{BridgeConfig, BridgeError, BridgeMeta, LinkRule, MapRule};
