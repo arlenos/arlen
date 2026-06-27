@@ -1,0 +1,5 @@
+# Starting permission profile for KAtomic (a KDE puzzle game). Plays locally; needs no filesystem,
+# network, or Knowledge Graph access. Identity only - the maximally fail-closed baseline.
+[info]
+app_id = "org.kde.katomic"
+tier = "third-party"
