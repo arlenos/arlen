@@ -1,0 +1,6 @@
+# Starting permission profile for GCompris (a children's educational activity
+# suite). Its activities are self-contained and run offline; no network, no user
+# files and no Knowledge Graph access.
+[info]
+app_id = "org.kde.gcompris"
+tier = "third-party"
