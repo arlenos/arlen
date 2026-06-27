@@ -125,6 +125,25 @@ pub async fn action_state() -> String {
     .await
 }
 
+/// Set the baseline autonomy mode (`ai_set_action_mode` on the agent): `"suggest"`
+/// or `"supervised"`, live with no restart. Returns the agent's `ok` / `error: ...`
+/// status; a transport failure maps to an `error:` string so the dial surfaces it.
+/// `executor_live` stays the orthogonal Tim-gated master (the dial shows the inert
+/// state while it is off).
+#[tauri::command]
+pub async fn ai_set_action_mode(mode: String) -> String {
+    let Ok(connection) = Connection::session().await else {
+        return "error: session bus unavailable".to_string();
+    };
+    let Ok(proxy) = Proxy::new(&connection, AGENT_BUS, AGENT_PATH, AGENT_BUS).await else {
+        return "error: AI agent unavailable".to_string();
+    };
+    proxy
+        .call("ai_set_action_mode", &(mode.as_str(),))
+        .await
+        .unwrap_or_else(|e| format!("error: {e}"))
+}
+
 /// Live-swap the active provider+model (`ai_set_active`). Returns the new
 /// `{ provider, model }` on success, or `Err(message)` on a refused swap
 /// (unknown/unallowlisted provider, proxy unreachable) so the picker can report
