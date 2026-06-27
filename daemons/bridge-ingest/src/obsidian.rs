@@ -17,6 +17,7 @@
 
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
+use std::path::Path;
 
 /// Parse a note's text into the flat message body the bridge interpreter
 /// consumes: every frontmatter key verbatim, plus a `tags` array (the
@@ -73,6 +74,83 @@ pub fn parse_note(content: &str) -> Map<String, Value> {
         Value::Array(links.into_iter().map(Value::String).collect()),
     );
     out
+}
+
+/// Assemble the full inbound `note` message for a vault file: the parsed
+/// content ([`parse_note`]) plus the two fields the file supplies rather than
+/// the text - `path` (the vault-relative path, the stable idempotency key a
+/// `bridge.toml` rule keys on) and `title` (the frontmatter `title` if it is a
+/// non-empty string, else the file's stem). `rel_path` is the path relative to
+/// the vault root, using `/` separators. Pure.
+pub fn note_message(rel_path: &str, content: &str) -> Map<String, Value> {
+    let mut msg = parse_note(content);
+    let title = msg
+        .get("title")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| stem_of(rel_path));
+    msg.insert("path".to_string(), Value::String(rel_path.to_string()));
+    msg.insert("title".to_string(), Value::String(title));
+    msg
+}
+
+/// The file stem of a `/`-separated relative path: the last component with a
+/// trailing `.md` (or any extension) removed. The display fallback for a note
+/// with no frontmatter `title`.
+fn stem_of(rel_path: &str) -> String {
+    let name = rel_path.rsplit('/').next().unwrap_or(rel_path);
+    match name.rsplit_once('.') {
+        Some((stem, _ext)) if !stem.is_empty() => stem.to_string(),
+        _ => name.to_string(),
+    }
+}
+
+/// Read a vault's markdown floor: walk `root` recursively for `.md` files and
+/// assemble each into its [`note_message`], keyed by its vault-relative path
+/// (`/`-separated). This is the one-shot initial sync (the live file-watch that
+/// re-emits on change is a separate slice); an unreadable individual file is
+/// skipped best-effort so one bad note never aborts the sync. Results are sorted
+/// by path for determinism. Returns an error only if `root` itself is unreadable.
+pub fn scan_vault(root: &Path) -> std::io::Result<Vec<Map<String, Value>>> {
+    let mut files: Vec<(String, String)> = Vec::new();
+    walk_markdown(root, root, &mut files)?;
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(files
+        .into_iter()
+        .map(|(rel, content)| note_message(&rel, &content))
+        .collect())
+}
+
+/// Recursively collect `(vault-relative path, content)` for every `.md` file
+/// under `dir`. A hidden entry (a name starting with `.`, e.g. Obsidian's
+/// `.obsidian` config dir) is skipped; a file that cannot be read is skipped.
+fn walk_markdown(root: &Path, dir: &Path, out: &mut Vec<(String, String)>) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with('.') {
+            continue;
+        }
+        let path = entry.path();
+        let file_type = match entry.file_type() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        if file_type.is_dir() {
+            // A subdirectory's read failure is skipped, not fatal.
+            let _ = walk_markdown(root, &path, out);
+        } else if file_type.is_file() && name.to_ascii_lowercase().ends_with(".md") {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(rel) = path.strip_prefix(root) {
+                    let rel = rel.to_string_lossy().replace('\\', "/");
+                    out.push((rel, content));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Add a tag string to the set, normalised: a leading `#` stripped, surrounding
@@ -359,5 +437,44 @@ mod tests {
         let m = parse_note("---\ntitle: \"Quoted Title\"\nslug: 'my-slug'\n---\n");
         assert_eq!(m["title"], Value::String("Quoted Title".into()));
         assert_eq!(m["slug"], Value::String("my-slug".into()));
+    }
+
+    #[test]
+    fn note_message_injects_path_and_derives_title_from_the_stem() {
+        let m = note_message("notes/Ideas.md", "no frontmatter, just #thoughts.\n");
+        assert_eq!(m["path"], Value::String("notes/Ideas.md".into()));
+        // No frontmatter title -> the filename stem.
+        assert_eq!(m["title"], Value::String("Ideas".into()));
+        assert_eq!(tags(&m), vec!["thoughts"]);
+    }
+
+    #[test]
+    fn note_message_prefers_a_frontmatter_title() {
+        let m = note_message("notes/x.md", "---\ntitle: Real Title\n---\nbody\n");
+        assert_eq!(m["title"], Value::String("Real Title".into()));
+        assert_eq!(m["path"], Value::String("notes/x.md".into()));
+    }
+
+    #[test]
+    fn scan_vault_walks_md_files_skips_hidden_and_keys_by_relative_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join("Top.md"), "# Top with [[Other]]\n").unwrap();
+        std::fs::create_dir(root.join("sub")).unwrap();
+        std::fs::write(root.join("sub").join("Nested.md"), "---\ntitle: Nested Note\n---\n#tag\n").unwrap();
+        std::fs::write(root.join("notes.txt"), "not markdown").unwrap();
+        std::fs::create_dir(root.join(".obsidian")).unwrap();
+        std::fs::write(root.join(".obsidian").join("config.md"), "#hiddenshouldskip\n").unwrap();
+
+        let msgs = scan_vault(root).unwrap();
+        let paths: Vec<&str> = msgs.iter().map(|m| m["path"].as_str().unwrap()).collect();
+        // Sorted, `.md` only, hidden `.obsidian` skipped, non-md ignored.
+        assert_eq!(paths, vec!["Top.md", "sub/Nested.md"]);
+        // The nested note carries its frontmatter title + tag.
+        let nested = &msgs[1];
+        assert_eq!(nested["title"], Value::String("Nested Note".into()));
+        assert_eq!(tags(nested), vec!["tag"]);
+        // The top note's wikilink is captured.
+        assert_eq!(links(&msgs[0]), vec!["Other"]);
     }
 }
