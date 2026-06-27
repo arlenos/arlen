@@ -24,6 +24,15 @@ const THUMBNAILABLE = /\.(png|jpe?g|gif|bmp|webp)$/i;
 
 export const fmAdapter: BrowserAdapter = {
   list: async (path: string, sort: SortSpec) => {
+    // Diagnostic for the virtual-location navigation bug (Trash/Recent showed home
+    // on metal): logging the path the listing ran for + whether it classified as
+    // virtual localises the chain - it confirms navigate->load reached list with
+    // the virtual key and that it routes to files_list_location, paired with the
+    // backend log on that command.
+    void invoke("frontend_log", {
+      level: "info",
+      msg: `fmAdapter.list: path=${path} virtual=${isVirtualLocation(path)}`,
+    });
     // Browse an archive as a folder (FM-R12): a path at or inside an archive
     // lists the archive's contents (read-only) instead of the real filesystem.
     const archive = splitArchivePath(path);
