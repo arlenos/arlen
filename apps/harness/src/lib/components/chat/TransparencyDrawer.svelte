@@ -16,7 +16,7 @@
   import ReadsSection from "$lib/components/transparency/ReadsSection.svelte";
   import MemorySection from "$lib/components/transparency/MemorySection.svelte";
   import ActivitySection from "$lib/components/transparency/ActivitySection.svelte";
-  import CostSection from "$lib/components/transparency/CostSection.svelte";
+  import CostSection, { type Usage } from "$lib/components/transparency/CostSection.svelte";
   import OffSwitchSection from "$lib/components/transparency/OffSwitchSection.svelte";
   import { readCapability, type Capability } from "$lib/capability";
   import { readGrants, readWorkingSet, type GrantView, type WorkingSet } from "$lib/transparency";
@@ -28,12 +28,14 @@
   let workingSet = $state<WorkingSet | null>(null);
   let activity = $state<ActivityPage | null>(null);
   let reads = $state<ActivityPage | null>(null);
+  let usage = $state<Usage | null>(null);
 
   let capLoaded = $state(false);
   let grantsLoaded = $state(false);
   let memoryLoaded = $state(false);
   let activityLoaded = $state(false);
   let readsLoaded = $state(false);
+  let usageLoaded = $state(false);
 
   // Compact slices: the drawer shows the most recent few; the full filterable
   // record is the /agent surface the Activity section links to.
@@ -59,6 +61,17 @@
       .then((r) => (reads = r))
       .catch(() => (reads = null))
       .finally(() => (readsLoaded = true));
+    invoke<string>("ai_usage")
+      .then((json) => {
+        try {
+          const u = JSON.parse(json) as { totalTokens?: number };
+          usage = { totalTokens: u.totalTokens ?? 0 };
+        } catch {
+          usage = null;
+        }
+      })
+      .catch(() => (usage = null))
+      .finally(() => (usageLoaded = true));
   }
 
   // Load on first open and refresh on every subsequent open, so a returning
@@ -140,7 +153,7 @@
 
       <section class="sec">
         <div class="sec-head">What it costs</div>
-        <CostSection {capability} loaded={capLoaded} />
+        <CostSection {capability} {usage} loaded={capLoaded && usageLoaded} />
       </section>
     </div>
 
