@@ -23,5 +23,6 @@ pub mod graph_adapter;
 pub mod mcp_discovery;
 pub mod peer;
 pub mod registry;
+pub mod selection;
 pub mod service;
 pub mod tool_loop;
