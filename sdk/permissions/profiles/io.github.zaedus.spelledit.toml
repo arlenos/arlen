@@ -1,0 +1,7 @@
+# Starting permission profile for Spell Edit (a spell-checking text editor). It
+# edits text in its own buffer and opens/saves through the file portal, so it
+# needs no standing grant: no network, no user files and no Knowledge Graph
+# access.
+[info]
+app_id = "io.github.zaedus.spelledit"
+tier = "third-party"
