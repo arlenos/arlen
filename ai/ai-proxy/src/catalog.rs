@@ -16,16 +16,86 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-/// Catalogued provider entry.
+/// The wire protocol the proxy shapes a request/response for. The OpenAI
+/// chat-completions shape is the common case (~12 of 15 providers are pure
+/// base-URL + Bearer swaps); Anthropic and Gemini have native shapes the proxy
+/// transcodes. Promoted from the old free-string `backend` so dispatch keys on a
+/// closed set (`ai-providers-plan.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WireFormat {
+    /// OpenAI `/chat/completions` shape (the default; most providers, incl. the
+    /// local Ollama OpenAI-compatible endpoint).
+    #[default]
+    Openai,
+    /// Anthropic `/v1/messages` native shape (transcoded by the proxy).
+    Anthropic,
+    /// Google Gemini native shape (served via the OpenAI-compat shim for now).
+    Gemini,
+}
+
+/// How the proxy authenticates to the backend at egress. The credential is
+/// NEVER held here - it is injected from the Connections broker via
+/// `credential_ref` (CONN-R3, the first credential-injecting path); this only
+/// records WHICH header/scheme carries the injected key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AuthScheme {
+    /// No auth - a local provider (Ollama, llama.cpp). The default.
+    #[default]
+    None,
+    /// `Authorization: Bearer <key>` (OpenAI + most OpenAI-compat providers).
+    Bearer,
+    /// `x-api-key: <key>` (Anthropic).
+    XApiKey,
+    /// `api-key: <key>` (Azure OpenAI).
+    AzureApiKey,
+    /// `x-goog-api-key: <key>` (Google Gemini native).
+    XGoogApiKey,
+}
+
+/// Catalogued provider entry. The proxy treats every field as proxy-owned
+/// configuration, never caller input (the POST-gadget defense above). The cloud
+/// fields carry the multi-provider build; all the new ones are `#[serde(default)]`
+/// so an existing `{endpoint_url, backend}` config still parses.
 #[derive(Debug, Clone, Deserialize)]
 pub struct CatalogEntry {
     /// Full upstream endpoint URL (scheme + host + path). The proxy
     /// will POST `body_json` to this URL verbatim.
     pub endpoint_url: String,
-    /// Backend identifier (`ollama`, `llamacpp`, `anthropic`,
-    /// `openai`). Phase 9-α uses this only for logging; Phase 9-β
-    /// uses it to dispatch backend-specific request shaping.
+    /// Backend identifier (`ollama`, `anthropic`, `openai`), retained for audit
+    /// log lines. Dispatch now keys on `wire_format`; this stays for logging.
     pub backend: String,
+    /// The wire protocol the proxy shapes for. Defaults to OpenAI
+    /// chat-completions (the common case).
+    #[serde(default)]
+    pub wire_format: WireFormat,
+    /// The egress auth scheme - which header carries the broker-injected key.
+    /// Defaults to `none` (a local provider needs no key).
+    #[serde(default)]
+    pub auth_scheme: AuthScheme,
+    /// URL template for a backend that needs path/query templating (Azure's
+    /// `api-version` + deployment). `None` = use `endpoint_url` verbatim.
+    #[serde(default)]
+    pub url_template: Option<String>,
+    /// Opaque handle into the Connections broker for this provider's credential
+    /// (CONN-R3) - NEVER the key itself. `None` for a no-auth local provider.
+    #[serde(default)]
+    pub credential_ref: Option<String>,
+    /// The provider's model-list endpoint (`GET /models`-class), for
+    /// `validate_provider` and catalog/model refresh. `None` if not known.
+    #[serde(default)]
+    pub models_endpoint: Option<String>,
+    /// Human-facing provider name for the picker. `None` falls back to the key.
+    #[serde(default)]
+    pub display_name: Option<String>,
+    /// Logo asset id for the picker. `None` = no logo.
+    #[serde(default)]
+    pub logo_id: Option<String>,
+    /// A built-in Arlen preset (`true`) vs a user-added custom provider
+    /// (`false`, the default for anything in a user config).
+    #[serde(default)]
+    pub builtin: bool,
 }
 
 /// Trusted provider catalog.
@@ -57,6 +127,14 @@ impl ProviderCatalog {
             CatalogEntry {
                 endpoint_url: "http://localhost:11434/v1/chat/completions".to_string(),
                 backend: "ollama".to_string(),
+                wire_format: WireFormat::Openai,
+                auth_scheme: AuthScheme::None,
+                url_template: None,
+                credential_ref: None,
+                models_endpoint: Some("http://localhost:11434/v1/models".to_string()),
+                display_name: Some("Ollama (local)".to_string()),
+                logo_id: None,
+                builtin: true,
             },
         );
         Self::new(entries)
@@ -93,6 +171,35 @@ mod tests {
         let entry = cat.get("ollama-default").unwrap();
         assert_eq!(entry.endpoint_url, "http://localhost:11434/v1/chat/completions");
         assert_eq!(entry.backend, "ollama");
+        // The local provider is OpenAI-compat, needs no key, and is a built-in.
+        assert_eq!(entry.wire_format, WireFormat::Openai);
+        assert_eq!(entry.auth_scheme, AuthScheme::None);
+        assert!(entry.credential_ref.is_none());
+        assert!(entry.builtin);
+    }
+
+    #[test]
+    fn legacy_entry_deserializes_with_defaults() {
+        // An existing `{endpoint_url, backend}` config (no cloud fields) still
+        // parses: the new fields are `#[serde(default)]` (OpenAI / none / custom).
+        let entry: CatalogEntry = serde_json::from_str(
+            r#"{"endpoint_url":"http://localhost:11434/v1/chat/completions","backend":"ollama"}"#,
+        )
+        .expect("legacy entry parses");
+        assert_eq!(entry.wire_format, WireFormat::Openai);
+        assert_eq!(entry.auth_scheme, AuthScheme::None);
+        assert!(entry.url_template.is_none());
+        assert!(entry.credential_ref.is_none());
+        assert!(!entry.builtin);
+
+        // And the cloud schemes deserialize from their kebab/lowercase wire form.
+        let anthropic: CatalogEntry = serde_json::from_str(
+            r#"{"endpoint_url":"https://api.anthropic.com/v1/messages","backend":"anthropic","wire_format":"anthropic","auth_scheme":"x-api-key","credential_ref":"conn:anthropic"}"#,
+        )
+        .expect("anthropic entry parses");
+        assert_eq!(anthropic.wire_format, WireFormat::Anthropic);
+        assert_eq!(anthropic.auth_scheme, AuthScheme::XApiKey);
+        assert_eq!(anthropic.credential_ref.as_deref(), Some("conn:anthropic"));
     }
 
     #[test]
