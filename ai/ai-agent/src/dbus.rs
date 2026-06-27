@@ -337,6 +337,28 @@ impl AgentInterface {
         .to_string()
     }
 
+    /// Set the agent's baseline action mode for the harness autonomy dial:
+    /// `"suggest"` or `"supervised"`. Writes `[ai] action_mode` to ai.toml
+    /// format-preservingly and atomically; the gate and `action_state` re-read
+    /// ai.toml on every call, so the change is LIVE with no restart (mirroring
+    /// `executor_live`). `"autonomous"` is never settable here - the baseline can
+    /// never be autonomous (autonomy is the per-app `autonomous_apps` grant), and
+    /// `executor_live` stays the orthogonal Tim-gated master, so a supervised
+    /// baseline still does nothing while the executor is off. The harness must NOT
+    /// write ai.toml directly (Settings owns the file); this is the daemon-side
+    /// setter it calls. Returns `ok`, or `error: <reason>` on an invalid mode or a
+    /// write failure. Idempotent.
+    #[zbus(name = "ai_set_action_mode")]
+    async fn ai_set_action_mode(&self, mode: &str) -> String {
+        match crate::config::set_action_mode_in(&ai_config_path(), mode) {
+            Ok(()) => {
+                tracing::info!(mode, "autonomy dial: action_mode set");
+                "ok".to_string()
+            }
+            Err(e) => format!("error: {e}"),
+        }
+    }
+
     /// The loaded skills as a JSON array, for the user-invoke discovery surface
     /// (PR-5 part 3a / the deferred S-U3b "behaviours list"). Each entry carries
     /// the skill's name, description, agent-match `whenToUse` hint, kind, and

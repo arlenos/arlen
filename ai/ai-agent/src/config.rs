@@ -5,11 +5,53 @@
 //! so a broken config never leaves the agent enabled or over-granted.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use arlen_ai_core::capability::{access_tier_from_level, AccessTier, ActionPermissions, BaselineMode};
 use serde::Deserialize;
 
 use crate::loader::Provenance;
+
+/// The action modes the harness autonomy dial may set. `autonomous` is
+/// deliberately absent: the baseline can never be autonomous (autonomy is the
+/// per-app `[ai] autonomous_apps` grant), and [`AgentConfig::parse`] clamps any
+/// unknown mode to `suggest`.
+pub const SETTABLE_ACTION_MODES: [&str; 2] = ["suggest", "supervised"];
+
+/// Set `[ai] action_mode` in the ai.toml at `path`, format-preserving and atomic
+/// (write a sibling temp file, then rename). Creates the file and the `[ai]`
+/// table if absent, and preserves every other key + comment. This is the
+/// daemon-side setter for the harness autonomy dial (the harness must not write
+/// ai.toml directly; Settings owns the file, the daemon exposes the setter). The
+/// gate and the `action_state` getter re-read ai.toml on every call, so the
+/// change is live with no restart - mirroring how `executor_live` is read.
+/// Rejects any mode outside [`SETTABLE_ACTION_MODES`] before touching the file.
+pub fn set_action_mode_in(path: &Path, mode: &str) -> Result<(), String> {
+    if !SETTABLE_ACTION_MODES.contains(&mode) {
+        return Err(format!(
+            "action_mode must be one of {SETTABLE_ACTION_MODES:?}, not {mode:?}"
+        ));
+    }
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .map_err(|e| format!("parse ai.toml: {e}"))?;
+    // Preserve an existing `[ai]` table; create it only if missing, so other
+    // keys (enabled, access_level, provider, autonomous_apps) are untouched.
+    if doc.get("ai").and_then(|item| item.as_table()).is_none() {
+        doc["ai"] = toml_edit::Item::Table(toml_edit::Table::new());
+    }
+    doc["ai"]["action_mode"] = toml_edit::value(mode);
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| "ai.toml path has no parent directory".to_string())?;
+    std::fs::create_dir_all(parent).map_err(|e| format!("create config dir: {e}"))?;
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, doc.to_string()).map_err(|e| format!("write temp config: {e}"))?;
+    std::fs::rename(&tmp, path).map_err(|e| format!("rename config into place: {e}"))?;
+    Ok(())
+}
 
 /// The LLM provider the agent loop drives, resolved from `ai.toml`. A
 /// `kind: agent` behaviour cannot run without one, so `None` keeps agent
@@ -252,6 +294,55 @@ impl AgentConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn set_action_mode_writes_supervised_and_preserves_other_keys() {
+        let dir = std::env::temp_dir().join(format!("arlen-action-mode-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ai.toml");
+        std::fs::write(
+            &path,
+            "[ai]\nenabled = true\naccess_level = 2\naction_mode = \"suggest\"\nprovider = \"ollama-default\"\n",
+        )
+        .unwrap();
+
+        set_action_mode_in(&path, "supervised").expect("set supervised");
+
+        let cfg = AgentConfig::parse(&std::fs::read_to_string(&path).unwrap());
+        assert_eq!(cfg.actions.default_mode().as_str(), "supervised");
+        // The other [ai] keys survive the format-preserving write.
+        let back = std::fs::read_to_string(&path).unwrap();
+        assert!(back.contains("provider = \"ollama-default\""));
+        assert!(back.contains("access_level = 2"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn set_action_mode_rejects_autonomous_and_garbage() {
+        let dir = std::env::temp_dir().join(format!("arlen-action-mode-bad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ai.toml");
+        assert!(set_action_mode_in(&path, "autonomous").is_err());
+        assert!(set_action_mode_in(&path, "nonsense").is_err());
+        // A rejected mode never created the file (validated before any write).
+        assert!(!path.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn set_action_mode_creates_ai_table_when_absent() {
+        let dir = std::env::temp_dir().join(format!("arlen-action-mode-new-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ai.toml");
+        // No file at all: the setter creates it with a `[ai]` table.
+        set_action_mode_in(&path, "suggest").expect("create + set");
+        let cfg = AgentConfig::parse(&std::fs::read_to_string(&path).unwrap());
+        assert_eq!(cfg.actions.default_mode().as_str(), "suggest");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn parses_enabled_read_tier_and_actions() {
