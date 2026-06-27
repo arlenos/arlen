@@ -1,0 +1,7 @@
+# Starting permission profile for Gestures (a touchpad-gesture configurator). It
+# edits its own gesture config; the gestures run through the input stack, not a
+# profile grant, so no broad filesystem grant, no network and no Knowledge Graph
+# access.
+[info]
+app_id = "com.gitlab.cunidev.Gestures"
+tier = "third-party"
