@@ -1,0 +1,6 @@
+# Starting permission profile for Icon Library (a GNOME symbolic-icon browser).
+# Browses bundled icons and copies them via the clipboard portal; needs no
+# filesystem, network, or Knowledge Graph access. Identity only.
+[info]
+app_id = "org.gnome.design.IconLibrary"
+tier = "third-party"

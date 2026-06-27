@@ -1,0 +1,6 @@
+# Starting permission profile for KNotes (a KDE sticky-notes app). Keeps its notes
+# in its own store; needs no filesystem, network, or Knowledge Graph access.
+# Identity only - the maximally fail-closed baseline.
+[info]
+app_id = "org.kde.knotes"
+tier = "third-party"
