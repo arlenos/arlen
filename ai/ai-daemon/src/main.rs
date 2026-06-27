@@ -354,6 +354,7 @@ impl AiInterface {
     /// file; an in-chat `ai_set_active` overrides it for the session). Read-only,
     /// no auth: it discloses only which catalogued backend the daemon routes to,
     /// not any user data.
+    #[zbus(name = "ai_active")]
     async fn ai_active(&self) -> String {
         serde_json::to_string(&self.live.active()).unwrap_or_else(|_| "{}".to_string())
     }
@@ -370,6 +371,7 @@ impl AiInterface {
     /// listing other providers here would be metadata-less placeholders. `kind`
     /// is `local` for the local Ollama provider; cloud providers report `cloud`
     /// once the proxy surfaces per-provider kind (Phase 9-β/γ).
+    #[zbus(name = "ai_models_list")]
     async fn ai_models_list(&self) -> String {
         let active = self.live.active();
         let entry = ModelEntry {
@@ -398,6 +400,7 @@ impl AiInterface {
     /// and the previous selection stays live. The new model's context window is
     /// the configured default (`ai.toml`); a real per-model window needs the
     /// catalog metadata the enumeration follow-up brings.
+    #[zbus(name = "ai_set_active")]
     async fn ai_set_active(
         &self,
         provider: &str,
