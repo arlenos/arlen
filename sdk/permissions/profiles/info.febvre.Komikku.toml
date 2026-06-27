@@ -1,0 +1,8 @@
+# Starting permission profile for Komikku (a manga reader). Fetches chapters
+# from online manga servers by function; library lives in its own data. No graph.
+[info]
+app_id = "info.febvre.Komikku"
+tier = "third-party"
+
+[network]
+allow_all = true
