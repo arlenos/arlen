@@ -87,17 +87,25 @@
   }
 </script>
 
+<!-- The provider logo slot. Mocked here as the provider's initial in a
+     rounded tile; the real brand icon-set drops in behind this one snippet
+     when it lands, no other markup changes. -->
+{#snippet logo(provider: string)}
+  <span class="mp-logo" aria-hidden="true">{provider.charAt(0).toUpperCase()}</span>
+{/snippet}
+
 <Popover.Root bind:open>
   <Popover.Trigger disabled={disabled || models.length === 0}>
     {#snippet child({ props })}
       <button type="button" class="mp-trigger" {...props}>
         {#if activeEntry}
-          {#if activeEntry.kind === "local"}
-            <House size={12} strokeWidth={2} class="mp-kind" />
-          {:else}
-            <Cloud size={12} strokeWidth={2} class="mp-kind" />
-          {/if}
+          {@render logo(activeEntry.provider)}
           <span class="mp-active">{activeEntry.provider} · {activeEntry.model}</span>
+          {#if activeEntry.kind === "local"}
+            <House size={11} strokeWidth={2} class="mp-kind" />
+          {:else}
+            <Cloud size={11} strokeWidth={2} class="mp-kind" />
+          {/if}
         {:else}
           <span class="mp-active mp-empty">Choose a model</span>
         {/if}
@@ -115,13 +123,7 @@
             {#if multi}
               {@const isLocal = group.models[0]?.kind === "local"}
               <div class="mp-group">
-                {#if isLocal}
-                  <House size={11} strokeWidth={2} />
-                  <span>{group.provider} · local · no egress</span>
-                {:else}
-                  <Cloud size={11} strokeWidth={2} />
-                  <span>{group.provider} · cloud · egress, audited</span>
-                {/if}
+                {group.provider} · {isLocal ? "local · no egress" : "cloud · egress, audited"}
               </div>
             {/if}
             {#each group.models as m (m.provider + "/" + m.model)}
@@ -130,6 +132,7 @@
                 disabled={!m.available}
                 onSelect={() => choose(m)}
               >
+                {@render logo(m.provider)}
                 <span class="mp-name">{m.model}</span>
                 {#if !m.available}
                   <span class="mp-note">unavailable</span>
@@ -207,6 +210,22 @@
   }
   .mp-group :global(svg) {
     flex-shrink: 0;
+  }
+  /* The provider logo slot: a fixed square so names align whatever the logo.
+     The mocked initial sits on a faint tile; a real brand icon replaces it. */
+  .mp-logo {
+    flex-shrink: 0;
+    width: 1rem;
+    height: 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-chip);
+    background: color-mix(in srgb, var(--foreground) 12%, transparent);
+    font-size: 0.625rem;
+    font-weight: 600;
+    line-height: 1;
+    color: color-mix(in srgb, var(--foreground) 70%, transparent);
   }
   .mp-name {
     flex: 1;
