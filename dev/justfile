@@ -165,6 +165,24 @@ fmt:
     set -euo pipefail
     for c in {{RUST_CRATES}}; do cargo fmt --manifest-path "{{ROOT}}/$c/Cargo.toml" --all; done
 
+# License hygiene: cargo-deny allowlist over every workspace + REUSE/SPDX lint.
+lint-licenses:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ROOT}}"
+    # This repo has no single root workspace, so each `[workspace]` root is checked
+    # against the one root deny.toml via --config (discovered, so a new workspace is
+    # covered automatically). Needs cargo-deny + reuse installed (CI installs them).
+    roots=$(grep -rl '^\[workspace\]' --include=Cargo.toml . | grep -v '/target/' | xargs -n1 dirname | sort -u)
+    for ws in $roots; do
+        echo "== cargo-deny licenses: $ws =="
+        cargo deny --manifest-path "$ws/Cargo.toml" --config "{{ROOT}}/deny.toml" check licenses
+    done
+    # `reuse lint` is advisory until the per-file SPDX headers + REUSE.toml land
+    # (they wait on the copyright-holder decision); drop the `|| true` to gate it then.
+    echo "== reuse lint (advisory until SPDX headers land) =="
+    reuse lint || echo "reuse lint advisory: per-file SPDX headers + REUSE.toml pending the copyright-holder decision"
+
 # The cross-daemon integration tests (the non-ignored, no-binary ones: the
 # harness's own unit tests). The scenario tests that need built daemons are
 # #[ignore]d; run them via `just integration-smoke`.
