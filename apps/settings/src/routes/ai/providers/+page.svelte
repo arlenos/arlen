@@ -16,6 +16,7 @@
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { ProviderLogo } from "@arlen/ui-kit/components/ui/provider-logo";
 
   /// One provider as the catalogue + the broker report it. `configured` means
   /// credentials exist (or none are needed, for a local provider); an enabled
@@ -144,7 +145,7 @@
 {#snippet row(p: Provider)}
   {@const verdict = $tests[p.id]}
   <div class="prow">
-    <span class="plogo" aria-hidden="true">{p.name.charAt(0).toUpperCase()}</span>
+    <ProviderLogo id={p.id} name={p.name} size={24} />
     <div class="pmeta">
       <div class="pname">{p.name}</div>
       <div class="pdesc">
@@ -184,22 +185,6 @@
     gap: 0.875rem;
     padding: var(--space-row, 0.75rem) 1rem;
     min-height: var(--height-row, 40px);
-  }
-  /* The provider logo slot: mocked as the initial in a rounded tile, the same
-     placeholder the in-chat picker uses; the real @lobehub/icons set drops in
-     here. The tile stays the fallback for a provider with no brand asset. */
-  .plogo {
-    flex-shrink: 0;
-    width: 1.5rem;
-    height: 1.5rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-chip);
-    background: color-mix(in srgb, var(--foreground) 12%, transparent);
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: color-mix(in srgb, var(--foreground) 70%, transparent);
   }
   .pmeta {
     flex: 1;
