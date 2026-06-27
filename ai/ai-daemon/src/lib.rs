@@ -23,6 +23,7 @@ pub mod graph_adapter;
 pub mod mcp_discovery;
 pub mod peer;
 pub mod live_provider;
+pub mod provider_state;
 pub mod registry;
 pub mod selection;
 pub mod service;

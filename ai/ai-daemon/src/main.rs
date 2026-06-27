@@ -506,11 +506,18 @@ impl AiInterface {
             return empty();
         };
         // Augment each catalog view with the manage-state the proxy does not own:
-        // `enabled` (default on; the disabled set is wired with the setter) and
+        // `enabled` (from the daemon-owned disabled set; absent = enabled) and
         // `status` (untested until a connection test runs).
+        let disabled = arlen_ai_daemon::provider_state::state_path()
+            .map(|p| arlen_ai_daemon::provider_state::load_disabled(&p))
+            .unwrap_or_default();
         for view in &mut views {
             if let Some(obj) = view.as_object_mut() {
-                obj.insert("enabled".to_string(), serde_json::Value::Bool(true));
+                let id = obj.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                obj.insert(
+                    "enabled".to_string(),
+                    serde_json::Value::Bool(!disabled.contains(id)),
+                );
                 obj.insert(
                     "status".to_string(),
                     serde_json::Value::String("untested".to_string()),
@@ -518,6 +525,26 @@ impl AiInterface {
             }
         }
         serde_json::to_string(&views).unwrap_or_else(|_| empty())
+    }
+
+    /// Enable or disable a catalogued provider in the AI-providers manager. A
+    /// disabled provider is configured-but-dormant: it stays catalogued (and
+    /// `ai_providers_list` still lists it, `enabled: false`) but is not offered
+    /// for selection. Persisted in the daemon-owned disabled set (not `ai.toml`,
+    /// which Settings owns for the default/ranking), so there is no co-ownership.
+    /// Returns `ok`, or `error: <reason>` on a persistence failure. Idempotent.
+    #[zbus(name = "ai_provider_set_enabled")]
+    async fn ai_provider_set_enabled(&self, id: &str, enabled: bool) -> String {
+        if id.is_empty() {
+            return "error: provider id must be non-empty".to_string();
+        }
+        let Some(path) = arlen_ai_daemon::provider_state::state_path() else {
+            return "error: no state directory (set XDG_STATE_HOME or HOME)".to_string();
+        };
+        match arlen_ai_daemon::provider_state::set_enabled(&path, id, enabled) {
+            Ok(()) => "ok".to_string(),
+            Err(e) => format!("error: {e}"),
+        }
     }
 
     /// Run System Explanation Mode (Foundation §5.8): return a
