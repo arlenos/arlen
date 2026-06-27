@@ -8,6 +8,7 @@
 
 mod activity;
 mod ai_client;
+mod ai_manage;
 mod behaviours;
 mod capability;
 mod mention;
@@ -39,6 +40,13 @@ pub fn run() {
             ai_client::ai_explain,
             activity::ai_activity_recent,
             activity::ai_reads_recent,
+            ai_manage::ai_models_list,
+            ai_manage::ai_active,
+            ai_manage::ai_set_active,
+            ai_manage::ai_usage,
+            ai_manage::ai_providers_list,
+            ai_manage::ai_provider_set_enabled,
+            ai_manage::action_state,
             capability::ai_capability,
             behaviours::ai_behaviours,
             notices::ai_notices,
