@@ -1,0 +1,7 @@
+# Starting permission profile for Boatswain (an Elgato Stream Deck controller).
+# It drives a USB device, which is granted out-of-band, not through this schema;
+# it needs no filesystem, network, or Knowledge Graph access. Identity only - the
+# maximally fail-closed baseline.
+[info]
+app_id = "com.feaneron.Boatswain"
+tier = "third-party"
