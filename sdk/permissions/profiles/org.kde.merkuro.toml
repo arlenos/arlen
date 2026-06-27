@@ -1,0 +1,9 @@
+# Starting permission profile for KDE Merkuro (a calendar and contacts app).
+# Syncs calendars and contacts over the network (CalDAV/CardDAV) by function;
+# its data lives in its own store. No Knowledge Graph access.
+[info]
+app_id = "org.kde.merkuro"
+tier = "third-party"
+
+[network]
+allow_all = true
