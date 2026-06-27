@@ -1,0 +1,6 @@
+# Starting permission profile for Drawing (a raster image editor). It opens and
+# saves images through the file portal, so it needs no standing grant: no
+# network, no user files and no Knowledge Graph access.
+[info]
+app_id = "io.github.maoschanz.drawing"
+tier = "third-party"
