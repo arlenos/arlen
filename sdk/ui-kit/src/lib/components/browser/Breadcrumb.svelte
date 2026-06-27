@@ -8,24 +8,33 @@
   /// squeezing toward one letter.
   import { tick } from "svelte";
   import { ChevronRight } from "@lucide/svelte";
-  import { breadcrumb } from "./breadcrumb";
+  import { breadcrumb, isVirtualLocation, locationCrumbs } from "./breadcrumb";
   import type { Crumb } from "./types";
 
   let {
     path,
     homePath,
+    locationLabel,
     editing = $bindable(false),
     onnavigate,
   }: {
     path: string;
     /// Collapse this prefix into a single "Home" crumb.
     homePath?: string;
+    /// For a virtual location (recent/trash/project:/search:) the host's
+    /// translated name; rendered as one non-navigable NAME crumb instead of a
+    /// mangled path hierarchy. The kit owns the path-vs-name structure, the
+    /// host owns the label text (so the kit stays i18n-neutral).
+    locationLabel?: string;
     /// True while the editable field shows (Ctrl+L); bindable.
     editing?: boolean;
     onnavigate?: (path: string) => void;
   } = $props();
 
   const crumbs = $derived.by(() => {
+    if (isVirtualLocation(path)) {
+      return locationCrumbs(path, locationLabel ?? path);
+    }
     const all = breadcrumb(path);
     if (homePath && (path === homePath || path.startsWith(homePath + "/"))) {
       const homeCrumbs = breadcrumb(homePath);

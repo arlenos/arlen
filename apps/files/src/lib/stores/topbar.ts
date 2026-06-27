@@ -10,10 +10,16 @@
 import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { toolbar, type BreadcrumbItem } from "@arlen/tauri-plugin-shell";
-import { breadcrumb, type BrowserState } from "@arlen/ui-kit/components/browser";
+import {
+  breadcrumb,
+  isVirtualLocation,
+  locationCrumbs,
+  type BrowserState,
+} from "@arlen/ui-kit/components/browser";
 import { tauriAvailable } from "$lib/tauri";
 import { focusedController } from "$lib/stores/panes";
-import { homePath } from "$lib/stores/places";
+import { homePath, placeGroups } from "$lib/stores/places";
+import { locationLabel } from "$lib/locations";
 
 /// True when the app runs under the Arlen shell: the topbar carries
 /// the chrome and the local toolbar hides.
@@ -26,6 +32,11 @@ const NAV_PREFIX = "nav:";
 let started = false;
 
 function crumbItems(path: string): BreadcrumbItem[] {
+  // A virtual location becomes one non-navigable name crumb (the host label).
+  if (isVirtualLocation(path)) {
+    const crumbs = locationCrumbs(path, locationLabel(path, get(placeGroups)));
+    return crumbs.map((c) => ({ label: c.name, action: NAV_PREFIX + c.path }));
+  }
   const home = get(homePath);
   let crumbs = breadcrumb(path);
   if (home && (path === home || path.startsWith(home + "/"))) {

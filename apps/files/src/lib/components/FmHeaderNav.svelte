@@ -8,6 +8,8 @@
   import { ArrowLeft, ArrowRight } from "lucide-svelte";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { Breadcrumb, type BrowserState } from "@arlen/ui-kit/components/browser";
+  import { placeGroups } from "$lib/stores/places";
+  import { locationLabel } from "$lib/locations";
 
   let {
     controller,
@@ -26,6 +28,8 @@
   const path = $derived(controller.path);
   const canBack = $derived(controller.canBack);
   const canForward = $derived(controller.canForward);
+  // At a virtual location the breadcrumb renders this as the name crumb.
+  const label = $derived(locationLabel($path, $placeGroups));
 </script>
 
 <div class="hn-buttons">
@@ -52,6 +56,7 @@
     <Breadcrumb
       path={$path}
       {homePath}
+      locationLabel={label}
       bind:editing={pathEditing}
       onnavigate={(p) => controller.navigate(p)}
     />
