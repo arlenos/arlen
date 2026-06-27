@@ -44,6 +44,7 @@ pub fn run() {
             ai_manage::ai_active,
             ai_manage::ai_set_active,
             ai_manage::ai_set_action_mode,
+            ai_manage::ai_set_autonomous_app,
             ai_manage::ai_usage,
             ai_manage::ai_providers_list,
             ai_manage::ai_provider_set_enabled,
