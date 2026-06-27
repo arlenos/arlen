@@ -277,6 +277,35 @@ integration-nightly:
     echo "== IT-1 nightly exit ${status} (report ${report}) ==" | tee -a "$report"
     exit "${status}"
 
+# Executor go-live REHEARSAL (executor-live-golive-plan.md P6): build the daemon
+# set and run ONLY the live-executor scenarios against a DISPOSABLE graph - write
+# a FILE_PART_OF, prove op-id idempotency (re-emit -> still one edge), and undo it
+# via compensate. Each scenario seeds its OWN ephemeral ai.toml with
+# `executor_live = true`; production's `~/.config/arlen/ai.toml` is never touched.
+# This is the green-light Tim watches BEFORE he flips production executor_live
+# (his conscious step, not this recipe). Captures a timestamped report and exits
+# with the run's status. FUSE-host-gated (the timeline mount) + the undo scenario
+# needs `dbus-daemon` on PATH; scenarios self-skip when a binary is missing.
+go-live-rehearsal:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    report_dir="${XDG_STATE_HOME:-$HOME/.local/state}/arlen/integration"
+    mkdir -p "$report_dir"
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    report="$report_dir/golive-$stamp.log"
+    echo "go-live rehearsal $stamp (host $(uname -n))" | tee "$report"
+    for c in daemons/event-bus daemons/knowledge daemons/audit-daemon ai; do
+        echo "== build $c ==" | tee -a "$report"
+        cargo build --manifest-path "{{ROOT}}/$c/Cargo.toml" 2>&1 | tee -a "$report"
+    done
+    echo "== run the live-executor rehearsal (#[ignore]d, single-threaded) ==" | tee -a "$report"
+    cargo test --manifest-path "{{justfile_directory()}}/integration/Cargo.toml" \
+        --test integration_backend_smoke -- --ignored --test-threads=1 the_live_executor 2>&1 | tee -a "$report"
+    status="${PIPESTATUS[0]}"
+    echo "== rehearsal exit ${status} (report ${report}) ==" | tee -a "$report"
+    echo "NB a GREEN run does NOT flip production; executor_live in ~/.config/arlen/ai.toml stays Tim's manual step."
+    exit "${status}"
+
 # Born-translatable gate (i18n-plan.md I18N-R2): fail on a hardcoded user-facing
 # string in the Svelte frontends that is not in the committed baseline. Advisory
 # today (run on demand / pre-commit); the blocking CI gate is flipped on once the
