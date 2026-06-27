@@ -1,0 +1,5 @@
+# Starting permission profile for Ultimate Rubik (a local Rubik's cube app). It
+# runs self-contained; no network, no user files and no Knowledge Graph access.
+[info]
+app_id = "io.github.nokse22.ultimaterubik"
+tier = "third-party"
