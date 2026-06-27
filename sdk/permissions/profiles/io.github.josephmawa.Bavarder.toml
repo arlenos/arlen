@@ -1,0 +1,9 @@
+# Starting permission profile for Bavarder (an AI chat client). Talking to AI
+# providers over the network is its function, so it gets network; it keeps no
+# local files by default and has no Knowledge Graph access.
+[info]
+app_id = "io.github.josephmawa.Bavarder"
+tier = "third-party"
+
+[network]
+allow_all = true
