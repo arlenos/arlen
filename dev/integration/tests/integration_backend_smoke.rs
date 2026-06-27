@@ -1274,14 +1274,21 @@ async fn the_live_executor_undo_retracts_the_edge() {
 
     let behaviours = arlen_integration::repo_path("ai/ai-agent/behaviours");
     let behaviours = behaviours.to_string_lossy().into_owned();
+    // Capture the agent's log (outside the temp root, survives teardown) so a
+    // `completed_actions` timeout below can dump WHY no receipt surfaced - the
+    // agent logs the live-executor outcome distinctly (wrote / unknown / failed),
+    // which is exactly what distinguishes a retained Written from an unretained
+    // Indeterminate (the A2 commit-visibility race).
+    let agent_log = std::env::temp_dir().join(format!("arlen-undo-agent-{}.log", std::process::id()));
     stack
-        .spawn(
+        .spawn_logged(
             "ai",
             "arlen-ai-agent",
             &[
                 ("ARLEN_AGENT_BEHAVIOURS", behaviours.as_str()),
                 ("DBUS_SESSION_BUS_ADDRESS", bus.as_str()),
             ],
+            &agent_log,
         )
         .expect("spawn ai-agent");
 
@@ -1342,10 +1349,18 @@ async fn the_live_executor_undo_retracts_the_edge() {
                 }
             }
         }
-        assert!(
-            Instant::now() < corr_deadline,
-            "no completed action surfaced over AIAgent1 for the undo within 15s"
-        );
+        if Instant::now() >= corr_deadline {
+            // Dump the agent log tail so the failure is self-diagnosing: it shows
+            // the live-executor outcome line ("wrote the relation" => retained, vs
+            // "outcome is unknown" => Indeterminate and NOT retained, the A2 race).
+            let log = std::fs::read_to_string(&agent_log).unwrap_or_default();
+            let tail: Vec<&str> = log.lines().rev().take(50).collect();
+            let tail = tail.into_iter().rev().collect::<Vec<_>>().join("\n");
+            panic!(
+                "no completed action surfaced over AIAgent1 for the undo within 15s; \
+                 agent log tail:\n{tail}"
+            );
+        }
         tokio::time::sleep(Duration::from_millis(500)).await;
     };
 
