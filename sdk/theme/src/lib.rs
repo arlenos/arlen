@@ -53,6 +53,7 @@ pub mod css;
 mod file;
 pub mod gtk;
 pub mod qt;
+pub mod sounds;
 pub mod terminal;
 mod watcher;
 
