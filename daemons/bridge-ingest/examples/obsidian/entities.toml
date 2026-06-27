@@ -1,0 +1,34 @@
+# Obsidian vault bridge - the entity schema (foreign-app-bridges.md).
+#
+# Registers the one type the floor writes: md.obsidian.Note, keyed by the note's
+# vault-relative path (the upsert external key, so a re-sync strengthens a note
+# rather than duplicating it). The daemon loads this from /var/lib/arlen/schemas/
+# at startup and validates every md.obsidian.* entity-write against it; without
+# it the bridge's upserts are refused as an unregistered type. The bridge.toml
+# mapping projects the note's title, merged tag list and the raw [[wikilink]]
+# target names it references into these fields. Resolved LINKS_TO edges are the
+# richer plugin tier's value-add, not the floor's (see bridge.toml).
+
+[meta]
+schema_version = 1
+namespace = "md.obsidian"
+description = "Obsidian vault markdown notes ingested by the bridge floor."
+
+[entities.Note]
+version = 1
+description = "A markdown note in an Obsidian vault, keyed by its vault-relative path."
+icon = "file-text"
+
+# The display title: a frontmatter `title`, else the note's filename stem.
+[entities.Note.fields.title]
+type = "text"
+required = true
+
+# The note's merged tag list (frontmatter `tags` + inline `#tags`).
+[entities.Note.fields.tags]
+type = "string[]"
+
+# The raw [[wikilink]] target names the note references, unresolved. The plugin
+# tier resolves these to LINKS_TO edges against Obsidian's whole-vault index.
+[entities.Note.fields.links]
+type = "string[]"

@@ -324,6 +324,23 @@ cardinality = "many-to-one"
     }
 
     #[test]
+    fn the_shipped_obsidian_bridge_schema_parses() {
+        // The Obsidian bridge ships this to /var/lib/arlen/schemas/; the daemon
+        // validates every md.obsidian.* entity-write against it. Parse the SHIPPED
+        // file with the real parser so a malformed bridge schema fails CI here,
+        // not at the user's first vault sync (foreign-app-bridges.md).
+        const OBSIDIAN: &str =
+            include_str!("../../../bridge-ingest/examples/obsidian/entities.toml");
+        let schema = SchemaFile::parse(OBSIDIAN).expect("obsidian entities.toml parses");
+        assert_eq!(schema.meta.namespace, "md.obsidian");
+        let note = &schema.entities["Note"];
+        assert!(note.fields["title"].required);
+        assert_eq!(note.fields["title"].field_type, FieldType::Text);
+        assert_eq!(note.fields["tags"].field_type, FieldType::StringList);
+        assert_eq!(note.fields["links"].field_type, FieldType::StringList);
+    }
+
+    #[test]
     fn test_lifecycle_config() {
         let schema = SchemaFile::parse(SAMPLE_SCHEMA).unwrap();
         let card = &schema.entities["Card"];
