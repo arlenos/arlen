@@ -1,0 +1,9 @@
+# Starting permission profile for Quick Lookup (a dictionary that queries an
+# online word source). Network is its function; no user files and no Knowledge
+# Graph access.
+[info]
+app_id = "io.github.lainsce.Quick-Lookup"
+tier = "third-party"
+
+[network]
+allow_all = true
