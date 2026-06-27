@@ -13,7 +13,6 @@
 //! and the Anthropic typed-event SSE parser (no `[DONE]`). The mapping is
 //! cross-checked against the Anthropic Messages API and the `graniet/llm` + `rig`
 //! adapters (MIT, per `copy-policy.md`).
-#![allow(dead_code)] // wired into the forward path by the dispatch slice that follows
 
 use serde_json::{json, Map, Value};
 
@@ -136,6 +135,28 @@ pub fn anthropic_response_to_openai(resp: &Value) -> Value {
             "total_tokens": input + output,
         },
     })
+}
+
+/// Transcode an OpenAI chat-completions request body (a JSON string) into an
+/// Anthropic `/v1/messages` body. Returns `None` if the input is not valid JSON,
+/// so the proxy fails closed rather than POST a malformed body upstream.
+pub fn request_body_openai_to_anthropic(body: &str) -> Option<String> {
+    let req: Value = serde_json::from_str(body).ok()?;
+    serde_json::to_string(&openai_request_to_anthropic(&req)).ok()
+}
+
+/// Transcode an Anthropic `/v1/messages` SUCCESS response body (a JSON string)
+/// back into an OpenAI chat-completions body. Best-effort: returns the body
+/// unchanged when it is not valid JSON (an upstream error page or non-JSON), so
+/// a failure surfaces to the caller verbatim instead of as a fabricated empty
+/// completion. The forward path only calls this for a 2xx upstream status; a
+/// non-2xx Anthropic error body is passed through untouched by the caller.
+pub fn response_body_anthropic_to_openai(body: &str) -> String {
+    match serde_json::from_str::<Value>(body) {
+        Ok(resp) => serde_json::to_string(&anthropic_response_to_openai(&resp))
+            .unwrap_or_else(|_| body.to_string()),
+        Err(_) => body.to_string(),
+    }
 }
 
 /// Extract plain text from an OpenAI message `content`: a string, or the

@@ -69,6 +69,14 @@ pub enum ProxyError {
         /// Provider name from the request.
         provider: String,
     },
+    /// The request body could not be transcoded into the provider's native
+    /// wire format (it was not valid OpenAI chat-completions JSON), so the
+    /// call was refused before a malformed body could leave the host.
+    #[error("provider {provider} request could not be transcoded")]
+    TranscodeFailed {
+        /// Provider name from the request.
+        provider: String,
+    },
 }
 
 impl ProxyError {
@@ -86,6 +94,7 @@ impl ProxyError {
             ProxyError::AuditUnavailable => "audit-unavailable",
             ProxyError::Upstream(_) => "upstream-error",
             ProxyError::WireFormatUnsupported { .. } => "wire-format-unsupported",
+            ProxyError::TranscodeFailed { .. } => "transcode-failed",
         }
     }
 }
@@ -291,26 +300,56 @@ impl ProxyService {
         let endpoint_url = entry.endpoint_url.clone();
         let wire_format = entry.wire_format;
 
-        // 2b. Dispatch on the catalogued wire format. Today only the OpenAI
-        //     chat-completions shape is forwarded verbatim; a provider catalogued
-        //     as Anthropic/Gemini is refused fail-closed until its transcoder
-        //     lands (rather than POST an OpenAI-shaped body to a native endpoint
-        //     and leak a malformed request upstream). This is the dispatch seam
-        //     the transcoder slice fills.
-        if wire_format != WireFormat::Openai {
-            let err = ProxyError::WireFormatUnsupported {
-                provider: req.provider_name.clone(),
-            };
-            self.audit_best_effort(
-                &req,
-                None,
-                AuditOutcome::RejectedByPolicy {
-                    code: err.code().to_string(),
-                },
-            )
-            .await;
-            return Err(err);
-        }
+        // 2b. Dispatch on the catalogued wire format. The OpenAI chat-completions
+        //     shape is forwarded verbatim; an Anthropic entry is transcoded both
+        //     ways around the POST (request before, response after on a 2xx);
+        //     Gemini has no transcoder yet, so it is refused fail-closed rather
+        //     than POST an OpenAI-shaped body to a native endpoint and leak a
+        //     malformed request upstream. `transcode_anthropic` carries the
+        //     decision down to the POST below.
+        let transcode_anthropic = match wire_format {
+            WireFormat::Openai => false,
+            WireFormat::Anthropic => true,
+            WireFormat::Gemini => {
+                let err = ProxyError::WireFormatUnsupported {
+                    provider: req.provider_name.clone(),
+                };
+                self.audit_best_effort(
+                    &req,
+                    None,
+                    AuditOutcome::RejectedByPolicy {
+                        code: err.code().to_string(),
+                    },
+                )
+                .await;
+                return Err(err);
+            }
+        };
+
+        // Transcode the request body before it leaves the host. A body that is
+        // not valid OpenAI chat-completions JSON cannot be reshaped, so the call
+        // is refused fail-closed (no malformed body is POSTed upstream).
+        let body_to_post = if transcode_anthropic {
+            match crate::transcode::request_body_openai_to_anthropic(&req.body_json) {
+                Some(body) => body,
+                None => {
+                    let err = ProxyError::TranscodeFailed {
+                        provider: req.provider_name.clone(),
+                    };
+                    self.audit_best_effort(
+                        &req,
+                        None,
+                        AuditOutcome::RejectedByPolicy {
+                            code: err.code().to_string(),
+                        },
+                    )
+                    .await;
+                    return Err(err);
+                }
+            }
+        } else {
+            req.body_json.clone()
+        };
 
         // 3. Allowlist on the catalogued URL (defence in depth).
         let host = match self.allowlist.check(&endpoint_url) {
@@ -361,7 +400,7 @@ impl ProxyService {
         // 6. Forward. The status entry is best-effort: the call has
         //    already happened, so a ledger hiccup here does not undo
         //    it; the pre-forward entry already satisfies §8.4.6.
-        match self.forwarder.post(&endpoint_url, &req.body_json).await {
+        match self.forwarder.post(&endpoint_url, &body_to_post).await {
             Ok(result) => {
                 self.audit_best_effort(
                     &req,
@@ -371,9 +410,18 @@ impl ProxyService {
                     },
                 )
                 .await;
+                // Transcode the response back to the OpenAI shape only for a 2xx
+                // Anthropic completion; a non-2xx error body is passed through
+                // verbatim so the caller sees the real upstream error, not a
+                // fabricated empty completion.
+                let body = if transcode_anthropic && (200..300).contains(&result.status) {
+                    crate::transcode::response_body_anthropic_to_openai(&result.body)
+                } else {
+                    result.body
+                };
                 Ok(ForwardOutcome {
                     upstream_status: result.status,
-                    body: result.body,
+                    body,
                 })
             }
             Err(err) => {
@@ -502,30 +550,84 @@ mod tests {
         assert_eq!(records[1].structural.outcome, "forwarded-200");
     }
 
-    #[tokio::test]
-    async fn a_non_openai_wire_format_is_refused_until_its_transcoder() {
+    /// Build a catalog with a single cloud provider under the given wire format.
+    fn catalog_with(name: &str, url: &str, wire_format: WireFormat) -> ProviderCatalog {
         use std::collections::HashMap;
-        let forwarder = Arc::new(StubForwarder::new(vec![]));
-        let sink = Arc::new(CollectingAuditSink::new());
         let mut entries = HashMap::new();
         entries.insert(
-            "anthropic".to_string(),
+            name.to_string(),
             crate::catalog::CatalogEntry {
-                endpoint_url: "https://api.anthropic.com/v1/messages".to_string(),
-                backend: "anthropic".to_string(),
-                wire_format: WireFormat::Anthropic,
+                endpoint_url: url.to_string(),
+                backend: name.to_string(),
+                wire_format,
                 auth_scheme: crate::catalog::AuthScheme::XApiKey,
                 url_template: None,
-                credential_ref: Some("conn:anthropic".to_string()),
+                credential_ref: Some(format!("conn:{name}")),
                 models_endpoint: None,
                 display_name: None,
                 logo_id: None,
                 builtin: false,
             },
         );
+        ProviderCatalog::new(entries)
+    }
+
+    #[tokio::test]
+    async fn an_anthropic_provider_is_transcoded_both_ways() {
+        // The upstream returns a native Anthropic completion; the proxy must POST
+        // the request in Anthropic shape and hand the caller an OpenAI-shaped
+        // response back.
+        let forwarder = Arc::new(StubForwarder::new(vec![Ok(ForwardResult {
+            status: 200,
+            body: r#"{"id":"msg_1","type":"message","role":"assistant","model":"claude-x","content":[{"type":"text","text":"hello"}],"stop_reason":"end_turn","usage":{"input_tokens":3,"output_tokens":1}}"#.to_string(),
+        })]));
+        let sink = Arc::new(CollectingAuditSink::new());
         let svc = ProxyService::new(
             Allowlist::default_arlen(),
-            ProviderCatalog::new(entries),
+            catalog_with("anthropic", "https://api.anthropic.com/v1/messages", WireFormat::Anthropic),
+            CallerAllowlist::default_arlen(),
+            forwarder.clone() as Arc<dyn Forwarder>,
+            sink.clone() as Arc<dyn AuditSink>,
+        );
+
+        let out = svc
+            .forward(
+                &ai_daemon_caller(),
+                ForwardRequest {
+                    provider_name: "anthropic".to_string(),
+                    body_json: r#"{"model":"claude-x","messages":[{"role":"system","content":"be terse"},{"role":"user","content":"hi"}]}"#.to_string(),
+                    audit_token: "tok-1".to_string(),
+                },
+            )
+            .await
+            .expect("an anthropic provider forwards transcoded");
+        assert_eq!(out.upstream_status, 200);
+
+        // The posted body is the Anthropic request shape: system lifted to the
+        // top level, max_tokens defaulted in, the user turn under `messages`.
+        let calls = forwarder.calls.lock().await;
+        assert_eq!(calls.len(), 1);
+        let posted: serde_json::Value = serde_json::from_str(&calls[0].1).expect("posted JSON");
+        assert_eq!(posted["system"], serde_json::json!("be terse"));
+        assert!(posted["max_tokens"].is_number());
+        assert_eq!(posted["messages"][0]["role"], serde_json::json!("user"));
+
+        // The returned body is the OpenAI completion shape.
+        let got: serde_json::Value = serde_json::from_str(&out.body).expect("response JSON");
+        assert_eq!(got["object"], serde_json::json!("chat.completion"));
+        assert_eq!(got["choices"][0]["message"]["content"], serde_json::json!("hello"));
+        assert_eq!(got["choices"][0]["finish_reason"], serde_json::json!("stop"));
+    }
+
+    #[tokio::test]
+    async fn a_malformed_request_body_is_refused_before_forwarding() {
+        // A body that is not valid OpenAI JSON cannot be transcoded; the proxy
+        // fails closed rather than POST garbage to the native endpoint.
+        let forwarder = Arc::new(StubForwarder::new(vec![]));
+        let sink = Arc::new(CollectingAuditSink::new());
+        let svc = ProxyService::new(
+            Allowlist::default_arlen(),
+            catalog_with("anthropic", "https://api.anthropic.com/v1/messages", WireFormat::Anthropic),
             CallerAllowlist::default_arlen(),
             forwarder.clone() as Arc<dyn Forwarder>,
             sink.clone() as Arc<dyn AuditSink>,
@@ -536,14 +638,41 @@ mod tests {
                 &ai_daemon_caller(),
                 ForwardRequest {
                     provider_name: "anthropic".to_string(),
+                    body_json: "not json".to_string(),
+                    audit_token: "tok-1".to_string(),
+                },
+            )
+            .await
+            .expect_err("a malformed body is refused");
+        assert_eq!(err.code(), "transcode-failed");
+        assert!(forwarder.calls.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_gemini_provider_is_refused_until_its_transcoder() {
+        // Gemini has no transcoder yet, so it stays fail-closed.
+        let forwarder = Arc::new(StubForwarder::new(vec![]));
+        let sink = Arc::new(CollectingAuditSink::new());
+        let svc = ProxyService::new(
+            Allowlist::default_arlen(),
+            catalog_with("gemini", "https://generativelanguage.googleapis.com/v1/x", WireFormat::Gemini),
+            CallerAllowlist::default_arlen(),
+            forwarder.clone() as Arc<dyn Forwarder>,
+            sink.clone() as Arc<dyn AuditSink>,
+        );
+
+        let err = svc
+            .forward(
+                &ai_daemon_caller(),
+                ForwardRequest {
+                    provider_name: "gemini".to_string(),
                     body_json: "{}".to_string(),
                     audit_token: "tok-1".to_string(),
                 },
             )
             .await
-            .expect_err("a non-OpenAI wire format is refused until its transcoder");
+            .expect_err("gemini is refused until its transcoder");
         assert_eq!(err.code(), "wire-format-unsupported");
-        // Fail-closed: the guard fires before the forward, so nothing left the host.
         assert!(forwarder.calls.lock().await.is_empty());
     }
 
