@@ -12,8 +12,18 @@ use arlen_viewers_core::audio::AudioInfo;
 use symphonia::core::codecs::CODEC_TYPE_NULL;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
-use symphonia::core::meta::MetadataOptions;
+use symphonia::core::meta::{MetadataOptions, MetadataRevision, StandardTagKey};
 use symphonia::core::probe::Hint;
+
+/// Read a standard tag (title/artist) from a metadata revision, trimmed and
+/// non-empty (an empty or whitespace tag is treated as absent).
+fn read_tag(rev: &MetadataRevision, key: StandardTagKey) -> Option<String> {
+    rev.tags()
+        .iter()
+        .find(|t| t.std_key == Some(key))
+        .map(|t| t.value.to_string().trim().to_string())
+        .filter(|s| !s.is_empty())
+}
 
 /// Probe encoded audio bytes for its [`AudioInfo`]. Returns a human-readable
 /// error on an unsupported/corrupt container or one with no decodable track.
@@ -22,7 +32,8 @@ pub fn probe_audio(bytes: &[u8]) -> Result<AudioInfo, String> {
     let probed = symphonia::default::get_probe()
         .format(&Hint::new(), mss, &FormatOptions::default(), &MetadataOptions::default())
         .map_err(|e| format!("probe: {e}"))?;
-    let format = probed.format;
+    let mut format = probed.format;
+    let mut probed_meta = probed.metadata;
     // The first track that carries a real codec (skip a null/metadata track).
     let track = format
         .tracks()
@@ -43,7 +54,24 @@ pub fn probe_audio(bytes: &[u8]) -> Result<AudioInfo, String> {
         _ => None,
     };
 
-    Ok(AudioInfo { codec, sample_rate, channels, duration_ms })
+    // The `p`/`track` borrow of `format` ends here, so the metadata read can take
+    // `&mut format`. Tags can sit in the format's own revision (Vorbis comments in
+    // FLAC/OGG, RIFF INFO in WAV) or the probe log (ID3 ahead of an MP3 stream);
+    // check the format first, fall back to the probe metadata.
+    let mut title = None;
+    let mut artist = None;
+    if let Some(rev) = format.metadata().current() {
+        title = read_tag(rev, StandardTagKey::TrackTitle);
+        artist = read_tag(rev, StandardTagKey::Artist);
+    }
+    if title.is_none() || artist.is_none() {
+        if let Some(rev) = probed_meta.get().as_ref().and_then(|m| m.current()) {
+            title = title.or_else(|| read_tag(rev, StandardTagKey::TrackTitle));
+            artist = artist.or_else(|| read_tag(rev, StandardTagKey::Artist));
+        }
+    }
+
+    Ok(AudioInfo { codec, sample_rate, channels, duration_ms, title, artist })
 }
 
 #[cfg(test)]

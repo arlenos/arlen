@@ -19,7 +19,14 @@
   let framed = $derived(!!page.url.searchParams.get("w") && !!page.url.searchParams.get("h"));
 
   type Raster = { width: number; height: number; rgba: number[] };
-  type AudioInfo = { codec: string; sample_rate: number; channels: number; duration_ms: number | null };
+  type AudioInfo = {
+    codec: string;
+    sample_rate: number;
+    channels: number;
+    duration_ms: number | null;
+    title: string | null;
+    artist: string | null;
+  };
   type Loaded =
     | { kind: "image"; file: ImageMock; raster: Raster }
     | { kind: "audio"; file: AudioMock };
@@ -53,13 +60,16 @@
         loaded = {
           kind: "audio",
           file: {
-            title: name,
-            artist: null,
+            // Real tags from the probe, falling back to the file name for an
+            // untagged file.
+            title: info.title ?? name,
+            artist: info.artist,
             codec: info.codec,
             durationSec: (info.duration_ms ?? 0) / 1000,
-            // The probe returns metadata only; a real waveform needs a decode pass
-            // (a backend follow-up). The peaks stand in until then; codec/duration
-            // are real.
+            // The probe returns metadata + tags; a real waveform needs a separate
+            // decode pass (the next backend increment, append-extensible on the
+            // same frame). The peaks stand in until then; codec/duration/tags are
+            // real.
             peaks: mockPeaks(),
             index: 1,
             total: 1,
