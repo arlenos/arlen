@@ -11,13 +11,11 @@
   import { onMount } from "svelte";
   import { writable } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import { Plus } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import AddProviderDialog from "$lib/components/AddProviderDialog.svelte";
 
   /// One provider as the catalogue + the broker report it. `configured` means
   /// credentials exist (or none are needed, for a local provider); an enabled
@@ -81,8 +79,6 @@
     if (p.kind === "local") return "Local, no egress";
     return p.region ? `Cloud, ${p.region}` : "Cloud, egress audited";
   }
-
-  let addOpen = $state(false);
 </script>
 
 <Page
@@ -95,17 +91,11 @@
         {@render row(p)}
       {/each}
       {#if loaded && $providers.length === 0}
-        <p class="empty">No providers are set up yet. Add one to get started.</p>
+        <p class="empty">No providers are set up yet.</p>
       {/if}
-      <button type="button" class="add-row" onclick={() => (addOpen = true)}>
-        <span class="add-logo" aria-hidden="true"><Plus size={14} strokeWidth={2} /></span>
-        <span class="add-label">Add provider</span>
-      </button>
     </Group>
   </SectionGrid>
 </Page>
-
-<AddProviderDialog open={addOpen} onClose={() => (addOpen = false)} />
 
 {#snippet row(p: Provider)}
   <div class="prow">
@@ -209,35 +199,5 @@
      already-connected provider) stays a quiet outline. */
   :global(.pbtn) {
     min-width: 5.5rem;
-  }
-  /* The add-provider escape hatch reads as a quiet row, not a loud button. */
-  .add-row {
-    display: flex;
-    align-items: center;
-    gap: 0.875rem;
-    width: 100%;
-    padding: var(--space-row, 0.75rem) 1rem;
-    min-height: var(--height-row, 40px);
-    border: none;
-    background: transparent;
-    color: color-mix(in srgb, var(--foreground) 70%, transparent);
-    transition: color var(--duration-fast) var(--ease-out);
-  }
-  .add-row:hover {
-    color: var(--foreground);
-  }
-  .add-logo {
-    flex-shrink: 0;
-    width: 1.5rem;
-    height: 1.5rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-chip);
-    border: 1px dashed color-mix(in srgb, var(--foreground) 25%, transparent);
-  }
-  .add-label {
-    font-size: 0.8125rem;
-    font-weight: 500;
   }
 </style>

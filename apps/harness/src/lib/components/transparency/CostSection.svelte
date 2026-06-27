@@ -1,18 +1,25 @@
 <script lang="ts">
   /// Cost: the honest answer to "what does it cost." Local-first is the
   /// default: a provider on your own machine has no per-token cost, and
-  /// the surface says so plainly. A cloud provider shows the running
-  /// token count once that accounting lands; until then it says "not
-  /// measured yet", never a fake zero. Rendering only.
+  /// the surface says so plainly. A cloud provider shows the running token
+  /// count from `ai_usage`. Rendering only.
   import type { Capability } from "$lib/capability";
   import { isLocalProvider, providerDisplay } from "$lib/transparency";
   import SectionState from "./SectionState.svelte";
 
+  /// Cumulative token usage from `ai_usage`, or null while loading / on a
+  /// failed read.
+  export interface Usage {
+    totalTokens: number;
+  }
+
   let {
     capability,
+    usage,
     loaded,
   }: {
     capability: Capability | null;
+    usage: Usage | null;
     loaded: boolean;
   } = $props();
 
@@ -23,6 +30,11 @@
   const providerSuffix = $derived.by(() => {
     const name = providerDisplay(capability?.provider);
     return name ? ` (${name})` : "";
+  });
+  // A grouped token count, e.g. "12,340 tokens".
+  const tokenLine = $derived.by(() => {
+    if (usage === null) return null;
+    return `${usage.totalTokens.toLocaleString()} ${usage.totalTokens === 1 ? "token" : "tokens"} used so far`;
   });
 </script>
 
@@ -35,15 +47,19 @@
 {:else if local}
   <div class="cost">
     <p class="line">This assistant runs on your own computer.</p>
-    <p class="sub">There is no usage cost.</p>
+    <p class="sub">There is no usage cost{tokenLine ? `. ${tokenLine}.` : "."}</p>
   </div>
 {:else}
   <div class="cost">
     <p class="line">This assistant uses a cloud service{providerSuffix}.</p>
-    <p class="sub">
-      <span class="tag">Not measured yet</span>
-      Cloud use has a cost. Arlen does not count it yet, so nothing is shown here.
-    </p>
+    {#if tokenLine}
+      <p class="sub">{tokenLine}. Cloud use has a cost; check your provider for the rate.</p>
+    {:else}
+      <p class="sub">
+        <span class="tag">Not measured yet</span>
+        Cloud use has a cost. The running count is not available right now.
+      </p>
+    {/if}
   </div>
 {/if}
 
