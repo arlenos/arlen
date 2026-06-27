@@ -323,4 +323,35 @@ mod tests {
         assert!(configured.is_configured());
         assert_eq!(configured.kind(), ProviderKind::Cloud);
     }
+
+    #[test]
+    fn provider_view_serializes_to_the_manager_camelcase_shape() {
+        // arlen-ui's `invoke` consumer reads these exact keys; a field rename
+        // would pass every value test above yet silently break the manager UI.
+        // Pin the wire shape: the key set, and that `kind` is the lowercase tag.
+        let view = ProviderView {
+            id: "anthropic".to_string(),
+            name: "Anthropic".to_string(),
+            kind: ProviderKind::Cloud,
+            configured: false,
+            builtin: true,
+        };
+        let v = serde_json::to_value(&view).expect("serializes");
+        let obj = v.as_object().expect("a JSON object");
+        let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, vec!["builtin", "configured", "id", "kind", "name"]);
+        assert_eq!(obj["kind"], serde_json::json!("cloud"));
+        assert_eq!(obj["configured"], serde_json::json!(false));
+        // A local provider's kind tag is the lowercase counterpart.
+        let local = serde_json::to_value(ProviderView {
+            id: "ollama-default".to_string(),
+            name: "Ollama".to_string(),
+            kind: ProviderKind::Local,
+            configured: true,
+            builtin: true,
+        })
+        .expect("serializes");
+        assert_eq!(local["kind"], serde_json::json!("local"));
+    }
 }
