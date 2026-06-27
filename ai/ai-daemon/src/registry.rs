@@ -681,6 +681,7 @@ mod tests {
             tool: tool.to_string(),
             arguments: "{}".to_string(),
             result: "ok".to_string(),
+            status: crate::tool_loop::ToolStatus::Done,
         }
     }
 

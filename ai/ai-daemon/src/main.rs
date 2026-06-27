@@ -406,6 +406,7 @@ impl AiInterface {
                     "tool": s.tool,
                     "arguments": s.arguments,
                     "result": s.result,
+                    "status": s.status.as_str(),
                 })
             })
             .collect();
