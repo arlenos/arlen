@@ -30,7 +30,7 @@ use arlen_ai_daemon::live_provider::LiveProvider;
 use arlen_ai_daemon::mcp_discovery::McpDiscovery;
 use arlen_ai_daemon::peer::{self, PeerError};
 use arlen_ai_daemon::registry::{AuthError, CompletionOutcome};
-use arlen_ai_daemon::selection::ActiveSelection;
+use arlen_ai_daemon::selection::{ActiveSelection, ModelEntry, ModelKind};
 use arlen_ai_daemon::service::{AiDaemonService, ExplainError, QueryError};
 use arlen_ai_providers::proxied::{ProxiedConfig, ProxiedProvider};
 use os_sdk::UnixEventConsumer;
@@ -356,6 +356,30 @@ impl AiInterface {
     /// not any user data.
     async fn ai_active(&self) -> String {
         serde_json::to_string(&self.live.active()).unwrap_or_else(|_| "{}".to_string())
+    }
+
+    /// The model catalog as a JSON array of
+    /// `{ provider, model, contextWindow, kind, available }` (the picker's
+    /// `ai_models_list`). Today the daemon catalogues one local provider (its
+    /// live selection) with full metadata - the model + context window it is
+    /// configured for, and a live availability probe (through the proxy, which
+    /// owns egress unchanged). Structured for 1..n: the full multi-provider
+    /// enumeration (every allowed provider's models) needs the proxy to expose
+    /// per-provider catalog metadata + Ollama `/api/tags`, a cross-component
+    /// follow-up; the proxy's `list_allowed_providers` gives only names today, so
+    /// listing other providers here would be metadata-less placeholders. `kind`
+    /// is `local` for the local Ollama provider; cloud providers report `cloud`
+    /// once the proxy surfaces per-provider kind (Phase 9-β/γ).
+    async fn ai_models_list(&self) -> String {
+        let active = self.live.active();
+        let entry = ModelEntry {
+            provider: active.provider,
+            model: active.model,
+            context_window: self.live.context_window(),
+            kind: ModelKind::Local,
+            available: self.live.available().await,
+        };
+        serde_json::to_string(&[entry]).unwrap_or_else(|_| "[]".to_string())
     }
 
     /// Run System Explanation Mode (Foundation §5.8): return a
