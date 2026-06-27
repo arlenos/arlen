@@ -29,6 +29,7 @@
     filter,
     now,
     columns = DEFAULT_COLUMNS,
+    emptyLabel = "This folder is empty",
     icon,
   }: {
     /// The headless browser state; swapping it switches tabs.
@@ -52,6 +53,9 @@
     /// Which columns the list view shows (a virtual location swaps Size for
     /// Location and relabels the time column).
     columns?: ColumnSpec;
+    /// The message shown when this location is empty (a virtual location speaks
+    /// for itself: "Trash is empty", "No recent files").
+    emptyLabel?: string;
     /// Icon seam for themed and KG-state icons.
     icon?: Snippet<[FileEntry]>;
   } = $props();
@@ -422,7 +426,7 @@
     </div>
   {:else if !$loading && visible.length === 0}
     <div class="fb-state">
-      <span class="fb-state-title">This folder is empty</span>
+      <span class="fb-state-title">{emptyLabel}</span>
     </div>
   {:else if $viewMode === "grid"}
     <!-- Thumbnails ride the grid only (the doc's default; "on-demand

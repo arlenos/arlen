@@ -36,7 +36,7 @@
   import FmInfoPanel from "$lib/components/FmInfoPanel.svelte";
   import { savedSearches } from "$lib/stores/places";
   import { searchOpen, searchResults } from "$lib/stores/search";
-  import { columnsFor } from "$lib/locations";
+  import { columnsFor, emptyLabelFor } from "$lib/locations";
   import { DEFAULT_COLUMNS } from "@arlen/ui-kit/components/browser";
 
   let renamingName = $state<string | null>(null);
@@ -44,19 +44,27 @@
   let aboutOpen = $state(false);
   let confirmDelete = $state(false);
 
-  // Each pane's column set follows its own location (a virtual location swaps
-  // Size for the item's home folder), live as the pane navigates.
+  // Each pane's columns + empty message follow its own location (a virtual
+  // location swaps Size for the item's home folder), live as the pane navigates.
   let aColumns = $state(DEFAULT_COLUMNS);
+  let aEmpty = $state("This folder is empty");
   $effect(() => {
     const c = $activeController;
     if (!c) return;
-    return c.path.subscribe((p) => (aColumns = columnsFor(p)));
+    return c.path.subscribe((p) => {
+      aColumns = columnsFor(p);
+      aEmpty = emptyLabelFor(p);
+    });
   });
   let bColumns = $state(DEFAULT_COLUMNS);
+  let bEmpty = $state("This folder is empty");
   $effect(() => {
     const c = $paneB;
     if (!c) return;
-    return c.path.subscribe((p) => (bColumns = columnsFor(p)));
+    return c.path.subscribe((p) => {
+      bColumns = columnsFor(p);
+      bEmpty = emptyLabelFor(p);
+    });
   });
 
   // The focused pane's location, live, gates the virtual-location actions.
@@ -69,6 +77,21 @@
   const isVirtual = $derived(isVirtualLocation(focusedPath));
   const isTrash = $derived(focusedPath === "trash");
   let confirmEmpty = $state(false);
+
+  // A virtual location defaults to newest-first by its time column (Last
+  // accessed / Deleted), set once per arrival so a later re-sort sticks.
+  let lastSortDefaulted = "";
+  $effect(() => {
+    const c = $focusedController;
+    const p = focusedPath;
+    if (!c) return;
+    if (isVirtualLocation(p) && p !== lastSortDefaulted) {
+      lastSortDefaulted = p;
+      void c.setSort("modified", false);
+    } else if (!isVirtualLocation(p)) {
+      lastSortDefaulted = "";
+    }
+  });
 
   /// Open every selected virtual-location entry from its real home path
   /// (Recent / project / search items live in different folders).
@@ -430,6 +453,7 @@
             <FileBrowser
               controller={$activeController}
               columns={aColumns}
+              emptyLabel={aEmpty}
               bind:renamingName
               onactivate={(entry, path) => {
                 if (entry.kind === "directory") return;
@@ -452,6 +476,7 @@
               <FileBrowser
                 controller={$paneB}
                 columns={bColumns}
+                emptyLabel={bEmpty}
                 onactivate={(entry, path) => {
                   if (entry.kind === "directory") return;
                   if (isArchiveName(entry.name)) void $paneB?.navigate(path);

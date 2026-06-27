@@ -43,3 +43,13 @@ export function columnsFor(path: string): ColumnSpec {
   }
   return DEFAULT_COLUMNS;
 }
+
+/// The message a location shows when it has no items. A virtual location speaks
+/// for itself rather than the generic folder phrasing.
+export function emptyLabelFor(path: string): string {
+  if (path === "trash") return "Trash is empty";
+  if (path === "recent") return "No recent files";
+  if (path.startsWith("project:")) return "No files in this project yet";
+  if (path.startsWith("search:")) return "No matches";
+  return "This folder is empty";
+}
