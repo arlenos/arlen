@@ -1,0 +1,9 @@
+# Starting permission profile for LibreWolf (a privacy-focused Firefox fork). A
+# web browser, so network is its function; no Knowledge Graph access (downloads
+# and uploads go through the file portal).
+[info]
+app_id = "io.gitlab.librewolf-community.browser"
+tier = "third-party"
+
+[network]
+allow_all = true
