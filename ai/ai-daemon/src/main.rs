@@ -359,6 +359,26 @@ impl AiInterface {
         serde_json::to_string(&self.live.active()).unwrap_or_else(|_| "{}".to_string())
     }
 
+    /// Cumulative token usage since daemon start, as JSON
+    /// `{ inputTokens, outputTokens, totalTokens }`, for the harness
+    /// transparency "Cost" feed (harness-redesign emit seam 5). Daemon-lifetime
+    /// totals across every completion routed through the live provider (the chat
+    /// runner and the tool loop), surviving a provider swap so the figure is the
+    /// user's session spend, not per-backend. A provider that reports no usage
+    /// (a local Ollama without token counts) contributes nothing, so the figure
+    /// is honest rather than fabricated. Read-only; discloses only counts, no
+    /// content. The harness renders it; it must not read the daemon's internals.
+    #[zbus(name = "ai_usage")]
+    async fn ai_usage(&self) -> String {
+        let (input, output) = self.live.usage();
+        serde_json::json!({
+            "inputTokens": input,
+            "outputTokens": output,
+            "totalTokens": input + output,
+        })
+        .to_string()
+    }
+
     /// The model catalog as a JSON array of
     /// `{ provider, model, contextWindow, kind, available }` (the picker's
     /// `ai_models_list`). Today the daemon catalogues one local provider (its
