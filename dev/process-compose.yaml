@@ -102,6 +102,47 @@ processes:
     availability:
       restart: "on_failure"
 
+  # KG sensor array: the observation daemons that feed the graph beyond app
+  # events. code-indexer + journald-parser are event-bus consumers/producers with
+  # no socket of their own (dependents wait on process_started); capsuled binds a
+  # serve socket.
+  code-indexer:
+    command: "cargo run --manifest-path daemons/code-indexer/Cargo.toml"
+    depends_on:
+      event-bus: { condition: process_healthy }
+      knowledge: { condition: process_healthy }
+    availability:
+      restart: "on_failure"
+
+  journald-parser:
+    command: "cargo run --manifest-path daemons/journald-parser/Cargo.toml"
+    depends_on:
+      event-bus: { condition: process_healthy }
+    availability:
+      restart: "on_failure"
+
+  capsuled:
+    command: "cargo run --manifest-path daemons/capsuled/Cargo.toml"
+    depends_on:
+      runtime-dir: { condition: process_completed_successfully }
+      audit-daemon: { condition: process_started }
+    readiness_probe:
+      exec:
+        command: "test -S ${XDG_RUNTIME_DIR}/arlen/capsule.sock"
+      initial_delay_seconds: 2
+      period_seconds: 2
+      failure_threshold: 30
+    availability:
+      restart: "on_failure"
+
+  # bridge-ingest (the Obsidian floor) is deliberately NOT a base-stack process:
+  # it requires a configured vault to do anything and exits without one. Run it
+  # opt-in, e.g.:
+  #   ARLEN_BRIDGE_CONFIG=daemons/bridge-ingest/examples/obsidian/bridge.toml \
+  #   ARLEN_OBSIDIAN_VAULT=$HOME/Vault \
+  #   cargo run --manifest-path daemons/bridge-ingest/Cargo.toml
+  # (the entity schema md.obsidian.Note must be in /var/lib/arlen/schemas/ first).
+
   ai-daemon:
     command: "cargo run --manifest-path ai/ai-daemon/Cargo.toml"
     depends_on:
