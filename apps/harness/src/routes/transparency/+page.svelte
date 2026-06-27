@@ -27,11 +27,20 @@
   let grants = $state<GrantView[] | null>(null);
   let workingSet = $state<WorkingSet | null>(null);
   let activity = $state<ActivityPage | null>(null);
+  let reads = $state<ActivityPage | null>(null);
 
   let capLoaded = $state(false);
   let grantsLoaded = $state(false);
   let memoryLoaded = $state(false);
   let activityLoaded = $state(false);
+  let readsLoaded = $state(false);
+
+  // The Reads section shows a recent slice (the anti-Recall payoff is seeing
+  // what was read); the section reports how many more the ledger holds.
+  const READS_SLICE = 6;
+  const readEntries = $derived.by((): ActivityEntry[] =>
+    (reads?.entries ?? []).slice(0, READS_SLICE),
+  );
 
   // The Activity section is a compact slice: the most recent things the
   // autonomous background agent actually did, newest first. The full
@@ -70,6 +79,10 @@
       .then((a) => (activity = a))
       .catch(() => (activity = null))
       .finally(() => (activityLoaded = true));
+    invoke<ActivityPage>("ai_reads_recent", { limit: 100 })
+      .then((r) => (reads = r))
+      .catch(() => (reads = null))
+      .finally(() => (readsLoaded = true));
   });
 </script>
 
@@ -83,7 +96,7 @@
     </Group>
 
     <Group label="What it has read" class="span-full">
-      <ReadsSection {capability} />
+      <ReadsSection {reads} entries={readEntries} loaded={readsLoaded} {capability} />
     </Group>
 
     <Group label="What it is holding now" class="span-full">
