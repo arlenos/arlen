@@ -15,10 +15,13 @@
   import {
     FileBrowser,
     joinPath,
+    parentPath,
+    isVirtualLocation,
     type FileEntry,
   } from "@arlen/ui-kit/components/browser";
   import { invoke } from "@tauri-apps/api/core";
   import { openPath } from "$lib/adapter";
+  import { restoreFromTrash, emptyTrash } from "$lib/stores/trash";
   import { isArchiveName } from "$lib/archive";
   import { activeController, newTab, tabs } from "$lib/stores/tabs";
   import { focusedController, focusedPane, paneB, splitView } from "$lib/stores/panes";
@@ -55,6 +58,45 @@
     if (!c) return;
     return c.path.subscribe((p) => (bColumns = columnsFor(p)));
   });
+
+  // The focused pane's location, live, gates the virtual-location actions.
+  let focusedPath = $state("/");
+  $effect(() => {
+    const c = $focusedController;
+    if (!c) return;
+    return c.path.subscribe((p) => (focusedPath = p));
+  });
+  const isVirtual = $derived(isVirtualLocation(focusedPath));
+  const isTrash = $derived(focusedPath === "trash");
+  let confirmEmpty = $state(false);
+
+  /// Open every selected virtual-location entry from its real home path
+  /// (Recent / project / search items live in different folders).
+  async function openVirtualSelection(): Promise<void> {
+    for (const e of selected) if (e.full_path) await openPath(e.full_path);
+  }
+
+  /// The unifying bridge back to the filesystem: navigate to the (first)
+  /// selected item's containing folder, wherever the item really lives.
+  function goToFolder(): void {
+    const e = selected[0];
+    if (!e?.full_path) return;
+    void get(focusedController)?.navigate(parentPath(e.full_path) ?? e.full_path);
+  }
+
+  /// Restore every selected trashed entry to its recorded original location,
+  /// then refresh the trash listing.
+  async function restoreSelection(): Promise<void> {
+    for (const e of selected) await restoreFromTrash(e);
+    await get(focusedController)?.refresh();
+  }
+
+  /// Permanently empty the trash, then refresh.
+  async function doEmptyTrash(): Promise<void> {
+    await emptyTrash();
+    confirmEmpty = false;
+    await get(focusedController)?.refresh();
+  }
 
   // What the info panel inspects: the single selected entry, or the
   // folder itself when nothing is selected.
@@ -432,6 +474,24 @@
         {/if}
       </ContextMenu.Trigger>
       <ContextMenu.Content class="w-52">
+        {#if isVirtual}
+          {#if selected.length > 0}
+            {#if isTrash}
+              <ContextMenu.Item onclick={restoreSelection}>Restore</ContextMenu.Item>
+            {:else}
+              <ContextMenu.Item onclick={openVirtualSelection}>Open</ContextMenu.Item>
+            {/if}
+            {#if selected.length === 1}
+              <ContextMenu.Item onclick={goToFolder}>Go to folder</ContextMenu.Item>
+            {/if}
+          {/if}
+          {#if isTrash}
+            {#if selected.length > 0}<ContextMenu.Separator />{/if}
+            <ContextMenu.Item variant="destructive" onclick={() => (confirmEmpty = true)}>
+              Empty Trash
+            </ContextMenu.Item>
+          {/if}
+        {:else}
         {#if selected.length > 0}
           <ContextMenu.Item
             onclick={() => {
@@ -540,6 +600,7 @@
             Delete forever
           </ContextMenu.Item>
         {/if}
+        {/if}
       </ContextMenu.Content>
     </ContextMenu.Root>
     <FmStatusBar
@@ -566,6 +627,16 @@
     confirmDelete = false;
   }}
   onCancel={() => (confirmDelete = false)}
+/>
+
+<ConfirmDialog
+  open={confirmEmpty}
+  title="Empty Trash"
+  message="Permanently delete everything in the trash? This cannot be undone."
+  confirmLabel="Empty Trash"
+  variant="destructive"
+  onConfirm={doEmptyTrash}
+  onCancel={() => (confirmEmpty = false)}
 />
 
 <FmBatchRename
