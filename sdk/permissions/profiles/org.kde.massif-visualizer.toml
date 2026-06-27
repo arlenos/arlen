@@ -1,0 +1,8 @@
+# Starting permission profile for Massif Visualizer (a KDE heap-profile visualizer). Opens its data/model files from
+# Documents; no network, no Knowledge Graph access.
+[info]
+app_id = "org.kde.massif-visualizer"
+tier = "third-party"
+
+[filesystem]
+documents = true
