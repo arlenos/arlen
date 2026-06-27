@@ -1,0 +1,10 @@
+# Starting permission profile for Chiaki4deck (a PlayStation Remote Play client).
+# Streaming a console session over the network is its function, so it gets
+# network; it plays a remote session rather than local files, so no filesystem
+# by default. No Knowledge Graph access.
+[info]
+app_id = "io.github.streetpea.Chiaki4deck"
+tier = "third-party"
+
+[network]
+allow_all = true
