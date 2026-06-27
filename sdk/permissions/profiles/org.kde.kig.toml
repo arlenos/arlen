@@ -1,0 +1,8 @@
+# Starting permission profile for Kig (KDE interactive geometry). Opens and saves
+# geometry files from Documents; no network, no Knowledge Graph access.
+[info]
+app_id = "org.kde.kig"
+tier = "third-party"
+
+[filesystem]
+documents = true
