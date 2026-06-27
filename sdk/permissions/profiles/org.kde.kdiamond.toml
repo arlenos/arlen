@@ -1,0 +1,5 @@
+# Starting permission profile for KDiamond (a KDE puzzle game). Plays locally; needs no filesystem,
+# network, or Knowledge Graph access. Identity only - the maximally fail-closed baseline.
+[info]
+app_id = "org.kde.kdiamond"
+tier = "third-party"
