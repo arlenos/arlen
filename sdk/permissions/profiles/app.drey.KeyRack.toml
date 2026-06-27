@@ -1,0 +1,6 @@
+# Starting permission profile for KeyRack (a keyring/secrets viewer). It works
+# against the Secret Service over D-Bus (brokered, not a filesystem or network
+# scope), so no files and no network by default; no Knowledge Graph access.
+[info]
+app_id = "app.drey.KeyRack"
+tier = "third-party"
