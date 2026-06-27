@@ -151,8 +151,8 @@ export function statusSentence(c: Capability): string {
 /// invented third.
 export function tierBadge(c: Capability): { glyph: string; label: string } {
   return c.executorLive
-    ? { glyph: "◐", label: "Auto-reversible" }
-    : { glyph: "○", label: "Suggest only" };
+    ? { glyph: "◐", label: "Acts with undo" }
+    : { glyph: "○", label: "Suggests only" };
 }
 
 /// Tooltip behind the status line: the technical facts, honestly, in one place.

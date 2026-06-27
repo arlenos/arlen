@@ -10,7 +10,6 @@
   import {
     Sidebar,
     SidebarContent,
-    SidebarFooter,
     SidebarGroup,
     SidebarGroupLabel,
     SidebarMenu,
@@ -23,7 +22,6 @@
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import * as DropdownMenu from "@arlen/ui-kit/components/ui/dropdown-menu";
   import {
-    Activity,
     Copy,
     MoreHorizontal,
     Pencil,
@@ -31,7 +29,6 @@
     PinOff,
     Plus,
     Search,
-    ShieldCheck,
     Trash2,
   } from "@lucide/svelte";
   import {
@@ -48,9 +45,9 @@
   import { conversationToMarkdown } from "$lib/export";
 
   const path = $derived($page.url.pathname);
-  const onAgent = $derived(path.startsWith("/agent"));
-  const onTransparency = $derived(path.startsWith("/transparency"));
-  const onChat = $derived(!onAgent && !onTransparency);
+  // The only non-chat surface reachable with the sidebar mounted is the
+  // Activity deep list (/agent), opened from the transparency drawer.
+  const onChat = $derived(!path.startsWith("/agent"));
 
   let query = $state("");
   // The conversation being renamed inline, and the draft title. `null` when no
@@ -152,31 +149,6 @@
       </SidebarGroup>
     {/each}
   </SidebarContent>
-
-  <SidebarFooter>
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <SidebarMenuButton
-          isActive={onAgent}
-          tooltip="Activity"
-          onclick={() => goto("/agent")}
-        >
-          <Activity strokeWidth={1.75} />
-          <span>Activity</span>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-      <SidebarMenuItem>
-        <SidebarMenuButton
-          isActive={onTransparency}
-          tooltip="Transparency"
-          onclick={() => goto("/transparency")}
-        >
-          <ShieldCheck strokeWidth={1.75} />
-          <span>Transparency</span>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    </SidebarMenu>
-  </SidebarFooter>
 
   <SidebarRail />
 </Sidebar>
