@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use crate::allowlist::{Allowlist, AllowlistDecision, RejectReason};
 use crate::audit::{AuditOutcome, AuditRecord, AuditSink};
-use crate::catalog::ProviderCatalog;
+use crate::catalog::{ProviderCatalog, WireFormat};
 use crate::forward::{ForwardError, Forwarder};
 
 /// Stable error codes returned to D-Bus callers. The audit log
@@ -60,6 +60,15 @@ pub enum ProxyError {
     /// Upstream call failed transport-side.
     #[error("upstream: {0}")]
     Upstream(#[from] ForwardError),
+    /// The catalogued provider uses a wire format the proxy cannot yet shape.
+    /// Only the OpenAI chat-completions shape is forwarded verbatim today; an
+    /// Anthropic/Gemini entry is refused fail-closed until its transcoder lands,
+    /// rather than POST an OpenAI-shaped body to a native endpoint.
+    #[error("provider {provider} uses an unsupported wire format")]
+    WireFormatUnsupported {
+        /// Provider name from the request.
+        provider: String,
+    },
 }
 
 impl ProxyError {
@@ -76,6 +85,7 @@ impl ProxyError {
             ProxyError::AtCapacity => "proxy-at-capacity",
             ProxyError::AuditUnavailable => "audit-unavailable",
             ProxyError::Upstream(_) => "upstream-error",
+            ProxyError::WireFormatUnsupported { .. } => "wire-format-unsupported",
         }
     }
 }
@@ -279,6 +289,28 @@ impl ProxyService {
             }
         };
         let endpoint_url = entry.endpoint_url.clone();
+        let wire_format = entry.wire_format;
+
+        // 2b. Dispatch on the catalogued wire format. Today only the OpenAI
+        //     chat-completions shape is forwarded verbatim; a provider catalogued
+        //     as Anthropic/Gemini is refused fail-closed until its transcoder
+        //     lands (rather than POST an OpenAI-shaped body to a native endpoint
+        //     and leak a malformed request upstream). This is the dispatch seam
+        //     the transcoder slice fills.
+        if wire_format != WireFormat::Openai {
+            let err = ProxyError::WireFormatUnsupported {
+                provider: req.provider_name.clone(),
+            };
+            self.audit_best_effort(
+                &req,
+                None,
+                AuditOutcome::RejectedByPolicy {
+                    code: err.code().to_string(),
+                },
+            )
+            .await;
+            return Err(err);
+        }
 
         // 3. Allowlist on the catalogued URL (defence in depth).
         let host = match self.allowlist.check(&endpoint_url) {
@@ -468,6 +500,51 @@ mod tests {
         assert_eq!(records[0].structural.outcome, "forwarding");
         assert_eq!(records[0].structural.subject, "localhost");
         assert_eq!(records[1].structural.outcome, "forwarded-200");
+    }
+
+    #[tokio::test]
+    async fn a_non_openai_wire_format_is_refused_until_its_transcoder() {
+        use std::collections::HashMap;
+        let forwarder = Arc::new(StubForwarder::new(vec![]));
+        let sink = Arc::new(CollectingAuditSink::new());
+        let mut entries = HashMap::new();
+        entries.insert(
+            "anthropic".to_string(),
+            crate::catalog::CatalogEntry {
+                endpoint_url: "https://api.anthropic.com/v1/messages".to_string(),
+                backend: "anthropic".to_string(),
+                wire_format: WireFormat::Anthropic,
+                auth_scheme: crate::catalog::AuthScheme::XApiKey,
+                url_template: None,
+                credential_ref: Some("conn:anthropic".to_string()),
+                models_endpoint: None,
+                display_name: None,
+                logo_id: None,
+                builtin: false,
+            },
+        );
+        let svc = ProxyService::new(
+            Allowlist::default_arlen(),
+            ProviderCatalog::new(entries),
+            CallerAllowlist::default_arlen(),
+            forwarder.clone() as Arc<dyn Forwarder>,
+            sink.clone() as Arc<dyn AuditSink>,
+        );
+
+        let err = svc
+            .forward(
+                &ai_daemon_caller(),
+                ForwardRequest {
+                    provider_name: "anthropic".to_string(),
+                    body_json: "{}".to_string(),
+                    audit_token: "tok-1".to_string(),
+                },
+            )
+            .await
+            .expect_err("a non-OpenAI wire format is refused until its transcoder");
+        assert_eq!(err.code(), "wire-format-unsupported");
+        // Fail-closed: the guard fires before the forward, so nothing left the host.
+        assert!(forwarder.calls.lock().await.is_empty());
     }
 
     #[tokio::test]
