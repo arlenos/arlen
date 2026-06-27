@@ -20,10 +20,15 @@
   import { activeController } from "$lib/stores/tabs";
   import { placeGroups, removePlace, navigatePlace, savedSearches } from "$lib/stores/places";
   import { runSearch, searchOpen, searchQuery } from "$lib/stores/search";
-  import { openTrash } from "$lib/stores/trash";
-  import { openRecent } from "$lib/stores/recent";
 
   const SearchIcon = placeIcon("search");
+
+  /// Recent + Trash are navigation locations (not overlays): navigating the
+  /// active controller to their virtual key lists them in the normal file view.
+  function goLocation(location: string) {
+    const c = get(activeController);
+    if (c) void c.navigate(location);
+  }
 
   // The active location, live, for the place highlight.
   let activePath = $state("");
@@ -81,18 +86,26 @@
       </SidebarGroup>
     {/if}
 
-    <!-- Recent + Trash sit at the foot of the sidebar; both open a virtual view
-         (the KG recent files / the trash) rather than navigating to a folder. -->
+    <!-- Recent + Trash sit at the foot of the sidebar; both are navigation
+         locations (the KG recent files / the trash), highlighted when active. -->
     <SidebarGroup class="group-data-[collapsible=icon]:hidden">
       <SidebarMenu>
         <SidebarMenuItem>
-          <SidebarMenuButton tooltip="Recent" onclick={() => void openRecent()}>
+          <SidebarMenuButton
+            tooltip="Recent"
+            isActive={activePath === "recent"}
+            onclick={() => goLocation("recent")}
+          >
             <Clock />
             <span class="fs-label">Recent</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <SidebarMenuButton tooltip="Trash" onclick={() => void openTrash()}>
+          <SidebarMenuButton
+            tooltip="Trash"
+            isActive={activePath === "trash"}
+            onclick={() => goLocation("trash")}
+          >
             <Trash2 />
             <span class="fs-label">Trash</span>
           </SidebarMenuButton>
