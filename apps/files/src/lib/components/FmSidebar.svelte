@@ -4,6 +4,7 @@
   /// Sidebar shell. Navigation goes to the ACTIVE tab's controller —
   /// places are locations, not tabs.
   import { get } from "svelte/store";
+  import { invoke } from "@tauri-apps/api/core";
   import {
     Sidebar,
     SidebarContent,
@@ -25,9 +26,21 @@
 
   /// Recent + Trash are navigation locations (not overlays): navigating the
   /// active controller to their virtual key lists them in the normal file view.
-  function goLocation(location: string) {
+  async function goLocation(location: string) {
     const c = get(activeController);
-    if (c) void c.navigate(location);
+    if (!c) return;
+    // Conclusive one-run bisect for the virtual-location bug (Trash showed home
+    // on metal, no DevTools): log the target, the path before, and the path after
+    // navigate resolves. If `after` is not the location, navigate returned early
+    // (guard / stale build) - a frontend break; if `after` IS the location but
+    // the view still shows home, the break is downstream (adapter/render), paired
+    // with the `fmAdapter.list` + backend `files_list_location` logs.
+    const before = get(c.path);
+    await c.navigate(location);
+    void invoke("frontend_log", {
+      level: "info",
+      msg: `goLocation: target=${location} before=${before} after=${get(c.path)}`,
+    });
   }
 
   // The active location, live, for the place highlight.
