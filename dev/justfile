@@ -178,10 +178,12 @@ lint-licenses:
         echo "== cargo-deny licenses: $ws =="
         cargo deny --manifest-path "$ws/Cargo.toml" --config "{{ROOT}}/deny.toml" check licenses
     done
-    # `reuse lint` is advisory until the per-file SPDX headers + REUSE.toml land
-    # (they wait on the copyright-holder decision); drop the `|| true` to gate it then.
-    echo "== reuse lint (advisory until SPDX headers land) =="
-    reuse lint || echo "reuse lint advisory: per-file SPDX headers + REUSE.toml pending the copyright-holder decision"
+    # REUSE.toml licenses the whole tree by the per-component map (precedence
+    # "closest" lets a file's own SPDX header win), so the repo is REUSE-compliant
+    # without a header on every file. This gate is now hard: a new file is covered
+    # by the globs automatically, so a failure means a genuinely uncovered path.
+    echo "== reuse lint =="
+    reuse lint
 
 # Generate the THIRD-PARTY-NOTICES dependency-license artifact (gitignored).
 notices:
