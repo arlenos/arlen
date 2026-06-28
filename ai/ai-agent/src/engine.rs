@@ -33,7 +33,7 @@ use crate::agentic::{
 use arlen_ai_classifier::{screen, ClassifierPolicy, InjectionClassifier, Verdict};
 use crate::behaviour::{Behaviour, BehaviourKind, ReadScope};
 use crate::compaction::{self, CompactionPolicy, TranscriptEntry};
-use crate::gate::{ActionContext, DecisionReason, Gate, GateError, ProposedAction};
+use crate::gate::{ActionContext, DecisionBasis, DecisionReason, Gate, GateError, ProposedAction};
 use crate::executor::DryRunReport;
 use crate::loader::LoadedBehaviour;
 use crate::registry::plan_for;
@@ -975,10 +975,15 @@ impl<'a> Dispatcher<'a> {
                 let correlation_id = format!("{}:{}", event.id, behaviour);
                 let ctx = ActionContext {
                     app_id: AGENT_APP_ID,
-                    // Trusted origin fact from the event (the decoder stamps
-                    // it; unknown defaults to external/true). An externally-
-                    // triggered action always confirms.
+                    // Trusted origin fact from the event (the decoder stamps it;
+                    // unknown defaults to external/true).
                     external_trigger: event.external_content,
+                    // dispatch_one runs only `kind: workflow` (a deterministic,
+                    // zero-model-call behaviour), so the external-trigger carve-out
+                    // applies: an externally-triggered workflow has no model to
+                    // inject into. Derived from the manifest kind, not assumed.
+                    deterministic_workflow: lb.behaviour.manifest.kind
+                        == BehaviourKind::Workflow,
                     correlation_id: &correlation_id,
                 };
                 match self
@@ -1354,6 +1359,11 @@ impl<'a> Dispatcher<'a> {
                     let ctx = ActionContext {
                         app_id: AGENT_APP_ID,
                         external_trigger: event.external_content,
+                        // This is the `kind: agent` loop: every step is a model
+                        // call, so it HAS an injection surface and the carve-out
+                        // never applies - an externally-triggered agent action
+                        // keeps always-confirm (the containment is untouched here).
+                        deterministic_workflow: false,
                         correlation_id: &correlation_id,
                     };
                     // The model's stated operands are untrusted: they prove
@@ -2442,7 +2452,14 @@ tools:
     }
 
     #[tokio::test]
-    async fn external_content_event_is_gated_to_confirmation() {
+    async fn external_content_does_not_force_confirm_a_deterministic_workflow() {
+        // The Tim-approved carve-out at the dispatch level: a `kind: workflow`
+        // behaviour (auto-tag, zero model calls) triggered by an external-content
+        // event is NOT force-confirmed - the external-trigger override (a
+        // prompt-injection defense) is vacuous for a workflow with no model to
+        // inject into, so in suggest mode it is a plain Propose. The external
+        // fact is still recorded. (An agent on an external trigger still confirms;
+        // see gate::tests::external_trigger_still_confirms_a_kind_agent_action.)
         let behaviours = [loaded(AUTO_TAG, Status::Enabled)];
         let handlers = registry(Box::new(StubPropose));
         let cap = Capability::new(AccessTier::Full, ActionPermissions::suggest_only());
@@ -2464,8 +2481,12 @@ tools:
                     summary: "tag the opened file".to_string(),
                     arguments: Default::default(),
                 },
-                decision: ActionDecision::RequireConfirmation,
-                reason: DecisionReason::external(),
+                decision: ActionDecision::Propose,
+                reason: DecisionReason {
+                    high_impact: None,
+                    external_trigger: true,
+                    basis: DecisionBasis::Mode,
+                },
                 audit_index: 0,
                 plan: plan_for("graph.write"),
                 dry_run: None,
