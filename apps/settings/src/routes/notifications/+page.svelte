@@ -39,6 +39,9 @@
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { TimeInput } from "@arlen/ui-kit/components/ui/time-input";
   import { DaysPicker } from "@arlen/ui-kit/components/ui/days-picker";
@@ -46,6 +49,13 @@
   import AppPicker from "$lib/components/appearance/AppPicker.svelte";
   import AppRuleCard from "$lib/components/appearance/AppRuleCard.svelte";
   import { tauriAvailable } from "$lib/tauri";
+
+  // What a scheduled quiet window still lets through.
+  const SCHEDULE_MODE_OPTIONS = [
+    { value: "priority", label: "Priority" },
+    { value: "alarms", label: "Alarms" },
+    { value: "total", label: "Total" },
+  ];
 
   // ── Boot ───────────────────────────────────────────────────────────
 
@@ -314,32 +324,26 @@
           {/if}
 
           <div class="quick-actions">
-            <button type="button" class="quick-btn" onclick={dndForOneHour}>
+            <Button variant="outline" size="sm" onclick={dndForOneHour}>
               <Coffee size={12} strokeWidth={2} />
-              <span>For 1 hour</span>
-            </button>
-            <button type="button" class="quick-btn" onclick={dndUntilMorning}>
+              For 1 hour
+            </Button>
+            <Button variant="outline" size="sm" onclick={dndUntilMorning}>
               <Sunrise size={12} strokeWidth={2} />
-              <span>Until tomorrow</span>
-            </button>
+              Until tomorrow
+            </Button>
           </div>
         </div>
 
         {#if dndMode === "scheduled"}
           <Row label="Schedule mode">
             {#snippet control()}
-              <div class="seg">
-                {#each ["priority", "alarms", "total"] as m (m)}
-                  <button
-                    type="button"
-                    class="seg-pill"
-                    class:active={(schedule.mode ?? "priority") === m}
-                    onclick={() => setDndScheduleMode(m as ScheduleMode)}
-                  >
-                    {m}
-                  </button>
-                {/each}
-              </div>
+              <SegmentedControl
+                value={schedule.mode ?? "priority"}
+                options={SCHEDULE_MODE_OPTIONS}
+                ariaLabel="Schedule mode"
+                onchange={(v) => setDndScheduleMode(v as ScheduleMode)}
+              />
             {/snippet}
           </Row>
           <Row label="From">
@@ -517,21 +521,9 @@
         <Row label="Test notification">
           {#snippet control()}
             <div class="test-row">
-              <button
-                type="button"
-                class="test-btn"
-                onclick={() => fireTest("normal")}>Normal</button
-              >
-              <button
-                type="button"
-                class="test-btn"
-                onclick={() => fireTest("high")}>High</button
-              >
-              <button
-                type="button"
-                class="test-btn danger"
-                onclick={() => fireTest("critical")}>Critical</button
-              >
+              <Button variant="outline" size="sm" onclick={() => fireTest("normal")}>Normal</Button>
+              <Button variant="outline" size="sm" onclick={() => fireTest("high")}>High</Button>
+              <Button variant="destructive" size="sm" onclick={() => fireTest("critical")}>Critical</Button>
             </div>
           {/snippet}
         </Row>
@@ -611,15 +603,10 @@
         </Row>
         <Row label="Clear all history">
           {#snippet control()}
-            <button
-              type="button"
-              class="danger-btn"
-              class:confirming={confirmingClear}
-              onclick={clearHistory}
-            >
+            <Button variant="destructive" size="sm" onclick={clearHistory}>
               <Trash2 size={12} strokeWidth={2.25} />
               {confirmingClear ? "Click again to confirm" : "Clear history"}
-            </button>
+            </Button>
           {/snippet}
         </Row>
       </Group>
@@ -628,14 +615,7 @@
       <Group label="Per-App Rules">
         <div class="apps-section">
           <div class="apps-toolbar">
-            <input
-              type="text"
-              class="apps-filter"
-              placeholder="Filter rules..."
-              value={appFilter}
-              oninput={(e) =>
-                (appFilter = (e.currentTarget as HTMLInputElement).value)}
-            />
+            <Input placeholder="Filter rules…" bind:value={appFilter} />
             <AppPicker
               knownApps={knownAppsForPicker}
               excluded={appNames}
@@ -789,21 +769,6 @@
     display: flex;
     gap: 6px;
   }
-  .quick-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 0.4rem 0.65rem;
-    border-radius: var(--radius-input);
-    background: color-mix(in srgb, var(--foreground) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
-    color: var(--foreground);
-    font-size: 0.75rem;
-    transition: background-color 120ms ease;
-  }
-  .quick-btn:hover {
-    background: color-mix(in srgb, var(--foreground) 9%, transparent);
-  }
 
   /* ── Lists ────────────────────────────────── */
   .list-control {
@@ -838,82 +803,9 @@
     background: color-mix(in srgb, var(--foreground) 18%, transparent);
   }
 
-  /* ── Segmented ────────────────────────────────── */
-  .seg {
-    display: inline-flex;
-    gap: 2px;
-    padding: 2px;
-    border-radius: var(--radius-input);
-    background: color-mix(in srgb, var(--foreground) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--foreground) 9%, transparent);
-  }
-  .seg-pill {
-    height: 22px;
-    padding: 0 0.6rem;
-    border-radius: var(--radius-chip);
-    background: transparent;
-    border: none;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    font-size: 0.6875rem;
-    font-weight: 500;
-    text-transform: capitalize;
-    transition: all 120ms ease;
-  }
-  .seg-pill:hover {
-    color: var(--foreground);
-  }
-  .seg-pill.active {
-    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
-    color: var(--foreground);
-  }
-
-  /* ── Test buttons ────────────────────────────────── */
   .test-row {
     display: flex;
     gap: 6px;
-  }
-  .test-btn {
-    height: 26px;
-    padding: 0 0.65rem;
-    border-radius: var(--radius-input);
-    background: color-mix(in srgb, var(--foreground) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
-    color: var(--foreground);
-    font-size: 0.6875rem;
-    transition: background-color 120ms ease;
-  }
-  .test-btn:hover {
-    background: color-mix(in srgb, var(--foreground) 9%, transparent);
-  }
-  .test-btn.danger {
-    color: var(--color-error);
-    border-color: color-mix(in srgb, var(--color-error) 35%, transparent);
-  }
-  .test-btn.danger:hover {
-    background: color-mix(in srgb, var(--color-error) 14%, transparent);
-  }
-
-  /* ── Danger button ────────────────────────────────── */
-  .danger-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 0.4rem 0.65rem;
-    border-radius: var(--radius-input);
-    background: color-mix(in srgb, var(--color-error) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-error) 35%, transparent);
-    color: var(--color-error);
-    font-size: 0.75rem;
-    transition:
-      background-color 120ms ease,
-      border-color 120ms ease;
-  }
-  .danger-btn:hover {
-    background: color-mix(in srgb, var(--color-error) 18%, transparent);
-  }
-  .danger-btn.confirming {
-    background: color-mix(in srgb, var(--color-error) 28%, transparent);
-    border-color: var(--color-error);
   }
 
   /* ── Per-app section ────────────────────────────────── */
@@ -927,21 +819,6 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
-  }
-  .apps-filter {
-    height: 28px;
-    padding: 0 0.6rem;
-    border-radius: var(--radius-input);
-    background: color-mix(in srgb, var(--foreground) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
-    color: var(--foreground);
-    font: inherit;
-    font-size: 0.75rem;
-    outline: none;
-  }
-  .apps-filter:focus-visible {
-    border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
   }
   .apps-empty {
     padding: 0.75rem 0.6rem;
