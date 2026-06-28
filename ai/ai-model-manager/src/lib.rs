@@ -181,11 +181,15 @@ pub fn memory_budget_gib(hw: &Hardware) -> f64 {
 
 /// Parse total system RAM in GiB from `/proc/meminfo` contents: the `MemTotal:`
 /// line, reported in kibibytes, converted to GiB. `None` when the line is absent
-/// or unparseable. Pure, so it is unit-tested without the filesystem. This is the
-/// first piece of populating [`Hardware`]; the accelerator (discrete VRAM vs APU
-/// unified) and the memory bandwidth need `/sys` + DMI grounding and are a
-/// separate, careful piece (a wrong bandwidth would mis-tier, so it is not
-/// guessed here).
+/// or unparseable. Pure, so it is unit-tested without the filesystem.
+///
+/// One of three pure cores that populate [`Hardware`]: this (RAM), the
+/// [`classify_accelerator`] split (discrete VRAM vs APU unified), and the
+/// [`theoretical_bandwidth_gbps`] formula. Still deferred is the I/O that FEEDS the
+/// latter two - the `/sys/class/drm` reads for `is_integrated` + the discrete VRAM,
+/// and the DMI (SMBIOS Type 17) reads for the DRAM data rate / width / channel
+/// count - which need careful, privilege-sensitive grounding (a wrong value
+/// mis-tiers), so they are kept out of these pure, anchored functions.
 pub fn parse_meminfo_ram_gib(contents: &str) -> Option<f64> {
     for line in contents.lines() {
         if let Some(rest) = line.strip_prefix("MemTotal:") {
@@ -206,6 +210,47 @@ pub fn detect_ram_gib() -> Option<f64> {
     std::fs::read_to_string("/proc/meminfo")
         .ok()
         .and_then(|c| parse_meminfo_ram_gib(&c))
+}
+
+/// Classify the accelerator from the two signals the detection layer reads:
+/// whether the GPU is INTEGRATED (an APU sharing system RAM) and, for a discrete
+/// card, its dedicated VRAM in GiB. Pure: the `/sys` reads that produce
+/// `is_integrated` and `vram_gib` are the (separate, careful) I/O layer.
+///
+/// The split is the plan's core differentiator. `is_integrated` - NOT the VRAM
+/// size - is the deciding signal, precisely so a low-VRAM discrete card is not
+/// mistaken for an APU (and over-budgeted against 3/4 RAM) and an APU's tiny BIOS
+/// VRAM carve-out is not mistaken for a discrete budget. An integrated GPU is
+/// unified-memory; only a discrete card's budget is its own VRAM.
+pub fn classify_accelerator(is_integrated: bool, vram_gib: f64) -> Accelerator {
+    if is_integrated {
+        Accelerator::Apu
+    } else {
+        Accelerator::Discrete { vram_gib }
+    }
+}
+
+/// The theoretical peak memory bandwidth in GB/s (decimal) for a memory
+/// configuration: `data_rate_mtps` mega-transfers/second, `bus_width_bits` data
+/// width per channel (64 for a standard DDR channel), across `channels` channels.
+/// This is transfers/s times bytes-per-transfer-per-channel times channels: the
+/// speed-limiting resource on a bandwidth-bound APU that the recommender estimates
+/// the token rate from. The plan's anchor - LPDDR5X-6400, 64-bit channels,
+/// dual-channel - yields ~102 GB/s.
+///
+/// This is the PEAK the DRAM config can move; the sustained fraction a real
+/// llama.cpp run achieves is applied separately ([`MEMORY_BANDWIDTH_EFFICIENCY`]).
+/// Returns 0 for a degenerate (zero) config so the caller falls back rather than
+/// trusting a bogus peak. Pure: the DMI/`/sys` reads that produce the data rate,
+/// width and channel count are the (separate, careful, privilege-sensitive) I/O
+/// layer - a wrong value here mis-tiers, so the inputs are grounded, not guessed.
+pub fn theoretical_bandwidth_gbps(data_rate_mtps: u32, bus_width_bits: u32, channels: u32) -> f64 {
+    if data_rate_mtps == 0 || bus_width_bits == 0 || channels == 0 {
+        return 0.0;
+    }
+    // (data_rate_mtps * 1e6 transfers/s) * (bus_width_bits/8 bytes) * channels,
+    // expressed in GB/s (1e9 bytes/s): the 1e6/1e9 collapses to /1000.
+    data_rate_mtps as f64 * (bus_width_bits as f64 / 8.0) * channels as f64 / 1000.0
 }
 
 /// Estimated generation rate in tokens/second for a model whose per-token streamed
@@ -496,5 +541,41 @@ mod tests {
         assert_eq!(parse_meminfo_ram_gib("MemFree: 100 kB\n"), None);
         assert_eq!(parse_meminfo_ram_gib(""), None);
         assert_eq!(parse_meminfo_ram_gib("MemTotal: notanumber kB\n"), None);
+    }
+
+    #[test]
+    fn an_integrated_gpu_is_an_apu_a_discrete_one_keeps_its_vram() {
+        // The deciding signal is is_integrated, NOT the VRAM size: an APU's tiny
+        // BIOS carve-out must not be read as a discrete budget, and a low-VRAM
+        // discrete card must not be over-budgeted as unified memory.
+        assert_eq!(classify_accelerator(true, 0.5), Accelerator::Apu);
+        assert_eq!(classify_accelerator(false, 12.0), Accelerator::Discrete { vram_gib: 12.0 });
+        // A 4 GB discrete card stays discrete (budget = its 4 GB), not an APU.
+        assert_eq!(classify_accelerator(false, 4.0), Accelerator::Discrete { vram_gib: 4.0 });
+    }
+
+    #[test]
+    fn bandwidth_matches_the_lpddr5x_anchor() {
+        // The plan's anchor: LPDDR5X-6400, 64-bit channels, dual-channel -> ~102 GB/s.
+        let bw = theoretical_bandwidth_gbps(6400, 64, 2);
+        assert!((bw - 102.4).abs() < 0.1, "expected ~102 GB/s, got {bw}");
+        // A single 64-bit DDR5-4800 channel is ~38.4 GB/s.
+        assert!((theoretical_bandwidth_gbps(4800, 64, 1) - 38.4).abs() < 0.1);
+    }
+
+    #[test]
+    fn a_degenerate_memory_config_has_zero_bandwidth() {
+        assert_eq!(theoretical_bandwidth_gbps(0, 64, 2), 0.0);
+        assert_eq!(theoretical_bandwidth_gbps(6400, 0, 2), 0.0);
+        assert_eq!(theoretical_bandwidth_gbps(6400, 64, 0), 0.0);
+    }
+
+    #[test]
+    fn the_anchor_bandwidth_reproduces_the_live_7b_token_rate() {
+        // End to end: the detected bandwidth (102 GB/s) feeds the speed estimate,
+        // reproducing Tim's live datapoint (7B-Q4 ~9.4 tok/s) the recommender tiers on.
+        let bw = theoretical_bandwidth_gbps(6400, 64, 2);
+        let tok_s = estimate_tokens_per_sec(weights_gib(8.03, Quant::Q4KM), bw);
+        assert!((tok_s - 9.4).abs() < 1.5, "expected ~9.4 tok/s, got {tok_s}");
     }
 }
