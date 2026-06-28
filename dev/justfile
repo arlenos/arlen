@@ -228,6 +228,26 @@ integration-smoke:
 dogfood-datapath:
     cargo run --quiet --manifest-path "{{justfile_directory()}}/integration/Cargo.toml" --example dogfood_datapath
 
+# Dogfood Phase-0 AI enable (first-dogfoodable-session-plan.md): the AI is DISABLED
+# by default (the fail-closed posture), so the harness answers nothing until
+# `[ai] enabled = true` is set; and the provider auto-defaults to ollama-default
+# but the MODEL defaults to llama3:8b, so the plan's qwen2.5:7b must be pinned to
+# match the `ollama pull`. This writes a starter ai.toml ONLY if absent (never
+# clobbers an existing config). Pairs with: `ollama pull qwen2.5:7b`.
+dogfood-ai-config:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cfg="${XDG_CONFIG_HOME:-$HOME/.config}/arlen/ai.toml"
+    if [ -f "$cfg" ]; then
+      echo "ai.toml already exists at $cfg - not clobbering. Ensure it has:"
+      echo '  [ai]'; echo '  enabled = true'; echo '  provider = "ollama-default"'
+      echo '  [provider]'; echo '  model = "qwen2.5:7b"'
+      exit 0
+    fi
+    mkdir -p "$(dirname "$cfg")"
+    printf '[ai]\nenabled = true\nprovider = "ollama-default"\n\n[provider]\nmodel = "qwen2.5:7b"\n' > "$cfg"
+    echo "wrote dogfood ai.toml -> $cfg (local Ollama enabled). Now: ollama pull qwen2.5:7b"
+
 # Executor go-live PREP step P5 (executor-live-golive-plan.md): install the
 # agent's permission profile to ~/.config/permissions/ai-agent.toml (honours
 # XDG_CONFIG_HOME). It grants EXACTLY the one File -[FILE_PART_OF]-> Project link
