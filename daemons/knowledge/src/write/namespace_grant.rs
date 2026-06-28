@@ -130,6 +130,19 @@ impl NamespaceGrant {
 /// permits nothing. This is the write path's delegation hook: a write whose type is
 /// not under the caller's own app-id namespace is admitted only if some delegated
 /// grant permits it.
+///
+/// TRACKED follow-up (adversarial review, MEDIUM): a grant checks only that the type
+/// is strictly under the delegated namespace, NOT that the namespace is UNOWNED. A
+/// user profile that delegated an installed app's namespace (e.g. a bridge granted
+/// `com.other`) would let the bridge write into that app's own entity table/ids (the
+/// table + node id key on the qualified type, not `_owner`), MERGE-clobbering its
+/// instances. Bounded today - it cannot reach `system.*`/`shared.*`, it is
+/// app-tier-within-the-user's-own-KG, gated behind the user-owned profile (the
+/// same-uid F3 residual), and the custom-type READ path is unwired so there is no
+/// read-poisoning consumer yet. The fix (reject a delegation matching an installed
+/// app's namespace, or owner-scope the entity table/id) lands WITH the custom-type
+/// read path - the intended delegation is a bridge's OWN external-tool namespace
+/// (`md.obsidian`), not another installed app's.
 pub fn permits_any(delegated: &[String], entity_type: &str) -> bool {
     delegated
         .iter()
