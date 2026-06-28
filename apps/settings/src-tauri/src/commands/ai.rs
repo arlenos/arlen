@@ -120,6 +120,16 @@ pub async fn ai_defaults_get() -> String {
     ai_call_string("ai_defaults_get", "{}").await
 }
 
+/// The model catalog for the Settings Default-Models page (`ai_models_list`): a
+/// JSON array of `{ provider, model, contextWindow, kind, available }`, the same
+/// catalog the harness picker reads. The page pairs it with `ai_defaults_get`/
+/// `ai_defaults_set` to choose the default; empty array if the daemon is
+/// unreachable.
+#[tauri::command]
+pub async fn ai_models_list() -> String {
+    ai_call_string("ai_models_list", "[]").await
+}
+
 /// Enable or disable a catalogued provider (`ai_provider_set_enabled`). Returns
 /// the daemon's `ok` / `error: ...` status; a transport failure maps to an
 /// `error:` string so the manager surfaces it.
