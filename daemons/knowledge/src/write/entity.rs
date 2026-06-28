@@ -255,10 +255,16 @@ pub fn plan_entity_upsert(
     if !token.can_write(qualified_type) {
         return Err(format!("permission denied for {qualified_type}"));
     }
-    // The caller may only write its own namespace (the type prefix must be the
-    // attested app_id). This is the cross-tenant boundary.
-    let prefix = format!("{}.", token.app_id);
-    if !qualified_type.starts_with(&prefix) {
+    // The caller may write its own namespace (the type prefix is the attested
+    // app_id) OR a namespace it was DELEGATED (a foreign-app bridge writing e.g.
+    // `md.obsidian.*`, foreign-app-bridges.md §2). The `system.*`/`shared.*` gate
+    // above already refused those structurally, and `permits_any` validates each
+    // delegated namespace through `NamespaceGrant::new` (reserved-deny, fail-
+    // closed), so a delegation can never reach a system/shared type either. This is
+    // the cross-tenant boundary.
+    let own = qualified_type.starts_with(&format!("{}.", token.app_id));
+    let delegated = super::permits_any(&token.delegated_namespaces, qualified_type);
+    if !own && !delegated {
         return Err(format!(
             "namespace violation: {} cannot write {qualified_type}",
             token.app_id
@@ -357,8 +363,12 @@ pub fn plan_entity_link(
         if !token.can_write(ty) {
             return Err(format!("permission denied for {ty}"));
         }
-        let prefix = format!("{}.", token.app_id);
-        if !ty.starts_with(&prefix) {
+        // Own namespace OR a delegated one (a bridge links its own md.obsidian
+        // nodes); reserved types were refused above and a delegation cannot reach
+        // them (`permits_any` validates via `NamespaceGrant::new`).
+        let own = ty.starts_with(&format!("{}.", token.app_id));
+        let delegated = super::permits_any(&token.delegated_namespaces, ty);
+        if !own && !delegated {
             return Err(format!(
                 "namespace violation: {} cannot link {ty}",
                 token.app_id
@@ -645,6 +655,71 @@ mod tests {
         let mut bad = HashMap::new();
         bad.insert("nope".to_string(), serde_json::json!("x"));
         assert!(plan_entity_upsert(&reg, &token, "md.obsidian.Note", "k1", bad).is_err());
+    }
+
+    #[test]
+    fn a_delegated_namespace_lets_a_bridge_upsert_outside_its_own_app_id() {
+        use crate::token::{CapabilityToken, EntityScope, InstanceScope};
+        let reg = obsidian_registry();
+        let scope = |t: &str| EntityScope {
+            entity_type: t.to_string(),
+            fields: None,
+            exclude_fields: vec![],
+        };
+        let mut fields = HashMap::new();
+        fields.insert("title".to_string(), serde_json::json!("hi"));
+        // Write scopes cover all three, so the namespace/delegation guard (not the
+        // scope check) is what rejects.
+        let write = || {
+            vec![
+                scope("md.obsidian.Note"),
+                scope("com.other.Note"),
+                scope("system.File"),
+            ]
+        };
+
+        // A bridge attested as `bridge-ingest`, DELEGATED the md.obsidian namespace.
+        let bridge = CapabilityToken::new(
+            "bridge-ingest".into(),
+            1234,
+            vec![],
+            write(),
+            vec![],
+            InstanceScope::Own,
+        )
+        .with_delegated_namespaces(vec!["md.obsidian".into()]);
+        // The delegated namespace is admitted even though it is not the bridge's
+        // own app id.
+        assert!(plan_entity_upsert(&reg, &bridge, "md.obsidian.Note", "k1", fields.clone()).is_ok());
+        // A namespace it was NOT delegated is refused (the cross-tenant bound).
+        assert!(plan_entity_upsert(&reg, &bridge, "com.other.Note", "k1", fields.clone()).is_err());
+        // system.* stays unwritable even though the bridge holds a delegation.
+        assert!(plan_entity_upsert(&reg, &bridge, "system.File", "k1", fields.clone()).is_err());
+
+        // A bridge that tries to DELEGATE a reserved namespace gains nothing: the
+        // declaration yields no grant (NamespaceGrant::new refuses it), and the
+        // system.* gate refuses regardless.
+        let evil = CapabilityToken::new(
+            "bridge-ingest".into(),
+            1234,
+            vec![],
+            write(),
+            vec![],
+            InstanceScope::Own,
+        )
+        .with_delegated_namespaces(vec!["system".into()]);
+        assert!(plan_entity_upsert(&reg, &evil, "system.File", "k1", fields.clone()).is_err());
+
+        // Without any delegation, the bridge cannot write md.obsidian at all.
+        let nodel = CapabilityToken::new(
+            "bridge-ingest".into(),
+            1234,
+            vec![],
+            write(),
+            vec![],
+            InstanceScope::Own,
+        );
+        assert!(plan_entity_upsert(&reg, &nodel, "md.obsidian.Note", "k1", fields.clone()).is_err());
     }
 
     fn obsidian_token() -> crate::token::CapabilityToken {

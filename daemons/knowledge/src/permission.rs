@@ -53,6 +53,13 @@ pub struct GraphPermissions {
     pub read_sensitive: Vec<String>,
     #[serde(default)]
     pub instance_scope: InstanceScopeConfig,
+    /// Namespaces this app may write entity types under besides its own (the
+    /// foreign-app-bridge delegation, foreign-app-bridges.md §2). Raw prefix
+    /// strings (e.g. `["md.obsidian"]`); the write path validates each through
+    /// `NamespaceGrant::new` (reserved `system.*`/`shared.*` ungrantable, fail-
+    /// closed). Empty for an ordinary app, which writes only its own namespace.
+    #[serde(default)]
+    pub delegated_namespaces: Vec<String>,
 }
 
 /// A relation permission entry from TOML.
@@ -198,6 +205,16 @@ impl PermissionProfile {
             None => return vec![],
         };
         parse_scope_entries(entries)
+    }
+
+    /// The delegated namespaces this profile grants (the raw prefix strings, e.g.
+    /// `["md.obsidian"]`). The write path validates each through
+    /// `NamespaceGrant::new` at check time; this just surfaces the declaration.
+    pub fn delegated_namespaces(&self) -> Vec<String> {
+        match &self.graph {
+            Some(g) => g.delegated_namespaces.clone(),
+            None => vec![],
+        }
     }
 
     /// Convert relation entries to token relation scopes.
