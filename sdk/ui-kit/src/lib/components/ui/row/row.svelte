@@ -9,6 +9,7 @@
     label,
     id: rowId,
     description,
+    leading,
     control,
     preview,
     below,
@@ -17,6 +18,9 @@
     /// Optional anchor id for deep-link scroll-to-setting.
     id?: string;
     description?: string;
+    /// Optional leading visual before the label (a logo, badge, or rank), for
+    /// rows that need an icon column the bare label/control layout lacks.
+    leading?: Snippet;
     control?: Snippet;
     preview?: Snippet;
     /// Optional full-width content rendered under the label/control line.
@@ -26,6 +30,9 @@
 
 <div class="row" id={rowId}>
   <div class="row-main">
+    {#if leading}
+      <div class="leading">{@render leading()}</div>
+    {/if}
     <div class="label">
       <div class="label-title">{label}</div>
       {#if description}
@@ -66,6 +73,13 @@
        height; the .row padding is excluded here so a `below` block adds
        under it rather than inflating the line. */
     min-height: calc(var(--height-row, 40px) - 1.5rem);
+  }
+
+  .leading {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
   }
 
   .label {
