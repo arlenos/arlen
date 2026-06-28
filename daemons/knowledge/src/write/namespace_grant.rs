@@ -50,6 +50,10 @@ const RESERVED_NAMESPACES: &[&str] = &["system", "shared"];
 pub struct NamespaceGrant {
     /// The granted namespace, e.g. `md.obsidian`. Never reserved, never empty,
     /// always a valid reverse-DNS-shaped identifier (the `new`/`attenuate` floor).
+    /// Do NOT construct a `NamespaceGrant` by struct literal anywhere - the field
+    /// is module-private precisely so `new`/`attenuate` are the only way to mint
+    /// one, keeping the reserved-namespace + validity floor unbypassable. A literal
+    /// here would skip that floor (e.g. mint a `system`-covering grant).
     prefix: String,
 }
 
@@ -79,11 +83,23 @@ impl NamespaceGrant {
     /// itself nor a sibling like `md.obsidianvault.Note`). The dotted boundary is
     /// load-bearing: a bare `starts_with` would let `md.obsidian` grant
     /// `md.obsidianX.Note`.
+    ///
+    /// This is a NAMESPACE-boundary gate, NOT a full type-shape check: it answers
+    /// only "is this type strictly under my granted namespace?". A permitted type
+    /// is always strictly under the grant (never a sibling, never `system.*`/
+    /// `shared.*`), but its full validity - a registered, well-formed `{ns}.{Type}`
+    /// - is the schema registry's separate check the write-path wiring keeps.
     pub fn permits(&self, entity_type: &str) -> bool {
         match entity_type.strip_prefix(&self.prefix) {
-            // A non-empty remainder beginning at a `.` boundary, with at least one
-            // type segment after it.
-            Some(rest) => rest.starts_with('.') && rest.len() > 1,
+            // A `.` boundary then a type segment whose first byte is an identifier
+            // char. Requiring an alphanumeric start rejects degenerate tails at the
+            // boundary (`md.obsidian..`, `md.obsidian. `, a control char) while
+            // accepting both a PascalCase type (`.Note`) and a lowercase
+            // sub-namespace (`.vault`, used by `attenuate`).
+            Some(rest) => {
+                let mut bytes = rest.bytes();
+                bytes.next() == Some(b'.') && bytes.next().is_some_and(|b| b.is_ascii_alphanumeric())
+            }
             None => false,
         }
     }
@@ -145,6 +161,31 @@ mod tests {
         assert!(!g.permits("com.evil.Note"));
         // Trailing dot with no type segment.
         assert!(!g.permits("md.obsidian."));
+        // Degenerate tails at the boundary are rejected (not authorization
+        // escapes - they are still under the namespace - but a permitted type must
+        // at least start a real segment; full shape is the schema's job).
+        assert!(!g.permits("md.obsidian.."));
+        assert!(!g.permits("md.obsidian. "));
+        assert!(!g.permits("md.obsidian.\u{0}"));
+    }
+
+    #[test]
+    fn no_grant_ever_permits_a_reserved_type() {
+        // The load-bearing anti-poisoning property, asserted directly (not only
+        // implied by the ungrantable-prefix test): a normal grant - and a deep one
+        // - can never reach a system.*/shared.* type.
+        let g = NamespaceGrant::new("md.obsidian").unwrap();
+        assert!(!g.permits("system.File"));
+        assert!(!g.permits("shared.Person"));
+        let deep = NamespaceGrant::new("a.b.c.d").unwrap();
+        assert!(deep.permits("a.b.c.d.Note"));
+        assert!(!deep.permits("system.File"));
+        assert!(!deep.permits("shared.Person"));
+        // A grant whose OWN namespace merely contains the word is fine and still
+        // cannot reach the top-level reserved namespace.
+        let mid = NamespaceGrant::new("md.system").unwrap();
+        assert!(mid.permits("md.system.Thing"));
+        assert!(!mid.permits("system.File"));
     }
 
     #[test]
