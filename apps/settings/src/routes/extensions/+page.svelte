@@ -15,6 +15,9 @@
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import ModuleCard from "$lib/components/appearance/ModuleCard.svelte";
   import { modules, moduleGroups } from "$lib/stores/modules";
 
@@ -63,14 +66,9 @@
   <SectionGrid>
   <div class="span-full ext-column">
   <div class="ext-toolbar">
-    <button
-      type="button"
-      class="refresh-btn"
-      onclick={() => modules.load()}
-      title="Re-scan module directories"
-    >
-      <RefreshCw size={12} strokeWidth={2.25} />
-    </button>
+    <IconAction label="Re-scan module directories" onclick={() => modules.load()}>
+      <RefreshCw size={14} strokeWidth={2} />
+    </IconAction>
   </div>
 
   {#if $modules.restartRequired}
@@ -79,13 +77,9 @@
       <span>
         Changes will take effect after the Arlen shell restarts.
       </span>
-      <button
-        type="button"
-        class="banner-dismiss"
-        onclick={() => modules.dismissRestartBanner()}
-      >
+      <Button variant="ghost" size="sm" onclick={() => modules.dismissRestartBanner()}>
         Dismiss
-      </button>
+      </Button>
     </div>
   {/if}
 
@@ -120,13 +114,7 @@
     </div>
 
     <div class="search-wrap">
-      <input
-        type="text"
-        class="search"
-        placeholder="Filter modules..."
-        value={filter}
-        oninput={(e) => (filter = (e.currentTarget as HTMLInputElement).value)}
-      />
+      <Input placeholder="Filter modules…" bind:value={filter} />
     </div>
 
     <div class="groups">
@@ -166,24 +154,6 @@
     display: flex;
     justify-content: flex-end;
   }
-  .refresh-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    border-radius: var(--radius-input);
-    background: color-mix(in srgb, var(--foreground) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
-    color: var(--foreground);
-    flex-shrink: 0;
-    transition: background-color 120ms ease;
-  }
-  .refresh-btn:hover {
-    background: color-mix(in srgb, var(--foreground) 9%, transparent);
-  }
-
   .banner {
     display: flex;
     align-items: center;
@@ -200,23 +170,6 @@
     flex: 1;
     color: var(--foreground);
   }
-  .banner-dismiss {
-    display: inline-flex;
-    align-items: center;
-    height: var(--height-control-compact, 24px);
-    padding: 0 0.5rem;
-    background: transparent;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-button);
-    color: color-mix(in srgb, var(--foreground) 75%, transparent);
-    font: inherit;
-    font-size: 0.6875rem;
-    transition: background-color var(--duration-fast) var(--ease-out);
-  }
-  .banner-dismiss:hover {
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
-    color: var(--foreground);
-  }
 
   .summary {
     font-size: 0.6875rem;
@@ -226,22 +179,6 @@
 
   .search-wrap {
     margin-bottom: 1rem;
-  }
-  .search {
-    width: 100%;
-    height: 30px;
-    padding: 0 0.7rem;
-    border-radius: var(--radius-input);
-    background: color-mix(in srgb, var(--foreground) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
-    color: var(--foreground);
-    font: inherit;
-    font-size: 0.75rem;
-    outline: none;
-  }
-  .search:focus-visible {
-    border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
   }
 
   .groups {
