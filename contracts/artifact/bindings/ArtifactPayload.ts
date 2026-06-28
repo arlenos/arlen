@@ -23,7 +23,7 @@ source: string,
 /**
  * An optional language hint (e.g. `"rust"`).
  */
-language: string | null, } | { "kind": "table", 
+language?: string, } | { "kind": "table", 
 /**
  * The header row.
  */

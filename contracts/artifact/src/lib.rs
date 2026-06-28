@@ -209,6 +209,7 @@ pub struct Link {
     pub href: String,
     /// An optional display label.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub label: Option<String>,
 }
 
@@ -235,6 +236,7 @@ pub enum ArtifactPayload {
         source: String,
         /// An optional language hint (e.g. `"rust"`).
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
         language: Option<String>,
     },
     /// `table`: a header row and the data rows (all cells are strings; the renderer
@@ -306,6 +308,7 @@ pub struct ArtifactMeta {
     /// An optional human label for the artifact (e.g. a title shown in a
     /// pinned-artifact list). Cosmetic; carries no authority.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub title: Option<String>,
 }
 
