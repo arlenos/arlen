@@ -1,0 +1,5 @@
+# Starting permission profile for KSnakeDuel (a KDE tron-style duel game). Plays locally; needs no
+# filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "org.kde.ksnakeduel"
+tier = "third-party"
