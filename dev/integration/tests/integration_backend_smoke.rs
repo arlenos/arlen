@@ -410,6 +410,130 @@ async fn a_file_opened_promotes_to_a_readable_file_node() {
     }
 }
 
+/// IT-1 sensor pipeline (CG-R1): a `file.opened` for a real `.rs` file drives the
+/// full code-graph chain end-to-end - code-indexer consumes the event, tree-sitter
+/// parses the file ON DISK, emits a `code.indexed` event, and the knowledge
+/// promotion pass writes a `CodeSymbol` node (fused to its File via DEFINES). The
+/// poll asserts OUR fixture's symbol is readable under the seeded scope. This is
+/// the durable answer to the audit's "the sensor daemons compile + pass unit tests
+/// but are never exercised in an assembled stack": a three-daemon chain
+/// (event-bus + knowledge + code-indexer). Skips if code-indexer is not built (the
+/// fast `just integration-smoke` does not build it; `just integration-nightly`
+/// does). Same `#[ignore]`/FUSE rationale as the other promotion scenarios.
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge + code-indexer built and a FUSE-capable host (~30s)"]
+async fn a_file_opened_indexes_code_symbols_into_the_graph() {
+    if !arlen_integration::binary_built("daemons/code-indexer", "arlen-code-indexer") {
+        eprintln!("SKIP a_file_opened_indexes_code_symbols_into_the_graph: arlen-code-indexer not built (run `just integration-nightly`)");
+        return;
+    }
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    // Read scope on CodeSymbol so the ThirdParty test caller (not system-anchored)
+    // may read the promoted node; the readable-label set derives from the granted
+    // `system.CodeSymbol.*` fields.
+    stack
+        .seed_read_profile(&["system.CodeSymbol.id", "system.CodeSymbol.source_file"])
+        .expect("seed read profile");
+
+    // code-indexer indexes ONLY files under a live Project root (privacy: it never
+    // indexes arbitrary home files), so the fixture must sit inside a detected
+    // project. A `.git` signal makes knowledge's watcher promote the dir to a
+    // Project (root_path = the dir); seeded BEFORE knowledge starts so its startup
+    // scan detects it before code-indexer reads the project roots. The fixture is a
+    // real `.rs` file code-indexer READS + tree-sitter-parses (unlike File
+    // promotion, which only records the path), carrying one extractable symbol.
+    let project = stack.runtime_dir().join("codeproj");
+    std::fs::create_dir_all(project.join(".git")).expect("create .git signal");
+    let file = project.join("lib.rs");
+    std::fs::write(&file, "pub fn arlen_integration_marker() {}\n").expect("write fixture");
+    let path = file.to_string_lossy().into_owned();
+    stack
+        .seed_project_watch_dir(&project)
+        .expect("point the watcher at the project fixture");
+
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    // Capture the knowledge + code-indexer logs (knowledge is silent-default, so
+    // force RUST_LOG) so a non-promotion is diagnosable: the dump-on-timeout below
+    // shows whether code-indexer indexed + emitted and whether knowledge promoted.
+    let ci_log = std::env::temp_dir().join("arlen-it-codeindexer.log");
+    let kn_log = std::env::temp_dir().join("arlen-it-knowledge.log");
+    stack
+        .spawn_logged(
+            "daemons/knowledge",
+            "arlen-graph-daemon",
+            &[("RUST_LOG", "info,arlen_graph_daemon=debug")],
+            &kn_log,
+        )
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+    stack
+        .spawn_logged(
+            "daemons/code-indexer",
+            "arlen-code-indexer",
+            &[("RUST_LOG", "info")],
+            &ci_log,
+        )
+        .expect("spawn code-indexer");
+
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let query = format!("MATCH (s:CodeSymbol {{source_file: '{path}'}}) RETURN s.id LIMIT 1");
+    // Re-emit each iteration: a file.opened dropped before code-indexer's
+    // subscription registered must not doom the wait, and both the index emit and
+    // the promotion are idempotent on the path. The deadline is generous: it must
+    // absorb code-indexer's 60s project-roots cache TTL (if it read the roots
+    // before the project was detected, it refreshes after the TTL) PLUS one ~30s
+    // promotion interval after code.indexed lands.
+    let deadline = Instant::now() + Duration::from_secs(150);
+    loop {
+        let payload = proto::FileOpenedPayload {
+            path: path.clone(),
+            app_id: "integration-test".to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        emitter
+            .emit("file.opened", payload)
+            .await
+            .expect("emit file.opened");
+        if let Ok(rows) = client.query_rows(&query).await {
+            if !rows.is_empty() {
+                return; // code-indexer parsed the file + knowledge promoted its CodeSymbol
+            }
+        }
+        if Instant::now() >= deadline {
+            let tail = |p: &std::path::Path| {
+                let s = std::fs::read_to_string(p).unwrap_or_default();
+                s.lines()
+                    .rev()
+                    .take(30)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+            panic!(
+                "the .rs file.opened never produced a readable CodeSymbol node within 150s\n\
+                 === code-indexer ===\n{}\n=== knowledge (tail) ===\n{}",
+                tail(&ci_log),
+                tail(&kn_log)
+            );
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
 /// IT-1 retrieval (RRF, the 0x03 op): a promoted File is findable by keyword
 /// through the LLM-free retrieval pipeline, scoped to the caller's read grant.
 /// Exercises the whole read path no per-crate test covers end-to-end: promotion
