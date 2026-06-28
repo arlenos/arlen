@@ -96,12 +96,15 @@ const DEFAULT_CONTEXT_WINDOW: u32 = 8_192;
 const DEFAULT_AUDIT_TOKEN: &str = "ai-daemon-default-token";
 
 /// Read `ai.access_level` as a clamped `u8`. The config loader only
-/// decodes TOML integers as `i64`, so this narrows it: a missing,
-/// negative, or out-of-byte-range value yields 0 (Minimal), and
-/// `access_tier_from_level` clamps anything above 4 back to Minimal as
-/// well. A malformed level therefore never widens access.
+/// decodes TOML integers as `i64`, so this narrows it: a MISSING level
+/// yields 3 (TimeScoped, recent activity) - the generous default so an
+/// enabled AI is useful out of the box rather than blind, the user
+/// narrowing if they want. A present-but-negative or out-of-byte-range
+/// value still yields 0 (Minimal), and `access_tier_from_level` clamps
+/// anything above 4 back to Minimal, so a MALFORMED level never widens
+/// access; only the deliberate generous default does.
 fn read_access_level(cfg: &Config) -> u8 {
-    u8::try_from(cfg.get::<i64>("ai.access_level").unwrap_or(0)).unwrap_or(0)
+    u8::try_from(cfg.get::<i64>("ai.access_level").unwrap_or(3)).unwrap_or(0)
 }
 
 /// Resolve the provider config from `ai.toml`: the name from the shared
