@@ -176,6 +176,10 @@ struct ProvenanceEntry {
 struct Relation {
     label: String,
     target: String,
+    /// The target's KG node id (the project id), so the info panel chip can
+    /// navigate to it (`navigate("project:<id>")`). The `target` is the display
+    /// name; this is the navigation key.
+    target_id: String,
 }
 
 /// The capability view in the info panel (KG shape).
@@ -238,14 +242,20 @@ fn escape_cypher_literal(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\'', "\\'")
 }
 
-/// Map the project-membership rows (`{ name }`) into the info panel's
-/// relationship lines. Pure, so the shaping is unit-tested without a daemon.
+/// Map the project-membership rows (`{ id, name }`) into the info panel's
+/// relationship lines. A row needs both the display name and the project id (the
+/// navigation key); a row missing either is skipped. Pure, so the shaping is
+/// unit-tested without a daemon.
 fn verwandt_from_rows(rows: &[std::collections::HashMap<String, serde_json::Value>]) -> Vec<Relation> {
     rows.iter()
-        .filter_map(|r| r.get("name").and_then(|v| v.as_str()))
-        .map(|name| Relation {
-            label: "Part of project".to_string(),
-            target: name.to_string(),
+        .filter_map(|r| {
+            let name = r.get("name").and_then(|v| v.as_str())?;
+            let id = r.get("id").and_then(|v| v.as_str())?;
+            Some(Relation {
+                label: "Part of project".to_string(),
+                target: name.to_string(),
+                target_id: id.to_string(),
+            })
         })
         .collect()
 }
@@ -262,7 +272,7 @@ async fn read_verwandt(path: &str) -> Vec<Relation> {
     // path denies writes + authority labels, so the bounded reach is the
     // caller's own read scope.
     let cypher = format!(
-        "MATCH (f:File {{id: '{}'}})-[:FILE_PART_OF]->(p:Project) RETURN p.name AS name LIMIT 16",
+        "MATCH (f:File {{id: '{}'}})-[:FILE_PART_OF]->(p:Project) RETURN p.id AS id, p.name AS name LIMIT 16",
         escape_cypher_literal(&abs(path))
     );
     match client.query_rows(&cypher).await {
@@ -1545,19 +1555,25 @@ mod tests {
     #[test]
     fn verwandt_maps_project_rows_to_relations() {
         let mut row = HashMap::new();
+        row.insert("id".to_string(), serde_json::json!("/home/tim/Repositories/arlen"));
         row.insert("name".to_string(), serde_json::json!("Arlen"));
         let rels = verwandt_from_rows(&[row]);
         assert_eq!(rels.len(), 1);
         assert_eq!(rels[0].label, "Part of project");
         assert_eq!(rels[0].target, "Arlen");
+        // The id is carried as the navigation key for navigate("project:<id>").
+        assert_eq!(rels[0].target_id, "/home/tim/Repositories/arlen");
     }
 
     #[test]
-    fn verwandt_skips_rows_without_a_name() {
+    fn verwandt_skips_rows_missing_a_name_or_id() {
         let empty: HashMap<String, serde_json::Value> = HashMap::new();
         let mut non_string = HashMap::new();
         non_string.insert("name".to_string(), serde_json::json!(42));
-        assert!(verwandt_from_rows(&[empty, non_string]).is_empty());
+        // A row with a name but no id cannot navigate, so it is skipped too.
+        let mut name_only = HashMap::new();
+        name_only.insert("name".to_string(), serde_json::json!("Arlen"));
+        assert!(verwandt_from_rows(&[empty, non_string, name_only]).is_empty());
     }
 
     #[test]
