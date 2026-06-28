@@ -368,6 +368,80 @@ pub fn proposal_view(outcome: &DispatchOutcome) -> Option<PendingProposal> {
     })
 }
 
+/// The full executable form of a confirmation-needing proposal, retained
+/// daemon-side so a later user approval can actually perform the write
+/// (harness-redesign emit seam 2, the actionable half of the gate card's
+/// `[Approve]`). The content-free [`PendingProposal`] crosses the D-Bus wire to
+/// render the card; THIS never leaves the daemon - it carries the action's
+/// operands and the run context the executor's `execute` needs to re-validate
+/// and write, so it is kept internal and bounded (the same retention the undo
+/// path uses for receipts).
+///
+/// Held alongside the wire view, keyed by the same audit-ledger index. The graph
+/// handle is NOT carried (the interface holds the one shared graph the approve
+/// path writes through); everything else `execute` requires is owned here so the
+/// borrow-free value survives to the static D-Bus boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)] // wired by the approve/deny D-Bus methods (the next slice)
+pub struct RetainedProposal {
+    /// The audit-ledger index of the gate decision: the `[Approve]`/`[Deny]`
+    /// handle, the same id the wire [`PendingProposal`] carries.
+    pub id: u64,
+    /// The behaviour that proposed the action (the executor audits under it).
+    pub behaviour: String,
+    /// The untrusted proposed action (tool + operands) the executor re-validates
+    /// against its trusted registry schema before any write.
+    pub action: ProposedAction,
+    /// The behaviour's declared scope for this tool, enforced by the executor
+    /// (obligation 3) so an approved write cannot exceed the manifest grant.
+    pub tool_scope: Vec<String>,
+    /// The grant-bearing app identity the executor's proof binds to.
+    pub app_id: String,
+    /// The run-context external-trigger fact, carried into the proof's eval
+    /// context unchanged (a human approval does not relax injection containment).
+    pub external_trigger: bool,
+    /// The per-action correlation id, linking the approval's execution audit to
+    /// this decision's ledger entry.
+    pub correlation_id: String,
+    /// The capability ceiling in force, threaded into the executor's re-proof.
+    pub ceiling: BaselineMode,
+}
+
+#[allow(dead_code)] // wired by the approve/deny D-Bus methods (the next slice)
+impl RetainedProposal {
+    /// Capture the executable form of a just-decided proposal, but ONLY when the
+    /// decision actually needs the user (`RequireConfirmation`). An auto-lifting
+    /// `PreviewThenExecute`/`Proceed` already executes on the dispatch path and a
+    /// manual `Propose` is suggest-only, so neither is approvable-then-executed;
+    /// returning `None` for them keeps the approve store holding exactly the
+    /// proposals a `[Approve]` can act on, no auto-executed or suggest-only noise.
+    pub fn capture(
+        id: u64,
+        behaviour: &str,
+        action: &ProposedAction,
+        decision: ActionDecision,
+        tool_scope: &[String],
+        app_id: &str,
+        external_trigger: bool,
+        correlation_id: &str,
+        ceiling: BaselineMode,
+    ) -> Option<Self> {
+        if decision != ActionDecision::RequireConfirmation {
+            return None;
+        }
+        Some(Self {
+            id,
+            behaviour: behaviour.to_string(),
+            action: action.clone(),
+            tool_scope: tool_scope.to_vec(),
+            app_id: app_id.to_string(),
+            external_trigger,
+            correlation_id: correlation_id.to_string(),
+            ceiling,
+        })
+    }
+}
+
 /// Per-behaviour burst coalescing (gap G1). Suppresses a repeat dispatch of a
 /// behaviour for an identical event within a short window, so a burst (e.g.
 /// `file.opened` x100 for one path in a second) fires the behaviour once, not
@@ -2316,6 +2390,51 @@ tools:
             outcome: "done".to_string(),
         })
         .is_none());
+    }
+
+    #[test]
+    fn retained_proposal_captures_only_confirmation_decisions() {
+        let action = ProposedAction {
+            tool: "graph.write".to_string(),
+            summary: "link the file".to_string(),
+            arguments: std::iter::once(("file".to_string(), "f1".to_string())).collect(),
+        };
+        let scope = vec!["Project".to_string(), "FILE_PART_OF".to_string()];
+        let cap = |decision| {
+            RetainedProposal::capture(
+                7,
+                "tidy-downloads",
+                &action,
+                decision,
+                &scope,
+                "org.arlen.agent",
+                true,
+                "evt-1:tidy-downloads",
+                BaselineMode::Supervised,
+            )
+        };
+
+        // A confirmation-needing decision is retained in full so a later approval
+        // can execute it: the operands, the tool scope, and the run context the
+        // executor re-validates against all survive.
+        let retained = cap(ActionDecision::RequireConfirmation)
+            .expect("a RequireConfirmation decision is retained for approval");
+        assert_eq!(retained.id, 7);
+        assert_eq!(retained.behaviour, "tidy-downloads");
+        assert_eq!(retained.action.tool, "graph.write");
+        assert_eq!(retained.action.arguments.get("file").map(String::as_str), Some("f1"));
+        assert_eq!(retained.tool_scope, scope);
+        assert_eq!(retained.app_id, "org.arlen.agent");
+        assert!(retained.external_trigger, "the external-trigger fact is carried unchanged");
+        assert_eq!(retained.correlation_id, "evt-1:tidy-downloads");
+        assert_eq!(retained.ceiling, BaselineMode::Supervised);
+
+        // The decisions that do not need a user approval are not retained: an
+        // auto-lift already executed on dispatch, and a manual Propose is
+        // suggest-only - neither is a [Approve]-then-execute candidate.
+        assert!(cap(ActionDecision::PreviewThenExecute).is_none());
+        assert!(cap(ActionDecision::Proceed).is_none());
+        assert!(cap(ActionDecision::Propose).is_none());
     }
 
     #[tokio::test]
