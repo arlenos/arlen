@@ -14,6 +14,7 @@
     type FileEntry,
   } from "@arlen/ui-kit/components/browser";
   import { openPath } from "$lib/adapter";
+  import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
 
   let {
     path,
@@ -51,6 +52,59 @@
       .then((i) => info.set(i))
       .catch(() => info.set(null));
   });
+
+  // "As of" time-travel for the Related lineage: re-read project membership at
+  // a past time via `files_verwandt_as_of`. Off by default ("Now"); the presets
+  // are relative to the current moment. Only project membership is bitemporal,
+  // so this is the meaningful slice (the listing is unaffected here).
+  const AS_OF_OPTIONS = [
+    { value: "now", label: "Now" },
+    { value: "1d", label: "1 day ago" },
+    { value: "1w", label: "1 week ago" },
+    { value: "1m", label: "1 month ago" },
+    { value: "3m", label: "3 months ago" },
+  ];
+  const DAY_MICROS = 86_400_000_000;
+  const AS_OF_DELTAS: Record<string, number> = {
+    "1d": DAY_MICROS,
+    "1w": 7 * DAY_MICROS,
+    "1m": 30 * DAY_MICROS,
+    "3m": 90 * DAY_MICROS,
+  };
+
+  let asOfChoice = $state("now");
+  let asOfMicros = $state<number | null>(null);
+  const asOfVerwandt = writable<Info["verwandt"]>([]);
+
+  // Reset to the live view when the inspected file changes.
+  $effect(() => {
+    path;
+    asOfChoice = "now";
+    asOfMicros = null;
+  });
+
+  function setAsOf(v: string) {
+    asOfChoice = v;
+    asOfMicros = v === "now" ? null : Date.now() * 1000 - AS_OF_DELTAS[v];
+  }
+
+  // Re-read the relations whenever a past time is chosen (live view uses the
+  // verwandt already loaded by `files_info`).
+  $effect(() => {
+    const p = path;
+    const t = asOfMicros;
+    if (t === null) {
+      asOfVerwandt.set([]);
+      return;
+    }
+    invoke<Info["verwandt"]>("files_verwandt_as_of", { path: p, asOfMicros: t })
+      .then((r) => asOfVerwandt.set(r))
+      .catch(() => asOfVerwandt.set([]));
+  });
+
+  const asOfLabel = $derived(
+    AS_OF_OPTIONS.find((o) => o.value === asOfChoice)?.label ?? "Now",
+  );
 
   const name = $derived(path.split("/").filter(Boolean).pop() ?? "/");
   const Icon = $derived(entry ? entryIcon(entry) : null);
@@ -265,9 +319,25 @@
     {/if}
 
     {#if $info.verwandt.length > 0}
+      {@const rels = asOfMicros === null ? $info.verwandt : $asOfVerwandt}
       <div class="ip-section">
-        <span class="ip-label">Related</span>
-        {#each $info.verwandt as line (line.label + line.target_id)}
+        <div class="ip-rel-head">
+          <span class="ip-label">Related</span>
+          <div class="ip-asof">
+            <span class="ip-asof-key">As of</span>
+            <PopoverSelect
+              value={asOfChoice}
+              options={AS_OF_OPTIONS}
+              width="8.5rem"
+              ariaLabel="View related projects as of a past time"
+              onchange={setAsOf}
+            />
+          </div>
+        </div>
+        {#if asOfMicros !== null}
+          <span class="ip-asof-note">Past view, as of {asOfLabel.toLowerCase()}</span>
+        {/if}
+        {#each rels as line (line.label + line.target_id)}
           <button
             type="button"
             class="ip-rel"
@@ -278,6 +348,9 @@
             <ChevronRight class="ip-rel-chevron" size={14} strokeWidth={2} />
           </button>
         {/each}
+        {#if asOfMicros !== null && rels.length === 0}
+          <span class="ip-asof-empty">No related projects at that time.</span>
+        {/if}
       </div>
     {/if}
 
@@ -387,6 +460,34 @@
     min-width: 0;
     color: var(--foreground);
     overflow-wrap: anywhere;
+  }
+
+  /* The Related header: the section label on the left, the subtle "As of"
+     time-travel control on the right. */
+  .ip-rel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .ip-asof {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ip-asof-key {
+    flex-shrink: 0;
+    font-size: 0.6875rem;
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+  }
+  /* A clear cue that the relations shown are historical, not the live view. */
+  .ip-asof-note {
+    font-size: 0.6875rem;
+    color: var(--color-warning, #d4b483);
+  }
+  .ip-asof-empty {
+    font-size: 0.75rem;
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
 
   /* A Related entry: a row that navigates to the linked KG node (its project).
