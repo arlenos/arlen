@@ -48,6 +48,7 @@ use arlen_ai_core::capability::{ActionDecision, BaselineMode, Capability};
 
 use crate::effect_model::{EffectDomain, InverseReceipt};
 use crate::engine::RetainedProposal;
+use crate::fs_move::{self, FileMover};
 use crate::gate::{resolved_action_kind, ActionContext, ProposedAction};
 use crate::registry::{self, TrustedActionSchema};
 use crate::seams::GraphHandle;
@@ -155,6 +156,12 @@ pub enum ExecError {
     /// of it (the S13 audit-before-acting invariant the gate also honours).
     #[error("audit unavailable, execution refused: {0}")]
     AuditUnavailable(String),
+    /// An external (non-graph) operation's operands could not be turned into a
+    /// safe plan: a non-canonical path, a move onto itself, or no free
+    /// destination within the collision-avoidance bound. Fail-closed: the
+    /// executor performs nothing.
+    #[error("the external operation has no safe plan: {0}")]
+    Unplannable(String),
     /// The write's commit is **unknown** (a timeout after the request may have
     /// been sent, a post-send transport failure, or a reconciliation read that
     /// could not confirm the op-id edge). Distinct from `Write` (a definite
@@ -587,6 +594,87 @@ fn enforce_tool_scope(write: &RelationWrite, tool: &str, scope: &[String]) -> Re
     Ok(())
 }
 
+/// Argument keys the executor reads for an `fs.move` action: the source file and
+/// the destination directory. The (untrusted) behaviour loop supplies both; both
+/// are confined to the behaviour's declared dir scope before any move.
+const FS_MOVE_SOURCE: &str = "source";
+const FS_MOVE_DEST_DIR: &str = "dest_dir";
+
+/// Expand a behaviour tool-scope dir entry to an absolute path. Scope entries are
+/// authored with `~` (e.g. `~/Downloads`); expand it against `$HOME`. An absolute
+/// `/...` entry is taken verbatim. A relative entry cannot be a confinement root,
+/// so it yields `None` (the caller drops it, fail-closed).
+fn expand_scope_dir(entry: &str, home: &str) -> Option<String> {
+    if entry == "~" {
+        Some(home.trim_end_matches('/').to_string())
+    } else if let Some(rest) = entry.strip_prefix("~/") {
+        Some(format!("{}/{}", home.trim_end_matches('/'), rest.trim_end_matches('/')))
+    } else if entry.starts_with('/') {
+        Some(entry.trim_end_matches('/').to_string())
+    } else {
+        None
+    }
+}
+
+/// Whether `path` is `dir` itself or lies under it as a `/`-bounded prefix (so
+/// `/a/bc` is NOT under `/a/b`). Both are absolute and slash-trimmed.
+fn is_under(path: &str, dir: &str) -> bool {
+    path == dir || path.strip_prefix(dir).is_some_and(|r| r.starts_with('/'))
+}
+
+/// Confine an `fs.move`'s source and destination directory to the behaviour's
+/// declared `fs.move` tool scope - the executor's path confinement (obligation
+/// 3). Unlike `graph.write` (where the gate names the relation and predict proves
+/// containment), NOTHING upstream confines a move's dirs: predict has no
+/// precondition for an external effect and the gate's tool-scope check is
+/// name-only. So this is the SOLE path confinement and must hold before any move.
+///
+/// Fail-closed: an EMPTY scope is REFUSED (a filesystem-move tool must declare its
+/// dirs; an unbounded move is never granted by omission, unlike a graph relation
+/// where empty means no finer restriction). `$HOME` must resolve to expand
+/// `~`-rooted entries; if not, no entry is a valid root and the move is refused.
+/// Both the source file and the destination directory must lie under (or equal) a
+/// declared scope dir.
+fn confine_move_to_scope(source: &str, dest_dir: &str, scope: &[String]) -> Result<(), ExecError> {
+    let violation = |token: &str| ExecError::ScopeViolation {
+        tool: "fs.move".to_string(),
+        token: token.to_string(),
+    };
+    if scope.is_empty() {
+        return Err(violation("<empty scope: a move tool must declare its dirs>"));
+    }
+    let home = std::env::var("HOME").map_err(|_| violation("<no HOME to resolve scope dirs>"))?;
+    let roots: Vec<String> = scope.iter().filter_map(|e| expand_scope_dir(e, &home)).collect();
+    let src = source.trim_end_matches('/');
+    let dst = dest_dir.trim_end_matches('/');
+    if !roots.iter().any(|r| is_under(src, r)) {
+        return Err(violation(source));
+    }
+    if !roots.iter().any(|r| is_under(dst, r)) {
+        return Err(violation(dest_dir));
+    }
+    Ok(())
+}
+
+/// Derive a stable op id for an external operation from the decision identity (the
+/// correlation id) and the concrete move (source plus the landed destination), the
+/// non-graph twin of [`derive_op_id`]. Length-delimited, SHA-256, hex.
+fn derive_external_op_id(correlation_id: &str, source: &str, destination: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    for part in [correlation_id, "fs.move", source, destination] {
+        h.update((part.len() as u64).to_le_bytes());
+        h.update(part.as_bytes());
+    }
+    let digest = h.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for b in digest {
+        use std::fmt::Write;
+        let _ = write!(hex, "{b:02x}");
+    }
+    hex
+}
+
 /// Derive a stable, collision-resistant operation id for a write, from the
 /// decision identity (the correlation id, `event.id:behaviour`) and the concrete
 /// write. A crash-replay of the *same* decision yields the same id (so the daemon
@@ -884,6 +972,106 @@ impl<'a> LiveExecutor<'a> {
         Ok(Some(ExecutedWrite::new(
             report.write,
             outcome,
+            op_id,
+            ctx.correlation_id.to_string(),
+        )))
+    }
+
+    /// Execute a gated `fs.move` - the executor's external (non-graph) arm and
+    /// the first live non-graph action. Like [`execute`](Self::execute) it acts
+    /// only for a proven `PreviewThenExecute`; unlike it there is no graph proof
+    /// to re-run, because an external effect has no graph precondition (predict is
+    /// vacuously `Valid` for it). Its safety is established HERE, at execute time:
+    ///
+    /// - the schema must be exactly one `Reversible` [`Effect::External`] resolved
+    ///   from the trusted registry (obligation 1), so a non-reversible or graph
+    ///   effect never reaches a move;
+    /// - the source and destination directory are confined to the behaviour's
+    ///   declared `fs.move` dir scope ([`confine_move_to_scope`]) - the SOLE path
+    ///   confinement, since predict proves nothing for an external effect and the
+    ///   gate's tool-scope check is name-only;
+    /// - the move is planned collision-safe ([`fs_move::plan_move`]) so it never
+    ///   overwrites and yields an exact `RestorePath` inverse, and the mover itself
+    ///   refuses an occupied destination (the plan->move TOCTOU is closed);
+    /// - the act is audited fail-closed BEFORE the move (S13 audit-before-acting),
+    ///   linked to the gate decision by the shared correlation id.
+    ///
+    /// Returns the non-graph receipt ([`ActionWrite`]: the resolved forward, the
+    /// captured inverse, the op id, the correlation id) so the compensate path can
+    /// undo exactly this move, `None` for a non-executable decision, or an
+    /// [`ExecError`]. `behaviour_name`/`ctx` are the trusted dispatch-supplied ids,
+    /// never the proposal.
+    pub async fn execute_external(
+        &self,
+        action: &ProposedAction,
+        decision: ActionDecision,
+        tool_scope: &[String],
+        mover: &dyn FileMover,
+        behaviour_name: &str,
+        ctx: &ActionContext<'_>,
+    ) -> Result<Option<ActionWrite>, ExecError> {
+        if decision != ActionDecision::PreviewThenExecute {
+            return Ok(None);
+        }
+        // Bind to the trusted registry schema (never a caller-passed one) and
+        // require exactly one Reversible External effect (obligation 1): a
+        // non-reversible or graph effect is refused, so nothing else rides this
+        // arm and no model-declared "reversible" claim can reach a move (the class
+        // comes from the trusted schema, not the proposal).
+        let trusted = registry::lookup(&action.tool)
+            .ok_or_else(|| ExecError::NoRule(action.tool.clone()))?;
+        let (domain, op) = match trusted.schema().effects.as_slice() {
+            [Effect::External { domain, op, class, .. }] if class.is_reversible() => {
+                (*domain, op.clone())
+            }
+            _ => return Err(ExecError::UnsupportedEffect(action.tool.clone())),
+        };
+
+        // Resolve the (untrusted) operands.
+        let source = action
+            .arguments
+            .get(FS_MOVE_SOURCE)
+            .ok_or_else(|| ExecError::MissingArgument(FS_MOVE_SOURCE.to_string()))?;
+        let dest_dir = action
+            .arguments
+            .get(FS_MOVE_DEST_DIR)
+            .ok_or_else(|| ExecError::MissingArgument(FS_MOVE_DEST_DIR.to_string()))?;
+
+        // The sole path confinement: both ends under the declared dir scope.
+        confine_move_to_scope(source, dest_dir, tool_scope)?;
+
+        // Plan a collision-safe destination (never an occupied path), reading the
+        // live filesystem. `None` means a non-canonical path, a self-move, or no
+        // free name within the bound - fail closed.
+        let plan = fs_move::plan_move(source, dest_dir, |p| std::path::Path::new(p).exists())
+            .ok_or_else(|| {
+                ExecError::Unplannable(format!(
+                    "no safe destination for '{source}' in '{dest_dir}'"
+                ))
+            })?;
+
+        // Audit the act BEFORE the move, fail-closed (S13): no file is moved
+        // without a durable, content-free record linked to the gate decision.
+        self.audit
+            .submit(behaviour_action_event(behaviour_name, "execute", ctx.correlation_id))
+            .await
+            .map_err(|e| ExecError::AuditUnavailable(e.to_string()))?;
+
+        // Perform the move; the mover refuses to overwrite, so a file appearing at
+        // the planned destination between plan and move cannot be destroyed.
+        let inverse = fs_move::execute_move(&plan, mover)
+            .map_err(|e| ExecError::Write(e.to_string()))?
+            .clone();
+
+        let op_id = derive_external_op_id(
+            ctx.correlation_id,
+            plan.source.as_str(),
+            plan.destination.as_str(),
+        );
+        let forward = ResolvedExternalOp::new(domain, op, plan.destination.as_str().to_string());
+        Ok(Some(ActionWrite::new(
+            forward,
+            inverse,
             op_id,
             ctx.correlation_id.to_string(),
         )))
@@ -2163,5 +2351,209 @@ mod tests {
         assert_eq!(outcome, CompensationOutcome::Retracted);
         // The compensation was audited before the retract was attempted.
         assert_eq!(audit.recorded().await.len(), 1);
+    }
+
+    // --- the fs.move external executor arm (executor go-live) ---
+
+    /// A mover that records each move without touching disk, for the fail-closed
+    /// assertions where NO move must happen.
+    #[derive(Default)]
+    struct RecordingMover {
+        moves: Mutex<Vec<(String, String)>>,
+    }
+    impl FileMover for RecordingMover {
+        fn move_file(&self, from: &str, to: &str) -> std::io::Result<()> {
+            self.moves.lock().unwrap().push((from.to_string(), to.to_string()));
+            Ok(())
+        }
+    }
+
+    fn move_action(source: &str, dest_dir: &str) -> ProposedAction {
+        ProposedAction {
+            tool: "fs.move".to_string(),
+            summary: "tidy a download".to_string(),
+            arguments: [("source", source), ("dest_dir", dest_dir)]
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        }
+    }
+
+    #[tokio::test]
+    async fn execute_external_moves_audits_and_returns_the_inverse() {
+        let dir = tempfile::tempdir().unwrap();
+        let downloads = dir.path().join("Downloads");
+        let projects = dir.path().join("Projects");
+        std::fs::create_dir_all(&downloads).unwrap();
+        std::fs::create_dir_all(&projects).unwrap();
+        let src = downloads.join("paper.pdf");
+        std::fs::write(&src, b"x").unwrap();
+
+        let scope = vec![
+            downloads.to_str().unwrap().to_string(),
+            projects.to_str().unwrap().to_string(),
+        ];
+        let cap = executing_cap();
+        let writer = MockWriter::default();
+        let audit = MockAuditSink::accepting();
+        let (resolver, mounts) = (IdentityResolver, StaticMountPolicy::empty());
+        let exec = LiveExecutor::new(&cap, &resolver, &mounts, &writer, &audit);
+
+        let receipt = exec
+            .execute_external(
+                &move_action(src.to_str().unwrap(), projects.to_str().unwrap()),
+                ActionDecision::PreviewThenExecute,
+                &scope,
+                &crate::fs_move::OsFileMover,
+                "tidy-downloads",
+                &ctx(),
+            )
+            .await
+            .unwrap()
+            .expect("a proven move yields a receipt");
+
+        let dst = projects.join("paper.pdf");
+        assert!(dst.exists() && !src.exists(), "the file moved to the destination");
+        match receipt.inverse() {
+            InverseReceipt::RestorePath { now, prior } => {
+                assert_eq!(now.as_str(), dst.to_str().unwrap());
+                assert_eq!(prior.as_str(), src.to_str().unwrap());
+            }
+            other => panic!("expected RestorePath, got {other:?}"),
+        }
+        assert_eq!(audit.recorded().await.len(), 1, "audited once, before the move");
+    }
+
+    #[tokio::test]
+    async fn execute_external_does_nothing_for_a_non_preview_decision() {
+        let cap = executing_cap();
+        let writer = MockWriter::default();
+        let audit = MockAuditSink::accepting();
+        let mover = RecordingMover::default();
+        let (resolver, mounts) = (IdentityResolver, StaticMountPolicy::empty());
+        let exec = LiveExecutor::new(&cap, &resolver, &mounts, &writer, &audit);
+        let out = exec
+            .execute_external(
+                &move_action("/dl/x.pdf", "/proj"),
+                ActionDecision::RequireConfirmation,
+                &["/dl".to_string(), "/proj".to_string()],
+                &mover,
+                "tidy-downloads",
+                &ctx(),
+            )
+            .await
+            .unwrap();
+        assert!(out.is_none());
+        assert!(mover.moves.lock().unwrap().is_empty());
+        assert!(audit.recorded().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn execute_external_refuses_a_source_outside_the_declared_scope() {
+        let cap = executing_cap();
+        let writer = MockWriter::default();
+        let audit = MockAuditSink::accepting();
+        let mover = RecordingMover::default();
+        let (resolver, mounts) = (IdentityResolver, StaticMountPolicy::empty());
+        let exec = LiveExecutor::new(&cap, &resolver, &mounts, &writer, &audit);
+        // Source under /etc, scope only grants /dl and /proj: refused, no move,
+        // not even audited.
+        let err = exec
+            .execute_external(
+                &move_action("/etc/shadow", "/proj"),
+                ActionDecision::PreviewThenExecute,
+                &["/dl".to_string(), "/proj".to_string()],
+                &mover,
+                "tidy-downloads",
+                &ctx(),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ExecError::ScopeViolation { .. }));
+        assert!(mover.moves.lock().unwrap().is_empty());
+        assert!(audit.recorded().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn execute_external_refuses_a_destination_outside_the_declared_scope() {
+        let cap = executing_cap();
+        let writer = MockWriter::default();
+        let audit = MockAuditSink::accepting();
+        let mover = RecordingMover::default();
+        let (resolver, mounts) = (IdentityResolver, StaticMountPolicy::empty());
+        let exec = LiveExecutor::new(&cap, &resolver, &mounts, &writer, &audit);
+        let err = exec
+            .execute_external(
+                &move_action("/dl/x.pdf", "/etc"),
+                ActionDecision::PreviewThenExecute,
+                &["/dl".to_string(), "/proj".to_string()],
+                &mover,
+                "tidy-downloads",
+                &ctx(),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ExecError::ScopeViolation { .. }));
+        assert!(mover.moves.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn execute_external_refuses_an_empty_scope() {
+        let cap = executing_cap();
+        let writer = MockWriter::default();
+        let audit = MockAuditSink::accepting();
+        let mover = RecordingMover::default();
+        let (resolver, mounts) = (IdentityResolver, StaticMountPolicy::empty());
+        let exec = LiveExecutor::new(&cap, &resolver, &mounts, &writer, &audit);
+        // A move tool with no declared dirs is refused (an unbounded move is never
+        // granted by omission).
+        let err = exec
+            .execute_external(
+                &move_action("/dl/x.pdf", "/dl"),
+                ActionDecision::PreviewThenExecute,
+                &[],
+                &mover,
+                "tidy-downloads",
+                &ctx(),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ExecError::ScopeViolation { .. }));
+        assert!(mover.moves.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn execute_external_fails_closed_when_audit_is_down() {
+        let dir = tempfile::tempdir().unwrap();
+        let downloads = dir.path().join("Downloads");
+        let projects = dir.path().join("Projects");
+        std::fs::create_dir_all(&downloads).unwrap();
+        std::fs::create_dir_all(&projects).unwrap();
+        let src = downloads.join("p.pdf");
+        std::fs::write(&src, b"x").unwrap();
+        let scope = vec![
+            downloads.to_str().unwrap().to_string(),
+            projects.to_str().unwrap().to_string(),
+        ];
+        let cap = executing_cap();
+        let writer = MockWriter::default();
+        let audit = MockAuditSink::failing();
+        let mover = RecordingMover::default();
+        let (resolver, mounts) = (IdentityResolver, StaticMountPolicy::empty());
+        let exec = LiveExecutor::new(&cap, &resolver, &mounts, &writer, &audit);
+        let err = exec
+            .execute_external(
+                &move_action(src.to_str().unwrap(), projects.to_str().unwrap()),
+                ActionDecision::PreviewThenExecute,
+                &scope,
+                &mover,
+                "tidy-downloads",
+                &ctx(),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ExecError::AuditUnavailable(_)));
+        assert!(mover.moves.lock().unwrap().is_empty(), "no move when the audit fails");
+        assert!(src.exists(), "source untouched");
     }
 }
