@@ -21,10 +21,25 @@ environment:
   - "ARLEN_KNOWLEDGE_SOCKET=${XDG_RUNTIME_DIR}/arlen/knowledge.sock"
   # lbug (Kuzu) vendors thrift C++ that misses <cstdint> on newer GCC.
   - "CXXFLAGS=-include cstdint"
+  # Isolate the dev stack's KG data under the (fresh, tmpfs) runtime dir, like the
+  # integration harness does. Without this the knowledge daemon falls back to the
+  # real `~/.local/share/arlen/{graph,events.db}` - which both clobbers the user's
+  # data AND crashes on startup if `~/.local/share/arlen/graph` already exists as a
+  # directory (Kuzu wants a file/fresh path: "Database path cannot be a directory"),
+  # taking the whole graph (promotion/retention/reads) down with it. Pinning to the
+  # runtime dir makes `just dev` reproducible + self-cleaning per session; a dev who
+  # wants a persistent graph overrides ARLEN_GRAPH_PATH. Timeline FUSE off (the dev
+  # stack exercises the event->graph->read path, not the ~/.timeline view).
+  - "ARLEN_DB_PATH=${XDG_RUNTIME_DIR}/arlen/knowledge/events.db"
+  - "ARLEN_GRAPH_PATH=${XDG_RUNTIME_DIR}/arlen/knowledge/graph"
+  - "ARLEN_TIMELINE_MOUNT=off"
 
 processes:
   runtime-dir:
-    command: "mkdir -p ${XDG_RUNTIME_DIR}/arlen"
+    # Also create the knowledge/ subdir: the pinned ARLEN_GRAPH_PATH/ARLEN_DB_PATH
+    # below live under it, and the daemon does NOT create an env-pinned path's parent
+    # (only the unpinned default), so Kuzu would fail to open graph/ if it is absent.
+    command: "mkdir -p ${XDG_RUNTIME_DIR}/arlen/knowledge"
     availability:
       restart: "no"
 
