@@ -64,7 +64,9 @@
 #
 # Requirements: Xvfb, grim, a built cosmic-comp at
 # $COMPOSITOR_PATH/target/debug/cosmic-comp; plus ydotool/wtype if SHOOT_INJECT is
-# used and imagemagick (`magick compare`) if SHOOT_BASELINE is used.
+# used and imagemagick (`magick compare`) if SHOOT_BASELINE is used. A ydotool
+# inject auto-starts ydotoold (this host's /dev/uinput is ACL-granted to the
+# user, so no sudo) and tears it down with the rest.
 set -euo pipefail
 
 OUT="${1:?usage: shoot-compositor.sh <out.png> <client-cmd> [args...]}"
@@ -81,7 +83,7 @@ DISP="${SHOOT_DISPLAY:-:99}"
 LOG="$(mktemp)"
 
 cleanup() {
-  kill "${CLIENT2_PID:-}" "${CLIENT_PID:-}" "${CC_PID:-}" "${XVFB_PID:-}" 2>/dev/null || true
+  kill "${CLIENT2_PID:-}" "${CLIENT_PID:-}" "${CC_PID:-}" "${XVFB_PID:-}" "${YDOTOOLD_PID:-}" 2>/dev/null || true
   wait 2>/dev/null || true
   rm -f "/tmp/.X${DISP#:}-lock" "$LOG" 2>/dev/null || true
 }
@@ -126,6 +128,25 @@ if [ -n "${SHOOT_CLIENT2:-}" ]; then
   WAYLAND_DISPLAY="$WL" DISPLAY="" bash -c "$SHOOT_CLIENT2" >>"$CLIENT_LOG" 2>&1 &
   CLIENT2_PID=$!
   sleep "$SETTLE"
+fi
+
+# A ydotool inject needs ydotoold (the uinput daemon ydotool talks to over a
+# socket). Start it ourselves so the click-path tests are self-sufficient: this
+# host grants the invoking user rw on /dev/uinput via an ACL, so no sudo/udev
+# step is needed. We pin YDOTOOL_SOCKET to the runtime dir and export it so the
+# inject command inherits it. If the socket never appears (no uinput access) the
+# inject simply fails gracefully below, recording the pre-inject state.
+if [ -n "${SHOOT_INJECT:-}" ] && printf '%s' "$SHOOT_INJECT" | grep -q ydotool; then
+  export YDOTOOL_SOCKET="${YDOTOOL_SOCKET:-$XDG_RUNTIME_DIR/.ydotool_socket}"
+  if [ ! -S "$YDOTOOL_SOCKET" ]; then
+    ydotoold -p "$YDOTOOL_SOCKET" >/dev/null 2>&1 &
+    YDOTOOLD_PID=$!
+    for _ in $(seq 1 10); do
+      [ -S "$YDOTOOL_SOCKET" ] && break
+      sleep 0.3
+    done
+    [ -S "$YDOTOOL_SOCKET" ] || echo "ydotoold did not come up (uinput access?); inject will likely fail" >&2
+  fi
 fi
 
 # Optional input injection, then a brief re-settle so the result paints before
