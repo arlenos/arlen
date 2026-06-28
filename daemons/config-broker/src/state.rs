@@ -92,8 +92,10 @@ impl AiMasterSwitches {
     /// Clamp any structurally-invalid field to its fail-closed value.
     /// An `access_level` above the ceiling is malformed input, so it
     /// drops to 0 (minimal) - never to the ceiling, which would let a
-    /// corrupt file silently grant the widest scope.
-    fn sanitised(mut self) -> Self {
+    /// corrupt file or a buggy caller silently grant the widest scope.
+    /// Applied on both load and store, so no out-of-range value is
+    /// ever persisted or returned.
+    pub fn sanitised(mut self) -> Self {
         if self.access_level > MAX_ACCESS_LEVEL {
             self.access_level = 0;
         }
@@ -187,7 +189,10 @@ impl StateStore {
     /// fsync it, rename over `state.toml` (atomic), then fsync the
     /// directory so the rename survives a crash.
     pub fn store(&self, switches: &AiMasterSwitches) -> Result<(), StateError> {
-        let text = toml::to_string_pretty(switches)
+        // Clamp before persisting so an out-of-range field never
+        // reaches disk, regardless of caller.
+        let switches = switches.clone().sanitised();
+        let text = toml::to_string_pretty(&switches)
             .map_err(|e| StateError::Io(format!("serialize: {e}")))?;
         let path = self.state_path();
         let tmp = self.dir.join(format!(".{STATE_FILE}.tmp"));
