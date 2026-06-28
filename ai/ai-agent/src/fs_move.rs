@@ -176,3 +176,121 @@ mod tests {
         assert!(plan.is_none());
     }
 }
+
+/// The filesystem move primitive the executor's `fs.move` arm calls. A seam so
+/// the arm is unit-tested with an in-memory mover; [`OsFileMover`] is the real
+/// on-disk impl. The planner guarantees `to` is a free path, so an
+/// implementation never has to (and must never) overwrite.
+pub trait FileMover {
+    /// Move `from` to `to`. `to` is a planner-chosen free path (never occupied).
+    fn move_file(&self, from: &str, to: &str) -> std::io::Result<()>;
+}
+
+/// `EXDEV` (cross-device link) on Linux: `rename(2)` fails with it when source
+/// and destination are on different mounts, so the mover falls back to
+/// copy-then-remove. A named const since this crate has no `libc` dep.
+const EXDEV: i32 = 18;
+
+/// The real on-disk mover: `rename`, falling back to copy+remove across
+/// filesystems (a `~/Downloads` -> `~/Documents/Projects` move can cross a
+/// mount). Never overwrites - the destination is a planner-vetted free path.
+pub struct OsFileMover;
+
+impl FileMover for OsFileMover {
+    fn move_file(&self, from: &str, to: &str) -> std::io::Result<()> {
+        match std::fs::rename(from, to) {
+            Ok(()) => Ok(()),
+            Err(e) if e.raw_os_error() == Some(EXDEV) => {
+                std::fs::copy(from, to)?;
+                std::fs::remove_file(from)
+            }
+            Err(e) => Err(e),
+        }
+    }
+}
+
+/// Execute a planned collision-safe move via `mover` and return the inverse that
+/// undoes it. The plan (slice 1) already chose a free, non-overwriting
+/// destination, so this just performs the move; the inverse is the plan's
+/// `RestorePath`. The caller audits BEFORE invoking this (audit-before-act) and
+/// records the returned inverse for the undo/compensate path.
+pub fn execute_move<'a>(
+    plan: &'a MovePlan,
+    mover: &dyn FileMover,
+) -> std::io::Result<&'a InverseReceipt> {
+    mover.move_file(plan.source.as_str(), plan.destination.as_str())?;
+    Ok(&plan.inverse)
+}
+
+#[cfg(test)]
+mod execute_tests {
+    use super::*;
+    use std::io::Write;
+
+    /// Plan then execute a real move on disk, then apply the returned inverse:
+    /// the file lands at the (free) destination and the inverse restores it to
+    /// the source - the reversibility the gate lifts on, proven end to end.
+    #[test]
+    fn a_planned_move_executes_and_its_inverse_restores() {
+        let dir = tempfile::tempdir().unwrap();
+        let downloads = dir.path().join("Downloads");
+        let projects = dir.path().join("Projects");
+        std::fs::create_dir_all(&downloads).unwrap();
+        std::fs::create_dir_all(&projects).unwrap();
+        let src = downloads.join("report.pdf");
+        std::fs::File::create(&src).unwrap().write_all(b"hi").unwrap();
+
+        let plan = plan_move(
+            src.to_str().unwrap(),
+            projects.to_str().unwrap(),
+            |p| std::path::Path::new(p).exists(),
+        )
+        .expect("plan");
+        let dst = projects.join("report.pdf");
+        assert_eq!(plan.destination.as_str(), dst.to_str().unwrap());
+
+        let inverse = execute_move(&plan, &OsFileMover).expect("execute").clone();
+        assert!(dst.exists(), "moved to the destination");
+        assert!(!src.exists(), "gone from the source");
+
+        // Apply the inverse (the undo): move back.
+        match &inverse {
+            InverseReceipt::RestorePath { now, prior } => {
+                OsFileMover.move_file(now.as_str(), prior.as_str()).expect("restore");
+            }
+            other => panic!("expected RestorePath, got {other:?}"),
+        }
+        assert!(src.exists(), "restored to the source");
+        assert!(!dst.exists(), "no longer at the destination");
+    }
+
+    /// On a collision the executed move lands at the renamed sibling, never
+    /// clobbering the occupant.
+    #[test]
+    fn a_collision_move_lands_at_the_renamed_sibling() {
+        let dir = tempfile::tempdir().unwrap();
+        let downloads = dir.path().join("Downloads");
+        let projects = dir.path().join("Projects");
+        std::fs::create_dir_all(&downloads).unwrap();
+        std::fs::create_dir_all(&projects).unwrap();
+        let src = downloads.join("report.pdf");
+        std::fs::File::create(&src).unwrap().write_all(b"new").unwrap();
+        let occupant = projects.join("report.pdf");
+        std::fs::File::create(&occupant).unwrap().write_all(b"old").unwrap();
+
+        let plan = plan_move(
+            src.to_str().unwrap(),
+            projects.to_str().unwrap(),
+            |p| std::path::Path::new(p).exists(),
+        )
+        .expect("plan");
+        execute_move(&plan, &OsFileMover).expect("execute");
+
+        assert_eq!(std::fs::read_to_string(&occupant).unwrap(), "old", "occupant untouched");
+        assert_eq!(
+            std::fs::read_to_string(projects.join("report (1).pdf")).unwrap(),
+            "new",
+            "moved file landed at the renamed sibling"
+        );
+    }
+}
