@@ -14,6 +14,7 @@ mod behaviours;
 mod capability;
 mod mention;
 mod notices;
+mod save;
 mod sessions;
 mod url;
 
@@ -63,6 +64,7 @@ pub fn run() {
             notices::ai_notices,
             mention::list_files,
             mention::read_mention_file,
+            save::artifact_save,
             sessions::harness_sessions_load,
             sessions::harness_sessions_save,
             url::open_url

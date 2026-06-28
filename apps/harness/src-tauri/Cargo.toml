@@ -41,6 +41,8 @@ arlen-ai-agent = { path = "../../../ai/ai-agent" }
 # chat (the harness redesign's rich-object path). One definition, shared with the
 # terminal + the `arlen-artifact` helper; the frontend renders `Message.artifacts`.
 arlen-artifact = { path = "../../../contracts/artifact" }
+# Decode an image artifact's base64 payload back to raw bytes for Save-to-file.
+base64 = "0.22"
 
 [dev-dependencies]
 # Temp directories for the mention file-listing/read tests, and the tokio
