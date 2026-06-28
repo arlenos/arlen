@@ -12,18 +12,12 @@
   import { onMount } from "svelte";
   import { writable } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import {
-    Sparkles,
-    RefreshCw,
-    AlertCircle,
-    Cloud,
-    SlidersHorizontal,
-    ChevronRight,
-  } from "lucide-svelte";
+  import { Sparkles, RefreshCw, AlertCircle, Cloud, SlidersHorizontal } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Row } from "@arlen/ui-kit/components/ui/row";
+  import { LinkCard } from "@arlen/ui-kit/components/ui/link-card";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { ChipList } from "@arlen/ui-kit/components/ui/chip-list";
@@ -365,22 +359,12 @@
     </Group>
 
     <Group label="Where AI comes from">
-      <a class="link-card span-full" href="/ai/providers">
-        <Cloud class="link-icon" />
-        <div class="link-body">
-          <div class="link-title">Providers</div>
-          <div class="link-desc">{$providerLine}</div>
-        </div>
-        <ChevronRight class="link-chev" />
-      </a>
-      <a class="link-card span-full" href="/ai/models">
-        <SlidersHorizontal class="link-icon" />
-        <div class="link-body">
-          <div class="link-title">Default models</div>
-          <div class="link-desc">{$defaultModelLine}</div>
-        </div>
-        <ChevronRight class="link-chev" />
-      </a>
+      <LinkCard href="/ai/providers" title="Providers" description={$providerLine}>
+        {#snippet icon()}<Cloud size={20} strokeWidth={1.75} />{/snippet}
+      </LinkCard>
+      <LinkCard href="/ai/models" title="Default models" description={$defaultModelLine}>
+        {#snippet icon()}<SlidersHorizontal size={20} strokeWidth={1.75} />{/snippet}
+      </LinkCard>
     </Group>
 
     <Group label="Health">
@@ -461,52 +445,6 @@
   }
   .health-sep {
     color: color-mix(in srgb, var(--foreground) 30%, transparent);
-  }
-  /* Navigation card to a sub-view, matching the keyboard -> shortcuts card. */
-  .link-card {
-    display: flex;
-    align-items: center;
-    gap: 0.875rem;
-    padding: 0.75rem 1rem;
-    border-radius: var(--radius-card);
-    border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
-    background: color-mix(in srgb, var(--foreground) 3%, transparent);
-    transition: background-color var(--duration-fast) var(--ease-out);
-  }
-  .link-card:hover {
-    background: color-mix(in srgb, var(--foreground) 6%, transparent);
-  }
-  :global(.link-icon) {
-    width: 1.25rem;
-    height: 1.25rem;
-    flex-shrink: 0;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  .link-body {
-    flex: 1;
-    min-width: 0;
-  }
-  .link-title {
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--foreground);
-  }
-  .link-desc {
-    font-size: 0.6875rem;
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  :global(.link-chev) {
-    width: 1rem;
-    height: 1rem;
-    flex-shrink: 0;
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
-    transition: transform var(--duration-fast) var(--ease-out);
-  }
-  .link-card:hover :global(.link-chev) {
-    transform: translateX(2px);
   }
   :global(.ai-spin) {
     animation: ai-spin 0.8s linear infinite;
