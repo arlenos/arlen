@@ -224,6 +224,96 @@ pub fn best_fitting_quant(params_b: f64, hw: &Hardware) -> Option<Quant> {
         .find(|&quant| footprint_gib(params_b, quant) <= budget)
 }
 
+/// A recommendation for one model on the target hardware: the quant the manager
+/// would silently apply, the resulting fit badge, and the estimated generation
+/// rate. `quant` is `None` only when the model does not fit at any sane quant (the
+/// badge is then `WontFit` and the rate 0).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Recommendation {
+    /// The model's display name.
+    pub name: String,
+    /// The parameter count in billions.
+    pub params_b: f64,
+    /// The quant the manager would apply (the Q4_K_M-default ladder), or `None`
+    /// when nothing fits.
+    pub quant: Option<Quant>,
+    /// The plain three-way verdict.
+    pub badge: FitBadge,
+    /// Estimated tokens/second at the applied quant (0 when nothing fits).
+    pub tokens_per_sec: f64,
+}
+
+/// Recommend every model in `catalog` for `hw`: per model, pick the silent quant
+/// (the Q4_K_M-default ladder), the fit badge, and the speed estimate. Order
+/// preserved. Pure.
+pub fn recommend(hw: &Hardware, catalog: &[ModelSpec]) -> Vec<Recommendation> {
+    catalog
+        .iter()
+        .map(|m| {
+            let quant = best_fitting_quant(m.params_b, hw);
+            let (badge, tokens_per_sec) = match quant {
+                Some(q) => (
+                    fit_badge(m.params_b, q, hw),
+                    estimate_tokens_per_sec(weights_gib(m.params_b, q), hw.mem_bandwidth_gbps),
+                ),
+                None => (FitBadge::WontFit, 0.0),
+            };
+            Recommendation {
+                name: m.name.clone(),
+                params_b: m.params_b,
+                quant,
+                badge,
+                tokens_per_sec,
+            }
+        })
+        .collect()
+}
+
+/// The curated tier picks the manager surfaces for a catalog on the target
+/// hardware (the Fast / Balanced / Quality convention). A tier is `None` when no
+/// model qualifies for it (an empty catalog, or nothing fits).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TierPicks {
+    /// Smallest footprint at the highest token rate (the snappiest).
+    pub fast: Option<Recommendation>,
+    /// The everyday default: the largest model that still runs at a usable rate
+    /// (`Fits`, not `MaySlow`). Falls back to the `fast` pick when nothing reads
+    /// `Fits` (a bandwidth-bound machine where even the small models are slow).
+    pub balanced: Option<Recommendation>,
+    /// The largest model that fits at all, accepting a lower token rate.
+    pub quality: Option<Recommendation>,
+}
+
+/// Pick the Fast / Balanced / Quality models from `catalog` for `hw`. Only models
+/// that fit (badge is not `WontFit`) are considered; on a bandwidth-bound APU the
+/// speed axis is what separates the tiers (most models "fit", so leading on speed
+/// is the real signal the plan calls for). Pure.
+pub fn tier_picks(hw: &Hardware, catalog: &[ModelSpec]) -> TierPicks {
+    let fitting: Vec<Recommendation> = recommend(hw, catalog)
+        .into_iter()
+        .filter(|r| r.badge != FitBadge::WontFit)
+        .collect();
+    let fast = fitting
+        .iter()
+        .max_by(|a, b| a.tokens_per_sec.total_cmp(&b.tokens_per_sec))
+        .cloned();
+    let quality = fitting
+        .iter()
+        .max_by(|a, b| a.params_b.total_cmp(&b.params_b))
+        .cloned();
+    let balanced = fitting
+        .iter()
+        .filter(|r| r.badge == FitBadge::Fits)
+        .max_by(|a, b| a.params_b.total_cmp(&b.params_b))
+        .cloned()
+        .or_else(|| fast.clone());
+    TierPicks {
+        fast,
+        balanced,
+        quality,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,5 +410,47 @@ mod tests {
         };
         assert!(footprint_gib(params, Quant::Q4KM) > memory_budget_gib(&tight));
         assert_eq!(best_fitting_quant(params, &tight), Some(Quant::Q3KM));
+    }
+
+    fn model(name: &str, params_b: f64) -> ModelSpec {
+        ModelSpec {
+            name: name.to_string(),
+            params_b,
+        }
+    }
+
+    #[test]
+    fn tier_picks_separate_fast_balanced_quality_on_the_apu() {
+        let hw = apu_7840u();
+        let catalog = [
+            model("tiny", 1.0),
+            model("mid", 7.6),
+            model("big", 30.0),
+            model("huge", 120.0),
+        ];
+        let picks = tier_picks(&hw, &catalog);
+        // Fast = the snappiest (the 1B, highest tok/s).
+        assert_eq!(picks.fast.unwrap().name, "tiny");
+        // Quality = the largest that fits (the 30B; the 120B is WontFit on 45 GB).
+        assert_eq!(picks.quality.unwrap().name, "big");
+        // Balanced = the largest that still reads Fits (the 7.6B; the 30B is the
+        // bandwidth-bound MaySlow, so it is not the everyday default).
+        assert_eq!(picks.balanced.unwrap().name, "mid");
+    }
+
+    #[test]
+    fn recommend_marks_an_oversized_model_wontfit() {
+        let hw = apu_7840u();
+        let recs = recommend(&hw, &[model("huge", 120.0)]);
+        assert_eq!(recs[0].badge, FitBadge::WontFit);
+        assert_eq!(recs[0].quant, None);
+        assert_eq!(recs[0].tokens_per_sec, 0.0);
+    }
+
+    #[test]
+    fn tier_picks_are_none_when_nothing_fits() {
+        let hw = apu_7840u();
+        let picks = tier_picks(&hw, &[model("huge", 120.0)]);
+        assert!(picks.fast.is_none() && picks.balanced.is_none() && picks.quality.is_none());
     }
 }
