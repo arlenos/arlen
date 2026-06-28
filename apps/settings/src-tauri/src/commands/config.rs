@@ -462,9 +462,15 @@ fn default_for(file: ConfigFile) -> toml::Value {
 /// Default `ai.toml`. The AI layer is opt-in (Foundation §5.1-5.2):
 /// it ships disabled. `provider` names a catalogued provider on the
 /// AI proxy; Phase 9-α ships only the local Ollama provider.
+/// `access_level = 3` (TimeScoped, recent activity) is the generous
+/// default: once enabled, the AI is useful out of the box and the user
+/// narrows if they want, rather than starting blind and having to loosen
+/// it to use it. The sovereignty guarantee is the audit + capability-scope
+/// + local-only + visible/revocable reads, not a tiny default scope.
 const DEFAULT_AI: &str = r##"
 [ai]
 enabled = false
+access_level = 3
 provider = "ollama-default"
 "##;
 

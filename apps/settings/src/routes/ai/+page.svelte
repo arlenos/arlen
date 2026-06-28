@@ -108,7 +108,10 @@
   }
 
   let enabled = $state(false);
-  let accessLevel = $state("0");
+  // Generous default (TimeScoped, recent activity): the AI is useful out of
+  // the box once enabled; the user narrows if they want. Matches the daemon
+  // fallback + the shipped ai.toml.
+  let accessLevel = $state("3");
   let actionMode = $state("suggest");
   let autonomousApps = $state<string[]>([]);
   let executorLive = $state(false);
@@ -214,7 +217,7 @@
   onMount(async () => {
     await ai.load();
     enabled = ai.getValue<boolean>("ai.enabled") ?? false;
-    accessLevel = String(ai.getValue<number>("ai.access_level") ?? 0);
+    accessLevel = String(ai.getValue<number>("ai.access_level") ?? 3);
     actionMode = ai.getValue<string>("ai.action_mode") ?? "suggest";
     autonomousApps = ai.getValue<string[]>("ai.autonomous_apps") ?? [];
     executorLive = ai.getValue<boolean>("agent.executor_live") ?? false;
