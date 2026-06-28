@@ -18,7 +18,7 @@
 //! schema here.
 #![allow(dead_code)]
 
-use crate::effect_model::InverseClass;
+use crate::effect_model::{CaptureShape, EffectDomain, InverseClass};
 use crate::world::{compensation_of, ActionSchema, Effect, Predicate, Provenance};
 
 /// What a decided action would do and how to undo it, surfaced so the agent's
@@ -112,7 +112,7 @@ impl TrustedActionSchema {
 /// admission path must feed the same derived set so the invariants keep covering
 /// the whole acceptance domain, not only `Given`.
 const PRODUCTION_GIVEN_RULES: &[(&str, GivenRuleBuilder)] =
-    &[("graph.write", graph_write_link_schema)];
+    &[("graph.write", graph_write_link_schema), ("fs.move", fs_move_schema)];
 
 /// Builds a registered given-rule schema (one table entry's value).
 type GivenRuleBuilder = fn() -> ActionSchema;
@@ -270,6 +270,35 @@ fn graph_write_link_schema() -> ActionSchema {
     }
 }
 
+/// The given rule for tidy-downloads' `fs.move` - the first live executor
+/// action (executor-go-live). Unlike `graph.write`, its target is a FILESYSTEM
+/// path, not a graph node, so the graph-node precondition vocabulary
+/// (`NodeExists` / `PathUnderField`) does not apply and it carries no
+/// preconditions. Its reversibility is guaranteed by CONSTRUCTION at execute
+/// time: the executor's collision-safe planner ([`crate::fs_move::plan_move`])
+/// never overwrites an occupied destination, so the file always lands somewhere
+/// new and the captured `RestorePath` inverse is exact (design-doc gap F4
+/// closed in the executor, not via a predict precondition). The directory scope
+/// (`~/Downloads` -> `~/Documents/Projects`) is enforced by the gate's
+/// tool-scope check, and source-existence by the executor arm; neither is a
+/// world-model precondition. Reversible, so the gate may lift it to a previewed
+/// (confirm-gated, supervised) execution - never a silent autonomous write.
+fn fs_move_schema() -> ActionSchema {
+    ActionSchema {
+        action: "fs.move".to_string(),
+        preconditions: vec![],
+        effects: vec![Effect::External {
+            domain: EffectDomain::Filesystem,
+            op: "move".to_string(),
+            target: "file".to_string(),
+            class: InverseClass::Reversible {
+                capture: CaptureShape::RestorePath,
+            },
+        }],
+        provenance: Provenance::Given,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -286,6 +315,27 @@ mod tests {
     fn an_unknown_action_has_no_rule() {
         assert!(lookup("fs.delete").is_none());
         assert!(lookup("").is_none());
+    }
+
+    #[test]
+    fn fs_move_is_a_registered_reversible_given_rule() {
+        let trusted = lookup("fs.move").expect("fs.move is registered");
+        assert_eq!(trusted.schema().action, "fs.move");
+        assert!(matches!(trusted.schema().provenance, Provenance::Given));
+        // Declared reversible via a captured RestorePath - the gate may lift it
+        // to a previewed (confirm-gated) execution, never block it as
+        // irreversible. The collision-safe executor guarantees the inverse.
+        assert_eq!(
+            trusted.declared_inverse_class(),
+            Some(InverseClass::Reversible {
+                capture: CaptureShape::RestorePath
+            })
+        );
+        // The reversibility CI invariant passes: an External-reversible effect
+        // carries its obligation in the captured inverse, not a precondition.
+        assert!(reversibility_proof_holds(trusted.schema()));
+        // Derived into the given-action set the canary / reversibility CI iterates.
+        assert!(given_actions().any(|a| a == "fs.move"));
     }
 
     #[test]
