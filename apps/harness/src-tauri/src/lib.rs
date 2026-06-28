@@ -14,6 +14,7 @@ mod behaviours;
 mod capability;
 mod mention;
 mod notices;
+mod pins;
 mod save;
 mod sessions;
 mod url;
@@ -65,6 +66,8 @@ pub fn run() {
             mention::list_files,
             mention::read_mention_file,
             save::artifact_save,
+            pins::artifact_pins_load,
+            pins::artifact_pins_save,
             sessions::harness_sessions_load,
             sessions::harness_sessions_save,
             url::open_url
