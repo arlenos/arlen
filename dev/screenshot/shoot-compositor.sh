@@ -27,11 +27,16 @@
 #   SHOOT_CLIENT_LOG   capture the client's stdout/stderr here (default /dev/null);
 #                      set it to a file to debug why a client did not render
 #   SHOOT_INJECT       a command run after settle, before capture, to inject input
-#                      into the focused nested surface (clicks: ydotool/uinput, as
-#                      the fork advertises no virtual-pointer protocol and the
-#                      caller must have ydotoold running; typing: wtype where the
-#                      virtual-keyboard protocol is present). Run with the
-#                      compositor's WAYLAND_DISPLAY; DISPLAY cleared.
+#                      into the focused nested surface. This compositor runs its
+#                      X11 backend under Xvfb (it picks x11 when DISPLAY is set), so
+#                      it reads X11 input: `xdotool` against the Xvfb DISPLAY is what
+#                      actually lands in the nested surface (clicks + keys). `wtype`
+#                      works where the virtual-keyboard Wayland protocol is present.
+#                      ydotool/uinput inject at the evdev layer and reach the HOST
+#                      seat, not this nested surface, so they are for the VM /
+#                      real-boot (evdev-backed) pass, not this Xvfb harness. The
+#                      command runs with both the Xvfb DISPLAY and the compositor's
+#                      WAYLAND_DISPLAY set, so it can target the right one.
 #   SHOOT_INJECT_SETTLE seconds to wait after inject before capture (default 1)
 #   SHOOT_BASELINE     a reference PNG; if set, compare the capture to it after
 #                      grim and FAIL (exit 3) when the differing-pixel count
@@ -95,13 +100,14 @@ CLIENT_PID=$!
 sleep "$SETTLE"
 
 # Optional input injection into the focused nested surface, then a brief re-settle
-# so the result paints before capture. The command is run verbatim under the
-# compositor's WAYLAND_DISPLAY (with DISPLAY cleared); a failing inject is logged
+# so the result paints before capture. The command runs verbatim with both the
+# Xvfb DISPLAY (the X11 input path this compositor's x11 backend reads, e.g.
+# xdotool) and the compositor's WAYLAND_DISPLAY set; a failing inject is logged
 # but does not abort the capture (so the shot still records the pre-inject state
 # for debugging).
 if [ -n "${SHOOT_INJECT:-}" ]; then
   echo "inject: $SHOOT_INJECT"
-  WAYLAND_DISPLAY="$WL" DISPLAY="" bash -c "$SHOOT_INJECT" \
+  WAYLAND_DISPLAY="$WL" DISPLAY="$DISP" bash -c "$SHOOT_INJECT" \
     || echo "inject step failed (continuing to capture)" >&2
   sleep "${SHOOT_INJECT_SETTLE:-1}"
 fi
