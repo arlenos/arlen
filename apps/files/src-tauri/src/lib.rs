@@ -673,14 +673,35 @@ async fn files_archive_list(archive: String) -> Result<Vec<archive::ArchiveEntry
     .map_err(|e| e.to_string())?
 }
 
+/// Best-effort: announce on the event bus that the user opened this file, so the
+/// knowledge graph promotes a `File` + `ACCESSED_BY` (the dogfood Phase-1 trigger,
+/// first-dogfoodable-session-plan.md). On a real system the kernel-layer eBPF
+/// observes the handler's `openat`; the nested session has no eBPF, so the FM is
+/// the signal there. A down bus or a failed emit never affects the open - the file
+/// is already opening; this is a pure side-channel.
+async fn announce_file_opened(path: &str) {
+    use os_sdk::event::{EventEmitter, UnixEventEmitter};
+    use prost::Message as _;
+    let app_id = std::env::var("ARLEN_APP_ID").unwrap_or_else(|_| APP_ID.to_string());
+    let socket = os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock");
+    let emitter = UnixEventEmitter::new(socket.to_string_lossy().into_owned());
+    let payload = os_sdk::proto::FileOpenedPayload {
+        path: abs(path),
+        app_id,
+        flags: 0,
+    };
+    let _ = emitter.emit("file.opened", payload.encode_to_vec()).await;
+}
+
 /// Open a path with the default handler.
 #[tauri::command]
-fn files_open(path: String) -> Result<(), String> {
+async fn files_open(path: String) -> Result<(), String> {
     std::process::Command::new("xdg-open")
         .arg(abs(&path))
         .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    announce_file_opened(&path).await;
+    Ok(())
 }
 
 /// One app the Open-With picker offers (a serializable view of the core
@@ -785,7 +806,7 @@ fn default_handler_for(mime: &str) -> Option<String> {
 /// metacharacters is one inert argument. A `Terminal=true` app launches as-is
 /// for now (no terminal wrapper); most Open-With targets are GUI apps.
 #[tauri::command]
-fn files_open_with(path: String, exec: String) -> Result<(), String> {
+async fn files_open_with(path: String, exec: String) -> Result<(), String> {
     let argv = arlen_file_browser_core::openwith::expand_exec(&exec, &abs(&path));
     let Some((program, args)) = argv.split_first() else {
         return Err("empty exec".to_string());
@@ -793,8 +814,9 @@ fn files_open_with(path: String, exec: String) -> Result<(), String> {
     std::process::Command::new(program)
         .args(args)
         .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    announce_file_opened(&path).await;
+    Ok(())
 }
 
 /// The mounted, non-system volumes for the Devices sidebar (removable drives +

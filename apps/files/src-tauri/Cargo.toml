@@ -42,6 +42,9 @@ dirs = "5"
 # data-URL the tile's <img> loads.
 arlen-ai-sandbox = { path = "../../../ai/ai-sandbox", features = ["thumbnail", "music"] }
 base64 = "0.22"
+# Encode the file.opened event payload the FM emits on open (the dogfood KG
+# trigger: open a file -> file.opened -> knowledge promotes File + ACCESSED_BY).
+prost = "0.13"
 # Already in the tree via tauri; `sync` carries the semaphore bounding
 # concurrent sandboxed decodes.
 tokio = { version = "1", features = ["sync"] }
