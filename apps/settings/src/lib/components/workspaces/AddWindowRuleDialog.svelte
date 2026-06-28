@@ -13,7 +13,13 @@
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
+  import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import type { WindowRule, WindowRuleAction } from "$lib/stores/workspaces";
+
+  const ACTION_OPTIONS = [
+    { value: "float", label: "Float" },
+    { value: "tile", label: "Tile" },
+  ];
 
   let {
     open,
@@ -148,26 +154,12 @@
 
       <div class="field">
         <span class="label-static">Action</span>
-        <div class="radio-row">
-          <label class="radio">
-            <input
-              type="radio"
-              bind:group={action}
-              value="float"
-              name="action"
-            />
-            <span>Float</span>
-          </label>
-          <label class="radio">
-            <input
-              type="radio"
-              bind:group={action}
-              value="tile"
-              name="action"
-            />
-            <span>Tile</span>
-          </label>
-        </div>
+        <SegmentedControl
+          value={action}
+          options={ACTION_OPTIONS}
+          ariaLabel="Window rule action"
+          onchange={(v) => (action = v as WindowRuleAction)}
+        />
       </div>
 
       <div class="footer">
@@ -252,18 +244,6 @@
     font-size: 0.75rem;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
     font-weight: 400;
-  }
-
-  .radio-row {
-    display: flex;
-    gap: 1rem;
-  }
-
-  .radio {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    font-size: 0.8125rem;
   }
 
   .footer {
