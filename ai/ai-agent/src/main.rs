@@ -33,7 +33,7 @@ use arlen_ai_agent::engine::{
 };
 use arlen_ai_agent::gate::Gate;
 use arlen_ai_agent::slice::{FsPathResolver, ProcMountsPolicy};
-use arlen_ai_agent::executor::{ActionReceipt, Compensator, LiveExecutor};
+use arlen_ai_agent::executor::{ActionReceipt, Approver, Compensator, LiveExecutor};
 use arlen_ai_agent::graph::{UnixGraph, UnixRelationWriter, DEFAULT_GRAPH_SOCKET};
 use arlen_ai_agent::handlers::builtin_handlers;
 use arlen_ai_agent::receipt_store::{ReceiptStore, RetainedReceipt};
@@ -372,6 +372,7 @@ enum AgentConnection {
 async fn establish_agent_connection(
     status: StatusHandle,
     compensator: Compensator,
+    approver: Approver,
     graph: Arc<dyn GraphHandle>,
     receipts: Arc<Mutex<ReceiptStore<RetainedReceipt>>>,
     pending: Arc<Mutex<ReceiptStore<PendingProposal>>>,
@@ -390,6 +391,7 @@ async fn establish_agent_connection(
     let iface = AgentInterface {
         status,
         compensator,
+        approver,
         graph,
         knowledge_socket: graph_socket(),
         receipts,
@@ -495,6 +497,7 @@ async fn recover_connection(
     connection: &mut Option<Connection>,
     status: StatusHandle,
     compensator: Compensator,
+    approver: Approver,
     graph: Arc<dyn GraphHandle>,
     receipts: Arc<Mutex<ReceiptStore<RetainedReceipt>>>,
     pending: Arc<Mutex<ReceiptStore<PendingProposal>>>,
@@ -509,6 +512,7 @@ async fn recover_connection(
         match establish_agent_connection(
             Arc::clone(&status),
             compensator.clone(),
+            approver.clone(),
             Arc::clone(&graph),
             Arc::clone(&receipts),
             Arc::clone(&pending),
@@ -633,6 +637,17 @@ async fn run(
     // compensator threads into both interface-registration sites (the eager
     // establish and the background recovery re-register).
     let compensator = Compensator::new(
+        Arc::new(UnixRelationWriter::new(graph_socket())),
+        Arc::new(LedgerAuditSink::at_default_socket()) as Arc<dyn AuditSink>,
+    );
+    // The approve path's executor: like the compensator it holds startup-stable
+    // deps (the same writer + audit, plus the real path + mount proof resolvers)
+    // so the same value threads into both interface-registration sites; the live
+    // capability is supplied per call (it is rebuilt each config epoch). Clone is
+    // a cheap Arc bump.
+    let approver = Approver::new(
+        Arc::new(FsPathResolver),
+        Arc::new(ProcMountsPolicy),
         Arc::new(UnixRelationWriter::new(graph_socket())),
         Arc::new(LedgerAuditSink::at_default_socket()) as Arc<dyn AuditSink>,
     );
@@ -769,6 +784,7 @@ async fn run(
             match establish_agent_connection(
                 Arc::clone(status),
                 compensator.clone(),
+                approver.clone(),
                 Arc::clone(&iface_graph),
                 Arc::clone(&receipts),
                 Arc::clone(&pending),
@@ -935,6 +951,7 @@ async fn run(
                         connection,
                         Arc::clone(status),
                         compensator.clone(),
+                        approver.clone(),
                         Arc::clone(&iface_graph),
                         Arc::clone(&receipts),
                         Arc::clone(&pending),
