@@ -1,0 +1,5 @@
+# Starting permission profile for KAlgebra (a KDE math calculator + 2D/3D plotter). A self-contained
+# computation tool: no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "org.kde.kalgebra"
+tier = "third-party"
