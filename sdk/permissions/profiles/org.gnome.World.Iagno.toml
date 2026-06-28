@@ -1,0 +1,5 @@
+# Starting permission profile for Iagno (GNOME Reversi/Othello, a local board game).
+# Plays locally against itself or a second player; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "org.gnome.World.Iagno"
+tier = "third-party"
