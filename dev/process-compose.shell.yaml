@@ -55,3 +55,24 @@ processes:
       compositor: { condition: process_healthy }
     availability:
       restart: "on_failure"
+
+  # The dogfood Phase-1 apps (first-dogfoodable-session-plan.md): the file manager
+  # (open a file -> file.opened -> KG promotion) and the AI harness (ask about your
+  # context -> capability-scoped KG read -> answer). Same nested pattern as the
+  # shell - a Tauri app on the nested compositor's wayland-2. They reach the running
+  # `just dev` backend over the shared $XDG_RUNTIME_DIR/arlen sockets.
+  files:
+    command: 'WAYLAND_DISPLAY=wayland-2 cargo tauri dev'
+    working_dir: "apps/files"
+    depends_on:
+      compositor: { condition: process_healthy }
+    availability:
+      restart: "on_failure"
+
+  harness:
+    command: 'WAYLAND_DISPLAY=wayland-2 cargo tauri dev'
+    working_dir: "apps/harness"
+    depends_on:
+      compositor: { condition: process_healthy }
+    availability:
+      restart: "on_failure"
