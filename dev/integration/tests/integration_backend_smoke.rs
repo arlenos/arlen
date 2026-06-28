@@ -17,7 +17,7 @@
 
 use std::time::{Duration, Instant};
 
-use arlen_integration::EphemeralStack;
+use arlen_integration::{binary_path, EphemeralStack};
 use os_sdk::{EventEmitter, QueryError, UnixEventEmitter, UnixGraphClient};
 use prost::Message;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -1696,4 +1696,135 @@ async fn a_canary_operand_trips_the_gate_and_audits_a_policy_violation() {
             page.entries.iter().map(|e| (e.actor.clone(), e.kind.clone())).collect::<Vec<_>>()
         );
     }
+}
+
+/// IT-1 KG-seed read path (kg-seed directive, d7d0cac): seed the deterministic
+/// dated corpus into the stack graph, bring the daemon up over it, and confirm
+/// the file manager's `files_verwandt_as_of` / `files_list_location_as_of` DATA
+/// PATH returns DIFFERENT membership at different as-of times - the property
+/// arlen-ui's KG surfaces need but cannot verify on an empty machine graph.
+/// Exercises the assembled daemon (seed bin -> ladybug store -> read socket ->
+/// as-of Cypher), not just the seed module's unit test.
+///
+/// The caller must be FirstParty/system-anchored: the as-of query traverses
+/// `FILE_PART_OF`, whose rel-type token a ThirdParty caller cannot scope per
+/// label, so `base_env` sets `ARLEN_KNOWLEDGE_EXTRA_FIRST_PARTY` to the test's
+/// own dev id (debug-only). The as-of instants + ids mirror `knowledge::seed`
+/// (its own unit test guards the corpus shape; this guards the assembled path).
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge + arlen-kg-seed binaries built and a FUSE-capable host"]
+async fn the_seeded_corpus_returns_different_membership_per_as_of_time() {
+    // Mirror of knowledge::seed's fixed corpus constants.
+    const DAY_US: i64 = 86_400_000_000;
+    const BASE: i64 = 1_700_000_000_000_000;
+    const ASOF_EARLY: i64 = BASE + 3 * DAY_US;
+    const ASOF_LATE: i64 = BASE + 10 * DAY_US;
+    const MOVED: &str = "/work/seed/alpha/moved.md";
+    const STABLE: &str = "/work/seed/alpha/stable.md";
+    const ALPHA: &str = "seed.project.alpha";
+    const BETA: &str = "seed.project.beta";
+
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    // Grant File + Project read scope (the as-of query references both labels);
+    // base_env additionally tiers this caller FirstParty so the FILE_PART_OF
+    // traversal is admitted.
+    stack
+        .seed_read_profile(&[
+            "system.File.id",
+            "system.File.path",
+            "system.Project.id",
+            "system.Project.name",
+        ])
+        .expect("seed read profile");
+
+    // The bus first (the knowledge writer registers a consumer at startup).
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+
+    // Seed the corpus into the stack graph BEFORE the daemon opens it (ladybug
+    // is single-writer). arlen-kg-seed reads ARLEN_GRAPH_PATH from base_env.
+    let seed_bin = binary_path("daemons/knowledge", "arlen-kg-seed");
+    let status = std::process::Command::new(&seed_bin)
+        .envs(stack.base_env())
+        .status()
+        .unwrap_or_else(|e| panic!("run arlen-kg-seed at {}: {e}", seed_bin.display()));
+    assert!(status.success(), "arlen-kg-seed exits 0");
+
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+
+    // files_verwandt_as_of: moved.md is in Alpha early, Beta late.
+    assert_eq!(
+        project_membership_as_of(&client, MOVED, ASOF_EARLY).await,
+        vec![ALPHA.to_string()],
+        "moved.md belongs to Alpha at the early as-of"
+    );
+    assert_eq!(
+        project_membership_as_of(&client, MOVED, ASOF_LATE).await,
+        vec![BETA.to_string()],
+        "moved.md belongs to Beta at the late as-of"
+    );
+
+    // files_list_location_as_of: Alpha's member set late includes the stable
+    // file but NOT the moved one (it left for Beta).
+    let alpha_late = project_members_as_of(&client, ALPHA, ASOF_LATE).await;
+    assert!(
+        alpha_late.contains(&STABLE.to_string()),
+        "stable.md stays in Alpha (members late: {alpha_late:?})"
+    );
+    assert!(
+        !alpha_late.contains(&MOVED.to_string()),
+        "moved.md left Alpha by the late as-of (members late: {alpha_late:?})"
+    );
+}
+
+/// The file manager's `file_part_of_as_of` data path: the projects a file
+/// belongs to as of `t`, via the read socket. Returns project ids, sorted.
+async fn project_membership_as_of(
+    client: &UnixGraphClient,
+    file: &str,
+    t: i64,
+) -> Vec<String> {
+    let cypher = format!(
+        "MATCH (f:File {{id: '{file}'}})-[r:FILE_PART_OF]->(p:Project) \
+         WHERE r.valid_at <= {t} AND (r.invalid_at IS NULL OR r.invalid_at > {t}) \
+           AND r.created_at <= {t} AND (p.expired_at IS NULL OR p.expired_at > {t}) \
+         RETURN p.id AS id ORDER BY p.id"
+    );
+    id_column(client.query_rows(&cypher).await.expect("as-of membership query"))
+}
+
+/// The File members of a project as of `t` (the project-navigation as-of facet).
+async fn project_members_as_of(
+    client: &UnixGraphClient,
+    project: &str,
+    t: i64,
+) -> Vec<String> {
+    let cypher = format!(
+        "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project {{id: '{project}'}}) \
+         WHERE r.valid_at <= {t} AND (r.invalid_at IS NULL OR r.invalid_at > {t}) \
+           AND r.created_at <= {t} AND (p.expired_at IS NULL OR p.expired_at > {t}) \
+         RETURN f.id AS id ORDER BY f.id"
+    );
+    id_column(client.query_rows(&cypher).await.expect("as-of members query"))
+}
+
+/// Extract the `id` column from a typed RowSet (rows of column -> JSON value).
+fn id_column(rows: Vec<std::collections::HashMap<String, serde_json::Value>>) -> Vec<String> {
+    rows.iter()
+        .filter_map(|r| r.get("id").and_then(|v| v.as_str()).map(String::from))
+        .collect()
 }
