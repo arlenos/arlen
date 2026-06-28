@@ -53,6 +53,7 @@ pub fn run() {
             ai_manage::ai_working_set,
             ai_manage::pending_proposals,
             ai_manage::completed_actions,
+            ai_manage::ai_access_grants,
             ai_manage::deny,
             ai_manage::action_state,
             capability::ai_capability,

@@ -39,6 +39,7 @@ use crate::executor::{CompensationOutcome, Compensator};
 use crate::discovery::ai_config_path;
 use crate::receipt_store::{completed_view, ReceiptStore, RetainedReceipt};
 use crate::seams::GraphHandle;
+use os_sdk::UnixGraphClient;
 
 /// The D-Bus object path the interface is registered under.
 pub const AGENT_OBJECT_PATH: &str = "/org/arlen/AIAgent1";
@@ -133,6 +134,11 @@ pub struct AgentInterface {
     pub compensator: Compensator,
     /// The graph handle the compensation reads/retracts through.
     pub graph: Arc<dyn GraphHandle>,
+    /// The knowledge daemon query socket, read by `access_grants` to surface
+    /// this agent's own Living Capability Graph grants (the caller-scoped 0x05
+    /// op resolves them for the agent's identity). Held as a path so the method
+    /// opens a fresh client per call, like `UnixGraph`.
+    pub knowledge_socket: String,
     /// The execution receipts the dispatch loop retains, shared so a `compensate`
     /// call can look up the write to undo by its decision's correlation id.
     pub receipts: Arc<Mutex<ReceiptStore<RetainedReceipt>>>,
@@ -308,6 +314,27 @@ impl AgentInterface {
             .map(|store| store.values().iter().map(completed_view).collect())
             .unwrap_or_default();
         serde_json::to_string(&actions).unwrap_or_else(|_| "[]".to_string())
+    }
+
+    /// This agent's own capability grants (`access_grants`): a JSON array of
+    /// `GrantView`, the Living Capability Graph projection of what the background
+    /// agent is allowed to read, for the harness transparency drawer's Grants
+    /// feed (the anti-Recall view). The knowledge daemon's `access_grants` op is
+    /// caller-scoped, so reading it as the agent returns the agent's own grants -
+    /// the correct "what the AI is allowed to read" principal, never a whole-
+    /// machine authority view. Read-only; discloses only this principal's
+    /// declared reach, never any node content. Empty array if the knowledge
+    /// daemon is unreachable or the agent holds no grant. The harness merges this
+    /// with the assistant's (`org.arlen.AI1`) grants for the full AI view.
+    #[zbus(name = "access_grants")]
+    async fn access_grants(&self) -> String {
+        match UnixGraphClient::new(self.knowledge_socket.clone())
+            .access_grants()
+            .await
+        {
+            Ok(grants) => serde_json::to_string(&grants).unwrap_or_else(|_| "[]".to_string()),
+            Err(_) => "[]".to_string(),
+        }
     }
 
     /// The current autonomy-dial state, as a JSON object the harness renders as

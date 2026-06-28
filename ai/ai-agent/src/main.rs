@@ -391,6 +391,7 @@ async fn establish_agent_connection(
         status,
         compensator,
         graph,
+        knowledge_socket: graph_socket(),
         receipts,
         pending,
         manual_tx,
