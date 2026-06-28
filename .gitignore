@@ -16,3 +16,6 @@ THIRD-PARTY-NOTICES/
 
 # Local-only working context for Claude Code (never committed).
 CLAUDE.md
+
+# Screenshots may contain private content; never committed
+dev/screenshot/out/
