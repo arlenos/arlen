@@ -9,6 +9,7 @@
 mod archive;
 mod capability;
 mod devices;
+mod facet_query;
 mod thumbnail;
 
 use std::path::{Path, PathBuf};
@@ -335,6 +336,28 @@ async fn project_members_as_of(id: &str, as_of_micros: Option<i64>) -> Vec<FileE
         escape_cypher_literal(id),
         file_part_of_as_of(as_of_micros)
     );
+    match client.query_rows(&cypher).await {
+        Ok(rows) => members_from_rows(&rows),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// List the File nodes matching a `facet:` location (the FM filter bar's read,
+/// the query-as-folder result). Parses the selection and builds the scoped,
+/// escaped, closed-set Cypher (see [`facet_query`]) as of now, then maps the
+/// rows like `project_members`. Best-effort: an empty selection or a daemon
+/// error lists nothing rather than erroring the navigation.
+async fn facet_members(location: &str) -> Vec<FileEntry> {
+    let sel = facet_query::parse_facet_location(location);
+    let now_micros = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_micros() as i64)
+        .unwrap_or(0);
+    let Some(cypher) = facet_query::facet_cypher(&sel, now_micros) else {
+        return Vec::new();
+    };
+    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     match client.query_rows(&cypher).await {
         Ok(rows) => members_from_rows(&rows),
         Err(_) => Vec::new(),
@@ -1284,6 +1307,8 @@ async fn files_list_location(location: String) -> Result<Vec<FileEntry>, String>
                 Ok(project_members(id).await)
             } else if let Some(query) = other.strip_prefix("search:") {
                 Ok(search_location(query).await)
+            } else if other.starts_with("facet:") {
+                Ok(facet_members(other).await)
             } else {
                 Err(format!("unknown virtual location: {other}"))
             }
