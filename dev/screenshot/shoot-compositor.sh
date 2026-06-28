@@ -43,6 +43,8 @@
 #                      compositor's WAYLAND_DISPLAY set (so an X11 tool can at least
 #                      connect to Xvfb, e.g. to inspect windows).
 #   SHOOT_INJECT_SETTLE seconds to wait after inject before capture (default 1)
+#   SHOOT_CLIENT2      a second client command launched under the compositor after
+#                      the first settles, for multi-window / tiling-chrome captures
 #   SHOOT_BASELINE     a reference PNG; if set, compare the capture to it after
 #                      grim and FAIL (exit 3) when the differing-pixel count
 #                      exceeds SHOOT_TOLERANCE. A missing baseline writes the shot
@@ -69,7 +71,7 @@ DISP="${SHOOT_DISPLAY:-:99}"
 LOG="$(mktemp)"
 
 cleanup() {
-  kill "${CLIENT_PID:-}" "${CC_PID:-}" "${XVFB_PID:-}" 2>/dev/null || true
+  kill "${CLIENT2_PID:-}" "${CLIENT_PID:-}" "${CC_PID:-}" "${XVFB_PID:-}" 2>/dev/null || true
   wait 2>/dev/null || true
   rm -f "/tmp/.X${DISP#:}-lock" "$LOG" 2>/dev/null || true
 }
@@ -104,12 +106,23 @@ WAYLAND_DISPLAY="$WL" DISPLAY="" "$@" >"$CLIENT_LOG" 2>&1 &
 CLIENT_PID=$!
 sleep "$SETTLE"
 
-# Optional input injection into the focused nested surface, then a brief re-settle
-# so the result paints before capture. The command runs verbatim with both the
-# Xvfb DISPLAY (the X11 input path this compositor's x11 backend reads, e.g.
-# xdotool) and the compositor's WAYLAND_DISPLAY set; a failing inject is logged
-# but does not abort the capture (so the shot still records the pre-inject state
-# for debugging).
+# Optional second client (SHOOT_CLIENT2), for multi-window / tiling-chrome
+# captures: a verbatim command launched under the compositor's WAYLAND_DISPLAY
+# with its own settle so both surfaces paint before capture. Tiling layout (so the
+# two windows sit side by side rather than stacked) is the compositor's own config
+# concern, not set here.
+if [ -n "${SHOOT_CLIENT2:-}" ]; then
+  echo "client2: $SHOOT_CLIENT2"
+  WAYLAND_DISPLAY="$WL" DISPLAY="" bash -c "$SHOOT_CLIENT2" >>"$CLIENT_LOG" 2>&1 &
+  CLIENT2_PID=$!
+  sleep "$SETTLE"
+fi
+
+# Optional input injection, then a brief re-settle so the result paints before
+# capture. The command runs verbatim with both the Xvfb DISPLAY and the
+# compositor's WAYLAND_DISPLAY set; see the SHOOT_INJECT header note on the
+# nested-surface reach caveat. A failing inject is logged but does not abort the
+# capture (so the shot still records the pre-inject state for debugging).
 if [ -n "${SHOOT_INJECT:-}" ]; then
   echo "inject: $SHOOT_INJECT"
   WAYLAND_DISPLAY="$WL" DISPLAY="$DISP" bash -c "$SHOOT_INJECT" \
