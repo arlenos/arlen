@@ -490,24 +490,30 @@ impl<'a> Gate<'a> {
         };
 
         let decision = match decision {
-            // A proven, reversible executing action is lifted, but only to a
-            // *previewed* execution, never silent autonomous `Proceed`. Two
-            // boundaries are not yet in place that full auto-execution would
-            // need, so the human-visible preview is the bridge: (1) the proof is
-            // a point-in-time slice (the graph has no snapshot/version, gap A2),
-            // so the executor that eventually acts on a lifted decision must
-            // re-check the preconditions atomically at write time; (2) the
-            // per-app grant consulted is the *agent's own* (the acting app),
-            // the current coarse model, so a finer per-target/per-behaviour
-            // grant is future work. Capping at preview keeps a human in the
-            // loop until those land. Only a `Some(true)` reversible schema is
-            // lifted: an irreversible one was already escalated to `Irreversible`
-            // above (so it never reaches this arm), and an unregistered tool
-            // (`None`) cannot be proven, so both stay confirmation. Nothing
-            // executes today (there is no executor); this is the authorization
-            // the executor will honour.
+            // A proven, reversible executing action is lifted to a silent,
+            // immediate execution ONLY for a deterministic `kind: workflow` (the
+            // promotion-spine curation: no model call, zero tokens, reviewed after
+            // the fact via the pull activity view). A `kind: agent` (judgment)
+            // action is NEVER silently lifted, even when proven reversible: the
+            // agent has a model (hence a judgment/injection surface), so per the
+            // go-live decision "the agent never silently writes - everything it
+            // does is seen/confirmed" it stays `RequireConfirmation`, surfaced as a
+            // gate card whose `[Approve]` runs it. So the silent auto-execute lift
+            // is gated on `ctx.deterministic_workflow`.
+            //
+            // (`PreviewThenExecute` is the silent-execute decision the workflow
+            // dispatch path acts on immediately; `RequireConfirmation` is the
+            // human-approved path `proposal_view` surfaces. The two boundaries that
+            // still cap even the workflow lift to a *previewed* rather than fully
+            // autonomous `Proceed`: (1) the proof is a point-in-time slice with no
+            // graph snapshot, gap A2, so the executor re-checks atomically at write
+            // time; (2) the per-app grant is the agent's own, the coarse model.)
+            // Only a `Some(true)` reversible schema is lifted: an irreversible one
+            // was already escalated to `Irreversible` above (so it never reaches
+            // this arm), and an unregistered tool (`None`) cannot be proven, so
+            // both stay confirmation.
             ActionDecision::PreviewThenExecute | ActionDecision::Proceed => {
-                if proven && schema_reversible == Some(true) {
+                if proven && schema_reversible == Some(true) && ctx.deterministic_workflow {
                     ActionDecision::PreviewThenExecute
                 } else {
                     ActionDecision::RequireConfirmation
@@ -1275,7 +1281,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_valid_prediction_lifts_the_cap() {
+    async fn a_valid_prediction_lifts_a_deterministic_workflow() {
         let cap = executing_cap();
         let audit = MockAuditSink::accepting();
         let obs = Recorder::default();
@@ -1287,16 +1293,41 @@ mod tests {
                 BaselineMode::Supervised,
                 &scope(&["graph.write"]),
                 &graph_write_action(),
-                &ctx(false, "run-lift"),
+                &ctx_workflow(false, "run-lift"), // a deterministic workflow
                 &graph,
             )
             .await
             .unwrap();
-        // The world model proved the link safe, so the capability's executing
-        // decision stands instead of being capped to confirmation.
+        // The world model proved the link safe AND the actor is a deterministic
+        // workflow, so the silent auto-execute lift stands instead of being capped
+        // to confirmation.
         assert_eq!(receipt.decision, ActionDecision::PreviewThenExecute);
         assert_eq!(receipt.reason, DecisionReason::proven_reversible());
         assert_eq!(obs.0.lock().unwrap().as_slice(), &[ActionDecision::PreviewThenExecute]);
+    }
+
+    #[tokio::test]
+    async fn a_proven_agent_action_is_confirm_gated_not_silently_lifted() {
+        // The SAME proven-reversible action from a `kind: agent` (non-workflow,
+        // has a model/judgment surface) is NEVER silently lifted: it stays
+        // RequireConfirmation, surfaced as a gate card whose [Approve] runs it.
+        // "The agent never silently writes" (go-live decision).
+        let cap = executing_cap();
+        let audit = MockAuditSink::accepting();
+        let obs = Recorder::default();
+        let graph = tag_graph(false);
+        let receipt = Gate::new(&cap, &audit, &obs, &IdentityResolver, &StaticMountPolicy::empty())
+            .decide_action(
+                "auto-tag-by-project",
+                BaselineMode::Supervised,
+                &scope(&["graph.write"]),
+                &graph_write_action(),
+                &ctx(false, "run-agent-proven"), // a kind: agent, internal trigger
+                &graph,
+            )
+            .await
+            .unwrap();
+        assert_eq!(receipt.decision, ActionDecision::RequireConfirmation);
     }
 
     #[tokio::test]
