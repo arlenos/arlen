@@ -17,6 +17,7 @@
 //! gate land on top of it.
 
 pub mod protocol;
+pub mod server;
 pub mod state;
 
 pub use protocol::{handle_request, is_admitted_writer, Request, Response};
