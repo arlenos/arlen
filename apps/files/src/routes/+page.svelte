@@ -33,9 +33,11 @@
   import FmBatchRename from "$lib/components/FmBatchRename.svelte";
   import FmSearchBar from "$lib/components/FmSearchBar.svelte";
   import FmSearchResults from "$lib/components/FmSearchResults.svelte";
+  import FmFacetBar from "$lib/components/FmFacetBar.svelte";
   import FmInfoPanel from "$lib/components/FmInfoPanel.svelte";
   import { savedSearches } from "$lib/stores/places";
   import { searchOpen, searchResults } from "$lib/stores/search";
+  import { facetOpen, facetBase, loadFacetOptions } from "$lib/stores/facets";
   import { columnsFor, emptyLabelFor } from "$lib/locations";
   import { DEFAULT_COLUMNS } from "@arlen/ui-kit/components/browser";
 
@@ -77,6 +79,15 @@
   const isVirtual = $derived(isVirtualLocation(focusedPath));
   const isTrash = $derived(focusedPath === "trash");
   let confirmEmpty = $state(false);
+
+  // When the filter bar opens, remember the real folder it opened over so
+  // clearing every facet returns there (not to a stale facet: location).
+  $effect(() => {
+    if ($facetOpen) {
+      const p = currentPath();
+      if (!p.startsWith("facet:")) facetBase.set(p);
+    }
+  });
 
   // A virtual location defaults to newest-first by its time column (Last
   // accessed / Deleted), set once per arrival so a later re-sort sticks.
@@ -418,6 +429,7 @@
 
   onMount(async () => {
     await loadPlaces();
+    void loadFacetOptions();
     if (get(tabs).length === 0) newTab(get(homePath));
     if (tauriAvailable) {
       invoke<Template[]>("files_templates")
@@ -436,6 +448,12 @@
 <div class="fm" onkeydown={onOpsKeydown}>
   {#if $activeController && $focusedController}
     <FmSearchBar path={currentPath()} onsave={saveSearch} />
+    {#if $facetOpen}
+      <FmFacetBar
+        basePath={$facetBase}
+        onnavigate={(loc) => $focusedController?.navigate(loc)}
+      />
+    {/if}
     <ContextMenu.Root>
       <ContextMenu.Trigger class="fm-browse">
         {#if $searchOpen && $searchResults !== null}

@@ -17,10 +17,16 @@
     SidebarRail,
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { PlacesSidebar, placeIcon } from "@arlen/ui-kit/components/browser";
-  import { Trash2, Clock } from "lucide-svelte";
+  import { Trash2, Clock, SlidersHorizontal } from "lucide-svelte";
   import { activeController } from "$lib/stores/tabs";
   import { placeGroups, removePlace, navigatePlace, savedSearches } from "$lib/stores/places";
   import { runSearch, searchOpen, searchQuery } from "$lib/stores/search";
+  import {
+    savedFolders,
+    applySmartFolder,
+    facetOpen,
+    type SmartFolder,
+  } from "$lib/stores/facets";
 
   const SearchIcon = placeIcon("search");
 
@@ -59,6 +65,14 @@
     const c = get(activeController);
     if (c) void runSearch(get(c.path));
   }
+
+  /// A Smart Folder re-applies its saved facets, reveals the filter bar so the
+  /// active chips show, and navigates the listing to the faceted result.
+  function pickFolder(folder: SmartFolder) {
+    applySmartFolder(folder);
+    facetOpen.set(true);
+    void get(activeController)?.navigate(folder.location);
+  }
 </script>
 
 <Sidebar collapsible="icon">
@@ -80,6 +94,21 @@
       }}
       onremove={(place) => removePlace(place)}
     />
+    {#if $savedFolders.length > 0}
+      <SidebarGroup class="group-data-[collapsible=icon]:hidden">
+        <SidebarGroupLabel>Smart Folders</SidebarGroupLabel>
+        <SidebarMenu>
+          {#each $savedFolders as f (f.id)}
+            <SidebarMenuItem>
+              <SidebarMenuButton tooltip={f.name} onclick={() => pickFolder(f)}>
+                <SlidersHorizontal />
+                <span class="fs-label">{f.name}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          {/each}
+        </SidebarMenu>
+      </SidebarGroup>
+    {/if}
     {#if $savedSearches.length > 0}
       <SidebarGroup class="group-data-[collapsible=icon]:hidden">
         <SidebarGroupLabel>Searches</SidebarGroupLabel>
