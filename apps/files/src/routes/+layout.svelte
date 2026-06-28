@@ -15,7 +15,7 @@
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
-  import { Search } from "lucide-svelte";
+  import { Search, SlidersHorizontal } from "lucide-svelte";
   import { tauriAvailable } from "$lib/tauri";
   import FmSidebar from "$lib/components/FmSidebar.svelte";
   import FmHeaderNav from "$lib/components/FmHeaderNav.svelte";
@@ -29,6 +29,7 @@
   import { onMount } from "svelte";
   import { infoOpen, pathEditing } from "$lib/stores/ui";
   import { closeSearch, searchOpen } from "$lib/stores/search";
+  import { facetOpen } from "$lib/stores/facets";
   import { undoLast } from "$lib/stores/ops";
   import { get } from "svelte/store";
 
@@ -61,10 +62,20 @@
     else searchOpen.set(true);
   }
 
+  function toggleFilter() {
+    facetOpen.update((v) => !v);
+  }
+
   function onWindowKeydown(e: KeyboardEvent) {
     if (e.key === "F3" && !e.ctrlKey && !e.altKey && !e.metaKey) {
       e.preventDefault();
       toggleSplit();
+      return;
+    }
+    // Ctrl+Shift+F reveals the faceted filter (Ctrl+F stays text search).
+    if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      toggleFilter();
       return;
     }
     if (!e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
@@ -156,6 +167,14 @@
             onclick={toggleSearch}
           >
             <Search size={15} strokeWidth={1.75} />
+          </IconAction>
+          <IconAction
+            label="Filter"
+            size="control"
+            active={$facetOpen}
+            onclick={toggleFilter}
+          >
+            <SlidersHorizontal size={15} strokeWidth={1.75} />
           </IconAction>
           <FmViewMenu />
         </div>

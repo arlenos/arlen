@@ -1,7 +1,8 @@
 /// Host-owned label text for a virtual KG location (recent / trash / project:
-/// / search:), rendered by the kit breadcrumb as a single non-navigable name
-/// crumb. The kit owns the path-vs-name STRUCTURE (`locationCrumbs`); this owns
-/// the TEXT, so the kit stays i18n-neutral. A real path returns unchanged.
+/// / search: / facet:), rendered by the kit breadcrumb as a single
+/// non-navigable name crumb. The kit owns the path-vs-name STRUCTURE
+/// (`locationCrumbs`); this owns the TEXT, so the kit stays i18n-neutral. A real
+/// path returns unchanged.
 import {
   type PlaceGroup,
   type ColumnSpec,
@@ -25,6 +26,15 @@ export function locationLabel(path: string, groups: PlaceGroup[] = []): string {
     }
     return path.slice("project:".length);
   }
+  if (path.startsWith("facet:")) {
+    // A saved Smart Folder resolves to its name; an ad hoc filter reads as
+    // "Filtered" (the chips above the listing carry the specifics).
+    for (const g of groups) {
+      const hit = g.places.find((pl) => pl.path === path);
+      if (hit) return hit.label;
+    }
+    return "Filtered";
+  }
   return path;
 }
 
@@ -38,7 +48,11 @@ export function columnsFor(path: string): ColumnSpec {
   if (path === "recent") {
     return { middle: "location", middleLabel: "Location", timeLabel: "Last accessed" };
   }
-  if (path.startsWith("project:") || path.startsWith("search:")) {
+  if (
+    path.startsWith("project:") ||
+    path.startsWith("search:") ||
+    path.startsWith("facet:")
+  ) {
     return { middle: "location", middleLabel: "Location", timeLabel: "Modified" };
   }
   return DEFAULT_COLUMNS;
@@ -51,5 +65,6 @@ export function emptyLabelFor(path: string): string {
   if (path === "recent") return "No recent files";
   if (path.startsWith("project:")) return "No files in this project yet";
   if (path.startsWith("search:")) return "No matches";
+  if (path.startsWith("facet:")) return "No files match this filter";
   return "This folder is empty";
 }
