@@ -212,6 +212,49 @@ pub fn detect_ram_gib() -> Option<f64> {
         .and_then(|c| parse_meminfo_ram_gib(&c))
 }
 
+/// Conservative RAM fallback in GiB when `/proc/meminfo` cannot be read: low, so
+/// the budget under-promises (recommends smaller models) rather than
+/// over-recommending against RAM that may not be there.
+const FALLBACK_RAM_GIB: f64 = 8.0;
+
+/// Conservative DRAM transfer rate (MT/s) for the bandwidth fallback - a
+/// DDR4-3200 dual-channel baseline - used until the (privilege-sensitive, still
+/// deferred) DMI/SMBIOS detection produces the real rate. Chosen LOW so an
+/// undetected machine under-promises its token rate (more `MaySlow`) rather than
+/// over-promising it; only the rate estimate depends on it, never the fit.
+const FALLBACK_DRAM_MTPS: u32 = 3200;
+
+/// Assemble the machine's [`Hardware`] from the detected signals, applying the
+/// layer's conservative fallbacks for any signal the (privilege-sensitive, still
+/// deferred) GPU/DMI detection has not produced. Pure over its input, so the
+/// fallback policy is unit-tested without the filesystem: `detected_ram` is the
+/// `/proc/meminfo` read ([`detect_ram_gib`]), falling back to [`FALLBACK_RAM_GIB`].
+///
+/// Until the `/sys/class/drm` `is_integrated` + VRAM detect lands, the accelerator
+/// defaults to unified-memory [`Accelerator::Apu`]: it budgets against ~3/4 of RAM
+/// ([`memory_budget_gib`]), which UNDER-counts a discrete card's dedicated VRAM
+/// rather than over-promising a budget that is not there - the safe direction the
+/// layer mandates (a value over-promising would mis-tier and OOM a load). Bandwidth
+/// defaults to the conservative [`FALLBACK_DRAM_MTPS`] dual-channel baseline through
+/// [`theoretical_bandwidth_gbps`] until the DMI detect lands. Every fallback errs
+/// toward under-promising.
+pub fn assemble_hardware(detected_ram: Option<f64>) -> Hardware {
+    Hardware {
+        ram_gib: detected_ram.unwrap_or(FALLBACK_RAM_GIB),
+        accelerator: Accelerator::Apu,
+        mem_bandwidth_gbps: theoretical_bandwidth_gbps(FALLBACK_DRAM_MTPS, 64, 2),
+    }
+}
+
+/// Detect the machine's [`Hardware`] from the live system, with the conservative
+/// fallbacks of [`assemble_hardware`] for any signal the deferred GPU/DMI layer
+/// does not yet produce. Linux-only (it reads `/proc/meminfo` via
+/// [`detect_ram_gib`]); the pure [`assemble_hardware`] is testable everywhere.
+#[cfg(target_os = "linux")]
+pub fn detect_hardware() -> Hardware {
+    assemble_hardware(detect_ram_gib())
+}
+
 /// Classify the accelerator from the two signals the detection layer reads:
 /// whether the GPU is INTEGRATED (an APU sharing system RAM) and, for a discrete
 /// card, its dedicated VRAM in GiB. Pure: the `/sys` reads that produce
@@ -637,6 +680,30 @@ mod tests {
         assert_eq!(parse_meminfo_ram_gib("MemFree: 100 kB\n"), None);
         assert_eq!(parse_meminfo_ram_gib(""), None);
         assert_eq!(parse_meminfo_ram_gib("MemTotal: notanumber kB\n"), None);
+    }
+
+    #[test]
+    fn assemble_hardware_uses_detected_ram_and_conservative_fallbacks() {
+        let hw = assemble_hardware(Some(64.0));
+        assert_eq!(hw.ram_gib, 64.0);
+        // GPU detect deferred -> unified-memory APU (budgets against 3/4 RAM, the
+        // under-promising default), not a phantom discrete VRAM budget.
+        assert_eq!(hw.accelerator, Accelerator::Apu);
+        assert_eq!(memory_budget_gib(&hw), 64.0 * APU_RAM_BUDGET_FRACTION);
+        // Bandwidth is the conservative DDR4-3200 dual-channel baseline.
+        assert_eq!(
+            hw.mem_bandwidth_gbps,
+            theoretical_bandwidth_gbps(FALLBACK_DRAM_MTPS, 64, 2)
+        );
+    }
+
+    #[test]
+    fn assemble_hardware_falls_back_to_a_low_ram_figure_when_detection_fails() {
+        // No /proc/meminfo read -> the low fallback, so the budget under-promises
+        // rather than over-recommending against RAM that may not exist.
+        let hw = assemble_hardware(None);
+        assert_eq!(hw.ram_gib, FALLBACK_RAM_GIB);
+        assert_eq!(hw.accelerator, Accelerator::Apu);
     }
 
     #[test]
