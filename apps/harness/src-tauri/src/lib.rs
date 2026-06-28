@@ -60,6 +60,8 @@ pub fn run() {
             ai_manage::ai_access_grants,
             app_meta::app_metadata,
             ai_manage::deny,
+            ai_manage::approve,
+            ai_manage::undo_action,
             ai_manage::action_state,
             capability::ai_capability,
             behaviours::ai_behaviours,

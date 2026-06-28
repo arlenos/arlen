@@ -111,6 +111,49 @@ pub async fn deny(id: u64) -> String {
         .unwrap_or_else(|e| format!("error: {e}"))
 }
 
+/// Approve a pending gate-card proposal (`approve`): the user confirmed the
+/// action, so the agent performs it. The agent re-runs the full trusted proof
+/// against the current graph and audits fail-closed before the write, so the
+/// approve authorises the act but never bypasses revalidation. Returns the
+/// agent's status (`executed` / `nothing-to-execute` / `not-enabled` in suggest
+/// mode / `no-such-proposal` / `error: ...`); a transport failure maps to an
+/// `error:` string the gate card surfaces.
+#[tauri::command]
+pub async fn approve(id: u64) -> String {
+    let Ok(connection) = Connection::session().await else {
+        return "error: session bus unavailable".to_string();
+    };
+    let Ok(proxy) = Proxy::new(&connection, AGENT_BUS, AGENT_PATH, AGENT_BUS).await else {
+        return "error: AI agent unavailable".to_string();
+    };
+    proxy
+        .call("approve", &(id,))
+        .await
+        .unwrap_or_else(|e| format!("error: {e}"))
+}
+
+/// Undo a completed action (`compensate`): the user pressed `[Undo]` on a
+/// silent-done line, keyed by the action's correlation id (the `id` on a
+/// `completed_actions` entry). The agent retracts the write, re-running the
+/// audit fail-closed first. Returns the agent's status (`retracted` /
+/// `nothing-to-undo` / `no-such-receipt` / `not-enabled` / `error: ...`); a
+/// transport failure maps to an `error:` string. Only functions when the
+/// executor is live; in suggest mode nothing was written, so the agent answers
+/// `not-enabled`.
+#[tauri::command]
+pub async fn undo_action(id: String) -> String {
+    let Ok(connection) = Connection::session().await else {
+        return "error: session bus unavailable".to_string();
+    };
+    let Ok(proxy) = Proxy::new(&connection, AGENT_BUS, AGENT_PATH, AGENT_BUS).await else {
+        return "error: AI agent unavailable".to_string();
+    };
+    proxy
+        .call("compensate", &(id,))
+        .await
+        .unwrap_or_else(|e| format!("error: {e}"))
+}
+
 /// The agent's working-set shape (`working_set` on the agent): the shape-only
 /// introspection of what the agent currently has in scope (AIT-R1), for the
 /// transparency drawer's working-set section. Identity/shape only, never user
