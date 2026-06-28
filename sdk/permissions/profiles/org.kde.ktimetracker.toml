@@ -1,0 +1,5 @@
+# Starting permission profile for KTimeTracker (a personal task time-tracker). Self-contained: keeps its own
+# data, opens/saves files through the portal, needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "org.kde.ktimetracker"
+tier = "third-party"
