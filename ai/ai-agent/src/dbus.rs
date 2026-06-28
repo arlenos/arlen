@@ -35,10 +35,11 @@ use zbus::interface;
 
 use crate::config::AgentConfig;
 use crate::engine::PendingProposal;
-use crate::executor::{CompensationOutcome, Compensator};
+use crate::executor::{ActionReceipt, Approver, CompensationOutcome, Compensator};
 use crate::discovery::ai_config_path;
 use crate::receipt_store::{completed_view, ReceiptStore, RetainedReceipt};
 use crate::seams::GraphHandle;
+use arlen_ai_core::capability::Capability;
 use os_sdk::UnixGraphClient;
 
 /// The D-Bus object path the interface is registered under.
@@ -132,6 +133,10 @@ pub struct AgentInterface {
     /// are startup-stable); whether an undo is *permitted* is gated at call time
     /// on `executor_live`, not by its presence.
     pub compensator: Compensator,
+    /// The owned approver for the `[Approve]` path. Always built (its proof + write
+    /// deps are startup-stable); whether an approval may *execute* is gated at call
+    /// time on `executor_live`, and the live capability is supplied per call.
+    pub approver: Approver,
     /// The graph handle the compensation reads/retracts through.
     pub graph: Arc<dyn GraphHandle>,
     /// The knowledge daemon query socket, read by `access_grants` to surface
@@ -231,6 +236,67 @@ impl AgentInterface {
         {
             Ok(CompensationOutcome::Retracted) => "retracted".to_string(),
             Ok(CompensationOutcome::NothingToUndo) => "nothing-to-undo".to_string(),
+            Err(e) => format!("error: {e}"),
+        }
+    }
+
+    /// Approve a pending gate-card proposal, identified by its audit-ledger index
+    /// (the `id` the harness renders on the card). Performs the action the user
+    /// confirmed: looks up the retained executable proposal, then executes it via
+    /// the [`Approver`] - which re-runs the full trusted proof against the current
+    /// graph and audits fail-closed before the write, so approval authorises the
+    /// act but never bypasses revalidation. On a real write the undo receipt is
+    /// retained so the harness `[Undo]` can later compensate it. Returns a short
+    /// status: `not-enabled` in suggest mode, `no-such-proposal` when nothing
+    /// matches (or it carried no executable form), `executed`, `nothing-to-execute`
+    /// when the proposal resolves to no write, or `error: …`.
+    ///
+    /// Gated like [`Self::compensate`]: the call-time `executor_live` re-read means
+    /// a flip is honoured without a restart, and a live to suggest flip makes a
+    /// later approval refuse rather than write under a config that says the
+    /// executor is off. Authorisation today is the session bus's same-user
+    /// boundary (the KG is the user's own and the write is reversible, agent-re-
+    /// derivable curation); the caller-allowlist + recording the D-Bus invoker in
+    /// the audit is the same deferred close documented on `compensate`.
+    #[zbus(name = "approve")]
+    async fn approve(&self, id: u64) -> String {
+        if !current_executor_live() {
+            return "not-enabled: the executor is in suggest mode".to_string();
+        }
+        // Clone the executable proposal out under the lock; never hold the std
+        // Mutex across the async execute. A card with no `exec` (e.g. one
+        // reconstructed from the wire) is not approvable.
+        let retained = match self.pending.lock() {
+            Ok(store) => store.get(&id.to_string()).and_then(|p| p.exec),
+            Err(_) => return "error: pending store unavailable".to_string(),
+        };
+        let Some(retained) = retained else {
+            return "no-such-proposal".to_string();
+        };
+        // The live capability (rebuilt each config epoch): supply it per call so a
+        // tier/permission change since the gate decision is honoured.
+        let capability = current_capability();
+        match self
+            .approver
+            .approve(&retained, &*self.graph, &capability)
+            .await
+        {
+            Ok(Some(executed)) => {
+                // Retain the undo receipt, keyed by the write's correlation id, so
+                // a later `[Undo]` (compensate) can find it - exactly as the
+                // dispatch-path retention does for an auto-executed write.
+                if let Ok(mut store) = self.receipts.lock() {
+                    store.record(
+                        executed.correlation_id().to_string(),
+                        RetainedReceipt {
+                            receipt: ActionReceipt::Graph(executed),
+                            behaviour: retained.behaviour.clone(),
+                        },
+                    );
+                }
+                "executed".to_string()
+            }
+            Ok(None) => "nothing-to-execute".to_string(),
             Err(e) => format!("error: {e}"),
         }
     }
@@ -454,6 +520,20 @@ fn current_executor_live() -> bool {
         .ok()
         .map(|t| AgentConfig::parse(&t).executor_live)
         .unwrap_or(false)
+}
+
+/// The capability the approve path proves against, rebuilt from `ai.toml` per
+/// call so a read-tier or action-permission change since the gate decision is
+/// honoured (the capability is config-epoch-scoped, so the interface cannot hold
+/// a stale snapshot). Fail-closed to the `fail_closed` config (disabled, Minimal
+/// tier, suggest) on any read/parse failure, so a broken config narrows rather
+/// than widens what an approval may do.
+fn current_capability() -> Capability {
+    let config = std::fs::read_to_string(ai_config_path())
+        .ok()
+        .map(|t| AgentConfig::parse(&t))
+        .unwrap_or_else(AgentConfig::fail_closed);
+    Capability::new(config.read_tier, config.actions)
 }
 
 #[cfg(test)]
