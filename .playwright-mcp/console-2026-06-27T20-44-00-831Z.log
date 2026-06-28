@@ -1,0 +1,20 @@
+[  333969ms] ReferenceError: ModelPickerBar is not defined
+
+	in <unknown>
+	in +page.svelte
+	in SidebarInset.svelte
+	in SidebarProvider.svelte
+	in +layout.svelte
+	in root.svelte
+	in undefined
+
+    at Composer.$.add_svelte_meta.componentTag (http://localhost:1423/src/lib/components/chat/Composer.svelte?t=1782593374319:470:26)
+    at Module.add_svelte_meta (http://localhost:1423/node_modules/.vite/deps/chunk-GCUGUSEW.js?v=7577d241:609:12)
+    at Composer (http://localhost:1423/src/lib/components/chat/Composer.svelte?t=1782593374319:470:4)
+    at http://localhost:1423/node_modules/.vite/deps/chunk-5HMRN3IC.js?v=7577d241:343:56
+    at update_reaction (http://localhost:1423/node_modules/.vite/deps/chunk-GCUGUSEW.js?v=7577d241:4188:18)
+    at update_effect (http://localhost:1423/node_modules/.vite/deps/chunk-GCUGUSEW.js?v=7577d241:4329:21)
+    at create_effect (http://localhost:1423/node_modules/.vite/deps/chunk-GCUGUSEW.js?v=7577d241:3677:7)
+    at branch (http://localhost:1423/node_modules/.vite/deps/chunk-GCUGUSEW.js?v=7577d241:3853:10)
+    at http://localhost:1423/node_modules/.vite/deps/chunk-5HMRN3IC.js?v=7577d241:337:17
+    at update_reaction (http://localhost:1423/node_modules/.vite/deps/chunk-GCUGUSEW.js?v=7577d241:4188:18)

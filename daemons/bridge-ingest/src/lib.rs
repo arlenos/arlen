@@ -4,14 +4,26 @@
 //! (foreign-app-bridges.md). A bridge ships no code here — only declarative
 //! data (`entities.toml` + `bridge.toml`); this crate is the privileged side.
 //!
-//! Built so far: the `bridge.toml` schema + validation ([`bridge`]), the pure
-//! message -> upsert-plan interpreter ([`interpret`]), and the native-messaging
-//! stdio host ([`host`]: length-prefixed framing + the mutual-id-pin handshake +
-//! untrusted-message validation, routing each ingest to a [`host::PlanSink`]).
-//! The remaining slice is the real sink: writing a plan through the bridge's
-//! macaroon-scoped, origin-tagged app-tier entity-write socket - gated on the
-//! macaroon namespace-delegation in the knowledge write path (see the daemon's
-//! coder report; a bridge writes a namespace that is not its own app id).
+//! Built: the `bridge.toml` schema + validation ([`bridge`]), the pure message ->
+//! upsert-plan interpreter ([`interpret`]), the native-messaging stdio host
+//! ([`host`]: length-prefixed framing + the mutual-id-pin handshake +
+//! untrusted-message validation, routing each ingest to a [`host::PlanSink`]), the
+//! Obsidian vault floor reader ([`obsidian`] + the file-watch [`watch`]), and the
+//! real KG sink ([`sink::KgPlanSink`] over an [`sink::EntityWriter`]; the daemon
+//! binary's `GraphEntityWriter` drives the os-sdk `upsert_entity`/`link_entities`
+//! clients).
+//!
+//! The sink writes through the bridge's origin-tagged app-tier entity-write socket.
+//! The namespace-delegation it relies on - a bridge writing entity types under a
+//! namespace that is not its own app id (e.g. `md.obsidian.*`) - is now enforced in
+//! the knowledge write path (`daemons/knowledge/src/write/namespace_grant.rs` +
+//! `plan_entity_upsert`/`plan_entity_link`): the bridge's profile declares
+//! `[graph].delegated_namespaces`, validated reserved-deny + attenuate-only, with
+//! `system.*`/`shared.*` structurally unwritable. So the ingestion path is complete
+//! end to end. What remains is DEPLOYMENT, not code: provisioning a per-bridge
+//! permission profile that declares its delegated namespace + write scope, which
+//! rides the forage auto-install grant flow (foreign-app-bridges.md item 3, gated
+//! on forage's install path).
 
 pub mod bridge;
 pub mod host;

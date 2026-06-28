@@ -1,0 +1,15 @@
+[     270ms] [WARNING] initArlenTheme: initial theme load failed: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://localhost:1429/node_modules/.vite/deps/chunk-2PXI7ISQ.js?v=cad77249:109:37)
+    at initArlenTheme (http://localhost:1429/@fs/home/tim/Repositories/arlen/sdk/ui-kit/src/lib/theme.ts:24:23)
+    at http://localhost:1429/src/routes/+layout.svelte?t=1782546730863:25:8
+    at untrack (http://localhost:1429/node_modules/.vite/deps/chunk-4FLRTTF3.js?v=cad77249:4510:12)
+    at $effect (http://localhost:1429/node_modules/.vite/deps/chunk-BZHFQOHE.js?v=cad77249:4313:23)
+    at update_reaction (http://localhost:1429/node_modules/.vite/deps/chunk-4FLRTTF3.js?v=cad77249:4192:18)
+    at update_effect (http://localhost:1429/node_modules/.vite/deps/chunk-4FLRTTF3.js?v=cad77249:4333:21)
+    at flush_queued_effects (http://localhost:1429/node_modules/.vite/deps/chunk-4FLRTTF3.js?v=cad77249:3312:7)
+    at _Batch.process_fn (http://localhost:1429/node_modules/.vite/deps/chunk-4FLRTTF3.js?v=cad77249:3004:3)
+    at _Batch.flush (http://localhost:1429/node_modules/.vite/deps/chunk-4FLRTTF3.js?v=cad77249:2734:59) @ http://localhost:1429/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=cad77249:3440
+[     310ms] TypeError: Cannot read properties of undefined (reading 'transformCallback')
+    at transformCallback (http://localhost:1429/node_modules/.vite/deps/chunk-2PXI7ISQ.js?v=cad77249:22:37)
+    at listen (http://localhost:1429/node_modules/.vite/deps/chunk-2GIJP7T6.js?v=cad77249:37:14)
+    at initArlenTheme (http://localhost:1429/@fs/home/tim/Repositories/arlen/sdk/ui-kit/src/lib/theme.ts:29:26)

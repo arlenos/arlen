@@ -1,0 +1,26 @@
+[ 1288115ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:1423/src/lib/components/chat/ArtifactCard.svelte?t=1782665552897:0
+[ 1288115ms] [ERROR] [vite] Failed to reload /src/lib/components/chat/ArtifactCard.svelte. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:1423/@vite/client:881
+[ 1288119ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:1423/src/lib/components/chat/ArtifactCard.svelte?t=1782665552897&svelte&type=style&lang.css:0
+[ 1288120ms] [ERROR] [vite] Failed to reload /src/lib/components/chat/ArtifactCard.svelte?svelte&type=style&lang.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:1423/@vite/client:881
+[ 1288188ms] TypeError: Cannot read properties of undefined (reading 'default')
+    at http://localhost:1423/src/lib/components/chat/ArtifactCard.svelte:143:37
+    at http://localhost:1423/@vite/client:46:60
+    at http://localhost:1423/@vite/client:213:11
+    at http://localhost:1423/@vite/client:186:58
+    at Array.forEach (<anonymous>)
+    at HMRClient.queueUpdate (http://localhost:1423/@vite/client:186:36)
+    at async Promise.all (index 0)
+    at async handleMessage (http://localhost:1423/@vite/client:927:7)
+[ 1288190ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:1423/src/lib/components/ArtifactPanel.svelte?t=1782665552897:0
+[ 1288190ms] [ERROR] [vite] Failed to reload /src/lib/components/ArtifactPanel.svelte. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:1423/@vite/client:881
+[ 1288195ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:1423/src/lib/components/ArtifactPanel.svelte?t=1782665552897&svelte&type=style&lang.css:0
+[ 1288195ms] [ERROR] [vite] Failed to reload /src/lib/components/ArtifactPanel.svelte?svelte&type=style&lang.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:1423/@vite/client:881
+[ 1288195ms] TypeError: Cannot read properties of undefined (reading 'default')
+    at http://localhost:1423/src/lib/components/ArtifactPanel.svelte?t=1782665453205:182:38
+    at http://localhost:1423/@vite/client:46:60
+    at http://localhost:1423/@vite/client:213:11
+    at http://localhost:1423/@vite/client:186:58
+    at Array.forEach (<anonymous>)
+    at HMRClient.queueUpdate (http://localhost:1423/@vite/client:186:36)
+    at async Promise.all (index 0)
+    at async handleMessage (http://localhost:1423/@vite/client:927:7)
