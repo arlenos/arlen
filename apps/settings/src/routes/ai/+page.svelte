@@ -20,6 +20,7 @@
   import { LinkCard } from "@arlen/ui-kit/components/ui/link-card";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
+  import { ChoiceList } from "@arlen/ui-kit/components/ui/choice-list";
   import { ChipList } from "@arlen/ui-kit/components/ui/chip-list";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { ai } from "$lib/stores/ai";
@@ -44,21 +45,37 @@
     errors: string[];
   }
 
-  // The read level, in plain words (the daemon stores 0-4 in `ai.access_level`).
-  const ACCESS_LEVELS = [
-    { value: "0", label: "Nothing" },
-    { value: "1", label: "This session" },
-    { value: "2", label: "This project" },
-    { value: "3", label: "Recent" },
-    { value: "4", label: "Everything" },
+  // The read level (the daemon stores 0-4 in `ai.access_level`). These are
+  // different scopes of what the assistant may read from the knowledge graph,
+  // not a simple more/less slider; each row says plainly what it covers.
+  const ACCESS_CHOICES = [
+    {
+      value: "0",
+      label: "Only what you share",
+      description: "It sees just what you put in a chat. Nothing from your files or activity.",
+    },
+    {
+      value: "1",
+      label: "This session",
+      description: "The apps and events in your current session. No files, no history.",
+    },
+    {
+      value: "2",
+      label: "Your current project",
+      description: "The file layout of the project you have open.",
+      note: "Needs a project focused in the shell; without one it sees nothing here.",
+    },
+    {
+      value: "3",
+      label: "Recent activity",
+      description: "Which files you have touched over the last few days. Not the contents.",
+    },
+    {
+      value: "4",
+      label: "Everything",
+      description: "All your files and activity, including older history.",
+    },
   ];
-  const ACCESS_HINTS: Record<string, string> = {
-    "0": "It sees almost nothing about your files.",
-    "1": "Only what you do in the current session.",
-    "2": "The files and context of the project you are in.",
-    "3": "A recent window of activity across your projects.",
-    "4": "Everything the system has recorded about your files and activity.",
-  };
   // How freely it acts, the baseline posture. "supervised" only takes effect
   // once the executor master below is on.
   const ACTION_MODES = [
@@ -301,12 +318,16 @@
     </Group>
 
     <Group label="What it can see">
-      <Row label="How much it can read" description={ACCESS_HINTS[accessLevel] ?? ""} id="ai-access-level">
+      <Row
+        label="What it may read"
+        description="The slice of your knowledge graph the assistant may read. Off by default; pick a wider scope only if you want it to use that context. Every read is logged."
+        id="ai-access-level"
+      >
         {#snippet below()}
-          <SegmentedControl
+          <ChoiceList
             value={accessLevel}
-            options={ACCESS_LEVELS}
-            ariaLabel="How much the assistant can read"
+            options={ACCESS_CHOICES}
+            ariaLabel="What the assistant may read"
             onchange={setAccessLevel}
           />
         {/snippet}
