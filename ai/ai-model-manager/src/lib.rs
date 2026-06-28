@@ -317,6 +317,102 @@ pub struct Recommendation {
     pub tokens_per_sec: f64,
 }
 
+/// A task grouping the curated catalog organizes models under (the UI shows "good
+/// for writing / coding"; `General` is the everyday default). Presentation only -
+/// the fit/speed math does not depend on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Task {
+    /// The everyday assistant default.
+    General,
+    /// Prose / writing assistance.
+    Writing,
+    /// Code generation and editing.
+    Coding,
+    /// Step-by-step reasoning / math.
+    Reasoning,
+}
+
+/// A curated catalog entry: the recommender input (`name` + `params_b`) plus the
+/// presentation and provenance the manager needs - the task groups it shows under,
+/// the GGUF `source` it is fetched from, and whether it is an `advanced`
+/// (abliterated / uncensored grey-zone) model gated behind the explicit Advanced
+/// door (plan Decision 3). The curation itself - which models, the real source
+/// refs, the advanced set - is human-vetted and lives in the bundled catalog TOML;
+/// this is its schema + parser, not the curated list.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct CuratedModel {
+    /// Display name (e.g. `"Llama-3.1-8B"`).
+    pub name: String,
+    /// Parameter count in billions.
+    pub params_b: f64,
+    /// The task groups the UI lists this model under (empty = General only).
+    #[serde(default)]
+    pub tasks: Vec<Task>,
+    /// The GGUF source reference the downloader fetches from (e.g. a Hugging Face
+    /// repo id). Opaque here; the consent-gated downloader resolves + fetches it.
+    pub source: String,
+    /// Whether this is an advanced (abliterated / uncensored) model, hidden behind
+    /// the explicit Advanced door and excluded from the default curated shortlist.
+    #[serde(default)]
+    pub advanced: bool,
+}
+
+impl CuratedModel {
+    /// The recommender input view (name + parameter count) for this entry.
+    pub fn spec(&self) -> ModelSpec {
+        ModelSpec {
+            name: self.name.clone(),
+            params_b: self.params_b,
+        }
+    }
+}
+
+/// The curated catalog: the manager's source of recommendable models. Parsed from
+/// the bundled catalog TOML (a `[[model]]` array).
+#[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
+pub struct Catalog {
+    /// The curated models, in catalog order.
+    #[serde(default, rename = "model")]
+    pub models: Vec<CuratedModel>,
+}
+
+/// A catalog parse failure (malformed TOML or a missing required field).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogError(pub String);
+
+impl std::fmt::Display for CatalogError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "catalog parse error: {}", self.0)
+    }
+}
+
+impl std::error::Error for CatalogError {}
+
+/// Parse a curated catalog from TOML (`[[model]]` entries). Fails closed on
+/// malformed TOML or a missing required field (`name`/`params_b`/`source`) rather
+/// than silently dropping a model. Pure, so it is unit-tested without a file.
+pub fn parse_catalog(toml_contents: &str) -> Result<Catalog, CatalogError> {
+    toml::from_str(toml_contents).map_err(|e| CatalogError(e.to_string()))
+}
+
+/// Recommend the catalog for `hw`. The default view hides the `advanced`
+/// (abliterated) tier; `include_advanced` is set only behind the explicit Advanced
+/// door. Order preserved, advanced entries filtered before the recommender runs.
+pub fn recommend_catalog(
+    hw: &Hardware,
+    catalog: &Catalog,
+    include_advanced: bool,
+) -> Vec<Recommendation> {
+    let specs: Vec<ModelSpec> = catalog
+        .models
+        .iter()
+        .filter(|m| include_advanced || !m.advanced)
+        .map(CuratedModel::spec)
+        .collect();
+    recommend(hw, &specs)
+}
+
 /// Recommend every model in `catalog` for `hw`: per model, pick the silent quant
 /// (the Q4_K_M-default ladder), the fit badge, and the speed estimate. Order
 /// preserved. Pure.
@@ -577,5 +673,62 @@ mod tests {
         let bw = theoretical_bandwidth_gbps(6400, 64, 2);
         let tok_s = estimate_tokens_per_sec(weights_gib(8.03, Quant::Q4KM), bw);
         assert!((tok_s - 9.4).abs() < 1.5, "expected ~9.4 tok/s, got {tok_s}");
+    }
+
+    // A representative catalog fixture (schema exercise, NOT the shipped curation).
+    const CATALOG_TOML: &str = r#"
+        [[model]]
+        name = "Llama-3.1-8B"
+        params_b = 8.03
+        tasks = ["general", "writing"]
+        source = "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF"
+
+        [[model]]
+        name = "Qwen2.5-Coder-7B"
+        params_b = 7.62
+        tasks = ["coding"]
+        source = "bartowski/Qwen2.5-Coder-7B-Instruct-GGUF"
+
+        [[model]]
+        name = "Llama-3.1-8B-abliterated"
+        params_b = 8.03
+        source = "some/abliterated-GGUF"
+        advanced = true
+    "#;
+
+    #[test]
+    fn parses_a_curated_catalog() {
+        let catalog = parse_catalog(CATALOG_TOML).expect("valid catalog");
+        assert_eq!(catalog.models.len(), 3);
+        let first = &catalog.models[0];
+        assert_eq!(first.name, "Llama-3.1-8B");
+        assert!((first.params_b - 8.03).abs() < 1e-9);
+        assert_eq!(first.tasks, vec![Task::General, Task::Writing]);
+        assert!(!first.advanced);
+        assert_eq!(first.spec(), ModelSpec { name: "Llama-3.1-8B".into(), params_b: 8.03 });
+        // The abliterated entry is flagged advanced; a task-less entry defaults empty.
+        assert!(catalog.models[2].advanced);
+        assert!(catalog.models[1].tasks == vec![Task::Coding]);
+    }
+
+    #[test]
+    fn the_advanced_tier_is_hidden_unless_the_door_is_open() {
+        let catalog = parse_catalog(CATALOG_TOML).unwrap();
+        let hw = apu_7840u();
+        // Default view: the abliterated model is excluded.
+        let shortlist = recommend_catalog(&hw, &catalog, false);
+        assert_eq!(shortlist.len(), 2);
+        assert!(shortlist.iter().all(|r| !r.name.contains("abliterated")));
+        // Behind the Advanced door: all three appear.
+        let full = recommend_catalog(&hw, &catalog, true);
+        assert_eq!(full.len(), 3);
+    }
+
+    #[test]
+    fn a_malformed_catalog_fails_closed() {
+        // Missing the required `source` field is rejected, not silently dropped.
+        assert!(parse_catalog("[[model]]\nname = \"x\"\nparams_b = 7.0\n").is_err());
+        // Not even TOML.
+        assert!(parse_catalog("}{ not toml").is_err());
     }
 }
