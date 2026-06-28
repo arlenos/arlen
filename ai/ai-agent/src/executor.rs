@@ -622,36 +622,73 @@ fn is_under(path: &str, dir: &str) -> bool {
     path == dir || path.strip_prefix(dir).is_some_and(|r| r.starts_with('/'))
 }
 
-/// Confine an `fs.move`'s source and destination directory to the behaviour's
-/// declared `fs.move` tool scope - the executor's path confinement (obligation
-/// 3). Unlike `graph.write` (where the gate names the relation and predict proves
-/// containment), NOTHING upstream confines a move's dirs: predict has no
-/// precondition for an external effect and the gate's tool-scope check is
-/// name-only. So this is the SOLE path confinement and must hold before any move.
+/// A scope violation for the `fs.move` tool naming the offending token.
+fn fs_move_scope_violation(token: &str) -> ExecError {
+    ExecError::ScopeViolation {
+        tool: "fs.move".to_string(),
+        token: token.to_string(),
+    }
+}
+
+/// Resolve the behaviour's declared `fs.move` dir scope to REAL, symlink-resolved
+/// roots through `paths` (the production [`FsPathResolver`] canonicalizes, so a
+/// scope dir under a symlinked home resolves correctly and the prefix comparison
+/// below is over real paths). `~`-rooted entries are expanded against `$HOME`
+/// first.
 ///
 /// Fail-closed: an EMPTY scope is REFUSED (a filesystem-move tool must declare its
 /// dirs; an unbounded move is never granted by omission, unlike a graph relation
 /// where empty means no finer restriction). `$HOME` must resolve to expand
-/// `~`-rooted entries; if not, no entry is a valid root and the move is refused.
-/// Both the source file and the destination directory must lie under (or equal) a
-/// declared scope dir.
-fn confine_move_to_scope(source: &str, dest_dir: &str, scope: &[String]) -> Result<(), ExecError> {
-    let violation = |token: &str| ExecError::ScopeViolation {
-        tool: "fs.move".to_string(),
-        token: token.to_string(),
-    };
+/// `~`-rooted entries. A root that does not resolve (missing, dangling) is
+/// dropped; an empty-or-`/` resolved root is dropped (a universal-match root is
+/// never a confinement). If NO root resolves, the move is refused.
+fn resolve_scope_roots(
+    paths: &dyn PathResolver,
+    scope: &[String],
+) -> Result<Vec<String>, ExecError> {
     if scope.is_empty() {
-        return Err(violation("<empty scope: a move tool must declare its dirs>"));
+        return Err(fs_move_scope_violation(
+            "<empty scope: a move tool must declare its dirs>",
+        ));
     }
-    let home = std::env::var("HOME").map_err(|_| violation("<no HOME to resolve scope dirs>"))?;
-    let roots: Vec<String> = scope.iter().filter_map(|e| expand_scope_dir(e, &home)).collect();
+    let home = std::env::var("HOME")
+        .map_err(|_| fs_move_scope_violation("<no HOME to resolve scope dirs>"))?;
+    let roots: Vec<String> = scope
+        .iter()
+        .filter_map(|e| expand_scope_dir(e, &home))
+        .filter_map(|d| paths.resolve(&d).ok())
+        .map(|r| r.trim_end_matches('/').to_string())
+        // A root that resolved to the empty string or bare `/` would match every
+        // absolute path - never a confinement, so drop it.
+        .filter(|r| !r.is_empty())
+        .collect();
+    if roots.is_empty() {
+        return Err(fs_move_scope_violation("<no scope dir resolved>"));
+    }
+    Ok(roots)
+}
+
+/// Confine an already-RESOLVED source and destination directory to the resolved
+/// scope roots - the executor's path confinement (obligation 3). Unlike
+/// `graph.write` (where the gate names the relation and predict proves
+/// containment), NOTHING upstream confines a move's dirs: predict has no
+/// precondition for an external effect and the gate's tool-scope check is
+/// name-only. So this is the SOLE path confinement and must hold before any move.
+///
+/// The inputs MUST be symlink-resolved (canonicalized) before this is called, so
+/// a symlinked operand cannot pass a string prefix check while the real move
+/// touches a target outside the scope (a string check on raw operands is unsafe -
+/// the caller resolves first via [`resolve_scope_roots`] / the path resolver).
+/// Both the source file and the destination directory must lie under (or equal) a
+/// resolved scope root.
+fn confine_to_roots(source: &str, dest_dir: &str, roots: &[String]) -> Result<(), ExecError> {
     let src = source.trim_end_matches('/');
     let dst = dest_dir.trim_end_matches('/');
     if !roots.iter().any(|r| is_under(src, r)) {
-        return Err(violation(source));
+        return Err(fs_move_scope_violation(source));
     }
     if !roots.iter().any(|r| is_under(dst, r)) {
-        return Err(violation(dest_dir));
+        return Err(fs_move_scope_violation(dest_dir));
     }
     Ok(())
 }
@@ -1027,7 +1064,7 @@ impl<'a> LiveExecutor<'a> {
             _ => return Err(ExecError::UnsupportedEffect(action.tool.clone())),
         };
 
-        // Resolve the (untrusted) operands.
+        // The (untrusted) operands.
         let source = action
             .arguments
             .get(FS_MOVE_SOURCE)
@@ -1037,18 +1074,38 @@ impl<'a> LiveExecutor<'a> {
             .get(FS_MOVE_DEST_DIR)
             .ok_or_else(|| ExecError::MissingArgument(FS_MOVE_DEST_DIR.to_string()))?;
 
-        // The sole path confinement: both ends under the declared dir scope.
-        confine_move_to_scope(source, dest_dir, tool_scope)?;
+        // Resolve both operands through the filesystem resolver (the SAME seam the
+        // graph proof uses): `FsPathResolver` canonicalizes, following symlinks and
+        // collapsing `..`, and rejects a dangling symlink. So a `dest_dir` like
+        // `.../Projects/work` where `work` is a symlink to `/etc`, or a `source`
+        // symlink to `~/.ssh/id_rsa`, resolves to its REAL target - and the
+        // confinement below compares real paths, not attacker-controllable strings
+        // (a raw string prefix check would let such a symlink escape the scope and
+        // the move/copy follow it). An unresolvable operand fails closed.
+        let resolved_source = self
+            .paths
+            .resolve(source)
+            .map_err(|_| ExecError::Unplannable(format!("cannot resolve source '{source}'")))?;
+        let resolved_dest_dir = self
+            .paths
+            .resolve(dest_dir)
+            .map_err(|_| ExecError::Unplannable(format!("cannot resolve dest_dir '{dest_dir}'")))?;
 
-        // Plan a collision-safe destination (never an occupied path), reading the
-        // live filesystem. `None` means a non-canonical path, a self-move, or no
-        // free name within the bound - fail closed.
-        let plan = fs_move::plan_move(source, dest_dir, |p| std::path::Path::new(p).exists())
-            .ok_or_else(|| {
-                ExecError::Unplannable(format!(
-                    "no safe destination for '{source}' in '{dest_dir}'"
-                ))
-            })?;
+        // The sole path confinement: both RESOLVED ends under a RESOLVED scope root.
+        let roots = resolve_scope_roots(self.paths, tool_scope)?;
+        confine_to_roots(&resolved_source, &resolved_dest_dir, &roots)?;
+
+        // Plan a collision-safe destination (never an occupied path) under the
+        // resolved dir, reading the live filesystem. `None` means a non-canonical
+        // path, a self-move, or no free name within the bound - fail closed.
+        let plan = fs_move::plan_move(&resolved_source, &resolved_dest_dir, |p| {
+            std::path::Path::new(p).exists()
+        })
+        .ok_or_else(|| {
+            ExecError::Unplannable(format!(
+                "no safe destination for '{resolved_source}' in '{resolved_dest_dir}'"
+            ))
+        })?;
 
         // Audit the act BEFORE the move, fail-closed (S13): no file is moved
         // without a durable, content-free record linked to the gate decision.
@@ -2704,5 +2761,62 @@ mod tests {
         assert!(matches!(err, ExecError::AuditUnavailable(_)));
         assert!(mover.moves.lock().unwrap().is_empty(), "no move when the audit fails");
         assert!(src.exists(), "source untouched");
+    }
+
+    #[tokio::test]
+    async fn execute_external_refuses_a_symlink_that_escapes_the_scope() {
+        use std::os::unix::fs::symlink;
+        // The real resolver canonicalizes, so a symlinked operand resolves to its
+        // REAL target and the confinement compares real paths: a `dest_dir`
+        // pointing (via a symlink) outside the declared scope is refused, with no
+        // move and no audit. This is the regression test for the symlink escape.
+        let dir = tempfile::tempdir().unwrap();
+        let downloads = dir.path().join("Downloads");
+        let projects = dir.path().join("Projects");
+        let secret = dir.path().join("secret"); // outside the declared scope
+        std::fs::create_dir_all(&downloads).unwrap();
+        std::fs::create_dir_all(&projects).unwrap();
+        std::fs::create_dir_all(&secret).unwrap();
+        let src = downloads.join("paper.pdf");
+        std::fs::write(&src, b"x").unwrap();
+        // `Projects/work` is a symlink OUT of the scope, to `secret`.
+        let escape = projects.join("work");
+        symlink(&secret, &escape).unwrap();
+
+        let scope = vec![
+            downloads.to_str().unwrap().to_string(),
+            projects.to_str().unwrap().to_string(),
+        ];
+        let cap = executing_cap();
+        let writer = MockWriter::default();
+        let audit = MockAuditSink::accepting();
+        let mover = RecordingMover::default();
+        // The REAL resolver (canonicalizes), not the identity one.
+        let resolver = crate::slice::FsPathResolver;
+        let mounts = StaticMountPolicy::empty();
+        let exec = LiveExecutor::new(&cap, &resolver, &mounts, &writer, &audit);
+
+        let err = exec
+            .execute_external(
+                &move_action(src.to_str().unwrap(), escape.to_str().unwrap()),
+                ActionDecision::PreviewThenExecute,
+                &scope,
+                &mover,
+                "tidy-downloads",
+                &ctx(),
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, ExecError::ScopeViolation { .. }),
+            "a symlink escaping the scope must be refused, got {err:?}"
+        );
+        assert!(mover.moves.lock().unwrap().is_empty(), "no move on a symlink escape");
+        assert!(audit.recorded().await.is_empty(), "not even audited");
+        assert!(src.exists(), "source untouched");
+        assert!(
+            std::fs::read_dir(&secret).unwrap().next().is_none(),
+            "nothing was written into the symlink target"
+        );
     }
 }
