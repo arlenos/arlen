@@ -1,0 +1,200 @@
+//! The delegated namespace grant: the authorization primitive a foreign-app
+//! bridge writes the Knowledge Graph under (foreign-app-bridges.md §2). It is the
+//! pure core of the macaroon namespace caveat.
+//!
+//! The ordinary write path binds a caller to its OWN namespace: `check_namespace`
+//! (create.rs) admits an `entity_type` only when it starts with `{app_id}.`. A
+//! bridge breaks that 1:1 binding on purpose - the Obsidian bridge process is
+//! attested as its own app id (e.g. `bridge-ingest`) but must write
+//! `md.obsidian.Note` nodes. The macaroon resolves it: the bridge holds a grant
+//! caveated to a DELEGATED namespace (`md.obsidian`), and a write is admitted when
+//! its type lies under that granted namespace, not under the caller's app id.
+//!
+//! This module is the pure authorization core - the grant vocabulary and its
+//! checks - with three invariants the macaroon model (foreign-app-bridges.md §2 +
+//! connections-plan.md's monotonic attenuation) requires:
+//!
+//! 1. **`system.*` / `shared.*` are structurally ungrantable.** [`NamespaceGrant::new`]
+//!    refuses to mint a grant for a reserved namespace, so no caveat can ever reach
+//!    a system or shared fact - the anti-poisoning guarantee. A third-party bridge
+//!    can never forge a system-origin node.
+//! 2. **Attenuate only, never widen.** [`NamespaceGrant::attenuate`] yields a
+//!    strictly-narrower sub-namespace or nothing; a derived grant can never escalate
+//!    past its parent.
+//! 3. **Fail closed.** An empty, reserved, or malformed prefix yields no grant; a
+//!    type that is not strictly under the granted namespace is not permitted.
+//!
+//! It does NO I/O and is independent of how the grant is DELIVERED (the macaroon's
+//! chained-HMAC encoding + verification, or a simpler scoped token - the spec lets
+//! that be chosen at the wiring step). Wiring it into the write path - admitting an
+//! `UpsertEntity` / `LinkEntities` whose type is under the caller's delegated grant
+//! in addition to its own app-id namespace - is the next slice; this is the
+//! reviewed authorization mechanism that slice will consume.
+
+// The authorization mechanism, built ahead of its write-path wiring (the next
+// slice admits an UpsertEntity/LinkEntities whose type is under the caller's
+// delegated grant). Until that consumer lands, the pub items read unused in the
+// non-test build, so allow it here - the test module exercises every path.
+#![allow(dead_code)]
+
+/// The reserved namespaces no grant may ever cover: a bridge can never be
+/// delegated authority over system- or shared-owned facts (foreign-app-bridges.md
+/// §2 - `system.*`/`shared.*` are structurally unwritable by a third party).
+const RESERVED_NAMESPACES: &[&str] = &["system", "shared"];
+
+/// A delegated namespace grant: the namespace prefix a holder may write entity
+/// types under, even though it is not the holder's own app id. Construct only via
+/// [`NamespaceGrant::new`] (fail-closed) or [`NamespaceGrant::attenuate`]
+/// (monotonic), so an invalid or reserved grant is unrepresentable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NamespaceGrant {
+    /// The granted namespace, e.g. `md.obsidian`. Never reserved, never empty,
+    /// always a valid reverse-DNS-shaped identifier (the `new`/`attenuate` floor).
+    prefix: String,
+}
+
+impl NamespaceGrant {
+    /// Mint a grant for `prefix`, fail-closed. Returns `None` for an empty prefix,
+    /// a reserved namespace (`system`/`shared`, exact or as a leading segment), or
+    /// a prefix that is not a valid namespace identifier (lowercase reverse-DNS:
+    /// `[a-z0-9-]` segments joined by `.`, no leading/trailing/empty segment) - so
+    /// a malformed or reserved grant can never be held.
+    pub fn new(prefix: &str) -> Option<NamespaceGrant> {
+        if !is_valid_namespace(prefix) || is_reserved(prefix) {
+            return None;
+        }
+        Some(NamespaceGrant {
+            prefix: prefix.to_string(),
+        })
+    }
+
+    /// The granted namespace prefix (`md.obsidian`).
+    pub fn prefix(&self) -> &str {
+        &self.prefix
+    }
+
+    /// Whether this grant permits writing `entity_type`. An entity type is a
+    /// dotted `{namespace}.{Type}`, so the type must lie STRICTLY under the granted
+    /// namespace (`md.obsidian` permits `md.obsidian.Note`, never `md.obsidian`
+    /// itself nor a sibling like `md.obsidianvault.Note`). The dotted boundary is
+    /// load-bearing: a bare `starts_with` would let `md.obsidian` grant
+    /// `md.obsidianX.Note`.
+    pub fn permits(&self, entity_type: &str) -> bool {
+        match entity_type.strip_prefix(&self.prefix) {
+            // A non-empty remainder beginning at a `.` boundary, with at least one
+            // type segment after it.
+            Some(rest) => rest.starts_with('.') && rest.len() > 1,
+            None => false,
+        }
+    }
+
+    /// Derive a strictly-narrower grant for `sub`, monotonic: `sub` must itself lie
+    /// strictly under this grant (one or more added segments), so a derived grant
+    /// can only restrict, never widen or escape. Returns `None` when `sub` is not
+    /// under this grant, equals it, or is otherwise invalid (the same floor as
+    /// [`new`](Self::new), which also keeps a sub-grant off a reserved namespace -
+    /// though a sub of a non-reserved grant is reserved-free by construction).
+    pub fn attenuate(&self, sub: &str) -> Option<NamespaceGrant> {
+        // `sub` must be a valid namespace strictly under our prefix: it permits as
+        // an entity type would (dotted boundary, added segment), i.e. our grant
+        // would permit a type directly named `sub`.
+        if !self.permits(sub) {
+            return None;
+        }
+        NamespaceGrant::new(sub)
+    }
+}
+
+/// Whether `ns` is or starts with a reserved namespace segment (`system`/`shared`).
+/// Segment-aware: `system` and `system.x` are reserved, `systematic` is not.
+fn is_reserved(ns: &str) -> bool {
+    RESERVED_NAMESPACES.iter().any(|r| {
+        ns == *r || ns.strip_prefix(r).is_some_and(|rest| rest.starts_with('.'))
+    })
+}
+
+/// Whether `ns` is a valid namespace identifier: one or more `.`-joined segments,
+/// each a non-empty run of `[a-z0-9-]` (lowercase reverse-DNS). No leading/trailing
+/// dot, no empty segment, no uppercase or other punctuation - so a grant prefix is
+/// a clean identifier (it is later compared as a string prefix; this keeps it from
+/// being whitespace, a path, or anything that could surprise a downstream check).
+fn is_valid_namespace(ns: &str) -> bool {
+    if ns.is_empty() {
+        return false;
+    }
+    ns.split('.').all(|seg| {
+        !seg.is_empty() && seg.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_grant_permits_only_types_strictly_under_it() {
+        let g = NamespaceGrant::new("md.obsidian").expect("valid grant");
+        assert!(g.permits("md.obsidian.Note"));
+        assert!(g.permits("md.obsidian.Tag"));
+        // The namespace itself is not a type.
+        assert!(!g.permits("md.obsidian"));
+        // A sibling that merely shares the string prefix is NOT under it (the
+        // dotted boundary - this is the load-bearing case).
+        assert!(!g.permits("md.obsidianvault.Note"));
+        // An unrelated namespace.
+        assert!(!g.permits("com.evil.Note"));
+        // Trailing dot with no type segment.
+        assert!(!g.permits("md.obsidian."));
+    }
+
+    #[test]
+    fn reserved_namespaces_are_ungrantable() {
+        assert!(NamespaceGrant::new("system").is_none());
+        assert!(NamespaceGrant::new("system.File").is_none());
+        assert!(NamespaceGrant::new("shared").is_none());
+        assert!(NamespaceGrant::new("shared.Person").is_none());
+        // A namespace that merely starts with the same letters is fine.
+        assert!(NamespaceGrant::new("systematic.thing").is_some());
+        assert!(NamespaceGrant::new("sharedrive.app").is_some());
+    }
+
+    #[test]
+    fn malformed_prefixes_yield_no_grant() {
+        assert!(NamespaceGrant::new("").is_none());
+        assert!(NamespaceGrant::new("md..obsidian").is_none()); // empty segment
+        assert!(NamespaceGrant::new(".md").is_none()); // leading dot
+        assert!(NamespaceGrant::new("md.").is_none()); // trailing dot
+        assert!(NamespaceGrant::new("md.Obsidian").is_none()); // uppercase
+        assert!(NamespaceGrant::new("md obsidian").is_none()); // whitespace
+        assert!(NamespaceGrant::new("md.obsidian/note").is_none()); // path char
+    }
+
+    #[test]
+    fn attenuation_only_narrows_never_widens() {
+        let g = NamespaceGrant::new("md.obsidian").expect("valid grant");
+        // Strictly narrower: a sub-namespace.
+        let sub = g.attenuate("md.obsidian.vaulta").expect("narrower grant");
+        assert_eq!(sub.prefix(), "md.obsidian.vaulta");
+        // The narrowed grant permits only under itself, not the parent's siblings.
+        assert!(sub.permits("md.obsidian.vaulta.Note"));
+        assert!(!sub.permits("md.obsidian.vaultb.Note"));
+        // Cannot widen to the parent, a sibling, or an unrelated namespace.
+        assert!(g.attenuate("md.obsidian").is_none()); // equal, not strictly narrower
+        assert!(g.attenuate("md").is_none()); // widen
+        assert!(g.attenuate("com.evil").is_none()); // escape
+        // Cannot attenuate onto a reserved namespace (vacuous here - a sub of a
+        // non-reserved grant is reserved-free, but the floor still holds).
+        assert!(g.attenuate("system.File").is_none());
+    }
+
+    #[test]
+    fn a_subgrant_chains_monotonically() {
+        let g = NamespaceGrant::new("md.obsidian").unwrap();
+        let s1 = g.attenuate("md.obsidian.team").unwrap();
+        let s2 = s1.attenuate("md.obsidian.team.private").unwrap();
+        assert!(s2.permits("md.obsidian.team.private.Note"));
+        assert!(!s2.permits("md.obsidian.team.Note")); // narrower than its parent
+        // s2 cannot re-widen back to s1's scope.
+        assert!(s2.attenuate("md.obsidian.team").is_none());
+    }
+}

@@ -9,11 +9,13 @@
 mod create;
 mod delete;
 mod entity;
+mod namespace_grant;
 mod update;
 mod validation;
 
 pub use create::*;
 pub use delete::*;
 pub use entity::*;
+pub use namespace_grant::*;
 pub use update::*;
 pub use validation::*;
