@@ -1,8 +1,14 @@
 <script lang="ts">
   /// Arlen Switch — unified toggle for Shell + Settings.
-  /// Follows the corner radius system and uses the accent colour
-  /// for the on-state. Replaces the shadcn-svelte bits-ui switch
-  /// which had hardcoded colours and rounded-full.
+  /// Custom (not the shadcn-svelte bits-ui switch, which is rounded-full
+  /// with hardcoded colours) so it honours the corner-radius system and
+  /// themes off the accent token. The track radius hangs off the global
+  /// `--radius-chip` token (the smallest-control step), so it scales with
+  /// the Roundness slider in lock-step with everything else — never a
+  /// hardcoded literal. The thumb hugs the track concentrically: its
+  /// corners are tighter than the track's by the inset, so the gap stays
+  /// constant all the way round (radius.css). Set `--switch-radius` on a
+  /// caller to adapt the track to an outer container; the thumb follows.
 
   let {
     value = $bindable(false),
@@ -48,7 +54,10 @@
 <style>
   .sw {
     position: relative;
-    border-radius: var(--radius-input);
+    /* Track radius from the global chip token (never rounded-full), so it
+       tracks the Roundness slider. A caller can set --switch-radius to
+       match an outer container; the thumb follows. */
+    border-radius: var(--switch-radius, var(--radius-chip));
     border: 1px solid var(--control-border);
     background: var(--control-bg-strong);
     padding: 0;
@@ -95,7 +104,13 @@
     position: absolute;
     top: 1px;
     left: 1px;
-    border-radius: var(--radius-input);
+    /* Concentric to the track: track radius minus the inset (1px border
+       + 1px gap), clamped at 0. So the thumb's corners are tighter than
+       the track's and the surround stays an even width. */
+    border-radius: max(
+      0px,
+      calc(var(--switch-radius, var(--radius-chip)) - var(--switch-thumb-inset, 2px))
+    );
     background: var(--foreground);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
     transition: transform var(--duration-medium) var(--ease-out);
@@ -125,5 +140,15 @@
   }
   .sw.sm.on .thumb {
     transform: translateX(10px);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sw,
+    .thumb {
+      transition: none;
+    }
+    .sw:active:not(:disabled) {
+      transform: none;
+    }
   }
 </style>
