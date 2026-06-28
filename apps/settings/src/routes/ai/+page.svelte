@@ -47,8 +47,10 @@
 
   // The read level (the daemon stores 0-4 in `ai.access_level`). This gates how
   // much of your ACTIVITY the assistant draws on as context, not file access
-  // (reading a file's contents is a separate path you trigger with @). Each row
-  // says plainly how much context it uses.
+  // (reading a file's contents is a separate path you trigger with @). Settings
+  // surfaces the three meaningful amounts on one axis (how much of your recent
+  // activity); the niche session/project scopes (1/2) stay in the backend, not
+  // here. Each row says plainly how much context it uses.
   const ACCESS_CHOICES = [
     {
       value: "0",
@@ -56,25 +58,15 @@
       description: "It uses only what you bring up in the conversation, none of your activity.",
     },
     {
-      value: "1",
-      label: "This session",
-      description: "What you are working on right now, in this session.",
-    },
-    {
-      value: "2",
-      label: "This project",
-      description: "The project you are focused on, so it understands what you are working on.",
-      note: "Follows the project you focus in the shell; with none focused it uses nothing here.",
-    },
-    {
       value: "3",
       label: "Your recent work",
       description: "What you have worked on over the last few days, so it has useful context.",
+      note: "Recommended. Enough context to be useful, and every read is logged.",
     },
     {
       value: "4",
       label: "Everything",
-      description: "All of your activity and history.",
+      description: "All of your activity and history, including older work.",
     },
   ];
   // How freely it acts, the baseline posture. "supervised" only takes effect
@@ -112,6 +104,12 @@
   // the box once enabled; the user narrows if they want. Matches the daemon
   // fallback + the shipped ai.toml.
   let accessLevel = $state("3");
+  // The picker surfaces 0/3/4 only. If a stored value is a non-surfaced scope
+  // (1/2, set via another path), show "recent work" selected without rewriting
+  // it; the user's next pick persists a surfaced value.
+  const displayAccessLevel = $derived(
+    ["0", "3", "4"].includes(accessLevel) ? accessLevel : "3",
+  );
   let actionMode = $state("suggest");
   let autonomousApps = $state<string[]>([]);
   let executorLive = $state(false);
@@ -260,7 +258,7 @@
 
 <Page
   title="General"
-  description="Your assistant: how much it can see and do. Off by default, so you stay in control. What it has done shows in the AI app."
+  description="Your assistant: how much it can see and do. It draws on your recent activity so it can actually help. Every read is logged and you can dial it back anytime. What it has done shows in the AI app."
 >
   <SectionGrid>
     <Group label="Assistant">
@@ -329,7 +327,7 @@
       >
         {#snippet below()}
           <ChoiceList
-            value={accessLevel}
+            value={displayAccessLevel}
             options={ACCESS_CHOICES}
             ariaLabel="What the assistant may read"
             onchange={setAccessLevel}
