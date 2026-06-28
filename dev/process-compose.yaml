@@ -188,6 +188,26 @@ processes:
   #   cargo run --manifest-path daemons/bridge-ingest/Cargo.toml
   # (the entity schema md.obsidian.Note must be in /var/lib/arlen/schemas/ first).
 
+  # The separate-uid owner of the AI master switches (same-uid-isolation
+  # Tier-A #1). Binds a SO_PEERPIDFD-authenticated setter socket and seeds the
+  # shipped AI defaults into its 0700 store on first run. No hard deps - it
+  # serves its own config. In the dev stack it runs as the developer uid
+  # (single-uid, so no cross-uid protection here); the dedicated-uid + the
+  # /var/lib 0700 provisioning are the deploy/launch-strand step. The AI-layer
+  # cutover (clients reading/writing through it) lands with that strand.
+  config-broker:
+    command: "cargo run --manifest-path daemons/config-broker/Cargo.toml"
+    depends_on:
+      runtime-dir: { condition: process_completed_successfully }
+    readiness_probe:
+      exec:
+        command: "test -S ${XDG_RUNTIME_DIR}/arlen/config-broker.sock"
+      initial_delay_seconds: 2
+      period_seconds: 2
+      failure_threshold: 30
+    availability:
+      restart: "on_failure"
+
   ai-daemon:
     command: "cargo run --manifest-path ai/ai-daemon/Cargo.toml"
     depends_on:
