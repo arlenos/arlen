@@ -88,13 +88,16 @@
   .choice.selected {
     background: color-mix(in srgb, var(--foreground) 9%, transparent);
   }
-  /* The radio dot: a hollow ring that fills on selection (monochrome). */
+  /* The selection indicator: a hollow box that fills on selection (monochrome).
+     Its corners hang off --radius-chip (the smallest-control token), so it
+     follows the Roundness slider like the rest of the system instead of a
+     hardcoded circle. */
   .radio {
     flex-shrink: 0;
     width: 14px;
     height: 14px;
     margin-top: 0.125rem;
-    border-radius: var(--radius-full, 9999px);
+    border-radius: var(--radius-chip);
     border: 1.5px solid color-mix(in srgb, var(--foreground) 30%, transparent);
     transition:
       border-color var(--duration-fast, 150ms) var(--ease-out, ease),
