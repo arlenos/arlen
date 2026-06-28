@@ -121,6 +121,21 @@ impl NamespaceGrant {
     }
 }
 
+/// Whether ANY of the caller's declared delegated namespaces grants writing
+/// `entity_type`. `delegated` is the raw prefix strings from the caller's profile
+/// (e.g. `["md.obsidian"]`), carried verbatim on the token so the grant type stays
+/// un-serializable (sealed). Each declared string is validated through
+/// [`NamespaceGrant::new`] HERE - the authoritative, fail-closed gate - so a
+/// reserved (`system`/`shared`) or malformed declared namespace yields no grant and
+/// permits nothing. This is the write path's delegation hook: a write whose type is
+/// not under the caller's own app-id namespace is admitted only if some delegated
+/// grant permits it.
+pub fn permits_any(delegated: &[String], entity_type: &str) -> bool {
+    delegated
+        .iter()
+        .any(|ns| NamespaceGrant::new(ns).is_some_and(|g| g.permits(entity_type)))
+}
+
 /// Whether `ns` is or starts with a reserved namespace segment (`system`/`shared`).
 /// Segment-aware: `system` and `system.x` are reserved, `systematic` is not.
 fn is_reserved(ns: &str) -> bool {
@@ -226,6 +241,24 @@ mod tests {
         // Cannot attenuate onto a reserved namespace (vacuous here - a sub of a
         // non-reserved grant is reserved-free, but the floor still holds).
         assert!(g.attenuate("system.File").is_none());
+    }
+
+    #[test]
+    fn permits_any_admits_a_delegated_namespace_and_refuses_reserved_or_foreign() {
+        let delegated = vec!["md.obsidian".to_string()];
+        // A type under the delegated namespace is admitted.
+        assert!(permits_any(&delegated, "md.obsidian.Note"));
+        // Foreign / reserved / bare-namespace types are refused.
+        assert!(!permits_any(&delegated, "com.evil.Note"));
+        assert!(!permits_any(&delegated, "system.File"));
+        assert!(!permits_any(&delegated, "shared.Person"));
+        assert!(!permits_any(&delegated, "md.obsidian"));
+        // A reserved or malformed DECLARED namespace yields no grant -> permits
+        // nothing (the declaration cannot smuggle authority past `new`).
+        assert!(!permits_any(&["system".to_string()], "system.File"));
+        assert!(!permits_any(&["md..bad".to_string()], "md..bad.X"));
+        // Empty delegation permits nothing.
+        assert!(!permits_any(&[], "md.obsidian.Note"));
     }
 
     #[test]

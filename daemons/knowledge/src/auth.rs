@@ -85,7 +85,8 @@ impl Authenticator {
             profile.to_write_scopes(),
             profile.to_relation_scopes(),
             profile.to_instance_scope(),
-        );
+        )
+        .with_delegated_namespaces(profile.delegated_namespaces());
 
         self.signer.sign(&mut token);
 

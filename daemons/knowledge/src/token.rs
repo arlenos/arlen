@@ -41,6 +41,18 @@ pub struct CapabilityToken {
     pub relation_scopes: Vec<RelationScope>,
     pub instance_scope: InstanceScope,
 
+    /// Delegated namespaces this caller may write entity types under, besides its
+    /// own app-id namespace (foreign-app-bridges.md §2 - the macaroon namespace
+    /// caveat, delivered here as the profile-declared raw prefix strings, e.g.
+    /// `["md.obsidian"]`). Empty for an ordinary app (write its own namespace
+    /// only). Carried as raw strings, not `NamespaceGrant`s, so the grant type
+    /// stays un-serializable + sealed; the write path validates each through
+    /// `NamespaceGrant::new` (`crate::write::permits_any`) at check time - the
+    /// authoritative fail-closed gate, so a reserved/malformed declaration grants
+    /// nothing. `#[serde(default)]`: an older token deserializes to no delegation.
+    #[serde(default)]
+    pub delegated_namespaces: Vec<String>,
+
     // Signature (zeroed before signing/verification)
     #[serde(with = "serde_bytes")]
     pub signature: Vec<u8>,
@@ -102,8 +114,17 @@ impl CapabilityToken {
             write_scopes,
             relation_scopes,
             instance_scope,
+            delegated_namespaces: Vec::new(),
             signature: vec![0u8; 32],
         }
+    }
+
+    /// Attach the caller's delegated namespaces (the profile-declared raw prefix
+    /// strings). A builder so [`new`](Self::new)'s signature is unchanged: an
+    /// ordinary app's token has none; the auth layer sets these from the profile.
+    pub fn with_delegated_namespaces(mut self, delegated: Vec<String>) -> Self {
+        self.delegated_namespaces = delegated;
+        self
     }
 
     /// Whether the token has expired.
