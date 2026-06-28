@@ -1,0 +1,5 @@
+# Starting permission profile for KLettres (a KDE alphabet/reading tutor). A self-contained tutor that
+# plays its bundled language data: no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "org.kde.klettres"
+tier = "third-party"
