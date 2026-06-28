@@ -1,0 +1,5 @@
+# Starting permission profile for Kigo (a KDE Go board game). Plays locally against the bundled engine;
+# needs no filesystem, network, or Knowledge Graph access (online servers + SGF load are opt-in widenings).
+[info]
+app_id = "org.kde.kigo"
+tier = "third-party"
