@@ -1,0 +1,18 @@
+[package]
+license = "Apache-2.0"
+name = "arlen-file-change"
+version = "0.1.0"
+edition = "2021"
+description = "Shared proposed/applied file-change contract (the body of the harness diff card + fused GateCard)"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+ts-rs = { version = "10", features = ["serde-compat"] }
+
+[dev-dependencies]
+serde_json = "1"
+
+[workspace]
