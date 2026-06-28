@@ -193,18 +193,47 @@ const EXDEV: i32 = 18;
 
 /// The real on-disk mover: `rename`, falling back to copy+remove across
 /// filesystems (a `~/Downloads` -> `~/Documents/Projects` move can cross a
-/// mount). Never overwrites - the destination is a planner-vetted free path.
+/// mount). Never overwrites.
+///
+/// The planner chose a destination free at plan time, but `std::fs::rename`
+/// (and `std::fs::copy`) silently overwrite an existing target, so a file that
+/// appeared at that exact path between plan and move would be destroyed (the
+/// plan->move TOCTOU). To keep "never overwrite" true at the syscall, the move
+/// first ATOMICALLY claims the destination with `create_new` (`O_EXCL`): if the
+/// path now exists, the open fails `AlreadyExists` and the move is refused; if
+/// it succeeds we own an empty placeholder, and the rename/copy below only ever
+/// replaces our own claim. (`renameat2`+`RENAME_NOREPLACE` would be the kernel
+/// primitive, but it needs an unsafe `libc` call this `forbid(unsafe_code)`
+/// crate cannot make; the claim is the safe-std equivalent.)
 pub struct OsFileMover;
 
 impl FileMover for OsFileMover {
     fn move_file(&self, from: &str, to: &str) -> std::io::Result<()> {
+        // Atomically claim the destination, refusing if it now exists. This
+        // closes the plan->move race: after this open succeeds, `to` is ours, so
+        // the rename/copy can only replace our empty placeholder, never a real
+        // file (an `AlreadyExists` here is the non-overwrite refusal).
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(to)?;
         match std::fs::rename(from, to) {
             Ok(()) => Ok(()),
             Err(e) if e.raw_os_error() == Some(EXDEV) => {
-                std::fs::copy(from, to)?;
+                // Cross-device: copy over our placeholder (we own it), then drop
+                // the source. On a copy failure, roll back the placeholder.
+                if let Err(copy_err) = std::fs::copy(from, to) {
+                    let _ = std::fs::remove_file(to);
+                    return Err(copy_err);
+                }
                 std::fs::remove_file(from)
             }
-            Err(e) => Err(e),
+            Err(e) => {
+                // The rename failed; remove the placeholder we created so a retry
+                // (or a later move) does not see our empty claim as an occupant.
+                let _ = std::fs::remove_file(to);
+                Err(e)
+            }
         }
     }
 }
@@ -292,5 +321,26 @@ mod execute_tests {
             "new",
             "moved file landed at the renamed sibling"
         );
+    }
+
+    /// If a file appears at the planned destination AFTER the plan but BEFORE the
+    /// move (the plan->move TOCTOU), `OsFileMover` refuses rather than overwrite:
+    /// the atomic `create_new` claim fails `AlreadyExists` and the occupant is
+    /// untouched, the source intact.
+    #[test]
+    fn the_mover_refuses_to_overwrite_a_destination_that_appeared_after_planning() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("a.txt");
+        let dst = dir.path().join("b.txt");
+        std::fs::File::create(&src).unwrap().write_all(b"src").unwrap();
+        // Plan chose `dst` while it was free; now a racer plants a file there.
+        std::fs::File::create(&dst).unwrap().write_all(b"racer").unwrap();
+
+        let err = OsFileMover
+            .move_file(src.to_str().unwrap(), dst.to_str().unwrap())
+            .expect_err("must refuse an occupied destination");
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(std::fs::read_to_string(&dst).unwrap(), "racer", "occupant untouched");
+        assert_eq!(std::fs::read_to_string(&src).unwrap(), "src", "source intact");
     }
 }
