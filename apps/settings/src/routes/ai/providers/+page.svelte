@@ -14,6 +14,7 @@
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { ProviderLogo } from "@arlen/ui-kit/components/ui/provider-logo";
@@ -144,30 +145,30 @@
 
 {#snippet row(p: Provider)}
   {@const verdict = $tests[p.id]}
-  <div class="prow">
-    <ProviderLogo id={p.id} name={p.name} size={24} />
-    <div class="pmeta">
-      <div class="pname">{p.name}</div>
-      <div class="pdesc">
-        {meta(p)}
+  <Row label={p.name} description={meta(p)} id={`provider-${p.id}`}>
+    {#snippet leading()}
+      <ProviderLogo id={p.id} name={p.name} size={24} />
+    {/snippet}
+    {#snippet control()}
+      <span class="pctl">
         {#if verdict && verdict.state !== "testing"}
-          <span class="dot {verdict.state === 'ok' ? 'ok' : 'err'}" aria-hidden="true"></span>{testLabel(verdict)}
+          <span class="verdict">
+            <span class="dot {verdict.state === 'ok' ? 'ok' : 'err'}" aria-hidden="true"></span>{testLabel(verdict)}
+          </span>
         {/if}
-      </div>
-    </div>
-    <div class="pctl">
-      <Button
-        variant={p.configured ? "outline" : "secondary"}
-        size="sm"
-        class="pbtn"
-        disabled={verdict?.state === "testing"}
-        onclick={() => testProvider(p.id)}
-      >
-        {verdict?.state === "testing" ? "Testing…" : "Test"}
-      </Button>
-      <Switch value={p.enabled} ariaLabel={`Enable ${p.name}`} onchange={(v) => setEnabled(p.id, v)} />
-    </div>
-  </div>
+        <Button
+          variant={p.configured ? "outline" : "secondary"}
+          size="sm"
+          class="pbtn"
+          disabled={verdict?.state === "testing"}
+          onclick={() => testProvider(p.id)}
+        >
+          {verdict?.state === "testing" ? "Testing…" : "Test"}
+        </Button>
+        <Switch value={p.enabled} ariaLabel={`Enable ${p.name}`} onchange={(v) => setEnabled(p.id, v)} />
+      </span>
+    {/snippet}
+  </Row>
 {/snippet}
 
 <style>
@@ -177,36 +178,14 @@
     font-size: 0.8125rem;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
-  /* A provider row matches the kit Row metrics (Group divides direct children
-     for us), with a leading logo the standard Row has no slot for. */
-  .prow {
-    display: flex;
-    align-items: center;
-    gap: 0.875rem;
-    padding: var(--space-row, 0.75rem) 1rem;
-    min-height: var(--height-row, 40px);
-  }
-  .pmeta {
-    flex: 1;
-    min-width: 0;
-  }
-  .pname {
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--foreground);
-    line-height: 1.3;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .pdesc {
-    display: flex;
+  /* The test verdict sits with the Test button in the control cluster. */
+  .verdict {
+    display: inline-flex;
     align-items: center;
     gap: 0.375rem;
     font-size: 0.6875rem;
-    line-height: 1.3;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
-    margin-top: 0.0625rem;
+    white-space: nowrap;
   }
   .dot {
     width: 6px;
@@ -221,10 +200,9 @@
     background: var(--color-error);
   }
   .pctl {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 0.75rem;
-    flex-shrink: 0;
   }
   /* Test and Connect share a width so the toggle column stays aligned down the
      list; Connect (the setup action) reads as secondary, Test (a check on an
