@@ -28,10 +28,13 @@ move only high-confidence files and leave the rest.
 
 Safety notes (from the dry-run):
 
-- Take a Snapper snapshot before the batch so the whole move set is
-  reversible at once (gap B1); a `move` onto an occupied destination is an
-  irreversible overwrite, so its precondition is "destination empty" - if
-  not, treat as high-impact and confirm, never overwrite silently (gap F4).
+- A `move` onto an occupied destination never overwrites: the executor
+  renames the moved file to the first free sibling name (`report (1).pdf`),
+  so the move always carries an exact restore-path inverse and stays
+  reversible (gap F4, fixed in the move planner). A collision is handled
+  silently and safely, not skipped or escalated. A Snapper snapshot before
+  the batch is still the cleaner way to undo the whole move set at once
+  (gap B1).
 - The cadence above is weekly; actual firing is gated to an idle window by
   the idle scheduler (B3). The B0 schema only expresses the interval; the
   "and idle" qualifier is the scheduler's concern, not the manifest's.
