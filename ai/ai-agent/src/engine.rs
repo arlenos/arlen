@@ -335,6 +335,15 @@ pub struct PendingProposal {
     /// What the action would do, the registered effects (debug-rendered,
     /// content-free bind-name effects); empty for an unregistered tool.
     pub effects: Vec<String>,
+    /// The action's concrete operands (parameter name to value), sorted, for the
+    /// approval card to show the user WHAT the action targets - e.g. an `fs.move`'s
+    /// `source` and `dest_dir`, so the human approves seeing the actual file and
+    /// destination, not only the model's free-text `summary`. These are the
+    /// (untrusted) proposed values; the executor independently re-confines them to
+    /// the behaviour's declared scope at approve time, so the card is informed
+    /// consent, not the authority. The harness renders them safely. Empty when the
+    /// proposer stated no operands.
+    pub operands: Vec<(String, String)>,
     /// The full executable form of this proposal, retained for the approve path
     /// (`approve(id)` re-validates + writes it). `#[serde(skip)]`: it carries the
     /// action operands + run context, so it NEVER crosses the wire - the harness
@@ -379,6 +388,13 @@ pub fn proposal_view(outcome: &DispatchOutcome) -> Option<PendingProposal> {
         tool: action.tool.clone(),
         summary: action.summary.clone(),
         reason: crate::gate::reason_label(*reason),
+        // The concrete operands the action targets (sorted), so the card shows the
+        // user the actual file/destination, not just the model's summary.
+        operands: action
+            .arguments
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
         // Carry the executable form (the dispatch path captured it for exactly
         // this RequireConfirmation case) so a later approval can perform it.
         exec: pending_exec.clone(),
@@ -2437,6 +2453,39 @@ tools:
     }
 
     #[test]
+    fn proposal_view_surfaces_the_action_operands() {
+        // The card shows the concrete operands (sorted), so the human approving an
+        // fs.move sees the actual source + destination, not only the summary.
+        let mut arguments = std::collections::BTreeMap::new();
+        arguments.insert("source".to_string(), "/home/u/Downloads/report.pdf".to_string());
+        arguments.insert("dest_dir".to_string(), "/home/u/Documents/Projects".to_string());
+        let outcome = DispatchOutcome::Decided {
+            behaviour: "tidy-downloads".to_string(),
+            action: ProposedAction {
+                tool: "fs.move".to_string(),
+                summary: "tidy a download".to_string(),
+                arguments,
+            },
+            decision: ActionDecision::RequireConfirmation,
+            reason: DecisionReason::mode(),
+            audit_index: 3,
+            plan: plan_for("fs.move"),
+            dry_run: None,
+            executed: None,
+            pending_exec: None,
+        };
+        let view = proposal_view(&outcome).expect("a confirmation decision is a proposal");
+        assert_eq!(
+            view.operands,
+            vec![
+                ("dest_dir".to_string(), "/home/u/Documents/Projects".to_string()),
+                ("source".to_string(), "/home/u/Downloads/report.pdf".to_string()),
+            ],
+            "operands are surfaced sorted by key"
+        );
+    }
+
+    #[test]
     fn proposal_view_carries_the_executable_form_off_the_wire() {
         let action = ProposedAction {
             tool: "graph.write".to_string(),
@@ -2473,12 +2522,20 @@ tools:
         // The executable form rides the stored view so a later approval can
         // perform it...
         assert_eq!(view.exec, Some(retained));
-        // ...but it never crosses the wire: the serialized gate card omits it,
-        // so the operands the executor needs stay daemon-side.
         let json = serde_json::to_string(&view).expect("serialize the wire card");
+        // ...but the EXECUTABLE form (the full re-execution context: the run's
+        // correlation id, the captured tool-scope, the ceiling) never crosses the
+        // wire - `exec` is `#[serde(skip)]`, so the daemon-only run context stays
+        // daemon-side.
         assert!(
-            !json.contains("exec") && !json.contains("\"file\""),
-            "the executable form must be skipped from the wire card: {json}"
+            !json.contains("exec") && !json.contains("e1:tidy-downloads"),
+            "the executable form / run context must be skipped from the wire card: {json}"
+        );
+        // The display OPERANDS, by contrast, DO cross the wire so the approval card
+        // can show the user what the action targets (informed consent).
+        assert!(
+            json.contains("\"f1\"") && json.contains("operands"),
+            "the operands are surfaced on the card for display: {json}"
         );
     }
 

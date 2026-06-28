@@ -1358,6 +1358,14 @@ impl Approver {
         graph: &dyn GraphHandle,
         capability: &Capability,
     ) -> Result<Option<ActionReceipt>, ExecError> {
+        // A honeytool must never reach execution. It is frozen pre-gate (never
+        // captured as a pending proposal) and its empty effects route to the graph
+        // arm which refuses them, so this is unreachable in a legit run; the assert
+        // is the belt the dispatch-path `maybe_execute` also carries.
+        debug_assert!(
+            !registry::is_honeytool(&retained.action.tool),
+            "a honeytool reached the approve path"
+        );
         let executor = LiveExecutor::new(
             capability,
             &*self.paths,
