@@ -1,0 +1,12 @@
+# Starting permission profile for Virtual Machine Manager (a libvirt VM manager).
+# Downloads OS install images over the network; VM disks live in its own data
+# dir (a launcher grant). No Knowledge Graph access.
+[info]
+app_id = "org.virt_manager.virt-manager"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
