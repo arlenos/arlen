@@ -10,10 +10,12 @@
 pub mod connection_auth;
 pub mod identity;
 pub mod identity_registry;
+pub mod peer_pidfd;
 pub mod profile_watcher;
 pub mod revoke;
 
 pub use connection_auth::{AuthError, ConnectionAuth};
+pub use peer_pidfd::{PeerPidfd, PidfdError};
 pub use profile_watcher::{ProfileChange, ProfileWatcher};
 pub use revoke::{RevokeInitiator, RevokeOutcome, RevokeReach, RevokedReach};
 
