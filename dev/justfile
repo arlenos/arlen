@@ -219,6 +219,15 @@ integration-smoke:
     cargo test --manifest-path "{{justfile_directory()}}/integration/Cargo.toml" \
         --test integration_backend_smoke -- --ignored
 
+# Dogfood Phase-1 data-path check (first-dogfoodable-session-plan.md): with the
+# `just dev` backend ALREADY up, emit a file.opened on the LIVE bus, confirm it
+# lands in the live event store, and probe the knowledge graph for the promoted
+# File node - reporting the bus->KG ingest + the capability-scoped read per step
+# (the read is RS-R1-gated for an unprofiled caller, by design). The AI-answer
+# half (Ollama round-trip) is Tim's install + a human look.
+dogfood-datapath:
+    cargo run --quiet --manifest-path "{{justfile_directory()}}/integration/Cargo.toml" --example dogfood_datapath
+
 # Executor go-live PREP step P5 (executor-live-golive-plan.md): install the
 # agent's permission profile to ~/.config/permissions/ai-agent.toml (honours
 # XDG_CONFIG_HOME). It grants EXACTLY the one File -[FILE_PART_OF]-> Project link
