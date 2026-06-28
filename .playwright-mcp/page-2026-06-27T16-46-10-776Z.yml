@@ -1,0 +1,65 @@
+- generic:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - list:
+                  - listitem:
+                    - button "New chat":
+                      - img
+                      - generic: New chat
+                - paragraph: Your chats will show up here.
+            - generic:
+              - list:
+                - listitem:
+                  - button "Activity":
+                    - img
+                    - generic: Activity
+                - listitem:
+                  - button "Transparency":
+                    - img
+                    - generic: Transparency
+            - button "Toggle Sidebar"
+      - main:
+        - generic:
+          - button "Toggle Sidebar":
+            - img
+          - separator
+          - generic: Chat
+          - generic:
+            - button "Minimize":
+              - img
+            - button "Maximize":
+              - img
+            - button "Close":
+              - img
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - textbox "Message":
+                  - /placeholder: Ask about your files, projects, or activity
+                - generic:
+                  - generic:
+                    - button "Attach a file":
+                      - img
+                  - generic:
+                    - button "How the assistant acts" [expanded]:
+                      - generic: ○
+                      - generic: Suggests only
+                      - img
+                    - button "Send" [disabled]:
+                      - img
+  - menu [active] [ref=e2]:
+    - generic [ref=e3]: How the assistant acts
+    - group [ref=e4]:
+      - menuitemradio "Suggests only, I approve each action" [checked] [ref=e5]:
+        - generic:
+          - img
+        - text: Suggests only, I approve each action
+      - menuitemradio "Acts on small things, I can undo them" [ref=e6]: Acts on small things, I can undo them
+    - group [ref=e7]
+    - menuitem "Manage in Transparency" [ref=e8]

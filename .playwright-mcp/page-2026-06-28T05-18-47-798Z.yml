@@ -1,0 +1,45 @@
+- generic:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - list:
+                  - listitem:
+                    - button "New chat":
+                      - img
+                      - generic: New chat
+                - paragraph: Your chats will show up here.
+            - button "Toggle Sidebar"
+      - main:
+        - generic:
+          - button "Toggle Sidebar":
+            - img
+          - separator
+          - generic: Chat
+          - generic:
+            - button "Minimize":
+              - img
+            - button "Maximize":
+              - img
+            - button "Close":
+              - img
+        - generic:
+          - generic:
+            - button "How the assistant acts" [expanded]:
+              - generic: ○
+              - generic: Suggests only
+              - img
+  - menu [active] [ref=e2]:
+    - generic [ref=e3]: How the assistant acts
+    - group [ref=e4]:
+      - menuitemradio "Suggests only, I run each action" [ref=e5]: Suggests only, I run each action
+      - menuitemradio "Acts, after a preview I can cancel" [checked] [ref=e6]:
+        - generic:
+          - img
+        - text: Acts, after a preview I can cancel
+    - paragraph [ref=e7]: It only suggests until you let it act, in Settings.
+    - group [ref=e8]
+    - menuitem "Manage in Transparency" [ref=e9]

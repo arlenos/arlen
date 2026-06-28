@@ -1,0 +1,21 @@
+[   30471ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:1423/src/routes/reads-demo/+page.svelte?t=1782591322384:0
+[   30472ms] [ERROR] [vite] Failed to reload /src/routes/reads-demo/+page.svelte. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:1423/@vite/client:881
+[   30550ms] TypeError: Cannot read properties of undefined (reading 'default')
+    at http://localhost:1423/src/routes/reads-demo/+page.svelte:154:30
+    at http://localhost:1423/@vite/client:46:60
+    at http://localhost:1423/@vite/client:213:11
+    at http://localhost:1423/@vite/client:186:58
+    at Array.forEach (<anonymous>)
+    at HMRClient.queueUpdate (http://localhost:1423/@vite/client:186:36)
+    at async Promise.all (index 0)
+    at async handleMessage (http://localhost:1423/@vite/client:927:7)
+[   30631ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:1423/reads-demo:0
+[   30671ms] [WARNING] The next HMR update will cause the page to reload @ http://localhost:1423/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=7577d241:3377
+[   30672ms] [ERROR] SvelteKitError: Not found: /reads-demo
+    at navigate (http://localhost:1423/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=7577d241:1748:24)
+    at async Module.start (http://localhost:1423/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=7577d241:393:3) @ http://localhost:1423/@fs/home/tim/Repositories/arlen/apps/harness/.svelte-kit/generated/client/app.js:23
+[   31641ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:1423/reads-demo:0
+[   31667ms] [WARNING] The next HMR update will cause the page to reload @ http://localhost:1423/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=7577d241:3377
+[   31667ms] [ERROR] SvelteKitError: Not found: /reads-demo
+    at navigate (http://localhost:1423/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=7577d241:1748:24)
+    at async Module.start (http://localhost:1423/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=7577d241:393:3) @ http://localhost:1423/@fs/home/tim/Repositories/arlen/apps/harness/.svelte-kit/generated/client/app.js:23

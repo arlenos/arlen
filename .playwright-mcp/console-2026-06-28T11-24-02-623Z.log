@@ -1,0 +1,38 @@
+[   22781ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:1421/src/routes/sw-demo/+page.svelte?t=1782645865393:0
+[   22782ms] [ERROR] [vite] Failed to reload /src/routes/sw-demo/+page.svelte. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:1421/@vite/client:881
+[   22787ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:1421/src/routes/sw-demo/+page.svelte?t=1782645865393&svelte&type=style&lang.css:0
+[   22788ms] [ERROR] [vite] Failed to reload /src/routes/sw-demo/+page.svelte?svelte&type=style&lang.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:1421/@vite/client:881
+[   22789ms] TypeError: Cannot read properties of undefined (reading 'default')
+    at http://localhost:1421/src/routes/sw-demo/+page.svelte:113:30
+    at http://localhost:1421/@vite/client:46:60
+    at http://localhost:1421/@vite/client:213:11
+    at http://localhost:1421/@vite/client:186:58
+    at Array.forEach (<anonymous>)
+    at HMRClient.queueUpdate (http://localhost:1421/@vite/client:186:36)
+    at async Promise.all (index 0)
+    at async handleMessage (http://localhost:1421/@vite/client:927:7)
+[   22949ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:1421/sw-demo:0
+[   22977ms] [WARNING] The next HMR update will cause the page to reload @ http://localhost:1421/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=c091b0bc:3322
+[   22977ms] [ERROR] SvelteKitError: Not found: /sw-demo
+    at navigate (http://localhost:1421/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=c091b0bc:1693:24)
+    at async Module.start (http://localhost:1421/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=c091b0bc:382:3) @ http://localhost:1421/@fs/home/tim/Repositories/arlen/apps/settings/.svelte-kit/generated/client/app.js:53
+[  488339ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:1421/sw-demo:0
+[  488474ms] [WARNING] The next HMR update will cause the page to reload @ http://localhost:1421/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=c091b0bc:3322
+[  488474ms] [ERROR] SvelteKitError: Not found: /sw-demo
+    at navigate (http://localhost:1421/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=c091b0bc:1693:24)
+    at async Module.start (http://localhost:1421/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=c091b0bc:382:3) @ http://localhost:1421/@fs/home/tim/Repositories/arlen/apps/settings/.svelte-kit/generated/client/app.js:53
+[  503969ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:1421/sw-demo:0
+[  503990ms] [WARNING] The next HMR update will cause the page to reload @ http://localhost:1421/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=c091b0bc:3322
+[  503990ms] [ERROR] SvelteKitError: Not found: /sw-demo
+    at navigate (http://localhost:1421/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=c091b0bc:1693:24)
+    at async Module.start (http://localhost:1421/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=c091b0bc:382:3) @ http://localhost:1421/@fs/home/tim/Repositories/arlen/apps/settings/.svelte-kit/generated/client/app.js:53
+[ 1988018ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:1421/sw-demo:0
+[ 1988039ms] [WARNING] The next HMR update will cause the page to reload @ http://localhost:1421/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=c091b0bc:3322
+[ 1988039ms] [ERROR] SvelteKitError: Not found: /sw-demo
+    at navigate (http://localhost:1421/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=c091b0bc:1693:24)
+    at async Module.start (http://localhost:1421/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=c091b0bc:382:3) @ http://localhost:1421/@fs/home/tim/Repositories/arlen/apps/settings/.svelte-kit/generated/client/app.js:53
+[ 1999104ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:1421/sw-demo:0
+[ 1999127ms] [WARNING] The next HMR update will cause the page to reload @ http://localhost:1421/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=c091b0bc:3322
+[ 1999127ms] [ERROR] SvelteKitError: Not found: /sw-demo
+    at navigate (http://localhost:1421/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=c091b0bc:1693:24)
+    at async Module.start (http://localhost:1421/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=c091b0bc:382:3) @ http://localhost:1421/@fs/home/tim/Repositories/arlen/apps/settings/.svelte-kit/generated/client/app.js:53
