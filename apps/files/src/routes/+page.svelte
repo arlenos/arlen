@@ -493,6 +493,7 @@
               path={infoTarget.path}
               entry={infoTarget.entry}
               onclose={() => (infoOpen.set(false))}
+              onnavigate={(loc) => $focusedController?.navigate(loc)}
             />
           {/if}
         </div>
