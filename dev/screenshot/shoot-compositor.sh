@@ -15,6 +15,16 @@
 #   <client-cmd>  the Wayland client to launch; it is run with WAYLAND_DISPLAY set
 #                 to the compositor's socket and DISPLAY cleared
 #
+# Tiling captures (verify gaps / tiled headers / borders without a runtime keybind,
+# which injection cannot reach): the nested compositor starts a workspace tiling only
+# when autotile is on, so seed it headlessly -
+#   ARLEN_COMPOSITOR_CONFIG=cfg.toml  (cfg.toml: [layout] inner_gap/outer_gap, smart_gaps=false,
+#                                      tiled_headers=true, + a [[layout.window_rules]] action="tile"
+#                                      match.app_id="<client app_id>")
+#   XDG_STATE_HOME=statedir           (statedir/arlen/compositor/state.toml: `autotile = true`)
+#   SHOOT_CLIENT2="<client> [args]"   (a second window so the BSP split is visible)
+# Confirmed 28 Jun: two kitty windows tile with gaps + per-window headers + rounded corners.
+#
 # This is the closed nested verify loop (autonomous-verify-pipeline-plan.md): boot
 # the compositor nested -> optionally INJECT input -> grim-capture -> optionally
 # COMPARE to a baseline. With no inject/baseline it is just a capture (its original
