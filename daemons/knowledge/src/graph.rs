@@ -620,6 +620,11 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create CONNECTED_TO rel: {e}"))?;
 
+    // Intentionally unpromoted today: every Event-creating promotion
+    // (window.focused, power + service transitions) is compositor- or
+    // system-sourced, not app-emitted, so an Event->App EMITTED_BY edge there
+    // would assert a relationship the app did not produce (a false edge, worse
+    // than none). It is reserved for a future genuinely app-emitted Event.
     conn.query(
         "CREATE REL TABLE IF NOT EXISTS EMITTED_BY(FROM Event TO App)",
     )
