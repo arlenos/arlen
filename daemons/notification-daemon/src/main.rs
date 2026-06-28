@@ -20,8 +20,8 @@ use arlen_notification_daemon::storage::Database;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("arlen_notification_daemon=info".parse()?),
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
 
@@ -64,13 +64,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manager = Arc::new(manager_builder);
     dbus_server.set_manager(manager.clone());
 
-    // 4. Start D-Bus server.
+    // 4. Start D-Bus server. Register the interface first, then claim the
+    // well-known name explicitly. A name already held by another notification
+    // server (a running desktop session's own daemon) is a clean decline, not
+    // a crash: this instance stops instead of looping under a supervisor, and
+    // declining (rather than replacing) means it never hijacks the session's
+    // real notifications. Replacing a competing owner would be a policy change,
+    // not this guard's job.
+    use zbus::fdo::{RequestNameFlags, RequestNameReply};
     let _conn = connection::Builder::session()?
-        .name("org.freedesktop.Notifications")?
         .serve_at("/org/freedesktop/Notifications", dbus_server)?
         .build()
         .await?;
-    tracing::info!("D-Bus server ready");
+    match _conn
+        .request_name_with_flags(
+            "org.freedesktop.Notifications",
+            RequestNameFlags::DoNotQueue.into(),
+        )
+        .await
+    {
+        Ok(RequestNameReply::PrimaryOwner) | Ok(RequestNameReply::AlreadyOwner) => {
+            tracing::info!("D-Bus server ready");
+        }
+        // Under DoNotQueue, zbus maps a name owned by another peer to
+        // Err(NameTaken) (the fdo reply is Exists); a non-owning Ok reply is
+        // the defensive fallback. Either way decline cleanly.
+        Err(zbus::Error::NameTaken) => {
+            tracing::warn!(
+                "org.freedesktop.Notifications is owned by another notification server; this instance will stop to avoid hijacking session notifications"
+            );
+            return Ok(());
+        }
+        Ok(other) => {
+            tracing::warn!(?other, "org.freedesktop.Notifications not acquired; this instance will stop");
+            return Ok(());
+        }
+        Err(e) => return Err(e.into()),
+    }
 
     // 5. Start socket server in background.
     let socket_path = SocketServer::default_path();
