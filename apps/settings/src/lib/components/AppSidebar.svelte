@@ -33,6 +33,8 @@
     Brain,
     Sparkles,
     Zap,
+    Cloud,
+    SlidersHorizontal,
   } from "lucide-svelte";
 
   let query = $state("");
@@ -107,6 +109,8 @@
     Brain,
     Sparkles,
     Zap,
+    Cloud,
+    SlidersHorizontal,
   };
 
   // Group panels by section, matching the Pre-Phase-6 plan
@@ -125,8 +129,11 @@
         "accessibility",
         "focus",
         "knowledge",
-        "ai",
       ] as const,
+    },
+    {
+      label: "AI",
+      panelIds: ["ai", "ai-providers", "ai-models"] as const,
     },
     {
       label: "Input",
