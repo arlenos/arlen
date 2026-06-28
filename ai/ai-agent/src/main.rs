@@ -1259,6 +1259,7 @@ fn log_dispatch_outcome(outcome: &DispatchOutcome) {
             plan,
             dry_run,
             executed,
+            pending_exec: _,
         } => {
             tracing::info!(
                 behaviour = %behaviour,
