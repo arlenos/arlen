@@ -179,6 +179,35 @@ pub fn memory_budget_gib(hw: &Hardware) -> f64 {
     }
 }
 
+/// Parse total system RAM in GiB from `/proc/meminfo` contents: the `MemTotal:`
+/// line, reported in kibibytes, converted to GiB. `None` when the line is absent
+/// or unparseable. Pure, so it is unit-tested without the filesystem. This is the
+/// first piece of populating [`Hardware`]; the accelerator (discrete VRAM vs APU
+/// unified) and the memory bandwidth need `/sys` + DMI grounding and are a
+/// separate, careful piece (a wrong bandwidth would mis-tier, so it is not
+/// guessed here).
+pub fn parse_meminfo_ram_gib(contents: &str) -> Option<f64> {
+    for line in contents.lines() {
+        if let Some(rest) = line.strip_prefix("MemTotal:") {
+            // e.g. "MemTotal:       65802152 kB" - the first token is kibibytes.
+            let kib: f64 = rest.split_whitespace().next()?.parse().ok()?;
+            return Some(kib * 1024.0 / GIB);
+        }
+    }
+    None
+}
+
+/// Read total system RAM in GiB from `/proc/meminfo`. `None` on a read or parse
+/// failure (the caller falls back conservatively rather than over-promising a
+/// budget). Linux-only (the file is a Linux interface); the pure
+/// [`parse_meminfo_ram_gib`] is testable everywhere.
+#[cfg(target_os = "linux")]
+pub fn detect_ram_gib() -> Option<f64> {
+    std::fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|c| parse_meminfo_ram_gib(&c))
+}
+
 /// Estimated generation rate in tokens/second for a model whose per-token streamed
 /// size is `streamed_gib` (the WEIGHTS, the bytes read from memory for each token,
 /// NOT the full resident footprint: the OS/driver reservation is not re-read per
@@ -452,5 +481,20 @@ mod tests {
         let hw = apu_7840u();
         let picks = tier_picks(&hw, &[model("huge", 120.0)]);
         assert!(picks.fast.is_none() && picks.balanced.is_none() && picks.quality.is_none());
+    }
+
+    #[test]
+    fn parses_memtotal_from_proc_meminfo() {
+        let contents = "MemTotal:       65802152 kB\nMemFree:         1234567 kB\nSwapTotal: 0 kB\n";
+        let gib = parse_meminfo_ram_gib(contents).unwrap();
+        // 65802152 kiB is a 64 GB machine's MemTotal, ~62.7 GiB after reserved.
+        assert!((gib - 62.75).abs() < 0.5, "expected ~62.7 GiB, got {gib}");
+    }
+
+    #[test]
+    fn meminfo_without_a_parseable_memtotal_is_none() {
+        assert_eq!(parse_meminfo_ram_gib("MemFree: 100 kB\n"), None);
+        assert_eq!(parse_meminfo_ram_gib(""), None);
+        assert_eq!(parse_meminfo_ram_gib("MemTotal: notanumber kB\n"), None);
     }
 }
