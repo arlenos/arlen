@@ -120,6 +120,30 @@ pub async fn ai_working_set() -> String {
     call_string(AGENT_BUS, AGENT_PATH, "working_set", "{}").await
 }
 
+/// The AI's capability grants for the transparency drawer's Grants feed
+/// (`access_grants` on both AI principals): the Living Capability Graph
+/// projection of what the assistant (`org.arlen.AI1`) and the background agent
+/// (`org.arlen.AIAgent1`) are each allowed to read. Each daemon reports its OWN
+/// grants - the knowledge daemon's `access_grants` op is caller-scoped, so the
+/// principal is correct by construction - and this merges the two into the one
+/// AI-scoped array `readGrants()` renders, each labelled by its `app_id`. A
+/// daemon that is unreachable or holds no grant contributes nothing, so a
+/// partial view is honest rather than an error. Returns a JSON array (the
+/// frontend invokes it as `GrantView[]`); empty when neither principal answers.
+#[tauri::command]
+pub async fn ai_access_grants() -> serde_json::Value {
+    let mut grants: Vec<serde_json::Value> = Vec::new();
+    for (bus, path) in [(AGENT_BUS, AGENT_PATH), (AI_BUS, AI_PATH)] {
+        let json = call_string(bus, path, "access_grants", "[]").await;
+        if let Ok(serde_json::Value::Array(items)) =
+            serde_json::from_str::<serde_json::Value>(&json)
+        {
+            grants.extend(items);
+        }
+    }
+    serde_json::Value::Array(grants)
+}
+
 /// The autonomy-dial state (`action_state` on the agent): `{ action_mode,
 /// autonomous_apps, executor_live }`. The safe inert shape if the agent is
 /// unreachable (suggest / none / off).

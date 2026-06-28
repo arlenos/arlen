@@ -33,7 +33,7 @@ use arlen_ai_daemon::registry::{AuthError, CompletionOutcome};
 use arlen_ai_daemon::selection::{ActiveSelection, ModelEntry, ModelKind};
 use arlen_ai_daemon::service::{AiDaemonService, ExplainError, QueryError};
 use arlen_ai_providers::proxied::{ProxiedConfig, ProxiedProvider};
-use os_sdk::UnixEventConsumer;
+use os_sdk::{UnixEventConsumer, UnixGraphClient};
 use zbus::Connection;
 
 const BUS_NAME: &str = "org.arlen.AI1";
@@ -183,7 +183,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // pipeline; clone before `provider` is moved into the pipeline.
     let tool_provider = provider.clone();
     let graph: Arc<dyn GraphQuerier> =
-        Arc::new(OsSdkGraphQuerier::new(knowledge_socket));
+        Arc::new(OsSdkGraphQuerier::new(knowledge_socket.clone()));
     let runner: Arc<dyn QueryRunner> =
         Arc::new(CypherPipeline::new(provider, graph));
 
@@ -264,6 +264,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         service: service.clone(),
         authz: authz.clone(),
         live: live.clone(),
+        knowledge_socket: knowledge_socket.clone(),
     };
 
     // Register the interface, then claim the well-known name on the
@@ -300,6 +301,10 @@ struct AiInterface {
     /// The live-swappable provider handle, for the model picker (`ai_active`,
     /// and later `ai_set_active`). Shared with the pipeline/explain/tool-loop.
     live: Arc<LiveProvider>,
+    /// The knowledge daemon query socket, read by `access_grants` to surface
+    /// this daemon's own Living Capability Graph grants (the caller-scoped 0x05
+    /// op). A fresh client per call, like the explain reader.
+    knowledge_socket: String,
 }
 
 #[zbus::interface(name = "org.arlen.AI1")]
@@ -378,6 +383,27 @@ impl AiInterface {
             "totalTokens": input + output,
         })
         .to_string()
+    }
+
+    /// This daemon's own capability grants (`access_grants`): a JSON array of
+    /// `GrantView`, the Living Capability Graph projection of what the assistant
+    /// is allowed to read, for the harness transparency drawer's Grants feed (the
+    /// anti-Recall view). The knowledge daemon's `access_grants` op is
+    /// caller-scoped, so reading it as this daemon returns this daemon's own
+    /// grants - the correct "what the AI is allowed to read" principal, never a
+    /// whole-machine authority view. Read-only; discloses only this principal's
+    /// declared reach, never any node content. Empty array if the knowledge
+    /// daemon is unreachable or this daemon holds no grant. The harness merges
+    /// this with the background agent's (`org.arlen.AIAgent1`) grants.
+    #[zbus(name = "access_grants")]
+    async fn access_grants(&self) -> String {
+        match UnixGraphClient::new(self.knowledge_socket.clone())
+            .access_grants()
+            .await
+        {
+            Ok(grants) => serde_json::to_string(&grants).unwrap_or_else(|_| "[]".to_string()),
+            Err(_) => "[]".to_string(),
+        }
     }
 
     /// The model catalog as a JSON array of
