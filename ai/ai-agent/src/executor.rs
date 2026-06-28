@@ -47,6 +47,7 @@ use arlen_ai_core::audit::{behaviour_action_event, AuditSink};
 use arlen_ai_core::capability::{ActionDecision, BaselineMode, Capability};
 
 use crate::effect_model::{EffectDomain, InverseReceipt};
+use crate::engine::RetainedProposal;
 use crate::gate::{resolved_action_kind, ActionContext, ProposedAction};
 use crate::registry::{self, TrustedActionSchema};
 use crate::seams::GraphHandle;
@@ -1016,6 +1017,84 @@ impl Compensator {
     }
 }
 
+/// The owned executor for the approve path - the actionable half of the harness
+/// gate card's `[Approve]`. Like [`Compensator`] it holds owned deps so it can
+/// live on the startup-'static D-Bus interface, but unlike the undo path the
+/// approve path RE-RUNS the full trusted proof, so it carries every proof
+/// collaborator (paths + mounts + writer + audit). The `Capability` is NOT held:
+/// it is rebuilt per config epoch (read tier + action permissions), so a startup
+/// snapshot could mis-evaluate a future `CapabilityAllows` precondition. The
+/// caller passes the LIVE capability at approve time, mirroring how the undo
+/// path re-reads `executor_live` live. Clone is a cheap Arc bump (the interface
+/// that owns it is re-registered on a bus reconnect).
+#[derive(Clone)]
+pub struct Approver {
+    paths: Arc<dyn PathResolver>,
+    mounts: Arc<dyn MountPolicy>,
+    writer: Arc<dyn RelationWriter>,
+    audit: Arc<dyn AuditSink>,
+}
+
+impl Approver {
+    /// An approver over the owned proof + write collaborators.
+    pub fn new(
+        paths: Arc<dyn PathResolver>,
+        mounts: Arc<dyn MountPolicy>,
+        writer: Arc<dyn RelationWriter>,
+        audit: Arc<dyn AuditSink>,
+    ) -> Self {
+        Self {
+            paths,
+            mounts,
+            writer,
+            audit,
+        }
+    }
+
+    /// Perform a user-approved proposal: build the live executor over the owned
+    /// deps plus the caller-supplied live `capability`, and execute the retained
+    /// proposal as a `PreviewThenExecute` - the human approval IS the lift from
+    /// `RequireConfirmation`. The executor still re-runs the full trusted proof
+    /// against the current graph and audits fail-closed before the write, so
+    /// approval authorises the act but never bypasses revalidation: a proposal
+    /// whose preconditions went stale since the gate decision is still refused.
+    /// Returns the executed write (so the caller retains its undo receipt) or
+    /// `None` when the proposal does not resolve to a write.
+    pub async fn approve(
+        &self,
+        retained: &RetainedProposal,
+        graph: &dyn GraphHandle,
+        capability: &Capability,
+    ) -> Result<Option<ExecutedWrite>, ExecError> {
+        let executor = LiveExecutor::new(
+            capability,
+            &*self.paths,
+            &*self.mounts,
+            &*self.writer,
+            &*self.audit,
+        );
+        let ctx = ActionContext {
+            app_id: &retained.app_id,
+            external_trigger: retained.external_trigger,
+            // An approved agent action is not a deterministic workflow; the field
+            // is a gate-decision input, unused on the execute path, set honestly.
+            deterministic_workflow: false,
+            correlation_id: &retained.correlation_id,
+        };
+        executor
+            .execute(
+                &retained.action,
+                ActionDecision::PreviewThenExecute,
+                &retained.tool_scope,
+                graph,
+                &retained.behaviour,
+                &ctx,
+                retained.ceiling,
+            )
+            .await
+    }
+}
+
 /// Compensate (undo) a previously-executed action, dispatching on the receipt
 /// variant. A free function over only the `writer` + `audit` it needs (not the
 /// full executor's capability/paths/mounts), so both `LiveExecutor::compensate`
@@ -1557,6 +1636,85 @@ mod tests {
         assert_eq!(entries[0].structural.subject, "agent.auto-tag-by-project");
         assert_eq!(entries[0].structural.outcome, "execute");
         assert_eq!(entries[0].call_chain_id.as_deref(), Some("run-x"));
+    }
+
+    #[tokio::test]
+    async fn approver_executes_a_user_approved_proposal() {
+        // The retained proposal the approve store would hold for a confirmed
+        // gate card (the auto-tag link, captured as RequireConfirmation).
+        let retained = RetainedProposal::capture(
+            0,
+            "auto-tag-by-project",
+            &tag_action(),
+            ActionDecision::RequireConfirmation,
+            &auto_tag_scope(),
+            "org.arlen.files",
+            false,
+            "run-x",
+            BaselineMode::Supervised,
+        )
+        .expect("a RequireConfirmation decision is retained");
+
+        // Keep an Arc<MockWriter> handle to inspect the write after the approve.
+        let writer = Arc::new(MockWriter::default());
+        let approver = Approver::new(
+            Arc::new(IdentityResolver),
+            Arc::new(StaticMountPolicy::empty()),
+            writer.clone(),
+            Arc::new(MockAuditSink::accepting()),
+        );
+
+        // The human approval performs the write: the approver re-runs the proof
+        // against the current graph (file under the project root, not yet linked)
+        // and, on success, writes exactly the proven FILE_PART_OF edge.
+        let written = approver
+            .approve(&retained, &tag_graph(false), &executing_cap())
+            .await
+            .expect("approve does not error")
+            .expect("a proven proposal resolves to a write");
+        assert_eq!(written.write.relation_type, "FILE_PART_OF");
+        assert_eq!(written.outcome, WriteOutcome::Created);
+        let recorded = writer.writes.lock().unwrap();
+        assert_eq!(recorded.len(), 1, "exactly one write performed on approval");
+        assert_eq!(recorded[0].from_id, "/proj/a.rs");
+        assert_eq!(recorded[0].to_type, "system.Project");
+    }
+
+    #[tokio::test]
+    async fn approver_refuses_a_proposal_whose_proof_went_stale() {
+        // Same proposal, but the edge now already exists: the re-run proof fails
+        // its `Not(EdgeExists)` precondition, so approval writes nothing (approval
+        // authorises the act but never bypasses revalidation).
+        let retained = RetainedProposal::capture(
+            0,
+            "auto-tag-by-project",
+            &tag_action(),
+            ActionDecision::RequireConfirmation,
+            &auto_tag_scope(),
+            "org.arlen.files",
+            false,
+            "run-x",
+            BaselineMode::Supervised,
+        )
+        .expect("retained");
+        let writer = Arc::new(MockWriter::default());
+        let approver = Approver::new(
+            Arc::new(IdentityResolver),
+            Arc::new(StaticMountPolicy::empty()),
+            writer.clone(),
+            Arc::new(MockAuditSink::accepting()),
+        );
+        let result = approver
+            .approve(&retained, &tag_graph(true), &executing_cap())
+            .await;
+        assert!(
+            matches!(result, Err(ExecError::ProofStale)),
+            "a stale proof refuses the approved write: {result:?}"
+        );
+        assert!(
+            writer.writes.lock().unwrap().is_empty(),
+            "no write performed when the proof is stale"
+        );
     }
 
     #[tokio::test]
