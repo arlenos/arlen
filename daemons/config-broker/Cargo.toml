@@ -1,0 +1,19 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-config-broker"
+version = "0.1.0"
+edition = "2021"
+description = "Config Broker: the separate-uid owner of the security-load-bearing AI master switches"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[workspace]
