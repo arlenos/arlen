@@ -319,6 +319,22 @@ i18n-lint:
 i18n-baseline:
     cd "{{ROOT}}" && cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-i18n-lint -- --root apps --baseline dev/i18n-baseline.tsv --update
 
+# Nested-compositor screenshot loop (autonomous-verify-pipeline-plan.md primary loop):
+# boot cosmic-comp nested in Xvfb, launch a Wayland CLIENT under it, grim-capture to
+# OUT, then INSPECT the PNG yourself (the metal-verify behavioural rule - your own
+# vision, not deferred to a human). Capture is grim >= 1.5 over
+# ext-image-copy-capture-v1 (auto-negotiated; the fork's only capture protocol, no
+# force flag). Optional env on the script: SHOOT_INJECT (ydotool/wtype, needs
+# /dev/uinput - the one sudo: modprobe uinput + udev rule + ydotoold), SHOOT_BASELINE
+# + SHOOT_TOLERANCE (magick-compare AE tripwire), SHOOT_SETTLE, SHOOT_CLIENT_LOG.
+# Needs a built cosmic-comp at COMPOSITOR_PATH (default ~/Repositories/compositor) +
+# Xvfb + grim. Verified working: boot -> capture -> inspect renders the compositor
+# SSD chrome (titlebar window-controls, window_corners, border) + the client.
+#   just screenshot-nested /tmp/shot.png kitty
+screenshot-nested out client *args:
+    COMPOSITOR_PATH="${COMPOSITOR_PATH:-$HOME/Repositories/compositor}" \
+        "{{justfile_directory()}}/screenshot/shoot-compositor.sh" "{{out}}" {{client}} {{args}}
+
 # Born-RTL gate (I18N-R3): fail on NEW physical directional CSS, accept the existing
 # via the baseline. Like i18n-lint, run on demand today; the blocking CI gate flips
 # on once the UI stabilises. Re-snapshot with `just rtl-baseline` after intentional changes.
