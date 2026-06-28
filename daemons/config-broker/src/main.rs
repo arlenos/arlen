@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use arlen_config_broker::server;
-use arlen_config_broker::state::StateStore;
+use arlen_config_broker::state::{AiMasterSwitches, StateStore};
 
 #[tokio::main]
 async fn main() {
@@ -30,6 +30,17 @@ async fn main() {
             std::process::exit(1);
         }
     };
+
+    // Seed the generous shipped defaults on first run (a fresh store
+    // only); never clobber an existing one. A seed failure is
+    // non-fatal: a read then resolves to the fail-closed floor, which
+    // is safe.
+    match store.seed_if_absent(&AiMasterSwitches::shipped_default()) {
+        Ok(true) => tracing::info!("seeded the shipped AI defaults into a fresh store"),
+        Ok(false) => {}
+        Err(e) => tracing::warn!("could not seed defaults: {e}"),
+    }
+
     let socket = server::socket_path();
 
     tokio::select! {
