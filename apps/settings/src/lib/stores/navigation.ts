@@ -18,6 +18,8 @@ export type PanelId =
   | "focus"
   | "knowledge"
   | "ai"
+  | "ai-providers"
+  | "ai-models"
   | "privacy"
   | "extensions"
   | "about";
@@ -45,7 +47,9 @@ export const PANELS: PanelMeta[] = [
   { id: "accessibility", title: "Accessibility", icon: "Accessibility", enabled: true, href: "/accessibility" },
   { id: "focus", title: "Focus Mode", icon: "Crosshair", enabled: true, href: "/focus" },
   { id: "knowledge", title: "Knowledge Graph", icon: "Brain", enabled: true, href: "/knowledge" },
-  { id: "ai", title: "AI", icon: "Sparkles", enabled: true, href: "/ai" },
+  { id: "ai", title: "General", icon: "Sparkles", enabled: true, href: "/ai" },
+  { id: "ai-providers", title: "Providers", icon: "Cloud", enabled: true, href: "/ai/providers" },
+  { id: "ai-models", title: "Default models", icon: "SlidersHorizontal", enabled: true, href: "/ai/models" },
 
   // Input
   { id: "keyboard", title: "Keyboard", icon: "Keyboard", enabled: true, href: "/keyboard" },

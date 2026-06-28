@@ -127,7 +127,7 @@
 </script>
 
 <Page
-  title="AI providers"
+  title="Providers"
   description="Connect the AI services the assistant may use. Keys are held in the system keystore, never by the assistant. Choosing which model answers lives on the Default models page."
 >
   <SectionGrid>
