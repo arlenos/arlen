@@ -5,6 +5,7 @@
 //! so a broken config never leaves the agent enabled or over-granted.
 
 use std::collections::BTreeMap;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use arlen_ai_core::capability::{access_tier_from_level, AccessTier, ActionPermissions, BaselineMode};
@@ -49,6 +50,10 @@ pub fn set_action_mode_in(path: &Path, mode: &str) -> Result<(), String> {
     std::fs::create_dir_all(parent).map_err(|e| format!("create config dir: {e}"))?;
     let tmp = path.with_extension("toml.tmp");
     std::fs::write(&tmp, doc.to_string()).map_err(|e| format!("write temp config: {e}"))?;
+    // Owner-only: ai.toml carries the AI master switches (executor_live,
+    // access_level, autonomous_apps), so it must never be world-readable.
+    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))
+        .map_err(|e| format!("secure temp config: {e}"))?;
     std::fs::rename(&tmp, path).map_err(|e| format!("rename config into place: {e}"))?;
     Ok(())
 }
@@ -104,6 +109,10 @@ pub fn set_autonomous_app_in(path: &Path, app_id: &str, enabled: bool) -> Result
     std::fs::create_dir_all(parent).map_err(|e| format!("create config dir: {e}"))?;
     let tmp = path.with_extension("toml.tmp");
     std::fs::write(&tmp, doc.to_string()).map_err(|e| format!("write temp config: {e}"))?;
+    // Owner-only: ai.toml carries the AI master switches (executor_live,
+    // access_level, autonomous_apps), so it must never be world-readable.
+    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))
+        .map_err(|e| format!("secure temp config: {e}"))?;
     std::fs::rename(&tmp, path).map_err(|e| format!("rename config into place: {e}"))?;
     Ok(())
 }
