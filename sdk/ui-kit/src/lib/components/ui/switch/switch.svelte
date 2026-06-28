@@ -1,10 +1,10 @@
 <script lang="ts">
-  /// Arlen Switch — unified toggle for Shell + Settings.
+  /// Arlen Switch, the unified toggle for Shell + Settings.
   /// Custom (not the shadcn-svelte bits-ui switch, which is rounded-full
   /// with hardcoded colours) so it honours the corner-radius system and
   /// themes off the accent token. The track radius hangs off the global
-  /// `--radius-input` token — the same one Button / Input / SegmentedControl
-  /// use — so the switch sits in the control family and scales with the
+  /// `--radius-input` token (the same one Button / Input / SegmentedControl
+  /// use), so the switch sits in the control family and scales with the
   /// Roundness slider in lock-step, never a hardcoded literal. The thumb
   /// hugs the track concentrically: its
   /// corners are tighter than the track's by the inset, so the gap stays
@@ -22,7 +22,7 @@
     value?: boolean;
     ariaLabel?: string;
     disabled?: boolean;
-    /// "default" — 32×18 track, 14px thumb; "sm" — 24×14 track,
+    /// "default" is a 32×18 track, 14px thumb; "sm" is a 24×14 track,
     /// 10px thumb. Documented sizing-system outlier (iOS/Android
     /// binary-toggle convention; track-width covers the 24px
     /// hit-target floor without needing height-floor compliance).
@@ -78,7 +78,7 @@
      docs/architecture/sizing-system.md §5a). Binary-toggle convention
      follows iOS/Android, where the track sits below the standard
      control register because the WIDTH (32 / 24) covers the 24px
-     hit-target floor — the entire component IS the click target,
+     hit-target floor, so the entire component IS the click target,
      not a sub-element. */
   .sw.default {
     width: 32px;
