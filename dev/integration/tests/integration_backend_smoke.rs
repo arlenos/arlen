@@ -1164,20 +1164,21 @@ async fn the_agent_audits_a_workflow_proposal_in_suggest_mode() {
     }
 }
 
-/// IT-1 live executor (PR-5 part 2): with `[agent] executor_live = true` in the
-/// EPHEMERAL ai.toml, the auto-tag workflow does not just propose — the live
-/// executor actually writes the `FILE_PART_OF` edge through the knowledge write
-/// socket (the atomic conditional create). The dev agent resolves to
-/// `dev.arlen-ai-agent`, which tiers FirstParty in a debug build, so it passes
-/// the write gate; its profile grants exactly the one `FILE_PART_OF` relation
-/// with `instance_scope = "all"` (the shipped go-live grant). The test reads the
-/// edge as an ordinary ThirdParty caller via an UNTYPED `(:File)-->(:Project)`
-/// match (FILE_PART_OF is the only File->Project edge), which references only the
-/// File/Project node labels its read grant covers, so it never trips the RS-R1
-/// rel-type gate. Idempotency: re-emitting the same file.opened leaves exactly
-/// one edge (the conditional create is a no-op on the second write). The
-/// PRODUCTION `executor_live` default is untouched (only this ephemeral ai.toml
-/// flips it); run/verify is Tim's (`#[ignore]d` + FUSE-host-gated).
+/// IT-1 live executor (PR-5 part 2): INTENDED to prove that with `[agent]
+/// executor_live = true` in the EPHEMERAL ai.toml the auto-tag workflow does not
+/// just propose but the live executor writes the `FILE_PART_OF` edge. KNOWN
+/// FALSE POSITIVE today (see the assertion comment + coder-reports): a
+/// file.opened-triggered action is external content, so the gate forces
+/// RequireConfirmation and the live executor does NOT autonomously write; the
+/// untyped `(:File)-->(:Project)` match this scenario asserts is then satisfied by
+/// the knowledge PROMOTION pipeline's own FILE_PART_OF edge, so a pass does NOT
+/// confirm the executor ran. The setup is otherwise real (the dev agent
+/// `dev.arlen-ai-agent` tiers FirstParty in debug + carries the shipped
+/// `FILE_PART_OF`/`instance_scope=all` go-live grant; the untyped match dodges the
+/// RS-R1 rel-type gate; production `executor_live` is untouched). A TRUE executor
+/// assertion must key on the executor's `op_id` (promotion leaves it NULL) and
+/// stays red until Tim's external-content classification lets external-triggered
+/// curation auto-execute. `#[ignore]d` + FUSE-host-gated.
 #[tokio::test]
 #[ignore = "needs event-bus + knowledge + audit-daemon + ai-agent binaries built (debug, FUSE host)"]
 async fn the_live_executor_writes_a_file_part_of_edge() {
@@ -1263,10 +1264,18 @@ async fn the_live_executor_writes_a_file_part_of_edge() {
     let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
     let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
     let file_path = format!("{}/main.rs", project_dir.to_string_lossy());
-    // FILE_PART_OF is the only File->Project edge, so an untyped match proves it
-    // without naming the rel type (which the RS-R1 gate would refuse a ThirdParty
-    // caller). The agent must promote the File, prove the proposal, and have the
-    // live executor write the edge, so allow the promotion interval + executor.
+    // KNOWN LIMITATION (does NOT currently verify the live executor): this untyped
+    // File->Project match cannot distinguish the executor's FILE_PART_OF write from
+    // the one the knowledge PROMOTION pipeline creates for any file.opened under a
+    // detected project - both are FILE_PART_OF, and the untyped match (used to dodge
+    // the RS-R1 rel-type refusal for a ThirdParty caller) sees either. Worse, under
+    // the current rule a file.opened-triggered action is external-content -> the gate
+    // forces RequireConfirmation, so the live executor does NOT autonomously write at
+    // all; this assertion passes on the PROMOTION edge alone = a false green. A true
+    // executor assertion needs to key on the executor's `op_id` (promotion leaves it
+    // NULL) - which needs FILE_PART_OF read scope - AND it stays red until Tim's
+    // external-content classification lets external-triggered curation auto-execute.
+    // Tracked in coder-reports; do not read this scenario's pass as executor-verified.
     let edge_query = format!("MATCH (f:File {{id: '{file_path}'}})-->(p:Project) RETURN p.id");
     let deadline = Instant::now() + Duration::from_secs(50);
     loop {
