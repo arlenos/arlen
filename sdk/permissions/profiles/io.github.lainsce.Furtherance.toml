@@ -1,0 +1,5 @@
+# Starting permission profile for Furtherance (a GNOME time-tracker). Self-contained: keeps its task data
+# locally, needs no filesystem, network, or Knowledge Graph access (optional sync is an opt-in widening).
+[info]
+app_id = "io.github.lainsce.Furtherance"
+tier = "third-party"
