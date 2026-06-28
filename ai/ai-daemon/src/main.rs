@@ -248,7 +248,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             arlen_ai_daemon::skill_route::DbusSkillRouter::new(connection.clone()),
         )),
     );
-    config_watch::spawn_config_watch(service.clone());
+    config_watch::spawn_config_watch(service.clone(), audit.clone());
 
     // Auto-sweep terminal records once per minute. The handle is
     // kept alive for the daemon's lifetime; aborting it on shutdown
