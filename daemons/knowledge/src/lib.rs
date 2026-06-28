@@ -21,6 +21,7 @@ pub mod retrieval;
 pub mod revoke;
 pub mod quota;
 pub mod schema;
+pub mod seed;
 pub mod shared;
 pub mod temporal;
 pub mod time;
