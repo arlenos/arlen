@@ -3,9 +3,10 @@
   /// Custom (not the shadcn-svelte bits-ui switch, which is rounded-full
   /// with hardcoded colours) so it honours the corner-radius system and
   /// themes off the accent token. The track radius hangs off the global
-  /// `--radius-chip` token (the smallest-control step), so it scales with
-  /// the Roundness slider in lock-step with everything else — never a
-  /// hardcoded literal. The thumb hugs the track concentrically: its
+  /// `--radius-input` token — the same one Button / Input / SegmentedControl
+  /// use — so the switch sits in the control family and scales with the
+  /// Roundness slider in lock-step, never a hardcoded literal. The thumb
+  /// hugs the track concentrically: its
   /// corners are tighter than the track's by the inset, so the gap stays
   /// constant all the way round (radius.css). Set `--switch-radius` on a
   /// caller to adapt the track to an outer container; the thumb follows.
@@ -54,10 +55,11 @@
 <style>
   .sw {
     position: relative;
-    /* Track radius from the global chip token (never rounded-full), so it
-       tracks the Roundness slider. A caller can set --switch-radius to
-       match an outer container; the thumb follows. */
-    border-radius: var(--switch-radius, var(--radius-chip));
+    /* Track radius from the control-family token (never rounded-full), so it
+       matches Button / Input / SegmentedControl and tracks the Roundness
+       slider. A caller can set --switch-radius to match an outer container;
+       the thumb follows. */
+    border-radius: var(--switch-radius, var(--radius-input));
     border: 1px solid var(--control-border);
     background: var(--control-bg-strong);
     padding: 0;
@@ -109,7 +111,7 @@
        the track's and the surround stays an even width. */
     border-radius: max(
       0px,
-      calc(var(--switch-radius, var(--radius-chip)) - var(--switch-thumb-inset, 2px))
+      calc(var(--switch-radius, var(--radius-input)) - var(--switch-thumb-inset, 2px))
     );
     background: var(--foreground);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
