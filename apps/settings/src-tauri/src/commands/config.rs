@@ -3,6 +3,7 @@
 //! All commands operate on TOML files under `~/.config/arlen/<file>.toml`
 //! using dot-notation keys (e.g. `theme.mode` -> `[theme] mode = ...`).
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -74,6 +75,11 @@ fn write_file(file: ConfigFile, value: &toml::Value) -> Result<(), String> {
     let content = toml::to_string_pretty(value).map_err(|e| format!("serialize: {e}"))?;
     let tmp = path.with_extension("toml.tmp");
     std::fs::write(&tmp, content).map_err(|e| format!("write tmp: {e}"))?;
+    // Owner-only (0600): user config carries security-bearing keys (ai.toml's
+    // executor_live / access_level most of all), so it must never be world-
+    // readable. Set on the temp before the rename so the live file is never 0644.
+    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))
+        .map_err(|e| format!("secure tmp: {e}"))?;
     std::fs::rename(&tmp, &path).map_err(|e| format!("rename: {e}"))?;
     Ok(())
 }
