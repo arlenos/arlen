@@ -281,6 +281,66 @@ async fn read_verwandt(path: &str) -> Vec<Relation> {
     }
 }
 
+/// The `FILE_PART_OF` liveness predicate for a bitemporal as-of read, over the
+/// rel bound `r` and the project bound `p`. `None` is "as of now" (the live,
+/// open-interval edge); `Some(t)` is the bitemporal point-in-time predicate at
+/// `t` epoch-micros - the same shape `temporal::valid_as_of` builds daemon-side,
+/// inlined here because the FM speaks raw Cypher over the read socket. `t` is an
+/// i64, interpolated as a decimal literal (a number, so no injection); the read
+/// path denies writes + authority labels regardless. Pure, so it is unit-tested.
+fn file_part_of_as_of(as_of_micros: Option<i64>) -> String {
+    match as_of_micros {
+        None => "r.invalid_at IS NULL AND r.expired_at IS NULL AND p.expired_at IS NULL".to_string(),
+        Some(t) => format!(
+            "r.valid_at <= {t} AND (r.invalid_at IS NULL OR r.invalid_at > {t}) \
+             AND r.created_at <= {t} AND (r.expired_at IS NULL OR r.expired_at > {t}) \
+             AND (p.expired_at IS NULL OR p.expired_at > {t})"
+        ),
+    }
+}
+
+/// A file's project membership as of `as_of_micros` (the temporal `verwandt`
+/// read, for the FM time-travel toggle). `None` is the live membership now;
+/// `Some(t)` is what the file was part of at `t`. Best-effort like `read_verwandt`:
+/// any error yields no lines. Unlike the plain read it names the rel (`r`) so the
+/// bitemporal stamps can be filtered.
+async fn read_verwandt_as_of(path: &str, as_of_micros: Option<i64>) -> Vec<Relation> {
+    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
+    let cypher = format!(
+        "MATCH (f:File {{id: '{}'}})-[r:FILE_PART_OF]->(p:Project) WHERE {} \
+         RETURN p.id AS id, p.name AS name LIMIT 16",
+        escape_cypher_literal(&abs(path)),
+        file_part_of_as_of(as_of_micros)
+    );
+    match client.query_rows(&cypher).await {
+        Ok(rows) => verwandt_from_rows(&rows),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// A project's `FILE_PART_OF` members as of `as_of_micros` (the temporal facet of
+/// the project navigation location). `None` is the live set now; `Some(t)` the
+/// set at `t`. Best-effort like `project_members`; names the rel (`r`) so the
+/// bitemporal stamps can be filtered.
+async fn project_members_as_of(id: &str, as_of_micros: Option<i64>) -> Vec<FileEntry> {
+    if id.is_empty() {
+        return Vec::new();
+    }
+    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
+    let cypher = format!(
+        "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project {{id: '{}'}}) WHERE {} \
+         RETURN f.path AS path, f.last_accessed AS accessed ORDER BY f.path LIMIT 512",
+        escape_cypher_literal(id),
+        file_part_of_as_of(as_of_micros)
+    );
+    match client.query_rows(&cypher).await {
+        Ok(rows) => members_from_rows(&rows),
+        Err(_) => Vec::new(),
+    }
+}
+
 /// Get-Info for one path: conventional metadata plus the KG provenance and
 /// relationship sections. The capability section's reader enumeration stays
 /// empty (the per-file authority read is system-scoped, denied to the FM); the
@@ -1236,6 +1296,43 @@ async fn files_list_location(location: String) -> Result<Vec<FileEntry>, String>
     out
 }
 
+/// Resolve a virtual location AS OF a point in time (the FM time-travel toggle):
+/// `as_of_micros` `None` is "as of now", `Some(t)` is the state at `t` epoch-micros.
+/// Only the bitemporal `FILE_PART_OF` membership time-travels, so a `"project:<id>"`
+/// location is read at `t`; `"recent"` / `"trash"` / `"search:<query>"` are not
+/// bitemporal graph edges (recently-accessed ordering, the freedesktop trash, a
+/// path-contains query), so `as_of` does not change them and they return the
+/// current listing. An unknown location is refused.
+#[tauri::command]
+async fn files_list_location_as_of(
+    location: String,
+    as_of_micros: Option<i64>,
+) -> Result<Vec<FileEntry>, String> {
+    if let Some(id) = location.strip_prefix("project:") {
+        return Ok(project_members_as_of(id, as_of_micros).await);
+    }
+    match location.as_str() {
+        "recent" => Ok(files_recent().await.iter().map(recent_to_entry).collect()),
+        "trash" => files_trash_list().map(|items| items.iter().map(trash_to_entry).collect()),
+        other => {
+            if let Some(query) = other.strip_prefix("search:") {
+                Ok(search_location(query).await)
+            } else {
+                Err(format!("unknown virtual location: {other}"))
+            }
+        }
+    }
+}
+
+/// A file's project membership AS OF a point in time (the temporal `verwandt`
+/// read backing the info panel's time-travel). `as_of_micros` `None` is the live
+/// membership now; `Some(t)` is what the file was part of at `t` epoch-micros.
+/// Best-effort: an out-of-scope object or an absent daemon yields no relations.
+#[tauri::command]
+async fn files_verwandt_as_of(path: String, as_of_micros: Option<i64>) -> Vec<Relation> {
+    read_verwandt_as_of(&path, as_of_micros).await
+}
+
 /// Tauri application entry point invoked from `main.rs`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Publish the file-manager's global menu into the topbar via the
@@ -1390,6 +1487,8 @@ pub fn run() {
             frontend_log,
             files_list,
             files_list_location,
+            files_list_location_as_of,
+            files_verwandt_as_of,
             files_breadcrumb,
             files_places,
             files_info,
@@ -1431,8 +1530,9 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        abs, escape_cypher_literal, members_from_rows, ops, projects_from_rows, provenance_to_woher,
-        recent_from_rows, recent_to_entry, trash_to_entry, verwandt_from_rows, EntryKind, RecentFile,
+        abs, escape_cypher_literal, file_part_of_as_of, members_from_rows, ops, projects_from_rows,
+        provenance_to_woher, recent_from_rows, recent_to_entry, trash_to_entry, verwandt_from_rows,
+        EntryKind, RecentFile,
     };
     use std::collections::HashMap;
 
@@ -1574,6 +1674,21 @@ mod tests {
         let mut name_only = HashMap::new();
         name_only.insert("name".to_string(), serde_json::json!("Arlen"));
         assert!(verwandt_from_rows(&[empty, non_string, name_only]).is_empty());
+    }
+
+    #[test]
+    fn file_part_of_as_of_predicate_is_live_or_point_in_time() {
+        // None: the live open-interval filter (no point-in-time comparison).
+        let live = file_part_of_as_of(None);
+        assert!(live.contains("r.invalid_at IS NULL"));
+        assert!(live.contains("p.expired_at IS NULL"));
+        assert!(!live.contains("<="));
+        // Some(t): the bitemporal predicate carrying the timestamp on both axes.
+        let at = file_part_of_as_of(Some(1_700_000_000_000_000));
+        assert!(at.contains("r.valid_at <= 1700000000000000"));
+        assert!(at.contains("r.created_at <= 1700000000000000"));
+        assert!(at.contains("(r.invalid_at IS NULL OR r.invalid_at > 1700000000000000)"));
+        assert!(at.contains("(p.expired_at IS NULL OR p.expired_at > 1700000000000000)"));
     }
 
     #[test]
