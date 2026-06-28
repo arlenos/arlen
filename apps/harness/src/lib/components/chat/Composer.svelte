@@ -10,16 +10,14 @@
   import { tick } from "svelte";
   import { writable } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import { ArrowUp, ChevronDown, File as FileIcon, Folder, Paperclip, ShieldCheck } from "@lucide/svelte";
+  import { ArrowUp, File as FileIcon, Folder, Paperclip, ShieldCheck } from "@lucide/svelte";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
-  import * as DropdownMenu from "@arlen/ui-kit/components/ui/dropdown-menu";
-  import type { Capability } from "$lib/capability";
-  import { tierBadge } from "$lib/display";
   import { openTransparency } from "$lib/stores/transparency";
   import ContextChips from "./ContextChips.svelte";
   import ModelPickerBar from "./ModelPickerBar.svelte";
+  import AutonomyDial from "./AutonomyDial.svelte";
   import {
     activeSessionId,
     busy,
@@ -39,39 +37,12 @@
   let {
     disabled,
     placeholder,
-    capability,
   }: {
     /// Disable input entirely (AI off or unreachable); the page renders the
     /// matching status line below.
     disabled: boolean;
     placeholder: string;
-    /// The capability read, so the foot can carry the quiet posture + model
-    /// chip. `null` while loading or after a failed read; the chip then hides.
-    capability: Capability | null;
   } = $props();
-
-  // The posture chip shows only when the AI is on; off / unreachable states
-  // are carried by the warning line below, not by a foot chip. The dropdown
-  // flips how much the agent may act on its own; the choice updates here
-  // optimistically and the daemon `ai_set_posture` swap confirms it (until
-  // that command lands the choice reverts, so nothing is faked).
-  let postureOverride = $state<boolean | null>(null);
-  const liveExecutor = $derived(postureOverride ?? capability?.executorLive ?? false);
-  const badge = $derived(
-    capability?.enabled ? tierBadge({ ...capability, executorLive: liveExecutor }) : null,
-  );
-  const dialValue = $derived(liveExecutor ? "auto" : "suggest");
-
-  async function applyPosture(value: string) {
-    const live = value === "auto";
-    if (live === liveExecutor) return;
-    postureOverride = live;
-    try {
-      await invoke("ai_set_posture", { executorLive: live });
-    } catch {
-      postureOverride = null;
-    }
-  }
 
   let draft = $state("");
   let textareaRef = $state<HTMLTextAreaElement | null>(null);
@@ -317,38 +288,8 @@
         </IconAction>
       </div>
       <div class="foot-right">
-        {#if badge}
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger>
-              {#snippet child({ props })}
-                <button
-                  type="button"
-                  class="posture"
-                  aria-label="How the assistant acts"
-                  {...props}
-                >
-                  <span class="posture-glyph" aria-hidden="true">{badge.glyph}</span>
-                  <span class="posture-label">{badge.label}</span>
-                  <ChevronDown size={12} strokeWidth={2} class="posture-chev" />
-                </button>
-              {/snippet}
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content side="top" align="end" class="posture-menu">
-              <DropdownMenu.Label>How the assistant acts</DropdownMenu.Label>
-              <DropdownMenu.RadioGroup value={dialValue} onValueChange={applyPosture}>
-                <DropdownMenu.RadioItem value="suggest">
-                  Suggests only, I approve each action
-                </DropdownMenu.RadioItem>
-                <DropdownMenu.RadioItem value="auto">
-                  Acts on small things, I can undo them
-                </DropdownMenu.RadioItem>
-              </DropdownMenu.RadioGroup>
-              <DropdownMenu.Separator />
-              <DropdownMenu.Item onclick={() => openTransparency()}>
-                Manage in Transparency
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
+        {#if !disabled}
+          <AutonomyDial />
         {/if}
         <Button
           size="icon-sm"
@@ -413,35 +354,6 @@
     display: flex;
     align-items: center;
     gap: 0.25rem;
-  }
-  /* The posture chip: a quiet, glanceable read of how much the agent may act
-     on its own, left of Send. Click opens the dropdown to change it. */
-  .posture {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    min-width: 0;
-    height: var(--height-control, 28px);
-    padding: 0 0.5rem;
-    border: none;
-    border-radius: var(--radius-button);
-    background: transparent;
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
-    font-size: 0.75rem;
-    transition: color var(--duration-fast) var(--ease-out);
-  }
-  .posture:hover {
-    color: color-mix(in srgb, var(--foreground) 80%, transparent);
-  }
-  .posture-glyph {
-    color: var(--color-success);
-  }
-  .posture-label {
-    flex-shrink: 0;
-  }
-  :global(.posture-chev) {
-    flex-shrink: 0;
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
   }
   .mention-popover {
     position: absolute;
