@@ -19,3 +19,6 @@ CLAUDE.md
 
 # Screenshots may contain private content; never committed
 dev/screenshot/out/
+
+# Playwright MCP session artifacts (console logs, snapshots) from local UI checks
+.playwright-mcp/
