@@ -20,6 +20,7 @@ use std::sync::Arc;
 
 use os_sdk::config::Config;
 
+use arlen_ai_core::audit::{config_change_event, AuditSink};
 use arlen_ai_core::capability::access_tier_from_level;
 use arlen_ai_core::graph_query::QueryScope;
 use arlen_ai_core::graph_schema::GraphSchema;
@@ -204,14 +205,80 @@ pub fn load_ai_text() -> String {
 /// way `enabled` and the scope are published together via
 /// [`AiDaemonService::set_admission`], so the query path samples a
 /// consistent pair and never a torn one.
-fn apply_config(service: &AiDaemonService, cfg: &Config) {
-    let enabled = cfg.get::<bool>("ai.enabled").unwrap_or(false);
-    let level = read_access_level(cfg);
-    let effective_level = if enabled { level } else { 0 };
+/// The security-bearing `ai.toml` keys this daemon owns and audits on change
+/// (ai.toml-hardening piece 2): a flip of any of these changes what the AI
+/// daemon is permitted, so it must become VISIBLE in the HMAC ledger, not only
+/// a `tracing::info!`. `executor_live` / `autonomous_apps` / `action_mode` are
+/// the ai-agent's keys, audited by its own watcher.
+#[derive(Clone, PartialEq, Eq)]
+struct WatchedKeys {
+    enabled: bool,
+    access_level: u8,
+    provider: String,
+}
+
+fn read_watched_keys(cfg: &Config) -> WatchedKeys {
+    WatchedKeys {
+        enabled: cfg.get::<bool>("ai.enabled").unwrap_or(false),
+        access_level: read_access_level(cfg),
+        provider: cfg.get::<String>("ai.provider").unwrap_or_default(),
+    }
+}
+
+/// The `(key, transition)` pairs that changed between two applies, for auditing.
+/// Pure, so the diff is testable without the ledger. The provider transition
+/// carries the values (the `config_change_event` builder strips controls and
+/// bounds the length, so a hostile provider name is safe) - seeing a repoint
+/// target is exactly the anti-Recall point.
+fn config_diff(prev: &WatchedKeys, new: &WatchedKeys) -> Vec<(&'static str, String)> {
+    let mut changes = Vec::new();
+    if prev.enabled != new.enabled {
+        changes.push(("enabled", format!("{}->{}", prev.enabled, new.enabled)));
+    }
+    if prev.access_level != new.access_level {
+        changes.push((
+            "access_level",
+            format!("{}->{}", prev.access_level, new.access_level),
+        ));
+    }
+    if prev.provider != new.provider {
+        changes.push(("provider", format!("{}->{}", prev.provider, new.provider)));
+    }
+    changes
+}
+
+/// Emit a content-free audit entry for each changed security key. Best-effort:
+/// a config change is an observation audited AFTER the fact, so a down ledger
+/// logs a warning but never blocks the apply (unlike audit-before-act, which is
+/// fail-closed) - the daemon must still honour the user's config when the ledger
+/// is down; the residual unaudited-flip is the deferred same-uid boundary.
+fn emit_config_changes(
+    audit: &dyn AuditSink,
+    handle: &tokio::runtime::Handle,
+    prev: &WatchedKeys,
+    new: &WatchedKeys,
+) {
+    for (key, change) in config_diff(prev, new) {
+        if let Err(err) = handle.block_on(audit.submit(config_change_event(key, &change))) {
+            tracing::warn!(
+                key,
+                error = %err,
+                "ai.toml config-change audit failed (change applied; flip unaudited)"
+            );
+        }
+    }
+}
+
+fn apply_config(service: &AiDaemonService, keys: &WatchedKeys) {
+    let effective_level = if keys.enabled { keys.access_level } else { 0 };
     let tier = access_tier_from_level(effective_level);
     let scope = QueryScope::for_tier(tier, &GraphSchema::knowledge_graph());
-    service.set_admission(enabled, tier, scope);
-    tracing::info!(enabled, access_level = level, "ai.toml applied");
+    service.set_admission(keys.enabled, tier, scope);
+    tracing::info!(
+        enabled = keys.enabled,
+        access_level = keys.access_level,
+        "ai.toml applied"
+    );
 }
 
 /// Spawn the `ai.toml` watch thread.
@@ -228,7 +295,12 @@ fn apply_config(service: &AiDaemonService, cfg: &Config) {
 /// Runs on a dedicated OS thread because [`os_sdk::config::ConfigWatcher`]
 /// exposes a blocking `recv()`. The thread exits when the watcher is
 /// dropped (process shutdown).
-pub fn spawn_config_watch(service: Arc<AiDaemonService>) {
+pub fn spawn_config_watch(service: Arc<AiDaemonService>, audit: Arc<dyn AuditSink>) {
+    // Captured here, in the async runtime context, so the dedicated (non-runtime)
+    // watch thread can `block_on` the audit submit; the watch thread is not
+    // latency-critical and config changes are rare, so blocking it briefly on a
+    // ledger write is fine.
+    let handle = tokio::runtime::Handle::current();
     std::thread::Builder::new()
         .name("ai-config-watch".to_string())
         .spawn(move || {
@@ -257,11 +329,19 @@ pub fn spawn_config_watch(service: Arc<AiDaemonService>) {
             // closing the gap between the daemon's fail-closed startup
             // state and the first change event (a write before the watch
             // armed fires no event).
+            // The last successfully-applied keys, for the change audit. `None`
+            // until the initial publish; a fail-closed interlude (malformed
+            // write) does NOT update it, so the diff spans valid-to-valid and a
+            // transient parse error is not mis-audited as a deliberate flip.
+            let mut prev: Option<WatchedKeys> = None;
             if let Err(err) = cfg.reload() {
                 tracing::warn!(error = %err, "ai.toml initial reload failed, failing closed");
                 fail_closed(&service);
             } else {
-                apply_config(&service, &cfg);
+                let keys = read_watched_keys(&cfg);
+                apply_config(&service, &keys);
+                // The initial publish is the baseline, not a change - no audit.
+                prev = Some(keys);
             }
             tracing::info!("ai.toml watch active");
             while watcher.recv().is_ok() {
@@ -275,7 +355,15 @@ pub fn spawn_config_watch(service: Arc<AiDaemonService>) {
                     fail_closed(&service);
                     continue;
                 }
-                apply_config(&service, &cfg);
+                let keys = read_watched_keys(&cfg);
+                apply_config(&service, &keys);
+                // Audit every security-key flip against the last valid apply, so
+                // a silent change to enabled / access_level / provider becomes
+                // visible in the ledger (ai.toml-hardening piece 2).
+                if let Some(prev_keys) = prev.as_ref() {
+                    emit_config_changes(&*audit, &handle, prev_keys, &keys);
+                }
+                prev = Some(keys);
             }
             tracing::info!("ai.toml watch stopped");
         })
@@ -296,6 +384,31 @@ mod tests {
         write!(file, "{toml}").unwrap();
         let cfg = Config::load_path(file.path()).unwrap();
         read_provider(&cfg)
+    }
+
+    #[test]
+    fn config_diff_reports_only_changed_security_keys() {
+        let base = WatchedKeys {
+            enabled: false,
+            access_level: 3,
+            provider: "ollama-default".to_string(),
+        };
+        // No change -> nothing audited.
+        assert!(config_diff(&base, &base.clone()).is_empty());
+        // A single flip per key, each with its transition.
+        let enabled_on = WatchedKeys { enabled: true, ..base.clone() };
+        assert_eq!(config_diff(&base, &enabled_on), vec![("enabled", "false->true".to_string())]);
+        let widened = WatchedKeys { access_level: 4, ..base.clone() };
+        assert_eq!(config_diff(&base, &widened), vec![("access_level", "3->4".to_string())]);
+        let repointed = WatchedKeys { provider: "evil-endpoint".to_string(), ..base.clone() };
+        assert_eq!(
+            config_diff(&base, &repointed),
+            vec![("provider", "ollama-default->evil-endpoint".to_string())],
+            "a provider repoint is audited with its target (the builder bounds it)"
+        );
+        // Several at once -> all reported.
+        let all = WatchedKeys { enabled: true, access_level: 4, provider: "x".to_string() };
+        assert_eq!(config_diff(&base, &all).len(), 3);
     }
 
     #[test]
