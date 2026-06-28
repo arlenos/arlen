@@ -6,7 +6,7 @@
   /// managed in Settings, never here.
   import { writable } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import { X } from "lucide-svelte";
+  import { X, ChevronRight } from "lucide-svelte";
   import {
     entryIcon,
     formatModified,
@@ -19,12 +19,16 @@
     path,
     entry,
     onclose,
+    onnavigate,
   }: {
     /// The full path of the inspected entry.
     path: string;
     /// Its listing entry (for icon and name; null while unknown).
     entry: FileEntry | null;
     onclose?: () => void;
+    /// Navigate to a KG location key (e.g. `project:<id>`); the parent wires
+    /// this to the active controller, so a Related entry can open its lineage.
+    onnavigate?: (location: string) => void;
   } = $props();
 
   interface Info {
@@ -35,7 +39,7 @@
       modified_unix: number;
     };
     woher: { label: string; detail: string }[];
-    verwandt: { label: string; target: string }[];
+    verwandt: { label: string; target: string; target_id: string }[];
     zugriff: { readable_by: string[]; manage_link: string };
   }
 
@@ -263,11 +267,16 @@
     {#if $info.verwandt.length > 0}
       <div class="ip-section">
         <span class="ip-label">Related</span>
-        {#each $info.verwandt as line (line.label + line.target)}
-          <div class="ip-row">
+        {#each $info.verwandt as line (line.label + line.target_id)}
+          <button
+            type="button"
+            class="ip-rel"
+            onclick={() => onnavigate?.(`project:${line.target_id}`)}
+          >
             <span class="ip-key">{line.label}</span>
             <span class="ip-value">{line.target}</span>
-          </div>
+            <ChevronRight class="ip-rel-chevron" size={14} strokeWidth={2} />
+          </button>
         {/each}
       </div>
     {/if}
@@ -378,6 +387,34 @@
     min-width: 0;
     color: var(--foreground);
     overflow-wrap: anywhere;
+  }
+
+  /* A Related entry: a row that navigates to the linked KG node (its project).
+     Reads as a quiet hoverable row, not a web link; the chevron signals it
+     opens. */
+  .ip-rel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: calc(100% + 12px);
+    margin: 0 -6px;
+    padding: 4px 6px;
+    border: none;
+    background: transparent;
+    border-radius: var(--radius-chip);
+    font-size: 0.75rem;
+    text-align: left;
+    transition: background-color var(--duration-fast, 150ms) var(--ease-out, ease);
+  }
+  .ip-rel:hover {
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  }
+  .ip-rel .ip-value {
+    color: var(--foreground);
+  }
+  :global(.ip-rel-chevron) {
+    flex-shrink: 0;
+    color: color-mix(in srgb, var(--foreground) 40%, transparent);
   }
 
   .ip-manage {
