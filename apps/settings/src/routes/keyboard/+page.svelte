@@ -2,7 +2,6 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import {
-    ChevronRight,
     Keyboard as KeyboardIcon,
     Plus,
     Trash2,
@@ -19,6 +18,7 @@
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Row } from "@arlen/ui-kit/components/ui/row";
+  import { LinkCard } from "@arlen/ui-kit/components/ui/link-card";
 
   /// Everything the UI needs from `[xkb_config]` except layouts + variants,
   /// which go through dedicated backend commands so the single- vs
@@ -261,21 +261,13 @@
   <!-- Navigation card pointing at the shortcut editor. Hash anchors
        the Keyboard category so users landing here from a `Configure
        switch shortcut` link see the relevant bindings. -->
-  <a
+  <LinkCard
     href="/keyboard/shortcuts#cat-keyboard"
-    class="span-full group flex items-center gap-3 rounded-[var(--radius-input)] border border-border bg-card px-4 py-3 transition-colors hover:bg-muted/40"
+    title="Shortcuts"
+    description="Rebind window management, workspaces, apps, and shell actions."
   >
-    <KeyboardIcon class="h-5 w-5 text-muted-foreground" />
-    <div class="flex-1">
-      <div class="text-sm font-medium">Shortcuts</div>
-      <div class="text-xs text-muted-foreground">
-        Rebind window management, workspaces, apps, and shell actions.
-      </div>
-    </div>
-    <ChevronRight
-      class="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5"
-    />
-  </a>
+    {#snippet icon()}<KeyboardIcon size={20} strokeWidth={1.75} />{/snippet}
+  </LinkCard>
 
   {#if lastError}
     <div
