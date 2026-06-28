@@ -21,6 +21,7 @@ import { togglePinned } from "$lib/bookmark";
 import { clearDraft } from "$lib/stores/drafts";
 import { parseConversationEnvelope } from "$lib/export";
 import { sortSessions } from "$lib/pin-session";
+import type { Artifact } from "$lib/components/artifact/types";
 
 /// Who produced a message. `error` is a turn that failed (daemon down,
 /// disabled, query error) — rendered distinctly, never as an answer.
@@ -75,6 +76,10 @@ export interface Message {
   /// bookmarks view. Absent (not `false`) when unmarked, to keep the stored
   /// record minimal.
   pinned?: boolean;
+  /// Artifacts the assistant produced this turn (the coder's command fills
+  /// this). Each renders inline or as a card that opens the right pane, decided
+  /// by kind + size in `placement`.
+  artifacts?: Artifact[];
 }
 
 /// One conversation: an ordered transcript plus a display title and creation

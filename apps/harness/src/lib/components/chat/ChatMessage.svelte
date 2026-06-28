@@ -21,6 +21,9 @@
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import ToolCallCard from "./ToolCallCard.svelte";
+  import ArtifactBlock from "./ArtifactBlock.svelte";
+  import ArtifactCard from "./ArtifactCard.svelte";
+  import { placement } from "$lib/components/artifact/placement";
   import { renderMarkdown } from "$lib/markdown";
   import { externalLinks } from "$lib/externalLinks";
   import {
@@ -167,6 +170,18 @@
         {/each}
       </div>
     {/if}
+
+    {#if message.artifacts && message.artifacts.length > 0}
+      <div class="artifacts">
+        {#each message.artifacts as art, i (i)}
+          {#if placement(art) === "pane"}
+            <ArtifactCard artifact={art} />
+          {:else}
+            <ArtifactBlock artifact={art} />
+          {/if}
+        {/each}
+      </div>
+    {/if}
   {/if}
 
   {#if !message.pending && !editing}
@@ -291,6 +306,12 @@
     flex-wrap: wrap;
     gap: 0.25rem;
     padding-inline: var(--space-card, 1rem);
+  }
+  .artifacts {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 0.5rem;
   }
   .mention {
     display: inline-flex;

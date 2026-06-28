@@ -9,8 +9,10 @@
   import ChatThread from "$lib/components/chat/ChatThread.svelte";
   import Composer from "$lib/components/chat/Composer.svelte";
   import CapabilityBar from "$lib/components/chat/CapabilityBar.svelte";
+  import ArtifactPanel from "$lib/components/ArtifactPanel.svelte";
   import { readCapability, type Capability } from "$lib/capability";
   import { messages } from "$lib/stores/conversation";
+  import { openArtifact, closePane } from "$lib/stores/artifact";
 
   let capability = $state<Capability | null>(null);
   let capLoaded = $state(false);
@@ -40,31 +42,45 @@
   let composer = $state<Composer | null>(null);
 </script>
 
-<div class="chat">
-  <ChatThread
-    {emptyVariant}
-    showEmpty={capLoaded}
-    {aiReady}
-    onstarter={(text) => composer?.setText(text)}
-    onretry={loadCapability}
-  />
-  <div class="foot">
-    <Composer bind:this={composer} disabled={composerDisabled} {placeholder} />
-    <!-- The steady-state posture lives in the composer foot now; this line is
-         warning-only (AI off or unreachable). It shows only once there are
-         messages: on an empty chat the centred empty state already carries
-         the same off / unreachable notice, so this would double it. -->
-    {#if !aiReady && $messages.length > 0}
-      <CapabilityBar {capability} loaded={capLoaded} onretry={loadCapability} />
-    {/if}
+<div class="layout">
+  <div class="chat">
+    <ChatThread
+      {emptyVariant}
+      showEmpty={capLoaded}
+      {aiReady}
+      onstarter={(text) => composer?.setText(text)}
+      onretry={loadCapability}
+    />
+    <div class="foot">
+      <Composer bind:this={composer} disabled={composerDisabled} {placeholder} />
+      <!-- The steady-state posture lives in the composer foot now; this line is
+           warning-only (AI off or unreachable). It shows only once there are
+           messages: on an empty chat the centred empty state already carries
+           the same off / unreachable notice, so this would double it. -->
+      {#if !aiReady && $messages.length > 0}
+        <CapabilityBar {capability} loaded={capLoaded} onretry={loadCapability} />
+      {/if}
+    </div>
   </div>
+  {#if $openArtifact}
+    <ArtifactPanel artifact={$openArtifact} onclose={closePane} />
+  {/if}
 </div>
 
 <style>
+  /* Fill the shell's content area (not 100vh, which overflows the shell and
+     adds a second outer scrollbar). The chat scrolls inside; the pane sits
+     beside it at full height. */
+  .layout {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+  }
   .chat {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
-    height: 100%;
     min-height: 0;
   }
   .foot {
