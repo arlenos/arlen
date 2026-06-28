@@ -16,6 +16,7 @@ pub mod config;
 pub mod discovery;
 pub mod engine;
 pub mod executor;
+pub mod fs_move;
 pub mod gate;
 pub mod graph;
 pub mod handlers;
