@@ -268,7 +268,7 @@ integration-nightly:
     stamp="$(date -u +%Y%m%dT%H%M%SZ)"
     report="$report_dir/it1-$stamp.log"
     echo "IT-1 nightly $stamp (host $(uname -n))" | tee "$report"
-    for c in daemons/event-bus daemons/knowledge daemons/audit-daemon ai; do
+    for c in daemons/event-bus daemons/knowledge daemons/audit-daemon daemons/code-indexer ai; do
         echo "== build $c ==" | tee -a "$report"
         cargo build --manifest-path "{{ROOT}}/$c/Cargo.toml" 2>&1 | tee -a "$report"
     done
