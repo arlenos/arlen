@@ -199,6 +199,16 @@ pub(crate) fn is_honeytool(tool: &str) -> bool {
 /// whose inverse retract would then wrongly remove it. A non-reversible schema
 /// carries no obligation (vacuously true). When a new reversible effect type gains
 /// a rule, its proof obligation is added here.
+///
+/// DELIBERATE LIMIT - External effects are NOT structurally verified here. A
+/// `Reversible` `Effect::External` (e.g. `fs.move`) hits the `_ => true` arm, so
+/// this proof trusts the declared `class` wholesale; the real reversibility is the
+/// executor's collision-safe planner ([`crate::fs_move::plan_move`]), not a
+/// structural property predict can check (an external op touches the filesystem,
+/// not the graph WorldState). Whoever registers a new reversible External rule
+/// OWNS that execution-time guarantee. If a future External op ever gains a
+/// checkable precondition shape, add its obligation as a new match arm here rather
+/// than leaning on the catch-all.
 pub(crate) fn reversibility_proof_holds(schema: &ActionSchema) -> bool {
     if compensation_of(&schema.effects).is_none() {
         return true;
@@ -279,10 +289,13 @@ fn graph_write_link_schema() -> ActionSchema {
 /// never overwrites an occupied destination, so the file always lands somewhere
 /// new and the captured `RestorePath` inverse is exact (design-doc gap F4
 /// closed in the executor, not via a predict precondition). The directory scope
-/// (`~/Downloads` -> `~/Documents/Projects`) is enforced by the gate's
-/// tool-scope check, and source-existence by the executor arm; neither is a
-/// world-model precondition. Reversible, so the gate may lift it to a previewed
-/// (confirm-gated, supervised) execution - never a silent autonomous write.
+/// (`~/Downloads` -> `~/Documents/Projects`) and source-existence are enforced by
+/// the executor arm against the behaviour's declared tool-scope values, NOT by the
+/// gate (whose tool-scope check is name-only) and NOT by a world-model precondition
+/// (there are none). Predict proves only that the schema is reversible; the path
+/// confinement is execution-time and the executor MUST enforce it. Reversible, so
+/// the gate may lift it to a previewed (confirm-gated, supervised) execution -
+/// never a silent autonomous write.
 fn fs_move_schema() -> ActionSchema {
     ActionSchema {
         action: "fs.move".to_string(),
