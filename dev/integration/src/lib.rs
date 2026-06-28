@@ -171,9 +171,16 @@ impl EphemeralStack {
         // (and exact `dev.arlen-settings` in debug), so the revoke scenario's
         // direct call as the test's own dev id needs this debug-only exact
         // extra-admit.
+        //
+        // And the knowledge read-scope tier: the file manager's as-of
+        // `FILE_PART_OF` traversal needs a FirstParty/system-anchored caller
+        // (the rel-type token cannot be scoped per-label), so a seeded read
+        // scenario sets the debug-only exact extra-first-party env to the test's
+        // own dev id - the analog of the daemon's `dev.arlen-*` FirstParty admit.
         if let Some(id) = own_app_id() {
             env.insert("ARLEN_AUDIT_EXTRA_ADMIT".to_string(), id.clone());
-            env.insert("ARLEN_REVOKE_EXTRA_ADMIT".to_string(), id);
+            env.insert("ARLEN_REVOKE_EXTRA_ADMIT".to_string(), id.clone());
+            env.insert("ARLEN_KNOWLEDGE_EXTRA_FIRST_PARTY".to_string(), id);
         }
         env
     }
