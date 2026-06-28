@@ -44,7 +44,7 @@ use arlen_ai_agent::source::{subscription_types, EventBusSource, DEFAULT_CONSUME
 use std::sync::{Arc, Mutex};
 
 use arlen_ai_classifier::{ClassifierPolicy, InjectionClassifier};
-use arlen_ai_core::audit::{AuditSink, LedgerAuditSink};
+use arlen_ai_core::audit::{config_change_event, AuditSink, LedgerAuditSink};
 use arlen_ai_core::capability::{AccessTier, Capability};
 use arlen_ai_core::provider::AIProvider;
 use arlen_ai_providers::proxied::{ProxiedConfig, ProxiedProvider};
@@ -588,6 +588,53 @@ struct Collaborators<'a> {
     status: &'a StatusHandle,
 }
 
+/// The agent-owned security-bearing `ai.toml` keys, snapshotted per epoch for
+/// the change audit (ai.toml-hardening piece 2, the agent half). `executor_live`
+/// is THE master gate (flipping the file IS flipping it), so a silent change to
+/// any of these must become visible in the ledger, not only a `tracing` line.
+/// (enabled / access_level / provider are the ai-daemon's keys, audited there.)
+#[derive(Clone, PartialEq, Eq)]
+struct AgentSecurityKeys {
+    executor_live: bool,
+    action_mode: arlen_ai_core::capability::BaselineMode,
+    autonomous_apps: Vec<String>,
+}
+
+impl AgentSecurityKeys {
+    fn from_config(config: &AgentConfig) -> Self {
+        Self {
+            executor_live: config.executor_live,
+            action_mode: config.actions.default_mode(),
+            autonomous_apps: config.actions.autonomous_apps().map(String::from).collect(),
+        }
+    }
+}
+
+/// The `(key, transition)` pairs that changed between two epochs' security keys.
+/// Pure, so testable without the ledger. `autonomous_apps` reports each added /
+/// removed app id individually (the `config_change_event` builder bounds + strips
+/// the detail, so a hostile app id is safe).
+fn agent_config_diff(prev: &AgentSecurityKeys, new: &AgentSecurityKeys) -> Vec<(&'static str, String)> {
+    let mut changes = Vec::new();
+    if prev.executor_live != new.executor_live {
+        changes.push(("executor_live", format!("{}->{}", prev.executor_live, new.executor_live)));
+    }
+    if prev.action_mode != new.action_mode {
+        changes.push(("action_mode", format!("{:?}->{:?}", prev.action_mode, new.action_mode)));
+    }
+    for app in &new.autonomous_apps {
+        if !prev.autonomous_apps.contains(app) {
+            changes.push(("autonomous_apps", format!("added:{app}")));
+        }
+    }
+    for app in &prev.autonomous_apps {
+        if !new.autonomous_apps.contains(app) {
+            changes.push(("autonomous_apps", format!("removed:{app}")));
+        }
+    }
+    changes
+}
+
 /// The epoch loop. Each iteration is one config epoch: load settings and
 /// behaviours, run the dispatcher, and rebuild on the next config change.
 async fn run(
@@ -659,6 +706,11 @@ async fn run(
     // `manual_rx` is borrowed into each epoch's `dispatch_until_change`. Bounded:
     // a backlog of invokes applies backpressure rather than growing unbounded.
     let (manual_tx, mut manual_rx) = tokio::sync::mpsc::channel::<ManualInvoke>(8);
+    // The last applied agent security keys, for the change audit (piece 2). `None`
+    // until the first epoch (its baseline is not a change). Persists across epochs
+    // so a flip on a Reload is diffed against the prior valid config; a provider-
+    // only rearm re-parses the same config, so its diff is empty (no false audit).
+    let mut prev_security: Option<AgentSecurityKeys> = None;
     loop {
         // At the very top of every epoch, before any (possibly slow) config
         // load, classifier provisioning, or resubscribe, report `subscribing`:
@@ -696,6 +748,25 @@ async fn run(
                 AgentConfig::fail_closed()
             }
         };
+        // Audit any flip of the agent's security keys (executor_live / action_mode
+        // / autonomous_apps) against the last valid epoch, so a silent change -
+        // most of all flipping `executor_live`, which IS the executor gate -
+        // becomes visible in the HMAC ledger (ai.toml-hardening piece 2). Best-
+        // effort, like the ai-daemon half: a down ledger logs a warning but never
+        // blocks the epoch (a config change is audited after the fact, not gated).
+        let security = AgentSecurityKeys::from_config(&config);
+        if let Some(prev) = prev_security.as_ref() {
+            for (key, change) in agent_config_diff(prev, &security) {
+                if let Err(err) = audit.submit(config_change_event(key, &change)).await {
+                    tracing::warn!(
+                        key,
+                        error = %err,
+                        "ai.toml config-change audit failed (change applied; flip unaudited)"
+                    );
+                }
+            }
+        }
+        prev_security = Some(security);
         let outcome = load(&behaviour_sources(), &config.enabled);
         for err in &outcome.errors {
             tracing::warn!(error = %err, "behaviour failed to load");
@@ -1457,6 +1528,34 @@ async fn shutdown_signal() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn agent_config_diff_reports_only_changed_security_keys() {
+        use arlen_ai_core::capability::BaselineMode;
+        let base = AgentSecurityKeys {
+            executor_live: false,
+            action_mode: BaselineMode::Suggest,
+            autonomous_apps: vec!["com.example.a".to_string()],
+        };
+        // No change -> nothing audited.
+        assert!(agent_config_diff(&base, &base.clone()).is_empty());
+        // The master gate flip is audited with its transition.
+        let live = AgentSecurityKeys { executor_live: true, ..base.clone() };
+        assert_eq!(agent_config_diff(&base, &live), vec![("executor_live", "false->true".to_string())]);
+        // A baseline-mode change.
+        let supervised = AgentSecurityKeys { action_mode: BaselineMode::Supervised, ..base.clone() };
+        assert_eq!(agent_config_diff(&base, &supervised).len(), 1);
+        assert_eq!(agent_config_diff(&base, &supervised)[0].0, "action_mode");
+        // An autonomous-app grant added + the old one removed -> two entries.
+        let regranted = AgentSecurityKeys {
+            autonomous_apps: vec!["com.example.b".to_string()],
+            ..base.clone()
+        };
+        let d = agent_config_diff(&base, &regranted);
+        assert_eq!(d.len(), 2);
+        assert!(d.contains(&("autonomous_apps", "added:com.example.b".to_string())));
+        assert!(d.contains(&("autonomous_apps", "removed:com.example.a".to_string())));
+    }
 
     #[cfg(not(feature = "onnx"))]
     #[test]
