@@ -181,7 +181,7 @@ mod tests {
 /// the arm is unit-tested with an in-memory mover; [`OsFileMover`] is the real
 /// on-disk impl. The planner guarantees `to` is a free path, so an
 /// implementation never has to (and must never) overwrite.
-pub trait FileMover {
+pub trait FileMover: Send + Sync {
     /// Move `from` to `to`. `to` is a planner-chosen free path (never occupied).
     fn move_file(&self, from: &str, to: &str) -> std::io::Result<()>;
 }

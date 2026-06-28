@@ -34,6 +34,7 @@ use arlen_ai_agent::engine::{
 use arlen_ai_agent::gate::Gate;
 use arlen_ai_agent::slice::{FsPathResolver, ProcMountsPolicy};
 use arlen_ai_agent::executor::{ActionReceipt, Approver, Compensator, LiveExecutor};
+use arlen_ai_agent::fs_move::{FileMover, OsFileMover};
 use arlen_ai_agent::graph::{UnixGraph, UnixRelationWriter, DEFAULT_GRAPH_SOCKET};
 use arlen_ai_agent::handlers::builtin_handlers;
 use arlen_ai_agent::receipt_store::{ReceiptStore, RetainedReceipt};
@@ -686,6 +687,7 @@ async fn run(
     let compensator = Compensator::new(
         Arc::new(UnixRelationWriter::new(graph_socket())),
         Arc::new(LedgerAuditSink::at_default_socket()) as Arc<dyn AuditSink>,
+        Arc::new(OsFileMover) as Arc<dyn FileMover>,
     );
     // The approve path's executor: like the compensator it holds startup-stable
     // deps (the same writer + audit, plus the real path + mount proof resolvers)
