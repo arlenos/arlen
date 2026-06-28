@@ -141,6 +141,50 @@ pub fn write_frame<W: Write, T: Serialize>(writer: &mut W, value: &T) -> std::io
     writer.flush()
 }
 
+/// Async read of a length-prefixed JSON frame (the server + client
+/// share this over their tokio streams). Refuses an oversized
+/// declared length before allocating.
+pub async fn read_frame_async<R, T>(reader: &mut R) -> std::io::Result<T>
+where
+    R: tokio::io::AsyncRead + Unpin,
+    T: for<'de> Deserialize<'de>,
+{
+    use tokio::io::AsyncReadExt;
+    let mut len_buf = [0u8; 4];
+    reader.read_exact(&mut len_buf).await?;
+    let len = u32::from_be_bytes(len_buf) as usize;
+    if len > MAX_FRAME {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "frame exceeds MAX_FRAME",
+        ));
+    }
+    let mut body = vec![0u8; len];
+    reader.read_exact(&mut body).await?;
+    serde_json::from_slice(&body)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+}
+
+/// Async write of a length-prefixed JSON frame.
+pub async fn write_frame_async<W, T>(writer: &mut W, value: &T) -> std::io::Result<()>
+where
+    W: tokio::io::AsyncWrite + Unpin,
+    T: Serialize,
+{
+    use tokio::io::AsyncWriteExt;
+    let body = serde_json::to_vec(value)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    if body.len() > MAX_FRAME {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "frame exceeds MAX_FRAME",
+        ));
+    }
+    writer.write_all(&(body.len() as u32).to_be_bytes()).await?;
+    writer.write_all(&body).await?;
+    writer.flush().await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
