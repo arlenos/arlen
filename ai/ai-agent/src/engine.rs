@@ -344,6 +344,14 @@ pub struct PendingProposal {
     /// consent, not the authority. The harness renders them safely. Empty when the
     /// proposer stated no operands.
     pub operands: Vec<(String, String)>,
+    /// The proposed file change(s), when the action mutates files - the diff body
+    /// the harness gate card shows so the user sees the exact change before
+    /// approval (and again as the done-receipt). `Some` only for a file-mutating
+    /// tool (today `fs.move`, a rename); `None` for a graph write or any tool
+    /// with no file diff. Derived from the (untrusted) operands as informed-
+    /// consent preview - the executor re-confines + handles a name collision at
+    /// approve time, so this is what it WOULD do, not the authority.
+    pub change: Option<arlen_file_change::FileChangeSet>,
     /// The full executable form of this proposal, retained for the approve path
     /// (`approve(id)` re-validates + writes it). `#[serde(skip)]`: it carries the
     /// action operands + run context, so it NEVER crosses the wire - the harness
@@ -382,24 +390,59 @@ pub fn proposal_view(outcome: &DispatchOutcome) -> Option<PendingProposal> {
         .as_ref()
         .map(|p| p.effects.iter().map(|e| format!("{e:?}")).collect())
         .unwrap_or_default();
+    // The concrete operands the action targets, so the card shows the user the
+    // actual file/destination, not just the model's summary.
+    let operands: Vec<(String, String)> = action
+        .arguments
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let change = file_change_preview(&action.tool, &operands);
     Some(PendingProposal {
         id: *audit_index,
         behaviour: behaviour.clone(),
         tool: action.tool.clone(),
         summary: action.summary.clone(),
         reason: crate::gate::reason_label(*reason),
-        // The concrete operands the action targets (sorted), so the card shows the
-        // user the actual file/destination, not just the model's summary.
-        operands: action
-            .arguments
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect(),
+        operands,
+        change,
         // Carry the executable form (the dispatch path captured it for exactly
         // this RequireConfirmation case) so a later approval can perform it.
         exec: pending_exec.clone(),
         effects,
     })
+}
+
+/// The file-change preview for a proposal's gate card, derived from the
+/// (untrusted) operands so the human approves seeing the actual change, not only
+/// the model's prose. Today only `fs.move` has a file-change shape - a rename of
+/// `source` into `dest_dir`, whose destination is `dest_dir` joined with the
+/// source's basename (the honest "what it would do"; the executor independently
+/// re-confines to the behaviour's declared scope and resolves a name collision
+/// at approve time, so this is informed-consent preview, never the authority).
+/// Any other tool (a graph write, an unknown op) has no file diff and yields
+/// `None`. Pure. The operand keys mirror the executor's `fs.move` arm.
+fn file_change_preview(
+    tool: &str,
+    operands: &[(String, String)],
+) -> Option<arlen_file_change::FileChangeSet> {
+    if tool != "fs.move" {
+        return None;
+    }
+    let value = |key: &str| {
+        operands
+            .iter()
+            .find(|(name, _)| name == key)
+            .map(|(_, v)| v.as_str())
+            .filter(|v| !v.is_empty())
+    };
+    let source = value("source")?;
+    let dest_dir = value("dest_dir")?;
+    let name = std::path::Path::new(source).file_name()?.to_str()?;
+    let dest = format!("{}/{}", dest_dir.trim_end_matches('/'), name);
+    Some(arlen_file_change::FileChangeSet::single(
+        arlen_file_change::FileChange::rename(source, dest),
+    ))
 }
 
 /// The full executable form of a confirmation-needing proposal, retained
@@ -2483,6 +2526,42 @@ tools:
             ],
             "operands are surfaced sorted by key"
         );
+        // The card also carries the proposed file change: a rename of the source
+        // into dest_dir (dest = dest_dir + the source basename), so the diff body
+        // shows the exact move.
+        assert_eq!(
+            view.change,
+            Some(arlen_file_change::FileChangeSet::single(
+                arlen_file_change::FileChange::rename(
+                    "/home/u/Downloads/report.pdf",
+                    "/home/u/Documents/Projects/report.pdf",
+                )
+            )),
+        );
+    }
+
+    #[test]
+    fn proposal_view_has_no_file_change_for_a_non_file_tool() {
+        // A graph write mutates the KG, not a file, so there is no diff body.
+        let mut arguments = std::collections::BTreeMap::new();
+        arguments.insert("from".to_string(), "system.File:f1".to_string());
+        let outcome = DispatchOutcome::Decided {
+            behaviour: "auto-tag".to_string(),
+            action: ProposedAction {
+                tool: "graph.write".to_string(),
+                summary: "tag a file".to_string(),
+                arguments,
+            },
+            decision: ActionDecision::RequireConfirmation,
+            reason: DecisionReason::mode(),
+            audit_index: 7,
+            plan: plan_for("graph.write"),
+            dry_run: None,
+            executed: None,
+            pending_exec: None,
+        };
+        let view = proposal_view(&outcome).expect("a confirmation decision is a proposal");
+        assert_eq!(view.change, None);
     }
 
     #[test]
