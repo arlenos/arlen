@@ -32,42 +32,36 @@
   );
 </script>
 
-<div
-  class="flex items-center gap-3 rounded-[var(--radius-chip)] border border-transparent px-3 py-2 transition-colors hover:border-border hover:bg-muted/30"
-  class:bg-destructive={hasConflict}
-  class:text-destructive-foreground={hasConflict}
-  class:border-destructive={hasConflict}
->
-  <div class="min-w-0 flex-1">
-    <div class="flex items-center gap-2">
-      <span class="text-sm font-medium">{entry.label}</span>
+<div class="kb-row" class:conflict={hasConflict}>
+  <div class="kb-label">
+    <div class="kb-title-line">
+      <span class="kb-title">{entry.label}</span>
       {#if hasConflict}
-        <AlertTriangle class="h-3.5 w-3.5 text-destructive" />
+        <AlertTriangle size={14} strokeWidth={2} class="kb-conflict-icon" />
       {/if}
     </div>
     {#if entry.description}
-      <div class="mt-0.5 text-xs text-muted-foreground">
-        {entry.description}
-      </div>
+      <div class="kb-desc">{entry.description}</div>
     {/if}
     {#if showsModuleOverride}
-      <div class="mt-0.5 text-xs text-muted-foreground">
+      <div class="kb-desc">
         Overrides module default
         {#if entry.defaultBinding}
-          <span class="font-mono">{entry.defaultBinding}</span>
+          <span class="kb-mono">{entry.defaultBinding}</span>
         {/if}
       </div>
     {/if}
   </div>
 
-  <button
-    type="button"
-    class="inline-flex min-w-20 items-center justify-center rounded-[var(--radius-chip)] border border-border bg-background px-3 py-1 font-mono text-xs transition-colors hover:bg-muted"
+  <Button
+    variant="outline"
+    size="sm"
+    class="kb-pill"
     onclick={() => onRebind(entry)}
     aria-label="Change binding for {entry.label}"
   >
     {entry.binding ?? "Not set"}
-  </button>
+  </Button>
 
   {#if isModified && hasDefault}
     <Button
@@ -77,18 +71,65 @@
       aria-label="Reset to default"
       title="Reset to default ({entry.defaultBinding})"
     >
-      <RotateCcw class="h-3.5 w-3.5" />
+      <RotateCcw size={14} strokeWidth={2} />
     </Button>
   {/if}
 
   {#if canRemove}
-    <Button
-      variant="ghost"
-      size="icon"
-      onclick={() => onRemove(entry)}
-      aria-label="Remove binding"
-    >
-      <Trash2 class="h-3.5 w-3.5" />
+    <Button variant="ghost" size="icon" onclick={() => onRemove(entry)} aria-label="Remove binding">
+      <Trash2 size={14} strokeWidth={2} />
     </Button>
   {/if}
 </div>
+
+<style>
+  .kb-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-chip);
+    border: 1px solid transparent;
+    transition:
+      background-color var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out);
+  }
+  .kb-row:hover {
+    background: color-mix(in srgb, var(--foreground) 5%, transparent);
+    border-color: color-mix(in srgb, var(--foreground) 10%, transparent);
+  }
+  .kb-row.conflict {
+    background: color-mix(in srgb, var(--color-error) 12%, transparent);
+    border-color: color-mix(in srgb, var(--color-error) 35%, transparent);
+  }
+  .kb-label {
+    min-width: 0;
+    flex: 1;
+  }
+  .kb-title-line {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .kb-title {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--foreground);
+  }
+  :global(.kb-conflict-icon) {
+    color: var(--color-error);
+    flex-shrink: 0;
+  }
+  .kb-desc {
+    margin-top: 0.0625rem;
+    font-size: 0.6875rem;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+  }
+  .kb-mono,
+  :global(.kb-pill) {
+    font-family: var(--font-mono, monospace);
+  }
+  :global(.kb-pill) {
+    min-width: 5rem;
+  }
+</style>
