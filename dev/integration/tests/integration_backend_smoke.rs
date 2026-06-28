@@ -1789,6 +1789,20 @@ async fn the_seeded_corpus_returns_different_membership_per_as_of_time() {
         !alpha_late.contains(&MOVED.to_string()),
         "moved.md left Alpha by the late as-of (members late: {alpha_late:?})"
     );
+
+    // files_info: the live "Related" read (no as-of filter, the FM's
+    // read_verwandt) returns every project membership carrying its `target_id`
+    // (the project id arlen-ui's provenance chip navigates to). moved.md was in
+    // both projects over its life, so both ids surface.
+    let related = file_info_relations(&client, MOVED).await;
+    assert!(
+        related.contains(&ALPHA.to_string()) && related.contains(&BETA.to_string()),
+        "files_info carries both project target_ids for moved.md (got: {related:?})"
+    );
+    assert!(
+        related.iter().all(|id| !id.is_empty()),
+        "every relation carries a non-empty target_id (got: {related:?})"
+    );
 }
 
 /// The file manager's `file_part_of_as_of` data path: the projects a file
@@ -1827,4 +1841,15 @@ fn id_column(rows: Vec<std::collections::HashMap<String, serde_json::Value>>) ->
     rows.iter()
         .filter_map(|r| r.get("id").and_then(|v| v.as_str()).map(String::from))
         .collect()
+}
+
+/// The file manager's plain `read_verwandt` data path (files_info "Related"):
+/// every project a file is part of, no as-of filter, each carrying the project
+/// `target_id`. Mirrors apps/files lib.rs. Returns the project ids.
+async fn file_info_relations(client: &UnixGraphClient, file: &str) -> Vec<String> {
+    let cypher = format!(
+        "MATCH (f:File {{id: '{file}'}})-[:FILE_PART_OF]->(p:Project) \
+         RETURN p.id AS id, p.name AS name ORDER BY p.id LIMIT 16"
+    );
+    id_column(client.query_rows(&cypher).await.expect("files_info relations query"))
 }
