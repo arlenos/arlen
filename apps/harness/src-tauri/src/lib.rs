@@ -12,6 +12,7 @@ mod ai_manage;
 mod app_meta;
 mod behaviours;
 mod capability;
+mod file_ref;
 mod mention;
 mod notices;
 mod pins;
@@ -65,6 +66,8 @@ pub fn run() {
             notices::ai_notices,
             mention::list_files,
             mention::read_mention_file,
+            file_ref::file_ref_resolve,
+            file_ref::open_file_as_user,
             save::artifact_save,
             pins::artifact_pins_load,
             pins::artifact_pins_save,
