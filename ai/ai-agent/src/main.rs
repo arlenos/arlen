@@ -699,6 +699,7 @@ async fn run(
         Arc::new(ProcMountsPolicy),
         Arc::new(UnixRelationWriter::new(graph_socket())),
         Arc::new(LedgerAuditSink::at_default_socket()) as Arc<dyn AuditSink>,
+        Arc::new(OsFileMover) as Arc<dyn FileMover>,
     );
     let iface_graph: Arc<dyn GraphHandle> = Arc::new(UnixGraph::new(graph_socket()));
     // User-invoke (`run_skill`) channel: the D-Bus interface (re-registered each
