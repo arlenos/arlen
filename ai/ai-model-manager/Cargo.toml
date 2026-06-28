@@ -10,3 +10,5 @@ edition = "2021"
 name = "arlen_ai_model_manager"
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
