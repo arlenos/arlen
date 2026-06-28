@@ -88,6 +88,13 @@ pub struct QueryReply {
     /// rather than implying no tools ran, so a slow tool-using turn cannot
     /// masquerade as a direct answer (transparency-first).
     pub trace_unavailable: bool,
+    /// The rich-object artifacts the turn produced (the harness redesign's
+    /// `Artifact[]` path; the frontend renders them as `Message.artifacts`). The
+    /// transport seam: a turn carries its artifacts here. Empty today - no producer
+    /// mints them yet (the agent/daemon artifact-emit is a separate AI-layer
+    /// slice); when one lands, the artifacts flow end to end with no further
+    /// harness/frontend wiring, since the frontend consumer already renders this.
+    pub artifacts: Vec<arlen_artifact::Artifact>,
 }
 
 /// The result of fetching the tool trace: the calls plus whether retrieval
@@ -202,6 +209,9 @@ pub async fn ai_query(prompt: String) -> Result<QueryReply, String> {
                     answer,
                     tool_calls: trace.calls,
                     trace_unavailable: trace.unavailable,
+                    // No artifact producer in the turn path yet; the transport is
+                    // wired so a future agent/daemon emit flows straight through.
+                    artifacts: Vec::new(),
                 });
             }
             Poll::Failed(reason) => return Err(reason),

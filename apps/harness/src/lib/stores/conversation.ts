@@ -369,6 +369,7 @@ export async function send(prompt: string, mentions: MentionContent[] = []): Pro
       answer: string;
       toolCalls: ToolCall[];
       traceUnavailable: boolean;
+      artifacts?: Artifact[];
     }>("ai_query", { prompt: buildPrompt(text, mentions) });
     updateSession(id, (m) =>
       m.map((msg) =>
@@ -379,6 +380,7 @@ export async function send(prompt: string, mentions: MentionContent[] = []): Pro
               pending: false,
               toolCalls: reply.toolCalls,
               traceUnavailable: reply.traceUnavailable,
+              artifacts: reply.artifacts,
             }
           : msg,
       ),
@@ -428,6 +430,7 @@ export async function regenerate(): Promise<void> {
       answer: string;
       toolCalls: ToolCall[];
       traceUnavailable: boolean;
+      artifacts?: Artifact[];
     }>("ai_query", { prompt: plan.prompt });
     // Success: atomically swap to the kept prefix plus the fresh answer,
     // dropping the old response and the placeholder in one update.
@@ -440,6 +443,7 @@ export async function regenerate(): Promise<void> {
         pending: false,
         toolCalls: reply.toolCalls,
         traceUnavailable: reply.traceUnavailable,
+        artifacts: reply.artifacts,
       },
     ]);
   } catch (e) {
