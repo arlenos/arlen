@@ -609,11 +609,16 @@ impl SliceSpec {
                 self.mark_node(bind);
             }
             // An external (non-graph) effect mutates the filesystem or a setting,
-            // not graph nodes the slice can load. Predicting it needs the
-            // world-facts ingestion (EM-R3) the slice does not yet build, so refuse
-            // it here (flag for `extract`); it lands with that ingestion.
-            Effect::External { .. } => {
-                self.external_effect = true;
+            // not graph nodes the slice can load. A `Reversible` external (the
+            // trusted registry's collision-safe `fs.move`) carries no graph
+            // precondition to load and its safety is execution-time, so the slice
+            // has nothing to ingest for it - allow it. Anything NOT `Reversible`
+            // still needs the world-facts ingestion (EM-R3) to prove its
+            // preconditions, so flag it for `extract` to refuse (fail-closed).
+            Effect::External { class, .. } => {
+                if !class.is_reversible() {
+                    self.external_effect = true;
+                }
             }
             // Load the target edge's prior presence (as RetractEdge does), so a
             // strict AssertEdge sees a pre-existing edge and fails closed even
@@ -2071,25 +2076,42 @@ tmpfs /tmp\\040dir tmpfs rw 0 0
     }
 
     #[test]
-    fn external_effect_is_refused_until_world_facts() {
-        use crate::effect_model::{CaptureShape, EffectDomain, InverseClass};
-        // An external (non-graph) effect cannot be predicted on the graph slice
-        // until the world-facts ingestion (EM-R3) lands, so it is refused even
-        // when declared reversible.
-        let schema = ActionSchema {
+    fn a_reversible_external_is_admitted_but_a_non_reversible_one_is_refused() {
+        use crate::effect_model::{
+            CaptureShape, EffectDomain, InverseClass, IrreversibilityReason,
+        };
+        let external = |class| ActionSchema {
             action: "fs.move".to_string(),
             preconditions: vec![],
             effects: vec![Effect::External {
                 domain: EffectDomain::Filesystem,
                 op: "move".to_string(),
                 target: "file".to_string(),
-                class: InverseClass::Reversible { capture: CaptureShape::RestorePath },
+                class,
             }],
             provenance: Provenance::Given,
         };
+        // A `Reversible` external (the collision-safe fs.move) carries no graph
+        // precondition to load and is safe at execution time, so extract admits
+        // it (the executor-go-live un-gate).
         assert!(
-            matches!(SliceSpec::extract(&schema), Err(SliceError::UnsupportedEffect(_))),
-            "an external effect must be refused until world-facts ingestion"
+            SliceSpec::extract(&external(InverseClass::Reversible {
+                capture: CaptureShape::RestorePath,
+            }))
+            .is_ok(),
+            "a reversible external effect is admitted"
+        );
+        // A non-reversible external still needs world-facts ingestion (EM-R3) to
+        // prove anything, so it stays refused (fail-closed) - an external send is
+        // never lifted.
+        assert!(
+            matches!(
+                SliceSpec::extract(&external(InverseClass::Irreversible {
+                    reason: IrreversibilityReason::ExternalSend,
+                })),
+                Err(SliceError::UnsupportedEffect(_))
+            ),
+            "a non-reversible external effect stays refused"
         );
     }
 

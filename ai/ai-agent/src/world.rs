@@ -772,14 +772,30 @@ fn apply_effects(effects: &[Effect], b: &Bindings, state: &WorldState) -> Result
                 node.fields.insert(field.clone(), value.clone());
             }
             // An external effect mutates the filesystem / a setting, not the graph
-            // WorldState, and predicting it soundly needs the world-facts the slice
-            // does not yet ingest (EM-R3). Fail closed until then: an `External`
-            // effect cannot be predicted `Valid`, so it is never lifted. The slice
-            // also refuses it up front; this is the interpreter's backstop.
-            Effect::External { domain, op, .. } => {
-                return Err(format!(
-                    "External {domain:?}/{op}: external effects need world-facts ingestion (EM-R3), not yet wired"
-                ));
+            // WorldState. A `Reversible` external (the trusted registry's only
+            // such rule today is the collision-safe `fs.move`) carries no graph
+            // precondition to simulate and changes no graph node, so its
+            // simulation is a graph no-op: predict proves nothing about the move
+            // itself (with no preconditions it is `Valid` for any bindings). The
+            // move's safety is ENTIRELY execution-time - the collision-safe
+            // planner guarantees the captured inverse, the executor arm confines
+            // the source/destination to the behaviour's declared dir scope (the
+            // gate's tool-scope check is name-only, NOT a path confinement), and
+            // supervised mode confirms it. A schema can only reach here from the
+            // trusted registry (`lookup`), never the model, so this never lifts an
+            // attacker-declared "reversible" claim.
+            //
+            // Anything NOT `Reversible` (irreversible, reversible-with-cost) stays
+            // fail-closed: it cannot be predicted `Valid`, so it is never lifted,
+            // pending the world-facts ingestion (EM-R3) a richer external effect
+            // would need to prove its preconditions.
+            Effect::External { domain, op, class, .. } => {
+                if !class.is_reversible() {
+                    return Err(format!(
+                        "External {domain:?}/{op}: a non-reversible external effect needs world-facts ingestion (EM-R3), not yet wired"
+                    ));
+                }
+                // Reversible external: no graph state changes under simulation.
             }
         }
     }
@@ -1110,6 +1126,47 @@ mod tests {
             &state,
         );
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn a_reversible_external_simulates_clean_a_non_reversible_one_errs() {
+        use crate::effect_model::{CaptureShape, IrreversibilityReason};
+        let state = WorldState::new();
+        // A reversible external (the collision-safe fs.move) changes no graph
+        // node, so its simulation succeeds (predict can reach Valid and lift it);
+        // its real safety is execution-time. The executor-go-live un-gate.
+        assert!(
+            apply_effects(
+                &[Effect::External {
+                    domain: EffectDomain::Filesystem,
+                    op: "move".into(),
+                    target: "file".into(),
+                    class: InverseClass::Reversible { capture: CaptureShape::RestorePath },
+                }],
+                &bindings(&[]),
+                &state,
+            )
+            .is_ok(),
+            "a reversible external simulates as a graph no-op"
+        );
+        // A non-reversible external stays fail-closed: it cannot be predicted
+        // Valid, so it is never lifted (an external send stays always-confirm).
+        assert!(
+            apply_effects(
+                &[Effect::External {
+                    domain: EffectDomain::External,
+                    op: "send".into(),
+                    target: "msg".into(),
+                    class: InverseClass::Irreversible {
+                        reason: IrreversibilityReason::ExternalSend,
+                    },
+                }],
+                &bindings(&[]),
+                &state,
+            )
+            .is_err(),
+            "a non-reversible external is refused"
+        );
     }
 
     #[test]
