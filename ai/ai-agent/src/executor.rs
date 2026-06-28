@@ -1114,7 +1114,10 @@ impl<'a> LiveExecutor<'a> {
         graph: &dyn GraphHandle,
         behaviour_name: &str,
     ) -> Result<CompensationOutcome, ExecError> {
-        compensate_receipt(self.writer, self.audit, receipt, graph, behaviour_name).await
+        // The graph-focused executor undoes only graph receipts; a non-graph undo
+        // is the owned `Compensator`'s job (it supplies the file mover), so pass
+        // `None` here.
+        compensate_receipt(self.writer, self.audit, None, receipt, graph, behaviour_name).await
     }
 
 
@@ -1182,26 +1185,45 @@ impl<'a> LiveExecutor<'a> {
 pub struct Compensator {
     writer: Arc<dyn RelationWriter>,
     audit: Arc<dyn AuditSink>,
+    mover: Arc<dyn FileMover>,
 }
 
 impl Compensator {
-    /// A compensator over an owned writer + audit sink.
-    pub fn new(writer: Arc<dyn RelationWriter>, audit: Arc<dyn AuditSink>) -> Self {
-        Self { writer, audit }
+    /// A compensator over an owned writer, audit sink, and file mover. The mover
+    /// is the non-graph undo's seam (it replays an `fs.move`'s `RestorePath`); the
+    /// production wiring passes [`fs_move::OsFileMover`].
+    pub fn new(
+        writer: Arc<dyn RelationWriter>,
+        audit: Arc<dyn AuditSink>,
+        mover: Arc<dyn FileMover>,
+    ) -> Self {
+        Self {
+            writer,
+            audit,
+            mover,
+        }
     }
 
-    /// Compensate (undo) a previously-executed action by its receipt. Identical
-    /// to [`LiveExecutor::compensate`] (same free `compensate_receipt`), over the
-    /// owned deps: audits fail-closed before the retract, keys the retract to the
-    /// receipt's own op id, only undoes a real `Created` write, reconciles a
-    /// commit-unknown retract by the op id.
+    /// Compensate (undo) a previously-executed action by its receipt. The single
+    /// undo path for BOTH receipt kinds: a graph edge (op-id-keyed retract) and a
+    /// non-graph action (replay the captured inverse, e.g. move a file back).
+    /// Audits fail-closed before acting, keys the undo to the receipt's own op id,
+    /// only undoes a real write.
     pub async fn compensate(
         &self,
         receipt: &ActionReceipt,
         graph: &dyn GraphHandle,
         behaviour_name: &str,
     ) -> Result<CompensationOutcome, ExecError> {
-        compensate_receipt(&*self.writer, &*self.audit, receipt, graph, behaviour_name).await
+        compensate_receipt(
+            &*self.writer,
+            &*self.audit,
+            Some(&*self.mover),
+            receipt,
+            graph,
+            behaviour_name,
+        )
+        .await
     }
 }
 
@@ -1293,6 +1315,7 @@ impl Approver {
 async fn compensate_receipt(
     writer: &dyn RelationWriter,
     audit: &dyn AuditSink,
+    mover: Option<&dyn FileMover>,
     receipt: &ActionReceipt,
     graph: &dyn GraphHandle,
     behaviour_name: &str,
@@ -1301,10 +1324,58 @@ async fn compensate_receipt(
         ActionReceipt::Graph(executed) => {
             compensate_graph(writer, audit, executed, graph, behaviour_name).await
         }
-        ActionReceipt::NonGraph(_) => Err(ExecError::UnsupportedEffect(
-            "non-graph compensation is the EM-R6 increment; no non-graph receipt is produced yet"
-                .to_string(),
-        )),
+        // A non-graph undo needs a file mover. Only the owned [`Compensator`] (the
+        // D-Bus undo path) supplies one; the graph-focused `LiveExecutor` passes
+        // `None`, so a NonGraph receipt reaching it fails closed rather than
+        // silently no-op (it would be a wiring bug, not a user undo).
+        ActionReceipt::NonGraph(action) => match mover {
+            Some(m) => compensate_external(audit, m, action, behaviour_name).await,
+            None => Err(ExecError::UnsupportedEffect(
+                "non-graph compensation needs a file mover; only the undo path supplies one"
+                    .to_string(),
+            )),
+        },
+    }
+}
+
+/// Compensate (undo) a non-graph action by replaying its captured
+/// [`InverseReceipt`]. For a `RestorePath` inverse (the `fs.move` undo) the undo
+/// moves the file from where it landed (`now`) back to its origin (`prior`)
+/// through the same [`FileMover`] the forward used.
+///
+/// No fresh proof is needed: the action was lifted precisely because it declared
+/// a reversible effect, and the inverse was CAPTURED at execute time from the
+/// real move, so replaying it restores exactly that move (the op id /
+/// correlation id come from the receipt, never a re-supplied context). The undo
+/// is audited fail-closed BEFORE the move (the same S13 invariant as the forward),
+/// linked to the original decision by the receipt's correlation id. The mover
+/// refuses to overwrite, so a `prior` path now occupied (the user put something
+/// back there) refuses the restore rather than clobbering it: the undo is itself
+/// non-destructive.
+async fn compensate_external(
+    audit: &dyn AuditSink,
+    mover: &dyn FileMover,
+    action: &ActionWrite,
+    behaviour_name: &str,
+) -> Result<CompensationOutcome, ExecError> {
+    // Audit the undo before acting, linked to the original decision.
+    audit
+        .submit(behaviour_action_event(behaviour_name, "compensate", action.correlation_id()))
+        .await
+        .map_err(|e| ExecError::AuditUnavailable(e.to_string()))?;
+    match action.inverse() {
+        InverseReceipt::RestorePath { now, prior } => {
+            mover
+                .move_file(now.as_str(), prior.as_str())
+                .map_err(|e| ExecError::Write(e.to_string()))?;
+            Ok(CompensationOutcome::Retracted)
+        }
+        // The only non-graph receipt produced today is `fs.move`'s `RestorePath`.
+        // The other inverse classes (RestoreValue, DeleteCreated, RestoreSnapshot)
+        // land with their executor arms; until then, refuse rather than guess.
+        other => Err(ExecError::UnsupportedEffect(format!(
+            "non-graph compensation for {other:?} is not yet wired"
+        ))),
     }
 }
 
@@ -2218,7 +2289,8 @@ mod tests {
         // as LiveExecutor::compensate, over Arc-owned deps and no capability.
         let writer: Arc<dyn RelationWriter> = Arc::new(MockWriter::default());
         let audit: Arc<dyn AuditSink> = Arc::new(MockAuditSink::accepting());
-        let comp = Compensator::new(writer, audit);
+        let mover: Arc<dyn FileMover> = Arc::new(crate::fs_move::OsFileMover);
+        let comp = Compensator::new(writer, audit, mover);
         let graph = tag_graph(true); // not read on the happy path
         let executed = receipt(WriteOutcome::Created);
         let outcome = comp
@@ -2229,8 +2301,85 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn compensate_refuses_a_non_graph_receipt_until_em_r6() {
+    async fn compensator_restores_a_moved_file_and_audits_the_undo() {
+        // The full external loop's undo: a file moved to `now` is restored to
+        // `prior` by replaying the captured RestorePath inverse, audited first.
+        let dir = tempfile::tempdir().unwrap();
+        let prior = dir.path().join("Downloads").join("p.pdf");
+        let now = dir.path().join("Projects").join("p.pdf");
+        std::fs::create_dir_all(prior.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(now.parent().unwrap()).unwrap();
+        std::fs::write(&now, b"moved").unwrap(); // it currently lives at `now`
+
+        let audit = Arc::new(MockAuditSink::accepting());
+        let comp = Compensator::new(
+            Arc::new(MockWriter::default()),
+            audit.clone() as Arc<dyn AuditSink>,
+            Arc::new(crate::fs_move::OsFileMover),
+        );
+        let receipt = ActionReceipt::NonGraph(ActionWrite::new(
+            ResolvedExternalOp::new(EffectDomain::Filesystem, "move".into(), now.to_str().unwrap().into()),
+            InverseReceipt::RestorePath {
+                now: crate::effect_model::CanonicalPath::new(now.to_str().unwrap()).unwrap(),
+                prior: crate::effect_model::CanonicalPath::new(prior.to_str().unwrap()).unwrap(),
+            },
+            "op-ng".into(),
+            "run-ng".into(),
+        ));
+        let graph = tag_graph(true); // not read on the non-graph path
+        let outcome = comp
+            .compensate(&receipt, &graph, "tidy-downloads")
+            .await
+            .unwrap();
+        assert_eq!(outcome, CompensationOutcome::Retracted);
+        assert!(prior.exists() && !now.exists(), "the file was moved back");
+        let entries = audit.recorded().await;
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].structural.outcome, "compensate");
+        assert_eq!(entries[0].call_chain_id.as_deref(), Some("run-ng"));
+    }
+
+    #[tokio::test]
+    async fn compensator_refuses_to_overwrite_when_the_origin_is_reoccupied() {
+        // If the user put a file back at `prior`, the undo refuses rather than
+        // clobbering it (the mover's non-overwrite claim): the undo is itself
+        // non-destructive.
+        let dir = tempfile::tempdir().unwrap();
+        let prior = dir.path().join("p.pdf");
+        let now = dir.path().join("moved.pdf");
+        std::fs::write(&now, b"moved").unwrap();
+        std::fs::write(&prior, b"user-replacement").unwrap(); // origin reoccupied
+
+        let comp = Compensator::new(
+            Arc::new(MockWriter::default()),
+            Arc::new(MockAuditSink::accepting()),
+            Arc::new(crate::fs_move::OsFileMover),
+        );
+        let receipt = ActionReceipt::NonGraph(ActionWrite::new(
+            ResolvedExternalOp::new(EffectDomain::Filesystem, "move".into(), now.to_str().unwrap().into()),
+            InverseReceipt::RestorePath {
+                now: crate::effect_model::CanonicalPath::new(now.to_str().unwrap()).unwrap(),
+                prior: crate::effect_model::CanonicalPath::new(prior.to_str().unwrap()).unwrap(),
+            },
+            "op-ng".into(),
+            "run-ng".into(),
+        ));
+        let graph = tag_graph(true);
+        let err = comp
+            .compensate(&receipt, &graph, "tidy-downloads")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ExecError::Write(_)));
+        assert_eq!(std::fs::read_to_string(&prior).unwrap(), "user-replacement", "origin untouched");
+        assert_eq!(std::fs::read_to_string(&now).unwrap(), "moved", "moved file still there");
+    }
+
+    #[tokio::test]
+    async fn live_executor_refuses_a_non_graph_receipt_having_no_mover() {
         use crate::effect_model::{CanonicalPath, InverseReceipt};
+        // The graph-focused LiveExecutor holds no file mover, so a NonGraph
+        // receipt reaching it fails closed (it is a wiring bug, not a user undo;
+        // the owned Compensator is the non-graph undo path).
         let cap = executing_cap();
         let writer = MockWriter::default();
         let audit = MockAuditSink::accepting();
@@ -2250,7 +2399,7 @@ mod tests {
         let result = exec.compensate(&receipt, &graph, "auto-tag-by-project").await;
         assert!(
             matches!(result, Err(ExecError::UnsupportedEffect(_))),
-            "non-graph compensation is the EM-R6 increment, not yet implemented"
+            "a non-graph receipt has no mover here, so it fails closed"
         );
         // Fail-closed before any I/O: no retract, no audit.
         assert!(writer.retracts.lock().unwrap().is_empty());
