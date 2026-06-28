@@ -12,4 +12,4 @@ href: string,
 /**
  * An optional display label.
  */
-label: string | null, };
+label?: string, };

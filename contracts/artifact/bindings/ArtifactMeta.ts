@@ -15,4 +15,4 @@ origin: ArtifactOrigin,
  * An optional human label for the artifact (e.g. a title shown in a
  * pinned-artifact list). Cosmetic; carries no authority.
  */
-title: string | null, };
+title?: string, };
