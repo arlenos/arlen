@@ -1,0 +1,5 @@
+# Starting permission profile for Four-in-a-row (a local GNOME board game).
+# Plays locally; needs no filesystem, network, or Knowledge Graph access.
+[info]
+app_id = "org.gnome.Four-in-a-row"
+tier = "third-party"
