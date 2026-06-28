@@ -1,0 +1,12 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-ai-model-manager"
+version = "0.1.0"
+description = "Hardware-aware local-model fit and speed recommender for the Arlen model manager"
+authors = ["Arlen"]
+edition = "2021"
+
+[lib]
+name = "arlen_ai_model_manager"
+
+[dependencies]

@@ -12,5 +12,6 @@ members = [
     "ai-undo-proto",
     "ai-undo-signer",
     "ai-skills",
+    "ai-model-manager",
 ]
 resolver = "2"
