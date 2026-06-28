@@ -23,6 +23,7 @@
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use ts_rs::TS;
 
 pub mod build;
 pub mod osc;
@@ -34,7 +35,8 @@ pub mod osc;
 /// The closed set of artifact kinds. There is no open MIME string: an unknown kind
 /// cannot be represented, so it cannot be stored or rendered (terminal.md §5).
 /// Deserialising an unknown tag fails - the validation floor, not a silent default.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum ArtifactKind {
     /// Markdown prose. Inert: safe from any origin.
@@ -119,7 +121,8 @@ impl std::str::FromStr for ArtifactKind {
 ///
 /// Mirrors the tiering of `ai-core`'s prompt `Origin` without depending on the AI
 /// layer: a program-emitted artifact is always `ExternalContent`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum ArtifactOrigin {
     /// Output from an external program over the OSC sidecar / a pipe. The
@@ -139,7 +142,8 @@ pub enum ArtifactOrigin {
 
 /// A chart type. A closed enum so a chart spec can never carry an arbitrary
 /// renderer directive.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum ChartType {
     /// A line chart.
@@ -156,7 +160,8 @@ pub enum ChartType {
 
 /// One labelled numeric series of a chart. The values are plain numbers, never an
 /// executable expression.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../bindings/")]
 pub struct Series {
     /// The series label.
     pub name: String,
@@ -167,7 +172,8 @@ pub struct Series {
 /// The media type of an image payload. Closed so an arbitrary MIME string cannot
 /// ride in. `Svg` is a vector format and MUST be sanitised at render time (it can
 /// carry script); that sanitisation is the renderer's job, not this crate's.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum ImageMediaType {
     /// `image/png`.
@@ -184,7 +190,8 @@ pub enum ImageMediaType {
 
 /// A diagram source language. Closed; the renderer maps it to a sandboxed diagram
 /// engine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum DiagramLanguage {
     /// Mermaid diagram source.
@@ -195,7 +202,8 @@ pub enum DiagramLanguage {
 
 /// A single link. The scheme is NOT validated here - the renderer applies its
 /// scheme allow-list (terminal.md §365); this crate only types the shape.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../bindings/")]
 pub struct Link {
     /// The link target.
     pub href: String,
@@ -212,7 +220,8 @@ pub struct Link {
 /// agree with the envelope's `kind` (checked in [`Artifact::new`]). `Widget` has no
 /// program-constructible payload variant here - it is minted by the harness
 /// builder, not this crate's program path.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../bindings/")]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ArtifactPayload {
     /// `markdown`: the markdown source.
@@ -289,7 +298,8 @@ impl ArtifactPayload {
 /// Backend-stamped metadata. The `origin` here is authoritative and is set by the
 /// receiving side from the channel the bytes arrived on; it is never deserialised
 /// from an untrusted producer's bytes (see [`Artifact::receive`]).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../bindings/")]
 pub struct ArtifactMeta {
     /// The provenance tier. Backend-stamped, never payload-derived.
     pub origin: ArtifactOrigin,
@@ -303,7 +313,8 @@ pub struct ArtifactMeta {
 /// and backend-stamped metadata (terminal.md §5). Constructed only through
 /// `new`/`receive`, which enforce the two invariants: `text` is non-empty and
 /// `kind` agrees with the payload.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../bindings/")]
 pub struct Artifact {
     /// The closed kind. Redundant with `payload.kind()` on the wire, but present so
     /// a reader can branch on kind without matching the payload.
