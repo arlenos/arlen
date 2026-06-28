@@ -162,6 +162,15 @@ pub struct HandlerError(pub String);
 /// [`GraphHandle`] for graph-backed behaviours. Returns a `Result` so a
 /// handler can fail gracefully; a *panic* or a timeout is also contained by
 /// the dispatcher (see [`Dispatcher::dispatch`]).
+///
+/// SECURITY INVARIANT (the external-trigger carve-out depends on it): a workflow
+/// handler is DETERMINISTIC and makes ZERO model calls — it gets only the event
+/// and a read-only graph, never the provider. That is exactly why the gate's
+/// `deterministic_workflow` carve-out ([`crate::gate::ActionContext`]) lets an
+/// externally-triggered workflow skip always-confirm: with no model in the loop,
+/// external content has nothing to inject into. If this trait ever gains a
+/// provider/model parameter (or a handler reaches a model another way), that
+/// carve-out's premise breaks and the gate change MUST be revisited.
 #[async_trait::async_trait]
 pub trait WorkflowHandler: Send + Sync {
     /// Run the workflow for one matched event.
