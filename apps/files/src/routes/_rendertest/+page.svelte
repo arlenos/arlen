@@ -1,64 +1,81 @@
 <script lang="ts">
-  /// Headless render harness for FmInfoPanel — UI-AFFORDANCE verification ONLY,
-  /// NOT a behaviour claim. The real provenance / as-of *behaviour* is proven by
-  /// the coder's KG seed + integration tests; this route mocks the daemon over
-  /// Tauri IPC so the affordances are screenshot-verifiable without a daemon:
-  /// the clickable Related rows + hover, the "As of" control, the "Past view,
-  /// as of …" cue, and the empty state. Not shipped in any nav; a dev/test route
-  /// only (the mock is installed on mount and only when no Tauri runtime is
-  /// present, so it can never hijack the real app).
+  /// Headless render harness for FmInfoPanel. UI-AFFORDANCE verification ONLY,
+  /// NOT a behaviour claim. Mocks the daemon over Tauri IPC (only when no Tauri
+  /// runtime is present, so it can never hijack the real app) and renders the
+  /// real FmInfoPanel across its states: a file with related projects + the
+  /// as-of view, an image with EXIF + permissions, a folder, a symlink. The real
+  /// permission writes + KG behaviour are proven by the coder's seed + tests, not
+  /// this mock. Not shipped in any nav; a dev/test route only.
   import { onMount } from "svelte";
   import { tauriAvailable } from "$lib/tauri";
   import FmInfoPanel from "$lib/components/FmInfoPanel.svelte";
   import type { FileEntry } from "@arlen/ui-kit/components/browser";
 
-  // Two scenarios keyed by path: one whose membership changed over time (as-of
-  // returns a different project), one with no past membership (the empty state).
-  const WITH_HISTORY = "/demo/thesis-draft.md";
-  const NO_HISTORY = "/demo/scratch.txt";
+  const FILE = "/demo/thesis-draft.md";
+  const IMAGE = "/demo/inn-sunset.jpg";
+  const FOLDER = "/demo/Projects";
+  const SYMLINK = "/demo/shortcut";
 
   const liveRel = [
-    { label: "Part of project", target: "Thesis writeup", target_id: "p-thesis" },
-    { label: "Part of project", target: "Reading list", target_id: "p-reading" },
+    { label: "Part of", target: "Thesis writeup", target_id: "p-thesis" },
+    { label: "Part of", target: "Reading list", target_id: "p-reading" },
   ];
-  const pastRel = [
-    { label: "Part of project", target: "Proposal draft", target_id: "p-proposal" },
-  ];
+  const pastRel = [{ label: "Part of", target: "Proposal draft", target_id: "p-proposal" }];
 
-  const fixtureInfo = {
-    conventional: { kind: "file", size: 48213, mode: 0o644, modified_unix: 1782300000 },
+  const MODIFIED = 1782300000;
+  const CREATED = 1781000000;
+  const base = (over: Record<string, unknown>) => ({
+    conventional: {
+      kind: "file",
+      size: 48213,
+      mode: 0o644,
+      modified_unix: MODIFIED,
+      created_unix: CREATED,
+      ...over,
+    },
     woher: [
-      { label: "Downloaded", detail: "from share.uni-innsbruck.ac.at" },
-      { label: "Created", detail: "2 weeks ago" },
+      { label: "Accessed by", detail: "Files" },
+      { label: "Also accessed by", detail: "another app" },
     ],
-    verwandt: liveRel,
-    zugriff: { readable_by: ["you", "backup"], manage_link: "settings:ai" },
-  };
+    verwandt: [] as typeof liveRel,
+    zugriff: { readable_by: [] as string[], manage_link: "settings:ai" },
+  });
+
+  const fileInfo = { ...base({}), verwandt: liveRel };
+  const imageInfo = base({ kind: "file", size: 2_517_000 });
+  const folderInfo = { ...base({ kind: "directory", size: 0, mode: 0o755 }), woher: [] };
+  const symlinkInfo = { ...base({ kind: "symlink", mode: 0o777 }), woher: [] };
 
   let ready = $state(false);
   onMount(async () => {
     if (!tauriAvailable) {
       const { mockIPC } = await import("@tauri-apps/api/mocks");
       mockIPC((cmd, args) => {
-        const a = args as Record<string, unknown> | undefined;
-        if (cmd === "files_info") return fixtureInfo;
-        // Past membership: the with-history file was in a different project then;
-        // the other had none (drives the empty state).
-        if (cmd === "files_verwandt_as_of") return a?.path === WITH_HISTORY ? pastRel : [];
-        // Anything else the panel probes (exif, etc.): reject so it hits .catch.
+        const a = (args ?? {}) as Record<string, unknown>;
+        if (cmd === "files_info") {
+          if (a.path === IMAGE) return imageInfo;
+          if (a.path === FOLDER) return folderInfo;
+          if (a.path === SYMLINK) return symlinkInfo;
+          return fileInfo;
+        }
+        if (cmd === "files_verwandt_as_of") return a.path === FILE ? pastRel : [];
+        if (cmd === "files_get_exif_tags")
+          return { description: "Sunset over the Inn", artist: "Tim", copyright: null };
+        if (cmd === "files_set_permissions" || cmd === "files_set_exif_tags") return null;
+        if (cmd === "files_thumbnail") return null;
         throw new Error(`unmocked: ${cmd}`);
       });
     }
     ready = true;
   });
 
-  const entry = (name: string): FileEntry =>
+  const entry = (name: string, kind: string): FileEntry =>
     ({
       name,
       is_hidden: false,
-      kind: "file",
-      size: 48213,
-      modified_unix: 1782300000,
+      kind,
+      size: 0,
+      modified_unix: MODIFIED,
       readonly: false,
       symlink_target: null,
       full_path: null,
@@ -69,12 +86,20 @@
 <div class="harness">
   {#if ready}
     <div class="host">
-      <h2>With past membership</h2>
-      <FmInfoPanel path={WITH_HISTORY} entry={entry("thesis-draft.md")} onnavigate={() => {}} />
+      <h2>File: related + as-of</h2>
+      <FmInfoPanel path={FILE} entry={entry("thesis-draft.md", "file")} onnavigate={() => {}} />
     </div>
     <div class="host">
-      <h2>No past membership (empty state)</h2>
-      <FmInfoPanel path={NO_HISTORY} entry={entry("scratch.txt")} onnavigate={() => {}} />
+      <h2>Image: EXIF + permissions</h2>
+      <FmInfoPanel path={IMAGE} entry={entry("inn-sunset.jpg", "file")} onnavigate={() => {}} />
+    </div>
+    <div class="host">
+      <h2>Folder</h2>
+      <FmInfoPanel path={FOLDER} entry={entry("Projects", "directory")} onnavigate={() => {}} />
+    </div>
+    <div class="host">
+      <h2>Symlink</h2>
+      <FmInfoPanel path={SYMLINK} entry={entry("shortcut", "symlink")} onnavigate={() => {}} />
     </div>
   {/if}
 </div>
@@ -82,7 +107,7 @@
 <style>
   .harness {
     display: flex;
-    gap: 24px;
+    gap: 20px;
     padding: 24px;
     min-height: 100vh;
     background: var(--background);

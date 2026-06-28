@@ -1,12 +1,12 @@
 <script lang="ts">
-  /// The on-demand info panel (KG quiet place #2): conventional
-  /// Get-Info on top, then the graph sections — Where from, Related,
-  /// Access — rendered only when the graph has something to say. The
-  /// access view is read-only with one deep link; capabilities are
-  /// managed in Settings, never here.
+  /// The on-demand info panel (KG quiet place #2). A drawer-style inspector: an
+  /// identity block (icon, name, kind and size) on top, then prioritised
+  /// sections (Where from, Related with the as-of view, Permissions, Photo
+  /// details), each rendered only when it has something to show. Permissions are
+  /// edited as plain per-role access, applied immediately; the octal is gone.
   import { writable } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import { X, ChevronRight } from "lucide-svelte";
+  import { X, ChevronRight, ChevronDown } from "lucide-svelte";
   import {
     entryIcon,
     formatModified,
@@ -15,6 +15,9 @@
   } from "@arlen/ui-kit/components/browser";
   import { openPath } from "$lib/adapter";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
+  import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { Switch } from "@arlen/ui-kit/components/ui/switch";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
 
   let {
     path,
@@ -38,6 +41,7 @@
       size: number;
       mode: number;
       modified_unix: number;
+      created_unix?: number | null;
     };
     woher: { label: string; detail: string }[];
     verwandt: { label: string; target: string; target_id: string }[];
@@ -53,10 +57,17 @@
       .catch(() => info.set(null));
   });
 
-  // "As of" time-travel for the Related lineage: re-read project membership at
-  // a past time via `files_verwandt_as_of`. Off by default ("Now"); the presets
-  // are relative to the current moment. Only project membership is bitemporal,
-  // so this is the meaningful slice (the listing is unaffected here).
+  const name = $derived(path.split("/").filter(Boolean).pop() ?? "/");
+  const Icon = $derived(entry ? entryIcon(entry) : null);
+  const isJpeg = $derived(/\.jpe?g$/i.test(name));
+
+  const kindLabel = (kind: string): string =>
+    kind === "directory" ? "Folder" : kind === "symlink" ? "Link" : "File";
+
+  // ---- As-of time-travel for the Related lineage --------------------------
+  // Re-read project membership at a past time via `files_verwandt_as_of`. Off by
+  // default ("Now"); the presets are relative to the current moment. Only
+  // project membership is bitemporal, so this is the meaningful slice.
   const AS_OF_OPTIONS = [
     { value: "now", label: "Now" },
     { value: "1d", label: "1 day ago" },
@@ -76,11 +87,15 @@
   let asOfMicros = $state<number | null>(null);
   const asOfVerwandt = writable<Info["verwandt"]>([]);
 
-  // Reset to the live view when the inspected file changes.
+  // Reset transient view state when the inspected file changes.
+  let advancedOpen = $state(false);
+  let photoOpen = $state(false);
   $effect(() => {
     path;
     asOfChoice = "now";
     asOfMicros = null;
+    advancedOpen = false;
+    photoOpen = false;
   });
 
   function setAsOf(v: string) {
@@ -88,8 +103,6 @@
     asOfMicros = v === "now" ? null : Date.now() * 1000 - AS_OF_DELTAS[v];
   }
 
-  // Re-read the relations whenever a past time is chosen (live view uses the
-  // verwandt already loaded by `files_info`).
   $effect(() => {
     const p = path;
     const t = asOfMicros;
@@ -106,65 +119,58 @@
     AS_OF_OPTIONS.find((o) => o.value === asOfChoice)?.label ?? "Now",
   );
 
-  const name = $derived(path.split("/").filter(Boolean).pop() ?? "/");
-  const Icon = $derived(entry ? entryIcon(entry) : null);
+  // ---- Permissions, as plain per-role access ------------------------------
+  // The mode's permission bits, decoded into a Read & write / Read only / No
+  // access choice per role. Changes apply immediately (no octal, no Save): we
+  // reassemble the mode, write it, and re-read so the panel shows what landed.
+  const PERM_OPTIONS = [
+    { value: "rw", label: "Read & write" },
+    { value: "r", label: "Read only" },
+    { value: "none", label: "No access" },
+  ];
+  const permMode = $derived(($info?.conventional.mode ?? 0) & 0o777);
+  const roleAccess = (bits: number): string =>
+    bits & 4 ? (bits & 2 ? "rw" : "r") : "none";
+  const accessBits = (a: string): number => (a === "rw" ? 6 : a === "r" ? 4 : 0);
 
-  const kindLabel = (kind: string): string =>
-    kind === "directory" ? "Folder" : kind === "symlink" ? "Link" : "File";
+  const ownerAccess = $derived(roleAccess((permMode >> 6) & 7));
+  const groupAccess = $derived(roleAccess((permMode >> 3) & 7));
+  const othersAccess = $derived(roleAccess(permMode & 7));
+  const runnable = $derived((permMode & 0o111) !== 0);
 
-  // The editable Unix permissions (chmod), the writable half of the metadata.
-  // The draft is the octal the user edits; it prefills from the loaded mode and
-  // saves through `files_set_permissions`, then re-reads the panel from disk.
-  let modeDraft = $state("");
-  let modeError = $state(false);
-  let saving = $state(false);
+  let permSaving = $state(false);
+  let permError = $state(false);
 
-  $effect(() => {
-    const m = $info?.conventional.mode;
-    modeDraft = m === undefined ? "" : (m & 0o777).toString(8).padStart(3, "0");
-    modeError = false;
-  });
-
-  /// Render a mode's permission bits as the conventional `rwxr-xr-x` string.
-  function rwx(mode: number): string {
-    const part = (n: number) =>
-      (n & 4 ? "r" : "-") + (n & 2 ? "w" : "-") + (n & 1 ? "x" : "-");
-    return part((mode >> 6) & 7) + part((mode >> 3) & 7) + part(mode & 7);
-  }
-
-  async function saveMode() {
-    if (!/^[0-7]{3,4}$/.test(modeDraft)) {
-      modeError = true;
-      return;
-    }
-    const mode = parseInt(modeDraft, 8);
-    modeError = false;
-    saving = true;
+  async function writeMode(mode: number) {
+    permSaving = true;
+    permError = false;
     try {
       await invoke("files_set_permissions", { path, mode });
-      // Re-read so the displayed rwx + octal reflect what actually landed.
       const i = await invoke<Info>("files_info", { path });
       info.set(i);
     } catch {
-      modeError = true;
+      permError = true;
     }
-    saving = false;
+    permSaving = false;
   }
 
-  // The writable EXIF tags (the media half of editable metadata), offered only
-  // for JPEGs - the only format the backend write-back supports. The draft
-  // prefills from `files_get_exif_tags` and saves through `files_set_exif_tags`,
-  // which verifies the readback, then we re-read so the panel shows what landed.
-  // A blank field saves as `null` (leave the tag unchanged), so this basic edit
-  // never writes an empty tag; clearing a tag is a later refinement. The polished
-  // unified panel is an arlen-ui pass; this is the coder's basic inline-edit.
+  function setRole(role: "owner" | "group" | "others", a: string) {
+    const m = permMode;
+    const parts = { owner: (m >> 6) & 7, group: (m >> 3) & 7, others: m & 7 };
+    parts[role] = accessBits(a) | (parts[role] & 1); // preserve the execute bit
+    void writeMode((parts.owner << 6) | (parts.group << 3) | parts.others);
+  }
+
+  function setRunnable(on: boolean) {
+    void writeMode(on ? permMode | 0o111 : permMode & ~0o111);
+  }
+
+  // ---- EXIF (the media half of editable metadata, JPEG only) --------------
   interface ExifEdits {
     description: string | null;
     artist: string | null;
     copyright: string | null;
   }
-
-  const isJpeg = $derived(/\.jpe?g$/i.test(name));
   let exifDraft = $state({ description: "", artist: "", copyright: "" });
   let exifLoaded = $state(false);
   let exifError = $state(false);
@@ -212,194 +218,260 @@
     }
     exifSaving = false;
   }
+
+  const created = $derived(
+    $info?.conventional.created_unix
+      ? formatModified($info.conventional.created_unix)
+      : null,
+  );
 </script>
 
-<aside class="info-panel" aria-label="Info">
-  <div class="ip-head">
-    <span class="ip-name">{name}</span>
-    <button class="ip-close" aria-label="Close info" onclick={() => onclose?.()}>
+<aside class="panel" aria-label="Info">
+  <header class="ident">
+    <div class="ident-icon">
+      {#if Icon}<Icon size={26} strokeWidth={1.25} />{/if}
+    </div>
+    <div class="ident-text">
+      <span class="ident-name" title={name}>{name}</span>
+      {#if $info}
+        <span class="ident-sub">
+          {kindLabel($info.conventional.kind)}{$info.conventional.kind !==
+          "directory"
+            ? ` · ${formatSize($info.conventional.size)}`
+            : ""}
+        </span>
+      {/if}
+    </div>
+    <button class="close" aria-label="Close info" onclick={() => onclose?.()}>
       <X size={14} strokeWidth={2} />
     </button>
-  </div>
-
-  <div class="ip-preview">
-    {#if Icon}
-      <Icon size={48} strokeWidth={1} />
-    {/if}
-  </div>
+  </header>
 
   {#if $info}
-    <div class="ip-facts">
-      <span>{kindLabel($info.conventional.kind)}</span>
-      {#if $info.conventional.kind !== "directory"}
-        <span>{formatSize($info.conventional.size)}</span>
+    <div class="facts">
+      <div class="kv">
+        <span class="kv-label">Modified</span>
+        <span class="kv-value">{formatModified($info.conventional.modified_unix)}</span>
+      </div>
+      {#if created}
+        <div class="kv">
+          <span class="kv-label">Created</span>
+          <span class="kv-value">{created}</span>
+        </div>
       {/if}
-      <span>changed {formatModified($info.conventional.modified_unix)}</span>
     </div>
 
-    {#if $info.conventional.kind !== "symlink"}
-      <div class="ip-section">
-        <span class="ip-label">Permissions</span>
-        <div class="ip-row">
-          <span class="ip-key">Mode</span>
-          <span class="ip-value">{rwx($info.conventional.mode)}</span>
-        </div>
-        <div class="ip-edit">
-          <input
-            class="ip-mode-input"
-            class:ip-mode-error={modeError}
-            bind:value={modeDraft}
-            aria-label="Octal permissions"
-            spellcheck="false"
-            autocapitalize="off"
-            autocomplete="off"
-            maxlength="4"
-          />
-          <button
-            class="ip-manage ip-save"
-            disabled={saving}
-            onclick={() => void saveMode()}
-          >
-            Save
-          </button>
-        </div>
-      </div>
-    {/if}
-
-    {#if isJpeg && $info.conventional.kind === "file" && exifLoaded}
-      <div class="ip-section">
-        <span class="ip-label">Photo info</span>
-        <label class="ip-field">
-          <span class="ip-key">Description</span>
-          <input
-            class="ip-text-input"
-            class:ip-mode-error={exifError}
-            bind:value={exifDraft.description}
-            spellcheck="false"
-          />
-        </label>
-        <label class="ip-field">
-          <span class="ip-key">Artist</span>
-          <input
-            class="ip-text-input"
-            class:ip-mode-error={exifError}
-            bind:value={exifDraft.artist}
-            spellcheck="false"
-          />
-        </label>
-        <label class="ip-field">
-          <span class="ip-key">Copyright</span>
-          <input
-            class="ip-text-input"
-            class:ip-mode-error={exifError}
-            bind:value={exifDraft.copyright}
-            spellcheck="false"
-          />
-        </label>
-        <button
-          class="ip-manage ip-save"
-          disabled={exifSaving}
-          onclick={() => void saveExif()}
-        >
-          Save
-        </button>
-      </div>
-    {/if}
-
     {#if $info.woher.length > 0}
-      <div class="ip-section">
-        <span class="ip-label">Where from</span>
+      <section class="sec">
+        <span class="sec-title">Where from</span>
         {#each $info.woher as line (line.label + line.detail)}
-          <div class="ip-row">
-            <span class="ip-key">{line.label}</span>
-            <span class="ip-value">{line.detail}</span>
+          <div class="prov">
+            <span class="prov-label">{line.label}</span>
+            <span class="prov-value">{line.detail}</span>
           </div>
         {/each}
-      </div>
+      </section>
     {/if}
 
     {#if $info.verwandt.length > 0}
       {@const rels = asOfMicros === null ? $info.verwandt : $asOfVerwandt}
-      <div class="ip-section">
-        <div class="ip-rel-head">
-          <span class="ip-label">Related</span>
-          <div class="ip-asof">
-            <span class="ip-asof-key">As of</span>
+      <section class="sec">
+        <div class="sec-head">
+          <span class="sec-title">Related</span>
+          <div class="asof">
+            <span class="asof-key">As of</span>
             <PopoverSelect
               value={asOfChoice}
               options={AS_OF_OPTIONS}
-              width="8.5rem"
+              width="8rem"
               ariaLabel="View related projects as of a past time"
               onchange={setAsOf}
             />
           </div>
         </div>
         {#if asOfMicros !== null}
-          <span class="ip-asof-note">Past view, as of {asOfLabel.toLowerCase()}</span>
+          <span class="note">Past view, as of {asOfLabel.toLowerCase()}</span>
         {/if}
         {#each rels as line (line.label + line.target_id)}
           <button
             type="button"
-            class="ip-rel"
+            class="rel"
             onclick={() => onnavigate?.(`project:${line.target_id}`)}
           >
-            <span class="ip-key">{line.label}</span>
-            <span class="ip-value">{line.target}</span>
-            <ChevronRight class="ip-rel-chevron" size={14} strokeWidth={2} />
+            <span class="rel-label">{line.label}</span>
+            <span class="rel-target">{line.target}</span>
+            <ChevronRight class="rel-chev" size={14} strokeWidth={2} />
           </button>
         {/each}
         {#if asOfMicros !== null && rels.length === 0}
-          <span class="ip-asof-empty">No related projects at that time.</span>
+          <span class="empty">No related projects at that time.</span>
         {/if}
-      </div>
+      </section>
+    {/if}
+
+    {#if $info.conventional.kind !== "symlink"}
+      <section class="sec">
+        <span class="sec-title">Permissions</span>
+        <div class="perm">
+          <span class="perm-label">You</span>
+          <div class="perm-ctl">
+            <PopoverSelect
+              value={ownerAccess}
+              options={PERM_OPTIONS}
+              width="100%"
+              ariaLabel="Your access"
+              disabled={permSaving}
+              onchange={(v) => setRole("owner", v)}
+            />
+          </div>
+        </div>
+        <div class="perm">
+          <span class="perm-label">Others</span>
+          <div class="perm-ctl">
+            <PopoverSelect
+              value={othersAccess}
+              options={PERM_OPTIONS}
+              width="100%"
+              ariaLabel="Everyone else's access"
+              disabled={permSaving}
+              onchange={(v) => setRole("others", v)}
+            />
+          </div>
+        </div>
+
+        <button class="disc" onclick={() => (advancedOpen = !advancedOpen)}>
+          <ChevronDown class="disc-chev" size={13} strokeWidth={2} data-open={advancedOpen} />
+          Advanced
+        </button>
+        {#if advancedOpen}
+          <div class="perm">
+            <span class="perm-label">Group</span>
+            <div class="perm-ctl">
+              <PopoverSelect
+                value={groupAccess}
+                options={PERM_OPTIONS}
+                width="100%"
+                ariaLabel="Group access"
+                disabled={permSaving}
+                onchange={(v) => setRole("group", v)}
+              />
+            </div>
+          </div>
+          {#if $info.conventional.kind === "file"}
+            <div class="perm perm-toggle">
+              <span class="perm-label-wide">Allow running as a program</span>
+              <Switch
+                value={runnable}
+                disabled={permSaving}
+                ariaLabel="Allow running as a program"
+                onchange={setRunnable}
+              />
+            </div>
+          {/if}
+        {/if}
+        {#if permError}
+          <span class="err">Couldn't change permissions.</span>
+        {/if}
+      </section>
+    {/if}
+
+    {#if isJpeg && $info.conventional.kind === "file" && exifLoaded}
+      <section class="sec">
+        <button class="disc disc-title" onclick={() => (photoOpen = !photoOpen)}>
+          <ChevronDown class="disc-chev" size={13} strokeWidth={2} data-open={photoOpen} />
+          Photo details
+        </button>
+        {#if photoOpen}
+          <label class="field">
+            <span class="field-label">Description</span>
+            <Input bind:value={exifDraft.description} aria-invalid={exifError} />
+          </label>
+          <label class="field">
+            <span class="field-label">Artist</span>
+            <Input bind:value={exifDraft.artist} aria-invalid={exifError} />
+          </label>
+          <label class="field">
+            <span class="field-label">Copyright</span>
+            <Input bind:value={exifDraft.copyright} aria-invalid={exifError} />
+          </label>
+          <Button
+            variant="outline"
+            size="sm"
+            class="field-save"
+            disabled={exifSaving}
+            onclick={() => void saveExif()}
+          >
+            Save
+          </Button>
+        {/if}
+      </section>
     {/if}
 
     {#if $info.zugriff.readable_by.length > 0}
-      <div class="ip-section">
-        <span class="ip-label">Access</span>
-        <div class="ip-row">
-          <span class="ip-key">Readable by</span>
-          <span class="ip-value">{$info.zugriff.readable_by.join(", ")}</span>
+      <section class="sec">
+        <span class="sec-title">Access</span>
+        <div class="kv">
+          <span class="kv-label">Readable by</span>
+          <span class="kv-value">{$info.zugriff.readable_by.join(", ")}</span>
         </div>
-        <button
-          class="ip-manage"
+        <Button
+          variant="ghost"
+          size="sm"
+          class="field-save"
           onclick={() => void openPath($info.zugriff.manage_link)}
         >
           Manage access in Settings
-        </button>
-      </div>
+        </Button>
+      </section>
     {/if}
   {/if}
 </aside>
 
 <style>
-  .info-panel {
+  .panel {
     width: 17rem;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 12px;
+    gap: 1rem;
+    padding: 1rem;
     border-left: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
     overflow-y: auto;
   }
 
-  .ip-head {
+  /* Identity block: icon, name + a kind/size subline, close. */
+  .ident {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    align-items: flex-start;
+    gap: 0.625rem;
   }
-  .ip-name {
+  .ident-icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    color: color-mix(in srgb, var(--foreground) 60%, transparent);
+    margin-top: 0.0625rem;
+  }
+  .ident-text {
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+  .ident-name {
     font-size: 0.8125rem;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--foreground);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .ip-close {
+  .ident-sub {
+    font-size: 0.6875rem;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+  }
+  .close {
+    flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -410,96 +482,104 @@
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
-  .ip-close:hover {
+  .close:hover {
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
     color: var(--foreground);
   }
 
-  .ip-preview {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 7rem;
-    border-radius: var(--radius-input);
-    background: color-mix(in srgb, var(--foreground) 3%, transparent);
-    color: color-mix(in srgb, var(--foreground) 35%, transparent);
-  }
-
-  .ip-facts {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 12px;
-    font-size: 0.75rem;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-
-  .ip-section {
+  /* Read-only key/value, used by facts + where-from + access. A consistent
+     narrow label column keeps every row aligned; the value flexes + wraps. */
+  .facts {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 0.25rem;
   }
-  .ip-label {
-    font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  .ip-row {
+  .kv {
     display: flex;
-    gap: 8px;
+    gap: 0.75rem;
     font-size: 0.75rem;
+    line-height: 1.45;
   }
-  .ip-key {
-    width: 6.5rem;
-    flex-shrink: 0;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  .kv-label {
+    flex: 0 0 4.75rem;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
-  .ip-value {
+  .kv-value {
     flex: 1;
     min-width: 0;
     color: var(--foreground);
     overflow-wrap: anywhere;
   }
 
-  /* The Related header: the section label on the left, the subtle "As of"
-     time-travel control on the right. */
-  .ip-rel-head {
+  /* Where-from entries: a muted label over its value. Stacked (not a column)
+     so it stays aligned whatever the label length ("Also accessed by"). */
+  .prov {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
+    flex-direction: column;
+    gap: 0.0625rem;
+    font-size: 0.75rem;
+    line-height: 1.4;
   }
-  .ip-asof {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .ip-asof-key {
-    flex-shrink: 0;
+  .prov-label {
     font-size: 0.6875rem;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
-  /* A clear cue that the relations shown are historical, not the live view. */
-  .ip-asof-note {
+  .prov-value {
+    color: var(--foreground);
+    overflow-wrap: anywhere;
+  }
+
+  /* A labelled section, divided from the one above by a hairline. */
+  .sec {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4375rem;
+    padding-top: 0.875rem;
+    border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+  }
+  .sec-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .sec-title {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+  }
+
+  /* As-of control in the Related header. */
+  .asof {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    flex-shrink: 0;
+  }
+  .asof-key {
+    font-size: 0.6875rem;
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    white-space: nowrap;
+  }
+  .note {
     font-size: 0.6875rem;
     color: var(--color-warning, #d4b483);
   }
-  .ip-asof-empty {
+  .empty {
     font-size: 0.75rem;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
 
-  /* A Related entry: a row that navigates to the linked KG node (its project).
-     Reads as a quiet hoverable row, not a web link; the chevron signals it
-     opens. */
-  .ip-rel {
+  /* A clickable Related row: a quiet hoverable row, not a web link. */
+  .rel {
     display: flex;
     align-items: center;
-    gap: 8px;
-    width: calc(100% + 12px);
-    margin: 0 -6px;
-    padding: 4px 6px;
+    gap: 0.75rem;
+    width: calc(100% + 0.75rem);
+    margin: 0 -0.375rem;
+    padding: 0.3125rem 0.375rem;
     border: none;
     background: transparent;
     border-radius: var(--radius-chip);
@@ -507,76 +587,94 @@
     text-align: left;
     transition: background-color var(--duration-fast, 150ms) var(--ease-out, ease);
   }
-  .ip-rel:hover {
+  .rel:hover {
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
   }
-  .ip-rel .ip-value {
-    color: var(--foreground);
+  .rel-label {
+    flex: 0 0 auto;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
-  :global(.ip-rel-chevron) {
+  .rel-target {
+    flex: 1;
+    min-width: 0;
+    color: var(--foreground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  :global(.rel-chev) {
     flex-shrink: 0;
     color: color-mix(in srgb, var(--foreground) 40%, transparent);
   }
 
-  .ip-manage {
-    align-self: flex-start;
-    margin-top: 4px;
-    height: var(--height-control, 28px);
-    padding: 0 12px;
-    border: 1px solid var(--control-border);
-    border-radius: var(--radius-input);
-    background: var(--control-bg);
-    color: var(--foreground);
-    font-size: 0.75rem;
-    font-weight: 500;
-    transition: background-color var(--duration-fast, 150ms) var(--ease-out, ease);
-  }
-  .ip-manage:hover {
-    background: var(--control-bg-hover);
-  }
-  .ip-manage:disabled {
-    opacity: 0.6;
-  }
-
-  .ip-edit {
+  /* Permissions: a label + a per-role access select, on one line. */
+  .perm {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-top: 2px;
+    gap: 0.625rem;
   }
-  .ip-mode-input {
-    width: 4rem;
-    height: var(--height-control, 28px);
-    padding: 0 8px;
-    border: 1px solid var(--control-border);
-    border-radius: var(--radius-input);
-    background: var(--control-bg);
-    color: var(--foreground);
-    font-family: var(--font-mono, ui-monospace, monospace);
+  .perm-label {
+    flex: 0 0 3.25rem;
     font-size: 0.75rem;
+    color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
-  .ip-mode-error {
-    border-color: var(--color-error, #e5484d);
+  .perm-ctl {
+    flex: 1;
+    min-width: 0;
   }
-  .ip-save {
-    margin-top: 0;
+  .perm-toggle {
+    justify-content: space-between;
+  }
+  .perm-label-wide {
+    font-size: 0.75rem;
+    color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
 
-  /* The EXIF edit rows: a stacked label + full-width text input, the column
-     register the panel's sections already use. */
-  .ip-field {
+  /* A lightweight disclosure (Advanced, Photo details). */
+  .disc {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    align-self: flex-start;
+    padding: 0.125rem 0;
+    border: none;
+    background: transparent;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    font-size: 0.75rem;
+  }
+  .disc:hover {
+    color: var(--foreground);
+  }
+  .disc-title {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  :global(.disc-chev) {
+    transition: transform var(--duration-fast, 150ms) var(--ease-out, ease);
+  }
+  :global(.disc-chev[data-open="true"]) {
+    transform: rotate(180deg);
+  }
+
+  /* EXIF edit fields: a stacked label over a kit Input. */
+  .field {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 0.1875rem;
   }
-  .ip-text-input {
-    width: 100%;
-    height: var(--height-control, 28px);
-    padding: 0 8px;
-    border: 1px solid var(--control-border);
-    border-radius: var(--radius-input);
-    background: var(--control-bg);
-    color: var(--foreground);
-    font-size: 0.75rem;
+  .field-label {
+    font-size: 0.6875rem;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+  :global(.field-save) {
+    align-self: flex-start;
+    margin-top: 0.125rem;
+  }
+
+  .err {
+    font-size: 0.6875rem;
+    color: var(--color-error, #e5484d);
   }
 </style>
