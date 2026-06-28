@@ -1517,6 +1517,7 @@ mod tests {
         ActionContext {
             app_id: "org.arlen.files",
             external_trigger: false,
+            deterministic_workflow: false,
             correlation_id: "run-x",
         }
     }

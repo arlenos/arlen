@@ -158,6 +158,18 @@ pub struct ActionContext<'a> {
     /// Whether this run was triggered by external content (forces
     /// confirmation — prompt-injection containment). A run-context fact.
     pub external_trigger: bool,
+    /// Whether the acting behaviour is a registered DETERMINISTIC workflow
+    /// (`kind: workflow`, zero model calls), set by the dispatcher from the
+    /// behaviour's manifest kind — never the proposal. The deterministic-workflow
+    /// external-trigger carve-out (Tim-approved): a workflow makes no model call,
+    /// so external content has no model to inject into, so the `external_trigger`
+    /// override (a prompt-injection defense) is structurally vacuous for it and
+    /// does not apply. `kind: agent` (any model call) sets this false and keeps
+    /// always-confirm on an external trigger — the containment is untouched on the
+    /// path that actually has an injection surface. The write the carve-out
+    /// admits is still bounded by `executor_live` + the predict-proof + the
+    /// behaviour's narrow grant + reversibility.
+    pub deterministic_workflow: bool,
     /// Per-action correlation id, carried into the audit ledger so this
     /// decision links to the subsequent execution/outcome entry.
     pub correlation_id: &'a str,
@@ -437,9 +449,17 @@ impl<'a> Gate<'a> {
         // instead by the lift below, which needs a proof it cannot get. Combine
         // with the mode (ceiling ∧ grant) and the external-trigger override.
         let kind = resolved_action_kind_from(&action.tool, trusted.as_ref());
+        // The external-trigger override applies UNLESS the acting behaviour is a
+        // deterministic workflow (the Tim-approved carve-out): a workflow makes no
+        // model call, so external content cannot inject an action into it, so the
+        // prompt-injection defense is vacuous there. `kind: agent` keeps the
+        // override (it has a model, hence an injection surface). A high-impact /
+        // irreversible `kind` still always-confirms via `always_requires_confirmation`
+        // below regardless, so the carve-out never lifts an irreversible action.
+        let external_override = ctx.external_trigger && !ctx.deterministic_workflow;
         let decision =
             self.capability
-                .decide_for_behaviour(ctx.app_id, kind, ctx.external_trigger, ceiling);
+                .decide_for_behaviour(ctx.app_id, kind, external_override, ceiling);
 
         // Predict-before-act. An executing decision (PreviewThenExecute /
         // Proceed) is only authorised autonomously if the world model proves
@@ -511,7 +531,7 @@ impl<'a> Gate<'a> {
             // report it faithfully as the mode flow rather than assert.
             ActionDecision::Proceed => DecisionBasis::Mode,
             ActionDecision::RequireConfirmation => {
-                if kind.always_requires_confirmation() || ctx.external_trigger {
+                if kind.always_requires_confirmation() || external_override {
                     DecisionBasis::Overridden
                 } else {
                     DecisionBasis::Unproven
@@ -924,6 +944,19 @@ mod tests {
         ActionContext {
             app_id: "org.arlen.files",
             external_trigger: external,
+            deterministic_workflow: false,
+            correlation_id,
+        }
+    }
+
+    /// A trusted context for a deterministic `kind: workflow` behaviour (the
+    /// external-trigger carve-out applies). Used to verify an externally-triggered
+    /// workflow is not force-confirmed while an agent on the same trigger is.
+    fn ctx_workflow<'a>(external: bool, correlation_id: &'a str) -> ActionContext<'a> {
+        ActionContext {
+            app_id: "org.arlen.files",
+            external_trigger: external,
+            deterministic_workflow: true,
             correlation_id,
         }
     }
@@ -1264,6 +1297,59 @@ mod tests {
         assert_eq!(receipt.decision, ActionDecision::PreviewThenExecute);
         assert_eq!(receipt.reason, DecisionReason::proven_reversible());
         assert_eq!(obs.0.lock().unwrap().as_slice(), &[ActionDecision::PreviewThenExecute]);
+    }
+
+    #[tokio::test]
+    async fn external_trigger_carve_out_lifts_a_deterministic_workflow() {
+        // The Tim-approved carve-out: a file.opened-triggered (external) action
+        // from a deterministic `kind: workflow` is NOT force-confirmed - it lifts
+        // to PreviewThenExecute when proven-reversible, exactly as it does off an
+        // internal trigger. This is the auto-tag go-live path.
+        let cap = executing_cap();
+        let audit = MockAuditSink::accepting();
+        let obs = Recorder::default();
+        let graph = tag_graph(false);
+        let receipt = Gate::new(&cap, &audit, &obs, &IdentityResolver, &StaticMountPolicy::empty())
+            .decide_action(
+                "auto-tag-by-project",
+                BaselineMode::Supervised,
+                &scope(&["graph.write"]),
+                &graph_write_action(),
+                &ctx_workflow(true, "run-carveout"), // EXTERNAL trigger, but a workflow
+                &graph,
+            )
+            .await
+            .unwrap();
+        assert_eq!(receipt.decision, ActionDecision::PreviewThenExecute);
+        // The external-content fact is still recorded (incident reconstruction),
+        // but it did not force confirmation: the basis is the proven lift.
+        assert!(receipt.reason.external_trigger);
+        assert_eq!(receipt.reason.basis, DecisionBasis::ProvenReversible);
+        assert!(receipt.reason.high_impact.is_none());
+    }
+
+    #[tokio::test]
+    async fn external_trigger_still_confirms_a_kind_agent_action() {
+        // Containment untouched on the model path: the SAME external-triggered
+        // proven-reversible action from a NON-workflow (an agent has a model,
+        // hence an injection surface) is still force-confirmed.
+        let cap = executing_cap();
+        let audit = MockAuditSink::accepting();
+        let obs = Recorder::default();
+        let graph = tag_graph(false);
+        let receipt = Gate::new(&cap, &audit, &obs, &IdentityResolver, &StaticMountPolicy::empty())
+            .decide_action(
+                "auto-tag-by-project",
+                BaselineMode::Supervised,
+                &scope(&["graph.write"]),
+                &graph_write_action(),
+                &ctx(true, "run-agent-ext"), // external trigger, NOT a workflow
+                &graph,
+            )
+            .await
+            .unwrap();
+        assert_eq!(receipt.decision, ActionDecision::RequireConfirmation);
+        assert!(receipt.reason.external_trigger);
     }
 
     #[tokio::test]
