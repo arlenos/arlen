@@ -13,6 +13,7 @@
     AlertTriangle,
   } from "lucide-svelte";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
   import type { ModuleSummary } from "$lib/stores/modules";
 
   let {
@@ -126,15 +127,10 @@
 
       {#if module.source === "user"}
         <div class="actions">
-          <button
-            type="button"
-            class="danger-btn"
-            class:confirming={confirmingUninstall}
-            onclick={clickUninstall}
-          >
+          <Button variant="destructive" size="sm" onclick={clickUninstall}>
             <Trash2 size={12} strokeWidth={2.25} />
             {confirmingUninstall ? "Click again to confirm" : "Uninstall"}
-          </button>
+          </Button>
         </div>
       {/if}
     </div>
@@ -332,24 +328,5 @@
   .actions {
     display: flex;
     justify-content: flex-start;
-  }
-  .danger-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 0.35rem 0.6rem;
-    border-radius: var(--radius-input);
-    background: color-mix(in srgb, var(--color-error) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-error) 35%, transparent);
-    color: var(--color-error);
-    font-size: 0.6875rem;
-    transition: background-color 120ms ease;
-  }
-  .danger-btn:hover {
-    background: color-mix(in srgb, var(--color-error) 18%, transparent);
-  }
-  .danger-btn.confirming {
-    background: color-mix(in srgb, var(--color-error) 28%, transparent);
-    border-color: var(--color-error);
   }
 </style>
