@@ -201,6 +201,18 @@ notices:
         cargo bundle-licenses --manifest-path "$ws/Cargo.toml" --format yaml --output "$outdir/$slug.yaml"
     done
 
+# Seed the deterministic dev KG corpus (knowledge::seed) into the dev-stack
+# graph store so arlen-ui can verify the file manager's KG surfaces
+# (provenance-nav, relationships as-of) against a real daemon - a fresh machine
+# has an empty graph and the files_* commands are native-Tauri-only. Run with
+# the knowledge daemon STOPPED (ladybug/Kuzu is single-writer), then bring
+# `just dev` up. Seeds ONLY the isolated dev runtime store (the same
+# ARLEN_GRAPH_PATH the dev stack uses), never the real ~/.local/share.
+# Idempotent.
+kg-seed:
+    ARLEN_GRAPH_PATH="${XDG_RUNTIME_DIR}/arlen/knowledge/graph" \
+        cargo run --manifest-path "{{ROOT}}/daemons/knowledge/Cargo.toml" --bin arlen-kg-seed
+
 # The cross-daemon integration tests (the non-ignored, no-binary ones: the
 # harness's own unit tests). The scenario tests that need built daemons are
 # #[ignore]d; run them via `just integration-smoke`.
