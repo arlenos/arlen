@@ -335,6 +335,14 @@ pub struct PendingProposal {
     /// What the action would do, the registered effects (debug-rendered,
     /// content-free bind-name effects); empty for an unregistered tool.
     pub effects: Vec<String>,
+    /// The full executable form of this proposal, retained for the approve path
+    /// (`approve(id)` re-validates + writes it). `#[serde(skip)]`: it carries the
+    /// action operands + run context, so it NEVER crosses the wire - the harness
+    /// gate card sees only the content-free fields above; this stays daemon-side.
+    /// `Some` for a captured `RequireConfirmation` proposal (the dispatch path
+    /// fills it), `None` when reconstructed from the wire (a deserialized card).
+    #[serde(skip)]
+    pub exec: Option<RetainedProposal>,
 }
 
 /// Project a dispatch outcome into a pending-confirmation proposal for the
@@ -352,6 +360,7 @@ pub fn proposal_view(outcome: &DispatchOutcome) -> Option<PendingProposal> {
         reason,
         audit_index,
         plan,
+        pending_exec,
         ..
     } = outcome
     else {
@@ -370,6 +379,9 @@ pub fn proposal_view(outcome: &DispatchOutcome) -> Option<PendingProposal> {
         tool: action.tool.clone(),
         summary: action.summary.clone(),
         reason: crate::gate::reason_label(*reason),
+        // Carry the executable form (the dispatch path captured it for exactly
+        // this RequireConfirmation case) so a later approval can perform it.
+        exec: pending_exec.clone(),
         effects,
     })
 }
@@ -2422,6 +2434,52 @@ tools:
             outcome: "done".to_string(),
         })
         .is_none());
+    }
+
+    #[test]
+    fn proposal_view_carries_the_executable_form_off_the_wire() {
+        let action = ProposedAction {
+            tool: "graph.write".to_string(),
+            summary: "link the file".to_string(),
+            arguments: std::iter::once(("file".to_string(), "f1".to_string())).collect(),
+        };
+        let retained = RetainedProposal::capture(
+            7,
+            "tidy-downloads",
+            &action,
+            ActionDecision::RequireConfirmation,
+            &["FILE_PART_OF".to_string()],
+            "org.arlen.agent",
+            true,
+            "e1:tidy-downloads",
+            BaselineMode::Supervised,
+        )
+        .expect("a RequireConfirmation decision is retained");
+        let outcome = DispatchOutcome::Decided {
+            behaviour: "tidy-downloads".to_string(),
+            action: action.clone(),
+            decision: ActionDecision::RequireConfirmation,
+            reason: DecisionReason::high_impact(
+                arlen_ai_core::capability::ActionKind::Irreversible,
+            ),
+            audit_index: 7,
+            plan: plan_for("graph.write"),
+            dry_run: None,
+            executed: None,
+            pending_exec: Some(retained.clone()),
+        };
+
+        let view = proposal_view(&outcome).expect("a confirmation decision is a proposal");
+        // The executable form rides the stored view so a later approval can
+        // perform it...
+        assert_eq!(view.exec, Some(retained));
+        // ...but it never crosses the wire: the serialized gate card omits it,
+        // so the operands the executor needs stay daemon-side.
+        let json = serde_json::to_string(&view).expect("serialize the wire card");
+        assert!(
+            !json.contains("exec") && !json.contains("\"file\""),
+            "the executable form must be skipped from the wire card: {json}"
+        );
     }
 
     #[test]
