@@ -32,6 +32,9 @@ arlen-ai-sandbox = { path = "../ai-sandbox" }
 arlen-ai-skills = { path = "../ai-skills" }
 arlen-ai-undo-core = { path = "../ai-undo-core" }
 arlen-ai-undo-proto = { path = "../ai-undo-proto" }
+# The proposed file-change shape carried on a gate-card proposal (the harness
+# diff card body). Shared with the harness frontend via the crate's ts-rs bindings.
+arlen-file-change = { path = "../../contracts/file-change" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
