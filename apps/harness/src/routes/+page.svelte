@@ -49,7 +49,7 @@
     onretry={loadCapability}
   />
   <div class="foot">
-    <Composer bind:this={composer} disabled={composerDisabled} {placeholder} {capability} />
+    <Composer bind:this={composer} disabled={composerDisabled} {placeholder} />
     <!-- The steady-state posture lives in the composer foot now; this line is
          warning-only (AI off or unreachable). It shows only once there are
          messages: on an empty chat the centred empty state already carries
