@@ -61,6 +61,22 @@
   const Icon = $derived(entry ? entryIcon(entry) : null);
   const isJpeg = $derived(/\.jpe?g$/i.test(name));
 
+  // A real preview for files the backend can thumbnail (image, audio cover,
+  // video frame); `files_thumbnail` returns a self-contained data URI or null.
+  // Attempted only for thumbnailable extensions (so a text file never invokes);
+  // a null, an error, or no runtime leaves `thumb` null -> the icon fallback,
+  // with no layout shift (mirrors the grid tile).
+  const THUMBNAILABLE = /\.(png|jpe?g|gif|bmp|webp|mp3|flac|m4a|m4b|ogg|oga|opus|aiff?|wav|mp4|m4v|mkv|webm|mov|avi|wmv|flv|mpe?g)$/i;
+  let thumb = $state<string | null>(null);
+  $effect(() => {
+    const p = path;
+    thumb = null;
+    if (!THUMBNAILABLE.test(p)) return;
+    invoke<string | null>("files_thumbnail", { path: p })
+      .then((t) => (thumb = t))
+      .catch(() => (thumb = null));
+  });
+
   const kindLabel = (kind: string): string =>
     kind === "directory" ? "Folder" : kind === "symlink" ? "Link" : "File";
 
@@ -227,24 +243,31 @@
 </script>
 
 <aside class="panel" aria-label="Info">
-  <header class="ident">
-    <div class="ident-icon">
-      {#if Icon}<Icon size={26} strokeWidth={1.25} />{/if}
-    </div>
-    <div class="ident-text">
-      <span class="ident-name" title={name}>{name}</span>
-      {#if $info}
-        <span class="ident-sub">
-          {kindLabel($info.conventional.kind)}{$info.conventional.kind !==
-          "directory"
-            ? ` · ${formatSize($info.conventional.size)}`
-            : ""}
-        </span>
-      {/if}
-    </div>
+  <header class="ident" class:has-preview={thumb}>
     <button class="close" aria-label="Close info" onclick={() => onclose?.()}>
       <X size={14} strokeWidth={2} />
     </button>
+    {#if thumb}
+      <img class="ident-preview" src={thumb} alt={name} onerror={() => (thumb = null)} />
+    {/if}
+    <div class="ident-row">
+      {#if !thumb}
+        <div class="ident-icon">
+          {#if Icon}<Icon size={26} strokeWidth={1.25} />{/if}
+        </div>
+      {/if}
+      <div class="ident-text">
+        <span class="ident-name" title={name}>{name}</span>
+        {#if $info}
+          <span class="ident-sub">
+            {kindLabel($info.conventional.kind)}{$info.conventional.kind !==
+            "directory"
+              ? ` · ${formatSize($info.conventional.size)}`
+              : ""}
+          </span>
+        {/if}
+      </div>
+    </div>
   </header>
 
   {#if $info}
@@ -440,10 +463,31 @@
   }
 
   /* Identity block: icon, name + a kind/size subline, close. */
+  /* Adaptive identity: a real preview on top for thumbnailable files, else the
+     compact icon row. The close floats top-right of either. */
   .ident {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+  }
+  .ident-preview {
+    display: block;
+    width: 100%;
+    max-height: 9rem;
+    object-fit: contain;
+    border-radius: var(--radius-input);
+    background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  }
+  .ident-row {
     display: flex;
     align-items: flex-start;
     gap: 0.625rem;
+    /* Clear the absolute close in the icon-row layout. */
+    padding-right: 1.75rem;
+  }
+  .ident.has-preview .ident-row {
+    padding-right: 0;
   }
   .ident-icon {
     flex-shrink: 0;
@@ -471,7 +515,9 @@
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .close {
-    flex-shrink: 0;
+    position: absolute;
+    top: 0;
+    right: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -482,8 +528,19 @@
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
+  /* Over a preview the close needs a scrim to stay visible on any image. */
+  .ident.has-preview .close {
+    top: 0.375rem;
+    right: 0.375rem;
+    background: color-mix(in srgb, var(--background) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 80%, transparent);
+  }
   .close:hover {
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    color: var(--foreground);
+  }
+  .ident.has-preview .close:hover {
+    background: color-mix(in srgb, var(--background) 80%, transparent);
     color: var(--foreground);
   }
 
