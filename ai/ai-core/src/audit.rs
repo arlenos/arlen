@@ -193,6 +193,56 @@ pub fn behaviour_policy_violation_event(
     behaviour_event(AuditKind::PolicyViolation, behaviour, outcome, correlation_id)
 }
 
+/// A content-free audit entry for a change to a security-bearing `ai.toml` key
+/// (`enabled` / `access_level` / `executor_live` / `provider` / `autonomous_apps`
+/// / `action_mode`), so a silent flip of an AI master switch becomes visible in
+/// the HMAC ledger - the anti-Recall posture applied to the config. The subject
+/// is `ai.config.<key>` for a known security key (a generic `ai.config`
+/// otherwise); `change` is a short transition description (e.g. `"0->3"`,
+/// `"false->true"`, `"changed"`), control-stripped and length-bounded here so a
+/// value like an attacker-set provider name cannot inject into or bloat the
+/// ledger. No correlation id: a config change is a standalone observation, not
+/// part of a query/action chain. Classified [`AuditKind::Permission`] (it changes
+/// what the AI is permitted), so a ledger reader can surface it by kind.
+pub fn config_change_event(key: &str, change: &str) -> IngestRequest {
+    let subject = if is_safe_config_key(key) {
+        format!("ai.config.{key}")
+    } else {
+        "ai.config".to_string()
+    };
+    let outcome: String = change.chars().filter(|c| !c.is_control()).take(64).collect();
+    IngestRequest {
+        kind: AuditKind::Permission,
+        structural: StructuralRecord {
+            subject,
+            node_types: Vec::new(),
+            relations: Vec::new(),
+            result_count: None,
+            duration_ms: None,
+            outcome,
+            depth: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
+}
+
+/// Whether `key` is a known security-bearing `ai.toml` key, safe to embed in a
+/// content-free audit subject. A fixed allowlist; an unknown key falls back to
+/// the generic `ai.config` subject so no caller string reaches the tier.
+fn is_safe_config_key(key: &str) -> bool {
+    matches!(
+        key,
+        "enabled"
+            | "access_level"
+            | "executor_live"
+            | "provider"
+            | "autonomous_apps"
+            | "action_mode"
+    )
+}
+
 /// Shared builder for a content-free behaviour audit entry. The subject is
 /// validated here (the content-free boundary), so neither public wrapper can
 /// persist free text into the Structural tier.
@@ -344,6 +394,25 @@ mod tests {
         // The content-free boundary still collapses an unsafe subject.
         let bad = behaviour_policy_violation_event("not a kebab id!", "honeytool-tripped", "r");
         assert_eq!(bad.structural.subject, "agent.behaviour");
+    }
+
+    #[test]
+    fn config_change_event_is_content_free_keyed_and_bounded() {
+        // A known security key keys the subject; the transition is the outcome.
+        let e = config_change_event("access_level", "0->3");
+        assert_eq!(e.kind, AuditKind::Permission);
+        assert_eq!(e.structural.subject, "ai.config.access_level");
+        assert_eq!(e.structural.outcome, "0->3");
+        assert!(e.call_chain_id.is_none(), "a config change is not part of a chain");
+        // An unknown / hostile key falls back to the generic subject - no caller
+        // string reaches the tier.
+        assert_eq!(config_change_event("../etc/x", "y").structural.subject, "ai.config");
+        // A hostile change detail (e.g. an attacker-set provider name) is control-
+        // stripped and length-bounded, so it can neither inject newlines nor bloat.
+        let hostile = config_change_event("provider", &format!("evil\n\t{}", "z".repeat(200)));
+        assert!(!hostile.structural.outcome.contains('\n'));
+        assert!(!hostile.structural.outcome.contains('\t'));
+        assert!(hostile.structural.outcome.chars().count() <= 64);
     }
 
     #[test]
