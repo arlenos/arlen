@@ -33,6 +33,17 @@ environment:
   - "ARLEN_DB_PATH=${XDG_RUNTIME_DIR}/arlen/knowledge/events.db"
   - "ARLEN_GRAPH_PATH=${XDG_RUNTIME_DIR}/arlen/knowledge/graph"
   - "ARLEN_TIMELINE_MOUNT=off"
+  # Same isolation for the other daemons' WRITTEN state (they fall back to the real
+  # ~/.local/share / ~/.local/state otherwise): the audit daemon's HMAC-chained
+  # ledger + key (XDG_DATA_HOME/arlen/audit), the anomaly detector's state
+  # (XDG_DATA_HOME/arlen/anomaly), the capsule signing key (XDG_STATE_HOME). Audit is
+  # the sharp one - it is tamper-detected, so a dev-stack write into the user's REAL
+  # ledger chain could trip a false tamper-failure; isolating it keeps `just dev`
+  # from touching real state + makes it reproducible. XDG_CONFIG_HOME is deliberately
+  # NOT isolated: the dev stack should READ the dev's real ~/.config/arlen (graph.toml
+  # watch dirs, ai.toml provider, etc.) - it is read-only intent, no clobber risk.
+  - "XDG_DATA_HOME=${XDG_RUNTIME_DIR}/arlen/data"
+  - "XDG_STATE_HOME=${XDG_RUNTIME_DIR}/arlen/state"
 
 processes:
   runtime-dir:
