@@ -16,6 +16,12 @@
   const FOLDER = "/demo/Projects";
   const SYMLINK = "/demo/shortcut";
 
+  // A stand-in thumbnail data URI (the real `files_thumbnail` returns one).
+  const thumbSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8a06a"/><stop offset="0.6" stop-color="#9c5a6a"/><stop offset="1" stop-color="#2a2f4a"/></linearGradient></defs><rect width="320" height="200" fill="url(#g)"/><circle cx="160" cy="118" r="32" fill="#f4d28a"/></svg>';
+  const thumbDataUri =
+    typeof btoa !== "undefined" ? `data:image/svg+xml;base64,${btoa(thumbSvg)}` : null;
+
   const liveRel = [
     { label: "Part of", target: "Thesis writeup", target_id: "p-thesis" },
     { label: "Part of", target: "Reading list", target_id: "p-reading" },
@@ -62,7 +68,7 @@
         if (cmd === "files_get_exif_tags")
           return { description: "Sunset over the Inn", artist: "Tim", copyright: null };
         if (cmd === "files_set_permissions" || cmd === "files_set_exif_tags") return null;
-        if (cmd === "files_thumbnail") return null;
+        if (cmd === "files_thumbnail") return a.path === IMAGE ? thumbDataUri : null;
         throw new Error(`unmocked: ${cmd}`);
       });
     }
