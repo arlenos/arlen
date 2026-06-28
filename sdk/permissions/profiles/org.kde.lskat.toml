@@ -1,0 +1,5 @@
+# Starting permission profile for Lieutenant Skat (a KDE card game). Plays locally; needs no filesystem,
+# network, or Knowledge Graph access.
+[info]
+app_id = "org.kde.lskat"
+tier = "third-party"
