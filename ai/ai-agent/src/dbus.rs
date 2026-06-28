@@ -294,9 +294,21 @@ impl AgentInterface {
                         },
                     );
                 }
+                // Drop the acted-on proposal so it stops listing as pending and
+                // cannot be re-approved (symmetric with `deny`). The executor's
+                // proof re-run already refuses a duplicate today, but removing it
+                // is the correct lifecycle and closes the re-approve path for any
+                // future non-idempotent rule.
+                if let Ok(mut store) = self.pending.lock() {
+                    store.remove(&id.to_string());
+                }
                 "executed".to_string()
             }
             Ok(None) => "nothing-to-execute".to_string(),
+            // The error may carry a writer/daemon detail derived from an operand
+            // (a File id is its path). Bounded and accepted: this is returned only
+            // to the same-user session-bus caller (the harness, which already holds
+            // the proposal), and it mirrors `compensate`'s identical `error: {e}`.
             Err(e) => format!("error: {e}"),
         }
     }
