@@ -89,6 +89,26 @@ impl Default for AiMasterSwitches {
 }
 
 impl AiMasterSwitches {
+    /// The generous shipped default the broker SEEDS into a fresh
+    /// store - distinct from [`Default`], the fail-closed FLOOR a
+    /// missing/corrupt store resolves to at read time. Matches the
+    /// shipped `ai.toml` (`DEFAULT_AI` in the settings app): the AI
+    /// ships disabled but, once enabled, sees recent activity
+    /// (`access_level` 3) so it is useful out of the box; the
+    /// security-sensitive switches (`executor_live`, autonomy) stay
+    /// at the floor. The two must stay in step until the cutover
+    /// makes the broker the sole owner of these defaults.
+    pub fn shipped_default() -> Self {
+        Self {
+            enabled: false,
+            access_level: 3,
+            executor_live: false,
+            action_mode: ActionMode::Suggest,
+            provider: "ollama-default".to_string(),
+            autonomous_apps: BTreeSet::new(),
+        }
+    }
+
     /// Clamp any structurally-invalid field to its fail-closed value.
     /// An `access_level` above the ceiling is malformed input, so it
     /// drops to 0 (minimal) - never to the ceiling, which would let a
@@ -198,6 +218,20 @@ impl StateStore {
         let tmp = self.dir.join(format!(".{STATE_FILE}.tmp"));
         write_atomic_0600(&tmp, &path, text.as_bytes())?;
         Ok(())
+    }
+
+    /// Seed the canonical state with `seed` ONLY if no state file
+    /// exists yet (a fresh broker). An existing store - even one a
+    /// user narrowed to the floor - is left untouched, so a restart
+    /// never clobbers a deliberate setting. Returns whether it
+    /// seeded. The broker is the single writer at startup (before it
+    /// accepts connections), so the check-then-write is race-free.
+    pub fn seed_if_absent(&self, seed: &AiMasterSwitches) -> Result<bool, StateError> {
+        if self.state_path().exists() {
+            return Ok(false);
+        }
+        self.store(seed)?;
+        Ok(true)
     }
 
     /// The store directory (for the socket/lock siblings a later
@@ -333,6 +367,33 @@ mod tests {
             & 0o777;
         assert_eq!(dir_mode, 0o700, "broker dir must be owner-only");
         assert_eq!(file_mode, 0o600, "state file must be owner-only");
+    }
+
+    #[test]
+    fn shipped_default_is_useful_but_not_open() {
+        let d = AiMasterSwitches::shipped_default();
+        // useful: recent-activity read scope once enabled
+        assert_eq!(d.access_level, 3);
+        assert_eq!(d.provider, "ollama-default");
+        // but ships off + never auto-acting
+        assert!(!d.enabled);
+        assert!(!d.executor_live);
+        assert_eq!(d.action_mode, ActionMode::Suggest);
+        assert!(d.autonomous_apps.is_empty());
+    }
+
+    #[test]
+    fn seed_writes_a_fresh_store_then_never_clobbers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store_in(tmp.path());
+        // fresh: seeds
+        assert!(s.seed_if_absent(&AiMasterSwitches::shipped_default()).unwrap());
+        assert_eq!(s.load().unwrap(), AiMasterSwitches::shipped_default());
+        // a user narrows to the floor
+        s.store(&AiMasterSwitches::default()).unwrap();
+        // a later seed (e.g. a restart) does NOT overwrite the narrowing
+        assert!(!s.seed_if_absent(&AiMasterSwitches::shipped_default()).unwrap());
+        assert_eq!(s.load().unwrap(), AiMasterSwitches::default());
     }
 
     #[test]
