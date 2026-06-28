@@ -26,17 +26,22 @@
 #   SHOOT_DISPLAY      the Xvfb display to use (default :99)
 #   SHOOT_CLIENT_LOG   capture the client's stdout/stderr here (default /dev/null);
 #                      set it to a file to debug why a client did not render
-#   SHOOT_INJECT       a command run after settle, before capture, to inject input
-#                      into the focused nested surface. This compositor runs its
-#                      X11 backend under Xvfb (it picks x11 when DISPLAY is set), so
-#                      it reads X11 input: `xdotool` against the Xvfb DISPLAY is what
-#                      actually lands in the nested surface (clicks + keys). `wtype`
-#                      works where the virtual-keyboard Wayland protocol is present.
+#   SHOOT_INJECT       a command run after settle, before capture, to inject input.
+#                      NOTE on reach (tested 28 Jun): injecting into the NESTED
+#                      surface under this Xvfb harness is unsolved. The compositor
+#                      runs its x11 backend (picks x11 when DISPLAY is set) reading
+#                      XInput2 events on its Xvfb window, but `xdotool`/XTEST into
+#                      Xvfb did NOT reach the nested Wayland client even with
+#                      windowfocus (the key never appeared at a nested shell prompt);
 #                      ydotool/uinput inject at the evdev layer and reach the HOST
-#                      seat, not this nested surface, so they are for the VM /
-#                      real-boot (evdev-backed) pass, not this Xvfb harness. The
-#                      command runs with both the Xvfb DISPLAY and the compositor's
-#                      WAYLAND_DISPLAY set, so it can target the right one.
+#                      seat, not the nested surface. So this harness is reliable for
+#                      CAPTURE/render verification (grim of compositor chrome + the
+#                      client surface), and inject-requiring tests (click-path) need
+#                      the QEMU VM pass (QMP input-send-event into a real-evdev guest)
+#                      or a DRM/headless-seat nested setup, not this Xvfb path. The
+#                      command still runs with both the Xvfb DISPLAY and the
+#                      compositor's WAYLAND_DISPLAY set (so an X11 tool can at least
+#                      connect to Xvfb, e.g. to inspect windows).
 #   SHOOT_INJECT_SETTLE seconds to wait after inject before capture (default 1)
 #   SHOOT_BASELINE     a reference PNG; if set, compare the capture to it after
 #                      grim and FAIL (exit 3) when the differing-pixel count
