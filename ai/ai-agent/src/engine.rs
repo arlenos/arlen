@@ -256,6 +256,12 @@ pub enum DispatchOutcome {
         /// erased but surfaced for logging and recovery. The act, when attempted,
         /// is audited before the write regardless of this outcome.
         executed: Option<ExecutionResult>,
+        /// The full executable form of this proposal, retained for the approve
+        /// path - `Some` only for a `RequireConfirmation` decision (the gate
+        /// card the user can `[Approve]`), `None` otherwise. The dispatch loop
+        /// records it into the daemon-internal approve store; it never crosses
+        /// the wire (the content-free [`PendingProposal`] does that).
+        pending_exec: Option<RetainedProposal>,
     },
     /// The handler reached a terminal condition with no action.
     Terminal {
@@ -382,7 +388,6 @@ pub fn proposal_view(outcome: &DispatchOutcome) -> Option<PendingProposal> {
 /// path writes through); everything else `execute` requires is owned here so the
 /// borrow-free value survives to the static D-Bus boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)] // wired by the approve/deny D-Bus methods (the next slice)
 pub struct RetainedProposal {
     /// The audit-ledger index of the gate decision: the `[Approve]`/`[Deny]`
     /// handle, the same id the wire [`PendingProposal`] carries.
@@ -407,7 +412,6 @@ pub struct RetainedProposal {
     pub ceiling: BaselineMode,
 }
 
-#[allow(dead_code)] // wired by the approve/deny D-Bus methods (the next slice)
 impl RetainedProposal {
     /// Capture the executable form of a just-decided proposal, but ONLY when the
     /// decision actually needs the user (`RequireConfirmation`). An auto-lifting
@@ -1093,6 +1097,19 @@ impl<'a> Dispatcher<'a> {
                             )
                             .await;
                         let plan = plan_for(&action.tool);
+                        // Retain the executable form before `action` is moved
+                        // into the outcome, so a later approval can perform it.
+                        let pending_exec = RetainedProposal::capture(
+                            receipt.audit_index,
+                            &behaviour,
+                            &action,
+                            receipt.decision,
+                            tool_scope,
+                            ctx.app_id,
+                            ctx.external_trigger,
+                            ctx.correlation_id,
+                            m.mode,
+                        );
                         DispatchOutcome::Decided {
                             behaviour,
                             action,
@@ -1102,6 +1119,7 @@ impl<'a> Dispatcher<'a> {
                             plan,
                             dry_run,
                             executed,
+                            pending_exec,
                         }
                     }
                     Err(e) => DispatchOutcome::Refused {
@@ -1586,6 +1604,17 @@ impl<'a> Dispatcher<'a> {
                                 tool_scope,
                             );
                             let plan = plan_for(&action.tool);
+                            let pending_exec = RetainedProposal::capture(
+                                receipt.audit_index,
+                                &behaviour,
+                                &action,
+                                receipt.decision,
+                                tool_scope,
+                                ctx.app_id,
+                                ctx.external_trigger,
+                                ctx.correlation_id,
+                                m.mode,
+                            );
                             outcomes.push(DispatchOutcome::Decided {
                                 behaviour: behaviour.clone(),
                                 action,
@@ -1598,6 +1627,7 @@ impl<'a> Dispatcher<'a> {
                                 // executor (separate design pass); it never
                                 // executes here.
                                 executed: None,
+                                pending_exec,
                             });
                             ProgressKey::Accepted(tool_name, summary_text)
                         }
@@ -2342,6 +2372,7 @@ tools:
                 plan: plan_for("graph.write"),
                 dry_run: None,
                 executed: None,
+                pending_exec: None,
             }
         );
         let recorded = audit.recorded().await;
@@ -2364,6 +2395,7 @@ tools:
             plan: plan_for("graph.write"),
             dry_run: None,
             executed: None,
+            pending_exec: None,
         };
 
         // A RequireConfirmation decision is a gate card: projected, keyed by the
@@ -2619,6 +2651,7 @@ tools:
                 plan: plan_for("graph.write"),
                 dry_run: None,
                 executed: None,
+                pending_exec: None,
             }
         );
     }
