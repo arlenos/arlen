@@ -17,6 +17,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
+use crate::effect_model::InverseReceipt;
 use crate::executor::ActionReceipt;
 
 /// A retained execution receipt together with the behaviour that produced it.
@@ -51,6 +52,13 @@ pub struct CompletedAction {
     pub behaviour: String,
     /// A content-bounded description of what was done (for the done-line).
     pub what: String,
+    /// The file change this action applied, when it was a file move - the
+    /// done-receipt's diff body, the same `FileChangeSet` shape the gate card
+    /// showed before approval (the plan's "proposed and done are the same
+    /// artifact"). Derived from the receipt's `RestorePath` inverse: the file
+    /// moved from `prior` to `now`. `None` for a graph write or any receipt
+    /// without a path-rename inverse.
+    pub change: Option<arlen_file_change::FileChangeSet>,
 }
 
 /// Project a retained receipt into the silent-done line the harness shows with
@@ -60,7 +68,7 @@ pub struct CompletedAction {
 /// the edge written; the non-graph variant (EM-R5, no producer yet) is described
 /// generically until its forward op is surfaced.
 pub fn completed_view(retained: &RetainedReceipt) -> CompletedAction {
-    let (id, what) = match &retained.receipt {
+    let (id, what, change) = match &retained.receipt {
         ActionReceipt::Graph(executed) => {
             let w = executed.write();
             (
@@ -69,16 +77,37 @@ pub fn completed_view(retained: &RetainedReceipt) -> CompletedAction {
                     "{} {}:{} → {}:{}",
                     w.relation_type, w.from_type, w.from_id, w.to_type, w.to_id
                 ),
+                // A graph write mutates the KG, not a file, so there is no diff body.
+                None,
             )
         }
         ActionReceipt::NonGraph(action) => {
-            (action.correlation_id().to_string(), "non-graph action".to_string())
+            // A file move carries a RestorePath inverse (the file moved from
+            // `prior` to `now`), so the done-receipt's change is that rename -
+            // the same shape the gate card proposed. Any other inverse has no
+            // file-rename body.
+            let change = match action.inverse() {
+                InverseReceipt::RestorePath { now, prior } => {
+                    Some(arlen_file_change::FileChangeSet::single(
+                        arlen_file_change::FileChange::rename(prior.as_str(), now.as_str()),
+                    ))
+                }
+                _ => None,
+            };
+            let what = match action.inverse() {
+                InverseReceipt::RestorePath { now, prior } => {
+                    format!("moved {} → {}", prior.as_str(), now.as_str())
+                }
+                _ => "non-graph action".to_string(),
+            };
+            (action.correlation_id().to_string(), what, change)
         }
     };
     CompletedAction {
         id,
         behaviour: retained.behaviour.clone(),
         what,
+        change,
     }
 }
 
@@ -235,6 +264,43 @@ mod tests {
         assert_eq!(
             view.what,
             "FILE_PART_OF system.File:/p/a.rs → system.Project:Arlen"
+        );
+        // A graph write has no file diff body.
+        assert_eq!(view.change, None);
+    }
+
+    #[test]
+    fn completed_view_describes_a_file_move_and_carries_its_rename_diff() {
+        use crate::executor::{ActionReceipt, ActionWrite};
+        // A non-graph fs.move receipt: the file moved from prior to now.
+        let action = ActionWrite::for_test(
+            "move",
+            "/home/u/Documents/Projects/report.pdf",
+            "/home/u/Documents/Projects/report.pdf",
+            "/home/u/Downloads/report.pdf",
+            "op-9",
+            "corr-9",
+        );
+        let retained = RetainedReceipt {
+            receipt: ActionReceipt::NonGraph(action),
+            behaviour: "tidy-downloads".to_string(),
+        };
+        let view = completed_view(&retained);
+        assert_eq!(view.id, "corr-9");
+        assert_eq!(
+            view.what,
+            "moved /home/u/Downloads/report.pdf → /home/u/Documents/Projects/report.pdf"
+        );
+        // The done-receipt's diff is the rename, the same shape the gate card
+        // proposed (from = prior, to = now).
+        assert_eq!(
+            view.change,
+            Some(arlen_file_change::FileChangeSet::single(
+                arlen_file_change::FileChange::rename(
+                    "/home/u/Downloads/report.pdf",
+                    "/home/u/Documents/Projects/report.pdf",
+                )
+            )),
         );
     }
 

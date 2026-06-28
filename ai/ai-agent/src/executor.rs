@@ -469,6 +469,36 @@ impl ActionWrite {
         }
     }
 
+    /// Test-only constructor: a non-graph receipt with a `RestorePath` inverse
+    /// (a file move from `prior` to `now`), so a consumer such as the receipt
+    /// store's done-view can be tested without driving the executor.
+    /// `#[cfg(test)]`, so the production opacity (only the executor's non-graph
+    /// arm builds one) is unchanged.
+    #[cfg(test)]
+    pub(crate) fn for_test(
+        op: &str,
+        target: &str,
+        now: &str,
+        prior: &str,
+        op_id: &str,
+        correlation_id: &str,
+    ) -> Self {
+        use crate::effect_model::CanonicalPath;
+        Self {
+            forward: ResolvedExternalOp::new(
+                EffectDomain::Filesystem,
+                op.to_string(),
+                target.to_string(),
+            ),
+            inverse: InverseReceipt::RestorePath {
+                now: CanonicalPath::new(now).expect("test now path is canonical"),
+                prior: CanonicalPath::new(prior).expect("test prior path is canonical"),
+            },
+            op_id: op_id.to_string(),
+            correlation_id: correlation_id.to_string(),
+        }
+    }
+
     /// The forward operation that was committed.
     pub fn forward(&self) -> &ResolvedExternalOp {
         &self.forward
