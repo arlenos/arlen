@@ -135,9 +135,25 @@ impl QuotaConfig {
     // the canonical attested ids tier FirstParty.
     #[cfg(debug_assertions)]
     fn is_dev_first_party_id_impl(app_id: &str) -> bool {
-        matches!(
+        if matches!(
             app_id,
             "dev.arlen-ai-agent" | "dev.arlen-ai-daemon" | "dev.arlen-code-indexer"
+        ) {
+            return true;
+        }
+        // Debug-only, off by default: the integration harness sets
+        // `ARLEN_KNOWLEDGE_EXTRA_FIRST_PARTY` to its own resolved app id so a
+        // hermetic test caller can exercise a FirstParty/system-anchored read
+        // path (the file manager's as-of `FILE_PART_OF` traversal, whose
+        // rel-type token a ThirdParty caller cannot scope) against a seeded
+        // graph. Exact match, comma-separated, never a prefix. The analog of the
+        // audit daemon's `ARLEN_AUDIT_EXTRA_ADMIT`; compiled out of release, so
+        // the production tier gate is unchanged.
+        extra_first_party_admits(
+            std::env::var("ARLEN_KNOWLEDGE_EXTRA_FIRST_PARTY")
+                .ok()
+                .as_deref(),
+            app_id,
         )
     }
     #[cfg(not(debug_assertions))]
@@ -166,6 +182,17 @@ impl QuotaConfig {
         }
         TierQuotas::for_tier(self.tier_for_app(app_id))
     }
+}
+
+/// Whether a debug-only `ARLEN_KNOWLEDGE_EXTRA_FIRST_PARTY` value (the
+/// comma-separated env contents, `None` if unset) admits `app_id` as an extra
+/// FirstParty id. Exact, trimmed match per entry - never a prefix, and an unset
+/// env admits nothing. Pure, so the gate is tested without an env race.
+#[cfg(debug_assertions)]
+fn extra_first_party_admits(env_value: Option<&str>, app_id: &str) -> bool {
+    env_value
+        .map(|v| v.split(',').any(|id| id.trim() == app_id))
+        .unwrap_or(false)
 }
 
 // ---------------------------------------------------------------------------
@@ -268,5 +295,19 @@ mod tests {
         let q = c.quotas_for_app("com.anki");
         assert_eq!(q.max_entities, Some(100_000));
         assert_eq!(q.max_query_results, 10_000);
+    }
+
+    #[test]
+    fn extra_first_party_admits_is_exact_and_off_by_default() {
+        use super::extra_first_party_admits;
+        // Unset env admits nothing.
+        assert!(!extra_first_party_admits(None, "dev.integration_backend_smoke"));
+        // Exact, comma-separated, trimmed match.
+        assert!(extra_first_party_admits(Some("a, dev.test, b"), "dev.test"));
+        assert!(extra_first_party_admits(Some("dev.test"), "dev.test"));
+        // Never a prefix, and a non-member is refused.
+        assert!(!extra_first_party_admits(Some("dev.testing"), "dev.test"));
+        assert!(!extra_first_party_admits(Some("a,b"), "dev.test"));
+        assert!(!extra_first_party_admits(Some(""), "dev.test"));
     }
 }
