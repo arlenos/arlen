@@ -35,7 +35,7 @@ use zbus::interface;
 
 use crate::config::AgentConfig;
 use crate::engine::PendingProposal;
-use crate::executor::{ActionReceipt, Approver, CompensationOutcome, Compensator};
+use crate::executor::{Approver, CompensationOutcome, Compensator};
 use crate::discovery::ai_config_path;
 use crate::receipt_store::{completed_view, ReceiptStore, RetainedReceipt};
 use crate::seams::GraphHandle;
@@ -281,15 +281,18 @@ impl AgentInterface {
             .approve(&retained, &*self.graph, &capability)
             .await
         {
-            Ok(Some(executed)) => {
-                // Retain the undo receipt, keyed by the write's correlation id, so
+            Ok(Some(receipt)) => {
+                // Retain the undo receipt, keyed by the action's correlation id, so
                 // a later `[Undo]` (compensate) can find it - exactly as the
-                // dispatch-path retention does for an auto-executed write.
+                // dispatch-path retention does for an auto-executed write. The
+                // receipt is already the right kind (Graph for a `graph.write`,
+                // NonGraph for an `fs.move`), so the undo path replays the correct
+                // inverse.
                 if let Ok(mut store) = self.receipts.lock() {
                     store.record(
-                        executed.correlation_id().to_string(),
+                        receipt.correlation_id().to_string(),
                         RetainedReceipt {
-                            receipt: ActionReceipt::Graph(executed),
+                            receipt,
                             behaviour: retained.behaviour.clone(),
                         },
                     );

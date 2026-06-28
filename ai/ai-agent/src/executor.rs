@@ -503,6 +503,19 @@ pub enum ActionReceipt {
     NonGraph(ActionWrite),
 }
 
+#[allow(dead_code)]
+impl ActionReceipt {
+    /// The correlation id of the decision that produced this receipt - the key a
+    /// retained receipt is stored under (so a later undo finds it), uniform across
+    /// both variants.
+    pub fn correlation_id(&self) -> &str {
+        match self {
+            ActionReceipt::Graph(e) => e.correlation_id(),
+            ActionReceipt::NonGraph(a) => a.correlation_id(),
+        }
+    }
+}
+
 /// The result of compensating (undoing) a previously-executed write. Closes the
 /// predict -> gate -> act -> audit -> **compensate** loop: an action that
 /// declared a reversible effect (and so was lifted) can have that exact effect
@@ -1300,39 +1313,51 @@ pub struct Approver {
     mounts: Arc<dyn MountPolicy>,
     writer: Arc<dyn RelationWriter>,
     audit: Arc<dyn AuditSink>,
+    mover: Arc<dyn FileMover>,
 }
 
 impl Approver {
-    /// An approver over the owned proof + write collaborators.
+    /// An approver over the owned proof + write collaborators, including the file
+    /// mover the external (`fs.move`) arm needs (the production wiring passes
+    /// [`fs_move::OsFileMover`]).
     pub fn new(
         paths: Arc<dyn PathResolver>,
         mounts: Arc<dyn MountPolicy>,
         writer: Arc<dyn RelationWriter>,
         audit: Arc<dyn AuditSink>,
+        mover: Arc<dyn FileMover>,
     ) -> Self {
         Self {
             paths,
             mounts,
             writer,
             audit,
+            mover,
         }
     }
 
     /// Perform a user-approved proposal: build the live executor over the owned
     /// deps plus the caller-supplied live `capability`, and execute the retained
     /// proposal as a `PreviewThenExecute` - the human approval IS the lift from
-    /// `RequireConfirmation`. The executor still re-runs the full trusted proof
-    /// against the current graph and audits fail-closed before the write, so
-    /// approval authorises the act but never bypasses revalidation: a proposal
-    /// whose preconditions went stale since the gate decision is still refused.
-    /// Returns the executed write (so the caller retains its undo receipt) or
-    /// `None` when the proposal does not resolve to a write.
+    /// `RequireConfirmation` (a `kind: agent` action never silently lifts, so the
+    /// approve path is how its proven action reaches execution). The executor
+    /// re-runs the full trusted proof / re-confines the move against the CURRENT
+    /// state and audits fail-closed before acting, so approval authorises the act
+    /// but never bypasses revalidation: a proposal whose preconditions went stale
+    /// since the gate decision is still refused.
+    ///
+    /// Branches on the tool's registered effect: a graph `AssertEdge` goes through
+    /// [`LiveExecutor::execute`] (a `Graph` receipt); a non-graph
+    /// [`Effect::External`] (`fs.move`) goes through
+    /// [`LiveExecutor::execute_external`] with the owned mover (a `NonGraph`
+    /// receipt). Returns the receipt (so the caller retains it for undo) or `None`
+    /// when the proposal does not resolve to an action.
     pub async fn approve(
         &self,
         retained: &RetainedProposal,
         graph: &dyn GraphHandle,
         capability: &Capability,
-    ) -> Result<Option<ExecutedWrite>, ExecError> {
+    ) -> Result<Option<ActionReceipt>, ExecError> {
         let executor = LiveExecutor::new(
             capability,
             &*self.paths,
@@ -1348,17 +1373,32 @@ impl Approver {
             deterministic_workflow: false,
             correlation_id: &retained.correlation_id,
         };
-        executor
-            .execute(
-                &retained.action,
-                ActionDecision::PreviewThenExecute,
-                &retained.tool_scope,
-                graph,
-                &retained.behaviour,
-                &ctx,
-                retained.ceiling,
-            )
-            .await
+        if registry::is_external_action(&retained.action.tool) {
+            let written = executor
+                .execute_external(
+                    &retained.action,
+                    ActionDecision::PreviewThenExecute,
+                    &retained.tool_scope,
+                    &*self.mover,
+                    &retained.behaviour,
+                    &ctx,
+                )
+                .await?;
+            Ok(written.map(ActionReceipt::NonGraph))
+        } else {
+            let written = executor
+                .execute(
+                    &retained.action,
+                    ActionDecision::PreviewThenExecute,
+                    &retained.tool_scope,
+                    graph,
+                    &retained.behaviour,
+                    &ctx,
+                    retained.ceiling,
+                )
+                .await?;
+            Ok(written.map(ActionReceipt::Graph))
+        }
     }
 }
 
@@ -1978,18 +2018,22 @@ mod tests {
             Arc::new(StaticMountPolicy::empty()),
             writer.clone(),
             Arc::new(MockAuditSink::accepting()),
+            Arc::new(crate::fs_move::OsFileMover),
         );
 
         // The human approval performs the write: the approver re-runs the proof
         // against the current graph (file under the project root, not yet linked)
         // and, on success, writes exactly the proven FILE_PART_OF edge.
-        let written = approver
+        let receipt = approver
             .approve(&retained, &tag_graph(false), &executing_cap())
             .await
             .expect("approve does not error")
             .expect("a proven proposal resolves to a write");
-        assert_eq!(written.write.relation_type, "FILE_PART_OF");
-        assert_eq!(written.outcome, WriteOutcome::Created);
+        let ActionReceipt::Graph(written) = receipt else {
+            panic!("a graph.write proposal yields a Graph receipt");
+        };
+        assert_eq!(written.write().relation_type, "FILE_PART_OF");
+        assert_eq!(written.outcome(), WriteOutcome::Created);
         let recorded = writer.writes.lock().unwrap();
         assert_eq!(recorded.len(), 1, "exactly one write performed on approval");
         assert_eq!(recorded[0].from_id, "/proj/a.rs");
@@ -2019,6 +2063,7 @@ mod tests {
             Arc::new(StaticMountPolicy::empty()),
             writer.clone(),
             Arc::new(MockAuditSink::accepting()),
+            Arc::new(crate::fs_move::OsFileMover),
         );
         let result = approver
             .approve(&retained, &tag_graph(true), &executing_cap())
@@ -2031,6 +2076,58 @@ mod tests {
             writer.writes.lock().unwrap().is_empty(),
             "no write performed when the proof is stale"
         );
+    }
+
+    #[tokio::test]
+    async fn approver_executes_a_user_approved_fs_move() {
+        // The confirm-gated agent path end to end: a `kind: agent` fs.move is
+        // surfaced as RequireConfirmation, the human approves, and the approver
+        // performs the collision-safe move via the external arm, returning a
+        // NonGraph receipt (so a later [Undo] can move the file back).
+        let dir = tempfile::tempdir().unwrap();
+        let downloads = dir.path().join("Downloads");
+        let projects = dir.path().join("Projects");
+        std::fs::create_dir_all(&downloads).unwrap();
+        std::fs::create_dir_all(&projects).unwrap();
+        let src = downloads.join("paper.pdf");
+        std::fs::write(&src, b"x").unwrap();
+        let scope = vec![
+            downloads.to_str().unwrap().to_string(),
+            projects.to_str().unwrap().to_string(),
+        ];
+
+        let retained = RetainedProposal::capture(
+            0,
+            "tidy-downloads",
+            &move_action(src.to_str().unwrap(), projects.to_str().unwrap()),
+            ActionDecision::RequireConfirmation,
+            &scope,
+            "org.arlen.files",
+            false,
+            "run-mv",
+            BaselineMode::Supervised,
+        )
+        .expect("retained");
+
+        let approver = Approver::new(
+            Arc::new(crate::slice::FsPathResolver),
+            Arc::new(StaticMountPolicy::empty()),
+            Arc::new(MockWriter::default()),
+            Arc::new(MockAuditSink::accepting()),
+            Arc::new(crate::fs_move::OsFileMover),
+        );
+        // The graph is unused on the external path.
+        let receipt = approver
+            .approve(&retained, &tag_graph(true), &executing_cap())
+            .await
+            .expect("approve does not error")
+            .expect("an fs.move proposal resolves to a move");
+        let ActionReceipt::NonGraph(written) = receipt else {
+            panic!("an fs.move proposal yields a NonGraph receipt");
+        };
+        assert!(matches!(written.inverse(), InverseReceipt::RestorePath { .. }));
+        let dst = projects.join("paper.pdf");
+        assert!(dst.exists() && !src.exists(), "the approved move was performed");
     }
 
     #[tokio::test]

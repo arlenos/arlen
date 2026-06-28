@@ -188,6 +188,15 @@ pub(crate) fn is_honeytool(tool: &str) -> bool {
     lookup(tool).is_some_and(|t| matches!(t.schema().provenance, Provenance::Honeytool))
 }
 
+/// Whether a registered tool's effect is a single non-graph [`Effect::External`]
+/// (e.g. `fs.move`), as opposed to a graph `AssertEdge`. The executor and the
+/// approve path branch on this to call the external arm (`execute_external`,
+/// which moves a file) versus the graph write arm (`execute`). An unregistered
+/// tool is not external (it has no effect the executor performs).
+pub(crate) fn is_external_action(tool: &str) -> bool {
+    lookup(tool).is_some_and(|t| matches!(t.schema().effects.as_slice(), [Effect::External { .. }]))
+}
+
 /// Whether a schema's reversibility is *structurally proven* by its preconditions
 /// (reversible-receipts-and-the-effect-model.md EM-R9). A rule classified
 /// reversible must carry the precondition that makes its inverse exact; validating
