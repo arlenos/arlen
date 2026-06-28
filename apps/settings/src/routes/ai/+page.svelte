@@ -1,18 +1,25 @@
 <script lang="ts">
-  /// AI settings page, the single CONFIG home for the AI layer (settings-app.md
-  /// §0.3; the chat/agent split resolution in harness-redo-plan.md): master
-  /// switch, provider, read level, action mode, behaviours, execution, and
-  /// service status. Configures `~/.config/arlen/ai.toml`.
+  /// AI settings, the trust + control home for the AI layer: enable it, set how
+  /// freely it acts (the decided action_mode + executor_live model), how much it
+  /// can see, what it does on its own, plus links out to the Providers and
+  /// Default-models views and a health line. Configures `~/.config/arlen/ai.toml`.
   ///
   /// Reviewing what the AI did lives in the AI app's Activity feed, not here
-  /// (one activity home, one config home). The behaviours list is wired
-  /// against the intended commands (`ai_behaviours` read,
-  /// `ai_behaviour_set_enabled` write); until the backend provides them the
-  /// rows report that honestly.
-
+  /// (one activity home, one config home). The behaviours list is wired against
+  /// `ai_behaviours` (read) + `ai_behaviour_set_enabled` (write); until the
+  /// backend provides the write the rows report that honestly. Choosing the
+  /// provider + model lives in the linked views, not here.
   import { onMount } from "svelte";
+  import { writable } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import { Sparkles, RefreshCw, AlertCircle } from "lucide-svelte";
+  import {
+    Sparkles,
+    RefreshCw,
+    AlertCircle,
+    Cloud,
+    SlidersHorizontal,
+    ChevronRight,
+  } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
@@ -21,9 +28,6 @@
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { ChipList } from "@arlen/ui-kit/components/ui/chip-list";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { Input } from "@arlen/ui-kit/components/ui/input";
-  import { NumberInput } from "@arlen/ui-kit/components/ui/number-input";
-  import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { ai } from "$lib/stores/ai";
 
   interface AiStatus {
@@ -46,25 +50,26 @@
     errors: string[];
   }
 
-  const PROVIDERS = [{ value: "ollama-default", label: "Ollama (local)" }];
-
+  // The read level, in plain words (the daemon stores 0-4 in `ai.access_level`).
   const ACCESS_LEVELS = [
-    { value: "0", label: "Minimal" },
-    { value: "1", label: "Session" },
-    { value: "2", label: "Project" },
-    { value: "3", label: "Time" },
-    { value: "4", label: "Full" },
+    { value: "0", label: "Nothing" },
+    { value: "1", label: "This session" },
+    { value: "2", label: "This project" },
+    { value: "3", label: "Recent" },
+    { value: "4", label: "Everything" },
   ];
   const ACCESS_HINTS: Record<string, string> = {
-    "0": "The assistant sees almost nothing.",
-    "1": "Limited to the current session's activity.",
-    "2": "The active project's files and context.",
-    "3": "A recent time window across projects.",
+    "0": "It sees almost nothing about your files.",
+    "1": "Only what you do in the current session.",
+    "2": "The files and context of the project you are in.",
+    "3": "A recent window of activity across your projects.",
     "4": "Everything the system has recorded about your files and activity.",
   };
+  // How freely it acts, the baseline posture. "supervised" only takes effect
+  // once the executor master below is on.
   const ACTION_MODES = [
-    { value: "suggest", label: "Suggest" },
-    { value: "supervised", label: "Supervised" },
+    { value: "suggest", label: "Suggests only" },
+    { value: "supervised", label: "Acts with a preview" },
   ];
 
   let status = $state<AiStatus | null>(null);
@@ -91,14 +96,58 @@
   }
 
   let enabled = $state(false);
-  let provider = $state("ollama-default");
-  let providerAtLoad = $state("ollama-default");
-  let model = $state("");
   let accessLevel = $state("0");
   let actionMode = $state("suggest");
   let autonomousApps = $state<string[]>([]);
   let executorLive = $state(false);
-  let contextWindow = $state(8192);
+
+  // Live info for the two link cards, loaded from the daemon (IPC-caveat: keep
+  // the async-filled data in writable stores). Honest fallbacks when the daemon
+  // is unreachable.
+  const providerLine = writable("Connect a local or cloud service");
+  const defaultModelLine = writable("No model chosen yet");
+
+  function parse<T>(json: string, fallback: T): T {
+    try {
+      return JSON.parse(json) as T;
+    } catch {
+      return fallback;
+    }
+  }
+
+  interface ProviderRow {
+    name: string;
+    enabled: boolean;
+    configured: boolean;
+  }
+
+  async function loadCards() {
+    try {
+      const list = parse<ProviderRow[]>(await invoke<string>("ai_providers_list"), []);
+      if (list.length > 0) {
+        const connected = list.filter((p) => p.enabled && p.configured).length;
+        const names = list.map((p) => p.name).slice(0, 2).join(", ");
+        providerLine.set(
+          connected > 0
+            ? `${names}${list.length > 2 ? " and more" : ""} · ${connected} connected`
+            : `${names}${list.length > 2 ? " and more" : ""} · none connected`,
+        );
+      }
+    } catch {
+      // keep the fallback line
+    }
+    try {
+      const def = parse<{ provider?: string; model?: string }>(
+        await invoke<string>("ai_defaults_get"),
+        {},
+      );
+      if (def.model) {
+        defaultModelLine.set(def.provider ? `${def.provider} · ${def.model}` : def.model);
+      }
+    } catch {
+      // keep the fallback line
+    }
+  }
 
   // The behaviours read. `null` before the first read settles; `unavailable`
   // when the command failed (it does not exist in this app's backend yet).
@@ -153,26 +202,19 @@
   onMount(async () => {
     await ai.load();
     enabled = ai.getValue<boolean>("ai.enabled") ?? false;
-    provider = ai.getValue<string>("ai.provider") ?? "ollama-default";
-    providerAtLoad = provider;
     accessLevel = String(ai.getValue<number>("ai.access_level") ?? 0);
     actionMode = ai.getValue<string>("ai.action_mode") ?? "suggest";
     autonomousApps = ai.getValue<string[]>("ai.autonomous_apps") ?? [];
     executorLive = ai.getValue<boolean>("agent.executor_live") ?? false;
-    model = ai.getValue<string>("provider.model") ?? "";
-    contextWindow = ai.getValue<number>("provider.context_window") ?? 8192;
     await refreshStatus();
     await loadBehaviours();
+    await loadCards();
   });
 
   async function setEnabled(v: boolean) {
     enabled = v;
     await ai.setValue("ai.enabled", v);
     setTimeout(refreshStatus, 400);
-  }
-  async function setProvider(v: string) {
-    provider = v;
-    await ai.setValue("ai.provider", v);
   }
   async function setAccessLevel(v: string) {
     accessLevel = v;
@@ -189,96 +231,58 @@
     executorLive = v;
     await ai.setValue("agent.executor_live", v);
   }
-  async function setModel(v: string) {
-    model = v;
-    await ai.setValue("provider.model", v);
-  }
-  async function setContextWindow(v: number) {
-    contextWindow = v;
-    await ai.setValue("provider.context_window", v);
-  }
 
-  const providerRestartPending = $derived(provider !== providerAtLoad);
+  // The honest hint under the action-mode control: a supervised baseline does
+  // nothing until the executor master is on.
+  const actsHint = $derived(
+    actionMode === "supervised" && !executorLive
+      ? "It still only suggests until you let it act, below."
+      : actionMode === "supervised"
+        ? "It carries out small, reversible things after showing you a preview you can cancel."
+        : "It proposes each action and you run it yourself.",
+  );
 </script>
 
 <Page
-  title="AI"
-  description="On-device and cloud AI features. Off by default, so you stay in control of what the assistant can read and do. What it has done shows in the AI app."
+  title="General"
+  description="Your assistant: how much it can see and do. Off by default, so you stay in control. What it has done shows in the AI app."
 >
   <SectionGrid>
-    <Group label="AI Layer">
+    <Group label="Assistant">
       <Row
-        label="Enable AI features"
-        description="Lets the assistant answer questions and work in the background. Nothing runs until you turn this on."
+        label="Enable the assistant"
+        description="Lets it answer questions and work in the background. Nothing runs until you turn this on."
         id="ai-enable"
       >
         {#snippet control()}
-          <Switch value={enabled} ariaLabel="Enable AI features" onchange={setEnabled} />
+          <Switch value={enabled} ariaLabel="Enable the assistant" onchange={setEnabled} />
         {/snippet}
       </Row>
     </Group>
 
-    <Group label="Provider">
-      <Row label="Model provider" description="Ollama runs entirely on this machine." id="ai-provider">
-        {#snippet control()}
-          <PopoverSelect
-            value={provider}
-            options={PROVIDERS}
-            ariaLabel="AI model provider"
-            onchange={setProvider}
-          />
-        {/snippet}
-      </Row>
-      <Row label="Model" description="Model identifier the provider serves (blank uses the default)." id="ai-model">
-        {#snippet control()}
-          <Input class="row-control" value={model} placeholder="llama3:8b" oninput={(e) => setModel(e.currentTarget.value)} />
-        {/snippet}
-      </Row>
-      <Row label="Context window" description="How much text the model can take in at once, in tokens." id="ai-context-window">
-        {#snippet control()}
-          <NumberInput width="var(--width-row-control, 200px)" value={contextWindow} min={2048} max={131072} step={1024} unit="tok" onchange={setContextWindow} />
-        {/snippet}
-      </Row>
-      {#if providerRestartPending}
-        <Row label="Restart needed" description="The provider change applies after the assistant restarts." id="ai-provider-restart">
-          {#snippet control()}
-            <span class="meta"><Sparkles size={12} strokeWidth={1.5} />pending</span>
-          {/snippet}
-        </Row>
-      {/if}
-    </Group>
-
-    <Group label="Access">
-      <Row
-        label="Knowledge read level"
-        description={ACCESS_HINTS[accessLevel] ?? ""}
-        id="ai-access-level"
-      >
-        {#snippet below()}
-          <SegmentedControl
-            value={accessLevel}
-            options={ACCESS_LEVELS}
-            ariaLabel="Knowledge read level"
-            onchange={setAccessLevel}
-          />
-        {/snippet}
-      </Row>
-    </Group>
-
-    <Group label="Actions">
-      <Row label="Action mode" description="How the assistant is allowed to act." id="ai-action-mode">
+    <Group label="How freely it acts">
+      <Row label="When it acts" description={actsHint} id="ai-action-mode">
         {#snippet below()}
           <SegmentedControl
             value={actionMode}
             options={ACTION_MODES}
-            ariaLabel="Action mode"
+            ariaLabel="How freely the assistant acts"
             onchange={setActionMode}
           />
         {/snippet}
       </Row>
       <Row
+        label="Let it act on its own"
+        description="The master switch for acting. Until this is on, it only suggests, whatever you pick above. Every change it makes is reversible and shows in the AI app."
+        id="ai-executor-live"
+      >
+        {#snippet control()}
+          <Switch value={executorLive} ariaLabel="Let it act on its own" onchange={setExecutorLive} />
+        {/snippet}
+      </Row>
+      <Row
         label="Always-confirm rule"
-        description="High-impact actions (delete, send, install) and anything triggered by outside content always ask first, regardless of mode."
+        description="High-impact actions (delete, send, install) and anything triggered by outside content always ask first, whatever the setting."
         id="ai-confirm-rule"
       >
         {#snippet control()}
@@ -286,10 +290,10 @@
         {/snippet}
       </Row>
       <Row
-        label="Autonomous apps"
+        label="Per-app exceptions"
         description={autonomousApps.length === 0
-          ? "No app may act on its own. Add an app id to allow it (per app only, never global)."
-          : "These apps may act without confirmation in their own scope."}
+          ? "No app may act on its own. Add an app id to let that one app act without asking, in its own scope only."
+          : "These apps may act without asking, each in its own scope."}
         id="ai-autonomous-apps"
       >
         {#snippet below()}
@@ -302,24 +306,33 @@
       </Row>
     </Group>
 
-    <Group label="Behaviours">
+    <Group label="What it can see">
+      <Row label="How much it can read" description={ACCESS_HINTS[accessLevel] ?? ""} id="ai-access-level">
+        {#snippet below()}
+          <SegmentedControl
+            value={accessLevel}
+            options={ACCESS_LEVELS}
+            ariaLabel="How much the assistant can read"
+            onchange={setAccessLevel}
+          />
+        {/snippet}
+      </Row>
+    </Group>
+
+    <Group label="What it does on its own">
       <Row
-        label="What it may do on its own"
-        description="Each behaviour is one background task. Turn them on or off here; everything they do shows in the AI app."
+        label="Background tasks"
+        description="Each is one background task. Turn them on or off here; everything they do shows in the AI app."
         id="ai-behaviours"
       ></Row>
       {#if behavioursUnavailable}
-        <Row
-          label="Behaviour list unavailable"
-          description="Can't read the behaviour list right now."
-          id="ai-behaviours-unavailable"
-        >
+        <Row label="Tasks unavailable" description="Can't read the task list right now." id="ai-behaviours-unavailable">
           {#snippet control()}<AlertCircle size={16} class="ai-error-icon" />{/snippet}
         </Row>
       {:else if behaviours}
         {#if behaviours.behaviours.length === 0}
           <Row
-            label="No behaviours installed"
+            label="No background tasks"
             description="When apps or the system add background tasks, they appear here."
             id="ai-behaviours-empty"
           ></Row>
@@ -327,9 +340,7 @@
         {#each behaviours.behaviours as b (b.name)}
           <Row
             label={b.name}
-            description={behaviourWriteFailed[b.name]
-              ? "Could not save this change."
-              : b.description}
+            description={behaviourWriteFailed[b.name] ? "Could not save this change." : b.description}
             id={`ai-behaviour-${b.name}`}
           >
             {#snippet control()}
@@ -343,7 +354,7 @@
         {/each}
         {#if behaviours.errors.length > 0}
           <Row
-            label="Some behaviours could not be read"
+            label="Some tasks could not be read"
             description={behaviours.errors.join("; ")}
             id="ai-behaviours-errors"
           >
@@ -353,38 +364,48 @@
       {/if}
     </Group>
 
-    <Group label="Execution">
-      <Row
-        label="Let it make small changes"
-        description="Small, reversible changes like sorting files into projects, made without asking each time. Every change shows in the AI app and still passes the safety checks. Off by default."
-        id="ai-executor-live"
-      >
-        {#snippet control()}
-          <Switch value={executorLive} ariaLabel="Let it make small changes" onchange={setExecutorLive} />
-        {/snippet}
-      </Row>
+    <Group label="Where AI comes from">
+      <a class="link-card span-full" href="/ai/providers">
+        <Cloud class="link-icon" />
+        <div class="link-body">
+          <div class="link-title">Providers</div>
+          <div class="link-desc">{$providerLine}</div>
+        </div>
+        <ChevronRight class="link-chev" />
+      </a>
+      <a class="link-card span-full" href="/ai/models">
+        <SlidersHorizontal class="link-icon" />
+        <div class="link-body">
+          <div class="link-title">Default models</div>
+          <div class="link-desc">{$defaultModelLine}</div>
+        </div>
+        <ChevronRight class="link-chev" />
+      </a>
     </Group>
 
-    <Group label="Status">
+    <Group label="Health">
       {#if statusError}
-        <Row
-          label="Status unavailable"
-          description="Can't check the services right now."
-          id="ai-status-error"
-        >
+        <Row label="Status unavailable" description="Can't check the services right now." id="ai-status-error">
           {#snippet control()}
             <span title={statusError}><AlertCircle size={16} class="ai-error-icon" /></span>
           {/snippet}
         </Row>
       {:else}
-        <Row label="Assistant service" description="Answers your questions in the AI app." id="ai-daemon-status">
+        <Row
+          label="Services"
+          description="The assistant answers in the AI app; the network gate is the only path AI traffic can take off this machine."
+          id="ai-services"
+        >
           {#snippet control()}
-            <span class="meta" class:on={status?.daemonRunning}>{status?.daemonRunning ? "Running" : "Stopped"}</span>
-          {/snippet}
-        </Row>
-        <Row label="Network gate" description="The only path AI traffic can take to leave this machine." id="ai-proxy-status">
-          {#snippet control()}
-            <span class="meta" class:on={status?.proxyRunning}>{status?.proxyRunning ? "Running" : "Stopped"}</span>
+            <span class="health">
+              <span class="meta" class:on={status?.daemonRunning}>
+                {status?.daemonRunning ? "Assistant on" : "Assistant off"}
+              </span>
+              <span class="health-sep">·</span>
+              <span class="meta" class:on={status?.proxyRunning}>
+                {status?.proxyRunning ? "Gate on" : "Gate off"}
+              </span>
+            </span>
           {/snippet}
         </Row>
       {/if}
@@ -401,7 +422,7 @@
     <Group label="What's happening now">
       <Row
         label="Explain my system"
-        description="A plain summary of what your computer is doing right now. Needs the Full read level."
+        description="A plain summary of what your computer is doing right now. Needs the Everything read level."
         id="ai-explain"
       >
         {#snippet control()}
@@ -432,6 +453,60 @@
   }
   .meta.on {
     color: color-mix(in srgb, var(--foreground) 80%, transparent);
+  }
+  .health {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .health-sep {
+    color: color-mix(in srgb, var(--foreground) 30%, transparent);
+  }
+  /* Navigation card to a sub-view, matching the keyboard -> shortcuts card. */
+  .link-card {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-card);
+    border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+    background: color-mix(in srgb, var(--foreground) 3%, transparent);
+    transition: background-color var(--duration-fast) var(--ease-out);
+  }
+  .link-card:hover {
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  }
+  :global(.link-icon) {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-shrink: 0;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+  .link-body {
+    flex: 1;
+    min-width: 0;
+  }
+  .link-title {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--foreground);
+  }
+  .link-desc {
+    font-size: 0.6875rem;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  :global(.link-chev) {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+    transition: transform var(--duration-fast) var(--ease-out);
+  }
+  .link-card:hover :global(.link-chev) {
+    transform: translateX(2px);
   }
   :global(.ai-spin) {
     animation: ai-spin 0.8s linear infinite;
