@@ -10,13 +10,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 
 use arlen_permissions::identity::app_id_from_pid;
 use arlen_permissions::peer_pidfd::PeerPidfd;
 
-use crate::protocol::{handle_request, Request, Response, MAX_FRAME};
+use crate::protocol::{handle_request, read_frame_async, write_frame_async, Request};
 use crate::state::StateStore;
 
 /// The broker socket path: the `ARLEN_CONFIG_BROKER_SOCKET` override,
@@ -80,35 +79,6 @@ pub fn bind_socket(path: &Path) -> std::io::Result<UnixListener> {
     Ok(listener)
 }
 
-/// Read one length-prefixed JSON request; refuse an oversized
-/// declared length before allocating.
-async fn read_request(stream: &mut UnixStream) -> std::io::Result<Request> {
-    let mut len_buf = [0u8; 4];
-    stream.read_exact(&mut len_buf).await?;
-    let len = u32::from_be_bytes(len_buf) as usize;
-    if len > MAX_FRAME {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "frame exceeds MAX_FRAME",
-        ));
-    }
-    let mut body = vec![0u8; len];
-    stream.read_exact(&mut body).await?;
-    serde_json::from_slice(&body)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-}
-
-/// Write one length-prefixed JSON response.
-async fn write_response(stream: &mut UnixStream, resp: &Response) -> std::io::Result<()> {
-    let body = serde_json::to_vec(resp)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    stream
-        .write_all(&(body.len() as u32).to_be_bytes())
-        .await?;
-    stream.write_all(&body).await?;
-    stream.flush().await
-}
-
 /// Serve one connection. Authenticates (SO_PEERPIDFD + uid), resolves
 /// the caller app id from the pinned pid, then fields requests until
 /// the peer closes or stops being alive. Drops silently on any auth
@@ -136,13 +106,13 @@ pub async fn serve_connection(mut stream: UnixStream, store: Arc<StateStore>, ca
             tracing::warn!(app_id = %app_id, "peer no longer alive; dropping");
             return;
         }
-        let request = match read_request(&mut stream).await {
+        let request: Request = match read_frame_async(&mut stream).await {
             Ok(r) => r,
             // A closed connection or framing error ends the session.
             Err(_) => return,
         };
         let response = handle_request(&store, &app_id, request);
-        if write_response(&mut stream, &response).await.is_err() {
+        if write_frame_async(&mut stream, &response).await.is_err() {
             return;
         }
     }
@@ -165,8 +135,9 @@ pub async fn run(store: Arc<StateStore>, socket: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::Request;
+    use crate::protocol::{Request, Response};
     use crate::state::AiMasterSwitches;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     /// Drive a real socket end-to-end: bind, connect, `Get`, and
     /// confirm the framed `State` reply. Exercises the genuine

@@ -16,9 +16,11 @@
 //! read-write); the socket + setter protocol + the admitted-caller
 //! gate land on top of it.
 
+pub mod client;
 pub mod protocol;
 pub mod server;
 pub mod state;
 
+pub use client::{ClientError, ConfigBrokerClient};
 pub use protocol::{handle_request, is_admitted_writer, Request, Response};
 pub use state::{ActionMode, AiMasterSwitches, StateError, StateStore};
