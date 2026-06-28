@@ -45,35 +45,36 @@
     errors: string[];
   }
 
-  // The read level (the daemon stores 0-4 in `ai.access_level`). These are
-  // different scopes of what the assistant may read from the knowledge graph,
-  // not a simple more/less slider; each row says plainly what it covers.
+  // The read level (the daemon stores 0-4 in `ai.access_level`). This gates how
+  // much of your ACTIVITY the assistant draws on as context, not file access
+  // (reading a file's contents is a separate path you trigger with @). Each row
+  // says plainly how much context it uses.
   const ACCESS_CHOICES = [
     {
       value: "0",
-      label: "Only what you share",
-      description: "It sees just what you put in a chat. Nothing from your files or activity.",
+      label: "Just this chat",
+      description: "It uses only what you bring up in the conversation, none of your activity.",
     },
     {
       value: "1",
       label: "This session",
-      description: "The apps and events in your current session. No files, no history.",
+      description: "What you are working on right now, in this session.",
     },
     {
       value: "2",
-      label: "Your current project",
-      description: "The file layout of the project you have open.",
-      note: "Needs a project focused in the shell; without one it sees nothing here.",
+      label: "This project",
+      description: "The project you are focused on, so it understands what you are working on.",
+      note: "Follows the project you focus in the shell; with none focused it uses nothing here.",
     },
     {
       value: "3",
-      label: "Recent activity",
-      description: "Which files you have touched over the last few days. Not the contents.",
+      label: "Your recent work",
+      description: "What you have worked on over the last few days, so it has useful context.",
     },
     {
       value: "4",
       label: "Everything",
-      description: "All your files and activity, including older history.",
+      description: "All of your activity and history.",
     },
   ];
   // How freely it acts, the baseline posture. "supervised" only takes effect
@@ -319,8 +320,8 @@
 
     <Group label="What it can see">
       <Row
-        label="What it may read"
-        description="The slice of your knowledge graph the assistant may read. Off by default; pick a wider scope only if you want it to use that context. Every read is logged."
+        label="How much it draws on"
+        description="How much of your activity the assistant uses as context, so it can actually help. It uses your recent work by default; narrow this if you prefer. Every read is logged, and you can turn it down anytime."
         id="ai-access-level"
       >
         {#snippet below()}
