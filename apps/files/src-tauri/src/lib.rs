@@ -17,8 +17,8 @@ use std::sync::Mutex;
 
 use arlen_file_browser_core::undo::{UndoStack, UndoableOp};
 use arlen_file_browser_core::{
-    breadcrumb, list_dir, ops, properties, search, sort_entries, Crumb, EntryKind, FileEntry,
-    SortKey,
+    breadcrumb, dedup, list_dir, ops, properties, search, sort_entries, Crumb, EntryKind,
+    FileEntry, SortKey,
 };
 use cap_std::ambient_authority;
 use cap_std::fs::Dir;
@@ -405,6 +405,60 @@ fn files_search(
         ..Default::default()
     };
     Ok(search::search(&scope, &opts))
+}
+
+/// One file in a find-duplicates group as the UI consumes it: the ABSOLUTE path
+/// (the manager acts on absolute paths), the name, size and mtime.
+#[derive(serde::Serialize)]
+struct DupFileOut {
+    path: String,
+    name: String,
+    size: u64,
+    modified_unix: Option<u64>,
+}
+
+/// A duplicate set on the wire: a shared content hash and its member files.
+#[derive(serde::Serialize)]
+struct DupGroupOut {
+    hash: String,
+    files: Vec<DupFileOut>,
+}
+
+/// Find byte-identical files under `path`, grouped by content hash, so the UI can
+/// surface redundant copies. The scan is capability-confined to `path`, two-pass
+/// (a free size pre-filter, then BLAKE3 over only the files that share a size),
+/// symlink-cycle-safe and bounded. Each member's capability-relative path is
+/// absolutised back to a UI path the manager can act on (reveal / trash / delete).
+#[tauri::command]
+fn files_find_duplicates(path: String) -> Result<Vec<DupGroupOut>, String> {
+    let dir = root()?;
+    let scope = dir.open_dir(rel(&path)).map_err(|e| e.to_string())?;
+    let report = dedup::find_duplicates(&scope);
+    if report.examined_capped || report.hash_budget_exhausted {
+        eprintln!(
+            "files_find_duplicates: scan of {path} hit a bound \
+             (examined_capped={}, hash_budget_exhausted={}); results may be incomplete",
+            report.examined_capped, report.hash_budget_exhausted
+        );
+    }
+    let base = Path::new(&path);
+    Ok(report
+        .groups
+        .into_iter()
+        .map(|g| DupGroupOut {
+            hash: g.hash,
+            files: g
+                .files
+                .into_iter()
+                .map(|f| DupFileOut {
+                    path: base.join(&f.rel_path).to_string_lossy().into_owned(),
+                    name: f.name,
+                    size: f.size,
+                    modified_unix: f.modified_unix,
+                })
+                .collect(),
+        })
+        .collect())
 }
 
 /// The home trash contents (paired `files/` + `info/` entries) for the Trash
@@ -1607,6 +1661,7 @@ pub fn run() {
             files_places,
             files_info,
             files_search,
+            files_find_duplicates,
             files_op,
             files_set_permissions,
             files_set_exif_tags,
