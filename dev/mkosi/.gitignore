@@ -8,6 +8,12 @@
 /initrd.cpio.zst
 /build.log
 /boot.log
+/buildimg.log
 # the Debian tools tree (ToolsTree=default) and its manifest, fetched per build.
 /mkosi.tools/
 /mkosi.tools.manifest
+
+# Daemon binaries staged into the overlay by build-image.sh (zigbuilt for the
+# Debian target). Generated, never committed; arlen-session (a source script in
+# the same dir) stays tracked.
+/mkosi.extra/usr/bin/event-bus
