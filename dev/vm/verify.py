@@ -171,6 +171,13 @@ def main():
         # 2 vCPUs cannot hold (the desktop-only verify used less). More cores cut the
         # 1B model's first-token latency so the dogfood does not time out.
         "qemu-system-x86_64", "-machine", "q35,accel=kvm:tcg", "-m", "4096", "-smp", "4",
+        # Pass the host CPU through (not the feature-masked qemu64 default): the
+        # baked llama-server is built with GGML's AVX2/FMA SIMD, and the default
+        # virtual CPU masks those, so llama dies with SIGILL (status 4/ILL) before
+        # it can serve. -cpu host gives the guest the real instruction set, which
+        # is also what a real install runs on. (KVM is required for `host`; the
+        # accel line already prefers it.)
+        "-cpu", "host",
         "-drive", f"if=pflash,unit=0,format=raw,readonly=on,file={OVMF_CODE}",
         "-drive", f"if=pflash,unit=1,format=raw,file={vars_fd}",
         "-drive", f"if=virtio,format=raw,file={image}",
