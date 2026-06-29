@@ -967,12 +967,28 @@ fn files_eject(device: String) -> Result<(), String> {
     udisksctl("power-off", &device)
 }
 
+/// A saved Smart Folder: a named faceted-filter combination that re-applies its
+/// `facet:` location on click (the filter bar's persisted query-as-folder).
+/// Matches the frontend `SmartFolder` shape verbatim.
+#[derive(serde::Deserialize, Serialize, Clone)]
+struct SmartFolder {
+    /// Stable id (frontend-minted).
+    id: String,
+    /// The display name shown in the sidebar.
+    name: String,
+    /// The `facet:` location the folder re-applies.
+    location: String,
+}
+
 /// Persistent FM state in `~/.config/arlen/files.toml` (the TOML
-/// rule). Today that is the bookmark list; defaults stay in Settings.
+/// rule). Today that is the bookmark list + the saved Smart Folders; defaults
+/// stay in Settings.
 #[derive(serde::Deserialize, Serialize, Default)]
 struct FilesConfig {
     #[serde(default)]
     bookmarks: Vec<String>,
+    #[serde(default)]
+    smart_folders: Vec<SmartFolder>,
 }
 
 fn files_config_path() -> Result<std::path::PathBuf, String> {
@@ -1032,6 +1048,23 @@ fn files_bookmark_add(path: String) -> Result<(), String> {
 fn files_bookmark_remove(path: String) -> Result<(), String> {
     let mut config = read_files_config();
     config.bookmarks.retain(|p| p != &path);
+    write_files_config(&config)
+}
+
+/// The persisted Smart Folders (the filter bar's saved faceted combinations).
+/// Empty when none are saved or the config is unreadable.
+#[tauri::command]
+fn files_smart_folders() -> Vec<SmartFolder> {
+    read_files_config().smart_folders
+}
+
+/// Persist the full Smart Folder list (the frontend sends the whole set on each
+/// save/remove). Read-modify-write so the bookmark list in the same config file
+/// is preserved.
+#[tauri::command]
+fn files_smart_folders_save(folders: Vec<SmartFolder>) -> Result<(), String> {
+    let mut config = read_files_config();
+    config.smart_folders = folders;
     write_files_config(&config)
 }
 
@@ -1577,6 +1610,8 @@ pub fn run() {
             files_bookmarks,
             files_bookmark_add,
             files_bookmark_remove,
+            files_smart_folders,
+            files_smart_folders_save,
             files_open,
             files_apps_for,
             files_open_with,
@@ -1609,9 +1644,34 @@ mod tests {
     use super::{
         abs, escape_cypher_literal, file_part_of_as_of, members_from_rows, ops, projects_from_rows,
         provenance_to_woher, recent_from_rows, recent_to_entry, touched_apps_from_rows,
-        trash_to_entry, verwandt_from_rows, EntryKind, RecentFile,
+        trash_to_entry, verwandt_from_rows, EntryKind, FilesConfig, RecentFile, SmartFolder,
     };
     use std::collections::HashMap;
+
+    #[test]
+    fn files_config_round_trips_bookmarks_and_smart_folders_and_defaults_old_configs() {
+        // An old config file with only bookmarks parses, smart_folders defaulting
+        // empty (backward-compat, no migration needed).
+        let old: FilesConfig = toml::from_str("bookmarks = [\"/home/u/proj\"]\n").unwrap();
+        assert_eq!(old.bookmarks, vec!["/home/u/proj"]);
+        assert!(old.smart_folders.is_empty());
+
+        // A full round-trip preserves both fields (so save-folders keeps bookmarks).
+        let cfg = FilesConfig {
+            bookmarks: vec!["/home/u/proj".to_string()],
+            smart_folders: vec![SmartFolder {
+                id: "smart-1-facet:type=document".to_string(),
+                name: "Documents".to_string(),
+                location: "facet:type=document".to_string(),
+            }],
+        };
+        let toml_text = toml::to_string_pretty(&cfg).unwrap();
+        let back: FilesConfig = toml::from_str(&toml_text).unwrap();
+        assert_eq!(back.bookmarks, cfg.bookmarks);
+        assert_eq!(back.smart_folders.len(), 1);
+        assert_eq!(back.smart_folders[0].name, "Documents");
+        assert_eq!(back.smart_folders[0].location, "facet:type=document");
+    }
 
     #[test]
     fn recent_to_entry_carries_the_full_path_and_accessed_time() {
