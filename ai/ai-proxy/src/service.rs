@@ -705,14 +705,14 @@ mod tests {
         assert_eq!(calls.len(), 1);
         // The forwarder must have been called with the *catalogued*
         // URL, not with anything the caller supplied.
-        assert_eq!(calls[0].0, "http://localhost:11434/v1/chat/completions");
+        assert_eq!(calls[0].0, "http://127.0.0.1:11434/v1/chat/completions");
 
         let records = sink.snapshot().await;
         // Two entries: the fail-closed pre-forward gate, then the
         // best-effort status entry.
         assert_eq!(records.len(), 2);
         assert_eq!(records[0].structural.outcome, "forwarding");
-        assert_eq!(records[0].structural.subject, "localhost");
+        assert_eq!(records[0].structural.subject, "127.0.0.1");
         assert_eq!(records[1].structural.outcome, "forwarded-200");
     }
 
@@ -737,13 +737,13 @@ mod tests {
 
         let calls = forwarder.calls.lock().await;
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].0, "http://localhost:11434/v1/models");
+        assert_eq!(calls[0].0, "http://127.0.0.1:11434/v1/models");
         assert_eq!(calls[0].1, ""); // a GET carries no body
 
         let records = sink.snapshot().await;
         assert_eq!(records.len(), 2);
         assert_eq!(records[0].structural.outcome, "test-connection");
-        assert_eq!(records[0].structural.subject, "localhost");
+        assert_eq!(records[0].structural.subject, "127.0.0.1");
         assert_eq!(records[1].structural.outcome, "test-connection-200");
     }
 
@@ -1075,7 +1075,7 @@ mod tests {
         assert_eq!(records.len(), 2);
         assert_eq!(records[0].structural.outcome, "forwarding");
         assert_eq!(records[1].structural.outcome, "upstream-error");
-        assert_eq!(records[1].structural.subject, "localhost");
+        assert_eq!(records[1].structural.subject, "127.0.0.1");
     }
 
     #[tokio::test]

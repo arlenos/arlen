@@ -125,13 +125,17 @@ impl ProviderCatalog {
         entries.insert(
             "ollama-default".to_string(),
             CatalogEntry {
-                endpoint_url: "http://localhost:11434/v1/chat/completions".to_string(),
+                // 127.0.0.1, not localhost: a local llama-server/ollama binds IPv4
+                // loopback, but `localhost` resolves to ::1 (IPv6) first, so the
+                // forward races onto a port nothing listens on and fails. The
+                // explicit IPv4 literal is unambiguous and matches the bind.
+                endpoint_url: "http://127.0.0.1:11434/v1/chat/completions".to_string(),
                 backend: "ollama".to_string(),
                 wire_format: WireFormat::Openai,
                 auth_scheme: AuthScheme::None,
                 url_template: None,
                 credential_ref: None,
-                models_endpoint: Some("http://localhost:11434/v1/models".to_string()),
+                models_endpoint: Some("http://127.0.0.1:11434/v1/models".to_string()),
                 display_name: Some("Ollama (local)".to_string()),
                 logo_id: None,
                 builtin: true,
@@ -237,7 +241,7 @@ mod tests {
     fn lookup_returns_full_url() {
         let cat = ProviderCatalog::default_arlen();
         let entry = cat.get("ollama-default").unwrap();
-        assert_eq!(entry.endpoint_url, "http://localhost:11434/v1/chat/completions");
+        assert_eq!(entry.endpoint_url, "http://127.0.0.1:11434/v1/chat/completions");
         assert_eq!(entry.backend, "ollama");
         // The local provider is OpenAI-compat, needs no key, and is a built-in.
         assert_eq!(entry.wire_format, WireFormat::Openai);
