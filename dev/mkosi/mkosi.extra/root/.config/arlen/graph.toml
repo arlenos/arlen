@@ -8,4 +8,14 @@
 # The executor write+undo live-verify then drops a .project there at runtime, the
 # watcher detects the Project, and auto-tag (run_skill) links the file past promotion.
 [projects]
-watch_directories = ["/home/arlen/work"]
+# Watch /home/arlen (always exists) rather than /home/arlen/work: the watcher
+# filters watch dirs through is_dir() at startup, and a not-yet-existing or
+# stat-failing leaf is dropped ("no valid watch directories"). The home always
+# passes, and the watcher scans recursively (max_depth below), so the runtime
+# work/.git the dogfood drops is still detected as a Project.
+watch_directories = ["/home/arlen"]
+max_depth = 3
+# Distinctive (default is 3): if the daemon logs "threshold=2" this file was read
+# (confirms XDG_CONFIG_HOME resolution); "threshold=3" means it fell back to
+# defaults and the watch dir never took effect.
+auto_promote_threshold = 2
