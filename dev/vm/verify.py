@@ -290,9 +290,14 @@ def main():
         # DOGFOOD FAIL <reason>. Report the stages, gate on the terminal OK.
         emitted = "DOGFOOD EMIT ok" in journal
         asked = "DOGFOOD ASK ok" in journal
+        wrote = "DOGFOOD WRITE ok" in journal
+        undid = "DOGFOOD UNDO ok" in journal
         done = "DOGFOOD OK" in journal
         print(f"dogfood: emit={'ok' if emitted else 'absent'}, "
-              f"ask={'ok' if asked else 'absent'}, complete={'ok' if done else 'absent'}")
+              f"ask={'ok' if asked else 'absent'}, "
+              f"write={'ok' if wrote else 'absent'}, "
+              f"undo={'ok' if undid else 'absent'}, "
+              f"complete={'ok' if done else 'absent'}")
         if not done:
             fail_line = next((ln.strip() for ln in journal.splitlines()
                               if "DOGFOOD FAIL" in ln), None)

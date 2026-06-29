@@ -62,14 +62,15 @@ async fn main() {
     // not-yet-ready backend (the daemon reports `failed`, it does not retry).
     // Retry the whole turn a few times so model-load latency is not a false fail.
     let mut last = String::new();
+    let mut asked = false;
     for attempt in 1..=ASK_ATTEMPTS {
         match ask(&prompt).await {
             Ok(answer) => {
                 // One line, truncated: prose is for inspection, not the gate.
                 let snippet: String = answer.chars().take(200).collect();
                 println!("DOGFOOD ASK ok answer={snippet}");
-                println!("DOGFOOD OK");
-                return;
+                asked = true;
+                break;
             }
             Err(e) => {
                 println!("DOGFOOD ASK retry {attempt}/{ASK_ATTEMPTS}: {e}");
@@ -80,7 +81,95 @@ async fn main() {
             }
         }
     }
-    fail(&format!("ask: {last}"));
+    if !asked {
+        fail(&format!("ask: {last}"));
+    }
+
+    // The executor write+undo live-verify: drive a real graph write through the
+    // manual run_skill path (external_content=false -> PreviewThenExecute -> the
+    // live executor writes), then undo it via compensate. `path` was promoted
+    // UNLINKED (no project existed at promotion time), so auto-tag has work once
+    // we create the project signal here - past promotion's own auto-link.
+    match executor_verify(&path).await {
+        Ok(()) => println!("DOGFOOD OK"),
+        Err(e) => fail(&format!("executor: {e}")),
+    }
+}
+
+const AGENT_BUS_NAME: &str = "org.arlen.AIAgent1";
+const AGENT_OBJECT_PATH: &str = "/org/arlen/AIAgent1";
+/// The deterministic graph-write workflow we drive manually.
+const WRITE_SKILL: &str = "auto-tag-by-project";
+/// Budget for the project to be detected + auto-tag to write (the watcher picks up
+/// the runtime .git signal, then a run_skill links the unlinked file).
+const WRITE_TIMEOUT: Duration = Duration::from_secs(90);
+
+/// Drive a real executor write (FILE_PART_OF) and undo it, all over AIAgent1.
+///
+/// Proof is taken from the agent itself, not a graph read (the dogfood is an
+/// unprivileged caller with no read scope): `completed_actions` lists only
+/// EXECUTED writes, so a receipt appearing IS the write; `compensate` returning
+/// `retracted` IS the undo.
+async fn executor_verify(file_path: &str) -> Result<(), String> {
+    // Create the project signal next to the (already promoted, unlinked) file, so
+    // the knowledge watcher detects its directory as a Project. A bare `.git` dir
+    // is the Git signal (90% confidence); no real repo needed.
+    let project_dir = std::path::Path::new(file_path)
+        .parent()
+        .ok_or("file path has no parent dir")?;
+    std::fs::create_dir_all(project_dir.join(".git"))
+        .map_err(|e| format!("create .git signal: {e}"))?;
+    println!("DOGFOOD PROJECT signal at {}", project_dir.display());
+
+    let connection = Connection::session()
+        .await
+        .map_err(|e| format!("session bus: {e}"))?;
+    let agent = Proxy::new(&connection, AGENT_BUS_NAME, AGENT_OBJECT_PATH, AGENT_BUS_NAME)
+        .await
+        .map_err(|e| format!("ai agent unavailable: {e}"))?;
+
+    // Poll: run the skill until a completed action surfaces. Early runs find no
+    // project yet (the watcher has not detected it), so auto-tag proposes nothing
+    // and completed_actions stays empty; once detected, the write executes.
+    let deadline = Instant::now() + WRITE_TIMEOUT;
+    let correlation_id = loop {
+        let summary: String = agent
+            .call("run_skill", &(WRITE_SKILL,))
+            .await
+            .map_err(|e| format!("run_skill: {e}"))?;
+        if let Some(id) = first_completed_action(&agent).await {
+            break id;
+        }
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "no executor write surfaced within budget (last run_skill: {summary})"
+            ));
+        }
+        sleep(Duration::from_secs(5)).await;
+    };
+    println!("DOGFOOD WRITE ok corr={correlation_id}");
+
+    let outcome: String = agent
+        .call("compensate", &(correlation_id.as_str(),))
+        .await
+        .map_err(|e| format!("compensate: {e}"))?;
+    if !outcome.contains("retracted") {
+        return Err(format!("compensate did not retract: {outcome}"));
+    }
+    println!("DOGFOOD UNDO ok");
+    Ok(())
+}
+
+/// The correlation id of the first completed (executed) action the agent retains,
+/// or None if none yet. `completed_actions` is a JSON array of `{id, ...}`.
+async fn first_completed_action(agent: &Proxy<'_>) -> Option<String> {
+    let json: String = agent.call("completed_actions", &()).await.ok()?;
+    let parsed: Value = serde_json::from_str(&json).ok()?;
+    parsed
+        .as_array()?
+        .iter()
+        .find_map(|v| v.get("id").and_then(Value::as_str))
+        .map(str::to_string)
 }
 
 /// Emit a `file.opened` onto the event-bus producer socket.
