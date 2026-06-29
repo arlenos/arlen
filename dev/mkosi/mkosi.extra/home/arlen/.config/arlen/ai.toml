@@ -21,8 +21,12 @@ model = "arlen-default"
 context_window = 4096
 
 [agent]
-# The background agent runs the deterministic curation behaviour; executor_live
-# stays FALSE here (the agent proposes, writes nothing) - it is flipped to true
-# in the in-VM live-verify once the dogfood answer + gate flow are confirmed.
+# The background agent runs the deterministic curation behaviour. executor_live is
+# ON now that the dogfood conversational loop is confirmed green: it is SAFE because
+# an event-triggered action (a file.opened) carries external_content=true, which the
+# gate forces to RequireConfirmation - so the agent still auto-writes NOTHING from a
+# trigger. A real write happens only through the manual run_skill/approve path
+# (external_content=false -> PreviewThenExecute), which is the executor write+undo
+# the live-verify exercises against the real graph.
 enabled = ["auto-tag-by-project"]
-executor_live = false
+executor_live = true
