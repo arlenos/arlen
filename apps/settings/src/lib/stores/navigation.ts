@@ -13,6 +13,7 @@ export type PanelId =
   | "system-actions"
   | "display"
   | "workspaces"
+  | "topbar"
   | "notifications"
   | "accessibility"
   | "focus"
@@ -38,6 +39,7 @@ export const PANELS: PanelMeta[] = [
   // System
   { id: "display", title: "Display", icon: "Monitor", enabled: true, href: "/display" },
   { id: "workspaces", title: "Workspaces & Tiling", icon: "LayoutGrid", enabled: true, href: "/workspaces" },
+  { id: "topbar", title: "Topbar", icon: "PanelTop", enabled: true, href: "/topbar" },
   { id: "notifications", title: "Notifications", icon: "Bell", enabled: true, href: "/notifications" },
   { id: "about", title: "About", icon: "Info", enabled: true, href: "/about" },
 

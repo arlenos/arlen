@@ -35,6 +35,8 @@
     Zap,
     Cloud,
     SlidersHorizontal,
+    LayoutPanelTop,
+    PanelTop,
   } from "lucide-svelte";
 
   let query = $state("");
@@ -111,6 +113,8 @@
     Zap,
     Cloud,
     SlidersHorizontal,
+    LayoutPanelTop,
+    PanelTop,
   };
 
   // Group panels by section, matching the Pre-Phase-6 plan
@@ -119,7 +123,7 @@
   const SECTIONS = [
     {
       label: "System",
-      panelIds: ["display", "workspaces", "notifications", "about"] as const,
+      panelIds: ["display", "workspaces", "topbar", "notifications", "about"] as const,
     },
     {
       label: "Personal",
