@@ -28,4 +28,20 @@ describe("kit primitives: axe a11y gate", () => {
     const found = await violations(container);
     expect(found, `axe violations:\n${found.join("\n")}`).toEqual([]);
   });
+
+  // axe validates the ARIA is well-formed but not the roving-tabindex pattern,
+  // so assert it structurally: each radio group is a single tab stop (exactly
+  // one tabbable radio), the WAI-ARIA radio-group contract SegmentedControl and
+  // ChoiceList share.
+  it("radio groups expose exactly one tabbable radio (roving tabindex)", () => {
+    const { container } = render(Kitchen);
+    const groups = container.querySelectorAll('[role="radiogroup"]');
+    expect(groups.length).toBeGreaterThanOrEqual(2); // segmented + choice
+    for (const group of groups) {
+      const radios = group.querySelectorAll('[role="radio"]');
+      expect(radios.length).toBeGreaterThan(0);
+      const tabbable = [...radios].filter((r) => r.getAttribute("tabindex") === "0");
+      expect(tabbable.length, "exactly one radio is in the tab order").toBe(1);
+    }
+  });
 });

@@ -22,6 +22,10 @@
   let chips = $state(["alpha", "beta"]);
   let toggled = $state(false);
   let switched = $state(false);
+  let view = $state("list");
+  let density = $state("cozy");
+  let format = $state("png");
+  let volume = $state(40);
   const noop = () => {};
 </script>
 
@@ -45,38 +49,38 @@
   <section aria-label="Choices">
     <SegmentedControl
       ariaLabel="View"
-      value="list"
+      value={view}
       options={[
         { value: "list", label: "List" },
         { value: "grid", label: "Grid" },
       ]}
-      onchange={noop}
+      onchange={(v) => (view = v)}
     />
     <ChoiceList
       ariaLabel="Density"
-      value="cozy"
+      value={density}
       options={[
         { value: "compact", label: "Compact" },
         { value: "cozy", label: "Cozy" },
       ]}
-      onchange={noop}
+      onchange={(v) => (density = v)}
     />
     <PopoverSelect
-      value="png"
+      value={format}
       options={[
         { value: "png", label: "PNG" },
         { value: "jpg", label: "JPG" },
       ]}
-      onchange={noop}
+      onchange={(v) => (format = v)}
     />
     <ChipList bind:items={chips} placeholder="Add a tag" />
   </section>
 
   <section aria-label="Sliders and switches">
-    <ValueSlider value={40} ariaLabel="Volume" unit="%" onchange={noop} />
+    <ValueSlider value={volume} ariaLabel="Volume" unit="%" onchange={(v) => (volume = v)} />
     <FillSlider value={60} ariaLabel="Brightness" oninput={noop} />
     <Switch bind:value={switched} ariaLabel="Wi-Fi" />
-    <ColorPicker />
+    <ColorPicker value="#3366cc" />
   </section>
 
   <section aria-label="Toolbar">
