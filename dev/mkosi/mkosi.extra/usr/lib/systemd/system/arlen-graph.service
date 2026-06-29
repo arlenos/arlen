@@ -29,7 +29,14 @@ Environment=RUST_LOG=info,arlen_graph_daemon::project::watch_config=debug
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
-ProtectHome=read-only
+# ProtectHome=no, NOT read-only: this daemon's PURPOSE is reading the user's home
+# (project detection, file.opened path promotion, the ~/.timeline FUSE mount). As a
+# SYSTEM (root) service, ProtectHome=read-only left it unable to read /home/arlen at
+# all - graph.toml under /home/arlen/.config was "not found" though the --user AI
+# daemons read their ai.toml from the same dir. The capability-scoped query socket,
+# not ProtectHome, is this daemon's access boundary, so reading the user's home is
+# by-design. (This also unbreaks the documented ~/.timeline FUSE conflict below.)
+ProtectHome=no
 ReadWritePaths=%h/.local/share/arlen
 ReadWritePaths=/run/user/%U/arlen
 # DEPLOYMENT CAVEAT (Phase 10, needs on-host verification): the daemon mounts a
