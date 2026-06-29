@@ -1,0 +1,37 @@
+[Unit]
+Description=Arlen local LLM inference engine (llama-server, the AI provider backend)
+Documentation=https://github.com/arlenos/arlen
+# Serves the baked GGUF over a localhost OpenAI-compatible HTTP API; the ai-daemon
+# (the provider) forwards to it. CPU inference - the VM has no GPU - so it depends
+# on nothing graphical; start it at multi-user with the other system daemons.
+
+[Service]
+Type=simple
+# The model is baked at /usr/share/arlen/models (phase 07); --host 127.0.0.1 keeps
+# it loopback-only (no LAN exposure), the OpenAI-compatible API lives at :8080/v1.
+ExecStart=/usr/bin/llama-server \
+    --model /usr/share/arlen/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf \
+    --host 127.0.0.1 --port 8080 --ctx-size 4096
+Restart=on-failure
+RestartSec=2
+
+# Hardening. It listens on a loopback TCP socket and reads the read-only model
+# blob - no writable path, no privilege, and NO egress (the model is baked, it
+# never fetches): IPAddressAllow=localhost + IPAddressDeny=any enforces the
+# zero-egress posture. (MemoryDenyWriteExecute is omitted: an inference engine's
+# memory patterns are not worth risking a hard-to-debug fault in the VM.)
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+IPAddressAllow=localhost
+IPAddressDeny=any
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target
