@@ -1,0 +1,30 @@
+#!/bin/sh
+# Phase 7 (CHROOT): bake the default LLM into the image - a sub-1 GB GGUF so the AI
+# layer works on first boot, offline, ZERO egress (the sovereign/airgapped posture,
+# local-model-bundle-plan Decision 2). Llama-3.2-1B-Instruct Q4_K_M (~0.8 GB), the
+# model coder-jobs names; its community GGUF mirror is PUBLIC (no HF creds, verified
+# 29 June - the resolve URL redirects straight to the public CDN). Cached in
+# $BUILDDIR so a rebuild does not re-download the weights. curl comes from phase 1;
+# WithNetwork=yes is on for the build overlay.
+#
+# License/provenance: Llama-3.2-1B-Instruct is under the Llama 3.2 Community License,
+# GGUF via bartowski/Llama-3.2-1B-Instruct-GGUF. This SUT/dogfood image bakes it for
+# in-VM testing; the eventual PRODUCT image must carry the Llama license + the
+# "Built with Llama" attribution (a provisioning obligation, tracked). Swapping to
+# an Apache-2.0 model (e.g. Qwen2.5-0.5B, also public) drops that obligation.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+model="Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+url="https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/$model"
+cached="$cache/models/$model"
+
+if [ ! -f "$cached" ]; then
+    echo ">> downloading $model (~0.8 GB)"
+    mkdir -p "$cache/models"
+    # Atomic: a partial download stays as .part and is not cached as complete.
+    curl --proto '=https' --tlsv1.2 -fL -o "$cached.part" "$url"
+    mv "$cached.part" "$cached"
+fi
+install -Dm644 "$cached" "$DESTDIR/usr/share/arlen/models/$model"
+echo ">> baked $model into the image at /usr/share/arlen/models/"
