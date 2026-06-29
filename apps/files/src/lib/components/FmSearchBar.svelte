@@ -1,12 +1,14 @@
 <script lang="ts">
-  /// The search row under the headerbar: the query field and the
-  /// collapsed "Filter" dropdown (type, time, content match, save). Results
-  /// render in place of the listing; saving as a place keeps the search in
-  /// the sidebar for this session (persistence needs a contract command,
-  /// flagged).
+  /// The search row under the headerbar. Two modes when the assistant is on: a
+  /// literal name search (the query field + the collapsed Filter) and "Ask
+  /// Arlen", a natural-language question scoped to this folder that drafts a
+  /// facet filter. The mode toggle only shows when the assistant is enabled;
+  /// with it off this is the plain search bar.
   import { tick } from "svelte";
   import { X } from "lucide-svelte";
+  import { Search, Sparkles } from "@lucide/svelte";
   import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import FmFilterMenu from "$lib/components/FmFilterMenu.svelte";
   import {
     closeSearch,
@@ -14,44 +16,101 @@
     searchOpen,
     searchQuery,
   } from "$lib/stores/search";
+  import { askMode, aiEnabled, askLoading } from "$lib/stores/ask";
 
   let {
     path,
     onsave,
+    onask,
   }: {
     /// The location the search runs under.
     path: string;
     /// Save the current query as a sidebar search.
     onsave?: (query: string) => void;
+    /// Send a natural-language ask scoped to this folder (the page drafts the
+    /// facets, navigates, and shows the banner).
+    onask?: (query: string) => void;
   } = $props();
 
   let inputRef = $state<HTMLInputElement | null>(null);
+  let askValue = $state("");
+  const asking = $derived($askMode === "ask" && $aiEnabled);
+
   $effect(() => {
     if ($searchOpen) {
       tick().then(() => inputRef?.focus());
     }
   });
+  // Re-focus the field when the mode flips so the next keystroke lands there.
+  $effect(() => {
+    void $askMode;
+    if ($searchOpen) tick().then(() => inputRef?.focus());
+  });
+
+  function close() {
+    askMode.set("search");
+    askValue = "";
+    closeSearch();
+  }
+
+  function submitAsk() {
+    const q = askValue.trim();
+    if (q.length > 0) onask?.(q);
+  }
 </script>
 
 {#if $searchOpen}
   <div class="search-bar">
-    <Input
-      id="files-search-input"
-      bind:ref={inputRef}
-      bind:value={$searchQuery}
-      class="h-7 text-xs"
-      placeholder="Search this folder and everything inside it"
-      aria-label="Search"
-      oninput={() => queueSearch(path)}
-      onkeydown={(e) => {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          closeSearch();
-        }
-      }}
-    />
-    <FmFilterMenu {path} {onsave} />
-    <button class="sb-close" aria-label="Close search" onclick={() => closeSearch()}>
+    {#if $aiEnabled}
+      <SegmentedControl
+        options={[
+          { value: "search", label: "Search", icon: Search },
+          { value: "ask", label: "Ask Arlen", icon: Sparkles },
+        ]}
+        bind:value={$askMode}
+        ariaLabel="Search mode"
+      />
+    {/if}
+
+    {#if asking}
+      <Input
+        id="files-ask-input"
+        bind:ref={inputRef}
+        bind:value={askValue}
+        class="h-7 text-xs"
+        placeholder="Ask Arlen to find something in this folder"
+        aria-label="Ask Arlen"
+        disabled={$askLoading}
+        onkeydown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            submitAsk();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            close();
+          }
+        }}
+      />
+    {:else}
+      <Input
+        id="files-search-input"
+        bind:ref={inputRef}
+        bind:value={$searchQuery}
+        class="h-7 text-xs"
+        placeholder="Search this folder and everything inside it"
+        aria-label="Search"
+        oninput={() => queueSearch(path)}
+        onkeydown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            close();
+          }
+        }}
+      />
+      <FmFilterMenu {path} {onsave} />
+    {/if}
+
+    <button class="sb-close" aria-label="Close search" onclick={() => close()}>
       <X size={14} strokeWidth={2} />
     </button>
   </div>

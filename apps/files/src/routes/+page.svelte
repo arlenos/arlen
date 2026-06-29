@@ -35,11 +35,20 @@
   import FmSearchResults from "$lib/components/FmSearchResults.svelte";
   import FmDuplicates from "$lib/components/FmDuplicates.svelte";
   import FmFacetBar from "$lib/components/FmFacetBar.svelte";
+  import FmAskBanner from "$lib/components/FmAskBanner.svelte";
   import FmInfoPanel from "$lib/components/FmInfoPanel.svelte";
   import { savedSearches } from "$lib/stores/places";
   import { searchOpen, searchResults } from "$lib/stores/search";
-  import { facetOpen, facetBase, loadFacetOptions } from "$lib/stores/facets";
+  import {
+    facetOpen,
+    facetBase,
+    loadFacetOptions,
+    serializeFacets,
+    selectedFacets,
+    clearFacets,
+  } from "$lib/stores/facets";
   import { duplicatesOpen } from "$lib/stores/duplicates";
+  import { askDraft, runAsk, applyDraft, clearAsk, loadAiEnabled } from "$lib/stores/ask";
   import { columnsFor, emptyLabelFor } from "$lib/locations";
   import { DEFAULT_COLUMNS } from "@arlen/ui-kit/components/browser";
 
@@ -153,6 +162,26 @@
       ...list,
       { id: `local-${list.length + 1}-${query}`, name: query, query },
     ]);
+  }
+
+  /// "Ask Arlen": run the scoped natural-language ask, adopt the drafted facets
+  /// into the live filter (the user then sees the chips + the listing as a
+  /// preview), and navigate to the result. A failed draft leaves the bar as is.
+  async function askArlen(query: string) {
+    const folder = currentPath();
+    const result = await runAsk(folder, query);
+    if (!result) return;
+    applyDraft(result, query);
+    const loc = serializeFacets(get(selectedFacets)) || folder;
+    await get(focusedController)?.navigate(loc);
+  }
+
+  /// Dismiss the drafted filter: drop the banner + the facets and return to the
+  /// folder the ask ran over.
+  function dismissAsk() {
+    clearAsk();
+    clearFacets();
+    void get(focusedController)?.navigate(get(facetBase));
   }
 
   // Dual pane state lives in the panes store (the headerbar's view
@@ -432,6 +461,7 @@
   onMount(async () => {
     await loadPlaces();
     void loadFacetOptions();
+    void loadAiEnabled();
     if (get(tabs).length === 0) newTab(get(homePath));
     if (tauriAvailable) {
       invoke<Template[]>("files_templates")
@@ -449,8 +479,11 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="fm" onkeydown={onOpsKeydown}>
   {#if $activeController && $focusedController}
-    <FmSearchBar path={currentPath()} onsave={saveSearch} />
+    <FmSearchBar path={currentPath()} onsave={saveSearch} onask={askArlen} />
     {#if $facetOpen}
+      {#if $askDraft}
+        <FmAskBanner scope={$facetBase} ondismiss={dismissAsk} />
+      {/if}
       <FmFacetBar
         basePath={$facetBase}
         onnavigate={(loc) => $focusedController?.navigate(loc)}
