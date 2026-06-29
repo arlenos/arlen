@@ -6,8 +6,7 @@
   /// auto-hide; the waveform and transport stay (you watch them while listening).
   /// `Space` toggles playback; prev/next move through the folder.
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
-  import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { Play, Pause, Rewind, FastForward } from "@lucide/svelte";
+  import { MediaTransport } from "@arlen/ui-kit/components/ui/media-transport";
   import Waveform from "./Waveform.svelte";
   import type { AudioMock } from "$lib/mock";
 
@@ -70,37 +69,13 @@
     </div>
 
     <div class="transport">
-      <Button
-        variant="ghost"
-        size="icon-lg"
-        class="size-[48px]"
-        aria-label="Previous file"
-        onclick={() => onprev?.()}
-      >
-        <Rewind class="size-[22px]" strokeWidth={0} fill="currentColor" />
-      </Button>
-      <Button
-        variant="secondary"
-        size="icon-lg"
-        class="size-[62px]"
-        aria-label={playing ? "Pause" : "Play"}
-        onclick={() => (playing = !playing)}
-      >
-        {#if playing}
-          <Pause class="size-7" strokeWidth={0} fill="currentColor" />
-        {:else}
-          <Play class="size-7" strokeWidth={0} fill="currentColor" />
-        {/if}
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-lg"
-        class="size-[48px]"
-        aria-label="Next file"
-        onclick={() => onnext?.()}
-      >
-        <FastForward class="size-[22px]" strokeWidth={0} fill="currentColor" />
-      </Button>
+      <MediaTransport
+        size="lg"
+        {playing}
+        onprev={() => onprev?.()}
+        onplaypause={() => (playing = !playing)}
+        onnext={() => onnext?.()}
+      />
     </div>
   </div>
 </div>
