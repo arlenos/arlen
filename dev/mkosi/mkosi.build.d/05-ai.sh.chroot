@@ -36,9 +36,14 @@ echo ">> cargo build the AI layer (agent + daemon + proxy) - Debian-native ($(ca
 cargo build --release --manifest-path ai/Cargo.toml \
     -p arlen-ai-agent -p arlen-ai-daemon -p arlen-ai-proxy
 
+# Install under /usr/lib/arlen/libexec, NOT /usr/bin: this is the canonical path
+# the security model resolves identity against - ai-proxy's CallerAllowlist
+# exact-matches /usr/lib/arlen/libexec/arlen-ai-{daemon,agent}, and path_to_app_id
+# maps the same paths to the admitted app ids (auditd's ADMITTED). A /usr/bin
+# install makes ai-agent unresolvable and ai-daemon fail the proxy's exact match.
 for bin in arlen-ai-agent arlen-ai-daemon arlen-ai-proxy; do
-    install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$DESTDIR/usr/bin/$bin"
-    echo ">> staged $bin into the image"
+    install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$DESTDIR/usr/lib/arlen/libexec/$bin"
+    echo ">> staged $bin into the image (libexec, the canonical identity path)"
 done
 
 # The agent discovers behaviours from /usr/share/arlen/agent/behaviours (its

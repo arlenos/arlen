@@ -9,7 +9,7 @@ Wants=arlen-ai-proxy.service arlen-auditd.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/arlen-ai-daemon
+ExecStart=/usr/lib/arlen/libexec/arlen-ai-daemon
 Restart=on-failure
 RestartSec=2
 
