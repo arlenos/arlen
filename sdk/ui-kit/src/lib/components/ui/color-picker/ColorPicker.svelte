@@ -259,7 +259,7 @@
     width: 12px;
     height: 12px;
     transform: translate(-50%, -50%);
-    border-radius: 50%;
+    border-radius: var(--radius-chip);
     border: 2px solid #fff;
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
     pointer-events: none;
@@ -273,7 +273,7 @@
     flex: 1;
     appearance: none;
     height: 12px;
-    border-radius: var(--radius-full, 9999px);
+    border-radius: var(--radius-input);
     background: linear-gradient(
       to right,
       hsl(0, 100%, 50%),
@@ -291,14 +291,14 @@
     appearance: none;
     width: 14px;
     height: 14px;
-    border-radius: 50%;
+    border-radius: var(--radius-chip);
     background: #fff;
     border: 2px solid rgba(0, 0, 0, 0.5);
   }
   .cp-hue::-moz-range-thumb {
     width: 14px;
     height: 14px;
-    border-radius: 50%;
+    border-radius: var(--radius-chip);
     background: #fff;
     border: 2px solid rgba(0, 0, 0, 0.5);
   }
