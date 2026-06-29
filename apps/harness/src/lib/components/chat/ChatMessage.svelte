@@ -26,6 +26,7 @@
   import { placement } from "$lib/components/artifact/placement";
   import { renderMarkdown } from "$lib/markdown";
   import { externalLinks } from "$lib/externalLinks";
+  import { fileRefs } from "$lib/fileRefs";
   import {
     busy,
     deleteTurn,
@@ -153,8 +154,13 @@
     {:else if message.text}
       {#if message.role === "assistant"}
         <!-- Assistant answers are plain full-width prose (the agent's voice),
-             markdown parsed + sanitized (DOMPurify) before this {@html}. -->
-        <div class="block prose markdown" use:externalLinks>
+             markdown parsed + sanitized (DOMPurify) before this {@html}.
+             `fileRefs` upgrades the agent's file-reference anchors into pills. -->
+        <div
+          class="block prose markdown"
+          use:externalLinks
+          use:fileRefs={message.text}
+        >
           {@html renderMarkdown(message.text)}
         </div>
       {:else}

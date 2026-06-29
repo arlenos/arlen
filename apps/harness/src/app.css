@@ -328,6 +328,45 @@ textarea,
   color: var(--color-accent);
   text-decoration: underline;
 }
+
+/* File-reference pills: the agent's `arlenfile:` anchors, upgraded inline by the
+   `fileRefs` action. Soft inline - a faint tint and no border at rest so several
+   in one sentence stay quiet; hover adds a wash + border to surface the click
+   affordance. An unresolvable path reads muted with no pointer (not a dead
+   link). */
+.markdown a.fileref {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.04em 0.34em;
+  border: 1px solid transparent;
+  border-radius: var(--radius-chip);
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+  color: var(--foreground);
+  text-decoration: none;
+  font-size: 0.95em;
+  line-height: 1.2;
+  vertical-align: baseline;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.markdown a.fileref:hover {
+  background: color-mix(in srgb, var(--foreground) 11%, transparent);
+  border-color: var(--color-border);
+}
+.markdown a.fileref .fileref-icon {
+  display: inline-flex;
+  color: color-mix(in srgb, var(--foreground) 58%, transparent);
+}
+.markdown a.fileref.missing {
+  background: transparent;
+  color: color-mix(in srgb, var(--foreground) 42%, transparent);
+  cursor: default;
+}
+.markdown a.fileref.missing:hover {
+  background: transparent;
+  border-color: transparent;
+}
 .markdown h1,
 .markdown h2,
 .markdown h3 {
