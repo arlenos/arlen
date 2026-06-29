@@ -8,6 +8,7 @@
 /initrd.cpio.zst
 /build.log
 /boot.log
+/boot-gpu.log
 /buildimg.log
 # the Debian tools tree (ToolsTree=default) and its manifest, fetched per build.
 /mkosi.tools/

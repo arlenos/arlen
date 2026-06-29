@@ -6,6 +6,13 @@
 [terminal]
 vt = 1
 
+# greetd requires a [default_session] (the greeter it returns to). This is a
+# single-user autologin appliance with no greeter UI, so the default session is
+# the same arlen-session as the arlen user: every session is the desktop.
+[default_session]
+command = "/usr/bin/arlen-session"
+user = "arlen"
+
 [initial_session]
 command = "/usr/bin/arlen-session"
 user = "arlen"
