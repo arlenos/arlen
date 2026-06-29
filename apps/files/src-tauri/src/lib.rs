@@ -1012,7 +1012,12 @@ fn write_files_config(config: &FilesConfig) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let body = toml::to_string_pretty(config).map_err(|e| e.to_string())?;
-    std::fs::write(path, body).map_err(|e| e.to_string())
+    // Atomic: write a sibling temp file then rename over the target, so a crash
+    // mid-write never truncates the config (which now holds the bookmark list AND
+    // the saved Smart Folders - a torn write would lose both).
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, body).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
 /// The pinned folders, as places (label = folder name).
