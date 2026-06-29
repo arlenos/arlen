@@ -46,29 +46,34 @@ export WEBKIT_DISABLE_DMABUF_RENDERER=1
 systemd-cat -t cosmic-comp cosmic-comp &
 compositor_pid=$!
 
-# Wait for the compositor to publish its Wayland socket (its env import happens at
-# the same init point). ~10s budget; then proceed regardless (best-effort).
+# Wait for the compositor to publish its Wayland socket and capture its name into
+# WAYLAND_DISPLAY (so the shell can connect). ~10s budget.
+wl=
 i=0
 while [ "$i" -lt 100 ]; do
     for sock in "${XDG_RUNTIME_DIR}"/wayland-*; do
-        [ -S "$sock" ] && break 2
+        case "$sock" in *.lock) continue;; esac
+        [ -S "$sock" ] && { wl=$(basename "$sock"); break 2; }
     done
     i=$((i + 1))
     sleep 0.1
 done
+[ -n "$wl" ] && export WAYLAND_DISPLAY="$wl"
 
-# Make the Arlen env visible to the systemd --user services (the shell + apps that
-# graphical-session.target pulls in); the compositor already imported the Wayland
-# vars. import-environment is a no-op for an unset var, so this is safe.
+# Make the env visible to any systemd --user services too (best-effort).
 systemctl --user import-environment \
-    WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP \
+    WAYLAND_DISPLAY XDG_CURRENT_DESKTOP \
     ARLEN_PRODUCER_SOCKET ARLEN_CONSUMER_SOCKET ARLEN_KNOWLEDGE_SOCKET \
     LIBGL_ALWAYS_SOFTWARE GALLIUM_DRIVER GDK_BACKEND \
     WEBKIT_DISABLE_COMPOSITING_MODE WEBKIT_DISABLE_DMABUF_RENDERER || true
 
-# Start the graphical session (the shell + apps are --user units WantedBy +
-# ordered After graphical-session.target).
-systemctl --user start graphical-session.target || true
+# Launch the shell directly (not via a --user unit): simpler for this appliance,
+# and systemd-cat routes its output to the system journal -> serial so the shell
+# is diagnosable headlessly (a --user unit's journal is not forwarded). It
+# connects to the compositor via WAYLAND_DISPLAY captured above.
+if [ -n "$wl" ]; then
+    systemd-cat -t arlen-shell arlen-desktop-shell &
+fi
 
 # Keep the session alive; when the compositor exits, the session ends and greetd
 # returns to the greeter (or, for [initial_session], the VT).
