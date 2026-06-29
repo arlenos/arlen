@@ -15,6 +15,7 @@ export type PanelId =
   | "workspaces"
   | "topbar"
   | "notifications"
+  | "printers"
   | "accessibility"
   | "focus"
   | "knowledge"
@@ -41,6 +42,7 @@ export const PANELS: PanelMeta[] = [
   { id: "workspaces", title: "Workspaces & Tiling", icon: "LayoutGrid", enabled: true, href: "/workspaces" },
   { id: "topbar", title: "Topbar", icon: "PanelTop", enabled: true, href: "/topbar" },
   { id: "notifications", title: "Notifications", icon: "Bell", enabled: true, href: "/notifications" },
+  { id: "printers", title: "Printers", icon: "Printer", enabled: true, href: "/printers" },
   { id: "about", title: "About", icon: "Info", enabled: true, href: "/about" },
 
   // Personal

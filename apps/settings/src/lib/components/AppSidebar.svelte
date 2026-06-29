@@ -37,6 +37,7 @@
     SlidersHorizontal,
     LayoutPanelTop,
     PanelTop,
+    Printer,
   } from "lucide-svelte";
 
   let query = $state("");
@@ -115,6 +116,7 @@
     SlidersHorizontal,
     LayoutPanelTop,
     PanelTop,
+    Printer,
   };
 
   // Group panels by section, matching the Pre-Phase-6 plan
@@ -123,7 +125,7 @@
   const SECTIONS = [
     {
       label: "System",
-      panelIds: ["display", "workspaces", "topbar", "notifications", "about"] as const,
+      panelIds: ["display", "workspaces", "topbar", "notifications", "printers", "about"] as const,
     },
     {
       label: "Personal",

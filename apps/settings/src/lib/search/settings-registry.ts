@@ -117,6 +117,35 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     anchor: "qs-layout-list",
   },
 
+  // ── Printers ───────────────────────────────────────────────────────
+  {
+    id: "printers.manage",
+    title: "Printers",
+    description: "Manage printers, set the default, and print options.",
+    keywords: ["printer", "printers", "print", "cups", "default printer", "paper", "duplex", "colour", "ipp"],
+    panel: "printers",
+    section: "Printers",
+    anchor: "printers-list",
+  },
+  {
+    id: "printers.queue",
+    title: "Print queue",
+    description: "See active, held, and finished print jobs; cancel or resume.",
+    keywords: ["print queue", "jobs", "cancel print", "resume", "spooler"],
+    panel: "printers",
+    section: "Print queue",
+    anchor: "print-queue",
+  },
+  {
+    id: "printers.add",
+    title: "Add a printer",
+    description: "Add a discovered printer or one by IP address.",
+    keywords: ["add printer", "new printer", "discover", "driverless", "ip printer", "network printer"],
+    panel: "printers",
+    section: "Add a printer",
+    anchor: "add-printer",
+  },
+
   // ── Appearance: Window ─────────────────────────────────────────────
   {
     id: "appearance.overrides.radius_intensity",
