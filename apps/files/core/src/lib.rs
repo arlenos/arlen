@@ -12,6 +12,9 @@
 //! model, keyboard-selection helpers) shared across hosts.
 
 pub mod bulk_rename;
+/// Duplicate-file detection (the find-duplicates seam): a content-hash scan that
+/// groups byte-identical files so the manager can surface redundant copies.
+pub mod dedup;
 /// The media-metadata-edit write-back (editable EXIF), behind the off-by-default
 /// `metadata-edit` feature.
 #[cfg(feature = "metadata-edit")]

@@ -17,6 +17,9 @@ libc = "0.2"
 time = { version = "0.3", features = ["formatting", "local-offset"] }
 # Stable, collision-free thumbnail-cache keys (hex SHA-256 of path + mtime).
 sha2 = "0.10"
+# Content-hash for duplicate detection: BLAKE3 is fast (multi-GB/s) so hashing
+# same-size candidates stays cheap.
+blake3 = "1"
 # Pure-Rust EXIF read/write for the metadata-edit write-back, behind the
 # off-by-default `metadata-edit` feature so a lean embedder (the picker) drops it.
 little_exif = { version = "0.6", optional = true }
