@@ -216,14 +216,27 @@ async fn handle_consumer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
 }
 
 /// Bind a Unix socket, removing any stale socket file first.
+///
+/// The socket is set mode 0666 so processes of any uid can connect: the event
+/// bus is the system-wide funnel every Arlen process must reach (the user-uid
+/// compositor/shell/apps as producers, the user-uid AI daemons as consumers),
+/// while the daemon itself runs as a system service whose `bind` would otherwise
+/// leave the socket 0755 (owner-only write) under systemd's 0022 umask, denying
+/// every cross-uid `connect`. Socket ownership is NOT the trust boundary here:
+/// the bus stamps each peer's uid from `SO_PEERCRED` at accept time, so a
+/// world-connectable socket is safe and is the only mode consistent with a
+/// system funnel serving user-uid clients.
 fn bind_socket(path: &str) -> Result<UnixListener> {
+    use std::os::unix::fs::PermissionsExt;
     if Path::new(path).exists() {
         std::fs::remove_file(path)?;
     }
     if let Some(parent) = Path::new(path).parent() {
         std::fs::create_dir_all(parent)?;
     }
-    Ok(UnixListener::bind(path)?)
+    let listener = UnixListener::bind(path)?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666))?;
+    Ok(listener)
 }
 
 fn info_socket(label: &str, path: &str) {
