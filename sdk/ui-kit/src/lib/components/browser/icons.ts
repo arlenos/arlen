@@ -7,6 +7,7 @@ import type { Icon } from "@lucide/svelte";
 import {
   Archive,
   Bookmark,
+  Clock,
   Cloud,
   Download,
   File,
@@ -68,6 +69,7 @@ const PLACE_ICONS: Record<string, typeof Icon> = {
   trash: Trash2,
   project: FolderDot,
   search: Search,
+  recent: Clock,
   bookmark: Bookmark,
 };
 
