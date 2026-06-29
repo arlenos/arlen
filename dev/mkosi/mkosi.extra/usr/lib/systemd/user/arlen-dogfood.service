@@ -19,18 +19,13 @@ Environment=ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
 StandardOutput=journal
 StandardError=journal
 
-# Talks the session bus (to the AI daemon) and the event-bus producer socket only;
-# no home write, no IP (the proxy owns provider egress). Confine accordingly.
-ProtectSystem=strict
-ProtectHome=read-only
-RestrictAddressFamilies=AF_UNIX
-NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectControlGroups=yes
-RestrictNamespaces=yes
-LockPersonality=yes
+# NO sandboxing on purpose: this is a dev test driver standing in for a normal
+# user app (the harness) calling the AI daemon. The AI daemon resolves a caller's
+# identity by reading /proc/<pid>/exe, which a same-uid reader can only do when
+# the target is dumpable; systemd hardening (NoNewPrivileges + the Protect*/
+# Restrict* set) clears dumpability, so a hardened dogfood is unresolvable and the
+# query is refused. A real app caller is an ordinary unhardened process, so the
+# dogfood must be too - confining it would test a configuration that never occurs.
 
 [Install]
 WantedBy=default.target
