@@ -1,0 +1,39 @@
+#!/bin/sh
+# Phase 5 of the Debian-native build (CHROOT): the AI layer - the agent
+# (arlen-ai-agent) + the daemon (arlen-ai-daemon), so the in-VM dogfood can drive
+# the real KG-AI loop (file.opened -> KG -> the agent's capability-scoped read ->
+# answer, then the gate/approve/undo flow). Built like the other daemons; the AI
+# inference engine (llama-server) + the baked model arrive in a later phase.
+#
+# Unlike the knowledge daemon this needs NO C++/Kuzu and NO ONNX: the ai workspace
+# is pure Rust and the S17 injection classifier rides an off-by-default `onnx`
+# feature, so the default build pulls neither ort nor a C++ toolchain. CPU-only,
+# software-GL-irrelevant. The ai workspace is its OWN cargo workspace
+# (ai/Cargo.toml), so it gets its own target dir in the persistent cache.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-ai"   # the ai/ workspace, separate from the daemons
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+# rustup stable was bootstrapped by phase 2 into the shared cache; bootstrap here
+# too in case the phases run independently (idempotent, skip if present).
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the AI layer (arlen-ai-agent + arlen-ai-daemon) - Debian-native ($(cargo --version))"
+# Build only the two bins (and their deps) from the ai workspace; the default
+# feature set leaves the onnx classifier out, so this stays pure-Rust.
+cargo build --release --manifest-path ai/Cargo.toml -p arlen-ai-agent -p arlen-ai-daemon
+
+for bin in arlen-ai-agent arlen-ai-daemon; do
+    install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$DESTDIR/usr/bin/$bin"
+    echo ">> staged $bin into the image"
+done
