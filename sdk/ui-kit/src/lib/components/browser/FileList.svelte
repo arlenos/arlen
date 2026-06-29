@@ -16,6 +16,7 @@
     ascending,
     selectedIndices,
     cursorIndex = null,
+    idBase,
     now,
     columns = DEFAULT_COLUMNS,
     icon,
@@ -32,6 +33,9 @@
     ascending: boolean;
     selectedIndices: ReadonlySet<number>;
     cursorIndex?: number | null;
+    /// Per-instance id prefix for row element ids (the grid's
+    /// aria-activedescendant target).
+    idBase?: string;
     now?: number;
     /// Which columns to render (a virtual location swaps Size for Location).
     columns?: ColumnSpec;
@@ -139,6 +143,7 @@
     {#each slice as entry, sliceIndex (entry.name)}
       {@const i = winStart + sliceIndex}
       <FileRow
+        id={idBase ? `${idBase}-item-${i}` : undefined}
         {entry}
         {now}
         {icon}

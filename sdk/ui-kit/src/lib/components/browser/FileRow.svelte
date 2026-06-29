@@ -12,6 +12,7 @@
   import { tick } from "svelte";
 
   let {
+    id,
     entry,
     selected = false,
     focused = false,
@@ -25,6 +26,9 @@
     onrowcontextmenu,
     onrename,
   }: {
+    /// Stable element id so the grid container can point
+    /// `aria-activedescendant` at the cursored row (screen-reader focus).
+    id?: string;
     entry: FileEntry;
     selected?: boolean;
     /// The keyboard cursor sits here.
@@ -105,7 +109,13 @@
   }
 </script>
 
+<!-- Keyboard navigation is owned by the grid container (FileBrowser): it
+     captures Arrow/Enter/Home/End and moves the cursor, exposing the active
+     row via aria-activedescendant. So a per-row key handler would double-handle;
+     the row's onclick is a pointer affordance only. -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
+  {id}
   class="file-row"
   class:cols-location={columns.middle === "location"}
   class:selected
