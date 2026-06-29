@@ -1,0 +1,19 @@
+[package]
+name = "arlen-dogfood"
+version = "0.1.0"
+edition = "2021"
+description = "Dev in-VM dogfood: drive the KG-AI loop end to end and log the result"
+
+[[bin]]
+name = "arlen-dogfood"
+path = "src/main.rs"
+
+[dependencies]
+os-sdk = { path = "../../sdk/os-sdk" }
+prost = "0.13"
+serde = "1"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+
+[workspace]
