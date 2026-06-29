@@ -1,0 +1,36 @@
+[Unit]
+Description=Arlen in-VM KG-AI dogfood (one-shot loop driver, user service)
+Documentation=https://github.com/arlenos/arlen
+# Drives the KG-AI loop once per boot so the headless verify channel can grep the
+# result off the serial journal: inject a file.opened, wait a promotion pass, then
+# ask the AI daemon a question. Order it after the AI session daemons it drives
+# (best-effort); llama-server load latency is absorbed by the tool's own retry.
+After=arlen-ai-daemon.service arlen-ai-agent.service arlen-ai-proxy.service
+Wants=arlen-ai-daemon.service arlen-ai-agent.service arlen-ai-proxy.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/arlen-dogfood
+# The event-bus producer socket is a SYSTEM daemon under /run/arlen; the default
+# matches but pin it so a path change here is explicit.
+Environment=ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
+# Markers go to the journal; the kernel cmdline forwards the journal to ttyS0, so
+# DOGFOOD lines land in the serial log the verify channel reads.
+StandardOutput=journal
+StandardError=journal
+
+# Talks the session bus (to the AI daemon) and the event-bus producer socket only;
+# no home write, no IP (the proxy owns provider egress). Confine accordingly.
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictAddressFamilies=AF_UNIX
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,36 @@
+#!/bin/sh
+# Phase 9 (CHROOT): the in-VM dogfood tools. The image carries no eBPF sensor, so
+# the KG-AI loop cannot be driven by really opening a file. arlen-event-emit
+# injects a synthetic file.opened onto the event bus (the sensor stand-in) and
+# arlen-dogfood orchestrates the whole loop (emit -> wait a promotion pass -> ask
+# the AI daemon, with journal markers the verify channel greps). Both are small
+# standalone cargo workspaces under dev/, so each gets its own target dir in the
+# persistent cache. Pure Rust (os-sdk + zbus), no C++/ONNX.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the dogfood tools (event-emit + dogfood) - Debian-native ($(cargo --version))"
+
+CARGO_TARGET_DIR="$cache/target-event-emit" \
+    cargo build --release --manifest-path dev/event-emit/Cargo.toml
+install -Dm755 "$cache/target-event-emit/release/arlen-event-emit" \
+    "$DESTDIR/usr/bin/arlen-event-emit"
+echo ">> staged arlen-event-emit into the image"
+
+CARGO_TARGET_DIR="$cache/target-dogfood" \
+    cargo build --release --manifest-path dev/dogfood/Cargo.toml
+install -Dm755 "$cache/target-dogfood/release/arlen-dogfood" \
+    "$DESTDIR/usr/bin/arlen-dogfood"
+echo ">> staged arlen-dogfood into the image"
