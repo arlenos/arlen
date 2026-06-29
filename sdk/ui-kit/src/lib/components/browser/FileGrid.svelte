@@ -31,6 +31,7 @@
     entries,
     selectedIndices,
     cursorIndex = null,
+    idBase,
     icon,
     onrowevent,
     thumbnails,
@@ -41,6 +42,9 @@
     entries: FileEntry[];
     selectedIndices: ReadonlySet<number>;
     cursorIndex?: number | null;
+    /// Per-instance id prefix for tile element ids (the grid's
+    /// aria-activedescendant target).
+    idBase?: string;
     icon?: Snippet<[FileEntry]>;
     onrowevent?: (
       kind: "click" | "dblclick" | "contextmenu",
@@ -134,6 +138,7 @@
     {@const i = start + sliceIndex}
     {@const url = thumbnails?.get(thumbKey?.(entry) ?? "") ?? null}
     <FileTile
+      id={idBase ? `${idBase}-item-${i}` : undefined}
       {entry}
       {icon}
       thumbnail={url}

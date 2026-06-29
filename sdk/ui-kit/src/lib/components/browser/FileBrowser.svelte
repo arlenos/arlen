@@ -1,3 +1,9 @@
+<script lang="ts" module>
+  // Per-instance counter so each browser's row element ids are unique across
+  // split panes (the aria-activedescendant target must resolve to one element).
+  let instanceSeq = 0;
+</script>
+
 <script lang="ts">
   /// The shared file browser: one controller in, the listing with
   /// selection and activation out. Directory activation navigates
@@ -86,6 +92,16 @@
   let selectedIndices = $state<ReadonlySet<number>>(new Set());
   let cursorIndex = $state<number | null>(null);
   let listedPath = $state("");
+
+  // The id prefix for row/tile elements; the container points
+  // aria-activedescendant at the cursored item so a screen reader announces it
+  // as the user arrows through (list + grid views, which render flat indices).
+  const idBase = `fb-${(instanceSeq += 1)}`;
+  const activeDescendant = $derived(
+    cursorIndex !== null && ($viewMode === "list" || $viewMode === "grid")
+      ? `${idBase}-item-${cursorIndex}`
+      : undefined,
+  );
 
   $effect(() => {
     const p = $path;
@@ -392,12 +408,19 @@
   }
 </script>
 
+<!-- A custom keyboard-driven composite: role="application" hands all keys to
+     the grid's own navigation (Arrow/Enter/Home/End/type-ahead), tabindex makes
+     it the single tab stop, and aria-activedescendant tracks the cursored item
+     for screen readers. The lint treats application as non-interactive, which is
+     wrong for this widget. -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   class="file-browser"
   bind:this={rootEl}
   role="application"
   aria-label="File browser"
+  aria-activedescendant={activeDescendant}
   tabindex="0"
   onkeydown={onkeydown}
   onpointerdown={onpointerdown}
@@ -436,6 +459,7 @@
       entries={visible}
       {selectedIndices}
       {cursorIndex}
+      {idBase}
       {icon}
       {onrowevent}
       thumbnails={controller.hasThumbnails ? $thumbnails : undefined}
@@ -461,6 +485,7 @@
       ascending={$ascending}
       {selectedIndices}
       {cursorIndex}
+      {idBase}
       {now}
       {columns}
       {icon}

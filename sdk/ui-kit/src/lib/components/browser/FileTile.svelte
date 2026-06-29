@@ -11,6 +11,7 @@
   import { entryIcon } from "./icons";
 
   let {
+    id,
     entry,
     selected = false,
     focused = false,
@@ -21,6 +22,9 @@
     ontiledblclick,
     ontilecontextmenu,
   }: {
+    /// Stable element id so the grid container can point
+    /// `aria-activedescendant` at the cursored tile (screen-reader focus).
+    id?: string;
     entry: FileEntry;
     selected?: boolean;
     focused?: boolean;
@@ -58,7 +62,13 @@
   const showImage = $derived(thumbnail !== null && !failed);
 </script>
 
+<!-- Keyboard navigation is owned by the grid container (FileBrowser), which
+     moves the cursor and exposes the active tile via aria-activedescendant; a
+     per-tile key handler would double-handle. The onclick is a pointer
+     affordance only. -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
+  {id}
   class="file-tile"
   class:selected
   class:focused
@@ -173,6 +183,7 @@
     overflow-wrap: anywhere;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
     max-width: 100%;
