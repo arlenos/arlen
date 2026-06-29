@@ -1077,6 +1077,57 @@ async fn files_projects() -> Vec<Project> {
     }
 }
 
+/// One option in the filter bar's Touched facet: an app that has accessed files,
+/// with how many it touched (the count beside the dropdown value).
+#[derive(Serialize)]
+struct TouchedApp {
+    /// The app id (the `ACCESSED_BY` target; the facet value the read filters on).
+    id: String,
+    /// The display label (the App node's name, or the id when it has none).
+    label: String,
+    /// How many distinct files this app has accessed.
+    count: i64,
+}
+
+/// Map the touched-apps rows (`{ id, label, count }`) into facet options,
+/// skipping a row missing the id; the label falls back to the id and the count
+/// to zero. Pure, so the shaping is unit-tested without a daemon.
+fn touched_apps_from_rows(rows: &[std::collections::HashMap<String, serde_json::Value>]) -> Vec<TouchedApp> {
+    rows.iter()
+        .filter_map(|r| {
+            let id = r.get("id").and_then(|v| v.as_str())?;
+            let label = r
+                .get("label")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(id);
+            let count = r.get("count").and_then(|v| v.as_i64()).unwrap_or(0);
+            Some(TouchedApp {
+                id: id.to_string(),
+                label: label.to_string(),
+                count,
+            })
+        })
+        .collect()
+}
+
+/// The apps that have accessed files, for the filter bar's Touched facet, each
+/// with its file count, most-active first. Best-effort: an absent daemon or an
+/// out-of-scope read yields no options (the facet then reads as having nothing
+/// to offer). The query is static (no interpolation), so no escaping.
+#[tauri::command]
+async fn files_touched_apps() -> Vec<TouchedApp> {
+    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
+    let cypher = "MATCH (f:File)-[:ACCESSED_BY]->(a:App) \
+                  RETURN a.id AS id, a.name AS label, count(f) AS count \
+                  ORDER BY count DESC LIMIT 64";
+    match client.query_rows(cypher).await {
+        Ok(rows) => touched_apps_from_rows(&rows),
+        Err(_) => Vec::new(),
+    }
+}
+
 /// The Suchen sidebar section (KG; empty until structured reads land).
 #[derive(Serialize)]
 struct SavedSearch {
@@ -1538,6 +1589,7 @@ pub fn run() {
             files_archive_list,
             files_templates,
             files_projects,
+            files_touched_apps,
             files_saved_searches,
             files_recent,
             files_trash_list,
@@ -1556,8 +1608,8 @@ pub fn run() {
 mod tests {
     use super::{
         abs, escape_cypher_literal, file_part_of_as_of, members_from_rows, ops, projects_from_rows,
-        provenance_to_woher, recent_from_rows, recent_to_entry, trash_to_entry, verwandt_from_rows,
-        EntryKind, RecentFile,
+        provenance_to_woher, recent_from_rows, recent_to_entry, touched_apps_from_rows,
+        trash_to_entry, verwandt_from_rows, EntryKind, RecentFile,
     };
     use std::collections::HashMap;
 
@@ -1580,6 +1632,38 @@ mod tests {
         // An absent (0) accessed time is None, not epoch-zero.
         let rf0 = RecentFile { accessed: 0, ..rf };
         assert_eq!(recent_to_entry(&rf0).modified_unix, None);
+    }
+
+    #[test]
+    fn touched_apps_shape_falls_back_to_id_and_zero_and_skips_idless_rows() {
+        let row = |id: Option<&str>, label: Option<&str>, count: Option<i64>| {
+            let mut m: HashMap<String, serde_json::Value> = HashMap::new();
+            if let Some(v) = id {
+                m.insert("id".into(), serde_json::Value::String(v.into()));
+            }
+            if let Some(v) = label {
+                m.insert("label".into(), serde_json::Value::String(v.into()));
+            }
+            if let Some(v) = count {
+                m.insert("count".into(), serde_json::json!(v));
+            }
+            m
+        };
+        let rows = vec![
+            row(Some("org.gnome.Files"), Some("Files"), Some(12)),
+            // No name -> label falls back to the id; no count -> 0.
+            row(Some("org.x.App"), None, None),
+            // No id -> skipped entirely (not a usable facet value).
+            row(None, Some("Ghost"), Some(3)),
+        ];
+        let apps = touched_apps_from_rows(&rows);
+        assert_eq!(apps.len(), 2);
+        assert_eq!(apps[0].id, "org.gnome.Files");
+        assert_eq!(apps[0].label, "Files");
+        assert_eq!(apps[0].count, 12);
+        assert_eq!(apps[1].id, "org.x.App");
+        assert_eq!(apps[1].label, "org.x.App"); // id fallback
+        assert_eq!(apps[1].count, 0);
     }
 
     #[test]
