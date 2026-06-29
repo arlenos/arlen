@@ -40,3 +40,11 @@ for bin in arlen-ai-agent arlen-ai-daemon arlen-ai-proxy; do
     install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$DESTDIR/usr/bin/$bin"
     echo ">> staged $bin into the image"
 done
+
+# The agent discovers behaviours from /usr/share/arlen/agent/behaviours (its
+# BuiltIn default source, ai-skills/loader.rs); bake the shipped SKILL.md set there
+# so auto-tag-by-project (+ the others) are loadable without ARLEN_AGENT_BEHAVIOURS.
+behdest="$DESTDIR/usr/share/arlen/agent/behaviours"
+mkdir -p "$behdest"
+cp -r "$SRCDIR/arlen/ai/ai-agent/behaviours/." "$behdest/"
+echo ">> baked the agent behaviours into the image"
