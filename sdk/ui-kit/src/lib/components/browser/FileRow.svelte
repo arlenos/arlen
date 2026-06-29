@@ -19,6 +19,7 @@
     now,
     columns = DEFAULT_COLUMNS,
     icon,
+    thumbnail = null,
     onrowclick,
     onrowdblclick,
     onrowcontextmenu,
@@ -35,6 +36,9 @@
     /// Which columns to render (a virtual location swaps Size for Location).
     columns?: ColumnSpec;
     icon?: Snippet<[FileEntry]>;
+    /// A resolved thumbnail URL (an image preview in the icon slot), or null for
+    /// the type icon - including while it loads, so the swap never shifts the row.
+    thumbnail?: string | null;
     onrowclick?: (e: MouseEvent) => void;
     onrowdblclick?: (e: MouseEvent) => void;
     onrowcontextmenu?: (e: MouseEvent) => void;
