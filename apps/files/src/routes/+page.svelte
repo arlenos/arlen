@@ -33,11 +33,13 @@
   import FmBatchRename from "$lib/components/FmBatchRename.svelte";
   import FmSearchBar from "$lib/components/FmSearchBar.svelte";
   import FmSearchResults from "$lib/components/FmSearchResults.svelte";
+  import FmDuplicates from "$lib/components/FmDuplicates.svelte";
   import FmFacetBar from "$lib/components/FmFacetBar.svelte";
   import FmInfoPanel from "$lib/components/FmInfoPanel.svelte";
   import { savedSearches } from "$lib/stores/places";
   import { searchOpen, searchResults } from "$lib/stores/search";
   import { facetOpen, facetBase, loadFacetOptions } from "$lib/stores/facets";
+  import { duplicatesOpen } from "$lib/stores/duplicates";
   import { columnsFor, emptyLabelFor } from "$lib/locations";
   import { DEFAULT_COLUMNS } from "@arlen/ui-kit/components/browser";
 
@@ -456,7 +458,14 @@
     {/if}
     <ContextMenu.Root>
       <ContextMenu.Trigger class="fm-browse">
-        {#if $searchOpen && $searchResults !== null}
+        {#if $duplicatesOpen}
+          <FmDuplicates
+            ontrash={async (paths) => {
+              await runOp("trash", paths);
+              await get(focusedController)?.refresh();
+            }}
+          />
+        {:else if $searchOpen && $searchResults !== null}
           <FmSearchResults
             basePath={currentPath()}
             onjump={(dir) => $focusedController?.navigate(dir)}
