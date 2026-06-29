@@ -59,6 +59,16 @@ def qmp(f, execute, **arguments):
             return msg
 
 
+def qmp_key(f, qcode):
+    """Press + release a key by qcode (e.g. 'meta_l') via input-send-event - the
+    input half of the interactive ('click') verify tier, driving the guest's
+    virtio input -> compositor -> shell."""
+    for down in (True, False):
+        qmp(f, "input-send-event", events=[
+            {"type": "key", "data": {"down": down,
+                                     "key": {"type": "qcode", "data": qcode}}}])
+
+
 def inspect(png):
     """Return (rendered, summary) for the captured frame."""
     from PIL import Image
@@ -111,6 +121,18 @@ def has_top_bar(png):
     return bar != desk, bar, desk
 
 
+def frame_change(a, b):
+    """Fraction of pixels that differ between two frames (0..1) - used to confirm
+    an input event (e.g. Super -> waypointer) actually changed what is on screen."""
+    from PIL import Image, ImageChops
+    ia, ib = Image.open(a).convert("RGB"), Image.open(b).convert("RGB")
+    if ia.size != ib.size:
+        return 1.0
+    diff = ImageChops.difference(ia, ib).convert("L").point(lambda p: 255 if p > 16 else 0)
+    changed = sum(c for c, v in (diff.getcolors() or []) if v)
+    return changed / (ia.width * ia.height)
+
+
 def main():
     ap = argparse.ArgumentParser()
     here = os.path.dirname(os.path.abspath(__file__))
@@ -119,6 +141,9 @@ def main():
     ap.add_argument("--out", default=os.path.join(here, "shot.png"))
     ap.add_argument("--require-bar", action="store_true",
                     help="fail unless the shell's top bar is present (full-desktop gate)")
+    ap.add_argument("--super", dest="press_super", action="store_true",
+                    help="after verifying, press Super and capture a second shot "
+                         "(the waypointer/launcher) to exercise the input->shell path")
     args = ap.parse_args()
 
     image = os.path.abspath(args.image)
@@ -160,6 +185,15 @@ def main():
             if os.path.exists(out) and os.path.getsize(out) > 0:
                 break
             time.sleep(0.1)
+        if args.press_super:
+            after = out + ".after.png"
+            qmp_key(f, "meta_l")            # Super: the compositor's waypointer toggle
+            time.sleep(2)
+            qmp(f, "screendump", filename=after, format="png")
+            for _ in range(50):
+                if os.path.exists(after) and os.path.getsize(after) > 0:
+                    break
+                time.sleep(0.1)
         qmp(f, "quit")
     finally:
         try:
@@ -177,6 +211,11 @@ def main():
         print("OCR text:\n" + text)
     print(f"top bar: {'present' if bar_present else 'absent'} "
           f"(bar row {bar_rgb}, desktop row {desk_rgb})")
+    after = out + ".after.png"
+    if args.press_super and os.path.exists(after) and os.path.getsize(after) > 0:
+        frac = frame_change(out, after)
+        verb = "changed the screen" if frac > 0.02 else "had no visible effect"
+        print(f"Super press: {verb} ({frac*100:.1f}% of pixels differ) -> {after}")
     # A frame full of kernel-console / login text means cosmic-comp never took the
     # scanout (VT/DRM-master conflict) - the getty/console is still on screen, not
     # the compositor. Treat that as failure even though it is "non-black".
