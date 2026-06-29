@@ -9,7 +9,12 @@
 # default that makes "what was I working on" answerable. action_mode supervised:
 # proposed actions surface for confirmation (the gate/approve flow), never silent.
 enabled = true
-access_level = 3
+# access_level 4 = Full. The conversational "what was I working on" only needs
+# TimeScoped, but the auto-tag-by-project behaviour declares reads:project, and a
+# Project read is a DIFFERENT scope that TimeScoped does not cover - so at level 3
+# no behaviour is runnable and the agent exits before it can register AIAgent1 (the
+# run_skill/compensate surface the executor live-verify drives). Full covers both.
+access_level = 4
 action_mode = "supervised"
 # The ai-proxy's catalogued local provider; its endpoint is llama-server on
 # 127.0.0.1:11434 (the baked GGUF). No cloud, no creds, zero egress.
