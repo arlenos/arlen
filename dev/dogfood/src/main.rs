@@ -35,6 +35,10 @@ const PROMOTION_WAIT: Duration = Duration::from_secs(35);
 /// Whole-turn budget for submit + every poll.
 const QUERY_TIMEOUT: Duration = Duration::from_secs(90);
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
+/// How many whole-turn attempts before giving up (absorbs model-load latency).
+const ASK_ATTEMPTS: u32 = 4;
+/// Wait between ask attempts when the provider is not yet serving.
+const ASK_RETRY_DELAY: Duration = Duration::from_secs(20);
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -53,15 +57,30 @@ async fn main() {
     // Let a promotion pass turn the raw event into a File node before asking.
     sleep(PROMOTION_WAIT).await;
 
-    match ask(&prompt).await {
-        Ok(answer) => {
-            // One line, truncated: prose is for inspection, not the gate.
-            let snippet: String = answer.chars().take(200).collect();
-            println!("DOGFOOD ASK ok answer={snippet}");
-            println!("DOGFOOD OK");
+    // llama-server loads the GGUF lazily and the oneshot fires when the daemons
+    // *start*, not when the provider is serving, so a first ask can hit a
+    // not-yet-ready backend (the daemon reports `failed`, it does not retry).
+    // Retry the whole turn a few times so model-load latency is not a false fail.
+    let mut last = String::new();
+    for attempt in 1..=ASK_ATTEMPTS {
+        match ask(&prompt).await {
+            Ok(answer) => {
+                // One line, truncated: prose is for inspection, not the gate.
+                let snippet: String = answer.chars().take(200).collect();
+                println!("DOGFOOD ASK ok answer={snippet}");
+                println!("DOGFOOD OK");
+                return;
+            }
+            Err(e) => {
+                println!("DOGFOOD ASK retry {attempt}/{ASK_ATTEMPTS}: {e}");
+                last = e;
+                if attempt < ASK_ATTEMPTS {
+                    sleep(ASK_RETRY_DELAY).await;
+                }
+            }
         }
-        Err(e) => fail(&format!("ask: {e}")),
     }
+    fail(&format!("ask: {last}"));
 }
 
 /// Emit a `file.opened` onto the event-bus producer socket.
