@@ -1,36 +1,38 @@
 <script lang="ts">
-  /// The Save-mode name field. Portal-specific chrome (it has no kit
-  /// equivalent), skinned on the kit design tokens so it reads as one
-  /// surface with the browser above it. The location is the browsed
-  /// folder; the daemon revalidates the composed path.
+  /// The Save-mode name field, on the kit `Input` so it matches every
+  /// other field in the system. The location is the browsed folder; the
+  /// daemon revalidates the composed path.
+  import { Input } from "@arlen/ui-kit/components/ui/input";
   import { getUiState, setSaveFilename, validateFilename } from "$lib/stores/pickerUi.svelte";
 
   let { location }: { location: string } = $props();
 
-  const state = getUiState();
+  const ui = getUiState();
+  let filename = $state(ui.saveFilename);
 
-  function onInput(e: Event) {
-    setSaveFilename((e.target as HTMLInputElement).value);
-  }
+  // Keep the local field in sync when a request seeds the name (the
+  // caller's currentName / a file activation reusing its name).
+  $effect(() => {
+    filename = ui.saveFilename;
+  });
 
-  let validationError = $derived(validateFilename(state.saveFilename));
+  let validationError = $derived(validateFilename(ui.saveFilename));
 </script>
 
 <div class="save-bar">
   <label class="field">
     <span class="label">Save as</span>
-    <input
-      type="text"
+    <Input
       placeholder="filename"
-      value={state.saveFilename}
-      oninput={onInput}
+      bind:value={filename}
+      oninput={() => setSaveFilename(filename)}
       autocomplete="off"
       spellcheck="false"
       aria-invalid={validationError !== null}
     />
   </label>
   <p class="location" title={location}>in {location}</p>
-  {#if validationError && state.saveFilename.length > 0}
+  {#if validationError && ui.saveFilename.length > 0}
     <p class="error">{validationError}</p>
   {/if}
 </div>
@@ -52,27 +54,6 @@
     flex-shrink: 0;
     font-size: 0.8125rem;
     color: var(--color-fg-muted);
-  }
-
-  input {
-    flex: 1;
-    height: var(--height-control);
-    padding: 0 10px;
-    background: var(--color-bg-input);
-    color: var(--color-fg-app);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-input);
-    font-size: 0.875rem;
-    outline: none;
-    transition: border-color var(--duration-fast) var(--ease-out);
-  }
-
-  input:focus {
-    border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
-  }
-
-  input[aria-invalid="true"] {
-    border-color: var(--color-danger);
   }
 
   .location {
