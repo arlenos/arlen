@@ -24,14 +24,23 @@ apt/dpkg/debootstrap, so no Debian tooling is needed on the host.
 ## Build + boot
 
 ```
-cd dev/mkosi
-PATH=/usr/sbin:/sbin:$PATH mkosi build --force   # assemble the Debian rootfs + disk image
-mkosi vm                                         # boot it in QEMU (a real kernel + DRM path)
+dev/mkosi/build-image.sh                 # build everything + assemble arlen.raw
+dev/vm/verify.py --require-bar           # boot headless, screendump, assert the full desktop
 ```
 
-`--force` is required to re-run a build: mkosi refuses if `arlen.raw` already
-exists ("Output path ... exists already. Use --force to rebuild.") and silently
-keeps the stale image otherwise.
+`build-image.sh` is the orchestrator: it zigbuilds the pure-Rust daemons (event-bus)
+for the Debian target, then runs `mkosi build --force` whose `mkosi.build.d/` phases
+build the C++/system-lib binaries Debian-native (the knowledge daemon, cosmic-comp,
+the desktop shell) and stage them in. `verify.py` boots the image in QEMU with a
+single virtio-gpu (software GL/llvmpipe), waits for the session, captures the
+framebuffer over QMP `screendump`, and asserts the compositor rendered + (with
+`--require-bar`) the shell's top bar is present. **Status: the image boots end-to-end
+to a pixel-verified Arlen desktop** (greetd -> cosmic-comp -> arlen-desktop-shell bar)
+with event-bus + the knowledge daemon running.
+
+To run mkosi by hand: `PATH=/usr/sbin:/sbin:$PATH mkosi build --force` (then `mkosi
+vm`). `--force` is required (mkosi refuses if `arlen.raw` exists and silently keeps
+the stale image). The `/usr/sbin:/sbin` PATH prefix is mandatory on this Arch host.
 
 The `PATH=/usr/sbin:/sbin:$PATH` prefix is mandatory on this Arch host (a
 cross-distro quirk, not optional). mkosi runs `depmod` for the kernel modules by
@@ -82,27 +91,30 @@ blind. Wired in Phase 2 (`mkosi.extra/etc/greetd/config.toml` + the session glue
 
 ## Status / phase roadmap
 
-- **Phase 1 - the mkosi recipe: DONE** (`mkosi.conf`). First real build surfaced
-  two findings, both now resolved: the rootfs needs `kmod` named explicitly (else
-  "depmod not found" at the module step), and the build must run with
-  `/usr/sbin:/sbin` on the host PATH (the cross-distro depmod-chroot quirk above).
-- **Phase 2 - the stack overlay + autostart: session glue DONE** (`mkosi.extra/`):
-  greetd `[initial_session]` -> `/usr/bin/arlen-session` (launches `cosmic-comp`,
-  waits for its Wayland socket, imports the Arlen socket env to the --user manager,
-  starts `graphical-session.target`), the shell `systemd --user` unit, and
-  `mkosi.postinst` (creates the locked autologin `arlen` user, enables greetd +
-  the shell user unit). REMAINING: the binary population - the arlen binaries
-  (`cosmic-comp` from the compositor repo, `arlen-desktop-shell`, `event-bus`,
-  the daemons) built for the Debian target + dropped into `mkosi.extra/usr/bin/`,
-  and the system-daemon units copied into `mkosi.extra/usr/lib/systemd/system/`.
-  Until then the image boots to greetd autologin -> arlen-session, which fails
-  gracefully on the missing compositor (the autostart plumbing is in + testable).
-- **Phase 3 - runtime-dir topology:** the `RuntimeDirectory=`/`Preserve=yes` decided
-  above, applied across the units.
-- **Phase 4 - the QEMU verify channel (`dev/vm/`):** plain `virtio-gpu` (software
-  GL/llvmpipe, CPU-readable framebuffer - NOT `gl=on`, which captures black), OVMF
-  pflash, `-qmp` + `-device usb-tablet`, the WebKitGTK software-GL env vars in the
-  guest session, `screendump` PNG + tesseract OCR (the NixOS-test-driver pattern).
+All four phases DONE: the image boots end-to-end to a pixel-verified Arlen desktop.
 
-The hard parts (WebKitGTK under software GL #1, cosmic-comp on virtio-gpu llvmpipe
-#2) are worked through in-build, not escalated - see the plan.
+- **Phase 1 - the mkosi recipe (`mkosi.conf`):** Debian-Trixie UEFI disk image.
+  First-build findings, resolved: `kmod` named explicitly (else "depmod not found"),
+  and the `/usr/sbin:/sbin` host-PATH prefix (the cross-distro depmod-chroot quirk).
+- **Phase 2 - the stack overlay + autostart (`mkosi.extra/`):** greetd
+  `[initial_session]` + `[default_session]` -> `/usr/bin/arlen-session` (launches
+  `cosmic-comp` via the udev/KMS backend, captures WAYLAND_DISPLAY, launches the
+  shell), the PAM stack (pam_systemd), the logind `NAutoVTs=0` + greetd
+  `Conflicts=getty@tty1` so the compositor owns vt1, the `/home/arlen` chown
+  tmpfiles fix, and `mkosi.postinst` (the locked autologin user). The unit-enable
+  symlinks ship via the overlay (`preset-all`-safe).
+- **Phase 3 - runtime-dir topology:** system sockets in `/run/arlen`
+  (`RuntimeDirectory=arlen` + `Preserve=yes`); the per-user-defaulting daemons run
+  as SUT system services via drop-in env overrides.
+- **Phase 4 - the QEMU verify channel (`dev/vm/verify.py`):** single `virtio-gpu`
+  (software GL/llvmpipe, CPU-readable - no `gl=on`), OVMF pflash, `-qmp`
+  `screendump` -> PNG, asserts the compositor rendered (non-black, not the
+  kernel/login console via OCR) and `--require-bar` asserts the shell's top bar
+  (a structural color check). The binary population: `event-bus` via cargo-zigbuild
+  (pure-Rust, glibc-pinned), `arlen-graph-daemon`/`cosmic-comp`/`arlen-desktop-shell`
+  Debian-native via `mkosi.build.d/`.
+
+Both ranked hard parts are cleared with pixel proof: #2 cosmic-comp on virtio-gpu/
+llvmpipe, #1 the Tauri shell's WebKitGTK under software GL. NEXT: the interactive
+"click tier" (QMP `input-send-event` on the rendered desktop) and the KG-AI loop
+dogfood (gated on the model toolchain).
