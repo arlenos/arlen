@@ -25,11 +25,15 @@ export ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
 export ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
 export ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock
 
-# Force the Wayland backend (no X11) and the software-GL stack: the verify VM's
-# plain virtio-gpu has no hardware GL, so Mesa runs on llvmpipe and WebKitGTK must
-# not try the GPU/dmabuf compositing path (else the Tauri apps paint black). These
-# are harmless on real hardware; the image is the system-under-test.
-export DISPLAY=
+# cosmic-comp auto-selects its backend: if DISPLAY or WAYLAND_DISPLAY is set it
+# goes NESTED (x11/winit, for running inside another session); otherwise it uses
+# the udev/KMS bare-metal backend that drives the seat's DRM device directly -
+# which is what we want here. So those MUST be unset (a set-but-empty DISPLAY=
+# makes cosmic-comp try X11 and fail). The software-GL stack: the VM's plain
+# virtio-gpu has no hardware GL, so Mesa runs on llvmpipe and WebKitGTK must avoid
+# the GPU/dmabuf compositing path (else the Tauri apps paint black). Harmless on
+# real hardware; the image is the system-under-test.
+unset DISPLAY WAYLAND_DISPLAY
 export XDG_CURRENT_DESKTOP=arlen
 export LIBGL_ALWAYS_SOFTWARE=1
 export GALLIUM_DRIVER=llvmpipe
