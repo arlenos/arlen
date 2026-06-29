@@ -11,6 +11,7 @@ export type PopoverType =
   | "bluetooth"
   | "tray"
   | "layout"
+  | "mpris"
   | `module:${string}`
   | null;
 
