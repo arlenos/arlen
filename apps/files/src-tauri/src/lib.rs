@@ -18,8 +18,8 @@ use std::sync::Mutex;
 
 use arlen_file_browser_core::undo::{UndoStack, UndoableOp};
 use arlen_file_browser_core::{
-    breadcrumb, dedup, list_dir, ops, properties, search, sort_entries, Crumb, EntryKind,
-    FileEntry, SortKey,
+    breadcrumb, bulk_rename, dedup, list_dir, ops, properties, search, sort_entries, Crumb,
+    EntryKind, FileEntry, SortKey,
 };
 use cap_std::ambient_authority;
 use cap_std::fs::Dir;
@@ -460,6 +460,22 @@ fn files_find_duplicates(path: String) -> Result<Vec<DupGroupOut>, String> {
                 .collect(),
         })
         .collect())
+}
+
+/// Apply a bulk rename to `names` in `dir` under `rule` (FM-R11, the batch-rename
+/// seam). The backend recomputes the plan from `names` + `rule` (never trusting
+/// the client preview), refuses the whole batch if any row is invalid or collides,
+/// and applies the renames two-phase so a shift or a cycle never clobbers. Returns
+/// the number of entries renamed.
+#[tauri::command]
+fn files_bulk_rename(
+    dir: String,
+    names: Vec<String>,
+    rule: bulk_rename::RenameRule,
+) -> Result<usize, String> {
+    let root = root()?;
+    let scope = root.open_dir(rel(&dir)).map_err(|e| e.to_string())?;
+    ops::apply_bulk_rename(&scope, ".", &names, &rule).map_err(|e| e.to_string())
 }
 
 /// The home trash contents (paired `files/` + `info/` entries) for the Trash
@@ -1663,6 +1679,7 @@ pub fn run() {
             files_info,
             files_search,
             files_find_duplicates,
+            files_bulk_rename,
             ai_gate::files_ai_enabled,
             files_op,
             files_set_permissions,

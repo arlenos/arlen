@@ -413,6 +413,96 @@ pub fn rename(
     Ok(OpOutcome::Renamed { target })
 }
 
+/// Apply a bulk rename to `names` in the directory `parent` (relative to the
+/// capability `dir`), under `rule` (FM-R11). The plan is recomputed HERE from
+/// `names` + `rule` via [`crate::bulk_rename::plan_rename`] - the authority is the
+/// backend, never a client-supplied preview - and the whole batch is refused if
+/// any row is invalid or collides with another row (a partial rename is worse than
+/// none).
+///
+/// The renames are applied in two phases through unique temporary names so a shift
+/// or a cycle (`a -> b`, `b -> c`, or a swap `a <-> b`) never clobbers: every
+/// changing source is first vacated to a temp, then each temp is placed at its
+/// final name. A single-phase rename in plan order would destroy a target that is
+/// itself a later row's source. A target name that already exists and is NOT being
+/// vacated by this batch is refused up front (it would clobber an unselected file).
+/// A phase-one failure rolls the already-staged temps back to their originals
+/// (best-effort) so a mid-batch OS error does not leave temp-named files. Returns
+/// the number of entries renamed (unchanged rows are skipped).
+pub fn apply_bulk_rename(
+    dir: &Dir,
+    parent: impl AsRef<Path>,
+    names: &[String],
+    rule: &crate::bulk_rename::RenameRule,
+) -> OpResult<usize> {
+    use crate::bulk_rename::{plan_rename, ConflictKind};
+    let parent = parent.as_ref();
+
+    let plan = plan_rename(names, rule);
+    for p in &plan {
+        match p.conflict {
+            ConflictKind::Invalid => return Err(OpError::InvalidName { name: p.new.clone() }),
+            ConflictKind::Duplicate => return Err(OpError::AlreadyExists { name: p.new.clone() }),
+            ConflictKind::None | ConflictKind::Unchanged => {}
+        }
+    }
+
+    // The rows that actually change (skip Unchanged / no-ops).
+    let changes: Vec<(&str, &str)> = plan
+        .iter()
+        .filter(|p| p.conflict == ConflictKind::None && p.new != p.old)
+        .map(|p| (p.old.as_str(), p.new.as_str()))
+        .collect();
+    if changes.is_empty() {
+        return Ok(0);
+    }
+
+    // Guard against clobbering a file the batch is NOT renaming away: a final name
+    // may collide with an existing entry no row vacates (intra-batch duplicates are
+    // already refused above).
+    let vacated: std::collections::HashSet<&str> = changes.iter().map(|(old, _)| *old).collect();
+    for (_, new) in &changes {
+        if !vacated.contains(*new) && exists_no_follow(dir, &parent.join(new)) {
+            return Err(OpError::AlreadyExists {
+                name: (*new).to_string(),
+            });
+        }
+    }
+
+    // Best-effort rollback of phase one: move each staged temp back to its
+    // original source name (newest first). Failures are ignored; rollback is the
+    // recovery attempt, not a guarantee.
+    let rollback = |staged: &[(String, &str, &str)]| {
+        for (tmp, old, _) in staged.iter().rev() {
+            let _ = dir.rename(parent.join(tmp), dir, parent.join(old));
+        }
+    };
+
+    // Phase one: vacate every changing source to a unique temp.
+    let pid = std::process::id();
+    let mut staged: Vec<(String, &str, &str)> = Vec::with_capacity(changes.len());
+    for (i, (old, new)) in changes.iter().enumerate() {
+        let tmp = format!(".arlen-bulk-rename.{pid}.{i}");
+        if exists_no_follow(dir, &parent.join(&tmp)) {
+            rollback(&staged);
+            return Err(OpError::AlreadyExists { name: tmp });
+        }
+        if let Err(e) = dir.rename(parent.join(old), dir, parent.join(&tmp)) {
+            rollback(&staged);
+            return Err(OpError::Io(e));
+        }
+        staged.push((tmp, old, new));
+    }
+
+    // Phase two: place each temp at its final name.
+    let mut applied = 0;
+    for (tmp, _old, new) in &staged {
+        dir.rename(parent.join(tmp), dir, parent.join(new))?;
+        applied += 1;
+    }
+    Ok(applied)
+}
+
 /// Set the Unix permission bits of the entry at `path` (relative to the
 /// capability `dir`) to `mode` - the conventional `chmod`, the editable half of
 /// the info panel's metadata. Only the low 12 bits (rwx + setuid/setgid/sticky)
@@ -2697,5 +2787,106 @@ mod tests {
         assert_eq!(read(&tmp.path().join("Trash/files/real.txt")), b"R");
         assert!(tmp.path().join("Trash/info/real.txt.trashinfo").exists());
         assert!(!tmp.path().join("restored/nope.txt").exists());
+    }
+
+    #[test]
+    fn bulk_rename_applies_find_replace() {
+        use crate::bulk_rename::RenameRule;
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("draft_a.txt"), b"a").unwrap();
+        fs::write(tmp.path().join("draft_b.txt"), b"b").unwrap();
+        let dir = cap(tmp.path());
+        let rule = RenameRule {
+            find: Some("draft".into()),
+            replace: "final".into(),
+            ..Default::default()
+        };
+        let n = apply_bulk_rename(
+            &dir,
+            ".",
+            &["draft_a.txt".into(), "draft_b.txt".into()],
+            &rule,
+        )
+        .unwrap();
+        assert_eq!(n, 2);
+        assert!(tmp.path().join("final_a.txt").exists());
+        assert!(tmp.path().join("final_b.txt").exists());
+        assert!(!tmp.path().join("draft_a.txt").exists());
+    }
+
+    #[test]
+    fn bulk_rename_shift_does_not_clobber() {
+        use crate::bulk_rename::{Numbering, RenameRule};
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("f1"), b"one").unwrap();
+        fs::write(tmp.path().join("f2"), b"two").unwrap();
+        let dir = cap(tmp.path());
+        // Template "f{n}" start 2 step 1 -> f1->f2, f2->f3: the first row's target
+        // is the second row's source. A single-phase rename would destroy f2's
+        // content before it is moved; the two-phase temp dance must not.
+        let rule = RenameRule {
+            numbering: Some(Numbering {
+                template: "f{n}".into(),
+                start: 2,
+                step: 1,
+                pad: 0,
+            }),
+            ..Default::default()
+        };
+        let n = apply_bulk_rename(&dir, ".", &["f1".into(), "f2".into()], &rule).unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(fs::read(tmp.path().join("f2")).unwrap(), b"one");
+        assert_eq!(fs::read(tmp.path().join("f3")).unwrap(), b"two");
+        assert!(!tmp.path().join("f1").exists());
+    }
+
+    #[test]
+    fn bulk_rename_refuses_clobbering_an_unselected_file() {
+        use crate::bulk_rename::RenameRule;
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("a.txt"), b"a").unwrap();
+        fs::write(tmp.path().join("taken.txt"), b"keep").unwrap();
+        let dir = cap(tmp.path());
+        // a.txt -> taken.txt, but taken.txt exists and is not in the batch.
+        let rule = RenameRule {
+            find: Some("a".into()),
+            replace: "taken".into(),
+            ..Default::default()
+        };
+        let err = apply_bulk_rename(&dir, ".", &["a.txt".into()], &rule).unwrap_err();
+        assert!(matches!(err, OpError::AlreadyExists { .. }));
+        // Nothing changed: the unselected file and the source are both intact.
+        assert_eq!(fs::read(tmp.path().join("taken.txt")).unwrap(), b"keep");
+        assert!(tmp.path().join("a.txt").exists());
+    }
+
+    #[test]
+    fn bulk_rename_refuses_intra_batch_duplicates() {
+        use crate::bulk_rename::{CaseTransform, RenameRule};
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("A.TXT"), b"upper").unwrap();
+        fs::write(tmp.path().join("a.txt"), b"lower").unwrap();
+        let dir = cap(tmp.path());
+        // Lowercasing both yields the same name "a.txt": plan flags Duplicate, the
+        // whole batch is refused (nothing renamed).
+        let rule = RenameRule {
+            case: Some(CaseTransform::Lower),
+            ..Default::default()
+        };
+        let err =
+            apply_bulk_rename(&dir, ".", &["A.TXT".into(), "a.txt".into()], &rule).unwrap_err();
+        assert!(matches!(err, OpError::AlreadyExists { .. }));
+        assert!(tmp.path().join("A.TXT").exists());
+    }
+
+    #[test]
+    fn bulk_rename_skips_unchanged_rows() {
+        use crate::bulk_rename::RenameRule;
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("keep.txt"), b"k").unwrap();
+        let dir = cap(tmp.path());
+        let n = apply_bulk_rename(&dir, ".", &["keep.txt".into()], &RenameRule::default()).unwrap();
+        assert_eq!(n, 0);
+        assert!(tmp.path().join("keep.txt").exists());
     }
 }
