@@ -26,16 +26,12 @@
 //!
 //! It does NO I/O and is independent of how the grant is DELIVERED (the macaroon's
 //! chained-HMAC encoding + verification, or a simpler scoped token - the spec lets
-//! that be chosen at the wiring step). Wiring it into the write path - admitting an
-//! `UpsertEntity` / `LinkEntities` whose type is under the caller's delegated grant
-//! in addition to its own app-id namespace - is the next slice; this is the
-//! reviewed authorization mechanism that slice will consume.
-
-// The authorization mechanism, built ahead of its write-path wiring (the next
-// slice admits an UpsertEntity/LinkEntities whose type is under the caller's
-// delegated grant). Until that consumer lands, the pub items read unused in the
-// non-test build, so allow it here - the test module exercises every path.
-#![allow(dead_code)]
+//! that be chosen at the wiring step). The write-path consumer has LANDED:
+//! [`permits_any`] gates both the `UpsertEntity` and the `LinkEntities` paths
+//! (`write/entity.rs`), admitting a write whose type is under the caller's delegated
+//! grant in addition to its own app-id namespace. The only piece still ahead of its
+//! consumer is [`NamespaceGrant::attenuate`] (chained sub-delegation, connections-
+//! plan.md's monotonic attenuation), which is allowed individually below.
 
 /// The reserved namespaces no grant may ever cover: a bridge can never be
 /// delegated authority over system- or shared-owned facts (foreign-app-bridges.md
@@ -72,7 +68,10 @@ impl NamespaceGrant {
         })
     }
 
-    /// The granted namespace prefix (`md.obsidian`).
+    /// The granted namespace prefix (`md.obsidian`). No live caller yet (the write
+    /// path checks via [`permits`](Self::permits)); kept as the natural accessor a
+    /// grant-introspection or chained-delegation consumer will use.
+    #[allow(dead_code)]
     pub fn prefix(&self) -> &str {
         &self.prefix
     }
@@ -110,6 +109,11 @@ impl NamespaceGrant {
     /// under this grant, equals it, or is otherwise invalid (the same floor as
     /// [`new`](Self::new), which also keeps a sub-grant off a reserved namespace -
     /// though a sub of a non-reserved grant is reserved-free by construction).
+    ///
+    /// No live consumer yet: chained sub-delegation (connections-plan.md's monotonic
+    /// attenuation) is the slice that will use it; the write path today checks a
+    /// flat delegated namespace via [`permits_any`].
+    #[allow(dead_code)]
     pub fn attenuate(&self, sub: &str) -> Option<NamespaceGrant> {
         // `sub` must be a valid namespace strictly under our prefix: it permits as
         // an entity type would (dotted boundary, added segment), i.e. our grant
