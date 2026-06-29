@@ -38,9 +38,15 @@ pub enum PeerError {
 
 /// Resolve the caller identity from a D-Bus message header.
 ///
-/// Fails closed: if the PID or executable path cannot be resolved the
-/// caller is rejected rather than falling back to the spoofable
-/// unique name as the rate-limit key.
+/// The PID is mandatory (no sender / no PID is a hard error). The
+/// executable path is best-effort: when `/proc/{pid}/exe` cannot be
+/// read - a sandboxed, non-dumpable same-uid caller, which much systemd
+/// hardening produces - the stable key falls back to `pid:{pid}`. That
+/// is still stable and still defeats the connection-multiplication
+/// attack (one process keeps one PID across any number of bus
+/// connections), unlike the per-connection unique name, so the query is
+/// not refused over an accounting detail. Any app may submit AI queries,
+/// including confined ones, so resolution must not require the exe.
 pub async fn resolve(
     header: &zbus::message::Header<'_>,
     connection: &zbus::Connection,
@@ -57,14 +63,17 @@ pub async fn resolve(
         .get_connection_unix_process_id(bus_name)
         .await
         .map_err(|e| PeerError::PidLookup(e.to_string()))?;
-    let exe_path =
-        std::fs::read_link(format!("/proc/{pid}/exe")).map_err(|e| PeerError::ExeLookup {
-            pid,
-            error: e.to_string(),
-        })?;
+    // Best-effort: a non-dumpable caller's /proc/{pid}/exe is unreadable by a
+    // same-uid peer, so fall back to the PID (kernel-attested, one per process)
+    // rather than refuse the query. The PID resists the quota-multiplication
+    // attack the exe key guards against, unlike the per-connection unique name.
+    let stable_id = match std::fs::read_link(format!("/proc/{pid}/exe")) {
+        Ok(exe_path) => exe_path.to_string_lossy().to_string(),
+        Err(_) => format!("pid:{pid}"),
+    };
 
     Ok(CallerIdentity {
         unique_bus_name,
-        stable_id: exe_path.to_string_lossy().to_string(),
+        stable_id,
     })
 }
