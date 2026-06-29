@@ -147,6 +147,11 @@ def main():
     ap.add_argument("--require-ai", action="store_true",
                     help="fail unless the AI layer came up: the journal (forwarded to "
                          "serial) must show the llama engine + the AI session daemons started")
+    ap.add_argument("--require-dogfood", action="store_true",
+                    help="fail unless the in-VM KG-AI dogfood completed: the serial "
+                         "journal must show 'DOGFOOD OK' (event injected + AI completion). "
+                         "Implies the AI layer; use a longer --wait (the loop waits a "
+                         "promotion pass then asks, with retry for model-load latency)")
     args = ap.parse_args()
 
     image = os.path.abspath(args.image)
@@ -265,6 +270,27 @@ def main():
             f"{k}={'up' if p else 'absent'}" for k, p in present.items()))
         if not present["llama engine"]:
             print("VERIFY FAIL: the llama inference engine did not start (no journal marker)")
+            print(f"  serial log: {serial}")
+            return 1
+    if args.require_dogfood:
+        try:
+            with open(serial, "r", errors="replace") as fh:
+                journal = fh.read()
+        except OSError:
+            journal = ""
+        # The dogfood one-shot prints staged markers: EMIT ok (the event reached
+        # the bus), ASK ok (a completion came back), then OK; a failure prints
+        # DOGFOOD FAIL <reason>. Report the stages, gate on the terminal OK.
+        emitted = "DOGFOOD EMIT ok" in journal
+        asked = "DOGFOOD ASK ok" in journal
+        done = "DOGFOOD OK" in journal
+        print(f"dogfood: emit={'ok' if emitted else 'absent'}, "
+              f"ask={'ok' if asked else 'absent'}, complete={'ok' if done else 'absent'}")
+        if not done:
+            fail_line = next((ln.strip() for ln in journal.splitlines()
+                              if "DOGFOOD FAIL" in ln), None)
+            print("VERIFY FAIL: the in-VM KG-AI dogfood did not complete"
+                  + (f" ({fail_line})" if fail_line else " (no DOGFOOD OK marker)"))
             print(f"  serial log: {serial}")
             return 1
     print("VERIFY OK: " + ("the full desktop rendered (compositor + shell bar)"
