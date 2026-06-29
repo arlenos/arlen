@@ -8,10 +8,17 @@ Documentation=https://github.com/arlenos/arlen
 [Service]
 Type=simple
 # The model is baked at /usr/share/arlen/models (phase 07); --host 127.0.0.1 keeps
-# it loopback-only (no LAN exposure), the OpenAI-compatible API lives at :8080/v1.
+# it loopback-only (no LAN exposure). Port 11434 + the OpenAI-compatible /v1 path
+# match the ai-proxy's hardcoded `ollama-default` catalog entry verbatim
+# (localhost:11434/v1/chat/completions), so the completion path works with NO proxy
+# code change - llama-server serves the same OpenAI shape Ollama's compat endpoint
+# does. --alias gives the loaded model a stable id the ai.toml `[provider] model`
+# names. (A dedicated `llama-local` catalog entry is a later refinement, for when
+# the proxy loads an operator ai-routing.toml.)
 ExecStart=/usr/bin/llama-server \
     --model /usr/share/arlen/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf \
-    --host 127.0.0.1 --port 8080 --ctx-size 4096
+    --alias arlen-default \
+    --host 127.0.0.1 --port 11434 --ctx-size 4096
 Restart=on-failure
 RestartSec=2
 
