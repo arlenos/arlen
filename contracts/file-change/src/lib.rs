@@ -1,180 +1,91 @@
 //! The proposed/applied file-change contract - the body of the harness's diff
-//! card and the fused GateCard (surface 2 of `harness-file-refs-and-diffs-plan.md`).
+//! GateCard (surface 2 of `harness-file-refs-and-diffs-plan.md`), pinned by
+//! arlen-ui (the diff/GateCard fusion, 29 June).
 //!
-//! One definition shared by the producer (the ai-agent executor's predict/plan,
-//! which proposes a change) and the consumer (the harness diff card, which shows
-//! the exact change before approval and again as the done-receipt). The frontend
-//! renders the generated ts-rs bindings (`bindings/*.ts`). It is settled as a
-//! contract first - like `contracts/artifact` - so arlen-ui can design the diff
-//! card against a real shape before the producer wiring lands.
+//! One definition shared by the producer (the ai-agent executor's predict/plan)
+//! and the consumer (the harness GateCard). The card consumes a
+//! [`ChangeProposal`]: a one-line `title`, an optional reason, and the change as
+//! a RAW UNIFIED DIFF string, which the card parses client-side (arlen-ui's
+//! `parseUnifiedDiff` + `DiffView` in ui-kit). Emitting the raw diff string is
+//! the pinned, easiest-for-the-daemon form; the structured per-file `DiffFile`
+//! model is the card's own client-side parse, not a wire type.
 //!
-//! The crux the plan names: proposed and done are the SAME artifact. The
-//! GateCard's body IS the diff; after approval the same card stays as a receipt
-//! with a per-file undo. So a [`FileChangeSet`] is state-agnostic - the proposed
-//! vs done state lives on the proposal/receipt envelope, not the change.
+//! Proposed and done are the SAME payload (the plan's crux): the GateCard shows
+//! it before approval and again as the done-receipt; the `done`/`auto`/`via`
+//! framing lives on the frontend receipt envelope, not this payload.
 //!
-//! What is producible today: a [`FileOp::Rename`] from the built `fs.move`
-//! action (a path move, no content diff). [`FileOp::Edit`]'s unified-diff body
-//! is reserved for when file-edit effects land; no built action emits it yet.
+//! Producible today: a rename diff from the built `fs.move` action (a git-style
+//! `rename from`/`rename to`, no content hunks). A content diff lands when
+//! file-edit effects do; the daemon emits the raw unified diff for it then.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// A set of proposed (or applied) file changes. A multi-file change renders as a
-/// list of per-file cards with a summary count; per-file accept/reject is the
-/// plan's v1 granularity floor, so the unit the frontend toggles is one
-/// [`FileChange`].
+/// A proposed (or applied) file change the harness GateCard renders: a one-line
+/// `title`, an optional `detail` (the predict-before-act reason), and the change
+/// as a raw unified-diff `diff` string the card parses client-side. The same
+/// payload is the proposed body and the done-receipt body.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../bindings/")]
-pub struct FileChangeSet {
-    /// The per-file changes, in proposal order.
-    pub changes: Vec<FileChange>,
+pub struct ChangeProposal {
+    /// One-line action summary, e.g. `"Move report.pdf"` or `"Edit parser.rs"`.
+    pub title: String,
+    /// Why the change is proposed (the predict-before-act reason), when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub detail: Option<String>,
+    /// The change as a raw unified diff (git or plain), parsed by the card. A
+    /// pure rename is a git `rename from`/`rename to` header with no hunks.
+    pub diff: String,
 }
 
-impl FileChangeSet {
-    /// A change set from one or more changes.
-    pub fn new(changes: Vec<FileChange>) -> Self {
-        Self { changes }
-    }
-
-    /// A single-file change set (the common case - one `fs.move`, one edit).
-    pub fn single(change: FileChange) -> Self {
+impl ChangeProposal {
+    /// A proposal for a pure file move/rename: a git-style rename diff (no content
+    /// hunks), the form the built `fs.move` action produces. `from`/`to` are
+    /// absolute paths; the card parses the `rename from`/`rename to` lines into a
+    /// renamed `DiffFile`.
+    pub fn rename(title: impl Into<String>, from: &str, to: &str) -> Self {
         Self {
-            changes: vec![change],
+            title: title.into(),
+            detail: None,
+            diff: format!(
+                "diff --git a/{from} b/{to}\nsimilarity index 100%\nrename from {from}\nrename to {to}\n"
+            ),
         }
     }
-}
-
-/// One file's proposed change: the path the card headers plus what happens to it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../bindings/")]
-pub struct FileChange {
-    /// The path the card headers - the destination for a rename/create, the
-    /// target for an edit/delete. The card's file-path header.
-    pub path: String,
-    /// What happens to the file.
-    pub op: FileOp,
-}
-
-impl FileChange {
-    /// A move/rename of `from` to `to`. The bytes are unchanged, so the card
-    /// shows the path move, not a content diff. This is what the built `fs.move`
-    /// action proposes.
-    pub fn rename(from: impl Into<String>, to: impl Into<String>) -> Self {
-        Self {
-            path: to.into(),
-            op: FileOp::Rename { from: from.into() },
-        }
-    }
-
-    /// A new file at `path` with `content` (the diff renders as all-additions).
-    pub fn create(path: impl Into<String>, content: impl Into<String>) -> Self {
-        Self {
-            path: path.into(),
-            op: FileOp::Create {
-                content: content.into(),
-            },
-        }
-    }
-
-    /// A deletion of `path`. `prior` is the file's body before deletion when
-    /// known (for the removed-lines view), else empty.
-    pub fn delete(path: impl Into<String>, prior: impl Into<String>) -> Self {
-        Self {
-            path: path.into(),
-            op: FileOp::Delete {
-                prior: prior.into(),
-            },
-        }
-    }
-
-    /// A content edit of `path`, carried as a unified diff. Reserved - no built
-    /// action emits this yet (it lands with file-edit effects).
-    pub fn edit(path: impl Into<String>, unified_diff: impl Into<String>) -> Self {
-        Self {
-            path: path.into(),
-            op: FileOp::Edit {
-                unified_diff: unified_diff.into(),
-            },
-        }
-    }
-}
-
-/// What happens to a file. Internally tagged on `op` (like the artifact payload's
-/// `kind`) so the frontend branches on the tag and the card picks its body view.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../bindings/")]
-#[serde(tag = "op", rename_all = "snake_case")]
-pub enum FileOp {
-    /// Moved/renamed from `from` to the change's `path`. The bytes are unchanged,
-    /// so there is no content diff; the card shows the path move. Produced today
-    /// from the built `fs.move` action.
-    Rename {
-        /// The original path the file moved from.
-        from: String,
-    },
-    /// A new file created with `content` (the diff renders as all-additions).
-    Create {
-        /// The new file's full content.
-        content: String,
-    },
-    /// An existing file deleted (the diff renders as all-removals).
-    Delete {
-        /// The file's body before deletion when known, else empty.
-        prior: String,
-    },
-    /// A content edit shown as a unified diff. Reserved for when file-edit
-    /// effects land; not produced by any built action yet.
-    Edit {
-        /// The unified-diff text (the Shiki-highlighted card body).
-        unified_diff: String,
-    },
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{json, Value};
 
     #[test]
-    fn a_rename_serialises_with_the_destination_as_path_and_the_tagged_op() {
-        let c = FileChange::rename("/dl/report.pdf", "/dl/2026/report.pdf");
-        let v: Value = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
-        assert_eq!(
-            v,
-            json!({
-                "path": "/dl/2026/report.pdf",
-                "op": { "op": "rename", "from": "/dl/report.pdf" }
-            })
-        );
+    fn a_rename_proposal_carries_a_git_rename_diff_with_no_hunks() {
+        let c = ChangeProposal::rename("Move report.pdf", "/dl/report.pdf", "/dl/2026/report.pdf");
+        assert_eq!(c.title, "Move report.pdf");
+        assert_eq!(c.detail, None);
+        // The rename-from/to lines carry the clean absolute paths the card reads.
+        assert!(c.diff.contains("rename from /dl/report.pdf"));
+        assert!(c.diff.contains("rename to /dl/2026/report.pdf"));
+        // A pure rename has no content hunks.
+        assert!(!c.diff.contains("@@"));
+        assert!(!c.diff.contains('+'));
     }
 
     #[test]
-    fn each_op_round_trips() {
-        for c in [
-            FileChange::rename("/a", "/b"),
-            FileChange::create("/c", "new body\n"),
-            FileChange::delete("/d", "old body\n"),
-            FileChange::edit("/e", "@@ -1 +1 @@\n-old\n+new\n"),
-        ] {
-            let bytes = serde_json::to_vec(&c).unwrap();
-            let back: FileChange = serde_json::from_slice(&bytes).unwrap();
-            assert_eq!(c, back);
-        }
-    }
+    fn it_round_trips_through_json_with_detail_optional() {
+        let with_detail = ChangeProposal {
+            title: "Edit parser.rs".to_string(),
+            detail: Some("fix the off-by-one".to_string()),
+            diff: "@@ -1 +1 @@\n-old\n+new\n".to_string(),
+        };
+        let back: ChangeProposal =
+            serde_json::from_slice(&serde_json::to_vec(&with_detail).unwrap()).unwrap();
+        assert_eq!(with_detail, back);
 
-    #[test]
-    fn a_change_set_carries_multiple_files() {
-        let set = FileChangeSet::new(vec![
-            FileChange::rename("/x", "/y"),
-            FileChange::create("/z", "z\n"),
-        ]);
-        assert_eq!(set.changes.len(), 2);
-        let back: FileChangeSet =
-            serde_json::from_slice(&serde_json::to_vec(&set).unwrap()).unwrap();
-        assert_eq!(set, back);
-
-        // The single-change convenience is one entry.
-        assert_eq!(FileChangeSet::single(FileChange::rename("/p", "/q")).changes.len(), 1);
+        // detail omitted on the wire when absent.
+        let no_detail = ChangeProposal::rename("Move x", "/a/x", "/b/x");
+        let json = String::from_utf8(serde_json::to_vec(&no_detail).unwrap()).unwrap();
+        assert!(!json.contains("detail"));
     }
 }
