@@ -17,3 +17,5 @@
 # Debian target). Generated, never committed; arlen-session (a source script in
 # the same dir) stays tracked.
 /mkosi.extra/usr/bin/event-bus
+# persistent cargo cache for mkosi.build (registry + target dir)
+/mkosi.builddir/

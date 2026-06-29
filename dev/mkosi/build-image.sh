@@ -40,5 +40,5 @@ for d in $daemons; do
 done
 
 echo ">> mkosi build --force"
-( cd "$here" && PATH=/usr/sbin:/sbin:$PATH mkosi build --force )
+( cd "$repo" && PATH=/usr/sbin:/sbin:$PATH mkosi --directory "$here" build --force )
 echo ">> image built: $here/arlen.raw"
