@@ -44,7 +44,7 @@
   --color-warning:        #f59e0b;
   --color-success:        #10b981;
 
-  /* Semantic radius tokens — defaults mirror sdk/theme/themes/dark.toml
+  /* Semantic radius tokens - defaults mirror sdk/theme/themes/dark.toml
      for first-paint correctness before the runtime theme injection
      runs. Runtime intensity overrides come via appearance.toml
      [overrides].radius_intensity. See docs/architecture/theme-system.md. */
@@ -55,7 +55,7 @@
   --radius-modal:  16px;
   --radius-full:   9999px;
 
-  /* Sizing scale — see docs/architecture/sizing-system.md.
+  /* Sizing scale - see docs/architecture/sizing-system.md.
      Semantic naming over t-shirt sizing. Components pick a token
      by VISUAL ROLE. Variant props on components (sm/default/lg)
      are ergonomic aliases; each maps internally to one of these
@@ -69,7 +69,7 @@
   --height-row:                 40px;  /* Settings rows, dense list items */
   --height-bar:                 36px;  /* Top bar, compositor SSD header */
 
-  /* Spacing scale — mirrors sdk/ui-kit/src/app.css (design-system.md §3).
+  /* Spacing scale - mirrors sdk/ui-kit/src/app.css (design-system.md §3).
      SectionGrid, Page and Group consume these; without them the kit
      primitives fall back to their hardcoded defaults. */
   --space-row:     0.75rem;  /* Internal row padding (within a section card) */
@@ -187,7 +187,7 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  /* Semantic radius tokens — see sdk/theme + theme-system.md.
+  /* Semantic radius tokens - see sdk/theme + theme-system.md.
      `--radius-X` defaults are pre-loaded in :root; these
      @theme-inline lines just expose them as Tailwind utilities
      (rounded-chip / rounded-button / rounded-input / rounded-card
@@ -201,7 +201,7 @@
   --radius-modal:  var(--radius-modal);
   --radius-full:   var(--radius-full);
 
-  /* Sizing-scale utilities — see docs/architecture/sizing-system.md.
+  /* Sizing-scale utilities - see docs/architecture/sizing-system.md.
      Generates h-tag, h-control-compact, h-control,
      h-control-prominent, h-control-emphasized, h-row, h-bar. */
   --height-tag:                 var(--height-tag, 20px);
@@ -252,7 +252,7 @@ textarea,
   user-select: auto;
 }
 
-/* Scrollbar styling — thumb follows the runtime corner radius so it
+/* Scrollbar styling - thumb follows the runtime corner radius so it
    visually matches every other rounded surface in the app. */
 ::-webkit-scrollbar {
   width: 10px;
