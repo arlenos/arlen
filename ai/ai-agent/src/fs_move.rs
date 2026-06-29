@@ -175,6 +175,46 @@ mod tests {
         let plan = plan_move("/home/u/Documents/Projects/report.pdf", DIR, |_| false);
         assert!(plan.is_none());
     }
+
+    #[test]
+    fn os_mover_moves_a_real_file_and_removes_the_source() {
+        // The real on-disk mover (the one tidy-downloads uses) on a disposable
+        // filesystem: the bytes land at the destination and the source is gone.
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("report.pdf");
+        std::fs::write(&src, b"the report").unwrap();
+        let dest_dir = dir.path().join("Projects");
+        std::fs::create_dir_all(&dest_dir).unwrap();
+        let dest = dest_dir.join("report.pdf");
+
+        OsFileMover
+            .move_file(src.to_str().unwrap(), dest.to_str().unwrap())
+            .expect("move succeeds");
+
+        assert!(!src.exists(), "the source is removed");
+        assert_eq!(std::fs::read(&dest).unwrap(), b"the report", "content moved intact");
+    }
+
+    #[test]
+    fn os_mover_refuses_an_occupied_destination_and_destroys_nothing() {
+        // The load-bearing "never overwrite" invariant at the syscall: the
+        // planner picks a free path, but if one appears between plan and move the
+        // `create_new` claim refuses (AlreadyExists) and neither file is touched.
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("report.pdf");
+        std::fs::write(&src, b"incoming").unwrap();
+        let dest = dir.path().join("report.pdf.taken");
+        std::fs::write(&dest, b"do not destroy").unwrap();
+
+        let err = OsFileMover
+            .move_file(src.to_str().unwrap(), dest.to_str().unwrap())
+            .expect_err("an occupied destination is refused");
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+        // Both files survive untouched: the occupant is not overwritten and the
+        // source is not consumed, so a refused move loses nothing.
+        assert_eq!(std::fs::read(&dest).unwrap(), b"do not destroy");
+        assert_eq!(std::fs::read(&src).unwrap(), b"incoming");
+    }
 }
 
 /// The filesystem move primitive the executor's `fs.move` arm calls. A seam so
