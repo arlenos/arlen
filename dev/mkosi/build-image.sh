@@ -19,20 +19,24 @@ extra="$here/mkosi.extra"
 target="x86_64-unknown-linux-gnu.2.36"
 export PATH="$HOME/.cargo/bin:$PATH"
 
-# crate-path:bin-name for the pure-Rust daemons (extended as each is verified).
-daemons="daemons/event-bus:event-bus"
+# crate-path:bin-name:install-dest (dest matches the unit's ExecStart=) for the
+# pure-Rust daemons, extended as each is verified. The knowledge daemon (lbug C++)
+# is built via the Debian-native path, not here.
+daemons="
+daemons/event-bus:event-bus:/usr/bin/event-bus
+"
 
-mkdir -p "$extra/usr/bin"
 for d in $daemons; do
-    crate=${d%%:*}
-    bin=${d##*:}
-    echo ">> zigbuild $bin ($crate)"
+    crate=$(echo "$d" | cut -d: -f1)
+    bin=$(echo "$d" | cut -d: -f2)
+    dest=$(echo "$d" | cut -d: -f3)
+    echo ">> zigbuild $bin ($crate) -> $dest"
     ( cd "$repo" && cargo zigbuild --release --target "$target" --manifest-path "$crate/Cargo.toml" )
     # cargo writes to the resolving workspace's target/; locate the freshest match.
     out=$(find "$repo" -type f -path "*/x86_64-unknown-linux-gnu/release/$bin" -printf '%T@ %p\n' \
             | sort -nr | head -1 | cut -d' ' -f2-)
     [ -n "$out" ] || { echo "!! $bin not found after build" >&2; exit 1; }
-    install -Dm755 "$out" "$extra/usr/bin/$bin"
+    install -Dm755 "$out" "$extra/${dest#/}"
 done
 
 echo ">> mkosi build --force"
