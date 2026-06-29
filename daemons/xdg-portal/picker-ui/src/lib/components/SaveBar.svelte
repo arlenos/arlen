@@ -1,18 +1,23 @@
 <script lang="ts">
-  import { getTreeState, setSaveFilename, validateFilename } from "$lib/stores/fileTree.svelte";
+  /// The Save-mode name field. Portal-specific chrome (it has no kit
+  /// equivalent), skinned on the kit design tokens so it reads as one
+  /// surface with the browser above it. The location is the browsed
+  /// folder; the daemon revalidates the composed path.
+  import { getUiState, setSaveFilename, validateFilename } from "$lib/stores/pickerUi.svelte";
 
-  const state = getTreeState();
+  let { location }: { location: string } = $props();
+
+  const state = getUiState();
 
   function onInput(e: Event) {
-    const target = e.target as HTMLInputElement;
-    setSaveFilename(target.value);
+    setSaveFilename((e.target as HTMLInputElement).value);
   }
 
   let validationError = $derived(validateFilename(state.saveFilename));
 </script>
 
 <div class="save-bar">
-  <label>
+  <label class="field">
     <span class="label">Save as</span>
     <input
       type="text"
@@ -24,6 +29,7 @@
       aria-invalid={validationError !== null}
     />
   </label>
+  <p class="location" title={location}>in {location}</p>
   {#if validationError && state.saveFilename.length > 0}
     <p class="error">{validationError}</p>
   {/if}
@@ -31,41 +37,52 @@
 
 <style>
   .save-bar {
-    padding: 8px 16px;
+    padding: 10px 16px;
     border-top: 1px solid var(--color-border);
     background: var(--color-bg-card);
   }
 
-  label {
+  .field {
     display: flex;
     align-items: center;
     gap: 10px;
   }
 
   .label {
+    flex-shrink: 0;
     font-size: 0.8125rem;
     color: var(--color-fg-muted);
-    flex-shrink: 0;
   }
 
   input {
     flex: 1;
-    padding: 5px 10px;
-    background: var(--color-bg-app);
+    height: var(--height-control);
+    padding: 0 10px;
+    background: var(--color-bg-input);
     color: var(--color-fg-app);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-input);
     font-size: 0.875rem;
     outline: none;
-    font-family: ui-monospace, SFMono-Regular, monospace;
+    transition: border-color var(--duration-fast) var(--ease-out);
   }
 
   input:focus {
-    border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
+    border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
   }
 
   input[aria-invalid="true"] {
     border-color: var(--color-danger);
+  }
+
+  .location {
+    margin: 6px 0 0;
+    padding-left: calc(0.8125rem + 10px);
+    font-size: 0.75rem;
+    color: var(--color-fg-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .error {

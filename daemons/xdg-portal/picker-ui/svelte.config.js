@@ -13,6 +13,8 @@ const config = {
     }),
     alias: {
       $lib: './src/lib',
+      '@arlen/ui-kit': '../../../sdk/ui-kit/src/lib',
+      '@arlen/ui-kit/*': '../../../sdk/ui-kit/src/lib/*',
     },
   },
 };

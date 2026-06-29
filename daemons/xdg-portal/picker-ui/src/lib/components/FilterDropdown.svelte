@@ -1,15 +1,16 @@
 <script lang="ts">
-  import { ChevronDown } from "lucide-svelte";
+  /// The caller's file-type filter chooser. Portal-specific (the open/
+  /// save caller supplies the patterns), skinned on the kit tokens. A
+  /// controlled view of the picker UI store's `activeFilter`; the menu
+  /// opens upward because it lives in the footer. Filter init lives in
+  /// `+page.svelte` so it can honour the request's `currentFilter`.
+  import { ChevronDown } from "@lucide/svelte";
 
   import type { FileFilter } from "$lib/types/protocol";
-  import { getTreeState, setActiveFilter } from "$lib/stores/fileTree.svelte";
+  import { getUiState, setActiveFilter } from "$lib/stores/pickerUi.svelte";
 
-  interface Props {
-    filters: FileFilter[];
-  }
-
-  let { filters }: Props = $props();
-  const tree = getTreeState();
+  let { filters }: { filters: FileFilter[] } = $props();
+  const ui = getUiState();
 
   let open = $state(false);
 
@@ -18,19 +19,22 @@
     open = false;
   }
 
-  let label = $derived(tree.activeFilter?.name ?? "All files");
-
-  // Filter init lives in `+page.svelte` because it needs the request's
-  // `currentFilter`; doing it here would always default to filters[0]
-  // and ignore caller intent (Codex P2). FilterDropdown is purely a
-  // controlled view of `state.activeFilter`.
+  let label = $derived(ui.activeFilter?.name ?? "All files");
 </script>
 
 {#if filters.length > 0}
   <div class="filter">
+    {#if open}
+      <button
+        type="button"
+        class="scrim"
+        aria-label="Close filter menu"
+        onclick={() => (open = false)}
+      ></button>
+    {/if}
     <button type="button" class="trigger" onclick={() => (open = !open)}>
       <span>{label}</span>
-      <ChevronDown size={12} strokeWidth={2} />
+      <ChevronDown class="size-3" strokeWidth={2} />
     </button>
     {#if open}
       <ul class="menu" role="listbox">
@@ -39,7 +43,7 @@
             <button
               type="button"
               class="item"
-              class:active={tree.activeFilter?.name === filter.name}
+              class:active={ui.activeFilter?.name === filter.name}
               onclick={() => pick(filter)}
             >
               {filter.name}
@@ -51,7 +55,7 @@
           <button
             type="button"
             class="item"
-            class:active={!tree.activeFilter}
+            class:active={!ui.activeFilter}
             onclick={() => pick(null)}
           >
             All files
@@ -67,17 +71,29 @@
     position: relative;
   }
 
+  /* A full-window scrim closes the menu on any outside click without a
+     document listener (the picker has no global click router). */
+  .scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 4;
+    background: transparent;
+    border: none;
+    padding: 0;
+  }
+
   .trigger {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 5px 10px;
+    height: var(--height-control);
+    padding: 0 10px;
     background: transparent;
     color: var(--color-fg-app);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-button);
     font-size: 0.8125rem;
-    transition: background 80ms ease;
+    transition: background-color var(--duration-fast) var(--ease-out);
   }
 
   .trigger:hover {
@@ -88,15 +104,15 @@
     position: absolute;
     bottom: calc(100% + 4px);
     left: 0;
-    min-width: 180px;
+    z-index: 5;
+    min-width: 184px;
     margin: 0;
     padding: 4px;
     list-style: none;
     background: var(--color-bg-card);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-lg);
-    z-index: 5;
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-lg, 0 12px 32px rgba(0, 0, 0, 0.4));
   }
 
   .item {
@@ -106,7 +122,7 @@
     background: transparent;
     color: var(--color-fg-app);
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-button);
     text-align: left;
     font-size: 0.8125rem;
   }
@@ -116,7 +132,7 @@
   }
 
   .item.active {
-    background: color-mix(in srgb, var(--color-accent) 25%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
     color: var(--color-fg-app);
   }
 

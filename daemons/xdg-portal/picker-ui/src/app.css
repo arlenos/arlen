@@ -1,45 +1,227 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/inter";
+/* Single-source: scan the ui-kit canon so Tailwind generates the utility
+   classes used by ui-kit's shadcn-derived components (the browser family),
+   imported via the @arlen/ui-kit alias instead of being copied in. See
+   docs/architecture/design-system.md §2.1. */
+@source "../../../../sdk/ui-kit/src/lib/components/**/*.{svelte,ts}";
+/* Canonical motion tokens + shared interaction classes. */
+@import "../../../../sdk/ui-kit/src/lib/motion.css";
+/* Concentric-nesting radius utility (rounding-fix.md). */
+@import "../../../../sdk/ui-kit/src/lib/radius.css";
 
-@theme inline {
-  --color-bg-app: #0f0f0f;
-  --color-bg-card: #171717;
-  --color-fg-app: #fafafa;
-  --color-fg-muted: #a3a3a3;
-  --color-border: #262626;
-  --color-accent: #6366f1;
-  --color-danger: #ef4444;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.25);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.4);
-}
-
+/* ============================================================
+   Picker dark-theme defaults. The picker is a confined dialog
+   window; it reads as an Arlen app surface, so it mirrors the FM
+   app token set (apps/files/src/app.css). The daemon's get_theme
+   bridge overrides a subset at runtime via applyTheme().
+   ============================================================ */
 :root {
+  --color-bg-shell:   #0a0a0a;
+  --color-bg-app:     #0f0f0f;
+  --color-bg-card:    #171717;
+  --color-bg-overlay: #00000080;
+  --color-bg-input:   #1a1a1a;
+
+  --color-fg-primary:   #fafafa;
+  --color-fg-secondary: #a1a1aa;
+  --color-fg-disabled:  #52525b;
+  --color-fg-inverse:   #0a0a0a;
+  --color-fg-shell:     var(--color-fg-primary);
+  --color-fg-app:       var(--color-fg-primary);
+  --color-fg-muted:     var(--color-fg-secondary);
+
+  /* Monochrome default accent: it follows the foreground and flips
+     with the theme mode, no hardcoded colour. */
+  --color-accent:            var(--color-fg-primary);
+  --color-accent-hover:      var(--color-fg-secondary);
+  --color-accent-foreground: var(--color-fg-inverse);
+  --color-border:         #262626;
+  --color-border-strong:  #3f3f46;
+  --color-error:          #ef4444;
+  --color-warning:        #f59e0b;
+  --color-success:        #10b981;
+  --color-danger:         var(--color-error);
+
+  /* Semantic radius tokens — defaults mirror sdk/theme/themes/dark.toml. */
+  --radius-chip:   4px;
+  --radius-button: 6px;
+  --radius-input:  8px;
+  --radius-card:   12px;
+  --radius-modal:  16px;
+  --radius-full:   9999px;
+
+  /* Sizing scale — docs/architecture/sizing-system.md. */
+  --height-tag:                 20px;
+  --height-control-compact:     24px;
+  --height-control:             28px;
+  --height-control-prominent:   36px;
+  --height-control-emphasized:  40px;
+  --height-row:                 40px;
+  --height-bar:                 36px;
+
+  /* Spacing scale — design-system.md §3. */
+  --space-row:     0.75rem;
+  --space-card:    1rem;
+  --space-section: 1.5rem;
+  --space-page:    1.5rem;
+
+  /* Shadcn variable mapping. */
+  --background:       var(--color-bg-app);
+  --foreground:       var(--color-fg-app);
+  --card:             var(--color-bg-card);
+  --card-foreground:  var(--color-fg-app);
+  --popover:          var(--color-bg-card);
+  --popover-foreground: var(--color-fg-app);
+  --primary:          var(--color-accent);
+  --primary-foreground: var(--color-accent-foreground);
+  --secondary:        var(--color-bg-card);
+  --secondary-foreground: var(--color-fg-app);
+  --muted:            var(--color-bg-card);
+  --muted-foreground: var(--color-fg-secondary);
+  --accent:           var(--color-accent);
+  --accent-foreground: var(--color-accent-foreground);
+  --destructive:      var(--color-error);
+  --border:           var(--color-border);
+  --input:            var(--color-bg-input);
+  --ring:             var(--color-accent);
+
+  --sidebar:                    var(--color-bg-shell);
+  --sidebar-foreground:         var(--color-fg-shell);
+  --sidebar-primary:            var(--color-accent);
+  --sidebar-primary-foreground: var(--color-accent-foreground);
+  --sidebar-accent:             color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
+  --sidebar-accent-foreground:  var(--color-fg-shell);
+  --sidebar-border:             color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
+  --sidebar-ring:               var(--color-accent);
+
   color-scheme: dark;
 }
 
-html, body {
+/* ============================================================
+   Light mode override (document.documentElement.dataset.theme
+   = "light"). Mirrors apps/files/src/app.css.
+   ============================================================ */
+[data-theme="light"] {
+  --color-bg-shell:   #f5f5f5;
+  --color-bg-app:     #ffffff;
+  --color-bg-card:    #fafafa;
+  --color-bg-overlay: #00000040;
+  --color-bg-input:   #f0f0f0;
+
+  --color-fg-primary:   #171717;
+  --color-fg-secondary: #525252;
+  --color-fg-disabled:  #a3a3a3;
+  --color-fg-inverse:   #fafafa;
+
+  --color-border-default: #e5e5e5;
+  --color-border-strong:  #d4d4d4;
+  --color-border:         var(--color-border-default);
+
+  color-scheme: light;
+}
+
+/* ============================================================
+   @theme inline — emit var() references for Tailwind utilities so
+   runtime token swaps re-colour every matching class.
+   ============================================================ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-chip:   var(--radius-chip);
+  --radius-button: var(--radius-button);
+  --radius-input:  var(--radius-input);
+  --radius-card:   var(--radius-card);
+  --radius-modal:  var(--radius-modal);
+  --radius-full:   var(--radius-full);
+
+  --height-tag:                 var(--height-tag, 20px);
+  --height-control-compact:     var(--height-control-compact, 24px);
+  --height-control:             var(--height-control, 28px);
+  --height-control-prominent:   var(--height-control-prominent, 36px);
+  --height-control-emphasized:  var(--height-control-emphasized, 40px);
+  --height-row:                 var(--height-row, 40px);
+  --height-bar:                 var(--height-bar, 36px);
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrainsMono Nerd Font Mono", "JetBrains Mono", ui-monospace, monospace;
+
+  --transition-duration-micro:   var(--duration-micro);
+  --transition-duration-fast:    var(--duration-fast);
+  --transition-duration-medium:  var(--duration-medium);
+  --transition-duration-slow:    var(--duration-slow);
+  --transition-duration-instant: var(--duration-micro);
+  --ease-out:    var(--ease-out);
+  --ease-in-out: var(--ease-in-out);
+  --ease-bounce: var(--ease-bounce);
+  --ease-default: var(--ease-in-out);
+}
+
+html,
+body {
+  height: 100%;
   margin: 0;
   padding: 0;
-  background: var(--color-bg-app);
-  color: var(--color-fg-app);
-  font-family: -apple-system, system-ui, sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
   font-size: 0.875rem;
+  -webkit-font-smoothing: antialiased;
   overflow: hidden;
-  /* Picker chrome shouldn't be selectable text — clicks should
-   * always trigger UI actions, never start a text selection. */
-  user-select: none;
+  /* Picker chrome isn't selectable; real text-entry controls opt back in. */
   -webkit-user-select: none;
+  user-select: none;
 }
 
-/* Inputs / textareas need text selection for editing. */
-input, textarea {
-  user-select: text;
-  -webkit-user-select: text;
+input,
+textarea,
+[contenteditable="true"],
+[data-selectable] {
+  -webkit-user-select: auto;
+  user-select: auto;
 }
 
-button {
-  font-family: inherit;
-  cursor: pointer;
+/* Scrollbar follows the runtime corner radius like every other surface. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--foreground) 18%, transparent);
+  border-radius: var(--radius-input);
+  border: 2px solid var(--background);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--foreground) 30%, transparent);
+  background-clip: padding-box;
 }
