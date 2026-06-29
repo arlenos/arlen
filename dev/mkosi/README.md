@@ -24,9 +24,25 @@ apt/dpkg/debootstrap, so no Debian tooling is needed on the host.
 ## Build + boot
 
 ```
-mkosi --directory dev/mkosi build      # assemble the Debian rootfs + disk image
-mkosi --directory dev/mkosi vm         # boot it in QEMU (a real kernel + DRM path)
+cd dev/mkosi
+PATH=/usr/sbin:/sbin:$PATH mkosi build --force   # assemble the Debian rootfs + disk image
+mkosi vm                                         # boot it in QEMU (a real kernel + DRM path)
 ```
+
+`--force` is required to re-run a build: mkosi refuses if `arlen.raw` already
+exists ("Output path ... exists already. Use --force to rebuild.") and silently
+keeps the stale image otherwise.
+
+The `PATH=/usr/sbin:/sbin:$PATH` prefix is mandatory on this Arch host (a
+cross-distro quirk, not optional). mkosi runs `depmod` for the kernel modules by
+building the candidate exec paths from the *host* PATH, then `chroot`ing into the
+Debian rootfs and `execve`ing those path strings. Arch ships the kmod tools in
+`/usr/bin`, so the candidate is `/usr/bin/depmod` - but Debian puts depmod in
+`/usr/sbin`, so post-chroot `/usr/bin/depmod` does not exist and the build dies
+"depmod not found". Prepending `/usr/sbin:/sbin` makes the candidate `/usr/sbin/
+depmod`, which resolves in the image (matches mkosi discussion #4059). The rootfs
+also needs the `kmod` package named explicitly (it is not pulled implicitly);
+both are in `mkosi.conf` / this prefix.
 
 `mkosi boot` / `mkosi shell` are nspawn (no real kernel, no GPU/DRM) - rootfs
 sanity only, NOT the compositor/GPU path. The verify pass drives `mkosi vm`'s
@@ -66,15 +82,21 @@ blind. Wired in Phase 2 (`mkosi.extra/etc/greetd/config.toml` + the session glue
 
 ## Status / phase roadmap
 
-- **Phase 1 - the mkosi recipe: DONE** (`mkosi.conf`). Verify on the first real
-  build (per the plan, don't lock from docs): the implicit minbase set, the exact
-  Debian package names for the Mesa/WebKitGTK runtime, `mkosi vm` vs `qemu` for
-  the installed mkosi version.
-- **Phase 2 - the stack overlay + autostart:** `mkosi.extra/` (the arlen binaries,
-  the daemon + user units, greetd config, `/etc/arlen/*`), `mkosi.postinst`
-  (`systemctl --root enable`), the session env-handoff glue. NB the event-bus has
-  no systemd unit yet (create it with the topology above); the compositor binary
-  is `cosmic-comp` (separate repo).
+- **Phase 1 - the mkosi recipe: DONE** (`mkosi.conf`). First real build surfaced
+  two findings, both now resolved: the rootfs needs `kmod` named explicitly (else
+  "depmod not found" at the module step), and the build must run with
+  `/usr/sbin:/sbin` on the host PATH (the cross-distro depmod-chroot quirk above).
+- **Phase 2 - the stack overlay + autostart: session glue DONE** (`mkosi.extra/`):
+  greetd `[initial_session]` -> `/usr/bin/arlen-session` (launches `cosmic-comp`,
+  waits for its Wayland socket, imports the Arlen socket env to the --user manager,
+  starts `graphical-session.target`), the shell `systemd --user` unit, and
+  `mkosi.postinst` (creates the locked autologin `arlen` user, enables greetd +
+  the shell user unit). REMAINING: the binary population - the arlen binaries
+  (`cosmic-comp` from the compositor repo, `arlen-desktop-shell`, `event-bus`,
+  the daemons) built for the Debian target + dropped into `mkosi.extra/usr/bin/`,
+  and the system-daemon units copied into `mkosi.extra/usr/lib/systemd/system/`.
+  Until then the image boots to greetd autologin -> arlen-session, which fails
+  gracefully on the missing compositor (the autostart plumbing is in + testable).
 - **Phase 3 - runtime-dir topology:** the `RuntimeDirectory=`/`Preserve=yes` decided
   above, applied across the units.
 - **Phase 4 - the QEMU verify channel (`dev/vm/`):** plain `virtio-gpu` (software
