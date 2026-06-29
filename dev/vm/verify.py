@@ -144,6 +144,9 @@ def main():
     ap.add_argument("--super", dest="press_super", action="store_true",
                     help="after verifying, press Super and capture a second shot "
                          "(the waypointer/launcher) to exercise the input->shell path")
+    ap.add_argument("--require-ai", action="store_true",
+                    help="fail unless the AI layer came up: the journal (forwarded to "
+                         "serial) must show the llama engine + the AI session daemons started")
     args = ap.parse_args()
 
     image = os.path.abspath(args.image)
@@ -158,7 +161,11 @@ def main():
     out = os.path.abspath(args.out)
 
     qemu = [
-        "qemu-system-x86_64", "-machine", "q35,accel=kvm:tcg", "-m", "2048", "-smp", "2",
+        # 4 GiB + 4 vCPUs: the baked llama-server loads a ~0.8 GB GGUF and runs CPU
+        # inference alongside the compositor + shell + the AI daemons, which 2 GiB /
+        # 2 vCPUs cannot hold (the desktop-only verify used less). More cores cut the
+        # 1B model's first-token latency so the dogfood does not time out.
+        "qemu-system-x86_64", "-machine", "q35,accel=kvm:tcg", "-m", "4096", "-smp", "4",
         "-drive", f"if=pflash,unit=0,format=raw,readonly=on,file={OVMF_CODE}",
         "-drive", f"if=pflash,unit=1,format=raw,file={vars_fd}",
         "-drive", f"if=virtio,format=raw,file={image}",
@@ -233,6 +240,33 @@ def main():
         print("VERIFY FAIL: the shell's top bar is absent (compositor up, shell did not render)")
         print(f"  serial log: {serial}")
         return 1
+    if args.require_ai:
+        try:
+            with open(serial, "r", errors="replace") as fh:
+                journal = fh.read()
+        except OSError:
+            journal = ""
+        # systemd logs "Started <Description>." per unit; match on each unit's
+        # Description. llama-server is a SYSTEM service so its journal reaches the
+        # serial reliably and is the hard gate; the AI session daemons are systemd
+        # --user services whose logs reach the serial only if the user journal is
+        # forwarded, so they are reported but not hard-required (a total AI-layer
+        # failure still trips the llama gate, and the dogfood scenario exercises the
+        # daemons directly).
+        markers = {
+            "llama engine": "Arlen local LLM inference engine",
+            "audit daemon": "Arlen Audit Daemon",
+            "ai proxy": "Arlen AI egress proxy",
+            "ai daemon": "Arlen AI daemon",
+            "ai agent": "Arlen AI agent",
+        }
+        present = {k: (v in journal) for k, v in markers.items()}
+        print("AI layer: " + ", ".join(
+            f"{k}={'up' if p else 'absent'}" for k, p in present.items()))
+        if not present["llama engine"]:
+            print("VERIFY FAIL: the llama inference engine did not start (no journal marker)")
+            print(f"  serial log: {serial}")
+            return 1
     print("VERIFY OK: " + ("the full desktop rendered (compositor + shell bar)"
                            if bar_present else "the compositor rendered a frame"))
     return 0
