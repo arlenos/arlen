@@ -465,6 +465,9 @@
       {columns}
       {icon}
       {renamingName}
+      thumbnails={controller.hasThumbnails ? $thumbnails : undefined}
+      thumbKey={controller.hasThumbnails ? (e) => controller.thumbnailKeyFor(e) : undefined}
+      requestThumbnail={controller.hasThumbnails ? (e) => controller.requestThumbnail(e) : undefined}
       onsort={(key) => controller.setSort(key)}
       {onrowevent}
       onrename={(entry, newName) => {

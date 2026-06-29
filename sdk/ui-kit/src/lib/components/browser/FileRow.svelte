@@ -48,6 +48,18 @@
   } = $props();
 
   const Icon = $derived(entryIcon(entry));
+
+  // The thumbnail render mirrors FileTile: the icon shows until the image loads
+  // (and on error), so the swap is opacity-only and the row never shifts.
+  let loaded = $state(false);
+  let failed = $state(false);
+  $effect(() => {
+    void thumbnail;
+    loaded = false;
+    failed = false;
+  });
+  const showImage = $derived(thumbnail !== null && !failed);
+
   // The item's home folder (the Location column), from its absolute full_path.
   const location = $derived(
     entry.full_path ? (parentPath(entry.full_path) ?? entry.full_path) : "",
@@ -107,11 +119,24 @@
   oncontextmenu={onrowcontextmenu}
 >
   <span class="fr-main" role="gridcell">
-    <span class="fr-icon">
-      {#if icon}
-        {@render icon(entry)}
-      {:else}
-        <Icon size={16} strokeWidth={1.75} />
+    <span class="fr-icon" class:has-thumb={showImage && loaded}>
+      {#if showImage}
+        <img
+          class="fr-thumb"
+          class:ready={loaded}
+          src={thumbnail}
+          alt=""
+          draggable="false"
+          onload={() => (loaded = true)}
+          onerror={() => (failed = true)}
+        />
+      {/if}
+      {#if !showImage || !loaded}
+        {#if icon}
+          {@render icon(entry)}
+        {:else}
+          <Icon size={16} strokeWidth={1.75} />
+        {/if}
       {/if}
     </span>
     {#if renaming}
@@ -190,9 +215,31 @@
     min-width: 0;
   }
   .fr-icon {
+    position: relative;
     display: inline-flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
+    width: 18px;
+    height: 18px;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    /* The preview hugs an 18px box; its corners follow the chip radius inset by
+       1px (rounding-fix.md concentric rule). */
+    --container-radius: var(--radius-chip);
+    --container-inset: 1px;
+  }
+  .fr-thumb {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
+    opacity: 0;
+    transition: opacity var(--duration-micro, 100ms) var(--ease-out, ease);
+  }
+  .fr-thumb.ready {
+    opacity: 1;
   }
   .fr-name {
     font-size: 0.8125rem;
