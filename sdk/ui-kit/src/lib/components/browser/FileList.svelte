@@ -19,6 +19,9 @@
     now,
     columns = DEFAULT_COLUMNS,
     icon,
+    thumbnails,
+    thumbKey,
+    requestThumbnail,
     renamingName = null,
     onsort,
     onrowevent,
@@ -33,6 +36,12 @@
     /// Which columns to render (a virtual location swaps Size for Location).
     columns?: ColumnSpec;
     icon?: Snippet<[FileEntry]>;
+    /// Resolved thumbnail URLs from the controller (a small row preview).
+    thumbnails?: ReadonlyMap<string, string | null>;
+    /// The controller's key for an entry in `thumbnails`.
+    thumbKey?: (entry: FileEntry) => string;
+    /// Ask the controller for an entry's thumbnail (deduped there).
+    requestThumbnail?: (entry: FileEntry) => void;
     /// The entry name in inline rename, or null.
     renamingName?: string | null;
     onsort?: (key: SortKey) => void;
@@ -88,6 +97,13 @@
   const slice = $derived(entries.slice(winStart, sliceEnd));
   const padTop = $derived(winStart * ROW_PX);
   const padBottom = $derived(Math.max(0, entries.length - sliceEnd) * ROW_PX);
+
+  // Visible rows ask for their thumbnail; the controller dedupes + caches, so
+  // this is cheap to re-run per window move (the grid does the same).
+  $effect(() => {
+    if (!requestThumbnail) return;
+    for (const e of slice) if (e.kind === "file") requestThumbnail(e);
+  });
 </script>
 
 <div class="file-list" role="grid" aria-label="Files" aria-rowcount={entries.length}>
@@ -127,6 +143,7 @@
         {now}
         {icon}
         {columns}
+        thumbnail={thumbnails?.get(thumbKey?.(entry) ?? "") ?? null}
         selected={selectedIndices.has(i)}
         focused={cursorIndex === i}
         renaming={renamingName === entry.name}
