@@ -1,0 +1,28 @@
+# Arlen AI layer config for the SUT dogfood. The ai-daemon (conversational answers)
+# and ai-agent (background curation) both read ~/.config/arlen/ai.toml; the arlen
+# user owns it via the tmpfiles `Z /home/arlen` chown. This bakes a working,
+# offline, local-model AI on first boot so the KG-AI loop can be dogfooded in the VM.
+
+[ai]
+# The layer is ON (the dogfood is the point). access_level 3 = TimeScoped: the AI
+# may read recent activity + the active project (Foundation §8.4), the generous
+# default that makes "what was I working on" answerable. action_mode supervised:
+# proposed actions surface for confirmation (the gate/approve flow), never silent.
+enabled = true
+access_level = 3
+action_mode = "supervised"
+# The ai-proxy's catalogued local provider; its endpoint is llama-server on
+# 127.0.0.1:11434 (the baked GGUF). No cloud, no creds, zero egress.
+provider = "ollama-default"
+
+[provider]
+# The model id llama-server serves (its --alias); the request's model field.
+model = "arlen-default"
+context_window = 4096
+
+[agent]
+# The background agent runs the deterministic curation behaviour; executor_live
+# stays FALSE here (the agent proposes, writes nothing) - it is flipped to true
+# in the in-VM live-verify once the dogfood answer + gate flow are confirmed.
+enabled = ["auto-tag-by-project"]
+executor_live = false
