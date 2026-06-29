@@ -28,6 +28,13 @@
     type PlaceGroup,
     type ViewMode,
   } from "@arlen/ui-kit/components/browser";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
+  import { Input } from "@arlen/ui-kit/components/ui/input";
+  import {
+    PopoverSelect,
+    type PopoverSelectOption,
+  } from "@arlen/ui-kit/components/ui/popover-select";
 
   import { applyTheme, initPickerBridge, respond } from "$lib/ipc";
   import { pickerAdapter } from "$lib/adapter";
@@ -42,9 +49,8 @@
     validateFilename,
   } from "$lib/stores/pickerUi.svelte";
   import { conventionalPlaces, recentGroup, resolveHome } from "$lib/places";
-  import type { PickerRequest } from "$lib/types/protocol";
+  import type { FileFilter, PickerRequest } from "$lib/types/protocol";
   import SaveBar from "$lib/components/SaveBar.svelte";
-  import FilterDropdown from "$lib/components/FilterDropdown.svelte";
 
   const pickState = getPickState();
   const ui = getUiState();
@@ -162,6 +168,29 @@
     if (isOpenFile(r) || isSaveFile(r)) return r.filters;
     return [];
   });
+
+  // The view switcher + the type-filter both ride kit primitives. The
+  // segmented control's value is a plain string mirrored from the
+  // controller; the filter is a PopoverSelect over the caller's
+  // filters plus the always-present "All files" escape hatch.
+  const VIEW_OPTIONS: { value: string; label: string; icon: typeof List }[] = [
+    { value: "list", label: "List view", icon: List },
+    { value: "grid", label: "Grid view", icon: LayoutGrid },
+  ];
+  const ALL_FILTER = "__all__";
+  const filterOptions = $derived<PopoverSelectOption[]>([
+    ...filters.map((f) => ({ value: f.name, label: f.name })),
+    { value: ALL_FILTER, label: "All files" },
+  ]);
+  const filterValue = $derived(ui.activeFilter?.name ?? ALL_FILTER);
+
+  function onFilterChange(value: string) {
+    if (value === ALL_FILTER) {
+      setActiveFilter(null);
+      return;
+    }
+    setActiveFilter(filters.find((f: FileFilter) => f.name === value) ?? null);
+  }
 
   // The kit `filter` prop: the caller's type-filter AND the local search
   // box. Directories always pass the type-filter so navigation works;
@@ -312,58 +341,41 @@
   {#if pickState.request && controller}
     <header data-tauri-drag-region>
       <div class="title-row" data-tauri-drag-region>
-        <button
-          type="button"
-          class="icon-btn"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           aria-label="Up one directory"
           title="Up one directory"
           onclick={() => controller?.up()}
         >
-          <ArrowUp class="size-4" strokeWidth={1.75} />
-        </button>
+          <ArrowUp strokeWidth={1.75} />
+        </Button>
         <h1 data-tauri-drag-region>{title}</h1>
-        <div class="view-toggle" role="group" aria-label="View">
-          <button
-            type="button"
-            class="seg"
-            class:active={viewMode === "list"}
-            aria-label="List view"
-            title="List view"
-            onclick={() => controller?.viewMode.set("list")}
-          >
-            <List class="size-4" strokeWidth={1.75} />
-          </button>
-          <button
-            type="button"
-            class="seg"
-            class:active={viewMode === "grid"}
-            aria-label="Grid view"
-            title="Grid view"
-            onclick={() => controller?.viewMode.set("grid")}
-          >
-            <LayoutGrid class="size-4" strokeWidth={1.75} />
-          </button>
-        </div>
-        <button
-          type="button"
-          class="icon-btn"
+        <SegmentedControl
+          options={VIEW_OPTIONS}
+          value={viewMode}
+          onchange={(v) => controller?.viewMode.set(v as ViewMode)}
+        />
+        <Button
+          variant="ghost"
+          size="icon-sm"
           aria-label={showHidden ? "Hide hidden files" : "Show hidden files"}
           title="Toggle hidden files (Ctrl+H)"
           onclick={() => controller?.setShowHidden(!showHidden)}
         >
           {#if showHidden}
-            <Eye class="size-4" strokeWidth={1.75} />
+            <Eye strokeWidth={1.75} />
           {:else}
-            <EyeOff class="size-4" strokeWidth={1.75} />
+            <EyeOff strokeWidth={1.75} />
           {/if}
-        </button>
+        </Button>
       </div>
       <div class="nav-row">
         <Breadcrumb path={currentDir} homePath={home} onnavigate={navigateTo} />
         <div class="search">
-          <Search class="size-3.5" strokeWidth={1.75} />
-          <input
-            type="text"
+          <Search class="search-icon size-3.5" strokeWidth={1.75} />
+          <Input
+            class="search-input"
             placeholder="Filter"
             bind:value={searchText}
             autocomplete="off"
@@ -398,12 +410,22 @@
         <span>{trustLine}</span>
       </div>
       <div class="action-row">
-        <FilterDropdown {filters} />
+        {#if filters.length > 0}
+          <PopoverSelect
+            value={filterValue}
+            options={filterOptions}
+            onchange={onFilterChange}
+            placeholder="All files"
+            width="max-content"
+          />
+        {:else}
+          <span></span>
+        {/if}
         <div class="actions">
-          <button class="btn ghost" onclick={cancel} disabled={pickState.busy}>Cancel</button>
-          <button class="btn primary" onclick={confirm} disabled={confirmDisabled}>
+          <Button variant="outline" onclick={cancel} disabled={pickState.busy}>Cancel</Button>
+          <Button variant="default" onclick={confirm} disabled={confirmDisabled}>
             {confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </footer>
@@ -446,57 +468,6 @@
     font-weight: 600;
   }
 
-  .icon-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--height-control);
-    height: var(--height-control);
-    padding: 0;
-    border: none;
-    background: transparent;
-    color: var(--color-fg-muted);
-    border-radius: var(--radius-button);
-    transition:
-      background-color var(--duration-fast) var(--ease-out),
-      color var(--duration-fast) var(--ease-out);
-  }
-  .icon-btn:hover {
-    background: color-mix(in srgb, var(--color-fg-app) 8%, transparent);
-    color: var(--color-fg-app);
-  }
-
-  .view-toggle {
-    display: inline-flex;
-    padding: 2px;
-    gap: 2px;
-    background: color-mix(in srgb, var(--color-fg-app) 6%, transparent);
-    border-radius: var(--radius-button);
-  }
-  .seg {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 22px;
-    padding: 0;
-    border: none;
-    background: transparent;
-    color: var(--color-fg-muted);
-    border-radius: calc(var(--radius-button) - 2px);
-    transition:
-      background-color var(--duration-fast) var(--ease-out),
-      color var(--duration-fast) var(--ease-out);
-  }
-  .seg:hover {
-    color: var(--color-fg-app);
-  }
-  .seg.active {
-    background: var(--color-bg-app);
-    color: var(--color-fg-app);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
-  }
-
   .nav-row {
     display: flex;
     align-items: center;
@@ -507,25 +478,23 @@
     min-width: 0;
   }
 
+  /* The kit Input carries the field chrome; the wrapper just sizes it
+     and floats the search glyph over its leading padding. */
   .search {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
+    position: relative;
     flex-shrink: 0;
-    height: var(--height-control);
-    padding: 0 10px;
-    background: var(--color-bg-input);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-input);
-    color: var(--color-fg-muted);
+    width: 168px;
   }
-  .search input {
-    width: 120px;
-    background: transparent;
-    border: none;
-    outline: none;
-    color: var(--color-fg-app);
-    font-size: 0.8125rem;
+  .search :global(.search-icon) {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-fg-muted);
+    pointer-events: none;
+  }
+  .search :global(.search-input) {
+    padding-left: 30px;
   }
 
   .body {
@@ -577,35 +546,6 @@
   .actions {
     display: flex;
     gap: 8px;
-  }
-
-  .btn {
-    height: var(--height-control-prominent);
-    padding: 0 16px;
-    border-radius: var(--radius-button);
-    font-size: 0.875rem;
-    border: 1px solid transparent;
-    transition:
-      background-color var(--duration-fast) var(--ease-out),
-      opacity var(--duration-fast) var(--ease-out);
-  }
-  .btn.ghost {
-    background: transparent;
-    color: var(--color-fg-app);
-    border-color: var(--color-border);
-  }
-  .btn.ghost:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-fg-app) 8%, transparent);
-  }
-  .btn.primary {
-    background: var(--color-accent);
-    color: var(--color-accent-foreground);
-  }
-  .btn.primary:hover:not(:disabled) {
-    background: var(--color-accent-hover);
-  }
-  .btn:disabled {
-    opacity: 0.5;
   }
 
   .notice {

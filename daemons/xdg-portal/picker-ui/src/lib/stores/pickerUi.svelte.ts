@@ -3,7 +3,7 @@
 /// notice. The controller owns directory / entries / selection / sort /
 /// view-mode / hidden; this store is only the portal-chrome state.
 ///
-/// Module-level `$state` so the chrome components (FilterDropdown,
+/// Module-level `$state` so the chrome (the filter PopoverSelect, the
 /// SaveBar) and the main view share one source without prop drilling.
 
 import type { FileEntry } from "@arlen/ui-kit/components/browser";
