@@ -1,21 +1,21 @@
 <script lang="ts">
   /// Printers panel (printing-plan.md PRN-R4): the printer list, the print
   /// queue, and add-a-printer, on the settings-panel archetype. The Arlen angle
-  /// is the print-as-egress honesty - every printer states plainly whether it is
-  /// on this machine or a network destination the document leaves to (§4.2).
-  /// Reads/writes the print daemon through the `printers_*` Tauri bridge; until
-  /// that bridge lands the panel runs on a fixture (a banner says so).
+  /// is the print-as-egress honesty - network printing sends the document over
+  /// the LAN, stated once for the section and carried per row by the "Network"
+  /// label (§4.2). Reads/writes the print daemon through the `printers_*` Tauri
+  /// bridge; until that bridge lands the panel runs on a fixture (a banner says
+  /// so).
   import { onMount } from "svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { Badge } from "@arlen/ui-kit/components/ui/badge";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
-  import { Globe, HardDrive, Printer as PrinterIcon, Trash2, SlidersHorizontal, RefreshCw } from "lucide-svelte";
+  import { CircleCheck, Circle, Trash2, SlidersHorizontal, RefreshCw, Plus } from "lucide-svelte";
 
   import {
     printers,
@@ -33,7 +33,6 @@
     testPage,
     hostOf,
     transportOf,
-    DEFAULT_OPTIONS,
     type Printer,
     type PrinterState,
     type JobState,
@@ -80,20 +79,35 @@
     { value: "legal", label: "Legal" },
   ];
 
-  function stateLabel(p: Printer): string {
-    if (p.state === "stopped" && !p.acceptingJobs) return "Paused";
-    return PRINTER_STATE_LABEL[p.state];
+  const anyNetwork = $derived($printers.printers.some((p) => p.destination === "network"));
+
+  /// The printer's display name, preferring the human description.
+  function displayName(p: Printer): string {
+    return p.info ?? p.makeModel ?? p.name;
   }
 
-  /// The destination honesty line: local stays on the machine; network is a
-  /// send over the LAN, named so the user knows the document leaves.
-  function destinationLine(p: Printer): string {
-    const state = stateLabel(p);
+  function notReady(p: Printer): boolean {
+    return p.state !== "idle";
+  }
+
+  /// The quiet meta line: the transport (USB / Network · host), and the state
+  /// word ONLY when it isn't the resting "Ready" (the dot already says ready).
+  function metaLine(p: Printer): string {
+    const parts: string[] = [];
     if (p.destination === "local") {
-      return `On this machine · ${transportOf(p.uri)} · ${state}`;
+      parts.push(transportOf(p.uri));
+    } else {
+      const host = hostOf(p.uri);
+      parts.push(host ? `Network · ${host}` : "Network");
     }
-    const host = hostOf(p.uri);
-    return `Network${host ? ` · ${host}` : ""} · sends over your LAN · ${state}`;
+    if (notReady(p)) parts.push(PRINTER_STATE_LABEL[p.state]);
+    return parts.join(" · ");
+  }
+
+  /// Resolve a queue job's printer to its friendly name.
+  function jobPrinter(queueName: string): string {
+    const p = $printers.printers.find((x) => x.name === queueName);
+    return p ? displayName(p) : queueName;
   }
 
   function commitOptions(name: string, patch: Partial<PrinterOptions>) {
@@ -114,12 +128,17 @@
 <Page title="Printers" description="Manage printers, the print queue, and add new devices.">
   <SectionGrid>
     {#if $printers.mocked}
-      <p class="mock-note">
+      <p class="note">
         Showing example data. Live printers appear once the print service is connected.
       </p>
     {/if}
 
     <Group label="Printers">
+      {#if anyNetwork}
+        <p class="note subtle">
+          Printing to a network printer sends the document over your local network.
+        </p>
+      {/if}
       {#if $printers.printers.length === 0}
         <p class="empty">No printers yet. Add one below.</p>
       {/if}
@@ -127,26 +146,27 @@
         {@const isDefault = $printers.defaultName === p.name}
         {@const opts = optionsFor(p.name)}
         <div class="printer" class:open={expanded === p.name}>
-          <div class="printer-head">
+          <div class="row">
+            <button
+              class="def"
+              class:active={isDefault}
+              disabled={isDefault}
+              aria-label={isDefault ? "Default printer" : `Make ${displayName(p)} the default`}
+              title={isDefault ? "Default printer" : "Set as default"}
+              onclick={() => setDefault(p.name)}
+            >
+              {#if isDefault}
+                <CircleCheck size={17} strokeWidth={1.75} />
+              {:else}
+                <Circle size={17} strokeWidth={1.75} />
+              {/if}
+            </button>
             <span class="dot" data-state={p.state} aria-hidden="true"></span>
             <div class="ident">
-              <div class="name-row">
-                <span class="name">{p.info ?? p.makeModel ?? p.name}</span>
-                {#if isDefault}<Badge>Default</Badge>{/if}
-              </div>
-              <div class="dest">
-                {#if p.destination === "network"}
-                  <Globe size={12} strokeWidth={1.75} />
-                {:else}
-                  <HardDrive size={12} strokeWidth={1.75} />
-                {/if}
-                <span>{destinationLine(p)}</span>
-              </div>
+              <span class="name">{displayName(p)}</span>
+              <span class="meta">{metaLine(p)}</span>
             </div>
             <div class="actions">
-              {#if !isDefault}
-                <Button variant="ghost" size="sm" onclick={() => setDefault(p.name)}>Set default</Button>
-              {/if}
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -155,9 +175,6 @@
                 onclick={() => (expanded = expanded === p.name ? null : p.name)}
               >
                 <SlidersHorizontal />
-              </Button>
-              <Button variant="ghost" size="icon-sm" aria-label="Print a test page" onclick={() => testPage(p.name)}>
-                <PrinterIcon />
               </Button>
               <Button
                 variant="ghost"
@@ -200,6 +217,9 @@
                   onchange={(v) => commitOptions(p.name, { paper: v as PrinterOptions["paper"] })}
                 />
               </label>
+              <div class="opt-actions">
+                <Button variant="ghost" size="sm" onclick={() => testPage(p.name)}>Print test page</Button>
+              </div>
             </div>
           {/if}
         </div>
@@ -211,59 +231,57 @@
         <p class="empty">No jobs in the queue.</p>
       {:else}
         {#each $printers.queue as job (job.id)}
-          <div class="job">
-            <PrinterIcon size={14} strokeWidth={1.75} class="job-icon" />
-            <span class="job-name">{job.name ?? `Job ${job.id}`}</span>
-            <span class="job-printer">{job.printer}</span>
+          <div class="row job">
+            <div class="ident">
+              <span class="name">{job.name ?? `Job ${job.id}`}</span>
+              <span class="meta">{jobPrinter(job.printer)}</span>
+            </div>
             <span class="job-state" data-state={job.state}>
               {JOB_STATE_LABEL[job.state]}{#if job.state === "processing" && job.progress}
                 {" "}{job.progress.done}/{job.progress.total}{/if}
             </span>
-            <div class="job-actions">
+            <div class="actions">
               {#if job.state === "processing" || job.state === "pending"}
                 <Button variant="ghost" size="sm" onclick={() => cancelJob(job.id)}>Cancel</Button>
-              {/if}
-              {#if job.state === "held" || job.state === "stopped"}
+              {:else if job.state === "held" || job.state === "stopped"}
                 <Button variant="ghost" size="sm" onclick={() => retryJob(job.id)}>Resume</Button>
               {/if}
             </div>
           </div>
         {/each}
-        <div class="queue-foot">
+        <div class="foot">
           <Button variant="ghost" size="sm" onclick={clearCompleted}>Clear finished</Button>
         </div>
       {/if}
     </Group>
 
     <Group label="Add a printer">
-      {#if $printers.discovered.length > 0}
-        <p class="discover-head">Discovered on your network and USB:</p>
-        {#each $printers.discovered as d (d.uri)}
-          <div class="discovered">
-            {#if d.destination === "network"}
-              <Globe size={14} strokeWidth={1.75} />
-            {:else}
-              <HardDrive size={14} strokeWidth={1.75} />
-            {/if}
-            <div class="disc-ident">
-              <span class="disc-name">{d.makeModel ?? d.name}</span>
-              <span class="disc-sub">
-                {transportOf(d.uri)}{#if d.driverless} · driverless{/if}{#if d.destination === "network"} · network{/if}
-              </span>
-            </div>
+      {#each $printers.discovered as d (d.uri)}
+        <div class="row disc">
+          <div class="ident">
+            <span class="name">{d.makeModel ?? d.name}</span>
+            <span class="meta">
+              {d.destination === "network" ? "Network" : transportOf(d.uri)}{#if d.driverless} · driverless{/if}
+            </span>
+          </div>
+          <div class="actions">
             <Button variant="outline" size="sm" onclick={() => addPrinter(d)}>Add</Button>
           </div>
-        {/each}
-      {:else}
+        </div>
+      {/each}
+      {#if $printers.discovered.length === 0}
         <p class="empty">No printers discovered.</p>
       {/if}
 
-      <div class="add-foot">
+      <div class="foot">
         <Button variant="ghost" size="sm" onclick={discover}>
           <RefreshCw />
           Rescan
         </Button>
-        <Button variant="ghost" size="sm" onclick={() => (addOpen = !addOpen)}>Add by IP or URI</Button>
+        <Button variant="ghost" size="sm" onclick={() => (addOpen = !addOpen)}>
+          <Plus />
+          Add by IP or URI
+        </Button>
       </div>
 
       {#if addOpen}
@@ -280,7 +298,7 @@
 <ConfirmDialog
   open={confirmRemove !== null}
   title="Remove this printer?"
-  message={`"${confirmRemove?.info ?? confirmRemove?.name ?? ""}" will be removed from this machine. Jobs in its queue are cancelled.`}
+  message={`"${confirmRemove ? displayName(confirmRemove) : ""}" will be removed from this machine. Jobs in its queue are cancelled.`}
   confirmLabel="Remove"
   variant="destructive"
   onConfirm={async () => {
@@ -291,7 +309,7 @@
 />
 
 <style>
-  .mock-note {
+  .note {
     margin: 0;
     padding: 8px 12px;
     font-size: 0.75rem;
@@ -300,8 +318,12 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-card);
   }
-  .empty,
-  .discover-head {
+  .note.subtle {
+    padding: 2px 2px 8px;
+    background: none;
+    border: none;
+  }
+  .empty {
     margin: 0;
     padding: 6px 2px;
     font-size: 0.8125rem;
@@ -309,24 +331,57 @@
   }
 
   .printer {
-    display: flex;
-    flex-direction: column;
-    padding: 10px 12px;
     border-radius: var(--radius-card);
     transition: background-color var(--duration-fast) var(--ease-out);
   }
   .printer.open {
     background: color-mix(in srgb, var(--color-fg-primary) 4%, transparent);
   }
-  .printer-head {
-    display: flex;
+
+  /* The printer row: a fixed default-control + status column, the identity,
+     then the action cluster. Queue and discovery rows reuse the row rhythm and
+     indent their identity to the same left edge (60px = 8 pad + 24 toggle + 10
+     + 8 dot + 10) so every name lines up down the panel. */
+  .row {
+    display: grid;
+    grid-template-columns: 24px 8px 1fr auto;
     align-items: center;
     gap: 10px;
+    min-height: 44px;
+    padding: 4px 8px;
   }
+  .row.job {
+    grid-template-columns: 1fr auto auto;
+    padding-left: 60px;
+  }
+  .row.disc {
+    grid-template-columns: 1fr auto;
+    padding-left: 60px;
+  }
+
+  .def {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-fg-disabled);
+    border-radius: var(--radius-full);
+    transition: color var(--duration-fast) var(--ease-out);
+  }
+  .def:hover:not(:disabled) {
+    color: var(--color-fg-secondary);
+  }
+  .def.active {
+    color: var(--color-accent);
+  }
+
   .dot {
-    flex-shrink: 0;
-    width: 9px;
-    height: 9px;
+    width: 8px;
+    height: 8px;
     border-radius: var(--radius-full);
     background: var(--color-fg-disabled);
   }
@@ -339,51 +394,54 @@
   .dot[data-state="stopped"] {
     background: var(--color-warning, #f59e0b);
   }
+
   .ident {
-    flex: 1;
     min-width: 0;
-  }
-  .name-row {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    flex-direction: column;
+    gap: 1px;
   }
   .name {
     font-size: 0.875rem;
-    font-weight: 500;
     color: var(--color-fg-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .dest {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    margin-top: 2px;
+  .meta {
     font-size: 0.75rem;
     color: var(--color-fg-secondary);
     white-space: nowrap;
-  }
-  .dest span {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .dest :global(svg) {
-    flex-shrink: 0;
-  }
+
   .actions {
     display: flex;
     align-items: center;
     gap: 2px;
-    flex-shrink: 0;
+    justify-self: end;
+  }
+
+  .job-state {
+    font-size: 0.75rem;
+    color: var(--color-fg-secondary);
+    white-space: nowrap;
+    justify-self: end;
+  }
+  .job-state[data-state="processing"] {
+    color: var(--color-accent);
+  }
+  .job-state[data-state="aborted"] {
+    color: var(--color-error, #ef4444);
   }
 
   .options {
     display: flex;
     flex-wrap: wrap;
+    align-items: flex-end;
     gap: 16px;
-    margin-top: 10px;
+    margin: 0 8px 4px;
     padding-top: 10px;
     border-top: 1px solid var(--color-border);
   }
@@ -394,80 +452,20 @@
     font-size: 0.75rem;
     color: var(--color-fg-secondary);
   }
+  .opt-actions {
+    margin-left: auto;
+  }
 
-  .job {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 7px 2px;
-  }
-  .job :global(.job-icon) {
-    flex-shrink: 0;
-    color: var(--color-fg-secondary);
-  }
-  .job-name {
-    font-size: 0.8125rem;
-    color: var(--color-fg-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-    flex: 1;
-  }
-  .job-printer {
-    font-size: 0.75rem;
-    color: var(--color-fg-secondary);
-    flex-shrink: 0;
-  }
-  .job-state {
-    font-size: 0.75rem;
-    color: var(--color-fg-secondary);
-    flex-shrink: 0;
-    min-width: 64px;
-    text-align: right;
-  }
-  .job-state[data-state="processing"] {
-    color: var(--color-accent);
-  }
-  .job-state[data-state="aborted"] {
-    color: var(--color-error, #ef4444);
-  }
-  .job-actions {
-    flex-shrink: 0;
-  }
-  .queue-foot,
-  .add-foot {
+  .foot {
     display: flex;
     gap: 8px;
-    padding-top: 6px;
-  }
-
-  .discovered {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 7px 2px;
-    color: var(--color-fg-secondary);
-  }
-  .disc-ident {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-  }
-  .disc-name {
-    font-size: 0.8125rem;
-    color: var(--color-fg-primary);
-  }
-  .disc-sub {
-    font-size: 0.6875rem;
-    color: var(--color-fg-secondary);
+    padding: 6px 4px 0;
   }
 
   .manual {
     display: flex;
     gap: 8px;
-    margin-top: 8px;
+    margin: 8px 4px 0;
     padding-top: 10px;
     border-top: 1px solid var(--color-border);
   }
