@@ -39,7 +39,7 @@ export WEBKIT_DISABLE_DMABUF_RENDERER=1
 
 # Launch the compositor in the background so we can start the user session once it
 # is up. It imports WAYLAND_DISPLAY/DISPLAY itself; we add the Arlen env below.
-cosmic-comp &
+systemd-cat -t cosmic-comp cosmic-comp &
 compositor_pid=$!
 
 # Wait for the compositor to publish its Wayland socket (its env import happens at

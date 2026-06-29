@@ -1,0 +1,13 @@
+#%PAM-1.0
+# Autologin appliance: greetd's [initial_session] runs without authentication, so
+# the auth/account stacks just permit. The session stack is what matters - it must
+# register a logind session (pam_systemd) so XDG_RUNTIME_DIR / XDG_SEAT / XDG_VTNR
+# exist for the compositor + libseat. Self-contained (no @include common-*) so it
+# works in the minimal image regardless of pam-auth-update state.
+auth       required pam_permit.so
+account    required pam_permit.so
+password   required pam_permit.so
+session    optional pam_keyinit.so force revoke
+session    required pam_loginuid.so
+session    required pam_permit.so
+session    optional pam_systemd.so
