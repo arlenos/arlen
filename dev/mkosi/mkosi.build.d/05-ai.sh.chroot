@@ -28,12 +28,15 @@ fi
 export PATH="$CARGO_HOME/bin:$PATH"
 
 cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
-echo ">> cargo build the AI layer (arlen-ai-agent + arlen-ai-daemon) - Debian-native ($(cargo --version))"
-# Build only the two bins (and their deps) from the ai workspace; the default
-# feature set leaves the onnx classifier out, so this stays pure-Rust.
-cargo build --release --manifest-path ai/Cargo.toml -p arlen-ai-agent -p arlen-ai-daemon
+echo ">> cargo build the AI layer (agent + daemon + proxy) - Debian-native ($(cargo --version))"
+# The completion path is ai-daemon -> ai-proxy (the egress authoriser that holds
+# the provider->endpoint catalog + forwards to llama-server) -> the engine, so the
+# proxy is baked too. Build only these bins (and their deps); the default feature
+# set leaves the onnx classifier out, so this stays pure-Rust.
+cargo build --release --manifest-path ai/Cargo.toml \
+    -p arlen-ai-agent -p arlen-ai-daemon -p arlen-ai-proxy
 
-for bin in arlen-ai-agent arlen-ai-daemon; do
+for bin in arlen-ai-agent arlen-ai-daemon arlen-ai-proxy; do
     install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$DESTDIR/usr/bin/$bin"
     echo ">> staged $bin into the image"
 done
