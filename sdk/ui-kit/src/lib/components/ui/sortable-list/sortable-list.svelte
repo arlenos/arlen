@@ -11,6 +11,7 @@
   /// `elementFromPoint` over `data-sortable-id` (rAF-throttled). The list reflows
   /// live as the pointer crosses rows; the commit is on pointerup.
   import type { Snippet } from "svelte";
+  import { tick } from "svelte";
 
   let {
     ids,
@@ -144,6 +145,43 @@
     started = false;
     dragId = null;
   }
+
+  // --- Keyboard reorder (pointer drag is inaccessible on its own) ----------
+  // A keyboard user tabs to a row's handle and presses Ctrl/Alt + ArrowUp/Down
+  // to move that item; the move commits immediately and is announced. No "grab"
+  // mode, and a modifier is required so the keys never clash with a handle
+  // button's activation or with text fields inside a row.
+  let listEl = $state<HTMLElement | null>(null);
+  let liveMsg = $state("");
+
+  function moveByKeyboard(id: string, dir: -1 | 1) {
+    const from = order.indexOf(id);
+    const to = from + dir;
+    if (from < 0 || to < 0 || to >= order.length) return;
+    const next = [...order];
+    next.splice(from, 1);
+    next.splice(to, 0, id);
+    order = next;
+    onReorder([...order]);
+    liveMsg = `Moved to position ${to + 1} of ${order.length}.`;
+    // Keep focus on the moved row's handle after the list reflows.
+    void tick().then(() => {
+      const row = listEl?.querySelector<HTMLElement>(
+        `[data-sortable-id="${CSS.escape(id)}"]`,
+      );
+      (row?.querySelector<HTMLElement>("[data-sortable-handle]") ?? row)?.focus();
+    });
+  }
+
+  function onKeydown(event: KeyboardEvent) {
+    if (disabled || !(event.ctrlKey || event.altKey)) return;
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    const row = (event.target as HTMLElement).closest<HTMLElement>("[data-sortable-id]");
+    const id = row?.dataset.sortableId;
+    if (!id) return;
+    event.preventDefault();
+    moveByKeyboard(id, event.key === "ArrowUp" ? -1 : 1);
+  }
 </script>
 
 <svelte:window
@@ -152,14 +190,25 @@
   onpointercancel={() => finish(false)}
 />
 
+<!-- The list owns pointer-drag + keyboard-reorder; rows are listitems. The
+     interaction lives on the role="list" container by design (the handle is
+     rendered by the consumer's snippet, so the container mediates the keys). -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="sortable" onpointerdown={onPointerDown}>
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div
+  class="sortable"
+  role="list"
+  bind:this={listEl}
+  onpointerdown={onPointerDown}
+  onkeydown={onKeydown}
+>
   {#each order as id (id)}
-    <div class="sortable-row" data-sortable-id={id} class:dragging={dragId === id}>
+    <div class="sortable-row" role="listitem" data-sortable-id={id} class:dragging={dragId === id}>
       {@render item(id)}
     </div>
   {/each}
 </div>
+<div class="sr-only" aria-live="polite" role="status">{liveMsg}</div>
 
 <style>
   .sortable {
@@ -169,5 +218,17 @@
   /* The source row stays in place as a quiet gap while its ghost is carried. */
   .sortable-row.dragging {
     opacity: 0.35;
+  }
+  /* Visually-hidden live region for the keyboard-move announcement. */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 </style>

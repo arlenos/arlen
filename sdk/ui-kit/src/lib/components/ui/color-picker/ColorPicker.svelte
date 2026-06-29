@@ -85,6 +85,39 @@
     } catch {}
   }
 
+  /// Keyboard operation of the pad: arrows nudge saturation (←/→) and value
+  /// (↑/↓); Shift takes bigger steps; Home/End jump saturation to the ends. The
+  /// hue slider below is a native range, already keyboard-operable.
+  function onPadKeydown(e: KeyboardEvent) {
+    const stepN = e.shiftKey ? 0.1 : 0.02;
+    let ns = s;
+    let nv = v;
+    switch (e.key) {
+      case "ArrowLeft":
+        ns = Math.max(0, s - stepN);
+        break;
+      case "ArrowRight":
+        ns = Math.min(1, s + stepN);
+        break;
+      case "ArrowUp":
+        nv = Math.min(1, v + stepN);
+        break;
+      case "ArrowDown":
+        nv = Math.max(0, v - stepN);
+        break;
+      case "Home":
+        ns = 0;
+        break;
+      case "End":
+        ns = 1;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    commitHsv(h, ns, nv);
+  }
+
   // ---- Hex input: parse on blur or Enter.
   function onHexInput() {
     const val = hexInput.trim();
@@ -140,9 +173,15 @@
   <!-- Saturation × value pad. Background is a solid hue tinted by
        white-vertical and black-horizontal gradients so a single
        coordinate fully encodes (s, v) at the current hue. -->
+  <!-- A 2D saturation×value field has no native control; role="application" +
+       arrow-key handling + the live value label is the accessible pattern. The
+       lint reads application as non-interactive, which is wrong here. -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div
     bind:this={padEl}
     role="application"
+    tabindex="0"
     aria-label="Saturation and value pad: hue {Math.round(h)}, saturation {Math.round(s * 100)}%, value {Math.round(v * 100)}%"
     class="cp-pad"
     style="--pad-hue: {h}"
@@ -150,6 +189,7 @@
     onpointermove={onPadMove}
     onpointerup={onPadUp}
     onpointercancel={onPadUp}
+    onkeydown={onPadKeydown}
   >
     <div class="cp-pad-thumb" style="left: {s * 100}%; top: {(1 - v) * 100}%;"></div>
   </div>
