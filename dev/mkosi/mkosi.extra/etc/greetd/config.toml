@@ -1,0 +1,11 @@
+# greetd auto-logs the `arlen` user into the graphical session once per boot.
+# [initial_session] runs before any greeter and owns a real PAM/logind session,
+# so XDG_RUNTIME_DIR / XDG_SEAT / XDG_VTNR exist for the compositor + libseat.
+# With logind present, libseat auto-detects it; seatd is installed as the fallback
+# but is not run as a competing seat manager here.
+[terminal]
+vt = 1
+
+[initial_session]
+command = "/usr/bin/arlen-session"
+user = "arlen"

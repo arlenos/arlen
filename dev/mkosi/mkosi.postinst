@@ -1,0 +1,17 @@
+#!/bin/sh
+# Runs inside the assembled rootfs. The only thing it does is create the autologin
+# user: it cannot be expressed as a static overlay file the way the unit-enable
+# symlinks can (those ship via mkosi.extra/etc/systemd/, copied verbatim into the
+# rootfs - mkosi's postinst sandbox mounts the rootfs /etc read-only for new
+# top-level dirs like /etc/systemd, so symlinking there from here fails).
+set -eu
+
+# The user greetd's [initial_session] auto-logs in. video/input/render give DRM +
+# evdev access; the logind session grants the seat (libseat -> logind). useradd
+# leaves the shadow password as `!` (locked) when none is given, so no separate
+# passwd --lock (which fails "Permission denied" in mkosi's rootless userns); the
+# chown-on-home "Invalid argument" warning is benign (mkosi remaps the uid on the
+# final image). Login is only ever the unattended [initial_session].
+if ! id arlen >/dev/null 2>&1; then
+    useradd --create-home --shell /bin/bash --groups video,input,render arlen
+fi

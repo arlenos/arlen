@@ -1,0 +1,71 @@
+#!/bin/sh
+# The Arlen graphical session, launched by greetd `[initial_session]` as the
+# `arlen` user inside a logind/PAM session (so XDG_RUNTIME_DIR/XDG_SEAT exist).
+#
+# The system daemons (event-bus, knowledge, audit, ...) are systemd SYSTEM
+# services already up at multi-user.target, binding their sockets under
+# /run/arlen (a system service has no XDG_RUNTIME_DIR, so os_sdk's socket
+# resolver lands there). This script starts only the GRAPHICAL layer and points
+# the user-session clients at those system sockets.
+#
+# Sequence (the plan's Phase-2 glue): export the env -> launch cosmic-comp, which
+# auto-allocates its Wayland socket and on init imports WAYLAND_DISPLAY/DISPLAY
+# into the systemd --user + D-Bus activation environment and sd_notify's READY
+# (compositor src/systemd.rs + src/dbus/mod.rs) -> wait for that socket -> import
+# the Arlen env into the --user manager so the shell/app user services inherit it
+# -> start graphical-session.target -> wait on the compositor (its exit ends the
+# session).
+set -eu
+
+# Point the user-session clients (shell, apps) at the SYSTEM daemon sockets under
+# /run/arlen. os_sdk's resolver honours these ARLEN_*_SOCKET overrides first,
+# ahead of its XDG_RUNTIME_DIR default - so a user-session client (which DOES have
+# XDG_RUNTIME_DIR) still reaches the system daemons.
+export ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
+export ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
+export ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock
+
+# Force the Wayland backend (no X11) and the software-GL stack: the verify VM's
+# plain virtio-gpu has no hardware GL, so Mesa runs on llvmpipe and WebKitGTK must
+# not try the GPU/dmabuf compositing path (else the Tauri apps paint black). These
+# are harmless on real hardware; the image is the system-under-test.
+export DISPLAY=
+export XDG_CURRENT_DESKTOP=arlen
+export LIBGL_ALWAYS_SOFTWARE=1
+export GALLIUM_DRIVER=llvmpipe
+export GDK_BACKEND=wayland
+export WEBKIT_DISABLE_COMPOSITING_MODE=1
+export WEBKIT_DISABLE_DMABUF_RENDERER=1
+
+# Launch the compositor in the background so we can start the user session once it
+# is up. It imports WAYLAND_DISPLAY/DISPLAY itself; we add the Arlen env below.
+cosmic-comp &
+compositor_pid=$!
+
+# Wait for the compositor to publish its Wayland socket (its env import happens at
+# the same init point). ~10s budget; then proceed regardless (best-effort).
+i=0
+while [ "$i" -lt 100 ]; do
+    for sock in "${XDG_RUNTIME_DIR}"/wayland-*; do
+        [ -S "$sock" ] && break 2
+    done
+    i=$((i + 1))
+    sleep 0.1
+done
+
+# Make the Arlen env visible to the systemd --user services (the shell + apps that
+# graphical-session.target pulls in); the compositor already imported the Wayland
+# vars. import-environment is a no-op for an unset var, so this is safe.
+systemctl --user import-environment \
+    WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP \
+    ARLEN_PRODUCER_SOCKET ARLEN_CONSUMER_SOCKET ARLEN_KNOWLEDGE_SOCKET \
+    LIBGL_ALWAYS_SOFTWARE GALLIUM_DRIVER GDK_BACKEND \
+    WEBKIT_DISABLE_COMPOSITING_MODE WEBKIT_DISABLE_DMABUF_RENDERER || true
+
+# Start the graphical session (the shell + apps are --user units WantedBy +
+# ordered After graphical-session.target).
+systemctl --user start graphical-session.target || true
+
+# Keep the session alive; when the compositor exits, the session ends and greetd
+# returns to the greeter (or, for [initial_session], the VT).
+wait "$compositor_pid"
