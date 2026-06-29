@@ -192,6 +192,14 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-ai-agent" => {
             return Ok("ai-agent".to_string());
         }
+        // The AI egress proxy, pinned canonically so its per-forward audit submits
+        // under the stable id `ai-proxy`, the id the audit daemon's ADMITTED
+        // allowlist keys on. Like accountsd/notifyd, rule (2) covers only
+        // /usr/bin/arlen-*, so without this entry the proxy resolves to
+        // UnknownBinary and every forward's fail-closed audit is refused.
+        "/usr/lib/arlen/libexec/arlen-ai-proxy" => {
+            return Ok("ai-proxy".to_string());
+        }
         // The online-accounts daemon, pinned canonically so its credential-handout
         // audit (GAP-2) submits under the stable id `online-accounts`, the id the
         // audit daemon's ADMITTED allowlist keys on. Rule (2) covers only
