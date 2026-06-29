@@ -1164,24 +1164,26 @@ async fn the_agent_audits_a_workflow_proposal_in_suggest_mode() {
     }
 }
 
-/// IT-1 live executor (PR-5 part 2): INTENDED to prove that with `[agent]
-/// executor_live = true` in the EPHEMERAL ai.toml the auto-tag workflow does not
-/// just propose but the live executor writes the `FILE_PART_OF` edge. KNOWN
-/// FALSE POSITIVE today (see the assertion comment + coder-reports): a
-/// file.opened-triggered action is external content, so the gate forces
-/// RequireConfirmation and the live executor does NOT autonomously write; the
-/// untyped `(:File)-->(:Project)` match this scenario asserts is then satisfied by
-/// the knowledge PROMOTION pipeline's own FILE_PART_OF edge, so a pass does NOT
-/// confirm the executor ran. The setup is otherwise real (the dev agent
-/// `dev.arlen-ai-agent` tiers FirstParty in debug + carries the shipped
-/// `FILE_PART_OF`/`instance_scope=all` go-live grant; the untyped match dodges the
-/// RS-R1 rel-type gate; production `executor_live` is untouched). A TRUE executor
-/// assertion must key on the executor's `op_id` (promotion leaves it NULL) and
-/// stays red until Tim's external-content classification lets external-triggered
-/// curation auto-execute. `#[ignore]d` + FUSE-host-gated.
+/// Executor go-live SAFETY assert: with `executor_live = true` the live executor
+/// must NOT autonomously write from an EVENT trigger. A `file.opened` event is
+/// unconditionally external content at the agent boundary (the event-bus origin is
+/// SO_PEERCRED-authed but NOT origin-trusted, see `ai-agent/src/source.rs`), so the
+/// gate forces `RequireConfirmation` and proven-reversible curation is held, not
+/// executed. That is the guarantee that makes shipping `executor_live = true` safe:
+/// nothing mutates from an event without an explicit approve. (An earlier version
+/// of this scenario asserted an autonomous write and false-greened on the knowledge
+/// PROMOTION pipeline's own NULL-`op_id` edge; the EXECUTOR's edge is the one stamped
+/// with an `op_id` via `derive_op_id`, so the assertion now keys on that.) The
+/// complementary "the executor DOES write when INVOKED" assertion is the
+/// `run_skill` / `approve` manual-invoke path (`external_content = false` ->
+/// `PreviewThenExecute`), driven over the private session bus the undo sibling
+/// already starts - the go-live driver rework tracked in coder-reports. The setup
+/// is real (the dev agent `dev.arlen-ai-agent` tiers FirstParty in debug + carries
+/// the shipped `FILE_PART_OF`/`instance_scope=all` grant); production `executor_live`
+/// is untouched. `#[ignore]d` + FUSE-host-gated.
 #[tokio::test]
 #[ignore = "needs event-bus + knowledge + audit-daemon + ai-agent binaries built (debug, FUSE host)"]
-async fn the_live_executor_writes_a_file_part_of_edge() {
+async fn the_executor_does_not_silently_write_from_an_event_trigger() {
     if !(arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd")
         && arlen_integration::binary_built("ai", "arlen-ai-agent"))
     {
@@ -1264,19 +1266,17 @@ async fn the_live_executor_writes_a_file_part_of_edge() {
     let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
     let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
     let file_path = format!("{}/main.rs", project_dir.to_string_lossy());
-    // KNOWN LIMITATION (does NOT currently verify the live executor): this untyped
-    // File->Project match cannot distinguish the executor's FILE_PART_OF write from
-    // the one the knowledge PROMOTION pipeline creates for any file.opened under a
-    // detected project - both are FILE_PART_OF, and the untyped match (used to dodge
-    // the RS-R1 rel-type refusal for a ThirdParty caller) sees either. Worse, under
-    // the current rule a file.opened-triggered action is external-content -> the gate
-    // forces RequireConfirmation, so the live executor does NOT autonomously write at
-    // all; this assertion passes on the PROMOTION edge alone = a false green. A true
-    // executor assertion needs to key on the executor's `op_id` (promotion leaves it
-    // NULL) - which needs FILE_PART_OF read scope - AND it stays red until Tim's
-    // external-content classification lets external-triggered curation auto-execute.
-    // Tracked in coder-reports; do not read this scenario's pass as executor-verified.
-    let edge_query = format!("MATCH (f:File {{id: '{file_path}'}})-->(p:Project) RETURN p.id");
+    // Two reads. `promoted` matches ANY File->Project edge (the knowledge PROMOTION
+    // pipeline creates one for an opened file under a detected project; its `op_id`
+    // is NULL). `executor_edge` matches only an `op_id`-stamped edge - the live
+    // executor stamps every write via `derive_op_id`, so a non-NULL `op_id` is the
+    // executor's signature and distinguishes it from promotion. Both use an untyped
+    // `-[r]->` binding (no `:FILE_PART_OF` token), which dodges the RS-R1 rel-type
+    // gate for this ThirdParty test caller while still reading `r.op_id`.
+    let promoted = format!("MATCH (f:File {{id: '{file_path}'}})-->(p:Project) RETURN p.id");
+    let executor_edge = format!(
+        "MATCH (f:File {{id: '{file_path}'}})-[r]->(p:Project) WHERE r.op_id IS NOT NULL RETURN p.id"
+    );
     let deadline = Instant::now() + Duration::from_secs(50);
     loop {
         let payload = proto::FileOpenedPayload {
@@ -1290,32 +1290,29 @@ async fn the_live_executor_writes_a_file_part_of_edge() {
             .await
             .expect("emit file.opened");
         tokio::time::sleep(Duration::from_millis(700)).await;
-        if let Ok(rows) = client.query_rows(&edge_query).await {
+        if let Ok(rows) = client.query_rows(&promoted).await {
             if !rows.is_empty() {
-                // The live executor wrote the edge. Re-emit once more and confirm
-                // the atomic conditional create did NOT duplicate it (op-id
-                // idempotency at the write boundary).
-                let payload = proto::FileOpenedPayload {
-                    path: file_path.clone(),
-                    app_id: "integration-test".to_string(),
-                    flags: 0,
-                }
-                .encode_to_vec();
-                emitter.emit("file.opened", payload).await.expect("re-emit");
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                let again = client.query_rows(&edge_query).await.expect("re-read the edge");
-                assert_eq!(
-                    again.len(),
-                    1,
-                    "the conditional create is idempotent: exactly one FILE_PART_OF edge, not {}",
-                    again.len()
+                // The promotion edge landed: the data path ran and the agent has had
+                // the event. Settle briefly, then confirm the executor did NOT write
+                // its own `op_id`-stamped edge from this external trigger - the
+                // flip-safety guarantee (external content always confirms).
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                let executor_rows = client
+                    .query_rows(&executor_edge)
+                    .await
+                    .expect("read the executor edge");
+                assert!(
+                    executor_rows.is_empty(),
+                    "the live executor must NOT autonomously write from an event trigger \
+                     (external content forces confirmation); found {} op_id-stamped edge(s)",
+                    executor_rows.len()
                 );
                 return;
             }
         }
         assert!(
             Instant::now() < deadline,
-            "the live executor never wrote the FILE_PART_OF edge within 50s"
+            "the knowledge promotion pipeline never created the FILE_PART_OF edge within 50s"
         );
     }
 }
