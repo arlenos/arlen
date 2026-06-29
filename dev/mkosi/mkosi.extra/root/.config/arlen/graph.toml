@@ -1,0 +1,11 @@
+# Knowledge daemon project config for the SUT (read via XDG_CONFIG_HOME=/root/.config,
+# set in arlen-graph.service). The daemon runs as a system service; this pins the
+# project watcher to the single dogfood project root instead of the ~/Projects-class
+# defaults (which resolve to /root/* and do not exist).
+#
+# /home/arlen/work is created empty + arlen-owned at boot (tmpfiles arlen-home.conf);
+# it carries no project signal at boot, so a file.opened under it promotes UNLINKED.
+# The executor write+undo live-verify then drops a .project there at runtime, the
+# watcher detects the Project, and auto-tag (run_skill) links the file past promotion.
+[projects]
+watch_directories = ["/home/arlen/work"]

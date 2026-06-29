@@ -15,6 +15,12 @@ RestartSec=1
 Environment=ARLEN_DAEMON_SOCKET=/run/user/%U/arlen/knowledge.sock
 Environment=ARLEN_GRAPH_PATH=%h/.local/share/arlen/graph
 Environment=ARLEN_DB_PATH=%h/.local/share/arlen/events.db
+# Pin the config home so the daemon (a system service whose $HOME is ambiguous)
+# resolves graph.toml at /root/.config/arlen/graph.toml, which points the project
+# watcher at /home/arlen/work (ProtectHome=read-only still permits read + inotify
+# there). Without it, dirs::config_dir() is unreliable for a root service and the
+# watcher falls back to ~/Projects etc. (= /root/*, nonexistent), detecting nothing.
+Environment=XDG_CONFIG_HOME=/root/.config
 Environment=RUST_LOG=info
 
 # Security hardening
