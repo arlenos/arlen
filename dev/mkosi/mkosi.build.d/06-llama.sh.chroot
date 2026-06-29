@@ -1,0 +1,41 @@
+#!/bin/sh
+# Phase 6 (CHROOT): the LLM inference engine, llama-server (llama.cpp), built from
+# source in-image. WHY from source: llama.cpp is MIT but lives only in Debian
+# sid/forky, NOT trixie (our base predates the June-2026 packaging migration) and
+# not in trixie-backports - verified 29 June. So rather than apt-pin sid (drags in
+# newer libc/deps) or ship a foreign prebuilt blob, we build the pinned upstream
+# release the same Debian-native way as the other heavy binaries (ABI-correct for
+# the image). CPU build: the VM runs software-GL so a GPU backend is moot, and the
+# baked model is sub-1 GB. Provenance: ggml-org/llama.cpp tag b9842 (MIT,
+# https://github.com/ggml-org/llama.cpp), fetched as the pinned tag tarball (no git
+# needed; curl + cmake + g++ come from phase 1).
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+TAG=b9842
+src="$cache/llama.cpp-$TAG"
+build="$cache/llama-build"
+
+if [ ! -d "$src" ]; then
+    echo ">> fetching llama.cpp $TAG source"
+    mkdir -p "$cache"
+    curl --proto '=https' --tlsv1.2 -sSfL \
+        "https://github.com/ggml-org/llama.cpp/archive/refs/tags/$TAG.tar.gz" \
+        | tar -xz -C "$cache"
+fi
+
+# CPU, static, portable: no CURL (we bake the model, llama-server never fetches);
+# GGML_NATIVE=OFF so the binary does NOT bake in the build host's -march (the QEMU
+# VM's CPU model differs - a `-march=native` build would SIGILL there); static libs
+# so llama-server is one self-contained binary (no libllama.so/libggml*.so to stage).
+cmake -S "$src" -B "$build" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DLLAMA_CURL=OFF \
+    -DGGML_NATIVE=OFF \
+    -DBUILD_SHARED_LIBS=OFF
+cmake --build "$build" --target llama-server -j"$(nproc)"
+
+bin=$(find "$build" -type f -name 'llama-server' | head -1)
+[ -n "$bin" ] || { echo "!! llama-server not found after build" >&2; exit 1; }
+install -Dm755 "$bin" "$DESTDIR/usr/bin/llama-server"
+echo ">> staged llama-server into the image"
