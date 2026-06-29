@@ -15,18 +15,15 @@ RestartSec=1
 Environment=ARLEN_DAEMON_SOCKET=/run/user/%U/arlen/knowledge.sock
 Environment=ARLEN_GRAPH_PATH=%h/.local/share/arlen/graph
 Environment=ARLEN_DB_PATH=%h/.local/share/arlen/events.db
-# Pin the config home so the daemon (a system service whose $HOME is ambiguous)
-# resolves graph.toml at /root/.config/arlen/graph.toml, which points the project
-# watcher at /home/arlen/work (ProtectHome=read-only still permits read + inotify
-# there). Without it, dirs::config_dir() is unreliable for a root service and the
-# watcher falls back to ~/Projects etc. (= /root/*, nonexistent), detecting nothing.
-Environment=XDG_CONFIG_HOME=/root/.config
-# HOME too: dirs::config_dir() uses XDG_CONFIG_HOME if absolute, ELSE home_dir()/
-# .config; a system service has no HOME, so set it so both resolution paths land
-# at /root/.config (belt-and-suspenders for the watch-config read).
-Environment=HOME=/root
-# Debug the watch-config resolution: this logs the exact graph.toml path checked
-# (loaded vs not-found), so the serial shows whether config_dir() resolves right.
+# Read graph.toml from the USER config home, not /root: the mkosi.extra/root/ tree
+# does not bake into the image (the /home/arlen overlay does - the AI daemons read
+# its ai.toml), so the config lives at /home/arlen/.config/arlen/graph.toml, which
+# this daemon (a system service, ProtectHome=read-only) can still read. XDG_CONFIG_
+# HOME points dirs::config_dir() there; without it a root service falls back to
+# ~/Projects etc. and the project watcher finds nothing.
+Environment=XDG_CONFIG_HOME=/home/arlen/.config
+# Debug the watch-config resolution: logs the exact graph.toml path checked
+# (loaded vs not-found), so the serial confirms config_dir() resolves right.
 Environment=RUST_LOG=info,arlen_graph_daemon::project::watch_config=debug
 
 # Security hardening
