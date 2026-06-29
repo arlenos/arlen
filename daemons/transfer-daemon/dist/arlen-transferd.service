@@ -20,12 +20,17 @@ ExecStart=/usr/lib/arlen/libexec/arlen-transferd
 Restart=on-failure
 RestartSec=2
 
-# It reads the transfer policy and brokers over AF_UNIX sockets (the per-profile
-# request sockets, the two profiles' audit-ingest sockets). The dual-uid byte
-# move that needs broader access lands with the live broker (PR-R1); this unit
-# is tightened to exactly the paths that impl needs when it does.
+# It reads the transfer policy (~/.config/arlen, read-only) and brokers over
+# AF_UNIX sockets: it BINDS its own per-uid request socket at
+# $XDG_RUNTIME_DIR/arlen/transfer.sock (dbus.rs) and CONNECTS to the two profiles'
+# audit-ingest sockets. Binding the request socket needs the per-user runtime dir
+# writable, so under ProtectSystem=strict it is granted explicitly - the same
+# `/run/user/%U/arlen` ReadWritePath every per-uid Arlen daemon (consent-broker,
+# knowledge-mcp, the MCP servers) declares. (The dual-uid byte move that needs
+# broader access is still a later live-broker concern.)
 ProtectSystem=strict
 ProtectHome=read-only
+ReadWritePaths=/run/user/%U/arlen
 RestrictAddressFamilies=AF_UNIX
 PrivateTmp=yes
 PrivateDevices=yes
