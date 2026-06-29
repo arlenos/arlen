@@ -237,4 +237,47 @@ mod tests {
         drop(client);
         let _ = server.await;
     }
+
+    /// The separate-uid boundary at the serve path: a peer whose uid does NOT
+    /// match the broker's configured expected caller uid is refused before any
+    /// request is honored. Models the deployment where the broker (a distinct
+    /// service uid) expects the session user's uid and a caller of a different uid
+    /// connects - `PeerPidfd::from_socket` rejects it, `serve_connection` drops the
+    /// connection with no reply, and the store is never touched.
+    #[cfg(debug_assertions)]
+    #[tokio::test]
+    async fn a_peer_whose_uid_mismatches_the_expected_caller_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(dir.path()).unwrap());
+        let sock = dir.path().join("broker.sock");
+        let listener = bind_socket(&sock).unwrap();
+        // Expect a uid the test process does NOT have, so the auth rejects it.
+        let wrong_uid = current_uid().wrapping_add(1);
+        let srv_store = Arc::clone(&store);
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            serve_connection(stream, srv_store, wrong_uid).await;
+        });
+
+        let mut client = UnixStream::connect(&sock).await.unwrap();
+        let req = serde_json::to_vec(&Request::Get).unwrap();
+        client
+            .write_all(&(req.len() as u32).to_be_bytes())
+            .await
+            .unwrap();
+        client.write_all(&req).await.unwrap();
+        client.flush().await.unwrap();
+
+        // The auth refusal drops the connection with no framed reply, so the read
+        // of the length prefix hits EOF rather than returning a `State`.
+        let mut len = [0u8; 4];
+        let read = client.read_exact(&mut len).await;
+        assert!(
+            read.is_err(),
+            "a uid-mismatched peer must be refused (connection dropped), got a reply"
+        );
+
+        let _ = server.await;
+        assert_eq!(store.load().unwrap(), AiMasterSwitches::default());
+    }
 }
