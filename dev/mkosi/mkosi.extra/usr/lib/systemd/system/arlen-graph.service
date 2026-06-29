@@ -21,7 +21,13 @@ Environment=ARLEN_DB_PATH=%h/.local/share/arlen/events.db
 # there). Without it, dirs::config_dir() is unreliable for a root service and the
 # watcher falls back to ~/Projects etc. (= /root/*, nonexistent), detecting nothing.
 Environment=XDG_CONFIG_HOME=/root/.config
-Environment=RUST_LOG=info
+# HOME too: dirs::config_dir() uses XDG_CONFIG_HOME if absolute, ELSE home_dir()/
+# .config; a system service has no HOME, so set it so both resolution paths land
+# at /root/.config (belt-and-suspenders for the watch-config read).
+Environment=HOME=/root
+# Debug the watch-config resolution: this logs the exact graph.toml path checked
+# (loaded vs not-found), so the serial shows whether config_dir() resolves right.
+Environment=RUST_LOG=info,arlen_graph_daemon::project::watch_config=debug
 
 # Security hardening
 NoNewPrivileges=true
