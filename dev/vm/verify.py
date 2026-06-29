@@ -75,12 +75,50 @@ def inspect(png):
     return rendered, f"{w}x{h}, {distinct} distinct colours, {frac*100:.1f}% non-black"
 
 
+def ocr(png, psm=6, crop=None, scale=1):
+    """Run tesseract on the png (optionally a cropped + upscaled region)."""
+    target = png
+    if crop or scale != 1:
+        from PIL import Image
+        img = Image.open(png).convert("RGB")
+        if crop:
+            img = img.crop(crop)
+        if scale != 1:
+            img = img.resize((img.width * scale, img.height * scale))
+        target = png + f".ocr{psm}.png"
+        img.save(target)
+    try:
+        return subprocess.run(["tesseract", target, "-", "--psm", str(psm)],
+                              capture_output=True, text=True, timeout=30).stdout.strip()
+    except Exception:
+        return ""
+
+
+def has_top_bar(png):
+    """Detect the shell's top bar structurally: it paints a panel strip across the
+    top in a distinct colour, so the modal colour of a bar row differs from a
+    mid-desktop row. (OCR of the thin UI font under llvmpipe is unreliable, so we
+    assert the bar's presence by colour, not text.) Returns (present, bar, desktop)."""
+    from PIL import Image
+    img = Image.open(png).convert("RGB")
+    w, h = img.size
+
+    def modal_row(y):
+        row = [img.getpixel((x, y)) for x in range(0, w, 4)]
+        return max(set(row), key=row.count)
+
+    bar, desk = modal_row(8), modal_row(h // 2)
+    return bar != desk, bar, desk
+
+
 def main():
     ap = argparse.ArgumentParser()
     here = os.path.dirname(os.path.abspath(__file__))
     ap.add_argument("--image", default=os.path.join(here, "..", "mkosi", "arlen.raw"))
     ap.add_argument("--wait", type=int, default=40, help="seconds to let the session come up")
     ap.add_argument("--out", default=os.path.join(here, "shot.png"))
+    ap.add_argument("--require-bar", action="store_true",
+                    help="fail unless the shell's top bar is present (full-desktop gate)")
     args = ap.parse_args()
 
     image = os.path.abspath(args.image)
@@ -132,15 +170,13 @@ def main():
     if not (os.path.exists(out) and os.path.getsize(out) > 0):
         sys.exit("no screenshot captured")
     rendered, summary = inspect(out)
-    text = ""
-    try:
-        text = subprocess.run(["tesseract", out, "-", "--psm", "6"],
-                              capture_output=True, text=True, timeout=30).stdout.strip()
-    except Exception:
-        pass
+    text = ocr(out)               # whole frame (psm 6) - mainly the console-text guard
+    bar_present, bar_rgb, desk_rgb = has_top_bar(out)
     print(f"screenshot: {out} ({summary})")
     if text:
         print("OCR text:\n" + text)
+    print(f"top bar: {'present' if bar_present else 'absent'} "
+          f"(bar row {bar_rgb}, desktop row {desk_rgb})")
     # A frame full of kernel-console / login text means cosmic-comp never took the
     # scanout (VT/DRM-master conflict) - the getty/console is still on screen, not
     # the compositor. Treat that as failure even though it is "non-black".
@@ -150,12 +186,17 @@ def main():
         print("VERIFY FAIL: the frame is the kernel/login console, not the compositor")
         print(f"  serial log: {serial}")
         return 1
-    if rendered:
-        print("VERIFY OK: the compositor rendered a frame")
-        return 0
-    print("VERIFY FAIL: frame is blank/black (compositor did not render)")
-    print(f"  serial log: {serial}")
-    return 1
+    if not rendered:
+        print("VERIFY FAIL: frame is blank/black (compositor did not render)")
+        print(f"  serial log: {serial}")
+        return 1
+    if args.require_bar and not bar_present:
+        print("VERIFY FAIL: the shell's top bar is absent (compositor up, shell did not render)")
+        print(f"  serial log: {serial}")
+        return 1
+    print("VERIFY OK: " + ("the full desktop rendered (compositor + shell bar)"
+                           if bar_present else "the compositor rendered a frame"))
+    return 0
 
 
 if __name__ == "__main__":
