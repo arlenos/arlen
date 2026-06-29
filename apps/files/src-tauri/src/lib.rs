@@ -8,6 +8,7 @@
 
 mod ai_gate;
 mod archive;
+mod ask;
 mod capability;
 mod devices;
 mod facet_query;
@@ -476,6 +477,75 @@ fn files_bulk_rename(
     let root = root()?;
     let scope = root.open_dir(rel(&dir)).map_err(|e| e.to_string())?;
     ops::apply_bulk_rename(&scope, ".", &names, &rule).map_err(|e| e.to_string())
+}
+
+/// Read `(id, name)` pairs from a KG query, best-effort (any error yields none).
+/// The knowledge daemon scopes the read to this caller and audits it.
+async fn kg_name_pairs(
+    client: &os_sdk::graph::UnixGraphClient,
+    cypher: &str,
+) -> Vec<(String, String)> {
+    match client.query_rows(cypher).await {
+        Ok(rows) => rows
+            .iter()
+            .filter_map(|r| {
+                let id = r.get("id").and_then(|v| v.as_str())?;
+                let name = r.get("name").and_then(|v| v.as_str())?;
+                Some((id.to_string(), name.to_string()))
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// "Ask Arlen" (item 6a): map a folder-scoped natural-language `query` to a draft
+/// facet selection in the existing vocabulary, with a summary of what was read.
+/// Fail-closed if the assistant is disabled. The inference is a transparent local
+/// keyword/phrase mapping (the anti-Recall path, see [`ask`]); the project and
+/// touching-app vocab it matches against is read from the graph, scoped to this
+/// caller and audited daemon-side, and the counts of what was read are returned so
+/// the surface can show them. Drafts only: nothing is filtered until the user acts.
+#[tauri::command]
+async fn files_ask(folder: String, query: String) -> Result<ask::AskResult, String> {
+    if !ai_gate::files_ai_enabled() {
+        return Err("the AI assistant is disabled".to_string());
+    }
+    // FS read: count the regular files in the scoped folder (the transparency
+    // "files" count), capability-confined to the folder.
+    let files = {
+        let root = root()?;
+        match root.open_dir(rel(&folder)) {
+            Ok(scope) => list_dir(&scope, ".")
+                .map(|entries| entries.iter().filter(|e| e.kind == EntryKind::File).count())
+                .unwrap_or(0),
+            Err(_) => 0,
+        }
+    };
+    // KG read: the project + touching-app vocab the inference matches the query
+    // against. The read socket scopes to this caller and audits the read; the
+    // returned `tags` count is the user-facing half of the anti-Recall promise.
+    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
+    let projects =
+        kg_name_pairs(&client, "MATCH (p:Project) RETURN p.id AS id, p.name AS name LIMIT 200").await;
+    // App nodes are keyed by a reverse-DNS id; the friendly last segment (e.g.
+    // `firefox` from `org.mozilla.firefox`) is what a question is likely to name.
+    let touched: Vec<(String, String)> =
+        kg_name_pairs(&client, "MATCH (a:App) RETURN a.id AS id, a.id AS name LIMIT 200")
+            .await
+            .into_iter()
+            .map(|(id, raw)| {
+                let friendly = raw.rsplit('.').next().unwrap_or(&raw).to_string();
+                (id, friendly)
+            })
+            .collect();
+
+    let facets = ask::infer_facets(&query, &projects, &touched);
+    let reads = ask::AskReads {
+        files,
+        tags: projects.len() + touched.len(),
+    };
+    Ok(ask::AskResult { facets, reads })
 }
 
 /// The home trash contents (paired `files/` + `info/` entries) for the Trash
@@ -1680,6 +1750,7 @@ pub fn run() {
             files_search,
             files_find_duplicates,
             files_bulk_rename,
+            files_ask,
             ai_gate::files_ai_enabled,
             files_op,
             files_set_permissions,
