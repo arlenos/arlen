@@ -49,7 +49,13 @@ const ALLOWED_ATTR = ["href"];
 /// carry `//` (a bare `https:foo` is not a real navigable link), and this must
 /// stay in lockstep with the backend `open_url` allowlist that the click
 /// handler forwards to, so a rendered link never opens to a silent rejection.
-const ALLOWED_URI_REGEXP = /^(?:https?:\/\/|mailto:)/i;
+///
+/// `arlenfile:` is the file-reference scheme: the agent names a file it touched
+/// as `[name](arlenfile:///abs/path)`, and the `fileRefs` action upgrades that
+/// inert anchor into a clickable file pill (opened AS THE USER via the portal,
+/// never the AI daemon). Kept here so the anchor survives sanitization; the
+/// action intercepts the click so it never navigates the webview.
+const ALLOWED_URI_REGEXP = /^(?:https?:\/\/|mailto:|arlenfile:\/\/)/i;
 
 /// Parse `text` as GitHub-flavoured markdown and return strictly-sanitized HTML.
 export function renderMarkdown(text: string): string {

@@ -7,6 +7,7 @@
   import { ChevronDown } from "@lucide/svelte";
   import ChatMessage from "./ChatMessage.svelte";
   import EmptyState from "./EmptyState.svelte";
+  import FileRefMenu from "./FileRefMenu.svelte";
   import { messages } from "$lib/stores/conversation";
 
   let {
@@ -72,6 +73,10 @@
       <ChevronDown size={16} strokeWidth={2} />
     </button>
   {/if}
+
+  <!-- One shared right-click menu for every file-reference pill in the
+       transcript (fixed-positioned, opened at the cursor via the store). -->
+  <FileRefMenu />
 </div>
 
 <style>
