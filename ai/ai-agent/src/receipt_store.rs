@@ -53,12 +53,12 @@ pub struct CompletedAction {
     /// A content-bounded description of what was done (for the done-line).
     pub what: String,
     /// The file change this action applied, when it was a file move - the
-    /// done-receipt's diff body, the same `FileChangeSet` shape the gate card
-    /// showed before approval (the plan's "proposed and done are the same
-    /// artifact"). Derived from the receipt's `RestorePath` inverse: the file
-    /// moved from `prior` to `now`. `None` for a graph write or any receipt
-    /// without a path-rename inverse.
-    pub change: Option<arlen_file_change::FileChangeSet>,
+    /// done-receipt's diff body, the same `ChangeProposal` the gate card showed
+    /// before approval (the plan's "proposed and done are the same payload").
+    /// Derived from the receipt's `RestorePath` inverse: the file moved from
+    /// `prior` to `now`. `None` for a graph write or any receipt without a
+    /// path-rename inverse.
+    pub change: Option<arlen_file_change::ChangeProposal>,
 }
 
 /// Project a retained receipt into the silent-done line the harness shows with
@@ -88,8 +88,14 @@ pub fn completed_view(retained: &RetainedReceipt) -> CompletedAction {
             // file-rename body.
             let change = match action.inverse() {
                 InverseReceipt::RestorePath { now, prior } => {
-                    Some(arlen_file_change::FileChangeSet::single(
-                        arlen_file_change::FileChange::rename(prior.as_str(), now.as_str()),
+                    let name = std::path::Path::new(now.as_str())
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| now.as_str().to_string());
+                    Some(arlen_file_change::ChangeProposal::rename(
+                        format!("Move {name}"),
+                        prior.as_str(),
+                        now.as_str(),
                     ))
                 }
                 _ => None,
@@ -291,15 +297,14 @@ mod tests {
             view.what,
             "moved /home/u/Downloads/report.pdf → /home/u/Documents/Projects/report.pdf"
         );
-        // The done-receipt's diff is the rename, the same shape the gate card
-        // proposed (from = prior, to = now).
+        // The done-receipt's diff is the rename, the same ChangeProposal the gate
+        // card proposed (from = prior, to = now).
         assert_eq!(
             view.change,
-            Some(arlen_file_change::FileChangeSet::single(
-                arlen_file_change::FileChange::rename(
-                    "/home/u/Downloads/report.pdf",
-                    "/home/u/Documents/Projects/report.pdf",
-                )
+            Some(arlen_file_change::ChangeProposal::rename(
+                "Move report.pdf",
+                "/home/u/Downloads/report.pdf",
+                "/home/u/Documents/Projects/report.pdf",
             )),
         );
     }

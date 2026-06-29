@@ -351,7 +351,7 @@ pub struct PendingProposal {
     /// with no file diff. Derived from the (untrusted) operands as informed-
     /// consent preview - the executor re-confines + handles a name collision at
     /// approve time, so this is what it WOULD do, not the authority.
-    pub change: Option<arlen_file_change::FileChangeSet>,
+    pub change: Option<arlen_file_change::ChangeProposal>,
     /// The full executable form of this proposal, retained for the approve path
     /// (`approve(id)` re-validates + writes it). `#[serde(skip)]`: it carries the
     /// action operands + run context, so it NEVER crosses the wire - the harness
@@ -425,7 +425,7 @@ pub fn proposal_view(outcome: &DispatchOutcome) -> Option<PendingProposal> {
 fn file_change_preview(
     tool: &str,
     operands: &[(String, String)],
-) -> Option<arlen_file_change::FileChangeSet> {
+) -> Option<arlen_file_change::ChangeProposal> {
     if tool != "fs.move" {
         return None;
     }
@@ -440,8 +440,10 @@ fn file_change_preview(
     let dest_dir = value("dest_dir")?;
     let name = std::path::Path::new(source).file_name()?.to_str()?;
     let dest = format!("{}/{}", dest_dir.trim_end_matches('/'), name);
-    Some(arlen_file_change::FileChangeSet::single(
-        arlen_file_change::FileChange::rename(source, dest),
+    Some(arlen_file_change::ChangeProposal::rename(
+        format!("Move {name}"),
+        source,
+        &dest,
     ))
 }
 
@@ -2526,16 +2528,15 @@ tools:
             ],
             "operands are surfaced sorted by key"
         );
-        // The card also carries the proposed file change: a rename of the source
-        // into dest_dir (dest = dest_dir + the source basename), so the diff body
-        // shows the exact move.
+        // The card also carries the proposed change: a rename of the source into
+        // dest_dir (dest = dest_dir + the source basename), as a ChangeProposal
+        // whose diff is the git rename the card parses.
         assert_eq!(
             view.change,
-            Some(arlen_file_change::FileChangeSet::single(
-                arlen_file_change::FileChange::rename(
-                    "/home/u/Downloads/report.pdf",
-                    "/home/u/Documents/Projects/report.pdf",
-                )
+            Some(arlen_file_change::ChangeProposal::rename(
+                "Move report.pdf",
+                "/home/u/Downloads/report.pdf",
+                "/home/u/Documents/Projects/report.pdf",
             )),
         );
     }
