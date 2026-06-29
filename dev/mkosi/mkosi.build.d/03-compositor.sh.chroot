@@ -1,0 +1,28 @@
+#!/bin/sh
+# Phase 3 of the Debian-native build (CHROOT): the compositor (cosmic-comp, a
+# Smithay-based Wayland compositor) - ranked hard part, it must drive the VM's
+# virtio-gpu under software GL (llvmpipe). Links the Debian Mesa/Wayland/libinput/
+# libseat/libdisplay-info system libs, so it builds here, not via cargo-zigbuild.
+# The compositor repo is mounted at $SRCDIR/compositor (BuildSources); it git-deps
+# arlen-theme from github (fetched over the build network). rustup was installed
+# by phase 2 into the shared cache.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-compositor"   # separate from the arlen workspace
+mkdir -p "$CARGO_TARGET_DIR"
+
+# Phase 2 installs rustup; ensure it (idempotent) in case phase ordering changes.
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/compositor"
+echo ">> cargo build cosmic-comp - Debian-native ($(cargo --version))"
+cargo build --release --bin cosmic-comp
+install -Dm755 "$CARGO_TARGET_DIR/release/cosmic-comp" "$DESTDIR/usr/bin/cosmic-comp"
+echo ">> staged cosmic-comp into the image"

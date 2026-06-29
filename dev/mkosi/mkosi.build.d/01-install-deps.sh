@@ -16,4 +16,7 @@ set -eu
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
-    ca-certificates curl cmake g++ make protobuf-compiler pkg-config libfuse3-dev
+    ca-certificates curl cmake g++ make protobuf-compiler pkg-config libfuse3-dev \
+    libudev-dev libgbm-dev libxkbcommon-dev libegl1-mesa-dev libwayland-dev \
+    libinput-dev libdbus-1-dev libsystemd-dev libseat-dev libdisplay-info-dev \
+    libpixman-1-dev
