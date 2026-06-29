@@ -10,7 +10,7 @@
     hoverPopover,
   } from "$lib/stores/activePopover.js";
   import { Applet } from "@arlen/ui-kit/components/topbar";
-  import { SlidersHorizontal } from "lucide-svelte";
+  import { Square } from "lucide-svelte";
 
   const isOpen = $derived($activePopover === "quick-settings");
 </script>
@@ -23,6 +23,6 @@
   onmouseenter={() => hoverPopover("quick-settings")}
 >
   {#snippet icon()}
-    <SlidersHorizontal size={14} strokeWidth={1.5} />
+    <Square size={14} strokeWidth={1.5} />
   {/snippet}
 </Applet>
