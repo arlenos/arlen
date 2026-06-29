@@ -15,7 +15,7 @@
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
-  import { Search, SlidersHorizontal } from "lucide-svelte";
+  import { Search, SlidersHorizontal, Copy } from "lucide-svelte";
   import { tauriAvailable } from "$lib/tauri";
   import FmSidebar from "$lib/components/FmSidebar.svelte";
   import FmHeaderNav from "$lib/components/FmHeaderNav.svelte";
@@ -30,6 +30,7 @@
   import { infoOpen, pathEditing } from "$lib/stores/ui";
   import { closeSearch, searchOpen } from "$lib/stores/search";
   import { facetOpen } from "$lib/stores/facets";
+  import { duplicatesOpen, scanDuplicates, closeDuplicates } from "$lib/stores/duplicates";
   import { undoLast } from "$lib/stores/ops";
   import { get } from "svelte/store";
 
@@ -64,6 +65,18 @@
 
   function toggleFilter() {
     facetOpen.update((v) => !v);
+  }
+
+  /// Open the duplicate finder over the focused location and start the scan; a
+  /// second press closes it. On-demand only, never a background scan.
+  function toggleDuplicates() {
+    if (get(duplicatesOpen)) {
+      closeDuplicates();
+      return;
+    }
+    const c = get(focusedController);
+    duplicatesOpen.set(true);
+    if (c) void scanDuplicates(get(c.path));
   }
 
   function onWindowKeydown(e: KeyboardEvent) {
@@ -175,6 +188,14 @@
             onclick={toggleFilter}
           >
             <SlidersHorizontal size={15} strokeWidth={1.75} />
+          </IconAction>
+          <IconAction
+            label="Find duplicates"
+            size="control"
+            active={$duplicatesOpen}
+            onclick={toggleDuplicates}
+          >
+            <Copy size={15} strokeWidth={1.75} />
           </IconAction>
           <FmViewMenu />
         </div>
