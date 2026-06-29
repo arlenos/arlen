@@ -1,0 +1,35 @@
+[Unit]
+Description=Arlen AI egress proxy (the completion authoriser, user service)
+Documentation=https://github.com/arlenos/arlen
+# The single egress point for AI provider traffic: ai-daemon forwards completions
+# here over the session bus, the proxy looks up the catalogued endpoint (the local
+# llama-server) and forwards. Audits each forward, so order it after auditd
+# (best-effort, not a hard Requires).
+After=arlen-auditd.service
+Wants=arlen-auditd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/arlen-ai-proxy
+Restart=on-failure
+RestartSec=2
+
+# It talks the session D-Bus (AF_UNIX) and forwards HTTP to the local llama-server
+# on 127.0.0.1:11434 (AF_INET). In this image the ONLY provider is local, so lock
+# egress to loopback - the zero-egress posture (a product image with cloud
+# providers would relax IPAddressAllow). No home or persistent write.
+ProtectSystem=strict
+ProtectHome=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressAllow=localhost
+IPAddressDeny=any
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=default.target
