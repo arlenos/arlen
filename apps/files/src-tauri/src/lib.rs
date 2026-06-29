@@ -6,6 +6,7 @@
 //! richly in the meantime. Filesystem mutations (`files_op`) arrive
 //! with the operations UI.
 
+mod ai_gate;
 mod archive;
 mod capability;
 mod devices;
@@ -1662,6 +1663,7 @@ pub fn run() {
             files_info,
             files_search,
             files_find_duplicates,
+            ai_gate::files_ai_enabled,
             files_op,
             files_set_permissions,
             files_set_exif_tags,
