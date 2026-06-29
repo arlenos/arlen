@@ -139,8 +139,8 @@
 
     <span class="facet-spacer"></span>
 
-    <button class="facet-save" disabled={!anyActive} onclick={openSave}>Save</button>
-    <button class="facet-clear" disabled={!anyActive} onclick={clearAll}>Clear</button>
+    <Button variant="outline" size="sm" disabled={!anyActive} onclick={openSave}>Save</Button>
+    <Button variant="ghost" size="sm" disabled={!anyActive} onclick={clearAll}>Clear</Button>
   </div>
 
   {#if anyActive}
@@ -242,44 +242,8 @@
     line-height: 1;
   }
 
-  /* Save is the affirmative action (keep this filter), so it reads as a real
-     button; Clear is a quiet reset, so it stays a borderless muted text action.
-     Differentiated weight, not two identical pills. */
-  .facet-save,
-  .facet-clear {
-    height: var(--height-control, 28px);
-    border-radius: var(--radius-input);
-    font-size: 0.75rem;
-    font-weight: 500;
-    flex-shrink: 0;
-    transition:
-      background-color var(--duration-fast) var(--ease-out),
-      border-color var(--duration-fast) var(--ease-out),
-      opacity var(--duration-fast) var(--ease-out);
-  }
-  .facet-save {
-    padding: 0 12px;
-    border: 1px solid var(--control-border);
-    background: var(--control-bg);
-    color: var(--foreground);
-  }
-  .facet-save:hover:not(:disabled) {
-    background: var(--control-bg-hover);
-    border-color: color-mix(in srgb, var(--foreground) 30%, transparent);
-  }
-  .facet-clear {
-    padding: 0 8px;
-    border: none;
-    background: transparent;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  .facet-clear:hover:not(:disabled) {
-    color: var(--foreground);
-  }
-  .facet-save:disabled,
-  .facet-clear:disabled {
-    opacity: 0.4;
-  }
+  /* Save (outline) is the affirmative action; Clear (ghost) is the quiet reset.
+     Both are kit Buttons at size sm (28px, flush with the selectors). */
 
   /* The dropdown value rows carry a trailing count, so a label fills the row
      and the count sits at its end. */
