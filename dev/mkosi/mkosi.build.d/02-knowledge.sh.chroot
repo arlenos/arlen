@@ -1,0 +1,35 @@
+#!/bin/sh
+# Phase 2 of the Debian-native build (CHROOT: runs inside the image, where phase 1
+# installed cargo + the C/C++ toolchain). Builds the knowledge daemon's lbug/Kuzu
+# C++ with the system g++ (ABI-correct for the image), which cargo-zigbuild cannot
+# do. The compositor (Smithay) + the Tauri shell (WebKitGTK) join here later.
+#
+# The repo is mounted at $SRCDIR/arlen via BuildSources=../../:arlen (build-image.sh
+# from the repo root). $BUILDDIR = the persistent cargo cache (mkosi.builddir/), so
+# only the first build pays the full lbug C++ compile. $DESTDIR = staged into the
+# image.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target"
+export CXXFLAGS="-include cstdint"   # lbug/Kuzu needs <cstdint> on gcc >= 13
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+# Bootstrap a current stable Rust (Debian's 1.85 is too old for some deps). The
+# toolchain caches in $RUSTUP_HOME/$CARGO_HOME (mkosi.builddir/), so only the
+# first build downloads it; idempotent (skip if cargo already present).
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build knowledge (arlen-graph-daemon) - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/knowledge/Cargo.toml
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-graph-daemon" \
+    "$DESTDIR/usr/bin/arlen-graph-daemon"
+echo ">> staged arlen-graph-daemon into the image"
