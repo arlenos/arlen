@@ -240,6 +240,16 @@ async fn listen_queries(
     }
 
     let listener = UnixListener::bind(socket_path)?;
+    // Mode 0666 so cross-uid clients can connect: this daemon runs as a system
+    // service but the user-uid AI daemons (and other apps) query it, and under
+    // systemd's 0022 umask `bind` leaves the socket owner-only-write, denying
+    // their `connect`. Socket ownership is NOT the access boundary - every read
+    // and write is capability-scoped against the peer's `SO_PEERCRED`-resolved
+    // identity at accept time, so a world-connectable socket grants no authority.
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o666))?;
+    }
     info!(socket = socket_path, "graph daemon listening");
 
     // SAFETY: getuid() has no preconditions and cannot fail.
