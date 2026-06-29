@@ -18,22 +18,20 @@ RestartSec=2
 # on 127.0.0.1:11434 (AF_INET). In this image the ONLY provider is local, so lock
 # egress to loopback - the zero-egress posture (a product image with cloud
 # providers would relax IPAddressAllow).
-ProtectSystem=strict
-# ProtectHome MUST be read-only, not yes: `yes` empties /run/user, which is where
-# the session bus socket (/run/user/%U/bus, the AIProxy1 surface) and the per-user
-# audit ingest socket live, so the proxy could not reach either and crash-looped.
-ProtectHome=read-only
-ReadWritePaths=/run/user/%U/arlen
+#
+# It authorises each forward by resolving the caller's /proc/<pid>/exe against
+# its caller allowlist, so it must NOT use mount-namespace hardening (ProtectSystem,
+# ProtectHome, PrivateTmp, ProtectKernel*, ProtectControlGroups): those make a
+# same-uid /proc/<pid>/exe read fail, which would reject every forward. The
+# non-namespace hardening is kept - and egress is still locked to loopback at the
+# packet level via the IP filter (eBPF, not a mount namespace), which is the
+# property that actually matters for an egress proxy.
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 IPAddressAllow=localhost
 IPAddressDeny=any
-NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectControlGroups=yes
 RestrictNamespaces=yes
 LockPersonality=yes
+NoNewPrivileges=yes
 
 [Install]
 WantedBy=default.target
