@@ -9,7 +9,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use arlen_ai_core::capability::{access_tier_from_level, AccessTier, ActionPermissions, BaselineMode};
-use arlen_config_broker::{ActionMode, AiMasterSwitches, ConfigBrokerClient};
+use arlen_config_broker::{ActionMode, AiMasterSwitches, ClientError, ConfigBrokerClient};
 use serde::Deserialize;
 
 use crate::loader::Provenance;
@@ -146,8 +146,11 @@ pub async fn set_action_mode(path: &Path, mode: &str) -> Result<(), String> {
                 .await
                 .map_err(|e| format!("config broker set: {e}"))
         }
-        // Broker unreachable: the pre-cutover fallback writes ai.toml.
-        Err(_) => set_action_mode_in(path, mode),
+        // Genuinely unreachable: the pre-cutover fallback writes ai.toml. A
+        // reachable-but-erroring broker (corrupt store / refusal) is surfaced,
+        // never written to the file behind the broker's back.
+        Err(ClientError::Transport(_)) => set_action_mode_in(path, mode),
+        Err(e) => Err(format!("config broker: {e}")),
     }
 }
 
@@ -174,7 +177,8 @@ pub async fn set_autonomous_app(path: &Path, app_id: &str, enabled: bool) -> Res
                 .await
                 .map_err(|e| format!("config broker set: {e}"))
         }
-        Err(_) => set_autonomous_app_in(path, app_id, enabled),
+        Err(ClientError::Transport(_)) => set_autonomous_app_in(path, app_id, enabled),
+        Err(e) => Err(format!("config broker: {e}")),
     }
 }
 
@@ -468,12 +472,23 @@ impl AgentConfig {
 /// than trust the writable file, closing the "kill the broker, then rewrite
 /// ai.toml" residual. A broker error is never fatal here regardless.
 pub async fn broker_switches() -> Option<AiMasterSwitches> {
-    use arlen_config_broker::ConfigBrokerClient;
     match ConfigBrokerClient::default_socket().get().await {
         Ok(switches) => Some(switches),
-        Err(e) => {
+        // GENUINELY unreachable (broker not deployed, socket gone): fall back to
+        // ai.toml (the pre-cutover behaviour) by returning None so the caller
+        // resolves from the file.
+        Err(ClientError::Transport(e)) => {
             tracing::debug!(error = %e, "config broker unreachable; AI switches fall back to ai.toml");
             None
+        }
+        // Reachable but the store could not be served (corrupt store, or an
+        // unexpected refusal of an open Get): do NOT trust the user-writable
+        // ai.toml - a same-uid attacker could corrupt the store precisely to
+        // force that fallback. Fail CLOSED to the conservative floor (disabled /
+        // minimal / suggest / no autonomy), never the file.
+        Err(e) => {
+            tracing::warn!(error = %e, "config broker errored; failing the AI switches closed (not ai.toml)");
+            Some(AiMasterSwitches::default())
         }
     }
 }

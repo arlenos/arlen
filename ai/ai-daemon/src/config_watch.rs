@@ -24,7 +24,7 @@ use arlen_ai_core::audit::{config_change_event, AuditSink};
 use arlen_ai_core::capability::access_tier_from_level;
 use arlen_ai_core::graph_query::QueryScope;
 use arlen_ai_core::graph_schema::GraphSchema;
-use arlen_config_broker::{AiMasterSwitches, ConfigBrokerClient};
+use arlen_config_broker::{AiMasterSwitches, ClientError, ConfigBrokerClient};
 
 use crate::service::AiDaemonService;
 
@@ -232,9 +232,18 @@ struct WatchedKeys {
 async fn broker_switches() -> Option<AiMasterSwitches> {
     match ConfigBrokerClient::default_socket().get().await {
         Ok(switches) => Some(switches),
-        Err(e) => {
+        // Genuinely unreachable: fall back to ai.toml (pre-cutover) via None.
+        Err(ClientError::Transport(e)) => {
             tracing::debug!(error = %e, "config broker unreachable; admission keys fall back to ai.toml");
             None
+        }
+        // Reachable but errored (corrupt store / unexpected refusal): do NOT
+        // trust the user-writable ai.toml - a same-uid attacker could corrupt
+        // the store to force that fallback. Fail CLOSED to the floor (disabled /
+        // level 0), which `read_watched_keys(Some(..))` then applies.
+        Err(e) => {
+            tracing::warn!(error = %e, "config broker errored; failing admission closed (not ai.toml)");
+            Some(AiMasterSwitches::default())
         }
     }
 }
