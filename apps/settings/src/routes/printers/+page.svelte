@@ -1,15 +1,18 @@
 <script lang="ts">
   /// Printers panel (printing-plan.md PRN-R4): the printer list, the print
-  /// queue, and add-a-printer, on the settings-panel archetype. The Arlen angle
-  /// is the print-as-egress honesty - network printing sends the document over
-  /// the LAN, stated once for the section and carried per row by the "Network"
-  /// label (§4.2). Reads/writes the print daemon through the `printers_*` Tauri
-  /// bridge; until that bridge lands the panel runs on a fixture (a banner says
-  /// so).
+  /// queue, and add-a-printer, on the settings-panel archetype - built on the
+  /// kit `Row` (leading status column, right-aligned control cluster, full-width
+  /// `below` for the options) exactly like the AI Providers panel, so it shares
+  /// their alignment + rhythm. The Arlen angle is the print-as-egress honesty:
+  /// network printing sends the document over the LAN, stated once for the
+  /// section and carried per row by the "Network" label (§4.2). Reads/writes the
+  /// print daemon through the `printers_*` Tauri bridge; until that lands the
+  /// panel runs on a fixture (a banner says so).
   import { onMount } from "svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
@@ -34,6 +37,8 @@
     hostOf,
     transportOf,
     type Printer,
+    type Job,
+    type DiscoveredPrinter,
     type PrinterState,
     type JobState,
     type PrinterOptions,
@@ -63,7 +68,6 @@
     completed: "Done",
     unknown: "Unknown",
   };
-
   const DUPLEX_OPTIONS = [
     { value: "one-sided", label: "One-sided" },
     { value: "two-sided-long", label: "Two-sided" },
@@ -81,39 +85,37 @@
 
   const anyNetwork = $derived($printers.printers.some((p) => p.destination === "network"));
 
-  /// The printer's display name, preferring the human description.
   function displayName(p: Printer): string {
     return p.info ?? p.makeModel ?? p.name;
   }
-
   function notReady(p: Printer): boolean {
     return p.state !== "idle";
   }
-
-  /// The quiet meta line: the transport (USB / Network · host), and the state
-  /// word ONLY when it isn't the resting "Ready" (the dot already says ready).
+  /// The quiet meta line: transport (USB / Network · host), and the state word
+  /// only when it isn't the resting "Ready" (the dot already says ready).
   function metaLine(p: Printer): string {
     const parts: string[] = [];
-    if (p.destination === "local") {
-      parts.push(transportOf(p.uri));
-    } else {
+    if (p.destination === "local") parts.push(transportOf(p.uri));
+    else {
       const host = hostOf(p.uri);
       parts.push(host ? `Network · ${host}` : "Network");
     }
     if (notReady(p)) parts.push(PRINTER_STATE_LABEL[p.state]);
     return parts.join(" · ");
   }
-
-  /// Resolve a queue job's printer to its friendly name.
   function jobPrinter(queueName: string): string {
     const p = $printers.printers.find((x) => x.name === queueName);
     return p ? displayName(p) : queueName;
   }
-
+  function jobStateText(job: Job): string {
+    if (job.state === "processing" && job.progress) {
+      return `${JOB_STATE_LABEL.processing} ${job.progress.done}/${job.progress.total}`;
+    }
+    return JOB_STATE_LABEL[job.state];
+  }
   function commitOptions(name: string, patch: Partial<PrinterOptions>) {
     setOptions(name, { ...optionsFor(name), ...patch });
   }
-
   async function submitManual() {
     const uri = addUri.trim();
     const name = addName.trim() || uri;
@@ -135,7 +137,7 @@
 
     <Group label="Printers">
       {#if anyNetwork}
-        <p class="note subtle">
+        <p class="lead-note">
           Printing to a network printer sends the document over your local network.
         </p>
       {/if}
@@ -143,86 +145,7 @@
         <p class="empty">No printers yet. Add one below.</p>
       {/if}
       {#each $printers.printers as p (p.name)}
-        {@const isDefault = $printers.defaultName === p.name}
-        {@const opts = optionsFor(p.name)}
-        <div class="printer" class:open={expanded === p.name}>
-          <div class="row">
-            <button
-              class="def"
-              class:active={isDefault}
-              disabled={isDefault}
-              aria-label={isDefault ? "Default printer" : `Make ${displayName(p)} the default`}
-              title={isDefault ? "Default printer" : "Set as default"}
-              onclick={() => setDefault(p.name)}
-            >
-              {#if isDefault}
-                <CircleCheck size={17} strokeWidth={1.75} />
-              {:else}
-                <Circle size={17} strokeWidth={1.75} />
-              {/if}
-            </button>
-            <span class="dot" data-state={p.state} aria-hidden="true"></span>
-            <div class="ident">
-              <span class="name">{displayName(p)}</span>
-              <span class="meta">{metaLine(p)}</span>
-            </div>
-            <div class="actions">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Print options"
-                aria-expanded={expanded === p.name}
-                onclick={() => (expanded = expanded === p.name ? null : p.name)}
-              >
-                <SlidersHorizontal />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Remove printer"
-                onclick={() => (confirmRemove = p)}
-              >
-                <Trash2 />
-              </Button>
-            </div>
-          </div>
-
-          {#if expanded === p.name}
-            <div class="options">
-              <label class="opt">
-                <span>Sides</span>
-                <SegmentedControl
-                  ariaLabel="Sides"
-                  value={opts.duplex}
-                  options={DUPLEX_OPTIONS}
-                  onchange={(v) => commitOptions(p.name, { duplex: v as PrinterOptions["duplex"] })}
-                />
-              </label>
-              <label class="opt">
-                <span>Colour</span>
-                <SegmentedControl
-                  ariaLabel="Colour"
-                  value={opts.color}
-                  options={COLOR_OPTIONS}
-                  onchange={(v) => commitOptions(p.name, { color: v as PrinterOptions["color"] })}
-                />
-              </label>
-              <label class="opt">
-                <span>Paper</span>
-                <PopoverSelect
-                  ariaLabel="Paper size"
-                  value={opts.paper}
-                  options={PAPER_OPTIONS}
-                  width="140px"
-                  onchange={(v) => commitOptions(p.name, { paper: v as PrinterOptions["paper"] })}
-                />
-              </label>
-              <div class="opt-actions">
-                <Button variant="ghost" size="sm" onclick={() => testPage(p.name)}>Print test page</Button>
-              </div>
-            </div>
-          {/if}
-        </div>
+        {@render printerRow(p)}
       {/each}
     </Group>
 
@@ -231,23 +154,7 @@
         <p class="empty">No jobs in the queue.</p>
       {:else}
         {#each $printers.queue as job (job.id)}
-          <div class="row job">
-            <div class="ident">
-              <span class="name">{job.name ?? `Job ${job.id}`}</span>
-              <span class="meta">{jobPrinter(job.printer)}</span>
-            </div>
-            <span class="job-state" data-state={job.state}>
-              {JOB_STATE_LABEL[job.state]}{#if job.state === "processing" && job.progress}
-                {" "}{job.progress.done}/{job.progress.total}{/if}
-            </span>
-            <div class="actions">
-              {#if job.state === "processing" || job.state === "pending"}
-                <Button variant="ghost" size="sm" onclick={() => cancelJob(job.id)}>Cancel</Button>
-              {:else if job.state === "held" || job.state === "stopped"}
-                <Button variant="ghost" size="sm" onclick={() => retryJob(job.id)}>Resume</Button>
-              {/if}
-            </div>
-          </div>
+          {@render jobRow(job)}
         {/each}
         <div class="foot">
           <Button variant="ghost" size="sm" onclick={clearCompleted}>Clear finished</Button>
@@ -257,22 +164,11 @@
 
     <Group label="Add a printer">
       {#each $printers.discovered as d (d.uri)}
-        <div class="row disc">
-          <div class="ident">
-            <span class="name">{d.makeModel ?? d.name}</span>
-            <span class="meta">
-              {d.destination === "network" ? "Network" : transportOf(d.uri)}{#if d.driverless} · driverless{/if}
-            </span>
-          </div>
-          <div class="actions">
-            <Button variant="outline" size="sm" onclick={() => addPrinter(d)}>Add</Button>
-          </div>
-        </div>
+        {@render discoveredRow(d)}
       {/each}
       {#if $printers.discovered.length === 0}
         <p class="empty">No printers discovered.</p>
       {/if}
-
       <div class="foot">
         <Button variant="ghost" size="sm" onclick={discover}>
           <RefreshCw />
@@ -283,7 +179,6 @@
           Add by IP or URI
         </Button>
       </div>
-
       {#if addOpen}
         <div class="manual">
           <Input placeholder="Name (optional)" bind:value={addName} aria-label="Printer name" />
@@ -294,6 +189,112 @@
     </Group>
   </SectionGrid>
 </Page>
+
+{#snippet printerRow(p: Printer)}
+  {@const isDefault = $printers.defaultName === p.name}
+  {@const opts = optionsFor(p.name)}
+  <Row label={displayName(p)} description={metaLine(p)}>
+    {#snippet leading()}
+      <span class="dot" data-state={p.state} aria-hidden="true"></span>
+    {/snippet}
+    {#snippet control()}
+      <span class="ctl">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          class={isDefault ? "def on" : "def"}
+          disabled={isDefault}
+          aria-label={isDefault ? "Default printer" : `Make ${displayName(p)} the default`}
+          title={isDefault ? "Default printer" : "Set as default"}
+          onclick={() => setDefault(p.name)}
+        >
+          {#if isDefault}<CircleCheck />{:else}<Circle />{/if}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Print options"
+          aria-expanded={expanded === p.name}
+          onclick={() => (expanded = expanded === p.name ? null : p.name)}
+        >
+          <SlidersHorizontal />
+        </Button>
+        <Button variant="ghost" size="icon-sm" aria-label="Remove printer" onclick={() => (confirmRemove = p)}>
+          <Trash2 />
+        </Button>
+      </span>
+    {/snippet}
+    {#snippet below()}
+      {#if expanded === p.name}
+        <div class="options">
+          <label class="opt">
+            <span>Sides</span>
+            <SegmentedControl
+              ariaLabel="Sides"
+              value={opts.duplex}
+              options={DUPLEX_OPTIONS}
+              onchange={(v) => commitOptions(p.name, { duplex: v as PrinterOptions["duplex"] })}
+            />
+          </label>
+          <label class="opt">
+            <span>Colour</span>
+            <SegmentedControl
+              ariaLabel="Colour"
+              value={opts.color}
+              options={COLOR_OPTIONS}
+              onchange={(v) => commitOptions(p.name, { color: v as PrinterOptions["color"] })}
+            />
+          </label>
+          <label class="opt">
+            <span>Paper</span>
+            <PopoverSelect
+              ariaLabel="Paper size"
+              value={opts.paper}
+              options={PAPER_OPTIONS}
+              width="140px"
+              onchange={(v) => commitOptions(p.name, { paper: v as PrinterOptions["paper"] })}
+            />
+          </label>
+          <div class="opt-actions">
+            <Button variant="ghost" size="sm" onclick={() => testPage(p.name)}>Print test page</Button>
+          </div>
+        </div>
+      {/if}
+    {/snippet}
+  </Row>
+{/snippet}
+
+{#snippet jobRow(job: Job)}
+  <Row label={job.name ?? `Job ${job.id}`} description={jobPrinter(job.printer)}>
+    {#snippet leading()}
+      <span class="dot" data-state={job.state === "processing" ? "processing" : "queued"} aria-hidden="true"></span>
+    {/snippet}
+    {#snippet control()}
+      <span class="ctl">
+        <span class="job-state" data-state={job.state}>{jobStateText(job)}</span>
+        {#if job.state === "processing" || job.state === "pending"}
+          <Button variant="ghost" size="sm" onclick={() => cancelJob(job.id)}>Cancel</Button>
+        {:else if job.state === "held" || job.state === "stopped"}
+          <Button variant="ghost" size="sm" onclick={() => retryJob(job.id)}>Resume</Button>
+        {/if}
+      </span>
+    {/snippet}
+  </Row>
+{/snippet}
+
+{#snippet discoveredRow(d: DiscoveredPrinter)}
+  <Row
+    label={d.makeModel ?? d.name}
+    description={`${d.destination === "network" ? "Network" : transportOf(d.uri)}${d.driverless ? " · driverless" : ""}`}
+  >
+    {#snippet leading()}
+      <span class="dot ghost" aria-hidden="true"></span>
+    {/snippet}
+    {#snippet control()}
+      <Button variant="outline" size="sm" onclick={() => addPrinter(d)}>Add</Button>
+    {/snippet}
+  </Row>
+{/snippet}
 
 <ConfirmDialog
   open={confirmRemove !== null}
@@ -318,72 +319,33 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-card);
   }
-  .note.subtle {
-    padding: 2px 2px 8px;
-    background: none;
-    border: none;
+  /* The egress note sits inside the Printers group, above the rows, on the
+     row's left rhythm. */
+  .lead-note {
+    margin: 0;
+    padding: 0.5rem 1rem 0;
+    font-size: 0.6875rem;
+    color: var(--color-fg-secondary);
   }
   .empty {
     margin: 0;
-    padding: 6px 2px;
+    padding: var(--space-row, 0.75rem) 1rem;
     font-size: 0.8125rem;
     color: var(--color-fg-secondary);
   }
 
-  .printer {
-    border-radius: var(--radius-card);
-    transition: background-color var(--duration-fast) var(--ease-out);
-  }
-  .printer.open {
-    background: color-mix(in srgb, var(--color-fg-primary) 4%, transparent);
-  }
-
-  /* The printer row: a fixed default-control + status column, the identity,
-     then the action cluster. Queue and discovery rows reuse the row rhythm and
-     indent their identity to the same left edge (60px = 8 pad + 24 toggle + 10
-     + 8 dot + 10) so every name lines up down the panel. */
-  .row {
-    display: grid;
-    grid-template-columns: 24px 8px 1fr auto;
-    align-items: center;
-    gap: 10px;
-    min-height: 44px;
-    padding: 4px 8px;
-  }
-  .row.job {
-    grid-template-columns: 1fr auto auto;
-    padding-left: 60px;
-  }
-  .row.disc {
-    grid-template-columns: 1fr auto;
-    padding-left: 60px;
-  }
-
-  .def {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    padding: 0;
-    border: none;
-    background: transparent;
-    color: var(--color-fg-disabled);
-    border-radius: var(--radius-full);
-    transition: color var(--duration-fast) var(--ease-out);
-  }
-  .def:hover:not(:disabled) {
-    color: var(--color-fg-secondary);
-  }
-  .def.active {
-    color: var(--color-accent);
-  }
-
+  /* The status dot is the row's leading column (Providers keeps its own dot
+     too); a fixed box keeps every name aligned down the panel. */
   .dot {
+    display: block;
     width: 8px;
     height: 8px;
     border-radius: var(--radius-full);
     background: var(--color-fg-disabled);
+  }
+  .dot.ghost {
+    background: none;
+    border: 1.5px solid var(--color-border-strong, var(--color-border));
   }
   .dot[data-state="idle"] {
     background: var(--color-success, #10b981);
@@ -395,39 +357,25 @@
     background: var(--color-warning, #f59e0b);
   }
 
-  .ident {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-  .name {
-    font-size: 0.875rem;
-    color: var(--color-fg-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .meta {
-    font-size: 0.75rem;
-    color: var(--color-fg-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .actions {
-    display: flex;
+  /* The right-aligned action cluster (Row centres it; we only set the gap). */
+  .ctl {
+    display: inline-flex;
     align-items: center;
     gap: 2px;
-    justify-self: end;
+  }
+  .ctl :global(.def) {
+    color: var(--color-fg-disabled);
+  }
+  .ctl :global(.def.on) {
+    color: var(--color-accent);
+    opacity: 1;
   }
 
   .job-state {
+    margin-right: 6px;
     font-size: 0.75rem;
     color: var(--color-fg-secondary);
     white-space: nowrap;
-    justify-self: end;
   }
   .job-state[data-state="processing"] {
     color: var(--color-accent);
@@ -436,14 +384,13 @@
     color: var(--color-error, #ef4444);
   }
 
+  /* The options live in the row's full-width `below` slot. */
   .options {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-end;
     gap: 16px;
-    margin: 0 8px 4px;
-    padding-top: 10px;
-    border-top: 1px solid var(--color-border);
+    padding-top: 4px;
   }
   .opt {
     display: flex;
@@ -459,14 +406,11 @@
   .foot {
     display: flex;
     gap: 8px;
-    padding: 6px 4px 0;
+    padding: 0.5rem 1rem;
   }
-
   .manual {
     display: flex;
     gap: 8px;
-    margin: 8px 4px 0;
-    padding-top: 10px;
-    border-top: 1px solid var(--color-border);
+    padding: 0 1rem 0.5rem;
   }
 </style>
