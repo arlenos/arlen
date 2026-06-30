@@ -396,6 +396,28 @@ impl AgentConfig {
     }
 }
 
+/// Fetch the AI master switches from the config broker, or `None` when it is
+/// unreachable.
+///
+/// `None` is the pre-cutover fallback: [`AgentConfig::resolve`] then reads the
+/// six switches from `ai.toml` (today's behaviour), so a broker that is not yet
+/// deployed - in dev, in tests, in an image built before the broker ships -
+/// does not break the agent. Once the broker is deployed in every launch path
+/// (the systemd units + `just dev`), the FINAL cutover replaces this fallback
+/// with fail-closed: an unreachable broker should then disable the AI rather
+/// than trust the writable file, closing the "kill the broker, then rewrite
+/// ai.toml" residual. A broker error is never fatal here regardless.
+pub async fn broker_switches() -> Option<AiMasterSwitches> {
+    use arlen_config_broker::ConfigBrokerClient;
+    match ConfigBrokerClient::default_socket().get().await {
+        Ok(switches) => Some(switches),
+        Err(e) => {
+            tracing::debug!(error = %e, "config broker unreachable; AI switches fall back to ai.toml");
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

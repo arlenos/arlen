@@ -33,7 +33,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
 use zbus::interface;
 
-use crate::config::AgentConfig;
+use crate::config::{broker_switches, AgentConfig};
 use crate::engine::PendingProposal;
 use crate::executor::{Approver, CompensationOutcome, Compensator};
 use crate::discovery::ai_config_path;
@@ -217,7 +217,7 @@ impl AgentInterface {
     /// not-yet-canonical caller would be a dead gate.
     #[zbus(name = "compensate")]
     async fn compensate(&self, correlation_id: String) -> String {
-        if !current_executor_live() {
+        if !current_executor_live().await {
             return "not-enabled: the executor is in suggest mode".to_string();
         }
         // Clone the receipt out under the lock; never hold the std Mutex across
@@ -260,7 +260,7 @@ impl AgentInterface {
     /// the audit is the same deferred close documented on `compensate`.
     #[zbus(name = "approve")]
     async fn approve(&self, id: u64) -> String {
-        if !current_executor_live() {
+        if !current_executor_live().await {
             return "not-enabled: the executor is in suggest mode".to_string();
         }
         // Clone the executable proposal out under the lock; never hold the std
@@ -275,7 +275,7 @@ impl AgentInterface {
         };
         // The live capability (rebuilt each config epoch): supply it per call so a
         // tier/permission change since the gate decision is honoured.
-        let capability = current_capability();
+        let capability = current_capability().await;
         match self
             .approver
             .approve(&retained, &*self.graph, &capability)
@@ -432,10 +432,12 @@ impl AgentInterface {
     /// / `[]` / `false`) on any read/parse failure.
     #[zbus(name = "action_state")]
     async fn action_state(&self) -> String {
-        let cfg = std::fs::read_to_string(ai_config_path())
-            .ok()
-            .map(|t| AgentConfig::parse(&t))
-            .unwrap_or_else(AgentConfig::fail_closed);
+        // The dial shows the canonical truth: action_mode / autonomous_apps /
+        // executor_live come from the config broker when reachable (else the
+        // file), so it reflects what the gate actually enforces.
+        let switches = broker_switches().await;
+        let text = std::fs::read_to_string(ai_config_path()).unwrap_or_default();
+        let cfg = AgentConfig::resolve(&text, switches.as_ref());
         let autonomous_apps: Vec<&str> = cfg.actions.autonomous_apps().collect();
         serde_json::json!({
             "action_mode": cfg.actions.default_mode().as_str(),
@@ -530,11 +532,14 @@ impl AgentInterface {
 /// Whether the executor is currently live, re-read from `ai.toml` so a runtime
 /// flip is honoured without a daemon restart. Fail-closed to `false` (suggest
 /// mode, undo refused) on any read/parse failure.
-fn current_executor_live() -> bool {
-    std::fs::read_to_string(ai_config_path())
-        .ok()
-        .map(|t| AgentConfig::parse(&t).executor_live)
-        .unwrap_or(false)
+async fn current_executor_live() -> bool {
+    // `executor_live` is a broker-owned master switch; read it from the broker
+    // (else the file) so a same-uid process cannot flip the executor gate by
+    // rewriting ai.toml. An unreadable file resolves over an empty document,
+    // which fails closed (disabled -> executor off) unless the broker says on.
+    let switches = broker_switches().await;
+    let text = std::fs::read_to_string(ai_config_path()).unwrap_or_default();
+    AgentConfig::resolve(&text, switches.as_ref()).executor_live
 }
 
 /// The capability the approve path proves against, rebuilt from `ai.toml` per
@@ -543,11 +548,14 @@ fn current_executor_live() -> bool {
 /// a stale snapshot). Fail-closed to the `fail_closed` config (disabled, Minimal
 /// tier, suggest) on any read/parse failure, so a broken config narrows rather
 /// than widens what an approval may do.
-fn current_capability() -> Capability {
-    let config = std::fs::read_to_string(ai_config_path())
-        .ok()
-        .map(|t| AgentConfig::parse(&t))
-        .unwrap_or_else(AgentConfig::fail_closed);
+async fn current_capability() -> Capability {
+    // read_tier + action permissions are broker-owned (access_level /
+    // action_mode / autonomous_apps), so the approve path proves against the
+    // broker's truth (else the file). Fail-closed to Minimal/suggest when both
+    // the broker is unreachable and the file is unreadable.
+    let switches = broker_switches().await;
+    let text = std::fs::read_to_string(ai_config_path()).unwrap_or_default();
+    let config = AgentConfig::resolve(&text, switches.as_ref());
     Capability::new(config.read_tier, config.actions)
 }
 
