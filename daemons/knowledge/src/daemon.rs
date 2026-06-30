@@ -1753,17 +1753,41 @@ async fn handle_client(
     // it cannot be trusted, so a write fails closed.
     let (app_id, peer) = match so_peercred(stream.as_raw_fd()) {
         Ok((pid, uid)) => {
-            if uid != our_uid {
-                warn!(peer_uid = uid, "graph daemon: rejecting cross-uid client");
-                return Ok(());
-            }
-            if pid > 0 {
+            if pid <= 0 {
+                ("unknown".to_string(), None)
+            } else {
                 let pid = pid as u32;
+                // Resolve the peer's identity. As a system service this daemon
+                // runs as root, so it can read a cross-uid peer's
+                // `/proc/<pid>/exe` even when that peer is process-hardened
+                // (non-dumpable) - the resolution that lets the per-user AI
+                // layer reach the system Knowledge Graph.
                 let id = app_id_from_pid(pid).unwrap_or_else(|_| "unknown".to_string());
+                // A SAME-uid peer is always served (scoped by `id`). A CROSS-uid
+                // peer is served only when it resolves to a first-party/system
+                // client: the documented deployment (daemon.rs socket comment
+                // above) where this system daemon serves the user-uid AI daemons
+                // (the AI layer runs as the session user; this daemon as root for
+                // the eBPF sensor). FirstParty/System require canonical /usr
+                // install paths another user cannot squat (`path_to_app_id` rule
+                // 1/3), so an arbitrary cross-uid process resolves
+                // ThirdParty/unknown and is still rejected here - preserving
+                // cross-user isolation while closing the AI-layer read path.
+                if uid != our_uid
+                    && !matches!(
+                        QuotaConfig::arlen_default().tier_for_app(&id),
+                        AppTier::FirstParty | AppTier::System
+                    )
+                {
+                    warn!(
+                        peer_uid = uid,
+                        app_id = %id,
+                        "graph daemon: rejecting untrusted cross-uid client"
+                    );
+                    return Ok(());
+                }
                 let start_time = pid_start_time(pid).ok();
                 (id, Some(WritePeer { pid, start_time }))
-            } else {
-                ("unknown".to_string(), None)
             }
         }
         Err(e) => {
