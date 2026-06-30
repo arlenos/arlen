@@ -1323,25 +1323,31 @@ async fn the_executor_does_not_silently_write_from_an_event_trigger() {
     }
 }
 
-/// Executor go-live REHEARSAL, the undo assert (executor-live-golive-plan.md P6,
-/// the third assert after write + idempotency): with `executor_live = true` in
-/// the EPHEMERAL ai.toml, after the live executor writes the `FILE_PART_OF` edge,
-/// the agent's `compensate` retracts it - proving the act -> audit -> compensate
-/// undo end to end against a disposable graph (NEVER production). Unlike the
-/// write/idempotency sibling, this spawns the agent on a PRIVATE session bus
-/// (`start_session_bus`) so it registers `org.arlen.AIAgent1`; the test then reads
-/// the write's correlation id from `completed_actions()` (the silent-done feed)
-/// and calls `compensate(correlation_id)`, then asserts the edge is gone. The undo
-/// MECHANISM is unit-tested + reviewed in ai-agent; this proves it retracts a REAL
-/// live-executor edge through the real knowledge socket. `#[ignore]d` + FUSE-host-
-/// gated like its sibling; also needs `dbus-daemon` on PATH (skips otherwise).
+/// Executor go-live REHEARSAL, the write+undo assert (executor-live-golive-plan.md
+/// P6): with `executor_live = true` in the EPHEMERAL ai.toml, the manual
+/// `tag-untagged-files` workflow finds the seeded untagged file, the live executor
+/// writes its `FILE_PART_OF` edge, and the agent's `compensate` then retracts it -
+/// act -> audit -> compensate end to end against a disposable graph (NEVER
+/// production). The write is driven by `run_skill` over a PRIVATE session bus
+/// (`start_session_bus`), NOT a `file.opened` event: a manual invoke carries no
+/// external content (so the proven proposal lifts to a previewed execution rather
+/// than an external-trigger confirm) and never races the promotion pass that also
+/// links files on `file.opened`. The untagged file is seeded deterministically via
+/// `arlen-kg-seed` (knowledge::seed::FILE_UNTAGGED, under Alpha's root, no edge), so
+/// the proof holds (File + Project exist, no membership). The test reads the write's
+/// correlation id from `completed_actions()` and calls `compensate(correlation_id)`,
+/// then asserts the edge is gone. The undo MECHANISM is unit-tested + reviewed in
+/// ai-agent; this proves it writes then retracts a REAL edge through the real
+/// knowledge socket. `#[ignore]d` + FUSE-host-gated; also needs `dbus-daemon` on
+/// PATH (skips otherwise).
 #[tokio::test]
-#[ignore = "needs event-bus + knowledge + audit-daemon + ai-agent binaries built (debug, FUSE host) + dbus-daemon"]
+#[ignore = "needs event-bus + knowledge + arlen-kg-seed + audit-daemon + ai-agent binaries built (debug, FUSE host) + dbus-daemon"]
 async fn the_live_executor_undo_retracts_the_edge() {
     if !(arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd")
-        && arlen_integration::binary_built("ai", "arlen-ai-agent"))
+        && arlen_integration::binary_built("ai", "arlen-ai-agent")
+        && arlen_integration::binary_built("daemons/knowledge", "arlen-kg-seed"))
     {
-        eprintln!("SKIP the_live_executor_undo_retracts_the_edge: audit-daemon/ai-agent not built (run `just integration-nightly`)");
+        eprintln!("SKIP the_live_executor_undo_retracts_the_edge: audit-daemon/ai-agent/kg-seed not built (run `just integration-nightly`)");
         return;
     }
     let mut stack = EphemeralStack::new().expect("private runtime root");
@@ -1361,17 +1367,37 @@ async fn the_live_executor_undo_retracts_the_edge() {
         ])
         .expect("seed the test caller's read profile");
 
-    let project_dir = stack.runtime_dir().join("proj");
-    std::fs::create_dir_all(project_dir.join(".git")).expect("create .git fixture");
-    stack
-        .seed_project_watch_dir(&project_dir)
-        .expect("point the watcher at the fixture");
+    // Enable ONLY the manual workflow; executor_live makes its proven proposal
+    // execute immediately (silent-immediate curation).
     stack
         .seed_ai_config(
             "[ai]\nenabled = true\naccess_level = 2\naction_mode = \"supervised\"\n\n\
-             [agent]\nenabled = [\"auto-tag-by-project\"]\nexecutor_live = true\n",
+             [agent]\nenabled = [\"tag-untagged-files\"]\nexecutor_live = true\n",
         )
         .expect("seed ai.toml");
+
+    // A REAL untagged file under a REAL project root on disk: the agent's predict
+    // step canonicalizes the PathUnderField operands through the filesystem, so the
+    // fixed corpus's fictional /work/seed paths can never prove - the fixture must
+    // exist on disk for the proof to hold.
+    let untagged_root = stack.runtime_dir().join("untagged-proj");
+    let untagged_file = untagged_root.join("new.rs");
+    std::fs::create_dir_all(&untagged_root).expect("create untagged project dir");
+    std::fs::write(&untagged_file, b"// untagged\n").expect("create untagged file");
+    let untagged_file = untagged_file.to_string_lossy().into_owned();
+
+    // Seed the corpus + the untagged-host fixture into the stack graph BEFORE any
+    // daemon opens it (ladybug is single-writer): kg-seed reads ARLEN_GRAPH_PATH
+    // from base_env, and the two untagged-host env vars add the real-path File +
+    // Project (no edge) the manual workflow discovers.
+    let seed_bin = arlen_integration::binary_path("daemons/knowledge", "arlen-kg-seed");
+    let seed_status = std::process::Command::new(&seed_bin)
+        .envs(stack.base_env())
+        .env("ARLEN_KG_SEED_UNTAGGED_ROOT", untagged_root.to_string_lossy().as_ref())
+        .env("ARLEN_KG_SEED_UNTAGGED_FILE", &untagged_file)
+        .status()
+        .unwrap_or_else(|e| panic!("run arlen-kg-seed at {}: {e}", seed_bin.display()));
+    assert!(seed_status.success(), "arlen-kg-seed exits 0");
 
     stack
         .spawn("daemons/event-bus", "event-bus", &[])
@@ -1428,35 +1454,21 @@ async fn the_live_executor_undo_retracts_the_edge() {
         )
         .expect("spawn ai-agent");
 
-    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
     let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
-    let file_path = format!("{}/main.rs", project_dir.to_string_lossy());
-    let edge_query = format!("MATCH (f:File {{id: '{file_path}'}})-->(p:Project) RETURN p.id");
+    // The seeded untagged file (the real on-disk path from above). The live
+    // executor's write is the ONLY FILE_PART_OF edge carrying an op_id (seed edges
+    // have op_id NULL), so the op_id filter isolates exactly the executor's edge.
+    let file_path = untagged_file.clone();
+    // The LIVE op_id edge: compensate's retract CLOSES the edge (sets invalid_at,
+    // retained for audit) rather than deleting it, so the undo assertion must key
+    // on liveness, not mere presence. The op_id filter isolates the executor's
+    // write from the NULL-op_id seed edges.
+    let edge_query = format!(
+        "MATCH (f:File {{id: '{file_path}'}})-[r:FILE_PART_OF]->(p:Project) \
+         WHERE r.op_id IS NOT NULL AND r.invalid_at IS NULL RETURN p.id"
+    );
 
-    // Drive the live write (same as the sibling: emit until the executor writes).
-    let write_deadline = Instant::now() + Duration::from_secs(50);
-    loop {
-        let payload = proto::FileOpenedPayload {
-            path: file_path.clone(),
-            app_id: "integration-test".to_string(),
-            flags: 0,
-        }
-        .encode_to_vec();
-        emitter.emit("file.opened", payload).await.expect("emit file.opened");
-        tokio::time::sleep(Duration::from_millis(700)).await;
-        if let Ok(rows) = client.query_rows(&edge_query).await {
-            if !rows.is_empty() {
-                break;
-            }
-        }
-        assert!(
-            Instant::now() < write_deadline,
-            "the live executor never wrote the FILE_PART_OF edge within 50s"
-        );
-    }
-
-    // Connect to the agent over the private bus and read the write's correlation
-    // id from completed_actions (the silent-done feed; id == the compensate handle).
+    // Connect to the agent over the private bus.
     let conn = zbus::connection::Builder::address(bus.as_str())
         .expect("bus address")
         .build()
@@ -1470,6 +1482,48 @@ async fn the_live_executor_undo_retracts_the_edge() {
     )
     .await
     .expect("agent proxy");
+
+    // Drive the manual workflow: run_skill dispatches tag-untagged-files
+    // (external_content=false), which finds the seeded untagged file, proves the
+    // FILE_PART_OF (File + Project exist, no edge) and under executor_live writes
+    // it immediately. Retry only while the run loop is still arming - once a real
+    // summary returns the dispatch (incl. the execute) has completed, so we stop
+    // invoking and do not mint a second op_id edge.
+    let invoke_deadline = Instant::now() + Duration::from_secs(20);
+    let summary = loop {
+        match agent
+            .call::<_, _, String>("run_skill", &("tag-untagged-files",))
+            .await
+        {
+            Ok(s) if !s.contains("unavailable") => break s,
+            _ => {}
+        }
+        assert!(
+            Instant::now() < invoke_deadline,
+            "the agent run loop never accepted run_skill within 20s"
+        );
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    };
+
+    // The live executor's edge lands on the graph shortly after dispatch returns.
+    let write_deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        if let Ok(rows) = client.query_rows(&edge_query).await {
+            if !rows.is_empty() {
+                break;
+            }
+        }
+        if Instant::now() >= write_deadline {
+            let log = std::fs::read_to_string(&agent_log).unwrap_or_default();
+            let tail: Vec<&str> = log.lines().rev().take(50).collect();
+            let tail = tail.into_iter().rev().collect::<Vec<_>>().join("\n");
+            panic!(
+                "the live executor never wrote the FILE_PART_OF edge within 15s \
+                 (run_skill summary: {summary}); agent log tail:\n{tail}"
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
 
     let corr_deadline = Instant::now() + Duration::from_secs(15);
     let correlation_id = loop {
