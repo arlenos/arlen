@@ -39,6 +39,12 @@ for d in $daemons; do
     install -Dm755 "$out" "$extra/${dest#/}"
 done
 
-echo ">> mkosi build --force"
-( cd "$repo" && PATH=/usr/sbin:/sbin:$PATH mkosi --directory "$here" build --force )
+echo ">> mkosi build --incremental --force"
+# --incremental yes caches the post-distro base image (debootstrap + the apt
+# package install) as an intermediary, so a re-run skips that whole phase and
+# resumes at the build scripts (themselves warm via the persistent BUILDDIR
+# cargo/npm caches). A single --force rebuilds the OUTPUT but keeps the
+# incremental cache (only -ff drops it), so the slow Debian-rootfs assembly is
+# paid once, not on every build.
+( cd "$repo" && PATH=/usr/sbin:/sbin:$PATH mkosi --directory "$here" --incremental yes build --force )
 echo ">> image built: $here/arlen.raw"
