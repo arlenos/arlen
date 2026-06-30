@@ -70,6 +70,7 @@ dependencies = [
  "arlen-ai-skills",
  "arlen-ai-undo-core",
  "arlen-ai-undo-proto",
+ "arlen-config-broker",
  "arlen-file-change",
  "async-trait",
  "audit-proto",
@@ -279,6 +280,21 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "arlen-config-broker"
+version = "0.1.0"
+dependencies = [
+ "arlen-permissions",
+ "libc",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
