@@ -22,6 +22,8 @@
 //! feed [`Hardware`] and [`ModelSpec`] in. Quant jargon never leaves this layer;
 //! the UI sees only the badge and the size.
 
+pub mod download;
+
 /// One byte-count gibibyte (2^30), the binary unit GPU and RAM tools report. The
 /// plan's anchor figures (Llama-3.1-8B Q4_K_M = 4.58 GiB, ...) are in GiB, so the
 /// footprint math stays in GiB end to end.
@@ -88,6 +90,20 @@ impl Quant {
             Quant::Q5KM => 5.70,
             Quant::Q6K => 6.57,
             Quant::Q8_0 => 8.50,
+        }
+    }
+
+    /// The quant tag as it appears in a llama.cpp GGUF filename (the
+    /// `bartowski/*-GGUF` convention the catalog sources use, e.g. the
+    /// `Q4_K_M` in `Llama-3.2-1B-Instruct-Q4_K_M.gguf`). Used by the downloader
+    /// ([`crate::download`]) to resolve the file within a repo.
+    pub fn gguf_tag(self) -> &'static str {
+        match self {
+            Quant::Q3KM => "Q3_K_M",
+            Quant::Q4KM => "Q4_K_M",
+            Quant::Q5KM => "Q5_K_M",
+            Quant::Q6K => "Q6_K",
+            Quant::Q8_0 => "Q8_0",
         }
     }
 }
