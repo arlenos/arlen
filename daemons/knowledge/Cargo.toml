@@ -51,6 +51,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 notify = { version = "7", default-features = false, features = ["macos_kqueue"] }
 shellexpand = "3"
 arlen-permissions = { path = "../../sdk/permissions" }
+arlen-landlock-fence = { path = "../../sdk/landlock-fence" }
 arlen-capsule = { path = "../../contracts/capsule" }
 audit-proto = { path = "../../contracts/audit-proto" }
 regex = "1"
