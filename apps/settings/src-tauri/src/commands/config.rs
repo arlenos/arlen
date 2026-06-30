@@ -266,7 +266,16 @@ fn apply_ai_switch(
             let mut set = std::collections::BTreeSet::new();
             for v in arr {
                 let app = v.as_str().ok_or("ai.autonomous_apps entries must be strings")?;
-                set.insert(app.to_string());
+                // Match the agent's setter validation so Settings cannot write an
+                // entry the agent would reject (an empty / control-char id).
+                let trimmed = app.trim();
+                if trimmed.is_empty() || trimmed.chars().any(char::is_control) {
+                    return Err(
+                        "ai.autonomous_apps entries must be non-empty and free of control characters"
+                            .to_string(),
+                    );
+                }
+                set.insert(trimmed.to_string());
             }
             switches.autonomous_apps = set;
         }
@@ -295,14 +304,22 @@ pub async fn config_set(
 ) -> Result<(), String> {
     if matches!(file, ConfigFile::Ai) && is_ai_switch_key(&key) {
         let client = arlen_config_broker::ConfigBrokerClient::default_socket();
-        if let Ok(mut switches) = client.get().await {
-            apply_ai_switch(&mut switches, &key, &value)?;
-            return client
-                .set(&switches)
-                .await
-                .map_err(|e| format!("config broker set: {e}"));
+        match client.get().await {
+            Ok(mut switches) => {
+                apply_ai_switch(&mut switches, &key, &value)?;
+                return client
+                    .set(&switches)
+                    .await
+                    .map_err(|e| format!("config broker set: {e}"));
+            }
+            // Genuinely unreachable: fall through to the ai.toml write below
+            // (pre-cutover behaviour).
+            Err(arlen_config_broker::ClientError::Transport(_)) => {}
+            // Reachable but errored (corrupt store / refusal): surface it, never
+            // write the switch to the file behind the broker (which the daemon
+            // would then ignore, or which a same-uid attacker forced).
+            Err(e) => return Err(format!("config broker: {e}")),
         }
-        // Broker unreachable: fall through to the ai.toml write below.
     }
     let path = file.path();
     let item = json_to_toml_edit(value);
@@ -343,7 +360,10 @@ pub async fn ai_defaults_set(provider: String, model: String) -> Result<(), Stri
                 .map_err(|e| format!("config broker set: {e}"))?;
             false
         }
-        Err(_) => true,
+        // Genuinely unreachable: write the provider to ai.toml too (pre-cutover).
+        Err(arlen_config_broker::ClientError::Transport(_)) => true,
+        // Reachable but errored: surface it rather than diverging from the broker.
+        Err(e) => return Err(format!("config broker: {e}")),
     };
     let path = ConfigFile::Ai.path();
     crate::toml_writer::update(&path, |doc| {
@@ -1002,6 +1022,9 @@ workspace_layout = "Horizontal"
         assert!(apply_ai_switch(&mut s, "ai.access_level", &serde_json::json!(9999)).is_err());
         assert!(apply_ai_switch(&mut s, "ai.action_mode", &serde_json::json!("autonomous")).is_err());
         assert!(apply_ai_switch(&mut s, "ai.autonomous_apps", &serde_json::json!("notarray")).is_err());
+        // An empty or control-char app id is rejected (matches the agent setter).
+        assert!(apply_ai_switch(&mut s, "ai.autonomous_apps", &serde_json::json!(["  "])).is_err());
+        assert!(apply_ai_switch(&mut s, "ai.autonomous_apps", &serde_json::json!(["bad\nid"])).is_err());
         // Nothing was mutated by the failed calls.
         assert_eq!(s, AiMasterSwitches::default());
     }
