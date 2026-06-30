@@ -31,6 +31,12 @@ arlen-permissions = { path = "../../sdk/permissions" }
 # The shared skill model: loads + matches a free-form task to a skill's
 # whenToUse, then hands the run to the agent over org.arlen.AIAgent1.
 arlen-ai-skills = { path = "../ai-skills" }
+# The separate-uid owner of the AI master switches. The daemon's live admission
+# (enabled / access_level / provider) is sourced from the broker - a store the
+# user's normal uid cannot write - instead of the user-writable ai.toml, so a
+# same-uid process cannot widen the AI's read scope or flip it on/off by
+# rewriting the file. (same-uid-isolation-plan.md Tier-A #1.)
+arlen-config-broker = { path = "../../daemons/config-broker" }
 async-trait = "0.1"
 hex = "0.4"
 # Decodes the FocusActivatedPayload off the Event Bus for the

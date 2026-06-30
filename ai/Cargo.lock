@@ -129,6 +129,7 @@ dependencies = [
  "arlen-ai-explanation",
  "arlen-ai-providers",
  "arlen-ai-skills",
+ "arlen-config-broker",
  "arlen-permissions",
  "async-trait",
  "audit-proto",
