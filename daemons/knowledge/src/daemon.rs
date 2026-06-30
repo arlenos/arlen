@@ -1714,6 +1714,15 @@ fn row_count(rs: &crate::graph::RowSet) -> i64 {
         .unwrap_or(0)
 }
 
+/// Whether a CROSS-uid peer that resolved to `tier` may be served. The system
+/// daemon serves the session user's first-party/system AI layer cross-uid (the
+/// documented deployment, see `handle_client`); any other cross-uid peer
+/// (ThirdParty/unknown) is rejected. Same-uid peers do not consult this - they
+/// are always served, scoped by their resolved id.
+fn cross_uid_tier_admitted(tier: AppTier) -> bool {
+    matches!(tier, AppTier::FirstParty | AppTier::System)
+}
+
 /// Handle a single client connection.
 ///
 /// Phase 3.2 adds token awareness, but for backward compatibility the
@@ -1795,10 +1804,7 @@ async fn handle_client(
                 // by this gate; the fix there is per-uid graph scoping or a
                 // per-user knowledge daemon (documented follow-up, NOT this change).
                 if cross_uid
-                    && !matches!(
-                        QuotaConfig::arlen_default().tier_for_app(&id),
-                        AppTier::FirstParty | AppTier::System
-                    )
+                    && !cross_uid_tier_admitted(QuotaConfig::arlen_default().tier_for_app(&id))
                 {
                     warn!(
                         peer_uid = uid,
@@ -2670,6 +2676,15 @@ async fn filter_ids_to_readable_labels(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cross_uid_admits_only_first_party_and_system() {
+        // The system daemon serves the session user's first-party/system AI
+        // layer cross-uid; an untrusted (ThirdParty) cross-uid peer is rejected.
+        assert!(cross_uid_tier_admitted(AppTier::FirstParty));
+        assert!(cross_uid_tier_admitted(AppTier::System));
+        assert!(!cross_uid_tier_admitted(AppTier::ThirdParty));
+    }
 
     #[test]
     fn label_tokens_extracts_labels_and_rel_types() {
