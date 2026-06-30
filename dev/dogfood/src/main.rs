@@ -44,7 +44,11 @@ const ASK_RETRY_DELAY: Duration = Duration::from_secs(20);
 async fn main() {
     let path = std::env::args()
         .nth(1)
-        .unwrap_or_else(|| "/home/arlen/work/notes.md".to_string());
+        // Under /var/lib/arlen-work (a tmpfiles-created, arlen-writable dir the
+        // SYSTEM knowledge daemon can watch): /home/arlen was unreadable to that
+        // daemon at startup. The file is promoted UNLINKED (no project signal yet),
+        // then executor_verify drops .git here so auto-tag links it past promotion.
+        .unwrap_or_else(|| "/var/lib/arlen-work/notes.md".to_string());
     let prompt = std::env::args()
         .nth(2)
         .unwrap_or_else(|| "What files have I opened recently?".to_string());
