@@ -439,6 +439,19 @@ pub fn parse_catalog(toml_contents: &str) -> Result<Catalog, CatalogError> {
     toml::from_str(toml_contents).map_err(|e| CatalogError(e.to_string()))
 }
 
+/// The bundled curated catalog TOML - the shipped starter list (the decided set
+/// in `catalog.toml`). The recommender computes Fast/Balanced/Quality + the
+/// fit/speed badge per the target hardware; this is just the curation (models,
+/// task groups, GGUF source, the advanced flag), human-vetted + Tim-curatable.
+pub const BUNDLED_CATALOG: &str = include_str!("../catalog.toml");
+
+/// Parse the [`BUNDLED_CATALOG`] starter list. The consent-gated downloader and
+/// the Settings model-manager surface consume this; it is the catalog a fresh
+/// install ships with before the user adds their own.
+pub fn bundled_catalog() -> Result<Catalog, CatalogError> {
+    parse_catalog(BUNDLED_CATALOG)
+}
+
 /// Recommend the catalog for `hw`. The default view hides the `advanced`
 /// (abliterated) tier; `include_advanced` is set only behind the explicit Advanced
 /// door. Order preserved, advanced entries filtered before the recommender runs.
@@ -797,5 +810,38 @@ mod tests {
         assert!(parse_catalog("[[model]]\nname = \"x\"\nparams_b = 7.0\n").is_err());
         // Not even TOML.
         assert!(parse_catalog("}{ not toml").is_err());
+    }
+
+    #[test]
+    fn the_bundled_catalog_parses_with_the_starter_set() {
+        let catalog = bundled_catalog().expect("the shipped catalog.toml parses");
+        let names: Vec<&str> = catalog.models.iter().map(|m| m.name.as_str()).collect();
+        // The decided starter models are present (the recommender derives the
+        // Fast/Balanced/Quality tier; the curation just lists them).
+        for expected in [
+            "Llama-3.2-1B",
+            "Qwen2.5-3B",
+            "Qwen2.5-7B",
+            "Qwen2.5-32B",
+            "Qwen2.5-Coder-7B",
+            "Ministral-8B",
+        ] {
+            assert!(names.contains(&expected), "missing starter model {expected}");
+        }
+        // The coder model is grouped under Coding.
+        let coder = catalog.models.iter().find(|m| m.name == "Qwen2.5-Coder-7B").unwrap();
+        assert!(coder.tasks.contains(&Task::Coding));
+        // Exactly one advanced (abliterated) model, hidden behind the door.
+        let advanced: Vec<&str> = catalog
+            .models
+            .iter()
+            .filter(|m| m.advanced)
+            .map(|m| m.name.as_str())
+            .collect();
+        assert_eq!(advanced, vec!["Qwen3-8B-abliterated"]);
+        // The default shortlist (door closed) excludes the advanced model.
+        let shortlist = recommend_catalog(&apu_7840u(), &catalog, false);
+        assert_eq!(shortlist.len(), catalog.models.len() - 1);
+        assert!(shortlist.iter().all(|r| !r.name.contains("abliterated")));
     }
 }
