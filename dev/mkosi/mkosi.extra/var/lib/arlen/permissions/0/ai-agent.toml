@@ -1,0 +1,33 @@
+# The AI agent's executor go-live permission profile, baked at the knowledge
+# daemon's system profile path. The daemon runs as root (uid 0), so it resolves a
+# caller's profile under /var/lib/arlen/permissions/<its own uid = 0>/<app_id>.toml
+# (knowledge `permission::system_profile_path`, preferred by `load_tiered` over the
+# ~/.config fallback). The agent resolves to app_id "ai-agent"
+# (/usr/lib/arlen/libexec/arlen-ai-agent, identity rule 1) and connects cross-uid
+# (it is a per-user service, uid 1000); the daemon serves it because it is
+# FirstParty (the cross-uid serve gate), and reads this profile for the WRITE
+# grant - FirstParty/system-anchoring lifts the read label gate but does NOT grant
+# a relation, so without this the executor's FILE_PART_OF create is refused.
+#
+# This is the exact grant `seed_executor_profile_for` uses in the green
+# dev/integration write+undo IT: read scope on File/Project, the single
+# FILE_PART_OF relation, and instance_scope = "all" (both endpoints are
+# system-owned nodes the agent does not own, so linking them needs the privileged
+# all-instances scope, or the write socket refuses the relation as unanchored).
+# The [info] block also lets the profile parse under ConnectionAuth (the agent
+# connects to the audit daemon too).
+[info]
+app_id = "ai-agent"
+tier = "first-party"
+
+[graph]
+read = [
+    "system.File.id",
+    "system.File.path",
+    "system.Project.id",
+    "system.Project.root_path",
+]
+relations = [
+    { from = "system.File", to = "system.Project", type = "FILE_PART_OF" },
+]
+instance_scope = "all"
