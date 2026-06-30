@@ -56,7 +56,14 @@ impl Ledger {
         let opts = SqliteConnectOptions::new()
             .filename(db_path)
             .create_if_missing(true)
-            .journal_mode(SqliteJournalMode::Wal);
+            .journal_mode(SqliteJournalMode::Wal)
+            // Keep query temp btrees (ORDER BY / GROUP BY sorts, transient
+            // indices) in RAM, not a temp file under $TMPDIR/$SQLITE_TMPDIR.
+            // The daemon self-confines with a Landlock write-fence to its data
+            // + socket dirs (Tier-A #2), so a /tmp temp-file spill would EACCES;
+            // every current query orders by the INTEGER PK rowid (no spill), so
+            // this is belt-and-suspenders against a future non-PK ORDER BY.
+            .pragma("temp_store", "MEMORY");
         let pool = SqlitePoolOptions::new()
             .max_connections(4)
             .connect_with(opts)
@@ -131,7 +138,10 @@ impl Ledger {
         let opts = SqliteConnectOptions::new()
             .filename(db_path)
             .create_if_missing(false)
-            .read_only(true);
+            .read_only(true)
+            // Query temp btrees in RAM, not /tmp (the Landlock write-fence
+            // grants only the data + socket dirs); read queries can still sort.
+            .pragma("temp_store", "MEMORY");
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
             .connect_with(opts)
@@ -332,7 +342,10 @@ impl LedgerReader {
         let opts = SqliteConnectOptions::new()
             .filename(db_path)
             .create_if_missing(false)
-            .read_only(true);
+            .read_only(true)
+            // Query temp btrees in RAM, not /tmp (the Landlock write-fence
+            // grants only the data + socket dirs); read queries can still sort.
+            .pragma("temp_store", "MEMORY");
         let pool = SqlitePoolOptions::new()
             .max_connections(4)
             .connect_with(opts)
