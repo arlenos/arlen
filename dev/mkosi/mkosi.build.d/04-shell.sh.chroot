@@ -24,13 +24,22 @@ fi
 export PATH="$CARGO_HOME/bin:$PATH"
 
 cd "$SRCDIR/arlen/apps/desktop-shell"
-echo ">> npm ci (frontend + tauri-cli deps)"
-# In the build overlay's filesystem npm/tar's per-file fchown returns EINVAL, so a
-# plain `npm ci` floods the log with a WARN per extracted file and crawls. The
-# extraction succeeds regardless (chown is best-effort), so silence the per-file
-# warnings (--loglevel=error) and skip the audit/fund network round-trips; the
-# package cache is the persistent BUILDDIR npm_config_cache set above.
-npm ci --no-audit --no-fund --loglevel=error
+# Reuse a complete + current node_modules instead of re-running npm ci: in the
+# build overlay npm/tar's per-file fchown returns EINVAL, so a chroot `npm ci`
+# re-extracts thousands of files pathologically slowly (the heaviest, most
+# time-limit-prone phase of the whole image build). The repo is bind-mounted via
+# BuildSources, so a node_modules prepared on the host (fast, native fs) is visible
+# here; if it is complete (the tauri CLI present) and current (package-lock not
+# newer than it), the tauri build can read it directly. Otherwise fall back to a
+# real npm ci, quieted (--loglevel=error drops the fchown-warning flood) and with
+# the audit/fund network round-trips skipped; the package cache is the persistent
+# BUILDDIR npm_config_cache set above.
+if [ -x ./node_modules/.bin/tauri ] && [ ! package-lock.json -nt node_modules ]; then
+    echo ">> node_modules is complete and current; skipping npm ci"
+else
+    echo ">> npm ci (frontend + tauri-cli deps)"
+    npm ci --no-audit --no-fund --loglevel=error
+fi
 # Build via the tauri CLI in PRODUCTION mode (not a plain `cargo build`, which
 # leaves the webview pointed at devUrl http://localhost:1420 -> connection
 # refused). `tauri build` runs the beforeBuildCommand (vite -> ../build) then a
