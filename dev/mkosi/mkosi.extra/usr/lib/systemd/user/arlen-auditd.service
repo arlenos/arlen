@@ -31,6 +31,16 @@ RestartSec=2
 # on its HMAC key + hash chain, not on filesystem isolation. Without
 # ProtectSystem there is no ReadWritePaths to mismatch, so the daemon
 # create_dir_all's its own per-user ledger dir on first run.
+#
+# Instead of a mount namespace the daemon self-confines with a Landlock
+# write-fence (same-uid-isolation-plan Tier-A #2): read everywhere (so
+# /proc/<pid>/exe peer auth still works), write only under its data dir
+# (ledger + HMAC key + checkpoint) and the runtime socket dir. NoNewPrivileges
+# above is the precondition unprivileged Landlock needs. If a SystemCallFilter
+# is ever added here it must also allow landlock_create_ruleset/add_rule/
+# restrict_self, or the best-effort fence silently stays off. Set
+# ARLEN_AUDIT_REQUIRE_FENCE=1 (once a boot confirms the "enforced" log) to make
+# a non-enforcing kernel fatal.
 RestrictAddressFamilies=AF_UNIX
 RestrictNamespaces=yes
 LockPersonality=yes

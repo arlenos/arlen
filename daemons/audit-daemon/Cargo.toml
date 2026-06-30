@@ -36,6 +36,7 @@ audit-proto = { path = "../../contracts/audit-proto" }
 # Per-connection peer authentication on the ingest socket, and the
 # Event Bus producer client for re-emitting `audit.ai.*` events.
 arlen-permissions = { path = "../../sdk/permissions" }
+arlen-landlock-fence = { path = "../../sdk/landlock-fence" }
 os-sdk = { path = "../../sdk/os-sdk" }
 
 [dev-dependencies]

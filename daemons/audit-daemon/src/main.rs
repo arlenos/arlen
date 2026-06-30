@@ -17,6 +17,7 @@
 //! can still be inspected, and emits an `audit.tampered` event on the
 //! Event Bus for the Anomaly Detector and the shell.
 
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -24,12 +25,11 @@ use arlen_auditd::checkpoint::{self, Checkpoint, StartupCheck};
 use arlen_auditd::ingest::{ingest_socket_path, IngestServer};
 use arlen_auditd::ledger::{Ledger, LedgerReader};
 use arlen_auditd::read::{read_socket_path, ReadServer};
-use arlen_auditd::{audit_data_dir, key, AuditError};
+use arlen_auditd::{audit_data_dir, ensure_private_dir, key, AuditError};
 use os_sdk::{EventEmitter, UnixEventEmitter};
 use tokio::sync::Mutex;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -44,6 +44,73 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     tracing::info!("arlen-auditd starting");
 
+    // Self-confine before the async runtime starts (Tier-A #2). The
+    // daemon writes only under the audit data dir (ledger.db + WAL, the
+    // HMAC key, the head checkpoint) and the runtime socket dir (the
+    // ingest + read sockets); everything else - the Event Bus producer
+    // connect, the /proc peer resolution on ingest - is a read. Create
+    // both dirs so their write grants are expressible, then fence on the
+    // main thread BEFORE building the runtime so every tokio worker AND
+    // the sqlx SQLite connection threads (spawned at connection-open time
+    // inside the runtime, from a confined worker) inherit the Landlock
+    // domain.
+    let data_dir = audit_data_dir()?;
+    ensure_private_dir(&data_dir)?;
+    let ingest_path = ingest_socket_path();
+    let read_path = read_socket_path();
+    for sock in [&ingest_path, &read_path] {
+        if let Some(parent) = sock.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    apply_fence(&data_dir, &ingest_path, &read_path);
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    runtime.block_on(run())
+}
+
+/// Install the Landlock write-fence over the audit data dir and the socket
+/// dir. Defense-in-depth: a kernel that cannot enforce it leaves the daemon
+/// exactly as safe as no fence, so by default a non-enforcing kernel or a
+/// ruleset error is logged and the daemon continues. A hardened deployment
+/// that wants the confinement guaranteed sets `ARLEN_AUDIT_REQUIRE_FENCE=1`,
+/// making a non-enforcing kernel a fatal startup error.
+fn apply_fence(data_dir: &Path, ingest: &Path, read: &Path) {
+    use arlen_landlock_fence::{fence_writes, FenceOutcome};
+    let require = std::env::var_os("ARLEN_AUDIT_REQUIRE_FENCE").is_some_and(|v| v == "1");
+    let mut writable: Vec<&Path> = vec![data_dir];
+    if let Some(p) = ingest.parent() {
+        writable.push(p);
+    }
+    if let Some(p) = read.parent() {
+        writable.push(p);
+    }
+    let degraded = match fence_writes(&writable) {
+        Ok(FenceOutcome::Enforced) => {
+            tracing::info!("landlock write-fence enforced (write-confined to data + socket dirs)");
+            None
+        }
+        Ok(FenceOutcome::NotEnforced) => Some("landlock not enforced by this kernel".to_string()),
+        Err(e) => Some(format!("landlock fence not applied: {e}")),
+    };
+    if let Some(reason) = degraded {
+        if require {
+            tracing::error!(
+                "ARLEN_AUDIT_REQUIRE_FENCE=1 but the fence is not active ({reason}); refusing to run unconfined"
+            );
+            std::process::exit(1);
+        }
+        tracing::warn!("{reason}; running unconfined (no worse than no fence)");
+    }
+}
+
+/// The async serve body: open + verify the ledger, run both startup
+/// integrity witnesses, then serve the ingest + read sockets until a
+/// shutdown signal. Runs entirely inside the write-fence installed by
+/// [`main`].
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let ledger_path = audit_data_dir()?.join("ledger.db");
 
     // Genesis vs. fault: a missing key file is only acceptable when
