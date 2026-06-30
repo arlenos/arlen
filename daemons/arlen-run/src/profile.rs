@@ -38,10 +38,31 @@ pub struct ConfinementInputs {
     pub network: NetworkPolicy,
 }
 
+/// The host filesystem roots a `custom` grant may never bind. Binding any of
+/// these (or `/`, or an ancestor of the home) is the `--filesystem=host` escape
+/// that defeats the portal-mediated FS model (same-uid-isolation-plan.md
+/// Tier-A #3): it hands a confined app the OS + every user's data. Arlen's
+/// profile format simply does not offer it - a `custom` entry resolving to one
+/// of these is dropped, not bound. A specific subdirectory (under the home, a
+/// project dir, a data mount) is unaffected; only the whole-tree roots are.
+const FORBIDDEN_FS_ROOTS: &[&str] = &[
+    "/", "/etc", "/usr", "/var", "/boot", "/bin", "/sbin", "/lib", "/lib64",
+    "/proc", "/sys", "/dev", "/run", "/root",
+];
+
+/// Whether `path` is a host-filesystem escape a `custom` grant must not bind:
+/// one of the [`FORBIDDEN_FS_ROOTS`], or an ancestor of `home` (e.g. `/home`,
+/// which would expose every user's home, or `/`). A specific subdirectory of
+/// the home (e.g. `~/Projects`) is NOT an escape.
+pub fn is_host_escape(path: &Path, home: &Path) -> bool {
+    FORBIDDEN_FS_ROOTS.iter().any(|r| path == Path::new(r)) || home.starts_with(path)
+}
+
 /// Map an app's filesystem + network permissions to the confiner inputs. The app's
 /// own state dirs (`~/.local/share|.config|.cache/arlen/apps/{app_id}`) are always
 /// writable so the app can function; the `home`/`documents`/... flags add the
-/// matching user dirs; `custom` paths are added verbatim.
+/// matching user dirs; `custom` paths are added verbatim EXCEPT a host-filesystem
+/// escape ([`is_host_escape`]), which is dropped (portal-only-FS, Tier-A #3).
 pub fn confinement_inputs(
     fs: &FilesystemPermissions,
     net: &NetworkPermissions,
@@ -72,7 +93,15 @@ pub fn confinement_inputs(
     if fs.videos {
         app_dirs.push(dirs.videos.clone());
     }
-    app_dirs.extend(fs.custom.iter().cloned());
+    // `custom` paths are added verbatim, EXCEPT a host-filesystem escape (`/`,
+    // an ancestor of the home, or an OS root): Arlen does not offer the
+    // `--filesystem=host` grant, so such an entry is dropped, never bound.
+    app_dirs.extend(
+        fs.custom
+            .iter()
+            .filter(|p| !is_host_escape(p, home))
+            .cloned(),
+    );
     ConfinementInputs {
         app_dirs,
         network: network_policy(net),
@@ -122,6 +151,39 @@ mod tests {
         assert!(c
             .app_dirs
             .contains(&PathBuf::from("/home/u/.config/arlen/apps/com.example.app")));
+    }
+
+    #[test]
+    fn a_host_filesystem_custom_grant_is_dropped() {
+        // The classic --filesystem=host escapes: the root, the whole /home tree,
+        // and the OS roots. None may be bound into a confined app.
+        for escape in ["/", "/home", "/etc", "/usr", "/var", "/proc", "/dev", "/home/u"] {
+            let fs = FilesystemPermissions {
+                custom: vec![PathBuf::from(escape)],
+                ..Default::default()
+            };
+            let c = inputs(fs, NetworkPermissions::default());
+            assert!(
+                !c.app_dirs.contains(&PathBuf::from(escape)),
+                "host-escape custom grant {escape} must be dropped"
+            );
+        }
+    }
+
+    #[test]
+    fn a_specific_custom_subdirectory_is_kept() {
+        // A real, narrow custom path (a project dir, a data mount) is legitimate
+        // and must still be bound - the ban targets only the whole-tree roots.
+        let fs = FilesystemPermissions {
+            custom: vec![
+                PathBuf::from("/home/u/Projects"),
+                PathBuf::from("/mnt/data"),
+            ],
+            ..Default::default()
+        };
+        let c = inputs(fs, NetworkPermissions::default());
+        assert!(c.app_dirs.contains(&PathBuf::from("/home/u/Projects")));
+        assert!(c.app_dirs.contains(&PathBuf::from("/mnt/data")));
     }
 
     #[test]
