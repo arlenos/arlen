@@ -25,7 +25,12 @@ export PATH="$CARGO_HOME/bin:$PATH"
 
 cd "$SRCDIR/arlen/apps/desktop-shell"
 echo ">> npm ci (frontend + tauri-cli deps)"
-npm ci
+# In the build overlay's filesystem npm/tar's per-file fchown returns EINVAL, so a
+# plain `npm ci` floods the log with a WARN per extracted file and crawls. The
+# extraction succeeds regardless (chown is best-effort), so silence the per-file
+# warnings (--loglevel=error) and skip the audit/fund network round-trips; the
+# package cache is the persistent BUILDDIR npm_config_cache set above.
+npm ci --no-audit --no-fund --loglevel=error
 # Build via the tauri CLI in PRODUCTION mode (not a plain `cargo build`, which
 # leaves the webview pointed at devUrl http://localhost:1420 -> connection
 # refused). `tauri build` runs the beforeBuildCommand (vite -> ../build) then a
