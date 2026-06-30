@@ -31,10 +31,11 @@ const MAX_REDIRECT_HOPS: usize = 5;
 /// so this is generous for a slow link while still killing a hung server.
 const FETCH_TIMEOUT_SECS: u64 = 3600;
 /// Hard cap on the streamed body, so a runaway or compromised CDN cannot fill
-/// the disk inside the timeout window. Far above the largest catalog model
-/// (a Q-quant 32B GGUF is ~20 GB); a real file over this would truncate and
-/// fail the sha check (and be discarded), which is the safe direction.
-const MAX_MODEL_BYTES: u64 = 64 * 1024 * 1024 * 1024;
+/// the disk inside the timeout window. Comfortably above the largest catalog
+/// model (an 8-bit 32B GGUF is ~35 GB) while bounding the worst-case transient
+/// write; a real file over this would truncate and fail the sha check (and be
+/// discarded), which is the safe direction.
+const MAX_MODEL_BYTES: u64 = 48 * 1024 * 1024 * 1024;
 
 /// Why a model download failed.
 #[derive(Debug)]
@@ -81,11 +82,27 @@ impl std::error::Error for DownloadError {}
 /// SSRF-pinned and redirect-following with a per-hop re-pin; the body streams
 /// straight into the verified store, never buffered. On any failure `dest` is
 /// left untouched (the verified store discards a partial or mismatched file).
+///
+/// PRECONDITION: call this from a SYNCHRONOUS context, never from inside a tokio
+/// runtime (an async task / `#[tokio::main]`). It drives an async resolver on
+/// its own current-thread runtime and then a blocking HTTP GET, both of which
+/// panic if started from within a runtime. A Tauri/daemon caller must wrap it in
+/// `tokio::task::spawn_blocking` or a dedicated OS thread. The guard below turns
+/// a violation into a clean error rather than a panic.
 pub fn download_model(
     url: &str,
     expected_sha256: &str,
     dest: &Path,
 ) -> Result<(), DownloadError> {
+    // Fail loud, not panic, if invoked from an async context (see PRECONDITION).
+    if tokio::runtime::Handle::try_current().is_ok() {
+        return Err(DownloadError::Runtime(
+            "download_model must run in a synchronous context (use spawn_blocking), \
+             not inside a tokio runtime"
+                .into(),
+        ));
+    }
+
     // A dedicated current-thread runtime drives the async SSRF resolver. Each
     // `block_on` enters and exits before the blocking GET below, so reqwest's
     // blocking client is never created or used from within an async context.
@@ -175,6 +192,23 @@ mod tests {
         let dest = dir.path().join("m.gguf");
         let err = download_model("http://example.com/m.gguf", &"a".repeat(64), &dest).unwrap_err();
         assert!(matches!(err, DownloadError::NotHttps(_)));
+        assert!(!dest.exists());
+    }
+
+    #[test]
+    fn refuses_to_run_inside_a_tokio_runtime() {
+        // Called from within a runtime, it must return a clean error, not panic
+        // (the precondition guard), so a future async caller fails loud.
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("m.gguf");
+        let err = rt.block_on(async {
+            download_model("https://example.com/m.gguf", &"a".repeat(64), &dest)
+        });
+        assert!(matches!(err, Err(DownloadError::Runtime(_))));
         assert!(!dest.exists());
     }
 
