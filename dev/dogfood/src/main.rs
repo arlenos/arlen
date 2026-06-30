@@ -53,6 +53,17 @@ async fn main() {
         .nth(2)
         .unwrap_or_else(|| "What files have I opened recently?".to_string());
 
+    // Materialize the file on disk: the executor's predict step canonicalizes the
+    // File path through the filesystem (the FILE_PART_OF rule's PathUnderField), so
+    // the path must resolve for tag-untagged-files to prove. Its parent
+    // (/var/lib/arlen-work) is tmpfiles-created in the image.
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Err(e) = std::fs::write(&path, b"notes\n") {
+        fail(&format!("create file {path}: {e}"));
+    }
+
     if let Err(e) = emit_open(&path).await {
         fail(&format!("emit: {e}"));
     }
@@ -62,11 +73,13 @@ async fn main() {
     // project signal exists yet).
     sleep(PROMOTION_WAIT).await;
 
-    // BEST-EFFORT: the executor write+undo via run_skill auto-tag. This cannot
-    // currently surface a write (auto-tag reads event.fields["path"], which a
-    // manual run_skill does not provide -> "no_path"; the event-trigger path is
-    // confirm-gated + promotion pre-links). So it is logged, not gated, until a
-    // deterministic graph-write test behaviour exists. See coder-reports.md.
+    // The executor write+undo via run_skill tag-untagged-files: a manual workflow
+    // that scans for an untagged file under a project (no event operand), so it
+    // drives a deterministic graph write the way auto-tag-by-project (which reads
+    // event.fields["path"], absent on a manual invoke) cannot. The file is promoted
+    // UNLINKED above; the .git signal below makes its dir a Project, then run_skill
+    // links it and compensate undoes it. Best-effort until a VM boot confirms the
+    // write surfaces, then it gates the dogfood.
     match executor_verify(&path).await {
         Ok(()) => {}
         Err(e) => println!("DOGFOOD EXECUTOR skipped (best-effort): {e}"),
@@ -106,10 +119,13 @@ async fn main() {
 
 const AGENT_BUS_NAME: &str = "org.arlen.AIAgent1";
 const AGENT_OBJECT_PATH: &str = "/org/arlen/AIAgent1";
-/// The deterministic graph-write workflow we drive manually.
-const WRITE_SKILL: &str = "auto-tag-by-project";
-/// Budget for the project to be detected + auto-tag to write (the watcher picks up
-/// the runtime .git signal, then a run_skill links the unlinked file).
+/// The deterministic graph-write workflow we drive manually: a manual-invoke
+/// (run_skill) workflow that finds an untagged file under a project and proposes
+/// its FILE_PART_OF, so it needs no event operand (unlike auto-tag-by-project,
+/// which reads the path off the triggering event).
+const WRITE_SKILL: &str = "tag-untagged-files";
+/// Budget for the project to be detected + the manual workflow to write (the watcher
+/// picks up the runtime .git signal, then a run_skill links the unlinked file).
 const WRITE_TIMEOUT: Duration = Duration::from_secs(90);
 
 /// Drive a real executor write (FILE_PART_OF) and undo it, all over AIAgent1.
@@ -137,8 +153,8 @@ async fn executor_verify(file_path: &str) -> Result<(), String> {
         .map_err(|e| format!("ai agent unavailable: {e}"))?;
 
     // Poll: run the skill until a completed action surfaces. Early runs find no
-    // project yet (the watcher has not detected it), so auto-tag proposes nothing
-    // and completed_actions stays empty; once detected, the write executes.
+    // project yet (the watcher has not detected it), so the workflow proposes
+    // nothing and completed_actions stays empty; once detected, the write executes.
     let deadline = Instant::now() + WRITE_TIMEOUT;
     let correlation_id = loop {
         let summary: String = agent
