@@ -45,6 +45,10 @@ pub const FILE_MOVED: &str = "/work/seed/alpha/moved.md";
 pub const FILE_ALPHA_ONLY: &str = "/work/seed/alpha/stable.md";
 /// A file always in Beta.
 pub const FILE_BETA_ONLY: &str = "/work/seed/beta/notes.md";
+/// A file that lies under Alpha's root but carries NO `FILE_PART_OF` edge -
+/// the untagged fixture the `tag-untagged-files` workflow finds and proposes
+/// to tag. Deterministic ground truth for the executor go-live write+undo IT.
+pub const FILE_UNTAGGED: &str = "/work/seed/alpha/untagged.md";
 
 /// The instant the move happens (Alpha membership closes, Beta opens).
 const MOVE_MICROS: i64 = BASE_MICROS + 7 * DAY_US;
@@ -67,8 +71,10 @@ pub async fn seed_corpus(graph: &GraphHandle) -> Result<()> {
             .await?;
     }
 
-    // Files (path-keyed: the File node id is its absolute path).
-    for path in [FILE_MOVED, FILE_ALPHA_ONLY, FILE_BETA_ONLY] {
+    // Files (path-keyed: the File node id is its absolute path). FILE_UNTAGGED
+    // is created but never linked, so it stays an untagged member of Alpha's
+    // tree for the manual tag-untagged-files workflow to discover.
+    for path in [FILE_MOVED, FILE_ALPHA_ONLY, FILE_BETA_ONLY, FILE_UNTAGGED] {
         graph
             .write(format!(
                 "MERGE (f:File {{id: '{path}'}})
@@ -146,6 +152,10 @@ mod tests {
         // The stable files never move.
         assert_eq!(project_at(&graph, FILE_ALPHA_ONLY, ASOF_LATE).await, vec![PROJECT_ALPHA]);
         assert_eq!(project_at(&graph, FILE_BETA_ONLY, ASOF_EARLY).await, vec![PROJECT_BETA]);
+
+        // The untagged fixture exists but has no membership at any time.
+        assert!(project_at(&graph, FILE_UNTAGGED, ASOF_LATE).await.is_empty());
+        assert!(project_at(&graph, FILE_UNTAGGED, ASOF_EARLY).await.is_empty());
     }
 
     #[tokio::test]
