@@ -91,7 +91,16 @@ fn read_or_empty(path: &Path) -> Result<DocumentMut, String> {
 
 /// `<file>.tmp` write + rename. Same pattern desktop-shell uses for
 /// `shell.toml` and the compositor for `compositor.state.toml`.
+///
+/// The file is written 0600 (owner-only): the Arlen config is per-user and
+/// none of it needs to be world- or group-readable, and `ai.toml` in
+/// particular must not be (its AI keys; a same-uid READ is not the threat, but
+/// world-readable is gratuitous - the HARDEN-ai.toml item). The mode is set on
+/// the temp file BEFORE the rename, so the live file is never briefly 0644. A
+/// root reader (e.g. the graph daemon reading graph.toml) still reads a 0600
+/// user file.
 fn write_atomic(path: &Path, doc: &DocumentMut) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
@@ -100,6 +109,8 @@ fn write_atomic(path: &Path, doc: &DocumentMut) -> Result<(), String> {
     let serialized = doc.to_string();
     std::fs::write(&tmp, serialized.as_bytes())
         .map_err(|e| format!("write tmp {}: {e}", tmp.display()))?;
+    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))
+        .map_err(|e| format!("secure tmp {}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, path)
         .map_err(|e| format!("rename {} -> {}: {e}", tmp.display(), path.display()))
 }
@@ -219,6 +230,23 @@ outer_gap = 8
         assert!(written.contains("[c]"));
         assert!(written.contains("greeting = \"hi\""));
 
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Every written config file is owner-only (0600): no world/group read.
+    /// `ai.toml` in particular must not be world-readable (the HARDEN item).
+    #[test]
+    fn written_file_is_owner_only_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = temp_file("mode-0600");
+        update(&path, |doc| {
+            doc["ai"] = toml_edit::table();
+            doc["ai"]["enabled"] = toml_edit::value(true);
+            Ok(())
+        })
+        .expect("update");
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "config files must be owner-only");
         let _ = std::fs::remove_file(&path);
     }
 
