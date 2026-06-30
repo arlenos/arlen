@@ -33,5 +33,9 @@ context_window = 4096
 # trigger. A real write happens only through the manual run_skill/approve path
 # (external_content=false -> PreviewThenExecute), which is the executor write+undo
 # the live-verify exercises against the real graph.
-enabled = ["auto-tag-by-project"]
+# auto-tag-by-project: the event-triggered curation (confirm-gated, the safety
+# property). tag-untagged-files: the manual (run_skill) workflow the dogfood drives
+# to prove the executor write+undo on the real graph - it finds an untagged file
+# under a project and proposes its FILE_PART_OF, needing no event operand.
+enabled = ["auto-tag-by-project", "tag-untagged-files"]
 executor_live = true
