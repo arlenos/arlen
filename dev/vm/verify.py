@@ -165,6 +165,22 @@ def main():
     serial = os.path.join(tmp, "serial.log")
     out = os.path.abspath(args.out)
 
+    # Boot a throwaway qcow2 overlay backed by the raw, never the raw directly: the
+    # guest filesystem is writable, so a prior boot otherwise persists its runtime
+    # state into the image (the KG SQLite + graph store, the audit ledger, and the
+    # dogfood's /var/lib/arlen-work/.git project signal). That persistence breaks the
+    # dogfood's fresh-system assumption: on a second boot the project already exists
+    # when the file is promoted, so promotion links the file and the executor's
+    # tag-untagged-files workflow finds nothing untagged to write. The overlay gives
+    # every run a pristine view and discards its writes, so the raw stays clean and
+    # each verify is independent.
+    overlay = os.path.join(tmp, "overlay.qcow2")
+    subprocess.run(
+        ["qemu-img", "create", "-f", "qcow2", "-b", image, "-F", "raw", overlay],
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+
     qemu = [
         # 4 GiB + 4 vCPUs: the baked llama-server loads a ~0.8 GB GGUF and runs CPU
         # inference alongside the compositor + shell + the AI daemons, which 2 GiB /
@@ -180,7 +196,7 @@ def main():
         "-cpu", "host",
         "-drive", f"if=pflash,unit=0,format=raw,readonly=on,file={OVMF_CODE}",
         "-drive", f"if=pflash,unit=1,format=raw,file={vars_fd}",
-        "-drive", f"if=virtio,format=raw,file={image}",
+        "-drive", f"if=virtio,format=qcow2,file={overlay}",
         # single virtio-gpu, no default VGA: cosmic-comp gets one DRM device with a
         # render node + GBM, and screendump captures that scanout. No gl=on, so the
         # framebuffer is CPU-readable (llvmpipe does the GL).
