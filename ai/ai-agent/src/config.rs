@@ -9,6 +9,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use arlen_ai_core::capability::{access_tier_from_level, AccessTier, ActionPermissions, BaselineMode};
+use arlen_config_broker::AiMasterSwitches;
 use serde::Deserialize;
 
 use crate::loader::Provenance;
@@ -300,18 +301,62 @@ impl AgentConfig {
         }
     }
 
-    /// Parse from `ai.toml` text. A malformed document falls back to the
-    /// safe defaults rather than erroring (fail-closed). The read level is
-    /// clamped by `access_tier_from_level`, and `action_mode` can never be
-    /// autonomous (a [`BaselineMode`]); autonomy is per-app only.
+    /// Parse from `ai.toml` text alone (no broker). Equivalent to
+    /// [`AgentConfig::resolve`] with no broker switches: every field, including
+    /// the six master switches, comes from the file. Retained for the tests and
+    /// any caller that has no broker to consult.
     pub fn parse(toml_text: &str) -> Self {
+        Self::resolve(toml_text, None)
+    }
+
+    /// Resolve the runtime config from `ai.toml` text, with the six
+    /// security-load-bearing master switches sourced from the config broker
+    /// when it is reachable.
+    ///
+    /// The switches - `enabled`, `access_level`, `executor_live`,
+    /// `action_mode`, `provider`, `autonomous_apps` - are the things a same-uid
+    /// process could silently flip in the user-writable `ai.toml`
+    /// (`same-uid-isolation-plan.md` Tier-A #1). When `broker` is `Some`, the
+    /// broker (the separate-uid owner of a store the user's normal uid cannot
+    /// write) is authoritative for them and the file's copies are ignored; when
+    /// it is `None` (the broker is unreachable, the pre-cutover fallback) they
+    /// come from the file, preserving today's behaviour. The non-switch fields
+    /// are not authority-bearing and always come from `ai.toml`: the `[agent]
+    /// enabled` behaviour list, and the provider's `model` / `context_window` /
+    /// `audit_token`.
+    ///
+    /// A malformed document falls back to the safe defaults rather than
+    /// erroring (fail-closed). The read level is clamped by
+    /// `access_tier_from_level`, and `action_mode` can never be autonomous (a
+    /// [`BaselineMode`]); autonomy is per-app only.
+    pub fn resolve(toml_text: &str, broker: Option<&AiMasterSwitches>) -> Self {
         let raw: RawConfig = toml::from_str(toml_text).unwrap_or_default();
-        // `[ai] enabled` (default off) is the global AI master switch, the
-        // same flag the ai-daemon gates on. With AI disabled the agent runs
-        // nothing, whatever the per-behaviour `[agent] enabled` list says.
-        if !raw.ai.enabled {
+
+        // `enabled` (default off) is the global AI master switch, the same flag
+        // the ai-daemon gates on. With AI disabled the agent runs nothing,
+        // whatever the per-behaviour `[agent] enabled` list says.
+        let enabled_master = broker.map_or(raw.ai.enabled, |b| b.enabled);
+        if !enabled_master {
             return Self::fail_closed();
         }
+        // The remaining switches: broker-authoritative when present, else the
+        // file's. Cloned out of `raw.ai`/`raw.agent` here so the non-switch
+        // fields below can still be moved out of `raw`.
+        let access_level = broker.map_or(raw.ai.access_level, |b| b.access_level);
+        let executor_live = broker.map_or(raw.agent.executor_live, |b| b.executor_live);
+        let action_mode: Option<String> = match broker {
+            Some(b) => Some(b.action_mode.as_str().to_string()),
+            None => raw.ai.action_mode.clone(),
+        };
+        let autonomous_apps: Vec<String> = match broker {
+            Some(b) => b.autonomous_apps.iter().cloned().collect(),
+            None => raw.ai.autonomous_apps.clone(),
+        };
+        let provider_name: Option<String> = match broker {
+            Some(b) => Some(b.provider.clone()),
+            None => raw.ai.provider.clone(),
+        };
+
         // Only built-in behaviours exist for now, so an enabled name is
         // approved for the built-in provenance.
         let enabled = raw
@@ -320,21 +365,17 @@ impl AgentConfig {
             .into_iter()
             .map(|name| (name, Provenance::BuiltIn))
             .collect();
-        let baseline = raw
-            .ai
-            .action_mode
+        let baseline = action_mode
             .as_deref()
             .map(BaselineMode::parse)
             .unwrap_or(BaselineMode::Suggest);
-        // A provider is wired only when one is named via the shared
-        // `ai.provider` key (so the standard Settings-authored config wires
-        // it, and a bare `[ai] enabled` without a provider stays workflow-only
-        // rather than guessing a backend). The model, window, and token fall
-        // back to safe defaults matching the catalogued backend when an
-        // optional `[provider]` section does not override them.
-        let provider = raw
-            .ai
-            .provider
+        // A provider is wired only when one is named (so the standard
+        // Settings-authored config wires it, and a bare `enabled` without a
+        // provider stays workflow-only rather than guessing a backend). The
+        // model, window, and token fall back to safe defaults matching the
+        // catalogued backend when an optional `[provider]` section does not
+        // override them.
+        let provider = provider_name
             .filter(|name| !name.is_empty())
             .map(|name| ProviderSettings {
                 name,
@@ -347,10 +388,10 @@ impl AgentConfig {
             });
         Self {
             enabled,
-            read_tier: access_tier_from_level(raw.ai.access_level),
-            actions: ActionPermissions::new(baseline, raw.ai.autonomous_apps),
+            read_tier: access_tier_from_level(access_level),
+            actions: ActionPermissions::new(baseline, autonomous_apps),
             provider,
-            executor_live: raw.agent.executor_live,
+            executor_live,
         }
     }
 }
@@ -579,5 +620,114 @@ audit_token = "tok-123"
         // provider.
         let cfg = AgentConfig::parse("[ai]\nenabled = false\nprovider = \"ollama-default\"\n");
         assert!(cfg.provider.is_none());
+    }
+
+    use arlen_config_broker::ActionMode;
+    use std::collections::BTreeSet;
+
+    /// A broker state with strong switches, for the override tests.
+    fn strong_switches() -> AiMasterSwitches {
+        AiMasterSwitches {
+            enabled: true,
+            access_level: 3,
+            executor_live: true,
+            action_mode: ActionMode::Supervised,
+            provider: "ollama-default".to_string(),
+            autonomous_apps: BTreeSet::from(["org.arlen.files".to_string()]),
+        }
+    }
+
+    #[test]
+    fn resolve_with_no_broker_equals_parse() {
+        // The fallback path (broker unreachable) must reproduce the file-only
+        // behaviour exactly, so a down broker never changes the resolved config.
+        let text = "[ai]\nenabled = true\naccess_level = 2\naction_mode = \"supervised\"\nautonomous_apps = [\"a.b\"]\nprovider = \"ollama-default\"\n[agent]\nenabled = [\"auto-tag-by-project\"]\nexecutor_live = true\n";
+        let from_parse = AgentConfig::parse(text);
+        let from_resolve = AgentConfig::resolve(text, None);
+        assert_eq!(from_resolve.read_tier, from_parse.read_tier);
+        assert_eq!(from_resolve.executor_live, from_parse.executor_live);
+        assert_eq!(
+            from_resolve.actions.default_mode().as_str(),
+            from_parse.actions.default_mode().as_str()
+        );
+        assert_eq!(
+            from_resolve.enabled.keys().collect::<Vec<_>>(),
+            from_parse.enabled.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn broker_switches_override_the_file_copies() {
+        // The file carries weak/off switches; the broker carries strong ones.
+        // The broker wins for all six, but the non-switch fields (the behaviour
+        // list, the provider model/window) still come from the file.
+        let text = r#"
+[ai]
+enabled = false
+access_level = 0
+action_mode = "suggest"
+autonomous_apps = []
+provider = ""
+
+[agent]
+enabled = ["auto-tag-by-project"]
+executor_live = false
+
+[provider]
+model = "my-special-model"
+context_window = 12345
+"#;
+        let switches = strong_switches();
+        let cfg = AgentConfig::resolve(text, Some(&switches));
+        // The six switches reflect the broker, not the (weaker) file.
+        assert_eq!(cfg.read_tier, AccessTier::TimeScoped, "access_level 3 from broker");
+        assert!(cfg.executor_live, "executor_live from broker");
+        assert_eq!(cfg.actions.default_mode().as_str(), "supervised", "action_mode from broker");
+        assert!(cfg.actions.is_autonomous("org.arlen.files"), "autonomous_apps from broker");
+        // The non-switch fields still come from the file.
+        assert_eq!(cfg.enabled.get("auto-tag-by-project"), Some(&Provenance::BuiltIn));
+        let p = cfg.provider.expect("the broker provider name wires a provider");
+        assert_eq!(p.name, "ollama-default", "provider name from broker");
+        assert_eq!(p.model, "my-special-model", "model still from the file");
+        assert_eq!(p.context_window, 12345, "context_window still from the file");
+    }
+
+    #[test]
+    fn the_broker_master_switch_can_disable_a_file_that_says_enabled() {
+        // A user-writable ai.toml flipping `enabled = true` cannot turn the AI on
+        // if the broker (the canonical owner) says off - the whole point of
+        // moving the master switch out of the writable file.
+        let text = "[ai]\nenabled = true\naccess_level = 4\n[agent]\nenabled = [\"auto-tag-by-project\"]\nexecutor_live = true\n";
+        let off = AiMasterSwitches {
+            enabled: false,
+            ..strong_switches()
+        };
+        let cfg = AgentConfig::resolve(text, Some(&off));
+        assert!(cfg.enabled.is_empty(), "broker-off disables every behaviour");
+        assert_eq!(cfg.read_tier, AccessTier::Minimal);
+        assert!(!cfg.executor_live);
+    }
+
+    #[test]
+    fn the_broker_master_switch_can_enable_a_file_that_says_disabled() {
+        // The symmetric case: the file says off, the broker says on. The broker
+        // is authoritative, so the agent runs.
+        let text = "[ai]\nenabled = false\n[agent]\nenabled = [\"auto-tag-by-project\"]\n";
+        let cfg = AgentConfig::resolve(text, Some(&strong_switches()));
+        assert_eq!(cfg.enabled.get("auto-tag-by-project"), Some(&Provenance::BuiltIn));
+        assert_eq!(cfg.read_tier, AccessTier::TimeScoped);
+        assert!(cfg.executor_live);
+    }
+
+    #[test]
+    fn a_broker_with_an_out_of_range_level_is_still_clamped() {
+        // The broker store clamps on its own, but resolve must also clamp so a
+        // hand-corrupted or future-widened value never widens the tier here.
+        let switches = AiMasterSwitches {
+            access_level: 99,
+            ..strong_switches()
+        };
+        let cfg = AgentConfig::resolve("[agent]\nenabled = []\n", Some(&switches));
+        assert_eq!(cfg.read_tier, AccessTier::Minimal, "99 clamps to the floor");
     }
 }

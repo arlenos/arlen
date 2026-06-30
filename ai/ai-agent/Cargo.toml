@@ -32,6 +32,12 @@ arlen-ai-sandbox = { path = "../ai-sandbox" }
 arlen-ai-skills = { path = "../ai-skills" }
 arlen-ai-undo-core = { path = "../ai-undo-core" }
 arlen-ai-undo-proto = { path = "../ai-undo-proto" }
+# The separate-uid owner of the AI master switches (executor_live / access_level
+# / enabled / provider / action_mode / autonomous_apps). The agent reads these
+# from the broker (a dir the user's normal uid cannot write) instead of trusting
+# the user-writable ai.toml; the non-switch fields (behaviour list, model,
+# context_window) still come from ai.toml. (same-uid-isolation-plan.md Tier-A #1.)
+arlen-config-broker = { path = "../../daemons/config-broker" }
 # The proposed file-change shape carried on a gate-card proposal (the harness
 # diff card body). Shared with the harness frontend via the crate's ts-rs bindings.
 arlen-file-change = { path = "../../contracts/file-change" }
