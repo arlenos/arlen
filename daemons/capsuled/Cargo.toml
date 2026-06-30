@@ -23,6 +23,7 @@ thiserror = "2"
 fs2 = "0.4"
 audit-proto = { path = "../../contracts/audit-proto" }
 arlen-permissions = { path = "../../sdk/permissions" }
+arlen-landlock-fence = { path = "../../sdk/landlock-fence" }
 libc = "0.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
