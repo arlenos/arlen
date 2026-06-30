@@ -1,0 +1,25 @@
+# The file-manager's KG read profile. The knowledge daemon runs as root (uid 0)
+# and resolves a caller's profile under /var/lib/arlen/permissions/<its own uid =
+# 0>/<app_id>.toml; without a profile a caller's read scope is empty and every
+# KG-backed FM feature (Recent, the file's Project, provenance, the Ask facets)
+# is denied. The app_id is the file-manager's bundle identifier (dev.arlen.files,
+# apps/files/src-tauri/tauri.conf.json); confirm it matches the daemon's
+# path_to_app_id resolution of the installed binary if the install path differs.
+#
+# READ-ONLY and narrow on purpose: the FM only READS the graph (verified against
+# apps/files/src-tauri - lib.rs reads File->Project via FILE_PART_OF and
+# read_provenance, facet_query reads File path/last_accessed). It never writes,
+# so there are no `relations` and no write scope. Erring narrow is the safe
+# direction: a missing scope degrades a read-feature, an extra scope is a leak.
+[info]
+app_id = "dev.arlen.files"
+tier = "first-party"
+
+[graph]
+read = [
+    "system.File.id",
+    "system.File.path",
+    "system.File.last_accessed",
+    "system.Project.id",
+    "system.Project.name",
+]
