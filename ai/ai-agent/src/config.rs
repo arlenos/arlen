@@ -9,7 +9,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use arlen_ai_core::capability::{access_tier_from_level, AccessTier, ActionPermissions, BaselineMode};
-use arlen_config_broker::AiMasterSwitches;
+use arlen_config_broker::{ActionMode, AiMasterSwitches, ConfigBrokerClient};
 use serde::Deserialize;
 
 use crate::loader::Provenance;
@@ -116,6 +116,66 @@ pub fn set_autonomous_app_in(path: &Path, app_id: &str, enabled: bool) -> Result
         .map_err(|e| format!("secure temp config: {e}"))?;
     std::fs::rename(&tmp, path).map_err(|e| format!("rename config into place: {e}"))?;
     Ok(())
+}
+
+/// Set `[ai] action_mode` through the config broker (the separate-uid owner of
+/// the AI master switches) when reachable, falling back to the ai.toml writer
+/// [`set_action_mode_in`] when it is not (the pre-cutover behaviour, so dev and
+/// an undeployed broker keep working). The mode is validated before either
+/// path. When the broker is reachable the change commits THERE and never also
+/// touches the file, so the broker store and ai.toml never diverge; a broker
+/// that is reachable but refuses the caller surfaces the error rather than
+/// silently writing the file behind the broker's back. The FINAL cutover drops
+/// the fallback once the broker is deployed in every launch path.
+pub async fn set_action_mode(path: &Path, mode: &str) -> Result<(), String> {
+    if !SETTABLE_ACTION_MODES.contains(&mode) {
+        return Err(format!(
+            "action_mode must be one of {SETTABLE_ACTION_MODES:?}, not {mode:?}"
+        ));
+    }
+    let client = ConfigBrokerClient::default_socket();
+    match client.get().await {
+        Ok(mut switches) => {
+            switches.action_mode = if mode == "supervised" {
+                ActionMode::Supervised
+            } else {
+                ActionMode::Suggest
+            };
+            client
+                .set(&switches)
+                .await
+                .map_err(|e| format!("config broker set: {e}"))
+        }
+        // Broker unreachable: the pre-cutover fallback writes ai.toml.
+        Err(_) => set_action_mode_in(path, mode),
+    }
+}
+
+/// Add (`enabled`) or remove an app from `[ai] autonomous_apps` through the
+/// config broker when reachable, else the ai.toml writer
+/// [`set_autonomous_app_in`] (the pre-cutover fallback). The id is validated
+/// before either path; idempotent. Broker-vs-file selection matches
+/// [`set_action_mode`].
+pub async fn set_autonomous_app(path: &Path, app_id: &str, enabled: bool) -> Result<(), String> {
+    let app = app_id.trim();
+    if app.is_empty() || app.chars().any(char::is_control) {
+        return Err("app id must be non-empty and free of control characters".to_string());
+    }
+    let client = ConfigBrokerClient::default_socket();
+    match client.get().await {
+        Ok(mut switches) => {
+            if enabled {
+                switches.autonomous_apps.insert(app.to_string());
+            } else {
+                switches.autonomous_apps.remove(app);
+            }
+            client
+                .set(&switches)
+                .await
+                .map_err(|e| format!("config broker set: {e}"))
+        }
+        Err(_) => set_autonomous_app_in(path, app_id, enabled),
+    }
 }
 
 /// The LLM provider the agent loop drives, resolved from `ai.toml`. A
@@ -751,5 +811,34 @@ context_window = 12345
         };
         let cfg = AgentConfig::resolve("[agent]\nenabled = []\n", Some(&switches));
         assert_eq!(cfg.read_tier, AccessTier::Minimal, "99 clamps to the floor");
+    }
+
+    #[tokio::test]
+    async fn set_action_mode_falls_back_to_the_file_when_the_broker_is_unreachable() {
+        // Point the broker socket at a guaranteed-dead path so the wrapper's
+        // broker get() fails and it falls back to the ai.toml writer. Any dead
+        // path yields the same outcome (fallback), and no other test reads this
+        // env var, so this is race-safe. (The broker-success path is gated to
+        // admitted writers, which the test binary is not, so it cannot be
+        // exercised here; the broker crate's own Set tests cover that path.)
+        std::env::set_var(
+            "ARLEN_CONFIG_BROKER_SOCKET",
+            "/nonexistent/arlen-test/config-broker.sock",
+        );
+        let dir = std::env::temp_dir().join(format!("arlen-set-mode-fb-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ai.toml");
+        std::fs::write(&path, "[ai]\nenabled = true\naction_mode = \"suggest\"\n").unwrap();
+
+        set_action_mode(&path, "supervised").await.expect("fallback write to ai.toml");
+        let cfg = AgentConfig::parse(&std::fs::read_to_string(&path).unwrap());
+        assert_eq!(cfg.actions.default_mode().as_str(), "supervised");
+
+        // An invalid mode is rejected before either path (no file write).
+        assert!(set_action_mode(&path, "autonomous").await.is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
+        std::env::remove_var("ARLEN_CONFIG_BROKER_SOCKET");
     }
 }
