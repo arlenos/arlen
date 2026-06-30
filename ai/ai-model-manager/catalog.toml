@@ -1,0 +1,59 @@
+# The curated model catalog - the shipped starter list (local-model-bundle-plan.md).
+#
+# This is the CURATION only: which models, the task groups they show under, the
+# GGUF source the consent-gated downloader fetches, and whether a model is the
+# advanced (abliterated / uncensored) grey-zone set hidden behind the explicit
+# Advanced door. The Fast / Balanced / Quality tier and the Fits / May-be-slow /
+# Won't-fit badge are NOT stored here - the recommender computes them per the
+# target hardware from `params_b`. `params_b` is the marketing parameter count;
+# the `source` refs are the well-known GGUF quant repos (Tim curates the exact
+# refs + the set later - this is the decided starter list, not the final one).
+#
+# Tier intent (recommender-confirmed on the target box): Llama-3.2-1B is the
+# sub-1 GB baked offline-first default; Qwen2.5-3B = Fast; Qwen2.5-7B = the
+# Balanced default-upgrade; Qwen2.5-32B = Quality; Qwen2.5-Coder-7B = Coding;
+# Ministral-8B = the EU-sovereign featured pick; the Qwen3-8B abliterated entry
+# is the Advanced-door model.
+
+[[model]]
+name = "Llama-3.2-1B"
+params_b = 1.24
+tasks = ["general"]
+source = "bartowski/Llama-3.2-1B-Instruct-GGUF"
+
+[[model]]
+name = "Qwen2.5-3B"
+params_b = 3.09
+tasks = ["general"]
+source = "bartowski/Qwen2.5-3B-Instruct-GGUF"
+
+[[model]]
+name = "Qwen2.5-7B"
+params_b = 7.62
+tasks = ["general"]
+source = "bartowski/Qwen2.5-7B-Instruct-GGUF"
+
+[[model]]
+name = "Qwen2.5-32B"
+params_b = 32.5
+tasks = ["general", "reasoning"]
+source = "bartowski/Qwen2.5-32B-Instruct-GGUF"
+
+[[model]]
+name = "Qwen2.5-Coder-7B"
+params_b = 7.62
+tasks = ["coding"]
+source = "bartowski/Qwen2.5-Coder-7B-Instruct-GGUF"
+
+[[model]]
+name = "Ministral-8B"
+params_b = 8.02
+tasks = ["general", "writing"]
+source = "bartowski/Ministral-8B-Instruct-2410-GGUF"
+
+[[model]]
+name = "Qwen3-8B-abliterated"
+params_b = 8.19
+tasks = ["general"]
+source = "huihui-ai/Qwen3-8B-abliterated"
+advanced = true
