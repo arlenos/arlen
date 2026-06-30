@@ -64,8 +64,25 @@ async fn main() {
         fail(&format!("create file {path}: {e}"));
     }
 
-    if let Err(e) = emit_open(&path).await {
-        fail(&format!("emit: {e}"));
+    // Re-emit the file.opened over the first few seconds, not once: the knowledge
+    // writer registers its event-bus consumer a few tens of ms into boot, and the
+    // bus drops events that have no consumer at emit time, so a single startup
+    // emit races the writer and is silently lost (the producer socket still
+    // accepts it, so the emit call returns Ok). Re-emitting guarantees one lands
+    // after the writer subscribes, well before the first promotion pass turns it
+    // into the still-unlinked File node. Re-emits are idempotent: promotion MERGEs
+    // the File on its path, so the node is created once.
+    let mut emitted = false;
+    for attempt in 0..8 {
+        match emit_open(&path).await {
+            Ok(()) => emitted = true,
+            Err(e) if attempt == 0 => eprintln!("DOGFOOD emit attempt failed: {e}"),
+            Err(_) => {}
+        }
+        sleep(Duration::from_secs(1)).await;
+    }
+    if !emitted {
+        fail("emit: every file.opened attempt failed");
     }
     println!("DOGFOOD EMIT ok path={path}");
 
