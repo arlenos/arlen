@@ -200,15 +200,14 @@
     {/snippet}
     {#snippet control()}
       <span class="ctl">
-        <label class="def" title={isDefault ? "Default printer" : "Set as default"}>
+        <span class="def" title={isDefault ? "Default printer" : "Set as default"}>
           <Checkbox
             checked={isDefault}
             disabled={isDefault}
             ariaLabel={isDefault ? "Default printer" : `Make ${displayName(p)} the default`}
             onchange={() => setDefault(p.name)}
           />
-          <span class="def-label">Default</span>
-        </label>
+        </span>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -362,21 +361,13 @@
     align-items: center;
     gap: 6px;
   }
-  /* The default marker: the kit Checkbox plus its label, one click target. */
+  /* The default marker: the kit Checkbox, one per row; the ticked one is the
+     default. The word is not repeated down the column - the tick carries it,
+     with the meaning on the hover title. */
   .def {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    margin-right: 4px;
-    font-size: 0.75rem;
-    color: var(--color-fg-secondary);
-    cursor: pointer;
-  }
-  .def:has(:disabled) {
-    cursor: default;
-  }
-  .def-label {
-    user-select: none;
+    margin-right: 6px;
   }
 
   .job-state {
