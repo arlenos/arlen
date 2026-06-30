@@ -43,7 +43,12 @@
     border-radius: var(--radius-card);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 10%, transparent);
-    background: color-mix(in srgb, var(--foreground) 3%, transparent);
+    /* The card surface per theme: dark layers by lightness (the card is lighter
+       than the field, --shadow-card is none); light lifts a white card off the
+       grey field with --shadow-card. Falls back to the old foreground tint where
+       no theme tokens are present. */
+    background: var(--card, color-mix(in srgb, var(--foreground) 3%, transparent));
+    box-shadow: var(--shadow-card, none);
     /* No overflow:hidden, so dropdown menus can escape the card. */
     /* Expose the card radius for concentric inset children (the rows are
        flat full-bleed dividers, but an inset rounded child reads these). */
