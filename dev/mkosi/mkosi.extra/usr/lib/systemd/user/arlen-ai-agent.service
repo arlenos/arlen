@@ -19,6 +19,11 @@ RestartSec=2
 Environment=ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock
 Environment=ARLEN_DAEMON_SOCKET=/run/arlen/knowledge.sock
 Environment=ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
+# The config broker is a root SYSTEM service binding at /run/arlen (not this
+# --user service's $XDG_RUNTIME_DIR). Point the agent at the system path so its
+# executor_live / read-tier / autonomy come from the broker; absent the broker
+# it falls back to ai.toml.
+Environment=ARLEN_CONFIG_BROKER_SOCKET=/run/arlen/config-broker.sock
 
 # Reads ai.toml + the baked behaviours (read-only); writes the durable undo log
 # under ~/.local/state/arlen and connects to the per-user audit socket. Unix

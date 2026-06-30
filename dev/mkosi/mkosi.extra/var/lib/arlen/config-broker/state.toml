@@ -1,0 +1,23 @@
+# The config broker's canonical AI master-switch state for the SUT image.
+#
+# Baked here because the broker is AUTHORITATIVE once deployed: the AI daemon +
+# agent read these switches from the broker, not from ai.toml. The broker would
+# otherwise seed its conservative shipped default (AI off), which would DISABLE
+# the AI in the VM even though ai.toml enables it - the dogfood needs it on. So
+# this seed mirrors the baked ai.toml's intent (enabled, full read scope,
+# executor live, the local llama provider, supervised actions). The broker's
+# `seed_if_absent` leaves this file untouched (it only seeds when ABSENT), and
+# the daemon tightens the containing dir to 0700 root-owned on open, so the
+# session user can neither read nor rewrite it - the whole point of Tier-A #1.
+#
+# (Same-uid isolation: in the deployed image the broker runs as root, a
+# different uid from the session user, so uid 1000 cannot write this file. In
+# `just dev` the broker is not run at all - the AI services fall back to ai.toml,
+# which is fine since dev is same-uid anyway and the broker adds no separation
+# there.)
+enabled = true
+access_level = 4
+executor_live = true
+action_mode = "supervised"
+provider = "ollama-default"
+autonomous_apps = []
