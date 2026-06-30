@@ -20,3 +20,5 @@
 /mkosi.extra/usr/bin/event-bus
 # persistent cargo cache for mkosi.build (registry + target dir)
 /mkosi.builddir/
+# incremental cache (post-distro base image), reused across builds (--incremental)
+/mkosi.cache/
