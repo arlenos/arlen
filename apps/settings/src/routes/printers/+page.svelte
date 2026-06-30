@@ -17,7 +17,6 @@
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
-  import { Checkbox } from "@arlen/ui-kit/components/ui/checkbox";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import { Trash2, SlidersHorizontal, RefreshCw, Plus } from "lucide-svelte";
 
@@ -92,8 +91,10 @@
   function notReady(p: Printer): boolean {
     return p.state !== "idle";
   }
-  /// The quiet meta line: transport (USB / Network · host), and the state word
-  /// only when it isn't the resting "Ready" (the dot already says ready).
+  /// The quiet meta line: transport (USB / Network · host), the state word only
+  /// when it isn't the resting "Ready" (the dot already says ready), and the
+  /// "Default" marker on exactly the default printer (the only per-row hint of
+  /// which is default - the dropdown above is where you change it).
   function metaLine(p: Printer): string {
     const parts: string[] = [];
     if (p.destination === "local") parts.push(transportOf(p.uri));
@@ -102,8 +103,14 @@
       parts.push(host ? `Network · ${host}` : "Network");
     }
     if (notReady(p)) parts.push(PRINTER_STATE_LABEL[p.state]);
+    if ($printers.defaultName === p.name) parts.push("Default");
     return parts.join(" · ");
   }
+
+  /// The printer options for the "Default printer" selector.
+  const defaultOptions = $derived(
+    $printers.printers.map((p) => ({ value: p.name, label: displayName(p) })),
+  );
   function jobPrinter(queueName: string): string {
     const p = $printers.printers.find((x) => x.name === queueName);
     return p ? displayName(p) : queueName;
@@ -144,6 +151,19 @@
       {/if}
       {#if $printers.printers.length === 0}
         <p class="empty">No printers yet. Add one below.</p>
+      {:else}
+        <Row label="Default printer" description="Used unless an app picks another.">
+          {#snippet control()}
+            <PopoverSelect
+              value={$printers.defaultName ?? ""}
+              options={defaultOptions}
+              placeholder="None"
+              ariaLabel="Default printer"
+              width="200px"
+              onchange={setDefault}
+            />
+          {/snippet}
+        </Row>
       {/if}
       {#each $printers.printers as p (p.name)}
         {@render printerRow(p)}
@@ -192,7 +212,6 @@
 </Page>
 
 {#snippet printerRow(p: Printer)}
-  {@const isDefault = $printers.defaultName === p.name}
   {@const opts = optionsFor(p.name)}
   <Row label={displayName(p)} description={metaLine(p)}>
     {#snippet leading()}
@@ -200,14 +219,6 @@
     {/snippet}
     {#snippet control()}
       <span class="ctl">
-        <span class="def" title={isDefault ? "Default printer" : "Set as default"}>
-          <Checkbox
-            checked={isDefault}
-            disabled={isDefault}
-            ariaLabel={isDefault ? "Default printer" : `Make ${displayName(p)} the default`}
-            onchange={() => setDefault(p.name)}
-          />
-        </span>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -360,14 +371,6 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-  }
-  /* The default marker: the kit Checkbox, one per row; the ticked one is the
-     default. The word is not repeated down the column - the tick carries it,
-     with the meaning on the hover title. */
-  .def {
-    display: inline-flex;
-    align-items: center;
-    margin-right: 6px;
   }
 
   .job-state {
