@@ -168,9 +168,12 @@ dependencies = [
 name = "arlen-ai-model-manager"
 version = "0.1.0"
 dependencies = [
+ "arlen-net-guard",
+ "reqwest",
  "serde",
  "sha2",
  "tempfile",
+ "tokio",
  "toml 0.8.23",
 ]
 
@@ -311,6 +314,15 @@ dependencies = [
 [[package]]
 name = "arlen-graph-schema"
 version = "0.1.0"
+
+[[package]]
+name = "arlen-net-guard"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+]
 
 [[package]]
 name = "arlen-permissions"
@@ -2872,7 +2884,9 @@ checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "futures-channel",
  "futures-core",
+ "futures-util",
  "http",
  "http-body",
  "http-body-util",

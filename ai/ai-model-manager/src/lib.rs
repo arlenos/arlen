@@ -23,6 +23,7 @@
 //! the UI sees only the badge and the size.
 
 pub mod download;
+pub mod fetch;
 pub mod store;
 
 /// One byte-count gibibyte (2^30), the binary unit GPU and RAM tools report. The
