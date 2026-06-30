@@ -63,6 +63,12 @@ pub struct Confinement {
     network: NetworkPolicy,
     binds: Vec<Bind>,
     tmpfs: Vec<String>,
+    /// Binds re-applied AFTER the `tmpfs` masks, so a path inside a masked
+    /// directory is re-exposed (e.g. the app's own `~/.config/arlen/apps/<id>`
+    /// kept while the rest of `~/.config/arlen` is tmpfs-masked under a broad
+    /// home grant). bwrap applies argv in order, so a later `--bind` wins over
+    /// an earlier `--tmpfs` covering it.
+    post_mask_binds: Vec<Bind>,
     env: BTreeMap<String, String>,
     chdir: Option<String>,
 }
@@ -141,6 +147,22 @@ impl Confinement {
             a.push("--tmpfs".into());
             a.push(t.clone());
         }
+        // Re-binds applied AFTER the tmpfs masks, so a kept sub-path inside a
+        // masked directory wins (later argv overrides the covering --tmpfs).
+        for bind in &self.post_mask_binds {
+            match bind {
+                Bind::ReadOnly(src, dst) => {
+                    a.push("--ro-bind".into());
+                    a.push(src.clone());
+                    a.push(dst.clone());
+                }
+                Bind::ReadWrite(src, dst) => {
+                    a.push("--bind".into());
+                    a.push(src.clone());
+                    a.push(dst.clone());
+                }
+            }
+        }
         // Deterministic, sorted environment (BTreeMap iterates sorted).
         for (k, v) in &self.env {
             a.push("--setenv".into());
@@ -216,6 +238,7 @@ pub fn build_profile(
             Bind::ReadWrite(build, BUILD_MOUNT.into()),
         ],
         tmpfs: vec!["/tmp".into(), "/sys".into()],
+        post_mask_binds: vec![],
         env,
         chdir: Some(BUILD_MOUNT.into()),
     })
@@ -264,20 +287,42 @@ impl AppProfileSkeleton {
 pub fn app_runtime_profile(
     usr: &Path,
     app_dirs: &[&Path],
+    masked: &[&Path],
     env: BTreeMap<String, String>,
     net: NetworkPolicy,
 ) -> Result<AppProfileSkeleton, ConfinerError> {
     let usr = checked_abs(usr)?;
+    // `masked` directories become tmpfs masks: when a broad grant (e.g. `home`)
+    // binds a parent, these subtrees are hidden from the app - EXCEPT an
+    // `app_dir` that lies inside one, which is re-bound AFTER the mask
+    // (`post_mask_binds`) so the app keeps its own state there (its
+    // `~/.config/arlen/apps/<id>` while the rest of `~/.config/arlen` is hidden).
+    let masked_abs: Vec<String> = masked
+        .iter()
+        .map(|m| checked_abs(m))
+        .collect::<Result<_, _>>()?;
     let mut binds = vec![Bind::ReadOnly(usr, "/usr".into())];
+    let mut post_mask_binds = Vec::new();
     for dir in app_dirs {
         let d = checked_abs(dir)?;
-        binds.push(Bind::ReadWrite(d.clone(), d));
+        let under_mask = masked_abs
+            .iter()
+            .any(|m| Path::new(&d).starts_with(Path::new(m)));
+        let bind = Bind::ReadWrite(d.clone(), d);
+        if under_mask {
+            post_mask_binds.push(bind);
+        } else {
+            binds.push(bind);
+        }
     }
+    let mut tmpfs = vec!["/tmp".into()];
+    tmpfs.extend(masked_abs);
     Ok(AppProfileSkeleton {
         inner: Confinement {
             network: net,
             binds,
-            tmpfs: vec!["/tmp".into()],
+            tmpfs,
+            post_mask_binds,
             env,
             chdir: None,
         },
@@ -429,6 +474,7 @@ mod tests {
         let skel = app_runtime_profile(
             Path::new("/usr"),
             &[Path::new("/home/u/.config/demo")],
+            &[],
             env(),
             NetworkPolicy::FilteredHosts(vec!["api.example.org:443".into()]),
         )
@@ -456,6 +502,7 @@ mod tests {
         let skel = app_runtime_profile(
             Path::new("/usr"),
             &[],
+            &[],
             BTreeMap::new(),
             NetworkPolicy::Unrestricted,
         )
@@ -463,6 +510,43 @@ mod tests {
         assert!(matches!(skel.network(), NetworkPolicy::Unrestricted));
         let args = skel.complete(vec![], vec![]).bwrap_args();
         assert!(!args.contains(&"--unshare-net".to_string()));
+    }
+
+    #[test]
+    fn a_masked_dir_is_tmpfs_and_an_app_dir_inside_it_is_rebound_after() {
+        // A broad grant would expose ~/.config/arlen; masking it (a tmpfs) hides
+        // the system config, while the app's own apps/<id> INSIDE it is re-bound
+        // AFTER the mask so the app keeps its own state (Tier-A #3 carve-out).
+        let skel = app_runtime_profile(
+            Path::new("/usr"),
+            &[
+                Path::new("/home/u/.config/arlen/apps/x"),
+                Path::new("/home/u/.local/share/arlen/apps/x"),
+            ],
+            &[Path::new("/home/u/.config/arlen")],
+            env(),
+            NetworkPolicy::None,
+        )
+        .unwrap();
+        let args = skel.complete(vec![], vec![]).bwrap_args();
+        let tmpfs_pos = args
+            .windows(2)
+            .position(|w| w[0] == "--tmpfs" && w[1] == "/home/u/.config/arlen")
+            .expect("the masked dir is a tmpfs");
+        let own_config_pos = args
+            .windows(2)
+            .position(|w| w[0] == "--bind" && w[1] == "/home/u/.config/arlen/apps/x")
+            .expect("the app's own config is bound");
+        assert!(
+            own_config_pos > tmpfs_pos,
+            "the app's own config must re-bind AFTER the mask, else the tmpfs hides it"
+        );
+        // A dir NOT under the mask binds normally, before the masks.
+        let share_pos = args
+            .windows(2)
+            .position(|w| w[0] == "--bind" && w[1] == "/home/u/.local/share/arlen/apps/x")
+            .expect("the app's share dir is bound");
+        assert!(share_pos < tmpfs_pos, "an unmasked app dir binds before the masks");
     }
 
     fn rw_pairs(args: &[String]) -> Vec<(String, String)> {

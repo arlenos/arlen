@@ -34,6 +34,12 @@ pub struct ConfinementInputs {
     /// Directories the app may write (its own state dirs, the flag-gated XDG dirs,
     /// and any `custom` paths). Each becomes a read-write bind.
     pub app_dirs: Vec<PathBuf>,
+    /// Directories masked from the app even under a broader grant (a tmpfs over
+    /// each), so e.g. a `home` grant cannot expose `~/.config/arlen` (the system
+    /// AI/shell/compositor configs + other apps' configs). The app's own state
+    /// dirs that lie under a masked path are re-exposed after the mask (the
+    /// confiner's `post_mask_binds`). (same-uid-isolation-plan.md Tier-A #3.)
+    pub masked_dirs: Vec<PathBuf>,
     /// The network policy.
     pub network: NetworkPolicy,
 }
@@ -104,6 +110,13 @@ pub fn confinement_inputs(
     );
     ConfinementInputs {
         app_dirs,
+        // Always mask the system arlen config dir: only the app's own
+        // `~/.config/arlen/apps/{app_id}` (in `app_dirs`) is re-exposed, so a
+        // broad grant (`home`, or a `custom` ancestor of `~/.config`) cannot
+        // hand a confined app the AI master switches' file siblings, the shell /
+        // compositor config, or other apps' configs. Harmless when no grant
+        // would have exposed it (a tmpfs over an otherwise-absent path).
+        masked_dirs: vec![home.join(".config/arlen")],
         network: network_policy(net),
     }
 }
