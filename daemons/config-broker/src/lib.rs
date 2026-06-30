@@ -17,6 +17,8 @@
 //! gate land on top of it.
 
 pub mod client;
+#[cfg(target_os = "linux")]
+pub mod landlock_fence;
 pub mod protocol;
 pub mod server;
 pub mod state;

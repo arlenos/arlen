@@ -28,6 +28,19 @@ RestartSec=1
 # mode, are the access boundary (SO_PEERPIDFD uid check + the admitted-writer
 # app-id gate). ARLEN_CONFIG_BROKER_OWNER_UID is the session user's uid (1000 in
 # the SUT image): the broker accepts a caller of that uid and rejects any other.
+#
+# The broker self-confines with a Landlock write-fence (read everywhere, write
+# only under the store dir + the socket's /run/arlen dir; same-uid-isolation-plan
+# Tier-A #2). Running as root the broker's own pre-fence create_dir_all(/run/arlen)
+# always succeeds, so the socket-dir write grant is always expressible. The fence
+# is best-effort here on purpose: it logs "landlock write-fence enforced" when the
+# kernel honors it and continues unconfined (no worse than no fence) if not. Once a
+# VM boot confirms that enforced log line, set ARLEN_CONFIG_BROKER_REQUIRE_FENCE=1
+# to make a non-enforcing kernel a fatal boot error (assertable confinement);
+# setting it before confirming enforcement risks a Restart=on-failure boot loop.
+# The intended dedicated `arlen-config` uid refinement (see User= note) must also
+# make /run/arlen writable by that uid (a tmpfiles.d entry or a supplementary
+# group) so its own create_dir_all + socket-dir grant still succeed.
 Environment=ARLEN_CONFIG_BROKER_DIR=/var/lib/arlen/config-broker
 Environment=ARLEN_CONFIG_BROKER_SOCKET=/run/arlen/config-broker.sock
 Environment=ARLEN_CONFIG_BROKER_OWNER_UID=1000
@@ -49,6 +62,13 @@ RestrictRealtime=true
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources
+# Explicitly allow the Landlock syscalls so the self-confining write-fence can
+# install under this seccomp policy. They are not @privileged/@resources, so a
+# recent @system-service already covers them; naming them is belt-and-suspenders
+# against an older systemd whose @system-service predates Landlock - without this
+# the fence's landlock_* calls would EPERM, fence_writes would fail, and the
+# best-effort fence would silently stay off even on a Landlock-capable kernel.
+SystemCallFilter=landlock_create_ruleset landlock_add_rule landlock_restrict_self
 UMask=0077
 
 [Install]
