@@ -12,7 +12,16 @@ edition = "2021"
 name = "arlen-graph-daemon"
 path = "src/main.rs"
 
+[[bin]]
+# The timeline FUSE helper: serves ~/.timeline by querying the daemon's read
+# socket. Run UNFENCED so the SUID `fusermount3` the mount needs still execs;
+# the main daemon takes the Landlock + no_new_privs write-fence (which would
+# otherwise block that exec). Split out per same-uid-isolation-plan.md option b.
+name = "arlen-timeline"
+path = "src/bin/arlen-timeline.rs"
+
 [dependencies]
+os-sdk = { path = "../../sdk/os-sdk" }
 tokio = { version = "1", features = ["full"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
 prost = "0.13"
