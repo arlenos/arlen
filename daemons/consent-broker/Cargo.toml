@@ -23,7 +23,6 @@ arlen-ai-core = { path = "../../ai/ai-core" }
 arlen-consent-contract = { path = "../../contracts/consent-contract" }
 # Kernel-attested peer identity (SO_PEERCRED -> path_to_app_id) for both sockets.
 arlen-permissions = { path = "../../sdk/permissions" }
-arlen-landlock-fence = { path = "../../sdk/landlock-fence" }
 # The audit ledger sink: each resolved decision is recorded fail-closed before
 # the grant is released (S13 audit-before-act).
 audit-proto = { path = "../../contracts/audit-proto" }

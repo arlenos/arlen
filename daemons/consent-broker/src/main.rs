@@ -17,7 +17,7 @@
 //! [`GraphGrantPersister`] this binary attaches via `with_persister`.
 
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -332,7 +332,8 @@ async fn handle_control_conn(state: Arc<SharedState>, mut stream: UnixStream, ui
     }
 }
 
-fn main() -> std::io::Result<()> {
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -340,55 +341,7 @@ fn main() -> std::io::Result<()> {
         )
         .init();
 
-    // Self-confine before the runtime starts (Tier-A #2). The broker's ONLY
-    // filesystem write is its two sockets under $XDG_RUNTIME_DIR/arlen: grants
-    // live in-memory and are persisted to the KG + audited over sockets (both
-    // connects, not path writes), so there is no local grant store a compromised
-    // broker could tamper or plant elsewhere. Create the socket dir, then fence
-    // on the main thread BEFORE building the runtime so every worker and spawned
-    // connection task inherits the domain. The broker spawns tokio tasks, not
-    // child processes, so there is no inherited-domain trap.
     let dir = runtime_dir()?;
-    apply_fence(&dir);
-
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?;
-    runtime.block_on(run(dir))
-}
-
-/// Install the Landlock write-fence over the broker's socket dir. Defense-in-
-/// depth: a kernel that cannot enforce it leaves the broker exactly as safe as
-/// no fence, so by default a non-enforcing kernel or a ruleset error is logged
-/// and the broker continues. A hardened deployment that wants the confinement
-/// guaranteed sets `ARLEN_CONSENT_REQUIRE_FENCE=1`, making a non-enforcing
-/// kernel a fatal startup error.
-fn apply_fence(socket_dir: &Path) {
-    use arlen_landlock_fence::{fence_writes, FenceOutcome};
-    let require = std::env::var_os("ARLEN_CONSENT_REQUIRE_FENCE").is_some_and(|v| v == "1");
-    let degraded = match fence_writes(&[socket_dir]) {
-        Ok(FenceOutcome::Enforced) => {
-            tracing::info!("landlock write-fence enforced (write-confined to the socket dir)");
-            None
-        }
-        Ok(FenceOutcome::NotEnforced) => Some("landlock not enforced by this kernel".to_string()),
-        Err(e) => Some(format!("landlock fence not applied: {e}")),
-    };
-    if let Some(reason) = degraded {
-        if require {
-            tracing::error!(
-                "ARLEN_CONSENT_REQUIRE_FENCE=1 but the fence is not active ({reason}); refusing to run unconfined"
-            );
-            std::process::exit(1);
-        }
-        tracing::warn!("{reason}; running unconfined (no worse than no fence)");
-    }
-}
-
-/// The async serve body: bind the intake + control sockets, then accept and
-/// dispatch consent requests until shutdown. Runs entirely inside the
-/// write-fence installed by [`main`].
-async fn run(dir: PathBuf) -> std::io::Result<()> {
     let intake_path = dir.join("consent-intake.sock");
     let control_path = dir.join("consent-control.sock");
     let uid = current_uid();
