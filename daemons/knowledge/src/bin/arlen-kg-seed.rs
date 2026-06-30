@@ -27,5 +27,18 @@ async fn main() -> Result<()> {
     let graph = knowledge::graph::spawn(&path)?;
     knowledge::seed::seed_corpus(&graph).await?;
     println!("arlen-kg-seed: seeded the deterministic dev KG corpus into {path}");
+
+    // Optional, test-only: an untagged fixture at REAL on-disk paths (the agent's
+    // predict step canonicalizes the path through the filesystem, so the fixed
+    // corpus's fictional paths can never prove). The integration go-live IT sets
+    // these to a temp dir + file it created; unset in dev so the corpus is unchanged.
+    if let (Ok(root), Ok(file)) = (
+        std::env::var("ARLEN_KG_SEED_UNTAGGED_ROOT"),
+        std::env::var("ARLEN_KG_SEED_UNTAGGED_FILE"),
+    ) {
+        knowledge::seed::seed_untagged_host(&graph, "seed.project.untagged-host", &root, &file)
+            .await?;
+        println!("arlen-kg-seed: seeded an untagged-host fixture at {file} under {root}");
+    }
     Ok(())
 }

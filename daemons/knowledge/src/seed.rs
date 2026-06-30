@@ -45,10 +45,6 @@ pub const FILE_MOVED: &str = "/work/seed/alpha/moved.md";
 pub const FILE_ALPHA_ONLY: &str = "/work/seed/alpha/stable.md";
 /// A file always in Beta.
 pub const FILE_BETA_ONLY: &str = "/work/seed/beta/notes.md";
-/// A file that lies under Alpha's root but carries NO `FILE_PART_OF` edge -
-/// the untagged fixture the `tag-untagged-files` workflow finds and proposes
-/// to tag. Deterministic ground truth for the executor go-live write+undo IT.
-pub const FILE_UNTAGGED: &str = "/work/seed/alpha/untagged.md";
 
 /// The instant the move happens (Alpha membership closes, Beta opens).
 const MOVE_MICROS: i64 = BASE_MICROS + 7 * DAY_US;
@@ -71,10 +67,8 @@ pub async fn seed_corpus(graph: &GraphHandle) -> Result<()> {
             .await?;
     }
 
-    // Files (path-keyed: the File node id is its absolute path). FILE_UNTAGGED
-    // is created but never linked, so it stays an untagged member of Alpha's
-    // tree for the manual tag-untagged-files workflow to discover.
-    for path in [FILE_MOVED, FILE_ALPHA_ONLY, FILE_BETA_ONLY, FILE_UNTAGGED] {
+    // Files (path-keyed: the File node id is its absolute path).
+    for path in [FILE_MOVED, FILE_ALPHA_ONLY, FILE_BETA_ONLY] {
         graph
             .write(format!(
                 "MERGE (f:File {{id: '{path}'}})
@@ -118,6 +112,44 @@ async fn part_of(
     Ok(())
 }
 
+/// Seed a single untagged fixture: a `Project` rooted at `project_root` and a
+/// `File` at `file_path` (its node id, by the path-keying convention) that lies
+/// under that root, with NO `FILE_PART_OF` edge. Both paths must be REAL,
+/// existing on-disk paths: the agent's predict-before-act step canonicalizes a
+/// `PathUnderField` operand through the filesystem, so a fictional path resolves
+/// to nothing and the proposal never proves. Kept out of the fixed corpus so
+/// exactly one untagged file exists when an integration scenario asks for it
+/// (the manual `tag-untagged-files` workflow discovers the first untagged file,
+/// so two would race). Idempotent (MERGE).
+pub async fn seed_untagged_host(
+    graph: &GraphHandle,
+    project_id: &str,
+    project_root: &str,
+    file_path: &str,
+) -> Result<()> {
+    // These come from a caller (a test's temp paths), not fixed literals, so
+    // refuse a quote/backslash rather than risk breaking out of the literal.
+    for s in [project_id, project_root, file_path] {
+        if s.contains('\'') || s.contains('\\') {
+            anyhow::bail!("untagged-host seed inputs must not contain quotes or backslashes");
+        }
+    }
+    graph
+        .write(format!(
+            "MERGE (p:Project {{id: '{project_id}'}})
+             SET p.name = 'Untagged Host', p.root_path = '{project_root}', p.status = 'active',
+                 p.created_at = {BASE_MICROS}, p.promoted = true, p.inferred = false"
+        ))
+        .await?;
+    graph
+        .write(format!(
+            "MERGE (f:File {{id: '{file_path}'}})
+             SET f.path = '{file_path}', f.last_accessed = {BASE_MICROS}"
+        ))
+        .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,10 +184,46 @@ mod tests {
         // The stable files never move.
         assert_eq!(project_at(&graph, FILE_ALPHA_ONLY, ASOF_LATE).await, vec![PROJECT_ALPHA]);
         assert_eq!(project_at(&graph, FILE_BETA_ONLY, ASOF_EARLY).await, vec![PROJECT_BETA]);
+    }
 
-        // The untagged fixture exists but has no membership at any time.
-        assert!(project_at(&graph, FILE_UNTAGGED, ASOF_LATE).await.is_empty());
-        assert!(project_at(&graph, FILE_UNTAGGED, ASOF_EARLY).await.is_empty());
+    #[tokio::test]
+    async fn seed_untagged_host_writes_an_unlinked_file_under_a_real_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let graph = crate::graph::spawn(dir.path().join("graph").to_str().unwrap()).unwrap();
+        let root = dir.path().join("proj");
+        let file = root.join("new.rs");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(&file, b"// new\n").unwrap();
+
+        seed_untagged_host(
+            &graph,
+            "seed.project.untagged-host",
+            root.to_str().unwrap(),
+            file.to_str().unwrap(),
+        )
+        .await
+        .unwrap();
+
+        // The File node exists, and it has no FILE_PART_OF membership at any time.
+        let exists = graph
+            .query_rows(format!(
+                "MATCH (f:File {{id: '{}'}}) RETURN f.id AS id",
+                file.to_str().unwrap()
+            ))
+            .await
+            .unwrap();
+        assert_eq!(exists.rows.len(), 1, "the untagged File node exists");
+        assert!(
+            project_at(&graph, file.to_str().unwrap(), ASOF_LATE).await.is_empty(),
+            "the untagged file has no project membership"
+        );
+    }
+
+    #[tokio::test]
+    async fn seed_untagged_host_rejects_quoted_inputs() {
+        let dir = tempfile::tempdir().unwrap();
+        let graph = crate::graph::spawn(dir.path().join("graph").to_str().unwrap()).unwrap();
+        assert!(seed_untagged_host(&graph, "p", "/r", "/r/a'b.rs").await.is_err());
     }
 
     #[tokio::test]
