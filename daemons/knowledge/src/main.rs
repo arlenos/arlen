@@ -215,13 +215,18 @@ fn apply_fence(db_path: &str, graph_path: &str, daemon_socket: &str) {
 
     let require = std::env::var_os("ARLEN_KNOWLEDGE_REQUIRE_FENCE").is_some_and(|v| v == "1");
 
+    // Grant each path's PARENT dir, never the leaf itself: the ladybug/Kuzu
+    // database at `graph_path` is created and managed by Kuzu, which refuses a
+    // pre-existing directory at that path ("Database path cannot be a
+    // directory"), and `db_path` is the SQLite file. Granting the parent lets
+    // the daemon create + write both under it; pre-creating the graph leaf as a
+    // dir breaks Kuzu's open. The db and graph parents are normally the same dir
+    // (the StateDirectory); overlapping grants are harmless.
     let mut writable: Vec<PathBuf> = Vec::new();
-    if let Some(p) = Path::new(db_path).parent() {
-        writable.push(p.to_path_buf());
-    }
-    writable.push(PathBuf::from(graph_path));
-    if let Some(p) = Path::new(daemon_socket).parent() {
-        writable.push(p.to_path_buf());
+    for leaf in [db_path, graph_path, daemon_socket] {
+        if let Some(p) = Path::new(leaf).parent() {
+            writable.push(p.to_path_buf());
+        }
     }
     writable.push(std::env::temp_dir());
 
