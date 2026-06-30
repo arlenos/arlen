@@ -285,20 +285,26 @@ async fn the_write_socket_refuses_an_unprivileged_relation_write() {
             "it-write-deny",
         )
         .await;
-    // The boundary is "the write is refused by the tier gate", not a specific
-    // error variant: the daemon answers `ERROR: write mode not permitted for this
-    // caller`, which the SDK's coarse `check_error` maps to `InvalidQuery` (it
-    // keys `PermissionDenied` off the literal substring "permission", absent
-    // here). Accept either denial shape, but exclude a transport error so the
-    // assertion stays meaningful.
+    // The boundary is "the write is refused for this unprivileged caller", not a
+    // specific gate or message. A ThirdParty caller with only a read profile is
+    // refused on the write path by EITHER of two correct gates: the access gate
+    // at token issuance (`ERROR: graph access not granted for <id>` - the caller
+    // holds no write grant; the namespace-grant write-path rework moved this
+    // refusal ahead of the tier gate) OR the tier gate (`ERROR: write mode not
+    // permitted for this caller`). The SDK's coarse `check_error` maps both to
+    // `InvalidQuery` (it keys `PermissionDenied` off the literal substring
+    // "permission", absent in both). Accept any denial shape, but exclude a
+    // transport error so the assertion stays meaningful.
     let denied = match &refused {
         Err(QueryError::PermissionDenied) => true,
-        Err(QueryError::InvalidQuery(msg)) => msg.contains("not permitted"),
+        Err(QueryError::InvalidQuery(msg)) => {
+            msg.contains("not permitted") || msg.contains("not granted")
+        }
         _ => false,
     };
     assert!(
         denied,
-        "a ThirdParty relation write must be refused by the tier gate, got {refused:?}"
+        "an unprivileged relation write must be refused (access or tier gate), got {refused:?}"
     );
 }
 
