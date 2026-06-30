@@ -103,6 +103,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-landlock-fence"
+version = "0.1.0"
+dependencies = [
+ "landlock",
+ "libc",
+ "tempfile",
+]
+
+[[package]]
 name = "arlen-modules"
 version = "0.1.0"
 dependencies = [

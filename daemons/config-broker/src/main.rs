@@ -98,9 +98,8 @@ fn main() {
 /// non-enforcing kernel or a ruleset error is fatal, so "the broker is
 /// running" implies "the broker is write-confined" - an assertable
 /// property instead of a log line that scrolls away.
-#[cfg(target_os = "linux")]
 fn apply_fence(store_dir: &std::path::Path, socket_dir: Option<&std::path::Path>) {
-    use arlen_config_broker::landlock_fence::{fence_writes, FenceOutcome};
+    use arlen_landlock_fence::{fence_writes, FenceOutcome};
     let require = std::env::var_os("ARLEN_CONFIG_BROKER_REQUIRE_FENCE")
         .is_some_and(|v| v == "1");
     let mut writable: Vec<&std::path::Path> = vec![store_dir];
@@ -127,10 +126,6 @@ fn apply_fence(store_dir: &std::path::Path, socket_dir: Option<&std::path::Path>
         tracing::warn!("{reason}; running unconfined (no worse than no fence)");
     }
 }
-
-/// On a non-Linux target there is no Landlock; the fence is a no-op.
-#[cfg(not(target_os = "linux"))]
-fn apply_fence(_store_dir: &std::path::Path, _socket_dir: Option<&std::path::Path>) {}
 
 /// Resolve on SIGTERM (systemd stop) or SIGINT (Ctrl-C).
 async fn shutdown_signal() {

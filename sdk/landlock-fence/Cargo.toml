@@ -1,0 +1,13 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-landlock-fence"
+version = "0.1.0"
+edition = "2021"
+description = "Shared Landlock write-fence primitive for self-confining Arlen daemons"
+
+[dependencies]
+landlock = "0.4"
+
+[dev-dependencies]
+libc = "0.2"
+tempfile = "3"

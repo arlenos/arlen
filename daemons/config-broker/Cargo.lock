@@ -15,8 +15,8 @@ dependencies = [
 name = "arlen-config-broker"
 version = "0.1.0"
 dependencies = [
+ "arlen-landlock-fence",
  "arlen-permissions",
- "landlock",
  "libc",
  "serde",
  "serde_json",
@@ -26,6 +26,13 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "arlen-landlock-fence"
+version = "0.1.0"
+dependencies = [
+ "landlock",
 ]
 
 [[package]]

@@ -1,35 +1,59 @@
-//! Self-confinement for the broker process (`same-uid-isolation-plan.md`
-//! Tier-A #2: Landlock in every Arlen process).
+//! Shared Landlock write-fence for self-confining Arlen daemons
+//! (`same-uid-isolation-plan.md` Tier-A #2: Landlock in every Arlen
+//! process).
 //!
-//! The broker is the credential authority - the sole writer of the AI
-//! master switches. If the broker process itself were ever compromised
-//! (a parser RCE on a malformed request), an unfenced process could
-//! rewrite any file the service uid can reach. [`fence_writes`] installs
-//! a Landlock ruleset that permits **read** everywhere (shared libs,
-//! `/proc` for the peer-pid resolution the auth path needs) and **write**
-//! only under the broker's own state dir and its socket dir - the entire
-//! filesystem footprint the daemon legitimately has. A compromised broker
-//! can then still serve a corrupted reply, but it cannot persist anything
-//! outside its own store, so it cannot tamper with `~/.bashrc`, another
-//! daemon's config, or any path beyond the two it owns.
+//! A daemon that holds security-load-bearing state (the AI master
+//! switches, the credential vault) is a high-value RCE target. If such a
+//! process were ever compromised through a parser bug, an unfenced process
+//! could rewrite any file the service uid can reach. [`fence_writes`]
+//! installs a Landlock ruleset that permits **read** everywhere (shared
+//! libs, `/proc` for caller-pid resolution, the D-Bus/socket paths a daemon
+//! connects to) and **write** only under an explicit allowlist of dirs -
+//! the daemon's own legitimate filesystem footprint. A compromised daemon
+//! can then still serve a corrupted reply over its own channel, but it
+//! cannot persist anything outside the dirs it owns.
 //!
-//! Thread model (load-bearing): a Landlock domain is inherited only by
-//! threads created *after* `restrict_self`, never by threads that already
-//! exist. So this MUST be applied on the main thread BEFORE the tokio
-//! runtime spawns its worker threads - otherwise the workers that actually
-//! field connections would run unconfined and the fence would be theater.
-//! `main` builds the runtime manually for exactly this ordering.
+//! ## Thread model (load-bearing)
 //!
-//! Failure model: unlike `arlen-run` (which confines an *untrusted* app
-//! and treats a non-enforcing kernel as fatal), this fence is
-//! defense-in-depth around a first-party daemon. An unfenceable kernel
-//! (Linux < 5.13, or Landlock disabled) leaves the broker exactly as
-//! safe as it is with no fence at all, so a [`FenceOutcome::NotEnforced`]
-//! is logged and the daemon continues - breaking the credential authority
-//! over a missing hardening add-on would be the worse outcome. A ruleset
-//! construction error is surfaced the same way for the same reason.
-
-#![cfg(target_os = "linux")]
+//! A Landlock domain is inherited only by threads created *after*
+//! `restrict_self`, never by threads that already exist. A tokio
+//! multi-thread runtime spawns its workers when the runtime is built, so
+//! the fence MUST be applied on the main thread BEFORE the runtime is
+//! built - otherwise the workers that actually field connections run
+//! unconfined and the fence is theater. The canonical caller shape is:
+//!
+//! ```ignore
+//! fn main() {
+//!     // ... synchronous setup, create the writable dirs ...
+//!     fence_writes(&[store_dir, socket_dir]).ok(); // best-effort, see below
+//!     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
+//!     rt.block_on(async { /* serve */ });
+//! }
+//! ```
+//!
+//! A `writable` dir that cannot be opened is skipped fail-safe (the grant
+//! is simply not expressed, so the process gets less access, never more),
+//! so the caller must create those dirs before calling.
+//!
+//! ## Failure model (the caller decides)
+//!
+//! This primitive only reports the outcome; it never exits. The fence is
+//! defense-in-depth: on a kernel that cannot enforce it (Linux < 5.13, or
+//! Landlock disabled) the daemon is exactly as safe as with no fence at
+//! all, so a typical caller logs a [`FenceOutcome::NotEnforced`] and
+//! continues - refusing to run over a missing hardening add-on would be the
+//! worse outcome. A hardened deployment that wants the confinement
+//! *guaranteed* can treat `NotEnforced`/`Err` as fatal (the per-daemon
+//! `*_REQUIRE_FENCE` env convention), so "the daemon is running" implies
+//! "the daemon is write-confined".
+//!
+//! ## Seccomp interaction
+//!
+//! A systemd unit with `SystemCallFilter=@system-service` must also allow
+//! `landlock_create_ruleset`, `landlock_add_rule`, `landlock_restrict_self`
+//! (an older `@system-service` allowlist predates Landlock), or these calls
+//! `EPERM`, `fence_writes` fails, and a best-effort fence silently stays off
+//! even on a capable kernel.
 
 use std::io;
 use std::path::Path;
@@ -60,17 +84,17 @@ fn ll_err(e: impl std::error::Error + Send + Sync + 'static) -> io::Error {
 /// Install the write-confinement: read (and execute) everywhere, write only
 /// under each path in `writable`.
 ///
-/// Granting read on `/` is sound: the broker legitimately reads shared libs
-/// and `/proc/<pid>/exe` (caller app-id resolution), and read access leaks
-/// nothing a corrupted reply could not already convey - the security
-/// property the fence adds is that *writes* are confined to the daemon's own
-/// store and socket dirs. A `writable` path that cannot be opened is skipped
-/// (fail-safe: the grant is simply not expressed, so the process gets less
-/// access, never more), so the caller must create those dirs before calling.
+/// Granting read on `/` is sound for a self-confining daemon: it
+/// legitimately reads shared libs and `/proc/<pid>/exe` (caller-identity
+/// resolution can land on a binary anywhere it is legitimately installed),
+/// and read access leaks nothing a corrupted reply could not already
+/// convey - the property the fence adds is that *writes* are confined to
+/// the daemon's own dirs. A `writable` path that cannot be opened is skipped
+/// fail-safe, so the caller must create those dirs first.
 ///
-/// Returns the [`FenceOutcome`]; the irreversible `restrict_self` applies to
-/// the calling thread and every thread it later creates, so call this on the
-/// main thread before the async runtime starts.
+/// The irreversible `restrict_self` applies to the calling thread and every
+/// thread it later creates, so call this on the main thread before the async
+/// runtime starts (see the module docs).
 pub fn fence_writes(writable: &[impl AsRef<Path>]) -> io::Result<FenceOutcome> {
     // ABI v5 covers every filesystem right through IoctlDev; the crate is
     // best-effort by default, so an older kernel drops unsupported rights
@@ -82,9 +106,9 @@ pub fn fence_writes(writable: &[impl AsRef<Path>]) -> io::Result<FenceOutcome> {
         .create()
         .map_err(ll_err)?;
 
-    // Read (+ execute) everywhere. Nothing the broker does writes outside the
-    // granted set below, so a blanket read grant is the whole non-write
-    // surface.
+    // Read (+ execute) everywhere. Nothing a self-confining daemon does
+    // writes outside the granted set below, so a blanket read grant is the
+    // whole non-write surface.
     ruleset = ruleset
         .add_rule(PathBeneath::new(
             PathFd::new("/").map_err(ll_err)?,
@@ -92,8 +116,9 @@ pub fn fence_writes(writable: &[impl AsRef<Path>]) -> io::Result<FenceOutcome> {
         ))
         .map_err(ll_err)?;
 
-    // Full access under each writable dir (the state dir and the socket dir).
-    // A dir that cannot be opened is skipped fail-safe.
+    // Full access under each writable dir. `from_all` (not `from_write`) is
+    // required so socket creation (`MakeSock`) and file replace work; a dir
+    // that cannot be opened is skipped fail-safe.
     for dir in writable {
         let dir = dir.as_ref();
         let fd = match PathFd::new(dir) {
@@ -139,7 +164,7 @@ mod tests {
         let inside = dir.path().join("ok");
         let mut inside_c = inside.as_os_str().as_bytes().to_vec();
         inside_c.push(0);
-        let outside_write_c = b"/etc/arlen-config-broker-landlock-selftest\0";
+        let outside_write_c = b"/etc/arlen-landlock-fence-selftest\0";
         // An existing, world-readable path outside the write grant.
         let outside_read_c = b"/etc/hostname\0";
 
@@ -150,8 +175,8 @@ mod tests {
         if pid == 0 {
             match fence_writes(&[dir.path()]) {
                 Ok(FenceOutcome::Enforced) => {}
-                // Not enforced (old kernel) - the test cannot prove confinement;
-                // exit a distinct code the parent treats as a skip.
+                // Not enforced (old kernel) - exit a distinct code the parent
+                // treats as a skip.
                 Ok(FenceOutcome::NotEnforced) => unsafe { libc::_exit(11) },
                 Err(_) => unsafe { libc::_exit(10) },
             }

@@ -6,6 +6,7 @@ members = [
     "os-sdk",
     "module-sdk",
     "confiner",
+    "landlock-fence",
     "modules",
     "net-guard",
     "permissions",
