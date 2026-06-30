@@ -33,7 +33,9 @@
     padding: 0.75rem;
     border-radius: var(--radius-card);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
-    background: color-mix(in srgb, var(--foreground) 3%, transparent);
+    /* Card surface + elevation per theme (the proven Group pattern). */
+    background: var(--card, color-mix(in srgb, var(--foreground) 3%, transparent));
+    box-shadow: var(--shadow-card, none);
     min-width: 0;
   }
 

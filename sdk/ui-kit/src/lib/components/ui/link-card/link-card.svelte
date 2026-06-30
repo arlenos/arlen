@@ -52,13 +52,16 @@
     padding: 0.75rem 1rem;
     border-radius: var(--radius-card);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
-    background: color-mix(in srgb, var(--foreground) 3%, transparent);
+    /* Card surface + elevation per theme (white lift on light, lighter card on
+       dark); the proven Group pattern. */
+    background: var(--card, color-mix(in srgb, var(--foreground) 3%, transparent));
+    box-shadow: var(--shadow-card, none);
     text-decoration: none;
     color: inherit;
     transition: background-color var(--duration-fast, 150ms) var(--ease-out, ease);
   }
   .link-card:hover {
-    background: color-mix(in srgb, var(--foreground) 6%, transparent);
+    background: color-mix(in srgb, var(--foreground) 6%, var(--card, transparent));
   }
   .lc-icon {
     flex-shrink: 0;
