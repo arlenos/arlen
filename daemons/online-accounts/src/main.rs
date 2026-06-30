@@ -53,10 +53,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!(dir = %vdir.display(), "token vault opened");
 
     // Self-confine: read everywhere, write only under the vault dir - the
-    // daemon's entire filesystem footprint (master.key + the per-account .vault
-    // records; the account configs are read-only and the session bus is a
-    // connect, not a write). Applied on the main thread BEFORE the runtime is
+    // daemon's filesystem write footprint TODAY (master.key + the per-account
+    // .vault records; the account configs are read-only and the session bus is
+    // a connect, not a write). Applied on the main thread BEFORE the runtime is
     // built so every tokio worker (and zbus task) inherits the Landlock domain.
+    //
+    // CAVEAT - the unwired rclone Mount feature: `mount.rs` is designed to mount
+    // a remote at `$XDG_RUNTIME_DIR/arlen/mounts/<id>` and spawn a confined
+    // rclone child. That mountpoint is OUTSIDE this grant, and a spawned child
+    // inherits this vault-only Landlock domain (domains only stack tighter, never
+    // re-grant), so it could not write its cache or serve the mount. No `Mount`
+    // D-Bus method is wired today (only the pure core + tests exist), so the
+    // fence is correct as-is; but when Mount lands this fence MUST be revisited -
+    // the mount/rclone path needs per-operation confinement on a separately
+    // launched process that does NOT inherit this domain (the data-movement
+    // exclusion, same as the transfer daemon), not a wider grant here.
     apply_fence(&vdir);
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
