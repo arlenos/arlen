@@ -98,6 +98,7 @@ pub fn to_css_variables(theme: &ArlenTheme, font_scale: Option<f32>) -> CssVaria
     vars.insert("shadow-sm".into(), theme.depth.shadow_sm.clone());
     vars.insert("shadow-md".into(), theme.depth.shadow_md.clone());
     vars.insert("shadow-lg".into(), theme.depth.shadow_lg.clone());
+    vars.insert("shadow-card".into(), theme.depth.shadow_card.clone());
 
     let variant = match theme.meta.variant {
         ThemeVariant::Dark => "dark",
@@ -177,7 +178,7 @@ mod tests {
             "font-weight-normal", "font-weight-medium", "font-weight-bold",
             "duration-fast", "duration-normal", "duration-slow",
             "easing-default", "easing-spring",
-            "shadow-sm", "shadow-md", "shadow-lg",
+            "shadow-sm", "shadow-md", "shadow-lg", "shadow-card",
         ];
         for key in expected {
             assert!(css.variables.contains_key(key), "missing key: {key}");

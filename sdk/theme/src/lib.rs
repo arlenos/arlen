@@ -336,6 +336,10 @@ pub struct DepthTokens {
     pub shadow_sm:    String,
     pub shadow_md:    String,
     pub shadow_lg:    String,
+    /// Card-surface elevation. A light theme lifts a white card off a grey
+    /// field with this soft shadow; a dark theme layers by surface lightness,
+    /// so it is `none`. Keeps the elevation a per-theme decision, not per-app.
+    pub shadow_card:  String,
     pub blur_enabled: bool,
 }
 
@@ -675,6 +679,7 @@ fn from_file(f: ArlenThemeFile) -> Result<ArlenTheme, ResolveError> {
         shadow_sm:    inert_or(d.shadow_sm, "0 1px 2px rgba(0, 0, 0, 0.3)"),
         shadow_md:    inert_or(d.shadow_md, "0 4px 12px rgba(0, 0, 0, 0.4)"),
         shadow_lg:    inert_or(d.shadow_lg, "0 8px 24px rgba(0, 0, 0, 0.5)"),
+        shadow_card:  inert_or(d.shadow_card, "none"),
         blur_enabled: d.blur_enabled.unwrap_or(true),
     };
 
@@ -915,7 +920,7 @@ merge_struct_field!(
 merge_struct_field!(
     merge_depth,
     DepthSection,
-    [shadow_sm, shadow_md, shadow_lg, blur_enabled]
+    [shadow_sm, shadow_md, shadow_lg, shadow_card, blur_enabled]
 );
 merge_struct_field!(
     merge_wm,

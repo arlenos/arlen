@@ -134,6 +134,7 @@ pub struct DepthSection {
     pub shadow_sm:    Option<String>,
     pub shadow_md:    Option<String>,
     pub shadow_lg:    Option<String>,
+    pub shadow_card:  Option<String>,
     pub blur_enabled: Option<bool>,
 }
 
