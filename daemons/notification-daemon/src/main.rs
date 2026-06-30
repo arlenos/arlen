@@ -4,7 +4,6 @@
 /// notifications in SQLite, enforces DND rules, and broadcasts to
 /// connected shell clients via a Unix socket.
 
-use std::path::Path;
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
@@ -17,7 +16,8 @@ use arlen_notification_daemon::manager::NotificationManager;
 use arlen_notification_daemon::socket::SocketServer;
 use arlen_notification_daemon::storage::Database;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -25,78 +25,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    // Self-confine before the runtime starts (Tier-A #2). The daemon writes
-    // only its SQLite history db (<data>/arlen), the synthesized fallback sound
-    // theme (<data>/sounds, the freedesktop sound-theme dir) and its shell
-    // socket; the session bus and the per-app audit submit are connects, not
-    // path writes, so incoming notification content (an untrusted-app surface)
-    // can never escape these dirs. Pre-create the three dirs so their write
-    // grants are expressible, then fence on the main thread BEFORE the runtime
-    // so every worker and spawned task inherits the domain. The daemon spawns
-    // tokio tasks, not child processes, so there is no inherited-domain trap.
-    let db_dir = data_root().join("arlen");
-    let sounds_root = data_root().join("sounds");
-    let socket_path = SocketServer::default_path();
-    let socket_dir = socket_path.parent().map(Path::to_path_buf);
-    let _ = std::fs::create_dir_all(&db_dir);
-    let _ = std::fs::create_dir_all(&sounds_root);
-    if let Some(d) = &socket_dir {
-        let _ = std::fs::create_dir_all(d);
-    }
-    apply_fence(&db_dir, &sounds_root, socket_dir.as_deref());
-
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?;
-    runtime.block_on(run())
-}
-
-/// The data-dir root the daemon writes under (`$XDG_DATA_HOME`, else
-/// `~/.local/share`, else `/tmp`), matching the fallback the db and sounds
-/// paths use so the fence grant and the actual writes resolve identically.
-fn data_root() -> std::path::PathBuf {
-    dirs::data_dir().unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-}
-
-/// Install the Landlock write-fence over the daemon's write dirs (the history
-/// db dir, the synth sound-theme dir and the socket dir). Defense-in-depth: a
-/// kernel that cannot enforce it leaves the daemon exactly as safe as no fence,
-/// so by default a non-enforcing kernel or a ruleset error is logged and the
-/// daemon continues. A hardened deployment that wants the confinement
-/// guaranteed sets `ARLEN_NOTIFICATION_REQUIRE_FENCE=1`, making a non-enforcing
-/// kernel a fatal startup error.
-fn apply_fence(db_dir: &Path, sounds_root: &Path, socket_dir: Option<&Path>) {
-    use arlen_landlock_fence::{fence_writes, FenceOutcome};
-    let require =
-        std::env::var_os("ARLEN_NOTIFICATION_REQUIRE_FENCE").is_some_and(|v| v == "1");
-    let mut writable: Vec<&Path> = vec![db_dir, sounds_root];
-    if let Some(d) = socket_dir {
-        writable.push(d);
-    }
-    let degraded = match fence_writes(&writable) {
-        Ok(FenceOutcome::Enforced) => {
-            tracing::info!("landlock write-fence enforced (write-confined to db + sounds + socket dirs)");
-            None
-        }
-        Ok(FenceOutcome::NotEnforced) => Some("landlock not enforced by this kernel".to_string()),
-        Err(e) => Some(format!("landlock fence not applied: {e}")),
-    };
-    if let Some(reason) = degraded {
-        if require {
-            tracing::error!(
-                "ARLEN_NOTIFICATION_REQUIRE_FENCE=1 but the fence is not active ({reason}); refusing to run unconfined"
-            );
-            std::process::exit(1);
-        }
-        tracing::warn!("{reason}; running unconfined (no worse than no fence)");
-    }
-}
-
-/// The async serve body: load config, open the db, claim the session-bus name,
-/// start the socket server + watchers, render the fallback sound theme, then
-/// wait for shutdown. Runs entirely inside the write-fence installed by
-/// [`main`].
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("starting notification daemon");
 
     // 1. Load config.
