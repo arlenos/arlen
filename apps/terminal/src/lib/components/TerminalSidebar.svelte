@@ -43,7 +43,11 @@
   }
 </script>
 
-<Sidebar collapsible="icon">
+<!-- Sessions are tabs (terminal.md §4.3). With a single session the rail is
+     pure chrome, so collapsed it slides fully off-canvas (no visible sidebar);
+     expanded it still carries the one tab. With two or more it collapses to the
+     icon dot-rail instead, so you can switch sessions without expanding. -->
+<Sidebar collapsible={$sessions.length > 1 ? "icon" : "offcanvas"}>
   <SidebarHeader class="h-10 flex-row items-center justify-between py-0">
     <span
       class="px-2 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/55 group-data-[collapsible=icon]:hidden"
