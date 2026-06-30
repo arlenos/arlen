@@ -14,3 +14,9 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 sha2 = "0.10"
 tempfile = "3"
+# The consent-gated model download: SSRF-pinned (net-guard resolve_and_pin), rustls
+# HTTPS, redirect-disabled (we follow + re-pin every hop ourselves), streamed via
+# the blocking client straight into the sha-verified store (a GGUF is GiB-scale).
+arlen-net-guard = { path = "../../sdk/net-guard" }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking"] }
+tokio = { version = "1", features = ["rt", "net", "time"] }
