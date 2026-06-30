@@ -47,7 +47,6 @@ use tracing::{info, warn};
 
 const DEFAULT_DB_PATH: &str = "/var/lib/arlen/knowledge/events.db";
 const DEFAULT_GRAPH_PATH: &str = "/var/lib/arlen/knowledge/graph";
-const DEFAULT_TIMELINE_MOUNT: &str = ".timeline";
 
 /// Pick the daemon socket path per the standard 3-tier convention:
 /// `ARLEN_DAEMON_SOCKET` (non-empty) wins, else the per-user path
@@ -91,32 +90,7 @@ fn pick_data_path(env_var: &str, name: &str, system_default: &str) -> String {
     path
 }
 
-/// Check whether `path` is currently a mount point. Reads
-/// `/proc/self/mountinfo` directly so we don't depend on the
-/// `mountpoint(1)` binary being installed. Returns `false` on any
-/// error — the caller then tries to mount normally (which will fail
-/// with a clear error if it actually IS a mount).
-fn is_mountpoint(path: &str) -> bool {
-    let Ok(content) = std::fs::read_to_string("/proc/self/mountinfo") else {
-        return false;
-    };
-    // mountinfo layout per proc(5):
-    //   id parent major:minor root mount-point mount-options ... - fstype source super-opts
-    // Index 4 (0-based) is the mount point. Space-separated tokens;
-    // paths with spaces are octal-escaped but we match literal so
-    // that's fine for our `~/.timeline`.
-    for line in content.lines() {
-        if let Some(target) = line.split_whitespace().nth(4) {
-            if target == path {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
@@ -130,21 +104,34 @@ async fn main() -> Result<()> {
     let db_path = pick_data_path("ARLEN_DB_PATH", "events.db", DEFAULT_DB_PATH);
     let graph_path = pick_data_path("ARLEN_GRAPH_PATH", "graph", DEFAULT_GRAPH_PATH);
     let daemon_socket = pick_daemon_socket();
-    // The timeline FUSE mount is optional: an empty or "off"
-    // `ARLEN_TIMELINE_MOUNT` disables it, so the daemon runs on a host without
-    // FUSE (CI runners, the EphemeralStack integration harness). The socket,
-    // graph and promotion paths are unaffected - only the `~/.timeline` view
-    // goes away. Unset falls back to the default mount path as before.
-    let timeline_mount = match std::env::var("ARLEN_TIMELINE_MOUNT") {
-        Ok(v) if v.is_empty() || v == "off" => None,
-        Ok(v) => Some(v),
-        Err(_) => {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-            Some(format!("{home}/{DEFAULT_TIMELINE_MOUNT}"))
-        }
-    };
     info!(%daemon_socket, "daemon socket path resolved");
 
+    // The timeline FUSE mount now lives in the separate `arlen-timeline` helper
+    // (same-uid-isolation-plan.md option b): the mount needs the SUID
+    // `fusermount3`, which the Landlock + no_new_privs fence below would block.
+    // The helper reads the graph over this daemon's read socket; nothing here
+    // mounts FUSE.
+
+    // Self-confine BEFORE building the async runtime, so the ladybug thread and
+    // every tokio worker spawned afterward inherit the Landlock write-domain.
+    // Read everywhere; write only under the daemon's own dirs. Best-effort: a
+    // kernel that cannot enforce leaves the daemon exactly as safe as no fence.
+    apply_fence(&db_path, &graph_path, &daemon_socket);
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    runtime.block_on(run(consumer_socket, db_path, graph_path, daemon_socket))
+}
+
+/// The async daemon body. Run inside the runtime that is built AFTER the fence,
+/// so the ladybug thread and the tokio workers inherit the Landlock domain.
+async fn run(
+    consumer_socket: String,
+    db_path: String,
+    graph_path: String,
+    daemon_socket: String,
+) -> Result<()> {
     // Open SQLite write store
     let pool = db::open(&db_path).await?;
     info!(path = db_path, "sqlite write store ready");
@@ -152,39 +139,6 @@ async fn main() -> Result<()> {
     // Spawn the dedicated Ladybug thread
     let graph = graph::spawn(&graph_path)?;
     info!(path = graph_path, "ladybug query store ready");
-
-    // FUSE runs on a dedicated OS thread (blocking mount).
-    //
-    // Before attempting to mount, check if `timeline_mount` is already
-    // a (possibly stale) mount point. If a previous daemon was
-    // SIGKILL'd without its FUSE exit handler firing, the kernel
-    // keeps the mount registered while the userspace process is gone
-    // — calling `fuse::mount` on that path then returns `File exists
-    // (os error 17)`. Skip the mount-attempt entirely in that case
-    // and point the operator at the launcher script which handles
-    // cleanup.
-    if let Some(fuse_mount_path) = timeline_mount.clone() {
-        let fuse_graph = graph.clone();
-        std::thread::Builder::new()
-            .name("fuse-timeline".into())
-            .spawn(move || {
-                if is_mountpoint(&fuse_mount_path) {
-                    warn!(
-                        path = %fuse_mount_path,
-                        "FUSE: path already mounted — skipping remount. \
-                         Stale mount from a previous run? Fix with \
-                         `fusermount -u {fuse_mount_path}` or use \
-                         `just dev` which handles this automatically",
-                    );
-                    return;
-                }
-                if let Err(e) = fuse::mount(&fuse_mount_path, fuse_graph) {
-                    tracing::error!("FUSE mount failed: {e}");
-                }
-            })?;
-    } else {
-        info!("timeline FUSE mount disabled (ARLEN_TIMELINE_MOUNT empty/off)");
-    }
 
     // Validate-on-startup pass: any project whose root_path vanished
     // since the last run gets pruned (inferred) or archived (explicit).
@@ -242,5 +196,54 @@ async fn main() -> Result<()> {
             Ok(()) => bail!("daemon listener exited unexpectedly"),
             Err(e) => bail!("daemon listen ({daemon_socket}): {e}"),
         },
+    }
+}
+
+/// Install the Landlock write-fence over the daemon's own dirs: the SQLite store
+/// (events.db + WAL/SHM live in its parent dir), the ladybug graph dir, the
+/// socket dir it binds, and the system temp dir SQLite/Kuzu may spill to. The
+/// dirs are created first so each grant is expressible (the fence skips a path it
+/// cannot open). Defense-in-depth and best-effort: a kernel that cannot enforce
+/// leaves the daemon exactly as safe as no fence, so a non-enforcing kernel or a
+/// ruleset error is logged and the daemon continues - unless
+/// `ARLEN_KNOWLEDGE_REQUIRE_FENCE=1`, which makes that fatal for a hardened
+/// deployment. Read access stays granted everywhere (config, permission profiles,
+/// `/proc/<pid>/exe` for caller identity); only writes are confined.
+fn apply_fence(db_path: &str, graph_path: &str, daemon_socket: &str) {
+    use arlen_landlock_fence::{fence_writes, FenceOutcome};
+    use std::path::{Path, PathBuf};
+
+    let require = std::env::var_os("ARLEN_KNOWLEDGE_REQUIRE_FENCE").is_some_and(|v| v == "1");
+
+    let mut writable: Vec<PathBuf> = Vec::new();
+    if let Some(p) = Path::new(db_path).parent() {
+        writable.push(p.to_path_buf());
+    }
+    writable.push(PathBuf::from(graph_path));
+    if let Some(p) = Path::new(daemon_socket).parent() {
+        writable.push(p.to_path_buf());
+    }
+    writable.push(std::env::temp_dir());
+
+    for dir in &writable {
+        let _ = std::fs::create_dir_all(dir);
+    }
+
+    let degraded = match fence_writes(&writable) {
+        Ok(FenceOutcome::Enforced) => {
+            info!("landlock write-fence enforced (db + graph + socket + temp dirs)");
+            None
+        }
+        Ok(FenceOutcome::NotEnforced) => Some("landlock not enforced by this kernel".to_string()),
+        Err(e) => Some(format!("landlock fence not applied: {e}")),
+    };
+    if let Some(reason) = degraded {
+        if require {
+            tracing::error!(
+                "ARLEN_KNOWLEDGE_REQUIRE_FENCE=1 but the fence is not active ({reason}); refusing to run unconfined"
+            );
+            std::process::exit(1);
+        }
+        warn!("{reason}; running unconfined (no worse than no fence)");
     }
 }
