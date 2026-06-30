@@ -24,6 +24,7 @@ use arlen_ai_core::audit::{config_change_event, AuditSink};
 use arlen_ai_core::capability::access_tier_from_level;
 use arlen_ai_core::graph_query::QueryScope;
 use arlen_ai_core::graph_schema::GraphSchema;
+use arlen_config_broker::{AiMasterSwitches, ConfigBrokerClient};
 
 use crate::service::AiDaemonService;
 
@@ -217,11 +218,45 @@ struct WatchedKeys {
     provider: String,
 }
 
-fn read_watched_keys(cfg: &Config) -> WatchedKeys {
-    WatchedKeys {
-        enabled: cfg.get::<bool>("ai.enabled").unwrap_or(false),
-        access_level: read_access_level(cfg),
-        provider: cfg.get::<String>("ai.provider").unwrap_or_default(),
+/// Fetch the AI master switches from the config broker, or `None` when it is
+/// unreachable.
+///
+/// `None` is the pre-cutover fallback: [`read_watched_keys`] then reads the
+/// admission keys from `ai.toml` (today's behaviour), so a broker not yet
+/// deployed does not break the daemon. The FINAL cutover replaces this fallback
+/// with fail-closed once the broker is deployed in every launch path. Never
+/// fatal. (A broker-only change is not picked up live by this ai.toml watcher -
+/// the root-owned broker store is not watchable by the user-uid daemon - so it
+/// applies on the next ai.toml event or restart, the same epoch-scoped liveness
+/// the provider already has; a broker change-push is a follow-up.)
+async fn broker_switches() -> Option<AiMasterSwitches> {
+    match ConfigBrokerClient::default_socket().get().await {
+        Ok(switches) => Some(switches),
+        Err(e) => {
+            tracing::debug!(error = %e, "config broker unreachable; admission keys fall back to ai.toml");
+            None
+        }
+    }
+}
+
+/// Read the security-bearing admission keys. `enabled` / `access_level` /
+/// `provider` come from the config broker when present (the separate-uid owner
+/// of a store the user's normal uid cannot write), and from `ai.toml` otherwise
+/// (the pre-cutover fallback). The broker value is taken as-is: the broker
+/// already clamps `access_level`, and `access_tier_from_level` clamps again
+/// when it is applied.
+fn read_watched_keys(cfg: &Config, broker: Option<&AiMasterSwitches>) -> WatchedKeys {
+    match broker {
+        Some(b) => WatchedKeys {
+            enabled: b.enabled,
+            access_level: b.access_level,
+            provider: b.provider.clone(),
+        },
+        None => WatchedKeys {
+            enabled: cfg.get::<bool>("ai.enabled").unwrap_or(false),
+            access_level: read_access_level(cfg),
+            provider: cfg.get::<String>("ai.provider").unwrap_or_default(),
+        },
     }
 }
 
@@ -338,7 +373,8 @@ pub fn spawn_config_watch(service: Arc<AiDaemonService>, audit: Arc<dyn AuditSin
                 tracing::warn!(error = %err, "ai.toml initial reload failed, failing closed");
                 fail_closed(&service);
             } else {
-                let keys = read_watched_keys(&cfg);
+                let switches = handle.block_on(broker_switches());
+                let keys = read_watched_keys(&cfg, switches.as_ref());
                 apply_config(&service, &keys);
                 // The initial publish is the baseline, not a change - no audit.
                 prev = Some(keys);
@@ -355,7 +391,8 @@ pub fn spawn_config_watch(service: Arc<AiDaemonService>, audit: Arc<dyn AuditSin
                     fail_closed(&service);
                     continue;
                 }
-                let keys = read_watched_keys(&cfg);
+                let switches = handle.block_on(broker_switches());
+                let keys = read_watched_keys(&cfg, switches.as_ref());
                 apply_config(&service, &keys);
                 // Audit every security-key flip against the last valid apply, so
                 // a silent change to enabled / access_level / provider becomes
@@ -409,6 +446,44 @@ mod tests {
         // Several at once -> all reported.
         let all = WatchedKeys { enabled: true, access_level: 4, provider: "x".to_string() };
         assert_eq!(config_diff(&base, &all).len(), 3);
+    }
+
+    fn config_from(toml: &str) -> Config {
+        let mut file = NamedTempFile::new().unwrap();
+        write!(file, "{toml}").unwrap();
+        // Leak the temp file so the path stays valid for the Config's lifetime
+        // in the test (the loader reads it eagerly, but keep_temp is simplest).
+        let (_f, path) = file.keep().unwrap();
+        Config::load_path(&path).unwrap()
+    }
+
+    #[test]
+    fn read_watched_keys_without_broker_reads_the_file() {
+        let cfg = config_from("[ai]\nenabled = true\naccess_level = 2\nprovider = \"ollama-default\"\n");
+        let keys = read_watched_keys(&cfg, None);
+        assert!(keys.enabled);
+        assert_eq!(keys.access_level, 2);
+        assert_eq!(keys.provider, "ollama-default");
+    }
+
+    #[test]
+    fn read_watched_keys_with_broker_overrides_the_file() {
+        // The file says off / minimal / a different provider; the broker is
+        // authoritative, so a same-uid rewrite of ai.toml cannot widen the
+        // daemon's admission.
+        let cfg = config_from("[ai]\nenabled = false\naccess_level = 0\nprovider = \"file-provider\"\n");
+        let switches = AiMasterSwitches {
+            enabled: true,
+            access_level: 4,
+            executor_live: false,
+            action_mode: arlen_config_broker::ActionMode::Suggest,
+            provider: "broker-provider".to_string(),
+            autonomous_apps: Default::default(),
+        };
+        let keys = read_watched_keys(&cfg, Some(&switches));
+        assert!(keys.enabled, "broker enables even though the file says off");
+        assert_eq!(keys.access_level, 4, "broker access_level wins over the file");
+        assert_eq!(keys.provider, "broker-provider", "broker provider wins over the file");
     }
 
     #[test]
