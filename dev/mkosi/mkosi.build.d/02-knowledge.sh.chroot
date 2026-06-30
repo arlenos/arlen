@@ -33,3 +33,9 @@ cargo build --release --manifest-path daemons/knowledge/Cargo.toml
 install -Dm755 "$CARGO_TARGET_DIR/release/arlen-graph-daemon" \
     "$DESTDIR/usr/bin/arlen-graph-daemon"
 echo ">> staged arlen-graph-daemon into the image"
+# The timeline FUSE helper (same crate, second bin): the daemon is now Landlock-
+# fenced and no longer mounts FUSE in-process, so this unfenced helper serves the
+# timeline by reading the graph over the daemon's read socket.
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-timeline" \
+    "$DESTDIR/usr/bin/arlen-timeline"
+echo ">> staged arlen-timeline into the image"
