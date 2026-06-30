@@ -334,7 +334,7 @@
     display: block;
     width: 8px;
     height: 8px;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-chip);
     background: var(--color-fg-disabled);
   }
   .dot.ghost {

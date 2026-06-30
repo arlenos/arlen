@@ -171,7 +171,7 @@
   .ts-dot {
     width: 6px;
     height: 6px;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-chip);
     background: var(--color-success);
     flex-shrink: 0;
   }

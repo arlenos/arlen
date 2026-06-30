@@ -190,7 +190,7 @@
   .dot {
     width: 6px;
     height: 6px;
-    border-radius: var(--radius-full, 9999px);
+    border-radius: var(--radius-chip, 4px);
     flex-shrink: 0;
   }
   .dot.ok {

@@ -81,6 +81,9 @@
   .dot {
     width: 8px;
     height: 8px;
+    /* The dot variant rides the roundness scale; the count/icon badges
+       keep the pill radius from `.badge`. */
+    border-radius: var(--radius-chip, 4px);
   }
   .icon {
     width: 14px;

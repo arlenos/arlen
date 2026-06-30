@@ -165,7 +165,7 @@
   .filter-trigger .dot {
     width: 5px;
     height: 5px;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-chip);
     background: var(--color-accent);
   }
   .filter-trigger :global(.chev) {

@@ -66,7 +66,10 @@
   .dot {
     width: 8px;
     height: 8px;
-    border-radius: var(--radius-full, 9999px);
+    /* Status dots ride the roundness scale (radius-chip), not the
+       categorical pill radius: round at the default and rounder themes,
+       squaring off in lock-step as the geometry is dialled down. */
+    border-radius: var(--radius-chip, 4px);
     flex-shrink: 0;
   }
   .dot.ok {

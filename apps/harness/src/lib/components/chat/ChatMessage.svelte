@@ -363,7 +363,7 @@
   .dots span {
     width: 5px;
     height: 5px;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 50%, transparent);
     animation: dot 1.2s infinite ease-in-out;
   }
