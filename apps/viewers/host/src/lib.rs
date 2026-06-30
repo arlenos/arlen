@@ -70,7 +70,8 @@ pub fn worker_bin(decoder: Decoder) -> Option<&'static str> {
 /// [`run_confined_worker`].
 pub fn decoder_confinement(worker_dir: &str) -> Result<Confinement, ConfinerError> {
     let dir = require_abs(worker_dir)?;
-    let skeleton = app_runtime_profile(Path::new("/usr"), &[], BTreeMap::new(), NetworkPolicy::None)?;
+    let skeleton =
+        app_runtime_profile(Path::new("/usr"), &[], &[], BTreeMap::new(), NetworkPolicy::None)?;
     let mut binds = vec![Bind::ReadOnly(dir.clone(), dir)];
     // The worker is dynamically linked, so its ELF interpreter lives at
     // /lib64/ld-linux-*.so. On a merged-usr system /lib64 and /lib are symlinks
