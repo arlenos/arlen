@@ -166,6 +166,19 @@ fn main() -> ExitCode {
         &user_dirs,
     );
 
+    // Surface any host-filesystem custom grant that was refused: the drop
+    // happened in `confinement_inputs` (portal-only-FS, Tier-A #3), so the
+    // operator otherwise sees no reason the declared path did not take effect.
+    for custom in &profile.filesystem.custom {
+        if profile::is_host_escape(custom, &home) {
+            eprintln!(
+                "arlen-run: {}: refusing host-filesystem grant {} (not bound)",
+                args.app_id,
+                custom.display()
+            );
+        }
+    }
+
     // A profile that declared specific hosts has its egress installed through
     // the enforcer seam. The stand-in refuses a non-empty host set until the
     // real netns proxy is wired (fail-closed: never run a host-restricted app
