@@ -35,6 +35,23 @@
 //! is simply not expressed, so the process gets less access, never more),
 //! so the caller must create those dirs before calling.
 //!
+//! ## Child processes inherit the fence (so a daemon that spawns helpers is
+//! usually the WRONG target)
+//!
+//! A `fork+exec`'d child inherits the parent's Landlock domain, and a domain
+//! can only ever stack TIGHTER - a downstream re-confiner (e.g. `arlen-run`)
+//! can intersect-tighten it but never re-grant a path the parent forbade. So a
+//! daemon fenced to its own private dirs that then spawns a helper needing
+//! broader access (a transfer daemon spawning `rclone` to write user-chosen
+//! destinations, an installer writing arbitrary install paths, a notification
+//! daemon spawning `aplay`/`paplay` which need `/dev/snd` or `~/.config/pulse`)
+//! will silently break that helper on a Landlock-capable kernel. This fence is
+//! for daemons that write ONLY their own private state and spawn no
+//! access-needing children. A daemon that moves data to arbitrary destinations
+//! or shells out to device-touching helpers needs PER-OPERATION confinement on
+//! a separately launched worker that does not inherit the daemon's domain, not
+//! a daemon-startup write-fence.
+//!
 //! ## Failure model (the caller decides)
 //!
 //! This primitive only reports the outcome; it never exits. The fence is
