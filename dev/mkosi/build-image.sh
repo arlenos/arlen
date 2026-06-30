@@ -46,5 +46,5 @@ echo ">> mkosi build --incremental --force"
 # cargo/npm caches). A single --force rebuilds the OUTPUT but keeps the
 # incremental cache (only -ff drops it), so the slow Debian-rootfs assembly is
 # paid once, not on every build.
-( cd "$repo" && PATH=/usr/sbin:/sbin:$PATH mkosi --directory "$here" --incremental yes build --force )
+( cd "$repo" && PATH=/usr/sbin:/sbin:$PATH mkosi --directory "$here" --incremental yes --cache-directory "$here/mkosi.cache" build --force )
 echo ">> image built: $here/arlen.raw"
