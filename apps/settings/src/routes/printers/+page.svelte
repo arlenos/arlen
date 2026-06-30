@@ -83,8 +83,6 @@
     { value: "legal", label: "Legal" },
   ];
 
-  const anyNetwork = $derived($printers.printers.some((p) => p.destination === "network"));
-
   function displayName(p: Printer): string {
     return p.info ?? p.makeModel ?? p.name;
   }
@@ -144,11 +142,6 @@
     {/if}
 
     <Group label="Printers">
-      {#if anyNetwork}
-        <p class="lead-note">
-          Printing to a network printer sends the document over your local network.
-        </p>
-      {/if}
       {#if $printers.printers.length === 0}
         <p class="empty">No printers yet. Add one below.</p>
       {:else}
@@ -327,14 +320,6 @@
     background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-card);
-  }
-  /* The egress note sits inside the Printers group, above the rows, on the
-     row's left rhythm. */
-  .lead-note {
-    margin: 0;
-    padding: 0.5rem 1rem 0;
-    font-size: 0.6875rem;
-    color: var(--color-fg-secondary);
   }
   .empty {
     margin: 0;
