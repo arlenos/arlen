@@ -178,6 +178,7 @@ pub fn pi_sidecar_confinement(
     let skeleton = app_runtime_profile(
         Path::new("/usr"),
         &[Path::new(&paths.pi_state)],
+        &[],
         env,
         NetworkPolicy::None,
     )?;

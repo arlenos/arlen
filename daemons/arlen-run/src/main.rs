@@ -210,6 +210,7 @@ fn main() -> ExitCode {
     let confinement = match spawn::build_confinement(
         std::path::Path::new("/usr"),
         &inputs.app_dirs,
+        &inputs.masked_dirs,
         env,
         inputs.network,
         plumbing,

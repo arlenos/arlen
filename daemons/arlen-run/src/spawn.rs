@@ -70,12 +70,14 @@ pub fn plumbing_binds(
 pub fn build_confinement(
     usr: &Path,
     app_dirs: &[PathBuf],
+    masked: &[PathBuf],
     env: BTreeMap<String, String>,
     net: NetworkPolicy,
     plumbing: Vec<Bind>,
 ) -> Result<Confinement, ConfinerError> {
     let dir_refs: Vec<&Path> = app_dirs.iter().map(PathBuf::as_path).collect();
-    let skeleton = app_runtime_profile(usr, &dir_refs, env, net)?;
+    let masked_refs: Vec<&Path> = masked.iter().map(PathBuf::as_path).collect();
+    let skeleton = app_runtime_profile(usr, &dir_refs, &masked_refs, env, net)?;
     Ok(skeleton.complete(plumbing, Vec::new()))
 }
 
@@ -297,6 +299,7 @@ mod tests {
         let conf = build_confinement(
             Path::new("/usr"),
             &[PathBuf::from("/home/u/.config/arlen/apps/com.a.b")],
+            &[],
             BTreeMap::new(),
             NetworkPolicy::None,
             Vec::new(),
@@ -314,6 +317,7 @@ mod tests {
     fn build_confinement_keeps_the_network_up_for_unrestricted() {
         let conf = build_confinement(
             Path::new("/usr"),
+            &[],
             &[],
             BTreeMap::new(),
             NetworkPolicy::Unrestricted,
@@ -342,6 +346,7 @@ mod tests {
         let conf = build_confinement(
             Path::new("/usr"),
             &[],
+            &[],
             BTreeMap::from([("PATH".to_string(), "/usr/bin:/bin".to_string())]),
             NetworkPolicy::None,
             Vec::new(),
@@ -362,6 +367,7 @@ mod tests {
     fn echo_runs_confined_under_the_seccomp_filter() {
         let conf = build_confinement(
             Path::new("/usr"),
+            &[],
             &[],
             BTreeMap::from([("PATH".to_string(), "/usr/bin:/bin".to_string())]),
             NetworkPolicy::None,
