@@ -460,7 +460,7 @@ impl AgentInterface {
     /// write failure. Idempotent.
     #[zbus(name = "ai_set_action_mode")]
     async fn ai_set_action_mode(&self, mode: &str) -> String {
-        match crate::config::set_action_mode_in(&ai_config_path(), mode) {
+        match crate::config::set_action_mode(&ai_config_path(), mode).await {
             Ok(()) => {
                 tracing::info!(mode, "autonomy dial: action_mode set");
                 "ok".to_string()
@@ -480,7 +480,7 @@ impl AgentInterface {
     /// Grant node in the capability browser is a separate projection.
     #[zbus(name = "ai_set_autonomous_app")]
     async fn ai_set_autonomous_app(&self, app_id: &str, enabled: bool) -> String {
-        match crate::config::set_autonomous_app_in(&ai_config_path(), app_id, enabled) {
+        match crate::config::set_autonomous_app(&ai_config_path(), app_id, enabled).await {
             Ok(()) => {
                 tracing::info!(app_id, enabled, "autonomy dial: autonomous_apps updated");
                 "ok".to_string()
