@@ -255,6 +255,16 @@ async fn listen_queries(
     // SAFETY: getuid() has no preconditions and cannot fail.
     let our_uid = unsafe { libc::getuid() };
 
+    // Optional owner-uid restriction (ARLEN_OWNER_UID). When set - the desktop
+    // session user, which a multi-user deployment supplies - a CROSS-uid
+    // first-party/system peer is served only if it IS that owner, so a different
+    // human user cannot reach this user's graph even via a canonical binary.
+    // Unset = single-user default: any first-party/system cross-uid peer (the
+    // local user's AI layer) is served.
+    let owner_uid = std::env::var("ARLEN_OWNER_UID")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok());
+
     loop {
         match listener.accept().await {
             Ok((stream, _)) => {
@@ -267,7 +277,8 @@ async fn listen_queries(
                 let audit = audit.clone();
                 tokio::spawn(async move {
                     if let Err(e) = handle_client(
-                        stream, graph, pool, auth, rate, emitter, registry, our_uid, audit,
+                        stream, graph, pool, auth, rate, emitter, registry, our_uid, owner_uid,
+                        audit,
                     )
                     .await
                     {
@@ -1714,13 +1725,26 @@ fn row_count(rs: &crate::graph::RowSet) -> i64 {
         .unwrap_or(0)
 }
 
-/// Whether a CROSS-uid peer that resolved to `tier` may be served. The system
-/// daemon serves the session user's first-party/system AI layer cross-uid (the
-/// documented deployment, see `handle_client`); any other cross-uid peer
-/// (ThirdParty/unknown) is rejected. Same-uid peers do not consult this - they
-/// are always served, scoped by their resolved id.
-fn cross_uid_tier_admitted(tier: AppTier) -> bool {
-    matches!(tier, AppTier::FirstParty | AppTier::System)
+/// Whether a CROSS-uid peer (uid `peer_uid`, resolved to `tier`) may be served.
+/// It must be a first-party/system client (a canonical /usr binary another user
+/// cannot plant), AND - when `owner_uid` is configured (ARLEN_OWNER_UID, the
+/// desktop session user) - it must be that owner. With no owner configured the
+/// gate is single-user: any first-party/system cross-uid peer (the local user's
+/// AI layer) is served. Same-uid peers do not consult this (always served).
+///
+/// The owner restriction is what makes a MULTI-user host safe: without it, the
+/// FirstParty/System tier only blocks PLANTING a privileged binary, not running
+/// code under that identity (the canonical binaries are world-executable +
+/// non-setuid, so any uid can LD_PRELOAD one - see `handle_client`); pinning the
+/// owner uid means only the data owner can do so, which is not an escalation.
+fn cross_uid_admitted(peer_uid: u32, owner_uid: Option<u32>, tier: AppTier) -> bool {
+    if !matches!(tier, AppTier::FirstParty | AppTier::System) {
+        return false;
+    }
+    match owner_uid {
+        Some(owner) => peer_uid == owner,
+        None => true,
+    }
 }
 
 /// Handle a single client connection.
@@ -1739,6 +1763,7 @@ async fn handle_client(
     emitter: Arc<RateLimitEmitter>,
     registry: Arc<SchemaRegistry>,
     our_uid: u32,
+    owner_uid: Option<u32>,
     audit: Arc<dyn AuditSink>,
 ) -> Result<()> {
     // Resolve the peer identity once at connection for per-identity
@@ -1793,18 +1818,22 @@ async fn handle_client(
                 // RUNNING code under that identity. The canonical binaries are
                 // world-executable and not setuid, so any local uid can
                 // `LD_PRELOAD=evil.so /usr/lib/arlen/libexec/arlen-ai-agent` (or
-                // ptrace it) and present `ai-agent` as its /proc/self/exe. So this
-                // gate effectively grants ANY local uid a full read of the system
-                // graph (a FirstParty read is `system_anchored`, bypassing the
-                // label gate + sensitive-column scrub). That is acceptable ONLY
+                // ptrace it) and present `ai-agent` as its /proc/self/exe. With no
+                // owner configured this gate therefore grants ANY local uid a full
+                // read of the system graph (a FirstParty read is `system_anchored`,
+                // bypassing the label gate + sensitive-column scrub) - acceptable
                 // under Arlen's single-user-desktop model, where the one human user
-                // already has broad local visibility and IS the session this daemon
-                // serves. A MULTI-user host (several human uids sharing one root
-                // daemon) would be a cross-tenant graph leak and is NOT supported
-                // by this gate; the fix there is per-uid graph scoping or a
-                // per-user knowledge daemon (documented follow-up, NOT this change).
+                // already has broad local visibility and IS the served session.
+                // Setting ARLEN_OWNER_UID closes the MULTI-user case: a cross-uid
+                // peer is then served only if it is the owner, so a different human
+                // user cannot reach this user's graph (the LD_PRELOAD vector is then
+                // only the owner reading their own data, not an escalation).
                 if cross_uid
-                    && !cross_uid_tier_admitted(QuotaConfig::arlen_default().tier_for_app(&id))
+                    && !cross_uid_admitted(
+                        uid,
+                        owner_uid,
+                        QuotaConfig::arlen_default().tier_for_app(&id),
+                    )
                 {
                     warn!(
                         peer_uid = uid,
@@ -2679,11 +2708,22 @@ mod tests {
 
     #[test]
     fn cross_uid_admits_only_first_party_and_system() {
-        // The system daemon serves the session user's first-party/system AI
-        // layer cross-uid; an untrusted (ThirdParty) cross-uid peer is rejected.
-        assert!(cross_uid_tier_admitted(AppTier::FirstParty));
-        assert!(cross_uid_tier_admitted(AppTier::System));
-        assert!(!cross_uid_tier_admitted(AppTier::ThirdParty));
+        // No owner configured (single-user default): serve any first-party/system
+        // cross-uid peer (the local AI layer); reject ThirdParty/unknown.
+        assert!(cross_uid_admitted(1000, None, AppTier::FirstParty));
+        assert!(cross_uid_admitted(1000, None, AppTier::System));
+        assert!(!cross_uid_admitted(1000, None, AppTier::ThirdParty));
+    }
+
+    #[test]
+    fn cross_uid_owner_restriction_pins_the_session_user() {
+        // Owner configured (multi-user host): serve a first-party/system peer only
+        // if it is the owner; a different uid is rejected even at FirstParty, and
+        // ThirdParty is rejected regardless.
+        assert!(cross_uid_admitted(1000, Some(1000), AppTier::FirstParty));
+        assert!(cross_uid_admitted(1000, Some(1000), AppTier::System));
+        assert!(!cross_uid_admitted(1001, Some(1000), AppTier::FirstParty));
+        assert!(!cross_uid_admitted(1000, Some(1000), AppTier::ThirdParty));
     }
 
     #[test]
