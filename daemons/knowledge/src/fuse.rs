@@ -1,4 +1,4 @@
-use crate::graph::GraphHandle;
+use crate::graph::{GraphHandle, RowSet};
 use crate::utils::escape_cypher;
 use anyhow::Result;
 use fuser::{
@@ -79,19 +79,39 @@ fn sanitize_dirname(name: &str) -> String {
     if s.is_empty() { "unnamed".to_string() } else { s }
 }
 
+/// A synchronous, read-only graph query source for the timeline filesystem.
+///
+/// Implemented by the in-process [`GraphHandle`] (when the timeline mounts inside
+/// the knowledge daemon) and, in the split-out timeline helper, by a socket-backed
+/// reader that queries the daemon's read socket. The trait lets [`TimelineFs`] run
+/// either embedded or in a separate, unfenced helper process - the helper keeps the
+/// SUID `fusermount3` exec that the main daemon's Landlock + `no_new_privs` fence
+/// would otherwise block.
+pub trait SyncGraphReader {
+    /// Run a read-only Cypher query and return its rows. Mirrors
+    /// [`GraphHandle::query_rows_sync`]; must not be called from a tokio context.
+    fn query_rows_sync(&self, cypher: String) -> Result<RowSet>;
+}
+
+impl SyncGraphReader for GraphHandle {
+    fn query_rows_sync(&self, cypher: String) -> Result<RowSet> {
+        GraphHandle::query_rows_sync(self, cypher)
+    }
+}
+
 pub struct TimelineFs {
-    graph: GraphHandle,
+    graph: Box<dyn SyncGraphReader + Send + Sync>,
     inodes: Mutex<HashMap<u64, VPath>>,
 }
 
 impl TimelineFs {
-    fn new(graph: GraphHandle) -> Self {
+    fn new(graph: impl SyncGraphReader + Send + Sync + 'static) -> Self {
         let mut inodes = HashMap::new();
         inodes.insert(INO_ROOT.0, VPath::Root);
         inodes.insert(INO_PROJECTS.0, VPath::Projects);
         inodes.insert(INO_LAST7.0, VPath::Last7Days);
         TimelineFs {
-            graph,
+            graph: Box::new(graph),
             inodes: Mutex::new(inodes),
         }
     }
@@ -647,7 +667,7 @@ impl Filesystem for TimelineFs {
 }
 
 /// Mount the timeline FUSE filesystem. Blocks until unmount.
-pub fn mount(path: &str, graph: GraphHandle) -> Result<()> {
+pub fn mount(path: &str, graph: impl SyncGraphReader + Send + Sync + 'static) -> Result<()> {
     if Path::new(path).exists() {
         let _ = std::process::Command::new("fusermount")
             .args(["-u", "-z", path])
