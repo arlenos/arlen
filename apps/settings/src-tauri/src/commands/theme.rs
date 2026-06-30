@@ -35,28 +35,31 @@ pub fn theme_get() -> Result<serde_json::Value, String> {
 /// Set the theme mode. Also updates `theme.active` so the desktop-shell
 /// theme watcher picks up the change (shell reads `active`, not `mode`).
 #[tauri::command]
-pub fn theme_set_mode(mode: ThemeMode) -> Result<(), String> {
+pub async fn theme_set_mode(mode: ThemeMode) -> Result<(), String> {
     let mode_str = mode.as_str();
     config_set(
         ConfigFile::Appearance,
         "theme.mode".into(),
         serde_json::Value::String(mode_str.into()),
-    )?;
+    )
+    .await?;
     let active = if mode_str == "auto" { "dark" } else { mode_str };
     config_set(
         ConfigFile::Appearance,
         "theme.active".into(),
         serde_json::Value::String(active.into()),
-    )?;
+    )
+    .await?;
     Ok(())
 }
 
 /// Set the accent color (hex string like `#3b82f6`).
 #[tauri::command]
-pub fn theme_set_accent(color: String) -> Result<(), String> {
+pub async fn theme_set_accent(color: String) -> Result<(), String> {
     config_set(
         ConfigFile::Appearance,
         "colors.accent".into(),
         serde_json::Value::String(color),
     )
+    .await
 }

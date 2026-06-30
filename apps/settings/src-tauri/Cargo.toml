@@ -87,6 +87,12 @@ cosmic-comp-config = { git = "https://github.com/arlenos/compositor", features =
 # wire types live in audit-proto so reader and daemon share one
 # definition (the same pattern the Anomaly Detector uses).
 audit-proto = { path = "../../../contracts/audit-proto" }
+# The separate-uid owner of the AI master switches. Settings writes
+# enabled / access_level / provider through the broker (a store the user's
+# normal uid cannot write) instead of the user-writable ai.toml, so a
+# malicious same-uid process cannot flip them by rewriting the file. Settings
+# is an admitted writer. (same-uid-isolation-plan.md Tier-A #1.)
+arlen-config-broker = { path = "../../../daemons/config-broker" }
 
 [dev-dependencies]
 tempfile = "3"
