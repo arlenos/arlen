@@ -53,9 +53,21 @@ pub fn owner_uid() -> u32 {
         .unwrap_or_else(current_uid)
 }
 
-/// Bind the broker socket 0600 after a stale-socket probe: a path a
+/// Bind the broker socket 0666 after a stale-socket probe: a path a
 /// live process still serves is not clobbered (a singleton guard); a
-/// dead leftover is cleared first. Mirrors the audit daemon.
+/// dead leftover is cleared first.
+///
+/// 0666 (not 0600) because in the separate-uid deployment the broker runs
+/// as a distinct service uid (root, or a dedicated config uid) while the
+/// legitimate callers (Settings, the AI daemon + agent) run as the session
+/// user, so a 0600 owner-only socket would refuse them. File permission is
+/// NOT the boundary here: every connection is authenticated by SO_PEERPIDFD
+/// ([`serve_connection`] rejects a uid mismatch via [`owner_uid`]) and Set is
+/// gated to admitted writers by the kernel-attested app id. A 0666 socket
+/// only lets a process of the expected uid connect; reading the switches
+/// (Get) is open by design, and Set is still gated. This mirrors the
+/// event-bus + knowledge sockets, whose access boundary is likewise the
+/// peer credential, not the socket mode.
 pub fn bind_socket(path: &Path) -> std::io::Result<UnixListener> {
     use std::os::unix::fs::PermissionsExt;
     if let Some(parent) = path.parent() {
@@ -75,7 +87,7 @@ pub fn bind_socket(path: &Path) -> std::io::Result<UnixListener> {
         }
     }
     let listener = UnixListener::bind(path)?;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666))?;
     Ok(listener)
 }
 
