@@ -1753,27 +1753,48 @@ async fn handle_client(
     // it cannot be trusted, so a write fails closed.
     let (app_id, peer) = match so_peercred(stream.as_raw_fd()) {
         Ok((pid, uid)) => {
+            let cross_uid = uid != our_uid;
             if pid <= 0 {
+                // No pid to resolve. A same-uid peer is the local trusted case
+                // (served as unknown/ThirdParty); a cross-uid peer cannot be
+                // identified as a first-party client, so reject it rather than
+                // serve it as `unknown` (keeps the cross-uid gate absolute).
+                if cross_uid {
+                    warn!(peer_uid = uid, "graph daemon: rejecting unidentifiable cross-uid client");
+                    return Ok(());
+                }
                 ("unknown".to_string(), None)
             } else {
                 let pid = pid as u32;
                 // Resolve the peer's identity. As a system service this daemon
                 // runs as root, so it can read a cross-uid peer's
                 // `/proc/<pid>/exe` even when that peer is process-hardened
-                // (non-dumpable) - the resolution that lets the per-user AI
-                // layer reach the system Knowledge Graph.
+                // (non-dumpable) - the resolution that lets the per-user AI layer
+                // reach the system Knowledge Graph.
                 let id = app_id_from_pid(pid).unwrap_or_else(|_| "unknown".to_string());
-                // A SAME-uid peer is always served (scoped by `id`). A CROSS-uid
-                // peer is served only when it resolves to a first-party/system
-                // client: the documented deployment (daemon.rs socket comment
-                // above) where this system daemon serves the user-uid AI daemons
-                // (the AI layer runs as the session user; this daemon as root for
-                // the eBPF sensor). FirstParty/System require canonical /usr
-                // install paths another user cannot squat (`path_to_app_id` rule
-                // 1/3), so an arbitrary cross-uid process resolves
-                // ThirdParty/unknown and is still rejected here - preserving
-                // cross-user isolation while closing the AI-layer read path.
-                if uid != our_uid
+                // A SAME-uid peer is served, scoped by `id` (other root services).
+                // A CROSS-uid peer is served only when it resolves FirstParty/
+                // System: the documented deployment where this root daemon serves
+                // the SESSION USER's AI layer (ai-agent/ai-daemon run as the user;
+                // this daemon as root for the eBPF sensor).
+                //
+                // SECURITY (honest scope, per adversarial review): the FirstParty/
+                // System tiers require canonical /usr install paths, which blocks a
+                // cross-uid peer from PLANTING a privileged binary - but NOT from
+                // RUNNING code under that identity. The canonical binaries are
+                // world-executable and not setuid, so any local uid can
+                // `LD_PRELOAD=evil.so /usr/lib/arlen/libexec/arlen-ai-agent` (or
+                // ptrace it) and present `ai-agent` as its /proc/self/exe. So this
+                // gate effectively grants ANY local uid a full read of the system
+                // graph (a FirstParty read is `system_anchored`, bypassing the
+                // label gate + sensitive-column scrub). That is acceptable ONLY
+                // under Arlen's single-user-desktop model, where the one human user
+                // already has broad local visibility and IS the session this daemon
+                // serves. A MULTI-user host (several human uids sharing one root
+                // daemon) would be a cross-tenant graph leak and is NOT supported
+                // by this gate; the fix there is per-uid graph scoping or a
+                // per-user knowledge daemon (documented follow-up, NOT this change).
+                if cross_uid
                     && !matches!(
                         QuotaConfig::arlen_default().tier_for_app(&id),
                         AppTier::FirstParty | AppTier::System
