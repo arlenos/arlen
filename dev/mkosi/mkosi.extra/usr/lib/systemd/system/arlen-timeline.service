@@ -1,0 +1,35 @@
+[Unit]
+Description=Arlen timeline FUSE helper
+Documentation=https://github.com/arlenos/knowledge
+# The knowledge daemon binds the read socket this helper queries. After=, not
+# Requires=: the timeline is optional and the helper's socket client retries, so
+# a slow or absent daemon must never fail the boot.
+After=arlen-graph.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/arlen-timeline
+Restart=on-failure
+RestartSec=2
+
+# SUT system topology (matches arlen-graph's 10-system-sut.conf): the daemon's
+# read socket on /run/arlen and the timeline mount under the StateDirectory, not
+# the per-user ~/.timeline.
+Environment=ARLEN_DAEMON_SOCKET=/run/arlen/knowledge.sock
+Environment=ARLEN_TIMELINE_MOUNT=/var/lib/arlen/timeline
+Environment=RUST_LOG=info
+StateDirectory=arlen
+
+# This is the UNFENCED helper by design (same-uid-isolation-plan.md option b):
+# the FUSE mount needs the SUID fusermount3, so NoNewPrivileges must stay false
+# and /dev/fuse must be reachable - exactly what the main daemon's Landlock +
+# no_new_privs write-fence cannot allow, which is why the mount lives here.
+# Deliberately NO ProtectSystem / private mount namespace either: the daemon's
+# in-process mount was invisible to the rest of the system under its hardening,
+# whereas this helper shares the host mount namespace so the timeline actually
+# propagates and is visible. The helper holds no write capability of its own
+# beyond the mount point; it only reads the graph over the daemon's socket.
+DeviceAllow=/dev/fuse rw
+
+[Install]
+WantedBy=default.target
