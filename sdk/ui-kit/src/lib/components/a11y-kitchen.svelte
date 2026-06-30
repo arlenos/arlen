@@ -17,11 +17,13 @@
   import { ColorPicker } from "$lib/components/ui/color-picker";
   import { Switch } from "$lib/components/ui/switch";
   import { Toggle } from "$lib/components/ui/toggle";
+  import { Checkbox } from "$lib/components/ui/checkbox";
   import { PopoverSelect } from "$lib/components/ui/popover-select";
 
   let chips = $state(["alpha", "beta"]);
   let toggled = $state(false);
   let switched = $state(false);
+  let checked = $state(true);
   let view = $state("list");
   let density = $state("cozy");
   let format = $state("png");
@@ -80,6 +82,7 @@
     <ValueSlider value={volume} ariaLabel="Volume" unit="%" onchange={(v) => (volume = v)} />
     <FillSlider value={60} ariaLabel="Brightness" oninput={noop} />
     <Switch bind:value={switched} ariaLabel="Wi-Fi" />
+    <Checkbox bind:checked ariaLabel="Remember me" />
     <ColorPicker value="#3366cc" />
   </section>
 
