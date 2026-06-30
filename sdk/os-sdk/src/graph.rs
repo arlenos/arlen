@@ -312,6 +312,27 @@ impl UnixGraphClient {
         parse_row_set(&bytes)
     }
 
+    /// Execute a read-only Cypher query and return typed rows preserving COLUMN
+    /// ORDER: the column names and each row's cells positionally. Same wire mode
+    /// and validation as [`query_rows`], but the rows are not collapsed into
+    /// column-keyed maps - use this when access is positional (the timeline FUSE
+    /// reader maps these into the knowledge daemon's own `RowSet`).
+    #[allow(clippy::type_complexity)]
+    pub async fn query_rows_ordered(
+        &self,
+        cypher: &str,
+    ) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), QueryError> {
+        let mut body = Vec::with_capacity(cypher.len() + 1);
+        body.push(0x01);
+        body.extend_from_slice(cypher.as_bytes());
+
+        let bytes = self.round_trip(&body, MAX_TYPED_RESPONSE_BYTES).await?;
+        if bytes.starts_with(b"ERROR:") {
+            Self::check_error(&String::from_utf8_lossy(&bytes))?;
+        }
+        parse_row_set_ordered(&bytes)
+    }
+
     /// LLM-free retrieval: ask the daemon for the node ids most relevant to a
     /// keyword `query`, best-first, via the read socket's retrieval mode.
     ///
@@ -852,7 +873,16 @@ pub enum RelationRetractOutcome {
 /// partial row. Callers drive decisions from these rows, so a corrupt or
 /// version-skewed body must surface as an error, never as plausible-looking
 /// data.
-fn parse_row_set(json: &[u8]) -> Result<Vec<HashMap<String, serde_json::Value>>, QueryError> {
+/// Parse the daemon's typed `{columns, rows}` result preserving COLUMN ORDER:
+/// the column names and each row's cells positionally (not collapsed into a
+/// `HashMap`, which loses order). Applies the same column/row/cell-count caps,
+/// duplicate-column rejection, and per-row shape check as [`parse_row_set`],
+/// which is now a thin wrapper that zips this into column-keyed maps. Used where
+/// positional access matters (the timeline FUSE reader's queries).
+#[allow(clippy::type_complexity)]
+fn parse_row_set_ordered(
+    json: &[u8],
+) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), QueryError> {
     // `from_slice` requires valid UTF-8, so invalid bytes fail closed here
     // instead of being lossily replaced and parsed as plausible typed data.
     let value: serde_json::Value = serde_json::from_slice(json)
@@ -919,15 +949,26 @@ fn parse_row_set(json: &[u8]) -> Result<Vec<HashMap<String, serde_json::Value>>,
                 columns.len()
             )));
         }
-        rows.push(
+        rows.push(cells.to_vec());
+    }
+    Ok((columns, rows))
+}
+
+/// Parse the daemon's typed result into column-keyed rows. Thin wrapper over
+/// [`parse_row_set_ordered`] that zips each positional row against the column
+/// names; callers that need column order use the ordered form directly.
+fn parse_row_set(json: &[u8]) -> Result<Vec<HashMap<String, serde_json::Value>>, QueryError> {
+    let (columns, rows) = parse_row_set_ordered(json)?;
+    Ok(rows
+        .into_iter()
+        .map(|cells| {
             columns
                 .iter()
                 .cloned()
-                .zip(cells.iter().cloned())
-                .collect::<HashMap<String, serde_json::Value>>(),
-        );
-    }
-    Ok(rows)
+                .zip(cells)
+                .collect::<HashMap<String, serde_json::Value>>()
+        })
+        .collect())
 }
 
 impl GraphClient for UnixGraphClient {
