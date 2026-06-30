@@ -271,7 +271,9 @@ pub struct ColorTokens {
 /// windows track the roundness slider in lock-step with the shell.
 #[derive(Debug, Clone)]
 pub struct RadiusTokens {
-    /// Inline tags, dots, badges, tiny chips. Default 4.
+    /// Inline tags, status dots, badges, tiny chips. Rides the
+    /// roundness scale, so dots square off in lock-step with the rest
+    /// of the geometry. Default 4.
     pub chip: f32,
     /// Pressable button face. Default 6.
     pub button: f32,
@@ -281,7 +283,10 @@ pub struct RadiusTokens {
     pub card: f32,
     /// Modals, dialogs, sheets, hero containers. Default 16.
     pub modal: f32,
-    /// Pills, avatars, status indicators. Default 9999. Categorical.
+    /// Pills, avatars, and shapes that are round by nature. Default
+    /// 9999. Categorical: it has no meaningful intermediate state, so
+    /// the roundness multiplier never touches it. Status dots use
+    /// `chip`, not this.
     pub full: f32,
     /// Per-corner radius for the COMPOSITOR-rendered window outline
     /// shape (top-left, top-right, bottom-right, bottom-left).

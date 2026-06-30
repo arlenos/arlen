@@ -136,7 +136,7 @@
     display: block;
     width: 5px;
     height: 5px;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 45%, transparent);
     transition:
       width var(--duration-micro, 100ms) ease,
