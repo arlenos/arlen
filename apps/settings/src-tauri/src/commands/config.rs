@@ -211,17 +211,99 @@ pub fn config_get(
     }
 }
 
+/// The `ai.toml` keys that are AI master switches owned by the config broker
+/// (the separate-uid store the user's normal uid cannot write). A `config_set`
+/// to one of these on [`ConfigFile::Ai`] is routed to the broker, not the file,
+/// so a malicious same-uid process cannot flip them by rewriting `ai.toml`.
+fn is_ai_switch_key(key: &str) -> bool {
+    matches!(
+        key,
+        "ai.enabled"
+            | "ai.access_level"
+            | "ai.provider"
+            | "ai.action_mode"
+            | "ai.autonomous_apps"
+            | "agent.executor_live"
+    )
+}
+
+/// Apply a single AI-switch `config_set` onto the broker's master switches,
+/// mapping + validating the JSON value per key. Returns `Err` on a malformed
+/// value (wrong type / out of range) so a bad write is refused rather than
+/// papered over. Pure + testable.
+fn apply_ai_switch(
+    switches: &mut arlen_config_broker::AiMasterSwitches,
+    key: &str,
+    value: &serde_json::Value,
+) -> Result<(), String> {
+    use arlen_config_broker::ActionMode;
+    match key {
+        "ai.enabled" => {
+            switches.enabled = value.as_bool().ok_or("ai.enabled must be a boolean")?
+        }
+        "agent.executor_live" => {
+            switches.executor_live =
+                value.as_bool().ok_or("agent.executor_live must be a boolean")?
+        }
+        "ai.access_level" => {
+            let n = value
+                .as_u64()
+                .ok_or("ai.access_level must be a non-negative integer")?;
+            switches.access_level = u8::try_from(n).map_err(|_| "ai.access_level out of range")?;
+        }
+        "ai.provider" => {
+            switches.provider = value.as_str().ok_or("ai.provider must be a string")?.to_string()
+        }
+        "ai.action_mode" => {
+            switches.action_mode = match value.as_str() {
+                Some("suggest") => ActionMode::Suggest,
+                Some("supervised") => ActionMode::Supervised,
+                _ => return Err("ai.action_mode must be \"suggest\" or \"supervised\"".to_string()),
+            }
+        }
+        "ai.autonomous_apps" => {
+            let arr = value.as_array().ok_or("ai.autonomous_apps must be an array")?;
+            let mut set = std::collections::BTreeSet::new();
+            for v in arr {
+                let app = v.as_str().ok_or("ai.autonomous_apps entries must be strings")?;
+                set.insert(app.to_string());
+            }
+            switches.autonomous_apps = set;
+        }
+        other => return Err(format!("not an AI switch key: {other}")),
+    }
+    Ok(())
+}
+
 /// Write a value at a dot-notation key, preserving other sections
 /// AND user comments + formatting in the file. Goes through
 /// `toml_writer` (toml_edit-backed, atomic tmp+rename) so a save
 /// from the Settings app doesn't erase the user's hand-edited
 /// notes in `compositor.toml` / `shell.toml`.
+///
+/// The AI master switches are the exception: a write to one of them (on
+/// [`ConfigFile::Ai`]) is routed to the config broker (the separate-uid owner)
+/// when reachable, so a same-uid process cannot flip them by rewriting the
+/// file. When the broker is unreachable it falls back to writing `ai.toml` (the
+/// pre-cutover behaviour, kept coherent with the readers' fallback); the FINAL
+/// cutover drops that fallback once the broker is deployed everywhere.
 #[tauri::command]
-pub fn config_set(
+pub async fn config_set(
     file: ConfigFile,
     key: String,
     value: serde_json::Value,
 ) -> Result<(), String> {
+    if matches!(file, ConfigFile::Ai) && is_ai_switch_key(&key) {
+        let client = arlen_config_broker::ConfigBrokerClient::default_socket();
+        if let Ok(mut switches) = client.get().await {
+            apply_ai_switch(&mut switches, &key, &value)?;
+            return client
+                .set(&switches)
+                .await
+                .map_err(|e| format!("config broker set: {e}"));
+        }
+        // Broker unreachable: fall through to the ai.toml write below.
+    }
     let path = file.path();
     let item = json_to_toml_edit(value);
     crate::toml_writer::update(&path, |doc| {
@@ -239,13 +321,35 @@ pub fn config_set(
 /// (query/agent/title) model schema is a deferred extension; this sets the
 /// single default the daemon resolves today. Both must be non-empty.
 #[tauri::command]
-pub fn ai_defaults_set(provider: String, model: String) -> Result<(), String> {
+pub async fn ai_defaults_set(provider: String, model: String) -> Result<(), String> {
     if provider.trim().is_empty() || model.trim().is_empty() {
         return Err("provider and model must be non-empty".to_string());
     }
+    // `ai.provider` is a broker-owned master switch (it decides where LLM
+    // traffic goes); `provider.model` is not (it selects within a named
+    // backend), so it stays in ai.toml. Route the provider to the broker when
+    // reachable; on an unreachable broker write it to ai.toml too (the
+    // pre-cutover fallback). The model always goes to ai.toml. The two are no
+    // longer one atomic write, but they are independent fields the daemon reads
+    // separately (provider from the broker, model from ai.toml), so a partial
+    // apply is recoverable by a retry, not corrupting.
+    let client = arlen_config_broker::ConfigBrokerClient::default_socket();
+    let provider_to_file = match client.get().await {
+        Ok(mut switches) => {
+            switches.provider = provider.clone();
+            client
+                .set(&switches)
+                .await
+                .map_err(|e| format!("config broker set: {e}"))?;
+            false
+        }
+        Err(_) => true,
+    };
     let path = ConfigFile::Ai.path();
     crate::toml_writer::update(&path, |doc| {
-        set_dotted_in_doc(doc, "ai.provider", toml_edit::value(provider.clone()))?;
+        if provider_to_file {
+            set_dotted_in_doc(doc, "ai.provider", toml_edit::value(provider.clone()))?;
+        }
         set_dotted_in_doc(doc, "provider.model", toml_edit::value(model.clone()))?;
         Ok(())
     })?;
@@ -848,5 +952,57 @@ workspace_layout = "Horizontal"
             .and_then(|v| v.as_array())
             .expect("window_rules is array");
         assert_eq!(arr.len(), 0);
+    }
+
+    #[test]
+    fn ai_switch_keys_are_recognised() {
+        for k in [
+            "ai.enabled",
+            "ai.access_level",
+            "ai.provider",
+            "ai.action_mode",
+            "ai.autonomous_apps",
+            "agent.executor_live",
+        ] {
+            assert!(is_ai_switch_key(k), "{k} is a broker-owned switch");
+        }
+        // Non-switch AI keys + other files' keys are NOT routed to the broker.
+        for k in ["provider.model", "provider.context_window", "ai.tool_routing", "theme.mode"] {
+            assert!(!is_ai_switch_key(k), "{k} stays in the file");
+        }
+    }
+
+    #[test]
+    fn apply_ai_switch_maps_and_validates_each_key() {
+        use arlen_config_broker::{ActionMode, AiMasterSwitches};
+        let mut s = AiMasterSwitches::default();
+        apply_ai_switch(&mut s, "ai.enabled", &serde_json::json!(true)).unwrap();
+        apply_ai_switch(&mut s, "ai.access_level", &serde_json::json!(3)).unwrap();
+        apply_ai_switch(&mut s, "ai.provider", &serde_json::json!("ollama-default")).unwrap();
+        apply_ai_switch(&mut s, "ai.action_mode", &serde_json::json!("supervised")).unwrap();
+        apply_ai_switch(&mut s, "agent.executor_live", &serde_json::json!(true)).unwrap();
+        apply_ai_switch(&mut s, "ai.autonomous_apps", &serde_json::json!(["org.arlen.files"]))
+            .unwrap();
+        assert!(s.enabled);
+        assert_eq!(s.access_level, 3);
+        assert_eq!(s.provider, "ollama-default");
+        assert_eq!(s.action_mode, ActionMode::Supervised);
+        assert!(s.executor_live);
+        assert!(s.autonomous_apps.contains("org.arlen.files"));
+    }
+
+    #[test]
+    fn apply_ai_switch_rejects_malformed_values() {
+        use arlen_config_broker::AiMasterSwitches;
+        let mut s = AiMasterSwitches::default();
+        // Wrong types + an out-of-range level + an unknown action mode all error,
+        // so a bad write is refused rather than written.
+        assert!(apply_ai_switch(&mut s, "ai.enabled", &serde_json::json!("yes")).is_err());
+        assert!(apply_ai_switch(&mut s, "ai.access_level", &serde_json::json!(-1)).is_err());
+        assert!(apply_ai_switch(&mut s, "ai.access_level", &serde_json::json!(9999)).is_err());
+        assert!(apply_ai_switch(&mut s, "ai.action_mode", &serde_json::json!("autonomous")).is_err());
+        assert!(apply_ai_switch(&mut s, "ai.autonomous_apps", &serde_json::json!("notarray")).is_err());
+        // Nothing was mutated by the failed calls.
+        assert_eq!(s, AiMasterSwitches::default());
     }
 }
