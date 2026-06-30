@@ -12,3 +12,5 @@ name = "arlen_ai_model_manager"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+sha2 = "0.10"
+tempfile = "3"
