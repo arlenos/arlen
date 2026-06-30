@@ -22,7 +22,7 @@ use std::time::Duration;
 use tokio::sync::watch;
 
 use arlen_ai_agent::behaviour::{BehaviourKind, ReadScope};
-use arlen_ai_agent::config::{AgentConfig, ProviderSettings};
+use arlen_ai_agent::config::{broker_switches, AgentConfig, ProviderSettings};
 use arlen_ai_agent::dbus::{
     new_status_handle, set_status, AgentInterface, LoopStatus, ManualInvoke, StatusHandle,
     AGENT_OBJECT_PATH,
@@ -744,11 +744,18 @@ async fn run(
         // mode from another (a config-race fail-open), so they must share the
         // exact same text.
         let ai_text = std::fs::read_to_string(ai_path).ok();
+        // The six AI master switches come from the config broker (the
+        // separate-uid owner of a store the user's normal uid cannot write)
+        // when it is reachable; the behaviour list + provider model/window
+        // still come from ai.toml. An unreachable broker falls back to the
+        // file's switches (the pre-cutover behaviour). Fetched once per epoch,
+        // like the file read, so config + screening share one snapshot.
+        let switches = broker_switches().await;
         let config = match &ai_text {
-            Some(text) => AgentConfig::parse(text),
+            Some(text) => AgentConfig::resolve(text, switches.as_ref()),
             None => {
-                tracing::info!("no ai.toml found; using safe defaults (agent disabled)");
-                AgentConfig::fail_closed()
+                tracing::info!("no ai.toml found; behaviour list empty (agent runs nothing)");
+                AgentConfig::resolve("", switches.as_ref())
             }
         };
         // Audit any flip of the agent's security keys (executor_live / action_mode
