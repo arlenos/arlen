@@ -15,13 +15,13 @@ RestartSec=1
 Environment=ARLEN_DAEMON_SOCKET=/run/user/%U/arlen/knowledge.sock
 Environment=ARLEN_GRAPH_PATH=%h/.local/share/arlen/graph
 Environment=ARLEN_DB_PATH=%h/.local/share/arlen/events.db
-# Read graph.toml from the USER config home, not /root: the mkosi.extra/root/ tree
-# does not bake into the image (the /home/arlen overlay does - the AI daemons read
-# its ai.toml), so the config lives at /home/arlen/.config/arlen/graph.toml, which
-# this daemon (a system service, ProtectHome=read-only) can still read. XDG_CONFIG_
-# HOME points dirs::config_dir() there; without it a root service falls back to
-# ~/Projects etc. and the project watcher finds nothing.
-Environment=XDG_CONFIG_HOME=/home/arlen/.config
+# Read graph.toml from /usr/share/arlen-config: neither the /root nor the
+# /home/arlen overlay reliably surfaced the file to this SYSTEM daemon at runtime
+# ("graph.toml not found" even with ProtectHome=no), whereas /usr provably bakes
+# (every binary/unit/behaviour lives there) and is readable under ProtectSystem=
+# strict. XDG_CONFIG_HOME makes dirs::config_dir() resolve to it, so the daemon
+# reads /usr/share/arlen-config/arlen/graph.toml (which sets the project watch dir).
+Environment=XDG_CONFIG_HOME=/usr/share/arlen-config
 # Debug the watch-config resolution: logs the exact graph.toml path checked
 # (loaded vs not-found), so the serial confirms config_dir() resolves right.
 Environment=RUST_LOG=info,arlen_graph_daemon::project::watch_config=debug
