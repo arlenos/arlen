@@ -441,4 +441,42 @@ mod tests {
         let err = TagUntaggedFiles.run(&invoke(), &g).await.unwrap_err();
         assert!(format!("{err}").contains("boom"));
     }
+
+    /// Every shipped behaviour must parse, and every `workflow` must name a
+    /// handler that `builtin_handlers` actually registers - otherwise the
+    /// daemon rejects the behaviour at load and it is silently inert. This
+    /// guards the behaviour-to-handler wiring (and that this crate's
+    /// `behaviours/` directory stays in sync with the registry above).
+    #[test]
+    fn every_production_workflow_behaviour_parses_and_its_handler_is_registered() {
+        use arlen_ai_skills::behaviour::{parse, BehaviourKind};
+
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("behaviours");
+        let registry = builtin_handlers();
+        let mut checked = 0;
+        for entry in std::fs::read_dir(&dir).expect("read the behaviours directory") {
+            let skill = entry.unwrap().path().join("SKILL.md");
+            if !skill.is_file() {
+                continue;
+            }
+            let content = std::fs::read_to_string(&skill).unwrap();
+            let b = parse(&content)
+                .unwrap_or_else(|e| panic!("{} fails to parse: {e}", skill.display()));
+            if b.manifest.kind == BehaviourKind::Workflow {
+                let handler = b.manifest.handler.as_deref().unwrap_or_else(|| {
+                    panic!("{} is a workflow but declares no handler", skill.display())
+                });
+                assert!(
+                    registry.contains_key(handler),
+                    "{}: handler {handler:?} is not registered in builtin_handlers()",
+                    skill.display()
+                );
+            }
+            checked += 1;
+        }
+        assert!(
+            checked >= 2,
+            "expected at least auto-tag-by-project and tag-untagged-files"
+        );
+    }
 }
