@@ -1,0 +1,55 @@
+[Unit]
+Description=Arlen Config Broker
+Documentation=https://github.com/arlenos/arlen
+# This is a SYSTEM service (root, a separate uid from the session user); the AI
+# daemon + agent are `--user` services. systemd cannot order a system unit
+# against user units across that boundary, so there is no explicit Before=
+# here: the broker starts at boot (multi-user.target), well before the user
+# session brings up the AI services, and those services tolerate a not-yet-up
+# broker anyway (they fall back to ai.toml until it answers).
+
+[Service]
+Type=simple
+# The separate-uid owner of the AI master switches. It runs as root (a distinct
+# uid from the session user) so the user's normal uid CANNOT write the canonical
+# store - that separation is the whole point (same-uid-isolation-plan.md
+# Tier-A #1). A dedicated `arlen-config` system user would be marginally
+# tighter (least privilege) and is the intended refinement; root achieves the
+# user-cannot-write property today without an image-build useradd.
+User=root
+ExecStart=/usr/lib/arlen/libexec/arlen-config-broker
+Restart=on-failure
+RestartSec=1
+
+# The canonical store lives in a root-owned 0700 dir the user cannot write (the
+# daemon tightens it to 0700 on open). The socket lives in /run/arlen (created +
+# used by the event-bus + knowledge system services) so the user-uid AI services
+# can reach it; the broker binds it 0666 because peer credentials, not file
+# mode, are the access boundary (SO_PEERPIDFD uid check + the admitted-writer
+# app-id gate). ARLEN_CONFIG_BROKER_OWNER_UID is the session user's uid (1000 in
+# the SUT image): the broker accepts a caller of that uid and rejects any other.
+Environment=ARLEN_CONFIG_BROKER_DIR=/var/lib/arlen/config-broker
+Environment=ARLEN_CONFIG_BROKER_SOCKET=/run/arlen/config-broker.sock
+Environment=ARLEN_CONFIG_BROKER_OWNER_UID=1000
+Environment=RUST_LOG=info
+
+# Security hardening. DELIBERATELY the non-mount-namespace set: the broker
+# resolves each caller's app id from /proc/<pid>/exe (arlen_permissions::
+# app_id_from_pid) to enforce the admitted-writer gate, and a private mount
+# namespace (ProtectSystem=strict / ProtectHome / PrivateTmp / PrivateDevices)
+# breaks that /proc/<pid>/exe read for a peer in the session's namespace - the
+# exact failure this image hit with the audit + proxy daemons. So only the
+# namespace-safe protections are applied here.
+NoNewPrivileges=true
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

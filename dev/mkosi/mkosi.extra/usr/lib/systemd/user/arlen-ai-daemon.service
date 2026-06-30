@@ -18,6 +18,12 @@ RestartSec=2
 # system paths explicitly (the daemon honours these overrides first).
 Environment=ARLEN_DAEMON_SOCKET=/run/arlen/knowledge.sock
 Environment=ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
+# The config broker is a root SYSTEM service binding at /run/arlen, so its
+# socket is NOT under this --user service's $XDG_RUNTIME_DIR (the broker
+# client's default). Point the daemon at the system path so its admission
+# (enabled / access_level / provider) is broker-sourced; absent the broker it
+# falls back to ai.toml.
+Environment=ARLEN_CONFIG_BROKER_SOCKET=/run/arlen/config-broker.sock
 
 # Reads ~/.config/arlen/ai.toml (read-only home is enough); talks Unix sockets +
 # the session bus only (provider HTTP goes through the proxy, never direct).
