@@ -52,6 +52,25 @@
 //! a separately launched worker that does not inherit the daemon's domain, not
 //! a daemon-startup write-fence.
 //!
+//! ## Do NOT fence a daemon that resolves caller identity via `/proc/<pid>/exe`
+//!
+//! A daemon that authenticates a peer by reading `/proc/<peer-pid>/exe` (the
+//! `arlen_permissions::identity::app_id_from_pid` pattern - the app-id-allowlist
+//! IPC daemons: the config-broker, online-accounts, the audit ingest, the
+//! consent broker) CANNOT take this fence. Reading another process's
+//! `/proc/<pid>/exe` goes through `PTRACE_MODE_READ_FSCREDS` ->
+//! `security_ptrace_access_check`, and Landlock installs a ptrace LSM hook that
+//! DENIES a confined process from `PTRACE_MODE_READ`-ing a process outside its
+//! domain. So under the fence the exe read returns `EACCES`, peer resolution
+//! fails, and the daemon rejects every connection - even though read-on-`/`
+//! grants the filesystem right (it is the ptrace hook, not a missing fs grant,
+//! so NO `/proc` grant can fix it). This was verified by running the assembled
+//! stack (the daemon logged "cannot read exe path: Permission denied"); a
+//! code read alone misses it. Such daemons either stay unfenced or use a
+//! non-mount-namespace systemd confinement (the set the audit unit documents).
+//! A daemon that authenticates ONLY by the kernel-supplied `SO_PEERCRED` uid
+//! (no `/proc` exe read), like `capsuled`, is unaffected and CAN be fenced.
+//!
 //! ## Failure model (the caller decides)
 //!
 //! This primitive only reports the outcome; it never exits. The fence is
