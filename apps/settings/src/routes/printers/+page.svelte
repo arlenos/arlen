@@ -17,8 +17,9 @@
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
+  import { Checkbox } from "@arlen/ui-kit/components/ui/checkbox";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
-  import { CircleCheck, Circle, Trash2, SlidersHorizontal, RefreshCw, Plus } from "lucide-svelte";
+  import { Trash2, SlidersHorizontal, RefreshCw, Plus } from "lucide-svelte";
 
   import {
     printers,
@@ -199,17 +200,15 @@
     {/snippet}
     {#snippet control()}
       <span class="ctl">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          class={isDefault ? "def on" : "def"}
-          disabled={isDefault}
-          aria-label={isDefault ? "Default printer" : `Make ${displayName(p)} the default`}
-          title={isDefault ? "Default printer" : "Set as default"}
-          onclick={() => setDefault(p.name)}
-        >
-          {#if isDefault}<CircleCheck />{:else}<Circle />{/if}
-        </Button>
+        <label class="def" title={isDefault ? "Default printer" : "Set as default"}>
+          <Checkbox
+            checked={isDefault}
+            disabled={isDefault}
+            ariaLabel={isDefault ? "Default printer" : `Make ${displayName(p)} the default`}
+            onchange={() => setDefault(p.name)}
+          />
+          <span class="def-label">Default</span>
+        </label>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -361,14 +360,23 @@
   .ctl {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
+    gap: 6px;
   }
-  .ctl :global(.def) {
-    color: var(--color-fg-disabled);
+  /* The default marker: the kit Checkbox plus its label, one click target. */
+  .def {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 4px;
+    font-size: 0.75rem;
+    color: var(--color-fg-secondary);
+    cursor: pointer;
   }
-  .ctl :global(.def.on) {
-    color: var(--color-accent);
-    opacity: 1;
+  .def:has(:disabled) {
+    cursor: default;
+  }
+  .def-label {
+    user-select: none;
   }
 
   .job-state {
