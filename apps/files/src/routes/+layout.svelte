@@ -16,6 +16,7 @@
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { Search, SlidersHorizontal, Copy } from "lucide-svelte";
+  import { isVirtualLocation } from "@arlen/ui-kit/components/browser";
   import { tauriAvailable } from "$lib/tauri";
   import FmSidebar from "$lib/components/FmSidebar.svelte";
   import FmHeaderNav from "$lib/components/FmHeaderNav.svelte";
@@ -59,6 +60,13 @@
   });
 
   function toggleSearch() {
+    // Text search is a recursive backend walk under the current directory
+    // (files_search); a virtual KG location (Recent / Trash / project: / search:)
+    // has no real directory to recurse, so search is meaningless there and would
+    // just fail. Guard both entry points (the toolbar button and Ctrl+F route
+    // through here). A visible disabled state on the button is arlen-ui's polish.
+    const c = get(focusedController);
+    if (c && isVirtualLocation(get(c.path))) return;
     if (get(searchOpen)) closeSearch();
     else searchOpen.set(true);
   }
