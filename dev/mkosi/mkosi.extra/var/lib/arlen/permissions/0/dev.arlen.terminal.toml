@@ -1,0 +1,23 @@
+# The terminal's KG read profile. The knowledge daemon (root, uid 0) resolves a
+# caller's profile under /var/lib/arlen/permissions/0/<app_id>.toml; without one
+# the terminal's project-picker read is denied (empty scope). app_id is the
+# terminal's bundle identifier (dev.arlen.terminal, apps/terminal/src-tauri/
+# tauri.conf.json); confirm it matches path_to_app_id of the installed binary.
+#
+# READ-ONLY and Project-only on purpose: the terminal issues exactly one graph
+# read (apps/terminal/src-tauri/src/lib.rs:405 - `MATCH (p:Project) WHERE
+# p.expired_at IS NULL RETURN p.id, p.name, p.root_path`, the active-project list
+# for cd/picker). It reads no File data and never writes, so there is no File
+# scope, no write, no relations. Erring narrow: a missing scope degrades the
+# picker; an extra scope leaks.
+[info]
+app_id = "dev.arlen.terminal"
+tier = "first-party"
+
+[graph]
+read = [
+    "system.Project.id",
+    "system.Project.name",
+    "system.Project.root_path",
+    "system.Project.expired_at",
+]
