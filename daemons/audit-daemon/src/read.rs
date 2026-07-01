@@ -138,6 +138,7 @@ mod tests {
             duration_ms: Some(1),
             outcome: "ok".into(),
             depth: None,
+            capability_change: None,
         }
     }
 

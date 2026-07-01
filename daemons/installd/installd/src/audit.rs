@@ -41,6 +41,7 @@ pub fn install_action_event(
             duration_ms: None,
             outcome: outcome.to_string(),
             depth: None,
+            capability_change: None,
         },
         forensic: None,
         call_chain_id: None,

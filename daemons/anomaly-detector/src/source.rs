@@ -394,6 +394,7 @@ mod tests {
                 duration_ms: None,
                 outcome: "completed".into(),
                 depth: None,
+                capability_change: None,
             },
             call_chain_id: None,
             project_id: None,

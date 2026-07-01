@@ -114,6 +114,14 @@ pub enum AuditKind {
     /// identifiers (the acting/posting app and a disposition), never the
     /// action's content.
     AppAction,
+    /// A capability change: a user (or the Settings app) revoked, restored, or
+    /// granted a reach. The coarse `outcome` label is the change
+    /// (`revoked` / `restored` / `granted`); the specific reach rides the typed
+    /// [`StructuralRecord::capability_change`] field. This is the one record class
+    /// that carries a reach, because a reach is authority-metadata (ISO-27560
+    /// consent-receipt provenance), not user content - the S13 content-free
+    /// boundary still holds for every data-access record.
+    CapabilityChange,
 }
 
 impl AuditKind {
@@ -129,6 +137,7 @@ impl AuditKind {
             Self::Permission => "permission",
             Self::NetworkCall => "network_call",
             Self::AppAction => "app_action",
+            Self::CapabilityChange => "capability_change",
         }
     }
 
@@ -143,16 +152,58 @@ impl AuditKind {
             "permission" => Some(Self::Permission),
             "network_call" => Some(Self::NetworkCall),
             "app_action" => Some(Self::AppAction),
+            "capability_change" => Some(Self::CapabilityChange),
             _ => None,
         }
     }
 }
 
+/// The reach a [`AuditKind::CapabilityChange`] record carries: the specific
+/// capability that was revoked, restored, or granted. Authority-metadata (a
+/// capability pattern / relation, never user content), so it is safe to record in
+/// the ledger and is the durable "what was removed" the profile-first restore reads
+/// back (living-capability-graph.md §6, Tim's 1-July audit-ledger decision).
+///
+/// A typed mirror of the SDK `arlen_permissions::revoke::RevokedReach` variants,
+/// kept audit-proto-local so this low-level wire crate stays dependency-light (a
+/// producer converts its own reach type into this at the ingest boundary).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CapabilityReach {
+    /// A `[graph].read` entity-type pattern.
+    Read {
+        /// The read pattern.
+        entity_pattern: String,
+    },
+    /// A `[graph].write` entity-type pattern.
+    Write {
+        /// The write pattern.
+        entity_pattern: String,
+    },
+    /// A `[graph].relations` entry.
+    Relation {
+        /// The relation's source entity type.
+        from: String,
+        /// The relation's target entity type.
+        to: String,
+        /// The relation type.
+        relation_type: String,
+    },
+    /// The `instance_scope = all` cross-app reach.
+    InstanceAll,
+}
+
 /// Content-free interaction metadata — the Structural tier of
 /// foundation §8.4.7, always recorded. Every field is a coarse
 /// identifier or a count; none can hold a query string, a result
-/// value, or a concrete node ID.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// value, or a concrete node ID (the one class-scoped exception is
+/// [`capability_change`](Self::capability_change), which carries an
+/// authority-metadata reach for a capability-change record only).
+///
+/// `Default` is derived so a producer can build a record with the fields it sets
+/// plus `..Default::default()`, and so future additive fields do not churn every
+/// construction site.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct StructuralRecord {
     /// Coarse subject identifier: an MCP server id, a tool name, or
     /// a graph target label. Never free-form content.
@@ -174,6 +225,13 @@ pub struct StructuralRecord {
     /// MCP call-chain depth, when the entry is part of one.
     #[serde(default)]
     pub depth: Option<u8>,
+    /// The specific reach, for an [`AuditKind::CapabilityChange`] record only: the
+    /// capability revoked / restored / granted (the `outcome` label says which).
+    /// `None` for every other kind - the S13 content-free boundary holds for
+    /// data-access records; only the capability-change class carries a reach, and a
+    /// reach is authority-metadata, not user content.
+    #[serde(default)]
+    pub capability_change: Option<CapabilityReach>,
 }
 
 /// The opt-in Forensic tier (foundation §8.4.7): the content the
@@ -389,6 +447,7 @@ mod tests {
                 duration_ms: Some(4),
                 outcome: "ok".into(),
                 depth: Some(2),
+                capability_change: None,
             },
             forensic: None,
             call_chain_id: Some("chain-7".into()),
@@ -436,6 +495,7 @@ mod tests {
             duration_ms: None,
             outcome: outcome.into(),
             depth: None,
+            capability_change: None,
         }
     }
 
