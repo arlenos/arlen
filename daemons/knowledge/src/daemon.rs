@@ -1890,6 +1890,21 @@ async fn handle_client(
                 }
             }
         }
+        // Also project the app's DECLARED network reach as a `NetworkAccess` grant
+        // (LCG §11b), so the App-access page shows + revokes its internet reach.
+        // Independent of the token (network reach is a profile declaration, not a
+        // graph capability): load the profile, summarise the reach, emit. Best-
+        // effort; a profile-less or network-less app gets no network grant, and the
+        // emit's revoke-preserving ON MATCH means this per-connect refresh never
+        // resurrects a grant the user revoked.
+        if let Ok(profile) = crate::permission::PermissionProfile::load(&app_id) {
+            let reach = profile.network.as_ref().and_then(|n| n.reach_summary());
+            if let Err(e) =
+                crate::lcg::emit_declared_network_grant(&graph, &app_id, reach.as_deref()).await
+            {
+                warn!(app_id = %app_id, "connect-time network grant emit failed: {e}");
+            }
+        }
     }
 
     loop {
