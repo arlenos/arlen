@@ -122,6 +122,20 @@ impl ThemeState {
         Ok(css)
     }
 
+    /// Reconcile the runtime theme broadcast to the current selection.
+    ///
+    /// The shell is the theme authority; on startup it rewrites the per-user
+    /// broadcast file so a stale broadcast left in `$XDG_RUNTIME_DIR` by a prior
+    /// session (or a bare dev run) cannot steer apps that read it before the shell
+    /// has answered a theme change. Best-effort: a resolve or write failure is
+    /// logged, never fatal to startup.
+    pub fn broadcast_current(&self) {
+        match self.resolve_full() {
+            Ok((_theme, css)) => write_theme_broadcast(&css),
+            Err(e) => log::warn!("theme: startup broadcast reconcile failed: {e}"),
+        }
+    }
+
     /// Re-read `appearance.toml` from disk, replacing the in-memory config.
     /// Silent no-op if the file was removed (keeps current config).
     pub fn reload_from_disk(&self) -> Result<(), ThemeError> {

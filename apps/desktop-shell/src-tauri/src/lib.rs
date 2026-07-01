@@ -199,7 +199,13 @@ pub fn run() {
                 .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
                 .join("arlen");
             match theme::commands::ThemeState::new(config_dir, data_dir) {
-                Ok(ts) => { app.manage(ts); }
+                Ok(ts) => {
+                    // Reconcile the runtime broadcast to the current selection on
+                    // startup, so a stale broadcast from a prior session cannot
+                    // steer apps that read it (the shell is the theme authority).
+                    ts.broadcast_current();
+                    app.manage(ts);
+                }
                 Err(e) => {
                     log::warn!("theme: state init failed ({e}), using in-memory defaults");
                     let fallback = theme::commands::ThemeState::new(
