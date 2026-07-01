@@ -81,15 +81,18 @@
     );
   });
 
-  /// Undo one change through the agent's compensation path. The command is
-  /// the intended `ai_undo` contract; until the backend provides it the call
-  /// fails and the row reports that honestly.
+  /// Undo one change through the agent's compensation path. Undo targets the
+  /// action's correlation id, which the audit carries as the entry's call-chain
+  /// id; the registered `undo_action(id)` command forwards it to the agent's
+  /// `compensate`. An entry without a call-chain id is not an undoable action.
   async function undoEntry(entry: ActivityEntry): Promise<boolean> {
+    if (!entry.callChainId) return false;
     try {
-      await invoke("ai_undo", { entryRef: entry.entryRef });
+      const status = await invoke<string>("undo_action", { id: entry.callChainId });
       // The compensation lands as a new ledger entry; refresh so it shows.
       refreshLive();
-      return true;
+      // Only a real retract (or an already-gone write) counts as undone.
+      return status === "retracted" || status === "nothing-to-undo";
     } catch {
       return false;
     }
