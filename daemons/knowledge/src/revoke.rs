@@ -37,6 +37,8 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
+use serde::{Deserialize, Serialize};
+
 use crate::permission::PermissionProfile;
 use crate::quota::{AppTier, QuotaConfig};
 use crate::token::InstanceScope;
@@ -509,6 +511,63 @@ pub fn restore_at(
 
     atomic_write(path, new_text.as_bytes())?;
     Ok(RestoreOutcome::Restored)
+}
+
+/// The per-app record of reaches the user has revoked and not yet restored: the
+/// authoritative bound on what a restore may re-add (living-capability-graph.md
+/// §6, the way-back).
+///
+/// A restore is the ONE authority-growth path, so it must be bounded to "exactly
+/// what the user removed". Neither of the obvious ceilings supplies that: the
+/// Grant node's `declared_ceiling` NARROWS on re-mint (after a revoke the app
+/// reconnects and the token is minted from the narrowed profile, so the ceiling no
+/// longer contains the revoked reach), and the root-owned SYSTEM-tier profile
+/// cannot serve as the immutable original either, because "system-base-wins"
+/// ignores the user overlay a revoke writes - so revoke only ever functions on
+/// user-tier-only apps, which have no system-tier original. What remains, and the
+/// only sound source, is to RECORD each removal when it happens: `revoke` records
+/// the reach here, `restore` may re-add a reach ONLY if it is recorded here, and
+/// drops it on restore. This is the pure state core; persistence (alongside the
+/// profile) and the revoke/restore wiring are the caller's, kept out so the gate
+/// logic is unit-tested without I/O.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RemovalLedger {
+    /// The reaches the user revoked and has not yet restored. A `Vec` (not a set):
+    /// `RevokedReach` is `Eq` but the closed variants make membership a linear
+    /// scan, and a per-app ledger is tiny.
+    removed: Vec<RevokedReach>,
+}
+
+impl RemovalLedger {
+    /// Record a revoked reach (idempotent - a reach already recorded is not
+    /// duplicated). The caller invokes this after a revoke that actually narrowed.
+    pub fn record(&mut self, reach: RevokedReach) {
+        if !self.removed.contains(&reach) {
+            self.removed.push(reach);
+        }
+    }
+
+    /// Whether this reach is a recorded removal - the restore gate: a restore may
+    /// re-add a reach only if this is true.
+    pub fn contains(&self, reach: &RevokedReach) -> bool {
+        self.removed.contains(reach)
+    }
+
+    /// Drop a reach from the ledger, called after a successful restore (it is no
+    /// longer "removed"). Idempotent.
+    pub fn clear(&mut self, reach: &RevokedReach) {
+        self.removed.retain(|r| r != reach);
+    }
+
+    /// The recorded removals, for the App-access "Recently removed" surface.
+    pub fn removed(&self) -> &[RevokedReach] {
+        &self.removed
+    }
+
+    /// Whether nothing is currently recorded as removed.
+    pub fn is_empty(&self) -> bool {
+        self.removed.is_empty()
+    }
 }
 
 /// Write `bytes` to `path` atomically: a sibling temp file, fsync, rename over
@@ -996,5 +1055,41 @@ instance_scope = "all"
         )
         .unwrap();
         assert_eq!(outcome, RestoreOutcome::NotFound);
+    }
+
+    #[test]
+    fn removal_ledger_gates_restore_to_recorded_removals() {
+        let mut ledger = RemovalLedger::default();
+        assert!(ledger.is_empty());
+        let read = RevokedReach::Read { entity_pattern: "system.File".into() };
+        let write = RevokedReach::Write { entity_pattern: "com.x.Note".into() };
+
+        // A never-removed reach is not restorable.
+        assert!(!ledger.contains(&read), "nothing recorded yet");
+
+        // Recording a removal makes it restorable; idempotent.
+        ledger.record(read.clone());
+        ledger.record(read.clone());
+        assert!(ledger.contains(&read));
+        assert_eq!(ledger.removed().len(), 1, "no duplicate");
+        // A different, unrecorded reach stays non-restorable.
+        assert!(!ledger.contains(&write), "only recorded removals are restorable");
+
+        // Clearing (after a restore) drops it; idempotent.
+        ledger.clear(&read);
+        ledger.clear(&read);
+        assert!(!ledger.contains(&read));
+        assert!(ledger.is_empty());
+    }
+
+    #[test]
+    fn removal_ledger_round_trips_as_toml() {
+        let mut ledger = RemovalLedger::default();
+        ledger.record(RevokedReach::Read { entity_pattern: "system.File".into() });
+        ledger.record(RevokedReach::InstanceAll);
+        let text = toml::to_string(&ledger).unwrap();
+        let back: RemovalLedger = toml::from_str(&text).unwrap();
+        assert_eq!(back.removed().len(), 2);
+        assert!(back.contains(&RevokedReach::InstanceAll));
     }
 }
