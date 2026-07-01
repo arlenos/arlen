@@ -37,6 +37,30 @@ fn reach_to_audit(reach: &RevokedReach) -> CapabilityReach {
     }
 }
 
+/// The inverse of [`reach_to_audit`]: an audit-proto wire reach read back out of the
+/// ledger, into the daemon [`RevokedReach`]. Used by the fold that reconstructs a
+/// target app's removal ledger from its capability-change records.
+pub fn audit_to_reach(reach: &CapabilityReach) -> RevokedReach {
+    match reach {
+        CapabilityReach::Read { entity_pattern } => RevokedReach::Read {
+            entity_pattern: entity_pattern.clone(),
+        },
+        CapabilityReach::Write { entity_pattern } => RevokedReach::Write {
+            entity_pattern: entity_pattern.clone(),
+        },
+        CapabilityReach::Relation {
+            from,
+            to,
+            relation_type,
+        } => RevokedReach::Relation {
+            from: from.clone(),
+            to: to.clone(),
+            relation_type: relation_type.clone(),
+        },
+        CapabilityReach::InstanceAll => RevokedReach::InstanceAll,
+    }
+}
+
 /// Build the content-free audit record for a capability change: the user (via the
 /// Settings app) narrowed (`revoked`) or later re-widened (`restored`) an app's
 /// reach. The target app is a coarse identifier (`node_types`); the specific reach
@@ -183,5 +207,21 @@ mod tests {
             })
         );
         assert!(e.forensic.is_none());
+    }
+
+    #[test]
+    fn reach_converts_round_trip() {
+        for reach in [
+            RevokedReach::Read { entity_pattern: "system.File".into() },
+            RevokedReach::Write { entity_pattern: "com.x.Note".into() },
+            RevokedReach::Relation {
+                from: "system.File".into(),
+                to: "system.Project".into(),
+                relation_type: "FILE_PART_OF".into(),
+            },
+            RevokedReach::InstanceAll,
+        ] {
+            assert_eq!(audit_to_reach(&reach_to_audit(&reach)), reach);
+        }
     }
 }
