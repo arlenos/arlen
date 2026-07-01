@@ -66,6 +66,22 @@ pub struct RevokeReach {
     pub initiator: RevokeInitiator,
 }
 
+/// A restore request: re-add a reach the user previously revoked. The reach is a
+/// [`RevokedReach`] (the same closed vocabulary), so a restore can only name a
+/// reach that revoke could remove; the daemon additionally bounds it to a reach
+/// its removal ledger records, so a restore can only *un-do* a specific prior
+/// revoke, never grant fresh authority.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RestoreReach {
+    /// The app whose reach is re-widened.
+    pub target_app_id: String,
+    /// The reach to re-add (a reach the user previously revoked).
+    pub reach: RevokedReach,
+    /// Who initiated it. As with revoke, an agent may only *propose*; the daemon
+    /// refuses an `Agent` initiator arriving at the apply site (§6.3).
+    pub initiator: RevokeInitiator,
+}
+
 /// The outcome of a revoke. The daemon maps this to a wire token; a client maps
 /// the token back. Both sides use [`RevokeOutcome::wire_token`] /
 /// [`RevokeOutcome::from_wire_token`] so the four outcome strings have one
@@ -177,5 +193,16 @@ mod tests {
         };
         let json = serde_json::to_string(&req).unwrap();
         assert_eq!(serde_json::from_str::<RevokeReach>(&json).unwrap(), req);
+    }
+
+    #[test]
+    fn restore_request_round_trips_through_json() {
+        let req = RestoreReach {
+            target_app_id: "com.x".into(),
+            reach: RevokedReach::Read { entity_pattern: "system.File".into() },
+            initiator: RevokeInitiator::User,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert_eq!(serde_json::from_str::<RestoreReach>(&json).unwrap(), req);
     }
 }
