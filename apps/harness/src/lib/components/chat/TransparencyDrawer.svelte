@@ -84,10 +84,17 @@
   });
 
   async function undoEntry(entry: ActivityEntry): Promise<boolean> {
+    // Undo targets the action's correlation id, which the agent's audit carries
+    // as the entry's call-chain id (`behaviour_action_event`). The registered
+    // command is `undo_action(id)`, which forwards it to the agent's
+    // `compensate`; an entry without a call-chain id is not an undoable action.
+    if (!entry.callChainId) return false;
     try {
-      await invoke("ai_undo", { entryRef: entry.entryRef });
+      const status = await invoke<string>("undo_action", { id: entry.callChainId });
       activity = await invoke<ActivityPage>("ai_activity_recent", { limit: 100 });
-      return true;
+      // The agent answers with a status; only a real retract (or an already-gone
+      // write) counts as undone. `not-enabled` / `no-such-receipt` / `error:` do not.
+      return status === "retracted" || status === "nothing-to-undo";
     } catch {
       return false;
     }
