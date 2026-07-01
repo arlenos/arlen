@@ -1,0 +1,31 @@
+# The desktop-shell's KG read profile. The knowledge daemon (root, uid 0) loads a
+# caller's profile from /var/lib/arlen/permissions/0/<app_id>.toml; without one
+# the shell's KG features (waypointer project search, Focus Mode, the per-app
+# project association) are denied (empty scope). The app_id `desktop-shell` is the
+# CONFIRMED canonical resolution: arlen-permissions identity.rs rule (2) maps
+# /usr/bin/arlen-desktop-shell -> "desktop-shell" (its identity test asserts this),
+# not the tauri bundle id dev.arlen.desktop-shell.
+#
+# READ-ONLY. Scope matched to the shell's actual cyphers (apps/desktop-shell/
+# src-tauri/src/projects.rs): active/focused Projects (id/name/description/
+# root_path/status), and the per-app association `MATCH (a:App)<-[:ACCESSED_BY]-
+# (f:File)-[:FILE_PART_OF]->(p:Project)`. The traversal references the App and File
+# labels (even though it returns only Project fields + a File count), and the
+# read-label gate admits a traversal only when every referenced node label is in
+# the readable set, so App.id and File.id are granted for the traversal. No write,
+# no relations. Erring narrow; confirm the exact readable-label/rel-type gate
+# semantics if a query is unexpectedly refused.
+[info]
+app_id = "desktop-shell"
+tier = "first-party"
+
+[graph]
+read = [
+    "system.Project.id",
+    "system.Project.name",
+    "system.Project.description",
+    "system.Project.root_path",
+    "system.Project.status",
+    "system.App.id",
+    "system.File.id",
+]
