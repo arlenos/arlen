@@ -9,7 +9,7 @@
 //! scope is involved (the harness keeps its own AI-principal copy in `ai_manage`);
 //! this is the user's management surface over every app's capabilities.
 
-use arlen_permissions::revoke::{RevokeInitiator, RevokeReach, RevokedReach};
+use arlen_permissions::revoke::{RestoreReach, RevokeInitiator, RevokeReach, RevokedReach};
 use os_sdk::graph::{GrantView, UnixGraphClient};
 
 /// The knowledge daemon's read socket. `ARLEN_DAEMON_SOCKET` overrides it (dev and
@@ -56,6 +56,31 @@ pub async fn revoke_reach(target_app_id: String, reach: String) -> Result<String
     };
     let outcome = UnixGraphClient::new(knowledge_socket())
         .revoke(&request)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(outcome.wire_token().to_string())
+}
+
+/// Re-widen one reach the user previously revoked (the panel's per-scope restore),
+/// the reverse of [`revoke_reach`] and the one authority-growth path.
+///
+/// `reach` is the JSON for the closed [`RevokedReach`] enum naming the reach to
+/// re-add. The daemon admits only the `settings` principal, refuses a system-tier
+/// target, and bounds the reach to a recorded removal in the durable audit ledger,
+/// so a restore can only un-do a specific prior revoke, never grant fresh authority.
+/// Returns the outcome wire token (`OK: restored` / `no-change` / `not-permitted` /
+/// `not-found`); a malformed `reach` or a daemon error returns an error string.
+#[tauri::command]
+pub async fn restore_reach(target_app_id: String, reach: String) -> Result<String, String> {
+    let reach: RevokedReach =
+        serde_json::from_str(&reach).map_err(|e| format!("invalid reach: {e}"))?;
+    let request = RestoreReach {
+        target_app_id,
+        reach,
+        initiator: RevokeInitiator::User,
+    };
+    let outcome = UnixGraphClient::new(knowledge_socket())
+        .restore(&request)
         .await
         .map_err(|e| e.to_string())?;
     Ok(outcome.wire_token().to_string())
