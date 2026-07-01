@@ -230,6 +230,165 @@ fn inline_str<'a>(table: &'a toml_edit::InlineTable, key: &str) -> Option<&'a st
     table.get(key).and_then(|v| v.as_str())
 }
 
+/// The strict-superset check: the `new` scope set contains `old` in every
+/// dimension AND is strictly larger in at least one. It is the mirror of
+/// [`is_strict_narrowing`] and proves an edit ONLY grew authority (added a
+/// reach, promoted instance to `All`) without also removing anything.
+///
+/// SAFETY: passing this is NOT sufficient to authorise a restore. A restore is
+/// the one authority-growth path in the system, so the op layer MUST additionally
+/// bound the widened result within the app's DECLARED CEILING (the Grant node's
+/// `declared_ceiling`): a restore may only reinstate a capability the app already
+/// declared and the user just removed, never grant one it never had. This gate is
+/// the "it grew, and grew only" half; the ceiling bound is the load-bearing half
+/// and lives in the reviewed daemon op, not here.
+pub fn is_strict_widening(old: &ScopeSummary, new: &ScopeSummary) -> bool {
+    let read_superset = old.read.is_subset(&new.read);
+    let write_superset = old.write.is_subset(&new.write);
+    let read_sensitive_superset = old.read_sensitive.is_subset(&new.read_sensitive);
+    let relations_superset = old.relations.is_subset(&new.relations);
+    // Instance: `All` is the wider reach. The new scope may not lose an `All` the
+    // old had (that would be a narrowing, not a restore).
+    let instance_superset = !old.instance_all || new.instance_all;
+    let every_dimension_superset = read_superset
+        && write_superset
+        && read_sensitive_superset
+        && relations_superset
+        && instance_superset;
+
+    let strictly_larger = new.read.len() > old.read.len()
+        || new.write.len() > old.write.len()
+        || new.read_sensitive.len() > old.read_sensitive.len()
+        || new.relations.len() > old.relations.len()
+        || (!old.instance_all && new.instance_all);
+
+    every_dimension_superset && strictly_larger
+}
+
+/// Apply a restore (re-widen) to a parsed profile document in place: the reverse
+/// of [`apply_revoke`], it ADDS a previously-removed reach back. Format-preserving
+/// (the user's file shape, comments and every unmodelled field survive). Returns
+/// `true` if something was actually added or promoted, `false` if the reach was
+/// already present (a no-op). Creates the `[graph]` table if the revoke had left
+/// none.
+///
+/// SAFETY: this is the write mechanism only. The caller (the reviewed daemon op)
+/// MUST bound the reach within the app's declared ceiling before calling this and
+/// prove the result strictly widened with [`is_strict_widening`]; on its own this
+/// function will happily add any reach it is handed.
+pub fn apply_restore(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> bool {
+    use toml_edit::{Array, Item, Table, Value};
+
+    // A revoke can leave a profile with no `[graph]` table (or no target array);
+    // a restore must be able to re-create the entry it re-adds.
+    if doc.get("graph").and_then(Item::as_table_like).is_none() {
+        doc.insert("graph", Item::Table(Table::new()));
+    }
+    let graph = doc
+        .get_mut("graph")
+        .and_then(Item::as_table_like_mut)
+        .expect("graph table ensured above");
+
+    match reach {
+        RevokedReach::Read { entity_pattern } => add_string_to_array(graph, "read", entity_pattern),
+        RevokedReach::Write { entity_pattern } => {
+            add_string_to_array(graph, "write", entity_pattern)
+        }
+        RevokedReach::Relation {
+            from,
+            to,
+            relation_type,
+        } => {
+            // Already present in either serialization form -> no-op.
+            let present_inline = graph
+                .get("relations")
+                .and_then(Item::as_array)
+                .map(|arr| {
+                    arr.iter().any(|v| {
+                        v.as_inline_table()
+                            .map(|t| {
+                                inline_str(t, "from") == Some(from.as_str())
+                                    && inline_str(t, "to") == Some(to.as_str())
+                                    && inline_str(t, "type") == Some(relation_type.as_str())
+                            })
+                            .unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false);
+            let present_tables = graph
+                .get("relations")
+                .and_then(Item::as_array_of_tables)
+                .map(|tables| {
+                    tables.iter().any(|t| {
+                        let s = |k: &str| t.get(k).and_then(|i| i.as_str());
+                        s("from") == Some(from.as_str())
+                            && s("to") == Some(to.as_str())
+                            && s("type") == Some(relation_type.as_str())
+                    })
+                })
+                .unwrap_or(false);
+            if present_inline || present_tables {
+                return false;
+            }
+            // Append as an inline table (valid TOML the daemon parser accepts in
+            // either form); create the inline array if absent. An existing
+            // array-of-tables form cannot take an inline push, so fall back to a
+            // fresh inline array only when no relations key exists.
+            let mut entry = toml_edit::InlineTable::new();
+            entry.insert("from", Value::from(from.clone()));
+            entry.insert("to", Value::from(to.clone()));
+            entry.insert("type", Value::from(relation_type.clone()));
+            if let Some(arr) = graph.get_mut("relations").and_then(Item::as_array_mut) {
+                arr.push(Value::InlineTable(entry));
+                true
+            } else if graph.get("relations").is_none() {
+                let mut arr = Array::new();
+                arr.push(Value::InlineTable(entry));
+                graph.insert("relations", Item::Value(Value::Array(arr)));
+                true
+            } else {
+                // An array-of-tables form exists but did not contain the relation;
+                // re-adding to that form is left to the op layer if ever needed.
+                false
+            }
+        }
+        RevokedReach::InstanceAll => {
+            let is_all = graph
+                .get("instance_scope")
+                .and_then(Item::as_str)
+                .map(|s| s.eq_ignore_ascii_case("all"))
+                .unwrap_or(false);
+            if is_all {
+                false
+            } else {
+                graph.insert("instance_scope", Item::Value(Value::from("all")));
+                true
+            }
+        }
+    }
+}
+
+/// Add `value` to the `key` string array of `graph` if not already present,
+/// creating the array if absent. Returns whether it was added (the reverse of
+/// [`remove_string_from_array`]).
+fn add_string_to_array(graph: &mut dyn toml_edit::TableLike, key: &str, value: &str) -> bool {
+    use toml_edit::{Array, Item, Value};
+    if let Some(arr) = graph.get_mut(key).and_then(Item::as_array_mut) {
+        if arr.iter().any(|v| v.as_str() == Some(value)) {
+            return false;
+        }
+        arr.push(value);
+        true
+    } else if graph.get(key).is_none() {
+        let mut arr = Array::new();
+        arr.push(value);
+        graph.insert(key, Item::Value(Value::Array(arr)));
+        true
+    } else {
+        false
+    }
+}
+
 /// Summarise a loaded profile's re-derived runtime token scopes into the form
 /// the subset gate compares.
 fn summarize(profile: &PermissionProfile) -> ScopeSummary {
@@ -583,5 +742,101 @@ instance_scope = "all"
             is_strict_narrowing(&ScopeSummary::from_profile(&old), &ScopeSummary::from_profile(&new)),
             "dropping a field-scoped read pattern is a real narrowing"
         );
+    }
+
+    // ── Restore (re-widen) pure core ──
+
+    #[test]
+    fn adding_a_read_type_is_strict_widening() {
+        let old = summary(&["system.File"], &[], false);
+        let new = summary(&["system.File", "system.Project"], &[], false);
+        assert!(is_strict_widening(&old, &new));
+        // The reverse (a narrowing) is not a widening.
+        assert!(!is_strict_widening(&new, &old));
+    }
+
+    #[test]
+    fn a_noop_is_not_a_widening() {
+        let s = summary(&["system.File"], &[], false);
+        assert!(!is_strict_widening(&s, &s.clone()), "a no-op must be refused");
+    }
+
+    #[test]
+    fn gaining_instance_all_is_a_widening() {
+        let old = summary(&["system.File"], &[], false);
+        let new = summary(&["system.File"], &[], true);
+        assert!(is_strict_widening(&old, &new));
+        // Losing `All` is a narrowing, not a widening.
+        assert!(!is_strict_widening(&new, &old));
+    }
+
+    #[test]
+    fn widening_one_dimension_while_narrowing_another_is_refused() {
+        // Added a read but dropped a write: not a clean superset (write shrank), so
+        // the gate refuses it - a restore must ONLY grow.
+        let old = summary(&["system.File"], &["com.x.Note"], false);
+        let new = summary(&["system.File", "system.Project"], &[], false);
+        assert!(!is_strict_widening(&old, &new));
+    }
+
+    #[test]
+    fn apply_restore_re_adds_a_read_type_idempotently() {
+        let mut d = doc(SAMPLE);
+        let added = apply_restore(
+            &mut d,
+            &RevokedReach::Read { entity_pattern: "system.Session".into() },
+        );
+        assert!(added);
+        let read_line = d
+            .to_string()
+            .lines()
+            .find(|l| l.trim_start().starts_with("read ="))
+            .unwrap()
+            .to_string();
+        assert!(read_line.contains("system.Session"), "the restored read pattern is present");
+        assert!(read_line.contains("system.File"), "the existing reads are preserved");
+        // Idempotent: re-adding a present pattern adds nothing.
+        assert!(!apply_restore(
+            &mut d,
+            &RevokedReach::Read { entity_pattern: "system.Session".into() }
+        ));
+    }
+
+    #[test]
+    fn apply_restore_re_creates_a_removed_read_array() {
+        // A profile a revoke had stripped to no `read` array: restore re-creates it.
+        let mut d = doc("[graph]\nwrite = [\"com.x.Note\"]\n");
+        assert!(apply_restore(
+            &mut d,
+            &RevokedReach::Read { entity_pattern: "system.File".into() }
+        ));
+        assert!(d.to_string().contains("system.File"));
+    }
+
+    #[test]
+    fn apply_restore_promotes_instance_to_all_idempotently() {
+        let mut d = doc("[graph]\ninstance_scope = \"own\"\n");
+        assert!(apply_restore(&mut d, &RevokedReach::InstanceAll));
+        assert!(d.to_string().contains("instance_scope = \"all\""));
+        assert!(!apply_restore(&mut d, &RevokedReach::InstanceAll), "already all is a no-op");
+    }
+
+    #[test]
+    fn restore_is_the_inverse_of_revoke() {
+        // Revoke a read type, then restore it: back to the original read set. The
+        // property the panel's Undo / way-back relies on.
+        let mut d = doc(SAMPLE);
+        let reach = RevokedReach::Read { entity_pattern: "system.Project".into() };
+        let read_of = |d: &toml_edit::DocumentMut| {
+            d.to_string()
+                .lines()
+                .find(|l| l.trim_start().starts_with("read ="))
+                .unwrap()
+                .to_string()
+        };
+        assert!(apply_revoke(&mut d, &reach));
+        assert!(!read_of(&d).contains("system.Project"), "revoked out");
+        assert!(apply_restore(&mut d, &reach));
+        assert!(read_of(&d).contains("system.Project"), "restored back");
     }
 }
