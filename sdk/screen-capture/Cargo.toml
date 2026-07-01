@@ -1,0 +1,19 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-screen-capture"
+version = "0.1.0"
+edition = "2021"
+
+# The Arlen screen-capture core: an `ext-image-copy-capture` client that drives the
+# compositor directly (screenshot-capture-plan.md). The reusable capture library
+# behind the first-party screenshot tool and the portal Screenshot / ScreenCast
+# backends; it never uses the deprecated wlr-screencopy nor the portal.
+
+[dependencies]
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+anyhow = "1"
+
+[[bin]]
+name = "arlen-screenshot"
+path = "src/bin/arlen-screenshot.rs"
