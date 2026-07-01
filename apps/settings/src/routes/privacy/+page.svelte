@@ -27,7 +27,7 @@
     StickyNote,
     CalendarDays,
     Users,
-    MapPin,
+    FolderKey,
   } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
@@ -73,7 +73,7 @@
     Email: FileText,
   };
   function dataIcon(key: string) {
-    if (key === "__consent__") return MapPin;
+    if (key === "__consent__") return FolderKey;
     const short = key.split(".").pop() ?? key;
     return DATA_ICONS[short] ?? FileText;
   }
@@ -227,6 +227,9 @@
                 {reacher.label}{#if !reacher.identityVerified}<span class="warn">unverified</span>{/if}
               </span>
               <span class="how" class:dim={reacher.line.own}>{howText(reacher.line)}</span>
+              <span class="reacher-prov">
+                {reacher.line.provenance === "you allowed this" ? "you allowed this" : ""}
+              </span>
               <button
                 type="button"
                 class="remove"
@@ -510,11 +513,20 @@
      list. */
   .reacher-list {
     display: grid;
-    grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
+    grid-template-columns: max-content minmax(0, 1fr) max-content max-content max-content;
     align-items: center;
     column-gap: 0.625rem;
     row-gap: 0.75rem;
     padding: var(--space-row, 0.75rem) 1rem;
+  }
+  /* Provenance shows only where it is notable (a location you granted in
+     context); a declared reach is the implied default, left blank so the column
+     never repeats "declared" down the list. */
+  .reacher-prov {
+    justify-self: end;
+    font-size: 0.6875rem;
+    color: color-mix(in srgb, var(--foreground) 42%, transparent);
+    white-space: nowrap;
   }
   .who {
     justify-self: start;
