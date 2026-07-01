@@ -527,9 +527,12 @@ pub fn restore_at(
 /// user-tier-only apps, which have no system-tier original. What remains, and the
 /// only sound source, is to RECORD each removal when it happens: `revoke` records
 /// the reach here, `restore` may re-add a reach ONLY if it is recorded here, and
-/// drops it on restore. This is the pure state core; persistence (alongside the
-/// profile) and the revoke/restore wiring are the caller's, kept out so the gate
-/// logic is unit-tested without I/O.
+/// drops it on restore. This is the pure in-memory view; the DURABLE record is the
+/// append-only HMAC AUDIT LEDGER (Tim's decision, 1 July): a revoke is already a
+/// first-class provenance event, so the removed reach is recorded on that event and
+/// the restore op rebuilds this view from the ledger's revoke (minus restore)
+/// events - NOT a separate sibling file. The revoke/restore wiring is the caller's,
+/// kept out so the gate logic is unit-tested without I/O.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RemovalLedger {
     /// The reaches the user revoked and has not yet restored. A `Vec` (not a set):
