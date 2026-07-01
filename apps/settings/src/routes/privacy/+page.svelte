@@ -21,6 +21,13 @@
     SquareTerminal,
     SlidersHorizontal,
     ChevronRight,
+    FileText,
+    Folder,
+    Layers,
+    StickyNote,
+    CalendarDays,
+    Users,
+    MapPin,
   } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
@@ -45,11 +52,31 @@
 
   onMount(loadGrants);
 
-  let pivot = $state<"app" | "data">("app");
+  // Data-first: the surface is about the user's data, so it opens grouped by
+  // data, with apps as the visitors under each kind. "By app" is the secondary
+  // lens.
+  let pivot = $state<"app" | "data">("data");
   const PIVOTS = [
-    { value: "app", label: "By app" },
     { value: "data", label: "By data" },
+    { value: "app", label: "By app" },
   ];
+
+  // The mark for each kind of data (the hero anchor of the by-data view).
+  const DATA_ICONS: Record<string, typeof Sparkles> = {
+    File: FileText,
+    Folder: Folder,
+    Project: Layers,
+    Note: StickyNote,
+    Calendar: CalendarDays,
+    Event: CalendarDays,
+    Person: Users,
+    Email: FileText,
+  };
+  function dataIcon(key: string) {
+    if (key === "__consent__") return MapPin;
+    const short = key.split(".").pop() ?? key;
+    return DATA_ICONS[short] ?? FileText;
+  }
 
   // Known first-party principals get their own mark; everything else falls back
   // to an initial tile. A real per-app icon (the shell's app_index carries one)
@@ -146,7 +173,7 @@
 
 <Page
   title="App access"
-  description="Who can reach your data. You remove access here; an app asks when it needs more."
+  description="Everything that can reach your data, grouped by what it touches. You remove access here; an app asks when it needs more."
 >
   <SectionGrid>
     <div class="pivot span-full">
@@ -183,7 +210,16 @@
       {/if}
     {:else}
       {#each resources as r (r.key)}
-        <Group label={r.label} class="span-full">
+        {@const DataIcon = dataIcon(r.key)}
+        <Group class="span-full">
+          <div class="data-head">
+            <span class="data-icon"><DataIcon size={16} strokeWidth={1.75} /></span>
+            <span class="data-name">{r.label}</span>
+            <span class="data-count">
+              {r.reachers.length}
+              {r.reachers.length === 1 ? "app" : "apps"}
+            </span>
+          </div>
           <div class="reacher-list">
             {#each r.reachers as reacher (reacher.appId + reacher.line.key)}
               {@render avatar(reacher.appId, reacher.label, 24)}
@@ -443,6 +479,30 @@
   .detail li {
     font-size: 0.6875rem;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
+  }
+
+  /* By-data hero: the kind of data is the anchor, larger than an app name, with
+     its mark and how many apps can reach it. */
+  .data-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: var(--space-row, 0.75rem) 1rem;
+  }
+  .data-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+  .data-name {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--foreground);
+  }
+  .data-count {
+    margin-left: auto;
+    font-size: 0.75rem;
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
 
   /* By-data: an aligned grid of the apps that reach this data. Avatar, who,
