@@ -926,17 +926,21 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
             let stored_live = row[5].as_bool();
             let pid = row[8].as_i64();
             let source = row[11].as_str();
-            // Fresh liveness. A capability-token grant renders live only if its
-            // minting process is still alive (death caught at read time); a
-            // CONSENT grant has no process (pid 0) and persists independent of
-            // any process, so its liveness is the stored flag minus revoke/
-            // supersede. Both require not-revoked and not-superseded (defensive:
-            // the active flag is correct in the reader, not only by emitter
-            // discipline). `try_from` keeps a bad stored pid from wrapping.
+            // Fresh liveness. Only a capability-token grant is process-bound: it
+            // renders live only if its minting process is still alive (death caught
+            // at read time). A `consent` grant (runtime user-allowed) and a
+            // `declared` grant (a profile declaration projected into the graph, e.g.
+            // a NetworkAccess reach) have NO process (pid 0) and persist independent
+            // of one, so their liveness is the stored flag minus revoke/supersede -
+            // they must not be failed by a process_alive(0) check. All require
+            // not-revoked and not-superseded (defensive: the active flag is correct
+            // in the reader, not only by emitter discipline). `try_from` keeps a bad
+            // stored pid from wrapping.
+            let process_independent = source == "consent" || source == "declared";
             let live = stored_live
                 && !revoked
                 && !superseded
-                && (source == "consent"
+                && (process_independent
                     || u32::try_from(pid).map(process_alive).unwrap_or(false));
             views.push(GrantView {
                 id: id.clone(),
@@ -3198,6 +3202,31 @@ mod tests {
             "pid-free consent grant renders live: {json}"
         );
         assert_eq!(consent_view["revoked"], false);
+    }
+
+    #[tokio::test]
+    async fn access_grants_renders_a_declared_network_grant_live() {
+        // A `declared`-source grant (a profile-projected NetworkAccess reach) has
+        // pid 0 and no process; it must render live from the stored flag, not be
+        // failed by a process_alive(0) check (the process-independent exemption).
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+
+        crate::lcg::emit_declared_network_grant(&graph, "com.app", Some("api.openai.com"))
+            .await
+            .unwrap();
+
+        let json = handle_access_grants("com.app", &graph).await;
+        let views: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let arr = views.as_array().unwrap();
+        let net = arr
+            .iter()
+            .find(|v| v["consent_class"] == "NetworkAccess")
+            .expect("the declared network grant surfaces");
+        assert_eq!(net["source"], "declared");
+        assert_eq!(net["consent_scope"], "api.openai.com");
+        assert_eq!(net["live"], true, "a pid-free declared grant renders live: {json}");
+        assert_eq!(net["revoked"], false);
     }
 
     #[tokio::test]
