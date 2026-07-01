@@ -2269,6 +2269,29 @@ async fn handle_client(
             } else {
                 handle_revoke(&app_id, &buf[1..])
             };
+            // Record the narrowing as a capability-change provenance event: the
+            // durable "what was removed" the profile-first restore reads back as its
+            // ceiling (living-capability-graph.md §6). Best-effort AFTER the narrow -
+            // a revoke is a tightening the user must always be able to make, so a
+            // down audit must never block it; a dropped record only means that reach
+            // cannot later be restored (fail-closed on the loosening direction). The
+            // body parsed cleanly inside handle_revoke, so it re-parses here.
+            if response == crate::revoke::RevokeOutcome::Revoked.wire_token() {
+                if let Ok(req) =
+                    serde_json::from_slice::<crate::revoke::RevokeReach>(&buf[1..])
+                {
+                    if let Err(e) = audit
+                        .submit(crate::audit::capability_change_event(
+                            &req.target_app_id,
+                            &req.reach,
+                            "revoked",
+                        ))
+                        .await
+                    {
+                        warn!("capability-change audit failed (reach not recorded for restore): {e}");
+                    }
+                }
+            }
             timing_noise().await;
             let response_bytes = response.as_bytes();
             let response_len = u32::try_from(response_bytes.len())

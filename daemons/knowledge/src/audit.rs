@@ -9,7 +9,64 @@
 //! in `node_types`. No field bodies, no instance key — the structural tier
 //! stays content-free.
 
-use audit_proto::{AuditKind, IngestRequest, StructuralRecord};
+use audit_proto::{AuditKind, CapabilityReach, IngestRequest, StructuralRecord};
+
+use crate::revoke::RevokedReach;
+
+/// Convert a daemon [`RevokedReach`] into the audit-proto wire reach. The two are
+/// deliberately separate types (audit-proto stays dependency-light and cannot dep
+/// the permissions crate), so a producer converts at the ingest boundary.
+fn reach_to_audit(reach: &RevokedReach) -> CapabilityReach {
+    match reach {
+        RevokedReach::Read { entity_pattern } => CapabilityReach::Read {
+            entity_pattern: entity_pattern.clone(),
+        },
+        RevokedReach::Write { entity_pattern } => CapabilityReach::Write {
+            entity_pattern: entity_pattern.clone(),
+        },
+        RevokedReach::Relation {
+            from,
+            to,
+            relation_type,
+        } => CapabilityReach::Relation {
+            from: from.clone(),
+            to: to.clone(),
+            relation_type: relation_type.clone(),
+        },
+        RevokedReach::InstanceAll => CapabilityReach::InstanceAll,
+    }
+}
+
+/// Build the content-free audit record for a capability change: the user (via the
+/// Settings app) narrowed (`revoked`) or later re-widened (`restored`) an app's
+/// reach. The target app is a coarse identifier (`node_types`); the specific reach
+/// rides the typed `capability_change` field, which is authority-metadata and NOT
+/// user content, so recording it does not breach the S13 content-free boundary
+/// (which governs data-access records). This is the durable record the
+/// profile-first restore reads back as its ceiling (living-capability-graph.md §6,
+/// the 1-July audit-ledger decision).
+pub fn capability_change_event(
+    target_app_id: &str,
+    reach: &RevokedReach,
+    outcome: &str,
+) -> IngestRequest {
+    IngestRequest {
+        kind: AuditKind::CapabilityChange,
+        structural: StructuralRecord {
+            subject: "capability.change".to_string(),
+            node_types: vec![target_app_id.to_string()],
+            relations: Vec::new(),
+            result_count: None,
+            duration_ms: None,
+            outcome: outcome.to_string(),
+            depth: None,
+            capability_change: Some(reach_to_audit(reach)),
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
+}
 
 /// Build the content-free audit record for one app-tier entity upsert. The
 /// bridge app and the qualified entity type are coarse identifiers
@@ -106,5 +163,25 @@ mod tests {
         // No instance key, no field bodies, no forensic content.
         assert!(e.forensic.is_none());
         assert!(matches!(e.kind, AuditKind::AppAction));
+    }
+
+    #[test]
+    fn capability_change_event_carries_the_reach() {
+        let reach = RevokedReach::Read {
+            entity_pattern: "system.File".to_string(),
+        };
+        let e = capability_change_event("com.example.app", &reach, "revoked");
+        assert!(matches!(e.kind, AuditKind::CapabilityChange));
+        assert_eq!(e.structural.subject, "capability.change");
+        assert_eq!(e.structural.node_types, vec!["com.example.app".to_string()]);
+        assert_eq!(e.structural.outcome, "revoked");
+        // The typed reach rides the class-scoped field, not the coarse subject.
+        assert_eq!(
+            e.structural.capability_change,
+            Some(CapabilityReach::Read {
+                entity_pattern: "system.File".to_string()
+            })
+        );
+        assert!(e.forensic.is_none());
     }
 }
