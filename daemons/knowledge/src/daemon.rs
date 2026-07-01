@@ -1164,9 +1164,14 @@ fn handle_revoke(app_id: &str, body: &[u8]) -> String {
 /// adds the load-bearing bound: the reach is re-added ONLY if the durable audit
 /// ledger records this user having revoked it (`removal_ledger_for` +
 /// `RemovalLedger::contains`), so a restore can only un-do a specific prior revoke,
-/// never grant fresh authority. Because restore grows authority, the change is
-/// audited BEFORE the write and fail-closed (S13, like the consent-grant path): if
-/// it cannot be recorded, it is not granted.
+/// never grant fresh authority. The change is recorded to the audit ledger AFTER a
+/// confirmed re-widen and best-effort (like revoke): the `restored` record clears
+/// the reach from the removal set, so it is written ONLY on an actual `Restored`
+/// outcome, never for a no-op or a failed write (which would fold a still-removed
+/// reach out of the ledger and deny a legitimate future restore). A dropped record
+/// only leaves the reach showing as still-removed - a re-restore is then a safe
+/// no-op - and the grant is already bounded to a recorded removal, authorised, and
+/// reversible, so a missing provenance record is not an escalation.
 async fn handle_restore(app_id: &str, body: &[u8], audit: &Arc<dyn AuditSink>) -> String {
     if !revoke_caller_admitted(app_id) {
         return "ERROR: restore not permitted for this caller".to_string();
@@ -1202,25 +1207,27 @@ async fn handle_restore(app_id: &str, body: &[u8], audit: &Arc<dyn AuditSink>) -
     if !ledger.contains(&req.reach) {
         return crate::revoke::RestoreOutcome::NotPermitted.wire_token().to_string();
     }
-    // Audit BEFORE the write, fail-closed. The reach is in the ledger, so the write
-    // below either widens (`Restored`) or is a no-op if already present
-    // (`NoChange`) - both mean "the reach is now present", so recording `restored`
-    // (which clears it from the removal set) is correct in either case.
-    if let Err(e) = audit
-        .submit(crate::audit::capability_change_event(
-            &req.target_app_id,
-            &req.reach,
-            crate::revoke::OUTCOME_RESTORED,
-        ))
-        .await
-    {
-        warn!("restore audit failed, refusing to grant authority: {e}");
-        return "ERROR: audit unavailable".to_string();
+    let outcome = match crate::revoke::restore_at(&path, &req.reach, &ledger) {
+        Ok(o) => o,
+        Err(e) => return format!("ERROR: {e}"),
+    };
+    // Record the restore ONLY on a confirmed write (`Restored`), best-effort: the
+    // `restored` record clears the reach from the removal set, so writing it for a
+    // `NoChange` / `NotPermitted` / error that left the profile untouched would fold
+    // a still-removed reach out of the ledger and deny a legitimate future restore.
+    if outcome == crate::revoke::RestoreOutcome::Restored {
+        if let Err(e) = audit
+            .submit(crate::audit::capability_change_event(
+                &req.target_app_id,
+                &req.reach,
+                crate::revoke::OUTCOME_RESTORED,
+            ))
+            .await
+        {
+            warn!("restore audit failed (removal ledger not cleared for this reach): {e}");
+        }
     }
-    match crate::revoke::restore_at(&path, &req.reach, &ledger) {
-        Ok(outcome) => outcome.wire_token().to_string(),
-        Err(e) => format!("ERROR: {e}"),
-    }
+    outcome.wire_token().to_string()
 }
 
 /// Authorise and persist a structured write request, returning the plaintext
@@ -2435,13 +2442,13 @@ async fn handle_client(
             continue;
         }
 
-        // Restore mode: a leading 0x08 byte selects the LCG restore (re-widen), the
-        // reverse of revoke and the one authority-growth path (0x07 is the capsule
-        // op, so restore is 0x08). The body is a JSON `RestoreReach`. Admitted only
-        // for the Settings principal; the reach is bounded to a recorded removal in
-        // the durable audit ledger and the grant is audited fail-closed before it is
-        // written, all inside `handle_restore`. Query-rate-limited like revoke.
-        if buf.first() == Some(&0x08) {
+        // Restore mode: a leading 0x0B byte selects the LCG restore (re-widen), the
+        // reverse of revoke and the one authority-growth path. 0x01-0x0A are all
+        // taken (0x08 is the RS-R2 typed read, 0x09/0x0A the code-analysis ops), so
+        // restore is 0x0B. The body is a JSON `RestoreReach`. Admitted only for the
+        // Settings principal; the reach is bounded to a recorded removal in the
+        // durable audit ledger, all inside `handle_restore`. Rate-limited like revoke.
+        if buf.first() == Some(&0x0B) {
             let violation = {
                 let mut rs = rate.lock().await;
                 rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
