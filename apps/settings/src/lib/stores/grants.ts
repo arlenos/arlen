@@ -468,58 +468,148 @@ export async function loadGrants(): Promise<void> {
   }
 }
 
-// Reflect a narrowing in the local view. The real op is narrowing-only, so
-// editing the ceiling here can never widen authority; it mirrors the write.
-function narrowLocal(t: RevokeTarget) {
+/// One scope the user removed, kept so it can be reinstated. Restoring re-adds a
+/// prior grant the user took away; it never mints a new one. Session-only until
+/// the backend tracks removals.
+export interface RemovedItem {
+  id: string;
+  grantId: string;
+  appId: string;
+  appLabel: string;
+  text: string;
+  entityType: string | null;
+  readScope: EntityScope | null;
+  writeScope: EntityScope | null;
+  consent: boolean;
+}
+
+/// The scopes removed this session, newest first, for undo and the "recently
+/// removed" restore list.
+export const removed = writable<RemovedItem[]>([]);
+
+let removedSeq = 0;
+
+/// Narrow a single scope (profile-first, narrowing-only) and record it so it can
+/// be restored. A token reach maps to the daemon's 0x06 op (once per side); a
+/// consent grant is released by its handle. Returns the removed record for an
+/// immediate undo, or null if nothing changed.
+export async function revokeScope(
+  line: ScopeLine,
+  appLabel: string,
+): Promise<RemovedItem | null> {
+  const t = line.revoke;
+  let item: RemovedItem | null = null;
+
   grants.update((list) =>
-    list
-      .map((g) => {
-        if (t.kind === "consent") {
-          return g.id === t.grantId ? { ...g, revoked: true } : g;
-        }
-        if (g.app_id !== t.appId || g.source === "consent") return g;
-        const c = parseCeiling(g.declared_ceiling);
-        if (!c) return g;
-        const next: Ceiling = {
+    list.map((g) => {
+      if (t.kind === "consent") {
+        if (g.id !== t.grantId) return g;
+        item = {
+          id: `rm${++removedSeq}`,
+          grantId: g.id,
+          appId: g.app_id,
+          appLabel,
+          text: line.text,
+          entityType: null,
+          readScope: null,
+          writeScope: null,
+          consent: true,
+        };
+        return { ...g, revoked: true };
+      }
+      if (g.app_id !== t.appId || g.source === "consent") return g;
+      const c = parseCeiling(g.declared_ceiling);
+      if (!c) return g;
+      const readScope = c.read.find((s) => s.entity_type === t.entityType) ?? null;
+      const writeScope = c.write.find((s) => s.entity_type === t.entityType) ?? null;
+      if (!readScope && !writeScope) return g;
+      item = {
+        id: `rm${++removedSeq}`,
+        grantId: g.id,
+        appId: g.app_id,
+        appLabel,
+        text: line.text,
+        entityType: t.entityType,
+        readScope,
+        writeScope,
+        consent: false,
+      };
+      return {
+        ...g,
+        declared_ceiling: JSON.stringify({
           ...c,
           read: c.read.filter((s) => s.entity_type !== t.entityType),
           write: c.write.filter((s) => s.entity_type !== t.entityType),
-        };
-        return { ...g, declared_ceiling: JSON.stringify(next) };
-      })
-      .filter((g) => !(g.source === "consent" && g.revoked)),
+        }),
+      };
+    }),
   );
-}
 
-/// Narrow a single scope (profile-first, narrowing-only). A token reach maps to
-/// the daemon's 0x06 revoke op, once per side (`RevokedReach::Read`/`Write`); a
-/// consent grant is released by its handle.
-export async function revokeScope(t: RevokeTarget): Promise<void> {
+  if (item) removed.update((r) => [item as RemovedItem, ...r]);
+
   try {
     if (t.kind === "consent") {
       await invoke("revoke_consent", { grantId: t.grantId });
     } else {
-      if (t.read) {
+      if (t.read)
         await invoke("revoke_reach", {
           targetAppId: t.appId,
           reach: JSON.stringify({ Read: { entity_pattern: t.entityType } }),
         });
-      }
-      if (t.write) {
+      if (t.write)
         await invoke("revoke_reach", {
           targetAppId: t.appId,
           reach: JSON.stringify({ Write: { entity_pattern: t.entityType } }),
         });
-      }
     }
   } catch {
-    // Bridge unwired: still apply the narrowing locally so the affordance is
-    // demonstrable.
+    // Bridge unwired: the local narrowing already stands so the affordance works.
   }
-  narrowLocal(t);
+  return item;
 }
 
-/// Remove every scope an app holds, one narrowing per line.
-export async function revokeAllFor(lines: ScopeLine[]): Promise<void> {
-  for (const l of lines) await revokeScope(l.revoke);
+/// Remove every scope an app holds. Returns all the removed records.
+export async function revokeAllFor(
+  lines: ScopeLine[],
+  appLabel: string,
+): Promise<RemovedItem[]> {
+  const items: RemovedItem[] = [];
+  for (const l of lines) {
+    const it = await revokeScope(l, appLabel);
+    if (it) items.push(it);
+  }
+  return items;
+}
+
+/// Reinstate a removed scope: put the reach back into the app's ceiling, or
+/// un-revoke the consent grant. This restores a prior grant the user removed; it
+/// never mints a new one. The backend restore op (re-widen the profile / re-
+/// activate the consent) is the coder's; the local view mirrors it.
+export async function restore(item: RemovedItem): Promise<void> {
+  grants.update((list) =>
+    list.map((g) => {
+      if (g.id !== item.grantId) return g;
+      if (item.consent) return { ...g, revoked: false };
+      const c = parseCeiling(g.declared_ceiling);
+      if (!c) return g;
+      const read =
+        item.readScope && !c.read.some((s) => s.entity_type === item.entityType)
+          ? [...c.read, item.readScope]
+          : c.read;
+      const write =
+        item.writeScope && !c.write.some((s) => s.entity_type === item.entityType)
+          ? [...c.write, item.writeScope]
+          : c.write;
+      return { ...g, declared_ceiling: JSON.stringify({ ...c, read, write }) };
+    }),
+  );
+  removed.update((r) => r.filter((x) => x.id !== item.id));
+  try {
+    await invoke("restore_scope", {
+      grantId: item.grantId,
+      entityType: item.entityType,
+    });
+  } catch {
+    // Bridge unwired: the local reinstatement already stands.
+  }
 }

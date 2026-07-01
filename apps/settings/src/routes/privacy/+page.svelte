@@ -25,13 +25,17 @@
     grants,
     grantsLoaded,
     grantsError,
+    removed,
     byApp,
     byData,
+    isAssistant,
     loadGrants,
     revokeScope,
     revokeAllFor,
+    restore,
     type Principal,
     type ScopeLine,
+    type RemovedItem,
   } from "$lib/stores/grants";
 
   onMount(loadGrants);
@@ -59,30 +63,55 @@
     title: string;
     message: string;
     confirmLabel: string;
-    run: () => Promise<void>;
+    run: () => Promise<RemovedItem[]>;
   } | null>(null);
 
   function askScope(appLabel: string, line: ScopeLine) {
     pending = {
       title: "Remove access?",
-      message: `"${line.text}" will be removed from ${appLabel}. It can ask again if it needs it.`,
+      message: `"${line.text}" will be removed from ${appLabel}. It can ask again if it needs it, and you can put it back under Recently removed.`,
       confirmLabel: "Remove",
-      run: () => revokeScope(line.revoke),
+      run: async () => {
+        const it = await revokeScope(line, appLabel);
+        return it ? [it] : [];
+      },
     };
   }
   function askAll(p: Principal) {
     pending = {
       title: "Remove all access?",
-      message: `${p.label} will no longer reach anything on your system. It can ask again if it needs to.`,
+      message: `${p.label} will no longer reach anything on your system. It can ask again if it needs to, and you can put it back under Recently removed.`,
       confirmLabel: "Remove all",
-      run: () => revokeAllFor(p.lines),
+      run: () => revokeAllFor(p.lines, p.label),
     };
   }
 
   async function onConfirm() {
     if (pending === null) return;
-    await pending.run();
+    const items = await pending.run();
     pending = null;
+    if (items.length > 0) showUndo(items);
+  }
+
+  // The immediate undo after a removal: a brief snackbar that reinstates exactly
+  // what was just taken away.
+  let undo = $state<{ items: RemovedItem[]; text: string } | null>(null);
+  let undoTimer: ReturnType<typeof setTimeout> | null = null;
+  function showUndo(items: RemovedItem[]) {
+    const text =
+      items.length === 1
+        ? `Removed ${items[0].text}.`
+        : `Removed ${items.length} from ${items[0].appLabel}.`;
+    undo = { items, text };
+    if (undoTimer) clearTimeout(undoTimer);
+    undoTimer = setTimeout(() => (undo = null), 7000);
+  }
+  async function doUndo() {
+    if (undo === null) return;
+    const items = undo.items;
+    if (undoTimer) clearTimeout(undoTimer);
+    undo = null;
+    for (const it of items) await restore(it);
   }
 
   // The reach summary for a by-data row. The group header already names the
@@ -155,6 +184,21 @@
       {/each}
     {/if}
 
+    {#if $removed.length > 0}
+      <Group label="Recently removed" class="span-full">
+        <div class="removed-list">
+          {#each $removed as it (it.id)}
+            {@render avatar(isAssistant(it.appId), 24)}
+            <span class="who">{it.appLabel}</span>
+            <span class="how">{it.text}</span>
+            <button type="button" class="restore" onclick={() => restore(it)}>
+              Restore
+            </button>
+          {/each}
+        </div>
+      </Group>
+    {/if}
+
     {#if !isEmpty && !$grantsError}
       <p class="usage-note span-full">
         Usage is not measured yet, so this shows what each app can reach, not
@@ -163,6 +207,13 @@
     {/if}
   </SectionGrid>
 </Page>
+
+{#if undo}
+  <div class="snackbar" role="status">
+    <span class="snack-text">{undo.text}</span>
+    <button type="button" class="snack-undo" onclick={doUndo}>Undo</button>
+  </div>
+{/if}
 
 {#snippet avatar(assistant: boolean, size: number)}
   <span class="avatar" style={`width:${size}px;height:${size}px`}>
@@ -389,6 +440,65 @@
   }
   .how.dim {
     opacity: 0.75;
+  }
+
+  /* Recently removed: the same aligned grid, with a quiet Restore that puts back
+     exactly what was taken (never a fresh grant). */
+  .removed-list {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
+    align-items: center;
+    column-gap: 0.625rem;
+    row-gap: 0.75rem;
+    padding: var(--space-row, 0.75rem) 1rem;
+  }
+  .restore {
+    justify-self: end;
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    padding: 0.125rem 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    cursor: pointer;
+    transition: color var(--duration-micro, 100ms) var(--ease-out, ease);
+  }
+  .restore:hover {
+    color: var(--color-accent, var(--foreground));
+  }
+
+  /* Immediate-undo snackbar: a brief bar pinned to the viewport bottom. */
+  .snackbar {
+    position: fixed;
+    left: 50%;
+    bottom: 1.5rem;
+    transform: translateX(-50%);
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.625rem 0.75rem 0.625rem 1rem;
+    border-radius: var(--radius-card, 12px);
+    border: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
+    background: var(--popover, var(--card, #1f1f23));
+    box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.3));
+  }
+  .snack-text {
+    font-size: 0.8125rem;
+    color: var(--foreground);
+  }
+  .snack-undo {
+    border: none;
+    background: transparent;
+    padding: 0.125rem 0.375rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-accent, var(--foreground));
+    cursor: pointer;
+  }
+  .snack-undo:hover {
+    text-decoration: underline;
   }
 
   .note {
