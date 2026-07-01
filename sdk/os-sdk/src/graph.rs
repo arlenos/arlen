@@ -510,6 +510,35 @@ impl UnixGraphClient {
         Err(QueryError::InvalidQuery(format!("malformed revoke response: {text}")))
     }
 
+    /// Re-widen (restore) a reach the user previously revoked, the reverse of
+    /// [`revoke`](Self::revoke) and the one authority-growth path. A leading `0x0B`
+    /// byte selects the daemon's restore op; the body is the JSON [`RestoreReach`].
+    /// The daemon admits only the canonical `settings` principal, refuses an agent
+    /// initiator, and bounds the reach to a recorded removal in the durable audit
+    /// ledger, so a restore can only un-do a specific prior revoke, never grant
+    /// fresh authority. Returns the [`RestoreOutcome`] (Restored / NoChange /
+    /// NotPermitted / NotFound), or a [`QueryError`] on an error reply.
+    pub async fn restore(
+        &self,
+        request: &arlen_permissions::revoke::RestoreReach,
+    ) -> Result<arlen_permissions::revoke::RestoreOutcome, QueryError> {
+        let json = serde_json::to_vec(request).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x0B);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_TYPED_RESPONSE_BYTES).await?;
+        let text = String::from_utf8_lossy(&bytes);
+        if let Some(outcome) = arlen_permissions::revoke::RestoreOutcome::from_wire_token(&text) {
+            return Ok(outcome);
+        }
+        // Not a recognised outcome token: an `ERROR:` reply or an unknown string.
+        if bytes.starts_with(b"ERROR:") {
+            Self::check_error(&text)?;
+        }
+        Err(QueryError::InvalidQuery(format!("malformed restore response: {text}")))
+    }
+
     /// Materialize a Context Capsule frozen slice for `scope` as of now, via the
     /// daemon's capsule read op (context-capsule.md §4, loader (b)).
     ///
@@ -1430,6 +1459,46 @@ mod tests {
         let _ = std::fs::remove_file(&path);
 
         assert_eq!(outcome.unwrap(), RevokeOutcome::Revoked);
+    }
+
+    #[tokio::test]
+    async fn restore_sends_a_tagged_request_and_parses_the_outcome() {
+        use arlen_permissions::revoke::{RestoreOutcome, RestoreReach, RevokeInitiator, RevokedReach};
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-restore-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            assert_eq!(req[0], 0x0B, "restore carries the 0x0B prefix");
+            let body: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
+            assert_eq!(body["target_app_id"], "com.x");
+
+            let resp = b"OK: restored";
+            conn.write_all(&(resp.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(resp).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let req = RestoreReach {
+            target_app_id: "com.x".into(),
+            reach: RevokedReach::Read { entity_pattern: "system.File".into() },
+            initiator: RevokeInitiator::User,
+        };
+        let outcome = client.restore(&req).await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(outcome.unwrap(), RestoreOutcome::Restored);
     }
 
     #[tokio::test]
