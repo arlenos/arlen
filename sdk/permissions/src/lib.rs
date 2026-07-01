@@ -223,6 +223,39 @@ impl NetworkPermissions {
                 || domain_lower.ends_with(&format!(".{allowed_lower}"))
         })
     }
+
+    /// The app's declared network reach as the `consent_scope` string an LCG
+    /// `NetworkAccess` grant carries, so the App-access page can render "Internet:
+    /// all" or "Internet: reaches api.openai.com, github.com" and revoke it
+    /// (living-capability-graph.md §11b). `None` means no declared network reach:
+    /// no grant to project, the app shows no internet access.
+    ///
+    /// Projects what the profile declares TODAY: `allow_all` maps to `"all"`,
+    /// otherwise the sorted, deduped, lowercased, comma-joined domain allowlist.
+    /// Port and direction (LAN vs WAN) are not in the schema yet, so they are not
+    /// projected. HONESTY CAVEAT (living-capability-graph.md §12): the allowlist is
+    /// domain-DECLARED but IP-ENFORCED at net-guard (hostname to IP at rule-apply
+    /// time), so a "reaches example.com" label is only fully truthful once the
+    /// net-guard proxy does SNI/Host matching per connection. This is the declared
+    /// reach (visible plus revocable is the win), not an enforcement guarantee.
+    pub fn reach_summary(&self) -> Option<String> {
+        if self.allow_all {
+            return Some("all".to_string());
+        }
+        let mut domains: Vec<String> = self
+            .allowed_domains
+            .iter()
+            .map(|d| d.trim().to_lowercase())
+            .filter(|d| !d.is_empty())
+            .collect();
+        domains.sort();
+        domains.dedup();
+        if domains.is_empty() {
+            None
+        } else {
+            Some(domains.join(","))
+        }
+    }
 }
 
 // ── Notifications ──
@@ -936,6 +969,29 @@ always_confirm_overrides = ["empty_trash"]
             ..Default::default()
         };
         assert!(n.is_domain_allowed("anything.com"));
+    }
+
+    #[test]
+    fn reach_summary_projects_the_declared_network_reach() {
+        // allow_all -> "all".
+        assert_eq!(
+            NetworkPermissions { allow_all: true, ..Default::default() }.reach_summary(),
+            Some("all".to_string()),
+        );
+        // No declared reach -> None (the app shows no internet access).
+        assert_eq!(NetworkPermissions::default().reach_summary(), None);
+        // A domain list -> sorted, deduped, lowercased, comma-joined.
+        let n = NetworkPermissions {
+            allow_all: false,
+            allowed_domains: vec!["github.com".into(), "api.openai.com".into()],
+        };
+        assert_eq!(n.reach_summary(), Some("api.openai.com,github.com".to_string()));
+        // Case/whitespace/duplicate normalisation; blanks dropped.
+        let messy = NetworkPermissions {
+            allow_all: false,
+            allowed_domains: vec!["GitHub.com".into(), " github.com ".into(), "  ".into()],
+        };
+        assert_eq!(messy.reach_summary(), Some("github.com".to_string()));
     }
 
     // ── Defaults ──
