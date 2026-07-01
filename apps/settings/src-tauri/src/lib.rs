@@ -60,6 +60,7 @@ pub fn run() {
             commands::knowledge::knowledge_stats_get,
             commands::privacy::access_grants,
             commands::privacy::revoke_reach,
+            commands::privacy::restore_reach,
             commands::ai::ai_status,
             commands::ai::ai_explain,
             commands::ai::ai_providers_list,
