@@ -2284,7 +2284,7 @@ async fn handle_client(
                         .submit(crate::audit::capability_change_event(
                             &req.target_app_id,
                             &req.reach,
-                            "revoked",
+                            crate::revoke::OUTCOME_REVOKED,
                         ))
                         .await
                     {

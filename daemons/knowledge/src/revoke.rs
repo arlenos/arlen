@@ -573,6 +573,39 @@ impl RemovalLedger {
     }
 }
 
+/// The `outcome` label a capability-change audit record carries for a revoke (a
+/// narrowing). Shared by the producer (the 0x06 revoke path), the fold below, and
+/// the future restore op, so the three cannot drift. Lives here (a module in both
+/// the lib and bin trees) rather than in the bin-only `audit` module so the pure
+/// fold can reference it.
+pub const OUTCOME_REVOKED: &str = "revoked";
+/// The `outcome` label for a restore (a re-widen): the fold clears the reach it
+/// names.
+pub const OUTCOME_RESTORED: &str = "restored";
+
+/// Reconstruct a target app's [`RemovalLedger`] from its capability-change audit
+/// records, folded in chain order: an [`OUTCOME_REVOKED`] record adds the reach, an
+/// [`OUTCOME_RESTORED`] record clears it. This is how the restore op reads its
+/// authority-growth ceiling out of the durable audit ledger
+/// (living-capability-graph.md §6, the audit-ledger realization). The records MUST
+/// be ascending by chain index so a re-revoke after a restore re-adds correctly; an
+/// unrecognised outcome is ignored (a foreign or future record cannot widen the
+/// set). The caller reads the ledger, filters to this app's `CapabilityChange`
+/// records, and converts each stored reach via `crate::audit::audit_to_reach`.
+pub fn fold_removal_ledger<'a>(
+    records: impl IntoIterator<Item = (&'a str, &'a RevokedReach)>,
+) -> RemovalLedger {
+    let mut ledger = RemovalLedger::default();
+    for (outcome, reach) in records {
+        if outcome == OUTCOME_REVOKED {
+            ledger.record(reach.clone());
+        } else if outcome == OUTCOME_RESTORED {
+            ledger.clear(reach);
+        }
+    }
+    ledger
+}
+
 /// Write `bytes` to `path` atomically: a sibling temp file, fsync, rename over
 /// the target, then fsync the directory so the rename is durable. A crash leaves
 /// either the old profile or the new, never a torn file.
@@ -1082,6 +1115,37 @@ instance_scope = "all"
         ledger.clear(&read);
         ledger.clear(&read);
         assert!(!ledger.contains(&read));
+        assert!(ledger.is_empty());
+    }
+
+    #[test]
+    fn fold_removal_ledger_reconstructs_the_removed_set_in_chain_order() {
+        let read = RevokedReach::Read { entity_pattern: "system.File".into() };
+        let write = RevokedReach::Write { entity_pattern: "com.x.Note".into() };
+        // A lone revoke is restorable; a restore of the same reach clears it; a
+        // re-revoke after that re-adds it. Chain order is respected.
+        let records: Vec<(&str, &RevokedReach)> = vec![
+            (OUTCOME_REVOKED, &read),
+            (OUTCOME_REVOKED, &write),
+            (OUTCOME_RESTORED, &read),
+            (OUTCOME_REVOKED, &read),
+            ("granted", &write), // unrecognised outcome: ignored, cannot widen
+        ];
+        let ledger = fold_removal_ledger(records);
+        assert!(ledger.contains(&read), "re-revoked after restore");
+        assert!(ledger.contains(&write), "revoked, never restored");
+        assert_eq!(ledger.removed().len(), 2);
+    }
+
+    #[test]
+    fn fold_removal_ledger_restore_clears_the_reach() {
+        let read = RevokedReach::Read { entity_pattern: "system.File".into() };
+        let records: Vec<(&str, &RevokedReach)> = vec![
+            (OUTCOME_REVOKED, &read),
+            (OUTCOME_RESTORED, &read),
+        ];
+        let ledger = fold_removal_ledger(records);
+        assert!(!ledger.contains(&read), "restored, so no longer removed");
         assert!(ledger.is_empty());
     }
 
