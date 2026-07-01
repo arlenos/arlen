@@ -123,6 +123,7 @@ impl AuditRecord {
                 duration_ms: None,
                 outcome,
                 depth: None,
+                capability_change: None,
             },
             forensic: None,
             call_chain_id: None,

@@ -131,6 +131,7 @@ mod tests {
             duration_ms: Some(12),
             outcome: "ok".into(),
             depth: None,
+            capability_change: None,
         }
     }
 

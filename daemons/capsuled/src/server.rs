@@ -82,6 +82,7 @@ fn capsule_read_event(outcome: &str, correlation_id: &str) -> IngestRequest {
             duration_ms: None,
             outcome: outcome.to_string(),
             depth: None,
+            capability_change: None,
         },
         forensic: None,
         call_chain_id: Some(correlation_id.to_string()),

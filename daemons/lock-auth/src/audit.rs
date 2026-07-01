@@ -36,6 +36,7 @@ pub fn auth_audit_event(event: &AuthEvent) -> IngestRequest {
             duration_ms: None,
             outcome: event.outcome.to_string(),
             depth: None,
+            capability_change: None,
         },
         forensic: None,
         call_chain_id: None,

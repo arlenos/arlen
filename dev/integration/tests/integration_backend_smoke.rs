@@ -1014,6 +1014,7 @@ async fn an_audit_entry_lands_in_the_chain_and_reads_back() {
             duration_ms: None,
             outcome: "ok".to_string(),
             depth: None,
+            capability_change: None,
         },
         forensic: None,
         call_chain_id: None,

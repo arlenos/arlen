@@ -96,6 +96,7 @@ fn kind_label(kind: &AuditKind) -> &'static str {
         AuditKind::Permission => "permission",
         AuditKind::NetworkCall => "network-call",
         AuditKind::AppAction => "app-action",
+        AuditKind::CapabilityChange => "capability-change",
     }
 }
 
@@ -225,6 +226,7 @@ mod tests {
                 duration_ms: None,
                 outcome: "ok".into(),
                 depth: None,
+                capability_change: None,
             },
             call_chain_id: None,
             project_id: None,

@@ -141,6 +141,7 @@ mod tests {
                 duration_ms: None,
                 outcome: "dispatched".into(),
                 depth: None,
+                capability_change: None,
             },
             forensic: None,
             call_chain_id: None,

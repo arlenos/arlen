@@ -25,6 +25,7 @@ pub fn credential_handout_event(caller: &str, service: &str, outcome: &str) -> I
             duration_ms: None,
             outcome: outcome.to_string(),
             depth: None,
+            capability_change: None,
         },
         forensic: None,
         call_chain_id: None,

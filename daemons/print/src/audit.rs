@@ -38,6 +38,7 @@ pub fn print_audit_event(app_id: &str, printer: &Printer, outcome: &str) -> Inge
             duration_ms: None,
             outcome: outcome.to_string(),
             depth: None,
+            capability_change: None,
         },
         forensic: None,
         call_chain_id: None,
