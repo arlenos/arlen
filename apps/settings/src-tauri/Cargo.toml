@@ -93,6 +93,12 @@ audit-proto = { path = "../../../contracts/audit-proto" }
 # malicious same-uid process cannot flip them by rewriting the file. Settings
 # is an admitted writer. (same-uid-isolation-plan.md Tier-A #1.)
 arlen-config-broker = { path = "../../../daemons/config-broker" }
+# The App-access capability browser (privacy page) reads the whole-system grant
+# list and issues per-reach revokes over the knowledge daemon's read socket, as
+# the kernel-attested `settings` principal. os-sdk is the graph client;
+# arlen-permissions carries the closed RevokeReach request shape.
+os-sdk = { path = "../../../sdk/os-sdk" }
+arlen-permissions = { path = "../../../sdk/permissions" }
 
 [dev-dependencies]
 tempfile = "3"

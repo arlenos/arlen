@@ -126,8 +126,7 @@
       {/if}
       {#if apps.length > 0}
         <Group label="Apps" class="span-full">
-          {#each apps as p, i (p.appId)}
-            {#if i > 0}<div class="divider"></div>{/if}
+          {#each apps as p (p.appId)}
             {@render principalBlock(p)}
           {/each}
         </Group>
@@ -135,22 +134,23 @@
     {:else}
       {#each resources as r (r.key)}
         <Group label={r.label} class="span-full">
-          {#each r.reachers as reacher, i (reacher.appId + reacher.line.key)}
-            {#if i > 0}<div class="divider"></div>{/if}
-            <div class="reacher">
+          <div class="reacher-list">
+            {#each r.reachers as reacher (reacher.appId + reacher.line.key)}
               {@render avatar(reacher.assistant, 24)}
-              <span class="who">{reacher.label}</span>
-              {#if !reacher.identityVerified}<span class="warn">unverified</span>{/if}
+              <span class="who">
+                {reacher.label}{#if !reacher.identityVerified}<span class="warn">unverified</span>{/if}
+              </span>
               <span class="how" class:dim={reacher.line.own}>{howText(reacher.line)}</span>
               <button
                 type="button"
                 class="remove"
+                aria-label={`Remove ${reacher.label} ${reacher.line.text}`}
                 onclick={() => askScope(reacher.label, reacher.line)}
               >
                 Remove
               </button>
-            </div>
-          {/each}
+            {/each}
+          </div>
         </Group>
       {/each}
     {/if}
@@ -185,43 +185,37 @@
     </div>
     <div class="lines">
       {#each p.lines as line (line.key)}
-        <div class="line">
-          <div class="line-main">
-            <span class="scope" class:dim={line.own}>
-              <span class="verb">{line.verb}</span>
-              <span class="object">{line.object}</span>
-              {#if line.detail.length > 0}
-                <button
-                  type="button"
-                  class="expand"
-                  class:open={expanded.has(line.key)}
-                  aria-label="Show detail"
-                  onclick={() => toggle(line.key)}
-                >
-                  <ChevronRight size={13} strokeWidth={2} />
-                </button>
-              {/if}
-            </span>
-            <span class="line-right">
-              <span class="prov">{line.provenance}</span>
-              <button
-                type="button"
-                class="remove"
-                aria-label={`Remove ${line.text}`}
-                onclick={() => askScope(p.label, line)}
-              >
-                Remove
-              </button>
-            </span>
-          </div>
-          {#if line.detail.length > 0 && expanded.has(line.key)}
-            <ul class="detail">
-              {#each line.detail as d (d)}
-                <li>{d}</li>
-              {/each}
-            </ul>
+        <span class="verb" class:dim={line.own}>{line.verb}</span>
+        <span class="object" class:dim={line.own}>
+          {line.object}
+          {#if line.detail.length > 0}
+            <button
+              type="button"
+              class="expand"
+              class:open={expanded.has(line.key)}
+              aria-label="Show detail"
+              onclick={() => toggle(line.key)}
+            >
+              <ChevronRight size={13} strokeWidth={2} />
+            </button>
           {/if}
-        </div>
+        </span>
+        <span class="prov" class:dim={line.own}>{line.provenance}</span>
+        <button
+          type="button"
+          class="remove"
+          aria-label={`Remove ${line.text}`}
+          onclick={() => askScope(p.label, line)}
+        >
+          Remove
+        </button>
+        {#if line.detail.length > 0 && expanded.has(line.key)}
+          <ul class="detail">
+            {#each line.detail as d (d)}
+              <li>{d}</li>
+            {/each}
+          </ul>
+        {/if}
       {/each}
     </div>
   </div>
@@ -242,12 +236,6 @@
     display: flex;
     margin-bottom: 0.25rem;
   }
-  .divider {
-    height: 1px;
-    margin: 0.25rem 0;
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
-  }
-
   /* The app identity tile: a calm slot for the icon, forward-compatible with a
      real app icon replacing the glyph. */
   .avatar {
@@ -260,11 +248,13 @@
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
 
+  /* Match the Row inset (Group has no padding of its own; each direct child
+     provides it, and the card draws the divider between children). */
   .principal {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    padding: 0.75rem 0;
+    padding: var(--space-row, 0.75rem) 1rem;
   }
   .p-head {
     display: flex;
@@ -280,59 +270,52 @@
     flex: 1;
   }
   .warn {
+    margin-left: 0.375rem;
     font-size: 0.6875rem;
     color: var(--color-warning, #ca8a04);
   }
 
-  /* Sentence lines indent under the label, past the 28px avatar + head gap. */
+  /* Sentence lines as an aligned grid, indented under the label past the 28px
+     avatar + head gap. The verb is right-aligned so the data (the object) forms
+     a clean scannable column; provenance and Remove are their own columns. */
   .lines {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
+    align-items: baseline;
+    column-gap: 0.75rem;
+    row-gap: 0.5rem;
     padding-left: calc(28px + 0.625rem);
   }
-  .line {
-    display: flex;
-    flex-direction: column;
+  /* The reach as a sentence: the verb quiet, the object (the user's data) the
+     emphasized word. Own-data dims the line. */
+  .verb {
+    justify-self: end;
+    font-size: 0.8125rem;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
-  .line-main {
-    display: flex;
-    align-items: baseline;
-    gap: 0.75rem;
-    min-height: 1.875rem;
-  }
-  /* The reach as a sentence: the verb is quiet, the object (the user's data) is
-     the emphasized word. Own-data dims the whole line. */
-  .scope {
+  .object {
+    justify-self: start;
     display: inline-flex;
     align-items: baseline;
     gap: 0.375rem;
     font-size: 0.8125rem;
-  }
-  .scope.dim {
-    opacity: 0.62;
-  }
-  .verb {
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  .object {
     font-weight: 500;
     color: var(--foreground);
   }
-  .line-right {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.875rem;
-    margin-left: auto;
-  }
   .prov {
+    justify-self: start;
     font-size: 0.6875rem;
     color: color-mix(in srgb, var(--foreground) 40%, transparent);
     white-space: nowrap;
+  }
+  .dim {
+    opacity: 0.6;
   }
 
   /* "Remove" is quiet by default and firms up on hover; a calm tidy action, not
      an alarm. */
   .remove {
+    justify-self: end;
     flex-shrink: 0;
     border: none;
     background: transparent;
@@ -368,9 +351,10 @@
   .expand.open {
     transform: rotate(90deg);
   }
+  /* Detail sits under the object column, not the verb. */
   .detail {
-    margin: 0 0 0.375rem;
-    padding-left: 0.25rem;
+    grid-column: 2 / -1;
+    margin: -0.125rem 0 0.125rem;
     list-style: none;
     display: flex;
     flex-direction: column;
@@ -381,28 +365,30 @@
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
 
-  /* By-data: the app that reaches this data, its identity, and how. */
-  .reacher {
-    display: flex;
+  /* By-data: an aligned grid of the apps that reach this data. Avatar, who,
+     then the "how" and Remove as their own columns so they line up down the
+     list. */
+  .reacher-list {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
     align-items: center;
-    gap: 0.625rem;
-    padding: 0.5rem 0;
+    column-gap: 0.625rem;
+    row-gap: 0.75rem;
+    padding: var(--space-row, 0.75rem) 1rem;
   }
   .who {
+    justify-self: start;
     font-size: 0.8125rem;
     font-weight: 500;
     color: var(--foreground);
   }
   .how {
+    justify-self: end;
     font-size: 0.75rem;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    margin-left: 0.25rem;
   }
   .how.dim {
     opacity: 0.75;
-  }
-  .reacher .remove {
-    margin-left: auto;
   }
 
   .note {
