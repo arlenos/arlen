@@ -28,6 +28,7 @@
 export { AboutDialog } from "./about-dialog";
 export { AddRemoveList } from "./add-remove-list";
 export { ChipList } from "./chip-list";
+export { ScopeChip } from "./scope-chip";
 // Collapsible re-exports all three named parts so consumers can import from
 // a single path: `import { Collapsible, CollapsibleTrigger, CollapsibleContent }`
 export {
