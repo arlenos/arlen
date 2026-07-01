@@ -143,10 +143,26 @@ pub struct SessionConstraints {
     pub shm_formats: Vec<u32>,
 }
 
-/// A bound output: the proxy plus its human name once the `name` event arrives.
+/// A bound output: the proxy, its human name (`name` event), and its current mode
+/// pixel dimensions (`mode` event with the `current` flag).
 struct OutputBinding {
     output: wl_output::WlOutput,
     name: Option<String>,
+    width: i32,
+    height: i32,
+}
+
+/// A capturable output for the caller to choose from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutputInfo {
+    /// The output's index, as passed to [`capture_output`] / [`capture_region`].
+    pub index: usize,
+    /// The output's connector name (e.g. `eDP-1`), when the compositor sent it.
+    pub name: Option<String>,
+    /// Current-mode width in pixels.
+    pub width: i32,
+    /// Current-mode height in pixels.
+    pub height: i32,
 }
 
 /// Client state for a capture flow. Hand-rolled (no sctk) so the capture protocol
@@ -190,10 +206,21 @@ impl Dispatch<wl_output::WlOutput, ()> for CaptureState {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let wl_output::Event::Name { name } = event {
-            if let Some(b) = state.outputs.iter_mut().find(|b| &b.output == proxy) {
-                b.name = Some(name);
+        let Some(b) = state.outputs.iter_mut().find(|b| &b.output == proxy) else {
+            return;
+        };
+        match event {
+            wl_output::Event::Name { name } => b.name = Some(name),
+            wl_output::Event::Mode { flags, width, height, .. } => {
+                // Record only the current mode (the one being displayed).
+                if let wayland_client::WEnum::Value(m) = flags {
+                    if m.contains(wl_output::Mode::Current) {
+                        b.width = width;
+                        b.height = height;
+                    }
+                }
             }
+            _ => {}
         }
     }
 }
@@ -293,10 +320,80 @@ fn bind_capture_globals(
                 qh,
                 (),
             );
-            state.outputs.push(OutputBinding { output, name: None });
+            state.outputs.push(OutputBinding {
+                output,
+                name: None,
+                width: 0,
+                height: 0,
+            });
         }
     }
     Ok((source_manager, copy_manager))
+}
+
+/// Enumerate the capturable outputs (monitors) with their names and current-mode
+/// pixel dimensions, so a caller can pick one by index or name.
+pub fn list_outputs() -> Result<Vec<OutputInfo>> {
+    let conn = Connection::connect_to_env().context("connect to the Wayland compositor")?;
+    let (globals, mut queue) =
+        registry_queue_init::<CaptureState>(&conn).context("initialise the Wayland registry")?;
+    let qh = queue.handle();
+    let mut state = CaptureState::default();
+    let _ = bind_capture_globals(&globals, &qh, &mut state)?;
+    queue.roundtrip(&mut state).context("roundtrip for output info")?;
+    Ok(state
+        .outputs
+        .iter()
+        .enumerate()
+        .map(|(index, b)| OutputInfo {
+            index,
+            name: b.name.clone(),
+            width: b.width,
+            height: b.height,
+        })
+        .collect())
+}
+
+impl CapturedImage {
+    /// Crop to the rectangle `(x, y, w, h)` in this image's pixel space, clamped to
+    /// the image bounds (so an over-large region yields the on-screen part). Returns
+    /// an error if the rectangle starts outside the image.
+    pub fn crop(&self, x: u32, y: u32, w: u32, h: u32) -> Result<CapturedImage> {
+        if x >= self.width || y >= self.height {
+            return Err(anyhow!(
+                "region origin ({x},{y}) is outside the {}x{} capture",
+                self.width,
+                self.height
+            ));
+        }
+        let cw = w.min(self.width - x);
+        let ch = h.min(self.height - y);
+        let mut rgba = Vec::with_capacity(cw as usize * ch as usize * 4);
+        let src_stride = self.width as usize * 4;
+        for row in 0..ch as usize {
+            let sy = y as usize + row;
+            let start = sy * src_stride + x as usize * 4;
+            rgba.extend_from_slice(&self.rgba[start..start + cw as usize * 4]);
+        }
+        Ok(CapturedImage {
+            width: cw,
+            height: ch,
+            rgba,
+        })
+    }
+}
+
+/// Capture a rectangular region of output `output_index`: capture the whole output,
+/// then crop to `(x, y, w, h)` in output pixels (the compositor copies the frame,
+/// the crop is client-side, exactly as grim does `-g`).
+pub fn capture_region(
+    output_index: usize,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+) -> Result<CapturedImage> {
+    capture_output(output_index)?.crop(x, y, w, h)
 }
 
 /// Create a capture session for output `output_index` and return the buffer
@@ -592,5 +689,29 @@ mod tests {
         assert!(!support.has_toplevel_source_manager());
         assert_eq!(support.version_of("wl_output"), Some(4));
         assert_eq!(support.version_of("nope"), None);
+    }
+
+    #[test]
+    fn crop_extracts_the_subrect_and_clamps() {
+        // A 3x2 image whose red channel encodes the pixel index (y*3 + x).
+        let mut rgba = Vec::new();
+        for y in 0..2u8 {
+            for x in 0..3u8 {
+                rgba.extend_from_slice(&[y * 3 + x, 0, 0, 255]);
+            }
+        }
+        let img = CapturedImage { width: 3, height: 2, rgba };
+
+        let c = img.crop(1, 0, 2, 2).unwrap();
+        assert_eq!((c.width, c.height), (2, 2));
+        assert_eq!(c.rgba[0], 1, "top-left of the crop is pixel (1,0)");
+        assert_eq!(c.rgba[4], 2, "next is pixel (2,0)");
+
+        // An over-large region clamps to the image bounds.
+        let clamped = img.crop(2, 1, 99, 99).unwrap();
+        assert_eq!((clamped.width, clamped.height), (1, 1));
+
+        // An origin outside the image is an error.
+        assert!(img.crop(3, 0, 1, 1).is_err());
     }
 }

@@ -6,21 +6,46 @@
 //! as the Wayland client under cosmic-comp nested). The capture modes + targets land
 //! in later slices.
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use arlen_screen_capture::{
-    capture_output, capture_support, write_png, COPY_MANAGER_INTERFACE,
-    OUTPUT_SOURCE_MANAGER_INTERFACE, TOPLEVEL_SOURCE_MANAGER_INTERFACE,
+    capture_output, capture_region, capture_support, list_outputs, write_png, CapturedImage,
+    COPY_MANAGER_INTERFACE, OUTPUT_SOURCE_MANAGER_INTERFACE, TOPLEVEL_SOURCE_MANAGER_INTERFACE,
 };
 
 fn main() -> Result<()> {
-    // `arlen-screenshot <out.png>` captures output 0 to a PNG; with no argument it
-    // probes the compositor for capture support and reports it.
-    if let Some(path) = std::env::args().nth(1) {
-        let image = capture_output(0)?;
-        let out = std::path::PathBuf::from(&path);
-        write_png(&image, &out)?;
-        println!("captured {}x{} to {}", image.width, image.height, path);
-        return Ok(());
+    // Usage:
+    //   arlen-screenshot                 probe capture support
+    //   arlen-screenshot --list          list the capturable outputs
+    //   arlen-screenshot <file>          capture output 0 to a PNG
+    //   arlen-screenshot -g X,Y,W,H <file>   capture a region of output 0
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.first().map(String::as_str) {
+        Some("--list") => {
+            for o in list_outputs()? {
+                println!(
+                    "output {}: {} {}x{}",
+                    o.index,
+                    o.name.as_deref().unwrap_or("?"),
+                    o.width,
+                    o.height
+                );
+            }
+            return Ok(());
+        }
+        Some("-g") => {
+            let geom = args.get(1).ok_or_else(|| anyhow!("-g needs a X,Y,W,H region"))?;
+            let path = args.get(2).ok_or_else(|| anyhow!("-g <region> needs an output file"))?;
+            let (x, y, w, h) = parse_region(geom)?;
+            let image = capture_region(0, x, y, w, h)?;
+            save(&image, path)?;
+            return Ok(());
+        }
+        Some(path) => {
+            let image = capture_output(0)?;
+            save(&image, path)?;
+            return Ok(());
+        }
+        None => {}
     }
 
     let support = capture_support()?;
@@ -65,4 +90,26 @@ fn main() -> Result<()> {
 fn report(label: &str, interface: &str, present: bool) {
     let mark = if present { "yes" } else { "NO" };
     println!("  {label:<14} [{mark}] {interface}");
+}
+
+/// Write a capture to `path` and report it.
+fn save(image: &CapturedImage, path: &str) -> Result<()> {
+    write_png(image, std::path::Path::new(path))?;
+    println!("captured {}x{} to {}", image.width, image.height, path);
+    Ok(())
+}
+
+/// Parse a `X,Y,W,H` region string into pixel bounds.
+fn parse_region(s: &str) -> Result<(u32, u32, u32, u32)> {
+    let parts: Vec<&str> = s.split(',').collect();
+    if parts.len() != 4 {
+        return Err(anyhow!("region must be X,Y,W,H, got {s:?}"));
+    }
+    let field = |i: usize| -> Result<u32> {
+        parts[i]
+            .trim()
+            .parse::<u32>()
+            .map_err(|e| anyhow!("bad region field {:?}: {e}", parts[i]))
+    };
+    Ok((field(0)?, field(1)?, field(2)?, field(3)?))
 }
