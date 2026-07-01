@@ -179,6 +179,63 @@ pub async fn persist_consent_grant(
     graph.transaction(stmts).await
 }
 
+/// The deterministic id for an app's declared `NetworkAccess` grant: one network
+/// grant per app, so a re-emit strengthens the single node. Namespaced so it can
+/// never collide with a token-derived grant id (a UUID).
+fn network_grant_id(app_id: &str) -> String {
+    format!("network:{app_id}")
+}
+
+/// Project an app's DECLARED network reach as an LCG `NetworkAccess` Grant node
+/// (living-capability-graph.md §11b), so the App-access page shows the app's
+/// internet reach ("Internet: all" / "reaches api.openai.com, github.com") and can
+/// revoke it. `reach` is the app's [`NetworkPermissions::reach_summary`] output
+/// (`None` = no declared reach, a no-op).
+///
+/// `source = 'declared'` (the App-access provenance "Declared at install", vs a
+/// runtime `consent` grant - decided 1 July). Keyed by a deterministic per-app id
+/// so a re-emit at the next connect refreshes the scope WITHOUT resurrecting a
+/// user-revoked grant: ON MATCH updates only `consent_scope`, never the lifecycle
+/// flags (`live`/`revoked`/`superseded`) - the same discipline as
+/// [`emit_grant_node`] and the deliberate OPPOSITE of [`persist_consent_grant`]
+/// (a runtime re-consent, which DOES re-activate). Enforcement stays external at
+/// net-guard; this only makes the reach visible + revocable. Atomic + idempotent.
+pub async fn emit_declared_network_grant(
+    graph: &GraphHandle,
+    app_id: &str,
+    reach: Option<&str>,
+) -> Result<()> {
+    let Some(scope) = reach else {
+        return Ok(());
+    };
+    let app_esc = escape_cypher(app_id);
+    let id_esc = escape_cypher(&network_grant_id(app_id));
+    let scope_esc = escape_cypher(scope);
+    let now = time::now().0;
+
+    let stmts = vec![
+        format!("MERGE (a:App {{id: '{app_esc}'}})"),
+        // ON CREATE seeds the full grant (token fields null/0, born live); ON MATCH
+        // refreshes ONLY the scope, never the lifecycle - so a re-emit after the
+        // user revoked leaves the revoke intact (a declared grant is re-granted only
+        // by the user re-adding it, not by the app reconnecting).
+        format!(
+            "MERGE (g:Grant {{id: '{id_esc}'}}) \
+             ON CREATE SET g.app_id = '{app_esc}', g.source = 'declared', \
+             g.consent_class = 'NetworkAccess', g.consent_scope = '{scope_esc}', \
+             g.pid = 0, g.issued_at = {now}, g.expires_at = 0, g.declared_ceiling = '', \
+             g.required = false, g.identity_verified = false, g.live = true, \
+             g.revoked = false, g.superseded = false, g.last_exercised_at = 0, g.use_count = 0 \
+             ON MATCH SET g.consent_scope = '{scope_esc}'"
+        ),
+        format!(
+            "MATCH (g:Grant {{id: '{id_esc}'}}), (a:App {{id: '{app_esc}'}}) \
+             MERGE (g)-[:USED_BY]->(a)"
+        ),
+    ];
+    graph.transaction(stmts).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -365,5 +422,61 @@ mod tests {
         assert!(rs2.rows[0][0].as_bool(), "re-consent re-activates live");
         assert!(!rs2.rows[0][1].as_bool(), "re-consent clears revoked");
         assert_eq!(rs2.rows[0][2].as_i64(), 1, "one node, not duplicated");
+    }
+
+    #[tokio::test]
+    async fn declared_network_grant_projects_and_a_re_emit_never_un_revokes() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+
+        // No declared reach -> no grant node (a no-op).
+        emit_declared_network_grant(&graph, "com.x", None).await.unwrap();
+        let none = graph
+            .query_rows("MATCH (g:Grant {id:'network:com.x'}) RETURN count(*) AS c".into())
+            .await
+            .unwrap();
+        assert_eq!(none.rows[0][0].as_i64(), 0, "no grant for no reach");
+
+        // A declared reach projects a live NetworkAccess grant, source 'declared'.
+        emit_declared_network_grant(&graph, "com.x", Some("all")).await.unwrap();
+        let g = graph
+            .query_rows(
+                "MATCH (g:Grant {id:'network:com.x'}) \
+                 RETURN g.source, g.consent_class, g.consent_scope, g.live, g.revoked"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(g.rows[0][0].as_str(), "declared");
+        assert_eq!(g.rows[0][1].as_str(), "NetworkAccess");
+        assert_eq!(g.rows[0][2].as_str(), "all");
+        assert!(g.rows[0][3].as_bool(), "born live");
+        assert!(!g.rows[0][4].as_bool(), "not revoked");
+        let used = graph
+            .query_rows(
+                "MATCH (g:Grant {id:'network:com.x'})-[:USED_BY]->(a:App) RETURN a.id".into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(used.rows[0][0].as_str(), "com.x");
+
+        // The user revokes it; then the app reconnects (a re-emit). The re-emit must
+        // refresh the scope but NEVER resurrect the revoke - a declared grant is
+        // re-granted only by the user re-adding it, not by the app reconnecting.
+        graph
+            .write("MATCH (g:Grant {id:'network:com.x'}) SET g.revoked = true, g.live = false".into())
+            .await
+            .unwrap();
+        emit_declared_network_grant(&graph, "com.x", Some("api.openai.com")).await.unwrap();
+        let after = graph
+            .query_rows(
+                "MATCH (g:Grant {id:'network:com.x'}) RETURN g.revoked, g.live, g.consent_scope"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert!(after.rows[0][0].as_bool(), "re-emit must NOT un-revoke");
+        assert!(!after.rows[0][1].as_bool(), "stays not-live after revoke");
+        assert_eq!(after.rows[0][2].as_str(), "api.openai.com", "scope refreshed");
     }
 }
