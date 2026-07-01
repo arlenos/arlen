@@ -8,11 +8,21 @@
 
 use anyhow::Result;
 use arlen_screen_capture::{
-    capture_support, COPY_MANAGER_INTERFACE, OUTPUT_SOURCE_MANAGER_INTERFACE,
-    TOPLEVEL_SOURCE_MANAGER_INTERFACE,
+    capture_output, capture_support, write_png, COPY_MANAGER_INTERFACE,
+    OUTPUT_SOURCE_MANAGER_INTERFACE, TOPLEVEL_SOURCE_MANAGER_INTERFACE,
 };
 
 fn main() -> Result<()> {
+    // `arlen-screenshot <out.png>` captures output 0 to a PNG; with no argument it
+    // probes the compositor for capture support and reports it.
+    if let Some(path) = std::env::args().nth(1) {
+        let image = capture_output(0)?;
+        let out = std::path::PathBuf::from(&path);
+        write_png(&image, &out)?;
+        println!("captured {}x{} to {}", image.width, image.height, path);
+        return Ok(());
+    }
+
     let support = capture_support()?;
 
     println!("advertised globals ({}):", support.globals.len());
