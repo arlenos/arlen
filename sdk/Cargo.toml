@@ -10,6 +10,7 @@ members = [
     "modules",
     "net-guard",
     "permissions",
+    "screen-capture",
     "tauri-plugin-clipboard",
     "tauri-plugin-menu",
     "tauri-plugin-portal",
