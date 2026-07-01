@@ -58,6 +58,8 @@ pub fn run() {
             commands::accessibility::accessibility_filter_get,
             commands::accessibility::accessibility_filter_set,
             commands::knowledge::knowledge_stats_get,
+            commands::privacy::access_grants,
+            commands::privacy::revoke_reach,
             commands::ai::ai_status,
             commands::ai::ai_explain,
             commands::ai::ai_providers_list,
