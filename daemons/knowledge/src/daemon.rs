@@ -1072,6 +1072,43 @@ fn capability_change_pairs(
         .collect()
 }
 
+/// How many audit entries to request per read page while scanning for a target's
+/// capability-change records. Capability changes are sparse (user-initiated), so a
+/// few pages cover any real app; the scan is bounded by the ledger head captured at
+/// the first page.
+const CAPABILITY_READ_PAGE: u64 = 200;
+
+/// Reconstruct a target app's removal ledger from the durable audit ledger: page
+/// the Structural-tier records via the audit read socket, keep the app's
+/// capability-change records, and fold them (in chain order) into the removal
+/// ledger the restore op gates on. The ledger head is fixed at the first page so
+/// concurrent appends cannot extend the scan. Fail-closed: an unreachable or
+/// failing audit read yields an EMPTY ledger, so with no readable record nothing is
+/// restorable (the safe direction for the authority-growth path).
+async fn removal_ledger_for(target_app: &str) -> crate::revoke::RemovalLedger {
+    let client = audit_proto::ReadClient::new(audit_proto::read_socket_path());
+    let mut pairs: Vec<(String, crate::revoke::RevokedReach)> = Vec::new();
+    let mut from = 0u64;
+    let mut target_head = u64::MAX;
+    loop {
+        match client.read(from, u64::MAX, CAPABILITY_READ_PAGE, None).await {
+            Ok(page) => {
+                if target_head == u64::MAX {
+                    target_head = page.head;
+                }
+                let n = page.entries.len() as u64;
+                pairs.extend(capability_change_pairs(target_app, &page.entries));
+                from += n;
+                if n == 0 || from >= target_head {
+                    break;
+                }
+            }
+            Err(_) => return crate::revoke::RemovalLedger::default(),
+        }
+    }
+    crate::revoke::fold_removal_ledger(pairs.iter().map(|(o, r)| (o.as_str(), r)))
+}
+
 fn handle_revoke(app_id: &str, body: &[u8]) -> String {
     if !revoke_caller_admitted(app_id) {
         return "ERROR: revoke not permitted for this caller".to_string();
@@ -1116,6 +1153,72 @@ fn handle_revoke(app_id: &str, body: &[u8]) -> String {
         Ok(crate::revoke::RevokeOutcome::NoChange) => "OK: no-change".to_string(),
         Ok(crate::revoke::RevokeOutcome::NotNarrowing) => "OK: not-narrowing".to_string(),
         Ok(crate::revoke::RevokeOutcome::NotFound) => "OK: not-found".to_string(),
+        Err(e) => format!("ERROR: {e}"),
+    }
+}
+
+/// Authorise and apply a restore (re-widen), the reverse of [`handle_revoke`] and
+/// the ONE authority-growth path. It carries the same gates as revoke - admitted
+/// only for the Settings principal, an `Agent` initiator refused (§6.3), the target
+/// id charset-checked before it becomes a path, system-tier targets refused - and
+/// adds the load-bearing bound: the reach is re-added ONLY if the durable audit
+/// ledger records this user having revoked it (`removal_ledger_for` +
+/// `RemovalLedger::contains`), so a restore can only un-do a specific prior revoke,
+/// never grant fresh authority. Because restore grows authority, the change is
+/// audited BEFORE the write and fail-closed (S13, like the consent-grant path): if
+/// it cannot be recorded, it is not granted.
+async fn handle_restore(app_id: &str, body: &[u8], audit: &Arc<dyn AuditSink>) -> String {
+    if !revoke_caller_admitted(app_id) {
+        return "ERROR: restore not permitted for this caller".to_string();
+    }
+    let req: crate::revoke::RestoreReach = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(e) => return format!("ERROR: invalid restore request: {e}"),
+    };
+    // §6.3: an agent may only propose; a literal `Agent` initiator at the apply site
+    // is never a confirmed restore, so it is refused (the caller-allowlist already
+    // blocks the agent, this guards the semantics regardless).
+    if matches!(req.initiator, crate::revoke::RevokeInitiator::Agent { .. }) {
+        return "ERROR: an agent-initiated restore is a proposal, not a confirmed restore"
+            .to_string();
+    }
+    if !is_safe_app_id(&req.target_app_id) {
+        return "ERROR: invalid target app id".to_string();
+    }
+    if !crate::revoke::tier_allows_revoke(&req.target_app_id) {
+        return "ERROR: SystemTier: this app is managed by the system".to_string();
+    }
+    let path = match crate::permission::PermissionProfile::profile_path(&req.target_app_id) {
+        Ok(p) => p,
+        Err(e) => return format!("ERROR: {e}"),
+    };
+    if !path.exists() {
+        return crate::revoke::RestoreOutcome::NotFound.wire_token().to_string();
+    }
+    // The authority-growth ceiling: reconstruct what this user actually revoked from
+    // the durable audit ledger. A reach the ledger does not record as removed is not
+    // restorable - refused here before anything is audited or written.
+    let ledger = removal_ledger_for(&req.target_app_id).await;
+    if !ledger.contains(&req.reach) {
+        return crate::revoke::RestoreOutcome::NotPermitted.wire_token().to_string();
+    }
+    // Audit BEFORE the write, fail-closed. The reach is in the ledger, so the write
+    // below either widens (`Restored`) or is a no-op if already present
+    // (`NoChange`) - both mean "the reach is now present", so recording `restored`
+    // (which clears it from the removal set) is correct in either case.
+    if let Err(e) = audit
+        .submit(crate::audit::capability_change_event(
+            &req.target_app_id,
+            &req.reach,
+            crate::revoke::OUTCOME_RESTORED,
+        ))
+        .await
+    {
+        warn!("restore audit failed, refusing to grant authority: {e}");
+        return "ERROR: audit unavailable".to_string();
+    }
+    match crate::revoke::restore_at(&path, &req.reach, &ledger) {
+        Ok(outcome) => outcome.wire_token().to_string(),
         Err(e) => format!("ERROR: {e}"),
     }
 }
@@ -2332,6 +2435,32 @@ async fn handle_client(
             continue;
         }
 
+        // Restore mode: a leading 0x08 byte selects the LCG restore (re-widen), the
+        // reverse of revoke and the one authority-growth path (0x07 is the capsule
+        // op, so restore is 0x08). The body is a JSON `RestoreReach`. Admitted only
+        // for the Settings principal; the reach is bounded to a recorded removal in
+        // the durable audit ledger and the grant is audited fail-closed before it is
+        // written, all inside `handle_restore`. Query-rate-limited like revoke.
+        if buf.first() == Some(&0x08) {
+            let violation = {
+                let mut rs = rate.lock().await;
+                rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
+            };
+            let response = if let Some(reason) = violation {
+                format!("ERROR: RateLimited: {reason}")
+            } else {
+                handle_restore(&app_id, &buf[1..], &audit).await
+            };
+            timing_noise().await;
+            let response_bytes = response.as_bytes();
+            let response_len = u32::try_from(response_bytes.len())
+                .expect("response too large")
+                .to_be_bytes();
+            stream.write_all(&response_len).await?;
+            stream.write_all(response_bytes).await?;
+            continue;
+        }
+
         // Read mode. A leading 0x01 byte selects the structured (typed JSON
         // RowSet) response; without it the request is a legacy raw-Cypher text
         // query, so existing clients are unaffected.
@@ -3096,6 +3225,36 @@ mod tests {
             pairs[0].1,
             crate::revoke::RevokedReach::Read { entity_pattern: "system.File".into() }
         );
+    }
+
+    #[tokio::test]
+    async fn handle_restore_refuses_a_non_settings_caller() {
+        // A non-Settings caller is refused at the caller gate, before any ledger
+        // read or audit - the same authority-growth guard as revoke.
+        let audit: std::sync::Arc<dyn audit_proto::AuditSink> =
+            std::sync::Arc::new(audit_proto::LedgerAuditSink::at_default_socket());
+        let r = handle_restore(
+            "com.attacker",
+            b"{\"target_app_id\":\"com.x\",\"reach\":{\"InstanceAll\":null},\"initiator\":{\"User\":null}}",
+            &audit,
+        )
+        .await;
+        assert!(r.starts_with("ERROR: restore not permitted"), "got {r}");
+    }
+
+    #[tokio::test]
+    async fn handle_restore_refuses_an_agent_initiator() {
+        // Even as the admitted Settings principal, an agent-initiated restore is a
+        // proposal, never a confirmed grant (§6.3), refused before any write.
+        let audit: std::sync::Arc<dyn audit_proto::AuditSink> =
+            std::sync::Arc::new(audit_proto::LedgerAuditSink::at_default_socket());
+        let r = handle_restore(
+            "dev.arlen-settings",
+            b"{\"target_app_id\":\"com.x\",\"reach\":{\"InstanceAll\":null},\"initiator\":{\"Agent\":{\"suggestion_id\":\"s1\"}}}",
+            &audit,
+        )
+        .await;
+        assert!(r.starts_with("ERROR: an agent-initiated restore"), "got {r}");
     }
 
     #[test]
