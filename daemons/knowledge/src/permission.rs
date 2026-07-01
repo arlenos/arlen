@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use arlen_permissions::NetworkPermissions;
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -32,12 +33,21 @@ pub enum PermissionError {
 // TOML deserialization types
 // ---------------------------------------------------------------------------
 
-/// Top-level permission profile. Only the `[graph]` section is relevant here;
-/// `[filesystem]`, `[network]`, `[devices]` are consumed by the sandbox layer.
+/// Top-level permission profile. The `[graph]` section drives the KG read/write
+/// scopes; `[network]` is read here to project the app's egress reach as an LCG
+/// `NetworkAccess` grant so the App-access page shows + revokes it
+/// (living-capability-graph.md §11b). `[filesystem]`, `[devices]` are consumed by
+/// the sandbox layer.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct PermissionProfile {
     #[serde(default)]
     pub graph: Option<GraphPermissions>,
+    /// The `[network]` egress declaration. Projected into the App-access page as a
+    /// `declared`-source `NetworkAccess` grant via its
+    /// [`NetworkPermissions::reach_summary`]; `None` means the app declares no
+    /// network reach (no grant to project).
+    #[serde(default)]
+    pub network: Option<NetworkPermissions>,
 }
 
 /// The `[graph]` section of a permission profile.
