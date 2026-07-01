@@ -869,16 +869,21 @@ const ACCESS_GRANTS_ROW_CAP: usize = 5000;
 /// Scopes by the **kernel-attested** `app_id` (resolved from `SO_PEERCRED` at
 /// connect, never a request field): a normal caller receives only its own grants
 /// (`WHERE app_id = caller`), the privileged Knowledge/Settings principal the
-/// whole-system view. The privileged check is `is_privileged_authority_reader`,
-/// false for every caller until F3, so today no caller can enumerate another's
-/// authority through this op (the §5 leak the dedicated reader exists to prevent).
+/// whole-system view. Two principals see whole-system: `is_privileged_authority_reader`
+/// (false for every caller until F3) and the canonical Settings management principal
+/// (`is_settings_principal`, the Settings app that also owns revoke) so the App-access
+/// capability browser can render every app's grants. Every other caller sees only its
+/// own grants (keyed on the attested app_id), so no ordinary app can enumerate
+/// another's authority through this op (the §5 leak the dedicated reader exists to
+/// prevent). Settings reaches authority data only through this curated projection and
+/// `revoke`; the general read path's `Grant`-label deny still holds for it.
 ///
 /// `live` is recomputed fresh from `process_alive(g.pid)`: a node stored live but
 /// whose process is gone renders not-live, so the flag never lies beyond the read
 /// instant (§4.2). The general read path already denies the `Grant` label, so this
 /// is the only way these nodes are ever served.
 async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
-    let privileged = is_privileged_authority_reader(app_id);
+    let privileged = is_privileged_authority_reader(app_id) || is_settings_principal(app_id);
     let scope = if privileged {
         // Whole-system view (gated false until F3).
         String::new()
@@ -970,17 +975,32 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
 /// audit-daemon convention). The match is exact, not a broad `dev.` prefix,
 /// which would let any locally-built crate narrow another app's scope.
 fn revoke_caller_admitted(app_id: &str) -> bool {
+    is_settings_principal(app_id)
+}
+
+/// The canonical Settings management principal: the only app trusted to browse
+/// the whole-system grant list (`access_grants`) and to issue revokes (`revoke`),
+/// living-capability-graph.md §6.2. Root-anchored app_id `settings` (identity.rs
+/// resolves `/usr/lib/arlen/apps/settings/bin/arlen-settings` to it); in debug the
+/// exact cargo-run id `dev.arlen-settings` (and the harness extra-admit) are also
+/// accepted. The match is exact, never a broad `dev.` prefix, which would let any
+/// locally-built crate read or narrow another app's scope. This lifts ONLY the
+/// curated `access_grants` browse to whole-system; it does NOT touch
+/// `is_privileged_authority_reader`, so the general read path's authority-label
+/// deny still holds for Settings (it reaches authority data only through the
+/// curated `access_grants`/`revoke` ops, never arbitrary Cypher).
+fn is_settings_principal(app_id: &str) -> bool {
     if app_id == "settings" {
         return true;
     }
     #[cfg(debug_assertions)]
     {
-        // The integration harness submits a revoke as its own hash-suffixed
-        // `dev.<test-bin>` id, which the exact `dev.arlen-settings` match below
-        // rejects. A debug-only env names ONE extra exact id to admit (the
-        // audit-daemon `ARLEN_AUDIT_EXTRA_ADMIT` convention), set by the harness
-        // to its own resolved id. Off by default, so the exact-match tightening
-        // holds for any real caller.
+        // The integration harness submits as its own hash-suffixed `dev.<test-bin>`
+        // id, which the exact `dev.arlen-settings` match below rejects. A debug-only
+        // env names ONE extra exact id to admit (the audit-daemon
+        // `ARLEN_AUDIT_EXTRA_ADMIT` convention), set by the harness to its own
+        // resolved id. Off by default, so the exact-match tightening holds for any
+        // real caller.
         app_id == "dev.arlen-settings" || revoke_extra_admit(app_id)
     }
     #[cfg(not(debug_assertions))]
@@ -2904,6 +2924,22 @@ mod tests {
         assert!(!is_privileged_authority_reader("desktop-shell"));
         assert!(!is_privileged_authority_reader("knowledge-app"));
         assert!(!is_privileged_authority_reader("unknown"));
+    }
+
+    #[test]
+    fn settings_browses_whole_system_grants_but_not_the_general_authority_path() {
+        // The Settings management principal sees whole-system grants (the App-access
+        // capability browser) through the curated access_grants op.
+        assert!(is_settings_principal("settings"));
+        // Every ordinary caller sees only its own grants (scoped by attested id).
+        for other in ["desktop-shell", "ai-agent", "com.x", "unknown", ""] {
+            assert!(!is_settings_principal(other), "{other} is not the Settings principal");
+        }
+        // Admitting Settings to the grant browse must NOT lift the general read
+        // path's authority-label deny for it: is_privileged_authority_reader stays
+        // false, so Settings reaches Grant/CapabilityUse/EntityType only through the
+        // curated access_grants/revoke ops, never arbitrary Cypher.
+        assert!(!is_privileged_authority_reader("settings"));
     }
 
     #[test]
