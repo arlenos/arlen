@@ -15,7 +15,13 @@
   /// until it lands. Copy law: no em-dashes, no middot separators; usage is
   /// "not measured yet", never a fabricated "never".
   import { onMount } from "svelte";
-  import { Sparkles, AppWindow, ChevronRight } from "lucide-svelte";
+  import {
+    Sparkles,
+    FolderOpen,
+    SquareTerminal,
+    SlidersHorizontal,
+    ChevronRight,
+  } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
@@ -28,7 +34,6 @@
     removed,
     byApp,
     byData,
-    isAssistant,
     loadGrants,
     revokeScope,
     revokeAllFor,
@@ -45,6 +50,22 @@
     { value: "app", label: "By app" },
     { value: "data", label: "By data" },
   ];
+
+  // Known first-party principals get their own mark; everything else falls back
+  // to an initial tile. A real per-app icon (the shell's app_index carries one)
+  // can replace this once a Settings bridge exposes it.
+  const APP_ICONS: Record<string, typeof Sparkles> = {
+    "org.arlen.AI1": Sparkles,
+    "ai-daemon": Sparkles,
+    "org.arlen.AIAgent1": Sparkles,
+    "ai-agent": Sparkles,
+    "org.arlen.files": FolderOpen,
+    "org.arlen.terminal": SquareTerminal,
+    "org.arlen.settings": SlidersHorizontal,
+  };
+  function appIcon(appId: string) {
+    return APP_ICONS[appId];
+  }
 
   const principals = $derived(byApp($grants));
   const assistants = $derived(principals.filter((p) => p.assistant));
@@ -165,7 +186,7 @@
         <Group label={r.label} class="span-full">
           <div class="reacher-list">
             {#each r.reachers as reacher (reacher.appId + reacher.line.key)}
-              {@render avatar(reacher.assistant, 24)}
+              {@render avatar(reacher.appId, reacher.label, 24)}
               <span class="who">
                 {reacher.label}{#if !reacher.identityVerified}<span class="warn">unverified</span>{/if}
               </span>
@@ -188,7 +209,7 @@
       <Group label="Recently removed" class="span-full">
         <div class="removed-list">
           {#each $removed as it (it.id)}
-            {@render avatar(isAssistant(it.appId), 24)}
+            {@render avatar(it.appId, it.appLabel, 24)}
             <span class="who">{it.appLabel}</span>
             <span class="how">{it.text}</span>
             <button type="button" class="restore" onclick={() => restore(it)}>
@@ -215,12 +236,15 @@
   </div>
 {/if}
 
-{#snippet avatar(assistant: boolean, size: number)}
+{#snippet avatar(appId: string, label: string, size: number)}
+  {@const Icon = appIcon(appId)}
   <span class="avatar" style={`width:${size}px;height:${size}px`}>
-    {#if assistant}
-      <Sparkles size={size * 0.6} strokeWidth={1.75} />
+    {#if Icon}
+      <Icon size={size * 0.6} strokeWidth={1.75} />
     {:else}
-      <AppWindow size={size * 0.6} strokeWidth={1.75} />
+      <span class="avatar-initial" style={`font-size:${size * 0.42}px`}>
+        {label.charAt(0).toUpperCase()}
+      </span>
     {/if}
   </span>
 {/snippet}
@@ -228,7 +252,7 @@
 {#snippet principalBlock(p: Principal)}
   <div class="principal">
     <div class="p-head">
-      {@render avatar(p.assistant, 28)}
+      {@render avatar(p.appId, p.label, 28)}
       <span class="p-label">{p.label}</span>
       {#if !p.identityVerified}<span class="warn">unverified</span>{/if}
       <span class="p-spacer"></span>
@@ -296,6 +320,11 @@
     flex-shrink: 0;
     border-radius: var(--radius-chip, 4px);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    color: color-mix(in srgb, var(--foreground) 60%, transparent);
+  }
+  .avatar-initial {
+    font-weight: 600;
+    line-height: 1;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
 
