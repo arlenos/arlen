@@ -8,8 +8,9 @@
 
 use anyhow::{anyhow, Result};
 use arlen_screen_capture::{
-    capture_output, capture_region, capture_support, list_outputs, write_png, CapturedImage,
-    COPY_MANAGER_INTERFACE, OUTPUT_SOURCE_MANAGER_INTERFACE, TOPLEVEL_SOURCE_MANAGER_INTERFACE,
+    capture_output, capture_region, capture_support, list_outputs, list_windows, write_png,
+    CapturedImage, COPY_MANAGER_INTERFACE, OUTPUT_SOURCE_MANAGER_INTERFACE,
+    TOPLEVEL_SOURCE_MANAGER_INTERFACE,
 };
 
 fn main() -> Result<()> {
@@ -18,7 +19,13 @@ fn main() -> Result<()> {
     //   arlen-screenshot --list          list the capturable outputs
     //   arlen-screenshot <file>          capture output 0 to a PNG
     //   arlen-screenshot -g X,Y,W,H <file>   capture a region of output 0
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let raw: Vec<String> = std::env::args().skip(1).collect();
+    // `-c` / `--cursor` (anywhere) paints the pointer onto the capture.
+    let cursor = raw.iter().any(|a| a == "-c" || a == "--cursor");
+    let args: Vec<String> = raw
+        .into_iter()
+        .filter(|a| a != "-c" && a != "--cursor")
+        .collect();
     match args.first().map(String::as_str) {
         Some("--list") => {
             for o in list_outputs()? {
@@ -32,16 +39,27 @@ fn main() -> Result<()> {
             }
             return Ok(());
         }
+        Some("--list-windows") => {
+            for w in list_windows()? {
+                println!(
+                    "window {}: [{}] {}",
+                    w.index,
+                    w.app_id.as_deref().unwrap_or("?"),
+                    w.title.as_deref().unwrap_or("?")
+                );
+            }
+            return Ok(());
+        }
         Some("-g") => {
             let geom = args.get(1).ok_or_else(|| anyhow!("-g needs a X,Y,W,H region"))?;
             let path = args.get(2).ok_or_else(|| anyhow!("-g <region> needs an output file"))?;
             let (x, y, w, h) = parse_region(geom)?;
-            let image = capture_region(0, x, y, w, h)?;
+            let image = capture_region(0, x, y, w, h, cursor)?;
             save(&image, path)?;
             return Ok(());
         }
         Some(path) => {
-            let image = capture_output(0)?;
+            let image = capture_output(0, cursor)?;
             save(&image, path)?;
             return Ok(());
         }

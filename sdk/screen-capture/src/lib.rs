@@ -21,7 +21,13 @@ use std::os::fd::AsFd;
 use anyhow::{anyhow, Context, Result};
 use wayland_client::globals::{registry_queue_init, GlobalList, GlobalListContents};
 use wayland_client::protocol::{wl_buffer, wl_output, wl_registry, wl_shm, wl_shm_pool};
-use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
+use wayland_client::{event_created_child, Connection, Dispatch, Proxy, QueueHandle};
+use wayland_protocols::ext::foreign_toplevel_list::v1::client::ext_foreign_toplevel_handle_v1::{
+    self, ExtForeignToplevelHandleV1,
+};
+use wayland_protocols::ext::foreign_toplevel_list::v1::client::ext_foreign_toplevel_list_v1::{
+    self, ExtForeignToplevelListV1,
+};
 use wayland_protocols::ext::image_copy_capture::v1::client::ext_image_copy_capture_frame_v1::{
     self, ExtImageCopyCaptureFrameV1,
 };
@@ -202,6 +208,26 @@ struct CaptureState {
     frame_ready: bool,
     /// The frame copy failed (`failed`), with the reason string if given.
     frame_failed: Option<String>,
+    /// The toplevel windows the compositor advertised (foreign-toplevel-list).
+    windows: Vec<WindowBinding>,
+}
+
+/// A bound foreign toplevel: its handle plus title/app_id once those events arrive.
+struct WindowBinding {
+    handle: ExtForeignToplevelHandleV1,
+    title: Option<String>,
+    app_id: Option<String>,
+}
+
+/// A capturable window for the caller to choose from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowInfo {
+    /// The window's index, for a future window-capture call.
+    pub index: usize,
+    /// The window title, when the compositor sent one.
+    pub title: Option<String>,
+    /// The window's app id, when the compositor sent one.
+    pub app_id: Option<String>,
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for CaptureState {
@@ -356,6 +382,76 @@ impl Dispatch<ExtImageCopyCaptureSessionV1, ()> for CaptureState {
     }
 }
 
+impl Dispatch<ExtForeignToplevelListV1, ()> for CaptureState {
+    fn event(
+        state: &mut Self,
+        _: &ExtForeignToplevelListV1,
+        event: ext_foreign_toplevel_list_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let ext_foreign_toplevel_list_v1::Event::Toplevel { toplevel } = event {
+            state.windows.push(WindowBinding {
+                handle: toplevel,
+                title: None,
+                app_id: None,
+            });
+        }
+    }
+
+    event_created_child!(CaptureState, ExtForeignToplevelListV1, [
+        ext_foreign_toplevel_list_v1::EVT_TOPLEVEL_OPCODE => (ExtForeignToplevelHandleV1, ()),
+    ]);
+}
+
+impl Dispatch<ExtForeignToplevelHandleV1, ()> for CaptureState {
+    fn event(
+        state: &mut Self,
+        proxy: &ExtForeignToplevelHandleV1,
+        event: ext_foreign_toplevel_handle_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let Some(w) = state.windows.iter_mut().find(|w| &w.handle == proxy) else {
+            return;
+        };
+        match event {
+            ext_foreign_toplevel_handle_v1::Event::Title { title } => w.title = Some(title),
+            ext_foreign_toplevel_handle_v1::Event::AppId { app_id } => w.app_id = Some(app_id),
+            _ => {}
+        }
+    }
+}
+
+/// Enumerate the capturable windows (foreign toplevels) with their title + app id,
+/// so a caller can pick one for window capture.
+pub fn list_windows() -> Result<Vec<WindowInfo>> {
+    let conn = Connection::connect_to_env().context("connect to the Wayland compositor")?;
+    let (globals, mut queue) =
+        registry_queue_init::<CaptureState>(&conn).context("initialise the Wayland registry")?;
+    let qh = queue.handle();
+    let mut state = CaptureState::default();
+    let _list = globals
+        .bind::<ExtForeignToplevelListV1, _, _>(&qh, 1..=1, ())
+        .map_err(|e| anyhow!("bind ext_foreign_toplevel_list_v1: {e}"))?;
+    // The compositor sends a `toplevel` per window, then each window's title/app_id;
+    // two roundtrips settle the initial set.
+    queue.roundtrip(&mut state).context("roundtrip for the toplevel set")?;
+    queue.roundtrip(&mut state).context("roundtrip for toplevel metadata")?;
+    Ok(state
+        .windows
+        .iter()
+        .enumerate()
+        .map(|(index, w)| WindowInfo {
+            index,
+            title: w.title.clone(),
+            app_id: w.app_id.clone(),
+        })
+        .collect())
+}
+
 /// Bind the capture managers, shm, and every output from an initialised registry.
 fn bind_capture_globals(
     globals: &GlobalList,
@@ -494,13 +590,14 @@ pub fn capture_region(
     y: u32,
     w: u32,
     h: u32,
+    include_cursor: bool,
 ) -> Result<CapturedImage> {
     let outputs = list_outputs()?;
     let output = outputs
         .get(output_index)
         .ok_or_else(|| anyhow!("output index {output_index} out of range"))?;
     let (px, py, pw, ph) = logical_to_physical_rect(output, x, y, w, h);
-    capture_output(output_index)?.crop(px, py, pw, ph)
+    capture_output(output_index, include_cursor)?.crop(px, py, pw, ph)
 }
 
 /// Create a capture session for output `output_index` and return the buffer
@@ -670,9 +767,10 @@ fn alloc_shm_buffer(
 
 /// Capture output `output_index` to an RGBA image, driving the full
 /// source -> session -> shm buffer -> frame -> copy handshake and converting the
-/// compositor's shm pixels to RGBA. Fails if the output is absent, the compositor
+/// compositor's shm pixels to RGBA. `include_cursor` paints the pointer onto the
+/// frame (`Options::PaintCursors`). Fails if the output is absent, the compositor
 /// offers no format we can convert, or the frame copy fails.
-pub fn capture_output(output_index: usize) -> Result<CapturedImage> {
+pub fn capture_output(output_index: usize, include_cursor: bool) -> Result<CapturedImage> {
     let conn = Connection::connect_to_env().context("connect to the Wayland compositor")?;
     let (globals, mut queue) =
         registry_queue_init::<CaptureState>(&conn).context("initialise the Wayland registry")?;
@@ -698,8 +796,13 @@ pub fn capture_output(output_index: usize) -> Result<CapturedImage> {
         .output
         .clone();
 
+    let options = if include_cursor {
+        Options::PaintCursors
+    } else {
+        Options::empty()
+    };
     let source = source_manager.create_source(&output, &qh, ());
-    let session = copy_manager.create_session(&source, Options::empty(), &qh, ());
+    let session = copy_manager.create_session(&source, options, &qh, ());
 
     // Wait for the buffer constraints.
     while !state.session_done && !state.session_stopped {
