@@ -23,30 +23,82 @@ fn broadcast_path() -> PathBuf {
     os_sdk::runtime::socket_path("ARLEN_THEME_BROADCAST", "theme.json")
 }
 
-/// The bundled-default CSS variables, used until the shell has broadcast a
-/// resolved theme (e.g. an app launched before the shell, or in a bare dev
-/// session). Dark is the default variant.
-fn fallback_css() -> CssVariables {
-    match arlen_theme::ArlenTheme::from_bundled(arlen_theme::DARK_TOML) {
+/// The persistent theme selection: `appearance.toml [theme] active`, or the
+/// bundled default `"dark"` when the file or key is absent (matching the shell's
+/// schema default). The shell resolves the broadcast from this selection, so a
+/// broadcast whose variant contradicts it is stale (a leftover from a prior
+/// session, e.g. a `just dev` light run left in `$XDG_RUNTIME_DIR`).
+fn selected_theme() -> String {
+    os_sdk::config::Config::load("appearance")
+        .ok()
+        .and_then(|c| c.get::<String>("theme.active"))
+        .unwrap_or_else(|| "dark".into())
+}
+
+/// The dark/light class a built-in selection must resolve to, or `None` for a
+/// custom theme name the consumer cannot classify without the shell (the authority
+/// for custom themes, which re-broadcasts on start).
+fn expected_variant(selection: &str) -> Option<&'static str> {
+    match selection {
+        "dark" => Some("dark"),
+        "light" => Some("light"),
+        _ => None,
+    }
+}
+
+/// Whether a broadcast with `broadcast_variant` is fresh for the current
+/// `selection`. A built-in selection requires the broadcast's variant to match;
+/// a custom selection is trusted (only the shell resolves it). The dark/light
+/// mismatch (Tim's stale-broadcast bug) is exactly the false case here.
+fn broadcast_is_fresh(broadcast_variant: &str, selection: &str) -> bool {
+    match expected_variant(selection) {
+        Some(expected) => broadcast_variant == expected,
+        None => true,
+    }
+}
+
+/// The bundled CSS variables for a selection: light if the selection is the
+/// built-in light theme, else dark (the schema default and the safe fallback).
+/// Used when no broadcast exists yet (an app launched before the shell, or a bare
+/// dev session) or when the broadcast is stale.
+fn bundled_css(selection: &str) -> CssVariables {
+    let (toml, variant) = if selection == "light" {
+        (arlen_theme::LIGHT_TOML, "light")
+    } else {
+        (arlen_theme::DARK_TOML, "dark")
+    };
+    match arlen_theme::ArlenTheme::from_bundled(toml) {
         Ok(theme) => arlen_theme::css::to_css_variables(&theme, None),
         Err(_) => CssVariables {
             variables: std::collections::BTreeMap::new(),
             font_scale: 1.0,
-            variant: "dark".into(),
+            variant: variant.into(),
         },
     }
 }
 
-/// Read the current broadcast theme, or the bundled default if the broadcast
-/// file is absent or unparseable.
+/// Read the current broadcast theme, or the bundled default when the broadcast is
+/// absent, unparseable, or stale.
+///
+/// A stale broadcast is one whose variant contradicts the persistent selection in
+/// `appearance.toml` (e.g. a leftover `light` broadcast from an earlier session
+/// while the selection is the default `dark`). The shell is the theme authority and
+/// resolves the broadcast from the selection, so a mismatch means the broadcast
+/// predates the current selection and must not override it; the consumer falls back
+/// to the bundled theme for the selected variant instead. A broadcast for a custom
+/// selected theme is trusted (only the shell can resolve custom themes, and it
+/// re-broadcasts on start).
 pub fn current_css() -> CssVariables {
+    let selection = selected_theme();
     let path = broadcast_path();
     if let Ok(bytes) = std::fs::read(&path) {
         if let Ok(css) = serde_json::from_slice::<CssVariables>(&bytes) {
-            return css;
+            if broadcast_is_fresh(&css.variant, &selection) {
+                return css;
+            }
         }
     }
-    fallback_css()
+    bundled_css(&selection)
 }
 
 /// Return the current resolved CSS variables for this app to inject. The
@@ -126,4 +178,40 @@ pub fn spawn_theme_watcher<R: Runtime>(app: AppHandle<R>) {
             std::thread::sleep(Duration::from_secs(3600));
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stale_light_broadcast_is_rejected_for_the_default_dark_selection() {
+        // Tim's bug: a leftover `light` broadcast from a prior session must not
+        // override the default (dark) selection.
+        assert!(!broadcast_is_fresh("light", "dark"));
+        // The matching cases are fresh.
+        assert!(broadcast_is_fresh("dark", "dark"));
+        assert!(broadcast_is_fresh("light", "light"));
+        // The reverse stale case: a dark broadcast while light is selected.
+        assert!(!broadcast_is_fresh("dark", "light"));
+    }
+
+    #[test]
+    fn a_custom_selection_trusts_the_broadcast() {
+        // The consumer cannot classify a custom theme; only the shell resolves it,
+        // so any broadcast variant is trusted for a custom selection.
+        assert!(broadcast_is_fresh("dark", "solarized"));
+        assert!(broadcast_is_fresh("light", "solarized"));
+        assert_eq!(expected_variant("solarized"), None);
+    }
+
+    #[test]
+    fn bundled_fallback_tracks_the_selected_variant() {
+        // No broadcast: the fallback respects the selected built-in variant, so a
+        // light selection with no shell still comes up light (not forced dark).
+        assert_eq!(bundled_css("light").variant, "light");
+        assert_eq!(bundled_css("dark").variant, "dark");
+        // A custom selection falls back to the safe dark default.
+        assert_eq!(bundled_css("solarized").variant, "dark");
+    }
 }
