@@ -33,6 +33,8 @@ use wayland_protocols::ext::image_copy_capture::v1::client::ext_image_copy_captu
 use wayland_protocols::ext::image_copy_capture::v1::client::ext_image_copy_capture_session_v1::{
     self, ExtImageCopyCaptureSessionV1,
 };
+use wayland_protocols::xdg::xdg_output::zv1::client::zxdg_output_manager_v1::ZxdgOutputManagerV1;
+use wayland_protocols::xdg::xdg_output::zv1::client::zxdg_output_v1::{self, ZxdgOutputV1};
 
 /// The `ext-image-copy-capture` frame-copy manager interface. Its presence means
 /// the compositor can hand us composited frames.
@@ -148,8 +150,17 @@ pub struct SessionConstraints {
 struct OutputBinding {
     output: wl_output::WlOutput,
     name: Option<String>,
+    /// Physical (capture-buffer) pixel dimensions, from the `mode` event.
     width: i32,
     height: i32,
+    /// Logical position + size in the compositor's global layout, from xdg-output.
+    /// The ratio physical/logical is the (possibly fractional) output scale.
+    logical_x: i32,
+    logical_y: i32,
+    logical_width: i32,
+    logical_height: i32,
+    /// The xdg-output handle, kept alive so its events keep arriving.
+    _xdg: Option<ZxdgOutputV1>,
 }
 
 /// A capturable output for the caller to choose from.
@@ -159,10 +170,18 @@ pub struct OutputInfo {
     pub index: usize,
     /// The output's connector name (e.g. `eDP-1`), when the compositor sent it.
     pub name: Option<String>,
-    /// Current-mode width in pixels.
+    /// Current-mode width in physical pixels.
     pub width: i32,
-    /// Current-mode height in pixels.
+    /// Current-mode height in physical pixels.
     pub height: i32,
+    /// Logical position in the compositor's global layout (xdg-output).
+    pub logical_x: i32,
+    /// Logical y position (xdg-output).
+    pub logical_y: i32,
+    /// Logical width; `physical/logical` is the output scale (0 if unknown).
+    pub logical_width: i32,
+    /// Logical height (xdg-output).
+    pub logical_height: i32,
 }
 
 /// Client state for a capture flow. Hand-rolled (no sctk) so the capture protocol
@@ -236,6 +255,44 @@ impl Dispatch<wl_shm::WlShm, ()> for CaptureState {
     ) {
         // The global `wl_shm.format` list is not needed; the session reports the
         // formats it will actually copy into.
+    }
+}
+
+impl Dispatch<ZxdgOutputManagerV1, ()> for CaptureState {
+    fn event(
+        _: &mut Self,
+        _: &ZxdgOutputManagerV1,
+        _: <ZxdgOutputManagerV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZxdgOutputV1, usize> for CaptureState {
+    fn event(
+        state: &mut Self,
+        _: &ZxdgOutputV1,
+        event: zxdg_output_v1::Event,
+        index: &usize,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let Some(b) = state.outputs.get_mut(*index) else {
+            return;
+        };
+        match event {
+            zxdg_output_v1::Event::LogicalPosition { x, y } => {
+                b.logical_x = x;
+                b.logical_y = y;
+            }
+            zxdg_output_v1::Event::LogicalSize { width, height } => {
+                b.logical_width = width;
+                b.logical_height = height;
+            }
+            _ => {}
+        }
     }
 }
 
@@ -325,7 +382,21 @@ fn bind_capture_globals(
                 name: None,
                 width: 0,
                 height: 0,
+                logical_x: 0,
+                logical_y: 0,
+                logical_width: 0,
+                logical_height: 0,
+                _xdg: None,
             });
+        }
+    }
+    // xdg-output gives the logical position + size, and thus the (possibly
+    // fractional) output scale that wl_output's integer `scale` cannot express.
+    // Optional: if the compositor lacks it, logical geometry stays zero and callers
+    // fall back to physical coordinates.
+    if let Ok(xdg_manager) = globals.bind::<ZxdgOutputManagerV1, _, _>(qh, 1..=3, ()) {
+        for (index, b) in state.outputs.iter_mut().enumerate() {
+            b._xdg = Some(xdg_manager.get_xdg_output(&b.output, qh, index));
         }
     }
     Ok((source_manager, copy_manager))
@@ -350,8 +421,38 @@ pub fn list_outputs() -> Result<Vec<OutputInfo>> {
             name: b.name.clone(),
             width: b.width,
             height: b.height,
+            logical_x: b.logical_x,
+            logical_y: b.logical_y,
+            logical_width: b.logical_width,
+            logical_height: b.logical_height,
         })
         .collect())
+}
+
+/// Map a rectangle given in the compositor's global LOGICAL coordinates (the
+/// convention grim's `-g` and the desktop portal use) to physical capture-buffer
+/// pixels for `output`, honouring a fractional scale. Falls back to treating the
+/// input as physical if the output has no logical geometry (no xdg-output).
+fn logical_to_physical_rect(
+    output: &OutputInfo,
+    lx: u32,
+    ly: u32,
+    lw: u32,
+    lh: u32,
+) -> (u32, u32, u32, u32) {
+    if output.logical_width <= 0 || output.logical_height <= 0 {
+        return (lx, ly, lw, lh);
+    }
+    let sx = output.width as f64 / output.logical_width as f64;
+    let sy = output.height as f64 / output.logical_height as f64;
+    let ox = (lx as i64 - output.logical_x as i64).max(0) as f64;
+    let oy = (ly as i64 - output.logical_y as i64).max(0) as f64;
+    (
+        (ox * sx).round() as u32,
+        (oy * sy).round() as u32,
+        (lw as f64 * sx).round() as u32,
+        (lh as f64 * sy).round() as u32,
+    )
 }
 
 impl CapturedImage {
@@ -383,9 +484,10 @@ impl CapturedImage {
     }
 }
 
-/// Capture a rectangular region of output `output_index`: capture the whole output,
-/// then crop to `(x, y, w, h)` in output pixels (the compositor copies the frame,
-/// the crop is client-side, exactly as grim does `-g`).
+/// Capture a rectangular region of output `output_index`. The region is given in
+/// the compositor's global LOGICAL coordinates (the grim `-g` / portal convention);
+/// it is mapped to physical capture-buffer pixels via the output's (possibly
+/// fractional) scale, then the captured frame is cropped client-side.
 pub fn capture_region(
     output_index: usize,
     x: u32,
@@ -393,7 +495,12 @@ pub fn capture_region(
     w: u32,
     h: u32,
 ) -> Result<CapturedImage> {
-    capture_output(output_index)?.crop(x, y, w, h)
+    let outputs = list_outputs()?;
+    let output = outputs
+        .get(output_index)
+        .ok_or_else(|| anyhow!("output index {output_index} out of range"))?;
+    let (px, py, pw, ph) = logical_to_physical_rect(output, x, y, w, h);
+    capture_output(output_index)?.crop(px, py, pw, ph)
 }
 
 /// Create a capture session for output `output_index` and return the buffer
@@ -713,5 +820,40 @@ mod tests {
 
         // An origin outside the image is an error.
         assert!(img.crop(3, 0, 1, 1).is_err());
+    }
+
+    fn out(w: i32, h: i32, lx: i32, ly: i32, lw: i32, lh: i32) -> OutputInfo {
+        OutputInfo {
+            index: 0,
+            name: None,
+            width: w,
+            height: h,
+            logical_x: lx,
+            logical_y: ly,
+            logical_width: lw,
+            logical_height: lh,
+        }
+    }
+
+    #[test]
+    fn logical_region_maps_to_physical_with_scale() {
+        // A 2x output (2000x1000 physical, 1000x500 logical) at the origin.
+        let o = out(2000, 1000, 0, 0, 1000, 500);
+        assert_eq!(
+            logical_to_physical_rect(&o, 100, 50, 300, 200),
+            (200, 100, 600, 400)
+        );
+
+        // No logical geometry -> the input is treated as physical (passthrough).
+        let none = out(1920, 1080, 0, 0, 0, 0);
+        assert_eq!(logical_to_physical_rect(&none, 10, 20, 30, 40), (10, 20, 30, 40));
+
+        // A second monitor placed to the right (logical origin 1000,0), 1x scale:
+        // a global-logical x of 1100 maps to physical x 100 on that output.
+        let right = out(1920, 1080, 1000, 0, 1920, 1080);
+        assert_eq!(
+            logical_to_physical_rect(&right, 1100, 10, 100, 50),
+            (100, 10, 100, 50)
+        );
     }
 }
