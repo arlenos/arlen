@@ -141,17 +141,19 @@ function typeNoun(entityType: string): string {
   return TYPE_NOUNS[s] ?? (s === "*" ? "its own data" : s.toLowerCase());
 }
 
-/// One line of scope as the panel renders it: a plain sentence, whether it is a
-/// prominent reach into the user's broad data (a chip) or a quiet own-data
-/// line, its provenance, the detail behind the expand, and the revoke target.
+/// One line of scope as the panel renders it: a plain sentence split into a
+/// quiet verb and the emphasized object (the user's data is what matters), with
+/// its provenance, the detail behind the expand, and the revoke target.
 export interface ScopeLine {
   key: string;
-  /// The visible sentence: "Reads all your files".
-  text: string;
-  /// Prominent revocable chip (a reach into the user's broad data) vs a quiet
-  /// text line (own-data, a zero-prompt default).
-  chip: boolean;
-  /// "Declared at install" or "You allowed this".
+  /// The quiet leading verb: "reads", "reads and changes", "changes", or
+  /// "access to" for a consent path.
+  verb: string;
+  /// The emphasized object: "your files", "its own files", "~/Documents".
+  object: string;
+  /// Own-data (a zero-prompt default): the line is rendered dimmed.
+  own: boolean;
+  /// "declared at install" or "you allowed this".
   provenance: string;
   /// Field and relation detail, revealed by the expand.
   detail: string[];
@@ -160,6 +162,8 @@ export interface ScopeLine {
   entityType: string | null;
   /// What to narrow when this line is revoked.
   revoke: RevokeTarget;
+  /// The full sentence, for the confirm dialog and aria labels.
+  text: string;
 }
 
 /// The narrowing a revoke performs. A token reach removes the type from read
@@ -169,9 +173,9 @@ export type RevokeTarget =
   | { kind: "consent"; appId: string; grantId: string };
 
 function verbFor(read: boolean, write: boolean): string {
-  if (read && write) return "Reads and changes";
-  if (write) return "Changes";
-  return "Reads";
+  if (read && write) return "reads and changes";
+  if (write) return "changes";
+  return "reads";
 }
 
 function fieldDetail(scope: EntityScope): string | null {
@@ -204,21 +208,24 @@ function tokenLines(grant: GrantView, c: Ceiling): ScopeLine[] {
     const write = !!io.write;
     const noun = typeNoun(entityType);
     const all = c.instance === "All";
-    const target = all ? `all your ${noun}` : `its own ${noun}`;
+    const verb = verbFor(read, write);
+    // The object is what matters and gets the emphasis; own-data reads as "its
+    // own" and the whole line is dimmed (a zero-prompt default).
+    const object = all ? `your ${noun}` : `its own ${noun}`;
     const detail: string[] = [];
     const fd = fieldDetail(io.read ?? io.write!);
     if (fd) detail.push(fd);
     for (const rel of relationsByType.get(entityType) ?? []) detail.push(rel);
     lines.push({
       key: `${grant.app_id}:${entityType}`,
-      text: `${verbFor(read, write)} ${target}`,
-      // Own-data is a zero-prompt default: quiet, no chip. A reach into the
-      // user's broad data (instance All) is the prominent revocable chip.
-      chip: all,
-      provenance: "Declared at install",
+      verb,
+      object,
+      own: !all,
+      provenance: "declared at install",
       detail,
       entityType,
       revoke: { kind: "reach", appId: grant.app_id, entityType, read, write },
+      text: `${verb} ${object}`,
     });
   }
   return lines;
@@ -238,12 +245,14 @@ function consentLine(grant: GrantView): ScopeLine {
   const scope = grant.consent_scope || "your data";
   return {
     key: `${grant.app_id}:consent:${grant.id}`,
-    text: `Access to ${scope}`,
-    chip: true,
-    provenance: "You allowed this",
+    verb: "access to",
+    object: scope,
+    own: false,
+    provenance: "you allowed this",
     detail: [],
     entityType: null,
     revoke: { kind: "consent", appId: grant.app_id, grantId: grant.id },
+    text: `access to ${scope}`,
   };
 }
 
