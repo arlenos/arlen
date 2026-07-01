@@ -50,7 +50,7 @@ use crate::token::InstanceScope;
 // references resolve unchanged; the daemon-internal logic (the gate, the
 // `toml_edit` narrowing, the command) stays here.
 pub use arlen_permissions::revoke::{
-    RestoreOutcome, RevokeInitiator, RevokeOutcome, RevokeReach, RevokedReach,
+    RestoreOutcome, RestoreReach, RevokeInitiator, RevokeOutcome, RevokeReach, RevokedReach,
 };
 
 /// A set-shaped summary of a profile's re-derived runtime token scopes, the form
