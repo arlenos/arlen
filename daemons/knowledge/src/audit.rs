@@ -37,6 +37,10 @@ fn reach_to_audit(reach: &RevokedReach) -> CapabilityReach {
     }
 }
 
+/// The fixed `subject` of a capability-change audit record. Shared by the producer
+/// ([`capability_change_event`]) and the reader's filter, so the two cannot drift.
+pub const CAPABILITY_CHANGE_SUBJECT: &str = "capability.change";
+
 /// The inverse of [`reach_to_audit`]: an audit-proto wire reach read back out of the
 /// ledger, into the daemon [`RevokedReach`]. Used by the fold that reconstructs a
 /// target app's removal ledger from its capability-change records.
@@ -77,7 +81,7 @@ pub fn capability_change_event(
     IngestRequest {
         kind: AuditKind::CapabilityChange,
         structural: StructuralRecord {
-            subject: "capability.change".to_string(),
+            subject: CAPABILITY_CHANGE_SUBJECT.to_string(),
             node_types: vec![target_app_id.to_string()],
             relations: Vec::new(),
             result_count: None,

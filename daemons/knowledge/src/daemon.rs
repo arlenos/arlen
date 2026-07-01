@@ -1042,6 +1042,36 @@ fn is_safe_app_id(app_id: &str) -> bool {
 /// `RevokedReach` cannot express a widening; the gate proves narrowing on the
 /// re-derived scopes. Outcomes are `OK:` tokens; only an auth/parse/tier/io
 /// failure is an `ERROR:`.
+/// The capability-change records for `target_app` from a page of audit views, as
+/// `(outcome, reach)` pairs in the views' (chain) order: keep only records whose
+/// kind is `CapabilityChange` with the fixed capability-change subject and
+/// `target_app` among the coarse `node_types`, whose typed reach is present, and
+/// convert each stored reach back to a [`crate::revoke::RevokedReach`]. Pure over
+/// the views so the filter is unit-tested without the audit socket; the async
+/// reader pages the ledger and folds these (in chain order) into the removal
+/// ledger the restore op gates on.
+fn capability_change_pairs(
+    target_app: &str,
+    views: &[audit_proto::StructuralView],
+) -> Vec<(String, crate::revoke::RevokedReach)> {
+    views
+        .iter()
+        .filter(|v| {
+            v.kind == audit_proto::AuditKind::CapabilityChange
+                && v.structural.subject == crate::audit::CAPABILITY_CHANGE_SUBJECT
+                && v.structural.node_types.iter().any(|n| n == target_app)
+        })
+        .filter_map(|v| {
+            v.structural
+                .capability_change
+                .as_ref()
+                .map(|reach| {
+                    (v.structural.outcome.clone(), crate::audit::audit_to_reach(reach))
+                })
+        })
+        .collect()
+}
+
 fn handle_revoke(app_id: &str, body: &[u8]) -> String {
     if !revoke_caller_admitted(app_id) {
         return "ERROR: revoke not permitted for this caller".to_string();
@@ -3026,6 +3056,46 @@ mod tests {
         // the admitted Settings principal.
         let r = handle_revoke("com.attacker", b"{\"target_app_id\":\"com.x\",\"reach\":{\"InstanceAll\":null},\"initiator\":{\"User\":null}}");
         assert!(r.starts_with("ERROR: revoke not permitted"), "got {r}");
+    }
+
+    #[test]
+    fn capability_change_pairs_filters_to_the_target_apps_records() {
+        use audit_proto::{AuditKind, CapabilityReach, StructuralRecord, StructuralView};
+        let view = |target: &str, outcome: &str, kind: AuditKind, subject: &str| StructuralView {
+            index: 0,
+            timestamp_micros: 0,
+            kind,
+            actor: "knowledge".into(),
+            structural: StructuralRecord {
+                subject: subject.into(),
+                node_types: vec![target.into()],
+                relations: vec![],
+                result_count: None,
+                duration_ms: None,
+                outcome: outcome.into(),
+                depth: None,
+                capability_change: Some(CapabilityReach::Read {
+                    entity_pattern: "system.File".into(),
+                }),
+            },
+            call_chain_id: None,
+            project_id: None,
+            entry_hash_hex: String::new(),
+        };
+        let subj = crate::audit::CAPABILITY_CHANGE_SUBJECT;
+        let views = vec![
+            view("com.a", "revoked", AuditKind::CapabilityChange, subj),
+            view("com.b", "revoked", AuditKind::CapabilityChange, subj), // a different app
+            view("com.a", "ok", AuditKind::GraphAccess, subj),          // wrong kind
+            view("com.a", "revoked", AuditKind::CapabilityChange, "other"), // wrong subject
+        ];
+        let pairs = capability_change_pairs("com.a", &views);
+        assert_eq!(pairs.len(), 1, "only com.a's capability-change record survives");
+        assert_eq!(pairs[0].0, "revoked");
+        assert_eq!(
+            pairs[0].1,
+            crate::revoke::RevokedReach::Read { entity_pattern: "system.File".into() }
+        );
     }
 
     #[test]
