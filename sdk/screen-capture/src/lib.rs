@@ -16,10 +16,15 @@
 //! the two capture managers. The capture session, buffers, and PNG output land in
 //! the next slices.
 
+use std::os::fd::AsFd;
+
 use anyhow::{anyhow, Context, Result};
 use wayland_client::globals::{registry_queue_init, GlobalList, GlobalListContents};
-use wayland_client::protocol::{wl_output, wl_registry, wl_shm};
+use wayland_client::protocol::{wl_buffer, wl_output, wl_registry, wl_shm, wl_shm_pool};
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
+use wayland_protocols::ext::image_copy_capture::v1::client::ext_image_copy_capture_frame_v1::{
+    self, ExtImageCopyCaptureFrameV1,
+};
 use wayland_protocols::ext::image_capture_source::v1::client::ext_image_capture_source_v1::ExtImageCaptureSourceV1;
 use wayland_protocols::ext::image_capture_source::v1::client::ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1;
 use wayland_protocols::ext::image_copy_capture::v1::client::ext_image_copy_capture_manager_v1::{
@@ -158,6 +163,10 @@ struct CaptureState {
     session_done: bool,
     /// The session stopped (`stopped`) - the source went away.
     session_stopped: bool,
+    /// The frame copy completed (`ready`): the attached buffer now holds pixels.
+    frame_ready: bool,
+    /// The frame copy failed (`failed`), with the reason string if given.
+    frame_failed: Option<String>,
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for CaptureState {
@@ -335,6 +344,231 @@ pub fn probe_session(output_index: usize) -> Result<SessionConstraints> {
         height,
         shm_formats: state.session_shm_formats.clone(),
     })
+}
+
+impl Dispatch<wl_shm_pool::WlShmPool, ()> for CaptureState {
+    fn event(
+        _: &mut Self,
+        _: &wl_shm_pool::WlShmPool,
+        _: wl_shm_pool::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<wl_buffer::WlBuffer, ()> for CaptureState {
+    fn event(
+        _: &mut Self,
+        _: &wl_buffer::WlBuffer,
+        _: wl_buffer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // The only event is `release`; for a one-shot capture we read the buffer
+        // once the frame is `ready` and are done with it, so releasing is moot.
+    }
+}
+
+impl Dispatch<ExtImageCopyCaptureFrameV1, ()> for CaptureState {
+    fn event(
+        state: &mut Self,
+        _: &ExtImageCopyCaptureFrameV1,
+        event: ext_image_copy_capture_frame_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use ext_image_copy_capture_frame_v1::Event;
+        match event {
+            Event::Ready => state.frame_ready = true,
+            Event::Failed { reason } => {
+                state.frame_failed = Some(format!("{reason:?}"));
+            }
+            // transform / damage / presentation_time are metadata we do not need
+            // for a still capture.
+            _ => {}
+        }
+    }
+}
+
+/// A captured image: tightly-packed RGBA8 pixels, row-major, top-left origin.
+#[derive(Debug, Clone)]
+pub struct CapturedImage {
+    /// Width in pixels.
+    pub width: u32,
+    /// Height in pixels.
+    pub height: u32,
+    /// `width * height * 4` bytes of RGBA8.
+    pub rgba: Vec<u8>,
+}
+
+/// Where the R/G/B/A bytes sit within a 4-byte pixel of a given `wl_shm`/DRM
+/// format code. Memory byte order is the little-endian of the DRM `MSB:..:LSB` word.
+struct PixelLayout {
+    r: usize,
+    g: usize,
+    b: usize,
+    a: Option<usize>,
+}
+
+/// The byte layout for the 32-bit 8888 formats we can convert to RGBA, or `None`
+/// for a format we do not (yet) handle. Covers the `wl_shm` short codes (0/1) and
+/// the DRM fourccs for {A,X}{R,B}GB8888.
+fn pixel_layout(code: u32) -> Option<PixelLayout> {
+    match code {
+        // ARGB8888: wl_shm 0, DRM 'AR24' -> word A:R:G:B -> mem B,G,R,A
+        0 | 0x3432_5241 => Some(PixelLayout { r: 2, g: 1, b: 0, a: Some(3) }),
+        // XRGB8888: wl_shm 1, DRM 'XR24' -> word X:R:G:B -> mem B,G,R,X
+        1 | 0x3432_5258 => Some(PixelLayout { r: 2, g: 1, b: 0, a: None }),
+        // ABGR8888: DRM 'AB24' -> word A:B:G:R -> mem R,G,B,A
+        0x3432_4241 => Some(PixelLayout { r: 0, g: 1, b: 2, a: Some(3) }),
+        // XBGR8888: DRM 'XB24' -> word X:B:G:R -> mem R,G,B,X
+        0x3432_4258 => Some(PixelLayout { r: 0, g: 1, b: 2, a: None }),
+        _ => None,
+    }
+}
+
+/// An allocated shm buffer backed by a memfd, kept alive for the capture.
+struct ShmBuffer {
+    _file: std::fs::File,
+    map: memmap2::MmapMut,
+    buffer: wl_buffer::WlBuffer,
+    stride: usize,
+}
+
+/// Allocate an shm buffer of `width*height` in `format` (a 4-bpp code) via a memfd,
+/// and wrap it in a `wl_buffer` the compositor can copy into.
+fn alloc_shm_buffer(
+    shm: &wl_shm::WlShm,
+    qh: &QueueHandle<CaptureState>,
+    width: u32,
+    height: u32,
+    format_code: u32,
+) -> Result<ShmBuffer> {
+    let stride = width as usize * 4;
+    let size = stride * height as usize;
+    let fd = rustix::fs::memfd_create("arlen-screenshot", rustix::fs::MemfdFlags::CLOEXEC)
+        .context("memfd_create for the capture buffer")?;
+    let file = std::fs::File::from(fd);
+    file.set_len(size as u64).context("size the capture buffer")?;
+    let map = unsafe { memmap2::MmapMut::map_mut(&file).context("mmap the capture buffer")? };
+    let pool = shm.create_pool(file.as_fd(), size as i32, qh, ());
+    let format = wl_shm::Format::try_from(format_code)
+        .map_err(|_| anyhow!("unsupported shm format code {format_code}"))?;
+    let buffer = pool.create_buffer(0, width as i32, height as i32, stride as i32, format, qh, ());
+    // The pool can be destroyed immediately; the buffer keeps the mapping mapped.
+    pool.destroy();
+    Ok(ShmBuffer { _file: file, map, buffer, stride })
+}
+
+/// Capture output `output_index` to an RGBA image, driving the full
+/// source -> session -> shm buffer -> frame -> copy handshake and converting the
+/// compositor's shm pixels to RGBA. Fails if the output is absent, the compositor
+/// offers no format we can convert, or the frame copy fails.
+pub fn capture_output(output_index: usize) -> Result<CapturedImage> {
+    let conn = Connection::connect_to_env().context("connect to the Wayland compositor")?;
+    let (globals, mut queue) =
+        registry_queue_init::<CaptureState>(&conn).context("initialise the Wayland registry")?;
+    let qh = queue.handle();
+    let mut state = CaptureState::default();
+
+    let (source_manager, copy_manager) = bind_capture_globals(&globals, &qh, &mut state)?;
+    let shm = state
+        .shm
+        .clone()
+        .ok_or_else(|| anyhow!("the compositor advertises no wl_shm"))?;
+    queue.roundtrip(&mut state).context("initial roundtrip")?;
+
+    let output = state
+        .outputs
+        .get(output_index)
+        .ok_or_else(|| {
+            anyhow!(
+                "output index {output_index} out of range ({} outputs)",
+                state.outputs.len()
+            )
+        })?
+        .output
+        .clone();
+
+    let source = source_manager.create_source(&output, &qh, ());
+    let session = copy_manager.create_session(&source, Options::empty(), &qh, ());
+
+    // Wait for the buffer constraints.
+    while !state.session_done && !state.session_stopped {
+        queue
+            .blocking_dispatch(&mut state)
+            .context("dispatch capture-session events")?;
+    }
+    let (width, height) = state
+        .buffer_size
+        .ok_or_else(|| anyhow!("the capture session reported no buffer size"))?;
+
+    // Pick the first offered format we can convert.
+    let format_code = state
+        .session_shm_formats
+        .iter()
+        .copied()
+        .find(|c| pixel_layout(*c).is_some())
+        .ok_or_else(|| {
+            anyhow!(
+                "no convertible shm format among {:?}",
+                state.session_shm_formats
+            )
+        })?;
+    let layout = pixel_layout(format_code).expect("checked above");
+
+    let shm_buffer = alloc_shm_buffer(&shm, &qh, width, height, format_code)?;
+
+    // Create the frame, attach the buffer, and request the copy.
+    let frame = session.create_frame(&qh, ());
+    frame.attach_buffer(&shm_buffer.buffer);
+    frame.capture();
+
+    // Wait for the copy to land.
+    state.frame_ready = false;
+    while !state.frame_ready && state.frame_failed.is_none() {
+        queue
+            .blocking_dispatch(&mut state)
+            .context("dispatch capture-frame events")?;
+    }
+    if let Some(reason) = &state.frame_failed {
+        return Err(anyhow!("capture frame failed: {reason}"));
+    }
+
+    // Convert the shm pixels to tightly-packed RGBA.
+    let src = &shm_buffer.map[..];
+    let mut rgba = Vec::with_capacity(width as usize * height as usize * 4);
+    for y in 0..height as usize {
+        let row = &src[y * shm_buffer.stride..];
+        for x in 0..width as usize {
+            let px = &row[x * 4..x * 4 + 4];
+            rgba.push(px[layout.r]);
+            rgba.push(px[layout.g]);
+            rgba.push(px[layout.b]);
+            rgba.push(layout.a.map(|i| px[i]).unwrap_or(255));
+        }
+    }
+
+    frame.destroy();
+    session.destroy();
+    Ok(CapturedImage { width, height, rgba })
+}
+
+/// Write a [`CapturedImage`] to `path` as a PNG (RGBA8).
+pub fn write_png(image: &CapturedImage, path: &std::path::Path) -> Result<()> {
+    let file = std::fs::File::create(path).with_context(|| format!("create {}", path.display()))?;
+    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), image.width, image.height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().context("write PNG header")?;
+    writer
+        .write_image_data(&image.rgba)
+        .context("write PNG pixels")?;
+    Ok(())
 }
 
 #[cfg(test)]
