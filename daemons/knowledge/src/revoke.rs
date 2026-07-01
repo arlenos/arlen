@@ -48,7 +48,7 @@ use crate::token::InstanceScope;
 // references resolve unchanged; the daemon-internal logic (the gate, the
 // `toml_edit` narrowing, the command) stays here.
 pub use arlen_permissions::revoke::{
-    RevokeInitiator, RevokeOutcome, RevokeReach, RevokedReach,
+    RestoreOutcome, RevokeInitiator, RevokeOutcome, RevokeReach, RevokedReach,
 };
 
 /// A set-shaped summary of a profile's re-derived runtime token scopes, the form
@@ -443,6 +443,74 @@ pub fn revoke_at(path: &Path, reach: &RevokedReach) -> std::io::Result<RevokeOut
     Ok(RevokeOutcome::Revoked)
 }
 
+/// Whether `scope` is entirely within `ceiling` in every dimension. The declared
+/// ceiling bounds how far a restore may re-widen: a restore may only reinstate a
+/// capability the app already declared. Every read/write/read_sensitive pattern
+/// and relation must be in the ceiling, and instance `All` requires the ceiling to
+/// permit `All`.
+pub fn is_within_ceiling(scope: &ScopeSummary, ceiling: &ScopeSummary) -> bool {
+    scope.read.is_subset(&ceiling.read)
+        && scope.write.is_subset(&ceiling.write)
+        && scope.read_sensitive.is_subset(&ceiling.read_sensitive)
+        && scope.relations.is_subset(&ceiling.relations)
+        && (!scope.instance_all || ceiling.instance_all)
+}
+
+/// Apply a restore (re-widen) to the profile at `path`, the reverse of
+/// [`revoke_at`] and the one authority-growth path in the system. Load the
+/// profile, re-derive its scopes, re-widen the document in place, then prove the
+/// result BOTH (1) strictly widened the original ([`is_strict_widening`]) AND
+/// (2) stays within the app's declared `ceiling` ([`is_within_ceiling`]) - only
+/// then write it atomically. Writes nothing unless both proofs pass, so a no-op,
+/// a non-widening edit, or a reach outside the declared ceiling leaves the file
+/// untouched (`NoChange` / `NotPermitted`).
+///
+/// `ceiling` is the app's declared capability ceiling (the Grant node's
+/// `declared_ceiling`, re-derived into a [`ScopeSummary`] by the caller). It is
+/// the load-bearing safety bound: a restore may reinstate a capability the app
+/// already declared and the user just removed, never grant one it never had. The
+/// caller is responsible for the caller-auth gate (the `settings` principal) and
+/// for supplying the ceiling from the authoritative grant, exactly as `revoke_at`'s
+/// caller owns the auth + tier gate.
+pub fn restore_at(
+    path: &Path,
+    reach: &RevokedReach,
+    ceiling: &ScopeSummary,
+) -> std::io::Result<RestoreOutcome> {
+    if !path.exists() {
+        return Ok(RestoreOutcome::NotFound);
+    }
+    let old_text = std::fs::read_to_string(path)?;
+    let old_profile: PermissionProfile = toml::from_str(&old_text)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let old_summary = summarize(&old_profile);
+
+    let mut doc: toml_edit::DocumentMut = old_text
+        .parse()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    if !apply_restore(&mut doc, reach) {
+        // The reach was already present.
+        return Ok(RestoreOutcome::NoChange);
+    }
+    let new_text = doc.to_string();
+
+    let new_profile: PermissionProfile = toml::from_str(&new_text)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let new_summary = summarize(&new_profile);
+
+    // Gate 1: the edit only grew authority (no dimension shrank). Gate 2 (the
+    // load-bearing one): the widened result stays within the declared ceiling.
+    // Both must pass; otherwise write nothing.
+    if !is_strict_widening(&old_summary, &new_summary)
+        || !is_within_ceiling(&new_summary, ceiling)
+    {
+        return Ok(RestoreOutcome::NotPermitted);
+    }
+
+    atomic_write(path, new_text.as_bytes())?;
+    Ok(RestoreOutcome::Restored)
+}
+
 /// Write `bytes` to `path` atomically: a sibling temp file, fsync, rename over
 /// the target, then fsync the directory so the rename is durable. A crash leaves
 /// either the old profile or the new, never a torn file.
@@ -560,6 +628,10 @@ instance_scope = "all"
 
     fn doc(s: &str) -> toml_edit::DocumentMut {
         s.parse().unwrap()
+    }
+
+    fn profile(s: &str) -> PermissionProfile {
+        toml::from_str(s).unwrap()
     }
 
     #[test]
@@ -838,5 +910,91 @@ instance_scope = "all"
         assert!(!read_of(&d).contains("system.Project"), "revoked out");
         assert!(apply_restore(&mut d, &reach));
         assert!(read_of(&d).contains("system.Project"), "restored back");
+    }
+
+    #[test]
+    fn is_within_ceiling_bounds_every_dimension() {
+        let ceiling = summary(&["system.File", "system.Project"], &["com.x.Note"], true);
+        // A subset in every dimension is within the ceiling.
+        assert!(is_within_ceiling(&summary(&["system.File"], &[], false), &ceiling));
+        // A read outside the declared ceiling is not.
+        assert!(!is_within_ceiling(&summary(&["system.Grant"], &[], false), &ceiling));
+        // Instance `All` is allowed when the ceiling permits it, refused otherwise.
+        assert!(is_within_ceiling(&summary(&["system.File"], &[], true), &ceiling));
+        let own_ceiling = summary(&["system.File"], &[], false);
+        assert!(!is_within_ceiling(&summary(&["system.File"], &[], true), &own_ceiling));
+    }
+
+    #[test]
+    fn restore_at_re_widens_within_ceiling() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("com.test.toml");
+        std::fs::write(&path, SAMPLE).unwrap();
+        // Ceiling = SAMPLE's declared scope plus system.Session in read (declared by
+        // the app, previously removed by the user).
+        let ceiling_profile = profile(&SAMPLE.replace(
+            "read = [\"system.File\", \"system.Project\"]",
+            "read = [\"system.File\", \"system.Project\", \"system.Session\"]",
+        ));
+        let ceiling = ScopeSummary::from_profile(&ceiling_profile);
+        let outcome = restore_at(
+            &path,
+            &RevokedReach::Read { entity_pattern: "system.Session".into() },
+            &ceiling,
+        )
+        .unwrap();
+        assert_eq!(outcome, RestoreOutcome::Restored);
+        let after = std::fs::read_to_string(&path).unwrap();
+        let read_line = after.lines().find(|l| l.trim_start().starts_with("read =")).unwrap();
+        assert!(read_line.contains("system.Session"), "restored on disk");
+        assert!(after.contains("# my app profile"), "comments preserved");
+    }
+
+    #[test]
+    fn restore_at_refuses_a_reach_outside_the_ceiling() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("com.test.toml");
+        std::fs::write(&path, SAMPLE).unwrap();
+        // Ceiling = exactly SAMPLE's declared scope: system.Grant is NOT in it.
+        let ceiling = ScopeSummary::from_profile(&profile(SAMPLE));
+        let outcome = restore_at(
+            &path,
+            &RevokedReach::Read { entity_pattern: "system.Grant".into() },
+            &ceiling,
+        )
+        .unwrap();
+        assert_eq!(outcome, RestoreOutcome::NotPermitted);
+        // The file is untouched: a reach outside the declared ceiling is not written.
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert!(!after.contains("system.Grant"), "a never-declared reach is refused");
+    }
+
+    #[test]
+    fn restore_at_no_change_for_a_present_reach() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("com.test.toml");
+        std::fs::write(&path, SAMPLE).unwrap();
+        let ceiling = ScopeSummary::from_profile(&profile(SAMPLE));
+        let outcome = restore_at(
+            &path,
+            &RevokedReach::Read { entity_pattern: "system.File".into() },
+            &ceiling,
+        )
+        .unwrap();
+        assert_eq!(outcome, RestoreOutcome::NoChange);
+    }
+
+    #[test]
+    fn restore_at_reports_not_found_for_a_missing_profile() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("nope.toml");
+        let ceiling = ScopeSummary::from_profile(&profile(SAMPLE));
+        let outcome = restore_at(
+            &path,
+            &RevokedReach::Read { entity_pattern: "system.File".into() },
+            &ceiling,
+        )
+        .unwrap();
+        assert_eq!(outcome, RestoreOutcome::NotFound);
     }
 }

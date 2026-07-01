@@ -108,6 +108,48 @@ impl RevokeOutcome {
     }
 }
 
+/// The outcome of a restore (re-widen), the reverse of [`RevokeOutcome`]. Restore
+/// is the one authority-growth path: a restore re-adds a reach the user removed,
+/// bounded by the app's declared ceiling. Same one-definition wire-token discipline
+/// so the daemon and a client cannot drift.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestoreOutcome {
+    /// The reach was re-added and the profile written.
+    Restored,
+    /// The reach was already present; nothing changed, nothing written.
+    NoChange,
+    /// The re-widen was refused by the safety gate: it did not strictly widen, or
+    /// the result fell outside the app's declared ceiling. Nothing written.
+    NotPermitted,
+    /// No profile file exists for the target app; nothing to restore.
+    NotFound,
+}
+
+impl RestoreOutcome {
+    /// The wire token the daemon sends for this outcome (always `OK:`-prefixed;
+    /// a refusal is a successful, safe processing, not an error).
+    pub fn wire_token(self) -> &'static str {
+        match self {
+            RestoreOutcome::Restored => "OK: restored",
+            RestoreOutcome::NoChange => "OK: no-change",
+            RestoreOutcome::NotPermitted => "OK: not-permitted",
+            RestoreOutcome::NotFound => "OK: not-found",
+        }
+    }
+
+    /// Parse a wire token back to an outcome, or `None` if it is not a recognised
+    /// outcome token (an `ERROR:` reply, or an unknown string).
+    pub fn from_wire_token(token: &str) -> Option<RestoreOutcome> {
+        match token.trim() {
+            "OK: restored" => Some(RestoreOutcome::Restored),
+            "OK: no-change" => Some(RestoreOutcome::NoChange),
+            "OK: not-permitted" => Some(RestoreOutcome::NotPermitted),
+            "OK: not-found" => Some(RestoreOutcome::NotFound),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
