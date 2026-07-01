@@ -238,12 +238,11 @@ fn inline_str<'a>(table: &'a toml_edit::InlineTable, key: &str) -> Option<&'a st
 /// reach, promoted instance to `All`) without also removing anything.
 ///
 /// SAFETY: passing this is NOT sufficient to authorise a restore. A restore is
-/// the one authority-growth path in the system, so the op layer MUST additionally
-/// bound the widened result within the app's DECLARED CEILING (the Grant node's
-/// `declared_ceiling`): a restore may only reinstate a capability the app already
-/// declared and the user just removed, never grant one it never had. This gate is
-/// the "it grew, and grew only" half; the ceiling bound is the load-bearing half
-/// and lives in the reviewed daemon op, not here.
+/// the one authority-growth path in the system, so [`restore_at`] additionally
+/// bounds the reach to a RECORDED REMOVAL ([`RemovalLedger::contains`], folded from
+/// the durable audit ledger): a restore may only re-add a reach the user actually
+/// revoked, never grant one they never removed. This gate is the "it grew, and grew
+/// only" half; the removal-ledger membership is the load-bearing half.
 pub fn is_strict_widening(old: &ScopeSummary, new: &ScopeSummary) -> bool {
     let read_superset = old.read.is_subset(&new.read);
     let write_superset = old.write.is_subset(&new.write);
@@ -274,10 +273,10 @@ pub fn is_strict_widening(old: &ScopeSummary, new: &ScopeSummary) -> bool {
 /// already present (a no-op). Creates the `[graph]` table if the revoke had left
 /// none.
 ///
-/// SAFETY: this is the write mechanism only. The caller (the reviewed daemon op)
-/// MUST bound the reach within the app's declared ceiling before calling this and
-/// prove the result strictly widened with [`is_strict_widening`]; on its own this
-/// function will happily add any reach it is handed.
+/// SAFETY: this is the write mechanism only. The caller ([`restore_at`]) MUST
+/// bound the reach to a recorded removal (gating on the [`RemovalLedger`]) and
+/// prove the result strictly widened with [`is_strict_widening`] before calling
+/// this; on its own this function will happily add any reach it is handed.
 pub fn apply_restore(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> bool {
     use toml_edit::{Array, Item, Table, Value};
 
@@ -445,42 +444,34 @@ pub fn revoke_at(path: &Path, reach: &RevokedReach) -> std::io::Result<RevokeOut
     Ok(RevokeOutcome::Revoked)
 }
 
-/// Whether `scope` is entirely within `ceiling` in every dimension. The declared
-/// ceiling bounds how far a restore may re-widen: a restore may only reinstate a
-/// capability the app already declared. Every read/write/read_sensitive pattern
-/// and relation must be in the ceiling, and instance `All` requires the ceiling to
-/// permit `All`.
-pub fn is_within_ceiling(scope: &ScopeSummary, ceiling: &ScopeSummary) -> bool {
-    scope.read.is_subset(&ceiling.read)
-        && scope.write.is_subset(&ceiling.write)
-        && scope.read_sensitive.is_subset(&ceiling.read_sensitive)
-        && scope.relations.is_subset(&ceiling.relations)
-        && (!scope.instance_all || ceiling.instance_all)
-}
-
 /// Apply a restore (re-widen) to the profile at `path`, the reverse of
-/// [`revoke_at`] and the one authority-growth path in the system. Load the
-/// profile, re-derive its scopes, re-widen the document in place, then prove the
-/// result BOTH (1) strictly widened the original ([`is_strict_widening`]) AND
-/// (2) stays within the app's declared `ceiling` ([`is_within_ceiling`]) - only
-/// then write it atomically. Writes nothing unless both proofs pass, so a no-op,
-/// a non-widening edit, or a reach outside the declared ceiling leaves the file
-/// untouched (`NoChange` / `NotPermitted`).
+/// [`revoke_at`] and the one authority-growth path in the system. The
+/// load-bearing safety bound is the `ledger`: a restore may re-add ONLY a reach
+/// the removal ledger shows this user previously revoked, so it can reinstate a
+/// capability the user removed, never grant one they never removed. Gate order:
+/// (1) the reach must be a recorded removal ([`RemovalLedger::contains`]), else
+/// `NotPermitted` before the file is touched; (2) re-widen the document in place -
+/// if the reach was already present it is a no-op (`NoChange`); (3) confirm the
+/// edit only grew authority ([`is_strict_widening`], defense in depth) before the
+/// atomic write. Writes nothing unless every gate passes.
 ///
-/// `ceiling` is the app's declared capability ceiling (the Grant node's
-/// `declared_ceiling`, re-derived into a [`ScopeSummary`] by the caller). It is
-/// the load-bearing safety bound: a restore may reinstate a capability the app
-/// already declared and the user just removed, never grant one it never had. The
-/// caller is responsible for the caller-auth gate (the `settings` principal) and
-/// for supplying the ceiling from the authoritative grant, exactly as `revoke_at`'s
-/// caller owns the auth + tier gate.
+/// `ledger` is the target app's removal ledger, reconstructed by the caller from
+/// the durable audit ledger's capability-change records ([`fold_removal_ledger`],
+/// the 1-July audit-ledger decision). The caller owns the caller-auth gate (the
+/// `settings` principal), exactly as `revoke_at`'s caller owns the auth + tier gate.
 pub fn restore_at(
     path: &Path,
     reach: &RevokedReach,
-    ceiling: &ScopeSummary,
+    ledger: &RemovalLedger,
 ) -> std::io::Result<RestoreOutcome> {
     if !path.exists() {
         return Ok(RestoreOutcome::NotFound);
+    }
+    // The authority-growth ceiling: the reach must be one the ledger records as
+    // removed by this user. A restore of anything else - a reach never removed, so
+    // never in the ledger - is refused before the profile is even read.
+    if !ledger.contains(reach) {
+        return Ok(RestoreOutcome::NotPermitted);
     }
     let old_text = std::fs::read_to_string(path)?;
     let old_profile: PermissionProfile = toml::from_str(&old_text)
@@ -500,12 +491,10 @@ pub fn restore_at(
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     let new_summary = summarize(&new_profile);
 
-    // Gate 1: the edit only grew authority (no dimension shrank). Gate 2 (the
-    // load-bearing one): the widened result stays within the declared ceiling.
-    // Both must pass; otherwise write nothing.
-    if !is_strict_widening(&old_summary, &new_summary)
-        || !is_within_ceiling(&new_summary, ceiling)
-    {
+    // Defense in depth: the ledger gate above authorised this specific reach;
+    // confirm the edit actually only grew authority (no dimension shrank) before
+    // the write, so a narrowing bug in `apply_restore` cannot slip through.
+    if !is_strict_widening(&old_summary, &new_summary) {
         return Ok(RestoreOutcome::NotPermitted);
     }
 
@@ -1008,36 +997,16 @@ instance_scope = "all"
     }
 
     #[test]
-    fn is_within_ceiling_bounds_every_dimension() {
-        let ceiling = summary(&["system.File", "system.Project"], &["com.x.Note"], true);
-        // A subset in every dimension is within the ceiling.
-        assert!(is_within_ceiling(&summary(&["system.File"], &[], false), &ceiling));
-        // A read outside the declared ceiling is not.
-        assert!(!is_within_ceiling(&summary(&["system.Grant"], &[], false), &ceiling));
-        // Instance `All` is allowed when the ceiling permits it, refused otherwise.
-        assert!(is_within_ceiling(&summary(&["system.File"], &[], true), &ceiling));
-        let own_ceiling = summary(&["system.File"], &[], false);
-        assert!(!is_within_ceiling(&summary(&["system.File"], &[], true), &own_ceiling));
-    }
-
-    #[test]
-    fn restore_at_re_widens_within_ceiling() {
+    fn restore_at_re_widens_a_recorded_removal() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("com.test.toml");
         std::fs::write(&path, SAMPLE).unwrap();
-        // Ceiling = SAMPLE's declared scope plus system.Session in read (declared by
-        // the app, previously removed by the user).
-        let ceiling_profile = profile(&SAMPLE.replace(
-            "read = [\"system.File\", \"system.Project\"]",
-            "read = [\"system.File\", \"system.Project\", \"system.Session\"]",
-        ));
-        let ceiling = ScopeSummary::from_profile(&ceiling_profile);
-        let outcome = restore_at(
-            &path,
-            &RevokedReach::Read { entity_pattern: "system.Session".into() },
-            &ceiling,
-        )
-        .unwrap();
+        // The user removed system.Session earlier, so it is in the removal ledger
+        // and may be re-added.
+        let reach = RevokedReach::Read { entity_pattern: "system.Session".into() };
+        let mut ledger = RemovalLedger::default();
+        ledger.record(reach.clone());
+        let outcome = restore_at(&path, &reach, &ledger).unwrap();
         assert_eq!(outcome, RestoreOutcome::Restored);
         let after = std::fs::read_to_string(&path).unwrap();
         let read_line = after.lines().find(|l| l.trim_start().starts_with("read =")).unwrap();
@@ -1046,22 +1015,23 @@ instance_scope = "all"
     }
 
     #[test]
-    fn restore_at_refuses_a_reach_outside_the_ceiling() {
+    fn restore_at_refuses_a_reach_not_in_the_ledger() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("com.test.toml");
         std::fs::write(&path, SAMPLE).unwrap();
-        // Ceiling = exactly SAMPLE's declared scope: system.Grant is NOT in it.
-        let ceiling = ScopeSummary::from_profile(&profile(SAMPLE));
+        // The ledger records no removal of system.Grant, so it cannot be restored:
+        // a restore may only re-add a reach the user actually removed.
+        let ledger = RemovalLedger::default();
         let outcome = restore_at(
             &path,
             &RevokedReach::Read { entity_pattern: "system.Grant".into() },
-            &ceiling,
+            &ledger,
         )
         .unwrap();
         assert_eq!(outcome, RestoreOutcome::NotPermitted);
-        // The file is untouched: a reach outside the declared ceiling is not written.
+        // The file is untouched: a reach never recorded as removed is not written.
         let after = std::fs::read_to_string(&path).unwrap();
-        assert!(!after.contains("system.Grant"), "a never-declared reach is refused");
+        assert!(!after.contains("system.Grant"), "a reach never removed is refused");
     }
 
     #[test]
@@ -1069,13 +1039,12 @@ instance_scope = "all"
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("com.test.toml");
         std::fs::write(&path, SAMPLE).unwrap();
-        let ceiling = ScopeSummary::from_profile(&profile(SAMPLE));
-        let outcome = restore_at(
-            &path,
-            &RevokedReach::Read { entity_pattern: "system.File".into() },
-            &ceiling,
-        )
-        .unwrap();
+        // The ledger records system.File as removed, but the profile still grants it
+        // (a stale ledger): the ledger gate passes, then the edit is a no-op.
+        let reach = RevokedReach::Read { entity_pattern: "system.File".into() };
+        let mut ledger = RemovalLedger::default();
+        ledger.record(reach.clone());
+        let outcome = restore_at(&path, &reach, &ledger).unwrap();
         assert_eq!(outcome, RestoreOutcome::NoChange);
     }
 
@@ -1083,11 +1052,10 @@ instance_scope = "all"
     fn restore_at_reports_not_found_for_a_missing_profile() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("nope.toml");
-        let ceiling = ScopeSummary::from_profile(&profile(SAMPLE));
         let outcome = restore_at(
             &path,
             &RevokedReach::Read { entity_pattern: "system.File".into() },
-            &ceiling,
+            &RemovalLedger::default(),
         )
         .unwrap();
         assert_eq!(outcome, RestoreOutcome::NotFound);
