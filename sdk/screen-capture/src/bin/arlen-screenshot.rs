@@ -41,6 +41,14 @@ fn main() -> Result<()> {
              ext-image-copy-capture capture is unavailable"
         );
     }
+
+    // Probe a capture session for the first output and report the buffer
+    // constraints the compositor wants (the handshake before a real capture).
+    let constraints = arlen_screen_capture::probe_session(0)?;
+    println!(
+        "output 0 capture: {}x{}, shm formats {:?}",
+        constraints.width, constraints.height, constraints.shm_formats
+    );
     Ok(())
 }
 
