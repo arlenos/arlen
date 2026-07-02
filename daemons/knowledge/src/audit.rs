@@ -46,6 +46,13 @@ fn reach_to_audit(reach: &RevokedReach) -> CapabilityReach {
         RevokedReach::FilesystemPath { path } => CapabilityReach::FilesystemPath {
             path: path.clone(),
         },
+        RevokedReach::EventBusSubscribe { pattern } => CapabilityReach::EventBusSubscribe {
+            pattern: pattern.clone(),
+        },
+        RevokedReach::EventBusPublish { pattern } => CapabilityReach::EventBusPublish {
+            pattern: pattern.clone(),
+        },
+        RevokedReach::SystemCap { cap } => CapabilityReach::SystemCap { cap: cap.clone() },
     }
 }
 
@@ -86,6 +93,13 @@ pub fn audit_to_reach(reach: &CapabilityReach) -> RevokedReach {
         CapabilityReach::FilesystemPath { path } => RevokedReach::FilesystemPath {
             path: path.clone(),
         },
+        CapabilityReach::EventBusSubscribe { pattern } => RevokedReach::EventBusSubscribe {
+            pattern: pattern.clone(),
+        },
+        CapabilityReach::EventBusPublish { pattern } => RevokedReach::EventBusPublish {
+            pattern: pattern.clone(),
+        },
+        CapabilityReach::SystemCap { cap } => RevokedReach::SystemCap { cap: cap.clone() },
     }
 }
 

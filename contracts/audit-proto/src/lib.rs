@@ -228,6 +228,21 @@ pub enum CapabilityReach {
         /// The custom path.
         path: String,
     },
+    /// An `[event_bus].subscribe` pattern.
+    EventBusSubscribe {
+        /// The subscribe pattern.
+        pattern: String,
+    },
+    /// An `[event_bus].publish` pattern.
+    EventBusPublish {
+        /// The publish pattern.
+        pattern: String,
+    },
+    /// A `[system]` capability (autostart/background/suspend/set_profile).
+    SystemCap {
+        /// The system capability.
+        cap: String,
+    },
 }
 
 /// Content-free interaction metadata — the Structural tier of

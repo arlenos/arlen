@@ -83,6 +83,22 @@ pub enum RevokedReach {
         /// The custom path to remove.
         path: String,
     },
+    /// Remove an `[event_bus].subscribe` pattern (the app hears fewer events).
+    EventBusSubscribe {
+        /// The subscribe pattern to remove.
+        pattern: String,
+    },
+    /// Remove an `[event_bus].publish` pattern.
+    EventBusPublish {
+        /// The publish pattern to remove.
+        pattern: String,
+    },
+    /// Turn off a `[system]` capability (`autostart`/`background`, or the nested
+    /// `[system.power]` `suspend`/`set_profile`).
+    SystemCap {
+        /// The system capability flag to disable.
+        cap: String,
+    },
 }
 
 /// Who initiated the revoke. The agent may only *propose* (suggest-mode records a

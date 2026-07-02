@@ -99,6 +99,13 @@ pub struct ScopeSummary {
     pub filesystem_dirs: BTreeSet<String>,
     /// The `[filesystem].custom` path entries.
     pub filesystem_paths: BTreeSet<String>,
+    /// The `[event_bus].subscribe` patterns (the app's heard-events reach).
+    pub event_bus_subscribe: BTreeSet<String>,
+    /// The `[event_bus].publish` patterns.
+    pub event_bus_publish: BTreeSet<String>,
+    /// The enabled `[system]` capabilities (autostart/background + the nested
+    /// `[system.power]` suspend/set_profile), flattened into one set.
+    pub system_caps: BTreeSet<String>,
 }
 
 /// The clipboard capability flags, in a fixed order. A `ClipboardCap` revoke may
@@ -119,6 +126,16 @@ pub const INTENTS_CAPS: [&str; 3] = ["dispatch", "register", "preferences"];
 /// The standard filesystem directory flags. A `FilesystemDir` revoke may only name
 /// one of these; custom paths are handled by `FilesystemPath`.
 pub const FS_DIRS: [&str; 6] = ["home", "documents", "downloads", "pictures", "music", "videos"];
+
+/// The system capability flags. `autostart`/`background` are top-level on
+/// `[system]`; `suspend`/`set_profile` are nested under `[system.power]`. A
+/// `SystemCap` revoke may only name one of these.
+pub const SYSTEM_CAPS: [&str; 4] = ["autostart", "background", "suspend", "set_profile"];
+
+/// Whether a system cap lives under the nested `[system.power]` table.
+fn system_cap_is_power(cap: &str) -> bool {
+    cap == "suspend" || cap == "set_profile"
+}
 
 impl ScopeSummary {
     /// Summarise a profile's graph reach into the comparable set form: the raw
@@ -230,6 +247,32 @@ impl ScopeSummary {
             }
             None => (BTreeSet::new(), BTreeSet::new()),
         };
+        let (event_bus_subscribe, event_bus_publish) = match &profile.event_bus {
+            Some(e) => (
+                e.subscribe.iter().cloned().collect(),
+                e.publish.iter().cloned().collect(),
+            ),
+            None => (BTreeSet::new(), BTreeSet::new()),
+        };
+        let system_caps = match &profile.system {
+            Some(s) => {
+                let mut set = BTreeSet::new();
+                if s.autostart {
+                    set.insert("autostart".to_string());
+                }
+                if s.background {
+                    set.insert("background".to_string());
+                }
+                if s.power.suspend {
+                    set.insert("suspend".to_string());
+                }
+                if s.power.set_profile {
+                    set.insert("set_profile".to_string());
+                }
+                set
+            }
+            None => BTreeSet::new(),
+        };
         ScopeSummary {
             read,
             write,
@@ -249,6 +292,9 @@ impl ScopeSummary {
             intents_caps,
             filesystem_dirs,
             filesystem_paths,
+            event_bus_subscribe,
+            event_bus_publish,
+            system_caps,
         }
     }
 }
@@ -302,7 +348,10 @@ pub fn is_strict_narrowing(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         && new.search_caps.is_subset(&old.search_caps)
         && new.intents_caps.is_subset(&old.intents_caps)
         && new.filesystem_dirs.is_subset(&old.filesystem_dirs)
-        && new.filesystem_paths.is_subset(&old.filesystem_paths);
+        && new.filesystem_paths.is_subset(&old.filesystem_paths)
+        && new.event_bus_subscribe.is_subset(&old.event_bus_subscribe)
+        && new.event_bus_publish.is_subset(&old.event_bus_publish)
+        && new.system_caps.is_subset(&old.system_caps);
 
     let strictly_smaller = new.read.len() < old.read.len()
         || new.write.len() < old.write.len()
@@ -316,7 +365,10 @@ pub fn is_strict_narrowing(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         || new.search_caps.len() < old.search_caps.len()
         || new.intents_caps.len() < old.intents_caps.len()
         || new.filesystem_dirs.len() < old.filesystem_dirs.len()
-        || new.filesystem_paths.len() < old.filesystem_paths.len();
+        || new.filesystem_paths.len() < old.filesystem_paths.len()
+        || new.event_bus_subscribe.len() < old.event_bus_subscribe.len()
+        || new.event_bus_publish.len() < old.event_bus_publish.len()
+        || new.system_caps.len() < old.system_caps.len();
 
     every_dimension_subset && strictly_smaller
 }
@@ -405,6 +457,35 @@ pub fn apply_revoke(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> b
         };
         return remove_string_from_array(fs, "custom", path);
     }
+    // Event bus: a subscribe/publish pattern list on `[event_bus]`.
+    if let RevokedReach::EventBusSubscribe { pattern } = reach {
+        let Some(bus) = doc.get_mut("event_bus").and_then(Item::as_table_like_mut) else {
+            return false;
+        };
+        return remove_string_from_array(bus, "subscribe", pattern);
+    }
+    if let RevokedReach::EventBusPublish { pattern } = reach {
+        let Some(bus) = doc.get_mut("event_bus").and_then(Item::as_table_like_mut) else {
+            return false;
+        };
+        return remove_string_from_array(bus, "publish", pattern);
+    }
+    // System: a top-level flag on `[system]`, or a nested one on `[system.power]`.
+    if let RevokedReach::SystemCap { cap } = reach {
+        if !SYSTEM_CAPS.contains(&cap.as_str()) {
+            return false;
+        }
+        let Some(system) = doc.get_mut("system").and_then(Item::as_table_like_mut) else {
+            return false;
+        };
+        if system_cap_is_power(cap) {
+            let Some(power) = system.get_mut("power").and_then(Item::as_table_like_mut) else {
+                return false;
+            };
+            return set_bool_flag(power, cap, false);
+        }
+        return set_bool_flag(system, cap, false);
+    }
 
     let Some(graph) = doc.get_mut("graph").and_then(Item::as_table_like_mut) else {
         // No `[graph]` table: nothing to narrow.
@@ -480,7 +561,10 @@ pub fn apply_revoke(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> b
         | RevokedReach::SearchCap { .. }
         | RevokedReach::IntentsCap { .. }
         | RevokedReach::FilesystemDir { .. }
-        | RevokedReach::FilesystemPath { .. } => false,
+        | RevokedReach::FilesystemPath { .. }
+        | RevokedReach::EventBusSubscribe { .. }
+        | RevokedReach::EventBusPublish { .. }
+        | RevokedReach::SystemCap { .. } => false,
     }
 }
 
@@ -538,7 +622,10 @@ pub fn is_strict_widening(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         && old.search_caps.is_subset(&new.search_caps)
         && old.intents_caps.is_subset(&new.intents_caps)
         && old.filesystem_dirs.is_subset(&new.filesystem_dirs)
-        && old.filesystem_paths.is_subset(&new.filesystem_paths);
+        && old.filesystem_paths.is_subset(&new.filesystem_paths)
+        && old.event_bus_subscribe.is_subset(&new.event_bus_subscribe)
+        && old.event_bus_publish.is_subset(&new.event_bus_publish)
+        && old.system_caps.is_subset(&new.system_caps);
 
     let strictly_larger = new.read.len() > old.read.len()
         || new.write.len() > old.write.len()
@@ -552,7 +639,10 @@ pub fn is_strict_widening(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         || new.search_caps.len() > old.search_caps.len()
         || new.intents_caps.len() > old.intents_caps.len()
         || new.filesystem_dirs.len() > old.filesystem_dirs.len()
-        || new.filesystem_paths.len() > old.filesystem_paths.len();
+        || new.filesystem_paths.len() > old.filesystem_paths.len()
+        || new.event_bus_subscribe.len() > old.event_bus_subscribe.len()
+        || new.event_bus_publish.len() > old.event_bus_publish.len()
+        || new.system_caps.len() > old.system_caps.len();
 
     every_dimension_superset && strictly_larger
 }
@@ -671,6 +761,49 @@ pub fn apply_restore(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> 
             .expect("filesystem table ensured above");
         return add_string_to_array(fs, "custom", path);
     }
+    if let RevokedReach::EventBusSubscribe { pattern } = reach {
+        if doc.get("event_bus").and_then(Item::as_table_like).is_none() {
+            doc.insert("event_bus", Item::Table(Table::new()));
+        }
+        let bus = doc
+            .get_mut("event_bus")
+            .and_then(Item::as_table_like_mut)
+            .expect("event_bus table ensured above");
+        return add_string_to_array(bus, "subscribe", pattern);
+    }
+    if let RevokedReach::EventBusPublish { pattern } = reach {
+        if doc.get("event_bus").and_then(Item::as_table_like).is_none() {
+            doc.insert("event_bus", Item::Table(Table::new()));
+        }
+        let bus = doc
+            .get_mut("event_bus")
+            .and_then(Item::as_table_like_mut)
+            .expect("event_bus table ensured above");
+        return add_string_to_array(bus, "publish", pattern);
+    }
+    if let RevokedReach::SystemCap { cap } = reach {
+        if !SYSTEM_CAPS.contains(&cap.as_str()) {
+            return false;
+        }
+        if doc.get("system").and_then(Item::as_table_like).is_none() {
+            doc.insert("system", Item::Table(Table::new()));
+        }
+        let system = doc
+            .get_mut("system")
+            .and_then(Item::as_table_like_mut)
+            .expect("system table ensured above");
+        if system_cap_is_power(cap) {
+            if system.get("power").and_then(Item::as_table_like).is_none() {
+                system.insert("power", Item::Table(Table::new()));
+            }
+            let power = system
+                .get_mut("power")
+                .and_then(Item::as_table_like_mut)
+                .expect("power table ensured above");
+            return set_bool_flag(power, cap, true);
+        }
+        return set_bool_flag(system, cap, true);
+    }
 
     // A revoke can leave a profile with no `[graph]` table (or no target array);
     // a restore must be able to re-create the entry it re-adds.
@@ -766,7 +899,10 @@ pub fn apply_restore(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> 
         | RevokedReach::SearchCap { .. }
         | RevokedReach::IntentsCap { .. }
         | RevokedReach::FilesystemDir { .. }
-        | RevokedReach::FilesystemPath { .. } => false,
+        | RevokedReach::FilesystemPath { .. }
+        | RevokedReach::EventBusSubscribe { .. }
+        | RevokedReach::EventBusPublish { .. }
+        | RevokedReach::SystemCap { .. } => false,
     }
 }
 
@@ -1053,6 +1189,9 @@ mod tests {
             intents_caps: BTreeSet::new(),
             filesystem_dirs: BTreeSet::new(),
             filesystem_paths: BTreeSet::new(),
+            event_bus_subscribe: BTreeSet::new(),
+            event_bus_publish: BTreeSet::new(),
+            system_caps: BTreeSet::new(),
         }
     }
 
@@ -1595,6 +1734,9 @@ allowed_domains = ["api.openai.com", "github.com"]
             intents_caps: BTreeSet::new(),
             filesystem_dirs: BTreeSet::new(),
             filesystem_paths: BTreeSet::new(),
+            event_bus_subscribe: BTreeSet::new(),
+            event_bus_publish: BTreeSet::new(),
+            system_caps: BTreeSet::new(),
         }
     }
 
@@ -1663,6 +1805,9 @@ allowed_domains = ["api.openai.com", "github.com"]
             intents_caps: BTreeSet::new(),
             filesystem_dirs: BTreeSet::new(),
             filesystem_paths: BTreeSet::new(),
+            event_bus_subscribe: BTreeSet::new(),
+            event_bus_publish: BTreeSet::new(),
+            system_caps: BTreeSet::new(),
         }
     }
 
@@ -1790,5 +1935,49 @@ allowed_domains = ["api.openai.com", "github.com"]
         assert!(is_strict_narrowing(&scope(&[], &["/a", "/b"]), &scope(&[], &["/a"])));
         assert!(is_strict_widening(&scope(&["documents"], &[]), &scope(&["documents", "downloads"], &[])));
         assert!(!is_strict_narrowing(&scope(&["documents"], &[]), &scope(&["documents", "downloads"], &[])));
+    }
+
+    #[test]
+    fn event_bus_pattern_revoke_and_restore() {
+        let mut d: toml_edit::DocumentMut =
+            "[event_bus]\nsubscribe = [\"file.opened\", \"window.focused\"]\npublish = [\"app.ready\"]\n"
+                .parse()
+                .unwrap();
+        assert!(apply_revoke(&mut d, &RevokedReach::EventBusSubscribe { pattern: "window.focused".into() }));
+        assert!(!d.to_string().contains("window.focused"));
+        assert!(d.to_string().contains("file.opened"));
+        assert!(apply_revoke(&mut d, &RevokedReach::EventBusPublish { pattern: "app.ready".into() }));
+        assert!(!apply_revoke(&mut d, &RevokedReach::EventBusPublish { pattern: "gone".into() }));
+        assert!(apply_restore(&mut d, &RevokedReach::EventBusSubscribe { pattern: "window.focused".into() }));
+        assert!(d.to_string().contains("window.focused"));
+    }
+
+    #[test]
+    fn system_cap_revoke_handles_flat_and_nested_power() {
+        let mut d: toml_edit::DocumentMut =
+            "[system]\nautostart = true\n[system.power]\nsuspend = true\nset_profile = true\n"
+                .parse()
+                .unwrap();
+        // Flat cap on [system].
+        assert!(apply_revoke(&mut d, &RevokedReach::SystemCap { cap: "autostart".into() }));
+        assert!(d.to_string().contains("autostart = false"));
+        // Nested cap on [system.power].
+        assert!(apply_revoke(&mut d, &RevokedReach::SystemCap { cap: "suspend".into() }));
+        assert!(d.to_string().contains("suspend = false"));
+        assert!(d.to_string().contains("set_profile = true"), "sibling untouched");
+        // Unknown cap refused.
+        assert!(!apply_revoke(&mut d, &RevokedReach::SystemCap { cap: "root".into() }));
+        // Restore the nested cap.
+        assert!(apply_restore(&mut d, &RevokedReach::SystemCap { cap: "suspend".into() }));
+        assert!(d.to_string().contains("suspend = true"));
+
+        // Gate over the flattened system cap set.
+        let s = |c: &[&str]| {
+            let mut sc = clip_scope(&[]);
+            sc.system_caps = c.iter().map(|x| x.to_string()).collect();
+            sc
+        };
+        assert!(is_strict_narrowing(&s(&["autostart", "suspend"]), &s(&["autostart"])));
+        assert!(is_strict_widening(&s(&["autostart"]), &s(&["autostart", "suspend"])));
     }
 }
