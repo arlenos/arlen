@@ -12,7 +12,7 @@
   import { onMount } from "svelte";
   import { writable } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import { Sparkles, RefreshCw, AlertCircle, Cloud, SlidersHorizontal } from "lucide-svelte";
+  import { Sparkles, RefreshCw, AlertCircle, Cloud, SlidersHorizontal, HardDrive } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
@@ -387,6 +387,9 @@
       </LinkCard>
       <LinkCard href="/ai/models" title="Default models" description={$defaultModelLine}>
         {#snippet icon()}<SlidersHorizontal size={20} strokeWidth={1.75} />{/snippet}
+      </LinkCard>
+      <LinkCard href="/ai/local-models" title="Local models" description="Run models on your own machine, offline">
+        {#snippet icon()}<HardDrive size={20} strokeWidth={1.75} />{/snippet}
       </LinkCard>
     </Group>
 

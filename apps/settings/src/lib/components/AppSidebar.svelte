@@ -38,6 +38,7 @@
     LayoutPanelTop,
     PanelTop,
     Printer,
+    HardDrive,
   } from "lucide-svelte";
 
   let query = $state("");
@@ -117,6 +118,7 @@
     LayoutPanelTop,
     PanelTop,
     Printer,
+    HardDrive,
   };
 
   // Group panels by section, matching the Pre-Phase-6 plan
@@ -139,7 +141,7 @@
     },
     {
       label: "AI",
-      panelIds: ["ai", "ai-providers", "ai-models"] as const,
+      panelIds: ["ai", "ai-providers", "ai-models", "ai-local-models"] as const,
     },
     {
       label: "Input",
