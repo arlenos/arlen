@@ -196,6 +196,11 @@ pub enum CapabilityReach {
         /// The network domain.
         domain: String,
     },
+    /// A `[clipboard]` capability flag (read/write/read_sensitive/history).
+    ClipboardCap {
+        /// The clipboard capability.
+        cap: String,
+    },
 }
 
 /// Content-free interaction metadata — the Structural tier of
