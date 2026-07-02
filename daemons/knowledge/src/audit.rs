@@ -34,6 +34,9 @@ fn reach_to_audit(reach: &RevokedReach) -> CapabilityReach {
             relation_type: relation_type.clone(),
         },
         RevokedReach::InstanceAll => CapabilityReach::InstanceAll,
+        RevokedReach::NetworkDomain { domain } => CapabilityReach::NetworkDomain {
+            domain: domain.clone(),
+        },
     }
 }
 
@@ -62,6 +65,9 @@ pub fn audit_to_reach(reach: &CapabilityReach) -> RevokedReach {
             relation_type: relation_type.clone(),
         },
         CapabilityReach::InstanceAll => RevokedReach::InstanceAll,
+        CapabilityReach::NetworkDomain { domain } => RevokedReach::NetworkDomain {
+            domain: domain.clone(),
+        },
     }
 }
 

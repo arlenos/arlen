@@ -78,6 +78,12 @@ pub struct ScopeSummary {
     pub relations: BTreeSet<(String, String, String)>,
     /// Whether the instance scope is `All` (the wider of the two).
     pub instance_all: bool,
+    /// The `[network].allowed_domains` entries. Only meaningful when
+    /// `!network_all`; when `network_all` the effective reach is "all" and the list
+    /// is moot (so editing it does not narrow).
+    pub network_domains: BTreeSet<String>,
+    /// Whether `[network].allow_all` is set (the widest network reach).
+    pub network_all: bool,
 }
 
 impl ScopeSummary {
@@ -94,6 +100,13 @@ impl ScopeSummary {
             ),
             None => (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()),
         };
+        let (network_domains, network_all) = match &profile.network {
+            Some(n) => (
+                n.allowed_domains.iter().cloned().collect(),
+                n.allow_all,
+            ),
+            None => (BTreeSet::new(), false),
+        };
         ScopeSummary {
             read,
             write,
@@ -104,7 +117,33 @@ impl ScopeSummary {
                 .map(|r| (r.from.clone(), r.to.clone(), r.relation_type.clone()))
                 .collect(),
             instance_all: matches!(profile.to_instance_scope(), InstanceScope::All),
+            network_domains,
+            network_all,
         }
+    }
+}
+
+/// Whether `new`'s network reach is a subset of `old`'s (not wider). `allow_all`
+/// is the widest reach: a list is a subset of `all`, `all` is a subset only of
+/// `all`, and two lists compare by domain-set containment.
+fn network_is_subset(old: &ScopeSummary, new: &ScopeSummary) -> bool {
+    if new.network_all {
+        old.network_all
+    } else if old.network_all {
+        true
+    } else {
+        new.network_domains.is_subset(&old.network_domains)
+    }
+}
+
+/// Whether `new`'s network reach is strictly smaller than `old`'s: losing
+/// `allow_all` (all -> list), or dropping a domain from a list. Editing the list
+/// while `allow_all` stays set is NOT a narrowing (the reach is still "all").
+fn network_strictly_smaller(old: &ScopeSummary, new: &ScopeSummary) -> bool {
+    if old.network_all {
+        !new.network_all
+    } else {
+        !new.network_all && new.network_domains.len() < old.network_domains.len()
     }
 }
 
@@ -121,14 +160,19 @@ pub fn is_strict_narrowing(old: &ScopeSummary, new: &ScopeSummary) -> bool {
     let relations_subset = new.relations.is_subset(&old.relations);
     // Instance: `All` is wider than `Own`. The new scope may not gain `All`.
     let instance_subset = !new.instance_all || old.instance_all;
-    let every_dimension_subset =
-        read_subset && write_subset && read_sensitive_subset && relations_subset && instance_subset;
+    let every_dimension_subset = read_subset
+        && write_subset
+        && read_sensitive_subset
+        && relations_subset
+        && instance_subset
+        && network_is_subset(old, new);
 
     let strictly_smaller = new.read.len() < old.read.len()
         || new.write.len() < old.write.len()
         || new.read_sensitive.len() < old.read_sensitive.len()
         || new.relations.len() < old.relations.len()
-        || (old.instance_all && !new.instance_all);
+        || (old.instance_all && !new.instance_all)
+        || network_strictly_smaller(old, new);
 
     every_dimension_subset && strictly_smaller
 }
@@ -141,6 +185,17 @@ pub fn is_strict_narrowing(old: &ScopeSummary, new: &ScopeSummary) -> bool {
 /// survives the edit.
 pub fn apply_revoke(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> bool {
     use toml_edit::{Item, Value};
+
+    // Network operates on `[network]`, not `[graph]`; handle it before the graph
+    // gate. Removing a domain from `[network].allowed_domains`; a no-op (false) if
+    // the domain (or the table) is absent. The narrowing gate additionally refuses
+    // this when `allow_all` is set (the list is moot then).
+    if let RevokedReach::NetworkDomain { domain } = reach {
+        let Some(network) = doc.get_mut("network").and_then(Item::as_table_like_mut) else {
+            return false;
+        };
+        return remove_string_from_array(network, "allowed_domains", domain);
+    }
 
     let Some(graph) = doc.get_mut("graph").and_then(Item::as_table_like_mut) else {
         // No `[graph]` table: nothing to narrow.
@@ -208,6 +263,8 @@ pub fn apply_revoke(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> b
                 false
             }
         }
+        // Handled before the `[graph]` gate above; unreachable here, fail-safe.
+        RevokedReach::NetworkDomain { .. } => false,
     }
 }
 
@@ -251,17 +308,21 @@ pub fn is_strict_widening(old: &ScopeSummary, new: &ScopeSummary) -> bool {
     // Instance: `All` is the wider reach. The new scope may not lose an `All` the
     // old had (that would be a narrowing, not a restore).
     let instance_superset = !old.instance_all || new.instance_all;
+    // Network superset is the mirror of the subset check: old's reach ⊆ new's.
+    let network_superset = network_is_subset(new, old);
     let every_dimension_superset = read_superset
         && write_superset
         && read_sensitive_superset
         && relations_superset
-        && instance_superset;
+        && instance_superset
+        && network_superset;
 
     let strictly_larger = new.read.len() > old.read.len()
         || new.write.len() > old.write.len()
         || new.read_sensitive.len() > old.read_sensitive.len()
         || new.relations.len() > old.relations.len()
-        || (!old.instance_all && new.instance_all);
+        || (!old.instance_all && new.instance_all)
+        || network_strictly_smaller(new, old);
 
     every_dimension_superset && strictly_larger
 }
@@ -279,6 +340,20 @@ pub fn is_strict_widening(old: &ScopeSummary, new: &ScopeSummary) -> bool {
 /// this; on its own this function will happily add any reach it is handed.
 pub fn apply_restore(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> bool {
     use toml_edit::{Array, Item, Table, Value};
+
+    // Network operates on `[network]`; handle it before the graph table is ensured.
+    // Re-add the domain to `[network].allowed_domains`, creating the table/array if
+    // the revoke had left none. A no-op (false) if already present.
+    if let RevokedReach::NetworkDomain { domain } = reach {
+        if doc.get("network").and_then(Item::as_table_like).is_none() {
+            doc.insert("network", Item::Table(Table::new()));
+        }
+        let network = doc
+            .get_mut("network")
+            .and_then(Item::as_table_like_mut)
+            .expect("network table ensured above");
+        return add_string_to_array(network, "allowed_domains", domain);
+    }
 
     // A revoke can leave a profile with no `[graph]` table (or no target array);
     // a restore must be able to re-create the entry it re-adds.
@@ -366,6 +441,8 @@ pub fn apply_restore(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> 
                 true
             }
         }
+        // Handled before the `[graph]` table is ensured above; unreachable here.
+        RevokedReach::NetworkDomain { .. } => false,
     }
 }
 
@@ -627,6 +704,8 @@ mod tests {
             read_sensitive: BTreeSet::new(),
             relations: BTreeSet::new(),
             instance_all,
+            network_domains: BTreeSet::new(),
+            network_all: false,
         }
     }
 
@@ -1126,5 +1205,68 @@ instance_scope = "all"
         let back: RemovalLedger = toml::from_str(&text).unwrap();
         assert_eq!(back.removed().len(), 2);
         assert!(back.contains(&RevokedReach::InstanceAll));
+    }
+
+    fn net_domain(d: &str) -> RevokedReach {
+        RevokedReach::NetworkDomain { domain: d.into() }
+    }
+
+    #[test]
+    fn network_domain_revoke_and_restore_edit_the_network_table() {
+        let mut d: toml_edit::DocumentMut = r#"
+[network]
+allowed_domains = ["api.openai.com", "github.com"]
+"#
+        .parse()
+        .unwrap();
+        // Revoke removes exactly the named domain.
+        assert!(apply_revoke(&mut d, &net_domain("github.com")));
+        assert!(d.to_string().contains("api.openai.com"));
+        assert!(!d.to_string().contains("github.com"));
+        // Absent domain -> no-op.
+        assert!(!apply_revoke(&mut d, &net_domain("nope.example")));
+        // Restore re-adds it.
+        assert!(apply_restore(&mut d, &net_domain("github.com")));
+        assert!(d.to_string().contains("github.com"));
+        // Already present -> no-op.
+        assert!(!apply_restore(&mut d, &net_domain("github.com")));
+    }
+
+    fn net_scope(domains: &[&str], all: bool) -> ScopeSummary {
+        ScopeSummary {
+            read: BTreeSet::new(),
+            write: BTreeSet::new(),
+            read_sensitive: BTreeSet::new(),
+            relations: BTreeSet::new(),
+            instance_all: false,
+            network_domains: domains.iter().map(|s| s.to_string()).collect(),
+            network_all: all,
+        }
+    }
+
+    #[test]
+    fn network_narrowing_gate_is_sound() {
+        // Dropping a domain narrows.
+        assert!(is_strict_narrowing(&net_scope(&["a", "b"], false), &net_scope(&["a"], false)));
+        // all -> a list narrows.
+        assert!(is_strict_narrowing(&net_scope(&[], true), &net_scope(&["a"], false)));
+        // Editing the (moot) list while allow_all stays set is NOT a narrowing.
+        assert!(!is_strict_narrowing(&net_scope(&["a", "b"], true), &net_scope(&["a"], true)));
+        // Adding a domain is not a narrowing.
+        assert!(!is_strict_narrowing(&net_scope(&["a"], false), &net_scope(&["a", "b"], false)));
+        // A no-op is not a narrowing.
+        assert!(!is_strict_narrowing(&net_scope(&["a"], false), &net_scope(&["a"], false)));
+        // Gaining allow_all is a widening, never a narrowing.
+        assert!(!is_strict_narrowing(&net_scope(&["a"], false), &net_scope(&[], true)));
+    }
+
+    #[test]
+    fn network_widening_gate_mirrors_narrowing() {
+        // Adding a domain back widens (the restore direction).
+        assert!(is_strict_widening(&net_scope(&["a"], false), &net_scope(&["a", "b"], false)));
+        // list -> all widens.
+        assert!(is_strict_widening(&net_scope(&["a"], false), &net_scope(&[], true)));
+        // Dropping a domain is not a widening.
+        assert!(!is_strict_widening(&net_scope(&["a", "b"], false), &net_scope(&["a"], false)));
     }
 }

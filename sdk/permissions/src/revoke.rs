@@ -39,6 +39,14 @@ pub enum RevokedReach {
     },
     /// Demote `instance_scope` from `All` to `Own` (the app loses cross-app reach).
     InstanceAll,
+    /// Remove a domain from `[network].allowed_domains` (the app loses egress to it).
+    /// Narrowing-only, like the graph variants: it can only remove an allowed
+    /// domain, never add one, and while `allow_all` is set the domain list is moot
+    /// so removing an entry is not a narrowing (the gate refuses it).
+    NetworkDomain {
+        /// The domain to remove from the network egress allowlist.
+        domain: String,
+    },
 }
 
 /// Who initiated the revoke. The agent may only *propose* (suggest-mode records a
