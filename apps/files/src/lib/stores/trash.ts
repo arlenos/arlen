@@ -23,3 +23,10 @@ export async function restoreFromTrash(entry: FileEntry): Promise<void> {
 export async function emptyTrash(): Promise<number> {
   return invoke<number>("files_trash_empty");
 }
+
+/// Permanently delete one trashed entry, bypassing restore. A non-trash entry
+/// (no `restore_token`) is a no-op; the caller re-lists afterwards.
+export async function deletePermanently(entry: FileEntry): Promise<void> {
+  if (!entry.restore_token) return;
+  await invoke("files_trash_delete", { trashedName: entry.restore_token });
+}

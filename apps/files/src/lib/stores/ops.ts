@@ -111,6 +111,39 @@ export async function bulkRename(
   }
 }
 
+/// Extract an archive into `dest`, surfacing progress and errors like every
+/// other mutation, then refreshing so the extracted contents show.
+export async function extractArchive(archive: string, dest: string): Promise<boolean> {
+  opBusy.set("Extracting");
+  try {
+    await invoke("files_extract", { archive, dest });
+    opError.set(null);
+    await get(activeController)?.refresh();
+    return true;
+  } catch (e) {
+    opError.set(String(e));
+    return false;
+  } finally {
+    opBusy.set(null);
+  }
+}
+
+/// Compress `sources` into a new archive at `dest`, then refresh.
+export async function compressPaths(sources: string[], dest: string): Promise<boolean> {
+  opBusy.set(`Compressing ${sources.length} items`);
+  try {
+    await invoke("files_compress", { sources, dest });
+    opError.set(null);
+    await get(activeController)?.refresh();
+    return true;
+  } catch (e) {
+    opError.set(String(e));
+    return false;
+  } finally {
+    opBusy.set(null);
+  }
+}
+
 /// Paste the clipboard into `dest`; a cut clipboard empties itself
 /// after the move (paste-again would find nothing there).
 export async function paste(dest: string): Promise<void> {

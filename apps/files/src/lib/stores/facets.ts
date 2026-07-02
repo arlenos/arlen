@@ -84,9 +84,17 @@ export const facetOpen = writable(false);
 /// The real folder the filter opened over, returned to when every facet clears.
 export const facetBase = writable("/");
 
-/// The saved Smart Folders (session-held; persisting needs a contract command,
-/// flagged).
+/// The saved Smart Folders. Loaded from disk on start and persisted on every
+/// change so they survive a restart.
 export const savedFolders = writable<SmartFolder[]>([]);
+
+// Persist on change, but only after the initial load has run, so restoring the
+// saved set on start doesn't immediately echo straight back to disk.
+let persistReady = false;
+savedFolders.subscribe((list) => {
+  if (!persistReady) return;
+  void invoke("files_smart_folders_save", { folders: list }).catch(() => {});
+});
 
 function emptySelection(): Record<FacetGroup, Set<string>> {
   return { project: new Set(), type: new Set(), time: new Set(), touched: new Set() };
@@ -158,8 +166,8 @@ export function applySmartFolder(folder: SmartFolder): void {
   selectedFacets.set(parseFacets(folder.location));
 }
 
-/// Save the current selection as a named Smart Folder (session-held). Returns
-/// null when nothing is selected. Persistence is a flagged contract gap.
+/// Save the current selection as a named Smart Folder. Returns null when nothing
+/// is selected. The new folder persists through the `savedFolders` subscription.
 export function saveSmartFolder(name: string): SmartFolder | null {
   const location = serializeFacets(get(selectedFacets));
   if (!location) return null;
@@ -170,6 +178,17 @@ export function saveSmartFolder(name: string): SmartFolder | null {
   };
   savedFolders.update((list) => [...list, folder]);
   return folder;
+}
+
+/// Load the persisted Smart Folders on start, then enable the persist
+/// subscription so later changes are written back.
+export async function loadSmartFolders(): Promise<void> {
+  try {
+    savedFolders.set(await invoke<SmartFolder[]>("files_smart_folders"));
+  } catch {
+    // No saved folders yet, or the read failed; leave the set empty.
+  }
+  persistReady = true;
 }
 
 /// Load the graph-backed facet options. Projects reuse `files_projects`; the
