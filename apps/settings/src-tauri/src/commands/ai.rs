@@ -177,3 +177,57 @@ async fn name_has_owner(dbus: &zbus::fdo::DBusProxy<'_>, name: &str) -> bool {
     };
     dbus.name_has_owner(bus_name).await.unwrap_or(false)
 }
+
+/// Local-hardware probe for the Models hub (`ai_hardware_probe`): total RAM, the
+/// accelerator kind (APU vs discrete GPU) and its VRAM, plus a plain one-line
+/// summary of what fits at a good speed. Computed locally from
+/// `arlen-ai-model-manager` (no daemon round-trip; hardware detection is a pure
+/// local read), so the hub's fit line is real instead of a fixture.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HardwareInfo {
+    /// Total system RAM in GB.
+    ram_gb: f64,
+    /// `"apu"` (unified memory) or `"discrete"` (dedicated VRAM).
+    accelerator: String,
+    /// Dedicated VRAM in GB for a discrete GPU; `null` for an APU.
+    vram_gb: Option<f64>,
+    /// A plain sentence: the largest model size that runs well here.
+    summary: String,
+}
+
+#[tauri::command]
+pub fn ai_hardware_probe() -> HardwareInfo {
+    use arlen_ai_model_manager as mm;
+    let hw = mm::detect_hardware();
+    let (accelerator, vram_gb) = match hw.accelerator {
+        mm::Accelerator::Apu => ("apu".to_string(), None),
+        mm::Accelerator::Discrete { vram_gib } => ("discrete".to_string(), Some(vram_gib)),
+    };
+    HardwareInfo {
+        ram_gb: hw.ram_gib,
+        accelerator,
+        vram_gb,
+        summary: hardware_summary(&hw),
+    }
+}
+
+/// A plain one-line capability summary: the largest common model size that FITS
+/// (not merely may-slow) at the Q4_K_M default, phrased for the hardware kind. On
+/// an APU the speed axis leads (the plan), so a fits-but-slow size is not claimed.
+fn hardware_summary(hw: &arlen_ai_model_manager::Hardware) -> String {
+    use arlen_ai_model_manager as mm;
+    const SIZES_B: [f64; 7] = [1.0, 3.0, 7.0, 8.0, 13.0, 34.0, 70.0];
+    let best = SIZES_B
+        .iter()
+        .rev()
+        .copied()
+        .find(|&b| mm::fit_badge(b, mm::Quant::Q4KM, hw) == mm::FitBadge::Fits);
+    match best {
+        Some(b) => format!(
+            "Your machine can run models up to about {}B at a good speed.",
+            b as u32
+        ),
+        None => "Your machine is best with small (1B) models.".to_string(),
+    }
+}
