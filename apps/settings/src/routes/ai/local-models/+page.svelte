@@ -1,10 +1,11 @@
 <script lang="ts">
   /// Model Manager (local-model-bundle-plan.md): the curated, non-technical
-  /// place to download and manage local AI models. Three hardware-picked tiers
+  /// place to ACQUIRE and MANAGE local AI models. Three hardware-picked tiers
   /// (Fast / Balanced / Quality), a plain fit verdict computed locally, quant
-  /// hidden, size in GB, download progress + cancel, delete to reclaim space,
-  /// one active model. Downloading is the single deliberate egress a no-telemetry
-  /// OS makes, so it is a clear one-time affirmation, never a hidden dependency.
+  /// hidden, size in GB, download progress + cancel, delete to reclaim space.
+  /// Choosing which model actually answers lives on the Default models page and
+  /// the in-chat picker, not here (role split, Tim 2 July). Downloading is the
+  /// single deliberate egress, so it is a clear one-time affirmation.
   ///
   /// The `ai-model-manager` backend already computes fit/speed/quant and does the
   /// verified download; the Settings Tauri bridge is unwired, so this reads a
@@ -14,9 +15,19 @@
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
+  import { Badge } from "@arlen/ui-kit/components/ui/badge";
+  import { LinkCard } from "@arlen/ui-kit/components/ui/link-card";
   import { Progress } from "@arlen/ui-kit/components/ui/progress";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
+  import {
+    Collapsible,
+    CollapsibleTrigger,
+    CollapsibleContent,
+  } from "@arlen/ui-kit/components/ui/collapsible";
+  import { SlidersHorizontal } from "lucide-svelte";
   import {
     models,
     hardware,
@@ -30,7 +41,6 @@
     loadLocalModels,
     startDownload,
     cancelDownload,
-    setActive,
     deleteModel,
     type Tier,
     type LocalModel,
@@ -44,8 +54,6 @@
   const installed = $derived(installedModels($models));
   const advanced = $derived(advancedModels($models));
 
-  let showAdvanced = $state(false);
-
   // The one consented egress: a clear one-line affirmation before a download.
   let pending = $state<LocalModel | null>(null);
   function askDownload(m: LocalModel) {
@@ -57,10 +65,10 @@
     if (m) await startDownload(m);
   }
 
-  const FIT_TEXT: Record<Fit, string> = {
-    fits: "Fits",
-    "may-be-slow": "May be slow",
-    "wont-fit": "Won't fit",
+  const FIT: Record<Fit, { text: string; tone: "success" | "warn" | "destructive" }> = {
+    fits: { text: "Fits", tone: "success" },
+    "may-be-slow": { text: "May be slow", tone: "warn" },
+    "wont-fit": { text: "Won't fit", tone: "destructive" },
   };
 
   function downloadPct(source: string): number | null {
@@ -104,56 +112,49 @@
 
     {#if installed.length > 0}
       <Group label="Your models" class="span-full">
-        {#each installed as m, i (m.source)}
-          {#if i > 0}<div class="hr"></div>{/if}
-          <div class="mine">
-            <div class="mine-info">
-              <span class="mine-name">{m.name}</span>
-              <span class="mine-meta">
-                {m.sizeGb.toFixed(1)} GB{m.baked ? " · built in" : ""}
-              </span>
-            </div>
-            {#if m.active}
-              <span class="active"><Check size={13} strokeWidth={2.5} /> Active</span>
-            {:else}
-              <Button variant="outline" size="sm" onclick={() => setActive(m.source)}>Use</Button>
-            {/if}
-            <button
-              type="button"
-              class="del"
-              aria-label={`Delete ${m.name}`}
-              disabled={m.baked}
-              title={m.baked ? "The built-in model cannot be removed" : "Delete to reclaim space"}
-              onclick={() => deleteModel(m.source)}
-            >
-              <Trash2 size={15} strokeWidth={1.75} />
-            </button>
-          </div>
+        {#each installed as m (m.source)}
+          <Row
+            label={m.name}
+            description={`${m.sizeGb.toFixed(1)} GB${m.baked ? " · built in" : ""}`}
+            id={`local-${m.source}`}
+          >
+            {#snippet control()}
+              <IconAction
+                label={m.baked ? "The built-in model cannot be removed" : `Delete ${m.name}`}
+                disabled={m.baked}
+                onclick={() => deleteModel(m.source)}
+              >
+                <Trash2 size={15} strokeWidth={1.75} />
+              </IconAction>
+            {/snippet}
+          </Row>
         {/each}
       </Group>
     {/if}
 
+    <LinkCard
+      href="/ai/models"
+      title="Default models"
+      description="Choose which model answers each kind of task"
+    >
+      {#snippet icon()}<SlidersHorizontal size={20} strokeWidth={1.75} />{/snippet}
+    </LinkCard>
+
     {#if advanced.length > 0}
-      <div class="span-full">
-        <button
-          type="button"
-          class="adv-toggle"
-          class:open={showAdvanced}
-          onclick={() => (showAdvanced = !showAdvanced)}
-        >
+      <Collapsible class="adv span-full">
+        <CollapsibleTrigger class="adv-trigger">
           <ChevronRight size={15} strokeWidth={2} />
           Advanced
-        </button>
-        {#if showAdvanced}
+        </CollapsibleTrigger>
+        <CollapsibleContent>
           <Group class="span-full">
             <p class="adv-note">Uncurated models from the wider community. No guarantees on quality or safety.</p>
-            {#each advanced as m, i (m.source)}
-              {#if i > 0}<div class="hr"></div>{/if}
+            {#each advanced as m (m.source)}
               <div class="adv-model">{@render modelBody(m)}</div>
             {/each}
           </Group>
-        {/if}
-      </div>
+        </CollapsibleContent>
+      </Collapsible>
     {/if}
 
     {#if $modelsLoaded && $models.length === 0}
@@ -172,8 +173,8 @@
     <div class="model-info">
       <span class="model-name">{m.name}</span>
       <span class="model-tags">
-        {#each m.tasks as t (t)}<span class="tag">{taskLabel(t)}</span>{/each}
-        <span class="fit fit-{m.fit}">{FIT_TEXT[m.fit]}</span>
+        {#each m.tasks as t (t)}<Badge variant="outline">{taskLabel(t)}</Badge>{/each}
+        <Badge variant={FIT[m.fit].tone}>{FIT[m.fit].text}</Badge>
       </span>
       <span class="model-meta">{m.sizeGb.toFixed(1)} GB · {Math.round(m.tokensPerSec)} words/sec</span>
     </div>
@@ -254,6 +255,7 @@
   }
   .tier-empty {
     margin: 0;
+    padding: 0.25rem 1rem;
     font-size: 0.75rem;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
@@ -282,31 +284,6 @@
     align-items: center;
     gap: 0.375rem;
   }
-  .tag {
-    font-size: 0.625rem;
-    padding: 0.0625rem 0.375rem;
-    border-radius: var(--radius-chip, 4px);
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
-    color: color-mix(in srgb, var(--foreground) 65%, transparent);
-  }
-  .fit {
-    font-size: 0.625rem;
-    font-weight: 600;
-    padding: 0.0625rem 0.375rem;
-    border-radius: var(--radius-chip, 4px);
-  }
-  .fit-fits {
-    color: var(--color-success, #16a34a);
-    background: color-mix(in srgb, var(--color-success, #16a34a) 14%, transparent);
-  }
-  .fit-may-be-slow {
-    color: var(--color-warning, #ca8a04);
-    background: color-mix(in srgb, var(--color-warning, #ca8a04) 14%, transparent);
-  }
-  .fit-wont-fit {
-    color: var(--color-error, #dc2626);
-    background: color-mix(in srgb, var(--color-error, #dc2626) 14%, transparent);
-  }
   .model-meta {
     font-size: 0.6875rem;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
@@ -314,8 +291,7 @@
   .model-action {
     flex-shrink: 0;
   }
-  .installed,
-  .active {
+  .installed {
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
@@ -351,56 +327,9 @@
     color: var(--color-error, #dc2626);
   }
 
-  /* Your models rows. */
-  .mine {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem 0;
-  }
-  .mine-info {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-width: 0;
-  }
-  .mine-name {
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--foreground);
-  }
-  .mine-meta {
-    font-size: 0.6875rem;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
-  }
-  .del {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.75rem;
-    height: 1.75rem;
-    flex-shrink: 0;
-    border: none;
-    border-radius: var(--radius-button, 6px);
-    background: transparent;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
-    cursor: pointer;
-    transition: color var(--duration-micro, 100ms) var(--ease-out, ease);
-  }
-  .del:hover:not(:disabled) {
-    color: var(--color-error, #dc2626);
-  }
-  .del:disabled {
-    opacity: 0.35;
-    cursor: default;
-  }
-
-  .hr {
-    height: 1px;
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
-  }
-
-  .adv-toggle {
+  /* The Advanced disclosure trigger + its rotating chevron. The class rides the
+     Collapsible component root, so these are fully global. */
+  :global(.adv-trigger) {
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
@@ -412,21 +341,22 @@
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
     cursor: pointer;
   }
-  .adv-toggle:hover {
+  :global(.adv-trigger:hover) {
     color: var(--foreground);
   }
-  .adv-toggle :global(svg) {
+  :global(.adv-trigger svg) {
     transition: transform var(--duration-micro, 100ms) var(--ease-out, ease);
   }
-  .adv-toggle.open :global(svg) {
+  :global(.adv-trigger[data-state="open"] svg) {
     transform: rotate(90deg);
   }
   .adv-note {
-    margin: 0 0 0.25rem;
+    margin: 0;
+    padding: var(--space-row, 0.75rem) 1rem 0.25rem;
     font-size: 0.6875rem;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .adv-model {
-    padding: 0.25rem 0;
+    padding: 0.375rem 1rem;
   }
 </style>
