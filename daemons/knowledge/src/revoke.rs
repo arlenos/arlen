@@ -87,12 +87,20 @@ pub struct ScopeSummary {
     /// The enabled `[clipboard]` capabilities (`read`/`write`/`read_sensitive`/
     /// `history`). A revoke turns one off, shrinking the set.
     pub clipboard_caps: BTreeSet<String>,
+    /// Whether `[notifications].enabled` is set (a single-bool dimension).
+    pub notifications_on: bool,
+    /// The enabled `[input]` capabilities (focused/global keybinding registration).
+    pub input_caps: BTreeSet<String>,
 }
 
 /// The clipboard capability flags, in a fixed order. A `ClipboardCap` revoke may
 /// only name one of these, and `apply_revoke`/`apply_restore` only ever touch these
 /// keys of `[clipboard]`.
 pub const CLIPBOARD_CAPS: [&str; 4] = ["read", "write", "read_sensitive", "history"];
+
+/// The input capability flags. An `InputCap` revoke may only name one of these, and
+/// `apply_revoke`/`apply_restore` only ever touch these keys of `[input]`.
+pub const INPUT_CAPS: [&str; 2] = ["register_focused_bindings", "register_global_bindings"];
 
 impl ScopeSummary {
     /// Summarise a profile's graph reach into the comparable set form: the raw
@@ -134,6 +142,20 @@ impl ScopeSummary {
             }
             None => BTreeSet::new(),
         };
+        let notifications_on = profile.notifications.as_ref().map(|n| n.enabled).unwrap_or(false);
+        let input_caps = match &profile.input {
+            Some(i) => {
+                let mut set = BTreeSet::new();
+                if i.register_focused_bindings {
+                    set.insert("register_focused_bindings".to_string());
+                }
+                if i.register_global_bindings {
+                    set.insert("register_global_bindings".to_string());
+                }
+                set
+            }
+            None => BTreeSet::new(),
+        };
         ScopeSummary {
             read,
             write,
@@ -147,6 +169,8 @@ impl ScopeSummary {
             network_domains,
             network_all,
             clipboard_caps,
+            notifications_on,
+            input_caps,
         }
     }
 }
@@ -194,7 +218,9 @@ pub fn is_strict_narrowing(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         && relations_subset
         && instance_subset
         && network_is_subset(old, new)
-        && new.clipboard_caps.is_subset(&old.clipboard_caps);
+        && new.clipboard_caps.is_subset(&old.clipboard_caps)
+        && (!new.notifications_on || old.notifications_on)
+        && new.input_caps.is_subset(&old.input_caps);
 
     let strictly_smaller = new.read.len() < old.read.len()
         || new.write.len() < old.write.len()
@@ -202,7 +228,9 @@ pub fn is_strict_narrowing(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         || new.relations.len() < old.relations.len()
         || (old.instance_all && !new.instance_all)
         || network_strictly_smaller(old, new)
-        || new.clipboard_caps.len() < old.clipboard_caps.len();
+        || new.clipboard_caps.len() < old.clipboard_caps.len()
+        || (old.notifications_on && !new.notifications_on)
+        || new.input_caps.len() < old.input_caps.len();
 
     every_dimension_subset && strictly_smaller
 }
@@ -236,6 +264,24 @@ pub fn apply_revoke(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> b
             return false;
         };
         return set_bool_flag(clipboard, cap, false);
+    }
+    // Notifications: a single flag on `[notifications]`.
+    if let RevokedReach::NotificationsOff = reach {
+        let Some(notifications) = doc.get_mut("notifications").and_then(Item::as_table_like_mut)
+        else {
+            return false;
+        };
+        return set_bool_flag(notifications, "enabled", false);
+    }
+    // Input: a capability flag on `[input]`.
+    if let RevokedReach::InputCap { cap } = reach {
+        if !INPUT_CAPS.contains(&cap.as_str()) {
+            return false;
+        }
+        let Some(input) = doc.get_mut("input").and_then(Item::as_table_like_mut) else {
+            return false;
+        };
+        return set_bool_flag(input, cap, false);
     }
 
     let Some(graph) = doc.get_mut("graph").and_then(Item::as_table_like_mut) else {
@@ -305,7 +351,10 @@ pub fn apply_revoke(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> b
             }
         }
         // Handled before the `[graph]` gate above; unreachable here, fail-safe.
-        RevokedReach::NetworkDomain { .. } | RevokedReach::ClipboardCap { .. } => false,
+        RevokedReach::NetworkDomain { .. }
+        | RevokedReach::ClipboardCap { .. }
+        | RevokedReach::NotificationsOff
+        | RevokedReach::InputCap { .. } => false,
     }
 }
 
@@ -357,7 +406,9 @@ pub fn is_strict_widening(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         && relations_superset
         && instance_superset
         && network_superset
-        && old.clipboard_caps.is_subset(&new.clipboard_caps);
+        && old.clipboard_caps.is_subset(&new.clipboard_caps)
+        && (!old.notifications_on || new.notifications_on)
+        && old.input_caps.is_subset(&new.input_caps);
 
     let strictly_larger = new.read.len() > old.read.len()
         || new.write.len() > old.write.len()
@@ -365,7 +416,9 @@ pub fn is_strict_widening(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         || new.relations.len() > old.relations.len()
         || (!old.instance_all && new.instance_all)
         || network_strictly_smaller(new, old)
-        || new.clipboard_caps.len() > old.clipboard_caps.len();
+        || new.clipboard_caps.len() > old.clipboard_caps.len()
+        || (!old.notifications_on && new.notifications_on)
+        || new.input_caps.len() > old.input_caps.len();
 
     every_dimension_superset && strictly_larger
 }
@@ -411,6 +464,29 @@ pub fn apply_restore(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> 
             .and_then(Item::as_table_like_mut)
             .expect("clipboard table ensured above");
         return set_bool_flag(clipboard, cap, true);
+    }
+    if let RevokedReach::NotificationsOff = reach {
+        if doc.get("notifications").and_then(Item::as_table_like).is_none() {
+            doc.insert("notifications", Item::Table(Table::new()));
+        }
+        let notifications = doc
+            .get_mut("notifications")
+            .and_then(Item::as_table_like_mut)
+            .expect("notifications table ensured above");
+        return set_bool_flag(notifications, "enabled", true);
+    }
+    if let RevokedReach::InputCap { cap } = reach {
+        if !INPUT_CAPS.contains(&cap.as_str()) {
+            return false;
+        }
+        if doc.get("input").and_then(Item::as_table_like).is_none() {
+            doc.insert("input", Item::Table(Table::new()));
+        }
+        let input = doc
+            .get_mut("input")
+            .and_then(Item::as_table_like_mut)
+            .expect("input table ensured above");
+        return set_bool_flag(input, cap, true);
     }
 
     // A revoke can leave a profile with no `[graph]` table (or no target array);
@@ -500,7 +576,10 @@ pub fn apply_restore(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> 
             }
         }
         // Handled before the `[graph]` table is ensured above; unreachable here.
-        RevokedReach::NetworkDomain { .. } | RevokedReach::ClipboardCap { .. } => false,
+        RevokedReach::NetworkDomain { .. }
+        | RevokedReach::ClipboardCap { .. }
+        | RevokedReach::NotificationsOff
+        | RevokedReach::InputCap { .. } => false,
     }
 }
 
@@ -781,6 +860,8 @@ mod tests {
             network_domains: BTreeSet::new(),
             network_all: false,
             clipboard_caps: BTreeSet::new(),
+            notifications_on: false,
+            input_caps: BTreeSet::new(),
         }
     }
 
@@ -1317,6 +1398,8 @@ allowed_domains = ["api.openai.com", "github.com"]
             network_domains: domains.iter().map(|s| s.to_string()).collect(),
             network_all: all,
             clipboard_caps: BTreeSet::new(),
+            notifications_on: false,
+            input_caps: BTreeSet::new(),
         }
     }
 
@@ -1379,6 +1462,8 @@ allowed_domains = ["api.openai.com", "github.com"]
             network_domains: BTreeSet::new(),
             network_all: false,
             clipboard_caps: caps.iter().map(|s| s.to_string()).collect(),
+            notifications_on: false,
+            input_caps: BTreeSet::new(),
         }
     }
 
@@ -1390,5 +1475,54 @@ allowed_domains = ["api.openai.com", "github.com"]
         assert!(!is_strict_narrowing(&clip_scope(&["read"]), &clip_scope(&["read"])));
         assert!(is_strict_widening(&clip_scope(&["read"]), &clip_scope(&["read", "write"])));
         assert!(!is_strict_widening(&clip_scope(&["read", "write"]), &clip_scope(&["read"])));
+    }
+
+    #[test]
+    fn notifications_off_revoke_and_restore() {
+        let mut d: toml_edit::DocumentMut = "[notifications]\nenabled = true\n".parse().unwrap();
+        assert!(apply_revoke(&mut d, &RevokedReach::NotificationsOff));
+        assert!(d.to_string().contains("enabled = false"));
+        assert!(!apply_revoke(&mut d, &RevokedReach::NotificationsOff), "already off");
+        assert!(apply_restore(&mut d, &RevokedReach::NotificationsOff));
+        assert!(d.to_string().contains("enabled = true"));
+
+        // Gate: on -> off narrows; off -> on widens; a no-op is neither.
+        let on = |b: bool| {
+            let mut s = clip_scope(&[]);
+            s.notifications_on = b;
+            s
+        };
+        assert!(is_strict_narrowing(&on(true), &on(false)));
+        assert!(!is_strict_narrowing(&on(false), &on(true)));
+        assert!(is_strict_widening(&on(false), &on(true)));
+    }
+
+    #[test]
+    fn input_cap_revoke_and_restore() {
+        let mut d: toml_edit::DocumentMut =
+            "[input]\nregister_focused_bindings = true\nregister_global_bindings = true\n"
+                .parse()
+                .unwrap();
+        assert!(apply_revoke(&mut d, &RevokedReach::InputCap { cap: "register_global_bindings".into() }));
+        assert!(d.to_string().contains("register_global_bindings = false"));
+        // Unknown cap refused.
+        assert!(!apply_revoke(&mut d, &RevokedReach::InputCap { cap: "nope".into() }));
+        assert!(apply_restore(&mut d, &RevokedReach::InputCap { cap: "register_global_bindings".into() }));
+        assert!(d.to_string().contains("register_global_bindings = true"));
+
+        // Gate over the input cap set.
+        let caps = |c: &[&str]| {
+            let mut s = clip_scope(&[]);
+            s.input_caps = c.iter().map(|x| x.to_string()).collect();
+            s
+        };
+        assert!(is_strict_narrowing(
+            &caps(&["register_focused_bindings", "register_global_bindings"]),
+            &caps(&["register_focused_bindings"])
+        ));
+        assert!(is_strict_widening(
+            &caps(&["register_focused_bindings"]),
+            &caps(&["register_focused_bindings", "register_global_bindings"])
+        ));
     }
 }

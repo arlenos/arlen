@@ -201,6 +201,13 @@ pub enum CapabilityReach {
         /// The clipboard capability.
         cap: String,
     },
+    /// The `[notifications].enabled` single-flag dimension.
+    NotificationsOff,
+    /// An `[input]` capability flag (focused/global keybinding registration).
+    InputCap {
+        /// The input capability.
+        cap: String,
+    },
 }
 
 /// Content-free interaction metadata — the Structural tier of

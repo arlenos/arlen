@@ -38,6 +38,8 @@ fn reach_to_audit(reach: &RevokedReach) -> CapabilityReach {
             domain: domain.clone(),
         },
         RevokedReach::ClipboardCap { cap } => CapabilityReach::ClipboardCap { cap: cap.clone() },
+        RevokedReach::NotificationsOff => CapabilityReach::NotificationsOff,
+        RevokedReach::InputCap { cap } => CapabilityReach::InputCap { cap: cap.clone() },
     }
 }
 
@@ -70,6 +72,8 @@ pub fn audit_to_reach(reach: &CapabilityReach) -> RevokedReach {
             domain: domain.clone(),
         },
         CapabilityReach::ClipboardCap { cap } => RevokedReach::ClipboardCap { cap: cap.clone() },
+        CapabilityReach::NotificationsOff => RevokedReach::NotificationsOff,
+        CapabilityReach::InputCap { cap } => RevokedReach::InputCap { cap: cap.clone() },
     }
 }
 

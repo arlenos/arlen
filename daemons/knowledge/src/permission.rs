@@ -8,7 +8,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use arlen_permissions::{ClipboardPermissions, NetworkPermissions};
+use arlen_permissions::{
+    ClipboardPermissions, InputPermissions, NetworkPermissions, NotificationPermissions,
+};
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -54,6 +56,12 @@ pub struct PermissionProfile {
     /// App-access page. `None` means the app declares no clipboard access.
     #[serde(default)]
     pub clipboard: Option<ClipboardPermissions>,
+    /// The `[notifications]` declaration (parsed daemon-side for the revoke gate).
+    #[serde(default)]
+    pub notifications: Option<NotificationPermissions>,
+    /// The `[input]` declaration (parsed daemon-side for the revoke gate).
+    #[serde(default)]
+    pub input: Option<InputPermissions>,
 }
 
 /// The `[graph]` section of a permission profile.
