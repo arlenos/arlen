@@ -268,30 +268,13 @@ export async function cancelDownload(source: string): Promise<void> {
   }
 }
 
-/// Make an installed model the active one (one live model at a time).
-export async function setActive(source: string): Promise<void> {
-  models.update((list) => list.map((m) => ({ ...m, active: m.source === source })));
-  try {
-    await invoke("ai_local_models_set_active", { source });
-  } catch {
-    // Local view already reflects the switch.
-  }
-}
-
 /// Delete a local model to reclaim its space. The baked default cannot be
-/// deleted (it is the offline guarantee); the active model hands off first.
+/// deleted (it is the offline guarantee). Choosing which model answers lives on
+/// the Default models page, not here, so removal touches only installed state.
 export async function deleteModel(source: string): Promise<void> {
-  models.update((list) => {
-    const wasActive = list.find((m) => m.source === source)?.active ?? false;
-    let next = list.map((m) =>
-      m.source === source ? { ...m, installed: false, active: false } : m,
-    );
-    if (wasActive) {
-      const baked = next.find((m) => m.installed && m.baked);
-      if (baked) next = next.map((m) => ({ ...m, active: m.source === baked.source }));
-    }
-    return next;
-  });
+  models.update((list) =>
+    list.map((m) => (m.source === source ? { ...m, installed: false } : m)),
+  );
   try {
     await invoke("ai_local_models_delete", { source });
   } catch {
