@@ -91,6 +91,10 @@ pub struct ScopeSummary {
     pub notifications_on: bool,
     /// The enabled `[input]` capabilities (focused/global keybinding registration).
     pub input_caps: BTreeSet<String>,
+    /// The enabled `[search]` capabilities (open/register_handler/intercept_all).
+    pub search_caps: BTreeSet<String>,
+    /// The enabled `[intents]` capabilities (dispatch/register/preferences).
+    pub intents_caps: BTreeSet<String>,
 }
 
 /// The clipboard capability flags, in a fixed order. A `ClipboardCap` revoke may
@@ -101,6 +105,12 @@ pub const CLIPBOARD_CAPS: [&str; 4] = ["read", "write", "read_sensitive", "histo
 /// The input capability flags. An `InputCap` revoke may only name one of these, and
 /// `apply_revoke`/`apply_restore` only ever touch these keys of `[input]`.
 pub const INPUT_CAPS: [&str; 2] = ["register_focused_bindings", "register_global_bindings"];
+
+/// The search capability flags. A `SearchCap` revoke may only name one of these.
+pub const SEARCH_CAPS: [&str; 3] = ["open", "register_handler", "intercept_all"];
+
+/// The intents capability flags. An `IntentsCap` revoke may only name one of these.
+pub const INTENTS_CAPS: [&str; 3] = ["dispatch", "register", "preferences"];
 
 impl ScopeSummary {
     /// Summarise a profile's graph reach into the comparable set form: the raw
@@ -156,6 +166,38 @@ impl ScopeSummary {
             }
             None => BTreeSet::new(),
         };
+        let search_caps = match &profile.search {
+            Some(s) => {
+                let mut set = BTreeSet::new();
+                if s.open {
+                    set.insert("open".to_string());
+                }
+                if s.register_handler {
+                    set.insert("register_handler".to_string());
+                }
+                if s.intercept_all {
+                    set.insert("intercept_all".to_string());
+                }
+                set
+            }
+            None => BTreeSet::new(),
+        };
+        let intents_caps = match &profile.intents {
+            Some(i) => {
+                let mut set = BTreeSet::new();
+                if i.dispatch {
+                    set.insert("dispatch".to_string());
+                }
+                if i.register {
+                    set.insert("register".to_string());
+                }
+                if i.preferences {
+                    set.insert("preferences".to_string());
+                }
+                set
+            }
+            None => BTreeSet::new(),
+        };
         ScopeSummary {
             read,
             write,
@@ -171,6 +213,8 @@ impl ScopeSummary {
             clipboard_caps,
             notifications_on,
             input_caps,
+            search_caps,
+            intents_caps,
         }
     }
 }
@@ -220,7 +264,9 @@ pub fn is_strict_narrowing(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         && network_is_subset(old, new)
         && new.clipboard_caps.is_subset(&old.clipboard_caps)
         && (!new.notifications_on || old.notifications_on)
-        && new.input_caps.is_subset(&old.input_caps);
+        && new.input_caps.is_subset(&old.input_caps)
+        && new.search_caps.is_subset(&old.search_caps)
+        && new.intents_caps.is_subset(&old.intents_caps);
 
     let strictly_smaller = new.read.len() < old.read.len()
         || new.write.len() < old.write.len()
@@ -230,7 +276,9 @@ pub fn is_strict_narrowing(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         || network_strictly_smaller(old, new)
         || new.clipboard_caps.len() < old.clipboard_caps.len()
         || (old.notifications_on && !new.notifications_on)
-        || new.input_caps.len() < old.input_caps.len();
+        || new.input_caps.len() < old.input_caps.len()
+        || new.search_caps.len() < old.search_caps.len()
+        || new.intents_caps.len() < old.intents_caps.len();
 
     every_dimension_subset && strictly_smaller
 }
@@ -282,6 +330,26 @@ pub fn apply_revoke(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> b
             return false;
         };
         return set_bool_flag(input, cap, false);
+    }
+    // Search: a capability flag on `[search]`.
+    if let RevokedReach::SearchCap { cap } = reach {
+        if !SEARCH_CAPS.contains(&cap.as_str()) {
+            return false;
+        }
+        let Some(search) = doc.get_mut("search").and_then(Item::as_table_like_mut) else {
+            return false;
+        };
+        return set_bool_flag(search, cap, false);
+    }
+    // Intents: a capability flag on `[intents]`.
+    if let RevokedReach::IntentsCap { cap } = reach {
+        if !INTENTS_CAPS.contains(&cap.as_str()) {
+            return false;
+        }
+        let Some(intents) = doc.get_mut("intents").and_then(Item::as_table_like_mut) else {
+            return false;
+        };
+        return set_bool_flag(intents, cap, false);
     }
 
     let Some(graph) = doc.get_mut("graph").and_then(Item::as_table_like_mut) else {
@@ -354,7 +422,9 @@ pub fn apply_revoke(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> b
         RevokedReach::NetworkDomain { .. }
         | RevokedReach::ClipboardCap { .. }
         | RevokedReach::NotificationsOff
-        | RevokedReach::InputCap { .. } => false,
+        | RevokedReach::InputCap { .. }
+        | RevokedReach::SearchCap { .. }
+        | RevokedReach::IntentsCap { .. } => false,
     }
 }
 
@@ -408,7 +478,9 @@ pub fn is_strict_widening(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         && network_superset
         && old.clipboard_caps.is_subset(&new.clipboard_caps)
         && (!old.notifications_on || new.notifications_on)
-        && old.input_caps.is_subset(&new.input_caps);
+        && old.input_caps.is_subset(&new.input_caps)
+        && old.search_caps.is_subset(&new.search_caps)
+        && old.intents_caps.is_subset(&new.intents_caps);
 
     let strictly_larger = new.read.len() > old.read.len()
         || new.write.len() > old.write.len()
@@ -418,7 +490,9 @@ pub fn is_strict_widening(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         || network_strictly_smaller(new, old)
         || new.clipboard_caps.len() > old.clipboard_caps.len()
         || (!old.notifications_on && new.notifications_on)
-        || new.input_caps.len() > old.input_caps.len();
+        || new.input_caps.len() > old.input_caps.len()
+        || new.search_caps.len() > old.search_caps.len()
+        || new.intents_caps.len() > old.intents_caps.len();
 
     every_dimension_superset && strictly_larger
 }
@@ -487,6 +561,32 @@ pub fn apply_restore(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> 
             .and_then(Item::as_table_like_mut)
             .expect("input table ensured above");
         return set_bool_flag(input, cap, true);
+    }
+    if let RevokedReach::SearchCap { cap } = reach {
+        if !SEARCH_CAPS.contains(&cap.as_str()) {
+            return false;
+        }
+        if doc.get("search").and_then(Item::as_table_like).is_none() {
+            doc.insert("search", Item::Table(Table::new()));
+        }
+        let search = doc
+            .get_mut("search")
+            .and_then(Item::as_table_like_mut)
+            .expect("search table ensured above");
+        return set_bool_flag(search, cap, true);
+    }
+    if let RevokedReach::IntentsCap { cap } = reach {
+        if !INTENTS_CAPS.contains(&cap.as_str()) {
+            return false;
+        }
+        if doc.get("intents").and_then(Item::as_table_like).is_none() {
+            doc.insert("intents", Item::Table(Table::new()));
+        }
+        let intents = doc
+            .get_mut("intents")
+            .and_then(Item::as_table_like_mut)
+            .expect("intents table ensured above");
+        return set_bool_flag(intents, cap, true);
     }
 
     // A revoke can leave a profile with no `[graph]` table (or no target array);
@@ -579,7 +679,9 @@ pub fn apply_restore(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> 
         RevokedReach::NetworkDomain { .. }
         | RevokedReach::ClipboardCap { .. }
         | RevokedReach::NotificationsOff
-        | RevokedReach::InputCap { .. } => false,
+        | RevokedReach::InputCap { .. }
+        | RevokedReach::SearchCap { .. }
+        | RevokedReach::IntentsCap { .. } => false,
     }
 }
 
@@ -862,6 +964,8 @@ mod tests {
             clipboard_caps: BTreeSet::new(),
             notifications_on: false,
             input_caps: BTreeSet::new(),
+            search_caps: BTreeSet::new(),
+            intents_caps: BTreeSet::new(),
         }
     }
 
@@ -1400,6 +1504,8 @@ allowed_domains = ["api.openai.com", "github.com"]
             clipboard_caps: BTreeSet::new(),
             notifications_on: false,
             input_caps: BTreeSet::new(),
+            search_caps: BTreeSet::new(),
+            intents_caps: BTreeSet::new(),
         }
     }
 
@@ -1464,6 +1570,8 @@ allowed_domains = ["api.openai.com", "github.com"]
             clipboard_caps: caps.iter().map(|s| s.to_string()).collect(),
             notifications_on: false,
             input_caps: BTreeSet::new(),
+            search_caps: BTreeSet::new(),
+            intents_caps: BTreeSet::new(),
         }
     }
 
@@ -1524,5 +1632,38 @@ allowed_domains = ["api.openai.com", "github.com"]
             &caps(&["register_focused_bindings"]),
             &caps(&["register_focused_bindings", "register_global_bindings"])
         ));
+    }
+
+    #[test]
+    fn search_and_intents_cap_revoke_and_restore() {
+        let mut d: toml_edit::DocumentMut =
+            "[search]\nopen = true\nregister_handler = true\n[intents]\ndispatch = true\n"
+                .parse()
+                .unwrap();
+        // Search cap flip + unknown-cap refusal.
+        assert!(apply_revoke(&mut d, &RevokedReach::SearchCap { cap: "register_handler".into() }));
+        assert!(d.to_string().contains("register_handler = false"));
+        assert!(!apply_revoke(&mut d, &RevokedReach::SearchCap { cap: "nope".into() }));
+        assert!(apply_restore(&mut d, &RevokedReach::SearchCap { cap: "register_handler".into() }));
+        assert!(d.to_string().contains("register_handler = true"));
+        // Intents cap flip.
+        assert!(apply_revoke(&mut d, &RevokedReach::IntentsCap { cap: "dispatch".into() }));
+        assert!(d.to_string().contains("dispatch = false"));
+        assert!(!apply_revoke(&mut d, &RevokedReach::IntentsCap { cap: "register".into() }), "register was off");
+
+        // Gates over the search/intents cap sets.
+        let s = |c: &[&str]| {
+            let mut sc = clip_scope(&[]);
+            sc.search_caps = c.iter().map(|x| x.to_string()).collect();
+            sc
+        };
+        assert!(is_strict_narrowing(&s(&["open", "register_handler"]), &s(&["open"])));
+        assert!(is_strict_widening(&s(&["open"]), &s(&["open", "register_handler"])));
+        let i = |c: &[&str]| {
+            let mut sc = clip_scope(&[]);
+            sc.intents_caps = c.iter().map(|x| x.to_string()).collect();
+            sc
+        };
+        assert!(is_strict_narrowing(&i(&["dispatch", "register"]), &i(&["dispatch"])));
     }
 }

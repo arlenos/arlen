@@ -208,6 +208,16 @@ pub enum CapabilityReach {
         /// The input capability.
         cap: String,
     },
+    /// A `[search]` capability flag (open/register_handler/intercept_all).
+    SearchCap {
+        /// The search capability.
+        cap: String,
+    },
+    /// An `[intents]` capability flag (dispatch/register/preferences).
+    IntentsCap {
+        /// The intents capability.
+        cap: String,
+    },
 }
 
 /// Content-free interaction metadata — the Structural tier of

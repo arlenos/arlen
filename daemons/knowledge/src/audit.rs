@@ -40,6 +40,8 @@ fn reach_to_audit(reach: &RevokedReach) -> CapabilityReach {
         RevokedReach::ClipboardCap { cap } => CapabilityReach::ClipboardCap { cap: cap.clone() },
         RevokedReach::NotificationsOff => CapabilityReach::NotificationsOff,
         RevokedReach::InputCap { cap } => CapabilityReach::InputCap { cap: cap.clone() },
+        RevokedReach::SearchCap { cap } => CapabilityReach::SearchCap { cap: cap.clone() },
+        RevokedReach::IntentsCap { cap } => CapabilityReach::IntentsCap { cap: cap.clone() },
     }
 }
 
@@ -74,6 +76,8 @@ pub fn audit_to_reach(reach: &CapabilityReach) -> RevokedReach {
         CapabilityReach::ClipboardCap { cap } => RevokedReach::ClipboardCap { cap: cap.clone() },
         CapabilityReach::NotificationsOff => RevokedReach::NotificationsOff,
         CapabilityReach::InputCap { cap } => RevokedReach::InputCap { cap: cap.clone() },
+        CapabilityReach::SearchCap { cap } => RevokedReach::SearchCap { cap: cap.clone() },
+        CapabilityReach::IntentsCap { cap } => RevokedReach::IntentsCap { cap: cap.clone() },
     }
 }
 
