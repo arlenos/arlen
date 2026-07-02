@@ -6,3 +6,4 @@
 pub mod file_chooser;
 pub mod open_uri;
 pub mod options;
+pub mod screenshot;
