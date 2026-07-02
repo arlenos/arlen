@@ -17,7 +17,7 @@
 //! OpenURI `OpenFile` fd path does.
 
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use zbus::interface;
@@ -119,17 +119,27 @@ impl Screenshot {
             );
         }
 
-        // The capture core is a blocking Wayland client; keep it off the reactor.
-        let capture = tokio::task::spawn_blocking(|| arlen_screen_capture::capture_output(0, false)).await;
+        // The capture core is a blocking Wayland client; keep it off the reactor and
+        // bound it so a misbehaving compositor can never hang a D-Bus request forever.
+        const CAPTURE_TIMEOUT: Duration = Duration::from_secs(10);
+        let capture = tokio::time::timeout(
+            CAPTURE_TIMEOUT,
+            tokio::task::spawn_blocking(|| arlen_screen_capture::capture_output(0, false)),
+        )
+        .await;
         let image = match capture {
-            Ok(Ok(image)) => image,
-            Ok(Err(e)) => {
+            Ok(Ok(Ok(image))) => image,
+            Ok(Ok(Err(e))) => {
                 tracing::warn!(request = %req.path, "Screenshot capture failed: {e}");
                 return (response::OTHER, error_results(&format!("capture failed: {e}")));
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 tracing::warn!(request = %req.path, "Screenshot capture task panicked: {e}");
                 return (response::OTHER, error_results("capture task failed"));
+            }
+            Err(_elapsed) => {
+                tracing::warn!(request = %req.path, "Screenshot capture timed out");
+                return (response::OTHER, error_results("capture timed out"));
             }
         };
 
