@@ -1,31 +1,51 @@
 //! `arlen-screenshot`: the first-party screenshot tool (screenshot-capture-plan.md).
 //!
-//! Being built incrementally, each slice runtime-verified under a nested compositor.
-//! Slice 1: probe the compositor for capture support and report it, so the capture
-//! path can be verified end-to-end (`dev/screenshot/shoot-compositor.sh` runs this
-//! as the Wayland client under cosmic-comp nested). The capture modes + targets land
-//! in later slices.
+//! Built on the `ext-image-copy-capture` capture core; each mode is runtime-verified
+//! against a live compositor. Captures a full output, a named output, a region (in
+//! logical coordinates, mapped through the fractional scale), or a window; can paint
+//! the cursor and wait a delay; saves to a path or the default timestamped file in
+//! the screenshots directory. With no argument it probes the compositor for capture
+//! support and reports it.
 
 use anyhow::{anyhow, Context, Result};
 use arlen_screen_capture::{
-    capture_output, capture_region, capture_support, capture_window, list_outputs, list_windows,
-    write_png, CapturedImage, COPY_MANAGER_INTERFACE, OUTPUT_SOURCE_MANAGER_INTERFACE,
-    TOPLEVEL_SOURCE_MANAGER_INTERFACE,
+    capture_output, capture_output_by_name, capture_region, capture_support, capture_window,
+    list_outputs, list_windows, write_png, CapturedImage, COPY_MANAGER_INTERFACE,
+    OUTPUT_SOURCE_MANAGER_INTERFACE, TOPLEVEL_SOURCE_MANAGER_INTERFACE,
 };
 
 fn main() -> Result<()> {
-    // Usage:
-    //   arlen-screenshot                 probe capture support
-    //   arlen-screenshot --list          list the capturable outputs
-    //   arlen-screenshot <file>          capture output 0 to a PNG
-    //   arlen-screenshot -g X,Y,W,H <file>   capture a region of output 0
+    // Usage (any mode takes an optional trailing file; without it, the default
+    // timestamped path in the screenshots dir is used; add -c/--cursor, --delay N):
+    //   arlen-screenshot                     probe capture support
+    //   arlen-screenshot --list              list the capturable outputs
+    //   arlen-screenshot --list-windows      list the capturable windows
+    //   arlen-screenshot --shot [file]       capture output 0
+    //   arlen-screenshot -o NAME [file]      capture the named output
+    //   arlen-screenshot -g X,Y,W,H [file]   capture a region (logical coords)
+    //   arlen-screenshot --window N [file]   capture window N
+    //   arlen-screenshot <file>              capture output 0 to a PNG
     let raw: Vec<String> = std::env::args().skip(1).collect();
-    // `-c` / `--cursor` (anywhere) paints the pointer onto the capture.
+    // `-c` / `--cursor` (anywhere) paints the pointer onto the capture;
+    // `--delay N` waits N seconds before capturing. Both are stripped so the
+    // remaining args are the mode + its operands.
     let cursor = raw.iter().any(|a| a == "-c" || a == "--cursor");
-    let args: Vec<String> = raw
-        .into_iter()
-        .filter(|a| a != "-c" && a != "--cursor")
-        .collect();
+    let mut delay_secs = 0u64;
+    let mut args: Vec<String> = Vec::new();
+    let mut it = raw.into_iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "-c" | "--cursor" => {}
+            "--delay" => {
+                let n = it.next().ok_or_else(|| anyhow!("--delay needs a seconds value"))?;
+                delay_secs = n.parse().map_err(|e| anyhow!("bad --delay value {n:?}: {e}"))?;
+            }
+            _ => args.push(a),
+        }
+    }
+    if delay_secs > 0 {
+        std::thread::sleep(std::time::Duration::from_secs(delay_secs));
+    }
     match args.first().map(String::as_str) {
         Some("--list") => {
             for o in list_outputs()? {
@@ -53,6 +73,16 @@ fn main() -> Result<()> {
         Some("--shot") => {
             let image = capture_output(0, cursor)?;
             let path = match args.get(1) {
+                Some(p) => p.clone(),
+                None => default_out()?,
+            };
+            save(&image, &path)?;
+            return Ok(());
+        }
+        Some("-o") => {
+            let name = args.get(1).ok_or_else(|| anyhow!("-o needs an output name (see --list)"))?;
+            let image = capture_output_by_name(name, cursor)?;
+            let path = match args.get(2) {
                 Some(p) => p.clone(),
                 None => default_out()?,
             };
