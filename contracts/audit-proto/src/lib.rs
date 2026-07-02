@@ -218,6 +218,16 @@ pub enum CapabilityReach {
         /// The intents capability.
         cap: String,
     },
+    /// A standard `[filesystem]` directory flag (home/documents/...).
+    FilesystemDir {
+        /// The directory flag.
+        dir: String,
+    },
+    /// A `[filesystem].custom` path entry.
+    FilesystemPath {
+        /// The custom path.
+        path: String,
+    },
 }
 
 /// Content-free interaction metadata — the Structural tier of

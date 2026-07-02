@@ -95,6 +95,10 @@ pub struct ScopeSummary {
     pub search_caps: BTreeSet<String>,
     /// The enabled `[intents]` capabilities (dispatch/register/preferences).
     pub intents_caps: BTreeSet<String>,
+    /// The enabled `[filesystem]` standard directories (home/documents/...).
+    pub filesystem_dirs: BTreeSet<String>,
+    /// The `[filesystem].custom` path entries.
+    pub filesystem_paths: BTreeSet<String>,
 }
 
 /// The clipboard capability flags, in a fixed order. A `ClipboardCap` revoke may
@@ -111,6 +115,10 @@ pub const SEARCH_CAPS: [&str; 3] = ["open", "register_handler", "intercept_all"]
 
 /// The intents capability flags. An `IntentsCap` revoke may only name one of these.
 pub const INTENTS_CAPS: [&str; 3] = ["dispatch", "register", "preferences"];
+
+/// The standard filesystem directory flags. A `FilesystemDir` revoke may only name
+/// one of these; custom paths are handled by `FilesystemPath`.
+pub const FS_DIRS: [&str; 6] = ["home", "documents", "downloads", "pictures", "music", "videos"];
 
 impl ScopeSummary {
     /// Summarise a profile's graph reach into the comparable set form: the raw
@@ -198,6 +206,30 @@ impl ScopeSummary {
             }
             None => BTreeSet::new(),
         };
+        let (filesystem_dirs, filesystem_paths) = match &profile.filesystem {
+            Some(f) => {
+                let mut dirs = BTreeSet::new();
+                for (on, label) in [
+                    (f.home, "home"),
+                    (f.documents, "documents"),
+                    (f.downloads, "downloads"),
+                    (f.pictures, "pictures"),
+                    (f.music, "music"),
+                    (f.videos, "videos"),
+                ] {
+                    if on {
+                        dirs.insert(label.to_string());
+                    }
+                }
+                let paths = f
+                    .custom
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect();
+                (dirs, paths)
+            }
+            None => (BTreeSet::new(), BTreeSet::new()),
+        };
         ScopeSummary {
             read,
             write,
@@ -215,6 +247,8 @@ impl ScopeSummary {
             input_caps,
             search_caps,
             intents_caps,
+            filesystem_dirs,
+            filesystem_paths,
         }
     }
 }
@@ -266,7 +300,9 @@ pub fn is_strict_narrowing(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         && (!new.notifications_on || old.notifications_on)
         && new.input_caps.is_subset(&old.input_caps)
         && new.search_caps.is_subset(&old.search_caps)
-        && new.intents_caps.is_subset(&old.intents_caps);
+        && new.intents_caps.is_subset(&old.intents_caps)
+        && new.filesystem_dirs.is_subset(&old.filesystem_dirs)
+        && new.filesystem_paths.is_subset(&old.filesystem_paths);
 
     let strictly_smaller = new.read.len() < old.read.len()
         || new.write.len() < old.write.len()
@@ -278,7 +314,9 @@ pub fn is_strict_narrowing(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         || (old.notifications_on && !new.notifications_on)
         || new.input_caps.len() < old.input_caps.len()
         || new.search_caps.len() < old.search_caps.len()
-        || new.intents_caps.len() < old.intents_caps.len();
+        || new.intents_caps.len() < old.intents_caps.len()
+        || new.filesystem_dirs.len() < old.filesystem_dirs.len()
+        || new.filesystem_paths.len() < old.filesystem_paths.len();
 
     every_dimension_subset && strictly_smaller
 }
@@ -350,6 +388,22 @@ pub fn apply_revoke(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> b
             return false;
         };
         return set_bool_flag(intents, cap, false);
+    }
+    // Filesystem: a standard directory flag or a custom path entry on `[filesystem]`.
+    if let RevokedReach::FilesystemDir { dir } = reach {
+        if !FS_DIRS.contains(&dir.as_str()) {
+            return false;
+        }
+        let Some(fs) = doc.get_mut("filesystem").and_then(Item::as_table_like_mut) else {
+            return false;
+        };
+        return set_bool_flag(fs, dir, false);
+    }
+    if let RevokedReach::FilesystemPath { path } = reach {
+        let Some(fs) = doc.get_mut("filesystem").and_then(Item::as_table_like_mut) else {
+            return false;
+        };
+        return remove_string_from_array(fs, "custom", path);
     }
 
     let Some(graph) = doc.get_mut("graph").and_then(Item::as_table_like_mut) else {
@@ -424,7 +478,9 @@ pub fn apply_revoke(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> b
         | RevokedReach::NotificationsOff
         | RevokedReach::InputCap { .. }
         | RevokedReach::SearchCap { .. }
-        | RevokedReach::IntentsCap { .. } => false,
+        | RevokedReach::IntentsCap { .. }
+        | RevokedReach::FilesystemDir { .. }
+        | RevokedReach::FilesystemPath { .. } => false,
     }
 }
 
@@ -480,7 +536,9 @@ pub fn is_strict_widening(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         && (!old.notifications_on || new.notifications_on)
         && old.input_caps.is_subset(&new.input_caps)
         && old.search_caps.is_subset(&new.search_caps)
-        && old.intents_caps.is_subset(&new.intents_caps);
+        && old.intents_caps.is_subset(&new.intents_caps)
+        && old.filesystem_dirs.is_subset(&new.filesystem_dirs)
+        && old.filesystem_paths.is_subset(&new.filesystem_paths);
 
     let strictly_larger = new.read.len() > old.read.len()
         || new.write.len() > old.write.len()
@@ -492,7 +550,9 @@ pub fn is_strict_widening(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         || (!old.notifications_on && new.notifications_on)
         || new.input_caps.len() > old.input_caps.len()
         || new.search_caps.len() > old.search_caps.len()
-        || new.intents_caps.len() > old.intents_caps.len();
+        || new.intents_caps.len() > old.intents_caps.len()
+        || new.filesystem_dirs.len() > old.filesystem_dirs.len()
+        || new.filesystem_paths.len() > old.filesystem_paths.len();
 
     every_dimension_superset && strictly_larger
 }
@@ -588,6 +648,29 @@ pub fn apply_restore(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> 
             .expect("intents table ensured above");
         return set_bool_flag(intents, cap, true);
     }
+    if let RevokedReach::FilesystemDir { dir } = reach {
+        if !FS_DIRS.contains(&dir.as_str()) {
+            return false;
+        }
+        if doc.get("filesystem").and_then(Item::as_table_like).is_none() {
+            doc.insert("filesystem", Item::Table(Table::new()));
+        }
+        let fs = doc
+            .get_mut("filesystem")
+            .and_then(Item::as_table_like_mut)
+            .expect("filesystem table ensured above");
+        return set_bool_flag(fs, dir, true);
+    }
+    if let RevokedReach::FilesystemPath { path } = reach {
+        if doc.get("filesystem").and_then(Item::as_table_like).is_none() {
+            doc.insert("filesystem", Item::Table(Table::new()));
+        }
+        let fs = doc
+            .get_mut("filesystem")
+            .and_then(Item::as_table_like_mut)
+            .expect("filesystem table ensured above");
+        return add_string_to_array(fs, "custom", path);
+    }
 
     // A revoke can leave a profile with no `[graph]` table (or no target array);
     // a restore must be able to re-create the entry it re-adds.
@@ -681,7 +764,9 @@ pub fn apply_restore(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> 
         | RevokedReach::NotificationsOff
         | RevokedReach::InputCap { .. }
         | RevokedReach::SearchCap { .. }
-        | RevokedReach::IntentsCap { .. } => false,
+        | RevokedReach::IntentsCap { .. }
+        | RevokedReach::FilesystemDir { .. }
+        | RevokedReach::FilesystemPath { .. } => false,
     }
 }
 
@@ -966,6 +1051,8 @@ mod tests {
             input_caps: BTreeSet::new(),
             search_caps: BTreeSet::new(),
             intents_caps: BTreeSet::new(),
+            filesystem_dirs: BTreeSet::new(),
+            filesystem_paths: BTreeSet::new(),
         }
     }
 
@@ -1506,6 +1593,8 @@ allowed_domains = ["api.openai.com", "github.com"]
             input_caps: BTreeSet::new(),
             search_caps: BTreeSet::new(),
             intents_caps: BTreeSet::new(),
+            filesystem_dirs: BTreeSet::new(),
+            filesystem_paths: BTreeSet::new(),
         }
     }
 
@@ -1572,6 +1661,8 @@ allowed_domains = ["api.openai.com", "github.com"]
             input_caps: BTreeSet::new(),
             search_caps: BTreeSet::new(),
             intents_caps: BTreeSet::new(),
+            filesystem_dirs: BTreeSet::new(),
+            filesystem_paths: BTreeSet::new(),
         }
     }
 
@@ -1665,5 +1756,39 @@ allowed_domains = ["api.openai.com", "github.com"]
             sc
         };
         assert!(is_strict_narrowing(&i(&["dispatch", "register"]), &i(&["dispatch"])));
+    }
+
+    #[test]
+    fn filesystem_dir_and_path_revoke_and_restore() {
+        let mut d: toml_edit::DocumentMut =
+            "[filesystem]\ndocuments = true\ndownloads = true\ncustom = [\"/srv/data\", \"/opt/x\"]\n"
+                .parse()
+                .unwrap();
+        // A standard dir flag flips off; an unknown dir is refused.
+        assert!(apply_revoke(&mut d, &RevokedReach::FilesystemDir { dir: "downloads".into() }));
+        assert!(d.to_string().contains("downloads = false"));
+        assert!(!apply_revoke(&mut d, &RevokedReach::FilesystemDir { dir: "not_a_dir".into() }));
+        // A custom path is removed; an absent one is a no-op.
+        assert!(apply_revoke(&mut d, &RevokedReach::FilesystemPath { path: "/opt/x".into() }));
+        assert!(!d.to_string().contains("/opt/x"));
+        assert!(d.to_string().contains("/srv/data"));
+        assert!(!apply_revoke(&mut d, &RevokedReach::FilesystemPath { path: "/nope".into() }));
+        // Restore re-adds both.
+        assert!(apply_restore(&mut d, &RevokedReach::FilesystemDir { dir: "downloads".into() }));
+        assert!(d.to_string().contains("downloads = true"));
+        assert!(apply_restore(&mut d, &RevokedReach::FilesystemPath { path: "/opt/x".into() }));
+        assert!(d.to_string().contains("/opt/x"));
+
+        // Gates over the dir + path sets.
+        let scope = |dirs: &[&str], paths: &[&str]| {
+            let mut s = clip_scope(&[]);
+            s.filesystem_dirs = dirs.iter().map(|x| x.to_string()).collect();
+            s.filesystem_paths = paths.iter().map(|x| x.to_string()).collect();
+            s
+        };
+        assert!(is_strict_narrowing(&scope(&["documents", "downloads"], &[]), &scope(&["documents"], &[])));
+        assert!(is_strict_narrowing(&scope(&[], &["/a", "/b"]), &scope(&[], &["/a"])));
+        assert!(is_strict_widening(&scope(&["documents"], &[]), &scope(&["documents", "downloads"], &[])));
+        assert!(!is_strict_narrowing(&scope(&["documents"], &[]), &scope(&["documents", "downloads"], &[])));
     }
 }
