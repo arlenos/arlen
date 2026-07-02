@@ -21,13 +21,13 @@
   } from "@arlen/ui-kit/components/browser";
   import { invoke } from "@tauri-apps/api/core";
   import { openPath } from "$lib/adapter";
-  import { restoreFromTrash, emptyTrash } from "$lib/stores/trash";
+  import { restoreFromTrash, emptyTrash, deletePermanently } from "$lib/stores/trash";
   import { isArchiveName } from "$lib/archive";
   import { activeController, newTab, tabs } from "$lib/stores/tabs";
   import { focusedController, focusedPane, paneB, splitView } from "$lib/stores/panes";
   import { addBookmark, homePath, loadPlaces } from "$lib/stores/places";
   import { infoOpen } from "$lib/stores/ui";
-  import { clipboard, paste, runOp, bulkRename } from "$lib/stores/ops";
+  import { clipboard, paste, runOp, bulkRename, extractArchive, compressPaths } from "$lib/stores/ops";
   import FmStatusBar from "$lib/components/FmStatusBar.svelte";
   import OpsOverlays from "$lib/components/OpsOverlays.svelte";
   import FmBatchRename from "$lib/components/FmBatchRename.svelte";
@@ -43,6 +43,7 @@
     facetOpen,
     facetBase,
     loadFacetOptions,
+    loadSmartFolders,
     serializeFacets,
     selectedFacets,
     clearFacets,
@@ -134,6 +135,28 @@
   async function restoreSelection(): Promise<void> {
     for (const e of selected) await restoreFromTrash(e);
     await get(focusedController)?.refresh();
+  }
+
+  /// Permanently delete every selected trashed entry (bypassing restore), then
+  /// refresh the trash listing.
+  async function deleteSelectionPermanently(): Promise<void> {
+    for (const e of selected) await deletePermanently(e);
+    await get(focusedController)?.refresh();
+  }
+
+  /// Extract the selected archive into the current folder.
+  async function extractSelection(): Promise<void> {
+    const e = selected[0];
+    if (!e) return;
+    await extractArchive(joinPath(currentPath(), e.name), currentPath());
+  }
+
+  /// Compress the selection into a new archive in the current folder. One item
+  /// keeps its name; several become "Archive.zip".
+  async function compressSelection(): Promise<void> {
+    if (selected.length === 0) return;
+    const name = selected.length === 1 ? `${selected[0]?.name}.zip` : "Archive.zip";
+    await compressPaths(selectedPaths(), joinPath(currentPath(), name));
   }
 
   /// Permanently empty the trash, then refresh.
@@ -461,6 +484,7 @@
   onMount(async () => {
     await loadPlaces();
     void loadFacetOptions();
+    void loadSmartFolders();
     void loadAiEnabled();
     if (get(tabs).length === 0) newTab(get(homePath));
     if (tauriAvailable) {
@@ -564,6 +588,9 @@
           {#if selected.length > 0}
             {#if isTrash}
               <ContextMenu.Item onclick={restoreSelection}>Restore</ContextMenu.Item>
+              <ContextMenu.Item variant="destructive" onclick={() => (confirmDelete = true)}>
+                Delete permanently
+              </ContextMenu.Item>
             {:else}
               <ContextMenu.Item onclick={openVirtualSelection}>Open</ContextMenu.Item>
             {/if}
@@ -678,6 +705,10 @@
         {/if}
         {#if selected.length > 0}
           <ContextMenu.Separator />
+          {#if selected.length === 1 && isArchiveName(selected[0]?.name ?? "")}
+            <ContextMenu.Item onclick={extractSelection}>Extract here</ContextMenu.Item>
+          {/if}
+          <ContextMenu.Item onclick={compressSelection}>Compress to archive</ContextMenu.Item>
           <ContextMenu.Item onclick={trashSelection}>
             Move to trash
             <ContextMenu.Shortcut>Del</ContextMenu.Shortcut>
@@ -709,7 +740,8 @@
   confirmLabel="Delete forever"
   variant="destructive"
   onConfirm={async () => {
-    await runOp("delete", selectedPaths());
+    if (isTrash) await deleteSelectionPermanently();
+    else await runOp("delete", selectedPaths());
     confirmDelete = false;
   }}
   onCancel={() => (confirmDelete = false)}
