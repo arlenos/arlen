@@ -270,21 +270,26 @@ pub async fn emit_all_declared_grants(
 ) -> Result<()> {
     // (reach, consent_class, dimension key). event_bus (an app that hears the bus
     // sees activity) and mcp (an app exposing tools the AI then uses) are real reach.
+    // The `consent_class` strings must normalise (lowercase, strip non-alpha) to the
+    // App-access page's `DIMENSION_FAMILY` keys (grants.ts): networkaccess /
+    // filesystem / clipboard / notifications / system / eventbus / mcp / input /
+    // search / intents. Network is the one "…Access" form; the rest are the bare
+    // dimension name so they land in the right family instead of falling through.
     let dims: [(Option<String>, &str, &str); 10] = [
         (profile.network.reach_summary(), "NetworkAccess", "network"),
-        (profile.event_bus.reach_summary(), "EventBusAccess", "event_bus"),
-        (profile.filesystem.reach_summary(), "FilesystemAccess", "filesystem"),
+        (profile.event_bus.reach_summary(), "EventBus", "event_bus"),
+        (profile.filesystem.reach_summary(), "Filesystem", "filesystem"),
         (
             profile.notifications.reach_summary(),
-            "NotificationAccess",
+            "Notifications",
             "notifications",
         ),
-        (profile.clipboard.reach_summary(), "ClipboardAccess", "clipboard"),
-        (profile.system.reach_summary(), "SystemAccess", "system"),
-        (profile.input.reach_summary(), "InputAccess", "input"),
-        (profile.search.reach_summary(), "SearchAccess", "search"),
-        (profile.intents.reach_summary(), "IntentsAccess", "intents"),
-        (profile.mcp.reach_summary(), "McpAccess", "mcp"),
+        (profile.clipboard.reach_summary(), "Clipboard", "clipboard"),
+        (profile.system.reach_summary(), "System", "system"),
+        (profile.input.reach_summary(), "Input", "input"),
+        (profile.search.reach_summary(), "Search", "search"),
+        (profile.intents.reach_summary(), "Intents", "intents"),
+        (profile.mcp.reach_summary(), "Mcp", "mcp"),
     ];
     for (reach, consent_class, dim_key) in dims {
         if let Some(scope) = reach {
@@ -565,10 +570,12 @@ tools_default_permit = ["search"]
 
         // Each declared dimension lands as a `declared` grant keyed `<dim>:<app>`,
         // with its consent_class + reach_summary scope.
+        // consent_class normalises (lowercase, strip non-alpha) to the frontend's
+        // DIMENSION_FAMILY keys: filesystem / clipboard / mcp.
         for (id, class, scope) in [
-            ("filesystem:com.y", "FilesystemAccess", "documents"),
-            ("clipboard:com.y", "ClipboardAccess", "read, write"),
-            ("mcp:com.y", "McpAccess", "search"),
+            ("filesystem:com.y", "Filesystem", "documents"),
+            ("clipboard:com.y", "Clipboard", "read, write"),
+            ("mcp:com.y", "Mcp", "search"),
         ] {
             let rows = graph
                 .query_rows(format!(
