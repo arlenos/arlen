@@ -6,7 +6,7 @@
 //! as the Wayland client under cosmic-comp nested). The capture modes + targets land
 //! in later slices.
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use arlen_screen_capture::{
     capture_output, capture_region, capture_support, capture_window, list_outputs, list_windows,
     write_png, CapturedImage, COPY_MANAGER_INTERFACE, OUTPUT_SOURCE_MANAGER_INTERFACE,
@@ -50,12 +50,24 @@ fn main() -> Result<()> {
             }
             return Ok(());
         }
+        Some("--shot") => {
+            let image = capture_output(0, cursor)?;
+            let path = match args.get(1) {
+                Some(p) => p.clone(),
+                None => default_out()?,
+            };
+            save(&image, &path)?;
+            return Ok(());
+        }
         Some("-g") => {
             let geom = args.get(1).ok_or_else(|| anyhow!("-g needs a X,Y,W,H region"))?;
-            let path = args.get(2).ok_or_else(|| anyhow!("-g <region> needs an output file"))?;
             let (x, y, w, h) = parse_region(geom)?;
             let image = capture_region(0, x, y, w, h, cursor)?;
-            save(&image, path)?;
+            let path = match args.get(2) {
+                Some(p) => p.clone(),
+                None => default_out()?,
+            };
+            save(&image, &path)?;
             return Ok(());
         }
         Some("--window") => {
@@ -64,9 +76,12 @@ fn main() -> Result<()> {
                 .ok_or_else(|| anyhow!("--window needs an index (see --list-windows)"))?
                 .parse()
                 .map_err(|e| anyhow!("bad window index: {e}"))?;
-            let path = args.get(2).ok_or_else(|| anyhow!("--window <index> needs an output file"))?;
             let image = capture_window(index, cursor)?;
-            save(&image, path)?;
+            let path = match args.get(2) {
+                Some(p) => p.clone(),
+                None => default_out()?,
+            };
+            save(&image, &path)?;
             return Ok(());
         }
         Some(path) => {
@@ -126,6 +141,18 @@ fn save(image: &CapturedImage, path: &str) -> Result<()> {
     write_png(image, std::path::Path::new(path))?;
     println!("captured {}x{} to {}", image.width, image.height, path);
     Ok(())
+}
+
+/// The default save path: a timestamped file in the screenshots directory, whose
+/// parent is created if missing (`Screenshot-%Y%m%d-%H%M%S.png`).
+fn default_out() -> Result<String> {
+    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let dir = arlen_screen_capture::screenshots_dir();
+    std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
+    Ok(dir
+        .join(arlen_screen_capture::default_filename(&timestamp))
+        .to_string_lossy()
+        .into_owned())
 }
 
 /// Parse a `X,Y,W,H` region string into pixel bounds.
