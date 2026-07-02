@@ -155,6 +155,23 @@ impl GraphPermissions {
         }
         pattern_matches(&self.annotations_read_cross_namespace, requested)
     }
+
+    /// The declared graph reach as an LCG grant `consent_scope`: the read + write
+    /// entity-type patterns. `None` when the app declares neither.
+    pub fn reach_summary(&self) -> Option<String> {
+        let mut parts = Vec::new();
+        if !self.read.is_empty() {
+            parts.push(format!("read {}", self.read.join(", ")));
+        }
+        if !self.write.is_empty() {
+            parts.push(format!("write {}", self.write.join(", ")));
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join("; "))
+        }
+    }
 }
 
 // ── Event Bus ──
@@ -177,6 +194,24 @@ impl EventBusPermissions {
     pub fn can_subscribe(&self, event_type: &str) -> bool {
         pattern_matches(&self.subscribe, event_type)
     }
+
+    /// The declared event-bus reach: the subscribed (heard) and published (emitted)
+    /// event kinds. An app that hears the bus sees activity, so this is real reach.
+    /// `None` when the app declares neither.
+    pub fn reach_summary(&self) -> Option<String> {
+        let mut parts = Vec::new();
+        if !self.subscribe.is_empty() {
+            parts.push(format!("hears {}", self.subscribe.join(", ")));
+        }
+        if !self.publish.is_empty() {
+            parts.push(format!("emits {}", self.publish.join(", ")));
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join("; "))
+        }
+    }
 }
 
 // ── Filesystem ──
@@ -197,6 +232,34 @@ pub struct FilesystemPermissions {
     pub videos: bool,
     #[serde(default)]
     pub custom: Vec<PathBuf>,
+}
+
+impl FilesystemPermissions {
+    /// The declared filesystem reach: the standard directories the app may access
+    /// plus any custom paths. `None` when nothing is declared.
+    pub fn reach_summary(&self) -> Option<String> {
+        let mut parts: Vec<String> = Vec::new();
+        for (on, label) in [
+            (self.home, "home"),
+            (self.documents, "documents"),
+            (self.downloads, "downloads"),
+            (self.pictures, "pictures"),
+            (self.music, "music"),
+            (self.videos, "videos"),
+        ] {
+            if on {
+                parts.push(label.to_string());
+            }
+        }
+        for p in &self.custom {
+            parts.push(p.display().to_string());
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join(", "))
+        }
+    }
 }
 
 // ── Network ──
@@ -266,6 +329,18 @@ pub struct NotificationPermissions {
     pub enabled: bool,
 }
 
+impl NotificationPermissions {
+    /// Declared notification reach: `Some("on")` when the app may post
+    /// notifications, else `None`.
+    pub fn reach_summary(&self) -> Option<String> {
+        if self.enabled {
+            Some("on".to_string())
+        } else {
+            None
+        }
+    }
+}
+
 // ── Clipboard ──
 
 /// Clipboard subsystem permissions. Apps request these in their
@@ -299,6 +374,31 @@ pub struct ClipboardPermissions {
     pub history: bool,
 }
 
+impl ClipboardPermissions {
+    /// Declared clipboard reach: the enabled capabilities (read, write, read
+    /// sensitive, history). `None` when the app declares no clipboard access.
+    pub fn reach_summary(&self) -> Option<String> {
+        let mut parts: Vec<&str> = Vec::new();
+        if self.read {
+            parts.push("read");
+        }
+        if self.write {
+            parts.push("write");
+        }
+        if self.read_sensitive {
+            parts.push("read sensitive");
+        }
+        if self.history {
+            parts.push("history");
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join(", "))
+        }
+    }
+}
+
 // ── System ──
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -312,6 +412,31 @@ pub struct SystemPermissions {
     /// or change the power profile without an explicit grant (PWR-R7).
     #[serde(default)]
     pub power: PowerPermissions,
+}
+
+impl SystemPermissions {
+    /// Declared system reach: autostart, background running, and power actions.
+    /// `None` when none is declared. Power actions are `org.arlen.Power1`-mediated.
+    pub fn reach_summary(&self) -> Option<String> {
+        let mut parts: Vec<&str> = Vec::new();
+        if self.autostart {
+            parts.push("autostart");
+        }
+        if self.background {
+            parts.push("background");
+        }
+        if self.power.suspend {
+            parts.push("suspend/power-off");
+        }
+        if self.power.set_profile {
+            parts.push("set power profile");
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join(", "))
+        }
+    }
 }
 
 /// The power-action capability scope (system-services-plan.md PWR-R7).
@@ -361,6 +486,29 @@ pub struct SearchPermissions {
     pub intercept_all: bool,
 }
 
+impl SearchPermissions {
+    /// Declared search reach: whether the app may open the Waypointer (the only
+    /// live capability today; the reserved handler flags are surfaced too).
+    /// `None` when the app declares no search access.
+    pub fn reach_summary(&self) -> Option<String> {
+        let mut parts: Vec<&str> = Vec::new();
+        if self.open {
+            parts.push("open launcher");
+        }
+        if self.register_handler {
+            parts.push("register handler");
+        }
+        if self.intercept_all {
+            parts.push("intercept all");
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join(", "))
+        }
+    }
+}
+
 // ── Intents ──
 
 /// `shell.intents` cross-process action dispatch.
@@ -394,6 +542,28 @@ pub struct IntentsPermissions {
     /// requires consent-prompt + AppArmor (F3 bundle).
     #[serde(default)]
     pub preferences: bool,
+}
+
+impl IntentsPermissions {
+    /// Declared intents reach: `dispatch` (live) plus the reserved register /
+    /// preferences flags. `None` when the app declares no intents access.
+    pub fn reach_summary(&self) -> Option<String> {
+        let mut parts: Vec<&str> = Vec::new();
+        if self.dispatch {
+            parts.push("dispatch");
+        }
+        if self.register {
+            parts.push("register");
+        }
+        if self.preferences {
+            parts.push("preferences");
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join(", "))
+        }
+    }
 }
 
 // ── Input ──
@@ -443,6 +613,23 @@ impl InputPermissions {
             }
         }
     }
+
+    /// Declared input reach: focused / global keybinding registration. `None` when
+    /// the module registers no bindings.
+    pub fn reach_summary(&self) -> Option<String> {
+        let mut parts: Vec<&str> = Vec::new();
+        if self.register_focused_bindings {
+            parts.push("focused bindings");
+        }
+        if self.register_global_bindings {
+            parts.push("global bindings");
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join(", "))
+        }
+    }
 }
 
 // ── MCP ──
@@ -481,6 +668,24 @@ impl McpPermissions {
     /// authorization by this app.
     pub fn requires_authorization(&self, tool: &str) -> bool {
         self.tools_action_authorize.iter().any(|t| t == tool)
+    }
+
+    /// Declared MCP reach: the exposed tool set (read-only tools plus the
+    /// action tools the AI can call after authorization). An app exposing tools
+    /// the AI then uses is real reach. `None` when the app exposes no MCP tools.
+    pub fn reach_summary(&self) -> Option<String> {
+        let mut parts: Vec<String> = Vec::new();
+        for t in &self.tools_default_permit {
+            parts.push(t.clone());
+        }
+        for t in &self.tools_action_authorize {
+            parts.push(format!("{t} (action)"));
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join(", "))
+        }
     }
 }
 
@@ -992,6 +1197,89 @@ always_confirm_overrides = ["empty_trash"]
             allowed_domains: vec!["GitHub.com".into(), " github.com ".into(), "  ".into()],
         };
         assert_eq!(messy.reach_summary(), Some("github.com".to_string()));
+    }
+
+    #[test]
+    fn reach_summary_projects_every_dimension() {
+        // Each dimension: default (no declaration) projects None; a declared reach
+        // projects a non-empty consent-scope string.
+        assert_eq!(GraphPermissions::default().reach_summary(), None);
+        assert_eq!(
+            GraphPermissions {
+                read: vec!["system.File".into()],
+                write: vec!["com.app.Note".into()],
+                ..Default::default()
+            }
+            .reach_summary(),
+            Some("read system.File; write com.app.Note".to_string()),
+        );
+
+        assert_eq!(EventBusPermissions::default().reach_summary(), None);
+        assert_eq!(
+            EventBusPermissions {
+                subscribe: vec!["file.opened".into()],
+                publish: vec![],
+            }
+            .reach_summary(),
+            Some("hears file.opened".to_string()),
+        );
+
+        assert_eq!(FilesystemPermissions::default().reach_summary(), None);
+        assert_eq!(
+            FilesystemPermissions { documents: true, ..Default::default() }.reach_summary(),
+            Some("documents".to_string()),
+        );
+
+        assert_eq!(NotificationPermissions::default().reach_summary(), None);
+        assert_eq!(
+            NotificationPermissions { enabled: true }.reach_summary(),
+            Some("on".to_string()),
+        );
+
+        assert_eq!(ClipboardPermissions::default().reach_summary(), None);
+        assert_eq!(
+            ClipboardPermissions { read: true, write: true, ..Default::default() }.reach_summary(),
+            Some("read, write".to_string()),
+        );
+
+        assert_eq!(SystemPermissions::default().reach_summary(), None);
+        assert_eq!(
+            SystemPermissions { autostart: true, ..Default::default() }.reach_summary(),
+            Some("autostart".to_string()),
+        );
+
+        assert_eq!(SearchPermissions::default().reach_summary(), None);
+        assert_eq!(
+            SearchPermissions { open: true, ..Default::default() }.reach_summary(),
+            Some("open launcher".to_string()),
+        );
+
+        assert_eq!(IntentsPermissions::default().reach_summary(), None);
+        assert_eq!(
+            IntentsPermissions { dispatch: true, ..Default::default() }.reach_summary(),
+            Some("dispatch".to_string()),
+        );
+
+        assert_eq!(InputPermissions::default().reach_summary(), None);
+        assert_eq!(
+            InputPermissions {
+                register_focused_bindings: true,
+                register_global_bindings: false,
+            }
+            .reach_summary(),
+            Some("focused bindings".to_string()),
+        );
+
+        assert_eq!(McpPermissions::default().reach_summary(), None);
+        assert_eq!(
+            McpPermissions {
+                tools_default_permit: vec!["search".into()],
+                tools_action_authorize: vec!["send".into()],
+                ..Default::default()
+            }
+            .reach_summary(),
+            Some("search, send (action)".to_string()),
+        );
     }
 
     // ── Defaults ──
