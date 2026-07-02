@@ -8,7 +8,7 @@
   /// (per-role is new backend), cannot enumerate downloaded models, has no HF
   /// search and no import. The store reads the intended commands, then mocks.
   import { onMount } from "svelte";
-  import { HardDrive, Trash2, Check, Search, Upload, ExternalLink } from "lucide-svelte";
+  import { HardDrive, Trash2, Upload, ExternalLink } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
@@ -20,6 +20,8 @@
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { ProviderLogo } from "@arlen/ui-kit/components/ui/provider-logo";
+  import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { Checkbox } from "@arlen/ui-kit/components/ui/checkbox";
   import {
     models,
     hardware,
@@ -169,18 +171,21 @@
             {/snippet}
           </Row>
         {/each}
-        <button type="button" class="import-row" onclick={() => importModel()}>
+        <Button
+          variant="ghost"
+          class="w-full justify-start gap-2 px-4 font-normal text-muted-foreground hover:text-foreground"
+          onclick={() => importModel()}
+        >
           <Upload size={15} strokeWidth={1.75} />
           Import a model from your computer
-        </button>
+        </Button>
       </Group>
     {/if}
 
     <Group label="Browse more" class="span-full">
       <div class="browse-bar">
-        <span class="search">
-          <Search size={14} strokeWidth={2} />
-          <input type="text" bind:value={query} placeholder="Search models" aria-label="Search models" />
+        <span class="browse-search">
+          <Input bind:value={query} placeholder="Search models" />
         </span>
         <PopoverSelect
           value={taskFilter}
@@ -189,15 +194,10 @@
           width="11rem"
           onchange={(v) => (taskFilter = v)}
         />
-        <button
-          type="button"
-          class="hf-search"
-          onclick={() => searchHuggingFace()}
-          title="Reach out to Hugging Face to widen the results"
-        >
+        <Button variant="outline" size="sm" onclick={() => searchHuggingFace()}>
           Search Hugging Face
           <ExternalLink size={13} strokeWidth={2} />
-        </button>
+        </Button>
       </div>
 
       {#if $hfSearch}
@@ -211,7 +211,11 @@
       {/each}
 
       <label class="adv-check">
-        <input type="checkbox" bind:checked={showAdvanced} />
+        <Checkbox
+          checked={showAdvanced}
+          ariaLabel="Show uncurated community models"
+          onchange={(v) => (showAdvanced = v)}
+        />
         Show uncurated community models
       </label>
     </Group>
@@ -261,11 +265,18 @@
           <Progress value={pct} />
           <div class="dl-row">
             <span class="muted-line">{$download?.status === "verifying" ? "Verifying…" : `${Math.round(pct)}%`}</span>
-            <button type="button" class="dl-cancel" onclick={() => cancelDownload(m.id)}>Cancel</button>
+            <Button
+              variant="link"
+              size="sm"
+              class="h-auto p-0 text-xs text-muted-foreground hover:text-destructive"
+              onclick={() => cancelDownload(m.id)}
+            >
+              Cancel
+            </Button>
           </div>
         </div>
       {:else if m.installed}
-        <span class="installed"><Check size={13} strokeWidth={2.5} /> Installed</span>
+        <Badge variant="success">Installed</Badge>
       {:else}
         <Button
           variant={m.fit === "wont-fit" ? "outline" : "default"}
@@ -367,14 +378,6 @@
   .model-action {
     flex-shrink: 0;
   }
-  .installed {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--color-success, #16a34a);
-  }
   .dl {
     display: flex;
     flex-direction: column;
@@ -386,35 +389,6 @@
     align-items: center;
     justify-content: space-between;
   }
-  .dl-cancel {
-    border: none;
-    background: transparent;
-    padding: 0;
-    font-size: 0.6875rem;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
-    cursor: pointer;
-  }
-  .dl-cancel:hover {
-    color: var(--color-error, #dc2626);
-  }
-
-  /* Your models: the import affordance row. */
-  .import-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 0.75rem 1rem;
-    border: none;
-    background: transparent;
-    font-size: 0.8125rem;
-    color: color-mix(in srgb, var(--foreground) 70%, transparent);
-    cursor: pointer;
-    text-align: left;
-  }
-  .import-row:hover {
-    color: var(--foreground);
-  }
 
   /* Browse: the search + filter bar, the result rows, the advanced toggle. */
   .browse-bar {
@@ -424,43 +398,9 @@
     padding: 0.75rem 1rem;
     flex-wrap: wrap;
   }
-  .search {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
+  .browse-search {
     flex: 1;
     min-width: 12rem;
-    height: 2rem;
-    padding: 0 0.625rem;
-    border-radius: var(--radius-button, 6px);
-    background: color-mix(in srgb, var(--foreground) 6%, transparent);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  .search input {
-    flex: 1;
-    min-width: 0;
-    border: none;
-    background: transparent;
-    color: var(--foreground);
-    font-size: 0.8125rem;
-    outline: none;
-  }
-  .hf-search {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    height: 2rem;
-    padding: 0 0.75rem;
-    border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
-    border-radius: var(--radius-button, 6px);
-    background: transparent;
-    font-size: 0.8125rem;
-    color: color-mix(in srgb, var(--foreground) 75%, transparent);
-    cursor: pointer;
-  }
-  .hf-search:hover {
-    color: var(--foreground);
-    border-color: color-mix(in srgb, var(--foreground) 30%, transparent);
   }
   .browse-note {
     padding: 0 1rem 0.25rem;
