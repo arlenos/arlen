@@ -593,6 +593,22 @@ impl CapturedImage {
     }
 }
 
+/// Capture the output whose connector name matches `name` (e.g. `eDP-1`), as
+/// listed by [`list_outputs`]. Errors if no output has that name.
+pub fn capture_output_by_name(name: &str, include_cursor: bool) -> Result<CapturedImage> {
+    let outputs = list_outputs()?;
+    let index = outputs
+        .iter()
+        .position(|o| o.name.as_deref() == Some(name))
+        .ok_or_else(|| {
+            anyhow!(
+                "no output named {name:?} (have {:?})",
+                outputs.iter().filter_map(|o| o.name.as_deref()).collect::<Vec<_>>()
+            )
+        })?;
+    capture_output(index, include_cursor)
+}
+
 /// Capture a rectangular region of output `output_index`. The region is given in
 /// the compositor's global LOGICAL coordinates (the grim `-g` / portal convention);
 /// it is mapped to physical capture-buffer pixels via the output's (possibly
