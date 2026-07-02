@@ -22,7 +22,6 @@ export type PanelId =
   | "ai"
   | "ai-providers"
   | "ai-models"
-  | "ai-local-models"
   | "privacy"
   | "extensions"
   | "about";
@@ -54,8 +53,7 @@ export const PANELS: PanelMeta[] = [
   { id: "knowledge", title: "Knowledge Graph", icon: "Brain", enabled: true, href: "/knowledge" },
   { id: "ai", title: "General", icon: "Sparkles", enabled: true, href: "/ai" },
   { id: "ai-providers", title: "Providers", icon: "Cloud", enabled: true, href: "/ai/providers" },
-  { id: "ai-models", title: "Default models", icon: "SlidersHorizontal", enabled: true, href: "/ai/models" },
-  { id: "ai-local-models", title: "Local models", icon: "HardDrive", enabled: true, href: "/ai/local-models" },
+  { id: "ai-models", title: "Models", icon: "SlidersHorizontal", enabled: true, href: "/ai/models" },
 
   // Input
   { id: "keyboard", title: "Keyboard", icon: "Keyboard", enabled: true, href: "/keyboard" },
