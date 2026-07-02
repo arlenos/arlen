@@ -73,6 +73,16 @@ pub enum RevokedReach {
         /// The intents capability flag to disable.
         cap: String,
     },
+    /// Turn off a standard `[filesystem]` directory flag (home/documents/...).
+    FilesystemDir {
+        /// The directory flag to disable.
+        dir: String,
+    },
+    /// Remove a `[filesystem].custom` path entry (the app loses access to it).
+    FilesystemPath {
+        /// The custom path to remove.
+        path: String,
+    },
 }
 
 /// Who initiated the revoke. The agent may only *propose* (suggest-mode records a

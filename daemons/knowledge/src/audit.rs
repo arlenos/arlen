@@ -42,6 +42,10 @@ fn reach_to_audit(reach: &RevokedReach) -> CapabilityReach {
         RevokedReach::InputCap { cap } => CapabilityReach::InputCap { cap: cap.clone() },
         RevokedReach::SearchCap { cap } => CapabilityReach::SearchCap { cap: cap.clone() },
         RevokedReach::IntentsCap { cap } => CapabilityReach::IntentsCap { cap: cap.clone() },
+        RevokedReach::FilesystemDir { dir } => CapabilityReach::FilesystemDir { dir: dir.clone() },
+        RevokedReach::FilesystemPath { path } => CapabilityReach::FilesystemPath {
+            path: path.clone(),
+        },
     }
 }
 
@@ -78,6 +82,10 @@ pub fn audit_to_reach(reach: &CapabilityReach) -> RevokedReach {
         CapabilityReach::InputCap { cap } => RevokedReach::InputCap { cap: cap.clone() },
         CapabilityReach::SearchCap { cap } => RevokedReach::SearchCap { cap: cap.clone() },
         CapabilityReach::IntentsCap { cap } => RevokedReach::IntentsCap { cap: cap.clone() },
+        CapabilityReach::FilesystemDir { dir } => RevokedReach::FilesystemDir { dir: dir.clone() },
+        CapabilityReach::FilesystemPath { path } => RevokedReach::FilesystemPath {
+            path: path.clone(),
+        },
     }
 }
 
