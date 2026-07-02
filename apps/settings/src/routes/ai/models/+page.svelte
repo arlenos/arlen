@@ -147,7 +147,18 @@
               <span class="tier-note">{tm.note}</span>
             </div>
             {#if m}
-              {@render modelBody(m)}
+              <div class="tier-body">
+                <span class="model-name">{m.name}</span>
+                <span class="model-tags">
+                  {#each m.tasks as t (t)}<Badge variant="outline">{taskLabel(t)}</Badge>{/each}
+                  {#if m.fit}<Badge variant={FIT[m.fit].tone}>{FIT[m.fit].text}</Badge>{/if}
+                </span>
+                <span class="model-meta">
+                  {m.sizeGb != null ? `${m.sizeGb.toFixed(1)} GB` : ""}
+                  {#if m.tokensPerSec != null}· {Math.round(m.tokensPerSec)} words/sec{/if}
+                </span>
+              </div>
+              <div class="tier-foot">{@render modelAction(m, true)}</div>
             {:else}
               <p class="muted-line">Nothing in this tier runs well on your machine.</p>
             {/if}
@@ -246,7 +257,6 @@
 <!-- A model's name, tags, fit, size, and the right action (download / progress /
      installed), shared by the tier cards and the browse list. -->
 {#snippet modelBody(m: Model)}
-  {@const pct = downloadPct(m.id)}
   <div class="model">
     <div class="model-info">
       <span class="model-name">{m.name}</span>
@@ -259,36 +269,43 @@
         {#if m.tokensPerSec != null}· {Math.round(m.tokensPerSec)} words/sec{/if}
       </span>
     </div>
-    <div class="model-action">
-      {#if pct !== null}
-        <div class="dl">
-          <Progress value={pct} />
-          <div class="dl-row">
-            <span class="muted-line">{$download?.status === "verifying" ? "Verifying…" : `${Math.round(pct)}%`}</span>
-            <Button
-              variant="link"
-              size="sm"
-              class="h-auto p-0 text-xs text-muted-foreground hover:text-destructive"
-              onclick={() => cancelDownload(m.id)}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      {:else if m.installed}
-        <Badge variant="success">Installed</Badge>
-      {:else}
-        <Button
-          variant={m.fit === "wont-fit" ? "outline" : "default"}
-          size="sm"
-          disabled={m.fit === "wont-fit" || $download !== null}
-          onclick={() => (pending = m)}
-        >
-          Download
-        </Button>
-      {/if}
-    </div>
+    <div class="model-action">{@render modelAction(m, false)}</div>
   </div>
+{/snippet}
+
+<!-- The right-hand action: download / progress+cancel / installed. `full`
+     stretches the button across a tier card; the browse list uses the compact
+     form. -->
+{#snippet modelAction(m: Model, full: boolean)}
+  {@const pct = downloadPct(m.id)}
+  {#if pct !== null}
+    <div class="dl" class:dl-full={full}>
+      <Progress value={pct} />
+      <div class="dl-row">
+        <span class="muted-line">{$download?.status === "verifying" ? "Verifying…" : `${Math.round(pct)}%`}</span>
+        <Button
+          variant="link"
+          size="sm"
+          class="h-auto p-0 text-xs text-muted-foreground hover:text-destructive"
+          onclick={() => cancelDownload(m.id)}
+        >
+          Cancel
+        </Button>
+      </div>
+    </div>
+  {:else if m.installed}
+    <Badge variant="success">Installed</Badge>
+  {:else}
+    <Button
+      variant={m.fit === "wont-fit" ? "outline" : "default"}
+      size="sm"
+      class={full ? "w-full" : ""}
+      disabled={m.fit === "wont-fit" || $download !== null}
+      onclick={() => (pending = m)}
+    >
+      Download
+    </Button>
+  {/if}
 {/snippet}
 
 <ConfirmDialog
@@ -345,6 +362,20 @@
   .tier-note {
     font-size: 0.6875rem;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
+  }
+  /* The model block stacks; the action pins to the bottom so all three tier
+     cards line their Download buttons up regardless of badge wrapping. */
+  .tier-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+  .tier-foot {
+    margin-top: auto;
+    padding-top: 0.25rem;
+  }
+  .dl.dl-full {
+    width: 100%;
   }
 
   /* One model row body: info left, action right. */
