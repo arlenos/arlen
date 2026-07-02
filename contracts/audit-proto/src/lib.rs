@@ -191,6 +191,11 @@ pub enum CapabilityReach {
     },
     /// The `instance_scope = all` cross-app reach.
     InstanceAll,
+    /// A `[network].allowed_domains` egress domain.
+    NetworkDomain {
+        /// The network domain.
+        domain: String,
+    },
 }
 
 /// Content-free interaction metadata — the Structural tier of
