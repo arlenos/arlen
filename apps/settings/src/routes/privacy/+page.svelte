@@ -21,13 +21,13 @@
     SquareTerminal,
     SlidersHorizontal,
     ChevronRight,
-    Boxes,
+    Brain,
     Globe,
     Folder,
     Camera,
     Clipboard,
     Bell,
-    Cpu,
+    Zap,
     Workflow,
   } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
@@ -66,18 +66,21 @@
 
   // The mark for each capability family (the hero anchor of the by-capability
   // view and the subheaders in the by-app view).
+  // Keep these in step with the settings nav icons where the system already has
+  // one for the same thing: Knowledge Graph -> Brain, Notifications -> Bell,
+  // System (Actions) -> Zap, the assistant -> Sparkles.
   const FAMILY_ICONS: Record<Family, typeof Sparkles> = {
-    data: Boxes,
+    data: Brain,
     network: Globe,
     files: Folder,
     devices: Camera,
     clipboard: Clipboard,
     notifications: Bell,
-    system: Cpu,
+    system: Zap,
     automation: Workflow,
   };
   function familyIcon(key: string) {
-    return FAMILY_ICONS[key as Family] ?? Boxes;
+    return FAMILY_ICONS[key as Family] ?? Brain;
   }
 
   // Known first-party principals get their own mark; everything else falls back
