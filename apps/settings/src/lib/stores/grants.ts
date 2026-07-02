@@ -141,11 +141,66 @@ function typeNoun(entityType: string): string {
   return TYPE_NOUNS[s] ?? (s === "*" ? "its own data" : s.toLowerCase());
 }
 
+/// The display families the panel groups reach into. Every one of the eleven
+/// profile dimensions maps to exactly one family (see `DIMENSION_FAMILY`), so
+/// nothing an app can do falls through the cracks.
+export type Family =
+  | "data"
+  | "network"
+  | "files"
+  | "devices"
+  | "clipboard"
+  | "notifications"
+  | "system"
+  | "automation";
+
+/// The families in display order, with their headings. "Knowledge graph" names
+/// the KG data family so it does not read as the same thing as on-disk "Files
+/// and folders" (the exact wording is settled with Tim at the screenshot).
+export const FAMILIES: { key: Family; label: string }[] = [
+  { key: "data", label: "Knowledge graph" },
+  { key: "network", label: "Network" },
+  { key: "files", label: "Files and folders" },
+  { key: "devices", label: "Devices" },
+  { key: "clipboard", label: "Clipboard" },
+  { key: "notifications", label: "Notifications" },
+  { key: "system", label: "System" },
+  { key: "automation", label: "Automation" },
+];
+
+// Normalize a consent-class / dimension token so the backend's snake_case
+// ("network_access") and any PascalCase ("NetworkAccess") both resolve.
+function dim(consentClass: string): string {
+  return consentClass.toLowerCase().replace(/[^a-z]/g, "");
+}
+
+// Every non-graph profile dimension (carried on a grant as `consent_class`) maps
+// to a display family, keyed by the normalized token. graph is family "data"
+// via the token path. event_bus and mcp are real reach (listening to activity;
+// exposing tools the assistant uses), so they map to automation as their OWN
+// lines, never silently dropped.
+const DIMENSION_FAMILY: Record<string, Family> = {
+  networkaccess: "network",
+  filesystem: "files",
+  appdata: "files",
+  portal: "devices",
+  clipboard: "clipboard",
+  notifications: "notifications",
+  system: "system",
+  eventbus: "automation",
+  mcp: "automation",
+  input: "automation",
+  search: "automation",
+  intents: "automation",
+};
+
 /// One line of scope as the panel renders it: a plain sentence split into a
-/// quiet verb and the emphasized object (the user's data is what matters), with
-/// its provenance, the detail behind the expand, and the revoke target.
+/// quiet verb and the emphasized object, with its family, provenance, the detail
+/// behind the expand, and the revoke target.
 export interface ScopeLine {
   key: string;
+  /// The display family this reach belongs to.
+  family: Family;
   /// The quiet leading verb: "reads", "reads and changes", "changes", or
   /// "access to" for a consent path.
   verb: string;
@@ -218,6 +273,7 @@ function tokenLines(grant: GrantView, c: Ceiling): ScopeLine[] {
     for (const rel of relationsByType.get(entityType) ?? []) detail.push(rel);
     lines.push({
       key: `${grant.app_id}:${entityType}`,
+      family: "data",
       verb,
       object,
       own: !all,
@@ -240,26 +296,135 @@ function setDefault(
   return v;
 }
 
-// A consent grant is one line: the concrete scope the user allowed in context.
-function consentLine(grant: GrantView): ScopeLine {
-  const scope = grant.consent_scope || "your data";
+// The provenance line for a grant, from its source: an app declares reach at
+// install; the user allows a consent grant in context (with a date); some reach
+// is system-managed and not yet per-app revocable.
+function fmtDate(micros: number): string {
+  return new Date(micros / 1000).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+function provenanceOf(grant: GrantView): string {
+  if (grant.source === "consent") return `you allowed on ${fmtDate(grant.issued_at)}`;
+  if (grant.source === "system") return "managed by the system";
+  return "declared at install";
+}
+
+// One non-graph grant becomes one line. The phrasing keeps the honest
+// distinction for each family (read vs write, all vs scoped, per-device), never
+// a bare "has access". `consent_class` names the dimension; `consent_scope`
+// carries the concrete detail.
+function nonGraphLine(grant: GrantView): ScopeLine {
+  const d = dim(grant.consent_class);
+  const family = DIMENSION_FAMILY[d] ?? "automation";
+  const scope = grant.consent_scope;
+  let verb = "accesses";
+  let object = scope || grant.consent_class.toLowerCase();
+  const detail: string[] = [];
+
+  switch (d) {
+    case "networkaccess": {
+      verb = "reaches";
+      if (scope === "all") {
+        object = "the whole internet";
+      } else {
+        const domains = scope.split(",").map((d) => d.trim()).filter(Boolean);
+        object =
+          domains.length <= 1
+            ? domains[0] ?? "one host"
+            : `${domains[0]} and ${domains.length - 1} more`;
+        if (domains.length > 1) detail.push(`Hosts: ${domains.join(", ")}.`);
+      }
+      break;
+    }
+    case "filesystem":
+      verb = "reads and changes";
+      object = `your ${scope}`;
+      break;
+    case "appdata":
+      verb = "access to";
+      object = scope;
+      break;
+    case "portal": {
+      // scope is "camera" / "microphone" / "screen" / "usb:Yubikey".
+      const [dev, persist] = scope.split("|");
+      if (dev === "screen") {
+        verb = "can capture";
+        object = "your screen";
+      } else if (dev.startsWith("usb:")) {
+        verb = "can use";
+        object = `your ${dev.slice(4)}`;
+      } else {
+        verb = "can use";
+        object = `your ${dev}`;
+      }
+      detail.push(persist ? `Access: ${persist}.` : "Access: while the app is in use.");
+      break;
+    }
+    case "clipboard":
+      verb = scope.includes("write") ? "reads and writes" : "reads";
+      object = scope.includes("history") ? "the clipboard and its history" : "the clipboard";
+      break;
+    case "notifications":
+      verb = "can send";
+      object = "notifications";
+      break;
+    case "system": {
+      const map: Record<string, [string, string]> = {
+        background: ["keeps running", "in the background"],
+        suspend: ["can suspend", "the system"],
+        autostart: ["starts", "automatically at login"],
+      };
+      [verb, object] = map[scope] ?? ["controls", scope];
+      break;
+    }
+    case "eventbus":
+      // Listening to the bus means seeing activity: real reach, not plumbing.
+      verb = scope.startsWith("publish") ? "publishes" : "listens to";
+      object = scope.replace(/^(publish|subscribe):\s*/, "") || "app events";
+      break;
+    case "mcp":
+      // Tools an app exposes are used BY the assistant: real reach.
+      verb = "exposes";
+      object = `${scope} to the assistant`;
+      break;
+    case "input":
+      verb = "registers";
+      object = scope;
+      break;
+    case "search":
+      verb = "provides";
+      object = scope;
+      break;
+    case "intents":
+      verb = "handles";
+      object = scope;
+      break;
+  }
+
   return {
-    key: `${grant.app_id}:consent:${grant.id}`,
-    verb: "access to",
-    object: scope,
+    key: `${grant.app_id}:${grant.consent_class}:${grant.id}`,
+    family,
+    verb,
+    object,
     own: false,
-    provenance: "you allowed this",
-    detail: [],
+    provenance: provenanceOf(grant),
+    detail,
     entityType: null,
     revoke: { kind: "consent", appId: grant.app_id, grantId: grant.id },
-    text: `access to ${scope}`,
+    text: `${verb} ${object}`,
   };
 }
 
 function grantLines(grant: GrantView): ScopeLine[] {
-  if (grant.source === "consent") return [consentLine(grant)];
-  const c = parseCeiling(grant.declared_ceiling);
-  return c ? tokenLines(grant, c) : [];
+  if (grant.source === "capability-token") {
+    const c = parseCeiling(grant.declared_ceiling);
+    return c ? tokenLines(grant, c) : [];
+  }
+  // Everything else (declared non-graph reach, consent, system) is one line.
+  return [nonGraphLine(grant)];
 }
 
 /// One principal (the assistant or an app) with its scope lines, for the
@@ -295,8 +460,30 @@ export function byApp(list: GrantView[]): Principal[] {
   return [...by.values()].filter((p) => p.lines.length > 0);
 }
 
-/// One reacher inside a by-data group: the principal and its line for that
-/// data type.
+/// The lines of one principal, grouped by family, for the family subheaders in
+/// the by-app view.
+export interface FamilyGroup {
+  key: Family;
+  label: string;
+  lines: ScopeLine[];
+}
+
+/// Split a principal's lines into families, in display order.
+export function familyGroups(lines: ScopeLine[]): FamilyGroup[] {
+  const by = new Map<Family, ScopeLine[]>();
+  for (const l of lines) {
+    const arr = by.get(l.family) ?? [];
+    arr.push(l);
+    by.set(l.family, arr);
+  }
+  return FAMILIES.filter((f) => by.has(f.key)).map((f) => ({
+    key: f.key,
+    label: f.label,
+    lines: by.get(f.key)!,
+  }));
+}
+
+/// One reacher inside a by-capability group: the principal and its line.
 export interface Reacher {
   appId: string;
   label: string;
@@ -305,31 +492,28 @@ export interface Reacher {
   line: ScopeLine;
 }
 
-/// One data type (or the consent bucket) and everything that can reach it, for
-/// the by-data pivot.
+/// One capability family and everything that can reach through it.
 export interface ResourceGroup {
   key: string;
   label: string;
   reachers: Reacher[];
 }
 
-const CONSENT_BUCKET = "__consent__";
-
-/// Invert the grants into "who can reach each kind of data". Consent path
-/// scopes gather under a single "Specific locations" group.
-export function byData(list: GrantView[]): ResourceGroup[] {
-  const groups = new Map<string, ResourceGroup>();
+/// Invert the grants into "who can reach through each capability family",
+/// grouped by the display families in order. The assistant floats to the top of
+/// each family.
+export function byCapability(list: GrantView[]): ResourceGroup[] {
+  const groups = new Map<Family, ResourceGroup>();
   for (const p of byApp(list)) {
     for (const line of p.lines) {
-      const key = line.entityType ?? CONSENT_BUCKET;
-      let g = groups.get(key);
+      let g = groups.get(line.family);
       if (!g) {
         g = {
-          key,
-          label: line.entityType ? typeLabel(line.entityType) : "Specific locations",
+          key: line.family,
+          label: FAMILIES.find((f) => f.key === line.family)?.label ?? line.family,
           reachers: [],
         };
-        groups.set(key, g);
+        groups.set(line.family, g);
       }
       g.reachers.push({
         appId: p.appId,
@@ -340,14 +524,11 @@ export function byData(list: GrantView[]): ResourceGroup[] {
       });
     }
   }
-  // The assistant floats to the top of each group; the consent bucket last.
-  const arr = [...groups.values()];
-  for (const g of arr) g.reachers.sort((a, b) => Number(b.assistant) - Number(a.assistant));
-  return arr.sort((a, b) => {
-    if (a.key === CONSENT_BUCKET) return 1;
-    if (b.key === CONSENT_BUCKET) return -1;
-    return a.label.localeCompare(b.label);
-  });
+  for (const g of groups.values())
+    g.reachers.sort((a, b) => Number(b.assistant) - Number(a.assistant));
+  return FAMILIES.map((f) => groups.get(f.key)).filter(
+    (g): g is ResourceGroup => !!g,
+  );
 }
 
 /// Every known grant, whole-system. A failed read is surfaced via
@@ -365,35 +546,54 @@ export const grantsError = writable(false);
 // all files + projects, changes its own notes, links notes to projects), a
 // verified first-party app (reads and changes all files, reads projects), and
 // an unverified third-party app that the user granted a folder in context.
+// A base grant so each fixture entry only names what it changes.
+function g(over: Partial<GrantView> & Pick<GrantView, "id" | "app_id">): GrantView {
+  return {
+    declared_ceiling: "",
+    required: false,
+    identity_verified: true,
+    live: true,
+    revoked: false,
+    superseded: false,
+    issued_at: 1_780_000_000_000_000,
+    reach: [],
+    source: "declared",
+    consent_class: "",
+    consent_scope: "",
+    ...over,
+  };
+}
+
 const MOCK_GRANTS: GrantView[] = [
-  {
-    id: "01920000-0000-7000-8000-000000000001",
+  // The assistant: reads your files + projects, changes its own notes (data),
+  // and reaches two declared hosts (network).
+  g({
+    id: "0192-0001",
     app_id: "org.arlen.AI1",
+    source: "capability-token",
     declared_ceiling: JSON.stringify({
       read: [
         { entity_type: "system.File", fields: null, exclude_fields: [] },
         { entity_type: "system.Project", fields: null, exclude_fields: [] },
       ],
       write: [{ entity_type: "system.Note", fields: null, exclude_fields: [] }],
-      relations: [
-        { from: "system.Note", to: "system.Project", relation_type: "NOTE_ABOUT" },
-      ],
+      relations: [{ from: "system.Note", to: "system.Project", relation_type: "NOTE_ABOUT" }],
       instance: "All",
     }),
-    required: true,
-    identity_verified: true,
-    live: true,
-    revoked: false,
-    superseded: false,
-    issued_at: 1_780_000_000_000_000,
-    reach: ["system.File", "system.Project", "system.Note"],
-    source: "capability-token",
-    consent_class: "",
-    consent_scope: "",
-  },
-  {
-    id: "01920000-0000-7000-8000-000000000002",
+  }),
+  g({
+    id: "0192-0002",
+    app_id: "org.arlen.AI1",
+    consent_class: "network_access",
+    consent_scope: "api.openai.com, api.anthropic.com",
+  }),
+
+  // Files: reads and changes your files, reads your projects (data), and reads
+  // and changes your Documents and Downloads folders (filesystem).
+  g({
+    id: "0192-0003",
     app_id: "org.arlen.files",
+    source: "capability-token",
     declared_ceiling: JSON.stringify({
       read: [
         { entity_type: "system.File", fields: null, exclude_fields: [] },
@@ -403,54 +603,62 @@ const MOCK_GRANTS: GrantView[] = [
       relations: [],
       instance: "All",
     }),
-    required: true,
-    identity_verified: true,
-    live: true,
-    revoked: false,
-    superseded: false,
-    issued_at: 1_780_000_000_000_000,
-    reach: ["system.File", "system.Project"],
-    source: "capability-token",
-    consent_class: "",
-    consent_scope: "",
-  },
-  {
-    id: "01920000-0000-7000-8000-000000000003",
+  }),
+  g({
+    id: "0192-0004",
+    app_id: "org.arlen.files",
+    consent_class: "filesystem",
+    consent_scope: "Documents and Downloads folders",
+  }),
+
+  // An unverified third-party editor: reads only its own files, sees only file
+  // names and dates (data, field-limited); you granted it ~/Documents (consent);
+  // it reads and writes the clipboard.
+  g({
+    id: "0192-0005",
     app_id: "com.example.editor",
+    identity_verified: false,
+    source: "capability-token",
     declared_ceiling: JSON.stringify({
-      read: [
-        { entity_type: "system.File", fields: ["path", "modified"], exclude_fields: [] },
-      ],
+      read: [{ entity_type: "system.File", fields: ["path", "modified"], exclude_fields: [] }],
       write: [],
       relations: [],
       instance: "Own",
     }),
-    required: false,
-    identity_verified: true,
-    live: true,
-    revoked: false,
-    superseded: false,
-    issued_at: 1_780_000_000_000_000,
-    reach: ["system.File"],
-    source: "capability-token",
-    consent_class: "",
-    consent_scope: "",
-  },
-  {
-    id: "01920000-0000-7000-8000-000000000004",
+  }),
+  g({
+    id: "0192-0006",
     app_id: "com.example.editor",
-    declared_ceiling: "",
-    required: false,
     identity_verified: false,
-    live: true,
-    revoked: false,
-    superseded: false,
-    issued_at: 1_780_000_000_000_000,
-    reach: [],
     source: "consent",
     consent_class: "app_data",
     consent_scope: "~/Documents",
-  },
+    issued_at: 1_782_600_000_000_000,
+  }),
+  g({
+    id: "0192-0007",
+    app_id: "com.example.editor",
+    identity_verified: false,
+    consent_class: "clipboard",
+    consent_scope: "read, write",
+  }),
+
+  // A recorder app: camera, microphone, screen (devices), notifications, and it
+  // keeps running in the background (system).
+  g({ id: "0192-0008", app_id: "com.acme.recorder", identity_verified: false, source: "consent", consent_class: "portal", consent_scope: "camera|while using", issued_at: 1_782_700_000_000_000 }),
+  g({ id: "0192-0009", app_id: "com.acme.recorder", identity_verified: false, source: "consent", consent_class: "portal", consent_scope: "microphone|while using", issued_at: 1_782_700_000_000_000 }),
+  g({ id: "0192-0010", app_id: "com.acme.recorder", identity_verified: false, source: "consent", consent_class: "portal", consent_scope: "screen|once", issued_at: 1_782_700_000_000_000 }),
+  g({ id: "0192-0011", app_id: "com.acme.recorder", identity_verified: false, consent_class: "notifications", consent_scope: "" }),
+  g({ id: "0192-0012", app_id: "com.acme.recorder", identity_verified: false, consent_class: "system", consent_scope: "background" }),
+
+  // A notes plugin: exposes tools to the assistant (mcp), listens to your
+  // activity (event_bus), registers a global shortcut (input), provides search
+  // results (search), and handles the open-note action (intents).
+  g({ id: "0192-0013", app_id: "com.example.notes", consent_class: "mcp", consent_scope: "4 tools" }),
+  g({ id: "0192-0014", app_id: "com.example.notes", consent_class: "event_bus", consent_scope: "subscribe: your activity" }),
+  g({ id: "0192-0015", app_id: "com.example.notes", consent_class: "input", consent_scope: "global shortcuts" }),
+  g({ id: "0192-0016", app_id: "com.example.notes", consent_class: "search", consent_scope: "search results" }),
+  g({ id: "0192-0017", app_id: "com.example.notes", consent_class: "intents", consent_scope: "the open-note action" }),
 ];
 
 /// Load the whole-system grant list. Prefers the real bridge; falls back to the

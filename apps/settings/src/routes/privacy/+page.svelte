@@ -21,13 +21,14 @@
     SquareTerminal,
     SlidersHorizontal,
     ChevronRight,
-    FileText,
+    Boxes,
+    Globe,
     Folder,
-    Layers,
-    StickyNote,
-    CalendarDays,
-    Users,
-    FolderKey,
+    Camera,
+    Clipboard,
+    Bell,
+    Cpu,
+    Workflow,
   } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
@@ -40,7 +41,8 @@
     grantsError,
     removed,
     byApp,
-    byData,
+    byCapability,
+    familyGroups,
     loadGrants,
     revokeScope,
     revokeAllFor,
@@ -48,34 +50,34 @@
     type Principal,
     type ScopeLine,
     type RemovedItem,
+    type Family,
   } from "$lib/stores/grants";
 
   onMount(loadGrants);
 
-  // Data-first: the surface is about the user's data, so it opens grouped by
-  // data, with apps as the visitors under each kind. "By app" is the secondary
-  // lens.
-  let pivot = $state<"app" | "data">("data");
+  // App-first is the default: the surface shows each app (and the assistant, as
+  // one row in the same model - the anti-Recall story). "By capability" is the
+  // second lens, grouping by what an app can reach.
+  let pivot = $state<"app" | "capability">("app");
   const PIVOTS = [
-    { value: "data", label: "By data" },
     { value: "app", label: "By app" },
+    { value: "capability", label: "By capability" },
   ];
 
-  // The mark for each kind of data (the hero anchor of the by-data view).
-  const DATA_ICONS: Record<string, typeof Sparkles> = {
-    File: FileText,
-    Folder: Folder,
-    Project: Layers,
-    Note: StickyNote,
-    Calendar: CalendarDays,
-    Event: CalendarDays,
-    Person: Users,
-    Email: FileText,
+  // The mark for each capability family (the hero anchor of the by-capability
+  // view and the subheaders in the by-app view).
+  const FAMILY_ICONS: Record<Family, typeof Sparkles> = {
+    data: Boxes,
+    network: Globe,
+    files: Folder,
+    devices: Camera,
+    clipboard: Clipboard,
+    notifications: Bell,
+    system: Cpu,
+    automation: Workflow,
   };
-  function dataIcon(key: string) {
-    if (key === "__consent__") return FolderKey;
-    const short = key.split(".").pop() ?? key;
-    return DATA_ICONS[short] ?? FileText;
+  function familyIcon(key: string) {
+    return FAMILY_ICONS[key as Family] ?? Boxes;
   }
 
   // Known first-party principals get their own mark; everything else falls back
@@ -97,7 +99,7 @@
   const principals = $derived(byApp($grants));
   const assistants = $derived(principals.filter((p) => p.assistant));
   const apps = $derived(principals.filter((p) => !p.assistant));
-  const resources = $derived(byData($grants));
+  const resources = $derived(byCapability($grants));
   const isEmpty = $derived($grantsLoaded && principals.length === 0);
 
   let expanded = $state<Set<string>>(new Set());
@@ -162,12 +164,11 @@
     for (const it of items) await restore(it);
   }
 
-  // The reach summary for a by-data row. The group header already names the
-  // data type, so a typed reach shows just the verb (plus the own qualifier); a
-  // consent path has no type header, so it shows the full "access to <path>".
+  // The reach summary for a by-capability row: the full sentence, since the
+  // group now names the capability family (not the specific data type), so the
+  // object still has to say what is reached.
   function howText(line: ScopeLine): string {
-    if (line.entityType === null) return line.text;
-    return line.own ? `${line.verb} its own only` : line.verb;
+    return line.text;
   }
 </script>
 
@@ -181,7 +182,7 @@
         options={PIVOTS}
         value={pivot}
         ariaLabel="Group access by app or by data"
-        onchange={(v) => (pivot = v as "app" | "data")}
+        onchange={(v) => (pivot = v as "app" | "capability")}
       />
     </div>
 
@@ -210,14 +211,15 @@
       {/if}
     {:else}
       {#each resources as r (r.key)}
-        {@const DataIcon = dataIcon(r.key)}
+        {@const FamilyIcon = familyIcon(r.key)}
+        {@const appCount = new Set(r.reachers.map((x) => x.appId)).size}
         <Group class="span-full">
           <div class="data-head">
-            <span class="data-icon"><DataIcon size={16} strokeWidth={1.75} /></span>
+            <span class="data-icon"><FamilyIcon size={16} strokeWidth={1.75} /></span>
             <span class="data-name">{r.label}</span>
             <span class="data-count">
-              {r.reachers.length}
-              {r.reachers.length === 1 ? "app" : "apps"}
+              {appCount}
+              {appCount === 1 ? "app" : "apps"}
             </span>
           </div>
           <div class="reacher-list">
@@ -227,9 +229,7 @@
                 {reacher.label}{#if !reacher.identityVerified}<span class="warn">unverified</span>{/if}
               </span>
               <span class="how" class:dim={reacher.line.own}>{howText(reacher.line)}</span>
-              <span class="reacher-prov">
-                {reacher.line.provenance === "you allowed this" ? "you allowed this" : ""}
-              </span>
+              <span class="reacher-prov">{reacher.line.provenance}</span>
               <button
                 type="button"
                 class="remove"
@@ -297,41 +297,48 @@
       <span class="p-spacer"></span>
       <button type="button" class="remove" onclick={() => askAll(p)}>Remove all</button>
     </div>
-    <div class="lines">
-      {#each p.lines as line (line.key)}
-        <span class="verb" class:dim={line.own}>{line.verb}</span>
-        <span class="object" class:dim={line.own}>
-          {line.object}
-          {#if line.detail.length > 0}
-            <button
-              type="button"
-              class="expand"
-              class:open={expanded.has(line.key)}
-              aria-label="Show detail"
-              onclick={() => toggle(line.key)}
-            >
-              <ChevronRight size={13} strokeWidth={2} />
-            </button>
+    {#each familyGroups(p.lines) as fam (fam.key)}
+      {@const FamIcon = familyIcon(fam.key)}
+      <div class="fam-sub">
+        <span class="fam-sub-icon"><FamIcon size={13} strokeWidth={1.75} /></span>
+        <span class="fam-sub-label">{fam.label}</span>
+      </div>
+      <div class="lines">
+        {#each fam.lines as line (line.key)}
+          <span class="verb" class:dim={line.own}>{line.verb}</span>
+          <span class="object" class:dim={line.own}>
+            {line.object}
+            {#if line.detail.length > 0}
+              <button
+                type="button"
+                class="expand"
+                class:open={expanded.has(line.key)}
+                aria-label="Show detail"
+                onclick={() => toggle(line.key)}
+              >
+                <ChevronRight size={13} strokeWidth={2} />
+              </button>
+            {/if}
+          </span>
+          <span class="prov" class:dim={line.own}>{line.provenance}</span>
+          <button
+            type="button"
+            class="remove"
+            aria-label={`Remove ${line.text}`}
+            onclick={() => askScope(p.label, line)}
+          >
+            Remove
+          </button>
+          {#if line.detail.length > 0 && expanded.has(line.key)}
+            <ul class="detail">
+              {#each line.detail as d (d)}
+                <li>{d}</li>
+              {/each}
+            </ul>
           {/if}
-        </span>
-        <span class="prov" class:dim={line.own}>{line.provenance}</span>
-        <button
-          type="button"
-          class="remove"
-          aria-label={`Remove ${line.text}`}
-          onclick={() => askScope(p.label, line)}
-        >
-          Remove
-        </button>
-        {#if line.detail.length > 0 && expanded.has(line.key)}
-          <ul class="detail">
-            {#each line.detail as d (d)}
-              <li>{d}</li>
-            {/each}
-          </ul>
-        {/if}
-      {/each}
-    </div>
+        {/each}
+      </div>
+    {/each}
   </div>
 {/snippet}
 
@@ -392,6 +399,28 @@
     margin-left: 0.375rem;
     font-size: 0.6875rem;
     color: var(--color-warning, #ca8a04);
+  }
+
+  /* Family subheader inside an app block: a quiet category label above that
+     family's lines, indented to the label edge. */
+  .fam-sub {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding-left: calc(28px + 0.625rem);
+    margin-top: 0.625rem;
+    margin-bottom: 0.25rem;
+  }
+  .fam-sub-icon {
+    display: inline-flex;
+    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+  }
+  .fam-sub-label {
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
 
   /* Sentence lines as an aligned grid, indented under the label past the 28px
