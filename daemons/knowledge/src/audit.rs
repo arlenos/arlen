@@ -37,6 +37,7 @@ fn reach_to_audit(reach: &RevokedReach) -> CapabilityReach {
         RevokedReach::NetworkDomain { domain } => CapabilityReach::NetworkDomain {
             domain: domain.clone(),
         },
+        RevokedReach::ClipboardCap { cap } => CapabilityReach::ClipboardCap { cap: cap.clone() },
     }
 }
 
@@ -68,6 +69,7 @@ pub fn audit_to_reach(reach: &CapabilityReach) -> RevokedReach {
         CapabilityReach::NetworkDomain { domain } => RevokedReach::NetworkDomain {
             domain: domain.clone(),
         },
+        CapabilityReach::ClipboardCap { cap } => RevokedReach::ClipboardCap { cap: cap.clone() },
     }
 }
 

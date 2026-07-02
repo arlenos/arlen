@@ -84,7 +84,15 @@ pub struct ScopeSummary {
     pub network_domains: BTreeSet<String>,
     /// Whether `[network].allow_all` is set (the widest network reach).
     pub network_all: bool,
+    /// The enabled `[clipboard]` capabilities (`read`/`write`/`read_sensitive`/
+    /// `history`). A revoke turns one off, shrinking the set.
+    pub clipboard_caps: BTreeSet<String>,
 }
+
+/// The clipboard capability flags, in a fixed order. A `ClipboardCap` revoke may
+/// only name one of these, and `apply_revoke`/`apply_restore` only ever touch these
+/// keys of `[clipboard]`.
+pub const CLIPBOARD_CAPS: [&str; 4] = ["read", "write", "read_sensitive", "history"];
 
 impl ScopeSummary {
     /// Summarise a profile's graph reach into the comparable set form: the raw
@@ -107,6 +115,25 @@ impl ScopeSummary {
             ),
             None => (BTreeSet::new(), false),
         };
+        let clipboard_caps = match &profile.clipboard {
+            Some(c) => {
+                let mut set = BTreeSet::new();
+                if c.read {
+                    set.insert("read".to_string());
+                }
+                if c.write {
+                    set.insert("write".to_string());
+                }
+                if c.read_sensitive {
+                    set.insert("read_sensitive".to_string());
+                }
+                if c.history {
+                    set.insert("history".to_string());
+                }
+                set
+            }
+            None => BTreeSet::new(),
+        };
         ScopeSummary {
             read,
             write,
@@ -119,6 +146,7 @@ impl ScopeSummary {
             instance_all: matches!(profile.to_instance_scope(), InstanceScope::All),
             network_domains,
             network_all,
+            clipboard_caps,
         }
     }
 }
@@ -165,14 +193,16 @@ pub fn is_strict_narrowing(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         && read_sensitive_subset
         && relations_subset
         && instance_subset
-        && network_is_subset(old, new);
+        && network_is_subset(old, new)
+        && new.clipboard_caps.is_subset(&old.clipboard_caps);
 
     let strictly_smaller = new.read.len() < old.read.len()
         || new.write.len() < old.write.len()
         || new.read_sensitive.len() < old.read_sensitive.len()
         || new.relations.len() < old.relations.len()
         || (old.instance_all && !new.instance_all)
-        || network_strictly_smaller(old, new);
+        || network_strictly_smaller(old, new)
+        || new.clipboard_caps.len() < old.clipboard_caps.len();
 
     every_dimension_subset && strictly_smaller
 }
@@ -195,6 +225,17 @@ pub fn apply_revoke(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> b
             return false;
         };
         return remove_string_from_array(network, "allowed_domains", domain);
+    }
+    // Clipboard operates on `[clipboard]`; turn the named flag off (no-op if it was
+    // not a known, currently-enabled capability).
+    if let RevokedReach::ClipboardCap { cap } = reach {
+        if !CLIPBOARD_CAPS.contains(&cap.as_str()) {
+            return false;
+        }
+        let Some(clipboard) = doc.get_mut("clipboard").and_then(Item::as_table_like_mut) else {
+            return false;
+        };
+        return set_bool_flag(clipboard, cap, false);
     }
 
     let Some(graph) = doc.get_mut("graph").and_then(Item::as_table_like_mut) else {
@@ -264,7 +305,7 @@ pub fn apply_revoke(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> b
             }
         }
         // Handled before the `[graph]` gate above; unreachable here, fail-safe.
-        RevokedReach::NetworkDomain { .. } => false,
+        RevokedReach::NetworkDomain { .. } | RevokedReach::ClipboardCap { .. } => false,
     }
 }
 
@@ -315,14 +356,16 @@ pub fn is_strict_widening(old: &ScopeSummary, new: &ScopeSummary) -> bool {
         && read_sensitive_superset
         && relations_superset
         && instance_superset
-        && network_superset;
+        && network_superset
+        && old.clipboard_caps.is_subset(&new.clipboard_caps);
 
     let strictly_larger = new.read.len() > old.read.len()
         || new.write.len() > old.write.len()
         || new.read_sensitive.len() > old.read_sensitive.len()
         || new.relations.len() > old.relations.len()
         || (!old.instance_all && new.instance_all)
-        || network_strictly_smaller(new, old);
+        || network_strictly_smaller(new, old)
+        || new.clipboard_caps.len() > old.clipboard_caps.len();
 
     every_dimension_superset && strictly_larger
 }
@@ -353,6 +396,21 @@ pub fn apply_restore(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> 
             .and_then(Item::as_table_like_mut)
             .expect("network table ensured above");
         return add_string_to_array(network, "allowed_domains", domain);
+    }
+    // Clipboard: re-enable the named flag on `[clipboard]`, creating the table if
+    // the revoke had left none. A no-op if the flag is already on or unknown.
+    if let RevokedReach::ClipboardCap { cap } = reach {
+        if !CLIPBOARD_CAPS.contains(&cap.as_str()) {
+            return false;
+        }
+        if doc.get("clipboard").and_then(Item::as_table_like).is_none() {
+            doc.insert("clipboard", Item::Table(Table::new()));
+        }
+        let clipboard = doc
+            .get_mut("clipboard")
+            .and_then(Item::as_table_like_mut)
+            .expect("clipboard table ensured above");
+        return set_bool_flag(clipboard, cap, true);
     }
 
     // A revoke can leave a profile with no `[graph]` table (or no target array);
@@ -442,8 +500,24 @@ pub fn apply_restore(doc: &mut toml_edit::DocumentMut, reach: &RevokedReach) -> 
             }
         }
         // Handled before the `[graph]` table is ensured above; unreachable here.
-        RevokedReach::NetworkDomain { .. } => false,
+        RevokedReach::NetworkDomain { .. } | RevokedReach::ClipboardCap { .. } => false,
     }
+}
+
+/// Set a boolean flag `key` on `table` to `target`, returning whether it changed.
+/// An absent key reads as `false`. Used for the clipboard capability flags: a
+/// revoke sets `false` (changes iff it was on), a restore sets `true`.
+fn set_bool_flag(table: &mut dyn toml_edit::TableLike, key: &str, target: bool) -> bool {
+    use toml_edit::{Item, Value};
+    let current = table
+        .get(key)
+        .and_then(Item::as_bool)
+        .unwrap_or(false);
+    if current == target {
+        return false;
+    }
+    table.insert(key, Item::Value(Value::from(target)));
+    true
 }
 
 /// Add `value` to the `key` string array of `graph` if not already present,
@@ -706,6 +780,7 @@ mod tests {
             instance_all,
             network_domains: BTreeSet::new(),
             network_all: false,
+            clipboard_caps: BTreeSet::new(),
         }
     }
 
@@ -1241,6 +1316,7 @@ allowed_domains = ["api.openai.com", "github.com"]
             instance_all: false,
             network_domains: domains.iter().map(|s| s.to_string()).collect(),
             network_all: all,
+            clipboard_caps: BTreeSet::new(),
         }
     }
 
@@ -1268,5 +1344,51 @@ allowed_domains = ["api.openai.com", "github.com"]
         assert!(is_strict_widening(&net_scope(&["a"], false), &net_scope(&[], true)));
         // Dropping a domain is not a widening.
         assert!(!is_strict_widening(&net_scope(&["a", "b"], false), &net_scope(&["a"], false)));
+    }
+
+    fn clip_cap(cap: &str) -> RevokedReach {
+        RevokedReach::ClipboardCap { cap: cap.into() }
+    }
+
+    #[test]
+    fn clipboard_cap_revoke_and_restore_flip_the_flag() {
+        let mut d: toml_edit::DocumentMut = "[clipboard]\nread = true\nwrite = true\n"
+            .parse()
+            .unwrap();
+        // Revoke turns the flag off.
+        assert!(apply_revoke(&mut d, &clip_cap("write")));
+        assert!(d.to_string().contains("write = false"));
+        // Already off -> no-op.
+        assert!(!apply_revoke(&mut d, &clip_cap("write")));
+        // An unknown cap is refused (never edits an unexpected key).
+        assert!(!apply_revoke(&mut d, &clip_cap("not_a_cap")));
+        // Restore turns it back on.
+        assert!(apply_restore(&mut d, &clip_cap("write")));
+        assert!(d.to_string().contains("write = true"));
+        // Already on -> no-op.
+        assert!(!apply_restore(&mut d, &clip_cap("write")));
+    }
+
+    fn clip_scope(caps: &[&str]) -> ScopeSummary {
+        ScopeSummary {
+            read: BTreeSet::new(),
+            write: BTreeSet::new(),
+            read_sensitive: BTreeSet::new(),
+            relations: BTreeSet::new(),
+            instance_all: false,
+            network_domains: BTreeSet::new(),
+            network_all: false,
+            clipboard_caps: caps.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn clipboard_narrowing_and_widening_gates() {
+        // Dropping a cap narrows; adding one widens; a no-op is neither.
+        assert!(is_strict_narrowing(&clip_scope(&["read", "write"]), &clip_scope(&["read"])));
+        assert!(!is_strict_narrowing(&clip_scope(&["read"]), &clip_scope(&["read", "write"])));
+        assert!(!is_strict_narrowing(&clip_scope(&["read"]), &clip_scope(&["read"])));
+        assert!(is_strict_widening(&clip_scope(&["read"]), &clip_scope(&["read", "write"])));
+        assert!(!is_strict_widening(&clip_scope(&["read", "write"]), &clip_scope(&["read"])));
     }
 }

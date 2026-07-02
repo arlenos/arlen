@@ -47,6 +47,13 @@ pub enum RevokedReach {
         /// The domain to remove from the network egress allowlist.
         domain: String,
     },
+    /// Turn off a `[clipboard]` capability flag (`read`/`write`/`read_sensitive`/
+    /// `history`). Narrowing-only: it can only disable a capability, never enable
+    /// one; the gate proves the enabled-capability set strictly shrank.
+    ClipboardCap {
+        /// The clipboard capability flag to disable.
+        cap: String,
+    },
 }
 
 /// Who initiated the revoke. The agent may only *propose* (suggest-mode records a

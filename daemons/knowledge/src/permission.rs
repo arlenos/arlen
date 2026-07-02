@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use arlen_permissions::NetworkPermissions;
+use arlen_permissions::{ClipboardPermissions, NetworkPermissions};
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -48,6 +48,12 @@ pub struct PermissionProfile {
     /// network reach (no grant to project).
     #[serde(default)]
     pub network: Option<NetworkPermissions>,
+    /// The `[clipboard]` declaration. Parsed daemon-side so the revoke gate's
+    /// `ScopeSummary` can see the clipboard capability set (read/write/…); like
+    /// `network`, the emit + revoke of this dimension is projected into the
+    /// App-access page. `None` means the app declares no clipboard access.
+    #[serde(default)]
+    pub clipboard: Option<ClipboardPermissions>,
 }
 
 /// The `[graph]` section of a permission profile.
