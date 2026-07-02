@@ -9,7 +9,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use arlen_permissions::{
-    ClipboardPermissions, InputPermissions, NetworkPermissions, NotificationPermissions,
+    ClipboardPermissions, InputPermissions, IntentsPermissions, NetworkPermissions,
+    NotificationPermissions, SearchPermissions,
 };
 use serde::Deserialize;
 use thiserror::Error;
@@ -62,6 +63,12 @@ pub struct PermissionProfile {
     /// The `[input]` declaration (parsed daemon-side for the revoke gate).
     #[serde(default)]
     pub input: Option<InputPermissions>,
+    /// The `[search]` declaration (parsed daemon-side for the revoke gate).
+    #[serde(default)]
+    pub search: Option<SearchPermissions>,
+    /// The `[intents]` declaration (parsed daemon-side for the revoke gate).
+    #[serde(default)]
+    pub intents: Option<IntentsPermissions>,
 }
 
 /// The `[graph]` section of a permission profile.

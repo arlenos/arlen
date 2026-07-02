@@ -63,6 +63,16 @@ pub enum RevokedReach {
         /// The input capability flag to disable.
         cap: String,
     },
+    /// Turn off a `[search]` capability flag (open/register_handler/intercept_all).
+    SearchCap {
+        /// The search capability flag to disable.
+        cap: String,
+    },
+    /// Turn off an `[intents]` capability flag (dispatch/register/preferences).
+    IntentsCap {
+        /// The intents capability flag to disable.
+        cap: String,
+    },
 }
 
 /// Who initiated the revoke. The agent may only *propose* (suggest-mode records a
