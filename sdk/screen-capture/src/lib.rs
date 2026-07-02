@@ -963,6 +963,30 @@ pub fn write_png(image: &CapturedImage, path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
+/// The directory new screenshots are saved to, following the freedesktop
+/// convention: `$XDG_SCREENSHOTS_DIR`, else `$XDG_PICTURES_DIR/Screenshots`, else
+/// `$HOME/Pictures/Screenshots`.
+pub fn screenshots_dir() -> std::path::PathBuf {
+    if let Ok(d) = std::env::var("XDG_SCREENSHOTS_DIR") {
+        if !d.is_empty() {
+            return std::path::PathBuf::from(d);
+        }
+    }
+    if let Ok(p) = std::env::var("XDG_PICTURES_DIR") {
+        if !p.is_empty() {
+            return std::path::PathBuf::from(p).join("Screenshots");
+        }
+    }
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    std::path::PathBuf::from(home).join("Pictures").join("Screenshots")
+}
+
+/// The default screenshot filename for a capture stamped `timestamp` (formatted
+/// `%Y%m%d-%H%M%S` by the caller): `Screenshot-<timestamp>.png`.
+pub fn default_filename(timestamp: &str) -> String {
+    format!("Screenshot-{timestamp}.png")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1043,5 +1067,27 @@ mod tests {
             logical_to_physical_rect(&right, 1100, 10, 100, 50),
             (100, 10, 100, 50)
         );
+    }
+
+    #[test]
+    fn screenshots_dir_follows_the_xdg_chain() {
+        std::env::remove_var("XDG_SCREENSHOTS_DIR");
+        std::env::remove_var("XDG_PICTURES_DIR");
+        std::env::set_var("HOME", "/home/tester");
+        assert_eq!(
+            screenshots_dir(),
+            std::path::PathBuf::from("/home/tester/Pictures/Screenshots")
+        );
+        std::env::set_var("XDG_PICTURES_DIR", "/pics");
+        assert_eq!(screenshots_dir(), std::path::PathBuf::from("/pics/Screenshots"));
+        std::env::set_var("XDG_SCREENSHOTS_DIR", "/shots");
+        assert_eq!(screenshots_dir(), std::path::PathBuf::from("/shots"));
+        std::env::remove_var("XDG_SCREENSHOTS_DIR");
+        std::env::remove_var("XDG_PICTURES_DIR");
+    }
+
+    #[test]
+    fn default_filename_is_timestamped() {
+        assert_eq!(default_filename("20260702-143000"), "Screenshot-20260702-143000.png");
     }
 }
