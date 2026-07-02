@@ -32,6 +32,7 @@ use wayland_protocols::ext::image_copy_capture::v1::client::ext_image_copy_captu
     self, ExtImageCopyCaptureFrameV1,
 };
 use wayland_protocols::ext::image_capture_source::v1::client::ext_image_capture_source_v1::ExtImageCaptureSourceV1;
+use wayland_protocols::ext::image_capture_source::v1::client::ext_foreign_toplevel_image_capture_source_manager_v1::ExtForeignToplevelImageCaptureSourceManagerV1;
 use wayland_protocols::ext::image_capture_source::v1::client::ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1;
 use wayland_protocols::ext::image_copy_capture::v1::client::ext_image_copy_capture_manager_v1::{
     ExtImageCopyCaptureManagerV1, Options,
@@ -327,6 +328,18 @@ impl Dispatch<ExtOutputImageCaptureSourceManagerV1, ()> for CaptureState {
         _: &mut Self,
         _: &ExtOutputImageCaptureSourceManagerV1,
         _: <ExtOutputImageCaptureSourceManagerV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ExtForeignToplevelImageCaptureSourceManagerV1, ()> for CaptureState {
+    fn event(
+        _: &mut Self,
+        _: &ExtForeignToplevelImageCaptureSourceManagerV1,
+        _: <ExtForeignToplevelImageCaptureSourceManagerV1 as Proxy>::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
@@ -796,18 +809,42 @@ pub fn capture_output(output_index: usize, include_cursor: bool) -> Result<Captu
         .output
         .clone();
 
+    let source = source_manager.create_source(&output, &qh, ());
+    capture_from_source(
+        &mut queue,
+        &mut state,
+        &qh,
+        &copy_manager,
+        &shm,
+        &source,
+        include_cursor,
+    )
+}
+
+/// The source-agnostic capture flow: open a session over `source`, wait for its
+/// buffer constraints, allocate a matching shm buffer, request a frame copy, and
+/// convert the compositor's shm pixels to tightly-packed RGBA. Shared by output and
+/// window capture; the caller creates the source (output or foreign toplevel).
+fn capture_from_source(
+    queue: &mut wayland_client::EventQueue<CaptureState>,
+    state: &mut CaptureState,
+    qh: &QueueHandle<CaptureState>,
+    copy_manager: &ExtImageCopyCaptureManagerV1,
+    shm: &wl_shm::WlShm,
+    source: &ExtImageCaptureSourceV1,
+    include_cursor: bool,
+) -> Result<CapturedImage> {
     let options = if include_cursor {
         Options::PaintCursors
     } else {
         Options::empty()
     };
-    let source = source_manager.create_source(&output, &qh, ());
-    let session = copy_manager.create_session(&source, options, &qh, ());
+    let session = copy_manager.create_session(source, options, qh, ());
 
     // Wait for the buffer constraints.
     while !state.session_done && !state.session_stopped {
         queue
-            .blocking_dispatch(&mut state)
+            .blocking_dispatch(state)
             .context("dispatch capture-session events")?;
     }
     let (width, height) = state
@@ -828,10 +865,10 @@ pub fn capture_output(output_index: usize, include_cursor: bool) -> Result<Captu
         })?;
     let layout = pixel_layout(format_code).expect("checked above");
 
-    let shm_buffer = alloc_shm_buffer(&shm, &qh, width, height, format_code)?;
+    let shm_buffer = alloc_shm_buffer(shm, qh, width, height, format_code)?;
 
     // Create the frame, attach the buffer, and request the copy.
-    let frame = session.create_frame(&qh, ());
+    let frame = session.create_frame(qh, ());
     frame.attach_buffer(&shm_buffer.buffer);
     frame.capture();
 
@@ -839,7 +876,7 @@ pub fn capture_output(output_index: usize, include_cursor: bool) -> Result<Captu
     state.frame_ready = false;
     while !state.frame_ready && state.frame_failed.is_none() {
         queue
-            .blocking_dispatch(&mut state)
+            .blocking_dispatch(state)
             .context("dispatch capture-frame events")?;
     }
     if let Some(reason) = &state.frame_failed {
@@ -863,6 +900,54 @@ pub fn capture_output(output_index: usize, include_cursor: bool) -> Result<Captu
     frame.destroy();
     session.destroy();
     Ok(CapturedImage { width, height, rgba })
+}
+
+/// Capture window `window_index` (a foreign toplevel, from [`list_windows`]) to an
+/// RGBA image. Uses the foreign-toplevel capture-source factory to name the window
+/// as a source, then the shared capture flow. The captured buffer is the window's
+/// current size (some compositors may omit decorations, per the protocol).
+pub fn capture_window(window_index: usize, include_cursor: bool) -> Result<CapturedImage> {
+    let conn = Connection::connect_to_env().context("connect to the Wayland compositor")?;
+    let (globals, mut queue) =
+        registry_queue_init::<CaptureState>(&conn).context("initialise the Wayland registry")?;
+    let qh = queue.handle();
+    let mut state = CaptureState::default();
+    let (_output_source_manager, copy_manager) = bind_capture_globals(&globals, &qh, &mut state)?;
+    let shm = state
+        .shm
+        .clone()
+        .ok_or_else(|| anyhow!("the compositor advertises no wl_shm"))?;
+    let window_source_manager = globals
+        .bind::<ExtForeignToplevelImageCaptureSourceManagerV1, _, _>(&qh, 1..=1, ())
+        .map_err(|e| anyhow!("bind ext_foreign_toplevel_image_capture_source_manager_v1: {e}"))?;
+    let _list = globals
+        .bind::<ExtForeignToplevelListV1, _, _>(&qh, 1..=1, ())
+        .map_err(|e| anyhow!("bind ext_foreign_toplevel_list_v1: {e}"))?;
+    // Settle the toplevel set (+ output info from bind_capture_globals).
+    queue.roundtrip(&mut state).context("roundtrip for the toplevel set")?;
+    queue.roundtrip(&mut state).context("roundtrip for toplevel metadata")?;
+
+    let handle = state
+        .windows
+        .get(window_index)
+        .ok_or_else(|| {
+            anyhow!(
+                "window index {window_index} out of range ({} windows)",
+                state.windows.len()
+            )
+        })?
+        .handle
+        .clone();
+    let source = window_source_manager.create_source(&handle, &qh, ());
+    capture_from_source(
+        &mut queue,
+        &mut state,
+        &qh,
+        &copy_manager,
+        &shm,
+        &source,
+        include_cursor,
+    )
 }
 
 /// Write a [`CapturedImage`] to `path` as a PNG (RGBA8).

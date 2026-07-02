@@ -8,8 +8,8 @@
 
 use anyhow::{anyhow, Result};
 use arlen_screen_capture::{
-    capture_output, capture_region, capture_support, list_outputs, list_windows, write_png,
-    CapturedImage, COPY_MANAGER_INTERFACE, OUTPUT_SOURCE_MANAGER_INTERFACE,
+    capture_output, capture_region, capture_support, capture_window, list_outputs, list_windows,
+    write_png, CapturedImage, COPY_MANAGER_INTERFACE, OUTPUT_SOURCE_MANAGER_INTERFACE,
     TOPLEVEL_SOURCE_MANAGER_INTERFACE,
 };
 
@@ -55,6 +55,17 @@ fn main() -> Result<()> {
             let path = args.get(2).ok_or_else(|| anyhow!("-g <region> needs an output file"))?;
             let (x, y, w, h) = parse_region(geom)?;
             let image = capture_region(0, x, y, w, h, cursor)?;
+            save(&image, path)?;
+            return Ok(());
+        }
+        Some("--window") => {
+            let index: usize = args
+                .get(1)
+                .ok_or_else(|| anyhow!("--window needs an index (see --list-windows)"))?
+                .parse()
+                .map_err(|e| anyhow!("bad window index: {e}"))?;
+            let path = args.get(2).ok_or_else(|| anyhow!("--window <index> needs an output file"))?;
+            let image = capture_window(index, cursor)?;
             save(&image, path)?;
             return Ok(());
         }
