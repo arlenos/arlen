@@ -179,37 +179,43 @@ pub async fn persist_consent_grant(
     graph.transaction(stmts).await
 }
 
-/// The deterministic id for an app's declared `NetworkAccess` grant: one network
-/// grant per app, so a re-emit strengthens the single node. Namespaced so it can
-/// never collide with a token-derived grant id (a UUID).
-fn network_grant_id(app_id: &str) -> String {
-    format!("network:{app_id}")
+/// The deterministic id for an app's declared grant in dimension `dim_key`: one
+/// grant per (dimension, app), so a re-emit strengthens the single node.
+/// Namespaced (`<dim>:<app>`) so it can never collide with a token-derived grant
+/// id (a UUID) nor another dimension's grant.
+fn declared_grant_id(dim_key: &str, app_id: &str) -> String {
+    format!("{dim_key}:{app_id}")
 }
 
-/// Project an app's DECLARED network reach as an LCG `NetworkAccess` Grant node
-/// (living-capability-graph.md §11b), so the App-access page shows the app's
-/// internet reach ("Internet: all" / "reaches api.openai.com, github.com") and can
-/// revoke it. `reach` is the app's [`NetworkPermissions::reach_summary`] output
-/// (`None` = no declared reach, a no-op).
+/// The deterministic id for an app's declared `NetworkAccess` grant.
+fn network_grant_id(app_id: &str) -> String {
+    declared_grant_id("network", app_id)
+}
+
+/// Project one DECLARED profile dimension as a `declared`-source LCG Grant node
+/// (living-capability-graph.md §11b), so the App-access page shows + revokes the
+/// app's reach in that dimension. `consent_class` is the family label (e.g.
+/// `NetworkAccess`, `FilesystemAccess`), `grant_id` its deterministic per-app id
+/// (see [`declared_grant_id`]), `scope` the [`reach_summary`] consent string.
 ///
 /// `source = 'declared'` (the App-access provenance "Declared at install", vs a
-/// runtime `consent` grant - decided 1 July). Keyed by a deterministic per-app id
-/// so a re-emit at the next connect refreshes the scope WITHOUT resurrecting a
-/// user-revoked grant: ON MATCH updates only `consent_scope`, never the lifecycle
-/// flags (`live`/`revoked`/`superseded`) - the same discipline as
-/// [`emit_grant_node`] and the deliberate OPPOSITE of [`persist_consent_grant`]
-/// (a runtime re-consent, which DOES re-activate). Enforcement stays external at
-/// net-guard; this only makes the reach visible + revocable. Atomic + idempotent.
-pub async fn emit_declared_network_grant(
+/// runtime `consent` grant - decided 1 July). Keyed so a re-emit at the next
+/// connect refreshes the scope WITHOUT resurrecting a user-revoked grant: ON MATCH
+/// updates only `consent_scope`, never the lifecycle flags
+/// (`live`/`revoked`/`superseded`) - the same discipline as [`emit_grant_node`] and
+/// the deliberate OPPOSITE of [`persist_consent_grant`] (a runtime re-consent, which
+/// DOES re-activate). Enforcement stays external (net-guard, the SDK, the brokers);
+/// this only makes the reach visible + revocable. Atomic + idempotent.
+pub async fn emit_declared_grant(
     graph: &GraphHandle,
     app_id: &str,
-    reach: Option<&str>,
+    consent_class: &str,
+    grant_id: &str,
+    scope: &str,
 ) -> Result<()> {
-    let Some(scope) = reach else {
-        return Ok(());
-    };
     let app_esc = escape_cypher(app_id);
-    let id_esc = escape_cypher(&network_grant_id(app_id));
+    let id_esc = escape_cypher(grant_id);
+    let class_esc = escape_cypher(consent_class);
     let scope_esc = escape_cypher(scope);
     let now = time::now().0;
 
@@ -222,7 +228,7 @@ pub async fn emit_declared_network_grant(
         format!(
             "MERGE (g:Grant {{id: '{id_esc}'}}) \
              ON CREATE SET g.app_id = '{app_esc}', g.source = 'declared', \
-             g.consent_class = 'NetworkAccess', g.consent_scope = '{scope_esc}', \
+             g.consent_class = '{class_esc}', g.consent_scope = '{scope_esc}', \
              g.pid = 0, g.issued_at = {now}, g.expires_at = 0, g.declared_ceiling = '', \
              g.required = false, g.identity_verified = false, g.live = true, \
              g.revoked = false, g.superseded = false, g.last_exercised_at = 0, g.use_count = 0 \
@@ -234,6 +240,59 @@ pub async fn emit_declared_network_grant(
         ),
     ];
     graph.transaction(stmts).await
+}
+
+/// Project an app's DECLARED network reach as a `NetworkAccess` grant. Thin wrapper
+/// over [`emit_declared_grant`]; `None` reach is a no-op.
+pub async fn emit_declared_network_grant(
+    graph: &GraphHandle,
+    app_id: &str,
+    reach: Option<&str>,
+) -> Result<()> {
+    let Some(scope) = reach else {
+        return Ok(());
+    };
+    emit_declared_grant(graph, app_id, "NetworkAccess", &network_grant_id(app_id), scope).await
+}
+
+/// Project EVERY declared profile dimension as a `declared`-source LCG grant, so the
+/// App-access page shows + revokes the app's full reach across the capability
+/// families (living-capability-graph.md §11b, generalized from network-first). Graph
+/// is projected separately by [`emit_grant_node`] (the token-based capability grant);
+/// this covers the profile-declared dimensions (network, event_bus, filesystem,
+/// notifications, clipboard, system, input, search, intents, mcp). Each dimension
+/// whose [`reach_summary`] is `Some` becomes a grant keyed `<dim>:<app>`, revoke-
+/// preserving on re-emit. Returns the first transaction error.
+pub async fn emit_all_declared_grants(
+    graph: &GraphHandle,
+    app_id: &str,
+    profile: &arlen_permissions::PermissionProfile,
+) -> Result<()> {
+    // (reach, consent_class, dimension key). event_bus (an app that hears the bus
+    // sees activity) and mcp (an app exposing tools the AI then uses) are real reach.
+    let dims: [(Option<String>, &str, &str); 10] = [
+        (profile.network.reach_summary(), "NetworkAccess", "network"),
+        (profile.event_bus.reach_summary(), "EventBusAccess", "event_bus"),
+        (profile.filesystem.reach_summary(), "FilesystemAccess", "filesystem"),
+        (
+            profile.notifications.reach_summary(),
+            "NotificationAccess",
+            "notifications",
+        ),
+        (profile.clipboard.reach_summary(), "ClipboardAccess", "clipboard"),
+        (profile.system.reach_summary(), "SystemAccess", "system"),
+        (profile.input.reach_summary(), "InputAccess", "input"),
+        (profile.search.reach_summary(), "SearchAccess", "search"),
+        (profile.intents.reach_summary(), "IntentsAccess", "intents"),
+        (profile.mcp.reach_summary(), "McpAccess", "mcp"),
+    ];
+    for (reach, consent_class, dim_key) in dims {
+        if let Some(scope) = reach {
+            emit_declared_grant(graph, app_id, consent_class, &declared_grant_id(dim_key, app_id), &scope)
+                .await?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -478,5 +537,56 @@ mod tests {
         assert!(after.rows[0][0].as_bool(), "re-emit must NOT un-revoke");
         assert!(!after.rows[0][1].as_bool(), "stays not-live after revoke");
         assert_eq!(after.rows[0][2].as_str(), "api.openai.com", "scope refreshed");
+    }
+
+    #[tokio::test]
+    async fn emit_all_declared_grants_projects_each_declared_dimension() {
+        let tmp = tempfile::tempdir().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+
+        // A profile declaring three dimensions (filesystem, clipboard, mcp) and
+        // leaving the rest at their empty defaults.
+        let profile: arlen_permissions::PermissionProfile = toml::from_str(
+            r#"
+[info]
+app_id = "com.y"
+[filesystem]
+documents = true
+[clipboard]
+read = true
+write = true
+[mcp]
+tools_default_permit = ["search"]
+"#,
+        )
+        .unwrap();
+
+        emit_all_declared_grants(&graph, "com.y", &profile).await.unwrap();
+
+        // Each declared dimension lands as a `declared` grant keyed `<dim>:<app>`,
+        // with its consent_class + reach_summary scope.
+        for (id, class, scope) in [
+            ("filesystem:com.y", "FilesystemAccess", "documents"),
+            ("clipboard:com.y", "ClipboardAccess", "read, write"),
+            ("mcp:com.y", "McpAccess", "search"),
+        ] {
+            let rows = graph
+                .query_rows(format!(
+                    "MATCH (g:Grant {{id:'{id}'}}) RETURN g.source, g.consent_class, g.consent_scope"
+                ))
+                .await
+                .unwrap();
+            assert_eq!(rows.rows.len(), 1, "{id} must be projected");
+            assert_eq!(rows.rows[0][0].as_str(), "declared");
+            assert_eq!(rows.rows[0][1].as_str(), class);
+            assert_eq!(rows.rows[0][2].as_str(), scope);
+        }
+
+        // An undeclared dimension (notifications default-off) projects no grant.
+        let none = graph
+            .query_rows("MATCH (g:Grant {id:'notifications:com.y'}) RETURN count(*) AS c".into())
+            .await
+            .unwrap();
+        assert_eq!(none.rows[0][0].as_i64(), 0, "undeclared dimension = no grant");
     }
 }
