@@ -7,9 +7,11 @@
   /// both pieces sit directly in the header flex row.
   import { ArrowLeft, ArrowRight } from "lucide-svelte";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
+  import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { Breadcrumb, type BrowserState } from "@arlen/ui-kit/components/browser";
   import { placeGroups } from "$lib/stores/places";
   import { locationLabel } from "$lib/locations";
+  import { AS_OF_OPTIONS, viewAsOfChoice } from "$lib/asof";
 
   let {
     controller,
@@ -30,6 +32,14 @@
   const canForward = $derived(controller.canForward);
   // At a virtual location the breadcrumb renders this as the name crumb.
   const label = $derived(locationLabel($path, $placeGroups));
+
+  // Whole-listing time-travel is meaningful only on a project location (the
+  // bitemporal membership slice); the control appears there and re-lists.
+  const isProject = $derived($path.startsWith("project:"));
+  function onAsOf(v: string): void {
+    viewAsOfChoice.set(v);
+    void controller.refresh();
+  }
 </script>
 
 <div class="hn-buttons">
@@ -63,6 +73,18 @@
   </div>
 {/if}
 
+{#if isProject}
+  <div class="hn-asof">
+    <PopoverSelect
+      value={$viewAsOfChoice}
+      options={AS_OF_OPTIONS}
+      ariaLabel="View this project as of a past time"
+      width="9.5rem"
+      onchange={onAsOf}
+    />
+  </div>
+{/if}
+
 <style>
   .hn-buttons {
     display: flex;
@@ -72,6 +94,10 @@
   .hn-crumb {
     flex: 1;
     min-width: 0;
+    margin-left: 4px;
+  }
+  .hn-asof {
+    flex-shrink: 0;
     margin-left: 4px;
   }
 </style>

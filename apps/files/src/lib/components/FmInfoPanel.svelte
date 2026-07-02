@@ -14,6 +14,7 @@
     type FileEntry,
   } from "@arlen/ui-kit/components/browser";
   import { openPath } from "$lib/adapter";
+  import { AS_OF_OPTIONS, choiceToMicros } from "$lib/asof";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
@@ -84,21 +85,6 @@
   // Re-read project membership at a past time via `files_verwandt_as_of`. Off by
   // default ("Now"); the presets are relative to the current moment. Only
   // project membership is bitemporal, so this is the meaningful slice.
-  const AS_OF_OPTIONS = [
-    { value: "now", label: "Now" },
-    { value: "1d", label: "1 day ago" },
-    { value: "1w", label: "1 week ago" },
-    { value: "1m", label: "1 month ago" },
-    { value: "3m", label: "3 months ago" },
-  ];
-  const DAY_MICROS = 86_400_000_000;
-  const AS_OF_DELTAS: Record<string, number> = {
-    "1d": DAY_MICROS,
-    "1w": 7 * DAY_MICROS,
-    "1m": 30 * DAY_MICROS,
-    "3m": 90 * DAY_MICROS,
-  };
-
   let asOfChoice = $state("now");
   let asOfMicros = $state<number | null>(null);
   const asOfVerwandt = writable<Info["verwandt"]>([]);
@@ -116,7 +102,7 @@
 
   function setAsOf(v: string) {
     asOfChoice = v;
-    asOfMicros = v === "now" ? null : Date.now() * 1000 - AS_OF_DELTAS[v];
+    asOfMicros = choiceToMicros(v);
   }
 
   $effect(() => {

@@ -3,12 +3,14 @@
 /// surface, so paths are absolute and the root is `/`.
 
 import { invoke } from "@tauri-apps/api/core";
+import { get } from "svelte/store";
 import type {
   BrowserAdapter,
   FileEntry,
   SortSpec,
 } from "@arlen/ui-kit/components/browser";
 import { isVirtualLocation } from "@arlen/ui-kit/components/browser";
+import { viewAsOfChoice, choiceToMicros } from "./asof";
 import {
   archiveListing,
   sortEntries,
@@ -46,9 +48,17 @@ export const fmAdapter: BrowserAdapter = {
     // the backend returns its members scattered across folders (each with its
     // own full_path), unsorted, so we sort client-side like the archive path.
     if (isVirtualLocation(path)) {
-      const entries = await invoke<FileEntry[]>("files_list_location", {
-        location: path,
-      });
+      // When the whole-listing time-travel is on, read the location as of the
+      // chosen past instant (only project membership is bitemporal; other
+      // locations return their live members regardless).
+      const asOf = choiceToMicros(get(viewAsOfChoice));
+      const entries =
+        asOf === null
+          ? await invoke<FileEntry[]>("files_list_location", { location: path })
+          : await invoke<FileEntry[]>("files_list_location_as_of", {
+              location: path,
+              asOfMicros: asOf,
+            });
       return sortEntries(entries, sort);
     }
     return invoke<FileEntry[]>("files_list", {
