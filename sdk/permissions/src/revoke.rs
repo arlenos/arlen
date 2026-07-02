@@ -54,6 +54,15 @@ pub enum RevokedReach {
         /// The clipboard capability flag to disable.
         cap: String,
     },
+    /// Turn off `[notifications].enabled` (the app can no longer post
+    /// notifications). Narrowing-only single-flag dimension.
+    NotificationsOff,
+    /// Turn off an `[input]` capability flag (focused/global keybinding
+    /// registration). Narrowing-only, like the clipboard capabilities.
+    InputCap {
+        /// The input capability flag to disable.
+        cap: String,
+    },
 }
 
 /// Who initiated the revoke. The agent may only *propose* (suggest-mode records a
