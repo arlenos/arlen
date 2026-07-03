@@ -24,6 +24,7 @@
 
 pub mod download;
 pub mod fetch;
+pub mod gguf;
 pub mod installed;
 pub mod store;
 
