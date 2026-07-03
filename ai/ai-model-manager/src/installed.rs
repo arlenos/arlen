@@ -117,6 +117,56 @@ pub fn installed_models() -> Vec<InstalledModel> {
     out
 }
 
+/// The GGUF file magic: every GGUF model begins with these four bytes.
+pub const GGUF_MAGIC: &[u8; 4] = b"GGUF";
+
+/// Whether `header` begins with the GGUF magic. The cheap structural check that
+/// an imported file is actually a GGUF model before it is copied into the store.
+pub fn is_gguf_header(header: &[u8]) -> bool {
+    header.starts_with(GGUF_MAGIC)
+}
+
+/// Validate that the file at `path` is a GGUF model by reading only its 4-byte
+/// magic. `Err` with a plain message if the file cannot be opened, is too short,
+/// or does not start with the GGUF magic.
+pub fn validate_gguf(path: &Path) -> Result<(), String> {
+    use std::io::Read;
+    let mut file =
+        std::fs::File::open(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
+    let mut magic = [0u8; 4];
+    file.read_exact(&mut magic)
+        .map_err(|_| "file too short to be a GGUF model".to_string())?;
+    if is_gguf_header(&magic) {
+        Ok(())
+    } else {
+        Err("not a GGUF model (bad magic)".to_string())
+    }
+}
+
+/// Import a GGUF model from disk into the user store `dest_dir`: validate the
+/// magic, then copy the file under its own name (a re-import of the same name
+/// overwrites, so a corrupt earlier copy is replaced). Returns the resulting
+/// [`InstalledModel`] (always `ModelLocation::User` - an import is the user's).
+/// `Err` if `src` is not a GGUF, has no file name, or the copy fails.
+pub fn import_gguf(src: &Path, dest_dir: &Path) -> Result<InstalledModel, String> {
+    validate_gguf(src)?;
+    let file_name = src
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "source has no file name".to_string())?
+        .to_string();
+    std::fs::create_dir_all(dest_dir)
+        .map_err(|e| format!("cannot create model store {}: {e}", dest_dir.display()))?;
+    let dest = dest_dir.join(&file_name);
+    let size_bytes = std::fs::copy(src, &dest).map_err(|e| format!("copy failed: {e}"))?;
+    Ok(InstalledModel {
+        file_name,
+        path: dest,
+        size_bytes,
+        location: ModelLocation::User,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,6 +205,36 @@ mod tests {
         assert!(find_by_id("Llama-3.2-1B-Instruct-Q4_K_M", &models).is_some());
         assert!(find_by_id("Llama-3.2-1B-Instruct-Q4_K_M.gguf", &models).is_some());
         assert!(find_by_id("nope", &models).is_none());
+    }
+
+    #[test]
+    fn gguf_magic_and_validation() {
+        assert!(is_gguf_header(b"GGUF\x00\x00"));
+        assert!(!is_gguf_header(b"ELF\x7f"));
+        assert!(!is_gguf_header(b"GG"));
+        let tmp = tempfile::tempdir().unwrap();
+        write_file(tmp.path(), "real.gguf", b"GGUF\x03\x00\x00\x00rest");
+        write_file(tmp.path(), "fake.gguf", b"not a model");
+        assert!(validate_gguf(&tmp.path().join("real.gguf")).is_ok());
+        assert!(validate_gguf(&tmp.path().join("fake.gguf")).is_err());
+        assert!(validate_gguf(&tmp.path().join("missing.gguf")).is_err());
+    }
+
+    #[test]
+    fn import_copies_a_valid_gguf_and_rejects_a_bad_one() {
+        let src = tempfile::tempdir().unwrap();
+        let store = tempfile::tempdir().unwrap();
+        write_file(src.path(), "MyModel-Q4.gguf", b"GGUF\x03\x00\x00\x00weights");
+        let imported = import_gguf(&src.path().join("MyModel-Q4.gguf"), store.path()).unwrap();
+        assert_eq!(imported.file_name, "MyModel-Q4.gguf");
+        assert_eq!(imported.location, ModelLocation::User);
+        assert!(imported.path.exists());
+        assert!(store.path().join("MyModel-Q4.gguf").exists());
+        // A non-GGUF file is refused before any copy.
+        write_file(src.path(), "notmodel.gguf", b"junk");
+        let store2 = tempfile::tempdir().unwrap();
+        assert!(import_gguf(&src.path().join("notmodel.gguf"), store2.path()).is_err());
+        assert!(!store2.path().join("notmodel.gguf").exists());
     }
 
     #[test]
