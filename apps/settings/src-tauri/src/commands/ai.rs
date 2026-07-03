@@ -370,3 +370,31 @@ mod catalog_tests {
         assert_eq!(m.tasks, vec!["general".to_string()]);
     }
 }
+
+/// The result of removing a local model (`ai_local_models_delete`): the bytes
+/// reclaimed, so the hub can update the free-space line.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteResult {
+    /// Bytes freed by removing the model file.
+    freed_bytes: u64,
+}
+
+/// Remove an installed local model by id (`ai_local_models_delete`). Resolves the
+/// id to its on-disk GGUF via `arlen-ai-model-manager::installed`, refuses to
+/// remove the baked system default (`ModelLocation::System`), and deletes the
+/// user-store file. Errors if the id is unknown or the file cannot be removed.
+#[tauri::command]
+pub fn ai_local_models_delete(id: String) -> Result<DeleteResult, String> {
+    use arlen_ai_model_manager as mm;
+    let id = id.strip_prefix("local/").unwrap_or(&id);
+    let installed = mm::installed::installed_models();
+    let model = mm::installed::find_by_id(id, &installed)
+        .ok_or_else(|| format!("no installed model with id '{id}'"))?;
+    if model.location == mm::installed::ModelLocation::System {
+        return Err("the baked default model cannot be removed".to_string());
+    }
+    let freed_bytes = model.size_bytes;
+    std::fs::remove_file(&model.path).map_err(|e| format!("could not remove model: {e}"))?;
+    Ok(DeleteResult { freed_bytes })
+}
