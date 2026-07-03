@@ -79,6 +79,27 @@ pub fn scan_model_dir(dir: &Path, location: ModelLocation) -> Vec<InstalledModel
     models
 }
 
+/// The stable id for an installed model: its file stem (a GGUF's identity is its
+/// path per the llama-server-by-path model, but the stem is the id the UI shows,
+/// e.g. `Llama-3.2-1B-Instruct-Q4_K_M`). [`find_by_id`] resolves it back to the
+/// installed model and thus the path.
+pub fn model_id(model: &InstalledModel) -> String {
+    Path::new(&model.file_name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(&model.file_name)
+        .to_string()
+}
+
+/// Resolve an installed model by its [`model_id`] (or its full file name). `None`
+/// if none matches. Turns a UI-supplied id into the concrete installed model that
+/// delete/select act on.
+pub fn find_by_id<'a>(id: &str, models: &'a [InstalledModel]) -> Option<&'a InstalledModel> {
+    models
+        .iter()
+        .find(|m| model_id(m) == id || m.file_name == id)
+}
+
 /// Every installed model across the user and system stores. A user download and a
 /// system model with the same file name collapse to the user one (a user copy
 /// shadows the baked default); the result is sorted by file name.
@@ -122,6 +143,18 @@ mod tests {
         assert_eq!(found[1].file_name, "b-model.gguf");
         assert_eq!(found[1].size_bytes, 4);
         assert!(found.iter().all(|m| m.location == ModelLocation::User));
+    }
+
+    #[test]
+    fn model_id_is_the_file_stem_and_round_trips() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_file(tmp.path(), "Llama-3.2-1B-Instruct-Q4_K_M.gguf", b"x");
+        let models = scan_model_dir(tmp.path(), ModelLocation::User);
+        assert_eq!(model_id(&models[0]), "Llama-3.2-1B-Instruct-Q4_K_M");
+        // Resolves by id and by full file name.
+        assert!(find_by_id("Llama-3.2-1B-Instruct-Q4_K_M", &models).is_some());
+        assert!(find_by_id("Llama-3.2-1B-Instruct-Q4_K_M.gguf", &models).is_some());
+        assert!(find_by_id("nope", &models).is_none());
     }
 
     #[test]
