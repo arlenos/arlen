@@ -180,6 +180,17 @@ impl WorkflowHandler for TagUntaggedFiles {
             }));
         }
 
+        // Diagnostic for the in-VM dogfood: when no proposal surfaces, record the
+        // graph shape the decision was made against, so the serial journal shows
+        // whether the File was promoted, a Project was detected, and the tagged
+        // state - distinguishing a missing Project (watcher) from an already-tagged
+        // file from a missing File node.
+        tracing::info!(
+            files = file_rows.len(),
+            projects = project_rows.len(),
+            tagged = tagged.len(),
+            "tag-untagged-files: no untagged file with a matching project"
+        );
         Ok(HandlerOutcome::Terminal("no_untagged_file".to_string()))
     }
 }
