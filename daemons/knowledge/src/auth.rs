@@ -5,7 +5,7 @@
 ///
 /// See `docs/architecture/CAPABILITY-TOKENS.md` Sections 7-8.
 
-use crate::identity::{app_id_from_pid, process_alive, IdentityError};
+use crate::identity::{app_id_from_cgroup, app_id_from_pid, process_alive, IdentityError};
 use crate::permission::{PermissionError, PermissionProfile};
 use crate::token::{CapabilityToken, TokenSigner};
 use crate::token_cache::TokenCache;
@@ -52,7 +52,15 @@ impl Authenticator {
     /// 4. Builds and signs token from profile scopes
     /// 5. Caches token with profile mtime
     pub fn issue_token_for_pid(&mut self, pid: u32) -> Result<CapabilityToken, AuthError> {
-        let app_id = app_id_from_pid(pid)?;
+        // A hardened, non-dumpable peer's /proc/exe is EACCES even to root, so the
+        // exe-path resolve fails; fall back to the peer's cgroup unit (not
+        // ptrace-gated), which identifies the canonical AI daemons. Without this a
+        // hardened ai-agent could READ (the connection resolver already falls back)
+        // but its WRITE token issuance failed here, so executor_live never wrote.
+        let app_id = match app_id_from_pid(pid) {
+            Ok(id) => id,
+            Err(e) => app_id_from_cgroup(pid).ok_or(e)?,
+        };
         self.issue_token_for_app(&app_id, pid)
     }
 
