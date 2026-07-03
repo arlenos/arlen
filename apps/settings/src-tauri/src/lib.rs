@@ -67,6 +67,7 @@ pub fn run() {
             commands::ai::ai_defaults_get,
             commands::ai::ai_models_list,
             commands::ai::ai_hardware_probe,
+            commands::ai::ai_models_catalog,
             commands::ai::ai_provider_set_enabled,
             commands::ai::ai_provider_test,
             commands::activity::ai_activity_recent,
