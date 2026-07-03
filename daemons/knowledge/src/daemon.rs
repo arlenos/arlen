@@ -29,7 +29,7 @@ use tracing::{debug, error, info, warn};
 use crate::auth::Authenticator;
 use crate::events::{self, GraphEvent};
 use crate::graph::GraphHandle;
-use crate::identity::{app_id_from_pid, pid_start_time, process_alive};
+use crate::identity::{app_id_from_cgroup, app_id_from_pid, pid_start_time, process_alive};
 use crate::proto::Event;
 use crate::quota::{AppTier, QuotaConfig, RateLimiter};
 use crate::schema::SchemaRegistry;
@@ -1972,20 +1972,25 @@ async fn handle_client(
                 let id = match app_id_from_pid(pid) {
                     Ok(id) => id,
                     Err(e) => {
-                        // Diagnostic for the in-VM dogfood: the comment above assumes
-                        // root can read a hardened cross-uid peer's /proc/exe, but the
-                        // VM boot shows the AI daemons resolve to `unknown` and get
-                        // rejected. Log WHY the resolution failed (the errno) so the
-                        // exact mechanism (EACCES / ptrace / procfs) is pinned.
-                        if cross_uid {
-                            warn!(
-                                peer_uid = uid,
-                                pid,
-                                error = %e,
-                                "graph daemon: cross-uid app_id resolution failed (peer served as unknown)"
-                            );
+                        // A hardened, non-dumpable cross-uid peer's /proc/exe is
+                        // EACCES even to root (the VM boot proved the old "root can
+                        // always read it" assumption false). Fall back to the peer's
+                        // cgroup unit, which is NOT ptrace-gated, to identify the
+                        // canonical AI daemons (ai-agent/ai-daemon) - the read path
+                        // the per-user AI layer needs into the system graph.
+                        match (cross_uid, app_id_from_cgroup(pid)) {
+                            (true, Some(id)) => id,
+                            (true, None) => {
+                                warn!(
+                                    peer_uid = uid,
+                                    pid,
+                                    error = %e,
+                                    "graph daemon: cross-uid app_id resolution failed (peer served as unknown)"
+                                );
+                                "unknown".to_string()
+                            }
+                            (false, _) => "unknown".to_string(),
                         }
-                        "unknown".to_string()
                     }
                 };
                 // A SAME-uid peer is served, scoped by `id` (other root services).
