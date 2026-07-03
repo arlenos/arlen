@@ -1695,6 +1695,12 @@ async fn persist_file_part_of(
         Ok(rs) => row_count(&rs),
         Err(e) => return format!("ERROR: {e}"),
     };
+    // Diagnostic for the in-VM executor_live verify: log whether the bitemporal
+    // FILE_PART_OF create committed (created>0). If this line appears with
+    // created=1 AFTER the executor's 5s client timeout, the write commits but
+    // slowly on the constrained VM (a timeout tuning issue, not a non-commit);
+    // created=0 then means an endpoint was missing.
+    tracing::info!(op_id, from_id, to_id, created, "persist_file_part_of: create result");
     if created > 0 {
         return "OK: created".to_string();
     }
