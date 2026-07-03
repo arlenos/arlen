@@ -64,7 +64,16 @@ const REVALIDATION_TIMEOUT: Duration = Duration::from_secs(5);
 /// executor, so an unbounded write against a stalled knowledge socket would
 /// block the daemon from honouring a reload or shutdown. A timed-out write fails
 /// closed (pre-audited + idempotent, so reconcilable on a later run).
-const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+///
+/// Sized for a slow backend, not a fast one: the daemon-side FILE_PART_OF write
+/// is a NON-cancellable, bitemporal multi-statement Cypher (close-supersede +
+/// conditional append) that commits regardless of this client bound, so the only
+/// effect of a too-short value is a spurious Indeterminate + a reconcile next run.
+/// On a resource-constrained host (the in-VM verify with the model resident) that
+/// write measured well over 5 s while reads stayed fast, so 5 s never confirmed a
+/// real commit. 30 s still catches a genuinely stalled socket while giving the
+/// committing write room to return on a loaded machine.
+const WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Wall-clock bound on a single reconciliation read that resolves a
 /// commit-unknown write. Short, like the write: each is a single indexed edge
