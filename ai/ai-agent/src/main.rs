@@ -1331,13 +1331,36 @@ fn retain_receipt(
 /// detail is logged via [`log_dispatch_outcome`], and the rich display is the
 /// harness's surface; this is just an at-a-glance acknowledgement to the caller.
 fn summarize_manual_run(name: &str, outcomes: &[DispatchOutcome]) -> String {
-    let decided = outcomes
+    // Per-decision reason + executed state, so the in-VM dogfood serial shows WHY
+    // a decision did not write (e.g. `Unproven/not-executed` = RequireConfirmation,
+    // `ProvenReversible/failed` = a lifted write that the executor refused).
+    let decided: Vec<String> = outcomes
         .iter()
-        .filter(|o| matches!(o, DispatchOutcome::Decided { .. }))
-        .count();
+        .filter_map(|o| {
+            let DispatchOutcome::Decided {
+                reason, executed, ..
+            } = o
+            else {
+                return None;
+            };
+            let exec = match executed {
+                None => "not-executed",
+                Some(arlen_ai_agent::engine::ExecutionResult::Written(_)) => "written",
+                Some(arlen_ai_agent::engine::ExecutionResult::Failed(_)) => "failed",
+                Some(arlen_ai_agent::engine::ExecutionResult::Indeterminate { .. }) => "indeterminate",
+            };
+            Some(format!("{reason:?}/{exec}"))
+        })
+        .collect();
+    let detail = if decided.is_empty() {
+        String::new()
+    } else {
+        format!(" [{}]", decided.join(", "))
+    };
     format!(
-        "ran: {name} ({} outcome(s), {decided} decision(s))",
-        outcomes.len()
+        "ran: {name} ({} outcome(s), {} decision(s)){detail}",
+        outcomes.len(),
+        decided.len()
     )
 }
 
