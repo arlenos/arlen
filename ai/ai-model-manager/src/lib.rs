@@ -27,6 +27,7 @@ pub mod fetch;
 pub mod gguf;
 pub mod installed;
 pub mod store;
+pub mod stream;
 
 /// One byte-count gibibyte (2^30), the binary unit GPU and RAM tools report. The
 /// plan's anchor figures (Llama-3.1-8B Q4_K_M = 4.58 GiB, ...) are in GiB, so the
