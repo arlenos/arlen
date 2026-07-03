@@ -18,6 +18,7 @@ use arlen_ai_core::provider::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::time::Duration;
 
 /// Default request timeout: 60 s comfortably fits an 8B model on modest hardware
@@ -148,6 +149,63 @@ impl AIProvider for LlamaServerProvider {
     }
 }
 
+/// Options for launching a `llama-server` instance to serve one GGUF. The daemon
+/// spawns the bundled `llama-server` with [`launch_argv`] and points a
+/// [`LlamaServerProvider`] at [`endpoint`].
+#[derive(Debug, Clone)]
+pub struct LaunchOptions {
+    /// Host to bind. Always a loopback address: the model server is local and must
+    /// never be network-exposed.
+    pub host: String,
+    /// TCP port to serve on.
+    pub port: u16,
+    /// Context window in tokens (`--ctx-size`); `None` leaves llama-server's default.
+    pub ctx_size: Option<u32>,
+    /// GPU layers to offload (`--n-gpu-layers`); `None` leaves the engine default
+    /// (0 = CPU). On the APU target a high value offloads to the iGPU via Vulkan.
+    pub n_gpu_layers: Option<u32>,
+}
+
+impl Default for LaunchOptions {
+    fn default() -> Self {
+        Self {
+            host: "127.0.0.1".to_string(),
+            port: 8080,
+            ctx_size: None,
+            n_gpu_layers: None,
+        }
+    }
+}
+
+/// The `llama-server` argv to serve `gguf_path` under `opts` (the GGUF's path is
+/// its identity, decided 3 July). Pure, so the launch command is unit-tested
+/// without the binary; the daemon owns the actual spawn + health-wait + lifecycle.
+pub fn launch_argv(gguf_path: &Path, opts: &LaunchOptions) -> Vec<String> {
+    let mut argv = vec![
+        "--model".to_string(),
+        gguf_path.display().to_string(),
+        "--host".to_string(),
+        opts.host.clone(),
+        "--port".to_string(),
+        opts.port.to_string(),
+    ];
+    if let Some(ctx) = opts.ctx_size {
+        argv.push("--ctx-size".to_string());
+        argv.push(ctx.to_string());
+    }
+    if let Some(ngl) = opts.n_gpu_layers {
+        argv.push("--n-gpu-layers".to_string());
+        argv.push(ngl.to_string());
+    }
+    argv
+}
+
+/// The base URL a `llama-server` launched with `opts` serves on, for a
+/// [`LlamaServerConfig::endpoint`].
+pub fn endpoint(opts: &LaunchOptions) -> String {
+    format!("http://{}:{}", opts.host, opts.port)
+}
+
 #[derive(Serialize)]
 struct ChatRequest<'a> {
     model: &'a str,
@@ -245,6 +303,49 @@ mod tests {
             .mount(&server)
             .await;
         assert!(!provider(&server).available().await);
+    }
+
+    #[test]
+    fn launch_argv_carries_model_path_host_and_port() {
+        let opts = LaunchOptions {
+            host: "127.0.0.1".to_string(),
+            port: 8081,
+            ctx_size: None,
+            n_gpu_layers: None,
+        };
+        let argv = launch_argv(Path::new("/models/Qwen2.5-7B.gguf"), &opts);
+        assert_eq!(
+            argv,
+            vec![
+                "--model",
+                "/models/Qwen2.5-7B.gguf",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8081",
+            ]
+        );
+        assert_eq!(endpoint(&opts), "http://127.0.0.1:8081");
+    }
+
+    #[test]
+    fn launch_argv_appends_ctx_and_gpu_layers_when_set() {
+        let opts = LaunchOptions {
+            host: "127.0.0.1".to_string(),
+            port: 8080,
+            ctx_size: Some(4096),
+            n_gpu_layers: Some(99),
+        };
+        let argv = launch_argv(Path::new("/m.gguf"), &opts);
+        assert!(argv.windows(2).any(|w| w == ["--ctx-size", "4096"]));
+        assert!(argv.windows(2).any(|w| w == ["--n-gpu-layers", "99"]));
+    }
+
+    #[test]
+    fn default_launch_binds_loopback() {
+        let opts = LaunchOptions::default();
+        assert_eq!(opts.host, "127.0.0.1");
+        assert!(endpoint(&opts).starts_with("http://127.0.0.1:"));
     }
 
     #[tokio::test]
