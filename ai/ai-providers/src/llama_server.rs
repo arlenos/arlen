@@ -164,6 +164,11 @@ pub struct LaunchOptions {
     /// GPU layers to offload (`--n-gpu-layers`); `None` leaves the engine default
     /// (0 = CPU). On the APU target a high value offloads to the iGPU via Vulkan.
     pub n_gpu_layers: Option<u32>,
+    /// A stable model id (`--alias`) llama-server reports for the loaded GGUF, so
+    /// the request's `model` field and the audit have a name rather than a path.
+    /// `None` leaves llama-server's default (the file name). The baked
+    /// `arlen-llama.service` sets this (`arlen-default`); a launcher should too.
+    pub alias: Option<String>,
 }
 
 impl Default for LaunchOptions {
@@ -173,6 +178,7 @@ impl Default for LaunchOptions {
             port: 8080,
             ctx_size: None,
             n_gpu_layers: None,
+            alias: None,
         }
     }
 }
@@ -196,6 +202,10 @@ pub fn launch_argv(gguf_path: &Path, opts: &LaunchOptions) -> Vec<String> {
     if let Some(ngl) = opts.n_gpu_layers {
         argv.push("--n-gpu-layers".to_string());
         argv.push(ngl.to_string());
+    }
+    if let Some(alias) = &opts.alias {
+        argv.push("--alias".to_string());
+        argv.push(alias.clone());
     }
     argv
 }
@@ -312,6 +322,7 @@ mod tests {
             port: 8081,
             ctx_size: None,
             n_gpu_layers: None,
+            alias: None,
         };
         let argv = launch_argv(Path::new("/models/Qwen2.5-7B.gguf"), &opts);
         assert_eq!(
@@ -335,10 +346,12 @@ mod tests {
             port: 8080,
             ctx_size: Some(4096),
             n_gpu_layers: Some(99),
+            alias: Some("arlen-default".to_string()),
         };
         let argv = launch_argv(Path::new("/m.gguf"), &opts);
         assert!(argv.windows(2).any(|w| w == ["--ctx-size", "4096"]));
         assert!(argv.windows(2).any(|w| w == ["--n-gpu-layers", "99"]));
+        assert!(argv.windows(2).any(|w| w == ["--alias", "arlen-default"]));
     }
 
     #[test]
