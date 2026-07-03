@@ -11,7 +11,9 @@
 use std::path::Path;
 use std::process::Command;
 
-use tauri_plugin_arlen_portal::{api, PickFileOptions, PickerError, PickerResult};
+use tauri_plugin_arlen_portal::{
+    api, FileFilter, FilterPattern, PickFileOptions, PickerError, PickerResult,
+};
 
 /// Open a directory picker and return the selected absolute path,
 /// or `None` if the user cancelled or no chooser is installed.
@@ -58,6 +60,79 @@ pub async fn pick_directory(
     }
 
     Ok(legacy_pick(start_path.as_deref()))
+}
+
+/// Open a file picker filtered to GGUF models and return the selected absolute
+/// path, or `None` if the user cancelled or no chooser is installed. Used by the
+/// Models hub's import-from-disk. Same portal-first, kdialog/zenity-fallback shape
+/// as [`pick_directory`], for a single file with a `*.gguf` filter.
+pub async fn pick_gguf_file() -> Option<String> {
+    let options = PickFileOptions {
+        title: Some("Choose a GGUF model".to_string()),
+        filters: vec![FileFilter {
+            name: "GGUF models".to_string(),
+            patterns: vec![FilterPattern::Glob {
+                pattern: "*.gguf".to_string(),
+            }],
+        }],
+        ..PickFileOptions::default()
+    };
+    match api::pick_file(options).await {
+        Ok(PickerResult::Picked { uris }) => {
+            uris.first().and_then(|u| uri_to_path(u)).or_else(legacy_pick_gguf)
+        }
+        Ok(PickerResult::Cancelled) => None,
+        Err(PickerError::PortalUnavailable { .. }) | Err(PickerError::ConnectionLost { .. }) => {
+            legacy_pick_gguf()
+        }
+        Err(e) => {
+            log::warn!("portal pick_file failed: {e}");
+            None
+        }
+    }
+}
+
+/// kdialog -> zenity fallback for a single GGUF file, when no portal frontend is
+/// running. Returns the chosen path only if it exists and is a file.
+fn legacy_pick_gguf() -> Option<String> {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
+    let picked = try_kdialog_file(&home).or_else(|| try_zenity_file(&home))?;
+    let p = Path::new(&picked);
+    if p.is_file() {
+        Some(picked)
+    } else {
+        log::warn!("pick_gguf_file: chooser returned non-file: {picked}");
+        None
+    }
+}
+
+fn try_kdialog_file(start: &str) -> Option<String> {
+    let output = Command::new("kdialog")
+        .args(["--getopenfilename", start, "*.gguf"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let path = String::from_utf8(output.stdout).ok()?;
+    Some(path.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+fn try_zenity_file(start: &str) -> Option<String> {
+    let output = Command::new("zenity")
+        .args([
+            "--file-selection",
+            "--title=Choose a GGUF model",
+            "--file-filter=GGUF models | *.gguf",
+            &format!("--filename={start}/"),
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let path = String::from_utf8(output.stdout).ok()?;
+    Some(path.trim().to_string()).filter(|s| !s.is_empty())
 }
 
 /// Decode a `file://...` URI back to an absolute filesystem path.

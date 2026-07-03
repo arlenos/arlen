@@ -398,3 +398,57 @@ pub fn ai_local_models_delete(id: String) -> Result<DeleteResult, String> {
     std::fs::remove_file(&model.path).map_err(|e| format!("could not remove model: {e}"))?;
     Ok(DeleteResult { freed_bytes })
 }
+
+/// A model imported from disk for the Models hub (`ai_local_models_import`). The
+/// required fields of the store's `Model`; sizing/fit metadata is omitted (a GGUF
+/// header parse for params/context is a follow-up), so the hub shows it as an
+/// installed local model without a fit badge.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedModel {
+    /// Stable id, `local/<stem>`.
+    id: String,
+    /// Display name (the file stem).
+    name: String,
+    /// Always `"local"`.
+    provider: String,
+    /// Always `"local"`.
+    kind: String,
+    /// Task groups (General by default).
+    tasks: Vec<String>,
+    /// Always true (it is now on disk).
+    installed: bool,
+    /// Never the baked default.
+    baked: bool,
+    /// Always true.
+    imported: bool,
+    /// Never advanced.
+    advanced: bool,
+}
+
+/// Import a GGUF model from disk (`ai_local_models_import`): open a file picker,
+/// validate the GGUF magic, copy it into the user model store, and return it as a
+/// selectable local model. Errors if nothing was picked or the file is not a valid
+/// GGUF; the frontend distinguishes a real import from a cancel by the error.
+#[tauri::command]
+pub async fn ai_local_models_import() -> Result<ImportedModel, String> {
+    use arlen_ai_model_manager as mm;
+    let src = crate::commands::picker::pick_gguf_file()
+        .await
+        .ok_or_else(|| "no file selected".to_string())?;
+    let store = mm::download::model_store_dir()
+        .ok_or_else(|| "model store directory is unavailable".to_string())?;
+    let installed = mm::installed::import_gguf(std::path::Path::new(&src), &store)?;
+    let id = mm::installed::model_id(&installed);
+    Ok(ImportedModel {
+        id: format!("local/{id}"),
+        name: id,
+        provider: "local".to_string(),
+        kind: "local".to_string(),
+        tasks: vec!["general".to_string()],
+        installed: true,
+        baked: false,
+        imported: true,
+        advanced: false,
+    })
+}
