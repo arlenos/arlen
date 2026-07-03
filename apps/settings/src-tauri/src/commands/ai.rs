@@ -416,6 +416,9 @@ pub struct ImportedModel {
     kind: String,
     /// Task groups (General by default).
     tasks: Vec<String>,
+    /// Parameter count in billions, from the GGUF header when it records it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    params_b: Option<f64>,
     /// Always true (it is now on disk).
     installed: bool,
     /// Never the baked default.
@@ -440,12 +443,25 @@ pub async fn ai_local_models_import() -> Result<ImportedModel, String> {
         .ok_or_else(|| "model store directory is unavailable".to_string())?;
     let installed = mm::installed::import_gguf(std::path::Path::new(&src), &store)?;
     let id = mm::installed::model_id(&installed);
+    // Best-effort GGUF header metadata: a real name + parameter count when the
+    // file records them. A parse failure leaves the file-stem name and no params.
+    let meta = mm::gguf::read_gguf_metadata(&installed.path).ok();
+    let name = meta
+        .as_ref()
+        .and_then(|m| m.name.clone())
+        .filter(|n| !n.trim().is_empty())
+        .unwrap_or_else(|| id.clone());
+    let params_b = meta
+        .as_ref()
+        .and_then(|m| m.parameter_count)
+        .map(|p| p as f64 / 1e9);
     Ok(ImportedModel {
         id: format!("local/{id}"),
-        name: id,
+        name,
         provider: "local".to_string(),
         kind: "local".to_string(),
         tasks: vec!["general".to_string()],
+        params_b,
         installed: true,
         baked: false,
         imported: true,
