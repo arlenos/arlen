@@ -9,5 +9,6 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod llama_server;
 pub mod ollama;
 pub mod proxied;
