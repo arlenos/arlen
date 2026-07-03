@@ -231,3 +231,142 @@ fn hardware_summary(hw: &arlen_ai_model_manager::Hardware) -> String {
         None => "Your machine is best with small (1B) models.".to_string(),
     }
 }
+
+/// One curated catalogue model for the Models hub (`ai_models_catalog`), with the
+/// per-hardware fit resolved. Matches the store's `Model` shape (camelCase).
+#[derive(serde::Serialize, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogModel {
+    /// Stable id, `local/<slug>`.
+    id: String,
+    /// Display name.
+    name: String,
+    /// Always `"local"` for a curated on-device model.
+    provider: String,
+    /// Always `"local"`.
+    kind: String,
+    /// Task groups this model is listed under (never empty: General is the default).
+    tasks: Vec<String>,
+    /// Parameter count in billions.
+    params_b: f64,
+    /// `"fits"` / `"may-be-slow"` / `"wont-fit"` on this machine.
+    fit: String,
+    /// Estimated generation speed in tokens/sec.
+    tokens_per_sec: f64,
+    /// Resident size in GiB at the best-fitting quant.
+    size_gb: f64,
+    /// Whether a GGUF for this model is already on disk.
+    installed: bool,
+    /// Whether it is the baked (system-store) default, which cannot be removed.
+    baked: bool,
+    /// Curated entries are never disk-imports.
+    imported: bool,
+    /// The advanced (uncensored) door set.
+    advanced: bool,
+}
+
+/// The curated model catalogue with fit/size/speed resolved for this machine
+/// (`ai_models_catalog`). The curation lives in `arlen-ai-model-manager`'s bundled
+/// TOML; this resolves the per-hardware fit and marries it to what is on disk.
+#[tauri::command]
+pub fn ai_models_catalog() -> Vec<CatalogModel> {
+    use arlen_ai_model_manager as mm;
+    let hw = mm::detect_hardware();
+    let installed = mm::installed::installed_models();
+    let catalog = mm::bundled_catalog().unwrap_or_default();
+    catalog_to_models(&catalog, &hw, &installed)
+}
+
+fn task_str(task: arlen_ai_model_manager::Task) -> &'static str {
+    use arlen_ai_model_manager::Task;
+    match task {
+        Task::General => "general",
+        Task::Writing => "writing",
+        Task::Coding => "coding",
+        Task::Reasoning => "reasoning",
+    }
+}
+
+/// Pure mapping from the curated catalogue to the hub's model list, resolving the
+/// best-fitting quant, the fit badge, the resident size and an estimated speed for
+/// `hw`, and marrying each entry to `installed` (on-disk) state. Split out so the
+/// fit resolution is unit-tested without probing real hardware or the filesystem.
+fn catalog_to_models(
+    catalog: &arlen_ai_model_manager::Catalog,
+    hw: &arlen_ai_model_manager::Hardware,
+    installed: &[arlen_ai_model_manager::installed::InstalledModel],
+) -> Vec<CatalogModel> {
+    use arlen_ai_model_manager as mm;
+    catalog
+        .models
+        .iter()
+        .map(|m| {
+            let quant = mm::best_fitting_quant(m.params_b, hw).unwrap_or(mm::Quant::Q4KM);
+            let fit = match mm::fit_badge(m.params_b, quant, hw) {
+                mm::FitBadge::Fits => "fits",
+                mm::FitBadge::MaySlow => "may-be-slow",
+                mm::FitBadge::WontFit => "wont-fit",
+            };
+            let size_gb = mm::footprint_gib(m.params_b, quant);
+            let tokens_per_sec =
+                mm::estimate_tokens_per_sec(mm::weights_gib(m.params_b, quant), hw.mem_bandwidth_gbps);
+            // Marry to disk: the GGUF file this source+quant resolves to.
+            let file = mm::download::gguf_filename(&m.source, quant);
+            let on_disk = file
+                .as_ref()
+                .and_then(|f| installed.iter().find(|im| &im.file_name == f));
+            let baked = on_disk.is_some_and(|im| im.location == mm::installed::ModelLocation::System);
+            let tasks: Vec<String> = if m.tasks.is_empty() {
+                vec!["general".to_string()]
+            } else {
+                m.tasks.iter().map(|t| task_str(*t).to_string()).collect()
+            };
+            CatalogModel {
+                id: format!("local/{}", m.name.to_lowercase()),
+                name: m.name.clone(),
+                provider: "local".to_string(),
+                kind: "local".to_string(),
+                tasks,
+                params_b: m.params_b,
+                fit: fit.to_string(),
+                tokens_per_sec,
+                size_gb,
+                installed: on_disk.is_some(),
+                baked,
+                imported: false,
+                advanced: m.advanced,
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod catalog_tests {
+    use super::*;
+    use arlen_ai_model_manager as mm;
+
+    #[test]
+    fn catalog_maps_with_fit_and_installed_state() {
+        let catalog: mm::Catalog = mm::parse_catalog(
+            "[[model]]\nname = \"Tiny-1B\"\nparams_b = 1.0\ntasks = [\"general\"]\nsource = \"bartowski/Tiny-1B-Instruct-GGUF\"\n",
+        )
+        .unwrap();
+        // A comfortable APU: 32 GiB, generous bandwidth -> a 1B model fits.
+        let hw = mm::Hardware {
+            ram_gib: 32.0,
+            accelerator: mm::Accelerator::Apu,
+            mem_bandwidth_gbps: 100.0,
+        };
+        let out = catalog_to_models(&catalog, &hw, &[]);
+        assert_eq!(out.len(), 1);
+        let m = &out[0];
+        assert_eq!(m.id, "local/tiny-1b");
+        assert_eq!(m.provider, "local");
+        assert_eq!(m.fit, "fits");
+        assert!(m.size_gb > 0.0);
+        assert!(m.tokens_per_sec > 0.0);
+        assert!(!m.installed, "nothing on disk in this test");
+        assert!(!m.baked);
+        assert_eq!(m.tasks, vec!["general".to_string()]);
+    }
+}
