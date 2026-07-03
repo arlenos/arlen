@@ -1969,7 +1969,25 @@ async fn handle_client(
                 // `/proc/<pid>/exe` even when that peer is process-hardened
                 // (non-dumpable) - the resolution that lets the per-user AI layer
                 // reach the system Knowledge Graph.
-                let id = app_id_from_pid(pid).unwrap_or_else(|_| "unknown".to_string());
+                let id = match app_id_from_pid(pid) {
+                    Ok(id) => id,
+                    Err(e) => {
+                        // Diagnostic for the in-VM dogfood: the comment above assumes
+                        // root can read a hardened cross-uid peer's /proc/exe, but the
+                        // VM boot shows the AI daemons resolve to `unknown` and get
+                        // rejected. Log WHY the resolution failed (the errno) so the
+                        // exact mechanism (EACCES / ptrace / procfs) is pinned.
+                        if cross_uid {
+                            warn!(
+                                peer_uid = uid,
+                                pid,
+                                error = %e,
+                                "graph daemon: cross-uid app_id resolution failed (peer served as unknown)"
+                            );
+                        }
+                        "unknown".to_string()
+                    }
+                };
                 // A SAME-uid peer is served, scoped by `id` (other root services).
                 // A CROSS-uid peer is served only when it resolves FirstParty/
                 // System: the documented deployment where this root daemon serves
