@@ -75,6 +75,8 @@ pub fn run() {
             commands::config::config_get,
             commands::config::config_set,
             commands::config::ai_defaults_set,
+            commands::config::ai_defaults_get_roles,
+            commands::config::ai_defaults_set_role,
             commands::config::config_reset,
             commands::config::config_get_default,
             commands::theme::theme_get,

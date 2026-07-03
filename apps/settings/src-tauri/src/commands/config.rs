@@ -376,6 +376,64 @@ pub async fn ai_defaults_set(provider: String, model: String) -> Result<(), Stri
     Ok(())
 }
 
+/// The per-role default model ids (query/agent/title) the daemon resolves
+/// (`ai_defaults_get_roles`). Each role falls back to the single default
+/// (`provider.model`) when unset, so the Models hub always shows a resolved model.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleDefaults {
+    /// The model answering interactive queries.
+    query: String,
+    /// The model driving the agent loop.
+    agent: String,
+    /// The model generating conversation titles.
+    title: String,
+}
+
+/// The three roles the daemon resolves a model for.
+const AI_ROLES: [&str; 3] = ["query", "agent", "title"];
+
+/// Read the per-role default models from `ai.toml` (`ai_defaults_get_roles`), each
+/// falling back to the single `provider.model` default when its role is unset.
+#[tauri::command]
+pub fn ai_defaults_get_roles() -> Result<RoleDefaults, String> {
+    let ai = read_file(ConfigFile::Ai)?;
+    let fallback = get_path(&ai, "provider.model")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let role = |name: &str| {
+        get_path(&ai, &format!("defaults.{name}"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .unwrap_or_else(|| fallback.clone())
+    };
+    Ok(RoleDefaults {
+        query: role("query"),
+        agent: role("agent"),
+        title: role("title"),
+    })
+}
+
+/// Assign a model to one role (`ai_defaults_set_role`). Writes `defaults.<role>`
+/// to `ai.toml` format-preserving. A per-role model is not a master switch (it
+/// selects within the configured backend), so it stays in `ai.toml`, not the
+/// config broker. The role must be one of query/agent/title and the id non-empty.
+#[tauri::command]
+pub fn ai_defaults_set_role(role: String, id: String) -> Result<(), String> {
+    if !AI_ROLES.contains(&role.as_str()) {
+        return Err(format!("unknown role '{role}'"));
+    }
+    if id.trim().is_empty() {
+        return Err("id must be non-empty".to_string());
+    }
+    let path = ConfigFile::Ai.path();
+    crate::toml_writer::update(&path, |doc| {
+        set_dotted_in_doc(doc, &format!("defaults.{role}"), toml_edit::value(id.clone()))
+    })?;
+    Ok(())
+}
+
 /// Reset a single key (delete it) or the whole file.
 #[tauri::command]
 pub fn config_reset(file: ConfigFile, key: Option<String>) -> Result<(), String> {
