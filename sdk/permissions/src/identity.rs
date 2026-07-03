@@ -446,9 +446,64 @@ impl AsRawFd for OwnedFd {
 // Tests
 // ---------------------------------------------------------------------------
 
+/// Map a systemd unit name (from a peer's cgroup) to its canonical app_id. Only
+/// the canonical AI-daemon units are mapped: this is the cross-uid identity
+/// fallback for when `/proc/<pid>/exe` is unreadable (a hardened, non-dumpable
+/// peer), and it must grant no identity a successful exe-path resolve would not.
+fn unit_to_app_id(unit: &str) -> Option<&'static str> {
+    match unit {
+        "arlen-ai-agent.service" => Some("ai-agent"),
+        "arlen-ai-daemon.service" => Some("ai-daemon"),
+        _ => None,
+    }
+}
+
+/// Extract the innermost systemd `*.service` unit from a `/proc/<pid>/cgroup`
+/// file's content. Handles cgroup v2 (a single `0::<path>` line) and v1
+/// (`<n>:<controllers>:<path>` lines); returns the last `.service` path component,
+/// or `None` when the peer is not in a service cgroup.
+fn unit_from_cgroup(content: &str) -> Option<String> {
+    content.lines().find_map(|line| {
+        let path = line.rsplit(':').next()?;
+        path.split('/')
+            .rev()
+            .find(|component| component.ends_with(".service"))
+            .map(|s| s.to_string())
+    })
+}
+
+/// Resolve an app_id from a peer's systemd cgroup unit (`/proc/<pid>/cgroup`).
+///
+/// The fallback when [`app_id_from_pid`] is denied for a hardened, non-dumpable
+/// cross-uid peer: unlike `/proc/<pid>/exe`, the cgroup file is not ptrace-gated,
+/// so a root reader can identify a hardened AI daemon by its unit. Only the
+/// canonical AI-daemon units ([`unit_to_app_id`]) resolve; every other unit is
+/// `None`, so this never widens identity beyond what the exe-path resolver grants.
+pub fn app_id_from_cgroup(pid: u32) -> Option<String> {
+    let content = std::fs::read_to_string(format!("/proc/{pid}/cgroup")).ok()?;
+    let unit = unit_from_cgroup(&content)?;
+    unit_to_app_id(&unit).map(|s| s.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cgroup_unit_resolves_the_ai_daemons() {
+        // cgroup v2: one `0::<path>` line.
+        let v2 = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/arlen-ai-agent.service";
+        assert_eq!(unit_from_cgroup(v2).as_deref(), Some("arlen-ai-agent.service"));
+        assert_eq!(unit_to_app_id("arlen-ai-agent.service"), Some("ai-agent"));
+        assert_eq!(unit_to_app_id("arlen-ai-daemon.service"), Some("ai-daemon"));
+        // A non-AI unit maps to nothing (no identity widening).
+        assert_eq!(unit_to_app_id("some-other.service"), None);
+        // cgroup v1: `<n>:<controllers>:<path>` lines; the path is after the last colon.
+        let v1 = "1:name=systemd:/user.slice/user@1000.service/app.slice/arlen-ai-daemon.service\n0::/";
+        assert_eq!(unit_from_cgroup(v1).as_deref(), Some("arlen-ai-daemon.service"));
+        // No service cgroup -> None.
+        assert_eq!(unit_from_cgroup("0::/user.slice/user-1000.slice"), None);
+    }
     use crate::identity_registry::{IdentityRecord, IdentityRegistry};
     use std::io::Write;
 
