@@ -523,7 +523,11 @@ struct ModelDownloadProgress {
 /// explicit confirmed click is the consent (routing through the consent broker is
 /// a follow-up once its async decision-return lands). Errors carry the failure.
 #[tauri::command]
-pub async fn ai_local_models_download(app: AppHandle, id: String) -> Result<(), String> {
+pub async fn ai_local_models_download(
+    app: AppHandle,
+    cancels: tauri::State<'_, DownloadCancels>,
+    id: String,
+) -> Result<(), String> {
     use arlen_ai_model_manager as mm;
 
     // Resolve the catalog entry -> source repo + best-fitting quant -> url/dest/file.
@@ -559,11 +563,18 @@ pub async fn ai_local_models_download(app: AppHandle, id: String) -> Result<(), 
         std::fs::create_dir_all(dir).map_err(|e| format!("create store dir: {e}"))?;
     }
 
-    // Stream the download off the async runtime, emitting progress. Cancel is not
-    // yet wired to a cancel command (a follow-up), so the flag stays clear.
+    // Register a shared cancel flag so `ai_local_models_download_cancel` can abort
+    // this transfer, then stream the download off the async runtime emitting progress.
+    let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    cancels
+        .0
+        .lock()
+        .expect("download-cancels lock")
+        .insert(id.clone(), flag.clone());
+
     let progress_id = id.clone();
-    tokio::task::spawn_blocking(move || {
-        let cancel = std::sync::atomic::AtomicBool::new(false);
+    let dl_flag = flag.clone();
+    let result = tokio::task::spawn_blocking(move || {
         let on_progress = move |fetched: u64, total: u64| {
             let _ = app.emit(
                 "ai:model-download-progress",
@@ -576,11 +587,38 @@ pub async fn ai_local_models_download(app: AppHandle, id: String) -> Result<(), 
         };
         let observer = mm::fetch::DownloadObserver {
             on_progress: &on_progress,
-            cancel: &cancel,
+            cancel: &dl_flag,
         };
         mm::fetch::download_model(&url, &sha, &dest, Some(&observer))
     })
-    .await
-    .map_err(|e| format!("download task: {e}"))?
-    .map_err(|e| e.to_string())
+    .await;
+
+    // Drop the flag entry whether the download finished, failed, or was cancelled.
+    cancels
+        .0
+        .lock()
+        .expect("download-cancels lock")
+        .remove(&id);
+
+    result
+        .map_err(|e| format!("download task: {e}"))?
+        .map_err(|e| e.to_string())
+}
+
+/// Per-download cancel flags keyed by model id, so [`ai_local_models_download_cancel`]
+/// can abort an in-flight [`ai_local_models_download`]. The flag is inserted when a
+/// download starts and removed when it ends; Tauri-managed shared state.
+#[derive(Default)]
+pub struct DownloadCancels(
+    std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>>,
+);
+
+/// Cancel an in-flight model download (`ai_local_models_download_cancel`): flip the
+/// shared flag its streaming observer checks before each read, so the transfer aborts
+/// and the partial file is discarded. A no-op if no download for `id` is running.
+#[tauri::command]
+pub fn ai_local_models_download_cancel(cancels: tauri::State<'_, DownloadCancels>, id: String) {
+    if let Some(flag) = cancels.0.lock().expect("download-cancels lock").get(&id) {
+        flag.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
 }
