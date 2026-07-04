@@ -4,54 +4,15 @@
 //! commands, kept separate so the frontend can call them without
 //! building dot-notation keys itself.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 use super::config::{config_get, config_set, ConfigFile};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ThemeMode {
-    Light,
-    Dark,
-    Auto,
-}
-
-impl ThemeMode {
-    fn as_str(&self) -> &'static str {
-        match self {
-            Self::Light => "light",
-            Self::Dark => "dark",
-            Self::Auto => "auto",
-        }
-    }
-}
 
 /// Return the current appearance.toml as a JSON object.
 #[tauri::command]
 pub fn theme_get() -> Result<serde_json::Value, String> {
     config_get(ConfigFile::Appearance, None)
-}
-
-/// Set the theme mode. Also updates `theme.active` so the desktop-shell
-/// theme watcher picks up the change (shell reads `active`, not `mode`).
-#[tauri::command]
-pub async fn theme_set_mode(mode: ThemeMode) -> Result<(), String> {
-    let mode_str = mode.as_str();
-    config_set(
-        ConfigFile::Appearance,
-        "theme.mode".into(),
-        serde_json::Value::String(mode_str.into()),
-    )
-    .await?;
-    let active = if mode_str == "auto" { "dark" } else { mode_str };
-    config_set(
-        ConfigFile::Appearance,
-        "theme.active".into(),
-        serde_json::Value::String(active.into()),
-    )
-    .await?;
-    Ok(())
 }
 
 /// Set the accent color (hex string like `#3b82f6`).
@@ -198,4 +159,71 @@ pub async fn theme_install_file() -> Result<ThemeSummary, String> {
         .ok_or_else(|| "no file selected".to_string())?;
     let content = std::fs::read_to_string(&src).map_err(|e| format!("read theme: {e}"))?;
     install_theme_content(&content)
+}
+
+/// Map a catppuccin flavor name to its enum (case-insensitive).
+fn parse_flavor(name: &str) -> Option<arlen_theme::catppuccin::Flavor> {
+    use arlen_theme::catppuccin::Flavor;
+    match name.to_ascii_lowercase().as_str() {
+        "latte" => Some(Flavor::Latte),
+        "frappe" => Some(Flavor::Frappe),
+        "macchiato" => Some(Flavor::Macchiato),
+        "mocha" => Some(Flavor::Mocha),
+        _ => None,
+    }
+}
+
+/// Map a catppuccin accent name to its enum (case-insensitive).
+fn parse_accent(name: &str) -> Option<arlen_theme::catppuccin::Accent> {
+    use arlen_theme::catppuccin::Accent;
+    Some(match name.to_ascii_lowercase().as_str() {
+        "rosewater" => Accent::Rosewater,
+        "flamingo" => Accent::Flamingo,
+        "pink" => Accent::Pink,
+        "mauve" => Accent::Mauve,
+        "red" => Accent::Red,
+        "maroon" => Accent::Maroon,
+        "peach" => Accent::Peach,
+        "yellow" => Accent::Yellow,
+        "green" => Accent::Green,
+        "teal" => Accent::Teal,
+        "sky" => Accent::Sky,
+        "sapphire" => Accent::Sapphire,
+        "blue" => Accent::Blue,
+        "lavender" => Accent::Lavender,
+        _ => return None,
+    })
+}
+
+/// Import a colour scheme into a full Arlen theme and install it. `catppuccin`
+/// adapts the named flavor + accent (defaults mocha/mauve); `base16` picks a
+/// scheme file (YAML/JSON/TOML), parses it, and adapts it. Both run through the
+/// sdk/theme inbound adapters (Rule A/B contrast clamp) and then the same
+/// validated install path. Returns the installed theme's summary.
+#[tauri::command]
+pub async fn theme_import_scheme(
+    kind: String,
+    flavor: Option<String>,
+    accent: Option<String>,
+) -> Result<ThemeSummary, String> {
+    let theme_toml = match kind.as_str() {
+        "catppuccin" => {
+            let flavor = parse_flavor(flavor.as_deref().unwrap_or("mocha"))
+                .ok_or_else(|| "unknown catppuccin flavor".to_string())?;
+            let accent = parse_accent(accent.as_deref().unwrap_or("mauve"))
+                .ok_or_else(|| "unknown catppuccin accent".to_string())?;
+            arlen_theme::catppuccin::adapt_catppuccin(flavor, accent)
+        }
+        "base16" => {
+            let src = crate::commands::picker::pick_scheme_file()
+                .await
+                .ok_or_else(|| "no scheme selected".to_string())?;
+            let text = std::fs::read_to_string(&src).map_err(|e| format!("read scheme: {e}"))?;
+            let scheme = arlen_theme::base16::parse_scheme(&text)
+                .map_err(|e| format!("not a base16 scheme: {e}"))?;
+            arlen_theme::base16::adapt_base16(&scheme)
+        }
+        other => return Err(format!("unknown scheme kind: {other}")),
+    };
+    install_theme_content(&theme_toml)
 }
