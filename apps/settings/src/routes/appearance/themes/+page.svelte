@@ -156,13 +156,15 @@
     width: 68%;
     height: 58%;
     padding: 0 0.5rem;
-    border-radius: var(--radius-button, 6px);
-    box-shadow: 0 1px 2px color-mix(in srgb, black 20%, transparent);
+    /* Ride the roundness scale, concentric under the card: the surface takes the
+       input radius (a step down from the card), the accent takes the button
+       radius, the dots are full. So the preview tracks the roundness setting. */
+    border-radius: var(--radius-input, 8px);
   }
   .pv-accent {
     width: 2rem;
     height: 0.6rem;
-    border-radius: var(--radius-chip, 4px);
+    border-radius: var(--radius-button, 6px);
   }
   .pv-dots {
     display: inline-flex;
