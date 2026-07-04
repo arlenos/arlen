@@ -10,15 +10,16 @@
     resolveAccent,
     BORDER_ACCENT_SENTINEL,
     BORDER_SUBTLE_SENTINEL,
-    type ThemeMode,
   } from "$lib/stores/theme";
   import { compositor } from "$lib/stores/compositor";
+  import { activeTheme, loadThemes } from "$lib/stores/themes";
+  import { goto } from "$app/navigation";
 
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Row } from "@arlen/ui-kit/components/ui/row";
-  import ModeToggle from "$lib/components/appearance/ModeToggle.svelte";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
   import AccentPicker from "$lib/components/appearance/AccentPicker.svelte";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import FontSelect from "$lib/components/appearance/FontSelect.svelte";
@@ -28,16 +29,10 @@
   onMount(() => {
     theme.load();
     compositor.load();
+    loadThemes();
   });
 
   // ── Derived values ────────────────────────────────────────────────────
-
-  const currentMode = $derived.by((): ThemeMode => {
-    const s = $theme.data;
-    if (!s) return "dark";
-    if (s.theme.mode) return s.theme.mode;
-    return (s.theme.active as ThemeMode) ?? "dark";
-  });
 
   const currentAccent = $derived(resolveAccent($theme.data));
   const accentOverride = $derived($theme.data?.overrides?.accent);
@@ -68,11 +63,6 @@
   const fontSize = $derived($theme.data?.fonts?.size ?? 14);
 
   // ── Setters ───────────────────────────────────────────────────────────
-
-  async function setMode(mode: ThemeMode) {
-    await theme.setValue("theme.mode", mode);
-    await theme.setValue("theme.active", mode);
-  }
 
   async function setAccent(hex: string) {
     await theme.setValue("overrides.accent", hex);
@@ -115,9 +105,21 @@
   {:else}
     <div class="groups span-full">
       <Group label="Theme">
-        <Row label="Mode" id="theme-mode">
+        <Row label="Active theme" id="active-theme">
           {#snippet control()}
-            <ModeToggle value={currentMode} onchange={setMode} />
+            <div class="theme-row">
+              {#if $activeTheme}
+                <span class="swatch" aria-hidden="true">
+                  {#each $activeTheme.swatch as c (c)}
+                    <span class="chip" style={`background:${c}`}></span>
+                  {/each}
+                </span>
+                <span class="theme-name">{$activeTheme.name}</span>
+              {/if}
+              <Button variant="outline" size="sm" onclick={() => goto("/appearance/themes")}>
+                Browse themes
+              </Button>
+            </div>
           {/snippet}
         </Row>
         <Row label="Accent" id="accent-color">
@@ -280,6 +282,27 @@
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
+  }
+
+  /* The active-theme summary: a small palette strip, the name, then Browse. */
+  .theme-row {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+  }
+  .swatch {
+    display: inline-flex;
+    border-radius: var(--radius-chip, 4px);
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
+  }
+  .chip {
+    width: 0.75rem;
+    height: 1.1rem;
+  }
+  .theme-name {
+    font-size: 0.8125rem;
+    color: var(--foreground);
   }
 
   .status {
