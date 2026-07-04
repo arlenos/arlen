@@ -134,10 +134,14 @@
 
 <style>
   .preview-wrap {
-    /* Sticky so edits stay visible while scrolling the roles. */
+    /* Sticky so edits stay visible while scrolling the roles. The opaque page
+       background + padding make it a clean pinned bar that masks the content
+       scrolling under it, rather than letting it bleed through. */
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: 3;
+    background: var(--color-bg-app);
+    padding-bottom: 0.75rem;
   }
 
   /* The "All roles" disclosure trigger (the class rides the Collapsible root, so
