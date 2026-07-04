@@ -54,6 +54,7 @@ pub fn run() {
             ai_manage::ai_provider_set_enabled,
             ai_manage::ai_provider_test,
             ai_manage::ai_defaults_get,
+            ai_manage::open_ai_settings,
             ai_manage::ai_working_set,
             ai_manage::pending_proposals,
             ai_manage::completed_actions,
