@@ -292,3 +292,18 @@ pub async fn ai_provider_test(id: String) -> String {
         .await
         .unwrap_or_else(|_| network("test failed"))
 }
+
+/// Open the Settings app to the AI panel (the transparency off-switch's "manage
+/// AI in Settings" link). Launches `arlen-settings --panel ai`, the deep-link
+/// Settings parses at startup to land on its AI page. Errors if the binary can
+/// not be spawned (not installed / not on PATH).
+#[tauri::command]
+pub fn open_ai_settings() -> Result<(), String> {
+    std::process::Command::new("arlen-settings")
+        .args(["--panel", "ai"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("launch settings: {e}"))
+}
