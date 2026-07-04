@@ -5,6 +5,7 @@
 //! building dot-notation keys itself.
 
 use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter};
 
 use super::config::{config_get, config_set, ConfigFile};
 
@@ -134,4 +135,33 @@ pub fn get_available_themes() -> Vec<ThemeSummary> {
         }
     }
     out
+}
+
+/// Switch the active theme: persist `appearance.toml [theme].active = id` and
+/// emit `config:appearance:changed` so listeners re-resolve immediately. The
+/// file watcher fires on the write too, but emitting directly makes the switch
+/// feel instant instead of waiting on the debounce.
+#[tauri::command]
+pub async fn set_theme(id: String, app: AppHandle) -> Result<(), String> {
+    config_set(
+        ConfigFile::Appearance,
+        "theme.active".into(),
+        serde_json::Value::String(id),
+    )
+    .await?;
+    if let Err(e) = app.emit("config:appearance:changed", ()) {
+        log::warn!("set_theme: emit config:appearance:changed failed: {e}");
+    }
+    Ok(())
+}
+
+/// The currently active theme id (`appearance.toml [theme].active`), defaulting
+/// to `"dark"` when the key is unset so the gallery always has a selection.
+#[tauri::command]
+pub fn get_active_theme_id() -> Result<String, String> {
+    let value = config_get(ConfigFile::Appearance, Some("theme.active".into()))?;
+    Ok(value
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| "dark".to_string()))
 }
