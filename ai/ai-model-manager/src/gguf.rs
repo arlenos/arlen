@@ -53,6 +53,13 @@ const MAX_ARRAY_DEPTH: u32 = 8;
 
 /// One parsed GGUF value. Ints collapse to `Uint`/`Int`, floats to `Float`; only
 /// the shapes the hub reads are inspected, the rest are parsed to advance past.
+///
+/// `Float`/`Bool`/`Array` carry their payload so the parser stays a faithful,
+/// total decoder of every GGUF value type (each read advances the header offset
+/// correctly), but the hub only reads `Uint`/`Int`/`Str`, so those payloads are
+/// deliberately unread - stripping them would make the parser lie about the
+/// value it consumed.
+#[allow(dead_code)]
 enum GgufValue {
     Uint(u64),
     Int(i64),
