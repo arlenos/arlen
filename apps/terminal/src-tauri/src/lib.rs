@@ -20,6 +20,9 @@ use arlen_terminal_core::{
 use arlen_terminal_engine::PtyEngine;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+mod capability;
+mod url;
+
 /// A live shell: the contract [`Session`] the UI sees, the [`PtyEngine`] driving
 /// its real PTY, and the [`BlockAssembler`] turning the engine's OSC-mark events
 /// into command blocks.
@@ -622,7 +625,9 @@ pub fn run() {
             terminal_config_get,
             terminal_config_set,
             terminal_save_output,
-            terminal_inject_block
+            terminal_inject_block,
+            url::open_url,
+            capability::ai_capability
         ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-terminal");
