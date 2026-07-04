@@ -71,6 +71,7 @@ pub fn run() {
             commands::ai::ai_local_models_delete,
             commands::ai::ai_local_models_import,
             commands::ai::ai_models_search_hf,
+            commands::ai::ai_local_models_download,
             commands::ai::ai_provider_set_enabled,
             commands::ai::ai_provider_test,
             commands::activity::ai_activity_recent,
