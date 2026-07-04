@@ -27,6 +27,7 @@ pub mod fetch;
 pub mod gguf;
 pub mod installed;
 pub mod store;
+pub mod hf;
 pub mod stream;
 
 /// One byte-count gibibyte (2^30), the binary unit GPU and RAM tools report. The
