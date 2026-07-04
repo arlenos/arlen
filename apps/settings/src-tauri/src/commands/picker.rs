@@ -120,6 +120,35 @@ pub async fn pick_theme_file() -> Option<String> {
     }
 }
 
+/// Pick a single colour-scheme file to import (base16 schemes ship as YAML or
+/// JSON; a scheme may also be TOML). Portal first, kdialog/zenity fallback.
+pub async fn pick_scheme_file() -> Option<String> {
+    let options = PickFileOptions {
+        title: Some("Choose a colour scheme".to_string()),
+        filters: vec![FileFilter {
+            name: "Colour schemes".to_string(),
+            patterns: ["*.yaml", "*.yml", "*.json", "*.toml"]
+                .into_iter()
+                .map(|p| FilterPattern::Glob { pattern: p.to_string() })
+                .collect(),
+        }],
+        ..PickFileOptions::default()
+    };
+    match api::pick_file(options).await {
+        Ok(PickerResult::Picked { uris }) => {
+            uris.first().and_then(|u| uri_to_path(u)).or_else(legacy_pick_theme)
+        }
+        Ok(PickerResult::Cancelled) => None,
+        Err(PickerError::PortalUnavailable { .. }) | Err(PickerError::ConnectionLost { .. }) => {
+            legacy_pick_theme()
+        }
+        Err(e) => {
+            log::warn!("portal pick_file failed: {e}");
+            None
+        }
+    }
+}
+
 /// kdialog -> zenity fallback for a single theme file, when no portal frontend
 /// is running. Returns the chosen path only if it exists and is a file.
 fn legacy_pick_theme() -> Option<String> {
