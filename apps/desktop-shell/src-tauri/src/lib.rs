@@ -34,6 +34,7 @@ mod permissions;
 mod projects;
 mod recent_files;
 mod sni;
+mod topbar;
 mod shell_overlay_client;
 mod settings_provider;
 mod shell_runner;
@@ -439,6 +440,7 @@ pub fn run() {
             theme::commands::get_appearance_config,
             theme::commands::reset_theme,
             sni::get_sni_items,
+            topbar::topbar_items,
             sni::activate_sni_item,
             sni::get_sni_menu,
             sni::click_sni_menu_item,
