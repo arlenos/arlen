@@ -86,6 +86,7 @@ pub fn run() {
             commands::theme::get_available_themes,
             commands::theme::set_theme,
             commands::theme::get_active_theme_id,
+            commands::theme::theme_install_file,
             commands::notifications::notifications_get_known_apps,
             commands::notifications::notifications_clear_history,
             commands::notifications::notifications_test_notification,

@@ -92,6 +92,48 @@ pub async fn pick_gguf_file() -> Option<String> {
     }
 }
 
+/// Pick a single `.toml` theme file to install. Portal first, kdialog/zenity
+/// fallback; returns the chosen path or `None` on cancel/unavailable.
+pub async fn pick_theme_file() -> Option<String> {
+    let options = PickFileOptions {
+        title: Some("Choose a theme file".to_string()),
+        filters: vec![FileFilter {
+            name: "Arlen themes".to_string(),
+            patterns: vec![FilterPattern::Glob {
+                pattern: "*.toml".to_string(),
+            }],
+        }],
+        ..PickFileOptions::default()
+    };
+    match api::pick_file(options).await {
+        Ok(PickerResult::Picked { uris }) => {
+            uris.first().and_then(|u| uri_to_path(u)).or_else(legacy_pick_theme)
+        }
+        Ok(PickerResult::Cancelled) => None,
+        Err(PickerError::PortalUnavailable { .. }) | Err(PickerError::ConnectionLost { .. }) => {
+            legacy_pick_theme()
+        }
+        Err(e) => {
+            log::warn!("portal pick_file failed: {e}");
+            None
+        }
+    }
+}
+
+/// kdialog -> zenity fallback for a single theme file, when no portal frontend
+/// is running. Returns the chosen path only if it exists and is a file.
+fn legacy_pick_theme() -> Option<String> {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
+    let picked = try_kdialog_file(&home).or_else(|| try_zenity_file(&home))?;
+    let p = Path::new(&picked);
+    if p.is_file() {
+        Some(picked)
+    } else {
+        log::warn!("pick_theme_file: chooser returned non-file: {picked}");
+        None
+    }
+}
+
 /// kdialog -> zenity fallback for a single GGUF file, when no portal frontend is
 /// running. Returns the chosen path only if it exists and is a file.
 fn legacy_pick_gguf() -> Option<String> {
