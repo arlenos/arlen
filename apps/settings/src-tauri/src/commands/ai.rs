@@ -483,3 +483,21 @@ pub async fn ai_local_models_import() -> Result<ImportedModel, String> {
         advanced: false,
     })
 }
+
+/// Search Hugging Face for installable GGUF models (`ai_models_search_hf`). An
+/// OPT-IN egress: the hub calls this only on an explicit search action, never on
+/// keystroke. Runs the SSRF-pinned GET off the async runtime via `spawn_blocking`
+/// and returns the hits (`{ id, downloads, likes }`, most-downloaded first);
+/// `limit` defaults to 20, clamped to 50 by the search core. A network / blocked /
+/// bad-status error is surfaced as a string so the hub can show it.
+#[tauri::command]
+pub async fn ai_models_search_hf(
+    query: String,
+    limit: Option<u32>,
+) -> Result<Vec<arlen_ai_model_manager::hf::HfHit>, String> {
+    let limit = limit.unwrap_or(20);
+    tokio::task::spawn_blocking(move || arlen_ai_model_manager::hf::search_hf(&query, limit))
+        .await
+        .map_err(|e| format!("search task failed: {e}"))?
+        .map_err(|e| e.to_string())
+}
