@@ -2,15 +2,16 @@
   /// Colours: the theme's palette, editable per role. The common roles carry the
   /// everyday look; the full 18 sit behind an expander. Each role is an
   /// override-row (resolved value at full contrast; an accent bar + reset when
-  /// overridden). A live preview strip and a WCAG contrast check update as you
-  /// edit. Rich by structure, not by omission (appearance-surface.md).
+  /// overridden). The live preview + WCAG contrast update as you edit. A two-
+  /// column editor: controls scroll, the preview rides alongside in its own
+  /// column and never covers the controls (tweakcn precedent). Rich by
+  /// structure, not by omission (appearance-surface.md).
   ///
   /// Mock-vs-live: reads a fixture palette + holds overrides in the store until
   /// the coder exposes the resolved per-role palette + the per-field override
   /// writes (theme.toml layer 3). Affordance-only until then.
   import { ChevronRight } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
-  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Badge } from "@arlen/ui-kit/components/ui/badge";
   import {
@@ -22,7 +23,6 @@
   import ThemePreview from "$lib/components/appearance/ThemePreview.svelte";
   import {
     COLOR_ROLES,
-    resolved,
     overrides,
     effective,
     isOverridden,
@@ -47,65 +47,70 @@
   title="Colours"
   description="The theme's palette. Each colour shows the active theme's value; change one and it overrides just that role, on top of the theme."
 >
-  <SectionGrid>
-    <div class="preview-wrap span-full">
-      <ThemePreview colors={$effective} />
+  <div class="editor">
+    <div class="controls">
+      <Group label="Contrast">
+        {#each CONTRAST_PAIRS as pair (pair.label)}
+          {@const ratio = contrastRatio($effective[pair.fg], $effective[pair.bg])}
+          {@const pass = ratio >= 4.5}
+          <div class="contrast-row">
+            <span class="contrast-label">{pair.label}</span>
+            <span class="contrast-value">
+              <span class="contrast-num">{ratio.toFixed(1)}:1</span>
+              <Badge variant={pass ? "success" : "warn"}>{pass ? "Passes" : "Low"}</Badge>
+            </span>
+          </div>
+        {/each}
+      </Group>
+
+      <Group label="Colours">
+        {#each common as role (role.key)}
+          <OverrideRow
+            label={role.label}
+            hint={role.hint}
+            overridden={isOverridden($overrides, role.key)}
+            onreset={() => resetColorOverride(role.key)}
+            id={`color-${role.key}`}
+          >
+            {#snippet control()}
+              {@render colorControl(role)}
+            {/snippet}
+          </OverrideRow>
+        {/each}
+      </Group>
+
+      <Collapsible class="all-roles">
+        <CollapsibleTrigger class="all-trigger">
+          <ChevronRight size={15} strokeWidth={2} />
+          All roles
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <Group>
+            {#each full as role (role.key)}
+              <OverrideRow
+                label={role.label}
+                hint={role.hint}
+                overridden={isOverridden($overrides, role.key)}
+                onreset={() => resetColorOverride(role.key)}
+                id={`color-${role.key}`}
+              >
+                {#snippet control()}
+                  {@render colorControl(role)}
+                {/snippet}
+              </OverrideRow>
+            {/each}
+          </Group>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
 
-    <Group label="Contrast" class="span-full">
-      {#each CONTRAST_PAIRS as pair (pair.label)}
-        {@const ratio = contrastRatio($effective[pair.fg], $effective[pair.bg])}
-        {@const pass = ratio >= 4.5}
-        <div class="contrast-row">
-          <span class="contrast-label">{pair.label}</span>
-          <span class="contrast-value">
-            <span class="contrast-num">{ratio.toFixed(1)}:1</span>
-            <Badge variant={pass ? "success" : "warn"}>{pass ? "Passes" : "Low"}</Badge>
-          </span>
-        </div>
-      {/each}
-    </Group>
-
-    <Group label="Colours" class="span-full">
-      {#each common as role (role.key)}
-        <OverrideRow
-          label={role.label}
-          hint={role.hint}
-          overridden={isOverridden($overrides, role.key)}
-          onreset={() => resetColorOverride(role.key)}
-          id={`color-${role.key}`}
-        >
-          {#snippet control()}
-            {@render colorControl(role)}
-          {/snippet}
-        </OverrideRow>
-      {/each}
-    </Group>
-
-    <Collapsible class="span-full all-roles">
-      <CollapsibleTrigger class="all-trigger">
-        <ChevronRight size={15} strokeWidth={2} />
-        All roles
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <Group class="span-full">
-          {#each full as role (role.key)}
-            <OverrideRow
-              label={role.label}
-              hint={role.hint}
-              overridden={isOverridden($overrides, role.key)}
-              onreset={() => resetColorOverride(role.key)}
-              id={`color-${role.key}`}
-            >
-              {#snippet control()}
-                {@render colorControl(role)}
-              {/snippet}
-            </OverrideRow>
-          {/each}
-        </Group>
-      </CollapsibleContent>
-    </Collapsible>
-  </SectionGrid>
+    <aside class="preview-col">
+      <div class="preview-sticky">
+        <span class="preview-label">Live preview</span>
+        <ThemePreview colors={$effective} />
+      </div>
+    </aside>
+  </div>
 </Page>
 
 <!-- The swatch + hex editor for one role. The swatch opens the platform colour
@@ -133,15 +138,47 @@
 {/snippet}
 
 <style>
-  .preview-wrap {
-    /* Sticky so edits stay visible while scrolling the roles. The opaque page
-       background + padding make it a clean pinned bar that masks the content
-       scrolling under it, rather than letting it bleed through. */
+  /* Two columns: the controls scroll on the left, the preview rides alongside on
+     the right (sticky within its own column, so it stays visible while you edit
+     but never covers the controls). Stacks on narrow widths. */
+  .editor {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 20rem;
+    gap: 1.5rem;
+    /* The preview column stretches to the controls' height so the sticky preview
+       has room to stay pinned while they scroll. */
+  }
+  .controls {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-width: 0;
+  }
+  .preview-sticky {
     position: sticky;
     top: 0;
-    z-index: 3;
-    background: var(--color-bg-app);
-    padding-bottom: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .preview-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    padding-left: 0.125rem;
+  }
+  @media (max-width: 60rem) {
+    .editor {
+      grid-template-columns: 1fr;
+    }
+    .preview-col {
+      order: -1;
+    }
+    .preview-sticky {
+      position: static;
+    }
   }
 
   /* The "All roles" disclosure trigger (the class rides the Collapsible root, so
