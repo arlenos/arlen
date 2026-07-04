@@ -6,7 +6,6 @@ import { goto } from "$app/navigation";
 export type PanelId =
   | "appearance"
   | "quicksettings"
-  | "appearance-themes"
   | "keyboard"
   | "shortcuts"
   | "mouse"
@@ -49,7 +48,6 @@ export const PANELS: PanelMeta[] = [
   // Personal
   { id: "appearance", title: "Appearance", icon: "Palette", enabled: true, href: "/appearance" },
   { id: "quicksettings", title: "Quick Settings", icon: "LayoutPanelTop", enabled: true, href: "/appearance/quicksettings" },
-  { id: "appearance-themes", title: "Themes", icon: "SwatchBook", enabled: true, href: "/appearance/themes" },
   { id: "accessibility", title: "Accessibility", icon: "Accessibility", enabled: true, href: "/accessibility" },
   { id: "focus", title: "Focus Mode", icon: "Crosshair", enabled: true, href: "/focus" },
   { id: "knowledge", title: "Knowledge Graph", icon: "Brain", enabled: true, href: "/knowledge" },

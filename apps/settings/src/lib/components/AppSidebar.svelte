@@ -18,7 +18,6 @@
   import {
     Search,
     Palette,
-    SwatchBook,
     Keyboard,
     Command,
     Monitor,
@@ -98,7 +97,6 @@
 
   const ICONS: Record<string, typeof Palette> = {
     Palette,
-    SwatchBook,
     Keyboard,
     Command,
     Monitor,
@@ -134,7 +132,6 @@
       panelIds: [
         "appearance",
         "quicksettings",
-        "appearance-themes",
         "accessibility",
         "focus",
         "knowledge",
