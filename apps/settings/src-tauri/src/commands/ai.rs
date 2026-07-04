@@ -13,6 +13,7 @@
 use std::time::Duration;
 
 use serde::Serialize;
+use tauri::{AppHandle, Emitter};
 
 /// AI daemon name on the session bus.
 const AI_DAEMON_NAME: &str = "org.arlen.AI1";
@@ -500,4 +501,86 @@ pub async fn ai_models_search_hf(
         .await
         .map_err(|e| format!("search task failed: {e}"))?
         .map_err(|e| e.to_string())
+}
+
+/// The progress event payload emitted as a model download streams
+/// (`ai:model-download-progress`). `total_bytes` is 0 until the server's size is
+/// known.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelDownloadProgress {
+    id: String,
+    bytes_fetched: u64,
+    total_bytes: u64,
+}
+
+/// Download a curated catalog model into the user model store
+/// (`ai_local_models_download`). Resolves the entry's source repo + the
+/// best-fitting quant for this machine, resolves the file's sha256 from the HF
+/// tree, then fetches the GGUF over the SSRF-safe egress with sha verification,
+/// emitting `ai:model-download-progress` events as it streams. This is the one
+/// consented outbound: a Settings model download is user-initiated, so the
+/// explicit confirmed click is the consent (routing through the consent broker is
+/// a follow-up once its async decision-return lands). Errors carry the failure.
+#[tauri::command]
+pub async fn ai_local_models_download(app: AppHandle, id: String) -> Result<(), String> {
+    use arlen_ai_model_manager as mm;
+
+    // Resolve the catalog entry -> source repo + best-fitting quant -> url/dest/file.
+    let slug = id.strip_prefix("local/").unwrap_or(&id).to_ascii_lowercase();
+    let catalog = mm::bundled_catalog().map_err(|e| format!("catalog: {e}"))?;
+    let hw = mm::detect_hardware();
+    let model = catalog
+        .models
+        .into_iter()
+        .find(|m| m.name.to_ascii_lowercase() == slug)
+        .ok_or_else(|| format!("unknown model: {id}"))?;
+    let quant = mm::best_fitting_quant(model.params_b, &hw)
+        .ok_or_else(|| "no quant fits this machine".to_string())?;
+    let source = model.source.clone();
+    let filename = mm::download::gguf_filename(&source, quant)
+        .ok_or_else(|| "unresolvable model source".to_string())?;
+    let url = mm::download::gguf_resolve_url(&source, quant)
+        .ok_or_else(|| "unresolvable model url".to_string())?;
+    let dest = mm::download::local_model_path(&source, quant)
+        .ok_or_else(|| "model store dir unavailable".to_string())?;
+
+    // Resolve the integrity sha256 from the HF file tree (egress, off the runtime).
+    let sha = {
+        let (source, filename) = (source.clone(), filename.clone());
+        tokio::task::spawn_blocking(move || mm::hf::resolve_gguf_sha(&source, &filename))
+            .await
+            .map_err(|e| format!("resolve task: {e}"))?
+            .map_err(|e| e.to_string())?
+            .sha256
+    };
+
+    if let Some(dir) = dest.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("create store dir: {e}"))?;
+    }
+
+    // Stream the download off the async runtime, emitting progress. Cancel is not
+    // yet wired to a cancel command (a follow-up), so the flag stays clear.
+    let progress_id = id.clone();
+    tokio::task::spawn_blocking(move || {
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let on_progress = move |fetched: u64, total: u64| {
+            let _ = app.emit(
+                "ai:model-download-progress",
+                ModelDownloadProgress {
+                    id: progress_id.clone(),
+                    bytes_fetched: fetched,
+                    total_bytes: total,
+                },
+            );
+        };
+        let observer = mm::fetch::DownloadObserver {
+            on_progress: &on_progress,
+            cancel: &cancel,
+        };
+        mm::fetch::download_model(&url, &sha, &dest, Some(&observer))
+    })
+    .await
+    .map_err(|e| format!("download task: {e}"))?
+    .map_err(|e| e.to_string())
 }
