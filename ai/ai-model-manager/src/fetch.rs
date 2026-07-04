@@ -19,10 +19,49 @@
 
 use std::io::Read;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use arlen_net_guard::{resolve_and_pin, GuardError};
 
 use crate::store::{verify_and_store, StoreError};
+
+/// Observes a download as it streams: a progress callback and a cancel flag, both
+/// supplied by the caller (a UI passes a closure that emits progress events and a
+/// flag it flips to cancel). Threaded into [`download_model`] as an option, so a
+/// headless/first-run download can pass `None`.
+pub struct DownloadObserver<'a> {
+    /// Called after each read with `(bytes_so_far, total_bytes)`; `total` is 0
+    /// when the server sent no `Content-Length`.
+    pub on_progress: &'a (dyn Fn(u64, u64) + Sync),
+    /// Checked before each read; a set flag aborts with [`DownloadError::Cancelled`].
+    pub cancel: &'a AtomicBool,
+}
+
+/// A `Read` that reports progress and honours cancellation as the body streams
+/// through it into the sha-verified store, so a GiB body never buffers to observe it.
+struct ProgressReader<'a, R> {
+    inner: R,
+    read: u64,
+    total: u64,
+    observer: &'a DownloadObserver<'a>,
+}
+
+impl<R: Read> Read for ProgressReader<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.observer.cancel.load(Ordering::Relaxed) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "download cancelled",
+            ));
+        }
+        let n = self.inner.read(buf)?;
+        if n > 0 {
+            self.read += n as u64;
+            (self.observer.on_progress)(self.read, self.total);
+        }
+        Ok(n)
+    }
+}
 
 /// Maximum redirect hops followed before giving up. HF's resolve URL needs one
 /// (origin -> CDN); the rest is slack. Each hop is independently SSRF-pinned.
@@ -56,6 +95,9 @@ pub enum DownloadError {
     Store(StoreError),
     /// The async resolver runtime could not be built.
     Runtime(String),
+    /// The caller flipped the observer's cancel flag mid-transfer; the partial
+    /// file is discarded by the store rather than left half-written.
+    Cancelled,
 }
 
 impl std::fmt::Display for DownloadError {
@@ -71,6 +113,7 @@ impl std::fmt::Display for DownloadError {
             DownloadError::Status(s) => write!(f, "model download got HTTP status {s}"),
             DownloadError::Store(e) => write!(f, "{e}"),
             DownloadError::Runtime(m) => write!(f, "model download runtime error: {m}"),
+            DownloadError::Cancelled => write!(f, "model download cancelled"),
         }
     }
 }
@@ -93,6 +136,7 @@ pub fn download_model(
     url: &str,
     expected_sha256: &str,
     dest: &Path,
+    observer: Option<&DownloadObserver>,
 ) -> Result<(), DownloadError> {
     // Fail loud, not panic, if invoked from an async context (see PRECONDITION).
     if tokio::runtime::Handle::try_current().is_ok() {
@@ -175,8 +219,26 @@ pub fn download_model(
         // the sha-verified atomic store. A GiB body never lands in memory, and
         // `take` bounds the bytes written so a runaway server cannot fill the
         // disk (a real file over the cap truncates and fails the sha check).
-        return verify_and_store(resp.take(MAX_MODEL_BYTES), expected_sha256, dest)
-            .map_err(DownloadError::Store);
+        let total = resp.content_length().unwrap_or(0);
+        let body = resp.take(MAX_MODEL_BYTES);
+        return match observer {
+            None => verify_and_store(body, expected_sha256, dest).map_err(DownloadError::Store),
+            Some(obs) => {
+                let reader = ProgressReader {
+                    inner: body,
+                    read: 0,
+                    total,
+                    observer: obs,
+                };
+                let result = verify_and_store(reader, expected_sha256, dest);
+                // A cancel surfaces as an Interrupted io error inside the store;
+                // report it as Cancelled, not a generic store failure.
+                if result.is_err() && obs.cancel.load(Ordering::Relaxed) {
+                    return Err(DownloadError::Cancelled);
+                }
+                result.map_err(DownloadError::Store)
+            }
+        };
     }
 
     Err(DownloadError::TooManyRedirects)
@@ -190,7 +252,7 @@ mod tests {
     fn rejects_non_https_url() {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("m.gguf");
-        let err = download_model("http://example.com/m.gguf", &"a".repeat(64), &dest).unwrap_err();
+        let err = download_model("http://example.com/m.gguf", &"a".repeat(64), &dest, None).unwrap_err();
         assert!(matches!(err, DownloadError::NotHttps(_)));
         assert!(!dest.exists());
     }
@@ -206,7 +268,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("m.gguf");
         let err = rt.block_on(async {
-            download_model("https://example.com/m.gguf", &"a".repeat(64), &dest)
+            download_model("https://example.com/m.gguf", &"a".repeat(64), &dest, None)
         });
         assert!(matches!(err, Err(DownloadError::Runtime(_))));
         assert!(!dest.exists());
@@ -217,7 +279,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("m.gguf");
         // A syntactically-valid https url with no host.
-        let err = download_model("https:///m.gguf", &"a".repeat(64), &dest);
+        let err = download_model("https:///m.gguf", &"a".repeat(64), &dest, None);
         assert!(matches!(
             err,
             Err(DownloadError::NoHost(_)) | Err(DownloadError::Network(_))
