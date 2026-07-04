@@ -25,6 +25,12 @@ pub fn run() {
             // `config:{file}:changed` Tauri events to the frontend.
             config_watcher::start_appearance_watcher(app.handle().clone());
 
+            // Shared cancel flags for in-flight model downloads.
+            {
+                use tauri::Manager;
+                app.manage(commands::ai::DownloadCancels::default());
+            }
+
             // Parse CLI arguments and stash them so the frontend can
             // pull them via `get_launch_args()` after mount. This
             // avoids the race where an event fires before the webview
@@ -72,6 +78,7 @@ pub fn run() {
             commands::ai::ai_local_models_import,
             commands::ai::ai_models_search_hf,
             commands::ai::ai_local_models_download,
+            commands::ai::ai_local_models_download_cancel,
             commands::ai::ai_provider_set_enabled,
             commands::ai::ai_provider_test,
             commands::activity::ai_activity_recent,
