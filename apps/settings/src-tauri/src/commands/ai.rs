@@ -419,6 +419,14 @@ pub struct ImportedModel {
     /// Parameter count in billions, from the GGUF header when it records it.
     #[serde(skip_serializing_if = "Option::is_none")]
     params_b: Option<f64>,
+    /// The model architecture (`general.architecture`, e.g. `"llama"`, `"qwen2"`)
+    /// from the GGUF header, when it records it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    architecture: Option<String>,
+    /// The trained context window in tokens (`<arch>.context_length`), when the
+    /// file records it - the Models hub surfaces it so a user knows the ceiling.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    context_length: Option<u64>,
     /// Always true (it is now on disk).
     installed: bool,
     /// Never the baked default.
@@ -455,6 +463,11 @@ pub async fn ai_local_models_import() -> Result<ImportedModel, String> {
         .as_ref()
         .and_then(|m| m.parameter_count)
         .map(|p| p as f64 / 1e9);
+    let architecture = meta
+        .as_ref()
+        .and_then(|m| m.architecture.clone())
+        .filter(|a| !a.trim().is_empty());
+    let context_length = meta.as_ref().and_then(|m| m.context_length);
     Ok(ImportedModel {
         id: format!("local/{id}"),
         name,
@@ -462,6 +475,8 @@ pub async fn ai_local_models_import() -> Result<ImportedModel, String> {
         kind: "local".to_string(),
         tasks: vec!["general".to_string()],
         params_b,
+        architecture,
+        context_length,
         installed: true,
         baked: false,
         imported: true,
