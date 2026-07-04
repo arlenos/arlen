@@ -165,3 +165,37 @@ pub fn get_active_theme_id() -> Result<String, String> {
         .map(str::to_string)
         .unwrap_or_else(|| "dark".to_string()))
 }
+
+/// Copy validated theme TOML into the user theme store under the resolved id.
+/// Resolving through `sdk/theme` is the validation: it applies the required-field
+/// check AND the TH-0 inert-data floor (a value that could carry config syntax is
+/// neutralised), and the resolver already slugifies `meta.id` to a path-safe form,
+/// so a malicious file can neither smuggle syntax nor escape the themes dir. A
+/// file that does not resolve is refused, not installed.
+fn install_theme_content(content: &str) -> Result<ThemeSummary, String> {
+    let theme = arlen_theme::ArlenTheme::from_bundled(content)
+        .map_err(|e| format!("not a valid theme: {e}"))?;
+    let id = theme.meta.id.clone();
+    // Belt-and-suspenders over the resolver's slug: never write outside the dir.
+    if id.is_empty() || id.contains('/') || id.contains('\\') || id.contains("..") {
+        return Err(format!("theme id is not a safe filename: {id}"));
+    }
+    let dir = arlen_theme::ArlenTheme::user_themes_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create themes dir: {e}"))?;
+    std::fs::write(dir.join(format!("{id}.toml")), content)
+        .map_err(|e| format!("install theme: {e}"))?;
+    summary_of(content, false).ok_or_else(|| "theme resolved but summary failed".to_string())
+}
+
+/// Install a theme from a user-picked `.toml` file: pick, validate, copy into
+/// `~/.local/share/arlen/themes/{id}.toml`. Returns the installed theme's summary
+/// so the gallery can add it without a full reload. Errors (no file / invalid
+/// theme) distinguish a cancel from a bad file by the message.
+#[tauri::command]
+pub async fn theme_install_file() -> Result<ThemeSummary, String> {
+    let src = crate::commands::picker::pick_theme_file()
+        .await
+        .ok_or_else(|| "no file selected".to_string())?;
+    let content = std::fs::read_to_string(&src).map_err(|e| format!("read theme: {e}"))?;
+    install_theme_content(&content)
+}
