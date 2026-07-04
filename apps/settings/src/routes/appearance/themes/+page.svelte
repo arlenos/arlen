@@ -1,12 +1,13 @@
 <script lang="ts">
   /// The theme gallery (appearance-surface.md APP-R2): the installed themes as
-  /// preview cards, the active one marked, switch with one click, plus install /
-  /// import affordances and the cross-toolkit application status. A theme is one
-  /// palette applied everywhere (no light/dark mode).
+  /// preview cards, the active one marked, switch by clicking a card, plus
+  /// install / import affordances and the cross-toolkit application status. A
+  /// theme is one whole look (colours, icons, window style) applied everywhere,
+  /// not a light/dark mode.
   ///
-  /// Mock-vs-live: the list + swatch previews + install + import read a fixture
-  /// until the coder bridges `get_available_themes` / a per-theme palette / the
-  /// import commands into settings. Switching persists the active id for real.
+  /// Mock-vs-live: the list, previews, install and import read a fixture until
+  /// the coder bridges `get_available_themes` / a per-theme palette / the import
+  /// commands into settings. Switching persists the active id for real.
   import { onMount } from "svelte";
   import { Upload, Sparkles, Check } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
@@ -25,37 +26,52 @@
 
   onMount(loadThemes);
 
-  // The honest cross-toolkit fidelity ceiling (appearance-surface.md §5). The
-  // generators emit to each target; the note states the fidelity there.
+  // The honest cross-toolkit fidelity ceiling (appearance-surface.md section 5).
+  // The generators emit to each target; the note states the fidelity there.
   const FIDELITY = [
-    { target: "Arlen apps + compositor", note: "Full — colour, shape, every radius" },
-    { target: "GTK3", note: "Full shape (adw-gtk3 + colour override)" },
-    { target: "GTK4 / libadwaita", note: "Colours + exact accent; the frame is the compositor's" },
+    { target: "Arlen apps and compositor", note: "Full colour, shape, and every radius" },
+    { target: "GTK3", note: "Full shape (adw-gtk3 plus a colour override)" },
+    { target: "GTK4 / libadwaita", note: "Colours and the exact accent; the frame is the compositor's" },
     { target: "Qt5 / Qt6", note: "Colour, Fusion-shaped (qt6ct)" },
     { target: "Terminal", note: "The 16-colour ANSI projection" },
+    { target: "Icons", note: "The icon set across your GTK and Qt apps" },
   ];
 </script>
 
 <Page
   title="Themes"
-  description="Pick the look of your desktop. A theme is one palette, applied everywhere. Bring your own by importing a scheme or installing a theme file."
+  description="A theme sets the colours, icons, and window style across your whole desktop and your apps. Pick one, import a community scheme, or install a theme file."
 >
   <SectionGrid>
     <div class="grid span-full">
       {#each $themes as t (t.id)}
-        <div class="theme-card" class:active={t.id === $activeThemeId}>
-          <span class="swatch" aria-hidden="true">
-            {#each t.swatch as c (c)}<span class="chip" style={`background:${c}`}></span>{/each}
+        {@const active = t.id === $activeThemeId}
+        <button
+          type="button"
+          class="theme-card"
+          class:active
+          aria-pressed={active}
+          onclick={() => setActiveTheme(t.id)}
+        >
+          <!-- A small mockup of the theme applied: the window ground, a surface
+               card with an accent control and a couple of icon dots, so the card
+               reads as the whole look rather than a bare colour strip. -->
+          <span class="preview" style={`background:${t.swatch[0]}`} aria-hidden="true">
+            <span class="pv-window" style={`background:${t.swatch[1]}`}>
+              <span class="pv-accent" style={`background:${t.swatch[2]}`}></span>
+              <span class="pv-dots">
+                <span class="pv-dot" style={`background:${t.swatch[4]}`}></span>
+                <span class="pv-dot" style={`background:${t.swatch[3]}`}></span>
+              </span>
+            </span>
           </span>
-          <div class="card-foot">
+          <span class="card-foot">
             <span class="name">{t.name}</span>
-            {#if t.id === $activeThemeId}
+            {#if active}
               <span class="active-mark"><Check size={13} strokeWidth={2.5} /> Active</span>
-            {:else}
-              <Button variant="outline" size="sm" onclick={() => setActiveTheme(t.id)}>Use</Button>
             {/if}
-          </div>
-        </div>
+          </span>
+        </button>
       {/each}
     </div>
 
@@ -97,27 +113,68 @@
     gap: 0.75rem;
   }
 
-  /* A theme card: the palette band on top, the name + action below. Flat
+  /* A theme card is the click target: clicking it makes the theme active. Flat
      (hairline border, no shadow) to match the house style; the active card
-     takes an accent border. */
+     takes an accent border, and the others lift on hover. */
   .theme-card {
     display: flex;
     flex-direction: column;
+    padding: 0;
+    text-align: left;
     border-radius: var(--radius-card, 12px);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     background: color-mix(in srgb, var(--foreground) 3%, transparent);
     overflow: hidden;
+    cursor: pointer;
+    transition:
+      border-color var(--duration-fast, 150ms) var(--ease-out, ease),
+      background var(--duration-fast, 150ms) var(--ease-out, ease);
+  }
+  .theme-card:hover {
+    border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
+    background: color-mix(in srgb, var(--foreground) 5%, transparent);
   }
   .theme-card.active {
     border-color: color-mix(in srgb, var(--color-accent, var(--foreground)) 70%, transparent);
   }
-  .swatch {
+  .theme-card:focus-visible {
+    outline: 2px solid var(--color-accent, var(--foreground));
+    outline-offset: 2px;
+  }
+
+  /* The mockup preview. */
+  .preview {
     display: flex;
-    height: 3.5rem;
+    align-items: center;
+    justify-content: center;
+    height: 4.5rem;
   }
-  .chip {
-    flex: 1;
+  .pv-window {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 68%;
+    height: 58%;
+    padding: 0 0.5rem;
+    border-radius: var(--radius-button, 6px);
+    box-shadow: 0 1px 2px color-mix(in srgb, black 20%, transparent);
   }
+  .pv-accent {
+    width: 2rem;
+    height: 0.6rem;
+    border-radius: var(--radius-chip, 4px);
+  }
+  .pv-dots {
+    display: inline-flex;
+    gap: 0.25rem;
+  }
+  .pv-dot {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: var(--radius-full, 9999px);
+    opacity: 0.85;
+  }
+
   .card-foot {
     display: flex;
     align-items: center;
