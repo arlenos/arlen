@@ -9,6 +9,10 @@ authors = ["Arlen"]
 [lib]
 name = "connections"
 
+[[bin]]
+name = "arlen-connectionsd"
+path = "src/main.rs"
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -18,6 +22,11 @@ arlen-secret-vault = { path = "../../sdk/secret-vault" }
 audit-proto = { path = "../../contracts/audit-proto" }
 arlen-forage-signing = { path = "../../forage/signing" }
 zeroize = "1"
+arlen-permissions = { path = "../../sdk/permissions" }
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 tempfile = "3"
