@@ -1,0 +1,14 @@
+[package]
+license = "AGPL-3.0-only"
+name = "connections"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen Connections daemon: the single capability-gated credential authority (org.arlen.Connections1)"
+authors = ["Arlen"]
+
+[lib]
+name = "connections"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "1"
