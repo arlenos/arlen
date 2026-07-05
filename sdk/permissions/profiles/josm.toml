@@ -1,0 +1,12 @@
+# Starting permission profile for a GPS/OSM mapping tool. Works with Documents
+# (tracks, projects) and needs network for map tiles / OSM data. No Knowledge
+# Graph access.
+[info]
+app_id = "josm"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true
