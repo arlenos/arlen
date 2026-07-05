@@ -381,6 +381,78 @@ fn parse_scope_entries(entries: &[String]) -> Vec<EntityScope> {
 }
 
 // ---------------------------------------------------------------------------
+// Canonical-profile graph scope extension (E0: one profile type, parsed once)
+// ---------------------------------------------------------------------------
+
+/// Projects the canonical [`arlen_permissions::PermissionProfile`]'s `[graph]`
+/// grants into the graph-layer token scope types ([`EntityScope`] /
+/// [`RelationScope`] / [`InstanceScope`]). These methods live in the knowledge
+/// daemon, not `sdk/permissions`, because the scope types are graph-layer
+/// (`crate::token`) concepts. This replaces the knowledge-local `PermissionProfile`
+/// fork so the same `{app_id}.toml` is parsed once (canonical) per connect, not
+/// twice into two divergent types.
+pub trait GraphScopeExt {
+    /// Whether the profile grants any Knowledge Graph reach at all. Unlike the
+    /// old fork's "a `[graph]` section is present" test (the canonical type's
+    /// graph is always present, defaulted), this is "any graph grant is
+    /// non-empty" - stricter least-privilege: an empty `[graph]` no longer mints
+    /// a useless zero-scope token.
+    fn has_graph_access(&self) -> bool;
+    /// The read grants as token entity scopes.
+    fn to_read_scopes(&self) -> Vec<EntityScope>;
+    /// The write grants as token entity scopes.
+    fn to_write_scopes(&self) -> Vec<EntityScope>;
+    /// The relation grants as token relation scopes.
+    fn to_relation_scopes(&self) -> Vec<RelationScope>;
+    /// The declared instance scope (own/all) as the token instance scope.
+    fn to_instance_scope(&self) -> InstanceScope;
+    /// The delegated namespaces this profile grants (raw prefix strings).
+    fn delegated_namespaces(&self) -> Vec<String>;
+}
+
+impl GraphScopeExt for arlen_permissions::PermissionProfile {
+    fn has_graph_access(&self) -> bool {
+        let g = &self.graph;
+        !g.read.is_empty()
+            || !g.write.is_empty()
+            || !g.relations.is_empty()
+            || !g.read_sensitive.is_empty()
+            || !g.delegated_namespaces.is_empty()
+    }
+
+    fn to_read_scopes(&self) -> Vec<EntityScope> {
+        parse_scope_entries(&self.graph.read)
+    }
+
+    fn to_write_scopes(&self) -> Vec<EntityScope> {
+        parse_scope_entries(&self.graph.write)
+    }
+
+    fn to_relation_scopes(&self) -> Vec<RelationScope> {
+        self.graph
+            .relations
+            .iter()
+            .map(|r| RelationScope {
+                from: r.from.clone(),
+                to: r.to.clone(),
+                relation_type: r.relation_type.clone(),
+            })
+            .collect()
+    }
+
+    fn to_instance_scope(&self) -> InstanceScope {
+        match self.graph.instance_scope {
+            arlen_permissions::InstanceScopeConfig::Own => InstanceScope::Own,
+            arlen_permissions::InstanceScopeConfig::All => InstanceScope::All,
+        }
+    }
+
+    fn delegated_namespaces(&self) -> Vec<String> {
+        self.graph.delegated_namespaces.clone()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
