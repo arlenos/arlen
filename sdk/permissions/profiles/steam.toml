@@ -1,0 +1,12 @@
+# Starting permission profile for Steam (a game store/client). Needs network for
+# the store and downloads; saves to Downloads (its game library lives in its own
+# data directory). No Knowledge Graph access.
+[info]
+app_id = "steam"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

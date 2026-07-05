@@ -1,0 +1,9 @@
+# Starting permission profile for a documents/IDE app. Opens files under
+# Documents; no network and no Knowledge Graph by default (projects elsewhere,
+# plugins, SDKs or store fetches need an explicit grant). Observe-mode refines it.
+[info]
+app_id = "pycharm-community"
+tier = "third-party"
+
+[filesystem]
+documents = true
