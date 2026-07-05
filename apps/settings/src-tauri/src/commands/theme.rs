@@ -399,3 +399,27 @@ pub async fn theme_import_scheme(
     };
     install_theme_content(&theme_toml)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn palette_has_all_roles_with_valid_hex() {
+        let theme = arlen_theme::ArlenTheme::from_bundled(arlen_theme::DARK_TOML).unwrap();
+        let palette = palette_of(&theme);
+        assert_eq!(palette.len(), 18, "every semantic role is present");
+        for role in &palette {
+            assert!(
+                role.hex.starts_with('#') && role.hex.len() >= 7,
+                "role {} has an invalid hex {}",
+                role.role,
+                role.hex
+            );
+        }
+        // A resolved dark theme has an accent distinct from the app background.
+        let accent = palette.iter().find(|r| r.role == "accent").unwrap();
+        let bg = palette.iter().find(|r| r.role == "bg_app").unwrap();
+        assert_ne!(accent.hex, bg.hex);
+    }
+}
