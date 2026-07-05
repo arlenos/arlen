@@ -1,0 +1,11 @@
+# Starting permission profile for an HTTP/API client. Makes network requests;
+# stores collections in Documents. No Knowledge Graph access.
+[info]
+app_id = "postman"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true

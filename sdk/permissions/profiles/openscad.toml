@@ -1,0 +1,9 @@
+# Starting permission profile for a documents-oriented tool (CAD, GIS, finance,
+# scanning or annotation). Works with Documents; no network and no Knowledge
+# Graph by default. Observe-mode refines it.
+[info]
+app_id = "openscad"
+tier = "third-party"
+
+[filesystem]
+documents = true

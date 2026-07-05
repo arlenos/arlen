@@ -1,0 +1,8 @@
+# Starting permission profile for an RSS/news reader. Needs network to fetch
+# feeds; no local file access and no Knowledge Graph by default.
+[info]
+app_id = "liferea"
+tier = "third-party"
+
+[network]
+allow_all = true
