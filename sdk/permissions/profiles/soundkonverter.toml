@@ -1,0 +1,8 @@
+# Starting permission profile for soundKonverter (an audio converter). Works with
+# the user's Music; no network and no Knowledge Graph.
+[info]
+app_id = "soundkonverter"
+tier = "third-party"
+
+[filesystem]
+music = true

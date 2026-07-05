@@ -1,0 +1,8 @@
+# Starting permission profile for a video editor/converter/ripper. Works with the
+# user's Videos; no network and no Knowledge Graph.
+[info]
+app_id = "vidcutter"
+tier = "third-party"
+
+[filesystem]
+videos = true
