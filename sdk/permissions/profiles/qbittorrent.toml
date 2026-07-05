@@ -1,0 +1,11 @@
+# Starting permission profile for a BitTorrent client. Needs network to transfer;
+# saves to Downloads. No Knowledge Graph access.
+[info]
+app_id = "qbittorrent"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

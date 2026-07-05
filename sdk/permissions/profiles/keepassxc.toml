@@ -1,0 +1,9 @@
+# Starting permission profile for KeePassXC (a password manager). Opens a local
+# database in Documents; no network and no Knowledge Graph (browser integration
+# is a local socket, refined later).
+[info]
+app_id = "keepassxc"
+tier = "third-party"
+
+[filesystem]
+documents = true

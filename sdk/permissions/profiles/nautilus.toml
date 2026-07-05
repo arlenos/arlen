@@ -1,0 +1,8 @@
+# Starting permission profile for a file manager. Browsing the user's files is
+# its function, so it gets Home; no network and no Knowledge Graph.
+[info]
+app_id = "nautilus"
+tier = "third-party"
+
+[filesystem]
+home = true

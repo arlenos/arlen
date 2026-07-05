@@ -1,0 +1,9 @@
+# Starting permission profile for a text/code editor. Edits documents; no network
+# and no Knowledge Graph by default (projects outside Documents, or extension
+# downloads, need an explicit grant). Observe-mode refines it.
+[info]
+app_id = "code"
+tier = "third-party"
+
+[filesystem]
+documents = true
