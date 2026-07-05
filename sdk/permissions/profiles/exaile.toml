@@ -1,0 +1,8 @@
+# Starting permission profile for a music player. Plays the user's local music; no
+# network (cover-art/streaming refined later) and no Knowledge Graph.
+[info]
+app_id = "exaile"
+tier = "third-party"
+
+[filesystem]
+music = true

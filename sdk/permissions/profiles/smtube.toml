@@ -1,0 +1,8 @@
+# Starting permission profile for SMTube (a YouTube browser). Needs network to
+# fetch; no local file access and no Knowledge Graph by default.
+[info]
+app_id = "smtube"
+tier = "third-party"
+
+[network]
+allow_all = true
