@@ -43,6 +43,74 @@ pub async fn theme_list_fonts() -> Vec<String> {
     families.into_iter().collect()
 }
 
+/// The XDG icon-theme search directories: `/usr/share/icons`, the user data
+/// dir's `icons/`, and legacy `~/.icons`. A missing directory is simply skipped
+/// by the readers below.
+fn icon_search_dirs() -> Vec<std::path::PathBuf> {
+    let mut dirs = vec![std::path::PathBuf::from("/usr/share/icons")];
+    if let Some(data) = dirs::data_dir() {
+        dirs.push(data.join("icons"));
+    }
+    if let Some(home) = dirs::home_dir() {
+        dirs.push(home.join(".icons"));
+    }
+    dirs
+}
+
+/// The installed icon themes for the Appearance icon picker: directories under
+/// the XDG icon paths that carry an `index.theme` and at least one icon
+/// directory (any subdirectory other than `cursors`), which excludes
+/// pure-cursor themes that also ship an `index.theme`. Deduplicated and sorted;
+/// empty if none are found.
+#[tauri::command]
+pub fn theme_list_icon_themes() -> Vec<String> {
+    let mut themes = std::collections::BTreeSet::new();
+    for base in icon_search_dirs() {
+        let Ok(entries) = std::fs::read_dir(&base) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.join("index.theme").is_file() {
+                continue;
+            }
+            let has_icon_dir = std::fs::read_dir(&path)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .any(|e| e.path().is_dir() && e.file_name().to_string_lossy() != "cursors");
+            if has_icon_dir {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    themes.insert(name.to_string());
+                }
+            }
+        }
+    }
+    themes.into_iter().collect()
+}
+
+/// The installed cursor themes for the Appearance cursor picker: directories
+/// under the XDG icon paths that contain a `cursors/` subdirectory (the
+/// definitive cursor-theme marker). Deduplicated and sorted.
+#[tauri::command]
+pub fn theme_list_cursor_themes() -> Vec<String> {
+    let mut themes = std::collections::BTreeSet::new();
+    for base in icon_search_dirs() {
+        let Ok(entries) = std::fs::read_dir(&base) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.join("cursors").is_dir() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    themes.insert(name.to_string());
+                }
+            }
+        }
+    }
+    themes.into_iter().collect()
+}
+
 /// Set the accent color (hex string like `#3b82f6`).
 #[tauri::command]
 pub async fn theme_set_accent(color: String) -> Result<(), String> {
