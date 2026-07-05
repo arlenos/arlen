@@ -1,0 +1,11 @@
+# Starting permission profile for a social/fediverse/secure-messenger client. Needs
+# network to communicate; saves attachments to Downloads. No Knowledge Graph access.
+[info]
+app_id = "cwtch"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
