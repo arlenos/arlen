@@ -39,7 +39,9 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::permission::PermissionProfile;
+use arlen_permissions::PermissionProfile;
+
+use crate::permission::GraphScopeExt;
 use crate::quota::{AppTier, QuotaConfig};
 use crate::token::InstanceScope;
 
@@ -143,135 +145,110 @@ impl ScopeSummary {
     /// Raw patterns (not parsed entity types) so field-level narrowing is visible
     /// to the subset gate.
     pub fn from_profile(profile: &PermissionProfile) -> ScopeSummary {
-        let (read, write, read_sensitive) = match &profile.graph {
-            Some(g) => (
-                g.read.iter().cloned().collect(),
-                g.write.iter().cloned().collect(),
-                g.read_sensitive.iter().cloned().collect(),
-            ),
-            None => (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()),
-        };
-        let (network_domains, network_all) = match &profile.network {
-            Some(n) => (
-                n.allowed_domains.iter().cloned().collect(),
-                n.allow_all,
-            ),
-            None => (BTreeSet::new(), false),
-        };
-        let clipboard_caps = match &profile.clipboard {
-            Some(c) => {
-                let mut set = BTreeSet::new();
-                if c.read {
-                    set.insert("read".to_string());
-                }
-                if c.write {
-                    set.insert("write".to_string());
-                }
-                if c.read_sensitive {
-                    set.insert("read_sensitive".to_string());
-                }
-                if c.history {
-                    set.insert("history".to_string());
-                }
-                set
+        // The canonical profile's dimensions are always present (defaulted), so
+        // each is accessed directly; a defaulted dimension yields the same empty
+        // summary the old `Option`-fork's `None` arm produced.
+        let g = &profile.graph;
+        let read = g.read.iter().cloned().collect();
+        let write = g.write.iter().cloned().collect();
+        let read_sensitive = g.read_sensitive.iter().cloned().collect();
+        let n = &profile.network;
+        let network_domains = n.allowed_domains.iter().cloned().collect();
+        let network_all = n.allow_all;
+        let clipboard_caps = {
+            let c = &profile.clipboard;
+            let mut set = BTreeSet::new();
+            if c.read {
+                set.insert("read".to_string());
             }
-            None => BTreeSet::new(),
-        };
-        let notifications_on = profile.notifications.as_ref().map(|n| n.enabled).unwrap_or(false);
-        let input_caps = match &profile.input {
-            Some(i) => {
-                let mut set = BTreeSet::new();
-                if i.register_focused_bindings {
-                    set.insert("register_focused_bindings".to_string());
-                }
-                if i.register_global_bindings {
-                    set.insert("register_global_bindings".to_string());
-                }
-                set
+            if c.write {
+                set.insert("write".to_string());
             }
-            None => BTreeSet::new(),
-        };
-        let search_caps = match &profile.search {
-            Some(s) => {
-                let mut set = BTreeSet::new();
-                if s.open {
-                    set.insert("open".to_string());
-                }
-                if s.register_handler {
-                    set.insert("register_handler".to_string());
-                }
-                if s.intercept_all {
-                    set.insert("intercept_all".to_string());
-                }
-                set
+            if c.read_sensitive {
+                set.insert("read_sensitive".to_string());
             }
-            None => BTreeSet::new(),
-        };
-        let intents_caps = match &profile.intents {
-            Some(i) => {
-                let mut set = BTreeSet::new();
-                if i.dispatch {
-                    set.insert("dispatch".to_string());
-                }
-                if i.register {
-                    set.insert("register".to_string());
-                }
-                if i.preferences {
-                    set.insert("preferences".to_string());
-                }
-                set
+            if c.history {
+                set.insert("history".to_string());
             }
-            None => BTreeSet::new(),
+            set
         };
-        let (filesystem_dirs, filesystem_paths) = match &profile.filesystem {
-            Some(f) => {
-                let mut dirs = BTreeSet::new();
-                for (on, label) in [
-                    (f.home, "home"),
-                    (f.documents, "documents"),
-                    (f.downloads, "downloads"),
-                    (f.pictures, "pictures"),
-                    (f.music, "music"),
-                    (f.videos, "videos"),
-                ] {
-                    if on {
-                        dirs.insert(label.to_string());
-                    }
-                }
-                let paths = f
-                    .custom
-                    .iter()
-                    .map(|p| p.display().to_string())
-                    .collect();
-                (dirs, paths)
+        let notifications_on = profile.notifications.enabled;
+        let input_caps = {
+            let i = &profile.input;
+            let mut set = BTreeSet::new();
+            if i.register_focused_bindings {
+                set.insert("register_focused_bindings".to_string());
             }
-            None => (BTreeSet::new(), BTreeSet::new()),
-        };
-        let (event_bus_subscribe, event_bus_publish) = match &profile.event_bus {
-            Some(e) => (
-                e.subscribe.iter().cloned().collect(),
-                e.publish.iter().cloned().collect(),
-            ),
-            None => (BTreeSet::new(), BTreeSet::new()),
-        };
-        let system_caps = match &profile.system {
-            Some(s) => {
-                let mut set = BTreeSet::new();
-                if s.autostart {
-                    set.insert("autostart".to_string());
-                }
-                if s.background {
-                    set.insert("background".to_string());
-                }
-                if s.power.suspend {
-                    set.insert("suspend".to_string());
-                }
-                if s.power.set_profile {
-                    set.insert("set_profile".to_string());
-                }
-                set
+            if i.register_global_bindings {
+                set.insert("register_global_bindings".to_string());
             }
-            None => BTreeSet::new(),
+            set
+        };
+        let search_caps = {
+            let s = &profile.search;
+            let mut set = BTreeSet::new();
+            if s.open {
+                set.insert("open".to_string());
+            }
+            if s.register_handler {
+                set.insert("register_handler".to_string());
+            }
+            if s.intercept_all {
+                set.insert("intercept_all".to_string());
+            }
+            set
+        };
+        let intents_caps = {
+            let i = &profile.intents;
+            let mut set = BTreeSet::new();
+            if i.dispatch {
+                set.insert("dispatch".to_string());
+            }
+            if i.register {
+                set.insert("register".to_string());
+            }
+            if i.preferences {
+                set.insert("preferences".to_string());
+            }
+            set
+        };
+        let (filesystem_dirs, filesystem_paths) = {
+            let f = &profile.filesystem;
+            let mut dirs = BTreeSet::new();
+            for (on, label) in [
+                (f.home, "home"),
+                (f.documents, "documents"),
+                (f.downloads, "downloads"),
+                (f.pictures, "pictures"),
+                (f.music, "music"),
+                (f.videos, "videos"),
+            ] {
+                if on {
+                    dirs.insert(label.to_string());
+                }
+            }
+            let paths = f.custom.iter().map(|p| p.display().to_string()).collect();
+            (dirs, paths)
+        };
+        let e = &profile.event_bus;
+        let event_bus_subscribe = e.subscribe.iter().cloned().collect();
+        let event_bus_publish = e.publish.iter().cloned().collect();
+        let system_caps = {
+            let s = &profile.system;
+            let mut set = BTreeSet::new();
+            if s.autostart {
+                set.insert("autostart".to_string());
+            }
+            if s.background {
+                set.insert("background".to_string());
+            }
+            if s.power.suspend {
+                set.insert("suspend".to_string());
+            }
+            if s.power.set_profile {
+                set.insert("set_profile".to_string());
+            }
+            set
         };
         ScopeSummary {
             read,
@@ -1429,7 +1406,8 @@ instance_scope = "all"
     #[test]
     fn from_profile_summarises_raw_graph_entries() {
         let profile: PermissionProfile = toml::from_str(
-            "[graph]\nread = [\"system.File.path\", \"system.Project\"]\n\
+            "[info]\napp_id = \"com.x.app\"\n\
+             [graph]\nread = [\"system.File.path\", \"system.Project\"]\n\
              write = [\"com.x.Note\"]\n\
              relations = [{ from = \"system.File\", to = \"system.Project\", type = \"FILE_PART_OF\" }]\n\
              instance_scope = \"all\"\n",
@@ -1454,7 +1432,9 @@ instance_scope = "all"
         // `system.File.path` while `system.File.name` stayed left the entity-type
         // set unchanged and the gate false-refused the revoke. Raw-pattern
         // comparison sees the genuine narrowing.
-        let parse = |t: &str| -> PermissionProfile { toml::from_str(t).unwrap() };
+        let parse = |t: &str| -> PermissionProfile {
+            toml::from_str(&format!("[info]\napp_id = \"com.x.app\"\n{t}")).unwrap()
+        };
         let old = parse(
             "[graph]\nread = [\"system.File.path\", \"system.File.name\"]\ninstance_scope = \"own\"\n",
         );
