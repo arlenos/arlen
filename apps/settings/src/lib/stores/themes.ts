@@ -92,3 +92,13 @@ export async function importScheme(kind: "base16" | "catppuccin"): Promise<void>
     // No command yet.
   }
 }
+
+/// Export the active theme plus the user's overrides as a single shareable
+/// ArlenThemeFile. Mock until the coder's flatten-and-write command lands.
+export async function exportTheme(): Promise<void> {
+  try {
+    await invoke("theme_export");
+  } catch {
+    // No command yet; the affordance is present for when it lands.
+  }
+}
